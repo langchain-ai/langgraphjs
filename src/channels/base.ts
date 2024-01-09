@@ -32,25 +32,25 @@ export abstract class BaseChannel<Value, Update, C> {
    *
    * @throws {InvalidUpdateError} if the sequence of updates is invalid.
    * @param {Array<Update>} values
-   * @returns {Promise<void>}
+   * @returns {void}
    */
-  abstract update(values: Update[]): Promise<void>;
+  abstract update(values: Update[]): void;
 
   /**
    * Return the current value of the channel.
    *
    * @throws {EmptyChannelError} if the channel is empty (never updated yet).
-   * @returns {Promise<Value>}
+   * @returns {Value}
    */
-  abstract get(): Promise<Value>;
+  abstract get(): Value;
 
   /**
    * Return a string representation of the channel's current state.
    *
    * @throws {EmptyChannelError} if the channel is empty (never updated yet), or doesn't supportcheckpoints.
-   * @returns {Promise<C | undefined>}
+   * @returns {C | undefined}
    */
-  abstract checkpoint(): Promise<C | undefined>;
+  abstract checkpoint(): C | undefined;
 }
 
 export class EmptyChannelError extends Error {

@@ -65,7 +65,7 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
     }
   }
 
-  public async update(values: Value[]): Promise<void> {
+  public update(values: Value[]): void {
     let newValues = values;
     if (!newValues.length) return;
 
@@ -81,17 +81,17 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
     }
   }
 
-  public async get(): Promise<Value> {
+  public get(): Value {
     if (this.value === undefined) {
       throw new EmptyChannelError();
     }
     return this.value;
   }
 
-  public checkpoint(): Promise<Value> {
+  public checkpoint(): Value {
     if (!this.value) {
       throw new EmptyChannelError();
     }
-    return Promise.resolve(this.value);
+    return this.value;
   }
 }

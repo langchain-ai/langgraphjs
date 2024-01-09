@@ -48,7 +48,7 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
     }
   }
 
-  async update(values: Value[]): Promise<void> {
+  update(values: Value[]): void {
     if (values.length === 0) {
       return;
     }
@@ -59,14 +59,14 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
     [this.value] = values;
   }
 
-  async get(): Promise<Value> {
+  get(): Value {
     if (this.value === undefined) {
       throw new EmptyChannelError();
     }
     return this.value;
   }
 
-  async checkpoint(): Promise<Value> {
+  checkpoint(): Value {
     if (this.value === undefined) {
       throw new EmptyChannelError();
     }
