@@ -22,9 +22,9 @@ export abstract class BaseChannel<Value, Update, C> {
    * Return a new identical channel, optionally initialized from a checkpoint.
    *
    * @param {C | undefined} checkpoint
-   * @returns {Promise<BaseChannel<Value, Update, C>>}
+   * @returns {Generator<BaseChannel<Value, Update, C>>}
    */
-  abstract empty(checkpoint?: C): AsyncGenerator<BaseChannel<Value, Update, C>>;
+  abstract empty(checkpoint?: C): Generator<BaseChannel<Value, Update, C>>;
 
   /**
    * Update the channel's value with the given sequence of updates.
@@ -74,14 +74,14 @@ export class InvalidUpdateError extends Error {
  * @param {Checkpoint} checkpoint
  * @returns {Promise<{ [key: string]: BaseChannel<Value, Update, C> }>}
  */
-export async function* ChannelsManager<Value, Update, C>(
+export function* ChannelsManager<Value, Update, C>(
   channels: { [key: string]: BaseChannel<Value, Update, C> },
   checkpoint: Checkpoint
-): AsyncGenerator<{ [key: string]: BaseChannel<Value, Update, C> }> {
+): Generator<{ [key: string]: BaseChannel<Value, Update, C> }> {
   const emptyChannels: { [key: string]: BaseChannel<Value, Update, C> } = {};
   for (const k in channels) {
     if (checkpoint.channelValues?.[k] !== undefined) {
-      const result = await channels[k]
+      const result = channels[k]
         .empty(checkpoint.channelValues[k])
         .next();
       if (!result.done) {

@@ -58,9 +58,9 @@ export class Topic<Value> extends BaseChannel<
     return this.typ;
   }
 
-  public async *empty(
+  public *empty(
     checkpoint?: [Set<Value>, Value[]]
-  ): AsyncGenerator<Topic<Value>> {
+  ): Generator<Topic<Value>> {
     const empty = new Topic(this.typ, this.unique, this.accumulate);
     if (checkpoint) {
       [empty.seen, empty.values] = checkpoint;

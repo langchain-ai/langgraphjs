@@ -46,9 +46,9 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
     return this.typ;
   }
 
-  public async *empty(
+  public *empty(
     checkpoint?: Value
-  ): AsyncGenerator<BinaryOperatorAggregate<Value>> {
+  ): Generator<BinaryOperatorAggregate<Value>> {
     const empty = new BinaryOperatorAggregate(this.typ, this.operator);
     if (checkpoint) {
       empty.value = checkpoint;

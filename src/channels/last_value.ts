@@ -31,7 +31,7 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
     return this.typ;
   }
 
-  async *empty(checkpoint?: Value): AsyncGenerator<LastValue<Value>> {
+  *empty(checkpoint?: Value): Generator<LastValue<Value>> {
     const empty = new LastValue<Value>(this.typ);
     if (checkpoint) {
       empty.value = checkpoint;
