@@ -33,7 +33,7 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
    *
    * @returns {new () => Value}
    */
-  public get getValueType(): new () => Value {
+  public get ValueType(): new () => Value {
     return this.typ;
   }
 
@@ -42,7 +42,7 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
    *
    * @returns {new () => Value}
    */
-  public get getUpdateType(): new () => Value {
+  public get UpdateType(): new () => Value {
     return this.typ;
   }
 

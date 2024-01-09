@@ -9,14 +9,14 @@ export abstract class BaseChannel<Value, Update, C> {
    * @TODO Check this typing
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  abstract get getValueType(): any;
+  abstract get ValueType(): any;
 
   /**
    * The type of the update received by the channel.
    * @TODO Check this typing
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  abstract get getUpdateType(): any;
+  abstract get UpdateType(): any;
 
   /**
    * Return a new identical channel, optionally initialized from a checkpoint.
@@ -54,8 +54,6 @@ export abstract class BaseChannel<Value, Update, C> {
 }
 
 export class EmptyChannelError extends Error {
-  name = "EmptyChannelError";
-
   constructor(message?: string) {
     super(message);
     this.name = "EmptyChannelError";
