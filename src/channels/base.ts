@@ -67,18 +67,23 @@ export class InvalidUpdateError extends Error {
   }
 }
 
+export // eslint-disable-next-line @typescript-eslint/no-explicit-any
+type BaseChannelMapping<Value = any, Update = any, C = any> = {
+  [key: string]: BaseChannel<Value, Update, C>;
+};
+
 /**
  * Manage channels for the lifetime of a Pregel invocation (multiple steps).
  *
- * @param {{ [key: string]: BaseChannel<Value, Update, C> }} channels
+ * @param {BaseChannelMapping<Value, Update, C>} channels
  * @param {Checkpoint} checkpoint
- * @returns {Promise<{ [key: string]: BaseChannel<Value, Update, C> }>}
+ * @returns {Generator<BaseChannelMapping<Value, Update, C>>}
  */
 export function* ChannelsManager<Value, Update, C>(
   channels: { [key: string]: BaseChannel<Value, Update, C> },
   checkpoint: Checkpoint
-): Generator<{ [key: string]: BaseChannel<Value, Update, C> }> {
-  const emptyChannels: { [key: string]: BaseChannel<Value, Update, C> } = {};
+): Generator<BaseChannelMapping<Value, Update, C>> {
+  const emptyChannels: BaseChannelMapping<Value, Update, C> = {};
   for (const k in channels) {
     if (checkpoint.channelValues?.[k] !== undefined) {
       const result = channels[k]
@@ -98,7 +103,7 @@ export function* ChannelsManager<Value, Update, C>(
 
 export async function createCheckpoint<Value, Update, C>(
   checkpoint: Checkpoint,
-  channels: { [key: string]: BaseChannel<Value, Update, C> }
+  channels: BaseChannelMapping<Value, Update, C>
 ): Promise<Checkpoint> {
   const newCheckpoint: Checkpoint = {
     v: 1,
