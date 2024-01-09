@@ -1,9 +1,27 @@
 import { Runnable } from "@langchain/core/runnables";
 import { BaseChannelMapping, EmptyChannelError } from "../channels/base.js";
 
+type ConsoleColors = {
+  start: string;
+  end: string;
+};
+
+type ConsoleColorMap = {
+  [key: string]: ConsoleColors;
+};
+
+const COLORS_MAP: ConsoleColorMap = {
+  blue: {
+    start: "\x1b[34m",
+    end: "\x1b[0m"
+  }
+};
+
 /**
- * @TODO pull in colored text util from lc ConsoleCallbackHandler
+ * Wrap some text in a color for printing to the console.
  */
+const wrap = (color: ConsoleColors, text: string): string =>
+  `${color.start}${text}${color.end}`;
 
 export function printStepStart(
   step: number,
@@ -12,7 +30,7 @@ export function printStepStart(
 ): void {
   const nTasks = nextTasks.length;
   console.log(
-    `[pregel/step]`,
+    `${wrap(COLORS_MAP.blue, "[pregel/step]")}`,
     `Starting step ${step} with ${nTasks} task${
       nTasks === 1 ? "" : "s"
     }. Next tasks:\n`,
@@ -28,7 +46,7 @@ export function printCheckpoint<Value = any>(
   channels: BaseChannelMapping<Value>
 ) {
   console.log(
-    `[pregel/checkpoint]`,
+    `${wrap(COLORS_MAP.blue, "[pregel/checkpoint]")}`,
     `Finishing step ${step}. Channel values:\n`,
     `\n${JSON.stringify(
       Object.fromEntries(_readChannels<Value>(channels)),

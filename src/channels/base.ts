@@ -1,19 +1,14 @@
 import { Checkpoint } from "../checkpoint/index.js";
 
-/**
- * @TODO Do I need async for all these abstract methods?
- */
 export abstract class BaseChannel<Value, Update, C> {
   /**
    * The type of the value stored in the channel.
-   * @TODO Check this typing
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   abstract get ValueType(): any;
 
   /**
    * The type of the update received by the channel.
-   * @TODO Check this typing
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   abstract get UpdateType(): any;
