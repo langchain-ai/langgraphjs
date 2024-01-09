@@ -5,15 +5,15 @@ export interface ConfigurableFieldSpec {
   id: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   annotation: any;
-  name: string | undefined;
-  description: string | undefined;
+  name: string | null;
+  description: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  default: any | undefined;
+  default: any;
   /**
    * @default false
    */
-  isShared: boolean | undefined;
-  dependencies: Array<string> | undefined;
+  isShared?: boolean;
+  dependencies: Array<string> | null;
 }
 
 export interface Checkpoint {

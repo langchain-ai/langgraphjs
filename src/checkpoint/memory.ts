@@ -13,11 +13,11 @@ export class MemorySaver extends BaseCheckpointSaver {
       {
         id: "thread_id",
         name: "Thread ID",
-        annotation: undefined,
-        description: undefined,
-        default: "",
+        annotation: null,
+        description: null,
+        default: null,
         isShared: true,
-        dependencies: undefined,
+        dependencies: null,
       },
     ];
   }
