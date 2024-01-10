@@ -3,10 +3,12 @@ import { BaseChannel } from "../channels/base.js";
 /**
  * Map input chunk to a sequence of pending writes in the form [channel, value].
  */
-export function* mapInput(
-  inputChannels: string | Array<string>,
+export function* mapInput<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  chunk?: Record<string, any> | any
+  RunInput extends Record<string, any> = Record<string, any>
+>(
+  inputChannels: string | Array<string>,
+  chunk?: RunInput
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Generator<[string, any]> {
   if (!chunk) {
@@ -30,13 +32,15 @@ export function* mapInput(
 /**
  * Map pending writes (a list of [channel, value]) to output chunk.
  */
-export function mapOutput(
+export function mapOutput<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunOutput extends Record<string, any> = Record<string, any>
+>(
   outputChannels: string | Array<string>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   pendingWrites: Array<[string, any]>,
-  channels: Record<string, BaseChannel<unknown, unknown, unknown>>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Record<string, any> | any | undefined {
+  channels: Record<string, BaseChannel<RunOutput>>
+): RunOutput | undefined {
   if (typeof outputChannels === "string") {
     if (pendingWrites.some(([chan, _]) => chan === outputChannels)) {
       return channels[outputChannels].get();
@@ -47,11 +51,11 @@ export function mapOutput(
       .map(([chan, _]) => chan);
 
     if (updated.length > 0) {
-      return updated.reduce((acc, chan) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return updated.reduce((acc: Record<string, any>, chan) => {
         acc[chan] = channels[chan].get();
         return acc;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      }, {} as { [key: string]: any });
+      }, {}) as RunOutput;
     }
   }
   return undefined;

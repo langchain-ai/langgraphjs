@@ -26,9 +26,9 @@ export abstract class BaseChannel<
    * Return a new identical channel, optionally initialized from a checkpoint.
    *
    * @param {C | undefined} checkpoint
-   * @returns {Generator<BaseChannel<Value, Update, C>>}
+   * @returns {Generator<BaseChannel<Value>>}
    */
-  abstract empty(checkpoint?: C): Generator<BaseChannel<Value, Update, C>>;
+  abstract empty(checkpoint?: C): Generator<BaseChannel<Value>>;
 
   /**
    * Update the channel's value with the given sequence of updates.
@@ -71,23 +71,18 @@ export class InvalidUpdateError extends Error {
   }
 }
 
-export // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type BaseChannelMapping<Value = any, Update = any, C = any> = {
-  [key: string]: BaseChannel<Value, Update, C>;
-};
-
 /**
  * Manage channels for the lifetime of a Pregel invocation (multiple steps).
  *
- * @param {BaseChannelMapping<Value, Update, C>} channels
+ * @param {Record<string, BaseChannel<Value>>} channels
  * @param {Checkpoint} checkpoint
- * @returns {Generator<BaseChannelMapping<Value, Update, C>>}
+ * @returns {Generator<Record<string, BaseChannel<Value>>>}
  */
-export function* ChannelsManager<Value, Update, C>(
-  channels: { [key: string]: BaseChannel<Value, Update, C> },
+export function* ChannelsManager<Value>(
+  channels: Record<string, BaseChannel<Value>>,
   checkpoint: Checkpoint
-): Generator<BaseChannelMapping<Value, Update, C>> {
-  const emptyChannels: BaseChannelMapping<Value, Update, C> = {};
+): Generator<Record<string, BaseChannel<Value>>> {
+  const emptyChannels: Record<string, BaseChannel<Value>> = {};
   for (const k in channels) {
     if (checkpoint.channelValues?.[k] !== undefined) {
       const result = channels[k].empty(checkpoint.channelValues[k]).next();
@@ -103,9 +98,9 @@ export function* ChannelsManager<Value, Update, C>(
   return emptyChannels;
 }
 
-export async function createCheckpoint<Value, Update, C>(
+export async function createCheckpoint<Value>(
   checkpoint: Checkpoint,
-  channels: BaseChannelMapping<Value, Update, C>
+  channels: Record<string, BaseChannel<Value>>
 ): Promise<Checkpoint> {
   const newCheckpoint: Checkpoint = {
     v: 1,

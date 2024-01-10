@@ -1,62 +1,36 @@
 import { Runnable, RunnableConfig } from "@langchain/core/runnables";
-import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
+import {
+  CallbackManager,
+  CallbackManagerForChainRun
+} from "@langchain/core/callbacks/manager";
+import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   BaseChannel,
   ChannelsManager,
-  EmptyChannelError
+  EmptyChannelError,
+  createCheckpoint
 } from "../channels/base.js";
 import {
   BaseCheckpointSaver,
   Checkpoint,
-  ConfigurableFieldSpec,
+  CheckpointAt,
   emptyCheckpoint
 } from "../checkpoint/base.js";
 import { ChannelBatch, ChannelInvoke } from "./read.js";
 import { validateGraph } from "./validate.js";
 import { ReservedChannels } from "./reserved.js";
-import { LastValue } from "../channels/last_value.js";
+import { mapInput, mapOutput } from "./io.js";
 
-function getUniqueConfigSpecs(
-  specs: Iterable<ConfigurableFieldSpec>
-): Array<ConfigurableFieldSpec> {
-  const sortedSpecs = Array.from(specs).sort((a, b) => {
-    const depA = a.dependencies || [];
-    const depB = b.dependencies || [];
-    return a.id.localeCompare(b.id) || depA.length - depB.length;
-  });
-
-  const unique: ConfigurableFieldSpec[] = [];
-  const grouped = sortedSpecs.reduce((acc, spec) => {
-    (acc[spec.id] = acc[spec.id] || []).push(spec);
-    return acc;
-  }, {} as Record<string, ConfigurableFieldSpec[]>);
-
-  for (const id in grouped) {
-    if (id in grouped) {
-      const [first, ...others] = grouped[id];
-      if (
-        others.length === 0 ||
-        others.every((o) => JSON.stringify(o) === JSON.stringify(first))
-      ) {
-        unique.push(first);
-      } else {
-        throw new Error(
-          `RunnableSequence contains conflicting config specs for ${id}: ${JSON.stringify(
-            [first, ...others]
-          )}`
-        );
-      }
-    }
-  }
-
-  return unique;
-}
-
-interface PregelInterface {
+interface PregelInterface<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunInput extends Record<string, any> = Record<string, any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunOutput extends Record<string, any> = Record<string, any>
+> {
   /**
    * @default {}
    */
-  channels: Record<string, BaseChannel>;
+  channels: Record<string, BaseChannel<RunOutput>>;
   /**
    * @default "output"
    */
@@ -74,25 +48,29 @@ interface PregelInterface {
    */
   debug: boolean;
 
-  nodes: Record<string, ChannelInvoke | ChannelBatch>;
+  nodes: Record<
+    string,
+    ChannelInvoke<RunInput, RunOutput> | ChannelBatch<RunInput, RunOutput>
+  >;
 
   saver?: BaseCheckpointSaver;
 
   stepTimeout?: number;
-
-  /**
-   * @TODO fix return type
-   */
-  getInputSchema(config?: RunnableConfig): unknown;
-
-  /**
-   * @TODO fix return type
-   */
-  getOutputSchema(config?: RunnableConfig): unknown;
 }
 
-export class Pregel implements PregelInterface {
-  channels: Record<string, BaseChannel> = {};
+export class Pregel<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunInput extends Record<string, any> = Record<string, any>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunOutput extends Record<string, any> = Record<string, any>
+  >
+  extends Runnable<RunInput, RunOutput>
+  implements PregelInterface<RunInput, RunOutput>
+{
+  // Because Pregel extends `Runnable`.
+  lc_namespace = ["langgraph", "pregel"];
+
+  channels: Record<string, BaseChannel<RunOutput>> = {};
 
   output: string | Array<string> = "output";
 
@@ -102,13 +80,18 @@ export class Pregel implements PregelInterface {
 
   debug: boolean = false;
 
-  nodes: Record<string, ChannelInvoke | ChannelBatch>;
+  nodes: Record<
+    string,
+    ChannelInvoke<RunInput, RunOutput> | ChannelBatch<RunInput, RunOutput>
+  >;
 
   saver?: BaseCheckpointSaver;
 
   stepTimeout?: number;
 
-  constructor(fields: PregelInterface) {
+  constructor(fields: PregelInterface<RunInput, RunOutput>) {
+    super();
+
     this.channels = fields.channels ?? this.channels;
     this.output = fields.output ?? this.output;
     this.input = fields.input ?? this.input;
@@ -126,40 +109,18 @@ export class Pregel implements PregelInterface {
     });
   }
 
-  get configSpecs(): Array<ConfigurableFieldSpec> {
-    throw new Error("TODO: implement");
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  get InputType(): any {
-    if (typeof this.input === "string") {
-      return this.channels[this.input].UpdateType;
-    }
-  }
-
-  getInputSchema(_config?: RunnableConfig): unknown {
-    throw new Error("TODO: implement");
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  get OutputType(): any {
-    if (typeof this.output === "string") {
-      return this.channels[this.output].ValueType;
-    }
-  }
-
-  getOutputSchema(_config?: RunnableConfig): unknown {
-    throw new Error("TODO: implement");
-  }
-
-  _transform(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    input: Iterator<Record<string, any> | any>,
-    runManager: CallbackManagerForChainRun,
-    config: RunnableConfig,
+  async *_transform(
+    input: AsyncGenerator<RunInput>,
+    runManager?: CallbackManagerForChainRun,
+    config?: RunnableConfig,
     output?: string | Array<string>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): Generator<Record<string, any> | any> {
+  ): AsyncGenerator<RunOutput> {
+    // The `_transformStreamWithConfig()` method defined in the `Runnable` class
+    // has `runManager` and `config` set to optional, so we must respect that
+    // in the arguments.
+    if (!config) {
+      throw new Error("Config (RunnableConfig) not found.");
+    }
     if ((config.recursionLimit ?? 0) < 1) {
       throw new Error(`recursionLimit must be at least 1.`);
     }
@@ -181,41 +142,256 @@ export class Pregel implements PregelInterface {
     }
     checkpoint = checkpoint ?? emptyCheckpoint();
     // create channels from checkpoint
-    const channelsManager = ChannelsManager(this.channels, checkpoint);
+    const channelsManager = ChannelsManager<RunOutput>(
+      this.channels,
+      checkpoint
+    );
     // @TODO how to implement equivalent of get_executor_for_config? Talk to nuno.
+    for (const channels of channelsManager) {
+      // map inputs to channel updates
+      const thisInput = this.input;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pendingWritesDeque: Array<[string, any]> = [];
+      for await (const c of input) {
+        for (const value of mapInput<RunInput>(thisInput, c)) {
+          pendingWritesDeque.push(value);
+        }
+      }
+      _applyWrites<RunOutput>(
+        checkpoint,
+        channels,
+        pendingWritesDeque,
+        config,
+        0
+      );
+
+      const read = (chan: string) => _readChannel<RunOutput>(channels, chan);
+
+      // Similarly to Bulk Synchronous Parallel / Pregel model
+      // computation proceeds in steps, while there are channel updates
+      // channel updates from step N are only visible in step N+1
+      // channels are guaranteed to be immutable for the duration of the step,
+      // with channel updates applied only at the transition between steps
+      for (let step = 0; step < (config.recursionLimit ?? 0); step += 1) {
+        const nextTasks = _prepareNextTasks<RunInput, RunOutput>(
+          checkpoint,
+          processes,
+          channels
+        );
+
+        // if no more tasks, we're done
+        if (nextTasks.length === 0) {
+          break;
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const pendingWrites: Array<[string, any]> = [];
+
+        const tasksWithConfig: Array<[Runnable, unknown, RunnableConfig]> =
+          nextTasks.map(([proc, input, name]) => [
+            proc,
+            input,
+            patchConfig({
+              config,
+              runName: name,
+              callbacks: runManager?.getChild(`graph:step:${step}`),
+              configurable: {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                CONFIG_KEY_SEND: (...items: [string, any][]) =>
+                  pendingWrites.push(...items),
+                CONFIG_KEY_READ: read
+              }
+            })
+          ]);
+
+        // execute tasks, and wait for one to fail or all to finish.
+        // each task is independent from all other concurrent tasks
+        const tasks = tasksWithConfig.map(
+          ([proc, input, updatedConfig]) =>
+            () =>
+              proc.invoke(input, updatedConfig)
+        );
+        try {
+          await executeTasks(tasks, this.stepTimeout);
+        } catch (error) {
+          // Handle error (FIRST_EXCEPTION behavior)
+          // @TODO how to handle this?
+        }
+
+        // @TODO next in PY the function `_interrupt_or_proceed()` is called.
+        // I don't think that's necessary here b/c of above logic?
+
+        // apply writes to channels
+        _applyWrites<RunOutput>(
+          checkpoint,
+          channels,
+          pendingWrites,
+          config,
+          step + 1
+        );
+
+        // yield current value and checkpoint view
+        const stepOutput = mapOutput<RunOutput>(
+          newOutputs,
+          pendingWrites,
+          channels
+        );
+        if (stepOutput) {
+          yield stepOutput;
+          // we can detect updates when output is multiple channels (ie. object)
+          if (typeof newOutputs !== "string") {
+            _applyWritesFromView<RunOutput>(checkpoint, channels, stepOutput);
+          }
+        }
+
+        // save end of step checkpoint
+        if (this.saver && this.saver.at === CheckpointAt.END_OF_STEP) {
+          checkpoint = await createCheckpoint(checkpoint, channels);
+          this.saver.put(config, checkpoint);
+        }
+      }
+
+      // save end of run checkpoint
+      if (this.saver && this.saver.at === CheckpointAt.END_OF_RUN) {
+        checkpoint = await createCheckpoint(checkpoint, channels);
+        this.saver.put(config, checkpoint);
+      }
+    }
+  }
+
+  async invoke(
+    input: RunInput,
+    config?: RunnableConfig,
+    output?: string | Array<string>
+  ): Promise<RunOutput> {
+    let latest: RunOutput | undefined;
+    for await (const chunk of await this.stream(
+      input,
+      config,
+      output ?? this.output
+    )) {
+      latest = chunk;
+    }
+
+    if (latest === undefined) {
+      throw new Error('No output generated for ".invoke()"');
+    }
+    return latest;
+  }
+
+  async stream(
+    input: RunInput,
+    config?: RunnableConfig,
+    output?: string | Array<string>
+  ): Promise<IterableReadableStream<RunOutput>> {
+    // Convert the input object into an iterator
+    // @TODO check this?
+    const inputIterator: AsyncGenerator<RunInput> = (async function* () {
+      yield input;
+    })();
+    return IterableReadableStream.fromAsyncGenerator(
+      this.transform(inputIterator, config, output)
+    );
+  }
+
+  async *transform(
+    generator: AsyncGenerator<RunInput>,
+    options?: RunnableConfig,
+    _output?: string | Array<string>
+  ): AsyncGenerator<RunOutput> {
+    // @TODO figure out how to pass output through
+    for await (const chunk of this._transformStreamWithConfig<
+      RunInput,
+      RunOutput
+    >(generator, this._transform, options)) {
+      yield chunk;
+    }
   }
 }
 
-/**
-def _interrupt_or_proceed(
-    done: Union[set[concurrent.futures.Future[Any]], set[asyncio.Task[Any]]],
-    inflight: Union[set[concurrent.futures.Future[Any]], set[asyncio.Task[Any]]],
-    step: int,
-) -> None:
-    while done:
-        # if any task failed
-        if exc := done.pop().exception():
-            # cancel all pending tasks
-            while inflight:
-                inflight.pop().cancel()
-            # raise the exception
-            raise exc
-            # TODO this is where retry of an entire step would happen
+async function executeTasks(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tasks: Array<() => Promise<any>>,
+  stepTimeout?: number
+): Promise<void> {
+  const inflight = tasks.map((task) => task());
 
-    if inflight:
-        # if we got here means we timed out
-        while inflight:
-            # cancel all pending tasks
-            inflight.pop().cancel()
-        # raise timeout error
-        raise TimeoutError(f"Timed out at step {step}")
- */
+  try {
+    await Promise.all(inflight.map((p) => p.catch((e) => e)));
+  } catch (error) {
+    console.error("should I handle another way?");
+    // If any promise rejects, this catch block will execute.
+    // Cancel all pending tasks (if applicable) and handle the error.
+    throw error;
+  }
 
-function _interruptOrProceed() {
-  throw new Error("Can this be implemented? Or how to in a TS way?");
+  // Apply timeout if needed
+  if (stepTimeout) {
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Timed out")), stepTimeout);
+    });
+    inflight.push(timeoutPromise);
+  }
+
+  // Wait for the first task to complete or fail
+  await Promise.race(inflight);
+
+  // Check for any errors in the tasks
+  for (const task of inflight) {
+    if (
+      // eslint-disable-next-line no-instanceof/no-instanceof
+      task instanceof Promise &&
+      // eslint-disable-next-line no-instanceof/no-instanceof
+      (await task.catch((e) => e)) instanceof Error
+    ) {
+      // @TODO what is the proper way to handle errors?
+      throw new Error("A task failed");
+    }
+  }
 }
 
-function _readChannel(channels: Record<string, BaseChannel>, chan: string) {
+/** @TODO port to langchain.js */
+function patchConfig({
+  config,
+  callbacks,
+  recursionLimit,
+  runName,
+  configurable
+}: {
+  config?: RunnableConfig;
+  callbacks?: CallbackManager;
+  recursionLimit?: number;
+  runName?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  configurable?: Record<string, any>;
+}): RunnableConfig {
+  const newConfig = { ...config };
+  if (callbacks) {
+    newConfig.callbacks = callbacks;
+    if ("runName" in newConfig) {
+      delete newConfig.runName;
+    }
+  }
+  if (recursionLimit) {
+    newConfig.recursionLimit = recursionLimit;
+  }
+  if (runName) {
+    newConfig.runName = runName;
+  }
+  if (configurable) {
+    newConfig.configurable = {
+      ...(newConfig.configurable ? newConfig.configurable : {}),
+      ...configurable
+    };
+  }
+  return newConfig;
+}
+
+function _readChannel<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunOutput extends Record<string, any> = Record<string, any>
+>(channels: Record<string, BaseChannel<RunOutput>>, chan: string) {
   try {
     return channels[chan].get();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -227,9 +403,12 @@ function _readChannel(channels: Record<string, BaseChannel>, chan: string) {
   }
 }
 
-function _applyWrites(
+function _applyWrites<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunOutput extends Record<string, any> = Record<string, any>
+>(
   checkpoint: Checkpoint,
-  channels: Record<string, BaseChannel>,
+  channels: Record<string, BaseChannel<RunOutput>>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   pendingWrites: Array<[string, any]>,
   config: RunnableConfig,
@@ -274,9 +453,12 @@ function _applyWrites(
   }
 }
 
-function _applyWritesFromView(
+function _applyWritesFromView<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunOutput extends Record<string, any> = Record<string, any>
+>(
   checkpoint: Checkpoint,
-  channels: Record<string, BaseChannel>,
+  channels: Record<string, BaseChannel<RunOutput>>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   values: Record<string, any>
 ) {
@@ -295,72 +477,25 @@ function _applyWritesFromView(
   }
 }
 
-/**
-def _prepare_next_tasks(
-    checkpoint: Checkpoint,
-    processes: Mapping[str, Union[ChannelInvoke, ChannelBatch]],
-    channels: Mapping[str, BaseChannel],
-) -> list[tuple[Runnable, Any, str]]:
-    tasks: list[tuple[Runnable, Any, str]] = []
-    # Check if any processes should be run in next step
-    # If so, prepare the values to be passed to them
-    for name, proc in processes.items():
-        seen = checkpoint["versions_seen"][name]
-        if isinstance(proc, ChannelInvoke):
-            # If any of the channels read by this process were updated
-            if any(
-                checkpoint["channel_versions"][chan] > seen[chan]
-                for chan in proc.triggers
-            ):
-                # If all channels subscribed by this process have been initialized
-                try:
-                    val: Any = {
-                        k: _read_channel(
-                            channels, chan, catch=chan not in proc.triggers
-                        )
-                        for k, chan in proc.channels.items()
-                    }
-                except EmptyChannelError:
-                    continue
-
-                # Processes that subscribe to a single keyless channel get
-                # the value directly, instead of a dict
-                if list(proc.channels.keys()) == [None]:
-                    val = val[None]
-
-                # update seen versions
-                seen.update(
-                    {
-                        chan: checkpoint["channel_versions"][chan]
-                        for chan in proc.triggers
-                    }
-                )
-
-                # skip if condition is not met
-                if proc.when is None or proc.when(val):
-                    tasks.append((proc, val, name))
-        elif isinstance(proc, ChannelBatch):
-            # If the channel read by this process was updated
-            if checkpoint["channel_versions"][proc.channel] > seen[proc.channel]:
-                # Here we don't catch EmptyChannelError because the channel
-                # must be intialized if the previous `if` condition is true
-                val = channels[proc.channel].get()
-                if proc.key is not None:
-                    val = [{proc.key: v} for v in val]
-
-                tasks.append((proc, val, name))
-                seen[proc.channel] = checkpoint["channel_versions"][proc.channel]
-
-    return tasks
- */
-function _prepareNextTasks(
+function _prepareNextTasks<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunInput extends Record<string, any> = Record<string, any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunOutput extends Record<string, any> = Record<string, any>
+>(
   checkpoint: Checkpoint,
-  processes: Record<string, ChannelInvoke | ChannelBatch>,
-  channels: Record<string, BaseChannel>
+  processes: Record<
+    string,
+    ChannelInvoke<RunInput, RunOutput> | ChannelBatch<RunInput, RunOutput>
+  >,
+  channels: Record<string, BaseChannel<RunOutput>>
 ): Array<[Runnable, unknown, string]> {
   const tasks: Array<[Runnable, unknown, string]> = [];
+
   for (const [name, proc] of Object.entries(processes)) {
     const seen = checkpoint.versionsSeen[name];
+    // @TODO remove, only here b/c no-unused vars
+    console.log(seen, channels);
     if (proc.lc_graph_name === "ChannelInvoke") {
       // todo implement
     } else if (proc.lc_graph_name === "ChannelBatch") {
