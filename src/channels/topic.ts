@@ -17,6 +17,8 @@ export class Topic<Value> extends BaseChannel<
   Value | Value[],
   [Set<Value>, Value[]]
 > {
+  lc_graph_name = "Topic";
+
   typ: new () => Value;
 
   unique: boolean;

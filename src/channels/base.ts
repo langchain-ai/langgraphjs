@@ -1,6 +1,15 @@
 import { Checkpoint } from "../checkpoint/index.js";
 
-export abstract class BaseChannel<Value, Update, C> {
+export abstract class BaseChannel<
+  Value = unknown,
+  Update = unknown,
+  C = unknown
+> {
+  /**
+   * The name of the channel.
+   */
+  abstract lc_graph_name: string;
+
   /**
    * The type of the value stored in the channel.
    */
@@ -103,7 +112,7 @@ export async function createCheckpoint<Value, Update, C>(
     ts: new Date().toISOString(),
     channelValues: { ...checkpoint.channelValues },
     channelVersions: { ...checkpoint.channelVersions },
-    versionsSeen: { ...checkpoint.versionsSeen },
+    versionsSeen: { ...checkpoint.versionsSeen }
   };
   for (const k in channels) {
     if (newCheckpoint.channelValues[k] === undefined) {

@@ -10,6 +10,8 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
   Value,
   Value
 > {
+  lc_graph_name = "BinaryOperatorAggregate";
+
   private value: Value | undefined;
 
   private typ: new () => Value;

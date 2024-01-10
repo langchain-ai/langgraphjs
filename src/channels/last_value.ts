@@ -4,6 +4,8 @@ import { BaseChannel, EmptyChannelError, InvalidUpdateError } from "./index.js";
  * Stores the last value received, can receive at most one value per step.
  */
 export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
+  lc_graph_name = "LastValue";
+
   typ: new () => Value;
 
   value?: Value;

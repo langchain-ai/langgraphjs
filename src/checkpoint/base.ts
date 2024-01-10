@@ -58,6 +58,10 @@ export enum CheckpointAt {
 export abstract class BaseCheckpointSaver {
   at: CheckpointAt = CheckpointAt.END_OF_RUN;
 
+  get configSpecs(): Array<ConfigurableFieldSpec> {
+    return [];
+  }
+
   abstract get(config: RunnableConfig): Checkpoint | undefined;
 
   abstract put(config: RunnableConfig, checkpoint: Checkpoint): void;

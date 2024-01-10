@@ -17,6 +17,8 @@ export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   RunOutput extends Record<string, any> = Record<string, any>
 > extends RunnableLambda<RunInput, RunOutput> {
+  lc_graph_name = "ChannelRead";
+
   channel: string;
 
   constructor(channel: string) {
@@ -86,6 +88,8 @@ export class ChannelInvoke<
   RunOutput extends Record<string, any> = Record<string, any>,
   CallOptions extends RunnableConfig = RunnableConfig
 > extends RunnableBinding<RunInput, RunOutput, CallOptions> {
+  lc_graph_name = "ChannelInvoke";
+
   channels: Record<string, string>;
 
   triggers: string[] = [];
@@ -188,6 +192,8 @@ export class ChannelBatch<
   RunOutput extends Record<string, any> = Record<string, any>,
   CallOptions extends RunnableConfig = RunnableConfig
 > extends RunnableEach<RunInput, RunOutput, CallOptions> {
+  lc_graph_name = "ChannelBatch";
+
   channel: string;
 
   key?: string;
