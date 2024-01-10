@@ -1,20 +1,20 @@
 import { Runnable, RunnableConfig } from "@langchain/core/runnables";
 import {
   CallbackManager,
-  CallbackManagerForChainRun
+  CallbackManagerForChainRun,
 } from "@langchain/core/callbacks/manager";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   BaseChannel,
   ChannelsManager,
   EmptyChannelError,
-  createCheckpoint
+  createCheckpoint,
 } from "../channels/base.js";
 import {
   BaseCheckpointSaver,
   Checkpoint,
   CheckpointAt,
-  emptyCheckpoint
+  emptyCheckpoint,
 } from "../checkpoint/base.js";
 import { ChannelBatch, ChannelInvoke } from "./read.js";
 import { validateGraph } from "./validate.js";
@@ -107,7 +107,7 @@ export class Pregel<
       nodes: this.nodes,
       channels: this.channels,
       output: this.output,
-      input: this.input
+      input: this.input,
     });
   }
 
@@ -202,9 +202,9 @@ export class Pregel<
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 CONFIG_KEY_SEND: (...items: [string, any][]) =>
                   pendingWrites.push(...items),
-                CONFIG_KEY_READ: read
-              }
-            })
+                CONFIG_KEY_READ: read,
+              },
+            }),
           ]);
 
         // execute tasks, and wait for one to fail or all to finish.
@@ -359,7 +359,7 @@ function patchConfig({
   callbacks,
   recursionLimit,
   runName,
-  configurable
+  configurable,
 }: {
   config?: RunnableConfig;
   callbacks?: CallbackManager;
@@ -384,7 +384,7 @@ function patchConfig({
   if (configurable) {
     newConfig.configurable = {
       ...(newConfig.configurable ? newConfig.configurable : {}),
-      ...configurable
+      ...configurable,
     };
   }
   return newConfig;
@@ -429,7 +429,7 @@ function _applyWrites<
   }
   // Update reserved channels
   pendingWritesByChannel[ReservedChannels.isLastStep] = [
-    forStep + 1 === config.recursionLimit
+    forStep + 1 === config.recursionLimit,
   ];
 
   const updatedChannels: Set<string> = new Set();

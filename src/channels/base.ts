@@ -107,7 +107,7 @@ export async function createCheckpoint<Value>(
     ts: new Date().toISOString(),
     channelValues: { ...checkpoint.channelValues },
     channelVersions: { ...checkpoint.channelVersions },
-    versionsSeen: { ...checkpoint.versionsSeen }
+    versionsSeen: { ...checkpoint.versionsSeen },
   };
   for (const k in channels) {
     if (newCheckpoint.channelValues[k] === undefined) {
