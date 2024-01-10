@@ -8,7 +8,7 @@ import {
 export class MemorySaver extends BaseCheckpointSaver {
   storage: Record<string, Checkpoint> = {};
 
-  get config_specs(): ConfigurableFieldSpec[] {
+  get configSpecs(): ConfigurableFieldSpec[] {
     return [
       {
         id: "thread_id",

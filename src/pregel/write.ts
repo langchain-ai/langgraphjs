@@ -29,7 +29,7 @@ export class ChannelWrite<
     return { channels: this.channels };
   }
 
-  get config_specs(): ConfigurableFieldSpec[] {
+  get configSpecs(): ConfigurableFieldSpec[] {
     return [
       {
         id: CONFIG_KEY_SEND,
