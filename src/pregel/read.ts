@@ -6,7 +6,7 @@ import {
   RunnableEach,
   RunnableLambda,
   RunnablePassthrough,
-  _coerceToRunnable,
+  _coerceToRunnable
 } from "@langchain/core/runnables";
 import { ConfigurableFieldSpec } from "../checkpoint/index.js";
 import { CONFIG_KEY_READ } from "../constants.js";
@@ -29,7 +29,7 @@ export class ChannelRead<
           return this._read(input, options.config);
         }
         return this._read(input, options ?? {});
-      },
+      }
     });
     this.channel = channel;
     this.name = `ChannelRead<${channel}>`;
@@ -45,8 +45,8 @@ export class ChannelRead<
         // TODO FIX THIS
         annotation: "Callable[[BaseChannel], Any]",
         isShared: true,
-        dependencies: null,
-      },
+        dependencies: null
+      }
     ];
   }
 
@@ -70,7 +70,7 @@ function _createDefaultBound<RunInput>() {
 interface ChannelInvokeArgs<
   RunInput,
   RunOutput,
-  CallOptions extends RunnableConfig
+  CallOptions extends RunnableConfig = RunnableConfig
 > {
   channels: Record<string, string>;
   triggers: Array<string>;
@@ -82,12 +82,15 @@ interface ChannelInvokeArgs<
 }
 
 export class ChannelInvoke<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput extends Record<string, any> = Record<string, any>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput extends Record<string, any> = Record<string, any>,
-  CallOptions extends RunnableConfig = RunnableConfig
-> extends RunnableBinding<RunInput, RunOutput, CallOptions> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunInput extends Record<string, any> = Record<string, any>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunOutput extends Record<string, any> = Record<string, any>,
+    CallOptions extends RunnableConfig = RunnableConfig
+  >
+  extends RunnableBinding<RunInput, RunOutput, CallOptions>
+  implements ChannelInvokeArgs<RunInput, RunOutput, CallOptions>
+{
   lc_graph_name = "ChannelInvoke";
 
   channels: Record<string, string>;
@@ -111,7 +114,7 @@ export class ChannelInvoke<
 
     super({
       bound: fields.bound ?? defaultBound,
-      config: fields.config ?? {},
+      config: fields.config ?? {}
     });
 
     this.channels = channels;
@@ -120,20 +123,22 @@ export class ChannelInvoke<
     this.kwargs = kwargs;
   }
 
-  join(channels: Array<string>): ChannelInvoke {
+  join(
+    channels: Array<string>
+  ): ChannelInvoke<RunInput, RunOutput, CallOptions> {
     if (!Object.keys(this.channels).every((k) => k !== null)) {
       throw new Error("all channels must be named when using .join()");
     }
-    return new ChannelInvoke({
+    return new ChannelInvoke<RunInput, RunOutput, CallOptions>({
       channels: {
         ...this.channels,
-        ...Object.fromEntries(channels.map((chan) => [chan, chan])),
+        ...Object.fromEntries(channels.map((chan) => [chan, chan]))
       },
       triggers: this.triggers,
       when: this.when,
       bound: this.bound,
       kwargs: this.kwargs,
-      config: this.config,
+      config: this.config
     });
   }
 
@@ -160,7 +165,7 @@ export class ChannelInvoke<
         when: this.when,
         bound: _coerceToRunnable(other),
         kwargs: this.kwargs,
-        config: this.config,
+        config: this.config
       });
     } else {
       return new ChannelInvoke({
@@ -169,7 +174,7 @@ export class ChannelInvoke<
         when: this.when,
         bound: this.combineWith(this.bound ?? other),
         kwargs: this.kwargs,
-        config: this.config,
+        config: this.config
       });
     }
   }
@@ -178,7 +183,7 @@ export class ChannelInvoke<
 interface ChannelBatchArgs<
   RunInput,
   RunOutput,
-  CallOptions extends RunnableConfig
+  CallOptions extends RunnableConfig = RunnableConfig
 > {
   channel: string;
   key?: string;
@@ -207,7 +212,7 @@ export class ChannelBatch<
     >;
 
     super({
-      bound: fields.bound ?? defaultBound,
+      bound: fields.bound ?? defaultBound
     });
 
     this.channel = fields.channel;
@@ -220,12 +225,12 @@ export class ChannelBatch<
         `Cannot join() additional channels without a key.\nPass a key arg to Channel.subscribeToEach().`
       );
     }
-    const channelsMap: Record<string, ChannelRead> = {};
+    const channelsMap: Record<string, ChannelRead<RunInput, RunOutput>> = {};
     for (const chan of channels) {
-      channelsMap[chan] = new ChannelRead(chan);
+      channelsMap[chan] = new ChannelRead<RunInput, RunOutput>(chan);
     }
     const joiner = RunnablePassthrough.assign({
-      ...channelsMap,
+      ...channelsMap
     });
 
     // @TODO can we get rid of this?
@@ -238,13 +243,13 @@ export class ChannelBatch<
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: joiner,
+        bound: joiner
       });
     } else {
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: this.combineWith(this.bound ?? joiner),
+        bound: this.combineWith(this.bound ?? joiner)
       });
     }
   }
@@ -269,14 +274,14 @@ export class ChannelBatch<
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: _coerceToRunnable(other),
+        bound: _coerceToRunnable(other)
       });
     } else {
       // Delegate to `or` in `this.bound`
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: this.combineWith(this.bound ?? other),
+        bound: this.combineWith(this.bound ?? other)
       });
     }
   }

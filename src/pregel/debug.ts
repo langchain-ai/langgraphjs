@@ -1,5 +1,5 @@
 import { Runnable } from "@langchain/core/runnables";
-import { BaseChannelMapping, EmptyChannelError } from "../channels/base.js";
+import { BaseChannel, EmptyChannelError } from "../channels/base.js";
 
 type ConsoleColors = {
   start: string;
@@ -40,10 +40,9 @@ export function printStepStart(
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function printCheckpoint<Value = any>(
+export function printCheckpoint<Value>(
   step: number,
-  channels: BaseChannelMapping<Value>
+  channels: Record<string, BaseChannel<Value>>
 ) {
   console.log(
     `${wrap(COLORS_MAP.blue, "[pregel/checkpoint]")}`,
@@ -57,7 +56,7 @@ export function printCheckpoint<Value = any>(
 }
 
 function* _readChannels<Value>(
-  channels: BaseChannelMapping<Value>
+  channels: Record<string, BaseChannel<Value>>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): IterableIterator<[string, any]> {
   for (const [name, channel] of Object.entries(channels)) {

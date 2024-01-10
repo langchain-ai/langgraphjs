@@ -6,13 +6,12 @@ import { BaseChannel, EmptyChannelError, InvalidUpdateError } from "./index.js";
 export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
   lc_graph_name = "LastValue";
 
-  typ: new () => Value;
+  typ?: Value;
 
   value?: Value;
 
-  constructor(typ: new () => Value) {
+  constructor() {
     super();
-    this.typ = typ;
   }
 
   /**
@@ -20,7 +19,7 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
    *
    * @returns {new () => Value}
    */
-  public get ValueType(): new () => Value {
+  public get ValueType(): Value | undefined {
     return this.typ;
   }
 
@@ -29,12 +28,12 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
    *
    * @returns {new () => Value}
    */
-  public get UpdateType(): new () => Value {
+  public get UpdateType(): Value | undefined {
     return this.typ;
   }
 
   *empty(checkpoint?: Value): Generator<LastValue<Value>> {
-    const empty = new LastValue<Value>(this.typ);
+    const empty = new LastValue<Value>();
     if (checkpoint) {
       empty.value = checkpoint;
     }

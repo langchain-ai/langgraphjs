@@ -21,7 +21,9 @@ import { validateGraph } from "./validate.js";
 import { ReservedChannels } from "./reserved.js";
 import { mapInput, mapOutput } from "./io.js";
 
-interface PregelInterface<
+export class Channel {}
+
+export interface PregelInterface<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   RunInput extends Record<string, any> = Record<string, any>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -101,7 +103,7 @@ export class Pregel<
     this.saver = fields.saver;
     this.stepTimeout = fields.stepTimeout;
 
-    validateGraph({
+    validateGraph<RunInput, RunOutput>({
       nodes: this.nodes,
       channels: this.channels,
       output: this.output,
@@ -351,7 +353,7 @@ async function executeTasks(
   }
 }
 
-/** @TODO port to langchain.js */
+/** @TODO import from `@langchain/core` once included in new release */
 function patchConfig({
   config,
   callbacks,
