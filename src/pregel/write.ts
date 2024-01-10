@@ -1,7 +1,7 @@
 import {
   Runnable,
   RunnableConfig,
-  RunnablePassthrough
+  RunnablePassthrough,
 } from "@langchain/core/runnables";
 import { ConfigurableFieldSpec } from "../checkpoint/index.js";
 import { CONFIG_KEY_SEND } from "../constants.js";
@@ -38,8 +38,8 @@ export class ChannelWrite<
         default: null,
         annotation: "TYPE_SEND",
         isShared: true,
-        dependencies: null
-      }
+        dependencies: null,
+      },
     ];
   }
 
@@ -47,7 +47,7 @@ export class ChannelWrite<
   _write(input: any, config: RunnableConfig): void {
     const values = this.channels.map(([chan, r]) => [
       chan,
-      r ? r.invoke(input, config) : input
+      r ? r.invoke(input, config) : input,
     ]);
 
     ChannelWrite.doWrite(config, Object.fromEntries(values));

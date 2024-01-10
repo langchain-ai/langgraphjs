@@ -81,9 +81,7 @@ export function* ChannelsManager<Value, Update, C>(
   const emptyChannels: BaseChannelMapping<Value, Update, C> = {};
   for (const k in channels) {
     if (checkpoint.channelValues?.[k] !== undefined) {
-      const result = channels[k]
-        .empty(checkpoint.channelValues[k])
-        .next();
+      const result = channels[k].empty(checkpoint.channelValues[k]).next();
       if (!result.done) {
         emptyChannels[k] = result.value;
       }

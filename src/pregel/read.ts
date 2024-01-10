@@ -6,7 +6,7 @@ import {
   RunnableEach,
   RunnableLambda,
   RunnablePassthrough,
-  _coerceToRunnable
+  _coerceToRunnable,
 } from "@langchain/core/runnables";
 import { ConfigurableFieldSpec } from "../checkpoint/index.js";
 import { CONFIG_KEY_READ } from "../constants.js";
@@ -27,7 +27,7 @@ export class ChannelRead<
           return this._read(input, options.config);
         }
         return this._read(input, options ?? {});
-      }
+      },
     });
     this.channel = channel;
     this.name = `ChannelRead<${channel}>`;
@@ -43,8 +43,8 @@ export class ChannelRead<
         // TODO FIX THIS
         annotation: "Callable[[BaseChannel], Any]",
         isShared: true,
-        dependencies: null
-      }
+        dependencies: null,
+      },
     ];
   }
 
@@ -107,7 +107,7 @@ export class ChannelInvoke<
 
     super({
       bound: fields.bound ?? defaultBound,
-      config: fields.config ?? {}
+      config: fields.config ?? {},
     });
 
     this.channels = channels;
@@ -123,13 +123,13 @@ export class ChannelInvoke<
     return new ChannelInvoke({
       channels: {
         ...this.channels,
-        ...Object.fromEntries(channels.map((chan) => [chan, chan]))
+        ...Object.fromEntries(channels.map((chan) => [chan, chan])),
       },
       triggers: this.triggers,
       when: this.when,
       bound: this.bound,
       kwargs: this.kwargs,
-      config: this.config
+      config: this.config,
     });
   }
 
@@ -156,7 +156,7 @@ export class ChannelInvoke<
         when: this.when,
         bound: _coerceToRunnable(other),
         kwargs: this.kwargs,
-        config: this.config
+        config: this.config,
       });
     } else {
       return new ChannelInvoke({
@@ -165,7 +165,7 @@ export class ChannelInvoke<
         when: this.when,
         bound: this.combineWith(this.bound ?? other),
         kwargs: this.kwargs,
-        config: this.config
+        config: this.config,
       });
     }
   }
@@ -201,7 +201,7 @@ export class ChannelBatch<
     >;
 
     super({
-      bound: fields.bound ?? defaultBound
+      bound: fields.bound ?? defaultBound,
     });
 
     this.channel = fields.channel;
@@ -219,7 +219,7 @@ export class ChannelBatch<
       channelsMap[chan] = new ChannelRead(chan);
     }
     const joiner = RunnablePassthrough.assign({
-      ...channelsMap
+      ...channelsMap,
     });
 
     // @TODO can we get rid of this?
@@ -232,13 +232,13 @@ export class ChannelBatch<
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: joiner
+        bound: joiner,
       });
     } else {
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: this.combineWith(this.bound ?? joiner)
+        bound: this.combineWith(this.bound ?? joiner),
       });
     }
   }
@@ -263,14 +263,14 @@ export class ChannelBatch<
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: _coerceToRunnable(other)
+        bound: _coerceToRunnable(other),
       });
     } else {
       // Delegate to `or` in `this.bound`
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: this.combineWith(this.bound ?? other)
+        bound: this.combineWith(this.bound ?? other),
       });
     }
   }

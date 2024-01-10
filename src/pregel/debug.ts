@@ -13,8 +13,8 @@ type ConsoleColorMap = {
 const COLORS_MAP: ConsoleColorMap = {
   blue: {
     start: "\x1b[34m",
-    end: "\x1b[0m"
-  }
+    end: "\x1b[0m",
+  },
 };
 
 /**

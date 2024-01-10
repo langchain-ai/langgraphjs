@@ -1,13 +1,15 @@
 import { BaseChannel } from "./base.js";
 
-function* flatten<Value>(values: Array<Value | Value[]>): IterableIterator<Value> {
+function* flatten<Value>(
+  values: Array<Value | Value[]>
+): IterableIterator<Value> {
   for (const value of values) {
     if (Array.isArray(value)) {
-        yield* value;
+      yield* value;
     } else {
-        yield value;
+      yield value;
     }
-}
+  }
 }
 
 export class Topic<Value> extends BaseChannel<
@@ -58,9 +60,7 @@ export class Topic<Value> extends BaseChannel<
     return this.typ;
   }
 
-  public *empty(
-    checkpoint?: [Set<Value>, Value[]]
-  ): Generator<Topic<Value>> {
+  public *empty(checkpoint?: [Set<Value>, Value[]]): Generator<Topic<Value>> {
     const empty = new Topic(this.typ, this.unique, this.accumulate);
     if (checkpoint) {
       [empty.seen, empty.values] = checkpoint;

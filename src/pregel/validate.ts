@@ -4,7 +4,7 @@ export function validateGraph({
   nodes,
   chammels,
   input,
-  output
+  output,
 }: {
   nodes: Record<string, ChannelInvoke | ChannelBatch>;
   chammels: { [key: string]: BaseChannel<unknown, unknown, unknown> };
