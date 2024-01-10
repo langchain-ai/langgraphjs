@@ -17,7 +17,7 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
   /**
    * The type of the value stored in the channel.
    *
-   * @returns {new () => Value}
+   * @returns {Value | undefined}
    */
   public get ValueType(): Value | undefined {
     return this.typ;
@@ -26,7 +26,7 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
   /**
    * The type of the update received by the channel.
    *
-   * @returns {new () => Value}
+   * @returns {Value | undefined}
    */
   public get UpdateType(): Value | undefined {
     return this.typ;

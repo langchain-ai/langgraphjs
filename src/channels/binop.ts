@@ -12,19 +12,18 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
 > {
   lc_graph_name = "BinaryOperatorAggregate";
 
-  private value: Value | undefined;
+  value: Value | undefined;
 
-  private typ: new () => Value;
+  typ?: Value;
 
-  private operator: BinaryOperator<Value>;
+  operator: BinaryOperator<Value>;
 
-  constructor(typ: new () => Value, operator: BinaryOperator<Value>) {
+  constructor(operator: BinaryOperator<Value>) {
     super();
 
-    this.typ = typ;
     this.operator = operator;
     try {
-      this.value = new this.typ();
+      this.value = this.typ;
     } catch (e) {
       // no-op
     }
@@ -33,23 +32,23 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
   /**
    * The type of the value stored in the channel.
    *
-   * @returns {new () => Value}
+   * @returns {Value | undefined}
    */
-  public get ValueType(): new () => Value {
+  public get ValueType(): Value | undefined {
     return this.typ;
   }
 
   /**
    * The type of the update received by the channel.
    *
-   * @returns {new () => Value}
+   * @returns {Value | undefined}
    */
-  public get UpdateType(): new () => Value {
+  public get UpdateType(): Value | undefined {
     return this.typ;
   }
 
   public *empty(checkpoint?: Value): Generator<BinaryOperatorAggregate<Value>> {
-    const empty = new BinaryOperatorAggregate(this.typ, this.operator);
+    const empty = new BinaryOperatorAggregate(this.operator);
     if (checkpoint) {
       empty.value = checkpoint;
     }

@@ -19,7 +19,7 @@ export class Topic<Value> extends BaseChannel<
 > {
   lc_graph_name = "Topic";
 
-  typ: new () => Value;
+  typ?: Value;
 
   unique: boolean;
 
@@ -29,14 +29,9 @@ export class Topic<Value> extends BaseChannel<
 
   values: Value[];
 
-  constructor(
-    typ: new () => Value,
-    unique: boolean = false,
-    accumulate: boolean = false
-  ) {
+  constructor(unique: boolean = false, accumulate: boolean = false) {
     super();
 
-    this.typ = typ;
     this.unique = unique;
     this.accumulate = accumulate;
     // State
@@ -47,23 +42,23 @@ export class Topic<Value> extends BaseChannel<
   /**
    * The type of the value stored in the channel.
    *
-   * @returns {Array<new () => Value>}
+   * @returns {Array<Value> | undefined}
    */
-  public get ValueType(): [new () => Value] {
-    return [this.typ];
+  public get ValueType(): [Value] | undefined {
+    return this.typ ? [this.typ] : undefined;
   }
 
   /**
    * The type of the update received by the channel.
    *
-   * @returns {new () => Value}
+   * @returns {Value | undefined}
    */
-  public get UpdateType(): new () => Value {
+  public get UpdateType(): Value | undefined {
     return this.typ;
   }
 
   public *empty(checkpoint?: [Set<Value>, Value[]]): Generator<Topic<Value>> {
-    const empty = new Topic(this.typ, this.unique, this.accumulate);
+    const empty = new Topic<Value>(this.unique, this.accumulate);
     if (checkpoint) {
       [empty.seen, empty.values] = checkpoint;
     }
