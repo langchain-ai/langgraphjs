@@ -1,4 +1,8 @@
-import { Runnable, RunnableConfig } from "@langchain/core/runnables";
+import {
+  Runnable,
+  RunnableConfig,
+  _coerceToRunnable,
+} from "@langchain/core/runnables";
 import {
   CallbackManager,
   CallbackManagerForChainRun,
@@ -20,8 +24,137 @@ import { ChannelBatch, ChannelInvoke } from "./read.js";
 import { validateGraph } from "./validate.js";
 import { ReservedChannels } from "./reserved.js";
 import { mapInput, mapOutput } from "./io.js";
+import { ChannelWrite } from "./write.js";
 
-export class Channel {}
+type WriteValue<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunInput extends Record<string, any> = Record<string, any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunOutput extends Record<string, any> = Record<string, any>
+> =
+  | Runnable<RunInput, RunOutput>
+  | ((input: RunInput) => RunOutput)
+  | ((input: RunInput) => Promise<RunOutput>)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | any;
+
+function _coerceWriteValue<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunInput extends Record<string, any> = Record<string, any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunOutput extends Record<string, any> = Record<string, any>
+>(value: WriteValue): Runnable<RunInput, RunOutput> {
+  if (!Runnable.isRunnable(value) && typeof value !== "function") {
+    return _coerceToRunnable(() => value);
+  }
+  return _coerceToRunnable(value);
+}
+
+export class Channel {
+  static subscribeTo<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunInput extends Record<string, any> = Record<string, any>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunOutput extends Record<string, any> = Record<string, any>
+  >(
+    channels: string,
+    key?: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    when?: (arg: any) => boolean
+  ): // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ChannelInvoke<RunInput, RunOutput>;
+
+  static subscribeTo<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunInput extends Record<string, any> = Record<string, any>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunOutput extends Record<string, any> = Record<string, any>
+  >(
+    channels: string[],
+    key?: undefined,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    when?: (arg: any) => boolean
+  ): ChannelInvoke<RunInput, RunOutput>;
+
+  static subscribeTo<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunInput extends Record<string, any> = Record<string, any>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunOutput extends Record<string, any> = Record<string, any>
+  >(
+    channels: string | string[],
+    key?: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    when?: (arg: any) => boolean
+  ): ChannelInvoke<RunInput, RunOutput> {
+    if (typeof channels !== "string" && key) {
+      throw new Error(
+        "Can't specify a key when subscribing to multiple channels"
+      );
+    }
+
+    return new ChannelInvoke<RunInput, RunOutput>({
+      channels:
+        typeof channels === "string"
+          ? { [key ?? ""]: channels }
+          : Object.fromEntries(channels.map((chan) => [chan, chan])),
+      triggers: typeof channels === "string" ? [channels] : channels,
+      when,
+    });
+  }
+
+  static subscribeToEach<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunInput extends Record<string, any> = Record<string, any>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunOutput extends Record<string, any> = Record<string, any>
+  >(inbox: string, key?: string): ChannelBatch<RunInput, RunOutput> {
+    return new ChannelBatch<RunInput, RunOutput>({
+      channel: inbox,
+      key,
+    });
+  }
+
+  static writeTo<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunInput extends Record<string, any> = Record<string, any>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunOutput extends Record<string, any> = Record<string, any>
+  >(...channels: string[]): ChannelWrite<RunInput, RunOutput>;
+
+  static writeTo<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunInput extends Record<string, any> = Record<string, any>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunOutput extends Record<string, any> = Record<string, any>
+  >(...channels: string[]): ChannelWrite<RunInput, RunOutput>;
+
+  static writeTo<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunInput extends Record<string, any> = Record<string, any>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunOutput extends Record<string, any> = Record<string, any>
+  >(...channels: string[]): ChannelWrite<RunInput> {
+    const channelWrites: [string, Runnable<RunInput, RunOutput> | undefined][] =
+      channels.map((c) => [c, undefined]);
+
+    const kwargs: { [key: string]: WriteValue } = {};
+    for (let i = 0; i < arguments.length; i += 1) {
+      if (i >= channels.length) {
+        const key = arguments[i];
+        const value = arguments[i + 1];
+        kwargs[key] = value;
+        i += 1;
+      }
+    }
+
+    for (const [k, v] of Object.entries(kwargs)) {
+      channelWrites.push([k, _coerceWriteValue(v)]);
+    }
+
+    return new ChannelWrite<RunInput>(channelWrites);
+  }
+}
 
 export interface PregelInterface<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

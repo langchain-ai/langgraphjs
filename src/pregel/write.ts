@@ -15,11 +15,15 @@ type TYPE_SEND = (values: Array<[string, any]>) => void;
  */
 export class ChannelWrite<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput extends Record<string, any> = Record<string, any>
+  RunInput extends Record<string, any> = Record<string, any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunOutput extends Record<string, any> = Record<string, any>
 > extends RunnablePassthrough<RunInput> {
-  channels: Array<[string, Runnable | undefined]>;
+  channels: Array<[string, Runnable<RunInput, RunOutput> | undefined]>;
 
-  constructor(channels: Array<[string, Runnable | undefined]>) {
+  constructor(
+    channels: Array<[string, Runnable<RunInput, RunOutput> | undefined]>
+  ) {
     const name = `ChannelWrite<${channels.map(([chan]) => chan).join(",")}>`;
     super({ func: "_write", afunc: "_awrite", channels, name });
     this.channels = channels;
