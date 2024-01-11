@@ -1,21 +1,22 @@
 import {
   Runnable,
   RunnableBinding,
-  RunnableBindingArgs,
   RunnableConfig,
   RunnableEach,
   RunnableLambda,
+  RunnableLike,
   RunnablePassthrough,
-  _coerceToRunnable,
+  RunnableSequence,
+  _coerceToRunnable
 } from "@langchain/core/runnables";
 import { ConfigurableFieldSpec } from "../checkpoint/index.js";
 import { CONFIG_KEY_READ } from "../constants.js";
 
 export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput extends Record<string, any> = Record<string, any>,
+  RunInput = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput extends Record<string, any> = Record<string, any>
+  RunOutput = any
 > extends RunnableLambda<RunInput, RunOutput> {
   lc_graph_name = "ChannelRead";
 
@@ -29,7 +30,7 @@ export class ChannelRead<
           return this._read(input, options.config);
         }
         return this._read(input, options ?? {});
-      },
+      }
     });
     this.channel = channel;
     this.name = `ChannelRead<${channel}>`;
@@ -45,8 +46,8 @@ export class ChannelRead<
         // TODO FIX THIS
         annotation: "Callable[[BaseChannel], Any]",
         isShared: true,
-        dependencies: null,
-      },
+        dependencies: null
+      }
     ];
   }
 
@@ -63,9 +64,7 @@ export class ChannelRead<
   }
 }
 
-function _createDefaultBound<RunInput>() {
-  return new RunnablePassthrough<RunInput>();
-}
+const defaultRunnableBound = new RunnablePassthrough();
 
 interface ChannelInvokeArgs<
   RunInput,
@@ -76,16 +75,16 @@ interface ChannelInvokeArgs<
   triggers: Array<string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   when?: (args: any) => boolean;
-  bound?: RunnableBindingArgs<RunInput, RunOutput, CallOptions>["bound"];
-  kwargs?: RunnableBindingArgs<RunInput, RunOutput, CallOptions>["kwargs"];
-  config?: RunnableBindingArgs<RunInput, RunOutput, CallOptions>["config"];
+  bound?: Runnable<RunInput, RunOutput, CallOptions>;
+  kwargs?: Partial<CallOptions>;
+  config?: RunnableConfig;
 }
 
 export class ChannelInvoke<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunInput extends Record<string, any> = Record<string, any>,
+    RunInput = any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunOutput extends Record<string, any> = Record<string, any>,
+    RunOutput = any,
     CallOptions extends RunnableConfig = RunnableConfig
   >
   extends RunnableBinding<RunInput, RunOutput, CallOptions>
@@ -105,16 +104,16 @@ export class ChannelInvoke<
 
   constructor(fields: ChannelInvokeArgs<RunInput, RunOutput, CallOptions>) {
     const { channels, triggers, when, kwargs } = fields;
-    // @TODO can we get rid of this?
-    const defaultBound = _createDefaultBound<RunInput>() as unknown as Runnable<
-      RunInput,
-      RunOutput,
-      CallOptions
-    >;
-
     super({
-      bound: fields.bound ?? defaultBound,
-      config: fields.config ?? {},
+      ...fields,
+      bound:
+        fields.bound ??
+        (defaultRunnableBound as unknown as Runnable<
+          RunInput,
+          RunOutput,
+          CallOptions
+        >),
+      config: fields.config ?? {}
     });
 
     this.channels = channels;
@@ -126,55 +125,53 @@ export class ChannelInvoke<
   join(
     channels: Array<string>
   ): ChannelInvoke<RunInput, RunOutput, CallOptions> {
-    if (!Object.keys(this.channels).every((k) => k !== null)) {
+    if (!Object.keys(this.channels).every((k) => Boolean(k))) {
       throw new Error("all channels must be named when using .join()");
     }
+    
     return new ChannelInvoke<RunInput, RunOutput, CallOptions>({
       channels: {
         ...this.channels,
-        ...Object.fromEntries(channels.map((chan) => [chan, chan])),
+        ...Object.fromEntries(channels.map((chan) => [chan, chan]))
       },
       triggers: this.triggers,
       when: this.when,
       bound: this.bound,
       kwargs: this.kwargs,
-      config: this.config,
+      config: this.config
     });
   }
 
-  // @TODO verify w/ nuno this implementation of `other` as `any` is correct.
-  combineWith(
-    other: // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    | Runnable<any, any>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      | ((args: any) => any)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      | Record<string, Runnable<any, any> | ((args: any) => any)>
-  ): ChannelInvoke {
-    // @TODO can we get rid of this?
-    const defaultBound = _createDefaultBound<RunInput>() as unknown as Runnable<
-      RunInput,
-      RunOutput,
-      CallOptions
-    >;
+  pipe<NewRunOutput>(
+    coerceable: RunnableLike<RunOutput, NewRunOutput>
+  ): ChannelInvoke<RunInput, RunOutput, CallOptions>;
 
-    if (this.bound === defaultBound) {
-      return new ChannelInvoke({
+  pipe<NewRunOutput>(
+    coerceable: RunnableLike<RunOutput, NewRunOutput>
+  ): RunnableSequence<RunInput, RunOutput>;
+
+  pipe<NewRunOutput>(
+    coerceable: RunnableLike<RunOutput, NewRunOutput>
+  ):
+    | ChannelInvoke<RunInput, RunOutput, CallOptions>
+    | RunnableSequence<RunInput, RunOutput> {
+    if (this.bound === defaultRunnableBound) {
+      return new ChannelInvoke<RunInput, RunOutput, CallOptions>({
         channels: this.channels,
         triggers: this.triggers,
         when: this.when,
-        bound: _coerceToRunnable(other),
+        bound: _coerceToRunnable<RunOutput, NewRunOutput>(coerceable),
         kwargs: this.kwargs,
-        config: this.config,
+        config: this.config
       });
     } else {
-      return new ChannelInvoke({
+      return new ChannelInvoke<RunInput, RunOutput, CallOptions>({
         channels: this.channels,
         triggers: this.triggers,
         when: this.when,
-        bound: this.combineWith(this.bound ?? other),
+        bound: this.bound.pipe<RunOutput>(coerceable),
         kwargs: this.kwargs,
-        config: this.config,
+        config: this.config
       });
     }
   }
@@ -187,14 +184,14 @@ interface ChannelBatchArgs<
 > {
   channel: string;
   key?: string;
-  bound?: RunnableBindingArgs<RunInput, RunOutput, CallOptions>["bound"];
+  bound?: Runnable<RunInput, RunOutput, CallOptions>;
 }
 
 export class ChannelBatch<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput extends Record<string, any> = Record<string, any>,
+  RunInput = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput extends Record<string, any> = Record<string, any>,
+  RunOutput = any,
   CallOptions extends RunnableConfig = RunnableConfig
 > extends RunnableEach<RunInput, RunOutput, CallOptions> {
   lc_graph_name = "ChannelBatch";
@@ -204,15 +201,15 @@ export class ChannelBatch<
   key?: string;
 
   constructor(fields: ChannelBatchArgs<RunInput, RunOutput, CallOptions>) {
-    // @TODO can we get rid of this?
-    const defaultBound = _createDefaultBound<RunInput>() as unknown as Runnable<
-      RunInput,
-      RunOutput,
-      CallOptions
-    >;
-
     super({
-      bound: fields.bound ?? defaultBound,
+      ...fields,
+      bound:
+        fields.bound ??
+        (defaultRunnableBound as unknown as Runnable<
+          RunInput,
+          RunOutput,
+          CallOptions
+        >)
     });
 
     this.channel = fields.channel;
@@ -230,58 +227,49 @@ export class ChannelBatch<
       channelsMap[chan] = new ChannelRead<RunInput, RunOutput>(chan);
     }
     const joiner = RunnablePassthrough.assign({
-      ...channelsMap,
+      ...channelsMap
     });
 
-    // @TODO can we get rid of this?
-    const defaultBound = _createDefaultBound<RunInput>() as unknown as Runnable<
-      RunInput,
-      RunOutput,
-      CallOptions
-    >;
-    if (this.bound === defaultBound) {
+    if (this.bound === defaultRunnableBound) {
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: joiner,
+        bound: joiner
       });
     } else {
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: this.combineWith(this.bound ?? joiner),
+        bound: this.bound.pipe<RunOutput>(joiner)
       });
     }
   }
 
-  // @TODO verify w/ nuno this implementation of `other` as `any` is correct.
-  combineWith(
-    other: // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    | Runnable<any, any>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      | ((args: any) => any)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      | Record<string, Runnable<any, any> | ((args: any) => any)>
-  ): ChannelBatch {
-    // @TODO can we get rid of this?
-    const defaultBound = _createDefaultBound<RunInput>() as unknown as Runnable<
-      RunInput,
-      RunOutput,
-      CallOptions
-    >;
+  pipe<NewRunOutput>(
+    coerceable: RunnableLike<RunOutput[], NewRunOutput>
+  ): ChannelBatch<RunInput, RunOutput, CallOptions>;
 
-    if (this.bound === defaultBound) {
-      return new ChannelBatch({
+  pipe<NewRunOutput>(
+    coerceable: RunnableLike<RunOutput[], NewRunOutput>
+  ): RunnableSequence<RunInput[], RunOutput>;
+
+  pipe<NewRunOutput>(
+    coerceable: RunnableLike<RunOutput[], NewRunOutput>
+  ):
+    | ChannelBatch<RunInput, RunOutput, CallOptions>
+    | RunnableSequence<RunInput[], RunOutput> {
+    if (this.bound === defaultRunnableBound) {
+      return new ChannelBatch<RunInput, RunOutput, CallOptions>({
         channel: this.channel,
         key: this.key,
-        bound: _coerceToRunnable(other),
+        bound: _coerceToRunnable<RunOutput, NewRunOutput>(coerceable)
       });
     } else {
       // Delegate to `or` in `this.bound`
-      return new ChannelBatch({
+      return new ChannelBatch<RunInput, RunOutput, CallOptions>({
         channel: this.channel,
         key: this.key,
-        bound: this.combineWith(this.bound ?? other),
+        bound: this.pipe<RunOutput>(this.bound ?? coerceable)
       });
     }
   }

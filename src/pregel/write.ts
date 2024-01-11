@@ -1,7 +1,7 @@
 import {
   Runnable,
   RunnableConfig,
-  RunnablePassthrough,
+  RunnablePassthrough
 } from "@langchain/core/runnables";
 import { ConfigurableFieldSpec } from "../checkpoint/index.js";
 import { CONFIG_KEY_SEND } from "../constants.js";
@@ -15,9 +15,9 @@ type TYPE_SEND = (values: Array<[string, any]>) => void;
  */
 export class ChannelWrite<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput extends Record<string, any> = Record<string, any>,
+  RunInput = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput extends Record<string, any> = Record<string, any>
+  RunOutput = any
 > extends RunnablePassthrough<RunInput> {
   channels: Array<[string, Runnable<RunInput, RunOutput> | undefined]>;
 
@@ -25,7 +25,7 @@ export class ChannelWrite<
     channels: Array<[string, Runnable<RunInput, RunOutput> | undefined]>
   ) {
     const name = `ChannelWrite<${channels.map(([chan]) => chan).join(",")}>`;
-    super({ func: "_write", afunc: "_awrite", channels, name });
+    super({ func: "_write", channels, name });
     this.channels = channels;
   }
 
@@ -42,8 +42,8 @@ export class ChannelWrite<
         default: null,
         annotation: "TYPE_SEND",
         isShared: true,
-        dependencies: null,
-      },
+        dependencies: null
+      }
     ];
   }
 
@@ -51,7 +51,7 @@ export class ChannelWrite<
   _write(input: any, config: RunnableConfig): void {
     const values = this.channels.map(([chan, r]) => [
       chan,
-      r ? r.invoke(input, config) : input,
+      r ? r.invoke(input, config) : input
     ]);
 
     ChannelWrite.doWrite(config, Object.fromEntries(values));
@@ -60,6 +60,6 @@ export class ChannelWrite<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static doWrite(config: RunnableConfig, values: Record<string, any>): void {
     const write: TYPE_SEND = config.configurable?.[CONFIG_KEY_SEND];
-    write(Object.entries(values).filter(([_, val]) => val !== null));
+    write(Object.entries(values).filter(([_, val]) => Boolean(val)));
   }
 }

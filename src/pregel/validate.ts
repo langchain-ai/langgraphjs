@@ -5,14 +5,14 @@ import { ReservedChannels } from "./reserved.js";
 
 export function validateGraph<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput extends Record<string, any> = Record<string, any>,
+  RunInput = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput extends Record<string, any> = Record<string, any>
+  RunOutput = any
 >({
   nodes,
   channels,
   input,
-  output,
+  output
 }: {
   nodes: Record<
     string,
@@ -32,17 +32,18 @@ export function validateGraph<
     } else if (node.lc_graph_name === "ChannelBatch" && "channel" in node) {
       subscribedChannels.add(node.channel);
     } else {
+      console.error(node);
       throw new Error(
         `Invalid node type: ${JSON.stringify(
           node,
           null,
           2
-        )}, expected Channel.subscribe_to() or Channel.subscribe_to_each()`
+        )}, expected Channel.subscribeTo() or Channel.subscribe_to_each()`
       );
     }
   }
 
-  for (const chan in subscribedChannels) {
+  for (const chan in [...subscribedChannels]) {
     if (!(chan in newChannels)) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       newChannels[chan] = new LastValue<any>();
@@ -54,7 +55,7 @@ export function validateGraph<
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       newChannels[input] = new LastValue<any>();
     }
-    if (!(input in subscribedChannels)) {
+    if (!subscribedChannels.has(input)) {
       throw new Error(
         `Input channel ${input} is not subscribed to by any node.`
       );

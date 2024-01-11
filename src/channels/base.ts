@@ -77,29 +77,58 @@ export class InvalidUpdateError extends Error {
 
 /**
  * Manage channels for the lifetime of a Pregel invocation (multiple steps).
- *
- * @param {Record<string, BaseChannel<Value>>} channels
- * @param {Checkpoint} checkpoint
- * @returns {Generator<Record<string, BaseChannel<Value>>>}
  */
-export function* ChannelsManager<Value>(
-  channels: Record<string, BaseChannel<Value>>,
-  checkpoint: Checkpoint
-): Generator<Record<string, BaseChannel<Value>>> {
-  const emptyChannels: Record<string, BaseChannel<Value>> = {};
-  for (const k in channels) {
-    if (checkpoint.channelValues?.[k] !== undefined) {
-      const result = channels[k].empty(checkpoint.channelValues[k]).next();
-      if (!result.done) {
-        emptyChannels[k] = result.value;
+export class ChannelsManager<RunOutput> {
+  private channels: Record<string, BaseChannel<RunOutput, unknown, unknown>>;
+
+  private checkpoint: Checkpoint;
+
+  constructor(
+    channels: Record<string, BaseChannel<RunOutput, unknown, unknown>>,
+    checkpoint: Checkpoint
+  ) {
+    this.channels = channels;
+    this.checkpoint = checkpoint;
+  }
+
+  public *manage(): Generator<
+    Record<string, BaseChannel<RunOutput, unknown, unknown>>
+  > {
+    const emptyChannels: Record<
+      string,
+      Generator<BaseChannel<RunOutput, unknown, unknown>>
+    > = {};
+    for (const k in this.channels) {
+      if (k in this.channels) {
+        const channelValue = Object.values(this.checkpoint.channelValues).length
+          ? this.checkpoint.channelValues.get(k)
+          : undefined;
+        emptyChannels[k] = this.channels[k].empty(channelValue);
       }
-      continue;
+    }
+
+    const managedChannels: Record<
+      string,
+      BaseChannel<RunOutput, unknown, unknown>
+    > = {};
+    try {
+      for (const k in emptyChannels) {
+        if (k in emptyChannels) {
+          const result = emptyChannels[k].next();
+          if (!result.done) {
+            managedChannels[k] = result.value;
+          }
+        }
+      }
+      yield managedChannels;
+    } finally {
+      for (const k in emptyChannels) {
+        if (k in emptyChannels) {
+          emptyChannels[k].return(managedChannels); // Clean up the generator
+        }
+      }
     }
   }
-  /** @TODO check w/ nuno on this... */
-  yield emptyChannels;
-
-  return emptyChannels;
 }
 
 export async function createCheckpoint<Value>(
@@ -111,7 +140,7 @@ export async function createCheckpoint<Value>(
     ts: new Date().toISOString(),
     channelValues: { ...checkpoint.channelValues },
     channelVersions: { ...checkpoint.channelVersions },
-    versionsSeen: { ...checkpoint.versionsSeen },
+    versionsSeen: { ...checkpoint.versionsSeen }
   };
   for (const k in channels) {
     if (newCheckpoint.channelValues[k] === undefined) {

@@ -5,26 +5,24 @@ import { BaseChannel } from "../channels/base.js";
  */
 export function* mapInput<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput extends Record<string, any> = Record<string, any>
+  RunInput = any
 >(
   inputChannels: string | Array<string>,
   chunk?: RunInput
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Generator<[string, any]> {
-  if (!chunk) {
-    return;
-  }
   if (typeof inputChannels === "string") {
     yield [inputChannels, chunk];
-  }
-  if (typeof chunk !== "object") {
-    throw new Error(`Expected chunk to be an object, got ${typeof chunk}`);
-  }
-  for (const k in chunk) {
-    if (inputChannels.includes(k)) {
-      yield [k, chunk[k]];
-    } else {
-      console.warn(`Input channel ${k} not found in ${inputChannels}`);
+  } else {
+    if (chunk && typeof chunk !== "object") {
+      throw new Error(`Expected chunk to be an object, got ${typeof chunk}`);
+    }
+    for (const k in chunk) {
+      if (inputChannels.includes(k)) {
+        yield [k, chunk[k]];
+      } else {
+        console.warn(`Input channel ${k} not found in ${inputChannels}`);
+      }
     }
   }
 }
@@ -34,7 +32,7 @@ export function* mapInput<
  */
 export function mapOutput<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput extends Record<string, any> = Record<string, any>
+  RunOutput = any
 >(
   outputChannels: string | Array<string>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,7 +47,6 @@ export function mapOutput<
     const updated = pendingWrites
       .filter(([chan, _]) => outputChannels.includes(chan))
       .map(([chan, _]) => chan);
-
     if (updated.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return updated.reduce((acc: Record<string, any>, chan) => {
