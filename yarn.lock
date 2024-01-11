@@ -628,10 +628,8 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@langchain/core@^0.1.11":
-  version "0.1.11"
-  resolved "https://registry.yarnpkg.com/@langchain/core/-/core-0.1.11.tgz#d8bd395793334c021823f6fa03a964b993f6ab8d"
-  integrity sha512-pQvHUO4O/Iff3beZqJyxrgesPWJyPqOHqe3EqOobH7UoclYqlwAXde/+YPE9L2paeOSctUb4UxMWSVIPOd/1Ag==
+"@langchain/core@file:../langchainjs/langchain-core":
+  version "0.1.12"
   dependencies:
     ansi-styles "^5.0.0"
     camelcase "6"

@@ -26,17 +26,12 @@ export class ChannelWrite<
   ) {
     const name = `ChannelWrite<${channels.map(([chan]) => chan).join(",")}>`;
     super({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      func: (input: any, config: RunnableConfig) => this._write(input, config),
-      channels,
-      name
+      ...{ channels, name },
+      func: (input: RunInput, config?: RunnableConfig) =>
+        this._write(input, config ?? {})
     });
 
     this.channels = channels;
-  }
-
-  __repArgs__() {
-    return { channels: this.channels };
   }
 
   get configSpecs(): ConfigurableFieldSpec[] {

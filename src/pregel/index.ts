@@ -341,11 +341,9 @@ export class Pregel<
                 ...newConfig,
                 runName: name,
                 configurable: {
-                  // THIS IS THE ISSUE. IT'S NOT BEING CALLED
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  [CONFIG_KEY_SEND]: (...items: [string, any][]) => {
-                    pendingWrites.push(...items);
-                  },
+                  [CONFIG_KEY_SEND]: (items: [string, any][]) =>
+                    pendingWrites.push(...items),
                   [CONFIG_KEY_READ]: read
                 }
               },
@@ -359,16 +357,11 @@ export class Pregel<
           ([proc, input, updatedConfig]) =>
             async () => {
               const result = await proc.invoke(input, updatedConfig);
-              console.log("__INVOKING__", input, updatedConfig);
               return result;
             }
         );
-        try {
-          await executeTasks<RunOutput>(tasks, this.stepTimeout);
-        } catch (error) {
-          // Handle error (FIRST_EXCEPTION behavior)
-          // @TODO how to handle this?
-        }
+
+        await executeTasks<RunOutput>(tasks, this.stepTimeout);
 
         // apply writes to channels
         _applyWrites<RunOutput>(
