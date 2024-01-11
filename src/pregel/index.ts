@@ -258,30 +258,24 @@ export class Pregel<
     runManager?: CallbackManagerForChainRun,
     config?: RunnableConfig & Partial<Record<string, unknown>>
   ): AsyncGenerator<RunOutput> {
-    // The `_transformStreamWithConfig()` method defined in the `Runnable` class
-    // has `runManager` and `config` set to optional, so we must respect that
-    // in the arguments.
-    let newConfig: RunnableConfig & Partial<Record<string, unknown>> = {};
-    if (config && !("recursionLimit" in config)) {
-      newConfig = {
-        ...config,
-        recursionLimit: 1
-      };
-    } else if (!config) {
-      newConfig = {
-        recursionLimit: 1
-      };
+    const newConfig: RunnableConfig & Partial<Record<string, unknown>> = {
+      recursionLimit: 1, // If it is passed it'll be overwritten
+      ...config
+    };
+
+    if (!newConfig.output) {
+      throw new Error("No output specified");
     }
+
     // assign defaults
     let newOutputs: string | Array<string> = [];
     if (
-      "output" in newConfig &&
-      (Array.isArray(newConfig.output) || typeof newConfig.output === "string")
+      Array.isArray(newConfig.output) ||
+      typeof newConfig.output === "string"
     ) {
       newOutputs = newConfig.output;
-      console.log("!newOutputs", newOutputs);
     }
-    if (!newOutputs && Array.isArray(newOutputs)) {
+    if (Array.isArray(newOutputs)) {
       for (const chan in this.channels) {
         if (!this.hidden.includes(chan)) {
           newOutputs.push(chan);
@@ -350,7 +344,6 @@ export class Pregel<
                   // THIS IS THE ISSUE. IT'S NOT BEING CALLED
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   [CONFIG_KEY_SEND]: (...items: [string, any][]) => {
-                    console.log(CONFIG_KEY_SEND, "__CALLED__", items);
                     pendingWrites.push(...items);
                   },
                   [CONFIG_KEY_READ]: read
@@ -470,42 +463,35 @@ export class Pregel<
 }
 
 async function executeTasks<RunOutput>(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tasks: Array<() => Promise<RunOutput | Error | void>>,
   stepTimeout?: number
 ): Promise<void> {
-  const inflight = tasks.map((task) => task());
+  // Wrap each task in a Promise that respects the step timeout
+  const wrappedTasks = tasks.map(
+    (task) =>
+      new Promise((resolve, reject) => {
+        let timeout: NodeJS.Timeout;
+        if (stepTimeout) {
+          timeout = setTimeout(() => {
+            reject(new Error(`Timed out at step ${stepTimeout}`));
+          }, stepTimeout);
+        }
 
-  try {
-    await Promise.all(inflight.map((p) => p.catch((e) => e)));
-  } catch (error) {
-    console.error("should I handle another way?");
-    // If any promise rejects, this catch block will execute.
-    // Cancel all pending tasks (if applicable) and handle the error.
-    throw error;
-  }
+        task().then(resolve, (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        });
+      })
+  );
 
-  // Apply timeout if needed
-  if (stepTimeout) {
-    const timeoutPromise = new Promise<Error | void>((_, reject) => {
-      setTimeout(() => reject(new Error("Timed out")), stepTimeout);
-    });
-    inflight.push(timeoutPromise);
-  }
+  // Wait for all tasks to settle
+  const results = await Promise.allSettled(wrappedTasks);
 
-  // Wait for the first task to complete or fail
-  await Promise.race(inflight);
-
-  // Check for any errors in the tasks
-  for (const task of inflight) {
-    if (
-      // eslint-disable-next-line no-instanceof/no-instanceof
-      task instanceof Promise &&
-      // eslint-disable-next-line no-instanceof/no-instanceof
-      (await task.catch((e) => e)) instanceof Error
-    ) {
-      // @TODO what is the proper way to handle errors?
-      throw new Error("A task failed");
+  // Process the results
+  for (const result of results) {
+    if (result.status === "rejected") {
+      // If any task failed, cancel all pending tasks and throw the error
+      throw result.reason;
     }
   }
 }
