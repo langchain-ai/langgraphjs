@@ -26,9 +26,13 @@ export abstract class BaseChannel<
    * Return a new identical channel, optionally initialized from a checkpoint.
    *
    * @param {C | undefined} checkpoint
+   * @param {C | undefined} initialValue
    * @returns {Generator<BaseChannel<Value>>}
    */
-  abstract empty(checkpoint?: C): Generator<BaseChannel<Value>>;
+  abstract empty(
+    checkpoint?: C,
+    initialValue?: C
+  ): Generator<BaseChannel<Value>>;
 
   /**
    * Update the channel's value with the given sequence of updates.

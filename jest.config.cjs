@@ -2,7 +2,7 @@
 module.exports = {
   preset: "ts-jest/presets/default-esm",
   testEnvironment: "./jest.env.cjs",
-  modulePathIgnorePatterns: ["dist/", "docs/"],
+  modulePathIgnorePatterns: ["dist/"],
   moduleNameMapper: {
     "^(\\.{1,2}/.*)\\.js$": "$1",
   },

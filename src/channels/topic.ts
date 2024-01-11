@@ -1,4 +1,4 @@
-import { BaseChannel } from "./base.js";
+import { BaseChannel, EmptyChannelError } from "./base.js";
 
 function* flatten<Value>(
   values: Array<Value | Value[]>
@@ -21,19 +21,19 @@ export class Topic<Value> extends BaseChannel<
 
   typ?: Value;
 
-  unique: boolean;
+  unique = false;
 
-  accumulate: boolean;
+  accumulate = false;
 
   seen: Set<Value>;
 
   values: Value[];
 
-  constructor(unique: boolean = false, accumulate: boolean = false) {
+  constructor(fields?: { unique?: boolean; accumulate?: boolean }) {
     super();
 
-    this.unique = unique;
-    this.accumulate = accumulate;
+    this.unique = fields?.unique ?? this.unique;
+    this.accumulate = fields?.accumulate ?? this.accumulate;
     // State
     this.seen = new Set<Value>();
     this.values = [];
@@ -45,7 +45,7 @@ export class Topic<Value> extends BaseChannel<
    * @returns {Array<Value> | undefined}
    */
   public get ValueType(): [Value] | undefined {
-    return this.typ ? [this.typ] : undefined;
+    throw new Error("Not implemented");
   }
 
   /**
@@ -54,11 +54,14 @@ export class Topic<Value> extends BaseChannel<
    * @returns {Value | undefined}
    */
   public get UpdateType(): Value | undefined {
-    return this.typ;
+    throw new Error("Not implemented");
   }
 
   public *empty(checkpoint?: [Set<Value>, Value[]]): Generator<Topic<Value>> {
-    const empty = new Topic<Value>(this.unique, this.accumulate);
+    const empty = new Topic<Value>({
+      unique: this.unique,
+      accumulate: this.accumulate,
+    });
     if (checkpoint) {
       [empty.seen, empty.values] = checkpoint;
     }
@@ -89,6 +92,9 @@ export class Topic<Value> extends BaseChannel<
   }
 
   public checkpoint(): [Set<Value>, Array<Value>] {
+    if (!this.values || this.values.length === 0) {
+      throw new EmptyChannelError();
+    }
     return [this.seen, this.values];
   }
 }
