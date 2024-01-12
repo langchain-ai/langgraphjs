@@ -27,7 +27,7 @@ export class ChannelWrite<
     const name = `ChannelWrite<${channels.map(([chan]) => chan).join(",")}>`;
     super({
       ...{ channels, name },
-      func: (input: RunInput, config?: RunnableConfig) =>
+      func: async (input: RunInput, config?: RunnableConfig) =>
         this._write(input, config ?? {})
     });
 
@@ -49,14 +49,14 @@ export class ChannelWrite<
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _write(input: any, config: RunnableConfig): void {
-    console.log("ChannelWrite._write", input, config);
-    const values = this.channels.map(([chan, r]) => [
+  async _write(input: any, config: RunnableConfig): Promise<void> {
+    const values = this.channels.map(async ([chan, r]) => [
       chan,
-      r ? r.invoke(input, config) : input
+      r ? await r.invoke(input, config) : input
     ]);
+    const valuesAwaited = await Promise.all(values);
 
-    ChannelWrite.doWrite(config, Object.fromEntries(values));
+    ChannelWrite.doWrite(config, Object.fromEntries(valuesAwaited));
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

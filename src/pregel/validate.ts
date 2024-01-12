@@ -43,7 +43,7 @@ export function validateGraph<
     }
   }
 
-  for (const chan in [...subscribedChannels]) {
+  for (const chan of [...subscribedChannels]) {
     if (!(chan in newChannels)) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       newChannels[chan] = new LastValue<any>();

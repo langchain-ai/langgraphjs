@@ -194,7 +194,6 @@ export class Graph<
     if (!this.entryPoint) {
       throw new Error("Entry point not set");
     }
-
     return new Pregel<RunInput, RunOutput>({
       nodes,
       input: `${this.entryPoint}:inbox`,

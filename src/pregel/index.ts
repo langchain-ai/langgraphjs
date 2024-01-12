@@ -127,36 +127,20 @@ export class Channel {
     RunInput = any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     RunOutput = any
-  >(...channels: string[]): ChannelWrite<RunInput, RunOutput>;
+  >(
+    channels: string[] | string,
+    values?: { [key: string]: WriteValue }
+  ): ChannelWrite<RunInput, RunOutput> {
+    const channelWrites: Array<
+      [string, Runnable<RunInput, RunOutput> | undefined]
+    > = Array.isArray(channels)
+      ? channels.map((c) => [c, undefined])
+      : [[channels, undefined]];
 
-  static writeTo<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunInput = any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunOutput = any
-  >(...channels: string[]): ChannelWrite<RunInput, RunOutput>;
-
-  static writeTo<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunInput = any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunOutput = any
-  >(...channels: string[]): ChannelWrite<RunInput, RunOutput> {
-    const channelWrites: [string, Runnable<RunInput, RunOutput> | undefined][] =
-      channels.map((c) => [c, undefined]);
-    const kwargs: { [key: string]: WriteValue } = {};
-    for (let i = 0; i < arguments.length; i += 1) {
-      if (i >= channels.length) {
-        const key = arguments[i];
-        const value = arguments[i + 1];
-        kwargs[key] = value;
-        i += 1;
-      }
-    }
-
-    for (const [k, v] of Object.entries(kwargs)) {
+    const newValues = values ?? {};
+    Object.entries(newValues).forEach(([k, v]) => {
       channelWrites.push([k, _coerceWriteValue<RunInput, RunOutput>(v)]);
-    }
+    });
 
     return new ChannelWrite<RunInput, RunOutput>(channelWrites);
   }
@@ -258,13 +242,22 @@ export class Pregel<
     runManager?: CallbackManagerForChainRun,
     config?: RunnableConfig & Partial<Record<string, unknown>>
   ): AsyncGenerator<RunOutput> {
-    const newConfig: RunnableConfig & Partial<Record<string, unknown>> = {
-      recursionLimit: 1, // If it is passed it'll be overwritten
-      ...config
-    };
+    const newConfig: RunnableConfig & Partial<Record<string, unknown>> =
+      config?.recursionLimit === undefined
+        ? {
+            recursionLimit: 25, // Default
+            ...config
+          }
+        : config;
 
     if (!newConfig.output) {
       throw new Error("No output specified");
+    }
+    if (
+      newConfig.recursionLimit === undefined ||
+      newConfig.recursionLimit < 1
+    ) {
+      throw new Error("recursionLimit must be at least 1");
     }
 
     // assign defaults
@@ -355,10 +348,8 @@ export class Pregel<
         // each task is independent from all other concurrent tasks
         const tasks = tasksWithConfig.map(
           ([proc, input, updatedConfig]) =>
-            async () => {
-              const result = await proc.invoke(input, updatedConfig);
-              return result;
-            }
+            async () =>
+              proc.invoke(input, updatedConfig)
         );
 
         await executeTasks<RunOutput>(tasks, this.stepTimeout);
@@ -385,9 +376,6 @@ export class Pregel<
           if (typeof newOutputs !== "string") {
             _applyWritesFromView<RunOutput>(checkpoint, channels, stepOutput);
           }
-          console.log("OUTPUT", stepOutput);
-        } else {
-          console.log("NO OUTPUT");
         }
 
         // save end of step checkpoint
@@ -403,7 +391,6 @@ export class Pregel<
         this.saver.put(newConfig, checkpoint);
       }
     }
-    console.log("done _transform");
   }
 
   async invoke(
