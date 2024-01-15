@@ -2,24 +2,24 @@ import {
   Runnable,
   RunnableBatchOptions,
   RunnableConfig,
-  _coerceToRunnable,
+  _coerceToRunnable
 } from "@langchain/core/runnables";
 import {
   CallbackManager,
-  CallbackManagerForChainRun,
+  CallbackManagerForChainRun
 } from "@langchain/core/callbacks/manager";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   BaseChannel,
   ChannelsManager,
   EmptyChannelError,
-  createCheckpoint,
+  createCheckpoint
 } from "../channels/base.js";
 import {
   BaseCheckpointSaver,
   Checkpoint,
   CheckpointAt,
-  emptyCheckpoint,
+  emptyCheckpoint
 } from "../checkpoint/base.js";
 import { ChannelBatch, ChannelInvoke } from "./read.js";
 import { validateGraph } from "./validate.js";
@@ -107,7 +107,7 @@ export class Channel {
     return new ChannelInvoke({
       channels: channelMapping,
       triggers,
-      when,
+      when
     });
   }
 
@@ -119,7 +119,7 @@ export class Channel {
   >(inbox: string, key?: string): ChannelBatch<RunInput, RunOutput> {
     return new ChannelBatch<RunInput, RunOutput>({
       channel: inbox,
-      key,
+      key
     });
   }
 
@@ -234,7 +234,7 @@ export class Pregel<
       nodes: this.nodes,
       channels: this.channels,
       output: this.output,
-      input: this.input,
+      input: this.input
     });
   }
 
@@ -286,7 +286,7 @@ export class Pregel<
       config?.recursionLimit === undefined
         ? {
             recursionLimit: 25, // Default
-            ...config,
+            ...config
           }
         : config;
 
@@ -377,11 +377,11 @@ export class Pregel<
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   [CONFIG_KEY_SEND]: (items: [string, any][]) =>
                     pendingWrites.push(...items),
-                  [CONFIG_KEY_READ]: read,
-                },
+                  [CONFIG_KEY_READ]: read
+                }
               },
               runManager?.getChild(`graph:step:${step}`)
-            ),
+            )
           ]);
 
         // execute tasks, and wait for one to fail or all to finish.
@@ -460,9 +460,8 @@ export class Pregel<
     for await (const chunk of await this.stream(input, config, newOutput)) {
       latest = chunk;
     }
-
-    if (latest === undefined) {
-      throw new Error('No output generated for ".invoke()"');
+    if (!latest) {
+      return undefined as RunOutput;
     }
     return latest;
   }
@@ -577,7 +576,7 @@ function _applyWrites<
 
   // Update reserved channels
   pendingWritesByChannel[ReservedChannels.isLastStep] = [
-    forStep + 1 === config.recursionLimit,
+    forStep + 1 === config.recursionLimit
   ];
 
   const updatedChannels: Set<string> = new Set();

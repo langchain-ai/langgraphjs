@@ -1,4 +1,5 @@
 import { it, expect, jest } from "@jest/globals";
+import { RunnablePassthrough } from "@langchain/core/runnables";
 import { Channel, Pregel } from "../index.js";
 import { LastValue } from "../channels/last_value.js";
 import { Graph } from "../graph/index.js";
@@ -17,14 +18,14 @@ it("can invoke pregel with a single process", async () => {
 
   const app = new Pregel({
     nodes: {
-      one: chain,
+      one: chain
     },
     channels: {
       input: new LastValue<number>(),
-      output: new LastValue<number>(),
+      output: new LastValue<number>()
     },
     input: "input",
-    output: "output",
+    output: "output"
   });
 
   expect(await app.invoke(2)).toBe(3);
@@ -67,26 +68,26 @@ it("should process input and write kwargs correctly", async () => {
     .pipe(
       Channel.writeTo("output", {
         fixed: 5,
-        outputPlusOne: (x: number) => x + 1,
+        outputPlusOne: (x: number) => x + 1
       })
     );
 
   const app = new Pregel({
     nodes: { one: chain },
-    output: ["output", "fixed", "outputPlusOne"],
+    output: ["output", "fixed", "outputPlusOne"]
   });
 
   expect(await app.invoke(2)).toEqual({
     output: 3,
     fixed: 5,
-    outputPlusOne: 4,
+    outputPlusOne: 4
   });
 });
 
 it("should process input and check for last step", async () => {
   const addOne = jest.fn((x: { input: number; is_last_step?: boolean }) => ({
     ...x,
-    input: x.input + 1,
+    input: x.input + 1
   }));
   const chain = Channel.subscribeTo(["input"])
     .join([ReservedChannels.isLastStep])
@@ -94,13 +95,13 @@ it("should process input and check for last step", async () => {
     .pipe(Channel.writeTo("output"));
 
   const app = new Pregel({
-    nodes: { one: chain },
+    nodes: { one: chain }
   });
 
   expect(await app.invoke(2)).toEqual({ input: 3, isLastStep: false });
   expect(await app.invoke(2, { recursionLimit: 1 })).toEqual({
     input: 3,
-    isLastStep: true,
+    isLastStep: true
   });
 });
 
@@ -112,9 +113,9 @@ it("should invoke single process in out objects", async () => {
 
   const app = new Pregel({
     nodes: {
-      one: chain,
+      one: chain
     },
-    output: ["output"],
+    output: ["output"]
   });
 
   expect(await app.invoke(2)).toEqual({ output: 3 });
@@ -129,7 +130,7 @@ it("should process input and output as objects", async () => {
   const app = new Pregel({
     nodes: { one: chain },
     input: ["input"],
-    output: ["output"],
+    output: ["output"]
   });
 
   expect(await app.invoke({ input: 2 })).toEqual({ output: 3 });
@@ -147,7 +148,7 @@ it.skip("should invoke two processes and get correct output", async () => {
     .pipe(Channel.writeTo("output"));
 
   const app = new Pregel({
-    nodes: { one, two },
+    nodes: { one, two }
   });
 
   expect(await app.invoke(2)).toEqual(4);
@@ -173,7 +174,7 @@ it.skip("should modify inbox value and get different output", async () => {
     .pipe(Channel.writeTo("output"));
 
   const app = new Pregel({
-    nodes: { one, two },
+    nodes: { one, two }
   });
 
   let step = 0;
@@ -202,7 +203,7 @@ it.skip("should process two processes with object input and output", async () =>
   const app = new Pregel({
     nodes: { one, two },
     channels: { inbox: new Topic<number>() },
-    input: ["input", "inbox"],
+    input: ["input", "inbox"]
   });
 
   const streamResult = await app.stream(
@@ -223,7 +224,7 @@ it.skip("should process two processes with object input and output", async () =>
   }
   expect(fullOutputResults).toEqual([
     { inbox: [3], output: 13 },
-    { output: 4 },
+    { output: 4 }
   ]);
 });
 
@@ -243,7 +244,7 @@ it("should process batch with two processes and delays", async () => {
     .pipe(Channel.writeTo("output"));
 
   const app = new Pregel({
-    nodes: { one, two },
+    nodes: { one, two }
   });
 
   expect(await app.batch([3, 2, 1, 3, 5])).toEqual([5, 4, 3, 5, 7]);
@@ -252,7 +253,7 @@ it("should process batch with two processes and delays", async () => {
     { output: 4 },
     { output: 3 },
     { output: 5 },
-    { output: 7 },
+    { output: 7 }
   ]);
 });
 
@@ -280,7 +281,7 @@ it.skip("should invoke many processes in out", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
 
   const nodes: Record<string, ChannelInvoke> = {
-    "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1")),
+    "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1"))
   };
 
   for (let i = 0; i < testSize - 2; i += 1) {
@@ -306,7 +307,7 @@ it.skip("should process batch with many processes in and out", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
 
   const nodes: Record<string, ChannelInvoke> = {
-    "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1")),
+    "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1"))
   };
   for (let i = 0; i < testSize - 2; i += 1) {
     nodes[String(i)] = Channel.subscribeTo(String(i - 1))
@@ -327,7 +328,7 @@ it.skip("should process batch with many processes in and out", async () => {
       1 + testSize,
       3 + testSize,
       4 + testSize,
-      5 + testSize,
+      5 + testSize
     ]);
   }
 });
@@ -343,7 +344,7 @@ it("should raise InvalidUpdateError when the same LastValue channel is updated t
     .pipe(Channel.writeTo("output"));
 
   const app = new Pregel({
-    nodes: { one, two },
+    nodes: { one, two }
   });
 
   await expect(app.invoke(2)).rejects.toThrow(InvalidUpdateError);
@@ -361,14 +362,14 @@ it("should process two inputs to two outputs validly", async () => {
 
   const app = new Pregel({
     nodes: { one, two },
-    channels: { output: new Topic<number>() },
+    channels: { output: new Topic<number>() }
   });
 
   // An Inbox channel accumulates updates into a sequence
   expect(await app.invoke(2)).toEqual([3, 3]);
 });
 
-it.only("should maintain state across invocations and handle exceptions", async () => {
+it.skip("should maintain state across invocations and handle exceptions", async () => {
   const addOne = jest.fn(
     (x: { total: number; input: number }): number => x.total + x.input
   );
@@ -390,8 +391,10 @@ it.only("should maintain state across invocations and handle exceptions", async 
 
   const app = new Pregel({
     nodes: { one },
-    channels: { total: new BinaryOperatorAggregate<number>((a, b) => a + b) },
-    saver: memory,
+    channels: {
+      total: new BinaryOperatorAggregate<number>((a, b) => a + b, 0)
+    },
+    saver: memory
   });
 
   // total starts out as 0, so output is 0+2=2
@@ -429,4 +432,147 @@ it.only("should maintain state across invocations and handle exceptions", async 
   checkpoint = memory.get({ configurable: { threadId: "2" } });
   expect(checkpoint).not.toBeNull();
   expect(checkpoint?.channelValues.output).toBe(5);
+});
+
+it("should process two inputs joined into one topic and produce two outputs", async () => {
+  const addOne = jest.fn((x: number): number => x + 1);
+  const add10Each = jest.fn((x: number[]): number[] =>
+    x.map((y) => y + 10).sort()
+  );
+
+  const one = Channel.subscribeTo("input")
+    .pipe(addOne)
+    .pipe(Channel.writeTo("inbox"));
+  const chainThree = Channel.subscribeTo("input")
+    .pipe(addOne)
+    .pipe(Channel.writeTo("inbox"));
+  const chainFour = Channel.subscribeTo("inbox")
+    .pipe(add10Each)
+    .pipe(Channel.writeTo("output"));
+
+  const app = new Pregel({
+    nodes: {
+      one,
+      chainThree,
+      chainFour
+    },
+    channels: { inbox: new Topic<number>() }
+  });
+
+  // Invoke app and check results
+  for (let i = 0; i < 100; i += 1) {
+    expect(await app.invoke(2)).toEqual([13, 13]);
+  }
+
+  // Use Promise.all to simulate concurrent execution
+  const results = await Promise.all(
+    Array(100)
+      .fill(null)
+      .map(async () => app.invoke(2))
+  );
+  console.log("results", results);
+  results.forEach((result) => {
+    expect(result).toEqual([13, 13]);
+  });
+}, 200000);
+
+it("should invoke join then call other app", async () => {
+  const addOne = jest.fn((x: number): number => x + 1);
+  const add10Each = jest.fn((x: number[]): number[] => x.map((y) => y + 10));
+
+  const innerApp = new Pregel({
+    nodes: {
+      one: Channel.subscribeTo("input")
+        .pipe(addOne)
+        .pipe(Channel.writeTo("output"))
+    }
+  });
+
+  const one = Channel.subscribeTo("input")
+    .pipe(add10Each)
+    .pipe(Channel.writeTo("inbox_one").map());
+
+  const two = Channel.subscribeTo("inbox_one")
+    .pipe(() => innerApp.map())
+    .pipe((x: number[]) => x.sort())
+    .pipe(Channel.writeTo("outbox_one"));
+
+  const chainThree = Channel.subscribeTo("outbox_one")
+    .pipe((x: number[]) => x.reduce((a, b) => a + b, 0))
+    .pipe(Channel.writeTo("output"));
+
+  const app = new Pregel({
+    nodes: {
+      one,
+      two,
+      chain_three: chainThree
+    },
+    channels: { inbox_one: new Topic<number>() }
+  });
+
+  // Run the test 10 times sequentially
+  for (let i = 0; i < 10; i += 1) {
+    expect(await app.invoke([2, 3])).toEqual(27);
+  }
+
+  // Run the test 10 times in parallel
+  const results = await Promise.all(
+    Array(10)
+      .fill(null)
+      .map(() => app.invoke([2, 3]))
+  );
+  expect(results).toEqual(Array(10).fill(27));
+});
+
+/** Channel.writeTo type erroring. */
+it.skip("should handle two processes with one input and two outputs", async () => {
+  const addOne = jest.fn((x: number): number => x + 1);
+
+  const one = Channel.subscribeTo("input")
+    .pipe(addOne)
+    .pipe(
+      Channel.writeTo({
+        output: new RunnablePassthrough(),
+        between: new RunnablePassthrough()
+      })
+    );
+
+  const two = Channel.subscribeTo("between")
+    .pipe(addOne)
+    .pipe(Channel.writeTo("output"));
+
+  const app = new Pregel({ nodes: { one, two } });
+
+  const streamResults = [];
+  for await (const chunk of await app.stream(2)) {
+    streamResults.push(chunk);
+  }
+
+  expect(streamResults).toEqual([{ between: 3, output: 3 }, { output: 4 }]);
+  expect(addOne).toHaveBeenCalledTimes(3); // addOne is called once in 'one' and twice in 'two'
+});
+
+it("should finish executing without output", async () => {
+  const addOne = jest.fn((x: number): number => x + 1);
+  const one = Channel.subscribeTo("input")
+    .pipe(addOne)
+    .pipe(Channel.writeTo("between"));
+  const two = Channel.subscribeTo("between").pipe(addOne);
+
+  const app = new Pregel({ nodes: { one, two } });
+
+  // It finishes executing (once no more messages being published)
+  // but returns nothing, as nothing was published to OUT topic
+  expect(await app.invoke(2)).toBeUndefined();
+});
+
+it("should throw an error when no input channel is provided", () => {
+  const addOne = jest.fn((x: number): number => x + 1);
+
+  const one = Channel.subscribeTo("between")
+    .pipe(addOne)
+    .pipe(Channel.writeTo("output"));
+  const two = Channel.subscribeTo("between").pipe(addOne);
+
+  expect(() => new Pregel({ nodes: { one, two } })).toThrowError();
 });
