@@ -470,7 +470,6 @@ it("should process two inputs joined into one topic and produce two outputs", as
       .fill(null)
       .map(async () => app.invoke(2))
   );
-  console.log("results", results);
   results.forEach((result) => {
     expect(result).toEqual([13, 13]);
   });
