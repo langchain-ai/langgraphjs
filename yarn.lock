@@ -628,7 +628,7 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@langchain/core@file:../langchainjs/langchain-core":
+"@langchain/core@file:../wt/brace/runnable-passthrough-func/langchain-core":
   version "0.1.12"
   dependencies:
     ansi-styles "^5.0.0"

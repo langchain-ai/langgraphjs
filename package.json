@@ -32,7 +32,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/core": "file:/Users/bracesproul/code/lang-chain-ai/langchainjs/langchain-core"
+    "@langchain/core": "file:/Users/bracesproul/code/lang-chain-ai/wt/brace/runnable-passthrough-func/langchain-core"
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",

@@ -1,5 +1,6 @@
 import {
   Runnable,
+  RunnableBatchOptions,
   RunnableConfig,
   _coerceToRunnable
 } from "@langchain/core/runnables";
@@ -237,6 +238,45 @@ export class Pregel<
     });
   }
 
+  async batch(
+    inputs: RunInput[],
+    options?:
+      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)
+      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)[],
+    batchOptions?: RunnableBatchOptions & { returnExceptions: true }
+  ): Promise<(RunOutput | Error)[]>;
+
+  async batch(
+    inputs: RunInput[],
+    options?:
+      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)
+      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)[],
+    batchOptions?: RunnableBatchOptions & { returnExceptions?: false }
+  ): Promise<RunOutput[]>;
+
+  async batch(
+    inputs: RunInput[],
+    options?:
+      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)
+      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)[],
+    batchOptions?: RunnableBatchOptions
+  ): Promise<(RunOutput | Error)[]>;
+
+  async batch(
+    inputs: RunInput[],
+    options?:
+      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)
+      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)[],
+    batchOptions?: RunnableBatchOptions & { returnExceptions?: boolean }
+  ): Promise<(RunOutput | Error)[] | RunOutput[]> {
+    // Call the batch method from the parent class with the options and batchOptions
+    return super.batch(
+      inputs,
+      options as Partial<RunnableConfig> | Partial<RunnableConfig>[],
+      batchOptions
+    );
+  }
+
   async *_transform(
     input: AsyncGenerator<RunInput>,
     runManager?: CallbackManagerForChainRun,
@@ -407,11 +447,20 @@ export class Pregel<
     config?: RunnableConfig,
     output?: string | Array<string>
   ): Promise<RunOutput> {
+    let newOutput = output;
+    if (newOutput === undefined) {
+      if (config && "output" in config) {
+        newOutput = config.output as string | string[] | undefined;
+      } else {
+        newOutput = this.output;
+      }
+    }
+
     let latest: RunOutput | undefined;
     for await (const chunk of await this.stream(
       input,
       config,
-      output ?? this.output
+      newOutput
     )) {
       latest = chunk;
     }

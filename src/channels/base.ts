@@ -101,7 +101,7 @@ export class ChannelsManager<RunOutput> {
     for (const k in this.channels) {
       if (k in this.channels) {
         const channelValue = Object.values(this.checkpoint.channelValues).length
-          ? this.checkpoint.channelValues.get(k)
+          ? this.checkpoint.channelValues[k]
           : undefined;
         emptyChannels[k] = this.channels[k].empty(channelValue);
       }
