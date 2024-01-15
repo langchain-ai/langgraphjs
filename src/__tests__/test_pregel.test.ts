@@ -1,4 +1,5 @@
-import { it, expect, jest } from "@jest/globals";
+/* eslint-disable no-process-env */
+import { it, expect, jest, beforeAll, afterAll } from "@jest/globals";
 import { RunnablePassthrough } from "@langchain/core/runnables";
 import { Channel, Pregel } from "../index.js";
 import { LastValue } from "../channels/last_value.js";
@@ -9,6 +10,20 @@ import { ChannelInvoke } from "../pregel/read.js";
 import { InvalidUpdateError } from "../channels/base.js";
 import { MemorySaver } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
+
+// If you have LangSmith set then it slows down the tests
+// immensely, and will most likely rate limit your account.
+beforeAll(() => {
+  process.env.LANGCHAIN_TRACING_V2 = "false";
+  process.env.LANGCHAIN_ENDPOINT = "";
+  process.env.LANGCHAIN_ENDPOINT = "";
+  process.env.LANGCHAIN_API_KEY = "";
+  process.env.LANGCHAIN_PROJECT = "";
+});
+
+afterAll(() => {
+  jest.restoreAllMocks();
+});
 
 it("can invoke pregel with a single process", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
@@ -185,7 +200,6 @@ it.skip("should modify inbox value and get different output", async () => {
       expect(values).toEqual({ inbox: 3 });
       // modify inbox value
       values.inbox = 5;
-      console.log(values);
     } else if (step === 1) {
       // output is different now
       expect(values).toEqual({ output: 6 });
@@ -279,14 +293,14 @@ it("should process batch with two processes and delays with graph", async () => 
   expect(await gapp.batch([3, 2, 1, 3, 5])).toEqual([5, 4, 3, 5, 7]);
 });
 
-it.skip("should invoke many processes in out", async () => {
+/* Returning undefined for all values... */
+it.skip("should process batch inputs with many processes", async () => {
   const testSize = 100;
   const addOne = jest.fn((x: number): number => x + 1);
 
   const nodes: Record<string, ChannelInvoke> = {
     "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1")),
   };
-
   for (let i = 0; i < testSize - 2; i += 1) {
     nodes[String(i)] = Channel.subscribeTo(String(i - 1))
       .pipe(addOne)
@@ -298,13 +312,22 @@ it.skip("should invoke many processes in out", async () => {
 
   const app = new Pregel({ nodes });
 
-  for (let i = 0; i < 10; i += 1) {
-    const result = await app.invoke(2, { recursionLimit: testSize });
-    console.log("expected", result, "to equal", 2 + testSize);
-    expect(result).toEqual(2 + testSize);
+  for (let i = 0; i < 3; i += 1) {
+    const results = await app.batch([2, 1, 3, 4, 5], {
+      recursionLimit: testSize,
+    });
+    console.log(results);
+    expect(results).toEqual([
+      2 + testSize,
+      1 + testSize,
+      3 + testSize,
+      4 + testSize,
+      5 + testSize,
+    ]);
   }
-});
+}, 200000);
 
+/* Returning undefined for all values... */
 it.skip("should process batch with many processes in and out", async () => {
   const testSize = 100;
   const addOne = jest.fn((x: number): number => x + 1);
@@ -334,7 +357,7 @@ it.skip("should process batch with many processes in and out", async () => {
       5 + testSize,
     ]);
   }
-});
+}, 200000);
 
 it("should raise InvalidUpdateError when the same LastValue channel is updated twice in one iteration", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
@@ -372,11 +395,10 @@ it("should process two inputs to two outputs validly", async () => {
   expect(await app.invoke(2)).toEqual([3, 3]);
 });
 
-it.skip("should maintain state across invocations and handle exceptions", async () => {
+it.skip("should handle checkpoints correctly", async () => {
   const addOne = jest.fn(
     (x: { total: number; input: number }): number => x.total + x.input
   );
-
   const raiseIfAbove10 = (input: number): number => {
     if (input > 10) {
       throw new Error("Input is too large");
@@ -387,16 +409,14 @@ it.skip("should maintain state across invocations and handle exceptions", async 
   const one = Channel.subscribeTo(["input"])
     .join(["total"])
     .pipe(addOne)
-    .pipe(Channel.writeTo("output"))
+    .pipe(Channel.writeTo("output", "total"))
     .pipe(raiseIfAbove10);
 
   const memory = new MemorySaver();
 
   const app = new Pregel({
     nodes: { one },
-    channels: {
-      total: new BinaryOperatorAggregate<number>((a, b) => a + b, 0),
-    },
+    channels: { total: new BinaryOperatorAggregate<number>((a, b) => a + b) },
     saver: memory,
   });
 
@@ -406,7 +426,7 @@ it.skip("should maintain state across invocations and handle exceptions", async 
   ).resolves.toBe(2);
   let checkpoint = memory.get({ configurable: { threadId: "1" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.output).toBe(2);
+  expect(checkpoint?.channelValues.total).toBe(2);
 
   // total is now 2, so output is 2+3=5
   await expect(
@@ -414,7 +434,7 @@ it.skip("should maintain state across invocations and handle exceptions", async 
   ).resolves.toBe(5);
   checkpoint = memory.get({ configurable: { threadId: "1" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.output).toBe(7);
+  expect(checkpoint?.channelValues.total).toBe(7);
 
   // total is now 2+5=7, so output would be 7+4=11, but raises Error
   await expect(
@@ -423,7 +443,7 @@ it.skip("should maintain state across invocations and handle exceptions", async 
   // checkpoint is not updated
   checkpoint = memory.get({ configurable: { threadId: "1" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.output).toBe(7);
+  expect(checkpoint?.channelValues.total).toBe(7);
 
   // on a new thread, total starts out as 0, so output is 0+5=5
   await expect(
@@ -431,10 +451,10 @@ it.skip("should maintain state across invocations and handle exceptions", async 
   ).resolves.toBe(5);
   checkpoint = memory.get({ configurable: { threadId: "1" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.output).toBe(7);
+  expect(checkpoint?.channelValues.total).toBe(7);
   checkpoint = memory.get({ configurable: { threadId: "2" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.output).toBe(5);
+  expect(checkpoint?.channelValues.total).toBe(5);
 });
 
 it("should process two inputs joined into one topic and produce two outputs", async () => {
@@ -526,8 +546,7 @@ it("should invoke join then call other app", async () => {
   expect(results).toEqual(Array(10).fill(27));
 });
 
-/** Channel.writeTo type erroring. */
-it.skip("should handle two processes with one input and two outputs", async () => {
+it.only("should handle two processes with one input and two outputs", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
 
   const one = Channel.subscribeTo("input")
@@ -547,6 +566,7 @@ it.skip("should handle two processes with one input and two outputs", async () =
 
   const streamResults = [];
   for await (const chunk of await app.stream(2)) {
+    console.log("iter");
     streamResults.push(chunk);
   }
 

@@ -125,22 +125,34 @@ export class Channel {
     RunInput = any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     RunOutput = any
-  >(
-    channels: string[] | string,
-    values?: { [key: string]: WriteValue }
-  ): ChannelWrite<RunInput, RunOutput> {
-    const channelWrites: Array<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  >(...args: any[]): ChannelWrite<RunInput, RunOutput> {
+    // const channelPairs: Array<[string, WriteValue<RunInput, RunOutput>]> =
+    //   channels.map((c) => [c, undefined]);
+    // return new ChannelWrite<RunInput, RunOutput>(channelPairs);
+    const channelPairs: Array<
       [string, Runnable<RunInput, RunOutput> | undefined]
-    > = Array.isArray(channels)
-      ? channels.map((c) => [c, undefined])
-      : [[channels, undefined]];
+    > = [];
 
-    const newValues = values ?? {};
-    Object.entries(newValues).forEach(([k, v]) => {
-      channelWrites.push([k, _coerceWriteValue<RunInput, RunOutput>(v)]);
-    });
+    if (args.length === 1 && typeof args[0] === "object") {
+      // Handle the case where named arguments are passed as an object
+      const additionalArgs = args[0];
+      Object.entries(additionalArgs).forEach(([key, value]) => {
+        channelPairs.push([key, _coerceWriteValue(value)]);
+      });
+    } else {
+      args.forEach((channel) => {
+        if (typeof channel === "string") {
+          channelPairs.push([channel, undefined]);
+        } else if (typeof channel === "object") {
+          Object.entries(channel).forEach(([key, value]) => {
+            channelPairs.push([key, _coerceWriteValue(value)]);
+          });
+        }
+      });
+    }
 
-    return new ChannelWrite<RunInput, RunOutput>(channelWrites);
+    return new ChannelWrite(channelPairs);
   }
 }
 
@@ -334,6 +346,7 @@ export class Pregel<
           pendingWritesDeque.push(value);
         }
       }
+
       _applyWrites<RunOutput>(
         checkpoint,
         channels,
@@ -368,6 +381,7 @@ export class Pregel<
                 ...newConfig,
                 runName: name,
                 configurable: {
+                  ...newConfig.configurable,
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   [CONFIG_KEY_SEND]: (items: [string, any][]) =>
                     pendingWrites.push(...items),
@@ -465,8 +479,6 @@ export class Pregel<
     config?: RunnableConfig,
     output?: string | Array<string>
   ): Promise<IterableReadableStream<RunOutput>> {
-    // Convert the input object into an iterator
-    // @TODO check this?
     const inputIterator: AsyncGenerator<RunInput> = (async function* () {
       yield input;
     })();
