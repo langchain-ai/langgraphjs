@@ -2,6 +2,7 @@ import {
   Runnable,
   RunnableBatchOptions,
   RunnableConfig,
+  RunnableInterface,
   _coerceToRunnable,
 } from "@langchain/core/runnables";
 import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
@@ -372,8 +373,16 @@ export class Pregel<
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const pendingWrites: Array<[string, any]> = [];
 
-        const tasksWithConfig: Array<[Runnable, unknown, RunnableConfig]> =
-          nextTasks.map(([proc, input, name]) => [
+        const tasksWithConfig: Array<
+          [RunnableInterface, unknown, RunnableConfig]
+        > = nextTasks.map(([proc, input, name]) => {
+          if (
+            !("_patchConfig" in proc) ||
+            typeof proc._patchConfig !== "function"
+          ) {
+            throw new Error("Runnable must implement _patchConfig");
+          }
+          return [
             proc,
             input,
             proc._patchConfig(
@@ -390,7 +399,8 @@ export class Pregel<
               },
               runManager?.getChild(`graph:step:${step}`)
             ),
-          ]);
+          ];
+        });
 
         // execute tasks, and wait for one to fail or all to finish.
         // each task is independent from all other concurrent tasks
@@ -651,8 +661,8 @@ function _prepareNextTasks<
     ChannelInvoke<RunInput, RunOutput> | ChannelBatch<RunInput, RunOutput>
   >,
   channels: Record<string, BaseChannel<RunOutput>>
-): Array<[Runnable, unknown, string]> {
-  const tasks: Array<[Runnable, unknown, string]> = [];
+): Array<[RunnableInterface, unknown, string]> {
+  const tasks: Array<[RunnableInterface, unknown, string]> = [];
 
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
@@ -699,7 +709,7 @@ function _prepareNextTasks<
 
             // skip if condition is not met
             if (proc.when === undefined || proc.when(val)) {
-              tasks.push([proc as Runnable, val, name]);
+              tasks.push([proc, val, name]);
             }
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } catch (error: any) {
@@ -717,9 +727,9 @@ function _prepareNextTasks<
           // must be initialized if the previous `if` condition is true
           let val = channels[proc.channel].get();
           if (proc.key !== undefined) {
-            val = [{ [proc.key]: val }];
+            val = [{ [proc.key]: val }] as RunOutput;
           }
-          tasks.push([proc as Runnable, val, name]);
+          tasks.push([proc, val, name]);
           seen[proc.channel] = checkpoint.channelVersions[proc.channel];
         }
       }

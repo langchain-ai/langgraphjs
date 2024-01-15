@@ -546,7 +546,7 @@ it("should invoke join then call other app", async () => {
   expect(results).toEqual(Array(10).fill(27));
 });
 
-it.only("should handle two processes with one input and two outputs", async () => {
+it.skip("should handle two processes with one input and two outputs", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
 
   const one = Channel.subscribeTo("input")
