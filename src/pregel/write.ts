@@ -1,7 +1,7 @@
 import {
   Runnable,
   RunnableConfig,
-  RunnablePassthrough
+  RunnablePassthrough,
 } from "@langchain/core/runnables";
 import { ConfigurableFieldSpec } from "../checkpoint/index.js";
 import { CONFIG_KEY_SEND } from "../constants.js";
@@ -28,7 +28,7 @@ export class ChannelWrite<
     super({
       ...{ channels, name },
       func: async (input: RunInput, config?: RunnableConfig) =>
-        this._write(input, config ?? {})
+        this._write(input, config ?? {}),
     });
 
     this.channels = channels;
@@ -43,8 +43,8 @@ export class ChannelWrite<
         default: null,
         annotation: "TYPE_SEND",
         isShared: true,
-        dependencies: null
-      }
+        dependencies: null,
+      },
     ];
   }
 
@@ -52,7 +52,7 @@ export class ChannelWrite<
   async _write(input: any, config: RunnableConfig): Promise<void> {
     const values = this.channels.map(async ([chan, r]) => [
       chan,
-      r ? await r.invoke(input, config) : input
+      r ? await r.invoke(input, config) : input,
     ]);
     const valuesAwaited = await Promise.all(values);
 

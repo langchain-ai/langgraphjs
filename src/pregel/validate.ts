@@ -12,7 +12,7 @@ export function validateGraph<
   nodes,
   channels,
   input,
-  output
+  output,
 }: {
   nodes: Record<
     string,

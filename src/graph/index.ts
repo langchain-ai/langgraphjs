@@ -2,7 +2,7 @@ import {
   Runnable,
   RunnableLambda,
   RunnableLike,
-  _coerceToRunnable
+  _coerceToRunnable,
 } from "@langchain/core/runnables";
 import { Channel, Pregel } from "../index.js";
 import { ChannelBatch, ChannelInvoke } from "../pregel/read.js";
@@ -179,7 +179,7 @@ export class Graph<
         this.branches[key].forEach((branch) => {
           const runnableLambda = new RunnableLambda<RunInput, RunOutput>({
             func: (input: RunInput) =>
-              branch.runnable(input as unknown as RunInput)
+              branch.runnable(input as unknown as RunInput),
           });
 
           nodes[edgesKey] = (
@@ -198,7 +198,7 @@ export class Graph<
       nodes,
       input: `${this.entryPoint}:inbox`,
       output: END,
-      hidden
+      hidden,
     });
   }
 }
