@@ -290,9 +290,6 @@ export class Pregel<
           }
         : config;
 
-    if (!newConfig.output) {
-      throw new Error("No output specified");
-    }
     if (
       newConfig.recursionLimit === undefined ||
       newConfig.recursionLimit < 1
