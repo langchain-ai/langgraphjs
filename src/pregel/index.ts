@@ -25,7 +25,7 @@ import { validateGraph } from "./validate.js";
 import { ReservedChannels } from "./reserved.js";
 import { mapInput, mapOutput } from "./io.js";
 import { ChannelWrite } from "./write.js";
-import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
+import { CONFIG_KEY_READ, CONFIG_KEY_SEND, MISSING_KEY } from "../constants.js";
 
 type WriteValue<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -99,7 +99,7 @@ export class Channel {
     }
 
     const channelMapping: Record<string, string> = isString(channels)
-      ? { [key ?? ""]: channels }
+      ? { [key ?? MISSING_KEY]: channels }
       : Object.fromEntries(channels.map((chan) => [chan, chan]));
     const triggers: string[] = Array.isArray(channels) ? channels : [channels];
 
@@ -348,8 +348,13 @@ export class Pregel<
         // each task is independent from all other concurrent tasks
         const tasks = tasksWithConfig.map(
           ([proc, input, updatedConfig]) =>
-            async () =>
-              proc.invoke(input, updatedConfig)
+            async () => {
+              if (input && typeof input === "object" && MISSING_KEY in input) {
+                return proc.invoke(input[MISSING_KEY], updatedConfig);
+              } else {
+                return proc.invoke(input, updatedConfig);
+              }
+            }
         );
 
         await executeTasks<RunOutput>(tasks, this.stepTimeout);
@@ -371,7 +376,11 @@ export class Pregel<
         );
 
         if (stepOutput) {
-          yield stepOutput;
+          if (typeof stepOutput === "object" && MISSING_KEY in stepOutput) {
+            yield stepOutput[MISSING_KEY] as RunOutput;
+          } else {
+            yield stepOutput;
+          }
           // we can detect updates when output is multiple channels (ie. object)
           if (typeof newOutputs !== "string") {
             _applyWritesFromView<RunOutput>(checkpoint, channels, stepOutput);

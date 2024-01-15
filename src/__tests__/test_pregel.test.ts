@@ -5,7 +5,7 @@ import { Graph } from "../graph/index.js";
 import { ReservedChannels } from "../pregel/reserved.js";
 
 it("can invoke pregel with a single process", async () => {
-  const addOne = jest.fn((x: { "": number }): number => x[""] + 1);
+  const addOne = jest.fn((x: number): number => x + 1);
   const chain = Channel.subscribeTo("input")
     .pipe(addOne)
     .pipe(Channel.writeTo("output"));
@@ -29,12 +29,8 @@ it("can invoke pregel with a single process", async () => {
   expect(addOne).toHaveBeenCalled();
 });
 
-/**
- * @TODO failing graph
- * issue is still because of weird empty string key
- */
-it.only("can invoke graph with a single process", async () => {
-  const addOne = jest.fn((x: { "": number }): number => x[""] + 1);
+it("can invoke graph with a single process", async () => {
+  const addOne = jest.fn((x: number): number => x + 1);
 
   const graph = new Graph();
   graph.addNode("add_one", addOne);
@@ -46,7 +42,7 @@ it.only("can invoke graph with a single process", async () => {
 });
 
 it("should process input and produce output with implicit channels", async () => {
-  const addOne = jest.fn((x: { "": number }): number => x[""] + 1);
+  const addOne = jest.fn((x: number): number => x + 1);
   const chain = Channel.subscribeTo("input")
     .pipe(addOne)
     .pipe(Channel.writeTo("output"));
@@ -60,8 +56,7 @@ it("should process input and produce output with implicit channels", async () =>
 });
 
 it("should process input and write kwargs correctly", async () => {
-  const addOne = jest.fn((x: { "": number }): number => x[""] + 1);
-
+  const addOne = jest.fn((x: number): number => x + 1);
   const chain = Channel.subscribeTo("input")
     .pipe(addOne)
     .pipe(
@@ -88,7 +83,6 @@ it("should process input and check for last step", async () => {
     ...x,
     input: x.input + 1
   }));
-
   const chain = Channel.subscribeTo(["input"])
     .join([ReservedChannels.isLastStep])
     .pipe(addOne)
@@ -106,8 +100,7 @@ it("should process input and check for last step", async () => {
 });
 
 it("should invoke single process in out dict", async () => {
-  const addOne = jest.fn((x: { "": number }): number => x[""] + 1);
-
+  const addOne = jest.fn((x: number): number => x + 1);
   const chain = Channel.subscribeTo("input")
     .pipe(addOne)
     .pipe(Channel.writeTo("output"));
@@ -122,10 +115,8 @@ it("should invoke single process in out dict", async () => {
   expect(await app.invoke(2)).toEqual({ output: 3 });
 });
 
-/** @TODO input objects aren't working as intended. */
 it("should process input and output as dictionaries", async () => {
-  const addOne = jest.fn((x: { "": number }): number => x[""] + 1);
-
+  const addOne = jest.fn((x: number): number => x + 1);
   const chain = Channel.subscribeTo("input")
     .pipe(addOne)
     .pipe(Channel.writeTo("output"));
