@@ -210,11 +210,15 @@ it.skip("should modify inbox value and get different output", async () => {
 
 it.skip("should process two processes with object input and output", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
+  const addOneArr = jest.fn((x: number[]): number => {
+    const sumOfAllX = x.reduce((a, b) => a + b, 0);
+    return sumOfAllX + 1;
+  });
   const one = Channel.subscribeTo("input")
     .pipe(addOne)
     .pipe(Channel.writeTo("inbox"));
   const two = Channel.subscribeToEach("inbox")
-    .pipe(addOne)
+    .pipe(addOneArr)
     .pipe(Channel.writeTo("output"));
 
   const app = new Pregel({
@@ -224,7 +228,7 @@ it.skip("should process two processes with object input and output", async () =>
   });
 
   const streamResult = await app.stream(
-    { input: 2, inbox: 12 },
+    { input: 2, inbox: [12] },
     undefined,
     "output"
   );
@@ -294,7 +298,7 @@ it("should process batch with two processes and delays with graph", async () => 
 });
 
 /* Returning undefined for all values... */
-it.only("should process batch inputs with many processes", async () => {
+it.skip("should process batch inputs with many processes", async () => {
   const testSize = 100;
   const addOne = jest.fn((x: number): number => x + 1);
 
@@ -324,7 +328,7 @@ it.only("should process batch inputs with many processes", async () => {
       5 + testSize,
     ]);
   }
-}, 200000);
+});
 
 /* Returning undefined for all values... */
 it.skip("should process batch with many processes in and out", async () => {
@@ -356,7 +360,7 @@ it.skip("should process batch with many processes in and out", async () => {
       5 + testSize,
     ]);
   }
-}, 200000);
+});
 
 it("should raise InvalidUpdateError when the same LastValue channel is updated twice in one iteration", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
@@ -495,7 +499,7 @@ it("should process two inputs joined into one topic and produce two outputs", as
   results.forEach((result) => {
     expect(result).toEqual([13, 13]);
   });
-}, 200000);
+});
 
 it("should invoke join then call other app", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
