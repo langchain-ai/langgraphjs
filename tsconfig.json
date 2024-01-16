@@ -18,6 +18,5 @@
     "allowJs": true,
     "strict": true
   },
-  "include": ["./langgraph/src/**/*.ts", "examples/**/*.ts"],
-  "exclude": ["node_modules", "./langgraph/dist/"]
+  "exclude": ["node_modules"]
 }
