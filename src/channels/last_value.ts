@@ -6,47 +6,15 @@ import { BaseChannel, EmptyChannelError, InvalidUpdateError } from "./index.js";
 export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
   lc_graph_name = "LastValue";
 
-  typ?: Value;
-
   value?: Value;
 
-  constructor() {
-    super();
-  }
-
-  /**
-   * The type of the value stored in the channel.
-   *
-   * @returns {Value | undefined}
-   */
-  public get ValueType(): Value | undefined {
-    return this.typ;
-  }
-
-  /**
-   * The type of the update received by the channel.
-   *
-   * @returns {Value | undefined}
-   */
-  public get UpdateType(): Value | undefined {
-    return this.typ;
-  }
-
-  *empty(checkpoint?: Value): Generator<LastValue<Value>> {
+  empty(checkpoint?: Value): LastValue<Value> {
     const empty = new LastValue<Value>();
     if (checkpoint) {
       empty.value = checkpoint;
     }
 
-    try {
-      yield empty;
-    } finally {
-      try {
-        empty.value = undefined;
-      } catch (e) {
-        // no-op
-      }
-    }
+    return empty;
   }
 
   update(values: Value[]): void {

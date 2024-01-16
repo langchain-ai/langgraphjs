@@ -2,6 +2,6 @@ export {
   BaseChannel,
   EmptyChannelError,
   InvalidUpdateError,
-  ChannelsManager,
   createCheckpoint,
+  emptyChannels as empty,
 } from "./base.js";

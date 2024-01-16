@@ -1,5 +1,5 @@
 /* eslint-disable no-process-env */
-import { it, expect, jest, beforeAll, afterAll } from "@jest/globals";
+import { it, expect, jest, beforeAll } from "@jest/globals";
 import { RunnablePassthrough } from "@langchain/core/runnables";
 import { Channel, Pregel } from "../index.js";
 import { LastValue } from "../channels/last_value.js";
@@ -40,7 +40,9 @@ it("can invoke pregel with a single process", async () => {
   });
 
   expect(await app.invoke(2)).toBe(3);
-  expect(await app.invoke(2, undefined, ["output"])).toEqual({ output: 3 });
+  expect(await app.invoke(2, { outputKeys: ["output"] })).toEqual({
+    output: 3,
+  });
   expect(() => app.toString()).not.toThrow();
   // Verify the mock was called correctly
   expect(addOne).toHaveBeenCalled();
@@ -211,7 +213,7 @@ it("should invoke two processes and get correct output", async () => {
 //   }
 // });
 
-it.skip("should process two processes with object input and output", async () => {
+it.only("should process two processes with object input and output", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
   const one = Channel.subscribeTo("input")
     .pipe(addOne)
@@ -228,8 +230,7 @@ it.skip("should process two processes with object input and output", async () =>
 
   const streamResult = await app.stream(
     { input: 2, inbox: 12 },
-    undefined,
-    "output"
+    { outputKeys: "output" }
   );
   const outputResults = [];
   for await (const result of streamResult) {
@@ -268,7 +269,7 @@ it("should process batch with two processes and delays", async () => {
   });
 
   expect(await app.batch([3, 2, 1, 3, 5])).toEqual([5, 4, 3, 5, 7]);
-  expect(await app.batch([3, 2, 1, 3, 5], { output: ["output"] })).toEqual([
+  expect(await app.batch([3, 2, 1, 3, 5], { outputKeys: ["output"] })).toEqual([
     { output: 5 },
     { output: 4 },
     { output: 3 },

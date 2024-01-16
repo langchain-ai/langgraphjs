@@ -11,28 +11,16 @@ export abstract class BaseChannel<
   abstract lc_graph_name: string;
 
   /**
-   * The type of the value stored in the channel.
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  abstract get ValueType(): any;
-
-  /**
-   * The type of the update received by the channel.
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  abstract get UpdateType(): any;
-
-  /**
    * Return a new identical channel, optionally initialized from a checkpoint.
    *
    * @param {C | undefined} checkpoint
    * @param {C | undefined} initialValue
-   * @returns {Generator<BaseChannel<Value>>}
+   * @returns {this}
    */
   abstract empty(
     checkpoint?: C,
     initialValue?: C
-  ): Generator<BaseChannel<Value>>;
+  ): BaseChannel<Value, Update, C>;
 
   /**
    * Update the channel's value with the given sequence of updates.
@@ -55,7 +43,7 @@ export abstract class BaseChannel<
   /**
    * Return a string representation of the channel's current state.
    *
-   * @throws {EmptyChannelError} if the channel is empty (never updated yet), or doesn't supportcheckpoints.
+   * @throws {EmptyChannelError} if the channel is empty (never updated yet), or doesn't support checkpoints.
    * @returns {C | undefined}
    */
   abstract checkpoint(): C | undefined;
@@ -75,60 +63,18 @@ export class InvalidUpdateError extends Error {
   }
 }
 
-/**
- * Manage channels for the lifetime of a Pregel invocation (multiple steps).
- */
-export class ChannelsManager<RunOutput> {
-  private channels: Record<string, BaseChannel<RunOutput, unknown, unknown>>;
-
-  private checkpoint: Checkpoint;
-
-  constructor(
-    channels: Record<string, BaseChannel<RunOutput, unknown, unknown>>,
-    checkpoint: Checkpoint
-  ) {
-    this.channels = channels;
-    this.checkpoint = checkpoint;
-  }
-
-  public *manage(): Generator<
-    Record<string, BaseChannel<RunOutput, unknown, unknown>>
-  > {
-    const emptyChannels: Record<
-      string,
-      Generator<BaseChannel<RunOutput, unknown, unknown>>
-    > = {};
-    for (const k in this.channels) {
-      if (k in this.channels) {
-        const channelValue = Object.values(this.checkpoint.channelValues).length
-          ? this.checkpoint.channelValues[k]
-          : undefined;
-        emptyChannels[k] = this.channels[k].empty(channelValue);
-      }
-    }
-
-    const managedChannels: Record<
-      string,
-      BaseChannel<RunOutput, unknown, unknown>
-    > = {};
-    try {
-      for (const k in emptyChannels) {
-        if (k in emptyChannels) {
-          const result = emptyChannels[k].next();
-          if (!result.done) {
-            managedChannels[k] = result.value;
-          }
-        }
-      }
-      yield managedChannels;
-    } finally {
-      for (const k in emptyChannels) {
-        if (k in emptyChannels) {
-          emptyChannels[k].return(managedChannels); // Clean up the generator
-        }
-      }
+export function emptyChannels(
+  channels: Record<string, BaseChannel>,
+  checkpoint: Checkpoint
+): Record<string, BaseChannel> {
+  const newChannels: Record<string, BaseChannel> = {};
+  for (const k in channels) {
+    if (Object.prototype.hasOwnProperty.call(channels, k)) {
+      const channelValue = checkpoint.channelValues[k];
+      newChannels[k] = channels[k].empty(channelValue);
     }
   }
+  return newChannels;
 }
 
 export async function createCheckpoint<Value>(

@@ -1,16 +1,19 @@
+/* eslint-disable no-param-reassign */
 import {
   Runnable,
   RunnableConfig,
+  RunnableFunc,
   RunnableInterface,
+  RunnableLike,
   _coerceToRunnable,
 } from "@langchain/core/runnables";
 import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   BaseChannel,
-  ChannelsManager,
   EmptyChannelError,
   createCheckpoint,
+  emptyChannels,
 } from "../channels/base.js";
 import {
   BaseCheckpointSaver,
@@ -25,28 +28,15 @@ import { mapInput, mapOutput } from "./io.js";
 import { ChannelWrite } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
 
-type WriteValue<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any
-> =
-  | Runnable<RunInput, RunOutput>
-  | ((input: RunInput) => RunOutput)
-  | ((input: RunInput) => Promise<RunOutput>)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  | any;
+const DEFAULT_RECURSION_LIMIT = 25;
 
-function _coerceWriteValue<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any
->(value: WriteValue): Runnable<RunInput, RunOutput> {
+type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
+
+function _coerceWriteValue(value: WriteValue): Runnable {
   if (!Runnable.isRunnable(value) && typeof value !== "function") {
-    return _coerceToRunnable<RunInput, RunOutput>(() => value);
+    return _coerceToRunnable(() => value);
   }
-  return _coerceToRunnable<RunInput, RunOutput>(value);
+  return _coerceToRunnable(value as RunnableLike);
 }
 
 function isString(value: unknown): value is string {
@@ -54,42 +44,27 @@ function isString(value: unknown): value is string {
 }
 
 export class Channel {
-  static subscribeTo<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunInput = any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunOutput = any
-  >(
+  static subscribeTo(
     channels: string,
     key?: string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     when?: (arg: any) => boolean
   ): // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ChannelInvoke<RunInput, RunOutput>;
+  ChannelInvoke;
 
-  static subscribeTo<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunInput = any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunOutput = any
-  >(
+  static subscribeTo(
     channels: string[],
     key?: undefined,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     when?: (arg: any) => boolean
-  ): ChannelInvoke<RunInput, RunOutput>;
+  ): ChannelInvoke;
 
-  static subscribeTo<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunInput = any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunOutput = any
-  >(
+  static subscribeTo(
     channels: string | string[],
     key?: string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     when?: (arg: any) => boolean
-  ): ChannelInvoke<RunInput, RunOutput> {
+  ): ChannelInvoke {
     if (Array.isArray(channels) && key !== undefined) {
       throw new Error(
         "Can't specify a key when subscribing to multiple channels"
@@ -119,31 +94,19 @@ export class Channel {
     });
   }
 
-  static subscribeToEach<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunInput = any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunOutput = any
-  >(inbox: string, key?: string): ChannelBatch<RunInput, RunOutput> {
-    return new ChannelBatch<RunInput, RunOutput>({
+  static subscribeToEach(inbox: string, key?: string): ChannelBatch {
+    return new ChannelBatch({
       channel: inbox,
       key,
     });
   }
 
-  static writeTo<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunInput = any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunOutput = any
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  >(...args: any[]): ChannelWrite<RunInput, RunOutput> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static writeTo(...args: any[]): ChannelWrite {
     // const channelPairs: Array<[string, WriteValue<RunInput, RunOutput>]> =
     //   channels.map((c) => [c, undefined]);
     // return new ChannelWrite<RunInput, RunOutput>(channelPairs);
-    const channelPairs: Array<
-      [string, Runnable<RunInput, RunOutput> | undefined]
-    > = [];
+    const channelPairs: Array<[string, Runnable | undefined]> = [];
 
     if (args.length === 1 && typeof args[0] === "object") {
       // Handle the case where named arguments are passed as an object
@@ -256,35 +219,19 @@ export class Pregel
   async *_transform(
     input: AsyncGenerator<PregelInputType>,
     runManager?: CallbackManagerForChainRun,
-    config?: RunnableConfig & Partial<Record<string, unknown>>
+    config: RunnableConfig & Partial<Record<string, unknown>> = {}
   ): AsyncGenerator<PregelOutputType> {
-    const newConfig: RunnableConfig & Partial<Record<string, unknown>> =
-      config?.recursionLimit === undefined
-        ? {
-            recursionLimit: 25, // Default
-            ...config,
-          }
-        : config;
-
-    if (
-      newConfig.recursionLimit === undefined ||
-      newConfig.recursionLimit < 1
-    ) {
-      throw new Error("recursionLimit must be at least 1");
-    }
-
     // assign defaults
-    let newOutputs: string | Array<string> = [];
+    let outputKeys: string | Array<string> = [];
     if (
-      Array.isArray(newConfig.output) ||
-      typeof newConfig.output === "string"
+      Array.isArray(config.outputKeys) ||
+      typeof config.outputKeys === "string"
     ) {
-      newOutputs = newConfig.output;
-    }
-    if (Array.isArray(newOutputs)) {
+      outputKeys = config.outputKeys;
+    } else {
       for (const chan in this.channels) {
         if (!this.hidden.includes(chan)) {
-          newOutputs.push(chan);
+          outputKeys.push(chan);
         }
       }
     }
@@ -293,128 +240,111 @@ export class Pregel
     // get checkpoint from saver, or create an empty one
     let checkpoint: Checkpoint | undefined;
     if (this.saver) {
-      checkpoint = this.saver.get(newConfig);
+      checkpoint = this.saver.get(config);
     }
     checkpoint = checkpoint ?? emptyCheckpoint();
 
     // create channels from checkpoint
-    const manager = new ChannelsManager(this.channels, checkpoint).manage();
-    for await (const channels of manager) {
-      // map inputs to channel updates
-      const thisInput = this.input;
+    const channels = emptyChannels(this.channels, checkpoint);
+    // map inputs to channel updates
+    const thisInput = this.input;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const inputPendingWrites: Array<[string, any]> = [];
+    for await (const c of input) {
+      for (const value of mapInput(thisInput, c)) {
+        inputPendingWrites.push(value);
+      }
+    }
+
+    _applyWrites(checkpoint, channels, inputPendingWrites, config, 0);
+
+    const read = (chan: string) => _readChannel(channels, chan);
+
+    // Similarly to Bulk Synchronous Parallel / Pregel model
+    // computation proceeds in steps, while there are channel updates
+    // channel updates from step N are only visible in step N+1
+    // channels are guaranteed to be immutable for the duration of the step,
+    // with channel updates applied only at the transition between steps
+    const recursionLimit = config.recursionLimit ?? DEFAULT_RECURSION_LIMIT;
+    for (let step = 0; step < recursionLimit; step += 1) {
+      const nextTasks = _prepareNextTasks(checkpoint, processes, channels);
+      // if no more tasks, we're done
+      if (nextTasks.length === 0) {
+        break;
+      }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pendingWritesDeque: Array<[string, any]> = [];
-      for await (const c of input) {
-        for (const value of mapInput(thisInput, c)) {
-          pendingWritesDeque.push(value);
-        }
+      const pendingWrites: Array<[string, any]> = [];
+
+      const tasksWithConfig: Array<
+        [RunnableInterface, unknown, RunnableConfig]
+      > = nextTasks.map(([proc, input, name]) => [
+        proc,
+        input,
+        (proc as Runnable)._patchConfig(
+          {
+            ...config,
+            runName: name,
+            configurable: {
+              ...config.configurable,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              [CONFIG_KEY_SEND]: (items: [string, any][]) =>
+                pendingWrites.push(...items),
+              [CONFIG_KEY_READ]: read,
+            },
+          },
+          runManager?.getChild(`graph:step:${step}`)
+        ),
+      ]);
+
+      // execute tasks, and wait for one to fail or all to finish.
+      // each task is independent from all other concurrent tasks
+      const tasks = tasksWithConfig.map(
+        ([proc, input, updatedConfig]) =>
+          () =>
+            proc.invoke(input, updatedConfig)
+      );
+
+      await executeTasks(tasks, this.stepTimeout);
+
+      // apply writes to channels
+      _applyWrites(checkpoint, channels, pendingWrites, config, step + 1);
+
+      // save end of step checkpoint
+      checkpoint = await createCheckpoint(checkpoint, channels);
+      if (this.saver && this.saver.at === CheckpointAt.END_OF_STEP) {
+        this.saver.put(config, checkpoint);
       }
 
-      _applyWrites(checkpoint, channels, pendingWritesDeque, newConfig, 0);
+      // yield current value and checkpoint view
+      const stepOutput = mapOutput(outputKeys, pendingWrites, channels);
 
-      const read = (chan: string) => _readChannel(channels, chan);
-
-      // Similarly to Bulk Synchronous Parallel / Pregel model
-      // computation proceeds in steps, while there are channel updates
-      // channel updates from step N are only visible in step N+1
-      // channels are guaranteed to be immutable for the duration of the step,
-      // with channel updates applied only at the transition between steps
-      for (let step = 0; step < (newConfig.recursionLimit ?? 0); step += 1) {
-        const nextTasks = _prepareNextTasks(checkpoint, processes, channels);
-        // if no more tasks, we're done
-        if (nextTasks.length === 0) {
-          break;
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const pendingWrites: Array<[string, any]> = [];
-
-        const tasksWithConfig: Array<
-          [RunnableInterface, unknown, RunnableConfig]
-        > = nextTasks.map(([proc, input, name]) => {
-          if (
-            !("_patchConfig" in proc) ||
-            typeof proc._patchConfig !== "function"
-          ) {
-            throw new Error("Runnable must implement _patchConfig");
-          }
-          return [
-            proc,
-            input,
-            proc._patchConfig(
-              {
-                ...newConfig,
-                runName: name,
-                configurable: {
-                  ...newConfig.configurable,
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  [CONFIG_KEY_SEND]: (items: [string, any][]) =>
-                    pendingWrites.push(...items),
-                  [CONFIG_KEY_READ]: read,
-                },
-              },
-              runManager?.getChild(`graph:step:${step}`)
-            ),
-          ];
-        });
-
-        // execute tasks, and wait for one to fail or all to finish.
-        // each task is independent from all other concurrent tasks
-        const tasks = tasksWithConfig.map(
-          ([proc, input, updatedConfig]) =>
-            async () =>
-              proc.invoke(input, updatedConfig)
-        );
-
-        await executeTasks(tasks, this.stepTimeout);
-
-        // apply writes to channels
-        _applyWrites(checkpoint, channels, pendingWrites, newConfig, step + 1);
-
-        // yield current value and checkpoint view
-        const stepOutput = mapOutput(newOutputs, pendingWrites, channels);
-
-        if (stepOutput) {
-          yield stepOutput;
-
-          // we can detect updates when output is multiple channels (ie. object)
-          if (typeof newOutputs !== "string") {
-            _applyWritesFromView(checkpoint, channels, stepOutput);
-          }
-        }
-
-        // save end of step checkpoint
-        if (this.saver && this.saver.at === CheckpointAt.END_OF_STEP) {
-          checkpoint = await createCheckpoint(checkpoint, channels);
-          this.saver.put(newConfig, checkpoint);
-        }
+      if (stepOutput) {
+        yield stepOutput;
       }
+    }
 
-      // save end of run checkpoint
-      if (this.saver && this.saver.at === CheckpointAt.END_OF_RUN) {
-        checkpoint = await createCheckpoint(checkpoint, channels);
-        this.saver.put(newConfig, checkpoint);
-      }
+    // save end of run checkpoint
+    if (this.saver && this.saver.at === CheckpointAt.END_OF_RUN) {
+      checkpoint = await createCheckpoint(checkpoint, channels);
+      this.saver.put(config, checkpoint);
     }
   }
 
   async invoke(
     input: PregelInputType,
-    config?: RunnableConfig,
-    output?: string | Array<string>
+    config?: PregelOptions
   ): Promise<PregelOutputType> {
-    let newOutput = output;
-    if (newOutput === undefined) {
-      if (config && "output" in config) {
-        newOutput = config.output as string | string[] | undefined;
-      } else {
-        newOutput = this.output;
+    if (!config?.outputKeys) {
+      if (!config) {
+        config = {};
       }
+      config.outputKeys = this.output;
     }
 
     let latest: PregelOutputType | undefined;
-    for await (const chunk of await this.stream(input, config, newOutput)) {
+    for await (const chunk of await this.stream(input, config)) {
       latest = chunk;
     }
     if (!latest) {
@@ -425,28 +355,34 @@ export class Pregel
 
   async stream(
     input: PregelInputType,
-    config?: RunnableConfig,
-    output?: string | Array<string>
+    config?: PregelOptions
   ): Promise<IterableReadableStream<PregelOutputType>> {
     const inputIterator: AsyncGenerator<PregelInputType> = (async function* () {
       yield input;
     })();
     return IterableReadableStream.fromAsyncGenerator(
-      this.transform(inputIterator, { ...config, output })
+      this.transform(inputIterator, config)
     );
   }
 
   async *transform(
     generator: AsyncGenerator<PregelInputType>,
-    config?: RunnableConfig & Partial<Record<string, unknown>>
+    config?: PregelOptions
   ): AsyncGenerator<PregelOutputType> {
-    for await (const chunk of this._transformStreamWithConfig<
-      PregelInputType,
-      PregelOutputType
-    >(generator, this._transform, config)) {
+    for await (const chunk of this._transformStreamWithConfig(
+      generator,
+      this._transform,
+      config
+    )) {
       yield chunk;
     }
   }
+}
+
+function timeout(ms: number): Promise<void> {
+  return new Promise((reject) => {
+    setTimeout(reject, ms);
+  });
 }
 
 async function executeTasks<RunOutput>(
@@ -454,21 +390,13 @@ async function executeTasks<RunOutput>(
   stepTimeout?: number
 ): Promise<void> {
   // Wrap each task in a Promise that respects the step timeout
-  const wrappedTasks = tasks.map(
-    (task) =>
-      new Promise((resolve, reject) => {
-        let timeout: NodeJS.Timeout;
-        if (stepTimeout) {
-          timeout = setTimeout(() => {
-            reject(new Error(`Timed out at step ${stepTimeout}`));
-          }, stepTimeout);
-        }
-
-        task().then(resolve, (error) => {
-          clearTimeout(timeout);
-          reject(error);
-        });
-      })
+  const wrappedTasks = tasks.map((task) =>
+    stepTimeout
+      ? Promise.race([
+          task(),
+          stepTimeout ? timeout(stepTimeout) : Promise.resolve(),
+        ])
+      : task()
   );
 
   // Wait for all tasks to settle
@@ -536,10 +464,8 @@ function _applyWrites(
         channels[chan].update(vals);
 
         if (checkpoint.channelVersions[chan] === undefined) {
-          // eslint-disable-next-line no-param-reassign
           checkpoint.channelVersions[chan] = 1;
         } else {
-          // eslint-disable-next-line no-param-reassign
           checkpoint.channelVersions[chan] += 1;
         }
 
@@ -557,27 +483,6 @@ function _applyWrites(
   }
 }
 
-function _applyWritesFromView(
-  checkpoint: Checkpoint,
-  channels: Record<string, BaseChannel>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  values: Record<string, any>
-) {
-  for (const [chan, value] of Object.entries(values)) {
-    if (value === channels[chan].get()) {
-      continue;
-    }
-    if (channels[chan].lc_graph_name !== "LastValue") {
-      throw new Error(
-        `Can't modify channel ${chan} of type ${channels[chan].lc_graph_name}`
-      );
-    }
-    // eslint-disable-next-line no-param-reassign
-    checkpoint.channelVersions[chan] += 1;
-    channels[chan].update([values[chan]]);
-  }
-}
-
 function _prepareNextTasks(
   checkpoint: Checkpoint,
   processes: Record<string, ChannelInvoke | ChannelBatch>,
@@ -592,7 +497,6 @@ function _prepareNextTasks(
       const proc = processes[name];
       let seen: Record<string, number> = checkpoint.versionsSeen[name];
       if (!seen) {
-        // eslint-disable-next-line no-param-reassign
         checkpoint.versionsSeen[name] = {};
         seen = checkpoint.versionsSeen[name];
       }
@@ -649,7 +553,9 @@ function _prepareNextTasks(
         }
       } else if ("channel" in proc) {
         // If the channel read by this process was updated
-        if (checkpoint.channelVersions[proc.channel] > seen[proc.channel]) {
+        if (
+          checkpoint.channelVersions[proc.channel] > (seen[proc.channel] ?? 0)
+        ) {
           // Here we don't catch EmptyChannelError because the channel
           // must be initialized if the previous `if` condition is true
           let val = channels[proc.channel].get();

@@ -30,8 +30,7 @@ describe("LastValue", () => {
     const checkpoint = channel.checkpoint();
 
     const restoredChannel = new LastValue<number>();
-    const channelGenerator = restoredChannel.empty(checkpoint);
-    const channel2 = channelGenerator.next().value;
+    const channel2 = restoredChannel.empty(checkpoint);
     expect(channel2.get()).toBe(100);
   });
 });
@@ -55,8 +54,7 @@ describe("Topic", () => {
 
   it("should create and use a checkpoint", () => {
     const checkpoint = channel.checkpoint();
-    let newChannel = new Topic<string>();
-    newChannel = newChannel.empty(checkpoint).next().value;
+    const newChannel = new Topic<string>().empty(checkpoint);
     expect(newChannel.get()).toEqual(["e"]);
   });
 });
@@ -80,8 +78,7 @@ describe("Topic with unique: true", () => {
 
   it("should de-dupe from checkpoint", () => {
     const checkpoint = channel.checkpoint();
-    let newChannel = new Topic<string>({ unique: true });
-    newChannel = newChannel.empty(checkpoint).next().value;
+    const newChannel = new Topic<string>({ unique: true }).empty(checkpoint);
 
     expect(newChannel.get()).toEqual(["e"]);
 
@@ -106,8 +103,9 @@ describe("Topic with accumulate: true", () => {
 
   it("should create and use a checkpoint", () => {
     const checkpoint = channel.checkpoint();
-    let newChannel = new Topic<string>({ accumulate: true });
-    newChannel = newChannel.empty(checkpoint).next().value;
+    const newChannel = new Topic<string>({ accumulate: true }).empty(
+      checkpoint
+    );
     expect(newChannel.get()).toEqual(["a", "b", "b", "c", "d", "d"]);
 
     newChannel.update(["e"]);
@@ -131,8 +129,10 @@ describe("Topic with accumulate and unique: true", () => {
 
   it("should create and use a checkpoint", () => {
     const checkpoint = channel.checkpoint();
-    let newChannel = new Topic<string>({ unique: true, accumulate: true });
-    newChannel = newChannel.empty(checkpoint).next().value;
+    const newChannel = new Topic<string>({
+      unique: true,
+      accumulate: true,
+    }).empty(checkpoint);
     expect(newChannel.get()).toEqual(["a", "b", "c", "d"]);
 
     newChannel.update(["d", "e"]);
@@ -164,8 +164,7 @@ describe("BinaryOperatorAggregate", () => {
       (a, b) => a + b,
       0
     );
-    const channelGenerator = restoredChannel.empty(checkpoint);
-    const channel2 = channelGenerator.next().value;
+    const channel2 = restoredChannel.empty(checkpoint);
     expect(channel2.get()).toBe(10);
   });
 });
