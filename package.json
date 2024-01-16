@@ -55,19 +55,5 @@
   },
   "publishConfig": {
     "access": "public"
-  },
-  "exports": {
-    ".": {
-      "types": "./index.d.ts",
-      "import": "./index.js",
-      "require": "./index.cjs"
-    },
-    "./package.json": "./package.json"
-  },
-  "files": [
-    "dist/",
-    "index.cjs",
-    "index.js",
-    "index.d.ts"
-  ]
+  }
 }

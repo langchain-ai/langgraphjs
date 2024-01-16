@@ -4,8 +4,8 @@ import {
   RunnableLike,
   _coerceToRunnable,
 } from "@langchain/core/runnables";
-import { Channel, Pregel } from "../index.js";
 import { ChannelBatch, ChannelInvoke } from "../pregel/read.js";
+import { Channel, Pregel } from "../pregel/index.js";
 
 export const END = "__end__";
 
