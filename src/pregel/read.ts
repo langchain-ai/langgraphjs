@@ -106,8 +106,8 @@ export class ChannelInvoke<
 
   join(channels: Array<string>): ChannelInvoke<RunInput, RunOutput> {
     if (
-      !Object.keys(this.channels).every((k) => Boolean(k)) ||
-      typeof this.channels === "string"
+      typeof this.channels === "string" ||
+      !Object.keys(this.channels).every((k) => Boolean(k))
     ) {
       throw new Error("all channels must be named when using .join()");
     }
