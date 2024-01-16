@@ -21,10 +21,6 @@ beforeAll(() => {
   process.env.LANGCHAIN_PROJECT = "";
 });
 
-afterAll(() => {
-  jest.restoreAllMocks();
-});
-
 it("can invoke pregel with a single process", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
   const chain = Channel.subscribeTo("input")
@@ -118,6 +114,13 @@ it("should process input and check for last step", async () => {
     input: 3,
     isLastStep: true,
   });
+});
+
+it("should throw if you try to join channels when all are not named", async () => {
+  const channel = Channel.subscribeTo("input");
+  expect(() => {
+    channel.join([ReservedChannels.isLastStep]);
+  }).toThrowError();
 });
 
 it("should invoke single process in out objects", async () => {

@@ -68,7 +68,7 @@ const defaultRunnableBound = new RunnablePassthrough();
 
 interface ChannelInvokeArgs<RunInput, RunOutput>
   extends Partial<RunnableBindingArgs<RunInput, RunOutput>> {
-  channels: Record<string, string>;
+  channels: Record<string, string> | string;
   triggers: Array<string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   when?: (args: any) => boolean;
@@ -82,7 +82,7 @@ export class ChannelInvoke<
 > extends RunnableBinding<RunInput, RunOutput, RunnableConfig> {
   lc_graph_name = "ChannelInvoke";
 
-  channels: Record<string, string>;
+  channels: Record<string, string> | string;
 
   triggers: string[] = [];
 
@@ -105,7 +105,10 @@ export class ChannelInvoke<
   }
 
   join(channels: Array<string>): ChannelInvoke<RunInput, RunOutput> {
-    if (!Object.keys(this.channels).every((k) => Boolean(k))) {
+    if (
+      typeof this.channels === "string" ||
+      !Object.keys(this.channels).every((k) => Boolean(k))
+    ) {
       throw new Error("all channels must be named when using .join()");
     }
 
