@@ -210,15 +210,11 @@ it.skip("should modify inbox value and get different output", async () => {
 
 it.skip("should process two processes with object input and output", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
-  const addOneArr = jest.fn((x: number[]): number => {
-    const sumOfAllX = x.reduce((a, b) => a + b, 0);
-    return sumOfAllX + 1;
-  });
   const one = Channel.subscribeTo("input")
     .pipe(addOne)
     .pipe(Channel.writeTo("inbox"));
   const two = Channel.subscribeToEach("inbox")
-    .pipe(addOneArr)
+    .pipe(addOne)
     .pipe(Channel.writeTo("output"));
 
   const app = new Pregel({
@@ -228,7 +224,7 @@ it.skip("should process two processes with object input and output", async () =>
   });
 
   const streamResult = await app.stream(
-    { input: 2, inbox: [12] },
+    { input: 2, inbox: 12 },
     undefined,
     "output"
   );
@@ -302,7 +298,7 @@ it("should batch many processes with input and output", async () => {
   const addOne = jest.fn((x: number) => x + 1);
 
   const nodes: Record<string, ChannelInvoke> = {
-    "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1"))
+    "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1")),
   };
 
   for (let i = 0; i < testSize - 2; i += 1) {
@@ -324,7 +320,7 @@ it("should batch many processes with input and output", async () => {
       1 + testSize,
       3 + testSize,
       4 + testSize,
-      5 + testSize
+      5 + testSize,
     ]);
   }
 });
@@ -517,30 +513,33 @@ it("should invoke join then call other app", async () => {
 });
 
 it.skip("should handle two processes with one input and two outputs", async () => {
-  const addOne = jest.fn((x: number): number => x + 1);
+  const addOne = jest.fn((x: number) => x + 1);
 
   const one = Channel.subscribeTo("input")
     .pipe(addOne)
     .pipe(
-      Channel.writeTo({
-        output: new RunnablePassthrough(),
-        between: new RunnablePassthrough(),
-      })
+      Channel.writeTo(
+        { output: new RunnablePassthrough() },
+        { between: new RunnablePassthrough() }
+      )
     );
 
   const two = Channel.subscribeTo("between")
     .pipe(addOne)
     .pipe(Channel.writeTo("output"));
 
-  const app = new Pregel({ nodes: { one, two } });
+  const app = new Pregel({
+    nodes: { one, two },
+  });
 
+  const results = await app.stream(2);
   const streamResults = [];
-  for await (const chunk of await app.stream(2)) {
+  for await (const chunk of results) {
     streamResults.push(chunk);
   }
 
   expect(streamResults).toEqual([{ between: 3, output: 3 }, { output: 4 }]);
-  expect(addOne).toHaveBeenCalledTimes(3); // addOne is called once in 'one' and twice in 'two'
+  expect(addOne).toHaveBeenCalledTimes(3);
 });
 
 it("should finish executing without output", async () => {

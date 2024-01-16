@@ -347,7 +347,7 @@ export class Pregel<
           pendingWritesDeque.push(value);
         }
       }
-
+      console.log("pendingWritesDeque", pendingWritesDeque);
       _applyWrites<RunOutput>(
         checkpoint,
         channels,
@@ -501,7 +501,6 @@ export class Pregel<
     generator: AsyncGenerator<RunInput>,
     config?: RunnableConfig & Partial<Record<string, unknown>>
   ): AsyncGenerator<RunOutput> {
-    // @TODO figure out how to pass output through
     for await (const chunk of this._transformStreamWithConfig<
       RunInput,
       RunOutput
