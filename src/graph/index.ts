@@ -7,7 +7,7 @@ import {
 import { Channel, Pregel } from "../index.js";
 import { ChannelBatch, ChannelInvoke } from "../pregel/read.js";
 
-const END = "__end__";
+export const END = "__end__";
 
 type EndsMap = { [result: string]: string };
 
