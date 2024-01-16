@@ -20,9 +20,13 @@ export function validateGraph({
   const subscribedChannels = new Set<string>();
   for (const node of Object.values(nodes)) {
     if (node.lc_graph_name === "ChannelInvoke" && "channels" in node) {
-      Object.values(node.channels).map((channel) =>
-        subscribedChannels.add(channel)
-      );
+      if (typeof node.channels === "string") {
+        subscribedChannels.add(node.channels);
+      } else {
+        Object.values(node.channels).map((channel) =>
+          subscribedChannels.add(channel)
+        );
+      }
     } else if (node.lc_graph_name === "ChannelBatch" && "channel" in node) {
       subscribedChannels.add(node.channel);
     } else {

@@ -1,6 +1,5 @@
 import {
   Runnable,
-  RunnableBatchOptions,
   RunnableConfig,
   RunnableInterface,
   _coerceToRunnable,
@@ -24,7 +23,7 @@ import { validateGraph } from "./validate.js";
 import { ReservedChannels } from "./reserved.js";
 import { mapInput, mapOutput } from "./io.js";
 import { ChannelWrite } from "./write.js";
-import { CONFIG_KEY_READ, CONFIG_KEY_SEND, MISSING_KEY } from "../constants.js";
+import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
 
 type WriteValue<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -97,13 +96,24 @@ export class Channel {
       );
     }
 
-    const channelMapping: Record<string, string> = isString(channels)
-      ? { [key ?? MISSING_KEY]: channels }
-      : Object.fromEntries(channels.map((chan) => [chan, chan]));
+    let channelMappingOrString: string | Record<string, string>;
+
+    if (isString(channels)) {
+      if (key) {
+        channelMappingOrString = { [key]: channels };
+      } else {
+        channelMappingOrString = channels;
+      }
+    } else {
+      channelMappingOrString = Object.fromEntries(
+        channels.map((chan) => [chan, chan])
+      );
+    }
+
     const triggers: string[] = Array.isArray(channels) ? channels : [channels];
 
     return new ChannelInvoke({
-      channels: channelMapping,
+      channels: channelMappingOrString,
       triggers,
       when,
     });
@@ -353,13 +363,8 @@ export class Pregel
         // each task is independent from all other concurrent tasks
         const tasks = tasksWithConfig.map(
           ([proc, input, updatedConfig]) =>
-            async () => {
-              if (input && typeof input === "object" && MISSING_KEY in input) {
-                return proc.invoke(input[MISSING_KEY], updatedConfig);
-              } else {
-                return proc.invoke(input, updatedConfig);
-              }
-            }
+            async () =>
+              proc.invoke(input, updatedConfig)
         );
 
         await executeTasks(tasks, this.stepTimeout);
@@ -371,11 +376,8 @@ export class Pregel
         const stepOutput = mapOutput(newOutputs, pendingWrites, channels);
 
         if (stepOutput) {
-          if (typeof stepOutput === "object" && MISSING_KEY in stepOutput) {
-            yield stepOutput[MISSING_KEY];
-          } else {
-            yield stepOutput;
-          }
+          yield stepOutput;
+
           // we can detect updates when output is multiple channels (ie. object)
           if (typeof newOutputs !== "string") {
             _applyWritesFromView(checkpoint, channels, stepOutput);
@@ -605,13 +607,19 @@ function _prepareNextTasks(
           try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             let val: Record<string, any> = {};
-            for (const [k, chan] of Object.entries(proc.channels)) {
-              val[k] = _readChannel(channels, chan);
+            if (typeof proc.channels === "string") {
+              val[proc.channels] = _readChannel(channels, proc.channels);
+            } else {
+              for (const [k, chan] of Object.entries(proc.channels)) {
+                val[k] = _readChannel(channels, chan);
+              }
             }
 
             // Processes that subscribe to a single keyless channel get
             // the value directly, instead of a dict
-            if (
+            if (typeof proc.channels === "string") {
+              val = val[proc.channels];
+            } else if (
               Object.keys(proc.channels).length === 1 &&
               proc.channels[Object.keys(proc.channels)[0]] === undefined
             ) {
