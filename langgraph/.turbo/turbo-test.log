@@ -1,0 +1,13 @@
+$ NODE_OPTIONS=--experimental-vm-modules jest --testPathIgnorePatterns=\.int\.test.ts --testTimeout 30000 --maxWorkers=50%
+(node:31346) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS src/tests/channels.test.ts
+(node:31345) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS src/tests/pregel.test.ts
+
+Test Suites: 2 passed, 2 total
+Tests:       2 skipped, 31 passed, 33 total
+Snapshots:   0 total
+Time:        3.67 s, estimated 4 s
+Ran all test suites.

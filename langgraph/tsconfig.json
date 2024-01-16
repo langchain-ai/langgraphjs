@@ -17,6 +17,6 @@
     "allowJs": true,
     "strict": true
   },
-  "include": ["src/**/*", "examples/**/*.ts"],
+  "include": ["src/**/*.ts", "examples/**/*.ts"],
   "exclude": ["node_modules", "dist", "docs"]
 }
