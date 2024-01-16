@@ -297,67 +297,34 @@ it("should process batch with two processes and delays with graph", async () => 
   expect(await gapp.batch([3, 2, 1, 3, 5])).toEqual([5, 4, 3, 5, 7]);
 });
 
-/* Returning undefined for all values... */
-it.skip("should process batch inputs with many processes", async () => {
+it("should batch many processes with input and output", async () => {
   const testSize = 100;
-  const addOne = jest.fn((x: number): number => x + 1);
+  const addOne = jest.fn((x: number) => x + 1);
 
   const nodes: Record<string, ChannelInvoke> = {
-    "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1")),
+    "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1"))
   };
+
   for (let i = 0; i < testSize - 2; i += 1) {
     nodes[String(i)] = Channel.subscribeTo(String(i - 1))
       .pipe(addOne)
       .pipe(Channel.writeTo(String(i)));
   }
-  nodes.last = Channel.subscribeTo(String(testSize - 2))
+  nodes.last = Channel.subscribeTo(String(testSize - 3))
     .pipe(addOne)
     .pipe(Channel.writeTo("output"));
 
   const app = new Pregel({ nodes });
 
   for (let i = 0; i < 3; i += 1) {
-    const results = await app.batch([2, 1, 3, 4, 5], {
-      recursionLimit: testSize,
-    });
-    expect(results).toEqual([
+    await expect(
+      app.batch([2, 1, 3, 4, 5], { recursionLimit: testSize })
+    ).resolves.toEqual([
       2 + testSize,
       1 + testSize,
       3 + testSize,
       4 + testSize,
-      5 + testSize,
-    ]);
-  }
-});
-
-/* Returning undefined for all values... */
-it.skip("should process batch with many processes in and out", async () => {
-  const testSize = 100;
-  const addOne = jest.fn((x: number): number => x + 1);
-
-  const nodes: Record<string, ChannelInvoke> = {
-    "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1")),
-  };
-  for (let i = 0; i < testSize - 2; i += 1) {
-    nodes[String(i)] = Channel.subscribeTo(String(i - 1))
-      .pipe(addOne)
-      .pipe(Channel.writeTo(String(i)));
-  }
-  nodes.last = Channel.subscribeTo(String(testSize - 2))
-    .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
-
-  const app = new Pregel({ nodes });
-
-  for (let i = 0; i < 3; i += 1) {
-    expect(
-      await app.batch([2, 1, 3, 4, 5], { recursionLimit: testSize })
-    ).toEqual([
-      2 + testSize,
-      1 + testSize,
-      3 + testSize,
-      4 + testSize,
-      5 + testSize,
+      5 + testSize
     ]);
   }
 });
