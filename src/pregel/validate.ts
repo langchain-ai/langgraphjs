@@ -8,7 +8,7 @@ export function validateGraph({
   channels,
   input,
   output,
-  hidden
+  hidden,
 }: {
   nodes: Record<string, ChannelInvoke | ChannelBatch>;
   channels: { [key: string]: BaseChannel };

@@ -2,7 +2,7 @@ import {
   Runnable,
   RunnableConfig,
   RunnableInterface,
-  _coerceToRunnable
+  _coerceToRunnable,
 } from "@langchain/core/runnables";
 import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
@@ -10,13 +10,13 @@ import {
   BaseChannel,
   ChannelsManager,
   EmptyChannelError,
-  createCheckpoint
+  createCheckpoint,
 } from "../channels/base.js";
 import {
   BaseCheckpointSaver,
   Checkpoint,
   CheckpointAt,
-  emptyCheckpoint
+  emptyCheckpoint,
 } from "../checkpoint/base.js";
 import { ChannelBatch, ChannelInvoke } from "./read.js";
 import { validateGraph } from "./validate.js";
@@ -115,7 +115,7 @@ export class Channel {
     return new ChannelInvoke({
       channels: channelMappingOrString,
       triggers,
-      when
+      when,
     });
   }
 
@@ -127,7 +127,7 @@ export class Channel {
   >(inbox: string, key?: string): ChannelBatch<RunInput, RunOutput> {
     return new ChannelBatch<RunInput, RunOutput>({
       channel: inbox,
-      key
+      key,
     });
   }
 
@@ -249,7 +249,7 @@ export class Pregel
       channels: this.channels,
       output: this.output,
       input: this.input,
-      hidden: this.hidden
+      hidden: this.hidden,
     });
   }
 
@@ -262,7 +262,7 @@ export class Pregel
       config?.recursionLimit === undefined
         ? {
             recursionLimit: 25, // Default
-            ...config
+            ...config,
           }
         : config;
 
@@ -351,11 +351,11 @@ export class Pregel
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   [CONFIG_KEY_SEND]: (items: [string, any][]) =>
                     pendingWrites.push(...items),
-                  [CONFIG_KEY_READ]: read
-                }
+                  [CONFIG_KEY_READ]: read,
+                },
               },
               runManager?.getChild(`graph:step:${step}`)
-            )
+            ),
           ];
         });
 
@@ -524,7 +524,7 @@ function _applyWrites(
 
   // Update reserved channels
   pendingWritesByChannel[ReservedChannels.isLastStep] = [
-    forStep + 1 === config.recursionLimit
+    forStep + 1 === config.recursionLimit,
   ];
 
   const updatedChannels: Set<string> = new Set();
