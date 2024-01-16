@@ -213,7 +213,7 @@ it("should invoke two processes and get correct output", async () => {
 //   }
 // });
 
-it.only("should process two processes with object input and output", async () => {
+it("should process two processes with object input and output", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
   const one = Channel.subscribeTo("input")
     .pipe(addOne)
