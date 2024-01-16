@@ -210,20 +210,20 @@ export class ChannelBatch<
   }
 
   pipe<NewRunOutput>(
-    coerceable: RunnableLike<RunOutput[], NewRunOutput>
-  ): ChannelBatch<RunInput, RunOutput> {
+    coerceable: RunnableLike<RunOutput, NewRunOutput>
+  ): ChannelBatch<RunInput, NewRunOutput> {
     if (this.bound === defaultRunnableBound) {
       return new ChannelBatch<RunInput, RunOutput>({
         channel: this.channel,
         key: this.key,
-        bound: _coerceToRunnable<RunOutput, NewRunOutput>(coerceable),
+        bound: _coerceToRunnable(coerceable),
       });
     } else {
       // Delegate to `or` in `this.bound`
       return new ChannelBatch<RunInput, RunOutput>({
         channel: this.channel,
         key: this.key,
-        bound: this.bound.pipe<RunOutput>(this.bound ?? coerceable),
+        bound: this.bound.pipe(coerceable),
       });
     }
   }

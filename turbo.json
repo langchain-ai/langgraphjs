@@ -1,0 +1,53 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["**/.env"],
+  "pipeline": {
+    "@langchain/langgraph#build": {
+      "outputs": ["langgraph/dist/**", "*.js", "*.cjs", "*.d.ts"],
+      "inputs": [
+        "langgraph/src/**",
+        "langgraph/scripts/**",
+        "langgraph/package.json",
+        "langgraph/tsconfig.json"
+      ]
+    },
+    "build": {
+      "dependsOn": ["@langchain/langgraph#build", "^build"],
+      "outputs": ["langgraph/dist/**", "*.js", "*.cjs", "*.d.ts"],
+      "inputs": [
+        "langgraph/src/**",
+        "langgraph/scripts/**",
+        "langgraph/package.json",
+        "langgraph/tsconfig.json"
+      ]
+    },
+    "lint": {
+      "outputs": []
+    },
+    "lint:fix": {
+      "outputs": ["langgraph/src/**/*.ts", "**/*.eslintcache"],
+      "inputs": ["langgraph/src/**/*.ts"]
+    },
+    "format": {
+      "outputs": []
+    },
+    "format:check": {
+      "outputs": []
+    },
+    "clean": {
+      "outputs": []
+    },
+    "test": {
+      "outputs": [],
+      "dependsOn": ["^build"]
+    },
+    "test:integration": {
+      "outputs": [],
+      "dependsOn": ["^build"]
+    },
+    "precommit": {},
+    "start": {
+      "cache": false
+    }
+  }
+}

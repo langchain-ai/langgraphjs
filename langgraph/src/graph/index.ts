@@ -11,12 +11,7 @@ export const END = "__end__";
 
 type EndsMap = { [result: string]: string };
 
-class Branch<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any
-> {
+class Branch {
   condition: CallableFunction;
 
   ends: EndsMap;
@@ -30,9 +25,7 @@ class Branch<
   public runnable(input: any): Runnable {
     const result = this.condition(input);
     const destination = this.ends[result];
-    return Channel.writeTo<RunInput, RunOutput>(
-      destination !== END ? `${destination}:inbox` : END
-    );
+    return Channel.writeTo(destination !== END ? `${destination}:inbox` : END);
   }
 }
 
@@ -46,7 +39,7 @@ export class Graph<
 
   edges: Set<[string, string]>;
 
-  branches: Record<string, Branch<RunInput, RunOutput>[]>;
+  branches: Record<string, Branch[]>;
 
   entryPoint?: string;
 
@@ -159,7 +152,7 @@ export class Graph<
       ChannelInvoke<RunInput, RunOutput> | ChannelBatch<RunInput, RunOutput>
     > = {};
     for (const [key, node] of Object.entries(this.nodes)) {
-      nodes[key] = Channel.subscribeTo<RunInput, RunOutput>(`${key}:inbox`)
+      nodes[key] = Channel.subscribeTo(`${key}:inbox`)
         .pipe(node)
         .pipe(Channel.writeTo(key));
     }
@@ -168,7 +161,7 @@ export class Graph<
       const outgoing = outgoingEdges[key];
       const edgesKey = `${key}:edges`;
       if (outgoing || this.branches[key]) {
-        nodes[edgesKey] = Channel.subscribeTo<RunInput, RunOutput>(key);
+        nodes[edgesKey] = Channel.subscribeTo(key);
       }
       if (outgoing) {
         nodes[edgesKey] = (
@@ -194,7 +187,7 @@ export class Graph<
     if (!this.entryPoint) {
       throw new Error("Entry point not set");
     }
-    return new Pregel<RunInput, RunOutput>({
+    return new Pregel({
       nodes,
       input: `${this.entryPoint}:inbox`,
       output: END,

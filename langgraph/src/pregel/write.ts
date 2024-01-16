@@ -55,12 +55,19 @@ export class ChannelWrite<
       r ? await r.invoke(input, config) : input,
     ]);
     const valuesAwaited = await Promise.all(values);
-    ChannelWrite.doWrite(config, Object.fromEntries(valuesAwaited));
+    ChannelWrite.doWrite(
+      config,
+      Object.fromEntries(
+        valuesAwaited.filter(([_, val], i) =>
+          this.channels[i][1] ? Boolean(val) : val
+        )
+      )
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static doWrite(config: RunnableConfig, values: Record<string, any>): void {
     const write: TYPE_SEND = config.configurable?.[CONFIG_KEY_SEND];
-    write(Object.entries(values).filter(([_, val]) => Boolean(val)));
+    write(Object.entries(values));
   }
 }

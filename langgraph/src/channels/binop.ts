@@ -14,57 +14,21 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
 
   value: Value | undefined;
 
-  typ?: Value;
-
   operator: BinaryOperator<Value>;
 
   constructor(operator: BinaryOperator<Value>, initialValue?: Value) {
     super();
 
     this.operator = operator;
-    try {
-      this.value = initialValue ?? this.typ;
-    } catch (e) {
-      // no-op
-    }
+    this.value = initialValue;
   }
 
-  /**
-   * The type of the value stored in the channel.
-   *
-   * @returns {Value | undefined}
-   */
-  public get ValueType(): Value | undefined {
-    return this.typ;
-  }
-
-  /**
-   * The type of the update received by the channel.
-   *
-   * @returns {Value | undefined}
-   */
-  public get UpdateType(): Value | undefined {
-    return this.typ;
-  }
-
-  public *empty(
-    checkpoint?: Value,
-    initialValue?: Value
-  ): Generator<BinaryOperatorAggregate<Value>> {
-    const empty = new BinaryOperatorAggregate(this.operator, initialValue);
-    if (checkpoint) {
-      empty.value = checkpoint;
-    }
-
-    try {
-      yield empty;
-    } finally {
-      try {
-        delete empty.value;
-      } catch (_) {
-        // no-op
-      }
-    }
+  public empty(checkpoint?: Value): BinaryOperatorAggregate<Value> {
+    const empty = new BinaryOperatorAggregate(
+      this.operator,
+      checkpoint ?? this.value
+    );
+    return empty;
   }
 
   public update(values: Value[]): void {

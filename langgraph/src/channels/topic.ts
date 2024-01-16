@@ -1,4 +1,4 @@
-import { BaseChannel, EmptyChannelError } from "./base.js";
+import { BaseChannel } from "./base.js";
 
 function* flatten<Value>(
   values: Array<Value | Value[]>
@@ -19,8 +19,6 @@ export class Topic<Value> extends BaseChannel<
 > {
   lc_graph_name = "Topic";
 
-  typ?: Value;
-
   unique = false;
 
   accumulate = false;
@@ -39,25 +37,7 @@ export class Topic<Value> extends BaseChannel<
     this.values = [];
   }
 
-  /**
-   * The type of the value stored in the channel.
-   *
-   * @returns {Array<Value> | undefined}
-   */
-  public get ValueType(): [Value] | undefined {
-    throw new Error("Not implemented");
-  }
-
-  /**
-   * The type of the update received by the channel.
-   *
-   * @returns {Value | undefined}
-   */
-  public get UpdateType(): Value | undefined {
-    throw new Error("Not implemented");
-  }
-
-  public *empty(checkpoint?: [Set<Value>, Value[]]): Generator<Topic<Value>> {
+  public empty(checkpoint?: [Set<Value>, Value[]]): Topic<Value> {
     const empty = new Topic<Value>({
       unique: this.unique,
       accumulate: this.accumulate,
@@ -65,7 +45,7 @@ export class Topic<Value> extends BaseChannel<
     if (checkpoint) {
       [empty.seen, empty.values] = checkpoint;
     }
-    yield empty;
+    return empty;
   }
 
   public update(values: Array<Value | Value[]>): void {
@@ -92,9 +72,6 @@ export class Topic<Value> extends BaseChannel<
   }
 
   public checkpoint(): [Set<Value>, Array<Value>] {
-    if (!this.values || this.values.length === 0) {
-      throw new EmptyChannelError();
-    }
     return [this.seen, this.values];
   }
 }
