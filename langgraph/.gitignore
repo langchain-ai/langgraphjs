@@ -1,8 +1,9 @@
 index.cjs
 index.js
 index.d.ts
+pregel.cjs
+pregel.js
+pregel.d.ts
 node_modules
 dist
 .yarn
-.turbo
-.eslintcache

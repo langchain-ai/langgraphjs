@@ -70,12 +70,20 @@
       "import": "./index.js",
       "require": "./index.cjs"
     },
+    "./pregel": {
+      "types": "./pregel.d.ts",
+      "import": "./pregel.js",
+      "require": "./pregel.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "dist/",
     "index.cjs",
     "index.js",
-    "index.d.ts"
+    "index.d.ts",
+    "pregel.cjs",
+    "pregel.js",
+    "pregel.d.ts"
   ]
 }

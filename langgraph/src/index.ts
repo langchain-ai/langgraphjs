@@ -1,1 +1,1 @@
-export { type PregelInterface, Pregel, Channel } from "./pregel/index.js";
+export { END, Graph } from "./graph/index.js";
