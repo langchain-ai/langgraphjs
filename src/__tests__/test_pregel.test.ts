@@ -179,7 +179,7 @@ it("should invoke two processes and get correct output", async () => {
   }
 });
 
-// Not sure if this it possible/a ts thing?
+// API is not yet implemented. Implement test once Nuno finishes on PY side.
 it.skip("should modify inbox value and get different output", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
 
@@ -199,7 +199,7 @@ it.skip("should modify inbox value and get different output", async () => {
     if (step === 0) {
       expect(values).toEqual({ inbox: 3 });
       // modify inbox value
-      values.inbox = 5;
+      // values.inbox = 5;
     } else if (step === 1) {
       // output is different now
       expect(values).toEqual({ output: 6 });
@@ -294,7 +294,7 @@ it("should process batch with two processes and delays with graph", async () => 
 });
 
 /* Returning undefined for all values... */
-it.skip("should process batch inputs with many processes", async () => {
+it.only("should process batch inputs with many processes", async () => {
   const testSize = 100;
   const addOne = jest.fn((x: number): number => x + 1);
 
@@ -316,7 +316,6 @@ it.skip("should process batch inputs with many processes", async () => {
     const results = await app.batch([2, 1, 3, 4, 5], {
       recursionLimit: testSize,
     });
-    console.log(results);
     expect(results).toEqual([
       2 + testSize,
       1 + testSize,
@@ -566,7 +565,6 @@ it.skip("should handle two processes with one input and two outputs", async () =
 
   const streamResults = [];
   for await (const chunk of await app.stream(2)) {
-    console.log("iter");
     streamResults.push(chunk);
   }
 

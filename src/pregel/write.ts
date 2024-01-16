@@ -55,7 +55,6 @@ export class ChannelWrite<
       r ? await r.invoke(input, config) : input,
     ]);
     const valuesAwaited = await Promise.all(values);
-
     ChannelWrite.doWrite(config, Object.fromEntries(valuesAwaited));
   }
 
