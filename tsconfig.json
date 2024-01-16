@@ -2,7 +2,6 @@
   "extends": "@tsconfig/recommended",
   "compilerOptions": {
     "outDir": "../dist",
-    "rootDir": "./src",
     "target": "ES2021",
     "lib": ["ES2021", "ES2022.Object", "DOM"],
     "module": "ES2020",
@@ -18,6 +17,6 @@
     "allowJs": true,
     "strict": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "examples/**/*.ts"],
   "exclude": ["node_modules", "dist", "docs"]
 }

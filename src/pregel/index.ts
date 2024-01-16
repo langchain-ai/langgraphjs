@@ -347,7 +347,7 @@ export class Pregel<
           pendingWritesDeque.push(value);
         }
       }
-      console.log("pendingWritesDeque", pendingWritesDeque);
+
       _applyWrites<RunOutput>(
         checkpoint,
         channels,
