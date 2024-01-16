@@ -15,6 +15,9 @@ If you want to build a DAG, you should use just use [LangChain Expression Langua
 
 Cycles are important for agent-like behaviors, where you call an LLM in a loop, asking it what action to take next.
 
+
+> Looking for the Python version? Click [here](https://github.com/langchain-ai/langgraph).
+
 ## Installation
 
 ```bash
@@ -383,32 +386,29 @@ const firstAgent = (inputs: AgentData) => {
 We can now create a new graph with this new node
 
 ```typescript
-workflow = Graph()
+const workflow = new Graph();
 
 // Add the same nodes as before, plus this "first agent"
 workflow.addNode("firstAgent", firstAgent);
 workflow.addNode("agent", agent);
 workflow.addNode("tools", executeTools);
-# We now set the entry point to be this first agent
-workflow.set_entry_point("first_agent")
 
-# We define the same edges as before
-workflow.add_conditional_edges(
-    "agent",
-    should_continue,
-    {
-        "continue": "tools",
-        "exit": END
-    }
-)
-workflow.add_edge('tools', 'agent')
+// We now set the entry point to be this first agent
+workflow.setEntryPoint("firstAgent");
 
-# We also define a new edge, from the "first agent" to the tools node
-# This is so that we can call the tool
-workflow.add_edge('first_agent', 'tools')
+// We define the same edges as before
+workflow.addConditionalEdges("agent", shouldContinue, {
+  continue: "tools",
+  exit: END
+});
+workflow.addEdge("tools", "agent");
 
-# We now compile the graph as before
-chain = workflow.compile()
+// We also define a new edge, from the "first agent" to the tools node
+// This is so that we can call the tool
+workflow.addEdge("firstAgent", "tools");
+
+// We now compile the graph as before
+const chain = workflow.compile();
 ```
 
 #### Use it!
@@ -417,5 +417,10 @@ We can now use it as before!
 Depending on whether or not the first tool call is actually useful, this may save you an LLM call or two.
 
 ```typescript
-chain.invoke({"input": "what is the weather in sf", "intermediate_steps": []})
+const result = await chain.invoke({
+  input: "what is the weather in sf",
+  steps: []
+});
 ```
+
+You can see a LangSmith trace of this chain [here](https://smith.langchain.com/public/2e0a089f-8c05-405a-8404-b0a60b79a84a/r).
