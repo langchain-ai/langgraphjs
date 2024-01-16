@@ -355,19 +355,27 @@ Notice that it does that same thing as `agent` would have done (adds the `agentO
 This is so that we can easily plug it in.
 
 ```typescript
-from langchain_core.agents import AgentActionMessageLog
+import { AgentStep, AgentAction, AgentFinish } from "@langchain/core/agents";
 
-def first_agent(inputs):
-    action = AgentActionMessageLog(
-      # We force call this tool
-      tool="tavily_search_results_json", 
-      # We just pass in the `input` key to this tool
-      tool_input=inputs["input"], 
-      log="", 
-      message_log=[]
-    )
-    inputs["agent_outcome"] = action
-    return inputs
+// Define the data type that the agent will return.
+type AgentData = {
+  input: string;
+  steps: Array<AgentStep>;
+  agentOutcome?: AgentAction | AgentFinish;
+};
+
+const firstAgent = (inputs: AgentData) => {
+  const newInputs = inputs;
+  const action = {
+    // We force call this tool
+    tool: "tavily_search_results_json",
+    // We just pass in the `input` key to this tool
+    toolInput: newInputs.input,
+    log: ""
+  };
+  newInputs.agentOutcome = action;
+  return newInputs;
+};
 ```
 
 #### Create the graph
@@ -377,11 +385,10 @@ We can now create a new graph with this new node
 ```typescript
 workflow = Graph()
 
-# Add the same nodes as before, plus this "first agent"
-workflow.add_node("first_agent", first_agent)
-workflow.add_node("agent", agent)
-workflow.add_node("tools", execute_tools)
-
+// Add the same nodes as before, plus this "first agent"
+workflow.addNode("firstAgent", firstAgent);
+workflow.addNode("agent", agent);
+workflow.addNode("tools", executeTools);
 # We now set the entry point to be this first agent
 workflow.set_entry_point("first_agent")
 
