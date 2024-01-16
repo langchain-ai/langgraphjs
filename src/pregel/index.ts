@@ -157,16 +157,11 @@ export class Channel {
   }
 }
 
-export interface PregelInterface<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any
-> {
+export interface PregelInterface {
   /**
    * @default {}
    */
-  channels?: Record<string, BaseChannel<RunOutput>>;
+  channels?: Record<string, BaseChannel>;
   /**
    * @default "output"
    */
@@ -184,29 +179,31 @@ export interface PregelInterface<
    */
   debug?: boolean;
 
-  nodes: Record<
-    string,
-    ChannelInvoke<RunInput, RunOutput> | ChannelBatch<RunInput, RunOutput>
-  >;
+  nodes: Record<string, ChannelInvoke | ChannelBatch>;
 
   saver?: BaseCheckpointSaver;
 
   stepTimeout?: number;
 }
 
-export class Pregel<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunInput = any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunOutput = any
-  >
-  extends Runnable<RunInput, RunOutput>
-  implements PregelInterface<RunInput, RunOutput>
+export interface PregelOptions extends RunnableConfig {
+  outputKeys?: string | string[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type PregelInputType = any;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type PregelOutputType = any;
+
+export class Pregel
+  extends Runnable<PregelInputType, PregelOutputType, PregelOptions>
+  implements PregelInterface
 {
   // Because Pregel extends `Runnable`.
   lc_namespace = ["langgraph", "pregel"];
 
-  channels: Record<string, BaseChannel<RunOutput>> = {};
+  channels: Record<string, BaseChannel> = {};
 
   output: string | Array<string> = "output";
 
@@ -216,16 +213,13 @@ export class Pregel<
 
   debug: boolean = false;
 
-  nodes: Record<
-    string,
-    ChannelInvoke<RunInput, RunOutput> | ChannelBatch<RunInput, RunOutput>
-  >;
+  nodes: Record<string, ChannelInvoke | ChannelBatch>;
 
   saver?: BaseCheckpointSaver;
 
   stepTimeout?: number;
 
-  constructor(fields: PregelInterface<RunInput, RunOutput>) {
+  constructor(fields: PregelInterface) {
     super();
 
     this.channels = fields.channels ?? this.channels;
@@ -240,58 +234,20 @@ export class Pregel<
     // Bind the method to the instance
     this._transform = this._transform.bind(this);
 
-    validateGraph<RunInput, RunOutput>({
+    validateGraph({
       nodes: this.nodes,
       channels: this.channels,
       output: this.output,
       input: this.input,
+      hidden: this.hidden,
     });
   }
 
-  async batch(
-    inputs: RunInput[],
-    options?:
-      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)
-      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)[],
-    batchOptions?: RunnableBatchOptions & { returnExceptions: true }
-  ): Promise<(RunOutput | Error)[]>;
-
-  async batch(
-    inputs: RunInput[],
-    options?:
-      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)
-      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)[],
-    batchOptions?: RunnableBatchOptions & { returnExceptions?: false }
-  ): Promise<RunOutput[]>;
-
-  async batch(
-    inputs: RunInput[],
-    options?:
-      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)
-      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)[],
-    batchOptions?: RunnableBatchOptions
-  ): Promise<(RunOutput | Error)[]>;
-
-  async batch(
-    inputs: RunInput[],
-    options?:
-      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)
-      | (Partial<RunnableConfig> & Partial<Record<string, unknown>>)[],
-    batchOptions?: RunnableBatchOptions & { returnExceptions?: boolean }
-  ): Promise<(RunOutput | Error)[] | RunOutput[]> {
-    // Call the batch method from the parent class with the options and batchOptions
-    return super.batch(
-      inputs,
-      options as Partial<RunnableConfig> | Partial<RunnableConfig>[],
-      batchOptions
-    );
-  }
-
   async *_transform(
-    input: AsyncGenerator<RunInput>,
+    input: AsyncGenerator<PregelInputType>,
     runManager?: CallbackManagerForChainRun,
     config?: RunnableConfig & Partial<Record<string, unknown>>
-  ): AsyncGenerator<RunOutput> {
+  ): AsyncGenerator<PregelOutputType> {
     const newConfig: RunnableConfig & Partial<Record<string, unknown>> =
       config?.recursionLimit === undefined
         ? {
@@ -332,10 +288,7 @@ export class Pregel<
     checkpoint = checkpoint ?? emptyCheckpoint();
 
     // create channels from checkpoint
-    const manager = new ChannelsManager<RunOutput>(
-      this.channels,
-      checkpoint
-    ).manage();
+    const manager = new ChannelsManager(this.channels, checkpoint).manage();
     for await (const channels of manager) {
       // map inputs to channel updates
       const thisInput = this.input;
@@ -343,20 +296,14 @@ export class Pregel<
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pendingWritesDeque: Array<[string, any]> = [];
       for await (const c of input) {
-        for (const value of mapInput<RunInput>(thisInput, c)) {
+        for (const value of mapInput(thisInput, c)) {
           pendingWritesDeque.push(value);
         }
       }
 
-      _applyWrites<RunOutput>(
-        checkpoint,
-        channels,
-        pendingWritesDeque,
-        newConfig,
-        0
-      );
+      _applyWrites(checkpoint, channels, pendingWritesDeque, newConfig, 0);
 
-      const read = (chan: string) => _readChannel<RunOutput>(channels, chan);
+      const read = (chan: string) => _readChannel(channels, chan);
 
       // Similarly to Bulk Synchronous Parallel / Pregel model
       // computation proceeds in steps, while there are channel updates
@@ -415,33 +362,23 @@ export class Pregel<
             }
         );
 
-        await executeTasks<RunOutput>(tasks, this.stepTimeout);
+        await executeTasks(tasks, this.stepTimeout);
 
         // apply writes to channels
-        _applyWrites<RunOutput>(
-          checkpoint,
-          channels,
-          pendingWrites,
-          newConfig,
-          step + 1
-        );
+        _applyWrites(checkpoint, channels, pendingWrites, newConfig, step + 1);
 
         // yield current value and checkpoint view
-        const stepOutput = mapOutput<RunOutput>(
-          newOutputs,
-          pendingWrites,
-          channels
-        );
+        const stepOutput = mapOutput(newOutputs, pendingWrites, channels);
 
         if (stepOutput) {
           if (typeof stepOutput === "object" && MISSING_KEY in stepOutput) {
-            yield stepOutput[MISSING_KEY] as RunOutput;
+            yield stepOutput[MISSING_KEY];
           } else {
             yield stepOutput;
           }
           // we can detect updates when output is multiple channels (ie. object)
           if (typeof newOutputs !== "string") {
-            _applyWritesFromView<RunOutput>(checkpoint, channels, stepOutput);
+            _applyWritesFromView(checkpoint, channels, stepOutput);
           }
         }
 
@@ -461,10 +398,10 @@ export class Pregel<
   }
 
   async invoke(
-    input: RunInput,
+    input: PregelInputType,
     config?: RunnableConfig,
     output?: string | Array<string>
-  ): Promise<RunOutput> {
+  ): Promise<PregelOutputType> {
     let newOutput = output;
     if (newOutput === undefined) {
       if (config && "output" in config) {
@@ -474,22 +411,22 @@ export class Pregel<
       }
     }
 
-    let latest: RunOutput | undefined;
+    let latest: PregelOutputType | undefined;
     for await (const chunk of await this.stream(input, config, newOutput)) {
       latest = chunk;
     }
     if (!latest) {
-      return undefined as RunOutput;
+      return undefined as PregelOutputType;
     }
     return latest;
   }
 
   async stream(
-    input: RunInput,
+    input: PregelInputType,
     config?: RunnableConfig,
     output?: string | Array<string>
-  ): Promise<IterableReadableStream<RunOutput>> {
-    const inputIterator: AsyncGenerator<RunInput> = (async function* () {
+  ): Promise<IterableReadableStream<PregelOutputType>> {
+    const inputIterator: AsyncGenerator<PregelInputType> = (async function* () {
       yield input;
     })();
     return IterableReadableStream.fromAsyncGenerator(
@@ -498,12 +435,12 @@ export class Pregel<
   }
 
   async *transform(
-    generator: AsyncGenerator<RunInput>,
+    generator: AsyncGenerator<PregelInputType>,
     config?: RunnableConfig & Partial<Record<string, unknown>>
-  ): AsyncGenerator<RunOutput> {
+  ): AsyncGenerator<PregelOutputType> {
     for await (const chunk of this._transformStreamWithConfig<
-      RunInput,
-      RunOutput
+      PregelInputType,
+      PregelOutputType
     >(generator, this._transform, config)) {
       yield chunk;
     }
@@ -544,13 +481,10 @@ async function executeTasks<RunOutput>(
   }
 }
 
-function _readChannel<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any
->(
-  channels: Record<string, BaseChannel<RunOutput>>,
+function _readChannel(
+  channels: Record<string, BaseChannel>,
   chan: string
-): RunOutput | null {
+): unknown | null {
   try {
     return channels[chan].get();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -562,12 +496,9 @@ function _readChannel<
   }
 }
 
-function _applyWrites<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any
->(
+function _applyWrites(
   checkpoint: Checkpoint,
-  channels: Record<string, BaseChannel<RunOutput>>,
+  channels: Record<string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   pendingWrites: Array<[string, any]>,
   config: RunnableConfig,
@@ -624,12 +555,9 @@ function _applyWrites<
   }
 }
 
-function _applyWritesFromView<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any
->(
+function _applyWritesFromView(
   checkpoint: Checkpoint,
-  channels: Record<string, BaseChannel<RunOutput>>,
+  channels: Record<string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   values: Record<string, any>
 ) {
@@ -648,18 +576,10 @@ function _applyWritesFromView<
   }
 }
 
-function _prepareNextTasks<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any
->(
+function _prepareNextTasks(
   checkpoint: Checkpoint,
-  processes: Record<
-    string,
-    ChannelInvoke<RunInput, RunOutput> | ChannelBatch<RunInput, RunOutput>
-  >,
-  channels: Record<string, BaseChannel<RunOutput>>
+  processes: Record<string, ChannelInvoke | ChannelBatch>,
+  channels: Record<string, BaseChannel>
 ): Array<[RunnableInterface, unknown, string]> {
   const tasks: Array<[RunnableInterface, unknown, string]> = [];
 
@@ -726,7 +646,7 @@ function _prepareNextTasks<
           // must be initialized if the previous `if` condition is true
           let val = channels[proc.channel].get();
           if (proc.key !== undefined) {
-            val = [{ [proc.key]: val }] as RunOutput;
+            val = [{ [proc.key]: val }];
           }
           tasks.push([proc, val, name]);
           seen[proc.channel] = checkpoint.channelVersions[proc.channel];

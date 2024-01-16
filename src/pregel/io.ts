@@ -3,18 +3,16 @@ import { BaseChannel } from "../channels/base.js";
 /**
  * Map input chunk to a sequence of pending writes in the form [channel, value].
  */
-export function* mapInput<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any
->(
+export function* mapInput(
   inputChannels: string | Array<string>,
-  chunk?: RunInput
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  chunk?: any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Generator<[string, any]> {
   if (typeof inputChannels === "string") {
     yield [inputChannels, chunk];
   } else {
-    if (chunk && typeof chunk !== "object") {
+    if ((chunk && typeof chunk !== "object") || Array.isArray(chunk)) {
       throw new Error(`Expected chunk to be an object, got ${typeof chunk}`);
     }
     for (const k in chunk) {
@@ -30,15 +28,13 @@ export function* mapInput<
 /**
  * Map pending writes (a list of [channel, value]) to output chunk.
  */
-export function mapOutput<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any
->(
+export function mapOutput(
   outputChannels: string | Array<string>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   pendingWrites: Array<[string, any]>,
-  channels: Record<string, BaseChannel<RunOutput>>
-): RunOutput | undefined {
+  channels: Record<string, BaseChannel>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): any | undefined {
   if (typeof outputChannels === "string") {
     if (pendingWrites.some(([chan, _]) => chan === outputChannels)) {
       return channels[outputChannels].get();
@@ -52,7 +48,7 @@ export function mapOutput<
       return updated.reduce((acc: Record<string, any>, chan) => {
         acc[chan] = channels[chan].get();
         return acc;
-      }, {}) as RunOutput;
+      }, {});
     }
   }
   return undefined;

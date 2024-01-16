@@ -3,24 +3,18 @@ import { LastValue } from "../channels/last_value.js";
 import { ChannelBatch, ChannelInvoke } from "./read.js";
 import { ReservedChannels } from "./reserved.js";
 
-export function validateGraph<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any
->({
+export function validateGraph({
   nodes,
   channels,
   input,
   output,
+  hidden,
 }: {
-  nodes: Record<
-    string,
-    ChannelInvoke<RunInput, RunOutput> | ChannelBatch<RunInput, RunOutput>
-  >;
-  channels: { [key: string]: BaseChannel<RunOutput> };
+  nodes: Record<string, ChannelInvoke | ChannelBatch>;
+  channels: { [key: string]: BaseChannel };
   input: string | Array<string>;
   output: string | Array<string>;
+  hidden: Array<string>;
 }): void {
   const newChannels = channels;
   const subscribedChannels = new Set<string>();
@@ -92,6 +86,25 @@ export function validateGraph<
     if (!(chan in newChannels)) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       newChannels[chan] = new LastValue<any>();
+    }
+  }
+
+  validateKeys(hidden, newChannels);
+}
+
+export function validateKeys(
+  keys: string | Array<string>,
+  channels: { [key: string]: BaseChannel }
+): void {
+  if (Array.isArray(keys)) {
+    for (const key of keys) {
+      if (!(key in channels)) {
+        throw new Error(`Key ${key} not found in channels`);
+      }
+    }
+  } else {
+    if (!(keys in channels)) {
+      throw new Error(`Key ${keys} not found in channels`);
     }
   }
 }
