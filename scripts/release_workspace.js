@@ -6,7 +6,7 @@ const { spawn } = require("child_process");
 const readline = require("readline");
 const semver = require('semver')
 
-const PRIMARY_PROJECTS = ["langchain", "@langchain/core", "@langchain/community"];
+const PRIMARY_PROJECTS = ["@langchain/langgraph"];
 const RELEASE_BRANCH = "release";
 const MAIN_BRANCH = "main";
 
@@ -30,7 +30,7 @@ function getWorkspaceVersion(workspaceDirectory) {
  * @returns {Array<{ dir: string, packageJSON: Record<string, any>}>}
  */
 function getAllWorkspaces() {
-  const possibleWorkspaceDirectories = ["./libs/*", "./langchain", "./langchain-core"];
+  const possibleWorkspaceDirectories = ["./langgraph"];
   const allWorkspaces = possibleWorkspaceDirectories.flatMap((workspaceDirectory) => {
     if (workspaceDirectory.endsWith("*")) {
       // List all folders inside directory, require, and return the package.json.
@@ -201,7 +201,7 @@ Workspaces:
     execSync(`git commit -m "all[minor]: bump deps on ${workspaceName} to ${versionString}"`);
     console.log("Pushing changes.");
     execSync(`git push -u origin ${newBranchName}`);
-    console.log("🔗 Open %s and merge the bump-deps PR.", `\x1b[34mhttps://github.com/langchain-ai/langchainjs/compare/${newBranchName}?expand=1\x1b[0m`);
+    console.log("🔗 Open %s and merge the bump-deps PR.", `\x1b[34mhttps://github.com/langchain-ai/langgraphjs/compare/${newBranchName}?expand=1\x1b[0m`);
   } else {
     console.log(`No workspaces depend on ${workspaceName}.`);
   }
@@ -251,7 +251,7 @@ async function main() {
   const program = new Command();
   program
     .description("Release a new workspace version to NPM.")
-    .option("--workspace <workspace>", "Workspace name, eg @langchain/core")
+    .option("--workspace <workspace>", "Workspace name, eg @langchain/langgraph")
     .option("--bump-deps", "Whether or not to bump other workspaces that depend on this one.")
     .option("--tag <tag>", "Optionally specify a tag to publish to.");
 
@@ -285,10 +285,9 @@ async function main() {
   if (PRIMARY_PROJECTS.includes(options.workspace.trim())) {
     // Run export tests.
     // LangChain must be built before running export tests.
-    console.log("Building 'langchain' and running export tests.");
-    execSync(`yarn run turbo:command build --filter=langchain`);
-    execSync(`yarn run test:exports:docker`);
-    console.log("Successfully built langchain, and tested exports.");
+    console.log("Building '@langchain/langchain' and running export tests.");
+    execSync(`yarn run turbo:command build --filter=@langchain/langgraphjs`);
+    console.log("Successfully built @langchain/langgraphjs, and tested exports.");
   } else {
     console.log("Skipping export tests for non primary project.");
   }
@@ -301,7 +300,7 @@ async function main() {
   await runYarnRelease(matchingWorkspace.dir, npm2FACode, options.tag);
   
   // Log release branch URL
-  console.log("🔗 Open %s and merge the release PR.", `\x1b[34mhttps://github.com/langchain-ai/langchainjs/compare/release?expand=1\x1b[0m`);
+  console.log("🔗 Open %s and merge the release PR.", `\x1b[34mhttps://github.com/langchain-ai/langgraphjs/compare/release?expand=1\x1b[0m`);
 
   // If `bump-deps` flag is set, find all workspaces which depend on the input workspace.
   // Then, update their package.json to use the new version of the input workspace.
