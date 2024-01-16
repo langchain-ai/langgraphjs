@@ -1,7 +1,6 @@
 /* eslint-disable no-process-env */
 import { it, expect, jest, beforeAll } from "@jest/globals";
 import { RunnablePassthrough } from "@langchain/core/runnables";
-import { Channel, Pregel } from "../index.js";
 import { LastValue } from "../channels/last_value.js";
 import { Graph } from "../graph/index.js";
 import { ReservedChannels } from "../pregel/reserved.js";
@@ -10,6 +9,7 @@ import { ChannelInvoke } from "../pregel/read.js";
 import { InvalidUpdateError } from "../channels/base.js";
 import { MemorySaver } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
+import { Channel, Pregel } from "../pregel/index.js";
 
 // If you have LangSmith set then it slows down the tests
 // immensely, and will most likely rate limit your account.
