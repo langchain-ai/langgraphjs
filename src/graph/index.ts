@@ -27,7 +27,7 @@ class Branch<
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public runnable(input: any): Runnable<RunInput, RunOutput> {
+  public runnable(input: any): Runnable {
     const result = this.condition(input);
     const destination = this.ends[result];
     return Channel.writeTo<RunInput, RunOutput>(

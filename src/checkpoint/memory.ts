@@ -11,7 +11,7 @@ export class MemorySaver extends BaseCheckpointSaver {
   get configSpecs(): ConfigurableFieldSpec[] {
     return [
       {
-        id: "thread_id",
+        id: "threadId",
         name: "Thread ID",
         annotation: null,
         description: null,
@@ -23,10 +23,10 @@ export class MemorySaver extends BaseCheckpointSaver {
   }
 
   get(config: RunnableConfig): Checkpoint | undefined {
-    return this.storage[config.configurable?.thread_id];
+    return this.storage[config.configurable?.threadId];
   }
 
   put(config: RunnableConfig, checkpoint: Checkpoint): void {
-    this.storage[config.configurable?.thread_id] = checkpoint;
+    this.storage[config.configurable?.threadId] = checkpoint;
   }
 }

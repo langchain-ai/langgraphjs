@@ -2,6 +2,7 @@ import {
   Runnable,
   RunnableBatchOptions,
   RunnableConfig,
+  RunnableInterface,
   _coerceToRunnable,
 } from "@langchain/core/runnables";
 import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
@@ -125,22 +126,34 @@ export class Channel {
     RunInput = any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     RunOutput = any
-  >(
-    channels: string[] | string,
-    values?: { [key: string]: WriteValue }
-  ): ChannelWrite<RunInput, RunOutput> {
-    const channelWrites: Array<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  >(...args: any[]): ChannelWrite<RunInput, RunOutput> {
+    // const channelPairs: Array<[string, WriteValue<RunInput, RunOutput>]> =
+    //   channels.map((c) => [c, undefined]);
+    // return new ChannelWrite<RunInput, RunOutput>(channelPairs);
+    const channelPairs: Array<
       [string, Runnable<RunInput, RunOutput> | undefined]
-    > = Array.isArray(channels)
-      ? channels.map((c) => [c, undefined])
-      : [[channels, undefined]];
+    > = [];
 
-    const newValues = values ?? {};
-    Object.entries(newValues).forEach(([k, v]) => {
-      channelWrites.push([k, _coerceWriteValue<RunInput, RunOutput>(v)]);
-    });
+    if (args.length === 1 && typeof args[0] === "object") {
+      // Handle the case where named arguments are passed as an object
+      const additionalArgs = args[0];
+      Object.entries(additionalArgs).forEach(([key, value]) => {
+        channelPairs.push([key, _coerceWriteValue(value)]);
+      });
+    } else {
+      args.forEach((channel) => {
+        if (typeof channel === "string") {
+          channelPairs.push([channel, undefined]);
+        } else if (typeof channel === "object") {
+          Object.entries(channel).forEach(([key, value]) => {
+            channelPairs.push([key, _coerceWriteValue(value)]);
+          });
+        }
+      });
+    }
 
-    return new ChannelWrite<RunInput, RunOutput>(channelWrites);
+    return new ChannelWrite(channelPairs);
   }
 }
 
@@ -287,9 +300,6 @@ export class Pregel<
           }
         : config;
 
-    if (!newConfig.output) {
-      throw new Error("No output specified");
-    }
     if (
       newConfig.recursionLimit === undefined ||
       newConfig.recursionLimit < 1
@@ -337,6 +347,7 @@ export class Pregel<
           pendingWritesDeque.push(value);
         }
       }
+      console.log("pendingWritesDeque", pendingWritesDeque);
       _applyWrites<RunOutput>(
         checkpoint,
         channels,
@@ -362,8 +373,16 @@ export class Pregel<
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const pendingWrites: Array<[string, any]> = [];
 
-        const tasksWithConfig: Array<[Runnable, unknown, RunnableConfig]> =
-          nextTasks.map(([proc, input, name]) => [
+        const tasksWithConfig: Array<
+          [RunnableInterface, unknown, RunnableConfig]
+        > = nextTasks.map(([proc, input, name]) => {
+          if (
+            !("_patchConfig" in proc) ||
+            typeof proc._patchConfig !== "function"
+          ) {
+            throw new Error("Runnable must implement _patchConfig");
+          }
+          return [
             proc,
             input,
             proc._patchConfig(
@@ -371,6 +390,7 @@ export class Pregel<
                 ...newConfig,
                 runName: name,
                 configurable: {
+                  ...newConfig.configurable,
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   [CONFIG_KEY_SEND]: (items: [string, any][]) =>
                     pendingWrites.push(...items),
@@ -379,7 +399,8 @@ export class Pregel<
               },
               runManager?.getChild(`graph:step:${step}`)
             ),
-          ]);
+          ];
+        });
 
         // execute tasks, and wait for one to fail or all to finish.
         // each task is independent from all other concurrent tasks
@@ -468,8 +489,6 @@ export class Pregel<
     config?: RunnableConfig,
     output?: string | Array<string>
   ): Promise<IterableReadableStream<RunOutput>> {
-    // Convert the input object into an iterator
-    // @TODO check this?
     const inputIterator: AsyncGenerator<RunInput> = (async function* () {
       yield input;
     })();
@@ -482,7 +501,6 @@ export class Pregel<
     generator: AsyncGenerator<RunInput>,
     config?: RunnableConfig & Partial<Record<string, unknown>>
   ): AsyncGenerator<RunOutput> {
-    // @TODO figure out how to pass output through
     for await (const chunk of this._transformStreamWithConfig<
       RunInput,
       RunOutput
@@ -642,8 +660,8 @@ function _prepareNextTasks<
     ChannelInvoke<RunInput, RunOutput> | ChannelBatch<RunInput, RunOutput>
   >,
   channels: Record<string, BaseChannel<RunOutput>>
-): Array<[Runnable, unknown, string]> {
-  const tasks: Array<[Runnable, unknown, string]> = [];
+): Array<[RunnableInterface, unknown, string]> {
+  const tasks: Array<[RunnableInterface, unknown, string]> = [];
 
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
@@ -690,7 +708,7 @@ function _prepareNextTasks<
 
             // skip if condition is not met
             if (proc.when === undefined || proc.when(val)) {
-              tasks.push([proc as Runnable, val, name]);
+              tasks.push([proc, val, name]);
             }
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } catch (error: any) {
@@ -708,9 +726,9 @@ function _prepareNextTasks<
           // must be initialized if the previous `if` condition is true
           let val = channels[proc.channel].get();
           if (proc.key !== undefined) {
-            val = [{ [proc.key]: val }];
+            val = [{ [proc.key]: val }] as RunOutput;
           }
-          tasks.push([proc as Runnable, val, name]);
+          tasks.push([proc, val, name]);
           seen[proc.channel] = checkpoint.channelVersions[proc.channel];
         }
       }

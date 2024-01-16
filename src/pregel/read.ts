@@ -199,7 +199,12 @@ export class ChannelBatch<
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: this.bound.pipe(joiner),
+        bound: this.bound.pipe(
+          joiner as unknown as RunnableLike<
+            RunOutput,
+            Record<string, unknown> & { [x: string]: unknown }
+          >
+        ),
       });
     }
   }
@@ -218,7 +223,7 @@ export class ChannelBatch<
       return new ChannelBatch<RunInput, RunOutput>({
         channel: this.channel,
         key: this.key,
-        bound: this.pipe<RunOutput>(this.bound ?? coerceable),
+        bound: this.bound.pipe<RunOutput>(this.bound ?? coerceable),
       });
     }
   }
