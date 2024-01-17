@@ -306,7 +306,7 @@ export class Pregel
               [CONFIG_KEY_READ]: read,
             },
           },
-          { callbacks: runManager?.getChild(`graph:step:${step}`) }
+          { callbacks: runManager?.getChild(`graph:step:${step}`) },
         ),
       ]);
 
