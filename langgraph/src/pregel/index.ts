@@ -30,6 +30,13 @@ import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
+export class GraphRecursionError extends Error {
+  constructor(message?: string) {
+    super(message);
+    this.name = "GraphRecursionError";
+  }
+}
+
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
 function _coerceWriteValue(value: WriteValue): Runnable {
@@ -267,11 +274,15 @@ export class Pregel
     // channels are guaranteed to be immutable for the duration of the step,
     // with channel updates applied only at the transition between steps
     const recursionLimit = config.recursionLimit ?? DEFAULT_RECURSION_LIMIT;
-    for (let step = 0; step < recursionLimit; step += 1) {
+    for (let step = 0; step < recursionLimit + 1; step += 1) {
       const nextTasks = _prepareNextTasks(checkpoint, processes, channels);
       // if no more tasks, we're done
       if (nextTasks.length === 0) {
         break;
+      } else if (step === config.recursionLimit) {
+        throw new GraphRecursionError(
+          `Recursion limit of ${config.recursionLimit} reached without hitting a stop condition. You can increase the limit by setting the "recursionLimit" config key.`
+        );
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
