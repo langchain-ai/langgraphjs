@@ -5,7 +5,7 @@ import {
   RunnableFunc,
   RunnableInterface,
   RunnableLike,
-  _coerceToRunnable,
+  _coerceToRunnable
 } from "@langchain/core/runnables";
 import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
@@ -13,13 +13,13 @@ import {
   BaseChannel,
   EmptyChannelError,
   createCheckpoint,
-  emptyChannels,
+  emptyChannels
 } from "../channels/base.js";
 import {
   BaseCheckpointSaver,
   Checkpoint,
   CheckpointAt,
-  emptyCheckpoint,
+  emptyCheckpoint
 } from "../checkpoint/base.js";
 import { ChannelBatch, ChannelInvoke } from "./read.js";
 import { validateGraph } from "./validate.js";
@@ -29,6 +29,13 @@ import { ChannelWrite } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
 
 const DEFAULT_RECURSION_LIMIT = 25;
+
+class GraphRecursionError extends Error {
+  constructor(message?: string) {
+    super(message);
+    this.name = "GraphRecursionError";
+  }
+}
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -90,14 +97,14 @@ export class Channel {
     return new ChannelInvoke({
       channels: channelMappingOrString,
       triggers,
-      when,
+      when
     });
   }
 
   static subscribeToEach(inbox: string, key?: string): ChannelBatch {
     return new ChannelBatch({
       channel: inbox,
-      key,
+      key
     });
   }
 
@@ -212,7 +219,7 @@ export class Pregel
       channels: this.channels,
       output: this.output,
       input: this.input,
-      hidden: this.hidden,
+      hidden: this.hidden
     });
   }
 
@@ -267,11 +274,15 @@ export class Pregel
     // channels are guaranteed to be immutable for the duration of the step,
     // with channel updates applied only at the transition between steps
     const recursionLimit = config.recursionLimit ?? DEFAULT_RECURSION_LIMIT;
-    for (let step = 0; step < recursionLimit; step += 1) {
+    for (let step = 0; step < recursionLimit + 1; step += 1) {
       const nextTasks = _prepareNextTasks(checkpoint, processes, channels);
       // if no more tasks, we're done
       if (nextTasks.length === 0) {
         break;
+      } else if (step === config.recursionLimit) {
+        throw new GraphRecursionError(
+          `Recursion limit of ${config.recursionLimit} reached without hitting a stop condition. You can increase the limit by setting the "recursionLimit" config key.`
+      )
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -291,11 +302,11 @@ export class Pregel
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               [CONFIG_KEY_SEND]: (items: [string, any][]) =>
                 pendingWrites.push(...items),
-              [CONFIG_KEY_READ]: read,
-            },
+              [CONFIG_KEY_READ]: read
+            }
           },
           runManager?.getChild(`graph:step:${step}`)
-        ),
+        )
       ]);
 
       // execute tasks, and wait for one to fail or all to finish.
@@ -394,7 +405,7 @@ async function executeTasks<RunOutput>(
     stepTimeout
       ? Promise.race([
           task(),
-          stepTimeout ? timeout(stepTimeout) : Promise.resolve(),
+          stepTimeout ? timeout(stepTimeout) : Promise.resolve()
         ])
       : task()
   );
@@ -452,7 +463,7 @@ function _applyWrites(
 
   // Update reserved channels
   pendingWritesByChannel[ReservedChannels.isLastStep] = [
-    forStep + 1 === config.recursionLimit,
+    forStep + 1 === config.recursionLimit
   ];
 
   const updatedChannels: Set<string> = new Set();
