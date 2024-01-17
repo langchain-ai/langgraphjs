@@ -6,6 +6,7 @@ import {
   RunnableInterface,
   RunnableLike,
   _coerceToRunnable,
+  patchConfig,
 } from "@langchain/core/runnables";
 import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
@@ -293,7 +294,7 @@ export class Pregel
       > = nextTasks.map(([proc, input, name]) => [
         proc,
         input,
-        (proc as Runnable)._patchConfig(
+        patchConfig(
           {
             ...config,
             runName: name,
