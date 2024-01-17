@@ -74,11 +74,15 @@ interface ChannelInvokeArgs<RunInput, RunOutput>
   when?: (args: any) => boolean;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ChannelInvokeInputType = any;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ChannelInvokeOutputType = any;
+
 export class ChannelInvoke<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any
+  RunInput = ChannelInvokeInputType,
+  RunOutput = ChannelInvokeOutputType
 > extends RunnableBinding<RunInput, RunOutput, RunnableConfig> {
   lc_graph_name = "ChannelInvoke";
 
@@ -147,30 +151,33 @@ export class ChannelInvoke<
   }
 }
 
-interface ChannelBatchArgs<RunInput, RunOutput> {
+interface ChannelBatchArgs {
   channel: string;
   key?: string;
-  bound?: Runnable<RunInput, RunOutput, RunnableConfig>;
+  bound?: Runnable;
 }
 
-export class ChannelBatch<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any
-> extends RunnableEach<RunInput, RunOutput, RunnableConfig> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ChannelBatchInputType = any;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ChannelBatchOutputType = any;
+
+export class ChannelBatch extends RunnableEach<
+  ChannelBatchInputType,
+  ChannelBatchOutputType,
+  RunnableConfig
+> {
   lc_graph_name = "ChannelBatch";
 
   channel: string;
 
   key?: string;
 
-  constructor(fields: ChannelBatchArgs<RunInput, RunOutput>) {
+  constructor(fields: ChannelBatchArgs) {
     super({
       ...fields,
-      bound:
-        fields.bound ??
-        (defaultRunnableBound as unknown as Runnable<RunInput, RunOutput>),
+      bound: fields.bound ?? defaultRunnableBound,
     });
 
     this.channel = fields.channel;
@@ -199,28 +206,22 @@ export class ChannelBatch<
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: this.bound.pipe(
-          joiner as unknown as RunnableLike<
-            RunOutput,
-            Record<string, unknown> & { [x: string]: unknown }
-          >
-        ),
+        bound: this.bound.pipe(joiner),
       });
     }
   }
 
-  pipe<NewRunOutput>(
-    coerceable: RunnableLike<RunOutput, NewRunOutput>
-  ): ChannelBatch<RunInput, NewRunOutput> {
+  // @ts-expect-error TODO: fix later
+  pipe(coerceable: RunnableLike): ChannelBatch {
     if (this.bound === defaultRunnableBound) {
-      return new ChannelBatch<RunInput, RunOutput>({
+      return new ChannelBatch({
         channel: this.channel,
         key: this.key,
         bound: _coerceToRunnable(coerceable),
       });
     } else {
       // Delegate to `or` in `this.bound`
-      return new ChannelBatch<RunInput, RunOutput>({
+      return new ChannelBatch({
         channel: this.channel,
         key: this.key,
         bound: this.bound.pipe(coerceable),
