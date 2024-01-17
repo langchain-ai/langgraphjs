@@ -30,7 +30,7 @@ import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
-class GraphRecursionError extends Error {
+export class GraphRecursionError extends Error {
   constructor(message?: string) {
     super(message);
     this.name = "GraphRecursionError";

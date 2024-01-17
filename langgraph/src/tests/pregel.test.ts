@@ -9,7 +9,7 @@ import { ChannelInvoke } from "../pregel/read.js";
 import { InvalidUpdateError } from "../channels/base.js";
 import { MemorySaver } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
-import { Channel, Pregel } from "../pregel/index.js";
+import { Channel, GraphRecursionError, Pregel } from "../pregel/index.js";
 
 // If you have LangSmith set then it slows down the tests
 // immensely, and will most likely rate limit your account.
@@ -170,7 +170,7 @@ it("should invoke two processes and get correct output", async () => {
     nodes: { one, two },
   });
 
-  await expect(app.invoke(2, { recursionLimit: 1 })).rejects.toThrowError();
+  await expect(app.invoke(2, { recursionLimit: 1 })).rejects.toThrow(GraphRecursionError);
 
   expect(await app.invoke(2)).toEqual(4);
 
