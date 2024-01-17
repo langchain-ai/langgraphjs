@@ -170,7 +170,9 @@ it("should invoke two processes and get correct output", async () => {
     nodes: { one, two },
   });
 
-  await expect(app.invoke(2, { recursionLimit: 1 })).rejects.toThrow(GraphRecursionError);
+  await expect(app.invoke(2, { recursionLimit: 1 })).rejects.toThrow(
+    GraphRecursionError
+  );
 
   expect(await app.invoke(2)).toEqual(4);
 

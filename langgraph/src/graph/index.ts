@@ -149,7 +149,7 @@ export class Graph<
 
     const nodes: Record<
       string,
-      ChannelInvoke<RunInput, RunOutput> | ChannelBatch<RunInput, RunOutput>
+      ChannelInvoke<RunInput, RunOutput> | ChannelBatch
     > = {};
     for (const [key, node] of Object.entries(this.nodes)) {
       nodes[key] = Channel.subscribeTo(`${key}:inbox`)
