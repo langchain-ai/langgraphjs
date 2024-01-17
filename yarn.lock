@@ -787,6 +787,23 @@
     zod "^3.22.3"
     zod-to-json-schema "3.20.3"
 
+"@langchain/core@^0.1.15":
+  version "0.1.15"
+  resolved "https://registry.yarnpkg.com/@langchain/core/-/core-0.1.15.tgz#ae6c19ec07bab6781347f51418bac81c3d911d91"
+  integrity sha512-H8AH8srLYW/xLx4ziZ51uxL0FSpLf0iRJktTBMsgJDkLtMcCIO4JiP6XyBUvaxWAnh/GrtMEMh/a8gq/CvJdMA==
+  dependencies:
+    ansi-styles "^5.0.0"
+    camelcase "6"
+    decamelize "1.2.0"
+    js-tiktoken "^1.0.8"
+    langsmith "~0.0.48"
+    ml-distance "^4.0.0"
+    p-queue "^6.6.2"
+    p-retry "4"
+    uuid "^9.0.0"
+    zod "^3.22.3"
+    zod-to-json-schema "3.20.3"
+
 "@langchain/openai@^0.0.12", "@langchain/openai@~0.0.10", "@langchain/openai@~0.0.12":
   version "0.0.12"
   resolved "https://registry.yarnpkg.com/@langchain/openai/-/openai-0.0.12.tgz#4c6a4dda3ca96f103482f389299e018340aa2b75"

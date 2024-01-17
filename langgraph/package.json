@@ -33,7 +33,7 @@
   "license": "MIT",
   "dependencies": {
     "@langchain/community": "^0.0.17",
-    "@langchain/core": "^0.1.14",
+    "@langchain/core": "^0.1.15",
     "@langchain/openai": "^0.0.12",
     "langchain": "^0.1.3"
   },
