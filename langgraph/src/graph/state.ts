@@ -55,7 +55,7 @@ export class StateGraph<T> extends Graph {
       const edgesKey = `${key}:edges`;
       if (outgoing || this.branches[key]) {
         nodes[edgesKey] = Channel.subscribeTo(key, {
-          tags: ["langsmith:hidden"]
+          tags: ["langsmith:hidden"],
         }).pipe(new ChannelRead(stateKeys));
       }
       if (outgoing) {
@@ -65,7 +65,7 @@ export class StateGraph<T> extends Graph {
         for (const branch of this.branches[key]) {
           nodes[edgesKey] = nodes[edgesKey].pipe(
             new RunnableLambda({
-              func: (input) => branch.runnable(input)
+              func: (input) => branch.runnable(input),
             })
           );
         }
@@ -73,13 +73,13 @@ export class StateGraph<T> extends Graph {
     }
 
     nodes[START] = Channel.subscribeTo(`${START}:inbox`, {
-      tags: ["langsmith:hidden"]
+      tags: ["langsmith:hidden"],
     })
       .pipe(_updateState)
       .pipe(Channel.writeTo(START));
 
     nodes[`${START}:edges`] = Channel.subscribeTo(START, {
-      tags: ["langsmith:hidden"]
+      tags: ["langsmith:hidden"],
     })
       .pipe(new ChannelRead(stateKeys))
       .pipe(Channel.writeTo(`${this.entryPoint}:inbox`));
@@ -92,7 +92,7 @@ export class StateGraph<T> extends Graph {
       hidden: Object.keys(this.nodes)
         .map((node) => `${node}:inbox`)
         .concat(START, stateKeys),
-      checkpointer
+      checkpointer,
     });
   }
 }

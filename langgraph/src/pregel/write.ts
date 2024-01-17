@@ -56,8 +56,8 @@ export class ChannelWrite<
     ]);
     let valuesAwaited = await Promise.all(values);
 
-    valuesAwaited = valuesAwaited.filter((write, index) => 
-        this.channels[index][1] === null || write[1] !== null
+    valuesAwaited = valuesAwaited.filter(
+      (write, index) => this.channels[index][1] === null || write[1] !== null
     );
     ChannelWrite.doWrite(
       config,

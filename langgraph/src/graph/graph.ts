@@ -2,7 +2,7 @@ import {
   Runnable,
   RunnableLambda,
   RunnableLike,
-  _coerceToRunnable
+  _coerceToRunnable,
 } from "@langchain/core/runnables";
 import { ChannelBatch, ChannelInvoke } from "../pregel/read.js";
 import { Channel, Pregel } from "../pregel/index.js";
@@ -140,7 +140,7 @@ export class Graph<
       const edgesKey = `${key}:edges`;
       if (outgoing || this.branches[key]) {
         nodes[edgesKey] = Channel.subscribeTo(key, {
-          tags: ["langsmith:hidden"]
+          tags: ["langsmith:hidden"],
         });
       }
       if (outgoing) {
@@ -149,7 +149,7 @@ export class Graph<
       if (this.branches[key]) {
         this.branches[key].forEach((branch) => {
           const runnableLambda = new RunnableLambda<RunInput, RunOutput>({
-            func: (input: RunInput) => branch.runnable(input)
+            func: (input: RunInput) => branch.runnable(input),
           });
 
           nodes[edgesKey] = nodes[edgesKey].pipe(runnableLambda);
@@ -167,7 +167,7 @@ export class Graph<
       input: `${this.entryPoint}:inbox`,
       output: END,
       hidden,
-      checkpointer
+      checkpointer,
     });
   }
 

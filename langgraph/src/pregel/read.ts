@@ -7,7 +7,7 @@ import {
   RunnableLambda,
   RunnableLike,
   RunnablePassthrough,
-  _coerceToRunnable
+  _coerceToRunnable,
 } from "@langchain/core/runnables";
 import { ConfigurableFieldSpec } from "../checkpoint/index.js";
 import { CONFIG_KEY_READ } from "../constants.js";
@@ -30,7 +30,7 @@ export class ChannelRead<
           return this._read(input, options.config);
         }
         return this._read(input, options ?? {});
-      }
+      },
     });
     this.channel = channel;
     this.name = `ChannelRead<${channel}>`;
@@ -46,8 +46,8 @@ export class ChannelRead<
         // TODO FIX THIS
         annotation: "Callable[[BaseChannel], Any]",
         isShared: true,
-        dependencies: null
-      }
+        dependencies: null,
+      },
     ];
   }
 
@@ -110,8 +110,8 @@ export class ChannelInvoke<
         (defaultRunnableBound as unknown as Runnable<RunInput, RunOutput>),
       config: {
         ...(fields.config ? fields.config : {}),
-        tags: fields.tags ?? []
-      }
+        tags: fields.tags ?? [],
+      },
     });
 
     this.channels = channels;
@@ -127,13 +127,13 @@ export class ChannelInvoke<
     return new ChannelInvoke<RunInput, RunOutput>({
       channels: {
         ...this.channels,
-        ...Object.fromEntries(channels.map((chan) => [chan, chan]))
+        ...Object.fromEntries(channels.map((chan) => [chan, chan])),
       },
       triggers: this.triggers,
       when: this.when,
       bound: this.bound,
       kwargs: this.kwargs,
-      config: this.config
+      config: this.config,
     });
   }
 
@@ -147,7 +147,7 @@ export class ChannelInvoke<
         when: this.when,
         bound: _coerceToRunnable<RunInput, NewRunOutput>(coerceable),
         config: this.config,
-        kwargs: this.kwargs
+        kwargs: this.kwargs,
       });
     } else {
       return new ChannelInvoke<RunInput, Exclude<NewRunOutput, Error>>({
@@ -156,7 +156,7 @@ export class ChannelInvoke<
         when: this.when,
         bound: this.bound.pipe(coerceable),
         config: this.config,
-        kwargs: this.kwargs
+        kwargs: this.kwargs,
       });
     }
   }
@@ -188,7 +188,7 @@ export class ChannelBatch extends RunnableEach<
   constructor(fields: ChannelBatchArgs) {
     super({
       ...fields,
-      bound: fields.bound ?? defaultRunnableBound
+      bound: fields.bound ?? defaultRunnableBound,
     });
 
     this.channel = fields.channel;
@@ -211,13 +211,13 @@ export class ChannelBatch extends RunnableEach<
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: joiner
+        bound: joiner,
       });
     } else {
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: this.bound.pipe(joiner)
+        bound: this.bound.pipe(joiner),
       });
     }
   }
@@ -228,14 +228,14 @@ export class ChannelBatch extends RunnableEach<
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: _coerceToRunnable(coerceable)
+        bound: _coerceToRunnable(coerceable),
       });
     } else {
       // Delegate to `or` in `this.bound`
       return new ChannelBatch({
         channel: this.channel,
         key: this.key,
-        bound: this.bound.pipe(coerceable)
+        bound: this.bound.pipe(coerceable),
       });
     }
   }

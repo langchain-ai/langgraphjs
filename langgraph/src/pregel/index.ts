@@ -6,7 +6,7 @@ import {
   RunnableInterface,
   RunnableLike,
   _coerceToRunnable,
-  patchConfig
+  patchConfig,
 } from "@langchain/core/runnables";
 import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
@@ -14,13 +14,13 @@ import {
   BaseChannel,
   EmptyChannelError,
   createCheckpoint,
-  emptyChannels
+  emptyChannels,
 } from "../channels/base.js";
 import {
   BaseCheckpointSaver,
   Checkpoint,
   CheckpointAt,
-  emptyCheckpoint
+  emptyCheckpoint,
 } from "../checkpoint/base.js";
 import { ChannelBatch, ChannelInvoke } from "./read.js";
 import { validateGraph } from "./validate.js";
@@ -110,14 +110,14 @@ export class Channel {
       channels: channelMappingOrString,
       triggers,
       when,
-      tags
+      tags,
     });
   }
 
   static subscribeToEach(inbox: string, key?: string): ChannelBatch {
     return new ChannelBatch({
       channel: inbox,
-      key
+      key,
     });
   }
 
@@ -240,7 +240,7 @@ export class Pregel
       output: this.output,
       input: this.input,
       hidden: this.hidden,
-      interrupt: this.interrupt
+      interrupt: this.interrupt,
     });
   }
 
@@ -323,11 +323,11 @@ export class Pregel
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               [CONFIG_KEY_SEND]: (items: [string, any][]) =>
                 pendingWrites.push(...items),
-              [CONFIG_KEY_READ]: read
-            }
+              [CONFIG_KEY_READ]: read,
+            },
           },
           runManager?.getChild(`graph:step:${step}`)
-        )
+        ),
       ]);
 
       // execute tasks, and wait for one to fail or all to finish.
@@ -364,7 +364,9 @@ export class Pregel
       }
 
       // interrupt if any channel written to is in interrupt list
-      if (pendingWrites.some(([chan]) => this.interrupt?.some((i) => i === chan))) {
+      if (
+        pendingWrites.some(([chan]) => this.interrupt?.some((i) => i === chan))
+      ) {
         break;
       }
     }
@@ -438,7 +440,7 @@ async function executeTasks<RunOutput>(
     stepTimeout
       ? Promise.race([
           task(),
-          stepTimeout ? timeout(stepTimeout) : Promise.resolve()
+          stepTimeout ? timeout(stepTimeout) : Promise.resolve(),
         ])
       : task()
   );
@@ -497,7 +499,7 @@ function _applyWrites(
 
   // Update reserved channels
   pendingWritesByChannel[ReservedChannels.isLastStep] = [
-    forStep + 1 === config.recursionLimit
+    forStep + 1 === config.recursionLimit,
   ];
 
   const updatedChannels: Set<string> = new Set();
@@ -531,7 +533,7 @@ function _applyWrites(
 function _applyWritesFromView(
   checkpoint: Checkpoint,
   channels: Record<string, BaseChannel>,
-  values: Record<string, unknown>,
+  values: Record<string, unknown>
 ) {
   for (const [chan, val] of Object.entries(values)) {
     if (val === _readChannel(channels, chan)) {
