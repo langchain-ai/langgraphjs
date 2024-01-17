@@ -1,6 +1,6 @@
 import { BaseChannel, EmptyChannelError } from "./index.js";
 
-type BinaryOperator<Value> = (a: Value, b: Value) => Value;
+export type BinaryOperator<Value> = (a: Value, b: Value) => Value;
 
 /**
  * Stores the result of applying a binary operator to the current value and each new value.

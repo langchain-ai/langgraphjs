@@ -9,12 +9,14 @@ export function validateGraph({
   input,
   output,
   hidden,
+  interrupt,
 }: {
   nodes: Record<string, ChannelInvoke | ChannelBatch>;
   channels: { [key: string]: BaseChannel };
   input: string | Array<string>;
   output: string | Array<string>;
   hidden: Array<string>;
+  interrupt: Array<string>;
 }): void {
   const newChannels = channels;
   const subscribedChannels = new Set<string>();
@@ -94,6 +96,7 @@ export function validateGraph({
   }
 
   validateKeys(hidden, newChannels);
+  validateKeys(interrupt, newChannels);
 }
 
 export function validateKeys(
