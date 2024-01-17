@@ -1,5 +1,6 @@
 import {
   Runnable,
+  RunnableConfig,
   RunnableLambda,
   RunnableLike,
   _coerceToRunnable,
@@ -23,8 +24,8 @@ class Branch {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public runnable(input: any): Runnable {
-    const result = this.condition(input);
+  public runnable(input: any, options?: { config?: RunnableConfig }): Runnable {
+    const result = this.condition(input, options?.config);
     const destination = this.ends[result];
     return Channel.writeTo(destination !== END ? `${destination}:inbox` : END);
   }

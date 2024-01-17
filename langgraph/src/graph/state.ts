@@ -31,8 +31,8 @@ export class StateGraph<T> extends Graph {
     }
 
     const stateKeys = Object.keys(this.channels);
-    const outgoingEdges: Record<string, string[]> = {};
 
+    const outgoingEdges: Record<string, string[]> = {};
     for (const [start, end] of this.edges) {
       if (!outgoingEdges[start]) {
         outgoingEdges[start] = [];
@@ -65,7 +65,7 @@ export class StateGraph<T> extends Graph {
         for (const branch of this.branches[key]) {
           nodes[edgesKey] = nodes[edgesKey].pipe(
             new RunnableLambda({
-              func: (input) => branch.runnable(input),
+              func: (i, c) => branch.runnable(i, c),
             })
           );
         }
@@ -103,7 +103,6 @@ function _updateState(
   options?: { config?: RunnableConfig }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Record<string, any> {
-  console.log("options _updateState", options);
   if (!options?.config) {
     throw new Error("Config not found when updating state.");
   }

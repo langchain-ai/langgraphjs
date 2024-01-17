@@ -649,14 +649,12 @@ it.only("StateGraph", async () => {
       (await tools
         .find((t) => t.name === agentOutcome.tool)
         ?.invoke(agentOutcome.toolInput)) ?? "failed";
-    console.log("returning bobservation", observation);
     return {
       steps: [...data.steps, [agentOutcome, observation]],
     };
   };
 
   const shouldContinue = (data: AgentState): string => {
-    console.log("RUNNING SHOULD CONTINUE", data);
     if (data.agentOutcome && "returnValues" in data.agentOutcome) {
       return "exit";
     }

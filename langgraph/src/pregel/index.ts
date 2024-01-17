@@ -462,7 +462,6 @@ function _readChannel(
   chan: string
 ): unknown | null {
   try {
-    console.log("returning", channels[chan]);
     return channels[chan].get();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (e: any) {
