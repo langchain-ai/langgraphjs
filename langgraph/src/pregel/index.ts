@@ -5,7 +5,7 @@ import {
   RunnableFunc,
   RunnableInterface,
   RunnableLike,
-  _coerceToRunnable
+  _coerceToRunnable,
 } from "@langchain/core/runnables";
 import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
@@ -13,13 +13,13 @@ import {
   BaseChannel,
   EmptyChannelError,
   createCheckpoint,
-  emptyChannels
+  emptyChannels,
 } from "../channels/base.js";
 import {
   BaseCheckpointSaver,
   Checkpoint,
   CheckpointAt,
-  emptyCheckpoint
+  emptyCheckpoint,
 } from "../checkpoint/base.js";
 import { ChannelBatch, ChannelInvoke } from "./read.js";
 import { validateGraph } from "./validate.js";
@@ -97,14 +97,14 @@ export class Channel {
     return new ChannelInvoke({
       channels: channelMappingOrString,
       triggers,
-      when
+      when,
     });
   }
 
   static subscribeToEach(inbox: string, key?: string): ChannelBatch {
     return new ChannelBatch({
       channel: inbox,
-      key
+      key,
     });
   }
 
@@ -219,7 +219,7 @@ export class Pregel
       channels: this.channels,
       output: this.output,
       input: this.input,
-      hidden: this.hidden
+      hidden: this.hidden,
     });
   }
 
@@ -282,7 +282,7 @@ export class Pregel
       } else if (step === config.recursionLimit) {
         throw new GraphRecursionError(
           `Recursion limit of ${config.recursionLimit} reached without hitting a stop condition. You can increase the limit by setting the "recursionLimit" config key.`
-      )
+        );
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -302,11 +302,11 @@ export class Pregel
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               [CONFIG_KEY_SEND]: (items: [string, any][]) =>
                 pendingWrites.push(...items),
-              [CONFIG_KEY_READ]: read
-            }
+              [CONFIG_KEY_READ]: read,
+            },
           },
           runManager?.getChild(`graph:step:${step}`)
-        )
+        ),
       ]);
 
       // execute tasks, and wait for one to fail or all to finish.
@@ -405,7 +405,7 @@ async function executeTasks<RunOutput>(
     stepTimeout
       ? Promise.race([
           task(),
-          stepTimeout ? timeout(stepTimeout) : Promise.resolve()
+          stepTimeout ? timeout(stepTimeout) : Promise.resolve(),
         ])
       : task()
   );
@@ -463,7 +463,7 @@ function _applyWrites(
 
   // Update reserved channels
   pendingWritesByChannel[ReservedChannels.isLastStep] = [
-    forStep + 1 === config.recursionLimit
+    forStep + 1 === config.recursionLimit,
   ];
 
   const updatedChannels: Set<string> = new Set();
