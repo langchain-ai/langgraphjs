@@ -1,0 +1,49 @@
+{
+  "name": "examples",
+  "version": "0.0.0",
+  "private": true,
+  "description": "LangGraph examples",
+  "main": "./dist/index.js",
+  "type": "module",
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "tsc --declaration --outDir dist/",
+    "start": "tsx --experimental-wasm-modules -r dotenv/config src/index.ts",
+    "start:dist": "yarn build && node -r dotenv/config dist/index.js",
+    "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
+    "lint": "yarn lint:eslint",
+    "lint:fix": "yarn lint --fix",
+    "precommit": "lint-staged",
+    "format": "prettier --write \"src\"",
+    "format:check": "prettier --check \"src\""
+  },
+  "author": "LangChain",
+  "license": "MIT",
+  "dependencies": {
+    "@langchain/community": "latest",
+    "@langchain/core": "latest",
+    "@langchain/openai": "latest",
+    "faiss-node": "^0.5.1",
+    "langchain": "latest",
+    "langgraph": "file:../langgraph"
+  },
+  "devDependencies": {
+    "@tsconfig/recommended": "^1.0.2",
+    "@types/js-yaml": "^4",
+    "@types/uuid": "^9",
+    "@typescript-eslint/eslint-plugin": "^5.51.0",
+    "@typescript-eslint/parser": "^5.51.0",
+    "dotenv": "^16.0.3",
+    "eslint": "^8.33.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^8.6.0",
+    "eslint-plugin-import": "^2.27.5",
+    "eslint-plugin-prettier": "^4.2.1",
+    "eslint-plugin-unused-imports": "^3.0.0",
+    "prettier": "^2.8.3",
+    "tsx": "^3.12.3",
+    "typescript": "~5.1.6"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "extends": "@tsconfig/recommended",
+  "compilerOptions": {
+    "outDir": "dist",
+    "lib": [
+      "ES2021",
+      "ES2022.Object",
+      "DOM"
+    ],
+    "module": "NodeNext",
+    "target": "es2017",
+    "sourceMap": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": "./src",
+    "declaration": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedParameters": true,
+    "useDefineForClassFields": true,
+    "strictPropertyInitialization": false
+  },
+  "exclude": [
+    "node_modules/",
+    "dist/",
+    "tests/"
+  ],
+  "include": [
+    "./src"
+  ]
+}

@@ -13,7 +13,8 @@
     "url": "git@github.com:langchain-ai/langgraphjs.git"
   },
   "workspaces": [
-    "langgraph"
+    "langgraph",
+    "examples"
   ],
   "scripts": {
     "build": "turbo run build --concurrency 1",
