@@ -15,6 +15,7 @@ import { InvalidUpdateError } from "../channels/base.js";
 import { MemorySaver } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
 import { Channel, GraphRecursionError, Pregel } from "../pregel/index.js";
+import { createAgentExecutor } from "../prebuilt/agent_executor.js";
 
 // If you have LangSmith set then it slows down the tests
 // immensely, and will most likely rate limit your account.
@@ -34,19 +35,19 @@ it("can invoke pregel with a single process", async () => {
 
   const app = new Pregel({
     nodes: {
-      one: chain,
+      one: chain
     },
     channels: {
       input: new LastValue<number>(),
-      output: new LastValue<number>(),
+      output: new LastValue<number>()
     },
     input: "input",
-    output: "output",
+    output: "output"
   });
 
   expect(await app.invoke(2)).toBe(3);
   expect(await app.invoke(2, { outputKeys: ["output"] })).toEqual({
-    output: 3,
+    output: 3
   });
   expect(() => app.toString()).not.toThrow();
   // Verify the mock was called correctly
@@ -86,26 +87,26 @@ it("should process input and write kwargs correctly", async () => {
     .pipe(
       Channel.writeTo("output", {
         fixed: 5,
-        outputPlusOne: (x: number) => x + 1,
+        outputPlusOne: (x: number) => x + 1
       })
     );
 
   const app = new Pregel({
     nodes: { one: chain },
-    output: ["output", "fixed", "outputPlusOne"],
+    output: ["output", "fixed", "outputPlusOne"]
   });
 
   expect(await app.invoke(2)).toEqual({
     output: 3,
     fixed: 5,
-    outputPlusOne: 4,
+    outputPlusOne: 4
   });
 });
 
 it("should process input and check for last step", async () => {
   const addOne = jest.fn((x: { input: number; is_last_step?: boolean }) => ({
     ...x,
-    input: x.input + 1,
+    input: x.input + 1
   }));
   const chain = Channel.subscribeTo(["input"])
     .join([ReservedChannels.isLastStep])
@@ -113,13 +114,13 @@ it("should process input and check for last step", async () => {
     .pipe(Channel.writeTo("output"));
 
   const app = new Pregel({
-    nodes: { one: chain },
+    nodes: { one: chain }
   });
 
   expect(await app.invoke(2)).toEqual({ input: 3, isLastStep: false });
   expect(await app.invoke(2, { recursionLimit: 1 })).toEqual({
     input: 3,
-    isLastStep: true,
+    isLastStep: true
   });
 });
 
@@ -138,9 +139,9 @@ it("should invoke single process in out objects", async () => {
 
   const app = new Pregel({
     nodes: {
-      one: chain,
+      one: chain
     },
-    output: ["output"],
+    output: ["output"]
   });
 
   expect(await app.invoke(2)).toEqual({ output: 3 });
@@ -155,7 +156,7 @@ it("should process input and output as objects", async () => {
   const app = new Pregel({
     nodes: { one: chain },
     input: ["input"],
-    output: ["output"],
+    output: ["output"]
   });
 
   expect(await app.invoke({ input: 2 })).toEqual({ output: 3 });
@@ -172,7 +173,7 @@ it("should invoke two processes and get correct output", async () => {
     .pipe(Channel.writeTo("output"));
 
   const app = new Pregel({
-    nodes: { one, two },
+    nodes: { one, two }
   });
 
   await expect(app.invoke(2, { recursionLimit: 1 })).rejects.toThrow(
@@ -234,7 +235,7 @@ it("should process two processes with object input and output", async () => {
   const app = new Pregel({
     nodes: { one, two },
     channels: { inbox: new Topic<number>() },
-    input: ["input", "inbox"],
+    input: ["input", "inbox"]
   });
 
   const streamResult = await app.stream(
@@ -254,7 +255,7 @@ it("should process two processes with object input and output", async () => {
   }
   expect(fullOutputResults).toEqual([
     { inbox: [3], output: 13 },
-    { output: 4 },
+    { output: 4 }
   ]);
 });
 
@@ -274,7 +275,7 @@ it("should process batch with two processes and delays", async () => {
     .pipe(Channel.writeTo("output"));
 
   const app = new Pregel({
-    nodes: { one, two },
+    nodes: { one, two }
   });
 
   expect(await app.batch([3, 2, 1, 3, 5])).toEqual([5, 4, 3, 5, 7]);
@@ -283,7 +284,7 @@ it("should process batch with two processes and delays", async () => {
     { output: 4 },
     { output: 3 },
     { output: 5 },
-    { output: 7 },
+    { output: 7 }
   ]);
 });
 
@@ -311,7 +312,7 @@ it("should batch many processes with input and output", async () => {
   const addOne = jest.fn((x: number) => x + 1);
 
   const nodes: Record<string, ChannelInvoke> = {
-    "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1")),
+    "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1"))
   };
 
   for (let i = 0; i < testSize - 2; i += 1) {
@@ -333,7 +334,7 @@ it("should batch many processes with input and output", async () => {
       1 + testSize,
       3 + testSize,
       4 + testSize,
-      5 + testSize,
+      5 + testSize
     ]);
   }
 });
@@ -349,7 +350,7 @@ it("should raise InvalidUpdateError when the same LastValue channel is updated t
     .pipe(Channel.writeTo("output"));
 
   const app = new Pregel({
-    nodes: { one, two },
+    nodes: { one, two }
   });
 
   await expect(app.invoke(2)).rejects.toThrow(InvalidUpdateError);
@@ -367,7 +368,7 @@ it("should process two inputs to two outputs validly", async () => {
 
   const app = new Pregel({
     nodes: { one, two },
-    channels: { output: new Topic<number>() },
+    channels: { output: new Topic<number>() }
   });
 
   // An Inbox channel accumulates updates into a sequence
@@ -396,7 +397,7 @@ it.skip("should handle checkpoints correctly", async () => {
   const app = new Pregel({
     nodes: { one },
     channels: { total: new BinaryOperatorAggregate<number>((a, b) => a + b) },
-    checkpointer: memory,
+    checkpointer: memory
   });
 
   // total starts out as 0, so output is 0+2=2
@@ -456,9 +457,9 @@ it("should process two inputs joined into one topic and produce two outputs", as
     nodes: {
       one,
       chainThree,
-      chainFour,
+      chainFour
     },
-    channels: { inbox: new Topic<number>() },
+    channels: { inbox: new Topic<number>() }
   });
 
   // Invoke app and check results
@@ -485,8 +486,8 @@ it("should invoke join then call other app", async () => {
     nodes: {
       one: Channel.subscribeTo("input")
         .pipe(addOne)
-        .pipe(Channel.writeTo("output")),
-    },
+        .pipe(Channel.writeTo("output"))
+    }
   });
 
   const one = Channel.subscribeTo("input")
@@ -506,9 +507,9 @@ it("should invoke join then call other app", async () => {
     nodes: {
       one,
       two,
-      chain_three: chainThree,
+      chain_three: chainThree
     },
-    channels: { inbox_one: new Topic<number>() },
+    channels: { inbox_one: new Topic<number>() }
   });
 
   // Run the test 10 times sequentially
@@ -542,7 +543,7 @@ it("should handle two processes with one input and two outputs", async () => {
     .pipe(Channel.writeTo("output"));
 
   const app = new Pregel({
-    nodes: { one, two },
+    nodes: { one, two }
   });
 
   const results = await app.stream(2);
@@ -587,7 +588,7 @@ describe("StateGraph", () => {
 
     schema = z
       .object({
-        input: z.string().optional(),
+        input: z.string().optional()
       })
       .transform((data) => data.input);
 
@@ -622,7 +623,7 @@ describe("StateGraph", () => {
         ?.invoke(agentOutcome.toolInput)) ?? "failed";
 
     return {
-      steps: [[agentOutcome, observation]],
+      steps: [[agentOutcome, observation]]
     };
   };
 
@@ -640,8 +641,8 @@ describe("StateGraph", () => {
       responses: [
         "tool:search_api:query",
         "tool:search_api:another",
-        "finish:answer",
-      ],
+        "finish:answer"
+      ]
     });
 
     const agentParser = (input: string) => {
@@ -650,8 +651,8 @@ describe("StateGraph", () => {
         return {
           agentOutcome: {
             returnValues: { answer },
-            log: input,
-          },
+            log: input
+          }
         };
       }
       const [_, toolName, toolInput] = input.split(":");
@@ -659,8 +660,8 @@ describe("StateGraph", () => {
         agentOutcome: {
           tool: toolName,
           toolInput,
-          log: input,
-        },
+          log: input
+        }
       };
     };
 
@@ -669,16 +670,16 @@ describe("StateGraph", () => {
     const workflow = new StateGraph({
       channels: {
         input: {
-          value: null,
+          value: null
         },
         agentOutcome: {
-          value: null,
+          value: null
         },
         steps: {
           value: (x: Step[], y: Step[]) => x.concat(y),
-          default: () => [],
-        },
-      },
+          default: () => []
+        }
+      }
     });
 
     workflow.addNode("agent", agent);
@@ -688,7 +689,7 @@ describe("StateGraph", () => {
 
     workflow.addConditionalEdges("agent", shouldContinue, {
       continue: "tools",
-      exit: END,
+      exit: END
     });
 
     workflow.addEdge("tools", "agent");
@@ -699,28 +700,28 @@ describe("StateGraph", () => {
       input: "what is the weather in sf?",
       agentOutcome: {
         returnValues: {
-          answer: "answer",
+          answer: "answer"
         },
-        log: "finish:answer",
+        log: "finish:answer"
       },
       steps: [
         [
           {
             log: "tool:search_api:query",
             tool: "search_api",
-            toolInput: "query",
+            toolInput: "query"
           },
-          "result for query",
+          "result for query"
         ],
         [
           {
             log: "tool:search_api:another",
             tool: "search_api",
-            toolInput: "another",
+            toolInput: "another"
           },
-          "result for another",
-        ],
-      ],
+          "result for another"
+        ]
+      ]
     });
   });
 
@@ -731,8 +732,8 @@ describe("StateGraph", () => {
       responses: [
         "tool:search_api:query",
         "tool:search_api:another",
-        "finish:answer",
-      ],
+        "finish:answer"
+      ]
     });
 
     const agentParser = (input: string) => {
@@ -741,8 +742,8 @@ describe("StateGraph", () => {
         return {
           agentOutcome: {
             returnValues: { answer },
-            log: input,
-          },
+            log: input
+          }
         };
       }
       const [_, toolName, toolInput] = input.split(":");
@@ -750,8 +751,8 @@ describe("StateGraph", () => {
         agentOutcome: {
           tool: toolName,
           toolInput,
-          log: input,
-        },
+          log: input
+        }
       };
     };
 
@@ -760,16 +761,16 @@ describe("StateGraph", () => {
     const workflow = new StateGraph({
       channels: {
         input: {
-          value: null,
+          value: null
         },
         agentOutcome: {
-          value: null,
+          value: null
         },
         steps: {
           value: (x: Step[], y: Step[]) => x.concat(y),
-          default: () => [],
-        },
-      },
+          default: () => []
+        }
+      }
     });
 
     workflow.addNode("agent", agent);
@@ -779,7 +780,7 @@ describe("StateGraph", () => {
 
     workflow.addConditionalEdges("agent", shouldContinue, {
       continue: "tools",
-      exit: END,
+      exit: END
     });
 
     workflow.addEdge("tools", "agent");
@@ -796,9 +797,9 @@ describe("StateGraph", () => {
         agentOutcome: {
           tool: "search_api",
           toolInput: "query",
-          log: "tool:search_api:query",
-        },
-      },
+          log: "tool:search_api:query"
+        }
+      }
     });
     expect(streamItems[1]).toEqual({
       tools: {
@@ -807,21 +808,21 @@ describe("StateGraph", () => {
             {
               tool: "search_api",
               toolInput: "query",
-              log: "tool:search_api:query",
+              log: "tool:search_api:query"
             },
-            "result for query",
-          ],
-        ],
-      },
+            "result for query"
+          ]
+        ]
+      }
     });
     expect(streamItems[2]).toEqual({
       agent: {
         agentOutcome: {
           tool: "search_api",
           toolInput: "another",
-          log: "tool:search_api:another",
-        },
-      },
+          log: "tool:search_api:another"
+        }
+      }
     });
     expect(streamItems[3]).toEqual({
       tools: {
@@ -830,49 +831,133 @@ describe("StateGraph", () => {
             {
               tool: "search_api",
               toolInput: "another",
-              log: "tool:search_api:another",
+              log: "tool:search_api:another"
             },
-            "result for another",
-          ],
-        ],
-      },
+            "result for another"
+          ]
+        ]
+      }
     });
     expect(streamItems[4]).toEqual({
       agent: {
         agentOutcome: {
           returnValues: {
-            answer: "answer",
+            answer: "answer"
           },
-          log: "finish:answer",
-        },
-      },
+          log: "finish:answer"
+        }
+      }
     });
     expect(streamItems[5]).toEqual({
       [END]: {
         input: "what is the weather in sf?",
         agentOutcome: {
           returnValues: { answer: "answer" },
-          log: "finish:answer",
+          log: "finish:answer"
         },
         steps: [
           [
             {
               tool: "search_api",
               toolInput: "query",
-              log: "tool:search_api:query",
+              log: "tool:search_api:query"
             },
-            "result for query",
+            "result for query"
           ],
           [
             {
               tool: "search_api",
               toolInput: "another",
-              log: "tool:search_api:another",
+              log: "tool:search_api:another"
             },
-            "result for another",
-          ],
-        ],
+            "result for another"
+          ]
+        ]
+      }
+    });
+  });
+});
+
+describe.only("PreBuilt", () => {
+  class SearchAPI extends Tool {
+    name = "search_api";
+
+    description = "A simple API that returns the input string.";
+
+    constructor() {
+      super();
+    }
+
+    async _call(query: string): Promise<string> {
+      return `result for ${query}`;
+    }
+  }
+  const tools = [new SearchAPI()];
+
+  it("Can invoke createAgentExecutor", async () => {
+    const prompt = PromptTemplate.fromTemplate("Hello!");
+
+    const llm = new FakeStreamingLLM({
+      responses: [
+        "tool:search_api:query",
+        "tool:search_api:another",
+        "finish:answer"
+      ]
+    });
+
+    const agentParser = (input: string) => {
+      if (input.startsWith("finish")) {
+        const answer = input.split(":")[1];
+        return {
+          returnValues: { answer },
+          log: input
+        };
+      }
+      const [_, toolName, toolInput] = input.split(":");
+      return {
+        tool: toolName,
+        toolInput,
+        log: input
+      };
+    };
+
+    const agent = prompt.pipe(llm).pipe(agentParser);
+
+    const agentExecutor = createAgentExecutor({
+      agentRunnable: agent,
+      tools
+    });
+
+    const result = await agentExecutor.invoke({
+      input: "what is the weather in sf?"
+    });
+
+    expect(result).toEqual({
+      input: "what is the weather in sf?",
+      agentOutcome: {
+        returnValues: {
+          answer: "answer"
+        },
+        log: "finish:answer"
       },
+      steps: [
+        [
+          {
+            log: "tool:search_api:query",
+            tool: "search_api",
+            toolInput: "query"
+          },
+          "result for query"
+        ],
+        [
+          {
+            log: "tool:search_api:another",
+            tool: "search_api",
+            toolInput: "another"
+          },
+          "result for another"
+        ]
+      ]
     });
   });
 });
