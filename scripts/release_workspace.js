@@ -34,7 +34,8 @@ async function getAllWorkspaces() {
     if (workspaceDirectory.endsWith("*")) {
       // List all folders inside directory, require, and return the package.json.
       const allDirs = fs.readdirSync(path.join(process.cwd(), workspaceDirectory.replace("*", "")));
-      const packageJSON = await import(path.join(process.cwd(), `${workspaceDirectory.replace("*", "")}${dir}`, "package.json"))
+      const filePath = path.join(process.cwd(), `${workspaceDirectory.replace("*", "")}${dir}`, "package.json");
+      const packageJSON = JSON.parse(fs.readFileSync(filePath, "utf-8"));
       const subDirs = allDirs.map((dir) => {
         return {
           dir: `${workspaceDirectory.replace("*", "")}${dir}`,
@@ -43,7 +44,8 @@ async function getAllWorkspaces() {
       });
       return subDirs;
     }
-    const packageJSON = await import(path.join(process.cwd(), workspaceDirectory, "package.json"))
+    const filePath = path.join(process.cwd(), workspaceDirectory, "package.json")
+    const packageJSON = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     return {
       dir: workspaceDirectory,
       packageJSON,
