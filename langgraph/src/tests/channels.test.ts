@@ -142,7 +142,10 @@ describe("Topic with accumulate and unique: true", () => {
 
 describe("BinaryOperatorAggregate", () => {
   it("should handle binary operator aggregation correctly", () => {
-    const channel = new BinaryOperatorAggregate<number>((a, b) => a + b, 0);
+    const channel = new BinaryOperatorAggregate<number>(
+      (a, b) => a + b,
+      () => 0
+    );
 
     expect(channel.get()).toBe(0);
 
@@ -154,7 +157,10 @@ describe("BinaryOperatorAggregate", () => {
   });
 
   it("should handle checkpointing correctly", () => {
-    const channel = new BinaryOperatorAggregate<number>((a, b) => a + b, 0);
+    const channel = new BinaryOperatorAggregate<number>(
+      (a, b) => a + b,
+      () => 0
+    );
     channel.update([1, 2, 3]);
     channel.update([4]);
 
@@ -162,7 +168,7 @@ describe("BinaryOperatorAggregate", () => {
 
     const restoredChannel = new BinaryOperatorAggregate<number>(
       (a, b) => a + b,
-      0
+      () => 10
     );
     const channel2 = restoredChannel.empty(checkpoint);
     expect(channel2.get()).toBe(10);

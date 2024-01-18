@@ -314,20 +314,17 @@ export class Pregel
       > = nextTasks.map(([proc, input, name]) => [
         proc,
         input,
-        patchConfig(
-          {
-            ...config,
-            runName: name,
-            configurable: {
-              ...config.configurable,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              [CONFIG_KEY_SEND]: (items: [string, any][]) =>
-                pendingWrites.push(...items),
-              [CONFIG_KEY_READ]: read,
-            },
+        patchConfig(config, {
+          callbacks: runManager?.getChild(`graph:step:${step}`),
+          runName: name,
+          configurable: {
+            ...config.configurable,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            [CONFIG_KEY_SEND]: (items: [string, any][]) =>
+              pendingWrites.push(...items),
+            [CONFIG_KEY_READ]: read,
           },
-          { callbacks: runManager?.getChild(`graph:step:${step}`) }
-        ),
+        }),
       ]);
 
       // execute tasks, and wait for one to fail or all to finish.

@@ -103,6 +103,11 @@ export class ChannelInvoke<
 
   constructor(fields: ChannelInvokeArgs<RunInput, RunOutput>) {
     const { channels, triggers, when } = fields;
+    const mergedTags = [
+      ...(fields.config?.tags ? fields.config.tags : []),
+      ...(fields.tags ? fields.tags : []),
+    ];
+
     super({
       ...fields,
       bound:
@@ -110,7 +115,7 @@ export class ChannelInvoke<
         (defaultRunnableBound as unknown as Runnable<RunInput, RunOutput>),
       config: {
         ...(fields.config ? fields.config : {}),
-        tags: fields.tags ?? [],
+        tags: mergedTags,
       },
     });
 

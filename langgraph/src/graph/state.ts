@@ -1,6 +1,6 @@
 import { RunnableConfig, RunnableLambda } from "@langchain/core/runnables";
 import { BaseChannel } from "../channels/base.js";
-import { BinaryOperator } from "../channels/binop.js";
+import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { END, Graph } from "./graph.js";
 import { LastValue } from "../channels/last_value.js";
 import { ChannelWrite } from "../pregel/write.js";
@@ -11,7 +11,13 @@ import { ChannelRead } from "../pregel/read.js";
 export const START = "__start__";
 
 export interface StateGraphArgs<T> {
-  channels: Record<string, BinaryOperator<T> | null>;
+  channels: Record<
+    string,
+    {
+      value: BinaryOperator<T> | null;
+      default?: () => T;
+    }
+  >;
 }
 
 export class StateGraph<T> extends Graph {
@@ -19,8 +25,7 @@ export class StateGraph<T> extends Graph {
 
   constructor(fields: StateGraphArgs<T>) {
     super();
-    const { channels } = fields;
-    this.channels = _getChannels(channels);
+    this.channels = _getChannels(fields.channels);
   }
 
   compile(checkpointer?: BaseCheckpointSaver): Pregel {
@@ -59,7 +64,7 @@ export class StateGraph<T> extends Graph {
         }).pipe(new ChannelRead(stateKeys));
       }
       if (outgoing) {
-        nodes[edgesKey] = nodes[edgesKey].pipe(Channel.writeTo(outgoing));
+        nodes[edgesKey] = nodes[edgesKey].pipe(Channel.writeTo(...outgoing));
       }
       if (this.branches[key]) {
         for (const branch of this.branches[key]) {
@@ -114,8 +119,15 @@ function _getChannels<T>(
   schema: StateGraphArgs<T>["channels"]
 ): Record<string, BaseChannel> {
   const channels: Record<string, BaseChannel> = {};
-  for (const [name, channel] of Object.entries(schema)) {
-    channels[name] = new LastValue<typeof channel>();
+  for (const [name, values] of Object.entries(schema)) {
+    if (values.value) {
+      channels[name] = new BinaryOperatorAggregate<T>(
+        values.value,
+        values.default
+      );
+    } else {
+      channels[name] = new LastValue<typeof values.value>();
+    }
   }
   return channels;
 }

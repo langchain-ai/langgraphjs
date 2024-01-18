@@ -19,7 +19,7 @@ export abstract class BaseChannel<
    */
   abstract empty(
     checkpoint?: C,
-    initialValue?: C
+    initialValueFactory?: () => C
   ): BaseChannel<Value, Update, C>;
 
   /**
