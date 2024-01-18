@@ -38,8 +38,8 @@ describe("PreBuilt", () => {
       responses: [
         "tool:search_api:query",
         "tool:search_api:another",
-        "finish:answer"
-      ]
+        "finish:answer",
+      ],
     });
 
     const agentParser = (input: string) => {
@@ -47,14 +47,14 @@ describe("PreBuilt", () => {
         const answer = input.split(":")[1];
         return {
           returnValues: { answer },
-          log: input
+          log: input,
         };
       }
       const [_, toolName, toolInput] = input.split(":");
       return {
         tool: toolName,
         toolInput,
-        log: input
+        log: input,
       };
     };
 
@@ -62,39 +62,39 @@ describe("PreBuilt", () => {
 
     const agentExecutor = createAgentExecutor({
       agentRunnable: agent,
-      tools
+      tools,
     });
 
     const result = await agentExecutor.invoke({
-      input: "what is the weather in sf?"
+      input: "what is the weather in sf?",
     });
 
     expect(result).toEqual({
       input: "what is the weather in sf?",
       agentOutcome: {
         returnValues: {
-          answer: "answer"
+          answer: "answer",
         },
-        log: "finish:answer"
+        log: "finish:answer",
       },
       steps: [
         [
           {
             log: "tool:search_api:query",
             tool: "search_api",
-            toolInput: "query"
+            toolInput: "query",
           },
-          "result for query"
+          "result for query",
         ],
         [
           {
             log: "tool:search_api:another",
             tool: "search_api",
-            toolInput: "another"
+            toolInput: "another",
           },
-          "result for another"
-        ]
-      ]
+          "result for another",
+        ],
+      ],
     });
   });
 });
