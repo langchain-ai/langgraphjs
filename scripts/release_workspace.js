@@ -286,8 +286,8 @@ async function main() {
     // Run export tests.
     // LangChain must be built before running export tests.
     console.log("Building '@langchain/langchain' and running export tests.");
-    execSync(`yarn run turbo:command build --filter=@langchain/langgraphjs`);
-    console.log("Successfully built @langchain/langgraphjs, and tested exports.");
+    execSync(`yarn run turbo:command build --filter=@langchain/langgraph`);
+    console.log("Successfully built @langchain/langgraph, and tested exports.");
   } else {
     console.log("Skipping export tests for non primary project.");
   }

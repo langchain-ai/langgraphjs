@@ -329,7 +329,7 @@ This is recommended agent executor for newer chat based models that support func
 
 This agent executor uses existing LangChain agents.
 
-- [Getting Started Notebook](https://github.com/langchain-ai/langgraph/blob/main/examples/agent_executor/base.ipynb): Walks through creating this type of executor from scratch
+- [Getting Started Notebook](https://github.com/langchain-ai/langgraphjs/blob/main/examples/agent_executor/base.ipynb): Walks through creating this type of executor from scratch
 
 ## Documentation
 
