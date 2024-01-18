@@ -1,0 +1,11 @@
+{
+  "imports": {
+    "langchain/": "npm:/langchain@latest/",
+    "@langchain/openai": "npm:@langchain/openai@latest",
+    "@langchain/community/": "npm:/@langchain/community@latest/",
+    "@langchain/core/": "npm:/@langchain/core@latest/",
+    "@langchain/langgraph": "../langgraph/src/index.ts",
+    "@langchain/langgraph/pregel": "../langgraph/src/pregel/index.ts",
+    "@langchain/langgraph/prebuilt": "../langgraph/src/prebuilt/index.ts"
+  }
+}
