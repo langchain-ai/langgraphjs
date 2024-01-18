@@ -227,7 +227,7 @@ export class ChannelBatch extends RunnableEach<
     }
   }
 
-  // @ts-expect-error TODO: fix later
+  // @ts-expect-error @TODO: fix later
   pipe(coerceable: RunnableLike): ChannelBatch {
     if (this.bound === defaultRunnableBound) {
       return new ChannelBatch({
