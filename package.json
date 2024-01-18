@@ -3,7 +3,7 @@
   "private": true,
   "description": "LangGraph",
   "type": "module",
-  "packageManager": "yarn@1.22.21",
+  "packageManager": "yarn@4.0.2",
   "engines": {
     "node": ">=18"
   },
