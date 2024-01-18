@@ -4,6 +4,9 @@ index.d.ts
 pregel.cjs
 pregel.js
 pregel.d.ts
+prebuilt.cjs
+prebuilt.js
+prebuilt.d.ts
 node_modules
 dist
 .yarn
