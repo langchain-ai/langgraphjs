@@ -77,6 +77,11 @@
       "import": "./pregel.js",
       "require": "./pregel.cjs"
     },
+    "./prebuilt": {
+      "types": "./prebuilt.d.ts",
+      "import": "./prebuilt.js",
+      "require": "./prebuilt.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -86,6 +91,9 @@
     "index.d.ts",
     "pregel.cjs",
     "pregel.js",
-    "pregel.d.ts"
+    "pregel.d.ts",
+    "prebuilt.cjs",
+    "prebuilt.js",
+    "prebuilt.d.ts"
   ]
 }
