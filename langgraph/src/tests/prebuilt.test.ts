@@ -4,6 +4,7 @@ import { PromptTemplate } from "@langchain/core/prompts";
 import { FakeStreamingLLM } from "@langchain/core/utils/testing";
 import { Tool } from "@langchain/core/tools";
 import { createAgentExecutor } from "../prebuilt/index.js";
+import { END } from "../index.js";
 
 // If you have LangSmith set then it slows down the tests
 // immensely, and will most likely rate limit your account.
@@ -95,6 +96,62 @@ describe("PreBuilt", () => {
           "result for another",
         ],
       ],
+    });
+  });
+
+  it("Can stream createAgentExecutor", async () => {
+    const prompt = PromptTemplate.fromTemplate("Hello!");
+
+    const llm = new FakeStreamingLLM({
+      responses: [
+        "tool:search_api:query",
+        "tool:search_api:another",
+        "finish:answer",
+      ],
+    });
+
+    const agentParser = (input: string) => {
+      if (input.startsWith("finish")) {
+        const answer = input.split(":")[1];
+        return {
+          returnValues: { answer },
+          log: input,
+        };
+      }
+      const [_, toolName, toolInput] = input.split(":");
+      return {
+        tool: toolName,
+        toolInput,
+        log: input,
+      };
+    };
+
+    const agent = prompt.pipe(llm).pipe(agentParser);
+
+    const agentExecutor = createAgentExecutor({
+      agentRunnable: agent,
+      tools,
+    });
+
+    const stream = agentExecutor.stream({
+      input: "what is the weather in sf?",
+    });
+    const fullResponse = [];
+    for await (const item of await stream) {
+      console.log("item", item);
+      console.log("-----\n");
+      fullResponse.push(item);
+    }
+
+    expect(fullResponse.length > 3).toBe(true);
+    const allAgentMessages = fullResponse.filter((res) => "agent" in res);
+    expect(allAgentMessages.length >= 3).toBe(true);
+    const eneMessage = fullResponse[fullResponse.length - 1];
+    expect(END in eneMessage).toBe(true);
+    expect(eneMessage[END].input).toBe("what is the weather in sf?");
+    expect(eneMessage[END].agentOutcome).toEqual({
+      returnValues: { answer: "answer" },
+      log: "finish:answer",
     });
   });
 });
