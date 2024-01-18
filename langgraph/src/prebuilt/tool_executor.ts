@@ -1,7 +1,7 @@
 import {
   RunnableBinding,
   RunnableConfig,
-  RunnableLambda
+  RunnableLambda,
 } from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
 
@@ -44,17 +44,17 @@ export class ToolExecutor extends RunnableBinding<
   constructor(fields: ToolExecutorArgs) {
     const fieldsWithDefaults = {
       invalidToolMsgTemplate: INVALID_TOOL_MSG_TEMPLATE,
-      ...fields
+      ...fields,
     };
     const bound = new RunnableLambda({
       func: async (
         input: ToolInvocationInterface,
         options?: { config?: RunnableConfig }
-      ) => this._execute(input, options?.config)
+      ) => this._execute(input, options?.config),
     });
     super({
       bound,
-      config: {}
+      config: {},
     });
     this.tools = fieldsWithDefaults.tools;
     this.invalidToolMsgTemplate = fieldsWithDefaults.invalidToolMsgTemplate;
