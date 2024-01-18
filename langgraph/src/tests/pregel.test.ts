@@ -1,8 +1,13 @@
 /* eslint-disable no-process-env */
-import { it, expect, jest, beforeAll } from "@jest/globals";
+import { it, expect, jest, beforeAll, describe } from "@jest/globals";
 import { RunnablePassthrough } from "@langchain/core/runnables";
+import { AgentAction, AgentFinish } from "@langchain/core/agents";
+import { PromptTemplate } from "@langchain/core/prompts";
+import { FakeStreamingLLM } from "@langchain/core/utils/testing";
+import { Tool } from "@langchain/core/tools";
+import { z } from "zod";
 import { LastValue } from "../channels/last_value.js";
-import { Graph } from "../graph/index.js";
+import { END, Graph, StateGraph } from "../graph/index.js";
 import { ReservedChannels } from "../pregel/reserved.js";
 import { Topic } from "../channels/topic.js";
 import { ChannelInvoke } from "../pregel/read.js";
@@ -391,7 +396,7 @@ it.skip("should handle checkpoints correctly", async () => {
   const app = new Pregel({
     nodes: { one },
     channels: { total: new BinaryOperatorAggregate<number>((a, b) => a + b) },
-    saver: memory,
+    checkpointer: memory,
   });
 
   // total starts out as 0, so output is 0+2=2
@@ -572,4 +577,302 @@ it("should throw an error when no input channel is provided", () => {
   const two = Channel.subscribeTo("between").pipe(addOne);
 
   expect(() => new Pregel({ nodes: { one, two } })).toThrowError();
+});
+
+describe("StateGraph", () => {
+  class SearchAPI extends Tool {
+    name = "search_api";
+
+    description = "A simple API that returns the input string.";
+
+    schema = z
+      .object({
+        input: z.string().optional(),
+      })
+      .transform((data) => data.input);
+
+    constructor() {
+      super();
+    }
+
+    async _call(query: string): Promise<string> {
+      return `result for ${query}`;
+    }
+  }
+  const tools = [new SearchAPI()];
+
+  type Step = [AgentAction | AgentFinish, string];
+
+  type AgentState = {
+    input: string;
+    agentOutcome?: AgentAction | AgentFinish;
+    steps: Step[];
+  };
+
+  const executeTools = async (data: AgentState) => {
+    const newData = data;
+    const { agentOutcome } = newData;
+    delete newData.agentOutcome;
+    if (!agentOutcome || "returnValues" in agentOutcome) {
+      throw new Error("Agent has already finished.");
+    }
+    const observation: string =
+      (await tools
+        .find((t) => t.name === agentOutcome.tool)
+        ?.invoke(agentOutcome.toolInput)) ?? "failed";
+
+    return {
+      steps: [[agentOutcome, observation]],
+    };
+  };
+
+  const shouldContinue = (data: AgentState): string => {
+    if (data.agentOutcome && "returnValues" in data.agentOutcome) {
+      return "exit";
+    }
+    return "continue";
+  };
+
+  it("can invoke", async () => {
+    const prompt = PromptTemplate.fromTemplate("Hello!");
+
+    const llm = new FakeStreamingLLM({
+      responses: [
+        "tool:search_api:query",
+        "tool:search_api:another",
+        "finish:answer",
+      ],
+    });
+
+    const agentParser = (input: string) => {
+      if (input.startsWith("finish")) {
+        const answer = input.split(":")[1];
+        return {
+          agentOutcome: {
+            returnValues: { answer },
+            log: input,
+          },
+        };
+      }
+      const [_, toolName, toolInput] = input.split(":");
+      return {
+        agentOutcome: {
+          tool: toolName,
+          toolInput,
+          log: input,
+        },
+      };
+    };
+
+    const agent = prompt.pipe(llm).pipe(agentParser);
+
+    const workflow = new StateGraph({
+      channels: {
+        input: {
+          value: null,
+        },
+        agentOutcome: {
+          value: null,
+        },
+        steps: {
+          value: (x: Step[], y: Step[]) => x.concat(y),
+          default: () => [],
+        },
+      },
+    });
+
+    workflow.addNode("agent", agent);
+    workflow.addNode("tools", executeTools);
+
+    workflow.setEntryPoint("agent");
+
+    workflow.addConditionalEdges("agent", shouldContinue, {
+      continue: "tools",
+      exit: END,
+    });
+
+    workflow.addEdge("tools", "agent");
+
+    const app = workflow.compile();
+    const result = await app.invoke({ input: "what is the weather in sf?" });
+    expect(result).toEqual({
+      input: "what is the weather in sf?",
+      agentOutcome: {
+        returnValues: {
+          answer: "answer",
+        },
+        log: "finish:answer",
+      },
+      steps: [
+        [
+          {
+            log: "tool:search_api:query",
+            tool: "search_api",
+            toolInput: "query",
+          },
+          "result for query",
+        ],
+        [
+          {
+            log: "tool:search_api:another",
+            tool: "search_api",
+            toolInput: "another",
+          },
+          "result for another",
+        ],
+      ],
+    });
+  });
+
+  it("can stream", async () => {
+    const prompt = PromptTemplate.fromTemplate("Hello!");
+
+    const llm = new FakeStreamingLLM({
+      responses: [
+        "tool:search_api:query",
+        "tool:search_api:another",
+        "finish:answer",
+      ],
+    });
+
+    const agentParser = (input: string) => {
+      if (input.startsWith("finish")) {
+        const answer = input.split(":")[1];
+        return {
+          agentOutcome: {
+            returnValues: { answer },
+            log: input,
+          },
+        };
+      }
+      const [_, toolName, toolInput] = input.split(":");
+      return {
+        agentOutcome: {
+          tool: toolName,
+          toolInput,
+          log: input,
+        },
+      };
+    };
+
+    const agent = prompt.pipe(llm).pipe(agentParser);
+
+    const workflow = new StateGraph({
+      channels: {
+        input: {
+          value: null,
+        },
+        agentOutcome: {
+          value: null,
+        },
+        steps: {
+          value: (x: Step[], y: Step[]) => x.concat(y),
+          default: () => [],
+        },
+      },
+    });
+
+    workflow.addNode("agent", agent);
+    workflow.addNode("tools", executeTools);
+
+    workflow.setEntryPoint("agent");
+
+    workflow.addConditionalEdges("agent", shouldContinue, {
+      continue: "tools",
+      exit: END,
+    });
+
+    workflow.addEdge("tools", "agent");
+
+    const app = workflow.compile();
+    const stream = await app.stream({ input: "what is the weather in sf?" });
+    const streamItems = [];
+    for await (const item of stream) {
+      streamItems.push(item);
+    }
+    expect(streamItems.length).toBe(6);
+    expect(streamItems[0]).toEqual({
+      agent: {
+        agentOutcome: {
+          tool: "search_api",
+          toolInput: "query",
+          log: "tool:search_api:query",
+        },
+      },
+    });
+    expect(streamItems[1]).toEqual({
+      tools: {
+        steps: [
+          [
+            {
+              tool: "search_api",
+              toolInput: "query",
+              log: "tool:search_api:query",
+            },
+            "result for query",
+          ],
+        ],
+      },
+    });
+    expect(streamItems[2]).toEqual({
+      agent: {
+        agentOutcome: {
+          tool: "search_api",
+          toolInput: "another",
+          log: "tool:search_api:another",
+        },
+      },
+    });
+    expect(streamItems[3]).toEqual({
+      tools: {
+        steps: [
+          [
+            {
+              tool: "search_api",
+              toolInput: "another",
+              log: "tool:search_api:another",
+            },
+            "result for another",
+          ],
+        ],
+      },
+    });
+    expect(streamItems[4]).toEqual({
+      agent: {
+        agentOutcome: {
+          returnValues: {
+            answer: "answer",
+          },
+          log: "finish:answer",
+        },
+      },
+    });
+    expect(streamItems[5]).toEqual({
+      [END]: {
+        input: "what is the weather in sf?",
+        agentOutcome: {
+          returnValues: { answer: "answer" },
+          log: "finish:answer",
+        },
+        steps: [
+          [
+            {
+              tool: "search_api",
+              toolInput: "query",
+              log: "tool:search_api:query",
+            },
+            "result for query",
+          ],
+          [
+            {
+              tool: "search_api",
+              toolInput: "another",
+              log: "tool:search_api:another",
+            },
+            "result for another",
+          ],
+        ],
+      },
+    });
+  });
 });

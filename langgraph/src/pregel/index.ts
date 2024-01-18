@@ -54,25 +54,35 @@ function isString(value: unknown): value is string {
 export class Channel {
   static subscribeTo(
     channels: string,
-    key?: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    when?: (arg: any) => boolean
+    options?: {
+      key?: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      when?: (arg: any) => boolean;
+      tags?: string[];
+    }
   ): // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ChannelInvoke;
 
   static subscribeTo(
     channels: string[],
-    key?: undefined,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    when?: (arg: any) => boolean
+    options?: {
+      key?: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      when?: (arg: any) => boolean;
+      tags?: string[];
+    }
   ): ChannelInvoke;
 
   static subscribeTo(
     channels: string | string[],
-    key?: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    when?: (arg: any) => boolean
+    options?: {
+      key?: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      when?: (arg: any) => boolean;
+      tags?: string[];
+    }
   ): ChannelInvoke {
+    const { key, when, tags } = options ?? {};
     if (Array.isArray(channels) && key !== undefined) {
       throw new Error(
         "Can't specify a key when subscribing to multiple channels"
@@ -99,6 +109,7 @@ export class Channel {
       channels: channelMappingOrString,
       triggers,
       when,
+      tags,
     });
   }
 
@@ -159,10 +170,14 @@ export interface PregelInterface {
    * @default false
    */
   debug?: boolean;
+  /**
+   * @default []
+   */
+  interrupt?: string[];
 
   nodes: Record<string, ChannelInvoke | ChannelBatch>;
 
-  saver?: BaseCheckpointSaver;
+  checkpointer?: BaseCheckpointSaver;
 
   stepTimeout?: number;
 }
@@ -196,9 +211,11 @@ export class Pregel
 
   nodes: Record<string, ChannelInvoke | ChannelBatch>;
 
-  saver?: BaseCheckpointSaver;
+  checkpointer?: BaseCheckpointSaver;
 
   stepTimeout?: number;
+
+  interrupt: string[] = [];
 
   constructor(fields: PregelInterface) {
     super();
@@ -209,8 +226,9 @@ export class Pregel
     this.hidden = fields.hidden ?? this.hidden;
     this.debug = fields.debug ?? this.debug;
     this.nodes = fields.nodes;
-    this.saver = fields.saver;
+    this.checkpointer = fields.checkpointer;
     this.stepTimeout = fields.stepTimeout;
+    this.interrupt = fields.interrupt ?? this.interrupt;
 
     // Bind the method to the instance
     this._transform = this._transform.bind(this);
@@ -221,6 +239,7 @@ export class Pregel
       output: this.output,
       input: this.input,
       hidden: this.hidden,
+      interrupt: this.interrupt,
     });
   }
 
@@ -245,10 +264,10 @@ export class Pregel
     }
     // copy nodes to ignore mutations during execution
     const processes = { ...this.nodes };
-    // get checkpoint from saver, or create an empty one
+    // get checkpoint, or create an empty one
     let checkpoint: Checkpoint | undefined;
-    if (this.saver) {
-      checkpoint = this.saver.get(config);
+    if (this.checkpointer) {
+      checkpoint = this.checkpointer.get(config);
     }
     checkpoint = checkpoint ?? emptyCheckpoint();
 
@@ -294,20 +313,17 @@ export class Pregel
       > = nextTasks.map(([proc, input, name]) => [
         proc,
         input,
-        patchConfig(
-          {
-            ...config,
-            runName: name,
-            configurable: {
-              ...config.configurable,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              [CONFIG_KEY_SEND]: (items: [string, any][]) =>
-                pendingWrites.push(...items),
-              [CONFIG_KEY_READ]: read,
-            },
+        patchConfig(config, {
+          callbacks: runManager?.getChild(`graph:step:${step}`),
+          runName: name,
+          configurable: {
+            ...config.configurable,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            [CONFIG_KEY_SEND]: (items: [string, any][]) =>
+              pendingWrites.push(...items),
+            [CONFIG_KEY_READ]: read,
           },
-          { callbacks: runManager?.getChild(`graph:step:${step}`) }
-        ),
+        }),
       ]);
 
       // execute tasks, and wait for one to fail or all to finish.
@@ -323,24 +339,38 @@ export class Pregel
       // apply writes to channels
       _applyWrites(checkpoint, channels, pendingWrites, config, step + 1);
 
-      // save end of step checkpoint
-      checkpoint = await createCheckpoint(checkpoint, channels);
-      if (this.saver && this.saver.at === CheckpointAt.END_OF_STEP) {
-        this.saver.put(config, checkpoint);
-      }
-
       // yield current value and checkpoint view
       const stepOutput = mapOutput(outputKeys, pendingWrites, channels);
 
       if (stepOutput) {
         yield stepOutput;
+
+        if (typeof outputKeys !== "string") {
+          _applyWritesFromView(checkpoint, channels, stepOutput);
+        }
+      }
+
+      // save end of step checkpoint
+      if (
+        this.checkpointer &&
+        this.checkpointer.at === CheckpointAt.END_OF_STEP
+      ) {
+        checkpoint = await createCheckpoint(checkpoint, channels);
+        this.checkpointer.put(config, checkpoint);
+      }
+
+      // interrupt if any channel written to is in interrupt list
+      if (
+        pendingWrites.some(([chan]) => this.interrupt?.some((i) => i === chan))
+      ) {
+        break;
       }
     }
 
     // save end of run checkpoint
-    if (this.saver && this.saver.at === CheckpointAt.END_OF_RUN) {
+    if (this.checkpointer && this.checkpointer.at === CheckpointAt.END_OF_RUN) {
       checkpoint = await createCheckpoint(checkpoint, channels);
-      this.saver.put(config, checkpoint);
+      this.checkpointer.put(config, checkpoint);
     }
   }
 
@@ -492,6 +522,24 @@ function _applyWrites(
     if (!updatedChannels.has(chan)) {
       channels[chan].update([]);
     }
+  }
+}
+
+function _applyWritesFromView(
+  checkpoint: Checkpoint,
+  channels: Record<string, BaseChannel>,
+  values: Record<string, unknown>
+) {
+  for (const [chan, val] of Object.entries(values)) {
+    if (val === _readChannel(channels, chan)) {
+      continue;
+    }
+
+    if (channels[chan].lc_graph_name === "LastValue") {
+      throw new Error(`Can't modify channel ${chan} with LastValue`);
+    }
+    checkpoint.channelVersions[chan] += 1;
+    channels[chan].update([values[chan]]);
   }
 }
 

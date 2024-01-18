@@ -20,9 +20,9 @@ export class ChannelRead<
 > extends RunnableLambda<RunInput, RunOutput> {
   lc_graph_name = "ChannelRead";
 
-  channel: string;
+  channel: string | Array<string>;
 
-  constructor(channel: string) {
+  constructor(channel: string | Array<string>) {
     super({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       func: (input: RunInput, options?: any) => {
@@ -60,6 +60,12 @@ export class ChannelRead<
         `Runnable ${this} is not configured with a read function. Make sure to call in the context of a Pregel process`
       );
     }
+    if (Array.isArray(this.channel)) {
+      const results = Object.fromEntries(
+        this.channel.map((chan) => [chan, read(chan)])
+      );
+      return results;
+    }
     return read(this.channel);
   }
 }
@@ -72,6 +78,8 @@ interface ChannelInvokeArgs<RunInput, RunOutput>
   triggers: Array<string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   when?: (args: any) => boolean;
+  config?: RunnableConfig;
+  tags?: string[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,12 +103,20 @@ export class ChannelInvoke<
 
   constructor(fields: ChannelInvokeArgs<RunInput, RunOutput>) {
     const { channels, triggers, when } = fields;
+    const mergedTags = [
+      ...(fields.config?.tags ? fields.config.tags : []),
+      ...(fields.tags ? fields.tags : []),
+    ];
+
     super({
       ...fields,
       bound:
         fields.bound ??
         (defaultRunnableBound as unknown as Runnable<RunInput, RunOutput>),
-      config: fields.config ?? {},
+      config: {
+        ...(fields.config ? fields.config : {}),
+        tags: mergedTags,
+      },
     });
 
     this.channels = channels;

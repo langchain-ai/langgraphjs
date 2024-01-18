@@ -1,6 +1,6 @@
 import { BaseChannel, EmptyChannelError } from "./index.js";
 
-type BinaryOperator<Value> = (a: Value, b: Value) => Value;
+export type BinaryOperator<Value> = (a: Value, b: Value) => Value;
 
 /**
  * Stores the result of applying a binary operator to the current value and each new value.
@@ -16,17 +16,23 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
 
   operator: BinaryOperator<Value>;
 
-  constructor(operator: BinaryOperator<Value>, initialValue?: Value) {
+  initialValueFactory?: () => Value;
+
+  constructor(
+    operator: BinaryOperator<Value>,
+    initialValueFactory?: () => Value
+  ) {
     super();
 
     this.operator = operator;
-    this.value = initialValue;
+    this.initialValueFactory = initialValueFactory;
+    this.value = initialValueFactory?.();
   }
 
-  public empty(checkpoint?: Value): BinaryOperatorAggregate<Value> {
+  public empty(_?: Value): BinaryOperatorAggregate<Value> {
     const empty = new BinaryOperatorAggregate(
       this.operator,
-      checkpoint ?? this.value
+      this.initialValueFactory
     );
     return empty;
   }
