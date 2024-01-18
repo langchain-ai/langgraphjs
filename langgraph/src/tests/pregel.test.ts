@@ -15,7 +15,7 @@ import { InvalidUpdateError } from "../channels/base.js";
 import { MemorySaver } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
 import { Channel, GraphRecursionError, Pregel } from "../pregel/index.js";
-import { createAgentExecutor } from "../prebuilt/agent_executor.js";
+import { createAgentExecutor } from "../prebuilt/index.js";
 
 // If you have LangSmith set then it slows down the tests
 // immensely, and will most likely rate limit your account.

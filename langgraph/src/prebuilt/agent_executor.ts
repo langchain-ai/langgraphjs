@@ -42,7 +42,6 @@ function _getAgentState<T extends Array<any> = Array<any>>(
   }
 }
 
-// @TODO might have to take in channels too?
 export function createAgentExecutor<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   T extends Array<any> = Array<any>
