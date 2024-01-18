@@ -26,28 +26,30 @@ function getWorkspaceVersion(workspaceDirectory) {
  * Each object in the return value contains the relative path to the workspace
  * directory, along with the full package.json file contents.
  * 
- * @returns {Array<{ dir: string, packageJSON: Record<string, any>}>}
+ * @returns {Promise<Array<{ dir: string, packageJSON: Record<string, any>}>>}
  */
-function getAllWorkspaces() {
+async function getAllWorkspaces() {
   const possibleWorkspaceDirectories = ["./langgraph"];
-  const allWorkspaces = possibleWorkspaceDirectories.flatMap((workspaceDirectory) => {
+  const allWorkspacesPromise = possibleWorkspaceDirectories.flatMap(async (workspaceDirectory) => {
     if (workspaceDirectory.endsWith("*")) {
       // List all folders inside directory, require, and return the package.json.
       const allDirs = fs.readdirSync(path.join(process.cwd(), workspaceDirectory.replace("*", "")));
+      const packageJSON = await import(path.join(process.cwd(), `${workspaceDirectory.replace("*", "")}${dir}`, "package.json"))
       const subDirs = allDirs.map((dir) => {
         return {
           dir: `${workspaceDirectory.replace("*", "")}${dir}`,
-          packageJSON: require(path.join(process.cwd(), `${workspaceDirectory.replace("*", "")}${dir}`, "package.json"))
+          packageJSON: packageJSON
         }
       });
       return subDirs;
     }
-    const packageJSON = require(path.join(process.cwd(), workspaceDirectory, "package.json"));
+    const packageJSON = await import(path.join(process.cwd(), workspaceDirectory, "package.json"))
     return {
       dir: workspaceDirectory,
       packageJSON,
     };
   });
+  const allWorkspaces = await Promise.all(allWorkspacesPromise);
   return allWorkspaces;
 }
 
@@ -265,7 +267,7 @@ async function main() {
   }
 
   // Find the workspace package.json's.
-  const allWorkspaces = getAllWorkspaces();
+  const allWorkspaces = await getAllWorkspaces();
   const matchingWorkspace = allWorkspaces.find(({ packageJSON }) => packageJSON.name === options.workspace);
   
   if (!matchingWorkspace) {
