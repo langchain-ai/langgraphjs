@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "description": "LangGraph",
   "type": "module",
+  "packageManager": "yarn@3.5.1",
   "engines": {
     "node": ">=18"
   },
