@@ -1,4 +1,4 @@
-import { StructuredTool } from "@langchain/core/tools";
+import { Tool } from "@langchain/core/tools";
 import { convertToOpenAIFunction } from "@langchain/core/utils/function_calling";
 import { AgentAction } from "@langchain/core/agents";
 import { FunctionMessage, BaseMessage } from "@langchain/core/messages";
@@ -12,10 +12,10 @@ export function createFunctionCallingExecutor<Model extends object>({
   tools,
 }: {
   model: Model;
-  tools: Array<StructuredTool> | ToolExecutor;
+  tools: Array<Tool> | ToolExecutor;
 }) {
   let toolExecutor: ToolExecutor;
-  let toolClasses: Array<StructuredTool>;
+  let toolClasses: Array<Tool>;
   if (!Array.isArray(tools)) {
     toolExecutor = tools;
     toolClasses = tools.tools;
@@ -26,12 +26,12 @@ export function createFunctionCallingExecutor<Model extends object>({
     toolClasses = tools;
   }
 
-  const toolsAsOpenAIFunctions = toolClasses.map((tool) =>
-    convertToOpenAIFunction(tool)
-  );
   if (!("bind" in model) || typeof model.bind !== "function") {
     throw new Error("Model must be bindable");
   }
+  const toolsAsOpenAIFunctions = toolClasses.map((tool) =>
+    convertToOpenAIFunction(tool)
+  );
   const newModel = model.bind({
     functions: toolsAsOpenAIFunctions,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

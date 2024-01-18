@@ -1,7 +1,7 @@
 import { AgentAction, AgentFinish } from "@langchain/core/agents";
 import { BaseMessage } from "@langchain/core/messages";
 import { Runnable, RunnableLambda } from "@langchain/core/runnables";
-import { StructuredTool } from "@langchain/core/tools";
+import { Tool } from "@langchain/core/tools";
 import { ToolExecutor } from "./tool_executor.js";
 import { StateGraph, StateGraphArgs } from "../graph/state.js";
 import { END } from "../index.js";
@@ -51,7 +51,7 @@ export function createAgentExecutor<
   inputSchema,
 }: {
   agentRunnable: Runnable;
-  tools: Array<StructuredTool> | ToolExecutor;
+  tools: Array<Tool> | ToolExecutor;
   inputSchema?: AgentChannels<T>;
 }): Pregel {
   let toolExecutor: ToolExecutor;
