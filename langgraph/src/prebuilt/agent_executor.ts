@@ -63,11 +63,9 @@ export function createAgentExecutor<
     });
   }
 
-  // this should return channels??
   const state = _getAgentState<T>(inputSchema);
 
   // Define logic that will be used to determine which conditional edge to go down
-
   const shouldContinue = (data: AgentState) => {
     if (data.agentOutcome && "returnValues" in data.agentOutcome) {
       return "end";
@@ -75,7 +73,6 @@ export function createAgentExecutor<
     return "continue";
   };
 
-  // @TODO maybe make this run input generic?
   const runAgent = async (data: AgentState) => {
     const agentOutcome = await agentRunnable.invoke(data);
     return {
