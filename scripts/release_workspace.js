@@ -1,10 +1,9 @@
-const { execSync } = require("child_process");
-const { Command } = require("commander");
-const fs = require("fs");
-const path = require("path");
-const { spawn } = require("child_process");
-const readline = require("readline");
-const semver = require('semver')
+import { execSync, spawn } from 'child_process';
+import { Command } from 'commander';
+import fs from 'fs';
+import path from 'path';
+import readline from 'readline';
+import semver from 'semver';
 
 const PRIMARY_PROJECTS = ["@langchain/langgraph"];
 const RELEASE_BRANCH = "release";
