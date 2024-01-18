@@ -1286,6 +1286,25 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@langchain/core@npm:~0.1.16":
+  version: 0.1.16
+  resolution: "@langchain/core@npm:0.1.16"
+  dependencies:
+    ansi-styles: ^5.0.0
+    camelcase: 6
+    decamelize: 1.2.0
+    js-tiktoken: ^1.0.8
+    langsmith: ~0.0.48
+    ml-distance: ^4.0.0
+    p-queue: ^6.6.2
+    p-retry: 4
+    uuid: ^9.0.0
+    zod: ^3.22.4
+    zod-to-json-schema: ^3.22.3
+  checksum: c32d5933a9e3244b9d039582c83c265a53c5f286b02545aac5692c6092cad9367e2d23e10d3db68fa454826ca8892856e1291fd7c3faa1861a23e67d86eef636
+  languageName: node
+  linkType: hard
+
 "@langchain/langgraph@workspace:langgraph":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph@workspace:langgraph"
@@ -5961,12 +5980,12 @@ __metadata:
   linkType: hard
 
 "langchain@npm:^0.1.3":
-  version: 0.1.3
-  resolution: "langchain@npm:0.1.3"
+  version: 0.1.4
+  resolution: "langchain@npm:0.1.4"
   dependencies:
     "@anthropic-ai/sdk": ^0.9.1
     "@langchain/community": ~0.0.17
-    "@langchain/core": ~0.1.13
+    "@langchain/core": ~0.1.16
     "@langchain/openai": ~0.0.12
     binary-extensions: ^2.2.0
     expr-eval: ^2.0.2
@@ -5980,8 +5999,8 @@ __metadata:
     p-retry: 4
     uuid: ^9.0.0
     yaml: ^2.2.1
-    zod: ^3.22.3
-    zod-to-json-schema: 3.20.3
+    zod: ^3.22.4
+    zod-to-json-schema: ^3.22.3
   peerDependencies:
     "@aws-sdk/client-s3": ^3.310.0
     "@aws-sdk/client-sagemaker-runtime": ^3.310.0
@@ -6139,7 +6158,7 @@ __metadata:
       optional: true
     youtubei.js:
       optional: true
-  checksum: b2388f3877d24c0e244649095dcc3499f4a4291d04f4fe8bfb2846235da4b991bab843c4495e92f112b88eb531970bc700a17df22e0e65b6800f7a6cdec8ba21
+  checksum: cd47d56b55ca917aa583b471c6274e9c42ad09a6987f1c1aa86679b693bc3ade321fc1da5b557efe3c809b6a8402044b8272302766592ddd08edf9367fbe15b4
   languageName: node
   linkType: hard
 
@@ -9030,6 +9049,15 @@ turbo@latest:
   peerDependencies:
     zod: ^3.20.0
   checksum: 1addf7e6f7d69398404dc90f5c9b76ea44e3f6deeb2fc7c72983a00e15b7340661d7e894b0a4eee3a07334dcdcc79d7064e44de46b4acc37d38ab2f3f7217ec8
+  languageName: node
+  linkType: hard
+
+"zod-to-json-schema@npm:^3.22.3":
+  version: 3.22.3
+  resolution: "zod-to-json-schema@npm:3.22.3"
+  peerDependencies:
+    zod: ^3.22.4
+  checksum: 2747a3d1514f579006939c0edd6a420acae65ad016df223b09c4a542cbc8c0ae61b4d7b391228a211cde973635ed49c47b1449791982f3b32d799319bb174f42
   languageName: node
   linkType: hard
 
