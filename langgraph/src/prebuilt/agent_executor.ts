@@ -27,15 +27,15 @@ function _getAgentState<T extends Array<any> = Array<any>>(
   if (!inputSchema) {
     return {
       input: {
-        value: null,
+        value: null
       },
       agentOutcome: {
-        value: null,
+        value: null
       },
       steps: {
         value: (x, y) => x.concat(y),
-        default: () => [],
-      },
+        default: () => []
+      }
     };
   } else {
     return inputSchema;
@@ -48,7 +48,7 @@ export function createAgentExecutor<
 >({
   agentRunnable,
   tools,
-  inputSchema,
+  inputSchema
 }: {
   agentRunnable: Runnable;
   tools: Array<Tool> | ToolExecutor;
@@ -59,7 +59,7 @@ export function createAgentExecutor<
     toolExecutor = tools;
   } else {
     toolExecutor = new ToolExecutor({
-      tools,
+      tools
     });
   }
 
@@ -76,7 +76,7 @@ export function createAgentExecutor<
   const runAgent = async (data: AgentState) => {
     const agentOutcome = await agentRunnable.invoke(data);
     return {
-      agentOutcome,
+      agentOutcome
     };
   };
 
@@ -87,13 +87,13 @@ export function createAgentExecutor<
     }
     const output = await toolExecutor.invoke(agentAction);
     return {
-      steps: [[agentAction, output]],
+      steps: [[agentAction, output]]
     };
   };
 
   // Define a new graph
   const workflow = new StateGraph({
-    channels: state,
+    channels: state
   });
 
   // Define the two nodes we will cycle between
@@ -121,7 +121,7 @@ export function createAgentExecutor<
       // If `tools`, then we call the tool node.
       continue: "action",
       // Otherwise we finish.
-      end: END,
+      end: END
     }
   );
 
