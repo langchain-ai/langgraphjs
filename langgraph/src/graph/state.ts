@@ -10,7 +10,8 @@ import { ChannelRead } from "../pregel/read.js";
 
 export const START = "__start__";
 
-export interface StateGraphArgs<T> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface StateGraphArgs<T = any> {
   channels: Record<
     string,
     {

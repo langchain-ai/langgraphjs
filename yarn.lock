@@ -770,10 +770,10 @@
     uuid "^9.0.0"
     zod "^3.22.3"
 
-"@langchain/core@^0.1.14", "@langchain/core@~0.1.13", "@langchain/core@~0.1.9":
-  version "0.1.14"
-  resolved "https://registry.yarnpkg.com/@langchain/core/-/core-0.1.14.tgz#372004d1c60b8768be9de08d0369e4b1a42c3df3"
-  integrity sha512-Cfa7hI4i/oq5VtTKPgx74okWZTvAwlzLmajuelSLNDYZHPTe738YnzfHG/jKK/9QRhAmbQvpV9p4qYfnkdBFpg==
+"@langchain/core@^0.1.15", "@langchain/core@~0.1.9":
+  version "0.1.15"
+  resolved "https://registry.yarnpkg.com/@langchain/core/-/core-0.1.15.tgz#ae6c19ec07bab6781347f51418bac81c3d911d91"
+  integrity sha512-H8AH8srLYW/xLx4ziZ51uxL0FSpLf0iRJktTBMsgJDkLtMcCIO4JiP6XyBUvaxWAnh/GrtMEMh/a8gq/CvJdMA==
   dependencies:
     ansi-styles "^5.0.0"
     camelcase "6"
@@ -787,10 +787,10 @@
     zod "^3.22.3"
     zod-to-json-schema "3.20.3"
 
-"@langchain/core@^0.1.15":
-  version "0.1.15"
-  resolved "https://registry.yarnpkg.com/@langchain/core/-/core-0.1.15.tgz#ae6c19ec07bab6781347f51418bac81c3d911d91"
-  integrity sha512-H8AH8srLYW/xLx4ziZ51uxL0FSpLf0iRJktTBMsgJDkLtMcCIO4JiP6XyBUvaxWAnh/GrtMEMh/a8gq/CvJdMA==
+"@langchain/core@~0.1.13":
+  version "0.1.14"
+  resolved "https://registry.yarnpkg.com/@langchain/core/-/core-0.1.14.tgz#372004d1c60b8768be9de08d0369e4b1a42c3df3"
+  integrity sha512-Cfa7hI4i/oq5VtTKPgx74okWZTvAwlzLmajuelSLNDYZHPTe738YnzfHG/jKK/9QRhAmbQvpV9p4qYfnkdBFpg==
   dependencies:
     ansi-styles "^5.0.0"
     camelcase "6"
