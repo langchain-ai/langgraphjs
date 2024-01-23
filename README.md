@@ -325,7 +325,6 @@ Langchain Expression Language allows you to easily define chains (DAGs) but does
 
 ## Examples
 
-
 ### ChatAgentExecutor: with function calling
 
 This agent executor takes a list of messages as input and outputs a list of messages. 
@@ -340,6 +339,12 @@ This is recommended agent executor for newer chat based models that support func
 This agent executor uses existing LangChain agents.
 
 - [Getting Started Notebook](https://github.com/langchain-ai/langgraphjs/blob/main/examples/agent_executor/base.ipynb): Walks through creating this type of executor from scratch
+
+### Multi-agent Examples
+
+- [Multi-agent collaboration](https://github.com/langchain-ai/langgraphjs/blob/main/examples/multi_agent/multi-agent-collaboration.ipynb): how to create two agents that work together to accomplish a task
+- [Multi-agent with supervisor](https://github.com/langchain-ai/langgraphjs/blob/main/examples/multi_agent/agent_supervisor.ipynb): how to orchestrate individual agents by using an LLM as a "supervisor" to distribute work
+- [Hierarchical agent teams](https://github.com/langchain-ai/langgraphjs/blob/main/examples/multi_agent/hierarchical_agent_teams.ipynb): how to orchestrate "teams" of agents as nested graphs that can collaborate to solve a problem
 
 ## Documentation
 
