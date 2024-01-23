@@ -5,6 +5,8 @@
     "@langchain/community/": "npm:/@langchain/community@latest/",
     "@langchain/core/": "npm:/@langchain/core@latest/",
     "@langchain/langgraph": "npm:/@langchain/langgraph@latest",
-    "@langchain/langgraph/": "npm:/@langchain/langgraph@latest/"
+    "@langchain/langgraph/": "npm:/@langchain/langgraph@latest/",
+    "zod": "npm:zod@latest",
+    "d3": "npm:d3@latest"
   }
 }
