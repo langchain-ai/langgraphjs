@@ -702,8 +702,6 @@ describe("StateGraph", () => {
 
     const app = workflow.compile();
     const result = await app.invoke({ input: "what is the weather in sf?" });
-    console.log("result");
-    console.log(result);
     expect(result).toEqual({
       input: "what is the weather in sf?",
       agentOutcome: {
