@@ -70,7 +70,7 @@ export class ChannelRead<
   }
 }
 
-const defaultRunnableBound = new RunnablePassthrough();
+const defaultRunnableBound = /* #__PURE__ */ new RunnablePassthrough();
 
 interface ChannelInvokeArgs<RunInput, RunOutput>
   extends Partial<RunnableBindingArgs<RunInput, RunOutput>> {

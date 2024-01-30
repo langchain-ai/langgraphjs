@@ -1,3 +1,3 @@
-export enum ReservedChannels {
-  isLastStep = "isLastStep",
-}
+export const ReservedChannelsMap = {
+  isLastStep: "isLastStep",
+};

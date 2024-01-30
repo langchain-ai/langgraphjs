@@ -8,7 +8,7 @@ import { Tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { LastValue } from "../channels/last_value.js";
 import { END, Graph, StateGraph } from "../graph/index.js";
-import { ReservedChannels } from "../pregel/reserved.js";
+import { ReservedChannelsMap } from "../pregel/reserved.js";
 import { Topic } from "../channels/topic.js";
 import { ChannelInvoke } from "../pregel/read.js";
 import { InvalidUpdateError } from "../channels/base.js";
@@ -109,7 +109,7 @@ it("should process input and check for last step", async () => {
     input: x.input + 1,
   }));
   const chain = Channel.subscribeTo(["input"])
-    .join([ReservedChannels.isLastStep])
+    .join([ReservedChannelsMap.isLastStep])
     .pipe(addOne)
     .pipe(Channel.writeTo("output"));
 
@@ -127,7 +127,7 @@ it("should process input and check for last step", async () => {
 it("should throw if you try to join channels when all are not named", async () => {
   const channel = Channel.subscribeTo("input");
   expect(() => {
-    channel.join([ReservedChannels.isLastStep]);
+    channel.join([ReservedChannelsMap.isLastStep]);
   }).toThrowError();
 });
 
@@ -665,9 +665,15 @@ describe("StateGraph", () => {
       };
     };
 
-    const agent = prompt.pipe(llm).pipe(agentParser);
+    const agent = async (state: AgentState) => {
+      const chain = prompt.pipe(llm).pipe(agentParser);
+      const result = await chain.invoke({ input: state.input });
+      return {
+        ...result,
+      };
+    };
 
-    const workflow = new StateGraph({
+    const workflow = new StateGraph<AgentState>({
       channels: {
         input: {
           value: null,
@@ -756,9 +762,15 @@ describe("StateGraph", () => {
       };
     };
 
-    const agent = prompt.pipe(llm).pipe(agentParser);
+    const agent = async (state: AgentState) => {
+      const chain = prompt.pipe(llm).pipe(agentParser);
+      const result = await chain.invoke({ input: state.input });
+      return {
+        ...result,
+      };
+    };
 
-    const workflow = new StateGraph({
+    const workflow = new StateGraph<AgentState>({
       channels: {
         input: {
           value: null,

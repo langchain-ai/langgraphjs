@@ -7,21 +7,24 @@ import { StateGraph, StateGraphArgs } from "../graph/state.js";
 import { END } from "../index.js";
 import { Pregel } from "../pregel/index.js";
 
+type Step = [AgentAction | AgentFinish, string];
 interface AgentStateBase {
   agentOutcome?: AgentAction | AgentFinish;
-  steps: Array<[AgentAction, string]>;
+  steps: Array<Step>;
 }
 
-interface AgentState extends AgentStateBase {
+export interface AgentExecutorState extends AgentStateBase {
   input: string;
   chatHistory?: BaseMessage[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AgentChannels<T> = StateGraphArgs<Array<any> | T>["channels"];
+type AgentChannels<T extends AgentExecutorState> = StateGraphArgs<
+  AgentExecutorState | T
+>["channels"];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function _getAgentState<T extends Array<any> = Array<any>>(
+function _getAgentState<T extends AgentExecutorState>(
   inputSchema?: AgentChannels<T>
 ): AgentChannels<T> {
   if (!inputSchema) {
@@ -33,7 +36,7 @@ function _getAgentState<T extends Array<any> = Array<any>>(
         value: null,
       },
       steps: {
-        value: (x, y) => x.concat(y),
+        value: (x: Step[], y: Step[]) => x.concat(y),
         default: () => [],
       },
     };
@@ -44,7 +47,7 @@ function _getAgentState<T extends Array<any> = Array<any>>(
 
 export function createAgentExecutor<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  T extends Array<any> = Array<any>
+  T extends AgentExecutorState
 >({
   agentRunnable,
   tools,
@@ -66,21 +69,21 @@ export function createAgentExecutor<
   const state = _getAgentState<T>(inputSchema);
 
   // Define logic that will be used to determine which conditional edge to go down
-  const shouldContinue = (data: AgentState) => {
+  const shouldContinue = (data: AgentExecutorState) => {
     if (data.agentOutcome && "returnValues" in data.agentOutcome) {
       return "end";
     }
     return "continue";
   };
 
-  const runAgent = async (data: AgentState) => {
+  const runAgent = async (data: AgentExecutorState) => {
     const agentOutcome = await agentRunnable.invoke(data);
     return {
       agentOutcome,
     };
   };
 
-  const executeTools = async (data: AgentState) => {
+  const executeTools = async (data: AgentExecutorState) => {
     const agentAction = data.agentOutcome;
     if (!agentAction || "returnValues" in agentAction) {
       throw new Error("Agent has not been run yet");
@@ -92,7 +95,7 @@ export function createAgentExecutor<
   };
 
   // Define a new graph
-  const workflow = new StateGraph({
+  const workflow = new StateGraph<AgentExecutorState>({
     channels: state,
   });
 

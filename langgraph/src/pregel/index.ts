@@ -24,7 +24,7 @@ import {
 } from "../checkpoint/base.js";
 import { ChannelBatch, ChannelInvoke } from "./read.js";
 import { validateGraph } from "./validate.js";
-import { ReservedChannels } from "./reserved.js";
+import { ReservedChannelsMap } from "./reserved.js";
 import { mapInput, mapOutput } from "./io.js";
 import { ChannelWrite } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
@@ -480,7 +480,7 @@ function _applyWrites(
   const pendingWritesByChannel: Record<string, Array<any>> = {};
   // Group writes by channel
   for (const [chan, val] of pendingWrites) {
-    for (const c in ReservedChannels) {
+    for (const c in ReservedChannelsMap) {
       if (chan === c) {
         throw new Error(`Can't write to reserved channel ${chan}`);
       }
@@ -493,7 +493,7 @@ function _applyWrites(
   }
 
   // Update reserved channels
-  pendingWritesByChannel[ReservedChannels.isLastStep] = [
+  pendingWritesByChannel[ReservedChannelsMap.isLastStep] = [
     forStep + 1 === config.recursionLimit,
   ];
 

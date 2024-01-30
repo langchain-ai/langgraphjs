@@ -1,7 +1,7 @@
 import { BaseChannel } from "../channels/index.js";
 import { LastValue } from "../channels/last_value.js";
 import { ChannelBatch, ChannelInvoke } from "./read.js";
-import { ReservedChannels } from "./reserved.js";
+import { ReservedChannelsMap } from "./reserved.js";
 
 export function validateGraph({
   nodes,
@@ -88,7 +88,7 @@ export function validateGraph({
     }
   }
 
-  for (const chan in ReservedChannels) {
+  for (const chan in ReservedChannelsMap) {
     if (!(chan in newChannels)) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       newChannels[chan] = new LastValue<any>();
