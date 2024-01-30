@@ -20,8 +20,8 @@ export interface StateGraphArgs<Channels extends Record<string, any>> {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class StateGraph<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   Channels extends Record<string, any>
 > extends Graph<Channels> {
   channels: Record<string, BaseChannel>;
