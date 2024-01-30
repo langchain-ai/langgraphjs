@@ -50,7 +50,7 @@ export function emptyCheckpoint(): Checkpoint {
   };
 }
 
-export enum CheckpointAt {
+export const enum CheckpointAt {
   END_OF_STEP = "end_of_step",
   END_OF_RUN = "end_of_run",
 }

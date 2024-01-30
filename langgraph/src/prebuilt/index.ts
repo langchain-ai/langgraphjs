@@ -1,5 +1,11 @@
-export { createAgentExecutor } from "./agent_executor.js";
-export { createFunctionCallingExecutor } from "./chat_agent_executor.js";
+export {
+  type AgentExecutorState,
+  createAgentExecutor,
+} from "./agent_executor.js";
+export {
+  type FunctionCallingExecutorState,
+  createFunctionCallingExecutor,
+} from "./chat_agent_executor.js";
 export {
   type ToolExecutorArgs,
   type ToolInvocationInterface,

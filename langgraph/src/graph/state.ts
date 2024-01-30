@@ -11,20 +11,22 @@ import { ChannelRead } from "../pregel/read.js";
 export const START = "__start__";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export interface StateGraphArgs<T = any> {
-  channels: Record<
-    string,
-    {
-      value: BinaryOperator<T> | null;
-      default?: () => T;
-    }
-  >;
+export interface StateGraphArgs<Channels extends Record<string, any>> {
+  channels: {
+    [K in keyof Channels]: {
+      value: BinaryOperator<Channels[K]> | null;
+      default?: () => Channels[K];
+    };
+  };
 }
 
-export class StateGraph<T> extends Graph {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class StateGraph<
+  Channels extends Record<string, any>
+> extends Graph<Channels> {
   channels: Record<string, BaseChannel>;
 
-  constructor(fields: StateGraphArgs<T>) {
+  constructor(fields: StateGraphArgs<Channels>) {
     super();
     this.channels = _getChannels(fields.channels);
   }
@@ -116,13 +118,13 @@ function _updateState(
   return input;
 }
 
-function _getChannels<T>(
-  schema: StateGraphArgs<T>["channels"]
+function _getChannels<Channels extends Record<string, unknown>>(
+  schema: StateGraphArgs<Channels>["channels"]
 ): Record<string, BaseChannel> {
   const channels: Record<string, BaseChannel> = {};
   for (const [name, values] of Object.entries(schema)) {
     if (values.value) {
-      channels[name] = new BinaryOperatorAggregate<T>(
+      channels[name] = new BinaryOperatorAggregate<Channels[typeof name]>(
         values.value,
         values.default
       );

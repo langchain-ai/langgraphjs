@@ -7,6 +7,8 @@ import { ToolExecutor } from "./tool_executor.js";
 import { StateGraph, StateGraphArgs } from "../graph/state.js";
 import { END } from "../index.js";
 
+export type FunctionCallingExecutorState = { messages: Array<BaseMessage> };
+
 export function createFunctionCallingExecutor<Model extends object>({
   model,
   tools,
@@ -38,7 +40,7 @@ export function createFunctionCallingExecutor<Model extends object>({
   } as any);
 
   // Define the function that determines whether to continue or not
-  const shouldContinue = (state: { messages: Array<BaseMessage> }) => {
+  const shouldContinue = (state: FunctionCallingExecutorState) => {
     const { messages } = state;
     const lastMessage = messages[messages.length - 1];
     // If there is no function call, then we finish
@@ -53,7 +55,7 @@ export function createFunctionCallingExecutor<Model extends object>({
   };
 
   // Define the function that calls the model
-  const callModel = async (state: { messages: Array<BaseMessage> }) => {
+  const callModel = async (state: FunctionCallingExecutorState) => {
     const { messages } = state;
     const response = await newModel.invoke(messages);
     // We return a list, because this will get added to the existing list
@@ -63,7 +65,7 @@ export function createFunctionCallingExecutor<Model extends object>({
   };
 
   // Define the function to execute tools
-  const _getAction = (state: { messages: Array<BaseMessage> }): AgentAction => {
+  const _getAction = (state: FunctionCallingExecutorState): AgentAction => {
     const { messages } = state;
     // Based on the continue condition
     // we know the last message involves a function call
@@ -84,7 +86,7 @@ export function createFunctionCallingExecutor<Model extends object>({
     };
   };
 
-  const callTool = async (state: { messages: Array<BaseMessage> }) => {
+  const callTool = async (state: FunctionCallingExecutorState) => {
     const action = _getAction(state);
     // We call the tool_executor and get back a response
     const response = await toolExecutor.invoke(action);
@@ -101,7 +103,7 @@ export function createFunctionCallingExecutor<Model extends object>({
   // This simply involves a list of messages
   // We want steps to return messages to append to the list
   // So we annotate the messages attribute with operator.add
-  const schema: StateGraphArgs["channels"] = {
+  const schema: StateGraphArgs<FunctionCallingExecutorState>["channels"] = {
     messages: {
       value: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
       default: () => [],
