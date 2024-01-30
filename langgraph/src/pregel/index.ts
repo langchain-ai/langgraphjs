@@ -480,7 +480,7 @@ function _applyWrites(
   const pendingWritesByChannel: Record<string, Array<any>> = {};
   // Group writes by channel
   for (const [chan, val] of pendingWrites) {
-    for (const c in Object.values(ReservedChannelsMap)) {
+    for (const c in ReservedChannelsMap) {
       if (chan === c) {
         throw new Error(`Can't write to reserved channel ${chan}`);
       }

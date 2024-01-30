@@ -88,7 +88,7 @@ export function validateGraph({
     }
   }
 
-  for (const chan in Object.values(ReservedChannelsMap)) {
+  for (const chan in ReservedChannelsMap) {
     if (!(chan in newChannels)) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       newChannels[chan] = new LastValue<any>();
