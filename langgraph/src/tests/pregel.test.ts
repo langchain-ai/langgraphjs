@@ -634,7 +634,7 @@ describe("StateGraph", () => {
     return "continue";
   };
 
-  it.only("can invoke", async () => {
+  it("can invoke", async () => {
     const prompt = PromptTemplate.fromTemplate("Hello!");
 
     const llm = new FakeStreamingLLM({
@@ -731,7 +731,7 @@ describe("StateGraph", () => {
     });
   });
 
-  it.only("can stream", async () => {
+  it("can stream", async () => {
     const prompt = PromptTemplate.fromTemplate("Hello!");
 
     const llm = new FakeStreamingLLM({
