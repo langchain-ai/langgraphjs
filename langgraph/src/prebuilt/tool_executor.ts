@@ -66,7 +66,7 @@ export class ToolExecutor extends RunnableBinding<
 
   async _execute(
     toolInvocation: ToolInvocationInterface,
-    _config?: RunnableConfig
+    config?: RunnableConfig
   ): Promise<string> {
     if (!(toolInvocation.tool in this.toolMap)) {
       return this.invalidToolMsgTemplate
@@ -77,7 +77,7 @@ export class ToolExecutor extends RunnableBinding<
         );
     } else {
       const tool = this.toolMap[toolInvocation.tool];
-      const output = await tool.invoke(toolInvocation.toolInput);
+      const output = await tool.invoke(toolInvocation.toolInput, config);
       return output;
     }
   }
