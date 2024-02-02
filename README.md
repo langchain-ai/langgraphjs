@@ -160,6 +160,7 @@ Let's define the nodes, as well as a function to decide how what conditional edg
 ```typescript
 import { FunctionMessage } from "@langchain/core/messages";
 import { AgentAction } from "@langchain/core/agents";
+import type { RunnableConfig } from "@langchain/core/runnables";
 
 // Define the function that determines whether to continue or not
 const shouldContinue = (state: { messages: Array<BaseMessage> }) => {
@@ -199,19 +200,25 @@ const _getAction = (state: { messages: Array<BaseMessage> }): AgentAction => {
 };
 
 // Define the function that calls the model
-const callModel = async (state: { messages: Array<BaseMessage> }) => {
+const callModel = async (
+  state: { messages: Array<BaseMessage> },
+  config?: RunnableConfig
+) => {
   const { messages } = state;
-  const response = await newModel.invoke(messages);
+  const response = await newModel.invoke(messages, config);
   // We return a list, because this will get added to the existing list
   return {
     messages: [response],
   };
 };
 
-const callTool = async (state: { messages: Array<BaseMessage> }) => {
+const callTool = async (
+  state: { messages: Array<BaseMessage> },
+  config?: RunnableConfig
+) => {
   const action = _getAction(state);
   // We call the tool_executor and get back a response
-  const response = await toolExecutor.invoke(action);
+  const response = await toolExecutor.invoke(action, config);
   // We use the response to create a FunctionMessage
   const functionMessage = new FunctionMessage({
     content: response,
