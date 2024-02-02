@@ -3,12 +3,12 @@ import {
   RunnableConfig,
   RunnableLambda,
 } from "@langchain/core/runnables";
-import { Tool } from "@langchain/core/tools";
+import { StructuredTool } from "@langchain/core/tools";
 
 const INVALID_TOOL_MSG_TEMPLATE = `{requestedToolName} is not a valid tool, try one of [availableToolNamesString].`;
 
 export interface ToolExecutorArgs {
-  tools: Array<Tool>;
+  tools: Array<StructuredTool>;
   /**
    * @default {INVALID_TOOL_MSG_TEMPLATE}
    */
@@ -35,9 +35,9 @@ export class ToolExecutor extends RunnableBinding<
 > {
   lc_graph_name = "ToolExecutor";
 
-  tools: Array<Tool>;
+  tools: Array<StructuredTool>;
 
-  toolMap: Record<string, Tool>;
+  toolMap: Record<string, StructuredTool>;
 
   invalidToolMsgTemplate: string;
 
@@ -61,7 +61,7 @@ export class ToolExecutor extends RunnableBinding<
     this.toolMap = this.tools.reduce((acc, tool) => {
       acc[tool.name] = tool;
       return acc;
-    }, {} as Record<string, Tool>);
+    }, {} as Record<string, StructuredTool>);
   }
 
   async _execute(

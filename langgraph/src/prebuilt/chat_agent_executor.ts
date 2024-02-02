@@ -1,4 +1,4 @@
-import { Tool } from "@langchain/core/tools";
+import { StructuredTool } from "@langchain/core/tools";
 import { convertToOpenAIFunction } from "@langchain/core/utils/function_calling";
 import { AgentAction } from "@langchain/core/agents";
 import { FunctionMessage, BaseMessage } from "@langchain/core/messages";
@@ -14,10 +14,10 @@ export function createFunctionCallingExecutor<Model extends object>({
   tools,
 }: {
   model: Model;
-  tools: Array<Tool> | ToolExecutor;
+  tools: Array<StructuredTool> | ToolExecutor;
 }) {
   let toolExecutor: ToolExecutor;
-  let toolClasses: Array<Tool>;
+  let toolClasses: Array<StructuredTool>;
   if (!Array.isArray(tools)) {
     toolExecutor = tools;
     toolClasses = tools.tools;
