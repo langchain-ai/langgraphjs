@@ -2,7 +2,7 @@ import { Tool } from "@langchain/core/tools";
 import { convertToOpenAIFunction } from "@langchain/core/utils/function_calling";
 import { AgentAction } from "@langchain/core/agents";
 import { FunctionMessage, BaseMessage } from "@langchain/core/messages";
-import { RunnableLambda } from "@langchain/core/runnables";
+import { type RunnableConfig, RunnableLambda } from "@langchain/core/runnables";
 import { ToolExecutor } from "./tool_executor.js";
 import { StateGraph, StateGraphArgs } from "../graph/state.js";
 import { END } from "../index.js";
@@ -55,9 +55,12 @@ export function createFunctionCallingExecutor<Model extends object>({
   };
 
   // Define the function that calls the model
-  const callModel = async (state: FunctionCallingExecutorState) => {
+  const callModel = async (
+    state: FunctionCallingExecutorState,
+    config?: RunnableConfig
+  ) => {
     const { messages } = state;
-    const response = await newModel.invoke(messages);
+    const response = await newModel.invoke(messages, config);
     // We return a list, because this will get added to the existing list
     return {
       messages: [response],
@@ -86,10 +89,13 @@ export function createFunctionCallingExecutor<Model extends object>({
     };
   };
 
-  const callTool = async (state: FunctionCallingExecutorState) => {
+  const callTool = async (
+    state: FunctionCallingExecutorState,
+    config?: RunnableConfig
+  ) => {
     const action = _getAction(state);
     // We call the tool_executor and get back a response
-    const response = await toolExecutor.invoke(action);
+    const response = await toolExecutor.invoke(action, config);
     // We use the response to create a FunctionMessage
     const functionMessage = new FunctionMessage({
       content: response,

@@ -1,6 +1,10 @@
 import { AgentAction, AgentFinish } from "@langchain/core/agents";
 import { BaseMessage } from "@langchain/core/messages";
-import { Runnable, RunnableLambda } from "@langchain/core/runnables";
+import {
+  Runnable,
+  RunnableLambda,
+  type RunnableConfig,
+} from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
 import { ToolExecutor } from "./tool_executor.js";
 import { StateGraph, StateGraphArgs } from "../graph/state.js";
@@ -76,19 +80,25 @@ export function createAgentExecutor<
     return "continue";
   };
 
-  const runAgent = async (data: AgentExecutorState) => {
-    const agentOutcome = await agentRunnable.invoke(data);
+  const runAgent = async (
+    data: AgentExecutorState,
+    config?: RunnableConfig
+  ) => {
+    const agentOutcome = await agentRunnable.invoke(data, config);
     return {
       agentOutcome,
     };
   };
 
-  const executeTools = async (data: AgentExecutorState) => {
+  const executeTools = async (
+    data: AgentExecutorState,
+    config?: RunnableConfig
+  ) => {
     const agentAction = data.agentOutcome;
     if (!agentAction || "returnValues" in agentAction) {
       throw new Error("Agent has not been run yet");
     }
-    const output = await toolExecutor.invoke(agentAction);
+    const output = await toolExecutor.invoke(agentAction, config);
     return {
       steps: [[agentAction, output]],
     };
