@@ -4,8 +4,8 @@
     "@langchain/openai": "npm:@langchain/openai@latest",
     "@langchain/community/": "npm:/@langchain/community@latest/",
     "@langchain/core/": "npm:/@langchain/core@^0.1.22/",
-    "@langchain/langgraph": "npm:/@langchain/langgraph@0.0.3-rc.0",
-    "@langchain/langgraph/": "npm:/@langchain/langgraph@0.0.3-rc.0/",
+    "@langchain/langgraph": "npm:/@langchain/langgraph@latest",
+    "@langchain/langgraph/": "npm:/@langchain/langgraph@latest/",
     "dotenv/": "npm:/dotenv@latest/",
     "zod": "npm:zod@latest",
     "d3": "npm:d3@latest"
