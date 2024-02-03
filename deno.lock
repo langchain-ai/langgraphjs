@@ -755,7 +755,7 @@
     "dependencies": [
       "npm:@langchain/community@latest",
       "npm:@langchain/core@^0.1.22",
-      "npm:@langchain/langgraph@0.0.3-rc.0",
+      "npm:@langchain/langgraph@latest",
       "npm:@langchain/openai@latest",
       "npm:d3@latest",
       "npm:dotenv@latest",
