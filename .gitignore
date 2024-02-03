@@ -13,3 +13,5 @@ dist
 .turbo
 **/.turbo
 **/.eslintcache
+
+.env
