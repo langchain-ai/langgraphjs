@@ -51,7 +51,7 @@ describe("PreBuilt", () => {
           log: input,
         };
       }
-      const [_, toolName, toolInput] = input.split(":");
+      const [, toolName, toolInput] = input.split(":");
       return {
         tool: toolName,
         toolInput,
@@ -118,7 +118,7 @@ describe("PreBuilt", () => {
           log: input,
         };
       }
-      const [_, toolName, toolInput] = input.split(":");
+      const [, toolName, toolInput] = input.split(":");
       return {
         tool: toolName,
         toolInput,

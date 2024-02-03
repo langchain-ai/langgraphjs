@@ -196,6 +196,10 @@ export class Pregel
   extends Runnable<PregelInputType, PregelOutputType, PregelOptions>
   implements PregelInterface
 {
+  static lc_name() {
+    return "LangGraph";
+  }
+
   // Because Pregel extends `Runnable`.
   lc_namespace = ["langgraph", "pregel"];
 

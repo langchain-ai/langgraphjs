@@ -1,12 +1,15 @@
 index.cjs
 index.js
 index.d.ts
+index.d.cts
 pregel.cjs
 pregel.js
 pregel.d.ts
+pregel.d.cts
 prebuilt.cjs
 prebuilt.js
 prebuilt.d.ts
+prebuilt.d.cts
 node_modules
 dist
 .yarn
