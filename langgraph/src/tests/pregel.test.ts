@@ -655,7 +655,7 @@ describe("StateGraph", () => {
           },
         };
       }
-      const [_, toolName, toolInput] = input.split(":");
+      const [, toolName, toolInput] = input.split(":");
       return {
         agentOutcome: {
           tool: toolName,
@@ -752,7 +752,7 @@ describe("StateGraph", () => {
           },
         };
       }
-      const [_, toolName, toolInput] = input.split(":");
+      const [, toolName, toolInput] = input.split(":");
       return {
         agentOutcome: {
           tool: toolName,
@@ -925,7 +925,7 @@ describe("PreBuilt", () => {
           log: input,
         };
       }
-      const [_, toolName, toolInput] = input.split(":");
+      const [, toolName, toolInput] = input.split(":");
       return {
         tool: toolName,
         toolInput,
