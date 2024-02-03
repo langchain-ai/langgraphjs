@@ -199,19 +199,25 @@ const _getAction = (state: { messages: Array<BaseMessage> }): AgentAction => {
 };
 
 // Define the function that calls the model
-const callModel = async (state: { messages: Array<BaseMessage> }) => {
+const callModel = async (
+  state: { messages: Array<BaseMessage> },
+  config?: RunnableConfig
+) => {
   const { messages } = state;
-  const response = await newModel.invoke(messages);
+  const response = await newModel.invoke(messages, config);
   // We return a list, because this will get added to the existing list
   return {
     messages: [response],
   };
 };
 
-const callTool = async (state: { messages: Array<BaseMessage> }) => {
+const callTool = async (
+  state: { messages: Array<BaseMessage> },
+  config?: RunnableConfig
+) => {
   const action = _getAction(state);
   // We call the tool_executor and get back a response
-  const response = await toolExecutor.invoke(action);
+  const response = await toolExecutor.invoke(action, config);
   // We use the response to create a FunctionMessage
   const functionMessage = new FunctionMessage({
     content: response,
