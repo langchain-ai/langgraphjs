@@ -321,6 +321,12 @@ for await (const output of await app.stream(inputs)) {
 
 See a LangSmith trace of this run [here](https://smith.langchain.com/public/9afacb13-b9dc-416e-abbe-6ed2a0811afe/r).
 
+## Running Examples
+
+You can find some more example notebooks of different use-cases in the `examples/` folder in this repo. These example notebooks use the [Deno runtime](https://deno.land/).
+
+To pull in environment variables, you can create a `.env` file at the **root** of this repo (not in the `examples/` folder itself).
+
 ## When to Use
 
 When should you use this versus [LangChain Expression Language](https://js.langchain.com/docs/expression_language/)?
