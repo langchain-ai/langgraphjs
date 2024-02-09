@@ -1004,67 +1004,67 @@ describe("MessageGraph", () => {
   }
   const tools = [new SearchAPI()];
 
-  it("can invoke a list of messages", async () => {
-    const model = new FakeChatModel({
-      responses: [
-        new AIMessage({
-          content: "",
-          additional_kwargs: {
-            function_call: {
-              name: "search_api",
-              arguments: "query",
-            },
+  const model = new FakeChatModel({
+    responses: [
+      new AIMessage({
+        content: "",
+        additional_kwargs: {
+          function_call: {
+            name: "search_api",
+            arguments: "query",
           },
-        }),
-        new AIMessage({
-          content: "",
-          additional_kwargs: {
-            function_call: {
-              name: "search_api",
-              arguments: "another",
-            },
+        },
+      }),
+      new AIMessage({
+        content: "",
+        additional_kwargs: {
+          function_call: {
+            name: "search_api",
+            arguments: "another",
           },
-        }),
-        new AIMessage({
-          content: "answer",
-        }),
-      ],
+        },
+      }),
+      new AIMessage({
+        content: "answer",
+      }),
+    ],
+  });
+
+  const toolExecutor = new ToolExecutor({ tools });
+
+  const shouldContinue = (data: Array<BaseMessage>): string => {
+    const lastMessage = data[data.length - 1];
+    // If there is no function call, then we finish
+    if (
+      !("function_call" in lastMessage.additional_kwargs) ||
+      !lastMessage.additional_kwargs.function_call
+    ) {
+      return "end";
+    }
+    // Otherwise if there is, we continue
+    return "continue";
+  };
+
+  const callTool = async (
+    data: Array<BaseMessage>,
+    options?: { config?: RunnableConfig }
+  ) => {
+    const lastMessage = data[data.length - 1];
+
+    const action = {
+      tool: lastMessage.additional_kwargs.function_call?.name ?? "",
+      toolInput: lastMessage.additional_kwargs.function_call?.arguments ?? "",
+      log: "",
+    };
+
+    const response = await toolExecutor.invoke(action, options?.config);
+    return new FunctionMessage({
+      content: JSON.stringify(response),
+      name: action.tool,
     });
+  };
 
-    const toolExecutor = new ToolExecutor({ tools });
-
-    const shouldContinue = (data: Array<BaseMessage>): string => {
-      const lastMessage = data[data.length - 1];
-      // If there is no function call, then we finish
-      if (
-        !("function_call" in lastMessage.additional_kwargs) ||
-        !lastMessage.additional_kwargs.function_call
-      ) {
-        return "end";
-      }
-      // Otherwise if there is, we continue
-      return "continue";
-    };
-
-    const callTool = async (
-      data: Array<BaseMessage>,
-      options?: { config?: RunnableConfig }
-    ) => {
-      const lastMessage = data[data.length - 1];
-
-      const action = {
-        tool: lastMessage.additional_kwargs.function_call?.name ?? "",
-        toolInput: lastMessage.additional_kwargs.function_call?.arguments ?? "",
-        log: "",
-      };
-
-      const response = await toolExecutor.invoke(action, options?.config);
-      return new FunctionMessage({
-        content: JSON.stringify(response),
-        name: action.tool,
-      });
-    };
-
+  it("can invoke a single message", async () => {
     const workflow = new MessageGraph<Array<BaseMessage>>();
 
     workflow.addNode("agent", model);
@@ -1116,14 +1116,63 @@ describe("MessageGraph", () => {
       }),
       new AIMessage("answer"),
     ]);
+  });
 
-    const stream = await app.invoke(
-      new HumanMessage("what is the weather in sf?")
-    );
+  it("can stream a list of messages", async () => {
+    const workflow = new MessageGraph<Array<BaseMessage>>();
+
+    workflow.addNode("agent", model);
+    workflow.addNode("action", callTool);
+
+    workflow.setEntryPoint("agent");
+
+    workflow.addConditionalEdges("agent", shouldContinue, {
+      continue: "action",
+      end: END,
+    });
+
+    workflow.addEdge("action", "agent");
+
+    const app = workflow.compile();
+
+    const stream = await app.stream([new HumanMessage("what is the weather in sf?")]);
     const streamItems = [];
-    for (const item of stream) {
+    for await (const item of stream) {
       streamItems.push(item);
     }
-    console.log(streamItems);
+
+    const lastItem = streamItems[streamItems.length - 1];
+    expect(Object.keys(lastItem)).toEqual([END]);
+    expect(Object.values(lastItem)[0]).toHaveLength(6);
+    expect(Object.values(lastItem)[0]).toStrictEqual([
+      new HumanMessage("what is the weather in sf?"),
+      new AIMessage({
+        content: "",
+        additional_kwargs: {
+          function_call: {
+            name: "search_api",
+            arguments: "query",
+          },
+        },
+      }),
+      new FunctionMessage({
+        content: '"result for query"',
+        name: "search_api",
+      }),
+      new AIMessage({
+        content: "",
+        additional_kwargs: {
+          function_call: {
+            name: "search_api",
+            arguments: "another",
+          },
+        },
+      }),
+      new FunctionMessage({
+        content: '"result for another"',
+        name: "search_api",
+      }),
+      new AIMessage("answer"),
+    ]);
   });
 });
