@@ -1135,7 +1135,9 @@ describe("MessageGraph", () => {
 
     const app = workflow.compile();
 
-    const stream = await app.stream([new HumanMessage("what is the weather in sf?")]);
+    const stream = await app.stream([
+      new HumanMessage("what is the weather in sf?"),
+    ]);
     const streamItems = [];
     for await (const item of stream) {
       streamItems.push(item);
