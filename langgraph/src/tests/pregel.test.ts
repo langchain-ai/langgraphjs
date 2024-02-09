@@ -1116,5 +1116,14 @@ describe("MessageGraph", () => {
       }),
       new AIMessage("answer"),
     ]);
+
+    const stream = await app.invoke(
+      new HumanMessage("what is the weather in sf?")
+    );
+    const streamItems = [];
+    for (const item of stream) {
+      streamItems.push(item);
+    }
+    console.log(streamItems);
   });
 });

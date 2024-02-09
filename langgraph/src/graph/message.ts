@@ -9,7 +9,6 @@ function addMessages<T extends Messages>(left: T, right: T) {
   return [...leftArray, ...rightArray];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class MessageGraph<T extends Messages> extends StateGraph<T> {
   constructor() {
     super({
