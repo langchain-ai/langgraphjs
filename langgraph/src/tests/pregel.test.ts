@@ -1,11 +1,13 @@
 /* eslint-disable no-process-env */
 import { it, expect, jest, beforeAll, describe } from "@jest/globals";
-import { RunnablePassthrough } from "@langchain/core/runnables";
+import { RunnableConfig, RunnablePassthrough } from "@langchain/core/runnables";
 import { AgentAction, AgentFinish } from "@langchain/core/agents";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { FakeStreamingLLM } from "@langchain/core/utils/testing";
 import { Tool } from "@langchain/core/tools";
 import { z } from "zod";
+import { AIMessage, BaseMessage, FunctionMessage, HumanMessage } from "@langchain/core/messages";
+import { FakeChatModel } from "./utils.js";
 import { LastValue } from "../channels/last_value.js";
 import { END, Graph, StateGraph } from "../graph/index.js";
 import { ReservedChannelsMap } from "../pregel/reserved.js";
@@ -15,7 +17,8 @@ import { InvalidUpdateError } from "../channels/base.js";
 import { MemorySaver } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
 import { Channel, GraphRecursionError, Pregel } from "../pregel/index.js";
-import { createAgentExecutor } from "../prebuilt/index.js";
+import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
+import { MessageGraph } from "../graph/message.js";
 
 // If you have LangSmith set then it slows down the tests
 // immensely, and will most likely rate limit your account.
@@ -973,3 +976,145 @@ describe("PreBuilt", () => {
     });
   });
 });
+
+describe("MessageGraph", () => {
+  class SearchAPI extends Tool {
+    name = "search_api";
+
+    description = "A simple API that returns the input string.";
+
+    schema = z
+      .object({
+        input: z.string().optional(),
+      })
+      .transform((data) => data.input);
+
+    constructor() {
+      super();
+    }
+
+    async _call(query: string): Promise<string> {
+      return `result for ${query}`;
+    }
+  }
+  const tools = [new SearchAPI()];
+
+  it.only("can invoke a list of messages", async () => {
+    const model = new FakeChatModel({
+      responses: [
+        new AIMessage({
+          content: "",
+          additional_kwargs: {
+            function_call: {
+              name: "search_api",
+              arguments: "query",
+            }
+          }
+        }),
+        new AIMessage({
+          content: "",
+          additional_kwargs: {
+            function_call: {
+              name: "search_api",
+              arguments: "another",
+            }
+          }
+        }),
+        new AIMessage({
+          content: "answer",
+        }),
+      ]
+    })
+
+    const toolExecutor = new ToolExecutor({ tools });
+
+    const shouldContinue = (data: Array<BaseMessage>): string => {
+      console.log("shouldContinue", data)
+      const lastMessage = data[data.length - 1];
+      // If there is no function call, then we finish
+      if (
+        !("function_call" in lastMessage.additional_kwargs) ||
+        !lastMessage.additional_kwargs.function_call
+      ) {
+        console.log("Ending...")
+        return "end";
+      }
+      console.log("continuing")
+      // Otherwise if there is, we continue
+      return "continue";
+    };
+  
+    const callTool = async (
+      data: Array<BaseMessage>,
+      config?: RunnableConfig
+    ) => {
+      console.log("callTool", data);
+      const lastMessage = data[data.length - 1];
+  
+      const action = {
+        tool: lastMessage.additional_kwargs.function_call?.name ?? "",
+        toolInput: lastMessage.additional_kwargs.function_call?.arguments ?? "",
+        log: ""
+      };
+  
+      const response = await toolExecutor.invoke(action, config);
+      return new FunctionMessage({
+        content: JSON.stringify(response),
+        name: action.tool,
+      })
+    };
+
+    const workflow = new MessageGraph<Array<BaseMessage>>();
+
+    workflow.addNode("agent", model);
+    workflow.addNode("action", callTool);
+
+    workflow.setEntryPoint("agent");
+
+    workflow.addConditionalEdges(
+      "agent",
+      shouldContinue,
+      {
+        continue: "action",
+        end: END,
+      }
+    );
+
+    workflow.addEdge("action", "agent");
+
+    const app = workflow.compile();
+    console.log(process.env)
+    const result = await app.invoke(new HumanMessage("what is the weather in sf?"));
+    expect(result).toHaveLength(6);
+    expect(result).toStrictEqual([
+      new HumanMessage("what is the weather in sf?"),
+      new AIMessage({
+        content: "",
+        additional_kwargs: {
+          function_call: {
+            name: "search_api",
+            arguments: "query",
+          }
+        }
+      }),
+      new FunctionMessage({
+        content: '"result for query"',
+        name: "search_api",
+      }),
+      new AIMessage({
+        content: "",
+        additional_kwargs: {
+          function_call: {
+            name: "search_api",
+            arguments: "another",
+          }
+        }
+      }),
+      new FunctionMessage({
+        content: '"result for another"',
+        name: "search_api",
+      }),
+      new AIMessage("answer"),
+    ])
+  })
+})
