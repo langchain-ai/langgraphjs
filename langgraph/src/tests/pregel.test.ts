@@ -1004,7 +1004,7 @@ describe("MessageGraph", () => {
   }
   const tools = [new SearchAPI()];
 
-  it.only("can invoke a list of messages", async () => {
+  it("can invoke a list of messages", async () => {
     const model = new FakeChatModel({
       responses: [
         new AIMessage({
