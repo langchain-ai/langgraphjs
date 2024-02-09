@@ -1,4 +1,8 @@
-import { RunnableConfig, RunnableLambda, RunnableLike } from "@langchain/core/runnables";
+import {
+  RunnableConfig,
+  RunnableLambda,
+  RunnableLike,
+} from "@langchain/core/runnables";
 import { BaseChannel } from "../channels/base.js";
 import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { END, Graph } from "./graph.js";
@@ -33,7 +37,9 @@ export class StateGraph<
 
   addNode(key: string, action: RunnableLike) {
     if (Object.keys(this.nodes).some((key) => key in this.channels)) {
-      throw new Error(`${key} is already being used as a state attribute (a.k.a. a channel), cannot also be used as a node name.`);
+      throw new Error(
+        `${key} is already being used as a state attribute (a.k.a. a channel), cannot also be used as a node name.`
+      );
     }
     super.addNode(key, action);
   }
