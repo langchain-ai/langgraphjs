@@ -12,15 +12,17 @@ export const START = "__start__";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface StateGraphArgs<Channels extends Record<string, any>> {
-  channels: {
-    [K in keyof Channels]: {
-      value: BinaryOperator<Channels[K]> | null;
-      default?: () => Channels[K];
-    };
-  } | {
-    value: BinaryOperator<Channels["__root__"]> | null;
-    default?: () => Channels["__root__"];
-  };
+  channels:
+    | {
+        [K in keyof Channels]: {
+          value: BinaryOperator<Channels[K]> | null;
+          default?: () => Channels[K];
+        };
+      }
+    | {
+        value: BinaryOperator<Channels["__root__"]> | null;
+        default?: () => Channels["__root__"];
+      };
 }
 
 export class StateGraph<
@@ -42,8 +44,13 @@ export class StateGraph<
     }
 
     const stateKeys = Object.keys(this.channels);
-    const stateKeysRead = (stateKeys.length === 1 && stateKeys[0] === "__root__") ? stateKeys[0] : stateKeys;
-    const updateState = Array.isArray(stateKeysRead) ? _updateStateObject : _updateStateRoot;
+    const stateKeysRead =
+      stateKeys.length === 1 && stateKeys[0] === "__root__"
+        ? stateKeys[0]
+        : stateKeys;
+    const updateState = Array.isArray(stateKeysRead)
+      ? _updateStateObject
+      : _updateStateRoot;
 
     const outgoingEdges: Record<string, string[]> = {};
     for (const [start, end] of this.edges) {
@@ -123,7 +130,10 @@ function _updateStateObject(
   return input;
 }
 
-function _updateStateRoot(input: unknown, options?: { config?: RunnableConfig }): unknown {
+function _updateStateRoot(
+  input: unknown,
+  options?: { config?: RunnableConfig }
+): unknown {
   if (!options?.config) {
     throw new Error("Config not found when updating state.");
   }
@@ -145,7 +155,7 @@ function _getChannels<Channels extends Record<string, unknown>>(
         schema.value as BinaryOperator<Channels["__root__"]>,
         schema.default as (() => Channels["__root__"]) | undefined
       ),
-    }
+    };
   }
   const channels: Record<string, BaseChannel> = {};
   for (const [name, values] of Object.entries(schema)) {

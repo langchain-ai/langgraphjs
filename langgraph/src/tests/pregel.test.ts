@@ -6,7 +6,12 @@ import { PromptTemplate } from "@langchain/core/prompts";
 import { FakeStreamingLLM } from "@langchain/core/utils/testing";
 import { Tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { AIMessage, BaseMessage, FunctionMessage, HumanMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  BaseMessage,
+  FunctionMessage,
+  HumanMessage,
+} from "@langchain/core/messages";
 import { FakeChatModel } from "./utils.js";
 import { LastValue } from "../channels/last_value.js";
 import { END, Graph, StateGraph } from "../graph/index.js";
@@ -1008,8 +1013,8 @@ describe("MessageGraph", () => {
             function_call: {
               name: "search_api",
               arguments: "query",
-            }
-          }
+            },
+          },
         }),
         new AIMessage({
           content: "",
@@ -1017,51 +1022,51 @@ describe("MessageGraph", () => {
             function_call: {
               name: "search_api",
               arguments: "another",
-            }
-          }
+            },
+          },
         }),
         new AIMessage({
           content: "answer",
         }),
-      ]
-    })
+      ],
+    });
 
     const toolExecutor = new ToolExecutor({ tools });
 
     const shouldContinue = (data: Array<BaseMessage>): string => {
-      console.log("shouldContinue", data)
+      console.log("shouldContinue", data);
       const lastMessage = data[data.length - 1];
       // If there is no function call, then we finish
       if (
         !("function_call" in lastMessage.additional_kwargs) ||
         !lastMessage.additional_kwargs.function_call
       ) {
-        console.log("Ending...")
+        console.log("Ending...");
         return "end";
       }
-      console.log("continuing")
+      console.log("continuing");
       // Otherwise if there is, we continue
       return "continue";
     };
-  
+
     const callTool = async (
       data: Array<BaseMessage>,
       config?: RunnableConfig
     ) => {
       console.log("callTool", data);
       const lastMessage = data[data.length - 1];
-  
+
       const action = {
         tool: lastMessage.additional_kwargs.function_call?.name ?? "",
         toolInput: lastMessage.additional_kwargs.function_call?.arguments ?? "",
-        log: ""
+        log: "",
       };
-  
+
       const response = await toolExecutor.invoke(action, config);
       return new FunctionMessage({
         content: JSON.stringify(response),
         name: action.tool,
-      })
+      });
     };
 
     const workflow = new MessageGraph<Array<BaseMessage>>();
@@ -1071,20 +1076,18 @@ describe("MessageGraph", () => {
 
     workflow.setEntryPoint("agent");
 
-    workflow.addConditionalEdges(
-      "agent",
-      shouldContinue,
-      {
-        continue: "action",
-        end: END,
-      }
-    );
+    workflow.addConditionalEdges("agent", shouldContinue, {
+      continue: "action",
+      end: END,
+    });
 
     workflow.addEdge("action", "agent");
 
     const app = workflow.compile();
-    console.log(process.env)
-    const result = await app.invoke(new HumanMessage("what is the weather in sf?"));
+    console.log(process.env);
+    const result = await app.invoke(
+      new HumanMessage("what is the weather in sf?")
+    );
     expect(result).toHaveLength(6);
     expect(result).toStrictEqual([
       new HumanMessage("what is the weather in sf?"),
@@ -1094,8 +1097,8 @@ describe("MessageGraph", () => {
           function_call: {
             name: "search_api",
             arguments: "query",
-          }
-        }
+          },
+        },
       }),
       new FunctionMessage({
         content: '"result for query"',
@@ -1107,14 +1110,14 @@ describe("MessageGraph", () => {
           function_call: {
             name: "search_api",
             arguments: "another",
-          }
-        }
+          },
+        },
       }),
       new FunctionMessage({
         content: '"result for another"',
         name: "search_api",
       }),
       new AIMessage("answer"),
-    ])
-  })
-})
+    ]);
+  });
+});

@@ -1,5 +1,8 @@
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
-import { BaseChatModel , BaseChatModelParams } from "@langchain/core/language_models/chat_models";
+import {
+  BaseChatModel,
+  BaseChatModelParams,
+} from "@langchain/core/language_models/chat_models";
 import { BaseMessage, AIMessage } from "@langchain/core/messages";
 import { ChatResult } from "@langchain/core/outputs";
 
@@ -45,7 +48,7 @@ export class FakeChatModel extends BaseChatModel {
       generations: [
         {
           message: response ?? new AIMessage(text),
-          text: response ? response.content as string : text,
+          text: response ? (response.content as string) : text,
         },
       ],
       llmOutput: {},

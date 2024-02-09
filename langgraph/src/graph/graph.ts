@@ -31,7 +31,9 @@ class Branch {
   }
 }
 
-type RunnableLikeAndList<RunInput, RunOutput> = RunnableLike<RunInput, RunOutput> | Array<RunInput>;
+type RunnableLikeAndList<RunInput, RunOutput> =
+  | RunnableLike<RunInput, RunOutput>
+  | Array<RunInput>;
 
 export class Graph<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

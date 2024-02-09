@@ -10,13 +10,15 @@ function addMessages(left: Messages, right: Messages): Array<BaseMessage> {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export class MessageGraph<T extends Messages> extends StateGraph<{ messages: T }> {
+export class MessageGraph<T extends Messages> extends StateGraph<{
+  messages: T;
+}> {
   constructor() {
     super({
       channels: {
         value: addMessages,
         default: () => [],
-      }
+      },
     });
   }
 }
