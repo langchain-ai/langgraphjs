@@ -1034,26 +1034,22 @@ describe("MessageGraph", () => {
     const toolExecutor = new ToolExecutor({ tools });
 
     const shouldContinue = (data: Array<BaseMessage>): string => {
-      console.log("shouldContinue", data);
       const lastMessage = data[data.length - 1];
       // If there is no function call, then we finish
       if (
         !("function_call" in lastMessage.additional_kwargs) ||
         !lastMessage.additional_kwargs.function_call
       ) {
-        console.log("Ending...");
         return "end";
       }
-      console.log("continuing");
       // Otherwise if there is, we continue
       return "continue";
     };
 
     const callTool = async (
       data: Array<BaseMessage>,
-      config?: RunnableConfig
+      options?: { config?: RunnableConfig }
     ) => {
-      console.log("callTool", data);
       const lastMessage = data[data.length - 1];
 
       const action = {
@@ -1062,7 +1058,7 @@ describe("MessageGraph", () => {
         log: "",
       };
 
-      const response = await toolExecutor.invoke(action, config);
+      const response = await toolExecutor.invoke(action, options?.config);
       return new FunctionMessage({
         content: JSON.stringify(response),
         name: action.tool,
@@ -1084,10 +1080,11 @@ describe("MessageGraph", () => {
     workflow.addEdge("action", "agent");
 
     const app = workflow.compile();
-    console.log(process.env);
+
     const result = await app.invoke(
       new HumanMessage("what is the weather in sf?")
     );
+
     expect(result).toHaveLength(6);
     expect(result).toStrictEqual([
       new HumanMessage("what is the weather in sf?"),

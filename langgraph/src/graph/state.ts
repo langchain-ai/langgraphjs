@@ -20,8 +20,8 @@ export interface StateGraphArgs<Channels extends Record<string, any>> {
         };
       }
     | {
-        value: BinaryOperator<Channels["__root__"]> | null;
-        default?: () => Channels["__root__"];
+        value: BinaryOperator<unknown> | null;
+        default?: () => unknown;
       };
 }
 

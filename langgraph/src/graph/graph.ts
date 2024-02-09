@@ -31,10 +31,6 @@ class Branch {
   }
 }
 
-type RunnableLikeAndList<RunInput, RunOutput> =
-  | RunnableLike<RunInput, RunOutput>
-  | Array<RunInput>;
-
 export class Graph<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   RunInput = any,
@@ -55,7 +51,7 @@ export class Graph<
     this.branches = {};
   }
 
-  addNode(key: string, action: RunnableLikeAndList<RunInput, RunOutput>): void {
+  addNode(key: string, action: RunnableLike<RunInput, RunOutput>): void {
     if (this.nodes[key]) {
       throw new Error(`Node \`${key}\` already present.`);
     }
