@@ -16,9 +16,9 @@ type EndsMap = { [result: string]: string };
 class Branch {
   condition: CallableFunction;
 
-  ends: EndsMap;
+  ends?: EndsMap;
 
-  constructor(condition: CallableFunction, ends: EndsMap) {
+  constructor(condition: CallableFunction, ends?: EndsMap) {
     this.condition = condition;
     this.ends = ends;
   }
@@ -26,7 +26,12 @@ class Branch {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public runnable(input: any, options?: { config?: RunnableConfig }): Runnable {
     const result = this.condition(input, options?.config);
-    const destination = this.ends[result];
+    let destination;
+    if (this.ends) {
+      destination = this.ends[result];
+    } else {
+      destination = result;
+    }
     return Channel.writeTo(destination !== END ? `${destination}:inbox` : END);
   }
 }
@@ -84,7 +89,7 @@ export class Graph<
   addConditionalEdges(
     startKey: string,
     condition: CallableFunction,
-    conditionalEdgeMapping: Record<string, string>
+    conditionalEdgeMapping?: Record<string, string>
   ): void {
     if (!this.nodes[startKey]) {
       throw new Error(`Need to addNode \`${startKey}\` first`);
@@ -92,9 +97,20 @@ export class Graph<
     if (condition.constructor.name === "AsyncFunction") {
       throw new Error("Condition cannot be an async function");
     }
-    for (const destination of Object.values(conditionalEdgeMapping)) {
-      if (!this.nodes[destination] && destination !== END) {
-        throw new Error(`Need to addNode \`${destination}\` first`);
+    if (conditionalEdgeMapping) {
+      const mappingValues = Array.from(Object.values(conditionalEdgeMapping));
+      const nodesValues = Object.keys(this.nodes);
+      const endExcluded = mappingValues.filter((value) => value !== END);
+      const difference = endExcluded.filter(
+        (value) => !nodesValues.some((nv) => nv === value)
+      );
+
+      if (difference.length > 0) {
+        throw new Error(
+          `Missing nodes which are in conditional edge mapping.\nMapping contains possible destinations: ${mappingValues.join(
+            ", "
+          )}.\nPossible nodes are ${nodesValues.join(", ")}.`
+        );
       }
     }
 
@@ -176,23 +192,33 @@ export class Graph<
     const allStarts = new Set(
       [...this.edges].map(([src, _]) => src).concat(Object.keys(this.branches))
     );
-    const allEnds = new Set(
-      [...this.edges]
-        .map(([_, end]) => end)
-        .concat(
-          ...Object.values(this.branches).flatMap((branchList) =>
-            branchList.flatMap((branch) => Object.values(branch.ends))
-          )
-        )
-        .concat(this.entryPoint ? [this.entryPoint] : [])
-    );
 
     for (const node of Object.keys(this.nodes)) {
-      if (!allEnds.has(node)) {
-        throw new Error(`Node \`${node}\` is not reachable`);
-      }
       if (!allStarts.has(node)) {
         throw new Error(`Node \`${node}\` is a dead-end`);
+      }
+    }
+
+    const allEndsAreDefined = Object.values(this.branches).every((branchList) =>
+      branchList.every((branch) => branch.ends !== null)
+    );
+
+    if (allEndsAreDefined) {
+      const allEnds = new Set(
+        [...this.edges]
+          .map(([_, end]) => end)
+          .concat(
+            ...Object.values(this.branches).flatMap((branchList) =>
+              branchList.flatMap((branch) => Object.values(branch.ends ?? {}))
+            )
+          )
+          .concat(this.entryPoint ? [this.entryPoint] : [])
+      );
+
+      for (const node of Object.keys(this.nodes)) {
+        if (!allEnds.has(node)) {
+          throw new Error(`Node \`${node}\` is not reachable`);
+        }
       }
     }
   }
