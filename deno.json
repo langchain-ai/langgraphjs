@@ -8,6 +8,7 @@
     "@langchain/langgraph/": "npm:/@langchain/langgraph@latest/",
     "dotenv/": "npm:/dotenv@latest/",
     "zod": "npm:zod@latest",
-    "d3": "npm:d3@latest"
+    "d3": "npm:d3@latest",
+    "chromadb": "npm:/chromadb@latest"
   }
 }
