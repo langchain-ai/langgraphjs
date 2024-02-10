@@ -101,11 +101,15 @@ export class Graph<
       const mappingValues = Array.from(Object.values(conditionalEdgeMapping));
       const nodesValues = Object.keys(this.nodes);
       const endExcluded = mappingValues.filter((value) => value !== END);
-      const difference = endExcluded.filter((value) => !nodesValues.some((nv) => nv === value));
-  
+      const difference = endExcluded.filter(
+        (value) => !nodesValues.some((nv) => nv === value)
+      );
+
       if (difference.length > 0) {
         throw new Error(
-          `Missing nodes which are in conditional edge mapping.\nMapping contains possible destinations: ${mappingValues.join(', ')}.\nPossible nodes are ${nodesValues.join(', ')}.`
+          `Missing nodes which are in conditional edge mapping.\nMapping contains possible destinations: ${mappingValues.join(
+            ", "
+          )}.\nPossible nodes are ${nodesValues.join(", ")}.`
         );
       }
     }
