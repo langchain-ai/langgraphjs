@@ -49,7 +49,12 @@ export class StateGraph<
         ? stateKeys[0]
         : stateKeys;
     const updateState = Array.isArray(stateKeysRead)
-      ? _updateStateObject
+      ? (
+          nodeName: string,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          input: Record<string, any>,
+          options?: { config?: RunnableConfig }
+        ) => _updateStateObject(stateKeys, nodeName, input, options)
       : _updateStateRoot;
 
     const outgoingEdges: Record<string, string[]> = {};
@@ -66,7 +71,13 @@ export class StateGraph<
     for (const [key, node] of Object.entries(this.nodes)) {
       nodes[key] = Channel.subscribeTo(`${key}:inbox`)
         .pipe(node)
-        .pipe(updateState)
+        .pipe(
+          (
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            input: Record<string, any>,
+            options?: { config?: RunnableConfig }
+          ) => updateState(key, input, options)
+        )
         .pipe(Channel.writeTo(key));
     }
 
@@ -95,7 +106,13 @@ export class StateGraph<
     nodes[START] = Channel.subscribeTo(`${START}:inbox`, {
       tags: ["langsmith:hidden"],
     })
-      .pipe(updateState)
+      .pipe(
+        (
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          input: Record<string, any>,
+          options?: { config?: RunnableConfig }
+        ) => updateState(START, input, options)
+      )
       .pipe(Channel.writeTo(START));
 
     nodes[`${START}:edges`] = Channel.subscribeTo(START, {
@@ -118,6 +135,8 @@ export class StateGraph<
 }
 
 function _updateStateObject(
+  stateKeys: Array<string>,
+  nodeName: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   input: Record<string, any>,
   options?: { config?: RunnableConfig }
@@ -126,11 +145,19 @@ function _updateStateObject(
   if (!options?.config) {
     throw new Error("Config not found when updating state.");
   }
+  if (Object.keys(input).some((key) => !stateKeys.some((sk) => sk === key))) {
+    throw new Error(
+      `Invalid state update from node ${nodeName}, expected object with one or more of ${stateKeys.join(
+        ", "
+      )}, got ${Object.keys(input).join(",")}`
+    );
+  }
   ChannelWrite.doWrite(options.config, input);
   return input;
 }
 
 function _updateStateRoot(
+  _nodeName: string,
   input: unknown,
   options?: { config?: RunnableConfig }
 ): unknown {
