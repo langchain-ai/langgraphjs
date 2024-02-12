@@ -9,6 +9,7 @@
     "dotenv/": "npm:/dotenv@latest/",
     "zod": "npm:zod@latest",
     "d3": "npm:d3@latest",
-    "chromadb": "npm:/chromadb@latest"
+    "chromadb": "npm:/chromadb@latest",
+    "zod-to-json-schema": "npm:/zod-to-json-schema@latest"
   }
 }
