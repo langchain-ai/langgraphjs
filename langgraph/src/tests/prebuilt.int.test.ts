@@ -4,14 +4,20 @@ import { it, beforeAll, describe, expect } from "@jest/globals";
 import { Tool } from "@langchain/core/tools";
 import { ChatOpenAI } from "@langchain/openai";
 import { BaseMessage, HumanMessage } from "@langchain/core/messages";
+import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
+import { createOpenAIFunctionsAgent } from "langchain/agents";
+import { pull } from "langchain/hub";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { END } from "../index.js";
-import { createFunctionCallingExecutor } from "../prebuilt/index.js";
+import {
+  createAgentExecutor,
+  createFunctionCallingExecutor,
+} from "../prebuilt/index.js";
 
 // If you have LangSmith set then it slows down the tests
 // immensely, and will most likely rate limit your account.
 beforeAll(() => {
   process.env.LANGCHAIN_TRACING_V2 = "false";
-  process.env.LANGCHAIN_ENDPOINT = "";
   process.env.LANGCHAIN_ENDPOINT = "";
   process.env.LANGCHAIN_API_KEY = "";
   process.env.LANGCHAIN_PROJECT = "";
@@ -101,5 +107,32 @@ describe("createFunctionCallingExecutor", () => {
       (message: BaseMessage) => message._getType() === "function"
     );
     expect(functionCall.content).toBe(weatherResponse);
+  });
+});
+
+describe("createAgentExecutor", () => {
+  const tools = [new TavilySearchResults({ maxResults: 3 })];
+
+  it("Can invoke", async () => {
+    const prompt = await pull<ChatPromptTemplate>(
+      "hwchase17/openai-functions-agent"
+    );
+    const llm = new ChatOpenAI({ modelName: "gpt-4-0125-preview" });
+    const agentRunnable = await createOpenAIFunctionsAgent({
+      llm,
+      tools,
+      prompt,
+    });
+
+    const agentExecutor = createAgentExecutor({
+      agentRunnable,
+      tools,
+    });
+    console.log(
+      await agentExecutor.invoke({
+        input: "who is the winnner of the us open",
+        steps: [],
+      })
+    );
   });
 });
