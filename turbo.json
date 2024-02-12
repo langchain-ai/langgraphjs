@@ -5,8 +5,8 @@
     "@langchain/langgraph#build": {
       "outputs": ["langgraph/dist/**", "*.js", "*.cjs", "*.d.ts"],
       "inputs": [
-        "langgraph/src/**",
-        "langgraph/scripts/**",
+        "langgraph/src/**/*.ts",
+        "langgraph/scripts/**/*.js",
         "langgraph/package.json",
         "langgraph/tsconfig.json"
       ]
@@ -15,8 +15,8 @@
       "dependsOn": ["@langchain/langgraph#build", "^build"],
       "outputs": ["langgraph/dist/**", "*.js", "*.cjs", "*.d.ts"],
       "inputs": [
-        "langgraph/src/**",
-        "langgraph/scripts/**",
+        "langgraph/src/**/*.ts",
+        "langgraph/scripts/**/*.js",
         "langgraph/package.json",
         "langgraph/tsconfig.json"
       ]
