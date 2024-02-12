@@ -100,7 +100,7 @@ export function createAgentExecutor<
     }
     const output = await toolExecutor.invoke(agentAction, config);
     return {
-      steps: [[agentAction, output]],
+      steps: [{ action: agentAction, observation: JSON.stringify(output) }]
     };
   };
 
