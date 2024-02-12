@@ -13,12 +13,12 @@ import { createAgentExecutor, createFunctionCallingExecutor } from "../prebuilt/
 
 // If you have LangSmith set then it slows down the tests
 // immensely, and will most likely rate limit your account.
-// beforeAll(() => {
-//   process.env.LANGCHAIN_TRACING_V2 = "false";
-//   process.env.LANGCHAIN_ENDPOINT = "";
-//   process.env.LANGCHAIN_API_KEY = "";
-//   process.env.LANGCHAIN_PROJECT = "";
-// });
+beforeAll(() => {
+  process.env.LANGCHAIN_TRACING_V2 = "false";
+  process.env.LANGCHAIN_ENDPOINT = "";
+  process.env.LANGCHAIN_API_KEY = "";
+  process.env.LANGCHAIN_PROJECT = "";
+});
 
 describe("createFunctionCallingExecutor", () => {
   it("can call a function", async () => {
@@ -107,7 +107,7 @@ describe("createFunctionCallingExecutor", () => {
   });
 });
 
-describe.only("createAgentExecutor", () => {
+describe("createAgentExecutor", () => {
   const tools = [new TavilySearchResults({ maxResults: 3 })];
 
   it("Can invoke", async () => {
