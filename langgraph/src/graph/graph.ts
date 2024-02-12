@@ -50,7 +50,7 @@ export class Graph<
 
   entryPoint?: string;
 
-  compiled = false
+  compiled = false;
 
   constructor() {
     this.nodes = {};
@@ -65,8 +65,10 @@ export class Graph<
   }
 
   addNode(key: string, action: RunnableLike<RunInput, RunOutput>): void {
-    this.warnIfCompiled(`Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`);
-    
+    this.warnIfCompiled(
+      `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
+    );
+
     if (this.nodes[key]) {
       throw new Error(`Node \`${key}\` already present.`);
     }
@@ -78,7 +80,9 @@ export class Graph<
   }
 
   addEdge(startKey: string, endKey: string): void {
-    this.warnIfCompiled(`Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph.`);
+    this.warnIfCompiled(
+      `Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph.`
+    );
 
     if (startKey === END) {
       throw new Error("END cannot be a start node");
@@ -103,7 +107,9 @@ export class Graph<
     condition: CallableFunction,
     conditionalEdgeMapping?: Record<string, string>
   ): void {
-    this.warnIfCompiled("Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph.");
+    this.warnIfCompiled(
+      "Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph."
+    );
 
     if (!this.nodes[startKey]) {
       throw new Error(`Need to addNode \`${startKey}\` first`);
@@ -135,7 +141,9 @@ export class Graph<
   }
 
   setEntryPoint(key: string): void {
-    this.warnIfCompiled("Setting the entry point of a graph that has already been compiled. This will not be reflected in the compiled graph.");
+    this.warnIfCompiled(
+      "Setting the entry point of a graph that has already been compiled. This will not be reflected in the compiled graph."
+    );
 
     if (!this.nodes[key]) {
       throw new Error(`Need to addNode \`${key}\` first`);
@@ -144,7 +152,9 @@ export class Graph<
   }
 
   setFinishPoint(key: string): void {
-    this.warnIfCompiled("Setting a finish point of a graph that has already been compiled. This will not be reflected in the compiled graph.");
+    this.warnIfCompiled(
+      "Setting a finish point of a graph that has already been compiled. This will not be reflected in the compiled graph."
+    );
 
     this.addEdge(key, END);
   }
