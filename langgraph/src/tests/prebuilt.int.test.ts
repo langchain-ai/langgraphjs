@@ -9,7 +9,10 @@ import { createOpenAIFunctionsAgent } from "langchain/agents";
 import { pull } from "langchain/hub";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { END } from "../index.js";
-import { createAgentExecutor, createFunctionCallingExecutor } from "../prebuilt/index.js";
+import {
+  createAgentExecutor,
+  createFunctionCallingExecutor,
+} from "../prebuilt/index.js";
 
 // If you have LangSmith set then it slows down the tests
 // immensely, and will most likely rate limit your account.
@@ -111,16 +114,25 @@ describe("createAgentExecutor", () => {
   const tools = [new TavilySearchResults({ maxResults: 3 })];
 
   it("Can invoke", async () => {
-    const prompt = await pull<ChatPromptTemplate>("hwchase17/openai-functions-agent");
-    const llm = new ChatOpenAI({ modelName: "gpt-4-0125-preview" })
+    const prompt = await pull<ChatPromptTemplate>(
+      "hwchase17/openai-functions-agent"
+    );
+    const llm = new ChatOpenAI({ modelName: "gpt-4-0125-preview" });
     const agentRunnable = await createOpenAIFunctionsAgent({
-      llm, tools, prompt
+      llm,
+      tools,
+      prompt,
     });
 
     const agentExecutor = createAgentExecutor({
       agentRunnable,
       tools,
     });
-    console.log(await agentExecutor.invoke({ input: "who is the winnner of the us open", steps: [] }))
-  })
-})
+    console.log(
+      await agentExecutor.invoke({
+        input: "who is the winnner of the us open",
+        steps: [],
+      })
+    );
+  });
+});
