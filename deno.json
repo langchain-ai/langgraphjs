@@ -1,13 +1,14 @@
 {
   "imports": {
-    "langchain/": "npm:/langchain@latest/",
-    "@langchain/openai": "npm:@langchain/openai@latest",
-    "@langchain/community/": "npm:/@langchain/community@latest/",
-    "@langchain/core/": "npm:/@langchain/core@^0.1.22/",
-    "@langchain/langgraph": "npm:/@langchain/langgraph@latest",
-    "@langchain/langgraph/": "npm:/@langchain/langgraph@latest/",
-    "dotenv/": "npm:/dotenv@latest/",
-    "zod": "npm:zod@latest",
-    "d3": "npm:d3@latest"
+    "langchain/": "npm:/langchain/",
+    "@langchain/openai": "npm:@langchain/openai",
+    "@langchain/community/": "npm:/@langchain/community/",
+    "@langchain/core/": "npm:/@langchain/core/",
+    "@langchain/langgraph": "npm:/@langchain/langgraph@0.0.6",
+    "@langchain/langgraph/": "npm:/@langchain/langgraph@0.0.6/",
+    "dotenv/": "npm:/dotenv/",
+    "zod": "npm:/zod",
+    "d3": "npm:/d3",
+    "zod-to-json-schema": "npm:/zod-to-json-schema"
   }
 }
