@@ -68,9 +68,6 @@
     "typescript": "<5.2.0",
     "zod": "^3.22.4"
   },
-  "overrides": {
-    "@langchain/core": "^0.1.27"
-  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
