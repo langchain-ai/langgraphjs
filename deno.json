@@ -3,14 +3,14 @@
     "langchain/": "npm:/langchain/",
     "@langchain/openai": "npm:@langchain/openai",
     "@langchain/community/": "npm:/@langchain/community/",
-    "@langchain/core/": "npm:/@langchain/core@^0.1.22/",
+    "@langchain/core/": "npm:/@langchain/core/",
     "@langchain/langgraph": "npm:/@langchain/langgraph",
     "@langchain/langgraph/": "npm:/@langchain/langgraph/",
     "dotenv/": "npm:/dotenv/",
-    "zod": "npm:zod",
-    "d3": "npm:d3",
-    "chromadb": "npm:/chromadb",
+    "zod": "npm:/zod",
+    "d3": "npm:/d3",
     "zod-to-json-schema": "npm:/zod-to-json-schema",
+    "chromadb": "npm:/chromadb",
     "cheerio": "npm:/cheerio"
   }
 }

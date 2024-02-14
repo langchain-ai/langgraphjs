@@ -70,6 +70,7 @@ describe("PreBuilt", () => {
       input: "what is the weather in sf?",
     });
 
+    console.log(result.steps);
     expect(result).toEqual({
       input: "what is the weather in sf?",
       agentOutcome: {
@@ -79,22 +80,22 @@ describe("PreBuilt", () => {
         log: "finish:answer",
       },
       steps: [
-        [
-          {
-            log: "tool:search_api:query",
+        {
+          action: {
             tool: "search_api",
             toolInput: "query",
+            log: "tool:search_api:query",
           },
-          "result for query",
-        ],
-        [
-          {
-            log: "tool:search_api:another",
+          observation: "result for query",
+        },
+        {
+          action: {
             tool: "search_api",
             toolInput: "another",
+            log: "tool:search_api:another",
           },
-          "result for another",
-        ],
+          observation: "result for another",
+        },
       ],
     });
   });
@@ -144,9 +145,12 @@ describe("PreBuilt", () => {
     }
 
     expect(fullResponse.length > 3).toBe(true);
+
     const allAgentMessages = fullResponse.filter((res) => "agent" in res);
     expect(allAgentMessages.length >= 3).toBe(true);
+
     const eneMessage = fullResponse[fullResponse.length - 1];
+
     expect(END in eneMessage).toBe(true);
     expect(eneMessage[END].input).toBe("what is the weather in sf?");
     expect(eneMessage[END].agentOutcome).toEqual({

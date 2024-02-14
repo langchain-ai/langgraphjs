@@ -961,22 +961,22 @@ describe("PreBuilt", () => {
         log: "finish:answer",
       },
       steps: [
-        [
-          {
+        {
+          action: {
             log: "tool:search_api:query",
             tool: "search_api",
             toolInput: "query",
           },
-          "result for query",
-        ],
-        [
-          {
+          observation: "result for query",
+        },
+        {
+          action: {
             log: "tool:search_api:another",
             tool: "search_api",
             toolInput: "another",
           },
-          "result for another",
-        ],
+          observation: "result for another",
+        },
       ],
     });
   });
