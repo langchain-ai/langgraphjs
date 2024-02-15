@@ -5,6 +5,7 @@
       "npm:@langchain/community": "npm:@langchain/community@0.0.28_chromadb@1.8.1",
       "npm:@langchain/core": "npm:@langchain/core@0.1.28_zod@3.22.4",
       "npm:@langchain/langgraph": "npm:@langchain/langgraph@0.0.7",
+      "npm:@langchain/mistralai": "npm:@langchain/mistralai@0.0.7",
       "npm:@langchain/openai": "npm:@langchain/openai@0.0.14_zod@3.22.4",
       "npm:cheerio": "npm:cheerio@1.0.0-rc.12",
       "npm:chromadb": "npm:chromadb@1.8.1",
@@ -61,6 +62,13 @@
           "@langchain/core": "@langchain/core@0.1.28_zod@3.22.4"
         }
       },
+      "@langchain/mistralai@0.0.7": {
+        "integrity": "sha512-i0L463ojB9/LHSYo3MCYBWkCsb+qqNxD6PYRAJQ1fObSqLqpGIhRRIWegipIte8MFzIfREkOTiEQEbwIM1I7Wg==",
+        "dependencies": {
+          "@langchain/core": "@langchain/core@0.1.28_zod@3.22.4",
+          "@mistralai/mistralai": "@mistralai/mistralai@0.0.7_axios@1.6.7"
+        }
+      },
       "@langchain/openai@0.0.14_zod@3.22.4": {
         "integrity": "sha512-co6nRylPrLGY/C3JYxhHt6cxLq07P086O7K3QaZH7SFFErIN9wSzJonpvhZR07DEUq6eK6wKgh2ORxA/NcjSRQ==",
         "dependencies": {
@@ -69,6 +77,13 @@
           "openai": "openai@4.28.0",
           "zod": "zod@3.22.4",
           "zod-to-json-schema": "zod-to-json-schema@3.22.4_zod@3.22.4"
+        }
+      },
+      "@mistralai/mistralai@0.0.7_axios@1.6.7": {
+        "integrity": "sha512-47FiV/GBnt6gug99ZfDBcBofYuYvqT5AyhUDdtktUbCN+gq52tmiAbtwc88k7hlyUWHzJ28VpHRDfNTRfaWKxA==",
+        "dependencies": {
+          "axios": "axios@1.6.7",
+          "axios-retry": "axios-retry@4.0.0_axios@1.6.7"
         }
       },
       "@types/node-fetch@2.6.11": {
@@ -129,6 +144,21 @@
       "asynckit@0.4.0": {
         "integrity": "sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==",
         "dependencies": {}
+      },
+      "axios-retry@4.0.0_axios@1.6.7": {
+        "integrity": "sha512-F6P4HVGITD/v4z9Lw2mIA24IabTajvpDZmKa6zq/gGwn57wN5j1P3uWrAV0+diqnW6kTM2fTqmWNfgYWGmMuiA==",
+        "dependencies": {
+          "axios": "axios@1.6.7",
+          "is-retry-allowed": "is-retry-allowed@2.2.0"
+        }
+      },
+      "axios@1.6.7": {
+        "integrity": "sha512-/hDJGff6/c7u0hDkvkGxR/oy6CbCs8ziCsC7SqmhjfozqiJGc8Z11wrv9z9lYfY4K8l+H9TpjcMDX0xOZmx+RA==",
+        "dependencies": {
+          "follow-redirects": "follow-redirects@1.15.5",
+          "form-data": "form-data@4.0.0",
+          "proxy-from-env": "proxy-from-env@1.1.0"
+        }
       },
       "base-64@0.1.0": {
         "integrity": "sha512-Y5gU45svrR5tI2Vt/X9GPd3L0HNIKzGu202EjxrXMpuc2V2CiKgemAbUUsqYmZJvPtCXoUKjNZwBJzsNScUbXA==",
@@ -299,6 +329,10 @@
         "integrity": "sha512-b6suED+5/3rTpUBdG1gupIl8MPFCAMA0QXwmljLhvCUKcUvdE4gWky9zpuGCcXHOsz4J9wPGNWq6OKpmIzz3hQ==",
         "dependencies": {}
       },
+      "follow-redirects@1.15.5": {
+        "integrity": "sha512-vSFWUON1B+yAw1VN4xMfxgn5fTUiaOzAJCKBwIIgT/+7CuGy9+r+5gITvP62j3RmaD5Ph65UaERdOSRGUzZtgw==",
+        "dependencies": {}
+      },
       "form-data-encoder@1.7.2": {
         "integrity": "sha512-qfqtYan3rxrnCk1VYaA4H+Ms9xdpPqvLZa6xmMgFvhO32x7/3J/ExcTd6qpxM0vH2GdMI+poehyBZvqfMTto8A==",
         "dependencies": {}
@@ -343,6 +377,10 @@
       },
       "is-fullwidth-code-point@3.0.0": {
         "integrity": "sha512-zymm5+u+sCsSWyD9qNaejV3DFvhCKclKdizYaJUuHA83RLjb7nSuGnddCHGv0hk+KY7BMAlsWeK4Ueg6EV6XQg==",
+        "dependencies": {}
+      },
+      "is-retry-allowed@2.2.0": {
+        "integrity": "sha512-XVm7LOeLpTW4jV19QSH38vkswxoLud8sQ57YwJVTPWdiaI9I8keEhGFpBlslyVsgdQy4Opg8QOLb8YRgsyZiQg==",
         "dependencies": {}
       },
       "isomorphic-fetch@3.0.0": {
@@ -534,6 +572,10 @@
         "dependencies": {
           "entities": "entities@4.5.0"
         }
+      },
+      "proxy-from-env@1.1.0": {
+        "integrity": "sha512-D+zkORCbA9f1tdWRK0RaCR3GPv50cMxcrz4X8k5LTSUD1Dkw47mKJEZQNunItRTkWwgtaUSo1RVFRIG9ZXiFYg==",
+        "dependencies": {}
       },
       "retry@0.13.1": {
         "integrity": "sha512-XQBQ3I8W1Cge0Seh+6gjj03LbmRFWuoszgK9ooCpwYIrhhoO80pfq4cUkU5DkknwfOfFteRwlZ56PYOGYyFWdg==",
