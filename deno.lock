@@ -4,7 +4,7 @@
     "specifiers": {
       "npm:@langchain/community": "npm:@langchain/community@0.0.28_chromadb@1.8.1",
       "npm:@langchain/core": "npm:@langchain/core@0.1.28_zod@3.22.4",
-      "npm:@langchain/langgraph@0.0.7": "npm:@langchain/langgraph@0.0.7",
+      "npm:@langchain/langgraph": "npm:@langchain/langgraph@0.0.7",
       "npm:@langchain/openai": "npm:@langchain/openai@0.0.14_zod@3.22.4",
       "npm:cheerio": "npm:cheerio@1.0.0-rc.12",
       "npm:chromadb": "npm:chromadb@1.8.1",
@@ -621,7 +621,8 @@
     "dependencies": [
       "npm:@langchain/community",
       "npm:@langchain/core",
-      "npm:@langchain/langgraph@0.0.7",
+      "npm:@langchain/langgraph",
+      "npm:@langchain/mistralai",
       "npm:@langchain/openai",
       "npm:cheerio",
       "npm:chromadb",
