@@ -27,13 +27,13 @@ import { MessageGraph } from "../graph/message.js";
 
 // If you have LangSmith set then it slows down the tests
 // immensely, and will most likely rate limit your account.
-// beforeAll(() => {
-//   process.env.LANGCHAIN_TRACING_V2 = "false";
-//   process.env.LANGCHAIN_ENDPOINT = "";
-//   process.env.LANGCHAIN_ENDPOINT = "";
-//   process.env.LANGCHAIN_API_KEY = "";
-//   process.env.LANGCHAIN_PROJECT = "";
-// });
+beforeAll(() => {
+  process.env.LANGCHAIN_TRACING_V2 = "false";
+  process.env.LANGCHAIN_ENDPOINT = "";
+  process.env.LANGCHAIN_ENDPOINT = "";
+  process.env.LANGCHAIN_API_KEY = "";
+  process.env.LANGCHAIN_PROJECT = "";
+});
 
 it("can invoke pregel with a single process", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
