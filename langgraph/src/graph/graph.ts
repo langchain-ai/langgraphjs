@@ -228,7 +228,7 @@ export class Graph<
     }
 
     const allEndsAreDefined = Object.values(this.branches).every((branchList) =>
-      branchList.every((branch) => branch.ends !== null)
+      branchList.every((branch) => branch.ends)
     );
 
     if (allEndsAreDefined) {
