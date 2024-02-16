@@ -27,13 +27,13 @@ import { MessageGraph } from "../graph/message.js";
 
 // If you have LangSmith set then it slows down the tests
 // immensely, and will most likely rate limit your account.
-beforeAll(() => {
-  process.env.LANGCHAIN_TRACING_V2 = "false";
-  process.env.LANGCHAIN_ENDPOINT = "";
-  process.env.LANGCHAIN_ENDPOINT = "";
-  process.env.LANGCHAIN_API_KEY = "";
-  process.env.LANGCHAIN_PROJECT = "";
-});
+// beforeAll(() => {
+//   process.env.LANGCHAIN_TRACING_V2 = "false";
+//   process.env.LANGCHAIN_ENDPOINT = "";
+//   process.env.LANGCHAIN_ENDPOINT = "";
+//   process.env.LANGCHAIN_API_KEY = "";
+//   process.env.LANGCHAIN_PROJECT = "";
+// });
 
 it("can invoke pregel with a single process", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
@@ -1236,3 +1236,55 @@ describe("MessageGraph", () => {
     ]);
   });
 });
+
+it("Conditional edges is optional", async () => {
+  type GraphState = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    keys: Record<string, any>;
+  }
+  const graphState = {
+    keys: {
+      value: null
+    }
+  }
+  const nodeOne = (state: GraphState) => {
+    const { keys } = state;
+    keys.value = 1;
+    return {
+      keys
+    }
+  }
+  const nodeTwo = (state: GraphState) => {
+    const { keys } = state;
+    keys.value = 2;
+    return {
+      keys
+    }
+  }
+  const nodeThree = (state: GraphState) => {
+    const { keys } = state;
+    keys.value = 3;
+    return {
+      keys
+    }
+  }
+  const decideNext = (_: GraphState) => "two"
+
+  const workflow = new StateGraph<GraphState>({
+    channels: graphState,
+  });
+  workflow.addNode("one", nodeOne);
+  workflow.addNode("two", nodeTwo);
+  workflow.addNode("three", nodeThree);
+  workflow.setEntryPoint("one");
+  workflow.addConditionalEdges("one", decideNext);
+  workflow.addEdge("two", "three");
+  workflow.addEdge("three", END);
+
+  const app = workflow.compile();
+
+  // This will always return two, and two will always go to three
+  // meaning keys.value will always be 3
+  const result = await app.invoke({ keys: { value: 0 } });
+  expect(result).toEqual({ keys: { value: 3 } });
+})
