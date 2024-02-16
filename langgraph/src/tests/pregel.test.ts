@@ -1241,34 +1241,34 @@ it("Conditional edges is optional", async () => {
   type GraphState = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     keys: Record<string, any>;
-  }
+  };
   const graphState = {
     keys: {
-      value: null
-    }
-  }
+      value: null,
+    },
+  };
   const nodeOne = (state: GraphState) => {
     const { keys } = state;
     keys.value = 1;
     return {
-      keys
-    }
-  }
+      keys,
+    };
+  };
   const nodeTwo = (state: GraphState) => {
     const { keys } = state;
     keys.value = 2;
     return {
-      keys
-    }
-  }
+      keys,
+    };
+  };
   const nodeThree = (state: GraphState) => {
     const { keys } = state;
     keys.value = 3;
     return {
-      keys
-    }
-  }
-  const decideNext = (_: GraphState) => "two"
+      keys,
+    };
+  };
+  const decideNext = (_: GraphState) => "two";
 
   const workflow = new StateGraph<GraphState>({
     channels: graphState,
@@ -1287,4 +1287,4 @@ it("Conditional edges is optional", async () => {
   // meaning keys.value will always be 3
   const result = await app.invoke({ keys: { value: 0 } });
   expect(result).toEqual({ keys: { value: 3 } });
-})
+});
