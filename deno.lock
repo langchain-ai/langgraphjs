@@ -4,7 +4,6 @@
     "specifiers": {
       "npm:@langchain/community": "npm:@langchain/community@0.0.28_chromadb@1.8.1",
       "npm:@langchain/core": "npm:@langchain/core@0.1.28_zod@3.22.4",
-      "npm:@langchain/langgraph": "npm:@langchain/langgraph@0.0.7",
       "npm:@langchain/mistralai": "npm:@langchain/mistralai@0.0.7",
       "npm:@langchain/openai": "npm:@langchain/openai@0.0.14_zod@3.22.4",
       "npm:cheerio": "npm:cheerio@1.0.0-rc.12",
@@ -54,12 +53,6 @@
           "uuid": "uuid@9.0.1",
           "zod": "zod@3.22.4",
           "zod-to-json-schema": "zod-to-json-schema@3.22.4_zod@3.22.4"
-        }
-      },
-      "@langchain/langgraph@0.0.7": {
-        "integrity": "sha512-d3RdFwtwwA39CW3eq9ASblnL330y6dAXZXmw7anV4XWgb++a/Xj0i1UrVri+efUUoa23BROr/p/j3nvyH1jmLg==",
-        "dependencies": {
-          "@langchain/core": "@langchain/core@0.1.28_zod@3.22.4"
         }
       },
       "@langchain/mistralai@0.0.7": {
@@ -663,7 +656,7 @@
     "dependencies": [
       "npm:@langchain/community",
       "npm:@langchain/core",
-      "npm:@langchain/langgraph",
+      "npm:@langchain/langgraph@0.0.8",
       "npm:@langchain/mistralai",
       "npm:@langchain/openai",
       "npm:cheerio",
