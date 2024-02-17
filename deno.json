@@ -12,8 +12,6 @@
     "d3": "npm:/d3",
     "zod-to-json-schema": "npm:/zod-to-json-schema",
     "chromadb": "npm:/chromadb",
-    "cheerio": "npm:/cheerio",
-    "@langchain/exa": "npm:/@langchain/exa",
-    "exa-js": "npm:/exa-js"
+    "cheerio": "npm:/cheerio"
   }
 }
