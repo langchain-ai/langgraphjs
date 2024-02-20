@@ -345,19 +345,19 @@ All agent state is represented as a list of messages.
 This specifically uses OpenAI function calling.
 This is recommended agent executor for newer chat based models that support function calling.
 
-- [Getting Started Notebook](https://github.com/langchain-ai/langgraphjs/blob/main/examples/chat_agent_executor_with_function_calling/base.ipynb): Walks through creating this type of executor from scratch
+- [Getting Started Notebook](/examples/chat_agent_executor_with_function_calling/base.ipynb): Walks through creating this type of executor from scratch
 
 ### AgentExecutor
 
 This agent executor uses existing LangChain agents.
 
-- [Getting Started Notebook](https://github.com/langchain-ai/langgraphjs/blob/main/examples/agent_executor/base.ipynb): Walks through creating this type of executor from scratch
+- [Getting Started Notebook](/examples/agent_executor/base.ipynb): Walks through creating this type of executor from scratch
 
 ### Multi-agent Examples
 
-- [Multi-agent collaboration](https://github.com/langchain-ai/langgraphjs/blob/main/examples/multi_agent/multi-agent-collaboration.ipynb): how to create two agents that work together to accomplish a task
-- [Multi-agent with supervisor](https://github.com/langchain-ai/langgraphjs/blob/main/examples/multi_agent/agent_supervisor.ipynb): how to orchestrate individual agents by using an LLM as a "supervisor" to distribute work
-- [Hierarchical agent teams](https://github.com/langchain-ai/langgraphjs/blob/main/examples/multi_agent/hierarchical_agent_teams.ipynb): how to orchestrate "teams" of agents as nested graphs that can collaborate to solve a problem
+- [Multi-agent collaboration](/examples/multi_agent/multi_agent_collaboration.ipynb): how to create two agents that work together to accomplish a task
+- [Multi-agent with supervisor](/examples/multi_agent/agent_supervisor.ipynb): how to orchestrate individual agents by using an LLM as a "supervisor" to distribute work
+- [Hierarchical agent teams](/examples/multi_agent/hierarchical_agent_teams.ipynb): how to orchestrate "teams" of agents as nested graphs that can collaborate to solve a problem
 
 ## Documentation
 
