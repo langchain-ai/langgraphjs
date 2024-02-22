@@ -4,12 +4,10 @@
     "specifiers": {
       "npm:@langchain/community": "npm:@langchain/community@0.0.28_chromadb@1.8.1",
       "npm:@langchain/core": "npm:@langchain/core@0.1.28_zod@3.22.4",
-      "npm:@langchain/exa": "npm:@langchain/exa@0.0.1",
       "npm:@langchain/mistralai": "npm:@langchain/mistralai@0.0.7",
       "npm:@langchain/openai": "npm:@langchain/openai@0.0.14_zod@3.22.4",
       "npm:cheerio": "npm:cheerio@1.0.0-rc.12",
       "npm:chromadb": "npm:chromadb@1.8.1",
-      "npm:exa-js": "npm:exa-js@1.0.12",
       "npm:langchain": "npm:langchain@0.1.18_cheerio@1.0.0-rc.12_chromadb@1.8.1_zod@3.22.4",
       "npm:zod": "npm:zod@3.22.4",
       "npm:zod-to-json-schema": "npm:zod-to-json-schema@3.22.4_zod@3.22.4"
@@ -55,13 +53,6 @@
           "uuid": "uuid@9.0.1",
           "zod": "zod@3.22.4",
           "zod-to-json-schema": "zod-to-json-schema@3.22.4_zod@3.22.4"
-        }
-      },
-      "@langchain/exa@0.0.1": {
-        "integrity": "sha512-YVReIb0+NN2jXk/3v5NipiwreGZLMHs2jSWL8nftsq51iI5D9rw2r25hp9nObYsu1mvwJOqfusrNUL2CvRP7jA==",
-        "dependencies": {
-          "@langchain/core": "@langchain/core@0.1.28_zod@3.22.4",
-          "exa-js": "exa-js@1.0.12"
         }
       },
       "@langchain/mistralai@0.0.7": {
@@ -248,12 +239,6 @@
         "integrity": "sha512-y4Mg2tXshplEbSGzx7amzPwKKOCGuoSRP/CjEdwwk0FOGlUbq6lKuoyDZTNZkmxHdJtp54hdfY/JUrdL7Xfdug==",
         "dependencies": {}
       },
-      "cross-fetch@4.0.0": {
-        "integrity": "sha512-e4a5N8lVvuLgAWgnCrLr2PP0YyDOTHa9H/Rj54dirp61qXnNq46m82bRhNqIA5VccJtWBvPTFRV3TtvHUKPB1g==",
-        "dependencies": {
-          "node-fetch": "node-fetch@2.7.0"
-        }
-      },
       "crypt@0.0.2": {
         "integrity": "sha512-mCxBlsHFYh9C+HVpiEacem8FEBnMXgU9gy4zmNC+SXAZNB/1idgp/aulFJ4FgCi7GPEVbfyng092GqL2k2rmow==",
         "dependencies": {}
@@ -328,12 +313,6 @@
       "eventemitter3@4.0.7": {
         "integrity": "sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw==",
         "dependencies": {}
-      },
-      "exa-js@1.0.12": {
-        "integrity": "sha512-4oDvjl1966qy1BwjuGm/q/k2gZomS8WhpcuiXyn672cTmEfaRIwQnAbXBznuqzT1WaWeHfJXGTeeboaW41OCiw==",
-        "dependencies": {
-          "cross-fetch": "cross-fetch@4.0.0"
-        }
       },
       "expr-eval@2.0.2": {
         "integrity": "sha512-4EMSHGOPSwAfBiibw3ndnP0AvjDWLsMvGOvWEZ2F96IGk0bIVdjQisOHxReSkE13mHcfbuCiXw+G4y0zv6N8Eg==",
@@ -677,7 +656,6 @@
     "dependencies": [
       "npm:@langchain/community",
       "npm:@langchain/core",
-      "npm:@langchain/exa",
       "npm:@langchain/langgraph@0.0.8",
       "npm:@langchain/mistralai",
       "npm:@langchain/openai",
@@ -685,7 +663,6 @@
       "npm:chromadb",
       "npm:d3",
       "npm:dotenv",
-      "npm:exa-js",
       "npm:langchain",
       "npm:zod",
       "npm:zod-to-json-schema"
