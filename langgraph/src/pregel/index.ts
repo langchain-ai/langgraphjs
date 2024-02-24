@@ -28,6 +28,7 @@ import { ReservedChannelsMap } from "./reserved.js";
 import { mapInput, mapOutput } from "./io.js";
 import { ChannelWrite } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
+import { initializeAsyncLocalStorage } from "../setup/async_local_storage.js";
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
@@ -222,8 +223,9 @@ export class Pregel
   interrupt: string[] = [];
 
   constructor(fields: PregelInterface) {
-    super();
+    super(fields);
 
+    initializeAsyncLocalStorage();
     this.channels = fields.channels ?? this.channels;
     this.output = fields.output ?? this.output;
     this.input = fields.input ?? this.input;

@@ -11,7 +11,11 @@ function abs(relativePath) {
 
 
 export const config = {
-  internals: [/node\:/, /@langchain\/core\//],
+  internals: [
+    /node\:/,
+    /@langchain\/core\//,
+    /async_hooks/
+  ],
   entrypoints: {
     index: "index",
     pregel: "pregel/index",
