@@ -1250,22 +1250,22 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:^0.1.27, @langchain/core@npm:~0.1.13, @langchain/core@npm:~0.1.16, @langchain/core@npm:~0.1.25":
-  version: 0.1.27
-  resolution: "@langchain/core@npm:0.1.27"
+"@langchain/core@npm:^0.1.33, @langchain/core@npm:~0.1.13, @langchain/core@npm:~0.1.16, @langchain/core@npm:~0.1.25":
+  version: 0.1.33
+  resolution: "@langchain/core@npm:0.1.33"
   dependencies:
     ansi-styles: ^5.0.0
     camelcase: 6
     decamelize: 1.2.0
     js-tiktoken: ^1.0.8
-    langsmith: ~0.0.48
+    langsmith: ~0.1.1
     ml-distance: ^4.0.0
     p-queue: ^6.6.2
     p-retry: 4
     uuid: ^9.0.0
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
-  checksum: 23fe980e1301a8d96c63ae213b7b94a8cfc6f333cfb1e7ba03469c718c579eeedd1c53200d3eccac0e03016dc9e572b6a0727e9762b281ea8cb7c9a953ab4981
+  checksum: 2da17527fa47d2cf1d95b178c333ead6041732b82d019c74ef697ba3b4b883f69c56383171f27e31d4b26d8873b57682a6b8cb682891a76c10bcba85a268724e
   languageName: node
   linkType: hard
 
@@ -1275,7 +1275,7 @@ __metadata:
   dependencies:
     "@jest/globals": ^29.5.0
     "@langchain/community": ^0.0.27
-    "@langchain/core": ^0.1.27
+    "@langchain/core": ^0.1.33
     "@langchain/openai": ^0.0.14
     "@langchain/scripts": ~0.0
     "@swc/core": ^1.3.90
@@ -6202,6 +6202,21 @@ __metadata:
   bin:
     langsmith: dist/cli/main.cjs
   checksum: 63d5000dcbbe26b1bbfcf3f38011f294f6a8c69ac7aa64ee3ea60ef9b033d154641430dd11c0394e970fb5392c83f4c102f9fa3a7fdf2879c4ad85d1f13a4974
+  languageName: node
+  linkType: hard
+
+"langsmith@npm:~0.1.1":
+  version: 0.1.5
+  resolution: "langsmith@npm:0.1.5"
+  dependencies:
+    "@types/uuid": ^9.0.1
+    commander: ^10.0.1
+    p-queue: ^6.6.2
+    p-retry: 4
+    uuid: ^9.0.0
+  bin:
+    langsmith: dist/cli/main.cjs
+  checksum: 61b39ba49bb8a4f94aca90b531ce2c0febd96246d17a4f30e0bcb056a7660b5c32d2f9bc68224042a862af77ad35a4b3c77871eebf934f0679e4fe179649cb31
   languageName: node
   linkType: hard
 

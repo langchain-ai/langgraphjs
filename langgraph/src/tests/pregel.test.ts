@@ -25,8 +25,7 @@ import { Channel, GraphRecursionError, Pregel } from "../pregel/index.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
 import { MessageGraph } from "../graph/message.js";
 
-// If you have LangSmith set then it slows down the tests
-// immensely, and will most likely rate limit your account.
+// Tracing slows down the tests
 beforeAll(() => {
   process.env.LANGCHAIN_TRACING_V2 = "false";
   process.env.LANGCHAIN_ENDPOINT = "";
