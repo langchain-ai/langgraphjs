@@ -1,11 +1,11 @@
 {
   "imports": {
-    "langchain/": "npm:/langchain/",
+    "langchain/": "npm:/langchain@0.1.23/",
     "@langchain/openai": "npm:@langchain/openai",
     "@langchain/community/": "npm:/@langchain/community/",
     "@langchain/core/": "npm:/@langchain/core/",
-    "@langchain/langgraph": "npm:/@langchain/langgraph@0.0.8",
-    "@langchain/langgraph/": "npm:/@langchain/langgraph@0.0.8/",
+    "@langchain/langgraph": "npm:/@langchain/langgraph@0.0.10-rc.1",
+    "@langchain/langgraph/": "npm:/@langchain/langgraph@0.0.10-rc.1/",
     "@langchain/mistralai": "npm:/@langchain/mistralai",
     "dotenv/": "npm:/dotenv/",
     "zod": "npm:/zod",

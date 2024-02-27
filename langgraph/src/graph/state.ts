@@ -18,10 +18,12 @@ export const START = "__start__";
 export interface StateGraphArgs<Channels extends Record<string, any>> {
   channels:
     | {
-        [K in keyof Channels]: {
-          value: BinaryOperator<Channels[K]> | null;
-          default?: () => Channels[K];
-        };
+        [K in keyof Channels]:
+          | {
+              value: BinaryOperator<Channels[K]> | null;
+              default?: () => Channels[K];
+            }
+          | string;
       }
     | {
         value: BinaryOperator<unknown> | null;
