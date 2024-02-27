@@ -6,6 +6,7 @@ import {
   RunnableInterface,
   RunnableLike,
   _coerceToRunnable,
+  ensureConfig,
   patchConfig,
 } from "@langchain/core/runnables";
 import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
@@ -383,12 +384,10 @@ export class Pregel
 
   async invoke(
     input: PregelInputType,
-    config?: PregelOptions
+    options?: PregelOptions
   ): Promise<PregelOutputType> {
+    const config = ensureConfig(options);
     if (!config?.outputKeys) {
-      if (!config) {
-        config = {};
-      }
       config.outputKeys = this.output;
     }
 

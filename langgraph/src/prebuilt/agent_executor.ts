@@ -1,10 +1,6 @@
 import { AgentAction, AgentFinish } from "@langchain/core/agents";
 import { BaseMessage } from "@langchain/core/messages";
-import {
-  Runnable,
-  RunnableLambda,
-  type RunnableConfig,
-} from "@langchain/core/runnables";
+import { Runnable, type RunnableConfig } from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
 import { ToolExecutor } from "./tool_executor.js";
 import { StateGraph, StateGraphArgs } from "../graph/state.js";
@@ -110,8 +106,8 @@ export function createAgentExecutor<
   });
 
   // Define the two nodes we will cycle between
-  workflow.addNode("agent", new RunnableLambda({ func: runAgent }));
-  workflow.addNode("action", new RunnableLambda({ func: executeTools }));
+  workflow.addNode("agent", runAgent);
+  workflow.addNode("action", executeTools);
 
   // Set the entrypoint as `agent`
   // This means that this node is the first one called
