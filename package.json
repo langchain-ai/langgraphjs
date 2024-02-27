@@ -50,5 +50,9 @@
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
+  },
+  "dependencies": {
+    "@playwright/browser-chromium": "^1.41.2",
+    "playwright": "^1.41.2"
   }
 }
