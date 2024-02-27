@@ -15,7 +15,7 @@ import { RunnableLambda } from "@langchain/core/runnables";
 import {
   AgentExecutor,
   createOpenAIFunctionsAgent,
-  createOpenAIToolsAgent
+  createOpenAIToolsAgent,
 } from "langchain/agents";
 import {
   JsonOutputFunctionsParser,
