@@ -6,3 +6,12 @@ export {
   StateGraph,
   MessageGraph,
 } from "./graph/index.js";
+
+export { MemorySaver } from "./checkpoint/index.js";
+export {
+  type ConfigurableFieldSpec,
+  type Checkpoint,
+  type CheckpointAt,
+  emptyCheckpoint,
+  BaseCheckpointSaver,
+} from "./checkpoint/index.js";
