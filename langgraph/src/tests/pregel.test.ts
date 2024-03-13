@@ -1,6 +1,10 @@
 /* eslint-disable no-process-env */
 import { it, expect, jest, beforeAll, describe } from "@jest/globals";
-import { RunnableConfig, RunnablePassthrough } from "@langchain/core/runnables";
+import {
+  RunnableConfig,
+  RunnableLambda,
+  RunnablePassthrough,
+} from "@langchain/core/runnables";
 import { AgentAction, AgentFinish } from "@langchain/core/agents";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { FakeStreamingLLM } from "@langchain/core/utils/testing";
@@ -235,9 +239,9 @@ it("should process two processes with object input and output", async () => {
   const one = Channel.subscribeTo("input")
     .pipe(addOne)
     .pipe(Channel.writeTo("inbox"));
-  const two = Channel.subscribeToEach("inbox")
-    .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
+  const two = Channel.subscribeTo("inbox")
+    .pipe(new RunnableLambda({ func: addOne }).map())
+    .pipe(Channel.writeTo("output").map());
 
   const app = new Pregel({
     nodes: { one, two },

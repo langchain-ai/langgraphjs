@@ -5,7 +5,7 @@ import {
   RunnableLike,
   _coerceToRunnable,
 } from "@langchain/core/runnables";
-import { ChannelBatch, ChannelInvoke } from "../pregel/read.js";
+import { ChannelInvoke } from "../pregel/read.js";
 import { Channel, Pregel } from "../pregel/index.js";
 import { BaseCheckpointSaver } from "../checkpoint/base.js";
 
@@ -170,10 +170,7 @@ export class Graph<
       outgoingEdges[start].push(end !== END ? `${end}:inbox` : END);
     });
 
-    const nodes: Record<
-      string,
-      ChannelInvoke<RunInput, RunOutput> | ChannelBatch
-    > = {};
+    const nodes: Record<string, ChannelInvoke<RunInput, RunOutput>> = {};
     for (const [key, node] of Object.entries(this.nodes)) {
       nodes[key] = Channel.subscribeTo(`${key}:inbox`)
         .pipe(node)
