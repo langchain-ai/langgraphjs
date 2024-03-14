@@ -3,7 +3,6 @@ import {
   RunnableBinding,
   RunnableBindingArgs,
   RunnableConfig,
-  RunnableEach,
   RunnableLambda,
   RunnableLike,
   RunnablePassthrough,
@@ -162,85 +161,6 @@ export class ChannelInvoke<
         bound: this.bound.pipe(coerceable),
         config: this.config,
         kwargs: this.kwargs,
-      });
-    }
-  }
-}
-
-interface ChannelBatchArgs {
-  channel: string;
-  key?: string;
-  bound?: Runnable;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ChannelBatchInputType = any;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ChannelBatchOutputType = any;
-
-export class ChannelBatch extends RunnableEach<
-  ChannelBatchInputType,
-  ChannelBatchOutputType,
-  RunnableConfig
-> {
-  lc_graph_name = "ChannelBatch";
-
-  channel: string;
-
-  key?: string;
-
-  constructor(fields: ChannelBatchArgs) {
-    super({
-      ...fields,
-      bound: fields.bound ?? defaultRunnableBound,
-    });
-
-    this.channel = fields.channel;
-    this.key = fields.key;
-  }
-
-  join(channels: Array<string>): ChannelBatch {
-    if (!this.key) {
-      throw new Error(
-        `Cannot join() additional channels without a key.\nPass a key arg to Channel.subscribeToEach().`
-      );
-    }
-    const channelsMap: Record<string, ChannelRead> = {};
-    for (const chan of channels) {
-      channelsMap[chan] = new ChannelRead(chan);
-    }
-    const joiner = RunnablePassthrough.assign({ ...channelsMap });
-
-    if (this.bound === defaultRunnableBound) {
-      return new ChannelBatch({
-        channel: this.channel,
-        key: this.key,
-        bound: joiner,
-      });
-    } else {
-      return new ChannelBatch({
-        channel: this.channel,
-        key: this.key,
-        bound: this.bound.pipe(joiner),
-      });
-    }
-  }
-
-  // @ts-expect-error @TODO: fix later
-  pipe(coerceable: RunnableLike): ChannelBatch {
-    if (this.bound === defaultRunnableBound) {
-      return new ChannelBatch({
-        channel: this.channel,
-        key: this.key,
-        bound: _coerceToRunnable(coerceable),
-      });
-    } else {
-      // Delegate to `or` in `this.bound`
-      return new ChannelBatch({
-        channel: this.channel,
-        key: this.key,
-        bound: this.bound.pipe(coerceable),
       });
     }
   }

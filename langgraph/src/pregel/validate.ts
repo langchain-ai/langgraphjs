@@ -1,6 +1,6 @@
 import { BaseChannel } from "../channels/index.js";
 import { LastValue } from "../channels/last_value.js";
-import { ChannelBatch, ChannelInvoke } from "./read.js";
+import { ChannelInvoke } from "./read.js";
 import { ReservedChannelsMap } from "./reserved.js";
 
 export function validateGraph({
@@ -11,7 +11,7 @@ export function validateGraph({
   hidden,
   interrupt,
 }: {
-  nodes: Record<string, ChannelInvoke | ChannelBatch>;
+  nodes: Record<string, ChannelInvoke>;
   channels: { [key: string]: BaseChannel };
   input: string | Array<string>;
   output: string | Array<string>;
@@ -29,8 +29,6 @@ export function validateGraph({
           subscribedChannels.add(channel)
         );
       }
-    } else if (node.lc_graph_name === "ChannelBatch" && "channel" in node) {
-      subscribedChannels.add(node.channel);
     } else {
       console.error(node);
       throw new Error(
@@ -38,7 +36,7 @@ export function validateGraph({
           node,
           null,
           2
-        )}, expected Channel.subscribeTo() or Channel.subscribe_to_each()`
+        )}, expected Channel.subscribeTo()`
       );
     }
   }

@@ -23,7 +23,7 @@ import {
   CheckpointAt,
   emptyCheckpoint,
 } from "../checkpoint/base.js";
-import { ChannelBatch, ChannelInvoke } from "./read.js";
+import { ChannelInvoke } from "./read.js";
 import { validateGraph } from "./validate.js";
 import { ReservedChannelsMap } from "./reserved.js";
 import { mapInput, mapOutput } from "./io.js";
@@ -115,13 +115,6 @@ export class Channel {
     });
   }
 
-  static subscribeToEach(inbox: string, key?: string): ChannelBatch {
-    return new ChannelBatch({
-      channel: inbox,
-      key,
-    });
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static writeTo(...args: any[]): ChannelWrite {
     // const channelPairs: Array<[string, WriteValue<RunInput, RunOutput>]> =
@@ -177,7 +170,7 @@ export interface PregelInterface {
    */
   interrupt?: string[];
 
-  nodes: Record<string, ChannelInvoke | ChannelBatch>;
+  nodes: Record<string, ChannelInvoke>;
 
   checkpointer?: BaseCheckpointSaver;
 
@@ -215,7 +208,7 @@ export class Pregel
 
   debug: boolean = false;
 
-  nodes: Record<string, ChannelInvoke | ChannelBatch>;
+  nodes: Record<string, ChannelInvoke>;
 
   checkpointer?: BaseCheckpointSaver;
 
@@ -551,85 +544,67 @@ function _applyWritesFromView(
 
 function _prepareNextTasks(
   checkpoint: Checkpoint,
-  processes: Record<string, ChannelInvoke | ChannelBatch>,
+  processes: Record<string, ChannelInvoke>,
   channels: Record<string, BaseChannel>
 ): Array<[RunnableInterface, unknown, string]> {
   const tasks: Array<[RunnableInterface, unknown, string]> = [];
 
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
-  for (const name in processes) {
-    if (Object.prototype.hasOwnProperty.call(processes, name)) {
-      const proc = processes[name];
-      let seen: Record<string, number> = checkpoint.versionsSeen[name];
-      if (!seen) {
-        checkpoint.versionsSeen[name] = {};
-        seen = checkpoint.versionsSeen[name];
-      }
-      if ("triggers" in proc) {
-        // If any of the channels read by this process were updated
-        if (
-          proc.triggers.some(
-            (chan) => checkpoint.channelVersions[chan] > (seen[chan] ?? 0)
-          )
-        ) {
-          // If all channels subscribed by this process have been initialized
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            let val: Record<string, any> = {};
-            if (typeof proc.channels === "string") {
-              val[proc.channels] = _readChannel(channels, proc.channels);
-            } else {
-              for (const [k, chan] of Object.entries(proc.channels)) {
-                val[k] = _readChannel(channels, chan);
-              }
-            }
+  for (const [name, proc] of Object.entries<ChannelInvoke>(processes)) {
+    let seen: Record<string, number> = checkpoint.versionsSeen[name];
+    if (!seen) {
+      checkpoint.versionsSeen[name] = {};
+      seen = checkpoint.versionsSeen[name];
+    }
 
-            // Processes that subscribe to a single keyless channel get
-            // the value directly, instead of a dict
-            if (typeof proc.channels === "string") {
-              val = val[proc.channels];
-            } else if (
-              Object.keys(proc.channels).length === 1 &&
-              proc.channels[Object.keys(proc.channels)[0]] === undefined
-            ) {
-              val = val[Object.keys(proc.channels)[0]];
-            }
-
-            // Update seen versions
-            proc.triggers.forEach((chan: string) => {
-              const version = checkpoint.channelVersions[chan];
-              if (version !== undefined) {
-                seen[chan] = version;
-              }
-            });
-
-            // skip if condition is not met
-            if (proc.when === undefined || proc.when(val)) {
-              tasks.push([proc, val, name]);
-            }
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } catch (error: any) {
-            if (error.name === EmptyChannelError.name) {
-              continue;
-            } else {
-              throw error;
-            }
+    // If any of the channels read by this process were updated
+    if (
+      proc.triggers.some(
+        (chan) => checkpoint.channelVersions[chan] > (seen[chan] ?? 0)
+      )
+    ) {
+      // If all channels subscribed by this process have been initialized
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let val: Record<string, any> = {};
+        if (typeof proc.channels === "string") {
+          val[proc.channels] = _readChannel(channels, proc.channels);
+        } else {
+          for (const [k, chan] of Object.entries(proc.channels)) {
+            val[k] = _readChannel(channels, chan);
           }
         }
-      } else if ("channel" in proc) {
-        // If the channel read by this process was updated
-        if (
-          checkpoint.channelVersions[proc.channel] > (seen[proc.channel] ?? 0)
+
+        // Processes that subscribe to a single keyless channel get
+        // the value directly, instead of a dict
+        if (typeof proc.channels === "string") {
+          val = val[proc.channels];
+        } else if (
+          Object.keys(proc.channels).length === 1 &&
+          proc.channels[Object.keys(proc.channels)[0]] === undefined
         ) {
-          // Here we don't catch EmptyChannelError because the channel
-          // must be initialized if the previous `if` condition is true
-          let val = channels[proc.channel].get();
-          if (proc.key !== undefined) {
-            val = [{ [proc.key]: val }];
+          val = val[Object.keys(proc.channels)[0]];
+        }
+
+        // Update seen versions
+        proc.triggers.forEach((chan: string) => {
+          const version = checkpoint.channelVersions[chan];
+          if (version !== undefined) {
+            seen[chan] = version;
           }
+        });
+
+        // skip if condition is not met
+        if (proc.when === undefined || proc.when(val)) {
           tasks.push([proc, val, name]);
-          seen[proc.channel] = checkpoint.channelVersions[proc.channel];
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (error: any) {
+        if (error.name === EmptyChannelError.name) {
+          continue;
+        } else {
+          throw error;
         }
       }
     }
