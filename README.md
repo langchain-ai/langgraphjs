@@ -10,11 +10,10 @@ It is inspired by [Pregel](https://research.google/pubs/pub37252/) and [Apache B
 The current interface exposed is one inspired by [NetworkX](https://networkx.org/documentation/latest/).
 
 The main use is for adding **cycles** to your LLM application.
-Crucially, this is NOT a **DAG** framework.
+Crucially, LangGraph is NOT optimized for **DAG** workflows.
 If you want to build a DAG, you should use just use [LangChain Expression Language](https://js.langchain.com/docs/expression_language/).
 
 Cycles are important for agent-like behaviors, where you call an LLM in a loop, asking it what action to take next.
-
 
 > Looking for the Python version? Click [here](https://github.com/langchain-ai/langgraph).
 
@@ -24,18 +23,220 @@ Cycles are important for agent-like behaviors, where you call an LLM in a loop, 
 npm install @langchain/langgraph
 ```
 
-## Quick Start
+## Quick start
 
-Here we will go over an example of recreating the [`AgentExecutor`](https://js.langchain.com/docs/modules/agents/concepts#agentexecutor) class from LangChain.
+One of the central concepts of LangGraph is `state`. Each graph execution creates a state that is passed between nodes in the graph as they execute, and
+each node updates this internal state after it executes.
+
+State in LangGraph can be pretty general, but to keep things simpler to start, we'll show off a simple example where the graph's state is limited to an list of chat messages using the built-in `MessageGraph` class. This is convenient when using LangGraph with LangChain chat models because we can return chat model output directly.
+
+Below is an example containing a single node that executes a chat model, then returns the result. First, install the LangChain OpenAI integration package:
+
+```shell
+npm i @langchain/openai
+```
+
+We also need to export some environment variables needed:
+
+```shell
+export OPENAI_API_KEY=sk-...
+```
+
+```ts
+import { ChatOpenAI } from "@langchain/openai";
+import { HumanMessage, BaseMessage, } from "@langchain/core";
+import { END, MessageGraph } from "@langchain/langgraph";
+
+const model = new ChatOpenAI({ temperature: 0 });
+
+const graph = new MessageGraph();
+
+graph.addNode("oracle", async (state: BaseMessage[]) => {
+  return model.invoke(state);
+});
+
+graph.addEdge("oracle", END);
+
+graph.setEntryPoint("oracle");
+
+const runnable = graph.compile();
+```
+
+Let's run it!
+
+```ts
+// For Message graph, input should always be a message or list of messages.
+const res = await runnable.invoke(
+  new HumanMessage("What is 1 + 1?")
+);
+```
+
+```ts
+[
+  HumanMessage {
+    content: 'What is 1 + 1?',
+    additional_kwargs: {}
+  },
+  AIMessage {
+    content: '1 + 1 equals 2.',
+    additional_kwargs: { function_call: undefined, tool_calls: undefined }
+  }
+]
+```
+
+So what did we do here? Let's break it down step by step:
+
+1. First, we initialize our model and a `MessageGraph`.
+2. Next, we add a single node to the graph, called `"oracle"`, which simply calls the model with the given input.
+3. We add an edge from this `"oracle"` node to the special value `END`. This means that execution will end after current node.
+4. We set `"oracle"` as the entrypoint to the graph.
+5. We compile the graph, ensuring that no more modifications to it can be made.
+
+Then, when we execute the graph:
+
+1. LangGraph adds the input message to the internal state, then passes the state to the entrypoint node, `"oracle"`.
+2. The `"oracle"` node executes, invoking the chat model.
+3. The chat model returns an `AIMessage`. LangGraph adds this to the state.
+4. Execution progresses to the special `END` value and outputs the final state.
+
+And as a result, we get a list of two chat messages as output.
+
+## Conditional edges
+
+Now, let's move onto something a little bit less trivial. Because math can be difficult for LLMs, let's allow the LLM to conditionally call a calculator node using tool calling.
+
+```bash
+npm i langchain @langchain/openai
+```
+
+We'll recreate our graph with an additional `"calculator"` that will take the result of the most recent message, if it is a math expression, and calculate the result.
+We'll also bind the calculator to the OpenAI model as a tool to allow the model to optionally use the tool if it deems necessary:
+
+```ts
+import {
+  ToolMessage,
+} from "@langchain/core";
+import { Calculator } from "langchain/tools/calculator";
+import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
+
+const model = new ChatOpenAI({
+  temperature: 0,
+}).bind({
+  tools: [convertToOpenAITool(new Calculator())],
+  tool_choice: "auto",
+});
+
+const graph = new MessageGraph();
+
+graph.addNode("oracle", async (state: BaseMessage[]) => {
+  return model.invoke(state);
+});
+
+graph.addNode("calculator", async (state: BaseMessage[]) => {
+  const tool = new Calculator();
+  const toolCalls =
+    state[state.length - 1].additional_kwargs.tool_calls ?? [];
+  const calculatorCall = toolCalls.find(
+    (toolCall) => toolCall.function.name === "calculator"
+  );
+  if (calculatorCall === undefined) {
+    throw new Error("No calculator input found.");
+  }
+  const result = await tool.invoke(
+    JSON.parse(calculatorCall.function.arguments)
+  );
+  return new ToolMessage({
+    tool_call_id: calculatorCall.id,
+    content: result,
+  });
+});
+
+graph.addEdge("calculator", END);
+
+graph.setEntryPoint("oracle");
+```
+
+Now what do we want to have happen? If the `"oracle"` node returns a message expecting a tool call, we want to execute the `"calculator"` node. If not, we can just end execution.
+We can achieve this using **conditional edges**, which route execution to a node based on the current state using a function.
+
+Here's what that looks like:
+
+```ts
+const router = (state: BaseMessage[]) => {
+  const toolCalls =
+    state[state.length - 1].additional_kwargs.tool_calls ?? [];
+  if (toolCalls.length) {
+    return "calculator";
+  } else {
+    return "end";
+  }
+};
+
+graph.addConditionalEdges("oracle", router, {
+  calculator: "calculator",
+  end: END,
+});
+```
+
+If the model output contains a tool call, we move to the `"calculator"` node. Otherwise, we end.
+
+Great! Now all that's left is to compile the graph and try it out. Math-related questions are routed to the calculator tool:
+
+```ts
+const runnable = graph.compile();
+const mathResponse = await runnable.invoke(new HumanMessage("What is 1 + 1?"));
+```
+
+```ts
+[
+  HumanMessage {
+    content: 'What is 1 + 1?',
+    additional_kwargs: {}
+  },
+  AIMessage {
+    content: '',
+    additional_kwargs: { function_call: undefined, tool_calls: [Array] }
+  },
+  ToolMessage {
+    content: '2',
+    name: undefined,
+    additional_kwargs: {},
+    tool_call_id: 'call_P7KWQoftVsj6fgsqKyolWp91'
+  }
+]
+```
+
+While conversational responses are outputted directly:
+
+```ts
+const otherResponse = await runnable.invoke(new HumanMessage("What is your name?"));
+```
+
+```ts
+[
+  HumanMessage {
+    content: 'What is your name?',
+    additional_kwargs: {}
+  },
+  AIMessage {
+    content: 'My name is Assistant. How can I assist you today?',
+    additional_kwargs: { function_call: undefined, tool_calls: undefined }
+  }
+]
+```
+
+## Cycles
+
+Now, let's go over a more general example with a cycle. We will recreate the [`AgentExecutor`](https://js.langchain.com/docs/modules/agents/concepts#agentexecutor) class from LangChain.
 The benefits of creating it with LangGraph is that it is more modifiable.
 
-We will also want to install some LangChain packages:
+We will need to install some LangChain packages:
 
 ```shell
 npm install langchain @langchain/core @langchain/community @langchain/openai
 ```
 
-We also need to export some environment variables needed for our agent.
+We also need additional environment variables.
 
 ```shell
 export OPENAI_API_KEY=sk-...
@@ -52,7 +253,7 @@ export LANGCHAIN_ENDPOINT=https://api.langchain.com
 
 ### Set up the tools
 
-We will first define the tools we want to use.
+As above, we will first define the tools we want to use.
 For this simple example, we will use a built-in search tool via Tavily.
 However, it is really easy to create your own tools - see documentation [here](https://js.langchain.com/docs/modules/agents/tools/dynamic) on how to do that.
 
@@ -62,8 +263,7 @@ import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 const tools = [new TavilySearchResults({ maxResults: 1 })];
 ```
 
-We can now wrap these tools in a simple ToolExecutor.
-This is a real simple class that takes in a ToolInvocation and calls that tool, returning the output.
+We can now wrap these tools in a ToolExecutor, which simply takes in a ToolInvocation and calls that tool, returning the output.
 
 A ToolInvocation is any type with `tool` and `toolInput` attribute.
 
@@ -71,25 +271,18 @@ A ToolInvocation is any type with `tool` and `toolInput` attribute.
 ```typescript
 import { ToolExecutor } from "@langchain/langgraph/prebuilt";
 
-const toolExecutor = new ToolExecutor({
-  tools
-});
+const toolExecutor = new ToolExecutor({ tools });
 ```
 
 ### Set up the model
 
 Now we need to load the chat model we want to use.
-Importantly, this should satisfy two criteria:
-
-1. It should work with messages. We will represent all agent state in the form of messages, so it needs to be able to work well with them.
-2. It should work with OpenAI function calling. This means it should either be an OpenAI model or a model that exposes a similar interface.
-
-Note: these model requirements are not requirements for using LangGraph - they are just requirements for this one example.
+This time, we'll use the older function calling interface. This walkthrough will use OpenAI, but we can choose any model that supports OpenAI function calling.
 
 ```typescript
 import { ChatOpenAI } from "@langchain/openai";
 
-// We will set streaming=True so that we can stream tokens
+// We will set streaming: true so that we can stream tokens
 // See the streaming section for more information on this.
 const model = new ChatOpenAI({
   temperature: 0,
@@ -113,9 +306,9 @@ const newModel = model.bind({
 
 ### Define the agent state
 
-The main type of graph in `langgraph` is the `StatefulGraph`.
+This time, we'll use the more general `StateGraph`.
 This graph is parameterized by a state object that it passes around to each node.
-Each node then returns operations to update that state.
+Remember that each node then returns operations to update that state.
 These operations can either SET specific attributes on the state (e.g. overwrite the existing values) or ADD to the existing attribute.
 Whether to set or add is denoted by annotating the state object you construct the graph with.
 
@@ -139,7 +332,7 @@ const agentState = {
 ### Define the nodes
 
 We now need to define a few different nodes in our graph.
-In `langgraph`, a node can be either a function or a [runnable](https://js.langchain.com/docs/expression_language/).
+In LangGraph, a node can be either a function or a [runnable](https://js.langchain.com/docs/expression_language/).
 There are two main nodes we need for this:
 
 1. The agent: responsible for deciding what (if any) actions to take.
@@ -243,8 +436,8 @@ const workflow = new StateGraph({
 });
 
 // Define the two nodes we will cycle between
-workflow.addNode("agent", new RunnableLambda({ func: callModel }));
-workflow.addNode("action", new RunnableLambda({ func: callTool }));
+workflow.addNode("agent", callModel);
+workflow.addNode("action", callTool);
 
 // Set the entrypoint as `agent`
 // This means that this node is the first one called
@@ -252,23 +445,23 @@ workflow.setEntryPoint("agent");
 
 // We now add a conditional edge
 workflow.addConditionalEdges(
-// First, we define the start node. We use `agent`.
-// This means these are the edges taken after the `agent` node is called.
-"agent",
-// Next, we pass in the function that will determine which node is called next.
-shouldContinue,
-// Finally we pass in a mapping.
-// The keys are strings, and the values are other nodes.
-// END is a special node marking that the graph should finish.
-// What will happen is we will call `should_continue`, and then the output of that
-// will be matched against the keys in this mapping.
-// Based on which one it matches, that node will then be called.
-{
-  // If `tools`, then we call the tool node.
-  continue: "action",
-  // Otherwise we finish.
-  end: END
-}
+  // First, we define the start node. We use `agent`.
+  // This means these are the edges taken after the `agent` node is called.
+  "agent",
+  // Next, we pass in the function that will determine which node is called next.
+  shouldContinue,
+  // Finally we pass in a mapping.
+  // The keys are strings, and the values are other nodes.
+  // END is a special node marking that the graph should finish.
+  // What will happen is we will call `should_continue`, and then the output of that
+  // will be matched against the keys in this mapping.
+  // Based on which one it matches, that node will then be called.
+  {
+    // If `tools`, then we call the tool node.
+    continue: "action",
+    // Otherwise we finish.
+    end: END
+  }
 );
 
 // We now add a normal edge from `tools` to `agent`.
