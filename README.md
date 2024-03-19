@@ -28,23 +28,25 @@ npm install @langchain/langgraph
 One of the central concepts of LangGraph is `state`. Each graph execution creates a state that is passed between nodes in the graph as they execute, and
 each node updates this internal state after it executes.
 
-State in LangGraph can be pretty general, but to keep things simpler to start, we'll show off a simple example where the graph's state is limited to an list of chat messages using the built-in `MessageGraph` class. This is convenient when using LangGraph with LangChain chat models because we can return chat model output directly.
+State in LangGraph can be pretty general, but to keep things simpler to start, we'll show off an example where the graph's state is limited to a list of chat messages using the built-in `MessageGraph` class. This is convenient when using LangGraph with LangChain chat models because we can return chat model output directly.
 
-Below is an example containing a single node that executes a chat model, then returns the result. First, install the LangChain OpenAI integration package:
+First, install the LangChain OpenAI integration package:
 
 ```shell
 npm i @langchain/openai
 ```
 
-We also need to export some environment variables needed:
+We also need to export some environment variables:
 
 ```shell
 export OPENAI_API_KEY=sk-...
 ```
 
+And now we're ready! The graph below contains a single node called `"oracle"` that executes a chat model, then returns the result:
+
 ```ts
 import { ChatOpenAI } from "@langchain/openai";
-import { HumanMessage, BaseMessage, } from "@langchain/core";
+import { HumanMessage, BaseMessage, } from "@langchain/core/messages";
 import { END, MessageGraph } from "@langchain/langgraph";
 
 const model = new ChatOpenAI({ temperature: 0 });
@@ -115,7 +117,7 @@ We'll also bind the calculator to the OpenAI model as a tool to allow the model 
 ```ts
 import {
   ToolMessage,
-} from "@langchain/core";
+} from "@langchain/core/messages";
 import { Calculator } from "langchain/tools/calculator";
 import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
 
@@ -156,8 +158,12 @@ graph.addEdge("calculator", END);
 graph.setEntryPoint("oracle");
 ```
 
-Now what do we want to have happen? If the `"oracle"` node returns a message expecting a tool call, we want to execute the `"calculator"` node. If not, we can just end execution.
-We can achieve this using **conditional edges**, which route execution to a node based on the current state using a function.
+Now let's think - what do we want to have happen?
+
+- If the `"oracle"` node returns a message expecting a tool call, we want to execute the `"calculator"` node
+- If not, we can just end execution
+
+We can achieve this using **conditional edges**, which routes execution to a node based on the current state using a function.
 
 Here's what that looks like:
 
@@ -228,6 +234,7 @@ const otherResponse = await runnable.invoke(new HumanMessage("What is your name?
 ## Cycles
 
 Now, let's go over a more general example with a cycle. We will recreate the [`AgentExecutor`](https://js.langchain.com/docs/modules/agents/concepts#agentexecutor) class from LangChain.
+
 The benefits of creating it with LangGraph is that it is more modifiable.
 
 We will need to install some LangChain packages:
