@@ -25,8 +25,7 @@ npm install @langchain/langgraph
 
 ## Quick start
 
-One of the central concepts of LangGraph is `state`. Each graph execution creates a state that is passed between nodes in the graph as they execute, and
-each node updates this internal state after it executes.
+One of the central concepts of LangGraph is state. Each graph execution creates a state that is passed between nodes in the graph as they execute, and each node updates this internal state with its return value after it executes. The way that the graph updates its internal state is defined by either the type of graph chosen or a custom function.
 
 State in LangGraph can be pretty general, but to keep things simpler to start, we'll show off an example where the graph's state is limited to a list of chat messages using the built-in `MessageGraph` class. This is convenient when using LangGraph with LangChain chat models because we can return chat model output directly.
 
@@ -102,6 +101,37 @@ Then, when we execute the graph:
 4. Execution progresses to the special `END` value and outputs the final state.
 
 And as a result, we get a list of two chat messages as output.
+
+### Interaction with LCEL
+
+As an aside for those already familiar with LangChain - `addNode` actually takes any runnable as input. In the above example, the passed function is automatically converted, but we could also have passed the model directly:
+
+```ts
+graph.addNode("oracle", model);
+```
+
+In which case the `.invoke()` method will be called when the graph executes.
+
+Just make sure you are mindful of the fact that the input to the runnable is the entire current state. So this will fail:
+
+```ts
+// This will NOT work with MessageGraph!
+import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
+
+const prompt = ChatPromptTemplate.fromMessages([
+    ["system", "You are a helpful assistant who always speaks in pirate dialect"],
+    MessagesPlaceholder("messages"),
+]);
+
+const chain = prompt.pipe(model);
+
+// State is a list of messages, but our chain expects an object input:
+//
+// { messages: [] }
+//
+// Therefore, the graph will throw an exception when it executes here.
+graph.addNode("oracle", chain);
+```
 
 ## Conditional edges
 
@@ -335,6 +365,10 @@ const agentState = {
   }
 }
 ```
+
+You can think of the `MessageGraph` used in the initial example as a preconfigured version of this graph. The difference is that the state is directly a list of messages,
+instead of an object containing a key called `"messages"` whose value is a list of messages.
+The `MessageGraph` update step is similar to the one above where we always append the returned values of a node to the internal state.
 
 ### Define the nodes
 
