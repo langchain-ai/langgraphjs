@@ -14,9 +14,9 @@ describe("Chatbot", () => {
     const model = new ChatOpenAI({ temperature: 0 });
     const graph = new MessageGraph();
 
-    graph.addNode("oracle", async (state: BaseMessage[]) => {
-      return model.invoke(state);
-    });
+    graph.addNode("oracle", async (state: BaseMessage[]) =>
+      model.invoke(state)
+    );
 
     graph.addEdge("oracle", END);
 
@@ -38,9 +38,9 @@ describe("Chatbot", () => {
 
     const graph = new MessageGraph();
 
-    graph.addNode("oracle", async (state: BaseMessage[]) => {
-      return model.invoke(state);
-    });
+    graph.addNode("oracle", async (state: BaseMessage[]) =>
+      model.invoke(state)
+    );
 
     graph.addNode("calculator", async (state: BaseMessage[]) => {
       const tool = new Calculator();
