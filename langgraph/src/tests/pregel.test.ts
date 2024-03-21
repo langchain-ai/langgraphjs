@@ -205,7 +205,6 @@ it("should invoke two processes and get correct output", async () => {
   }
 });
 
-
 // API is not yet implemented. Implement test once Nuno finishes on PY side.
 // it.skip("should modify inbox value and get different output", async () => {
 //   const addOne = jest.fn((x: number): number => x + 1);
