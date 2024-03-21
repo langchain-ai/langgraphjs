@@ -205,6 +205,36 @@ it("should invoke two processes and get correct output", async () => {
   }
 });
 
+
+// API is not yet implemented. Implement test once Nuno finishes on PY side.
+// it.skip("should modify inbox value and get different output", async () => {
+//   const addOne = jest.fn((x: number): number => x + 1);
+
+//   const one = Channel.subscribeTo("input")
+//     .pipe(addOne)
+//     .pipe(Channel.writeTo("inbox"));
+//   const two = Channel.subscribeTo("inbox")
+//     .pipe(addOne)
+//     .pipe(Channel.writeTo("output"));
+
+//   const app = new Pregel({
+//     nodes: { one, two },
+//   });
+
+//   let step = 0;
+//   for await (const values of await app.stream(2)) {
+//     if (step === 0) {
+//       expect(values).toEqual({ inbox: 3 });
+//       // modify inbox value
+//       // values.inbox = 5;
+//     } else if (step === 1) {
+//       // output is different now
+//       expect(values).toEqual({ output: 6 });
+//     }
+//     step += 1;
+//   }
+// });
+
 it("should process two processes with object input and output", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
   const one = Channel.subscribeTo("input")
