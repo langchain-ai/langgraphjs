@@ -37,26 +37,29 @@ export class MemorySaverAssertImmutable extends MemorySaver {
   storageForCopies: Record<string, Record<string, Checkpoint>> = {};
 
   constructor() {
-    super();  
-    this.storageForCopies = {}; 
-    this.at = CheckpointAt.END_OF_STEP; 
+    super();
+    this.storageForCopies = {};
+    this.at = CheckpointAt.END_OF_STEP;
   }
 
   put(config: RunnableConfig, checkpoint: Checkpoint): void {
-      const threadId = config.configurable?.threadId;
-      if (!this.storageForCopies[threadId]) {
-        this.storageForCopies[threadId] = {};
+    const threadId = config.configurable?.threadId;
+    if (!this.storageForCopies[threadId]) {
+      this.storageForCopies[threadId] = {};
+    }
+    // assert checkpoint hasn't been modified since last written
+    const saved = super.get(config);
+    if (saved) {
+      const savedTs = saved.ts;
+      if (this.storageForCopies[threadId][savedTs]) {
+        console.assert(
+          this.storageForCopies[threadId][savedTs] === saved,
+          "Checkpoint has been modified"
+        );
       }
-      // assert checkpoint hasn't been modified since last written
-      const saved = super.get(config);
-      if (saved) {
-        const savedTs = saved.ts;
-        if (this.storageForCopies[threadId][savedTs]) {
-            console.assert(this.storageForCopies[threadId][savedTs] === saved, "Checkpoint has been modified");
-        }
-      }
-      this.storageForCopies[threadId][checkpoint.ts] = copyCheckpoint(checkpoint);
+    }
+    this.storageForCopies[threadId][checkpoint.ts] = copyCheckpoint(checkpoint);
 
-      return super.put(config, checkpoint);
+    return super.put(config, checkpoint);
   }
 }
