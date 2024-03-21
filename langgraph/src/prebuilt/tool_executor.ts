@@ -5,7 +5,7 @@ import {
 } from "@langchain/core/runnables";
 import { StructuredTool } from "@langchain/core/tools";
 
-const INVALID_TOOL_MSG_TEMPLATE = `{requestedToolName} is not a valid tool, try one of [availableToolNamesString].`;
+const INVALID_TOOL_MSG_TEMPLATE = `{requestedToolName} is not a valid tool, try one of {availableToolNamesString}.`;
 
 export interface ToolExecutorArgs {
   tools: Array<StructuredTool>;
