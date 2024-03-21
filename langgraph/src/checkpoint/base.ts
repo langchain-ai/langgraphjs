@@ -28,6 +28,7 @@ export interface Checkpoint {
   /**
    * @default {}
    */
+  // One option.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   channelValues: Record<string, any>;
   /**
