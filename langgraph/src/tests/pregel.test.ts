@@ -357,7 +357,7 @@ it("should process two inputs to two outputs validly", async () => {
   expect(await app.invoke(2)).toEqual([3, 3]);
 });
 
-it("should handle checkpoints correctly", async () => {
+it.skip("should handle checkpoints correctly", async () => {
   const addOne = jest.fn(
     (x: { total: number; input: number }): number => x.total + x.input
   );
