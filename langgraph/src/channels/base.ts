@@ -89,16 +89,16 @@ export async function createCheckpoint<Value>(
     versionsSeen: { ...checkpoint.versionsSeen },
   };
   for (const k of Object.keys(channels)) {
-      try {
-        newCheckpoint.channelValues[k] = await channels[k].checkpoint();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (error: any) {
-        if ("name" in error && error.name === EmptyChannelError.name) {
-          // no-op
-        } else {
-          throw error; // Rethrow unexpected errors
-        }
+    try {
+      newCheckpoint.channelValues[k] = await channels[k].checkpoint();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      if ("name" in error && error.name === EmptyChannelError.name) {
+        // no-op
+      } else {
+        throw error; // Rethrow unexpected errors
       }
+    }
   }
   return newCheckpoint;
 }
