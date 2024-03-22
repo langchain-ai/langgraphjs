@@ -15,7 +15,7 @@ export class NamedBarrierValue<Value> extends BaseChannel<Value, Value, Value> {
 
   names: Set<string>; // Names of nodes that we want to wait for. 
 
-  seen: Set<string>; 
+  seen: Set<string>;
 
   constructor(names: Set<string>) {
     super();
@@ -33,6 +33,7 @@ export class NamedBarrierValue<Value> extends BaseChannel<Value, Value, Value> {
 
   update(values: Value[]): void {
     // We have seen all nodes, so we can reset the seen set in preparation for the next round of updates. 
+    console.log(`called update with values: ${values}`)
     if (areSetsEqual(this.names, this.seen)) {
       this.seen = new Set<string>();
     }

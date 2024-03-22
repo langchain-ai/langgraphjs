@@ -104,7 +104,7 @@ test.skip("Can invoke with tracing", async () => {
 
   // Define a new graph
   const workflow = new StateGraph({
-    ≈,
+    channels: agentState,
   });
 
   // Define the two nodes we will cycle between

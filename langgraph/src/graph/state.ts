@@ -12,24 +12,27 @@ import { BaseCheckpointSaver } from "../checkpoint/base.js";
 import { Pregel, Channel } from "../pregel/index.js";
 import { ChannelInvoke, ChannelRead } from "../pregel/read.js";
 import { NamedBarrierValue } from "../channels/named_barrier_value.js";
+import { coerceMessageLikeToMessage } from "@langchain/core/messages";
+import { AnyValue } from "../channels/any_value.js";
+import { EphemeralValue } from "../channels/ephemeral_value.js";
 
 export const START = "__start__";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface StateGraphArgs<Channels extends Record<string, any>> {
   channels:
+  | {
+    [K in keyof Channels]:
     | {
-        [K in keyof Channels]:
-          | {
-              value: BinaryOperator<Channels[K]> | null;
-              default?: () => Channels[K];
-            }
-          | string;
-      }
-    | {
-        value: BinaryOperator<unknown> | null;
-        default?: () => unknown;
-      };
+      value: BinaryOperator<Channels[K]> | null;
+      default?: () => Channels[K];
+    }
+    | string;
+  }
+  | {
+    value: BinaryOperator<unknown> | null;
+    default?: () => unknown;
+  };
 }
 
 export class StateGraph<
@@ -38,18 +41,26 @@ export class StateGraph<
 > extends Graph<Channels> {
   channels: Record<string, BaseChannel>;
 
-  w_edges: Set<[[string, ...string[]], string]> = new Set(); 
+  schema: StateGraphArgs<Channels>["channels"];
+
+  w_edges: Set<[[string, ...string[]], string]> = new Set();
 
   constructor(fields: StateGraphArgs<Channels>) {
     super();
-    this.channels = _getChannels(fields.channels);
+    this.schema = fields.channels;
+    this.channels = _getChannels(this.schema);
+    for (const c of Object.values(this.channels)) {
+      if (c.lc_graph_name === "BinaryOperatorAggregate") {
+        this.supportMultipleEdges = true;
+      }
+    }
   }
 
   get allEdges(): Set<[string, string]> {
     return new Set([
-      ...this.edges, 
+      ...this.edges,
       ...Array.from(this.w_edges).flatMap(([starts, end]) => starts.map(start => [start, end] as [string, string]))
-    ]); 
+    ]);
   }
 
   addNode(key: string, action: RunnableLike) {
@@ -64,13 +75,14 @@ export class StateGraph<
   addEdge(startKey: string | string[], endKey: string) {
     if (typeof startKey === "string") {
       super.addEdge(startKey, endKey);
+      return;
     }
 
     if (this.compiled) {
-        console.warn(
-            "Adding an edge to a graph that has already been compiled. This will " +
-            "not be reflected in the compiled graph."
-        );
+      console.warn(
+        "Adding an edge to a graph that has already been compiled. This will " +
+        "not be reflected in the compiled graph."
+      );
     }
 
     for (const start of startKey) {
@@ -103,15 +115,23 @@ export class StateGraph<
       stateKeys.length === 1 && stateKeys[0] === "__root__"
         ? stateKeys[0]
         : stateKeys;
+    const stateChannels: Record<string, string> = {};
+    if (stateKeysRead.length > 0) {
+      for (const chan of stateKeys) {
+        stateChannels[chan] = chan;
+      }
+    }
+    console.log('these are the channels now', stateChannels)
+
     const updateState = Array.isArray(stateKeysRead)
       ? (
-          nodeName: string,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          input: Record<string, any>,
-          options?: { config?: RunnableConfig }
-        ) => _updateStateObject(stateKeys, nodeName, input, options)
+        nodeName: string,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        input: Record<string, any>,
+        options?: { config?: RunnableConfig }
+      ) => _updateStateObject(stateKeys, nodeName, input, options)
       : _updateStateRoot;
-      
+
     const waitingEdges: Set<[string, string[], string]> = new Set();
     this.w_edges.forEach(([starts, end]) => {
       waitingEdges.add([`${starts}:${end}`, starts, end]);
@@ -119,7 +139,7 @@ export class StateGraph<
 
     const waitingEdgeChannels: { [key: string]: NamedBarrierValue<string> } = {};
     waitingEdges.forEach(([key, starts]) => {
-        waitingEdgeChannels[key] = new NamedBarrierValue<string>(new Set(starts));
+      waitingEdgeChannels[key] = new NamedBarrierValue<string>(new Set(starts));
     });
 
     const outgoingEdges: Record<string, string[]> = {};
@@ -141,9 +161,15 @@ export class StateGraph<
     const nodes: Record<string, ChannelInvoke> = {};
 
     for (const [key, node] of Object.entries(this.nodes)) {
-      const triggers = Array.from(waitingEdges).filter(([, , end]) => end === key).map(([chan]) => chan);
-
-      nodes[key] = Channel.subscribeTo([`${key}:inbox`, ...triggers])
+      const triggers = [
+        `${key}:inbox`,
+        ...Array.from(waitingEdges).filter(([, , end]) => end === key).map(([chan]) => chan)
+      ];
+      console.log('these are the triggers: ', triggers)
+      nodes[key] = new ChannelInvoke({
+        triggers,
+        channels: stateChannels,
+      })
         .pipe(node)
         .pipe(
           (
@@ -155,12 +181,21 @@ export class StateGraph<
         .pipe(Channel.writeTo(key));
     }
 
+    const nodeInboxes: Record<string, Channel> = {};
+    const nodeOutboxes: Record<string, Channel> = {};
+    for (const key of [...Object.keys(this.nodes), START]) {
+      nodeInboxes[`${key}:inbox`] = new AnyValue()
+      nodeOutboxes[key] = new EphemeralValue() // we clear outbox channels after each step
+    }
+
     for (const key of Object.keys(this.nodes)) {
       const outgoing = outgoingEdges[key];
       const edgesKey = `${key}:edges`;
       if (outgoing || this.branches[key]) {
-        nodes[edgesKey] = Channel.subscribeTo(key, {
+        nodes[edgesKey] = new ChannelInvoke({
+          triggers: [key],
           tags: ["langsmith:hidden"],
+          channels: stateChannels,
         }).pipe(new ChannelRead(stateKeysRead));
       }
       if (outgoing) {
@@ -189,15 +224,17 @@ export class StateGraph<
       )
       .pipe(Channel.writeTo(START));
 
-    nodes[`${START}:edges`] = Channel.subscribeTo(START, {
+    nodes[`${START}:edges`] = new ChannelInvoke({
+      triggers: [START],
       tags: ["langsmith:hidden"],
+      channels: stateChannels,
     })
       .pipe(new ChannelRead(stateKeysRead))
       .pipe(Channel.writeTo(`${this.entryPoint}:inbox`));
 
     return new Pregel({
       nodes,
-      channels: this.channels,
+      channels: { ...this.channels, ...waitingEdgeChannels, ...nodeInboxes, ...nodeOutboxes, END: new LastValue() },
       input: `${START}:inbox`,
       output: END,
       hidden: Object.keys(this.nodes)

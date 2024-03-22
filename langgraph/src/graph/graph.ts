@@ -52,6 +52,8 @@ export class Graph<
 
   compiled = false;
 
+  supportMultipleEdges = false;
+
   constructor() {
     this.nodes = {};
     this.edges = new Set();
@@ -98,8 +100,7 @@ export class Graph<
       throw new Error(`Need to addNode \`${endKey}\` first`);
     }
 
-    // TODO: support multiple message passing
-    if (Array.from(this.edges).some(([start]) => start === startKey)) {
+    if (!this.supportMultipleEdges && Array.from(this.edges).some(([start]) => start === startKey)) {
       throw new Error(`Already found path for ${startKey}`);
     }
 
