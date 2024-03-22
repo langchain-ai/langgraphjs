@@ -144,39 +144,6 @@ export class Channel {
   }
 }
 
-export interface PregelInterface {
-  /**
-   * @default {}
-   */
-  channels?: Record<string, BaseChannel>;
-  /**
-   * @default "output"
-   */
-  output?: string | Array<string>;
-  /**
-   * @default "input"
-   */
-  input?: string | Array<string>;
-  /**
-   * @default []
-   */
-  hidden?: Array<string>;
-  /**
-   * @default false
-   */
-  debug?: boolean;
-  /**
-   * @default []
-   */
-  interrupt?: string[];
-
-  nodes: Record<string, ChannelInvoke>;
-
-  checkpointer?: BaseCheckpointSaver;
-
-  stepTimeout?: number;
-}
-
 export interface PregelOptions extends RunnableConfig {
   outputKeys?: string | string[];
 }
@@ -187,10 +154,8 @@ export type PregelInputType = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PregelOutputType = any;
 
-export class Pregel
-  extends Runnable<PregelInputType, PregelOutputType, PregelOptions>
-  implements PregelInterface
-{
+export class Pregel<C extends object, N extends string>
+  extends Runnable<PregelInputType, PregelOutputType, PregelOptions> {
   static lc_name() {
     return "LangGraph";
   }
@@ -198,17 +163,19 @@ export class Pregel
   // Because Pregel extends `Runnable`.
   lc_namespace = ["langgraph", "pregel"];
 
-  channels: Record<string, BaseChannel> = {};
+  channels:{
+    [K in keyof C]: BaseChannel<C[K]>
+  };
 
-  output: string | Array<string> = "output";
+  output: keyof C | Array<keyof C>;
 
-  input: string | Array<string> = "input";
+  input: keyof C | Array<keyof C>;
 
-  hidden: Array<string> = [];
+  hidden: Array<keyof C> = [];
 
   debug: boolean = false;
 
-  nodes: Record<string, ChannelInvoke>;
+  nodes: Record<N, ChannelInvoke>;
 
   checkpointer?: BaseCheckpointSaver;
 
@@ -216,7 +183,7 @@ export class Pregel
 
   interrupt: string[] = [];
 
-  constructor(fields: PregelInterface) {
+  constructor(fields: Pregel<C, N>) {
     super(fields);
 
     // Initialize global async local storage instance for tracing

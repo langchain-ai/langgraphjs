@@ -5,8 +5,8 @@ import {
   ConfigurableFieldSpec,
 } from "./base.js";
 
-export class MemorySaver extends BaseCheckpointSaver {
-  storage: Record<string, Checkpoint> = {};
+export class MemorySaver<C extends object, N extends string> extends BaseCheckpointSaver<C, N> {
+  storage: Record<string, Checkpoint<C, N>> = {};
 
   get configSpecs(): ConfigurableFieldSpec[] {
     return [
@@ -22,11 +22,11 @@ export class MemorySaver extends BaseCheckpointSaver {
     ];
   }
 
-  get(config: RunnableConfig): Checkpoint | undefined {
+  get(config: RunnableConfig): Checkpoint<C, N> | undefined {
     return this.storage[config.configurable?.threadId];
   }
 
-  put(config: RunnableConfig, checkpoint: Checkpoint): void {
+  put(config: RunnableConfig, checkpoint: Checkpoint<C, N>): void {
     this.storage[config.configurable?.threadId] = checkpoint;
   }
 }

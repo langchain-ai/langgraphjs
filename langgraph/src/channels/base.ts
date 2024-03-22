@@ -77,11 +77,11 @@ export function emptyChannels(
   return newChannels;
 }
 
-export async function createCheckpoint<Value>(
-  checkpoint: Checkpoint,
+export async function createCheckpoint<C extends object, N extends string> (
+  checkpoint: Checkpoint<C, N>,
   channels: Record<string, BaseChannel<Value>>
-): Promise<Checkpoint> {
-  const newCheckpoint: Checkpoint = {
+): Promise<Checkpoint<C, N>> {
+  const newCheckpoint: Checkpoint<C, N> = {
     v: 1,
     ts: new Date().toISOString(),
     channelValues: { ...checkpoint.channelValues },

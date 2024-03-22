@@ -18,12 +18,10 @@ export interface AgentExecutorState extends AgentStateBase {
   chatHistory?: BaseMessage[];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AgentChannels<T extends AgentExecutorState> = StateGraphArgs<
   AgentExecutorState | T
 >["channels"];
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function _getAgentState<T extends AgentExecutorState>(
   inputSchema?: AgentChannels<T>
 ): AgentChannels<T> {
@@ -46,7 +44,6 @@ function _getAgentState<T extends AgentExecutorState>(
 }
 
 export function createAgentExecutor<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   T extends AgentExecutorState
 >({
   agentRunnable,

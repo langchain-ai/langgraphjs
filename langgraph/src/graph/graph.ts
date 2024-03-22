@@ -159,7 +159,7 @@ export class Graph<
     this.addEdge(key, END);
   }
 
-  compile(checkpointer?: BaseCheckpointSaver): Pregel {
+  compile(checkpointer?: BaseCheckpointSaver): Pregel<C, N> {
     this.validate();
 
     const outgoingEdges: Record<string, string[]> = {};
