@@ -10,7 +10,8 @@ import { LastValue } from "../channels/last_value.js";
 import { ChannelWrite } from "../pregel/write.js";
 import { BaseCheckpointSaver } from "../checkpoint/base.js";
 import { Pregel, Channel } from "../pregel/index.js";
-import { ChannelRead } from "../pregel/read.js";
+import { ChannelInvoke, ChannelRead } from "../pregel/read.js";
+import { NamedBarrierValue } from "../channels/named_barrier_value.js";
 
 export const START = "__start__";
 
@@ -37,9 +38,18 @@ export class StateGraph<
 > extends Graph<Channels> {
   channels: Record<string, BaseChannel>;
 
+  w_edges: Set<[[string, ...string[]], string]> = new Set(); 
+
   constructor(fields: StateGraphArgs<Channels>) {
     super();
     this.channels = _getChannels(fields.channels);
+  }
+
+  get allEdges(): Set<[string, string]> {
+    return new Set([
+      ...this.edges, 
+      ...Array.from(this.w_edges).flatMap(([starts, end]) => starts.map(start => [start, end] as [string, string]))
+    ]); 
   }
 
   addNode(key: string, action: RunnableLike) {
@@ -49,6 +59,36 @@ export class StateGraph<
       );
     }
     super.addNode(key, action);
+  }
+
+  addEdge(startKey: string | string[], endKey: string) {
+    if (typeof startKey === "string") {
+      super.addEdge(startKey, endKey);
+    }
+
+    if (this.compiled) {
+        console.warn(
+            "Adding an edge to a graph that has already been compiled. This will " +
+            "not be reflected in the compiled graph."
+        );
+    }
+
+    for (const start of startKey) {
+      if (start === END) {
+        throw new Error("END cannot be a start node");
+      }
+      // TODO:
+      //   if start not in self.nodes:
+      // raise ValueError(f"Need to add_node `{start}` first")
+    }
+    if (endKey === END) {
+      throw new Error('END cannot be an end node')
+    }
+    // TODO(janvi): add this. 
+    // if end_key not in self.nodes:
+    // raise ValueError(f"Need to add_node `{end_key}` first")
+
+    this.w_edges.add([startKey, endKey]);
   }
 
   compile(checkpointer?: BaseCheckpointSaver): Pregel {
@@ -71,6 +111,16 @@ export class StateGraph<
           options?: { config?: RunnableConfig }
         ) => _updateStateObject(stateKeys, nodeName, input, options)
       : _updateStateRoot;
+      
+    const waitingEdges: Set<[string, string[], string]> = new Set();
+    this.w_edges.forEach(([starts, end]) => {
+      waitingEdges.add([`${starts}:${end}`, starts, end]);
+    });
+
+    const waitingEdgeChannels: { [key: string]: NamedBarrierValue<string> } = {};
+    waitingEdges.forEach(([key, starts]) => {
+        waitingEdgeChannels[key] = new NamedBarrierValue<string>(new Set(starts));
+    });
 
     const outgoingEdges: Record<string, string[]> = {};
     for (const [start, end] of this.edges) {
@@ -79,12 +129,21 @@ export class StateGraph<
       }
       outgoingEdges[start].push(end !== END ? `${end}:inbox` : END);
     }
+    for (const [key, starts] of waitingEdges) {
+      for (const start of starts) {
+        if (!outgoingEdges[start]) {
+          outgoingEdges[start] = [];
+        }
+        outgoingEdges[start].push(key);
+      }
+    }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const nodes: Record<string, any> = {};
+    const nodes: Record<string, ChannelInvoke> = {};
 
     for (const [key, node] of Object.entries(this.nodes)) {
-      nodes[key] = Channel.subscribeTo(`${key}:inbox`)
+      const triggers = Array.from(waitingEdges).filter(([, , end]) => end === key).map(([chan]) => chan);
+
+      nodes[key] = Channel.subscribeTo([`${key}:inbox`, ...triggers])
         .pipe(node)
         .pipe(
           (

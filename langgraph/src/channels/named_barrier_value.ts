@@ -13,14 +13,14 @@ const areSetsEqual = (a: Set<unknown>, b: Set<unknown>) =>
 export class NamedBarrierValue<Value> extends BaseChannel<Value, Value, Value> {
   lc_graph_name = "NamedBarrierValue";
 
-  names: Set<Value>;
+  names: Set<string>; // Names of nodes that we want to wait for. 
 
-  seen: Set<Value>;
+  seen: Set<string>; 
 
-  constructor(names: Set<Value>) {
+  constructor(names: Set<string>) {
     super();
     this.names = names;
-    this.seen = new Set<Value>();
+    this.seen = new Set<string>();
   }
 
   empty(checkpoint?: Value): NamedBarrierValue<Value> {
@@ -32,8 +32,9 @@ export class NamedBarrierValue<Value> extends BaseChannel<Value, Value, Value> {
   }
 
   update(values: Value[]): void {
+    // We have seen all nodes, so we can reset the seen set in preparation for the next round of updates. 
     if (areSetsEqual(this.names, this.seen)) {
-      this.seen = new Set<Value>();
+      this.seen = new Set<string>();
     }
     for (const value in values) {
       if (value in this.names) {
@@ -44,11 +45,13 @@ export class NamedBarrierValue<Value> extends BaseChannel<Value, Value, Value> {
     }
   }
 
+  // If we have not yet seen all the node names we want to wait for, throw an error to
+  // prevent continuing. 
   get(): Value {
     if (!areSetsEqual(this.names, this.seen)) {
       throw new EmptyChannelError();
     }
-    return undefined;
+    return undefined as Value;
   }
 
   checkpoint(): Value {

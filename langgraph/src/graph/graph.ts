@@ -64,6 +64,10 @@ export class Graph<
     }
   }
 
+  get allEdges(): Set<[string, string]> {
+    return this.edges;
+  }
+
   addNode(key: string, action: RunnableLike<RunInput, RunOutput>): void {
     this.warnIfCompiled(
       `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
@@ -215,7 +219,7 @@ export class Graph<
 
   validate(): void {
     const allStarts = new Set(
-      [...this.edges].map(([src, _]) => src).concat(Object.keys(this.branches))
+      [...this.allEdges].map(([src, _]) => src).concat(Object.keys(this.branches))
     );
 
     for (const node of Object.keys(this.nodes)) {
@@ -230,7 +234,7 @@ export class Graph<
 
     if (allEndsAreDefined) {
       const allEnds = new Set(
-        [...this.edges]
+        [...this.allEdges]
           .map(([_, end]) => end)
           .concat(
             ...Object.values(this.branches).flatMap((branchList) =>
