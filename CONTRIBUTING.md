@@ -229,13 +229,15 @@ Let's start with Pregel. [Pregel](https://research.google/pubs/pregel-a-system-f
 
 Some key concepts: 
 - Pregel graphs take an `input` and `output` as parameters which represent where the graph starts and ends
-- Pregel graphs take a dictionary of nodes represented as `{nodeName: node}`
-- Each node subscribes to (one or more) channels. This defines when a node runs. Specifically, for a given node N that subscribes to channel M, whenever the _value_ of a channel M changes, node N must be run. Intuitively, it represents what the current node is _dependent_ on. 
-- Each node writes to (one or more) channels. This defines where the final value after a node is executed is stored. 
+- Pregel graphs take a mapping of nodes represented as `{nodeName: node}`
+- Each node subscribes to (one or more) channels. This defines when a node executes. Specifically, for a given `node N` that subscribes to `channel M`, whenever the _value_ of `channel M` changes, `node N` must be executed. Intuitively, it represents what the current node is _dependent_ on. 
+- Each node writes to (one or more) channels. This defines where the final value after a node is executed is stored, because nodes don't store their own value.
 - More on channels below. 
 
-To form an intuition around Pregel graphs, lets look at the example below. The graph starts at `inputChannelName` and ends at `outputChannelName`. The graph has a single node called `nodeOne` that transforms the input value by adding one to it. When the graph is invoked with an input value of `2`:
-1. `inputChannelName` gets set to a value of `2`, because it is set as the input channel.
+To form an intuition around Pregel graphs, lets look at the example tests. 
+
+In the example below, the pregel graph is defined to start at `inputChannelName` and end at `outputChannelName`. The graph has a single node called `nodeOne` that transforms the input value by adding one to it. When the graph is invoked with an input value of `2`:
+1. `inputChannelName` gets set to a value of `2`, because it is defined as the input channel.
 2. Since `nodeOne` subscribes to `inputChannelName`, `nodeOne` executed. 
 3. `nodeOne` transforms `2` to `3` and `3` gets written to `outputChannelName`. 
 4. Since `outputChannelName` is defined as the graph's output, the execution ends and returns `3`.
@@ -255,26 +257,28 @@ To form an intuition around Pregel graphs, lets look at the example below. The g
   expect(await app.invoke({ input: 2 })).toEqual({ output: 3 });
 ```
 
-This was a simple example, let's look at a more complicated example. This graph has one node. The `checkpointer` parameter in Pregel means that it persists the state at every step. If a checkpointer is specified, then `threadId` must be specified every time the graph is invoked and it represent the unique id of that invocation. 
+This was a simple example, let's look at a more complicated example. 
+
+In the example below, the graph has one node. The `checkpointer` parameter in Pregel means that it persists the state at every step. If a checkpointer is specified, then `threadId` must be specified every time the graph is invoked and it represents the unique id of that invocation. 
 
 Invocation 1: 
-1. When the graph is invoked with `2`, `input` channel's value becomes `2` 
-2. Node `one` gets invoked because it is subscribed to `input`. The node tranforms `2` to `2` by running `inputPlusTotal` 
+1. When the graph is invoked with `2`, `input` channels value becomes `2` 
+2. Node `one` runs because it is subscribed to `input`. The node tranforms `2` to `2` by running `inputPlusTotal`. 
 3. The value of channels `output` and `total` get set to `2` because node `one` writes to both channels 
-4. The graph ends with `output`'s value which is `2` 
-5. Because `memory` is passed into the graph, `total` at threadId of `1` is set to a persisted value of `2`
+4. Because `memory` is passed into the graph, `total` at threadId of `1` is saved as a value of `2`
+5. The graph ends with `output`'s value which is `2` 
 
 Invocation 2: 
 1. `input` channel value set to `3`
 2. Node `one` triggered. Node one transforms `3` to `totalValue + 3`  = `2 + 3` = `5` 
-3. `output` channel's value is written as `5` and the graph returns with `5`
-4. `total` is a `BinaryOperatorAggregate` channel. Hence, it transforms the inbox value `5` to `5 + prevTotalValue` = `5 + 2` = `7`
+3. `total` is a `BinaryOperatorAggregate` channel. Hence, it transforms the inbox value `5` to `5 + prevTotalValue` = `5 + 2` = `7`
+4. `output` channel's value is written as `5` and the graph returns with `5`
 
 Invocation 3: 
 1. `input` channel value set to `5` with a `threadId` of `2` indicating a new id for storage
 2. Node `one` triggered. Node one transforms `5` to `totalValue_in_thread_id_2 + 3`  = `0 + 5` = `5` 
-3. `output` channel's value is written as `5` and the graph returns with `5`
-4. Checking the value of `total` in `thread_id_1` is still the same as the value in invocation 2 which is 7.  
+3. Checking the value of `total` in `thread_id_1` is still the same as the value in invocation 2 which is `7`.  
+4. `output` channel's value is written as `5` and the graph returns with `5`
 
 ```ts
 it("should handle checkpoints correctly", async () => {
@@ -327,12 +331,12 @@ Those are some of the fundamentals of how a Pregel graph works. To get a deeper 
 
 Some concepts about channels: 
 
-1. Channels are the way nodes communicate to one another in Pregel. If it were not for channels, nodes would have no way of storing values or denoting dependencies with other nodes.
+1. Channels are the way nodes communicate with one another in Pregel. If it were not for channels, nodes would have no way of storing values or denoting dependencies on other nodes.
 2. At it's core, every channel does a couple things:
 - It stores a current value.  
-- It implements a way `update` it's current value based on the expected parameter for the update function. 
+- It implements a way to `update` it's current value based on the expected parameter for the update function. 
 - It implements a way to `checkpoint` or "snapshot" the current state of the channel. This enables persistence across a graph.
 - It implements a way to `empty` or "restore" a channel from a checkpoint/snapshot. This enables us to create a new channel from a checkpoint variable stored in a database. 
-3.  `channels/base.ts` is the base class for a channel and it can be extended to create any kind of channel. For example, `last_value.ts`, `binop.ts` are all specific types of channels. 
-4. In Pregel, there  is no limitation on the number of channels a node can have. In LangGraph, however, currently every node corresponds to two channels. (1) A channel's value that it is subscribes to, i.e - is dependent on. (2) The channel that it writes to. 
-5. `channels/index.ts` holds all the business implementation for how a channel works. `transform` holds a lot of the most important logic because it is responsible for updating the channel's value and updating the checkpoint accordingly. 
+3. `channels/base.ts` is the base class for a channel and it can be extended to create any kind of channel. For example, `last_value.ts`, `binop.ts` are all types of channels. 
+4. In Pregel, there  is no limitation on the number of channels a node can subscribe to or write to. In LangGraph, however, currently every node maps to two channels. (1) A channel's value that it is subscribes to, i.e - is dependent on. (2) The channel that it writes to. 
+5. `src/pregel/index.ts` holds all the business logic that uses channels and nodes in a pregel graph. `async *_transform` holds some of the most important logic because it is responsible for updating the channel's value and updating the checkpoint accordingly. 
