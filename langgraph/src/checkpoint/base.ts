@@ -50,6 +50,16 @@ export function emptyCheckpoint(): Checkpoint {
   };
 }
 
+export function copyCheckpoint(checkpoint: Checkpoint): Checkpoint {
+  return {
+    v: checkpoint.v,
+    ts: checkpoint.ts,
+    channelValues: { ...checkpoint.channelValues },
+    channelVersions: { ...checkpoint.channelVersions },
+    versionsSeen: { ...checkpoint.versionsSeen },
+  };
+}
+
 export const enum CheckpointAt {
   END_OF_STEP = "end_of_step",
   END_OF_RUN = "end_of_run",
