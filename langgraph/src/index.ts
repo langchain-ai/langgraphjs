@@ -7,7 +7,7 @@ export {
   MessageGraph,
 } from "./graph/index.js";
 
-export { MemorySaver } from "./checkpoint/index.js";
+export { MemorySaver, MemorySaverAssertImmutable } from "./checkpoint/index.js";
 export {
   type ConfigurableFieldSpec,
   type Checkpoint,

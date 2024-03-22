@@ -23,7 +23,7 @@ import { ReservedChannelsMap } from "../pregel/reserved.js";
 import { Topic } from "../channels/topic.js";
 import { ChannelInvoke } from "../pregel/read.js";
 import { InvalidUpdateError } from "../channels/base.js";
-import { MemorySaver } from "../checkpoint/memory.js";
+import { MemorySaverAssertImmutable } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
 import { Channel, GraphRecursionError, Pregel } from "../pregel/index.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
@@ -205,35 +205,6 @@ it("should invoke two processes and get correct output", async () => {
   }
 });
 
-// API is not yet implemented. Implement test once Nuno finishes on PY side.
-// it.skip("should modify inbox value and get different output", async () => {
-//   const addOne = jest.fn((x: number): number => x + 1);
-
-//   const one = Channel.subscribeTo("input")
-//     .pipe(addOne)
-//     .pipe(Channel.writeTo("inbox"));
-//   const two = Channel.subscribeTo("inbox")
-//     .pipe(addOne)
-//     .pipe(Channel.writeTo("output"));
-
-//   const app = new Pregel({
-//     nodes: { one, two },
-//   });
-
-//   let step = 0;
-//   for await (const values of await app.stream(2)) {
-//     if (step === 0) {
-//       expect(values).toEqual({ inbox: 3 });
-//       // modify inbox value
-//       // values.inbox = 5;
-//     } else if (step === 1) {
-//       // output is different now
-//       expect(values).toEqual({ output: 6 });
-//     }
-//     step += 1;
-//   }
-// });
-
 it("should process two processes with object input and output", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
   const one = Channel.subscribeTo("input")
@@ -386,7 +357,7 @@ it("should process two inputs to two outputs validly", async () => {
   expect(await app.invoke(2)).toEqual([3, 3]);
 });
 
-it.skip("should handle checkpoints correctly", async () => {
+it("should handle checkpoints correctly", async () => {
   const inputPlusTotal = jest.fn(
     (x: { total: number; input: number }): number => x.total + x.input
   );
@@ -403,7 +374,7 @@ it.skip("should handle checkpoints correctly", async () => {
     .pipe(Channel.writeTo("output", "total"))
     .pipe(raiseIfAbove10);
 
-  const memory = new MemorySaver();
+  const memory = new MemorySaverAssertImmutable();
 
   const app = new Pregel({
     nodes: { one },
