@@ -12,7 +12,6 @@ import { BaseCheckpointSaver } from "../checkpoint/base.js";
 import { Pregel, Channel } from "../pregel/index.js";
 import { ChannelInvoke, ChannelRead } from "../pregel/read.js";
 import { NamedBarrierValue } from "../channels/named_barrier_value.js";
-import { coerceMessageLikeToMessage } from "@langchain/core/messages";
 import { AnyValue } from "../channels/any_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 
@@ -89,16 +88,16 @@ export class StateGraph<
       if (start === END) {
         throw new Error("END cannot be a start node");
       }
-      // TODO:
-      //   if start not in self.nodes:
-      // raise ValueError(f"Need to add_node `{start}` first")
+      if (!Object.keys(this.nodes).some((node) => node === start)) {
+        throw new Error(`Need to add_node ${start} first`)
+      }
     }
     if (endKey === END) {
       throw new Error('END cannot be an end node')
     }
-    // TODO(janvi): add this. 
-    // if end_key not in self.nodes:
-    // raise ValueError(f"Need to add_node `{end_key}` first")
+    if (!Object.keys(this.nodes).some((node) => node === endKey)) {
+      throw new Error(`Need to add_node ${endKey} first`)
+    }
 
     this.w_edges.add([startKey, endKey]);
   }
@@ -121,7 +120,7 @@ export class StateGraph<
         stateChannels[chan] = chan;
       }
     }
-    console.log('these are the channels now', stateChannels)
+    // console.log('these are the channels now', stateChannels)
 
     const updateState = Array.isArray(stateKeysRead)
       ? (
@@ -165,7 +164,7 @@ export class StateGraph<
         `${key}:inbox`,
         ...Array.from(waitingEdges).filter(([, , end]) => end === key).map(([chan]) => chan)
       ];
-      console.log('these are the triggers: ', triggers)
+      // console.log('these are the triggers: ', triggers)
       nodes[key] = new ChannelInvoke({
         triggers,
         channels: stateChannels,

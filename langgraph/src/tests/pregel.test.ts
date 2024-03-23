@@ -1308,20 +1308,20 @@ it.only("In one fan out state graph waiting edge", async () => {
   }
 
   function rewriteQuery(data: State): State {
-    console.log(`rewriteQuery with data: ${JSON.stringify(data, null, 2)}`);
+    // console.log(`rewriteQuery with data: ${JSON.stringify(data, null, 2)}`);
 
 
     const ans = { query: `query: ${data.query}` };
-    console.log('rewriteQuery ans', ans)
+    // console.log('rewriteQuery ans', ans)
 
     return ans;
   }
 
   function analyzerOne(data: State): State {
-    console.log(`analyzerOne with data: ${JSON.stringify(data, null, 2)}`);
+    // console.log(`analyzerOne with data: ${JSON.stringify(data, null, 2)}`);
 
     const ans = { query: `analyzed: ${data.query}` };
-    console.log('analyzerOne ans', ans)
+    // console.log('analyzerOne ans', ans)
 
     return ans;
   }
@@ -1335,7 +1335,7 @@ it.only("In one fan out state graph waiting edge", async () => {
   }
 
   function qa(data: State): State {
-    console.log(`qa with data: ${JSON.stringify(data, null,)}`);
+    // console.log(`qa with data: ${JSON.stringify(data, null,)}`);
     const ans = { answer: data.docs?.join(",") };
     console.log('qa ans', ans)
     return ans;

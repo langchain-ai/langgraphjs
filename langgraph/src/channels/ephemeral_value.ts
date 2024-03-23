@@ -21,14 +21,12 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
     if (checkpoint) {
       empty.value = checkpoint;
     }
-    const valueToReturn = { ...empty };
-    // Clear the value because it's ephemeral.
-    empty.value = undefined;
-    return valueToReturn;
+    return empty;
   }
 
   update(values: Value[]): void {
     if (values.length === 0) {
+      // If there are no updates for this specific channel at the end of the step, wipe it. 
       this.value = undefined;
       return;
     }
