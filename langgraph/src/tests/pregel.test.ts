@@ -358,7 +358,7 @@ it("should process two inputs to two outputs validly", async () => {
 });
 
 it("should handle checkpoints correctly", async () => {
-  const addOne = jest.fn(
+  const inputPlusTotal = jest.fn(
     (x: { total: number; input: number }): number => x.total + x.input
   );
   const raiseIfAbove10 = (input: number): number => {
@@ -370,7 +370,7 @@ it("should handle checkpoints correctly", async () => {
 
   const one = Channel.subscribeTo(["input"])
     .join(["total"])
-    .pipe(addOne)
+    .pipe(inputPlusTotal)
     .pipe(Channel.writeTo("output", "total"))
     .pipe(raiseIfAbove10);
 
