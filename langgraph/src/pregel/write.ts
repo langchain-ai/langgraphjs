@@ -48,11 +48,13 @@ export class ChannelWrite<
     ];
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async coerceValue(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     input: any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     value: any,
     config: RunnableConfig
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<any> {
     if (Runnable.isRunnable(value)) {
       return await value.invoke(input, config);
@@ -89,6 +91,7 @@ export class ChannelWrite<
     const writingThis = Object.entries(values).filter(
       ([_channel, value]) => value !== SKIP_WRITE
     );
+    console.log(`writing this ${JSON.stringify(writingThis)}`);
     write(writingThis);
   }
 }

@@ -24,13 +24,12 @@ export class AnyValue<Value> extends BaseChannel<Value, Value, Value> {
     return empty;
   }
 
-  // QUESTION: Is my version okay? Slightly different from Python.
   update(values: Value[]): void {
     if (values.length === 0) {
       this.value = undefined;
       return;
     }
-
+    
     // eslint-disable-next-line prefer-destructuring
     this.value = values[0];
   }

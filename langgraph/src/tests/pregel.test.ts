@@ -1007,7 +1007,7 @@ describe("MessageGraph", () => {
   }
   const tools = [new SearchAPI()];
 
-  it("can invoke a single message", async () => {
+  it.only("can invoke a single message", async () => {
     const model = new FakeChatModel({
       responses: [
         new AIMessage({
@@ -1069,6 +1069,8 @@ describe("MessageGraph", () => {
     };
     const workflow = new MessageGraph<Array<BaseMessage>>();
 
+    console.log(`workflow ${JSON.stringify(workflow)}`)
+
     workflow.addNode("agent", model);
     workflow.addNode("action", callTool);
 
@@ -1083,9 +1085,15 @@ describe("MessageGraph", () => {
 
     const app = workflow.compile();
 
+    console.log(`app ${JSON.stringify(app)}`)
+
+
     const result = await app.invoke(
       new HumanMessage("what is the weather in sf?")
     );
+
+    console.log(`result ${JSON.stringify(result)}`)
+
 
     expect(result).toHaveLength(6);
     expect(result).toStrictEqual([

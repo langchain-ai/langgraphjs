@@ -1,5 +1,4 @@
 import {
-  RunnableConfig,
   RunnableLambda,
   RunnableLike,
 } from "@langchain/core/runnables";
@@ -9,7 +8,6 @@ import { END, Graph } from "./graph.js";
 import { LastValue } from "../channels/last_value.js";
 import {
   ChannelWrite,
-  ChannelWriteEntry,
   SKIP_WRITE,
 } from "../pregel/write.js";
 import { BaseCheckpointSaver } from "../checkpoint/base.js";
@@ -24,18 +22,18 @@ export const START = "__start__";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface StateGraphArgs<Channels extends Record<string, any>> {
   channels:
+  | {
+    [K in keyof Channels]:
     | {
-        [K in keyof Channels]:
-          | {
-              value: BinaryOperator<Channels[K]> | null;
-              default?: () => Channels[K];
-            }
-          | string;
-      }
-    | {
-        value: BinaryOperator<unknown> | null;
-        default?: () => unknown;
-      };
+      value: BinaryOperator<Channels[K]> | null;
+      default?: () => Channels[K];
+    }
+    | string;
+  }
+  | {
+    value: BinaryOperator<unknown> | null;
+    default?: () => unknown;
+  };
 }
 
 export class StateGraph<
@@ -44,14 +42,11 @@ export class StateGraph<
 > extends Graph<Channels> {
   channels: Record<string, BaseChannel>;
 
-  schema: StateGraphArgs<Channels>["channels"];
-
   w_edges: Set<[string[], string]> = new Set();
 
   constructor(fields: StateGraphArgs<Channels>) {
     super();
-    this.schema = fields.channels;
-    this.channels = _getChannels(this.schema);
+    this.channels = _getChannels(fields.channels);
     for (const c of Object.values(this.channels)) {
       if (c.lc_graph_name === "BinaryOperatorAggregate") {
         this.supportMultipleEdges = true;
@@ -86,7 +81,7 @@ export class StateGraph<
     if (this.compiled) {
       console.warn(
         "Adding an edge to a graph that has already been compiled. This will " +
-          "not be reflected in the compiled graph."
+        "not be reflected in the compiled graph."
       );
     }
 
@@ -142,12 +137,12 @@ export class StateGraph<
 
     const updateChannels = Array.isArray(stateKeysRead)
       ? stateKeysRead.map((key) => ({
-          channel: key,
-          value: new RunnableLambda({
-            func: (input) => getInputKey(key, input),
-          }),
-          skipNone: false,
-        }))
+        channel: key,
+        value: new RunnableLambda({
+          func: (input) => getInputKey(key, input),
+        }),
+        skipNone: false,
+      }))
       : [{ channel: "__root__", value: null, skipNone: true }];
 
     const waitingEdges: Set<[string, string[], string]> = new Set();
