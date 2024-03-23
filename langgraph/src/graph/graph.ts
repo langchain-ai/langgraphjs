@@ -100,7 +100,10 @@ export class Graph<
       throw new Error(`Need to addNode \`${endKey}\` first`);
     }
 
-    if (!this.supportMultipleEdges && Array.from(this.edges).some(([start]) => start === startKey)) {
+    if (
+      !this.supportMultipleEdges &&
+      Array.from(this.edges).some(([start]) => start === startKey)
+    ) {
       throw new Error(`Already found path for ${startKey}`);
     }
 
@@ -220,7 +223,9 @@ export class Graph<
 
   validate(): void {
     const allStarts = new Set(
-      [...this.allEdges].map(([src, _]) => src).concat(Object.keys(this.branches))
+      [...this.allEdges]
+        .map(([src, _]) => src)
+        .concat(Object.keys(this.branches))
     );
 
     for (const node of Object.keys(this.nodes)) {

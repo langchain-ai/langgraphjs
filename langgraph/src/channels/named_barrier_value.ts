@@ -8,10 +8,14 @@ const areSetsEqual = (a: Set<unknown>, b: Set<unknown>) =>
  * This ensures that if node N and node M both write to channel C, the value of C will not be updated
  * until N and M have completed updating.
  */
-export class NamedBarrierValue<Value> extends BaseChannel<Value, Value, Set<Value>> {
+export class NamedBarrierValue<Value> extends BaseChannel<
+  Value,
+  Value,
+  Set<Value>
+> {
   lc_graph_name = "NamedBarrierValue";
 
-  names: Set<Value>; // Names of nodes that we want to wait for. 
+  names: Set<Value>; // Names of nodes that we want to wait for.
 
   seen: Set<Value>;
 
@@ -30,7 +34,7 @@ export class NamedBarrierValue<Value> extends BaseChannel<Value, Value, Set<Valu
   }
 
   update(values: Value[]): void {
-    // We have seen all nodes, so we can reset the seen set in preparation for the next round of updates. 
+    // We have seen all nodes, so we can reset the seen set in preparation for the next round of updates.
     if (areSetsEqual(this.names, this.seen)) {
       this.seen = new Set<Value>();
     }
@@ -38,13 +42,17 @@ export class NamedBarrierValue<Value> extends BaseChannel<Value, Value, Set<Valu
       if (this.names.has(nodeName)) {
         this.seen.add(nodeName);
       } else {
-        throw new Error(`Value ${JSON.stringify(nodeName)} not in names ${JSON.stringify(this.names)}`);
+        throw new Error(
+          `Value ${JSON.stringify(nodeName)} not in names ${JSON.stringify(
+            this.names
+          )}`
+        );
       }
     }
   }
 
   // If we have not yet seen all the node names we want to wait for, throw an error to
-  // prevent continuing. 
+  // prevent continuing.
   get(): Value {
     if (!areSetsEqual(this.names, this.seen)) {
       throw new EmptyChannelError();

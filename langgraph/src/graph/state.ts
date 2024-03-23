@@ -7,7 +7,11 @@ import { BaseChannel } from "../channels/base.js";
 import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { END, Graph } from "./graph.js";
 import { LastValue } from "../channels/last_value.js";
-import { ChannelWrite, ChannelWriteEntry, SKIP_WRITE } from "../pregel/write.js";
+import {
+  ChannelWrite,
+  ChannelWriteEntry,
+  SKIP_WRITE,
+} from "../pregel/write.js";
 import { BaseCheckpointSaver } from "../checkpoint/base.js";
 import { Pregel, Channel } from "../pregel/index.js";
 import { ChannelInvoke, ChannelRead } from "../pregel/read.js";
@@ -20,18 +24,18 @@ export const START = "__start__";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface StateGraphArgs<Channels extends Record<string, any>> {
   channels:
-  | {
-    [K in keyof Channels]:
     | {
-      value: BinaryOperator<Channels[K]> | null;
-      default?: () => Channels[K];
-    }
-    | string;
-  }
-  | {
-    value: BinaryOperator<unknown> | null;
-    default?: () => unknown;
-  };
+        [K in keyof Channels]:
+          | {
+              value: BinaryOperator<Channels[K]> | null;
+              default?: () => Channels[K];
+            }
+          | string;
+      }
+    | {
+        value: BinaryOperator<unknown> | null;
+        default?: () => unknown;
+      };
 }
 
 export class StateGraph<
@@ -58,7 +62,9 @@ export class StateGraph<
   get allEdges(): Set<[string, string]> {
     return new Set([
       ...this.edges,
-      ...Array.from(this.w_edges).flatMap(([starts, end]) => starts.map(start => [start, end] as [string, string]))
+      ...Array.from(this.w_edges).flatMap(([starts, end]) =>
+        starts.map((start) => [start, end] as [string, string])
+      ),
     ]);
   }
 
@@ -80,7 +86,7 @@ export class StateGraph<
     if (this.compiled) {
       console.warn(
         "Adding an edge to a graph that has already been compiled. This will " +
-        "not be reflected in the compiled graph."
+          "not be reflected in the compiled graph."
       );
     }
 
@@ -89,14 +95,14 @@ export class StateGraph<
         throw new Error("END cannot be a start node");
       }
       if (!Object.keys(this.nodes).some((node) => node === start)) {
-        throw new Error(`Need to add_node ${start} first`)
+        throw new Error(`Need to add_node ${start} first`);
       }
     }
     if (endKey === END) {
-      throw new Error('END cannot be an end node')
+      throw new Error("END cannot be an end node");
     }
     if (!Object.keys(this.nodes).some((node) => node === endKey)) {
-      throw new Error(`Need to add_node ${endKey} first`)
+      throw new Error(`Need to add_node ${endKey} first`);
     }
 
     this.w_edges.add([startKey, endKey]);
@@ -123,23 +129,25 @@ export class StateGraph<
 
     const getInputKey = (key: string, input: unknown) => {
       if (!input) {
-        return SKIP_WRITE
+        return SKIP_WRITE;
       }
       if (typeof input !== "object") {
-        throw new Error(`Invalid state update, expected dict and got ${input}`)
+        throw new Error(`Invalid state update, expected dict and got ${input}`);
       }
       if (key in input) {
-        return (input as Record<string, unknown>)[key]
+        return (input as Record<string, unknown>)[key];
       }
-      return SKIP_WRITE
-    }
+      return SKIP_WRITE;
+    };
 
     const updateChannels = Array.isArray(stateKeysRead)
       ? stateKeysRead.map((key) => ({
-        channel: key,
-        value: new RunnableLambda({ func: (input) => getInputKey(key, input) }),
-        skipNone: false
-      }))
+          channel: key,
+          value: new RunnableLambda({
+            func: (input) => getInputKey(key, input),
+          }),
+          skipNone: false,
+        }))
       : [{ channel: "__root__", value: null, skipNone: true }];
 
     const waitingEdges: Set<[string, string[], string]> = new Set();
@@ -147,7 +155,8 @@ export class StateGraph<
       waitingEdges.add([`${starts}:${end}`, starts, end]);
     });
 
-    const waitingEdgeChannels: { [key: string]: NamedBarrierValue<string> } = {};
+    const waitingEdgeChannels: { [key: string]: NamedBarrierValue<string> } =
+      {};
     waitingEdges.forEach(([key, starts]) => {
       waitingEdgeChannels[key] = new NamedBarrierValue<string>(new Set(starts));
     });
@@ -173,21 +182,28 @@ export class StateGraph<
     for (const [key, node] of Object.entries(this.nodes)) {
       const triggers = [
         `${key}:inbox`,
-        ...Array.from(waitingEdges).filter(([, , end]) => end === key).map(([chan]) => chan)
+        ...Array.from(waitingEdges)
+          .filter(([, , end]) => end === key)
+          .map(([chan]) => chan),
       ];
       nodes[key] = new ChannelInvoke({
         triggers,
         channels: stateChannels,
       })
         .pipe(node)
-        .pipe(new ChannelWrite([{ channel: key, value: null, skipNone: false }, ...updateChannels]));
+        .pipe(
+          new ChannelWrite([
+            { channel: key, value: null, skipNone: false },
+            ...updateChannels,
+          ])
+        );
     }
 
     const nodeInboxes: Record<string, Channel> = {};
     const nodeOutboxes: Record<string, Channel> = {};
     for (const key of [...Object.keys(this.nodes), START]) {
-      nodeInboxes[`${key}:inbox`] = new AnyValue()
-      nodeOutboxes[key] = new EphemeralValue() // we clear outbox channels after each step
+      nodeInboxes[`${key}:inbox`] = new AnyValue();
+      nodeOutboxes[key] = new EphemeralValue(); // we clear outbox channels after each step
     }
 
     for (const key of Object.keys(this.nodes)) {
@@ -201,9 +217,15 @@ export class StateGraph<
         }).pipe(new ChannelRead(stateKeysRead));
       }
       if (outgoing) {
-        nodes[edgesKey] = nodes[edgesKey].pipe(new ChannelWrite(outgoing.map((dest =>
-          ({ channel: dest, value: dest === END ? null : key, skipNone: false })
-        ))));
+        nodes[edgesKey] = nodes[edgesKey].pipe(
+          new ChannelWrite(
+            outgoing.map((dest) => ({
+              channel: dest,
+              value: dest === END ? null : key,
+              skipNone: false,
+            }))
+          )
+        );
       }
       if (this.branches[key]) {
         for (const branch of this.branches[key]) {
@@ -218,8 +240,12 @@ export class StateGraph<
 
     nodes[START] = Channel.subscribeTo(`${START}:inbox`, {
       tags: ["langsmith:hidden"],
-    })
-      .pipe(new ChannelWrite([{ channel: START, value: null, skipNone: false }, ...updateChannels]));
+    }).pipe(
+      new ChannelWrite([
+        { channel: START, value: null, skipNone: false },
+        ...updateChannels,
+      ])
+    );
 
     nodes[`${START}:edges`] = new ChannelInvoke({
       triggers: [START],
@@ -231,7 +257,13 @@ export class StateGraph<
 
     return new Pregel({
       nodes,
-      channels: { ...this.channels, ...waitingEdgeChannels, ...nodeInboxes, ...nodeOutboxes, END: new LastValue() },
+      channels: {
+        ...this.channels,
+        ...waitingEdgeChannels,
+        ...nodeInboxes,
+        ...nodeOutboxes,
+        END: new LastValue(),
+      },
       input: `${START}:inbox`,
       output: END,
       hidden: Object.keys(this.nodes)

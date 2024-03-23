@@ -63,7 +63,7 @@ export class Channel {
       tags?: string[];
     }
   ): // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ChannelInvoke;
+  ChannelInvoke;
 
   static subscribeTo(
     channels: string[],
@@ -119,12 +119,15 @@ export class Channel {
   static writeTo(...args: any[]): ChannelWrite {
     const channelPairs: Array<ChannelWriteEntry> = [];
 
-
     if (args.length === 1 && typeof args[0] === "object") {
       // Handle the case where named arguments are passed as an object
       const additionalArgs = args[0];
       Object.entries(additionalArgs).forEach(([key, value]) => {
-        channelPairs.push({ channel: key, value: _coerceWriteValue(value), skipNone: false });
+        channelPairs.push({
+          channel: key,
+          value: _coerceWriteValue(value),
+          skipNone: false,
+        });
       });
     } else {
       args.forEach((channel) => {
@@ -132,7 +135,11 @@ export class Channel {
           channelPairs.push({ channel, value: undefined, skipNone: false });
         } else if (typeof channel === "object") {
           Object.entries(channel).forEach(([key, value]) => {
-            channelPairs.push({ channel: key, value: _coerceWriteValue(value), skipNone: false });
+            channelPairs.push({
+              channel: key,
+              value: _coerceWriteValue(value),
+              skipNone: false,
+            });
           });
         }
       });
@@ -187,7 +194,8 @@ export type PregelOutputType = any;
 
 export class Pregel
   extends Runnable<PregelInputType, PregelOutputType, PregelOptions>
-  implements PregelInterface {
+  implements PregelInterface
+{
   static lc_name() {
     return "LangGraph";
   }
@@ -431,9 +439,9 @@ async function executeTasks<RunOutput>(
   const wrappedTasks = tasks.map((task) =>
     stepTimeout
       ? Promise.race([
-        task(),
-        stepTimeout ? timeout(stepTimeout) : Promise.resolve(),
-      ])
+          task(),
+          stepTimeout ? timeout(stepTimeout) : Promise.resolve(),
+        ])
       : task()
   );
 

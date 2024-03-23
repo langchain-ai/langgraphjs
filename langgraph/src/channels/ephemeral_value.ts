@@ -10,7 +10,6 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
 
   value?: Value;
 
-
   constructor(guard: boolean = true) {
     super();
     this.guard = guard;
@@ -26,12 +25,14 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
 
   update(values: Value[]): void {
     if (values.length === 0) {
-      // If there are no updates for this specific channel at the end of the step, wipe it. 
+      // If there are no updates for this specific channel at the end of the step, wipe it.
       this.value = undefined;
       return;
     }
     if (values.length !== 1 && this.guard) {
-      throw new InvalidUpdateError('EphemeralValue can only receive one value per step.')
+      throw new InvalidUpdateError(
+        "EphemeralValue can only receive one value per step."
+      );
     }
 
     // eslint-disable-next-line prefer-destructuring

@@ -17,14 +17,14 @@ export const SKIP_WRITE = {};
  */
 export class ChannelWrite<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any,
+  RunInput = any
 > extends RunnablePassthrough<RunInput> {
   channels: Array<ChannelWriteEntry>;
 
-  constructor(
-    channels: Array<ChannelWriteEntry>
-  ) {
-    const name = `ChannelWrite<${channels.map(({ channel }) => channel).join(",")}>`;
+  constructor(channels: Array<ChannelWriteEntry>) {
+    const name = `ChannelWrite<${channels
+      .map(({ channel }) => channel)
+      .join(",")}>`;
     super({
       ...{ channels, name },
       func: async (input: RunInput, config?: RunnableConfig) =>
@@ -49,12 +49,17 @@ export class ChannelWrite<
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async coerceValue(input: any, value: any, config: RunnableConfig): Promise<any> {
+  async coerceValue(
+    input: any,
+    value: any,
+    config: RunnableConfig
+  ): Promise<any> {
     if (Runnable.isRunnable(value)) {
-      return await value.invoke(input, config)
+      return await value.invoke(input, config);
     } else if (value) {
       return value;
-    } return input;
+    }
+    return input;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,16 +80,15 @@ export class ChannelWrite<
       }
     }
 
-    ChannelWrite.doWrite(
-      config,
-      newValues
-    );
+    ChannelWrite.doWrite(config, newValues);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static doWrite(config: RunnableConfig, values: Record<string, any>): void {
     const write: TYPE_SEND = config.configurable?.[CONFIG_KEY_SEND];
-    const writingThis = Object.entries(values).filter(([_channel, value]) => value !== SKIP_WRITE);
+    const writingThis = Object.entries(values).filter(
+      ([_channel, value]) => value !== SKIP_WRITE
+    );
     write(writingThis);
   }
 }
