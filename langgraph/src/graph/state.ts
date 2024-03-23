@@ -7,7 +7,7 @@ import { BaseChannel } from "../channels/base.js";
 import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { END, Graph } from "./graph.js";
 import { LastValue } from "../channels/last_value.js";
-import { ChannelWrite } from "../pregel/write.js";
+import { ChannelWrite, ChannelWriteEntry, SKIP_WRITE } from "../pregel/write.js";
 import { BaseCheckpointSaver } from "../checkpoint/base.js";
 import { Pregel, Channel } from "../pregel/index.js";
 import { ChannelInvoke, ChannelRead } from "../pregel/read.js";
@@ -42,7 +42,7 @@ export class StateGraph<
 
   schema: StateGraphArgs<Channels>["channels"];
 
-  w_edges: Set<[[string, ...string[]], string]> = new Set();
+  w_edges: Set<[string[], string]> = new Set();
 
   constructor(fields: StateGraphArgs<Channels>) {
     super();
@@ -120,16 +120,27 @@ export class StateGraph<
         stateChannels[chan] = chan;
       }
     }
-    // console.log('these are the channels now', stateChannels)
 
-    const updateState = Array.isArray(stateKeysRead)
-      ? (
-        nodeName: string,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        input: Record<string, any>,
-        options?: { config?: RunnableConfig }
-      ) => _updateStateObject(stateKeys, nodeName, input, options)
-      : _updateStateRoot;
+    const getInputKey = (key: string, input: unknown) => {
+      if (!input) {
+        return SKIP_WRITE
+      }
+      if (typeof input !== "object") {
+        throw new Error(`Invalid state update, expected dict and got ${input}`)
+      }
+      if (key in input) {
+        return (input as Record<string, unknown>)[key]
+      }
+      return SKIP_WRITE
+    }
+
+    const updateChannels = Array.isArray(stateKeysRead)
+      ? stateKeysRead.map((key) => ({
+        channel: key,
+        value: new RunnableLambda({ func: (input) => getInputKey(key, input) }),
+        skipNone: false
+      }))
+      : [{ channel: "__root__", value: null, skipNone: true }];
 
     const waitingEdges: Set<[string, string[], string]> = new Set();
     this.w_edges.forEach(([starts, end]) => {
@@ -164,20 +175,12 @@ export class StateGraph<
         `${key}:inbox`,
         ...Array.from(waitingEdges).filter(([, , end]) => end === key).map(([chan]) => chan)
       ];
-      // console.log('these are the triggers: ', triggers)
       nodes[key] = new ChannelInvoke({
         triggers,
         channels: stateChannels,
       })
         .pipe(node)
-        .pipe(
-          (
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            input: Record<string, any>,
-            options?: { config?: RunnableConfig }
-          ) => updateState(key, input, options)
-        )
-        .pipe(Channel.writeTo(key));
+        .pipe(new ChannelWrite([{ channel: key, value: null, skipNone: false }, ...updateChannels]));
     }
 
     const nodeInboxes: Record<string, Channel> = {};
@@ -198,7 +201,9 @@ export class StateGraph<
         }).pipe(new ChannelRead(stateKeysRead));
       }
       if (outgoing) {
-        nodes[edgesKey] = nodes[edgesKey].pipe(Channel.writeTo(...outgoing));
+        nodes[edgesKey] = nodes[edgesKey].pipe(new ChannelWrite(outgoing.map((dest =>
+          ({ channel: dest, value: dest === END ? null : key, skipNone: false })
+        ))));
       }
       if (this.branches[key]) {
         for (const branch of this.branches[key]) {
@@ -214,14 +219,7 @@ export class StateGraph<
     nodes[START] = Channel.subscribeTo(`${START}:inbox`, {
       tags: ["langsmith:hidden"],
     })
-      .pipe(
-        (
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          input: Record<string, any>,
-          options?: { config?: RunnableConfig }
-        ) => updateState(START, input, options)
-      )
-      .pipe(Channel.writeTo(START));
+      .pipe(new ChannelWrite([{ channel: START, value: null, skipNone: false }, ...updateChannels]));
 
     nodes[`${START}:edges`] = new ChannelInvoke({
       triggers: [START],
@@ -242,42 +240,6 @@ export class StateGraph<
       checkpointer,
     });
   }
-}
-
-function _updateStateObject(
-  stateKeys: Array<string>,
-  nodeName: string,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  input: Record<string, any>,
-  options?: { config?: RunnableConfig }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Record<string, any> {
-  if (!options?.config) {
-    throw new Error("Config not found when updating state.");
-  }
-  if (Object.keys(input).some((key) => !stateKeys.some((sk) => sk === key))) {
-    throw new Error(
-      `Invalid state update from node ${nodeName}, expected object with one or more of ${stateKeys.join(
-        ", "
-      )}, got ${Object.keys(input).join(",")}`
-    );
-  }
-  ChannelWrite.doWrite(options.config, input);
-  return input;
-}
-
-function _updateStateRoot(
-  _nodeName: string,
-  input: unknown,
-  options?: { config?: RunnableConfig }
-): unknown {
-  if (!options?.config) {
-    throw new Error("Config not found when updating state.");
-  }
-  ChannelWrite.doWrite(options.config, {
-    __root__: input,
-  });
-  return input;
 }
 
 function _getChannels<Channels extends Record<string, unknown>>(

@@ -1,7 +1,5 @@
 import { BaseChannel, EmptyChannelError } from "./index.js";
 
-// Question: should it node N and M or channel N and M? Because technically, nodes don't inherently have values.
-
 const areSetsEqual = (a: Set<unknown>, b: Set<unknown>) =>
   a.size === b.size && [...a].every((value) => b.has(value));
 /**
@@ -10,7 +8,7 @@ const areSetsEqual = (a: Set<unknown>, b: Set<unknown>) =>
  * This ensures that if node N and node M both write to channel C, the value of C will not be updated
  * until N and M have completed updating.
  */
-export class NamedBarrierValue<Value> extends BaseChannel<Value, Value, Value> {
+export class NamedBarrierValue<Value> extends BaseChannel<Value, Value, Set<Value>> {
   lc_graph_name = "NamedBarrierValue";
 
   names: Set<Value>; // Names of nodes that we want to wait for. 
@@ -23,7 +21,7 @@ export class NamedBarrierValue<Value> extends BaseChannel<Value, Value, Value> {
     this.seen = new Set<Value>();
   }
 
-  empty(checkpoint?: Value): NamedBarrierValue<Value> {
+  empty(checkpoint?: Set<Value>): NamedBarrierValue<Value> {
     const empty = new NamedBarrierValue<Value>(this.names);
     if (checkpoint) {
       empty.seen = checkpoint;
@@ -33,15 +31,14 @@ export class NamedBarrierValue<Value> extends BaseChannel<Value, Value, Value> {
 
   update(values: Value[]): void {
     // We have seen all nodes, so we can reset the seen set in preparation for the next round of updates. 
-    console.log(`called update with values: ${JSON.stringify(values, null, 2)}`)
     if (areSetsEqual(this.names, this.seen)) {
       this.seen = new Set<Value>();
     }
     for (const nodeName of values) {
-      if (nodeName in this.names) {
+      if (this.names.has(nodeName)) {
         this.seen.add(nodeName);
       } else {
-        throw new Error(`Value ${nodeName} not in names ${this.names}`);
+        throw new Error(`Value ${JSON.stringify(nodeName)} not in names ${JSON.stringify(this.names)}`);
       }
     }
   }
@@ -55,7 +52,7 @@ export class NamedBarrierValue<Value> extends BaseChannel<Value, Value, Value> {
     return undefined as Value;
   }
 
-  checkpoint(): Value {
+  checkpoint(): Set<Value> {
     return this.seen;
   }
 }

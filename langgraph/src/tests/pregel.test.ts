@@ -1294,12 +1294,7 @@ it("Conditional edges is optional", async () => {
 
 
 it.only("In one fan out state graph waiting edge", async () => {
-  const sortedAdd = jest.fn((x: string[], y: string[]): string[] => {
-    const ans = [...x, ...y].sort();
-    console.log('sorted add', ans)
-    return ans;
-  }
-  );
+  const sortedAdd = jest.fn((x: string[], y: string[]): string[] => ([...x, ...y].sort()));
 
   type State = {
     query?: string,
@@ -1308,22 +1303,11 @@ it.only("In one fan out state graph waiting edge", async () => {
   }
 
   function rewriteQuery(data: State): State {
-    // console.log(`rewriteQuery with data: ${JSON.stringify(data, null, 2)}`);
-
-
-    const ans = { query: `query: ${data.query}` };
-    // console.log('rewriteQuery ans', ans)
-
-    return ans;
+    return { query: `query: ${data.query}` };
   }
 
   function analyzerOne(data: State): State {
-    // console.log(`analyzerOne with data: ${JSON.stringify(data, null, 2)}`);
-
-    const ans = { query: `analyzed: ${data.query}` };
-    // console.log('analyzerOne ans', ans)
-
-    return ans;
+    return { query: `analyzed: ${data.query}` };
   }
 
   function retrieverOne(_data: State): State {
@@ -1335,10 +1319,7 @@ it.only("In one fan out state graph waiting edge", async () => {
   }
 
   function qa(data: State): State {
-    // console.log(`qa with data: ${JSON.stringify(data, null,)}`);
-    const ans = { answer: data.docs?.join(",") };
-    console.log('qa ans', ans)
-    return ans;
+    return { answer: data.docs?.join(",") };
   }
 
   const schema = {

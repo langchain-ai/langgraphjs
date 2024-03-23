@@ -27,7 +27,7 @@ import { ChannelInvoke } from "./read.js";
 import { validateGraph } from "./validate.js";
 import { ReservedChannelsMap } from "./reserved.js";
 import { mapInput, mapOutput } from "./io.js";
-import { ChannelWrite } from "./write.js";
+import { ChannelWrite, ChannelWriteEntry } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 
@@ -117,24 +117,22 @@ export class Channel {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static writeTo(...args: any[]): ChannelWrite {
-    // const channelPairs: Array<[string, WriteValue<RunInput, RunOutput>]> =
-    //   channels.map((c) => [c, undefined]);
-    // return new ChannelWrite<RunInput, RunOutput>(channelPairs);
-    const channelPairs: Array<[string, Runnable | undefined]> = [];
+    const channelPairs: Array<ChannelWriteEntry> = [];
+
 
     if (args.length === 1 && typeof args[0] === "object") {
       // Handle the case where named arguments are passed as an object
       const additionalArgs = args[0];
       Object.entries(additionalArgs).forEach(([key, value]) => {
-        channelPairs.push([key, _coerceWriteValue(value)]);
+        channelPairs.push({ channel: key, value: _coerceWriteValue(value), skipNone: false });
       });
     } else {
       args.forEach((channel) => {
         if (typeof channel === "string") {
-          channelPairs.push([channel, undefined]);
+          channelPairs.push({ channel, value: undefined, skipNone: false });
         } else if (typeof channel === "object") {
           Object.entries(channel).forEach(([key, value]) => {
-            channelPairs.push([key, _coerceWriteValue(value)]);
+            channelPairs.push({ channel: key, value: _coerceWriteValue(value), skipNone: false });
           });
         }
       });
