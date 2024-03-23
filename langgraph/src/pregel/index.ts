@@ -63,7 +63,7 @@ export class Channel {
       tags?: string[];
     }
   ): // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ChannelInvoke;
+  ChannelInvoke;
 
   static subscribeTo(
     channels: string[],
@@ -194,7 +194,8 @@ export type PregelOutputType = any;
 
 export class Pregel
   extends Runnable<PregelInputType, PregelOutputType, PregelOptions>
-  implements PregelInterface {
+  implements PregelInterface
+{
   static lc_name() {
     return "LangGraph";
   }

@@ -88,11 +88,9 @@ export class ChannelWrite<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static doWrite(config: RunnableConfig, values: Record<string, any>): void {
     const write: TYPE_SEND = config.configurable?.[CONFIG_KEY_SEND];
-    const writingThis = Object.entries(values).filter(
-      ([_channel, value]) => value !== SKIP_WRITE
+    write(
+      Object.entries(values).filter(([_channel, value]) => value !== SKIP_WRITE)
     );
-    console.log(`writing this ${JSON.stringify(writingThis)}`);
-    write(writingThis);
   }
 }
 

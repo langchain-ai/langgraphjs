@@ -29,7 +29,7 @@ export class AnyValue<Value> extends BaseChannel<Value, Value, Value> {
       this.value = undefined;
       return;
     }
-    
+
     // eslint-disable-next-line prefer-destructuring
     this.value = values[0];
   }
