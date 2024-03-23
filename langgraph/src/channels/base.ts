@@ -12,6 +12,7 @@ export abstract class BaseChannel<
 
   /**
    * Return a new identical channel, optionally initialized from a checkpoint.
+   * Can be thought of as a "restoration" from a checkpoint which is a "snapshot" of the channel's state.
    *
    * @param {CheckpointType | undefined} checkpoint
    * @param {CheckpointType | undefined} initialValue
