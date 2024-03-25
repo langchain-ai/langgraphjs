@@ -1,6 +1,6 @@
 {
   "imports": {
-    "langchain/": "npm:/langchain@0.1.23/",
+    "langchain/": "npm:/langchain@0.1.29/",
     "@langchain/openai": "npm:@langchain/openai",
     "@langchain/community/": "npm:/@langchain/community/",
     "@langchain/core/": "npm:/@langchain/core/",

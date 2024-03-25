@@ -363,7 +363,7 @@ const agentState = {
     value: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
     default: () => [],
   }
-}
+};
 ```
 
 You can think of the `MessageGraph` used in the initial example as a preconfigured version of this graph. The difference is that the state is directly a list of messages,
@@ -394,7 +394,10 @@ Let's define the nodes, as well as a function to decide how what conditional edg
 ```typescript
 import { FunctionMessage } from "@langchain/core/messages";
 import { AgentAction } from "@langchain/core/agents";
-import type { RunnableConfig } from "@langchain/core/runnables";
+import {
+  ChatPromptTemplate,
+  MessagesPlaceholder
+} from "@langchain/core/prompts";
 
 // Define the function that determines whether to continue or not
 const shouldContinue = (state: { messages: Array<BaseMessage> }) => {
@@ -426,7 +429,7 @@ const _getAction = (state: { messages: Array<BaseMessage> }): AgentAction => {
   // We construct an AgentAction from the function_call
   return {
     tool: lastMessage.additional_kwargs.function_call.name,
-    toolInput: JSON.stringify(
+    toolInput: JSON.parse(
       lastMessage.additional_kwargs.function_call.arguments
     ),
     log: "",
@@ -435,11 +438,18 @@ const _getAction = (state: { messages: Array<BaseMessage> }): AgentAction => {
 
 // Define the function that calls the model
 const callModel = async (
-  state: { messages: Array<BaseMessage> },
-  config?: RunnableConfig
+  state: { messages: Array<BaseMessage> }
 ) => {
   const { messages } = state;
-  const response = await newModel.invoke(messages, config);
+  // You can use a prompt here to tweak model behavior.
+  // You can also just pass messages to the model directly.
+  const prompt = ChatPromptTemplate.fromMessages([
+    ["system", "You are a helpful assistant."],
+    new MessagesPlaceholder("messages"),
+  ]);
+  const response = await prompt
+    .pipe(newModel)
+    .invoke({ messages });
   // We return a list, because this will get added to the existing list
   return {
     messages: [response],
@@ -447,12 +457,11 @@ const callModel = async (
 };
 
 const callTool = async (
-  state: { messages: Array<BaseMessage> },
-  config?: RunnableConfig
+  state: { messages: Array<BaseMessage> }
 ) => {
   const action = _getAction(state);
   // We call the tool_executor and get back a response
-  const response = await toolExecutor.invoke(action, config);
+  const response = await toolExecutor.invoke(action);
   // We use the response to create a FunctionMessage
   const functionMessage = new FunctionMessage({
     content: response,
