@@ -3,14 +3,18 @@
 import { it, beforeAll, describe, expect } from "@jest/globals";
 import { Tool } from "@langchain/core/tools";
 import { ChatOpenAI } from "@langchain/openai";
-import { BaseMessage, HumanMessage } from "@langchain/core/messages";
-import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
-import { createOpenAIFunctionsAgent } from "langchain/agents";
-import { pull } from "langchain/hub";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { END } from "../index.js";
 import {
-  createAgentExecutor,
+  BaseMessage,
+  FunctionMessage,
+  HumanMessage,
+} from "@langchain/core/messages";
+import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
+import { convertToOpenAIFunction } from "@langchain/core/utils/function_calling";
+import { RunnableConfig } from "@langchain/core/runnables";
+import type { AgentAction } from "langchain/agents";
+import { END, StateGraph } from "../index.js";
+import {
+  ToolExecutor,
   createFunctionCallingExecutor,
 } from "../prebuilt/index.js";
 
@@ -110,28 +114,146 @@ describe("createFunctionCallingExecutor", () => {
 });
 
 describe("createAgentExecutor", () => {
-  const tools = [new TavilySearchResults({ maxResults: 3 })];
-
   it("Can invoke", async () => {
-    const prompt = await pull<ChatPromptTemplate>(
-      "hwchase17/openai-functions-agent"
-    );
-    const llm = new ChatOpenAI({ modelName: "gpt-4-0125-preview" });
-    const agentRunnable = await createOpenAIFunctionsAgent({
-      llm,
-      tools,
-      prompt,
+    const tools = [new TavilySearchResults({ maxResults: 3 })];
+    const toolExecutor = new ToolExecutor({ tools });
+    const model = new ChatOpenAI({
+      temperature: 0,
+      streaming: true,
     });
 
-    const agentExecutor = createAgentExecutor({
-      agentRunnable,
-      tools,
-    });
-    console.log(
-      await agentExecutor.invoke({
-        input: "who is the winnner of the us open",
-        steps: [],
-      })
+    const toolsAsOpenAIFunctions = tools.map((tool) =>
+      convertToOpenAIFunction(tool)
     );
+    const newModel = model.bind({
+      functions: toolsAsOpenAIFunctions,
+    });
+    const agentState = {
+      messages: {
+        value: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
+        default: () => [],
+      },
+    };
+    // Define the function that determines whether to continue or not
+    const shouldContinue = (state: { messages: Array<BaseMessage> }) => {
+      const { messages } = state;
+      const lastMessage = messages[messages.length - 1];
+      // If there is no function call, then we finish
+      if (
+        !("function_call" in lastMessage.additional_kwargs) ||
+        !lastMessage.additional_kwargs.function_call
+      ) {
+        return "end";
+      }
+      // Otherwise if there is, we continue
+      return "continue";
+    };
+
+    // Define the function to execute tools
+    const _getAction = (state: {
+      messages: Array<BaseMessage>;
+    }): AgentAction => {
+      const { messages } = state;
+      // Based on the continue condition
+      // we know the last message involves a function call
+      const lastMessage = messages[messages.length - 1];
+      if (!lastMessage) {
+        throw new Error("No messages found.");
+      }
+      if (!lastMessage.additional_kwargs.function_call) {
+        throw new Error("No function call found in message.");
+      }
+      // We construct an AgentAction from the function_call
+      return {
+        tool: lastMessage.additional_kwargs.function_call.name,
+        toolInput: JSON.parse(
+          lastMessage.additional_kwargs.function_call.arguments
+        ),
+        log: "",
+      };
+    };
+
+    // Define the function that calls the model
+    const callModel = async (
+      state: { messages: Array<BaseMessage> },
+      config?: RunnableConfig
+    ) => {
+      const { messages } = state;
+      const response = await newModel.invoke(messages, config);
+      // We return a list, because this will get added to the existing list
+      return {
+        messages: [response],
+      };
+    };
+
+    const callTool = async (
+      state: { messages: Array<BaseMessage> },
+      config?: RunnableConfig
+    ) => {
+      const action = _getAction(state);
+      console.log("ACTION", action);
+      // We call the tool_executor and get back a response
+      const response = await toolExecutor.invoke(action, config);
+      console.log(response);
+      // We use the response to create a FunctionMessage
+      const functionMessage = new FunctionMessage({
+        content: response,
+        name: action.tool,
+      });
+      // We return a list, because this will get added to the existing list
+      return { messages: [functionMessage] };
+    };
+
+    // Define a new graph
+    const workflow = new StateGraph({
+      channels: agentState,
+    });
+
+    // Define the two nodes we will cycle between
+    workflow.addNode("agent", callModel);
+    workflow.addNode("action", callTool);
+
+    // Set the entrypoint as `agent`
+    // This means that this node is the first one called
+    workflow.setEntryPoint("agent");
+
+    // We now add a conditional edge
+    workflow.addConditionalEdges(
+      // First, we define the start node. We use `agent`.
+      // This means these are the edges taken after the `agent` node is called.
+      "agent",
+      // Next, we pass in the function that will determine which node is called next.
+      shouldContinue,
+      // Finally we pass in a mapping.
+      // The keys are strings, and the values are other nodes.
+      // END is a special node marking that the graph should finish.
+      // What will happen is we will call `should_continue`, and then the output of that
+      // will be matched against the keys in this mapping.
+      // Based on which one it matches, that node will then be called.
+      {
+        // If `tools`, then we call the tool node.
+        continue: "action",
+        // Otherwise we finish.
+        end: END,
+      }
+    );
+
+    // We now add a normal edge from `tools` to `agent`.
+    // This means that after `tools` is called, `agent` node is called next.
+    workflow.addEdge("action", "agent");
+
+    // Finally, we compile it!
+    // This compiles it into a LangChain Runnable,
+    // meaning you can use it as you would any other runnable
+    const app = workflow.compile();
+    const inputs = {
+      messages: [new HumanMessage("what is the weather in sf")],
+    };
+    const stream = await app.streamEvents(inputs, {
+      version: "v1",
+    });
+    for await (const chunk of stream) {
+      console.log(chunk);
+    }
   });
 });
