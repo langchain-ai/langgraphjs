@@ -982,12 +982,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/community@npm:^0.0.33, @langchain/community@npm:~0.0.33":
-  version: 0.0.33
-  resolution: "@langchain/community@npm:0.0.33"
+"@langchain/community@npm:^0.0.42, @langchain/community@npm:~0.0.41":
+  version: 0.0.42
+  resolution: "@langchain/community@npm:0.0.42"
   dependencies:
-    "@langchain/core": ~0.1.36
-    "@langchain/openai": ~0.0.14
+    "@langchain/core": ~0.1.44
+    "@langchain/openai": ~0.0.19
+    expr-eval: ^2.0.2
     flat: ^5.0.2
     langsmith: ~0.1.1
     uuid: ^9.0.0
@@ -1018,6 +1019,7 @@ __metadata:
     "@opensearch-project/opensearch": "*"
     "@pinecone-database/pinecone": "*"
     "@planetscale/database": ^1.8.0
+    "@premai/prem-sdk": ^0.3.25
     "@qdrant/js-client-rest": ^1.2.0
     "@raycast/api": ^1.55.2
     "@rockset/client": ^0.9.1
@@ -1040,12 +1042,14 @@ __metadata:
     "@zilliz/milvus2-sdk-node": ">=2.2.7"
     better-sqlite3: ^9.4.0
     cassandra-driver: ^4.7.2
+    cborg: ^4.1.1
     chromadb: "*"
     closevector-common: 0.1.3
     closevector-node: 0.1.6
     closevector-web: 0.1.6
     cohere-ai: "*"
     convex: ^1.3.1
+    couchbase: ^4.3.0
     discord.js: ^14.14.1
     dria: ^0.0.3
     faiss-node: ^0.5.1
@@ -1054,8 +1058,11 @@ __metadata:
     googleapis: ^126.0.1
     hnswlib-node: ^1.4.2
     html-to-text: ^9.0.5
+    interface-datastore: ^8.2.11
     ioredis: ^5.3.2
+    it-all: ^3.0.4
     jsdom: "*"
+    jsonwebtoken: ^9.0.2
     llmonitor: ^0.5.9
     lodash: ^4.17.21
     lunary: ^0.6.11
@@ -1128,6 +1135,8 @@ __metadata:
       optional: true
     "@planetscale/database":
       optional: true
+    "@premai/prem-sdk":
+      optional: true
     "@qdrant/js-client-rest":
       optional: true
     "@raycast/api":
@@ -1172,6 +1181,8 @@ __metadata:
       optional: true
     cassandra-driver:
       optional: true
+    cborg:
+      optional: true
     chromadb:
       optional: true
     closevector-common:
@@ -1183,6 +1194,8 @@ __metadata:
     cohere-ai:
       optional: true
     convex:
+      optional: true
+    couchbase:
       optional: true
     discord.js:
       optional: true
@@ -1200,9 +1213,15 @@ __metadata:
       optional: true
     html-to-text:
       optional: true
+    interface-datastore:
+      optional: true
     ioredis:
       optional: true
+    it-all:
+      optional: true
     jsdom:
+      optional: true
+    jsonwebtoken:
       optional: true
     llmonitor:
       optional: true
@@ -1246,13 +1265,13 @@ __metadata:
       optional: true
     ws:
       optional: true
-  checksum: 9f88cb7cb883c69507715f5fe7162a42e5dca9a9dcf47c1b265da524382fa272875a52aaeaa17cc3917718f444c501971ddc90e0bbfe066c590d00d7efc8ccaa
+  checksum: a57ef9b711a3e6136c4135e5558fcf5d4fa6cd8c23255ace3710e46e55ef98df94c1891e9b0a4199de0e374d9d84ce3133f2756912ea5bc6aee6cc970e032b7c
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:0.1.36":
-  version: 0.1.36
-  resolution: "@langchain/core@npm:0.1.36"
+"@langchain/core@npm:0.1.50":
+  version: 0.1.50
+  resolution: "@langchain/core@npm:0.1.50"
   dependencies:
     ansi-styles: ^5.0.0
     camelcase: 6
@@ -1265,7 +1284,7 @@ __metadata:
     uuid: ^9.0.0
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
-  checksum: 7946b2c9bcf791139ff8586949673d26e8901bb13a0e304d23a98ebe937ffc2c0c2dd1159b324051a2369868d07960874883794a0668ae8f1259b7708f16d15a
+  checksum: 09fff54ff7467e00f6cd0f49ffd8ce1187382baf5d290049ea00d23b105c04abe8c900b39c4262785bcbb63187f8897f6e7682e17a8f5b607f38a468c22884b0
   languageName: node
   linkType: hard
 
@@ -1274,9 +1293,9 @@ __metadata:
   resolution: "@langchain/langgraph@workspace:langgraph"
   dependencies:
     "@jest/globals": ^29.5.0
-    "@langchain/community": ^0.0.33
-    "@langchain/core": ^0.1.36
-    "@langchain/openai": ^0.0.14
+    "@langchain/community": ^0.0.42
+    "@langchain/core": ^0.1.50
+    "@langchain/openai": ^0.0.23
     "@langchain/scripts": ~0.0
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
@@ -1293,7 +1312,7 @@ __metadata:
     eslint-plugin-prettier: ^4.2.1
     jest: ^29.5.0
     jest-environment-node: ^29.6.4
-    langchain: ^0.1.23
+    langchain: ^0.1.29
     prettier: ^2.8.3
     release-it: ^15.10.1
     rollup: ^4.5.2
@@ -1305,16 +1324,29 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/openai@npm:^0.0.14, @langchain/openai@npm:~0.0.14":
-  version: 0.0.14
-  resolution: "@langchain/openai@npm:0.0.14"
+"@langchain/openai@npm:^0.0.23":
+  version: 0.0.23
+  resolution: "@langchain/openai@npm:0.0.23"
   dependencies:
-    "@langchain/core": ~0.1.13
+    "@langchain/core": ~0.1.45
     js-tiktoken: ^1.0.7
     openai: ^4.26.0
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
-  checksum: bfaf344580d493e8296344da63d9227bf896d3755d36cb8c29ac6c9ac087f1de83e2520078d32f24f7a95bf78ff64c338e411423c734382106d90676ae035b7f
+  checksum: 024a6e431e1d917f09453b090cad37784d801de42dca888b3f5bb969da49d8a342eb2c63cdc3b908e82c5d67da2666b3cf0fdc52ee858aaac139e3798929d052
+  languageName: node
+  linkType: hard
+
+"@langchain/openai@npm:~0.0.19":
+  version: 0.0.22
+  resolution: "@langchain/openai@npm:0.0.22"
+  dependencies:
+    "@langchain/core": ~0.1.45
+    js-tiktoken: ^1.0.7
+    openai: ^4.26.0
+    zod: ^3.22.4
+    zod-to-json-schema: ^3.22.3
+  checksum: 2810f2790654c099fb5f1257da336442d34d945e8f9e73a86998a355ea012143ed5d379c9b842f35f6f9652bc0c78b679b575dd65497c7f6e931fce671ca3d49
   languageName: node
   linkType: hard
 
@@ -5982,16 +6014,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"langchain@npm:^0.1.23":
-  version: 0.1.23
-  resolution: "langchain@npm:0.1.23"
+"langchain@npm:^0.1.29":
+  version: 0.1.29
+  resolution: "langchain@npm:0.1.29"
   dependencies:
     "@anthropic-ai/sdk": ^0.9.1
-    "@langchain/community": ~0.0.33
-    "@langchain/core": ~0.1.36
-    "@langchain/openai": ~0.0.14
+    "@langchain/community": ~0.0.41
+    "@langchain/core": ~0.1.44
+    "@langchain/openai": ~0.0.19
     binary-extensions: ^2.2.0
-    expr-eval: ^2.0.2
     js-tiktoken: ^1.0.7
     js-yaml: ^4.1.0
     jsonpointer: ^5.0.1
@@ -6026,10 +6057,10 @@ __metadata:
     cheerio: ^1.0.0-rc.12
     chromadb: "*"
     convex: ^1.3.1
-    couchbase: ^4.2.10
+    couchbase: ^4.3.0
     d3-dsv: ^2.0.0
     epub2: ^3.0.1
-    fast-xml-parser: ^4.2.7
+    fast-xml-parser: "*"
     google-auth-library: ^8.9.0
     handlebars: ^4.7.8
     html-to-text: ^9.0.5
@@ -6054,7 +6085,7 @@ __metadata:
     web-auth-library: ^1.0.3
     ws: ^8.14.2
     youtube-transcript: ^1.0.6
-    youtubei.js: ^5.8.0
+    youtubei.js: ^9.1.0
   peerDependenciesMeta:
     "@aws-sdk/client-s3":
       optional: true
@@ -6158,7 +6189,7 @@ __metadata:
       optional: true
     youtubei.js:
       optional: true
-  checksum: c42140315d53f0791295f307708e3f0d5c8492ab8bd948bc5c98d67fcb47875a8f4514b12134d32fa45f52a32f9ebc5054444192935a89d34d9f3d57902ebb85
+  checksum: 3f9fd486605dcebe694aa81a6ca7623dd4e3b06d3f793544bf44983f5217d5ee2e7830bf7b297c43370257326a4f989a2c1b8a41099de32010c8361d7b2021a6
   languageName: node
   linkType: hard
 
