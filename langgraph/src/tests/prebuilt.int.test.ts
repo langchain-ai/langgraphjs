@@ -10,7 +10,10 @@ import {
 } from "@langchain/core/messages";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 import { convertToOpenAIFunction } from "@langchain/core/utils/function_calling";
-import { RunnableConfig } from "@langchain/core/runnables";
+import {
+  ChatPromptTemplate,
+  MessagesPlaceholder,
+} from "@langchain/core/prompts";
 import type { AgentAction } from "langchain/agents";
 import { END, StateGraph } from "../index.js";
 import {
@@ -114,7 +117,7 @@ describe("createFunctionCallingExecutor", () => {
 });
 
 describe("createAgentExecutor", () => {
-  it("Can invoke", async () => {
+  it("Can stream events", async () => {
     const tools = [new TavilySearchResults({ maxResults: 3 })];
     const toolExecutor = new ToolExecutor({ tools });
     const model = new ChatOpenAI({
@@ -174,27 +177,25 @@ describe("createAgentExecutor", () => {
     };
 
     // Define the function that calls the model
-    const callModel = async (
-      state: { messages: Array<BaseMessage> },
-      config?: RunnableConfig
-    ) => {
+    const callModel = async (state: { messages: Array<BaseMessage> }) => {
       const { messages } = state;
-      const response = await newModel.invoke(messages, config);
+      // You can use a prompt here to tweak model behavior.
+      // You can also just pass messages to the model directly.
+      const prompt = ChatPromptTemplate.fromMessages([
+        ["system", "You are a helpful assistant."],
+        new MessagesPlaceholder("messages"),
+      ]);
+      const response = await prompt.pipe(newModel).invoke({ messages });
       // We return a list, because this will get added to the existing list
       return {
         messages: [response],
       };
     };
 
-    const callTool = async (
-      state: { messages: Array<BaseMessage> },
-      config?: RunnableConfig
-    ) => {
+    const callTool = async (state: { messages: Array<BaseMessage> }) => {
       const action = _getAction(state);
-      console.log("ACTION", action);
       // We call the tool_executor and get back a response
-      const response = await toolExecutor.invoke(action, config);
-      console.log(response);
+      const response = await toolExecutor.invoke(action);
       // We use the response to create a FunctionMessage
       const functionMessage = new FunctionMessage({
         content: response,
@@ -246,6 +247,7 @@ describe("createAgentExecutor", () => {
     // This compiles it into a LangChain Runnable,
     // meaning you can use it as you would any other runnable
     const app = workflow.compile();
+
     const inputs = {
       messages: [new HumanMessage("what is the weather in sf")],
     };
