@@ -539,7 +539,7 @@ const inputs = {
 const result = await app.invoke(inputs);
 ```
 
-See a LangSmith trace of this run [here](https://smith.langchain.com/public/2562d46e-da94-4c9d-9b14-3759a26aec9b/r).
+See a LangSmith trace of this run [here](https://smith.langchain.com/public/144af8a3-b496-43aa-ba9d-f0d5894196e2/r).
 
 This may take a little bit - it's making a few calls behind the scenes.
 In order to start seeing some intermediate results as they happen, we can use streaming - see below for more information on that.
@@ -562,7 +562,7 @@ for await (const output of await app.stream(inputs)) {
 }
 ```
 
-See a LangSmith trace of this run [here](https://smith.langchain.com/public/9afacb13-b9dc-416e-abbe-6ed2a0811afe/r).
+See a LangSmith trace of this run [here](https://smith.langchain.com/public/968cd1bf-0db2-410f-a5b4-0e73066cf06e/r).
 
 ## Running Examples
 
