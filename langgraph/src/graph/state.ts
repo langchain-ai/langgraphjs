@@ -36,6 +36,7 @@ export class StateGraph<
 > extends Graph<Channels> {
   channels: Record<string, BaseChannel>;
 
+  // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
   w_edges: Set<[string[], string]> = new Set();
 
   constructor(fields: StateGraphArgs<Channels>) {
