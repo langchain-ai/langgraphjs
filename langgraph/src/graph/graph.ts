@@ -23,9 +23,12 @@ class Branch {
     this.ends = ends;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public runnable(input: any, options?: { config?: RunnableConfig }): Runnable {
-    const result = this.condition(input, options?.config);
+  public async runnable(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    input: any,
+    options?: { config?: RunnableConfig }
+  ): Promise<Runnable> {
+    const result = await this.condition(input, options?.config);
     let destination;
     if (this.ends) {
       destination = this.ends[result];
@@ -113,9 +116,6 @@ export class Graph<
 
     if (!this.nodes[startKey]) {
       throw new Error(`Need to addNode \`${startKey}\` first`);
-    }
-    if (condition.constructor.name === "AsyncFunction") {
-      throw new Error("Condition cannot be an async function");
     }
     if (conditionalEdgeMapping) {
       const mappingValues = Array.from(Object.values(conditionalEdgeMapping));
