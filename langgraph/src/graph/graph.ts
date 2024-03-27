@@ -55,6 +55,8 @@ export class Graph<
 
   compiled = false;
 
+  supportMultipleEdges = false;
+
   constructor() {
     this.nodes = {};
     this.edges = new Set();
@@ -65,6 +67,10 @@ export class Graph<
     if (this.compiled) {
       console.warn(message);
     }
+  }
+
+  get allEdges(): Set<[string, string]> {
+    return this.edges;
   }
 
   addNode(key: string, action: RunnableLike<RunInput, RunOutput>): void {
@@ -97,8 +103,10 @@ export class Graph<
       throw new Error(`Need to addNode \`${endKey}\` first`);
     }
 
-    // TODO: support multiple message passing
-    if (Array.from(this.edges).some(([start]) => start === startKey)) {
+    if (
+      !this.supportMultipleEdges &&
+      Array.from(this.edges).some(([start]) => start === startKey)
+    ) {
       throw new Error(`Already found path for ${startKey}`);
     }
 
@@ -215,7 +223,9 @@ export class Graph<
 
   validate(): void {
     const allStarts = new Set(
-      [...this.edges].map(([src, _]) => src).concat(Object.keys(this.branches))
+      [...this.allEdges]
+        .map(([src, _]) => src)
+        .concat(Object.keys(this.branches))
     );
 
     for (const node of Object.keys(this.nodes)) {
@@ -230,7 +240,7 @@ export class Graph<
 
     if (allEndsAreDefined) {
       const allEnds = new Set(
-        [...this.edges]
+        [...this.allEdges]
           .map(([_, end]) => end)
           .concat(
             ...Object.values(this.branches).flatMap((branchList) =>
