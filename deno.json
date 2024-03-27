@@ -4,6 +4,7 @@
     "@langchain/openai": "npm:@langchain/openai",
     "@langchain/community/": "npm:/@langchain/community/",
     "@langchain/cloudflare": "npm:/@langchain/cloudflare",
+    "@langchain/groq": "npm:/@langchain/groq",
     "@langchain/core/": "npm:/@langchain/core@0.1.51/",
     "@langchain/langgraph": "npm:/@langchain/langgraph@0.0.12",
     "@langchain/langgraph/": "npm:/@langchain/langgraph@0.0.12/",
