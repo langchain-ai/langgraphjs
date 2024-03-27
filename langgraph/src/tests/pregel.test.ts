@@ -609,7 +609,7 @@ describe("StateGraph", () => {
     };
   };
 
-  const shouldContinue = (data: AgentState): string => {
+  const shouldContinue = async (data: AgentState): Promise<string> => {
     if (data.agentOutcome && "returnValues" in data.agentOutcome) {
       return "exit";
     }
