@@ -225,7 +225,7 @@ If you are contributing to this code base, then you need to be familiar with som
 
 #### Pregel
 
-Let's start with Pregel. [Pregel](https://research.google/pubs/pregel-a-system-for-large-scale-graph-processing/) is an API for building graphs. 
+Let's start with Pregel. [Pregel](https://research.google/pubs/pregel-a-system-for-large-scale-graph-processing/) ([PDF](https://15799.courses.cs.cmu.edu/fall2013/static/papers/p135-malewicz.pdf)) is an API for building graphs. 
 
 Some key concepts: 
 - Pregel graphs take an `input` and `output` as parameters which represent where the graph starts and ends

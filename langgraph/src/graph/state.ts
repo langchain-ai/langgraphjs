@@ -59,7 +59,7 @@ export class StateGraph<
   }
 
   addNode(key: string, action: RunnableLike) {
-    if (Object.keys(this.nodes).some((key) => key in this.channels)) {
+    if (key in this.channels) {
       throw new Error(
         `${key} is already being used as a state attribute (a.k.a. a channel), cannot also be used as a node name.`
       );
