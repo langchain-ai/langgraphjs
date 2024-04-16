@@ -562,6 +562,13 @@ it("should throw an error when no input channel is provided", () => {
   expect(() => new Pregel({ nodes: { one, two } })).toThrowError();
 });
 
+it("should type-error when Channel.subscribeTo would throw at runtime", () => {
+  expect(() => {
+    // @ts-expect-error - this would throw at runtime and thus we want it to become a type-error
+    Channel.subscribeTo(["input"], { key: "key" });
+  }).toThrow();
+});
+
 describe("StateGraph", () => {
   class SearchAPI extends Tool {
     name = "search_api";

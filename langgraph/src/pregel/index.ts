@@ -68,7 +68,6 @@ export class Channel {
   static subscribeTo(
     channels: string[],
     options?: {
-      key?: string;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       when?: (arg: any) => boolean;
       tags?: string[];
