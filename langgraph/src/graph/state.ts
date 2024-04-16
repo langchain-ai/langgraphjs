@@ -37,7 +37,7 @@ export class StateGraph<
   channels: Record<string, BaseChannel>;
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
-  w_edges: Set<[string[], string]> = new Set();
+  waitingEdges: Set<[string[], string]> = new Set();
 
   constructor(fields: StateGraphArgs<Channels>) {
     super();
@@ -52,7 +52,7 @@ export class StateGraph<
   get allEdges(): Set<[string, string]> {
     return new Set([
       ...this.edges,
-      ...Array.from(this.w_edges).flatMap(([starts, end]) =>
+      ...Array.from(this.waitingEdges).flatMap(([starts, end]) =>
         starts.map((start) => [start, end] as [string, string])
       ),
     ]);
@@ -95,7 +95,7 @@ export class StateGraph<
       throw new Error(`Need to add_node ${endKey} first`);
     }
 
-    this.w_edges.add([startKey, endKey]);
+    this.waitingEdges.add([startKey, endKey]);
   }
 
   compile(checkpointer?: BaseCheckpointSaver): Pregel {
@@ -143,7 +143,7 @@ export class StateGraph<
       : [{ channel: "__root__", value: null, skipNone: true }];
 
     const waitingEdges: Set<[string, string[], string]> = new Set();
-    this.w_edges.forEach(([starts, end]) => {
+    this.waitingEdges.forEach(([starts, end]) => {
       waitingEdges.add([`${starts}:${end}`, starts, end]);
     });
 
