@@ -1045,6 +1045,7 @@ describe("MessageGraph", () => {
         name: action.tool,
       });
     };
+
     const workflow = new MessageGraph<Array<BaseMessage>>();
 
     workflow.addNode("agent", model);
@@ -1268,4 +1269,66 @@ it("Conditional edges is optional", async () => {
   // meaning keys.value will always be 3
   const result = await app.invoke({ keys: { value: 0 } });
   expect(result).toEqual({ keys: { value: 3 } });
+});
+
+it("In one fan out state graph waiting edge", async () => {
+  const sortedAdd = jest.fn((x: string[], y: string[]): string[] =>
+    [...x, ...y].sort()
+  );
+
+  type State = {
+    query?: string;
+    answer?: string;
+    docs?: string[];
+  };
+
+  function rewriteQuery(data: State): State {
+    return { query: `query: ${data.query}` };
+  }
+
+  function analyzerOne(data: State): State {
+    return { query: `analyzed: ${data.query}` };
+  }
+
+  function retrieverOne(_data: State): State {
+    return { docs: ["doc1", "doc2"] };
+  }
+
+  function retrieverTwo(_data: State): State {
+    return { docs: ["doc3", "doc4"] };
+  }
+
+  function qa(data: State): State {
+    return { answer: data.docs?.join(",") };
+  }
+
+  const schema = {
+    query: { value: null },
+    answer: { value: null },
+    docs: { value: sortedAdd },
+  };
+  const workflow = new StateGraph({
+    channels: schema,
+  });
+
+  workflow.addNode("rewrite_query", rewriteQuery);
+  workflow.addNode("analyzer_one", analyzerOne);
+  workflow.addNode("retriever_one", retrieverOne);
+  workflow.addNode("retriever_two", retrieverTwo);
+  workflow.addNode("qa", qa);
+
+  workflow.setEntryPoint("rewrite_query");
+  workflow.addEdge("rewrite_query", "analyzer_one");
+  workflow.addEdge("analyzer_one", "retriever_one");
+  workflow.addEdge("rewrite_query", "retriever_two");
+  workflow.addEdge(["retriever_one", "retriever_two"], "qa");
+  workflow.setFinishPoint("qa");
+
+  const app = workflow.compile();
+
+  expect(await app.invoke({ query: "what is weather in sf" })).toEqual({
+    query: "analyzed: query: what is weather in sf",
+    docs: ["doc1", "doc2", "doc3", "doc4"],
+    answer: "doc1,doc2,doc3,doc4",
+  });
 });
