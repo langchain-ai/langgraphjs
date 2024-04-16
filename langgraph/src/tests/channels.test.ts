@@ -1,4 +1,6 @@
 import { describe, it, expect } from "@jest/globals";
+import { AnyValue } from "../channels/any_value.js";
+import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { LastValue } from "../channels/last_value.js";
 import { EmptyChannelError, InvalidUpdateError } from "../channels/base.js";
 import { Topic } from "../channels/topic.js";
@@ -22,7 +24,7 @@ describe("LastValue", () => {
     channel.update([4]);
     expect(channel.get()).toBe(4);
   });
-  it("should handle emptying correctly", () => {
+  it("should handle restoring from checkpoint correctly", () => {
     // call `.update()` to add a value to the channel
     const channel = new LastValue<number>();
     channel.update([100]);
@@ -30,7 +32,7 @@ describe("LastValue", () => {
     const checkpoint = channel.checkpoint();
 
     const restoredChannel = new LastValue<number>();
-    const channel2 = restoredChannel.empty(checkpoint);
+    const channel2 = restoredChannel.fromCheckpoint(checkpoint);
     expect(channel2.get()).toBe(100);
   });
 });
@@ -54,7 +56,7 @@ describe("Topic", () => {
 
   it("should create and use a checkpoint", () => {
     const checkpoint = channel.checkpoint();
-    const newChannel = new Topic<string>().empty(checkpoint);
+    const newChannel = new Topic<string>().fromCheckpoint(checkpoint);
     expect(newChannel.get()).toEqual(["e"]);
   });
 });
@@ -78,7 +80,7 @@ describe("Topic with unique: true", () => {
 
   it("should de-dupe from checkpoint", () => {
     const checkpoint = channel.checkpoint();
-    const newChannel = new Topic<string>({ unique: true }).empty(checkpoint);
+    const newChannel = new Topic<string>({ unique: true }).fromCheckpoint(checkpoint);
 
     expect(newChannel.get()).toEqual(["e"]);
 
@@ -103,7 +105,7 @@ describe("Topic with accumulate: true", () => {
 
   it("should create and use a checkpoint", () => {
     const checkpoint = channel.checkpoint();
-    const newChannel = new Topic<string>({ accumulate: true }).empty(
+    const newChannel = new Topic<string>({ accumulate: true }).fromCheckpoint(
       checkpoint
     );
     expect(newChannel.get()).toEqual(["a", "b", "b", "c", "d", "d"]);
@@ -132,7 +134,7 @@ describe("Topic with accumulate and unique: true", () => {
     const newChannel = new Topic<string>({
       unique: true,
       accumulate: true,
-    }).empty(checkpoint);
+    }).fromCheckpoint(checkpoint);
     expect(newChannel.get()).toEqual(["a", "b", "c", "d"]);
 
     newChannel.update(["d", "e"]);
@@ -170,7 +172,40 @@ describe("BinaryOperatorAggregate", () => {
       (a, b) => a + b,
       () => 10
     );
-    const channel2 = restoredChannel.empty(checkpoint);
+    const channel2 = restoredChannel.fromCheckpoint(checkpoint);
     expect(channel2.get()).toBe(10);
+  });
+});
+
+describe("AnyValue", () => {
+  it("should handle any value correctly", () => {
+    const channel = new AnyValue<number>();
+
+    expect(() => {
+      channel.get();
+    }).toThrow(EmptyChannelError);
+
+    channel.update([3]);
+    expect(channel.get()).toBe(3);
+
+    channel.update([4, 5]);
+    expect(channel.get()).toBe(5);
+  });
+});
+
+
+describe("EphemeralValue with gaurd: false", () => {
+  it("should handle ephemeral value correctly", () => {
+    const channel = new EphemeralValue<number>(false);
+
+    expect(() => {
+      channel.get();
+    }).toThrow(EmptyChannelError);
+
+    channel.update([3]);
+    expect(channel.get()).toBe(3);
+
+    channel.update([4, 5]);
+    expect(channel.get()).toBe(5);
   });
 });

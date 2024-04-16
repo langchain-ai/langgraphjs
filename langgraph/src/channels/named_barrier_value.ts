@@ -25,7 +25,7 @@ export class NamedBarrierValue<Value> extends BaseChannel<
     this.seen = new Set<Value>();
   }
 
-  empty(checkpoint?: Set<Value>): NamedBarrierValue<Value> {
+  fromCheckpoint(checkpoint?: Set<Value>): NamedBarrierValue<Value> {
     const empty = new NamedBarrierValue<Value>(this.names);
     if (checkpoint) {
       empty.seen = checkpoint;

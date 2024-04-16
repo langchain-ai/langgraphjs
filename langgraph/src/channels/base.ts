@@ -18,7 +18,7 @@ export abstract class BaseChannel<
    * @param {CheckpointType | undefined} initialValue
    * @returns {this}
    */
-  abstract empty(
+  abstract fromCheckpoint(
     checkpoint?: CheckpointType,
     initialValueFactory?: () => CheckpointType
   ): BaseChannel<ValueType, UpdateType, CheckpointType>;
@@ -72,7 +72,7 @@ export function emptyChannels(
   for (const k in channels) {
     if (Object.prototype.hasOwnProperty.call(channels, k)) {
       const channelValue = checkpoint.channelValues[k];
-      newChannels[k] = channels[k].empty(channelValue);
+      newChannels[k] = channels[k].fromCheckpoint(channelValue);
     }
   }
   return newChannels;
