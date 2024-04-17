@@ -19,8 +19,7 @@ export abstract class BaseChannel<
    * @returns {this}
    */
   abstract fromCheckpoint(
-    checkpoint?: CheckpointType,
-    initialValueFactory?: () => CheckpointType
+    checkpoint?: CheckpointType
   ): BaseChannel<ValueType, UpdateType, CheckpointType>;
 
   /**
