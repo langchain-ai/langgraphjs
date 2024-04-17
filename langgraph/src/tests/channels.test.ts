@@ -80,7 +80,9 @@ describe("Topic with unique: true", () => {
 
   it("should de-dupe from checkpoint", () => {
     const checkpoint = channel.checkpoint();
-    const newChannel = new Topic<string>({ unique: true }).fromCheckpoint(checkpoint);
+    const newChannel = new Topic<string>({ unique: true }).fromCheckpoint(
+      checkpoint
+    );
 
     expect(newChannel.get()).toEqual(["e"]);
 
@@ -192,7 +194,6 @@ describe("AnyValue", () => {
     expect(channel.get()).toBe(5);
   });
 });
-
 
 describe("EphemeralValue with gaurd: false", () => {
   it("should handle ephemeral value correctly", () => {
