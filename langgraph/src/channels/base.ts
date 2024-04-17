@@ -64,6 +64,24 @@ export class InvalidUpdateError extends Error {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function deepCopy(obj: any): any {
+  if (typeof obj !== "object" || obj === null) {
+    return obj;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const newObj: any = Array.isArray(obj) ? [] : {};
+
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      newObj[key] = deepCopy(obj[key]);
+    }
+  }
+
+  return newObj;
+}
+
 export function emptyChannels(
   channels: Record<string, BaseChannel>,
   checkpoint: Checkpoint
@@ -85,9 +103,9 @@ export async function createCheckpoint<ValueType>(
   const newCheckpoint: Checkpoint = {
     v: 1,
     ts: new Date().toISOString(),
-    channelValues: { ...checkpoint.channelValues },
-    channelVersions: { ...checkpoint.channelVersions },
-    versionsSeen: { ...checkpoint.versionsSeen },
+    channelValues: deepCopy(checkpoint.channelValues),
+    channelVersions: deepCopy(checkpoint.channelVersions),
+    versionsSeen: deepCopy(checkpoint.versionsSeen),
   };
   for (const k of Object.keys(channels)) {
     try {
