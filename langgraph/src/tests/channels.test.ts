@@ -1,8 +1,54 @@
 import { describe, it, expect } from "@jest/globals";
+import { AnyValue } from "../channels/any_value.js";
+import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { LastValue } from "../channels/last_value.js";
-import { EmptyChannelError, InvalidUpdateError } from "../channels/base.js";
+import {
+  deepCopy,
+  EmptyChannelError,
+  InvalidUpdateError,
+} from "../channels/base.js";
 import { Topic } from "../channels/topic.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
+
+describe("BaseChannel", () => {
+  it("should deep copy a simple object", () => {
+    const obj = { a: 1, b: { c: 2 } };
+    const copiedObj = deepCopy(obj);
+
+    // Check if the copied object is equal to the original object
+    expect(copiedObj).toEqual(obj);
+
+    // Check if the copied object is not the same object reference as the original object
+    expect(copiedObj).not.toBe(obj);
+
+    // Check if the nested object is also deep copied
+    expect(copiedObj.b).toEqual(obj.b);
+    expect(copiedObj.b).not.toBe(obj.b);
+  });
+
+  it("should deep copy an array", () => {
+    const arr = [1, 2, 3];
+    const copiedArr = deepCopy(arr);
+
+    // Check if the copied array is equal to the original array
+    expect(copiedArr).toEqual(arr);
+  });
+
+  it("should deep copy an array of objects", () => {
+    const arr = [{ a: 1 }, { b: 2 }];
+    const copiedArr = deepCopy(arr);
+
+    // Check if the copied array is equal to the original array
+    expect(copiedArr).toEqual(arr);
+
+    // Check if the copied array is not the same array reference as the original array
+    expect(copiedArr).not.toBe(arr);
+
+    // Check if the nested objects in the array are also deep copied
+    expect(copiedArr[0]).toEqual(arr[0]);
+    expect(copiedArr[0]).not.toBe(arr[0]);
+  });
+});
 
 describe("LastValue", () => {
   it("should handle last value correctly", () => {
@@ -22,7 +68,7 @@ describe("LastValue", () => {
     channel.update([4]);
     expect(channel.get()).toBe(4);
   });
-  it("should handle emptying correctly", () => {
+  it("should handle restoring from checkpoint correctly", () => {
     // call `.update()` to add a value to the channel
     const channel = new LastValue<number>();
     channel.update([100]);
@@ -30,7 +76,7 @@ describe("LastValue", () => {
     const checkpoint = channel.checkpoint();
 
     const restoredChannel = new LastValue<number>();
-    const channel2 = restoredChannel.empty(checkpoint);
+    const channel2 = restoredChannel.fromCheckpoint(checkpoint);
     expect(channel2.get()).toBe(100);
   });
 });
@@ -54,7 +100,7 @@ describe("Topic", () => {
 
   it("should create and use a checkpoint", () => {
     const checkpoint = channel.checkpoint();
-    const newChannel = new Topic<string>().empty(checkpoint);
+    const newChannel = new Topic<string>().fromCheckpoint(checkpoint);
     expect(newChannel.get()).toEqual(["e"]);
   });
 });
@@ -78,7 +124,9 @@ describe("Topic with unique: true", () => {
 
   it("should de-dupe from checkpoint", () => {
     const checkpoint = channel.checkpoint();
-    const newChannel = new Topic<string>({ unique: true }).empty(checkpoint);
+    const newChannel = new Topic<string>({ unique: true }).fromCheckpoint(
+      checkpoint
+    );
 
     expect(newChannel.get()).toEqual(["e"]);
 
@@ -103,7 +151,7 @@ describe("Topic with accumulate: true", () => {
 
   it("should create and use a checkpoint", () => {
     const checkpoint = channel.checkpoint();
-    const newChannel = new Topic<string>({ accumulate: true }).empty(
+    const newChannel = new Topic<string>({ accumulate: true }).fromCheckpoint(
       checkpoint
     );
     expect(newChannel.get()).toEqual(["a", "b", "b", "c", "d", "d"]);
@@ -132,7 +180,7 @@ describe("Topic with accumulate and unique: true", () => {
     const newChannel = new Topic<string>({
       unique: true,
       accumulate: true,
-    }).empty(checkpoint);
+    }).fromCheckpoint(checkpoint);
     expect(newChannel.get()).toEqual(["a", "b", "c", "d"]);
 
     newChannel.update(["d", "e"]);
@@ -170,7 +218,39 @@ describe("BinaryOperatorAggregate", () => {
       (a, b) => a + b,
       () => 10
     );
-    const channel2 = restoredChannel.empty(checkpoint);
+    const channel2 = restoredChannel.fromCheckpoint(checkpoint);
     expect(channel2.get()).toBe(10);
+  });
+});
+
+describe("AnyValue", () => {
+  it("should handle any value correctly", () => {
+    const channel = new AnyValue<number>();
+
+    expect(() => {
+      channel.get();
+    }).toThrow(EmptyChannelError);
+
+    channel.update([3]);
+    expect(channel.get()).toBe(3);
+
+    channel.update([4, 5]);
+    expect(channel.get()).toBe(5);
+  });
+});
+
+describe("EphemeralValue with gaurd: false", () => {
+  it("should handle ephemeral value correctly", () => {
+    const channel = new EphemeralValue<number>(false);
+
+    expect(() => {
+      channel.get();
+    }).toThrow(EmptyChannelError);
+
+    channel.update([3]);
+    expect(channel.get()).toBe(3);
+
+    channel.update([4, 5]);
+    expect(channel.get()).toBe(5);
   });
 });

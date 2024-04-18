@@ -12,7 +12,7 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
 
   value?: Value;
 
-  empty(checkpoint?: Value): LastValue<Value> {
+  fromCheckpoint(checkpoint?: Value): LastValue<Value> {
     const empty = new LastValue<Value>();
     if (checkpoint) {
       empty.value = checkpoint;
@@ -30,7 +30,7 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
     }
 
     // eslint-disable-next-line prefer-destructuring
-    this.value = values[0];
+    this.value = values[values.length - 1];
   }
 
   get(): Value {

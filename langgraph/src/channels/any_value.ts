@@ -16,7 +16,7 @@ export class AnyValue<Value> extends BaseChannel<Value, Value, Value> {
     this.value = undefined;
   }
 
-  empty(checkpoint?: Value): AnyValue<Value> {
+  fromCheckpoint(checkpoint?: Value): AnyValue<Value> {
     const empty = new AnyValue<Value>();
     if (checkpoint) {
       empty.value = checkpoint;
@@ -31,7 +31,7 @@ export class AnyValue<Value> extends BaseChannel<Value, Value, Value> {
     }
 
     // eslint-disable-next-line prefer-destructuring
-    this.value = values[0];
+    this.value = values[values.length - 1];
   }
 
   get(): Value {

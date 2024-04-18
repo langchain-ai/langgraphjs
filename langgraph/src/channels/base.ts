@@ -18,9 +18,8 @@ export abstract class BaseChannel<
    * @param {CheckpointType | undefined} initialValue
    * @returns {this}
    */
-  abstract empty(
-    checkpoint?: CheckpointType,
-    initialValueFactory?: () => CheckpointType
+  abstract fromCheckpoint(
+    checkpoint?: CheckpointType
   ): BaseChannel<ValueType, UpdateType, CheckpointType>;
 
   /**
@@ -64,6 +63,24 @@ export class InvalidUpdateError extends Error {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function deepCopy(obj: any): any {
+  if (typeof obj !== "object" || obj === null) {
+    return obj;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const newObj: any = Array.isArray(obj) ? [] : {};
+
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      newObj[key] = deepCopy(obj[key]);
+    }
+  }
+
+  return newObj;
+}
+
 export function emptyChannels(
   channels: Record<string, BaseChannel>,
   checkpoint: Checkpoint
@@ -72,7 +89,7 @@ export function emptyChannels(
   for (const k in channels) {
     if (Object.prototype.hasOwnProperty.call(channels, k)) {
       const channelValue = checkpoint.channelValues[k];
-      newChannels[k] = channels[k].empty(channelValue);
+      newChannels[k] = channels[k].fromCheckpoint(channelValue);
     }
   }
   return newChannels;
@@ -82,16 +99,11 @@ export async function createCheckpoint<ValueType>(
   checkpoint: Checkpoint,
   channels: Record<string, BaseChannel<ValueType>>
 ): Promise<Checkpoint> {
-  const newCheckpoint: Checkpoint = {
-    v: 1,
-    ts: new Date().toISOString(),
-    channelValues: { ...checkpoint.channelValues },
-    channelVersions: { ...checkpoint.channelVersions },
-    versionsSeen: { ...checkpoint.versionsSeen },
-  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const values: Record<string, any> = {};
   for (const k of Object.keys(channels)) {
     try {
-      newCheckpoint.channelValues[k] = await channels[k].checkpoint();
+      values[k] = await channels[k].checkpoint();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       if (error.name === EmptyChannelError.name) {
@@ -101,5 +113,11 @@ export async function createCheckpoint<ValueType>(
       }
     }
   }
-  return newCheckpoint;
+  return {
+    v: 1,
+    ts: new Date().toISOString(),
+    channelValues: values,
+    channelVersions: { ...checkpoint.channelVersions },
+    versionsSeen: deepCopy(checkpoint.versionsSeen),
+  };
 }

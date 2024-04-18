@@ -15,7 +15,7 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
     this.guard = guard;
   }
 
-  empty(checkpoint?: Value): EphemeralValue<Value> {
+  fromCheckpoint(checkpoint?: Value): EphemeralValue<Value> {
     const empty = new EphemeralValue<Value>();
     if (checkpoint) {
       empty.value = checkpoint;
@@ -36,7 +36,7 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
     }
 
     // eslint-disable-next-line prefer-destructuring
-    this.value = values[0];
+    this.value = values[values.length - 1];
   }
 
   get(): Value {
