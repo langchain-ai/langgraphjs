@@ -99,16 +99,11 @@ export async function createCheckpoint<ValueType>(
   checkpoint: Checkpoint,
   channels: Record<string, BaseChannel<ValueType>>
 ): Promise<Checkpoint> {
-  const newCheckpoint: Checkpoint = {
-    v: 1,
-    ts: new Date().toISOString(),
-    channelValues: deepCopy(checkpoint.channelValues),
-    channelVersions: deepCopy(checkpoint.channelVersions),
-    versionsSeen: deepCopy(checkpoint.versionsSeen),
-  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const values: Record<string, any> = {};
   for (const k of Object.keys(channels)) {
     try {
-      newCheckpoint.channelValues[k] = await channels[k].checkpoint();
+      values[k] = await channels[k].checkpoint();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       if (error.name === EmptyChannelError.name) {
@@ -118,5 +113,11 @@ export async function createCheckpoint<ValueType>(
       }
     }
   }
-  return newCheckpoint;
+  return {
+    v: 1,
+    ts: new Date().toISOString(),
+    channelValues: values,
+    channelVersions: { ...checkpoint.channelVersions },
+    versionsSeen: deepCopy(checkpoint.versionsSeen),
+  };
 }
