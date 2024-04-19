@@ -65,8 +65,6 @@ export class MemorySaver extends BaseCheckpointSaver {
   async put(config: RunnableConfig, checkpoint: Checkpoint): Promise<RunnableConfig> {
     const threadId = config.configurable?.threadId;
     this.storage[threadId] = {[checkpoint.ts]: checkpoint};
-    console.log("put", config, checkpoint);
-    console.log("put - storage", this.storage);
     return {
       configurable: {
         "threadId": threadId,
