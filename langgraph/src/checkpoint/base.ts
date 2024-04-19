@@ -97,17 +97,18 @@ const CheckpointThreadId: ConfigurableFieldSpec = {
   default: "",
   isShared: true,
   dependencies: null,
-}
+};
 
 const CheckpointThreadTs: ConfigurableFieldSpec = {
   id: "threadTs",
   annotation: typeof "",
   name: "Thread Timestamp",
-  description: "Pass to fetch a past checkpoint. If None, fetches the latest checkpoint.",
+  description:
+    "Pass to fetch a past checkpoint. If None, fetches the latest checkpoint.",
   default: null,
   isShared: true,
   dependencies: null,
-}
+};
 
 export interface SerializerProtocol {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -133,11 +134,16 @@ export abstract class BaseCheckpointSaver {
   async get(config: RunnableConfig): Promise<Checkpoint | undefined> {
     const value = await this.getTuple(config);
     return value ? value.checkpoint : undefined;
-  };
+  }
 
-  abstract getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
+  abstract getTuple(
+    config: RunnableConfig
+  ): Promise<CheckpointTuple | undefined>;
 
   abstract list(config: RunnableConfig): AsyncGenerator<CheckpointTuple>;
 
-  abstract put(config: RunnableConfig, checkpoint: Checkpoint): Promise<RunnableConfig>;
+  abstract put(
+    config: RunnableConfig,
+    checkpoint: Checkpoint
+  ): Promise<RunnableConfig>;
 }

@@ -1,9 +1,5 @@
 import { describe, it, expect } from "@jest/globals";
-import {
-  Checkpoint,
-  CheckpointTuple,
-  deepCopy
-} from "../checkpoint/base.js";
+import { Checkpoint, CheckpointTuple, deepCopy } from "../checkpoint/base.js";
 import { MemorySaver } from "../checkpoint/memory.js";
 
 describe("Base", () => {
@@ -61,8 +57,8 @@ describe("MemorySaver", () => {
       versionsSeen: {
         someKey3: {
           someKey4: 1,
-        }
-      }
+        },
+      },
     };
     const checkpoint2: Checkpoint = {
       v: 1,
@@ -76,24 +72,35 @@ describe("MemorySaver", () => {
       versionsSeen: {
         someKey3: {
           someKey4: 2,
-        }
-      }
+        },
+      },
     };
 
     // save checkpoint
-    const runnableConfig = await memorySaver.put({ configurable: { threadId: "1" }}, checkpoint1);
-    expect(runnableConfig).toEqual({configurable: {threadId: "1", threadTs: "2024-04-19T17:19:07.952Z"}});
+    const runnableConfig = await memorySaver.put(
+      { configurable: { threadId: "1" } },
+      checkpoint1
+    );
+    expect(runnableConfig).toEqual({
+      configurable: { threadId: "1", threadTs: "2024-04-19T17:19:07.952Z" },
+    });
 
     // get checkpoint tuple
-    const checkpointTuple = await memorySaver.getTuple({ configurable: { threadId: "1" }});
-    expect(checkpointTuple?.config).toEqual({configurable: {threadId: "1", threadTs: "2024-04-19T17:19:07.952Z"}});
+    const checkpointTuple = await memorySaver.getTuple({
+      configurable: { threadId: "1" },
+    });
+    expect(checkpointTuple?.config).toEqual({
+      configurable: { threadId: "1", threadTs: "2024-04-19T17:19:07.952Z" },
+    });
     expect(checkpointTuple?.checkpoint).toEqual(checkpoint1);
 
     // save another checkpoint
-    await memorySaver.put({ configurable: { threadId: "1" }}, checkpoint2);
+    await memorySaver.put({ configurable: { threadId: "1" } }, checkpoint2);
 
     // list checkpoints
-    const checkpointTupleGenerator = await memorySaver.list({ configurable: { threadId: "1" }});
+    const checkpointTupleGenerator = await memorySaver.list({
+      configurable: { threadId: "1" },
+    });
     const checkpointTuples: CheckpointTuple[] = [];
     for await (const checkpoint of checkpointTupleGenerator) {
       checkpointTuples.push(checkpoint);

@@ -2,10 +2,7 @@ import { describe, it, expect } from "@jest/globals";
 import { AnyValue } from "../channels/any_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { LastValue } from "../channels/last_value.js";
-import {
-  EmptyChannelError,
-  InvalidUpdateError,
-} from "../channels/base.js";
+import { EmptyChannelError, InvalidUpdateError } from "../channels/base.js";
 import { Topic } from "../channels/topic.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
 

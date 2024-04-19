@@ -29,7 +29,7 @@ export class MemorySaver extends BaseCheckpointSaver {
     const threadId = config.configurable?.threadId;
     const ts = config.configurable?.threadTs;
     const checkpoints = this.storage[threadId];
-    
+
     if (ts) {
       const checkpoint = checkpoints[ts];
       if (checkpoint) {
@@ -40,9 +40,11 @@ export class MemorySaver extends BaseCheckpointSaver {
       }
     } else {
       if (checkpoints) {
-        const ts = Object.keys(checkpoints).sort((a, b) => b.localeCompare(a))[0];
+        const ts = Object.keys(checkpoints).sort((a, b) =>
+          b.localeCompare(a)
+        )[0];
         return {
-          config: {configurable: {"threadId": threadId, "threadTs": ts}},
+          config: { configurable: { threadId: threadId, threadTs: ts } },
           checkpoint: checkpoints[ts.toString()],
         };
       }
@@ -54,29 +56,34 @@ export class MemorySaver extends BaseCheckpointSaver {
   async *list(config: RunnableConfig): AsyncGenerator<CheckpointTuple> {
     const threadId = config.configurable?.threadId;
     const checkpoints = this.storage[threadId] ?? {};
-    for (const [ts, checkpoint] of Object.entries(checkpoints).sort((a, b) => b[0].localeCompare(a[0]))) {
+    for (const [ts, checkpoint] of Object.entries(checkpoints).sort((a, b) =>
+      b[0].localeCompare(a[0])
+    )) {
       yield {
-        config: {configurable: {"threadId": threadId, "threadTs": ts}},
+        config: { configurable: { threadId: threadId, threadTs: ts } },
         checkpoint,
-      }
+      };
     }
   }
 
-  async put(config: RunnableConfig, checkpoint: Checkpoint): Promise<RunnableConfig> {
+  async put(
+    config: RunnableConfig,
+    checkpoint: Checkpoint
+  ): Promise<RunnableConfig> {
     const threadId = config.configurable?.threadId;
 
     if (this.storage[threadId]) {
       this.storage[threadId][checkpoint.ts] = checkpoint;
     } else {
-      this.storage[threadId] = {[checkpoint.ts]: checkpoint};
+      this.storage[threadId] = { [checkpoint.ts]: checkpoint };
     }
 
     return {
       configurable: {
-        "threadId": threadId,
-        "threadTs": checkpoint.ts,
-      }
-    }
+        threadId: threadId,
+        threadTs: checkpoint.ts,
+      },
+    };
   }
 }
 
@@ -89,7 +96,10 @@ export class MemorySaverAssertImmutable extends MemorySaver {
     this.at = CheckpointAt.END_OF_STEP;
   }
 
-  async put(config: RunnableConfig, checkpoint: Checkpoint): Promise<RunnableConfig> {
+  async put(
+    config: RunnableConfig,
+    checkpoint: Checkpoint
+  ): Promise<RunnableConfig> {
     const threadId = config.configurable?.threadId;
     if (!this.storageForCopies[threadId]) {
       this.storageForCopies[threadId] = {};
