@@ -37,8 +37,10 @@ export class MemorySaver extends BaseCheckpointSaver {
           config,
           checkpoint,
         };
-      } else {
-        const ts = Math.max(...Object.keys(checkpoints).map(x => Number(x)));
+      }
+    } else {
+      if (checkpoints) {
+        const ts = Object.keys(checkpoints).sort((a, b) => b.localeCompare(a))[0];
         return {
           config: {configurable: {"threadId": threadId, "threadTs": ts}},
           checkpoint: checkpoints[ts.toString()],
@@ -63,6 +65,8 @@ export class MemorySaver extends BaseCheckpointSaver {
   async put(config: RunnableConfig, checkpoint: Checkpoint): Promise<RunnableConfig> {
     const threadId = config.configurable?.threadId;
     this.storage[threadId] = {[checkpoint.ts]: checkpoint};
+    console.log("put", config, checkpoint);
+    console.log("put - storage", this.storage);
     return {
       configurable: {
         "threadId": threadId,
