@@ -56,8 +56,8 @@ export class MemorySaver extends BaseCheckpointSaver {
   async *list(config: RunnableConfig): AsyncGenerator<CheckpointTuple> {
     const threadId = config.configurable?.threadId;
     const checkpoints = this.storage[threadId] ?? {};
-    for (const [threadTs, checkpoint] of Object.entries(checkpoints).sort((a, b) =>
-      b[0].localeCompare(a[0])
+    for (const [threadTs, checkpoint] of Object.entries(checkpoints).sort(
+      (a, b) => b[0].localeCompare(a[0])
     )) {
       yield {
         config: { configurable: { threadId, threadTs } },
