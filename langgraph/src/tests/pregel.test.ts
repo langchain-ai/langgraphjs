@@ -386,7 +386,7 @@ it("should handle checkpoints correctly", async () => {
   await expect(
     app.invoke(2, { configurable: { threadId: "1" } })
   ).resolves.toBe(2);
-  let checkpoint = memory.get({ configurable: { threadId: "1" } });
+  let checkpoint = await memory.get({ configurable: { threadId: "1" } });
   expect(checkpoint).not.toBeNull();
   expect(checkpoint?.channelValues.total).toBe(2);
 
@@ -394,7 +394,7 @@ it("should handle checkpoints correctly", async () => {
   await expect(
     app.invoke(3, { configurable: { threadId: "1" } })
   ).resolves.toBe(5);
-  checkpoint = memory.get({ configurable: { threadId: "1" } });
+  checkpoint = await memory.get({ configurable: { threadId: "1" } });
   expect(checkpoint).not.toBeNull();
   expect(checkpoint?.channelValues.total).toBe(7);
 
@@ -403,7 +403,7 @@ it("should handle checkpoints correctly", async () => {
     app.invoke(4, { configurable: { threadId: "1" } })
   ).rejects.toThrow("Input is too large");
   // checkpoint is not updated
-  checkpoint = memory.get({ configurable: { threadId: "1" } });
+  checkpoint = await memory.get({ configurable: { threadId: "1" } });
   expect(checkpoint).not.toBeNull();
   expect(checkpoint?.channelValues.total).toBe(7);
 
@@ -411,10 +411,10 @@ it("should handle checkpoints correctly", async () => {
   await expect(
     app.invoke(5, { configurable: { threadId: "2" } })
   ).resolves.toBe(5);
-  checkpoint = memory.get({ configurable: { threadId: "1" } });
+  checkpoint = await memory.get({ configurable: { threadId: "1" } });
   expect(checkpoint).not.toBeNull();
   expect(checkpoint?.channelValues.total).toBe(7);
-  checkpoint = memory.get({ configurable: { threadId: "2" } });
+  checkpoint = await memory.get({ configurable: { threadId: "2" } });
   expect(checkpoint).not.toBeNull();
   expect(checkpoint?.channelValues.total).toBe(5);
 });
