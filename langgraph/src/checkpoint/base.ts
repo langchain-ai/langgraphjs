@@ -122,9 +122,9 @@ export abstract class BaseCheckpointSaver {
 
   serde: SerializerProtocol;
 
-  constructor(at?: CheckpointAt, serde?: SerializerProtocol) {
-    this.at = at || this.at;
+  constructor(serde?: SerializerProtocol, at?: CheckpointAt) {
     this.serde = serde || this.serde;
+    this.at = at || this.at;
   }
 
   get configSpecs(): Array<ConfigurableFieldSpec> {

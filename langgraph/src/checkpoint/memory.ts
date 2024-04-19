@@ -4,7 +4,6 @@ import {
   Checkpoint,
   CheckpointAt,
   CheckpointTuple,
-  ConfigurableFieldSpec,
   copyCheckpoint,
   SerializerProtocol,
 } from "./base.js";
@@ -24,20 +23,11 @@ export class NoopSerializer implements SerializerProtocol {
 export class MemorySaver extends BaseCheckpointSaver {
   serde = new NoopSerializer();
 
-  storage: Record<string, Record<string, Checkpoint>> = {};
+  storage: Record<string, Record<string, Checkpoint>>;
 
-  get configSpecs(): ConfigurableFieldSpec[] {
-    return [
-      {
-        id: "threadId",
-        name: "Thread ID",
-        annotation: null,
-        description: null,
-        default: null,
-        isShared: true,
-        dependencies: null,
-      },
-    ];
+  constructor(serde?: SerializerProtocol, at?: CheckpointAt) {
+    super(serde, at);
+    this.storage = {};
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
@@ -55,6 +45,7 @@ export class MemorySaver extends BaseCheckpointSaver {
       }
     } else {
       if (checkpoints) {
+        // select max ts
         const threadTs = Object.keys(checkpoints).sort((a, b) =>
           b.localeCompare(a)
         )[0];
