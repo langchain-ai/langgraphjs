@@ -112,9 +112,9 @@ const CheckpointThreadTs: ConfigurableFieldSpec = {
 
 export interface SerializerProtocol {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  dumps(obj: any): Uint8Array;
+  dumps(obj: any): any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  loads(data: Uint8Array): any;
+  loads(data: any): any;
 }
 
 export abstract class BaseCheckpointSaver {

@@ -6,9 +6,24 @@ import {
   CheckpointTuple,
   ConfigurableFieldSpec,
   copyCheckpoint,
+  SerializerProtocol,
 } from "./base.js";
 
+export class NoopSerializer implements SerializerProtocol {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  dumps(obj: any): any {
+    return obj;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  loads(data: any): any {
+    return data;
+  }
+}
+
 export class MemorySaver extends BaseCheckpointSaver {
+  serde = new NoopSerializer();
+
   storage: Record<string, Record<string, Checkpoint>> = {};
 
   get configSpecs(): ConfigurableFieldSpec[] {
@@ -35,7 +50,7 @@ export class MemorySaver extends BaseCheckpointSaver {
       if (checkpoint) {
         return {
           config,
-          checkpoint,
+          checkpoint: this.serde.loads(checkpoint),
         };
       }
     } else {
@@ -45,7 +60,7 @@ export class MemorySaver extends BaseCheckpointSaver {
         )[0];
         return {
           config: { configurable: { threadId, threadTs } },
-          checkpoint: checkpoints[threadTs.toString()],
+          checkpoint: this.serde.loads(checkpoints[threadTs.toString()]),
         };
       }
     }
@@ -61,7 +76,7 @@ export class MemorySaver extends BaseCheckpointSaver {
     )) {
       yield {
         config: { configurable: { threadId, threadTs } },
-        checkpoint,
+        checkpoint: this.serde.loads(checkpoint),
       };
     }
   }
@@ -73,9 +88,11 @@ export class MemorySaver extends BaseCheckpointSaver {
     const threadId = config.configurable?.threadId;
 
     if (this.storage[threadId]) {
-      this.storage[threadId][checkpoint.ts] = checkpoint;
+      this.storage[threadId][checkpoint.ts] = this.serde.dumps(checkpoint);
     } else {
-      this.storage[threadId] = { [checkpoint.ts]: checkpoint };
+      this.storage[threadId] = {
+        [checkpoint.ts]: this.serde.dumps(checkpoint),
+      };
     }
 
     return {
