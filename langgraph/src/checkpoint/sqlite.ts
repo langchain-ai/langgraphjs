@@ -7,10 +7,28 @@ import {
   CheckpointTuple,
   SerializerProtocol,
 } from "./base.js";
-import { NoopSerializer } from "./memory.js";
+
+export class JsonSerializer implements SerializerProtocol {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  dumps(obj: any): string {
+    return JSON.stringify(obj);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  loads(data: string): any {
+    return JSON.parse(data);
+  }
+}
+
+interface Row {
+  checkpoint: string;
+  parentTs: string;
+  threadId?: string;
+  threadTs?: string;
+}
 
 export class SqliteSaver extends BaseCheckpointSaver {
-  serde = new NoopSerializer();
+  serde = new JsonSerializer();
 
   isSetup: boolean;
 
@@ -31,7 +49,7 @@ export class SqliteSaver extends BaseCheckpointSaver {
   }
 
   async setup(): Promise<void> {
-    if (!this.isSetup) {
+    if (this.isSetup) {
       return;
     }
 
@@ -56,13 +74,6 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     const threadId = config.configurable?.threadId;
     const ts = config.configurable?.threadTs;
 
-    interface Row {
-      checkpoint: Buffer;
-      parentTs: string;
-      threadId?: string;
-      threadTs?: string;
-    }
-
     if (ts) {
       try {
         const row: Row | unknown = this.db
@@ -74,12 +85,14 @@ CREATE TABLE IF NOT EXISTS checkpoints (
           return {
             config,
             checkpoint: this.serde.loads((row as Row).checkpoint),
-            parentConfig: {
-              configurable: {
-                threadId,
-                threadTs: (row as Row).parentTs,
-              },
-            },
+            parentConfig: (row as Row).parentTs
+              ? {
+                  configurable: {
+                    threadId,
+                    threadTs: (row as Row).parentTs,
+                  },
+                }
+              : undefined,
           };
         }
       } catch (error) {
@@ -101,12 +114,14 @@ CREATE TABLE IF NOT EXISTS checkpoints (
             },
           },
           checkpoint: this.serde.loads((row as Row).checkpoint),
-          parentConfig: {
-            configurable: {
-              threadId: (row as Row).threadId,
-              threadTs: (row as Row).parentTs,
-            },
-          },
+          parentConfig: (row as Row)
+            ? {
+                configurable: {
+                  threadId: (row as Row).threadId,
+                  threadTs: (row as Row).parentTs,
+                },
+              }
+            : undefined,
         };
       }
     }
@@ -114,11 +129,64 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     return undefined;
   }
 
-  list(config: RunnableConfig): AsyncGenerator<CheckpointTuple> {
-    throw new Error("Method not implemented.");
+  async *list(config: RunnableConfig): AsyncGenerator<CheckpointTuple> {
+    const threadId = config.configurable?.threadId;
+    try {
+      const rows: Row[] | unknown = this.db
+        .prepare(
+          `SELECT threadId, threadTs, parentTs, checkpoint FROM checkpoints WHERE threadId = ? ORDER BY threadTs DESC`
+        )
+        .all(threadId);
+      if (rows) {
+        for (const row of rows as Row[]) {
+          yield {
+            config: {
+              configurable: { threadId: row.threadId, threadTs: row.threadTs },
+            },
+            checkpoint: this.serde.loads(row.checkpoint),
+            parentConfig: (row as Row).parentTs
+              ? {
+                  configurable: {
+                    threadId: (row as Row).threadId,
+                    threadTs: (row as Row).parentTs,
+                  },
+                }
+              : undefined,
+          };
+        }
+      }
+    } catch (error) {
+      console.log("Error listing checkpoints", error);
+      throw error;
+    }
   }
 
-  put(config: RunnableConfig, checkpoint: Checkpoint): Promise<RunnableConfig> {
-    throw new Error("Method not implemented.");
+  async put(
+    config: RunnableConfig,
+    checkpoint: Checkpoint
+  ): Promise<RunnableConfig> {
+    try {
+      const row = [
+        config.configurable?.threadId,
+        checkpoint.ts,
+        config.configurable?.threadTs,
+        this.serde.dumps(checkpoint),
+      ];
+      this.db
+        .prepare(
+          `INSERT OR REPLACE INTO checkpoints (threadId, threadTs, parentTs, checkpoint) VALUES (?, ?, ?, ?)`
+        )
+        .run(...row);
+    } catch (error) {
+      console.log("Error saving checkpoint", error);
+      throw error;
+    }
+
+    return {
+      configurable: {
+        threadId: config.configurable?.threadId,
+        threadTs: checkpoint.ts,
+      },
+    };
   }
 }
