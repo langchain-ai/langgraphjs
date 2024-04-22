@@ -33,6 +33,8 @@ export class SqliteSaver extends BaseCheckpointSaver {
 
   db: DatabaseType;
 
+  isSetup: boolean;
+
   constructor(
     connStringOrLocalPath: string,
     serde?: SerializerProtocol,
@@ -40,9 +42,7 @@ export class SqliteSaver extends BaseCheckpointSaver {
   ) {
     super(serde, at);
     this.db = new Database(connStringOrLocalPath);
-    this.setup().catch((error) =>
-      console.log("Error initializing SqliteSaver", error)
-    );
+    this.isSetup = false;
   }
 
   static fromConnString(connStringOrLocalPath: string): SqliteSaver {
@@ -50,7 +50,12 @@ export class SqliteSaver extends BaseCheckpointSaver {
   }
 
   private async setup(): Promise<void> {
+    if (this.isSetup) {
+      return;
+    }
+
     try {
+      this.db.pragma("journal_mode=WAL");
       this.db.exec(`
 CREATE TABLE IF NOT EXISTS checkpoints (
   thread_id TEXT NOT NULL,
@@ -63,9 +68,12 @@ CREATE TABLE IF NOT EXISTS checkpoints (
       console.log("Error creating checkpoints table", error);
       throw error;
     }
+
+    this.isSetup = true;
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
+    await this.setup();
     const threadId = config.configurable?.threadId;
     const threadTs = config.configurable?.threadTs;
 
@@ -127,6 +135,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
   }
 
   async *list(config: RunnableConfig): AsyncGenerator<CheckpointTuple> {
+    await this.setup();
     const threadId = config.configurable?.threadId;
 
     try {
@@ -167,6 +176,8 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     config: RunnableConfig,
     checkpoint: Checkpoint
   ): Promise<RunnableConfig> {
+    await this.setup();
+
     try {
       const row = [
         config.configurable?.threadId,
