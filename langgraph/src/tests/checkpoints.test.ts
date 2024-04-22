@@ -118,9 +118,7 @@ describe("MemorySaver", () => {
 
 describe("SqliteSaver", () => {
   it("should save and retrieve checkpoints correctly", async () => {
-    // setup
     const sqliteSaver = new SqliteSaver(":memory:");
-    await sqliteSaver.setup();
 
     // get undefined checkpoint
     const undefinedCheckpoint = await sqliteSaver.getTuple({

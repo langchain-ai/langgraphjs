@@ -30,8 +30,6 @@ interface Row {
 export class SqliteSaver extends BaseCheckpointSaver {
   serde = new JsonSerializer();
 
-  isSetup: boolean;
-
   db: DatabaseType;
 
   constructor(
@@ -40,19 +38,15 @@ export class SqliteSaver extends BaseCheckpointSaver {
     at?: CheckpointAt
   ) {
     super(serde, at);
-    this.isSetup = false;
     this.db = new Database(connStringOrLocalPath);
+    this.setup();
   }
 
   static fromConnString(connStringOrLocalPath: string): SqliteSaver {
     return new SqliteSaver(connStringOrLocalPath);
   }
 
-  async setup(): Promise<void> {
-    if (this.isSetup) {
-      return;
-    }
-
+  private async setup(): Promise<void> {
     try {
       this.db.exec(`
 CREATE TABLE IF NOT EXISTS checkpoints (
@@ -66,30 +60,28 @@ CREATE TABLE IF NOT EXISTS checkpoints (
       console.log("Error creating checkpoints table", error);
       throw error;
     }
-
-    this.isSetup = true;
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     const threadId = config.configurable?.threadId;
-    const ts = config.configurable?.threadTs;
+    const threadTs = config.configurable?.threadTs;
 
-    if (ts) {
+    if (threadTs) {
       try {
-        const row: Row | unknown = this.db
+        const row: Row = this.db
           .prepare(
             `SELECT checkpoint, parentTs FROM checkpoints WHERE threadId = ? AND threadTs = ?`
           )
-          .get(threadId, ts);
+          .get(threadId, threadTs) as Row;
         if (row) {
           return {
             config,
-            checkpoint: this.serde.loads((row as Row).checkpoint),
-            parentConfig: (row as Row).parentTs
+            checkpoint: this.serde.loads(row.checkpoint),
+            parentConfig: row.parentTs
               ? {
                   configurable: {
                     threadId,
-                    threadTs: (row as Row).parentTs,
+                    threadTs: row.parentTs,
                   },
                 }
               : undefined,
@@ -100,25 +92,25 @@ CREATE TABLE IF NOT EXISTS checkpoints (
         throw error;
       }
     } else {
-      const row: Row | unknown = this.db
+      const row: Row = this.db
         .prepare(
           `SELECT threadId, threadTs, parentTs, checkpoint FROM checkpoints WHERE threadId = ? ORDER BY threadTs DESC LIMIT 1`
         )
-        .get(threadId);
+        .get(threadId) as Row;
       if (row) {
         return {
           config: {
             configurable: {
-              threadId: (row as Row).threadId,
-              threadTs: (row as Row).threadTs,
+              threadId: row.threadId,
+              threadTs: row.threadTs,
             },
           },
-          checkpoint: this.serde.loads((row as Row).checkpoint),
-          parentConfig: (row as Row)
+          checkpoint: this.serde.loads(row.checkpoint),
+          parentConfig: row.parentTs
             ? {
                 configurable: {
-                  threadId: (row as Row).threadId,
-                  threadTs: (row as Row).parentTs,
+                  threadId: row.threadId,
+                  threadTs: row.parentTs,
                 },
               }
             : undefined,
@@ -131,24 +123,25 @@ CREATE TABLE IF NOT EXISTS checkpoints (
 
   async *list(config: RunnableConfig): AsyncGenerator<CheckpointTuple> {
     const threadId = config.configurable?.threadId;
+
     try {
-      const rows: Row[] | unknown = this.db
+      const rows: Row[] = this.db
         .prepare(
           `SELECT threadId, threadTs, parentTs, checkpoint FROM checkpoints WHERE threadId = ? ORDER BY threadTs DESC`
         )
-        .all(threadId);
+        .all(threadId) as Row[];
       if (rows) {
-        for (const row of rows as Row[]) {
+        for (const row of rows) {
           yield {
             config: {
               configurable: { threadId: row.threadId, threadTs: row.threadTs },
             },
             checkpoint: this.serde.loads(row.checkpoint),
-            parentConfig: (row as Row).parentTs
+            parentConfig: row.parentTs
               ? {
                   configurable: {
-                    threadId: (row as Row).threadId,
-                    threadTs: (row as Row).parentTs,
+                    threadId: row.threadId,
+                    threadTs: row.parentTs,
                   },
                 }
               : undefined,

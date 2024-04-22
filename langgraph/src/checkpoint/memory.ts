@@ -32,11 +32,11 @@ export class MemorySaver extends BaseCheckpointSaver {
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     const threadId = config.configurable?.threadId;
-    const ts = config.configurable?.threadTs;
+    const threadTs = config.configurable?.threadTs;
     const checkpoints = this.storage[threadId];
 
-    if (ts) {
-      const checkpoint = checkpoints[ts];
+    if (threadTs) {
+      const checkpoint = checkpoints[threadTs];
       if (checkpoint) {
         return {
           config,
@@ -45,13 +45,12 @@ export class MemorySaver extends BaseCheckpointSaver {
       }
     } else {
       if (checkpoints) {
-        // select max ts
-        const threadTs = Object.keys(checkpoints).sort((a, b) =>
+        const maxThreadTs = Object.keys(checkpoints).sort((a, b) =>
           b.localeCompare(a)
         )[0];
         return {
-          config: { configurable: { threadId, threadTs } },
-          checkpoint: this.serde.loads(checkpoints[threadTs.toString()]),
+          config: { configurable: { threadId, threadTs: maxThreadTs } },
+          checkpoint: this.serde.loads(checkpoints[maxThreadTs.toString()]),
         };
       }
     }
@@ -62,6 +61,8 @@ export class MemorySaver extends BaseCheckpointSaver {
   async *list(config: RunnableConfig): AsyncGenerator<CheckpointTuple> {
     const threadId = config.configurable?.threadId;
     const checkpoints = this.storage[threadId] ?? {};
+
+    // sort in desc order
     for (const [threadTs, checkpoint] of Object.entries(checkpoints).sort(
       (a, b) => b[0].localeCompare(a[0])
     )) {
