@@ -118,7 +118,7 @@ export interface SerializerProtocol {
 }
 
 export abstract class BaseCheckpointSaver {
-  at: CheckpointAt = CheckpointAt.END_OF_RUN;
+  at: CheckpointAt = CheckpointAt.END_OF_STEP;
 
   serde: SerializerProtocol;
 
