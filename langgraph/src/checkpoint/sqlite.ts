@@ -39,7 +39,9 @@ export class SqliteSaver extends BaseCheckpointSaver {
   ) {
     super(serde, at);
     this.db = new Database(connStringOrLocalPath);
-    this.setup();
+    this.setup().catch((error) =>
+      console.log("Error initializing SqliteSaver", error)
+    );
   }
 
   static fromConnString(connStringOrLocalPath: string): SqliteSaver {
@@ -73,6 +75,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
             `SELECT checkpoint, parentTs FROM checkpoints WHERE threadId = ? AND threadTs = ?`
           )
           .get(threadId, threadTs) as Row;
+
         if (row) {
           return {
             config,
@@ -97,6 +100,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
           `SELECT threadId, threadTs, parentTs, checkpoint FROM checkpoints WHERE threadId = ? ORDER BY threadTs DESC LIMIT 1`
         )
         .get(threadId) as Row;
+
       if (row) {
         return {
           config: {
@@ -130,6 +134,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
           `SELECT threadId, threadTs, parentTs, checkpoint FROM checkpoints WHERE threadId = ? ORDER BY threadTs DESC`
         )
         .all(threadId) as Row[];
+
       if (rows) {
         for (const row of rows) {
           yield {
@@ -165,6 +170,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
         config.configurable?.threadTs,
         this.serde.dumps(checkpoint),
       ];
+
       this.db
         .prepare(
           `INSERT OR REPLACE INTO checkpoints (threadId, threadTs, parentTs, checkpoint) VALUES (?, ?, ?, ?)`

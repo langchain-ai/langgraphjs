@@ -143,9 +143,24 @@ describe("SqliteSaver", () => {
       configurable: { threadId: "1", threadTs: "2024-04-19T17:19:07.952Z" },
     });
     expect(firstCheckpointTuple?.checkpoint).toEqual(checkpoint1);
+    expect(firstCheckpointTuple?.parentConfig).toBeUndefined();
 
     // save second checkpoint
-    await sqliteSaver.put({ configurable: { threadId: "1" } }, checkpoint2);
+    await sqliteSaver.put(
+      { configurable: { threadId: "1", threadTs: "2024-04-18T17:19:07.952Z" } },
+      checkpoint2
+    );
+
+    // verify that parentTs is set and retrieved correctly for second checkpoint
+    const secondCheckpointTuple = await sqliteSaver.getTuple({
+      configurable: { threadId: "1" },
+    });
+    expect(secondCheckpointTuple?.parentConfig).toEqual({
+      configurable: {
+        threadId: "1",
+        threadTs: "2024-04-18T17:19:07.952Z",
+      },
+    });
 
     // list checkpoints
     const checkpointTupleGenerator = await sqliteSaver.list({
