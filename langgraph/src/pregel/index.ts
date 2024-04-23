@@ -177,7 +177,7 @@ export interface PregelInterface {
   nodes: Record<string, ChannelInvoke>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  checkpointer?: BaseCheckpointSaver<any, any>;
+  checkpointer?: BaseCheckpointSaver<any>;
 
   stepTimeout?: number;
 }
@@ -216,7 +216,7 @@ export class Pregel
   nodes: Record<string, ChannelInvoke>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  checkpointer?: BaseCheckpointSaver<any, any>;
+  checkpointer?: BaseCheckpointSaver<any>;
 
   stepTimeout?: number;
 

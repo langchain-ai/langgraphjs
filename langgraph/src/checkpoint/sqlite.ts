@@ -8,15 +8,12 @@ import {
   SerializerProtocol,
 } from "./base.js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export class JsonSerializer implements SerializerProtocol<any, string> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  dumps(obj: any): string {
+export class JsonSerializer implements SerializerProtocol<Checkpoint, string> {
+  dumps(obj: Checkpoint): string {
     return JSON.stringify(obj);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  loads(data: string): any {
+  loads(data: string): Checkpoint {
     return JSON.parse(data);
   }
 }
@@ -30,7 +27,7 @@ interface Row {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export class SqliteSaver<D = any> extends BaseCheckpointSaver<D, string> {
+export class SqliteSaver extends BaseCheckpointSaver<string> {
   serde = new JsonSerializer();
 
   db: DatabaseType;
@@ -39,7 +36,7 @@ export class SqliteSaver<D = any> extends BaseCheckpointSaver<D, string> {
 
   constructor(
     connStringOrLocalPath: string,
-    serde?: SerializerProtocol<D, string>,
+    serde?: SerializerProtocol<Checkpoint, string>,
     at?: CheckpointAt
   ) {
     super(serde, at);

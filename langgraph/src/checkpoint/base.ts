@@ -115,12 +115,12 @@ export interface SerializerProtocol<D, L> {
   loads(data: L): D;
 }
 
-export abstract class BaseCheckpointSaver<D, L> {
+export abstract class BaseCheckpointSaver<L> {
   at: CheckpointAt = CheckpointAt.END_OF_STEP;
 
-  serde: SerializerProtocol<D, L>;
+  serde: SerializerProtocol<Checkpoint, L>;
 
-  constructor(serde?: SerializerProtocol<D, L>, at?: CheckpointAt) {
+  constructor(serde?: SerializerProtocol<Checkpoint, L>, at?: CheckpointAt) {
     this.serde = serde || this.serde;
     this.at = at || this.at;
   }

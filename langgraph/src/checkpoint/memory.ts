@@ -8,25 +8,27 @@ import {
   SerializerProtocol,
 } from "./base.js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export class NoopSerializer implements SerializerProtocol<any, any> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  dumps(obj: any): any {
+export class NoopSerializer
+  implements SerializerProtocol<Checkpoint, Checkpoint>
+{
+  dumps(obj: Checkpoint): Checkpoint {
     return obj;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  loads(data: any): any {
+  loads(data: Checkpoint): Checkpoint {
     return data;
   }
 }
 
-export class MemorySaver<D, L> extends BaseCheckpointSaver<D, L> {
+export class MemorySaver extends BaseCheckpointSaver<Checkpoint> {
   serde = new NoopSerializer();
 
   storage: Record<string, Record<string, Checkpoint>>;
 
-  constructor(serde?: SerializerProtocol<D, L>, at?: CheckpointAt) {
+  constructor(
+    serde?: SerializerProtocol<Checkpoint, Checkpoint>,
+    at?: CheckpointAt
+  ) {
     super(serde, at);
     this.storage = {};
   }
@@ -98,7 +100,7 @@ export class MemorySaver<D, L> extends BaseCheckpointSaver<D, L> {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export class MemorySaverAssertImmutable extends MemorySaver<any, any> {
+export class MemorySaverAssertImmutable extends MemorySaver {
   storageForCopies: Record<string, Record<string, Checkpoint>> = {};
 
   constructor() {

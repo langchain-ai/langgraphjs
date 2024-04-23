@@ -99,7 +99,7 @@ export class StateGraph<
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  compile(checkpointer?: BaseCheckpointSaver<any, any>): Pregel {
+  compile(checkpointer?: BaseCheckpointSaver<any>): Pregel {
     this.validate();
 
     if (Object.keys(this.nodes).some((key) => key in this.channels)) {
