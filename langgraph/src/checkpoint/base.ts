@@ -110,19 +110,17 @@ const CheckpointThreadTs: ConfigurableFieldSpec = {
   dependencies: null,
 };
 
-export interface SerializerProtocol {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  dumps(obj: any): any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  loads(data: any): any;
+export interface SerializerProtocol<D, L> {
+  dumps(obj: D): L;
+  loads(data: L): D;
 }
 
-export abstract class BaseCheckpointSaver {
+export abstract class BaseCheckpointSaver<D, L> {
   at: CheckpointAt = CheckpointAt.END_OF_STEP;
 
-  serde: SerializerProtocol;
+  serde: SerializerProtocol<D, L>;
 
-  constructor(serde?: SerializerProtocol, at?: CheckpointAt) {
+  constructor(serde?: SerializerProtocol<D, L>, at?: CheckpointAt) {
     this.serde = serde || this.serde;
     this.at = at || this.at;
   }
