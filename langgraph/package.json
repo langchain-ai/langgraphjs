@@ -37,7 +37,8 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/core": "^0.1.51"
+    "@langchain/core": "^0.1.51",
+    "better-sqlite3": "^9.5.0"
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",
@@ -47,6 +48,7 @@
     "@swc/core": "^1.3.90",
     "@swc/jest": "^0.2.29",
     "@tsconfig/recommended": "^1.0.3",
+    "@types/better-sqlite3": "^7.6.9",
     "@typescript-eslint/eslint-plugin": "^6.12.0",
     "@typescript-eslint/parser": "^6.12.0",
     "dotenv": "^16.3.1",
