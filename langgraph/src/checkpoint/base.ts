@@ -40,6 +40,24 @@ export interface Checkpoint {
   versionsSeen: Record<string, Record<string, number>>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function deepCopy(obj: any): any {
+  if (typeof obj !== "object" || obj === null) {
+    return obj;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const newObj: any = Array.isArray(obj) ? [] : {};
+
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      newObj[key] = deepCopy(obj[key]);
+    }
+  }
+
+  return newObj;
+}
+
 export function emptyCheckpoint(): Checkpoint {
   return {
     v: 1,
@@ -56,7 +74,7 @@ export function copyCheckpoint(checkpoint: Checkpoint): Checkpoint {
     ts: checkpoint.ts,
     channelValues: { ...checkpoint.channelValues },
     channelVersions: { ...checkpoint.channelVersions },
-    versionsSeen: { ...checkpoint.versionsSeen },
+    versionsSeen: deepCopy(checkpoint.versionsSeen),
   };
 }
 
@@ -65,14 +83,65 @@ export const enum CheckpointAt {
   END_OF_RUN = "end_of_run",
 }
 
-export abstract class BaseCheckpointSaver {
-  at: CheckpointAt = CheckpointAt.END_OF_RUN;
+export interface CheckpointTuple {
+  config: RunnableConfig;
+  checkpoint: Checkpoint;
+  parentConfig?: RunnableConfig;
+}
 
-  get configSpecs(): Array<ConfigurableFieldSpec> {
-    return [];
+const CheckpointThreadId: ConfigurableFieldSpec = {
+  id: "threadId",
+  annotation: typeof "",
+  name: "Thread ID",
+  description: null,
+  default: "",
+  isShared: true,
+  dependencies: null,
+};
+
+const CheckpointThreadTs: ConfigurableFieldSpec = {
+  id: "threadTs",
+  annotation: typeof "",
+  name: "Thread Timestamp",
+  description:
+    "Pass to fetch a past checkpoint. If None, fetches the latest checkpoint.",
+  default: null,
+  isShared: true,
+  dependencies: null,
+};
+
+export interface SerializerProtocol<D, L> {
+  dumps(obj: D): L;
+  loads(data: L): D;
+}
+
+export abstract class BaseCheckpointSaver<L> {
+  at: CheckpointAt = CheckpointAt.END_OF_STEP;
+
+  serde: SerializerProtocol<Checkpoint, L>;
+
+  constructor(serde?: SerializerProtocol<Checkpoint, L>, at?: CheckpointAt) {
+    this.serde = serde || this.serde;
+    this.at = at || this.at;
   }
 
-  abstract get(config: RunnableConfig): Checkpoint | undefined;
+  get configSpecs(): Array<ConfigurableFieldSpec> {
+    return [CheckpointThreadId, CheckpointThreadTs];
+  }
 
-  abstract put(config: RunnableConfig, checkpoint: Checkpoint): void;
+  async get(config: RunnableConfig): Promise<Checkpoint | undefined> {
+    const value = await this.getTuple(config);
+    return value ? value.checkpoint : undefined;
+  }
+
+  abstract getTuple(
+    config: RunnableConfig
+  ): Promise<CheckpointTuple | undefined>;
+
+  abstract list(config: RunnableConfig): AsyncGenerator<CheckpointTuple>;
+
+  abstract put(
+    config: RunnableConfig,
+    checkpoint: Checkpoint
+  ): Promise<RunnableConfig>;
 }

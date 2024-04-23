@@ -1,4 +1,4 @@
-import { Checkpoint } from "../checkpoint/index.js";
+import { Checkpoint, deepCopy } from "../checkpoint/index.js";
 
 export abstract class BaseChannel<
   ValueType = unknown,
@@ -61,24 +61,6 @@ export class InvalidUpdateError extends Error {
     super(message);
     this.name = "InvalidUpdateError";
   }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function deepCopy(obj: any): any {
-  if (typeof obj !== "object" || obj === null) {
-    return obj;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const newObj: any = Array.isArray(obj) ? [] : {};
-
-  for (const key in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      newObj[key] = deepCopy(obj[key]);
-    }
-  }
-
-  return newObj;
 }
 
 export function emptyChannels(

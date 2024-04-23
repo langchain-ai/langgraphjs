@@ -176,7 +176,8 @@ export interface PregelInterface {
 
   nodes: Record<string, ChannelInvoke>;
 
-  checkpointer?: BaseCheckpointSaver;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  checkpointer?: BaseCheckpointSaver<any>;
 
   stepTimeout?: number;
 }
@@ -214,7 +215,8 @@ export class Pregel
 
   nodes: Record<string, ChannelInvoke>;
 
-  checkpointer?: BaseCheckpointSaver;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  checkpointer?: BaseCheckpointSaver<any>;
 
   stepTimeout?: number;
 
@@ -272,7 +274,7 @@ export class Pregel
     // get checkpoint, or create an empty one
     let checkpoint: Checkpoint | undefined;
     if (this.checkpointer) {
-      checkpoint = this.checkpointer.get(config);
+      checkpoint = await this.checkpointer.get(config);
     }
     checkpoint = checkpoint ?? emptyCheckpoint();
 
@@ -361,7 +363,7 @@ export class Pregel
         this.checkpointer.at === CheckpointAt.END_OF_STEP
       ) {
         checkpoint = await createCheckpoint(checkpoint, channels);
-        this.checkpointer.put(config, checkpoint);
+        await this.checkpointer.put(config, checkpoint);
       }
 
       // interrupt if any channel written to is in interrupt list
@@ -375,7 +377,7 @@ export class Pregel
     // save end of run checkpoint
     if (this.checkpointer && this.checkpointer.at === CheckpointAt.END_OF_RUN) {
       checkpoint = await createCheckpoint(checkpoint, channels);
-      this.checkpointer.put(config, checkpoint);
+      await this.checkpointer.put(config, checkpoint);
     }
   }
 

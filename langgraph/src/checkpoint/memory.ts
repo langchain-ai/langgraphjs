@@ -3,36 +3,103 @@ import {
   BaseCheckpointSaver,
   Checkpoint,
   CheckpointAt,
-  ConfigurableFieldSpec,
+  CheckpointTuple,
   copyCheckpoint,
+  SerializerProtocol,
 } from "./base.js";
 
-export class MemorySaver extends BaseCheckpointSaver {
-  storage: Record<string, Checkpoint> = {};
-
-  get configSpecs(): ConfigurableFieldSpec[] {
-    return [
-      {
-        id: "threadId",
-        name: "Thread ID",
-        annotation: null,
-        description: null,
-        default: null,
-        isShared: true,
-        dependencies: null,
-      },
-    ];
+export class NoopSerializer
+  implements SerializerProtocol<Checkpoint, Checkpoint>
+{
+  dumps(obj: Checkpoint): Checkpoint {
+    return obj;
   }
 
-  get(config: RunnableConfig): Checkpoint | undefined {
-    return this.storage[config.configurable?.threadId];
-  }
-
-  put(config: RunnableConfig, checkpoint: Checkpoint): void {
-    this.storage[config.configurable?.threadId] = checkpoint;
+  loads(data: Checkpoint): Checkpoint {
+    return data;
   }
 }
 
+export class MemorySaver extends BaseCheckpointSaver<Checkpoint> {
+  serde = new NoopSerializer();
+
+  storage: Record<string, Record<string, Checkpoint>>;
+
+  constructor(
+    serde?: SerializerProtocol<Checkpoint, Checkpoint>,
+    at?: CheckpointAt
+  ) {
+    super(serde, at);
+    this.storage = {};
+  }
+
+  async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
+    const threadId = config.configurable?.threadId;
+    const threadTs = config.configurable?.threadTs;
+    const checkpoints = this.storage[threadId];
+
+    if (threadTs) {
+      const checkpoint = checkpoints[threadTs];
+      if (checkpoint) {
+        return {
+          config,
+          checkpoint: this.serde.loads(checkpoint),
+        };
+      }
+    } else {
+      if (checkpoints) {
+        const maxThreadTs = Object.keys(checkpoints).sort((a, b) =>
+          b.localeCompare(a)
+        )[0];
+        return {
+          config: { configurable: { threadId, threadTs: maxThreadTs } },
+          checkpoint: this.serde.loads(checkpoints[maxThreadTs.toString()]),
+        };
+      }
+    }
+
+    return undefined;
+  }
+
+  async *list(config: RunnableConfig): AsyncGenerator<CheckpointTuple> {
+    const threadId = config.configurable?.threadId;
+    const checkpoints = this.storage[threadId] ?? {};
+
+    // sort in desc order
+    for (const [threadTs, checkpoint] of Object.entries(checkpoints).sort(
+      (a, b) => b[0].localeCompare(a[0])
+    )) {
+      yield {
+        config: { configurable: { threadId, threadTs } },
+        checkpoint: this.serde.loads(checkpoint),
+      };
+    }
+  }
+
+  async put(
+    config: RunnableConfig,
+    checkpoint: Checkpoint
+  ): Promise<RunnableConfig> {
+    const threadId = config.configurable?.threadId;
+
+    if (this.storage[threadId]) {
+      this.storage[threadId][checkpoint.ts] = this.serde.dumps(checkpoint);
+    } else {
+      this.storage[threadId] = {
+        [checkpoint.ts]: this.serde.dumps(checkpoint),
+      };
+    }
+
+    return {
+      configurable: {
+        threadId,
+        threadTs: checkpoint.ts,
+      },
+    };
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class MemorySaverAssertImmutable extends MemorySaver {
   storageForCopies: Record<string, Record<string, Checkpoint>> = {};
 
@@ -42,13 +109,16 @@ export class MemorySaverAssertImmutable extends MemorySaver {
     this.at = CheckpointAt.END_OF_STEP;
   }
 
-  put(config: RunnableConfig, checkpoint: Checkpoint): void {
+  async put(
+    config: RunnableConfig,
+    checkpoint: Checkpoint
+  ): Promise<RunnableConfig> {
     const threadId = config.configurable?.threadId;
     if (!this.storageForCopies[threadId]) {
       this.storageForCopies[threadId] = {};
     }
     // assert checkpoint hasn't been modified since last written
-    const saved = super.get(config);
+    const saved = await super.get(config);
     if (saved) {
       const savedTs = saved.ts;
       if (this.storageForCopies[threadId][savedTs]) {
