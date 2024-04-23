@@ -167,7 +167,8 @@ export class Graph<
     this.addEdge(key, END);
   }
 
-  compile(checkpointer?: BaseCheckpointSaver): Pregel {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  compile(checkpointer?: BaseCheckpointSaver<any, any>): Pregel {
     this.validate();
 
     const outgoingEdges: Record<string, string[]> = {};

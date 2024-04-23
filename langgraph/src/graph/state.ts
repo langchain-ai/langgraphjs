@@ -98,7 +98,8 @@ export class StateGraph<
     this.waitingEdges.add([startKey, endKey]);
   }
 
-  compile(checkpointer?: BaseCheckpointSaver): Pregel {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  compile(checkpointer?: BaseCheckpointSaver<any, any>): Pregel {
     this.validate();
 
     if (Object.keys(this.nodes).some((key) => key in this.channels)) {
