@@ -23,7 +23,7 @@ import {
   CheckpointAt,
   emptyCheckpoint,
 } from "../checkpoint/base.js";
-import { ChannelInvoke } from "./read.js";
+import { PregelNode } from "./read.js";
 import { validateGraph } from "./validate.js";
 import { ReservedChannelsMap } from "./reserved.js";
 import { mapInput, mapOutput } from "./io.js";
@@ -63,7 +63,7 @@ export class Channel {
       tags?: string[];
     }
   ): // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ChannelInvoke;
+  PregelNode;
 
   static subscribeTo(
     channels: string[],
@@ -72,7 +72,7 @@ export class Channel {
       when?: (arg: any) => boolean;
       tags?: string[];
     }
-  ): ChannelInvoke;
+  ): PregelNode;
 
   static subscribeTo(
     channels: string | string[],
@@ -82,7 +82,7 @@ export class Channel {
       when?: (arg: any) => boolean;
       tags?: string[];
     }
-  ): ChannelInvoke {
+  ): PregelNode {
     const { key, when, tags } = options ?? {};
     if (Array.isArray(channels) && key !== undefined) {
       throw new Error(
@@ -106,7 +106,7 @@ export class Channel {
 
     const triggers: string[] = Array.isArray(channels) ? channels : [channels];
 
-    return new ChannelInvoke({
+    return new PregelNode({
       channels: channelMappingOrString,
       triggers,
       when,
@@ -174,7 +174,7 @@ export interface PregelInterface {
    */
   interrupt?: string[];
 
-  nodes: Record<string, ChannelInvoke>;
+  nodes: Record<string, PregelNode>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   checkpointer?: BaseCheckpointSaver<any>;
@@ -213,7 +213,7 @@ export class Pregel
 
   debug: boolean = false;
 
-  nodes: Record<string, ChannelInvoke>;
+  nodes: Record<string, PregelNode>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   checkpointer?: BaseCheckpointSaver<any>;
@@ -550,14 +550,14 @@ function _applyWritesFromView(
 
 function _prepareNextTasks(
   checkpoint: Checkpoint,
-  processes: Record<string, ChannelInvoke>,
+  processes: Record<string, PregelNode>,
   channels: Record<string, BaseChannel>
 ): Array<[RunnableInterface, unknown, string]> {
   const tasks: Array<[RunnableInterface, unknown, string]> = [];
 
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
-  for (const [name, proc] of Object.entries<ChannelInvoke>(processes)) {
+  for (const [name, proc] of Object.entries<PregelNode>(processes)) {
     let seen: Record<string, number> = checkpoint.versionsSeen[name];
     if (!seen) {
       checkpoint.versionsSeen[name] = {};

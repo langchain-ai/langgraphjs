@@ -6,7 +6,7 @@ import { LastValue } from "../channels/last_value.js";
 import { ChannelWrite, SKIP_WRITE } from "../pregel/write.js";
 import { BaseCheckpointSaver } from "../checkpoint/base.js";
 import { Pregel, Channel } from "../pregel/index.js";
-import { ChannelInvoke, ChannelRead } from "../pregel/read.js";
+import { PregelNode, ChannelRead } from "../pregel/read.js";
 import { NamedBarrierValue } from "../channels/named_barrier_value.js";
 import { AnyValue } from "../channels/any_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
@@ -170,7 +170,7 @@ export class StateGraph<
       }
     }
 
-    const nodes: Record<string, ChannelInvoke> = {};
+    const nodes: Record<string, PregelNode> = {};
 
     for (const [key, node] of Object.entries(this.nodes)) {
       const triggers = [
@@ -179,7 +179,7 @@ export class StateGraph<
           .filter(([, , end]) => end === key)
           .map(([chan]) => chan),
       ];
-      nodes[key] = new ChannelInvoke({
+      nodes[key] = new PregelNode({
         triggers,
         channels: stateChannels,
       })
@@ -203,7 +203,7 @@ export class StateGraph<
       const outgoing = outgoingEdges[key];
       const edgesKey = `${key}:edges`;
       if (outgoing || this.branches[key]) {
-        nodes[edgesKey] = new ChannelInvoke({
+        nodes[edgesKey] = new PregelNode({
           triggers: [key],
           tags: ["langsmith:hidden"],
           channels: stateChannels,
@@ -240,7 +240,7 @@ export class StateGraph<
       ])
     );
 
-    nodes[`${START}:edges`] = new ChannelInvoke({
+    nodes[`${START}:edges`] = new PregelNode({
       triggers: [START],
       tags: ["langsmith:hidden"],
       channels: stateChannels,

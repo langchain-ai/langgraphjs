@@ -71,37 +71,47 @@ export class ChannelRead<
 
 const defaultRunnableBound = /* #__PURE__ */ new RunnablePassthrough();
 
-interface ChannelInvokeArgs<RunInput, RunOutput>
+interface PregelNodeArgs<RunInput, RunOutput>
   extends Partial<RunnableBindingArgs<RunInput, RunOutput>> {
-  channels: Record<string, string> | string;
+  channels: Record<string, string> | string[];
   triggers: Array<string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  when?: (args: any) => boolean;
-  config?: RunnableConfig;
+  mapper?: (args: any) => any;
+  writers?: Runnable[];
   tags?: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  bound?: Runnable<any, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  kwargs?: Record<string, any>;
+  config?: RunnableConfig;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ChannelInvokeInputType = any;
+export type PregelNodeInputType = any;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ChannelInvokeOutputType = any;
+export type PregelNodeOutputType = any;
 
-export class ChannelInvoke<
-  RunInput = ChannelInvokeInputType,
-  RunOutput = ChannelInvokeOutputType
+export class PregelNode<
+  RunInput = PregelNodeInputType,
+  RunOutput = PregelNodeOutputType
 > extends RunnableBinding<RunInput, RunOutput, RunnableConfig> {
-  lc_graph_name = "ChannelInvoke";
+  lc_graph_name = "PregelNode";
 
-  channels: Record<string, string> | string;
+  channels: Record<string, string> | string[];
 
   triggers: string[] = [];
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  when?: (args: any) => boolean;
+  mapper?: (args: any) => any;
 
-  constructor(fields: ChannelInvokeArgs<RunInput, RunOutput>) {
-    const { channels, triggers, when } = fields;
+  writers: Runnable[] = [];
+
+  bound: Runnable<any, any> = defaultRunnableBound;
+
+  kwargs: Record<string, any> = {};
+
+  constructor(fields: PregelNodeArgs<RunInput, RunOutput>) {
+    const { channels, triggers, mapper, writers, bound, kwargs } = fields;
     const mergedTags = [
       ...(fields.config?.tags ? fields.config.tags : []),
       ...(fields.tags ? fields.tags : []),
@@ -120,21 +130,23 @@ export class ChannelInvoke<
 
     this.channels = channels;
     this.triggers = triggers;
-    this.when = when;
+    this.mapper = mapper;
+    this.writers = writers ?? this.writers;
+    this.bound = bound ?? this.bound;
+    this.kwargs = kwargs ?? this.kwargs;
   }
 
-  join(channels: Array<string>): ChannelInvoke<RunInput, RunOutput> {
+  join(channels: Array<string>): PregelNode<RunInput, RunOutput> {
     if (typeof this.channels !== "object") {
       throw new Error("all channels must be named when using .join()");
     }
 
-    return new ChannelInvoke<RunInput, RunOutput>({
+    return new PregelNode<RunInput, RunOutput>({
       channels: {
         ...this.channels,
         ...Object.fromEntries(channels.map((chan) => [chan, chan])),
       },
       triggers: this.triggers,
-      when: this.when,
       bound: this.bound,
       kwargs: this.kwargs,
       config: this.config,
@@ -143,21 +155,19 @@ export class ChannelInvoke<
 
   pipe<NewRunOutput>(
     coerceable: RunnableLike
-  ): ChannelInvoke<RunInput, Exclude<NewRunOutput, Error>> {
+  ): PregelNode<RunInput, Exclude<NewRunOutput, Error>> {
     if (this.bound === defaultRunnableBound) {
-      return new ChannelInvoke<RunInput, Exclude<NewRunOutput, Error>>({
+      return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
         channels: this.channels,
         triggers: this.triggers,
-        when: this.when,
         bound: _coerceToRunnable<RunInput, NewRunOutput>(coerceable),
         config: this.config,
         kwargs: this.kwargs,
       });
     } else {
-      return new ChannelInvoke<RunInput, Exclude<NewRunOutput, Error>>({
+      return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
         channels: this.channels,
         triggers: this.triggers,
-        when: this.when,
         bound: this.bound.pipe(coerceable),
         config: this.config,
         kwargs: this.kwargs,

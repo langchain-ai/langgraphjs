@@ -21,7 +21,7 @@ import { LastValue } from "../channels/last_value.js";
 import { END, Graph, StateGraph } from "../graph/index.js";
 import { ReservedChannelsMap } from "../pregel/reserved.js";
 import { Topic } from "../channels/topic.js";
-import { ChannelInvoke } from "../pregel/read.js";
+import { PregelNode } from "../pregel/read.js";
 import { InvalidUpdateError } from "../channels/base.js";
 import { MemorySaverAssertImmutable } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
@@ -293,7 +293,7 @@ it("should batch many processes with input and output", async () => {
   const testSize = 100;
   const addOne = jest.fn((x: number) => x + 1);
 
-  const nodes: Record<string, ChannelInvoke> = {
+  const nodes: Record<string, PregelNode> = {
     "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1")),
   };
 
