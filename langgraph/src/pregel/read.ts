@@ -10,6 +10,7 @@ import {
 } from "@langchain/core/runnables";
 import { ConfigurableFieldSpec } from "../checkpoint/index.js";
 import { CONFIG_KEY_READ } from "../constants.js";
+import { ChannelWrite } from "./write.js";
 
 export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,6 +30,7 @@ export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(
     channel: string | Array<string>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mapper?: (args: any) => any,
     fresh: boolean = false
   ) {
@@ -159,6 +161,9 @@ export class PregelNode<
   }
 
   join(channels: Array<string>): PregelNode<RunInput, RunOutput> {
+    if (!Array.isArray(channels)) {
+      throw new Error("channels must be a list");
+    }
     if (typeof this.channels !== "object") {
       throw new Error("all channels must be named when using .join()");
     }
@@ -169,6 +174,8 @@ export class PregelNode<
         ...Object.fromEntries(channels.map((chan) => [chan, chan])),
       },
       triggers: this.triggers,
+      mapper: this.mapper,
+      writers: this.writers,
       bound: this.bound,
       kwargs: this.kwargs,
       config: this.config,
@@ -178,10 +185,22 @@ export class PregelNode<
   pipe<NewRunOutput>(
     coerceable: RunnableLike
   ): PregelNode<RunInput, Exclude<NewRunOutput, Error>> {
-    if (this.bound === defaultRunnableBound) {
+    if (ChannelWrite.isWriter(coerceable)) {
       return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
         channels: this.channels,
         triggers: this.triggers,
+        mapper: this.mapper,
+        writers: [...this.writers, coerceable as ChannelWrite],
+        bound: this.bound.pipe(coerceable),
+        config: this.config,
+        kwargs: this.kwargs,
+      });
+    } else if (this.bound === defaultRunnableBound) {
+      return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
+        channels: this.channels,
+        triggers: this.triggers,
+        mapper: this.mapper,
+        writers: this.writers,
         bound: _coerceToRunnable<RunInput, NewRunOutput>(coerceable),
         config: this.config,
         kwargs: this.kwargs,
@@ -190,6 +209,8 @@ export class PregelNode<
       return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
         channels: this.channels,
         triggers: this.triggers,
+        mapper: this.mapper,
+        writers: this.writers,
         bound: this.bound.pipe(coerceable),
         config: this.config,
         kwargs: this.kwargs,

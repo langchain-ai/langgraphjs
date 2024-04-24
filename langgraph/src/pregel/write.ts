@@ -1,6 +1,7 @@
 import {
   Runnable,
   RunnableConfig,
+  RunnableLike,
   RunnablePassthrough,
 } from "@langchain/core/runnables";
 import { ConfigurableFieldSpec } from "../checkpoint/index.js";
@@ -93,7 +94,8 @@ export class ChannelWrite<
     );
   }
 
-  static isWriter(runnable: Runnable): boolean {
+  static isWriter(runnable: RunnableLike): boolean {
+    // eslint-disable-next-line no-instanceof/no-instanceof
     return runnable instanceof ChannelWrite;
   }
 
