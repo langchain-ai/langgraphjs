@@ -58,8 +58,6 @@ export class Channel {
     channels: string,
     options?: {
       key?: string;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      when?: (arg: any) => boolean;
       tags?: string[];
     }
   ): // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,8 +66,6 @@ export class Channel {
   static subscribeTo(
     channels: string[],
     options?: {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      when?: (arg: any) => boolean;
       tags?: string[];
     }
   ): PregelNode;
