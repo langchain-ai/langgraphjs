@@ -104,6 +104,7 @@ export function* mapOutputValues(
 export function* mapOutputUpdates(
   outputChannels: string | Array<string>,
   tasks: Array<PregelExecutableTask>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Generator<Record<string, any | Record<string, any>>> {
   const outputTasks = tasks.filter(
     (task) =>
