@@ -26,7 +26,7 @@ import {
 import { PregelNode } from "./read.js";
 import { validateGraph } from "./validate.js";
 import { ReservedChannelsMap } from "./reserved.js";
-import { mapInput, mapOutput } from "./io.js";
+import { mapInput, mapOutput, readChannel } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
@@ -290,7 +290,7 @@ export class Pregel
 
     _applyWrites(checkpoint, channels, inputPendingWrites, config, 0);
 
-    const read = (chan: string) => _readChannel(channels, chan);
+    const read = (chan: string) => readChannel(channels, chan);
 
     // Similarly to Bulk Synchronous Parallel / Pregel model
     // computation proceeds in steps, while there are channel updates
@@ -455,21 +455,6 @@ async function executeTasks<RunOutput>(
   }
 }
 
-function _readChannel(
-  channels: Record<string, BaseChannel>,
-  chan: string
-): unknown | null {
-  try {
-    return channels[chan].get();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (e: any) {
-    if (e.name === EmptyChannelError.name) {
-      return null;
-    }
-    throw e;
-  }
-}
-
 function _applyWrites(
   checkpoint: Checkpoint,
   channels: Record<string, BaseChannel>,
@@ -533,7 +518,7 @@ function _applyWritesFromView(
   values: Record<string, unknown>
 ) {
   for (const [chan, val] of Object.entries(values)) {
-    if (val === _readChannel(channels, chan)) {
+    if (val === readChannel(channels, chan)) {
       continue;
     }
 
@@ -572,10 +557,10 @@ function _prepareNextTasks(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let val: Record<string, any> = {};
         if (typeof proc.channels === "string") {
-          val[proc.channels] = _readChannel(channels, proc.channels);
+          val[proc.channels] = readChannel(channels, proc.channels);
         } else {
           for (const [k, chan] of Object.entries(proc.channels)) {
-            val[k] = _readChannel(channels, chan);
+            val[k] = readChannel(channels, chan);
           }
         }
 

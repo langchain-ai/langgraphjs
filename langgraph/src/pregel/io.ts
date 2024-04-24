@@ -1,4 +1,50 @@
-import { BaseChannel } from "../channels/base.js";
+import { BaseChannel, EmptyChannelError } from "../channels/base.js";
+
+export function readChannel(
+  channels: Record<string, BaseChannel>,
+  chan: string,
+  catch_: boolean = true,
+  returnException: boolean = false
+): unknown | null {
+  try {
+    return channels[chan].get();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (e: any) {
+    if (e.name === EmptyChannelError.name) {
+      if (returnException) {
+        return e;
+      } else if (catch_) {
+        return null;
+      }
+    }
+    throw e;
+  }
+}
+
+export function readChannels(
+  channels: Record<string, BaseChannel>,
+  select: string[] | string,
+  skipEmpty: boolean = true
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Record<string, any> | any {
+  if (typeof select === "string") {
+    return readChannel(channels, select);
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const values: Record<string, any> = {};
+    for (const k of select) {
+      try {
+        values[k] = readChannel(channels, k, false, skipEmpty);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (e: any) {
+        if (e.name === EmptyChannelError.name) {
+          continue;
+        }
+      }
+    }
+    return values;
+  }
+}
 
 /**
  * Map input chunk to a sequence of pending writes in the form [channel, value].
@@ -9,17 +55,19 @@ export function* mapInput(
   chunk?: any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Generator<[string, any]> {
-  if (typeof inputChannels === "string") {
-    yield [inputChannels, chunk];
-  } else {
-    if ((chunk && typeof chunk !== "object") || Array.isArray(chunk)) {
-      throw new Error(`Expected chunk to be an object, got ${typeof chunk}`);
-    }
-    for (const k in chunk) {
-      if (inputChannels.includes(k)) {
-        yield [k, chunk[k]];
-      } else {
-        console.warn(`Input channel ${k} not found in ${inputChannels}`);
+  if (chunk) {
+    if (typeof inputChannels === "string") {
+      yield [inputChannels, chunk];
+    } else {
+      if ((chunk && typeof chunk !== "object") || Array.isArray(chunk)) {
+        throw new Error(`Expected chunk to be an object, got ${typeof chunk}`);
+      }
+      for (const k in chunk) {
+        if (inputChannels.includes(k)) {
+          yield [k, chunk[k]];
+        } else {
+          console.warn(`Input channel ${k} not found in ${inputChannels}`);
+        }
       }
     }
   }
