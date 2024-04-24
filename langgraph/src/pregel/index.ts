@@ -78,12 +78,10 @@ export class Channel {
     channels: string | string[],
     options?: {
       key?: string;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      when?: (arg: any) => boolean;
       tags?: string[];
     }
   ): PregelNode {
-    const { key, when, tags } = options ?? {};
+    const { key, tags } = options ?? {};
     if (Array.isArray(channels) && key !== undefined) {
       throw new Error(
         "Can't specify a key when subscribing to multiple channels"
@@ -109,7 +107,6 @@ export class Channel {
     return new PregelNode({
       channels: channelMappingOrString,
       triggers,
-      when,
       tags,
     });
   }
@@ -601,10 +598,8 @@ function _prepareNextTasks(
           }
         });
 
-        // skip if condition is not met
-        if (proc.when === undefined || proc.when(val)) {
-          tasks.push([proc, val, name]);
-        }
+        tasks.push([proc, val, name]);
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {
         if (error.name === EmptyChannelError.name) {

@@ -17,10 +17,10 @@ export interface PregelExecutableTask {
 }
 
 export interface StateSnapshot {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   /**
    * Current values of channels
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   values: Record<string, any> | any;
   /**
    * Nodes to execute in the next step, if any

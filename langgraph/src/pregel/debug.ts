@@ -23,7 +23,10 @@ const COLORS_MAP: ConsoleColorMap = {
 const wrap = (color: ConsoleColors, text: string): string =>
   `${color.start}${text}${color.end}`;
 
-export function printStepStart(step: number, nextTasks: Array<PregelExecutableTask>): void {
+export function printStepStart(
+  step: number,
+  nextTasks: Array<PregelExecutableTask>
+): void {
   const nTasks = nextTasks.length;
   console.log(
     `${wrap(COLORS_MAP.blue, "[langgraph/step]")}`,
