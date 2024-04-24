@@ -19,19 +19,19 @@ export class ChannelWrite<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   RunInput = any
 > extends RunnablePassthrough<RunInput> {
-  channels: Array<ChannelWriteEntry>;
+  writes: Array<ChannelWriteEntry>;
 
-  constructor(channels: Array<ChannelWriteEntry>) {
-    const name = `ChannelWrite<${channels
+  constructor(writes: Array<ChannelWriteEntry>) {
+    const name = `ChannelWrite<${writes
       .map(({ channel }) => channel)
       .join(",")}>`;
     super({
-      ...{ channels, name },
+      ...{ channels: writes, name },
       func: async (input: RunInput, config?: RunnableConfig) =>
         this._write(input, config ?? {}),
     });
 
-    this.channels = channels;
+    this.writes = writes;
   }
 
   get configSpecs(): ConfigurableFieldSpec[] {
@@ -42,7 +42,7 @@ export class ChannelWrite<
         description: null,
         default: null,
         annotation: "TYPE_SEND",
-        isShared: true,
+        isShared: false,
         dependencies: null,
       },
     ];
@@ -66,7 +66,7 @@ export class ChannelWrite<
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async _write(input: any, config: RunnableConfig): Promise<void> {
-    const values = this.channels.map(async ({ channel, value, skipNone }) => ({
+    const values = this.writes.map(async ({ channel, value, skipNone }) => ({
       channel,
       value: await this.coerceValue(input, value, config),
       skipNone,
@@ -91,6 +91,14 @@ export class ChannelWrite<
     write(
       Object.entries(values).filter(([_channel, value]) => value !== SKIP_WRITE)
     );
+  }
+
+  static isWriter(runnable: Runnable): boolean {
+    return runnable instanceof ChannelWrite;
+  }
+
+  static registerWriter(runnable: Runnable): ChannelWrite {
+    return runnable as ChannelWrite;
   }
 }
 

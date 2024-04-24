@@ -58,7 +58,7 @@ export class ChannelRead<
         default: null,
         // TODO FIX THIS
         annotation: "Callable[[BaseChannel], Any]",
-        isShared: true,
+        isShared: false,
         dependencies: null,
       },
     ];
