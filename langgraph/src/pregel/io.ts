@@ -1,4 +1,6 @@
 import { BaseChannel, EmptyChannelError } from "../channels/base.js";
+import { PregelExecutableTask } from "./types.js";
+import { TAG_HIDDEN } from "../constants.js";
 
 export function readChannel(
   channels: Record<string, BaseChannel>,
@@ -70,6 +72,75 @@ export function* mapInput(
         }
       }
     }
+  }
+}
+
+/**
+ * Map pending writes (a sequence of tuples (channel, value)) to output chunk.
+ */
+export function* mapOutputValues(
+  outputChannels: string | Array<string>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pendingWrites: Array<[string, any]>,
+  channels: Record<string, BaseChannel>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Generator<[Record<string, any>, any]> {
+  if (typeof outputChannels === "string") {
+    if (pendingWrites.some(([chan, _]) => chan === outputChannels)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      yield readChannel(channels, outputChannels) as any;
+    }
+  } else {
+    if (pendingWrites.find(([chan, _]) => outputChannels.includes(chan))) {
+      yield readChannels(channels, outputChannels);
+    }
+  }
+}
+
+/**
+ * Map pending writes (a sequence of tuples (channel, value)) to output chunk.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function* mapOutputUpdates(
+  outputChannels: string | Array<string>,
+  tasks: Array<PregelExecutableTask>
+): Generator<Record<string, any | Record<string, any>>> {
+  const outputTasks = tasks.filter(
+    (task) =>
+      task.config === undefined || !task.config.tags?.includes(TAG_HIDDEN)
+  );
+  if (typeof outputChannels === "string") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updated: Record<string, any | Record<string, any>> = {};
+
+    for (const task of outputTasks) {
+      for (const [chan, value] of task.writes) {
+        if (chan === outputChannels) {
+          updated[task.name] = value;
+        }
+      }
+    }
+
+    yield updated;
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updated: Record<string, any | Record<string, any>> = {};
+
+    for (const task of outputTasks) {
+      if (task.writes.some(([chan, _]) => outputChannels.includes(chan))) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const nodes: Record<string, any> = {};
+        for (const [chan, value] of task.writes) {
+          if (outputChannels.includes(chan)) {
+            nodes[chan] = value;
+          }
+        }
+
+        updated[task.name] = nodes;
+      }
+    }
+
+    yield updated;
   }
 }
 
