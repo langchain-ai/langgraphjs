@@ -36,7 +36,7 @@ export function readChannels(
     const values: Record<string, any> = {};
     for (const k of select) {
       try {
-        values[k] = readChannel(channels, k, false, skipEmpty);
+        values[k] = readChannel(channels, k, !skipEmpty);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (e: any) {
         if (e.name === EmptyChannelError.name) {
