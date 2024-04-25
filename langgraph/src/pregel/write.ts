@@ -66,10 +66,11 @@ export class ChannelWrite<
     return input;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async _getWriteValues(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     input: any,
     config: RunnableConfig
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<Record<string, any>> {
     return Promise.all(
       this.writes
