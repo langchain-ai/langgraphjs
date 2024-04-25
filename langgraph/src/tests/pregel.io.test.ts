@@ -1,5 +1,13 @@
 import { describe, expect, it } from "@jest/globals";
-import { readChannel, readChannels } from "../pregel/io.js";
+import { RunnablePassthrough } from "@langchain/core/runnables";
+import {
+  mapInput,
+  mapOutputUpdates,
+  mapOutputValues,
+  readChannel,
+  readChannels,
+} from "../pregel/io.js";
+import { PregelExecutableTask } from "../pregel/types.js";
 import { BaseChannel, EmptyChannelError } from "../channels/base.js";
 import { LastValue } from "../channels/last_value.js";
 
@@ -118,5 +126,245 @@ describe("readChannels", () => {
       someChannelName2: 4,
       someChannelName3: null,
     });
+  });
+});
+
+describe("mapInput", () => {
+  it("should return an empty Generator", () => {
+    // call method / assertions
+    const emptyGenerator = mapInput("someChannelName");
+    const tuples = [];
+    for (const tuple of emptyGenerator) {
+      tuples.push(tuple);
+    }
+    expect(tuples.length).toBe(0);
+  });
+
+  it("should return a Generator that yields a single tuple", () => {
+    // call method / assertions
+    const emptyGenerator = mapInput("someChannelName", "some chunk");
+    const tuples = [];
+    for (const tuple of emptyGenerator) {
+      tuples.push(tuple);
+    }
+    expect(tuples.length).toBe(1);
+    expect(tuples[0]).toEqual(["someChannelName", "some chunk"]);
+  });
+
+  it("should return a Generator that yields multiple tuples", () => {
+    // set up test
+    const channelNames = ["someChannelName1", "someChannelName2"];
+    const chunk = {
+      someChannelName1: "some chunk 1",
+    };
+
+    // call method / assertions
+    const emptyGenerator = mapInput(channelNames, chunk);
+    const tuples = [];
+    for (const tuple of emptyGenerator) {
+      tuples.push(tuple);
+    }
+    expect(tuples.length).toBe(1);
+    expect(tuples[0]).toEqual(["someChannelName1", "some chunk 1"]);
+  });
+
+  it("should throw an error if an invalid chunk type is provided", () => {
+    // set up test
+    const channelNames = ["someChannelName1", "someChannelName2"];
+    const chunk = ["array", "of", "chunks"];
+
+    // call method / assertions
+    try {
+      mapInput(channelNames, chunk);
+    } catch (e) {
+      expect(e).toBeInstanceOf(Error);
+    }
+  });
+});
+
+describe("mapOutputValues", () => {
+  it("should return a Generator that yields a single value", () => {
+    // set up test
+    const outputChannels = "someOutputChannelName2";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pendingWrites: Array<[string, any]> = [
+      ["someOutputChannelName1", 1],
+      ["someOutputChannelName2", 2],
+    ];
+
+    const lastValueChannel2 = new LastValue<number>();
+    lastValueChannel2.update([3]);
+
+    const channels = {
+      someOutputChannelName1: new LastValue<number>(),
+      someOutputChannelName2: lastValueChannel2,
+    };
+
+    // call method / assertions
+    const generator = mapOutputValues(outputChannels, pendingWrites, channels);
+    const values = [];
+    for (const value of generator) {
+      values.push(value);
+    }
+    expect(values.length).toBe(1);
+    // value should be equal to the last value of channel
+    expect(values[0]).toBe(3);
+  });
+
+  it("should return a Generator that yields an object", () => {
+    // set up test
+    const outputChannels = ["someOutputChannelName1", "someOutputChannelName2"];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pendingWrites: Array<[string, any]> = [
+      ["someOutputChannelName1", 1],
+      ["someOutputChannelName2", 2],
+    ];
+
+    const lastValueChannel1 = new LastValue<number>();
+    const lastValueChannel2 = new LastValue<number>();
+    lastValueChannel1.update([3]);
+    lastValueChannel2.update([4]);
+
+    const channels = {
+      someOutputChannelName1: lastValueChannel1,
+      someOutputChannelName2: lastValueChannel2,
+    };
+
+    // call method / assertions
+    const generator = mapOutputValues(outputChannels, pendingWrites, channels);
+    const values = [];
+    for (const value of generator) {
+      values.push(value);
+    }
+    expect(values.length).toBe(1);
+    expect(values[0]).toEqual({
+      someOutputChannelName1: 3,
+      someOutputChannelName2: 4,
+    });
+  });
+
+  it("should return an empty Generator", () => {
+    // set up test
+    const outputChannels = "someOutputChannelName1";
+    const outputChannelsList = ["someOutputChannelName1"];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pendingWrites: Array<[string, any]> = [
+      ["someOutputChannelName2", 2],
+      ["someOutputChannelName2", 3],
+    ];
+
+    const channels = {
+      someOutputChannelName1: new LastValue<number>(),
+      someOutputChannelName2: new LastValue<number>(),
+    };
+
+    // call method / assertions
+    const generator1 = mapOutputValues(outputChannels, pendingWrites, channels);
+    const values = [];
+    for (const value of generator1) {
+      values.push(value);
+    }
+    expect(values.length).toBe(0);
+
+    const generator2 = mapOutputValues(
+      outputChannelsList,
+      pendingWrites,
+      channels
+    );
+    for (const value of generator2) {
+      values.push(value);
+    }
+    expect(values.length).toBe(0);
+  });
+});
+
+describe("mapOutputUpdates", () => {
+  it("should return a Generator that yields an object - {string: any}", () => {
+    // set up test
+    const outputChannels = "someOutputChannelName";
+    const tasks: PregelExecutableTask[] = [
+      {
+        name: "task1",
+        input: null,
+        proc: new RunnablePassthrough(),
+        writes: [["someOutputChannelName", 1]],
+        config: undefined,
+      },
+      {
+        name: "task2",
+        input: null,
+        proc: new RunnablePassthrough(),
+        writes: [["someOutputChannelName", 2]],
+        config: {
+          tags: ["langsmith:hidden"], // this task should be filtered out
+        },
+      },
+      {
+        name: "task3",
+        input: null,
+        proc: new RunnablePassthrough(),
+        writes: [["someOutputChannelNameThatDoesntMatch", 3]], // this task should be filtered out
+        config: undefined,
+      },
+    ];
+
+    // call method / assertions
+    const generator = mapOutputUpdates(outputChannels, tasks);
+    const values = [];
+    for (const value of generator) {
+      values.push(value);
+    }
+    expect(values.length).toBe(1);
+    expect(values[0]).toEqual({ task1: 1 });
+  });
+
+  it("should return a Generator that yields an object - {string: {string: any}}", () => {
+    // set up test
+    const outputChannels = [
+      "someOutputChannelName1",
+      "someOutputChannelName2",
+      "someOutputChannelName3",
+    ];
+    const tasks: PregelExecutableTask[] = [
+      {
+        name: "task1",
+        input: null,
+        proc: new RunnablePassthrough(),
+        writes: [
+          ["someOutputChannelName1", 1],
+          ["someOutputChannelName2", 2],
+        ],
+        config: undefined,
+      },
+      {
+        name: "task2",
+        input: null,
+        proc: new RunnablePassthrough(),
+        writes: [
+          ["someOutputChannelName3", 3],
+          ["someOutputChannelName4", 4],
+        ],
+        config: undefined,
+      },
+    ];
+
+    // call method / assertions
+    const generator = mapOutputUpdates(outputChannels, tasks);
+    const values = [];
+    for (const value of generator) {
+      values.push(value);
+    }
+    expect(values.length).toBe(1);
+
+    const expectedValue = {
+      task1: {
+        someOutputChannelName1: 1,
+        someOutputChannelName2: 2,
+      },
+      task2: {
+        someOutputChannelName3: 3,
+      },
+    };
+    expect(values[0]).toEqual(expectedValue);
   });
 });
