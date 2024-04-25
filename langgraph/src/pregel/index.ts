@@ -27,7 +27,7 @@ import { PregelNode } from "./read.js";
 import { validateGraph } from "./validate.js";
 import { ReservedChannelsMap } from "./reserved.js";
 import { mapInput, mapOutput, readChannel } from "./io.js";
-import { ChannelWrite, ChannelWriteEntry } from "./write.js";
+import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 
@@ -117,20 +117,22 @@ export class Channel {
       Object.entries(additionalArgs).forEach(([key, value]) => {
         channelPairs.push({
           channel: key,
-          value: _coerceWriteValue(value),
-          skipNone: false,
+          value: PASSTHROUGH,
+          skipNone: true,
+          mapper: _coerceWriteValue(value),
         });
       });
     } else {
       args.forEach((channel) => {
         if (typeof channel === "string") {
-          channelPairs.push({ channel, value: undefined, skipNone: false });
+          channelPairs.push({ channel, value: PASSTHROUGH, skipNone: false });
         } else if (typeof channel === "object") {
           Object.entries(channel).forEach(([key, value]) => {
             channelPairs.push({
               channel: key,
-              value: _coerceWriteValue(value),
-              skipNone: false,
+              value: PASSTHROUGH,
+              skipNone: true,
+              mapper: _coerceWriteValue(value),
             });
           });
         }
