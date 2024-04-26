@@ -1,5 +1,5 @@
 /* eslint-disable no-process-env */
-import { it, expect, jest, beforeAll, describe } from "@jest/globals";
+import { it, expect, jest, beforeAll, describe, xit } from "@jest/globals";
 import {
   RunnableConfig,
   RunnableLambda,
@@ -876,6 +876,76 @@ describe("StateGraph", () => {
         ],
       },
     });
+  });
+
+  // TODO: fix this test
+  xit("can invoke a nested graph", async () => {
+    // set up inner graph
+    type InnerState = {
+      myKey: string;
+      myOtherKey: string;
+    };
+
+    const innerGraph = new StateGraph<InnerState>({
+      channels: {
+        myKey: {
+          value: null,
+          default: () => "hello",
+        },
+        myOtherKey: {
+          value: null,
+          default: () => "world",
+        },
+      },
+    });
+
+    innerGraph.addNode("up", (state: InnerState) => ({
+      myKey: `${state.myKey} there`,
+      myOtherKey: state.myOtherKey,
+    }));
+    innerGraph.setEntryPoint("up");
+    innerGraph.setFinishPoint("up");
+
+    // set up top level graph
+    type State = {
+      myKey: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      neverCalled: any;
+    };
+
+    const graph = new StateGraph<State>({
+      channels: {
+        myKey: {
+          value: null,
+        },
+        neverCalled: {
+          value: null,
+        },
+      },
+    });
+
+    graph.addNode("inner", innerGraph.compile());
+    graph.addNode("side", (state: State) => ({
+      myKey: `${state.myKey} and back again`,
+    }));
+    graph.addEdge("inner", "side");
+    graph.setEntryPoint("inner");
+    graph.setFinishPoint("side");
+
+    const app = graph.compile();
+
+    // call method / assertions
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const neverCalled = jest.fn((_: any) => {
+      throw new Error("This should never be called");
+    });
+
+    await app.invoke({
+      myKey: "my value",
+      neverCalled: new RunnableLambda({ func: neverCalled }),
+    });
+
+    // TODO: assertions
   });
 });
 

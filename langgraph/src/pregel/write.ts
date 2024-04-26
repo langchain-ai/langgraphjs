@@ -50,22 +50,6 @@ export class ChannelWrite<
     ];
   }
 
-  async coerceValue(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    input: any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    value: any,
-    config: RunnableConfig
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): Promise<any> {
-    if (Runnable.isRunnable(value)) {
-      return await value.invoke(input, config);
-    } else if (value) {
-      return value;
-    }
-    return input;
-  }
-
   async _getWriteValues(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     input: any,
