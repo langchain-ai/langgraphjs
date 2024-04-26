@@ -57,6 +57,7 @@ describe("readChannel", () => {
     // call method / assertions
     try {
       readChannel(channels, "someChannelName", false, false);
+      throw new Error("Expected EmptyChannelError to be thrown");
     } catch (e) {
       expect(e).toBeInstanceOf(EmptyChannelError);
     }
@@ -176,6 +177,7 @@ describe("mapInput", () => {
     // call method / assertions
     try {
       mapInput(channelNames, chunk);
+      throw new Error("Expected Error to be thrown");
     } catch (e) {
       expect(e).toBeInstanceOf(Error);
     }
