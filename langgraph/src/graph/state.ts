@@ -10,6 +10,7 @@ import { PregelNode, ChannelRead } from "../pregel/read.js";
 import { NamedBarrierValue } from "../channels/named_barrier_value.js";
 import { AnyValue } from "../channels/any_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
+import { RunnableCallable } from "../utils.js";
 
 export const START = "__start__";
 
@@ -138,8 +139,10 @@ export class StateGraph<
           channel: key,
           value: PASSTHROUGH,
           skipNone: false,
-          mapper: new RunnableLambda({
+          mapper: new RunnableCallable({
             func: (input) => getInputKey(key, input),
+            trace: false,
+            recurse: false,
           }),
         }))
       : [{ channel: "__root__", value: PASSTHROUGH, skipNone: true }];

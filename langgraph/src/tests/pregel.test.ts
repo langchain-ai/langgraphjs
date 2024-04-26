@@ -1,5 +1,5 @@
 /* eslint-disable no-process-env */
-import { it, expect, jest, beforeAll, describe, xit } from "@jest/globals";
+import { it, expect, jest, beforeAll, describe } from "@jest/globals";
 import {
   RunnableConfig,
   RunnableLambda,
@@ -878,8 +878,7 @@ describe("StateGraph", () => {
     });
   });
 
-  // TODO: fix this test
-  xit("can invoke a nested graph", async () => {
+  it("can invoke a nested graph", async () => {
     // set up inner graph
     type InnerState = {
       myKey: string;
@@ -940,12 +939,15 @@ describe("StateGraph", () => {
       throw new Error("This should never be called");
     });
 
-    await app.invoke({
+    const result = await app.invoke({
       myKey: "my value",
       neverCalled: new RunnableLambda({ func: neverCalled }),
     });
 
-    // TODO: assertions
+    expect(result).toEqual({
+      myKey: "my value there and back again",
+      neverCalled: new RunnableLambda({ func: neverCalled }),
+    });
   });
 });
 
