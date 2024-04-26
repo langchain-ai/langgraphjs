@@ -12,7 +12,7 @@ export interface PregelExecutableTask {
   input: any;
   proc: Runnable;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  writes: Array<[string, any]>; // TODO: Array type may need to be changed
+  writes: Array<[string, any]>;
   config: RunnableConfig | undefined;
 }
 
@@ -25,7 +25,7 @@ export interface StateSnapshot {
   /**
    * Nodes to execute in the next step, if any
    */
-  next: [string];
+  next: Array<string>;
   /**
    * Config used to fetch this snapshot
    */

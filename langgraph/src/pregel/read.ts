@@ -90,7 +90,8 @@ export class ChannelRead<
   }
 }
 
-const defaultRunnableBound = /* #__PURE__ */ new RunnablePassthrough();
+const defaultRunnableBound =
+  /* #__PURE__ */ new RunnablePassthrough<PregelNodeInputType>();
 
 interface PregelNodeArgs<RunInput, RunOutput>
   extends Partial<RunnableBindingArgs<RunInput, RunOutput>> {
@@ -98,10 +99,9 @@ interface PregelNodeArgs<RunInput, RunOutput>
   triggers: Array<string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   mapper?: (args: any) => any;
-  writers?: Runnable[];
+  writers?: Runnable<RunOutput, RunOutput>[];
   tags?: string[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  bound?: Runnable<any, any>;
+  bound?: Runnable<RunInput, RunOutput>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   kwargs?: Record<string, any>;
   config?: RunnableConfig;
@@ -128,8 +128,7 @@ export class PregelNode<
 
   writers: Runnable[] = [];
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  bound: Runnable<any, any> = defaultRunnableBound;
+  bound: Runnable<RunInput, RunOutput> = defaultRunnableBound;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   kwargs: Record<string, any> = {};

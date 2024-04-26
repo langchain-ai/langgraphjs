@@ -28,7 +28,7 @@ export class ChannelWrite<
       .map(({ channel }) => channel)
       .join(",")}>`;
     super({
-      ...{ channels: writes, name },
+      ...{ writes, name },
       func: async (input: RunInput, config?: RunnableConfig) =>
         this._write(input, config ?? {}),
     });
