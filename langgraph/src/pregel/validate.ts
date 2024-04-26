@@ -1,100 +1,101 @@
 import { BaseChannel } from "../channels/index.js";
-import { LastValue } from "../channels/last_value.js";
+import { INTERRUPT } from "../constants.js";
 import { PregelNode } from "./read.js";
-import { ReservedChannelsMap } from "./reserved.js";
+
+export class GraphValidationError extends Error {
+  constructor(message?: string) {
+    super(message);
+    this.name = "GraphValidationError";
+  }
+}
 
 export function validateGraph({
   nodes,
   channels,
-  input,
-  output,
-  hidden,
-  interrupt,
+  inputChannels,
+  outputChannels,
+  streamChannels,
+  interruptAfterNodes,
+  interruptBeforeNodes,
+  defaultChannelFactory,
 }: {
   nodes: Record<string, PregelNode>;
   channels: { [key: string]: BaseChannel };
-  input: string | Array<string>;
-  output: string | Array<string>;
-  hidden: Array<string>;
-  interrupt: Array<string>;
+  inputChannels: string | Array<string>;
+  outputChannels: string | Array<string>;
+  streamChannels?: string | Array<string>;
+  interruptAfterNodes: Array<string>;
+  interruptBeforeNodes: Array<string>;
+  defaultChannelFactory: () => any;
 }): void {
-  const newChannels = channels;
   const subscribedChannels = new Set<string>();
-  for (const node of Object.values(nodes)) {
-    if (node.lc_graph_name === "PregelNode" && "channels" in node) {
-      if (typeof node.channels === "string") {
-        subscribedChannels.add(node.channels);
-      } else {
-        Object.values(node.channels).map((channel) =>
-          subscribedChannels.add(channel)
-        );
-      }
+  const allOutputChannels = new Set<string>();
+
+  for (const [name, node] of Object.entries(nodes)) {
+    if (name === INTERRUPT) {
+      throw new GraphValidationError(`"Node name ${INTERRUPT} is reserved"`);
+    }
+    if (node.constructor === PregelNode) {
+      node.triggers.forEach((trigger) => subscribedChannels.add(trigger));
     } else {
-      console.error(node);
-      throw new Error(
-        `Invalid node type: ${JSON.stringify(
-          node,
-          null,
-          2
-        )}, expected Channel.subscribeTo()`
+      throw new GraphValidationError(
+        `Invalid node type ${typeof node}, expected PregelNode`
       );
     }
   }
 
-  for (const chan of [...subscribedChannels]) {
-    if (!(chan in newChannels)) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      newChannels[chan] = new LastValue<any>();
+  // side effect: update channels
+  for (const chan of subscribedChannels) {
+    if (!(chan in channels)) {
+      channels[chan] = defaultChannelFactory();
     }
   }
 
-  if (typeof input === "string") {
-    if (!(input in newChannels)) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      newChannels[input] = new LastValue<any>();
-    }
-    if (!subscribedChannels.has(input)) {
-      throw new Error(
-        `Input channel ${input} is not subscribed to by any node.`
+  if (typeof inputChannels === "string") {
+    if (!subscribedChannels.has(inputChannels)) {
+      throw new GraphValidationError(
+        `Input channel ${inputChannels} is not subscribed to by any node`
       );
     }
   } else {
-    for (const chan of input) {
-      if (!(chan in newChannels)) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        newChannels[chan] = new LastValue<any>();
-      }
-    }
-    if (input.every((chan) => !subscribedChannels.has(chan))) {
-      throw new Error(
-        `None of the input channels ${input} are subscribed to by any node`
+    if (inputChannels.every((channel) => !subscribedChannels.has(channel))) {
+      throw new GraphValidationError(
+        `None of the input channels ${inputChannels} are subscribed to by any node`
       );
     }
   }
 
-  if (typeof output === "string") {
-    if (!(output in newChannels)) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      newChannels[output] = new LastValue<any>();
-    }
+  // side effect: update channels
+  if (typeof outputChannels === "string") {
+    allOutputChannels.add(outputChannels);
   } else {
-    for (const chan of output) {
-      if (!(chan in newChannels)) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        newChannels[chan] = new LastValue<any>();
-      }
+    outputChannels.forEach((chan) => allOutputChannels.add(chan));
+  }
+
+  if (typeof streamChannels === "string") {
+    allOutputChannels.add(streamChannels);
+  } else if (streamChannels) {
+    streamChannels.forEach((chan) => allOutputChannels.add(chan));
+  }
+
+  for (const chan of allOutputChannels) {
+    if (!(chan in channels)) {
+      channels[chan] = defaultChannelFactory();
     }
   }
 
-  for (const chan in ReservedChannelsMap) {
-    if (!(chan in newChannels)) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      newChannels[chan] = new LastValue<any>();
+  // validate interrupt before/after
+  for (const node of interruptAfterNodes) {
+    if (!(node in nodes)) {
+      throw new GraphValidationError(`Node ${node} not in nodes`);
     }
   }
 
-  validateKeys(hidden, newChannels);
-  validateKeys(interrupt, newChannels);
+  for (const node of interruptBeforeNodes) {
+    if (!(node in nodes)) {
+      throw new GraphValidationError(`Node ${node} not in nodes`);
+    }
+  }
 }
 
 export function validateKeys(

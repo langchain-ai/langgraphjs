@@ -30,6 +30,7 @@ import { mapInput, mapOutput, readChannel } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { LastValue } from "../channels/last_value.js";
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
@@ -238,10 +239,12 @@ export class Pregel
     validateGraph({
       nodes: this.nodes,
       channels: this.channels,
-      output: this.output,
-      input: this.input,
-      hidden: this.hidden,
-      interrupt: this.interrupt,
+      outputChannels: this.output,
+      inputChannels: this.input,
+      streamChannels: undefined,
+      interruptAfterNodes: [],
+      interruptBeforeNodes: [],
+      defaultChannelFactory: () => new LastValue(),
     });
   }
 
