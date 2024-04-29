@@ -250,7 +250,7 @@ export class StateGraph<
       channels: stateChannels,
     })
       .pipe(new ChannelRead(stateKeysRead))
-      .pipe(Channel.writeTo(`${this.entryPoint}:inbox`));
+      .pipe(Channel.writeTo([`${this.entryPoint}:inbox`]));
 
     return new Pregel({
       nodes,

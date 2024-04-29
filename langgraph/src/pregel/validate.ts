@@ -26,8 +26,10 @@ export function validateGraph({
   streamChannels?: string | Array<string>;
   interruptAfterNodes: Array<string>;
   interruptBeforeNodes: Array<string>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   defaultChannelFactory: () => any;
 }): void {
+  const newChannels = channels;
   const subscribedChannels = new Set<string>();
   const allOutputChannels = new Set<string>();
 
@@ -46,8 +48,8 @@ export function validateGraph({
 
   // side effect: update channels
   for (const chan of subscribedChannels) {
-    if (!(chan in channels)) {
-      channels[chan] = defaultChannelFactory();
+    if (!(chan in newChannels)) {
+      newChannels[chan] = defaultChannelFactory();
     }
   }
 
@@ -79,8 +81,8 @@ export function validateGraph({
   }
 
   for (const chan of allOutputChannels) {
-    if (!(chan in channels)) {
-      channels[chan] = defaultChannelFactory();
+    if (!(chan in newChannels)) {
+      newChannels[chan] = defaultChannelFactory();
     }
   }
 

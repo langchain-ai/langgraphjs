@@ -25,7 +25,6 @@ import {
 } from "../checkpoint/base.js";
 import { PregelNode } from "./read.js";
 import { validateGraph } from "./validate.js";
-import { ReservedChannelsMap } from "./reserved.js";
 import { mapInput, mapOutput, readChannel } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
@@ -43,13 +42,6 @@ export class GraphRecursionError extends Error {
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
-function _coerceWriteValue(value: WriteValue): Runnable {
-  if (!Runnable.isRunnable(value) && typeof value !== "function") {
-    return _coerceToRunnable(() => value);
-  }
-  return _coerceToRunnable(value as RunnableLike);
-}
-
 function isString(value: unknown): value is string {
   return typeof value === "string";
 }
@@ -61,8 +53,7 @@ export class Channel {
       key?: string;
       tags?: string[];
     }
-  ): // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  PregelNode;
+  ): PregelNode;
 
   static subscribeTo(
     channels: string[],
@@ -108,39 +99,38 @@ export class Channel {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  static writeTo(...args: any[]): ChannelWrite {
-    const channelPairs: Array<ChannelWriteEntry> = [];
+  static writeTo(
+    channels: string[],
+    kwargs?: Record<string, WriteValue>
+  ): ChannelWrite {
+    const channelWriteEntries: Array<ChannelWriteEntry> = [];
 
-    if (args.length === 1 && typeof args[0] === "object") {
-      // Handle the case where named arguments are passed as an object
-      const additionalArgs = args[0];
-      Object.entries(additionalArgs).forEach(([key, value]) => {
-        channelPairs.push({
-          channel: key,
-          value: PASSTHROUGH,
-          skipNone: true,
-          mapper: _coerceWriteValue(value),
-        });
-      });
-    } else {
-      args.forEach((channel) => {
-        if (typeof channel === "string") {
-          channelPairs.push({ channel, value: PASSTHROUGH, skipNone: false });
-        } else if (typeof channel === "object") {
-          Object.entries(channel).forEach(([key, value]) => {
-            channelPairs.push({
-              channel: key,
-              value: PASSTHROUGH,
-              skipNone: true,
-              mapper: _coerceWriteValue(value),
-            });
-          });
-        }
+    for (const channel of channels) {
+      channelWriteEntries.push({
+        channel,
+        value: PASSTHROUGH,
+        skipNone: false,
       });
     }
 
-    return new ChannelWrite(channelPairs);
+    for (const [key, value] of Object.entries(kwargs ?? {})) {
+      if (Runnable.isRunnable(value) || typeof value === "function") {
+        channelWriteEntries.push({
+          channel: key,
+          value: PASSTHROUGH,
+          skipNone: true,
+          mapper: _coerceToRunnable(value as RunnableLike),
+        });
+      } else {
+        channelWriteEntries.push({
+          channel: key,
+          value,
+          skipNone: false,
+        });
+      }
+    }
+
+    return new ChannelWrite(channelWriteEntries);
   }
 }
 
@@ -289,7 +279,7 @@ export class Pregel
       }
     }
 
-    _applyWrites(checkpoint, channels, inputPendingWrites, config, 0);
+    _applyWrites(checkpoint, channels, inputPendingWrites);
 
     const read = (chan: string) => readChannel(channels, chan);
 
@@ -342,7 +332,7 @@ export class Pregel
       await executeTasks(tasks, this.stepTimeout);
 
       // apply writes to channels
-      _applyWrites(checkpoint, channels, pendingWrites, config, step + 1);
+      _applyWrites(checkpoint, channels, pendingWrites);
 
       // yield current value and checkpoint view
       const stepOutput = mapOutput(outputKeys, pendingWrites, channels);
@@ -460,30 +450,18 @@ function _applyWrites(
   checkpoint: Checkpoint,
   channels: Record<string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pendingWrites: Array<[string, any]>,
-  config: RunnableConfig,
-  forStep: number
+  pendingWrites: Array<[string, any]>
 ): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pendingWritesByChannel: Record<string, Array<any>> = {};
   // Group writes by channel
   for (const [chan, val] of pendingWrites) {
-    for (const c in ReservedChannelsMap) {
-      if (chan === c) {
-        throw new Error(`Can't write to reserved channel ${chan}`);
-      }
-    }
     if (chan in pendingWritesByChannel) {
       pendingWritesByChannel[chan].push(val);
     } else {
       pendingWritesByChannel[chan] = [val];
     }
   }
-
-  // Update reserved channels
-  pendingWritesByChannel[ReservedChannelsMap.isLastStep] = [
-    forStep + 1 === config.recursionLimit,
-  ];
 
   const updatedChannels: Set<string> = new Set();
   // Apply writes to channels

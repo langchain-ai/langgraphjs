@@ -35,7 +35,9 @@ class Branch {
     } else {
       destination = result;
     }
-    return Channel.writeTo(destination !== END ? `${destination}:inbox` : END);
+    return Channel.writeTo(
+      destination !== END ? [`${destination}:inbox`] : [END]
+    );
   }
 }
 
@@ -183,7 +185,7 @@ export class Graph<
     for (const [key, node] of Object.entries(this.nodes)) {
       nodes[key] = Channel.subscribeTo(`${key}:inbox`)
         .pipe(node)
-        .pipe(Channel.writeTo(key));
+        .pipe(Channel.writeTo([key]));
     }
 
     for (const key of Object.keys(this.nodes)) {
@@ -195,7 +197,7 @@ export class Graph<
         });
       }
       if (outgoing) {
-        nodes[edgesKey] = nodes[edgesKey].pipe(Channel.writeTo(...outgoing));
+        nodes[edgesKey] = nodes[edgesKey].pipe(Channel.writeTo(outgoing));
       }
       if (this.branches[key]) {
         this.branches[key].forEach((branch) => {
