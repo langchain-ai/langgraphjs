@@ -210,16 +210,13 @@ export class Graph<
       }
     }
 
-    const hidden = Object.keys(this.nodes).map((node) => `${node}:inbox`);
-
     if (!this.entryPoint) {
       throw new Error("Entry point not set");
     }
     return new Pregel({
       nodes,
-      input: `${this.entryPoint}:inbox`,
-      output: END,
-      hidden,
+      inputChannels: `${this.entryPoint}:inbox`,
+      outputChannels: END,
       checkpointer,
     });
   }

@@ -261,11 +261,8 @@ export class StateGraph<
         ...nodeOutboxes,
         END: new LastValue(),
       },
-      input: `${START}:inbox`,
-      output: END,
-      hidden: Object.keys(this.nodes)
-        .map((node) => `${node}:inbox`)
-        .concat(START, stateKeys),
+      inputChannels: `${START}:inbox`,
+      outputChannels: END,
       checkpointer,
     });
   }

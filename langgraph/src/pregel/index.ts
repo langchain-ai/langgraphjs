@@ -134,38 +134,55 @@ export class Channel {
   }
 }
 
+export type StreamMode = "values" | "updates";
+
 export interface PregelInterface {
+  nodes: Record<string, PregelNode>;
   /**
    * @default {}
    */
   channels?: Record<string, BaseChannel>;
   /**
+   * @default () => new LastValue()
+   */
+  defaultChannelFactory?: () => BaseChannel;
+  /**
+   * @default true
+   */
+  autoValidate?: boolean;
+  /**
+   * @default "values"
+   */
+  streamMode?: StreamMode;
+  /**
    * @default "output"
    */
-  output?: string | Array<string>;
-  /**
-   * @default "input"
-   */
-  input?: string | Array<string>;
+  outputChannels?: string | Array<string>;
+
+  streamChannels?: string | Array<string>;
   /**
    * @default []
    */
-  hidden?: Array<string>;
+  interruptAfterNodes?: Array<string>;
+  /**
+   * @default []
+   */
+  interruptBeforeNodes?: Array<string>;
+  /**
+   * @default "input"
+   */
+  inputChannels?: string | Array<string>;
+  /**
+   * @default undefined
+   */
+  stepTimeout?: number;
   /**
    * @default false
    */
   debug?: boolean;
-  /**
-   * @default []
-   */
-  interrupt?: string[];
-
-  nodes: Record<string, PregelNode>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   checkpointer?: BaseCheckpointSaver<any>;
-
-  stepTimeout?: number;
 }
 
 export interface PregelOptions extends RunnableConfig {
@@ -189,39 +206,54 @@ export class Pregel
   // Because Pregel extends `Runnable`.
   lc_namespace = ["langgraph", "pregel"];
 
-  channels: Record<string, BaseChannel> = {};
-
-  output: string | Array<string> = "output";
-
-  input: string | Array<string> = "input";
-
-  hidden: Array<string> = [];
-
-  debug: boolean = false;
-
   nodes: Record<string, PregelNode>;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  checkpointer?: BaseCheckpointSaver<any>;
+  channels: Record<string, BaseChannel> = {};
+
+  defaultChannelFactory: () => BaseChannel = () => new LastValue();
+
+  autoValidate: boolean = true;
+
+  streamMode: StreamMode = "values";
+
+  outputChannels: string | Array<string> = "output";
+
+  streamChannels?: string | string[];
+
+  interruptAfterNodes: string[] = [];
+
+  interruptBeforeNodes: string[] = [];
+
+  inputChannels: string | Array<string> = "input";
 
   stepTimeout?: number;
 
-  interrupt: string[] = [];
+  debug: boolean = false;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  checkpointer?: BaseCheckpointSaver<any>;
 
   constructor(fields: PregelInterface) {
     super(fields);
 
     // Initialize global async local storage instance for tracing
     initializeAsyncLocalStorageSingleton();
-    this.channels = fields.channels ?? this.channels;
-    this.output = fields.output ?? this.output;
-    this.input = fields.input ?? this.input;
-    this.hidden = fields.hidden ?? this.hidden;
-    this.debug = fields.debug ?? this.debug;
     this.nodes = fields.nodes;
+    this.channels = fields.channels ?? this.channels;
+    this.defaultChannelFactory =
+      fields.defaultChannelFactory ?? this.defaultChannelFactory;
+    this.autoValidate = fields.autoValidate ?? this.autoValidate;
+    this.streamMode = fields.streamMode ?? this.streamMode;
+    this.outputChannels = fields.outputChannels ?? this.outputChannels;
+    this.streamChannels = fields.streamChannels ?? this.streamChannels;
+    this.interruptAfterNodes =
+      fields.interruptAfterNodes ?? this.interruptAfterNodes;
+    this.interruptBeforeNodes =
+      fields.interruptBeforeNodes ?? this.interruptBeforeNodes;
+    this.inputChannels = fields.inputChannels ?? this.inputChannels;
+    this.stepTimeout = fields.stepTimeout ?? this.stepTimeout;
+    this.debug = fields.debug ?? this.debug;
     this.checkpointer = fields.checkpointer;
-    this.stepTimeout = fields.stepTimeout;
-    this.interrupt = fields.interrupt ?? this.interrupt;
 
     // Bind the method to the instance
     this._transform = this._transform.bind(this);
@@ -229,8 +261,8 @@ export class Pregel
     validateGraph({
       nodes: this.nodes,
       channels: this.channels,
-      outputChannels: this.output,
-      inputChannels: this.input,
+      outputChannels: this.outputChannels,
+      inputChannels: this.inputChannels,
       streamChannels: undefined,
       interruptAfterNodes: [],
       interruptBeforeNodes: [],
@@ -251,10 +283,8 @@ export class Pregel
     ) {
       outputKeys = config.outputKeys;
     } else {
-      for (const chan in this.channels) {
-        if (!this.hidden.includes(chan)) {
-          outputKeys.push(chan);
-        }
+      for (const chan of Object.keys(this.channels)) {
+        outputKeys.push(chan);
       }
     }
     // copy nodes to ignore mutations during execution
@@ -269,7 +299,7 @@ export class Pregel
     // create channels from checkpoint
     const channels = emptyChannels(this.channels, checkpoint);
     // map inputs to channel updates
-    const thisInput = this.input;
+    const thisInput = this.inputChannels;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const inputPendingWrites: Array<[string, any]> = [];
@@ -353,13 +383,6 @@ export class Pregel
         checkpoint = await createCheckpoint(checkpoint, channels);
         await this.checkpointer.put(config, checkpoint);
       }
-
-      // interrupt if any channel written to is in interrupt list
-      if (
-        pendingWrites.some(([chan]) => this.interrupt?.some((i) => i === chan))
-      ) {
-        break;
-      }
     }
 
     // save end of run checkpoint
@@ -375,7 +398,7 @@ export class Pregel
   ): Promise<PregelOutputType> {
     const config = ensureConfig(options);
     if (!config?.outputKeys) {
-      config.outputKeys = this.output;
+      config.outputKeys = this.outputChannels;
     }
 
     let latest: PregelOutputType | undefined;

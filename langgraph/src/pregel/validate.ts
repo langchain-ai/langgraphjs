@@ -26,8 +26,7 @@ export function validateGraph({
   streamChannels?: string | Array<string>;
   interruptAfterNodes: Array<string>;
   interruptBeforeNodes: Array<string>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  defaultChannelFactory: () => any;
+  defaultChannelFactory: () => BaseChannel;
 }): void {
   const newChannels = channels;
   const subscribedChannels = new Set<string>();
