@@ -76,16 +76,16 @@ export class Channel {
       );
     }
 
-    let channelMappingOrString: string[] | Record<string, string>;
+    let channelMappingOrArray: string[] | Record<string, string>;
 
     if (isString(channels)) {
       if (key) {
-        channelMappingOrString = { [key]: channels };
+        channelMappingOrArray = { [key]: channels };
       } else {
-        channelMappingOrString = [channels];
+        channelMappingOrArray = [channels];
       }
     } else {
-      channelMappingOrString = Object.fromEntries(
+      channelMappingOrArray = Object.fromEntries(
         channels.map((chan) => [chan, chan])
       );
     }
@@ -93,7 +93,7 @@ export class Channel {
     const triggers: string[] = Array.isArray(channels) ? channels : [channels];
 
     return new PregelNode({
-      channels: channelMappingOrString,
+      channels: channelMappingOrArray,
       triggers,
       tags,
     });
