@@ -55,11 +55,9 @@ describe("readChannel", () => {
     };
 
     // call method / assertions
-    try {
+    expect(() => {
       readChannel(channels, "someChannelName", false, false);
-    } catch (e) {
-      expect(e).toBeInstanceOf(EmptyChannelError);
-    }
+    }).toThrow(EmptyChannelError);
   });
 });
 
@@ -174,11 +172,14 @@ describe("mapInput", () => {
     const chunk = ["array", "of", "chunks"];
 
     // call method / assertions
-    try {
-      mapInput(channelNames, chunk);
-    } catch (e) {
-      expect(e).toBeInstanceOf(Error);
-    }
+    expect(() => {
+      const generator = mapInput(channelNames, chunk);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for (const _ of generator) {
+        // do nothing, error will be thrown
+        continue;
+      }
+    }).toThrow(Error);
   });
 });
 
