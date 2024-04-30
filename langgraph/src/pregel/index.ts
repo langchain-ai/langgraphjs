@@ -14,6 +14,7 @@ import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   BaseChannel,
   EmptyChannelError,
+  InvalidUpdateError,
   createCheckpoint,
   emptyChannels,
 } from "../channels/base.js";
@@ -501,7 +502,7 @@ export function _shouldInterrupt(
   return anySnapshotChannelUpdated && anyTaskNodeInInterruptNodes;
 }
 
-function _applyWrites(
+export function _applyWrites(
   checkpoint: Checkpoint,
   channels: Record<string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -518,29 +519,41 @@ function _applyWrites(
     }
   }
 
+  // find the highest version of all channels
+  let maxVersion = 0;
+  if (Object.keys(checkpoint.channelVersions).length > 0) {
+    maxVersion = Math.max(...Object.values(checkpoint.channelVersions));
+  }
+
   const updatedChannels: Set<string> = new Set();
   // Apply writes to channels
-  for (const chan in pendingWritesByChannel) {
-    if (chan in pendingWritesByChannel) {
-      const vals = pendingWritesByChannel[chan];
-      if (chan in channels) {
+  for (const [chan, vals] of Object.entries(pendingWritesByChannel)) {
+    if (chan in channels) {
+      // side effect: update channels
+      try {
         channels[chan].update(vals);
-
-        if (checkpoint.channelVersions[chan] === undefined) {
-          checkpoint.channelVersions[chan] = 1;
-        } else {
-          checkpoint.channelVersions[chan] += 1;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (e: any) {
+        if (e.name === InvalidUpdateError.name) {
+          throw new InvalidUpdateError(
+            `Invalid update for channel ${chan}. Values: ${vals}`
+          );
         }
-
-        updatedChannels.add(chan);
-      } else {
-        console.warn(`Skipping write for channel ${chan} which has no readers`);
       }
+
+      // side effect: update checkpoint channel versions
+      checkpoint.channelVersions[chan] = maxVersion + 1;
+
+      updatedChannels.add(chan);
+    } else {
+      console.warn(`Skipping write for channel ${chan} which has no readers`);
     }
   }
+
   // Channels that weren't updated in this step are notified of a new step
   for (const chan in channels) {
     if (!updatedChannels.has(chan)) {
+      // side effect: update channels
       channels[chan].update([]);
     }
   }

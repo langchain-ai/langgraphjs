@@ -28,6 +28,7 @@ import {
   Channel,
   GraphRecursionError,
   Pregel,
+  _applyWrites,
   _shouldInterrupt,
 } from "../pregel/index.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
@@ -215,6 +216,90 @@ describe("_shouldInterrupt", () => {
     expect(
       _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, tasks)
     ).toBe(false);
+  });
+});
+
+describe("_applyWrites", () => {
+  it("should update channels and checkpoints correctly (side effect)", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: "2024-04-19T17:19:07.952Z",
+      channelValues: {
+        channel1: "channel1value",
+      },
+      channelVersions: {
+        channel1: 2,
+        channel2: 5,
+      },
+      versionsSeen: {
+        __interrupt__: {
+          channel1: 1,
+        },
+      },
+    };
+
+    const lastValueChannel1 = new LastValue<string>();
+    lastValueChannel1.update(["channel1value"]);
+    const lastValueChannel2 = new LastValue<string>();
+    lastValueChannel2.update(["channel2value"]);
+    const channels = {
+      channel1: lastValueChannel1,
+      channel2: lastValueChannel2,
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pendingWrites: Array<[string, any]> = [
+      ["channel1", "channel1valueUpdated!"],
+    ];
+
+    // call method / assertions
+    expect(channels.channel1.get()).toBe("channel1value");
+    expect(channels.channel2.get()).toBe("channel2value");
+    expect(checkpoint.channelVersions.channel1).toBe(2);
+
+    _applyWrites(checkpoint, channels, pendingWrites); // contains side effects
+
+    expect(channels.channel1.get()).toBe("channel1valueUpdated!");
+    expect(channels.channel2.get()).toBe("channel2value");
+    expect(checkpoint.channelVersions.channel1).toBe(6);
+  });
+
+  it("should throw an InvalidUpdateError if there are multiple updates to the same channel", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: "2024-04-19T17:19:07.952Z",
+      channelValues: {
+        channel1: "channel1value",
+      },
+      channelVersions: {
+        channel1: 2,
+      },
+      versionsSeen: {
+        __interrupt__: {
+          channel1: 1,
+        },
+      },
+    };
+
+    const lastValueChannel1 = new LastValue<string>();
+    lastValueChannel1.update(["channel1value"]);
+    const channels = {
+      channel1: lastValueChannel1,
+    };
+
+    // LastValue channel can only be updated with one value at a time
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pendingWrites: Array<[string, any]> = [
+      ["channel1", "channel1valueUpdated!"],
+      ["channel1", "channel1valueUpdatedAgain!"],
+    ];
+
+    // call method / assertions
+    expect(() => {
+      _applyWrites(checkpoint, channels, pendingWrites); // contains side effects
+    }).toThrow(InvalidUpdateError);
   });
 });
 
