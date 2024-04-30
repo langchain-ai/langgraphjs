@@ -386,10 +386,6 @@ export class Pregel
 
       if (stepOutput) {
         yield stepOutput;
-
-        if (typeof outputKeys !== "string") {
-          _applyWritesFromView(checkpoint, channels, stepOutput);
-        }
       }
 
       // save end of step checkpoint
@@ -556,24 +552,6 @@ export function _applyWrites(
       // side effect: update channels
       channels[chan].update([]);
     }
-  }
-}
-
-function _applyWritesFromView(
-  checkpoint: Checkpoint,
-  channels: Record<string, BaseChannel>,
-  values: Record<string, unknown>
-) {
-  for (const [chan, val] of Object.entries(values)) {
-    if (val === readChannel(channels, chan)) {
-      continue;
-    }
-
-    if (channels[chan].lc_graph_name === "LastValue") {
-      throw new Error(`Can't modify channel ${chan} with LastValue`);
-    }
-    checkpoint.channelVersions[chan] += 1;
-    channels[chan].update([values[chan]]);
   }
 }
 
