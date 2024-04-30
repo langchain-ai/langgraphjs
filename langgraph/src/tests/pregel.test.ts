@@ -24,10 +24,17 @@ import { PregelNode } from "../pregel/read.js";
 import { InvalidUpdateError } from "../channels/base.js";
 import { MemorySaverAssertImmutable } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
-import { Channel, GraphRecursionError, Pregel } from "../pregel/index.js";
+import {
+  Channel,
+  GraphRecursionError,
+  Pregel,
+  _shouldInterrupt,
+} from "../pregel/index.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
 import { MessageGraph } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
+import { Checkpoint } from "../checkpoint/base.js";
+import { PregelExecutableTask } from "../pregel/types.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -98,6 +105,116 @@ describe("Pregel", () => {
         });
       }).toThrowError();
     });
+  });
+});
+
+describe("_shouldInterrupt", () => {
+  it("should return true if any snapshot channel has been updated since last interrupt and any channel written to is in interrupt nodes list", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: "2024-04-19T17:19:07.952Z",
+      channelValues: {
+        channel1: "channel1value",
+      },
+      channelVersions: {
+        channel1: 2, // current channel version is greater than last version seen
+      },
+      versionsSeen: {
+        __interrupt__: {
+          channel1: 1,
+        },
+      },
+    };
+
+    const interruptNodes = ["node1"];
+    const snapshotChannels = ["channel1"];
+    const tasks: Array<PregelExecutableTask> = [
+      {
+        name: "node1",
+        input: undefined,
+        proc: new RunnablePassthrough(),
+        writes: [],
+        config: undefined,
+      },
+    ];
+
+    // call method / assertions
+    expect(
+      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, tasks)
+    ).toBe(true);
+  });
+
+  it("should return false if all snapshot channels have not been updated", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: "2024-04-19T17:19:07.952Z",
+      channelValues: {
+        channel1: "channel1value",
+      },
+      channelVersions: {
+        channel1: 2, // current channel version is equal to last version seen
+      },
+      versionsSeen: {
+        __interrupt__: {
+          channel1: 2,
+        },
+      },
+    };
+
+    const interruptNodes = ["node1"];
+    const snapshotChannels = ["channel1"];
+    const tasks: Array<PregelExecutableTask> = [
+      {
+        name: "node1",
+        input: undefined,
+        proc: new RunnablePassthrough(),
+        writes: [],
+        config: undefined,
+      },
+    ];
+
+    // call method / assertions
+    expect(
+      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, tasks)
+    ).toBe(false);
+  });
+
+  it("should return false if all task nodes are not in interrupt nodes", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: "2024-04-19T17:19:07.952Z",
+      channelValues: {
+        channel1: "channel1value",
+      },
+      channelVersions: {
+        channel1: 2,
+      },
+      versionsSeen: {
+        __interrupt__: {
+          channel1: 1,
+        },
+      },
+    };
+
+    const interruptNodes = ["node1"];
+    const snapshotChannels = ["channel1"];
+    const tasks: Array<PregelExecutableTask> = [
+      {
+        name: "node2", // node2 is not in interrupt nodes
+        input: undefined,
+        proc: new RunnablePassthrough(),
+        writes: [],
+        config: undefined,
+      },
+    ];
+
+    // call method / assertions
+    expect(
+      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, tasks)
+    ).toBe(false);
   });
 });
 

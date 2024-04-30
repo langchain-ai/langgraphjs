@@ -27,9 +27,10 @@ import { PregelNode } from "./read.js";
 import { validateGraph } from "./validate.js";
 import { mapInput, mapOutput, readChannel } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
-import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
+import { CONFIG_KEY_READ, CONFIG_KEY_SEND, INTERRUPT } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { LastValue } from "../channels/last_value.js";
+import { PregelExecutableTask } from "./types.js";
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
@@ -482,6 +483,22 @@ async function executeTasks<RunOutput>(
       throw result.reason;
     }
   }
+}
+
+export function _shouldInterrupt(
+  checkpoint: Checkpoint,
+  interruptNodes: Array<string>,
+  snapshotChannels: Array<string>,
+  tasks: Array<PregelExecutableTask>
+): boolean {
+  const seen = checkpoint.versionsSeen[INTERRUPT];
+  const anySnapshotChannelUpdated = snapshotChannels.some(
+    (chan) => checkpoint.channelVersions[chan] > seen[chan]
+  );
+  const anyTaskNodeInInterruptNodes = tasks.some((task) =>
+    interruptNodes.includes(task.name)
+  );
+  return anySnapshotChannelUpdated && anyTaskNodeInInterruptNodes;
 }
 
 function _applyWrites(
