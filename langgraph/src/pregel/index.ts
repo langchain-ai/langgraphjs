@@ -595,77 +595,85 @@ export function _prepareNextTasks(
 
     // If any of the channels read by this process were updated
     if (
-      proc.triggers.some(
-        (chan) => checkpoint.channelVersions[chan] > (seen[chan] ?? 0)
-      )
+      proc.triggers
+        .filter(
+          (chan) =>
+            readChannel(channels, chan, true, true) !== EmptyChannelError
+        )
+        .some((chan) => checkpoint.channelVersions[chan] > (seen[chan] ?? 0))
     ) {
-      // If all channels subscribed by this process have been initialized
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let val: Record<string, any> = {};
-        if (Array.isArray(proc.channels)) {
-          // eslint-disable-next-line no-unreachable-loop
-          for (const chan of proc.channels) {
-            val[chan] = readChannel(channels, chan);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let val: any;
+
+      // If all trigger channels subscribed by this process are not empty
+      // then invoke the process with the values of all non-empty channels
+      if (Array.isArray(proc.channels)) {
+        let emptyChannels = 0;
+        for (const chan of proc.channels) {
+          try {
+            val = readChannel(channels, chan, false);
             break;
-          }
-        } else {
-          for (const [k, chan] of Object.entries(proc.channels)) {
-            val[k] = readChannel(channels, chan);
-          }
-        }
-
-        // Processes that subscribe to a single keyless channel get
-        // the value directly, instead of a dict
-        if (Array.isArray(proc.channels)) {
-          // eslint-disable-next-line no-unreachable-loop
-          for (const chan of proc.channels) {
-            val = val[chan];
-            break;
-          }
-        } else if (
-          Object.keys(proc.channels).length === 1 &&
-          proc.channels[Object.keys(proc.channels)[0]] === undefined
-        ) {
-          val = val[Object.keys(proc.channels)[0]];
-        }
-
-        // If the process has a mapper, apply it to the value
-        if (proc.mapper !== undefined) {
-          val = proc.mapper(val);
-        }
-
-        if (forExecution) {
-          // Update seen versions
-          proc.triggers.forEach((chan: string) => {
-            const version = checkpoint.channelVersions[chan];
-            if (version !== undefined) {
-              // side effect: updates checkpoint
-              seen[chan] = version;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } catch (e: any) {
+            if (e.name === EmptyChannelError.name) {
+              emptyChannels += 1;
+              continue;
+            } else {
+              throw e;
             }
-          });
-
-          tasks.push({
-            name,
-            input: val,
-            proc,
-            writes: [],
-            config: undefined,
-          });
-        } else {
-          taskDescriptions.push({
-            name,
-            input: val,
-          });
+          }
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (error: any) {
-        if (error.name === EmptyChannelError.name) {
+        if (emptyChannels === proc.channels.length) {
           continue;
-        } else {
-          throw error;
         }
+      } else if (typeof proc.channels === "object") {
+        val = {};
+        try {
+          for (const [k, chan] of Object.entries(proc.channels)) {
+            val[k] = readChannel(channels, chan, !proc.triggers.includes(chan));
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } catch (e: any) {
+          if (e.name === EmptyChannelError.name) {
+            continue;
+          } else {
+            throw e;
+          }
+        }
+      } else {
+        throw new Error(
+          `Invalid channels type, expected list or dict, got ${proc.channels}`
+        );
+      }
+
+      // If the process has a mapper, apply it to the value
+      if (proc.mapper !== undefined) {
+        val = proc.mapper(val);
+      }
+
+      if (forExecution) {
+        // Update seen versions
+        proc.triggers.forEach((chan: string) => {
+          const version = checkpoint.channelVersions[chan];
+          if (version !== undefined) {
+            // side effect: updates checkpoint
+            seen[chan] = version;
+          }
+        });
+
+        tasks.push({
+          name,
+          input: val,
+          proc,
+          writes: [],
+          config: undefined,
+        });
+      } else {
+        taskDescriptions.push({
+          name,
+          input: val,
+        });
       }
     }
   }
