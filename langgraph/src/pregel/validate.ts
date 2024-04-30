@@ -1,6 +1,6 @@
 import { BaseChannel } from "../channels/index.js";
 import { LastValue } from "../channels/last_value.js";
-import { ChannelInvoke } from "./read.js";
+import { PregelNode } from "./read.js";
 import { ReservedChannelsMap } from "./reserved.js";
 
 export function validateGraph({
@@ -11,7 +11,7 @@ export function validateGraph({
   hidden,
   interrupt,
 }: {
-  nodes: Record<string, ChannelInvoke>;
+  nodes: Record<string, PregelNode>;
   channels: { [key: string]: BaseChannel };
   input: string | Array<string>;
   output: string | Array<string>;
@@ -21,7 +21,7 @@ export function validateGraph({
   const newChannels = channels;
   const subscribedChannels = new Set<string>();
   for (const node of Object.values(nodes)) {
-    if (node.lc_graph_name === "ChannelInvoke" && "channels" in node) {
+    if (node.lc_graph_name === "PregelNode" && "channels" in node) {
       if (typeof node.channels === "string") {
         subscribedChannels.add(node.channels);
       } else {

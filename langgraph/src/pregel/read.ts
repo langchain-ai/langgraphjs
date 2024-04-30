@@ -10,6 +10,7 @@ import {
 } from "@langchain/core/runnables";
 import { ConfigurableFieldSpec } from "../checkpoint/index.js";
 import { CONFIG_KEY_READ } from "../constants.js";
+import { ChannelWrite } from "./write.js";
 
 export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -21,7 +22,18 @@ export class ChannelRead<
 
   channel: string | Array<string>;
 
-  constructor(channel: string | Array<string>) {
+  fresh: boolean = false;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mapper?: (args: any) => any;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(
+    channel: string | Array<string>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mapper?: (args: any) => any,
+    fresh: boolean = false
+  ) {
     super({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       func: (input: RunInput, options?: any) => {
@@ -31,8 +43,12 @@ export class ChannelRead<
         return this._read(input, options ?? {});
       },
     });
+    this.fresh = fresh;
+    this.mapper = mapper;
     this.channel = channel;
-    this.name = `ChannelRead<${channel}>`;
+    this.name = Array.isArray(channel)
+      ? `ChannelRead<${channel.join(",")}>`
+      : `ChannelRead<${channel}>`;
   }
 
   get configSpecs(): ConfigurableFieldSpec[] {
@@ -44,7 +60,7 @@ export class ChannelRead<
         default: null,
         // TODO FIX THIS
         annotation: "Callable[[BaseChannel], Any]",
-        isShared: true,
+        isShared: false,
         dependencies: null,
       },
     ];
@@ -53,7 +69,8 @@ export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _read(_: any, config: RunnableConfig) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const read: (arg: string) => any = config.configurable?.[CONFIG_KEY_READ];
+    const read: (arg: string, fresh: boolean) => any =
+      config.configurable?.[CONFIG_KEY_READ];
     if (!read) {
       throw new Error(
         `Runnable ${this} is not configured with a read function. Make sure to call in the context of a Pregel process`
@@ -61,47 +78,63 @@ export class ChannelRead<
     }
     if (Array.isArray(this.channel)) {
       const results = Object.fromEntries(
-        this.channel.map((chan) => [chan, read(chan)])
+        this.channel.map((chan) => [chan, read(chan, this.fresh)])
       );
       return results;
     }
-    return read(this.channel);
+    if (this.mapper) {
+      return this.mapper(read(this.channel, this.fresh));
+    } else {
+      return read(this.channel, this.fresh);
+    }
   }
 }
 
-const defaultRunnableBound = /* #__PURE__ */ new RunnablePassthrough();
+const defaultRunnableBound =
+  /* #__PURE__ */ new RunnablePassthrough<PregelNodeInputType>();
 
-interface ChannelInvokeArgs<RunInput, RunOutput>
+interface PregelNodeArgs<RunInput, RunOutput>
   extends Partial<RunnableBindingArgs<RunInput, RunOutput>> {
   channels: Record<string, string> | string;
   triggers: Array<string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  when?: (args: any) => boolean;
-  config?: RunnableConfig;
+  mapper?: (args: any) => any;
+  writers?: Runnable<RunOutput, RunOutput>[];
   tags?: string[];
+  bound?: Runnable<RunInput, RunOutput>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  kwargs?: Record<string, any>;
+  config?: RunnableConfig;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ChannelInvokeInputType = any;
+export type PregelNodeInputType = any;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ChannelInvokeOutputType = any;
+export type PregelNodeOutputType = any;
 
-export class ChannelInvoke<
-  RunInput = ChannelInvokeInputType,
-  RunOutput = ChannelInvokeOutputType
+export class PregelNode<
+  RunInput = PregelNodeInputType,
+  RunOutput = PregelNodeOutputType
 > extends RunnableBinding<RunInput, RunOutput, RunnableConfig> {
-  lc_graph_name = "ChannelInvoke";
+  lc_graph_name = "PregelNode";
 
   channels: Record<string, string> | string;
 
   triggers: string[] = [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  when?: (args: any) => boolean;
+  mapper?: (args: any) => any;
 
-  constructor(fields: ChannelInvokeArgs<RunInput, RunOutput>) {
-    const { channels, triggers, when } = fields;
+  writers: Runnable[] = [];
+
+  bound: Runnable<RunInput, RunOutput> = defaultRunnableBound;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  kwargs: Record<string, any> = {};
+
+  constructor(fields: PregelNodeArgs<RunInput, RunOutput>) {
+    const { channels, triggers, mapper, writers, bound, kwargs } = fields;
     const mergedTags = [
       ...(fields.config?.tags ? fields.config.tags : []),
       ...(fields.tags ? fields.tags : []),
@@ -120,21 +153,28 @@ export class ChannelInvoke<
 
     this.channels = channels;
     this.triggers = triggers;
-    this.when = when;
+    this.mapper = mapper;
+    this.writers = writers ?? this.writers;
+    this.bound = bound ?? this.bound;
+    this.kwargs = kwargs ?? this.kwargs;
   }
 
-  join(channels: Array<string>): ChannelInvoke<RunInput, RunOutput> {
+  join(channels: Array<string>): PregelNode<RunInput, RunOutput> {
+    if (!Array.isArray(channels)) {
+      throw new Error("channels must be a list");
+    }
     if (typeof this.channels !== "object") {
       throw new Error("all channels must be named when using .join()");
     }
 
-    return new ChannelInvoke<RunInput, RunOutput>({
+    return new PregelNode<RunInput, RunOutput>({
       channels: {
         ...this.channels,
         ...Object.fromEntries(channels.map((chan) => [chan, chan])),
       },
       triggers: this.triggers,
-      when: this.when,
+      mapper: this.mapper,
+      writers: this.writers,
       bound: this.bound,
       kwargs: this.kwargs,
       config: this.config,
@@ -143,21 +183,33 @@ export class ChannelInvoke<
 
   pipe<NewRunOutput>(
     coerceable: RunnableLike
-  ): ChannelInvoke<RunInput, Exclude<NewRunOutput, Error>> {
-    if (this.bound === defaultRunnableBound) {
-      return new ChannelInvoke<RunInput, Exclude<NewRunOutput, Error>>({
+  ): PregelNode<RunInput, Exclude<NewRunOutput, Error>> {
+    if (ChannelWrite.isWriter(coerceable)) {
+      return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
         channels: this.channels,
         triggers: this.triggers,
-        when: this.when,
+        mapper: this.mapper,
+        writers: [...this.writers, coerceable as ChannelWrite],
+        bound: this.bound.pipe(coerceable),
+        config: this.config,
+        kwargs: this.kwargs,
+      });
+    } else if (this.bound === defaultRunnableBound) {
+      return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
+        channels: this.channels,
+        triggers: this.triggers,
+        mapper: this.mapper,
+        writers: this.writers,
         bound: _coerceToRunnable<RunInput, NewRunOutput>(coerceable),
         config: this.config,
         kwargs: this.kwargs,
       });
     } else {
-      return new ChannelInvoke<RunInput, Exclude<NewRunOutput, Error>>({
+      return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
         channels: this.channels,
         triggers: this.triggers,
-        when: this.when,
+        mapper: this.mapper,
+        writers: this.writers,
         bound: this.bound.pipe(coerceable),
         config: this.config,
         kwargs: this.kwargs,

@@ -3,13 +3,14 @@ import { BaseChannel } from "../channels/base.js";
 import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { END, Graph } from "./graph.js";
 import { LastValue } from "../channels/last_value.js";
-import { ChannelWrite, SKIP_WRITE } from "../pregel/write.js";
+import { ChannelWrite, PASSTHROUGH, SKIP_WRITE } from "../pregel/write.js";
 import { BaseCheckpointSaver } from "../checkpoint/base.js";
 import { Pregel, Channel } from "../pregel/index.js";
-import { ChannelInvoke, ChannelRead } from "../pregel/read.js";
+import { PregelNode, ChannelRead } from "../pregel/read.js";
 import { NamedBarrierValue } from "../channels/named_barrier_value.js";
 import { AnyValue } from "../channels/any_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
+import { RunnableCallable } from "../utils.js";
 
 export const START = "__start__";
 
@@ -136,12 +137,15 @@ export class StateGraph<
     const updateChannels = Array.isArray(stateKeysRead)
       ? stateKeysRead.map((key) => ({
           channel: key,
-          value: new RunnableLambda({
-            func: (input) => getInputKey(key, input),
-          }),
+          value: PASSTHROUGH,
           skipNone: false,
+          mapper: new RunnableCallable({
+            func: (input) => getInputKey(key, input),
+            trace: false,
+            recurse: false,
+          }),
         }))
-      : [{ channel: "__root__", value: null, skipNone: true }];
+      : [{ channel: "__root__", value: PASSTHROUGH, skipNone: true }];
 
     const waitingEdges: Set<[string, string[], string]> = new Set();
     this.waitingEdges.forEach(([starts, end]) => {
@@ -170,7 +174,7 @@ export class StateGraph<
       }
     }
 
-    const nodes: Record<string, ChannelInvoke> = {};
+    const nodes: Record<string, PregelNode> = {};
 
     for (const [key, node] of Object.entries(this.nodes)) {
       const triggers = [
@@ -179,14 +183,14 @@ export class StateGraph<
           .filter(([, , end]) => end === key)
           .map(([chan]) => chan),
       ];
-      nodes[key] = new ChannelInvoke({
+      nodes[key] = new PregelNode({
         triggers,
         channels: stateChannels,
       })
         .pipe(node)
         .pipe(
           new ChannelWrite([
-            { channel: key, value: null, skipNone: false },
+            { channel: key, value: PASSTHROUGH, skipNone: false },
             ...updateChannels,
           ])
         );
@@ -203,7 +207,7 @@ export class StateGraph<
       const outgoing = outgoingEdges[key];
       const edgesKey = `${key}:edges`;
       if (outgoing || this.branches[key]) {
-        nodes[edgesKey] = new ChannelInvoke({
+        nodes[edgesKey] = new PregelNode({
           triggers: [key],
           tags: ["langsmith:hidden"],
           channels: stateChannels,
@@ -214,7 +218,7 @@ export class StateGraph<
           new ChannelWrite(
             outgoing.map((dest) => ({
               channel: dest,
-              value: dest === END ? null : key,
+              value: dest === END ? PASSTHROUGH : key,
               skipNone: false,
             }))
           )
@@ -235,12 +239,12 @@ export class StateGraph<
       tags: ["langsmith:hidden"],
     }).pipe(
       new ChannelWrite([
-        { channel: START, value: null, skipNone: false },
+        { channel: START, value: PASSTHROUGH, skipNone: false },
         ...updateChannels,
       ])
     );
 
-    nodes[`${START}:edges`] = new ChannelInvoke({
+    nodes[`${START}:edges`] = new PregelNode({
       triggers: [START],
       tags: ["langsmith:hidden"],
       channels: stateChannels,

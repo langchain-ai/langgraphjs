@@ -1,5 +1,5 @@
-import { Runnable } from "@langchain/core/runnables";
 import { BaseChannel, EmptyChannelError } from "../channels/base.js";
+import { PregelExecutableTask } from "./types.js";
 
 type ConsoleColors = {
   start: string;
@@ -25,17 +25,16 @@ const wrap = (color: ConsoleColors, text: string): string =>
 
 export function printStepStart(
   step: number,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  nextTasks: Array<[Runnable, any, string]>
+  nextTasks: Array<PregelExecutableTask>
 ): void {
   const nTasks = nextTasks.length;
   console.log(
-    `${wrap(COLORS_MAP.blue, "[pregel/step]")}`,
+    `${wrap(COLORS_MAP.blue, "[langgraph/step]")}`,
     `Starting step ${step} with ${nTasks} task${
       nTasks === 1 ? "" : "s"
     }. Next tasks:\n`,
     `\n${nextTasks
-      .map(([_, val, name]) => `- ${name}(${JSON.stringify(val, null, 2)})`)
+      .map((task) => `${task.name}(${JSON.stringify(task.input, null, 2)})`)
       .join("\n")}`
   );
 }
@@ -45,7 +44,7 @@ export function printCheckpoint<Value>(
   channels: Record<string, BaseChannel<Value>>
 ) {
   console.log(
-    `${wrap(COLORS_MAP.blue, "[pregel/checkpoint]")}`,
+    `${wrap(COLORS_MAP.blue, "[langgraph/checkpoint]")}`,
     `Finishing step ${step}. Channel values:\n`,
     `\n${JSON.stringify(
       Object.fromEntries(_readChannels<Value>(channels)),

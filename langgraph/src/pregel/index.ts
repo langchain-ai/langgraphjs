@@ -23,11 +23,11 @@ import {
   CheckpointAt,
   emptyCheckpoint,
 } from "../checkpoint/base.js";
-import { ChannelInvoke } from "./read.js";
+import { PregelNode } from "./read.js";
 import { validateGraph } from "./validate.js";
 import { ReservedChannelsMap } from "./reserved.js";
-import { mapInput, mapOutput } from "./io.js";
-import { ChannelWrite, ChannelWriteEntry } from "./write.js";
+import { mapInput, mapOutput, readChannel } from "./io.js";
+import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 
@@ -58,32 +58,26 @@ export class Channel {
     channels: string,
     options?: {
       key?: string;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      when?: (arg: any) => boolean;
       tags?: string[];
     }
   ): // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ChannelInvoke;
+  PregelNode;
 
   static subscribeTo(
     channels: string[],
     options?: {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      when?: (arg: any) => boolean;
       tags?: string[];
     }
-  ): ChannelInvoke;
+  ): PregelNode;
 
   static subscribeTo(
     channels: string | string[],
     options?: {
       key?: string;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      when?: (arg: any) => boolean;
       tags?: string[];
     }
-  ): ChannelInvoke {
-    const { key, when, tags } = options ?? {};
+  ): PregelNode {
+    const { key, tags } = options ?? {};
     if (Array.isArray(channels) && key !== undefined) {
       throw new Error(
         "Can't specify a key when subscribing to multiple channels"
@@ -106,10 +100,9 @@ export class Channel {
 
     const triggers: string[] = Array.isArray(channels) ? channels : [channels];
 
-    return new ChannelInvoke({
+    return new PregelNode({
       channels: channelMappingOrString,
       triggers,
-      when,
       tags,
     });
   }
@@ -124,20 +117,22 @@ export class Channel {
       Object.entries(additionalArgs).forEach(([key, value]) => {
         channelPairs.push({
           channel: key,
-          value: _coerceWriteValue(value),
-          skipNone: false,
+          value: PASSTHROUGH,
+          skipNone: true,
+          mapper: _coerceWriteValue(value),
         });
       });
     } else {
       args.forEach((channel) => {
         if (typeof channel === "string") {
-          channelPairs.push({ channel, value: undefined, skipNone: false });
+          channelPairs.push({ channel, value: PASSTHROUGH, skipNone: false });
         } else if (typeof channel === "object") {
           Object.entries(channel).forEach(([key, value]) => {
             channelPairs.push({
               channel: key,
-              value: _coerceWriteValue(value),
-              skipNone: false,
+              value: PASSTHROUGH,
+              skipNone: true,
+              mapper: _coerceWriteValue(value),
             });
           });
         }
@@ -174,7 +169,7 @@ export interface PregelInterface {
    */
   interrupt?: string[];
 
-  nodes: Record<string, ChannelInvoke>;
+  nodes: Record<string, PregelNode>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   checkpointer?: BaseCheckpointSaver<any>;
@@ -213,7 +208,7 @@ export class Pregel
 
   debug: boolean = false;
 
-  nodes: Record<string, ChannelInvoke>;
+  nodes: Record<string, PregelNode>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   checkpointer?: BaseCheckpointSaver<any>;
@@ -293,7 +288,7 @@ export class Pregel
 
     _applyWrites(checkpoint, channels, inputPendingWrites, config, 0);
 
-    const read = (chan: string) => _readChannel(channels, chan);
+    const read = (chan: string) => readChannel(channels, chan);
 
     // Similarly to Bulk Synchronous Parallel / Pregel model
     // computation proceeds in steps, while there are channel updates
@@ -458,21 +453,6 @@ async function executeTasks<RunOutput>(
   }
 }
 
-function _readChannel(
-  channels: Record<string, BaseChannel>,
-  chan: string
-): unknown | null {
-  try {
-    return channels[chan].get();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (e: any) {
-    if (e.name === EmptyChannelError.name) {
-      return null;
-    }
-    throw e;
-  }
-}
-
 function _applyWrites(
   checkpoint: Checkpoint,
   channels: Record<string, BaseChannel>,
@@ -536,7 +516,7 @@ function _applyWritesFromView(
   values: Record<string, unknown>
 ) {
   for (const [chan, val] of Object.entries(values)) {
-    if (val === _readChannel(channels, chan)) {
+    if (val === readChannel(channels, chan)) {
       continue;
     }
 
@@ -550,14 +530,14 @@ function _applyWritesFromView(
 
 function _prepareNextTasks(
   checkpoint: Checkpoint,
-  processes: Record<string, ChannelInvoke>,
+  processes: Record<string, PregelNode>,
   channels: Record<string, BaseChannel>
 ): Array<[RunnableInterface, unknown, string]> {
   const tasks: Array<[RunnableInterface, unknown, string]> = [];
 
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
-  for (const [name, proc] of Object.entries<ChannelInvoke>(processes)) {
+  for (const [name, proc] of Object.entries<PregelNode>(processes)) {
     let seen: Record<string, number> = checkpoint.versionsSeen[name];
     if (!seen) {
       checkpoint.versionsSeen[name] = {};
@@ -575,10 +555,10 @@ function _prepareNextTasks(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let val: Record<string, any> = {};
         if (typeof proc.channels === "string") {
-          val[proc.channels] = _readChannel(channels, proc.channels);
+          val[proc.channels] = readChannel(channels, proc.channels);
         } else {
           for (const [k, chan] of Object.entries(proc.channels)) {
-            val[k] = _readChannel(channels, chan);
+            val[k] = readChannel(channels, chan);
           }
         }
 
@@ -601,10 +581,8 @@ function _prepareNextTasks(
           }
         });
 
-        // skip if condition is not met
-        if (proc.when === undefined || proc.when(val)) {
-          tasks.push([proc, val, name]);
-        }
+        tasks.push([proc, val, name]);
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {
         if (error.name === EmptyChannelError.name) {

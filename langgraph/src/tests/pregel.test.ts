@@ -21,7 +21,7 @@ import { LastValue } from "../channels/last_value.js";
 import { END, Graph, StateGraph } from "../graph/index.js";
 import { ReservedChannelsMap } from "../pregel/reserved.js";
 import { Topic } from "../channels/topic.js";
-import { ChannelInvoke } from "../pregel/read.js";
+import { PregelNode } from "../pregel/read.js";
 import { InvalidUpdateError } from "../channels/base.js";
 import { MemorySaverAssertImmutable } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
@@ -293,7 +293,7 @@ it("should batch many processes with input and output", async () => {
   const testSize = 100;
   const addOne = jest.fn((x: number) => x + 1);
 
-  const nodes: Record<string, ChannelInvoke> = {
+  const nodes: Record<string, PregelNode> = {
     "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1")),
   };
 
@@ -875,6 +875,78 @@ describe("StateGraph", () => {
           ],
         ],
       },
+    });
+  });
+
+  it("can invoke a nested graph", async () => {
+    // set up inner graph
+    type InnerState = {
+      myKey: string;
+      myOtherKey: string;
+    };
+
+    const innerGraph = new StateGraph<InnerState>({
+      channels: {
+        myKey: {
+          value: null,
+          default: () => "hello",
+        },
+        myOtherKey: {
+          value: null,
+          default: () => "world",
+        },
+      },
+    });
+
+    innerGraph.addNode("up", (state: InnerState) => ({
+      myKey: `${state.myKey} there`,
+      myOtherKey: state.myOtherKey,
+    }));
+    innerGraph.setEntryPoint("up");
+    innerGraph.setFinishPoint("up");
+
+    // set up top level graph
+    type State = {
+      myKey: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      neverCalled: any;
+    };
+
+    const graph = new StateGraph<State>({
+      channels: {
+        myKey: {
+          value: null,
+        },
+        neverCalled: {
+          value: null,
+        },
+      },
+    });
+
+    graph.addNode("inner", innerGraph.compile());
+    graph.addNode("side", (state: State) => ({
+      myKey: `${state.myKey} and back again`,
+    }));
+    graph.addEdge("inner", "side");
+    graph.setEntryPoint("inner");
+    graph.setFinishPoint("side");
+
+    const app = graph.compile();
+
+    // call method / assertions
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const neverCalled = jest.fn((_: any) => {
+      throw new Error("This should never be called");
+    });
+
+    const result = await app.invoke({
+      myKey: "my value",
+      neverCalled: new RunnableLambda({ func: neverCalled }),
+    });
+
+    expect(result).toEqual({
+      myKey: "my value there and back again",
+      neverCalled: new RunnableLambda({ func: neverCalled }),
     });
   });
 });
