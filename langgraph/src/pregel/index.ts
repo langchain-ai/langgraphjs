@@ -30,6 +30,7 @@ import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { LastValue } from "../channels/last_value.js";
+import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
@@ -258,16 +259,31 @@ export class Pregel
     // Bind the method to the instance
     this._transform = this._transform.bind(this);
 
+    this.validate();
+  }
+
+  validate(): Pregel {
     validateGraph({
       nodes: this.nodes,
       channels: this.channels,
       outputChannels: this.outputChannels,
       inputChannels: this.inputChannels,
-      streamChannels: undefined,
-      interruptAfterNodes: [],
-      interruptBeforeNodes: [],
-      defaultChannelFactory: () => new LastValue(),
+      streamChannels: this.streamChannels,
+      interruptAfterNodes: this.interruptAfterNodes,
+      interruptBeforeNodes: this.interruptBeforeNodes,
+      defaultChannelFactory: this.defaultChannelFactory,
     });
+
+    if (
+      this.interruptAfterNodes.length > 0 ||
+      this.interruptBeforeNodes.length > 0
+    ) {
+      if (this.checkpointer === undefined) {
+        throw new Error("Interrupts require a checkpointer");
+      }
+    }
+
+    return this;
   }
 
   async *_transform(

@@ -81,6 +81,25 @@ describe("Channel", () => {
   });
 });
 
+describe("Pregel", () => {
+  describe("constructor", () => {
+    it("should throw an error if interrupts are provided but no checkpointer is provided", () => {
+      // call method / assertions
+      expect(() => {
+        const chain = Channel.subscribeTo("input").pipe(
+          Channel.writeTo(["output"])
+        );
+
+        new Pregel({
+          nodes: { one: chain },
+          interruptAfterNodes: ["one"],
+          checkpointer: undefined,
+        });
+      }).toThrowError();
+    });
+  });
+});
+
 it("can invoke pregel with a single process", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
   const chain = Channel.subscribeTo("input")
