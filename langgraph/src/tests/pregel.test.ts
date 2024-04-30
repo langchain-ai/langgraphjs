@@ -90,6 +90,7 @@ describe("Pregel", () => {
           Channel.writeTo(["output"])
         );
 
+        // eslint-disable-next-line no-new
         new Pregel({
           nodes: { one: chain },
           interruptAfterNodes: ["one"],

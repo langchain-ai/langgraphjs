@@ -30,7 +30,6 @@ import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { LastValue } from "../channels/last_value.js";
-import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
