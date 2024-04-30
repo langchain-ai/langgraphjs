@@ -31,7 +31,7 @@ import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND, INTERRUPT } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { LastValue } from "../channels/last_value.js";
-import { PregelExecutableTask } from "./types.js";
+import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
@@ -337,7 +337,13 @@ export class Pregel
     // with channel updates applied only at the transition between steps
     const recursionLimit = config.recursionLimit ?? DEFAULT_RECURSION_LIMIT;
     for (let step = 0; step < recursionLimit + 1; step += 1) {
-      const nextTasks = _prepareNextTasks(checkpoint, processes, channels);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const [_, nextTasks] = _prepareNextTasks(
+        checkpoint,
+        processes,
+        channels,
+        true
+      );
       // if no more tasks, we're done
       if (nextTasks.length === 0) {
         break;
@@ -352,12 +358,12 @@ export class Pregel
 
       const tasksWithConfig: Array<
         [RunnableInterface, unknown, RunnableConfig]
-      > = nextTasks.map(([proc, input, name]) => [
-        proc,
-        input,
+      > = nextTasks.map((task) => [
+        task.proc,
+        task.input,
         patchConfig(config, {
           callbacks: runManager?.getChild(`graph:step:${step}`),
-          runName: name,
+          runName: task.name,
           configurable: {
             ...config.configurable,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -555,17 +561,33 @@ export function _applyWrites(
   }
 }
 
-function _prepareNextTasks(
+export function _prepareNextTasks(
   checkpoint: Checkpoint,
   processes: Record<string, PregelNode>,
-  channels: Record<string, BaseChannel>
-): Array<[RunnableInterface, unknown, string]> {
-  const tasks: Array<[RunnableInterface, unknown, string]> = [];
+  channels: Record<string, BaseChannel>,
+  forExecution: false
+): [Checkpoint, Array<PregelTaskDescription>];
+
+export function _prepareNextTasks(
+  checkpoint: Checkpoint,
+  processes: Record<string, PregelNode>,
+  channels: Record<string, BaseChannel>,
+  forExecution: true
+): [Checkpoint, Array<PregelExecutableTask>];
+
+export function _prepareNextTasks(
+  checkpoint: Checkpoint,
+  processes: Record<string, PregelNode>,
+  channels: Record<string, BaseChannel>,
+  forExecution: boolean
+): [Checkpoint, Array<PregelTaskDescription> | Array<PregelExecutableTask>] {
+  const tasks: Array<PregelExecutableTask> = [];
+  const taskDescriptions: Array<PregelTaskDescription> = [];
 
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
   for (const [name, proc] of Object.entries<PregelNode>(processes)) {
-    let seen: Record<string, number> = checkpoint.versionsSeen[name];
+    let seen = checkpoint.versionsSeen[name];
     if (!seen) {
       checkpoint.versionsSeen[name] = {};
       seen = checkpoint.versionsSeen[name];
@@ -608,15 +630,34 @@ function _prepareNextTasks(
           val = val[Object.keys(proc.channels)[0]];
         }
 
-        // Update seen versions
-        proc.triggers.forEach((chan: string) => {
-          const version = checkpoint.channelVersions[chan];
-          if (version !== undefined) {
-            seen[chan] = version;
-          }
-        });
+        // If the process has a mapper, apply it to the value
+        if (proc.mapper !== undefined) {
+          val = proc.mapper(val);
+        }
 
-        tasks.push([proc, val, name]);
+        if (forExecution) {
+          // Update seen versions
+          proc.triggers.forEach((chan: string) => {
+            const version = checkpoint.channelVersions[chan];
+            if (version !== undefined) {
+              // side effect: updates checkpoint
+              seen[chan] = version;
+            }
+          });
+
+          tasks.push({
+            name,
+            input: val,
+            proc,
+            writes: [],
+            config: undefined,
+          });
+        } else {
+          taskDescriptions.push({
+            name,
+            input: val,
+          });
+        }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {
@@ -629,5 +670,5 @@ function _prepareNextTasks(
     }
   }
 
-  return tasks;
+  return [checkpoint, forExecution ? tasks : taskDescriptions];
 }

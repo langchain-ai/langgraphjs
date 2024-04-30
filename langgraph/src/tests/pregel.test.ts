@@ -29,6 +29,7 @@ import {
   GraphRecursionError,
   Pregel,
   _applyWrites,
+  _prepareNextTasks,
   _shouldInterrupt,
 } from "../pregel/index.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
@@ -300,6 +301,70 @@ describe("_applyWrites", () => {
     expect(() => {
       _applyWrites(checkpoint, channels, pendingWrites); // contains side effects
     }).toThrow(InvalidUpdateError);
+  });
+});
+
+describe("_prepareNextTasks", () => {
+  it("should return an array of PregelTaskDescriptions", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: "2024-04-19T17:19:07.952Z",
+      channelValues: {
+        channel1: 1,
+        channel2: 2,
+      },
+      channelVersions: {
+        channel1: 2,
+        channel2: 5,
+      },
+      versionsSeen: {
+        node1: {
+          channel1: 1,
+        },
+        node2: {
+          channel2: 5,
+        },
+      },
+    };
+
+    const processes: Record<string, PregelNode> = {
+      node1: new PregelNode({
+        channels: ["channel1"],
+        triggers: ["channel1"],
+      }),
+      node2: new PregelNode({
+        channels: ["channel2"],
+        triggers: ["channel1", "channel2"],
+        mapper: () => 100, // return 100 no matter what
+      }),
+    };
+
+    const channel1 = new LastValue<number>();
+    channel1.update([1]);
+    const channel2 = new LastValue<number>();
+    channel2.update([2]);
+
+    const channels = {
+      channel1,
+      channel2,
+    };
+
+    // call method / assertions
+    const [newCheckpoint, taskDescriptions] = _prepareNextTasks(
+      checkpoint,
+      processes,
+      channels,
+      false
+    );
+
+    expect(taskDescriptions.length).toBe(2);
+    expect(taskDescriptions[0]).toEqual({ name: "node1", input: 1 });
+    expect(taskDescriptions[1]).toEqual({ name: "node2", input: 100 });
+
+    // the returned checkpoint is a copy of the passed checkpoint without versionsSeen updated
+    expect(newCheckpoint.versionsSeen.node1.channel1).toBe(1);
+    expect(newCheckpoint.versionsSeen.node2.channel2).toBe(5);
   });
 });
 
