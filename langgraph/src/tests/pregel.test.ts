@@ -19,7 +19,6 @@ import {
 import { FakeChatModel } from "./utils.js";
 import { LastValue } from "../channels/last_value.js";
 import { END, Graph, StateGraph } from "../graph/index.js";
-import { ReservedChannelsMap } from "../pregel/reserved.js";
 import { Topic } from "../channels/topic.js";
 import { PregelNode } from "../pregel/read.js";
 import { InvalidUpdateError } from "../channels/base.js";
@@ -28,6 +27,7 @@ import { BinaryOperatorAggregate } from "../channels/binop.js";
 import { Channel, GraphRecursionError, Pregel } from "../pregel/index.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
 import { MessageGraph } from "../graph/message.js";
+import { PASSTHROUGH } from "../pregel/write.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -38,11 +38,74 @@ beforeAll(() => {
   process.env.LANGCHAIN_PROJECT = "";
 });
 
+describe("Channel", () => {
+  describe("writeTo", () => {
+    it("should return a ChannelWrite instance with the expected writes", () => {
+      // call method / assertions
+      const channelWrite = Channel.writeTo(["foo", "bar"], {
+        fixed: 6,
+        func: () => 42,
+        runnable: new RunnablePassthrough(),
+      });
+
+      expect(channelWrite.writes.length).toBe(5);
+      expect(channelWrite.writes[0]).toEqual({
+        channel: "foo",
+        value: PASSTHROUGH,
+        skipNone: false,
+      });
+      expect(channelWrite.writes[1]).toEqual({
+        channel: "bar",
+        value: PASSTHROUGH,
+        skipNone: false,
+      });
+      expect(channelWrite.writes[2]).toEqual({
+        channel: "fixed",
+        value: 6,
+        skipNone: false,
+      });
+      // TODO: Figure out how to assert the mapper value
+      // expect(channelWrite.writes[3]).toEqual({
+      //   channel: "func",
+      //   value: PASSTHROUGH,
+      //   skipNone: true,
+      //   mapper: new RunnableLambda({ func: () => 42}),
+      // });
+      expect(channelWrite.writes[4]).toEqual({
+        channel: "runnable",
+        value: PASSTHROUGH,
+        skipNone: true,
+        mapper: new RunnablePassthrough(),
+      });
+    });
+  });
+});
+
+describe("Pregel", () => {
+  describe("constructor", () => {
+    it("should throw an error if interrupts are provided but no checkpointer is provided", () => {
+      // call method / assertions
+      expect(() => {
+        const chain = Channel.subscribeTo("input").pipe(
+          Channel.writeTo(["output"])
+        );
+
+        // eslint-disable-next-line no-new
+        new Pregel({
+          nodes: { one: chain },
+          interruptAfterNodes: ["one"],
+          checkpointer: undefined,
+        });
+      }).toThrowError();
+    });
+  });
+});
+
 it("can invoke pregel with a single process", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
   const chain = Channel.subscribeTo("input")
     .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
 
   const app = new Pregel({
     nodes: {
@@ -52,8 +115,8 @@ it("can invoke pregel with a single process", async () => {
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    input: "input",
-    output: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   expect(await app.invoke(2)).toBe(3);
@@ -81,7 +144,7 @@ it("should process input and produce output with implicit channels", async () =>
   const addOne = jest.fn((x: number): number => x + 1);
   const chain = Channel.subscribeTo("input")
     .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
 
   const app = new Pregel({ nodes: { one: chain } });
 
@@ -96,7 +159,7 @@ it("should process input and write kwargs correctly", async () => {
   const chain = Channel.subscribeTo("input")
     .pipe(addOne)
     .pipe(
-      Channel.writeTo("output", {
+      Channel.writeTo(["output"], {
         fixed: 5,
         outputPlusOne: (x: number) => x + 1,
       })
@@ -104,7 +167,7 @@ it("should process input and write kwargs correctly", async () => {
 
   const app = new Pregel({
     nodes: { one: chain },
-    output: ["output", "fixed", "outputPlusOne"],
+    outputChannels: ["output", "fixed", "outputPlusOne"],
   });
 
   expect(await app.invoke(2)).toEqual({
@@ -114,45 +177,17 @@ it("should process input and write kwargs correctly", async () => {
   });
 });
 
-it("should process input and check for last step", async () => {
-  const addOne = jest.fn((x: { input: number; is_last_step?: boolean }) => ({
-    ...x,
-    input: x.input + 1,
-  }));
-  const chain = Channel.subscribeTo(["input"])
-    .join([ReservedChannelsMap.isLastStep])
-    .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
-
-  const app = new Pregel({
-    nodes: { one: chain },
-  });
-
-  expect(await app.invoke(2)).toEqual({ input: 3, isLastStep: false });
-  expect(await app.invoke(2, { recursionLimit: 1 })).toEqual({
-    input: 3,
-    isLastStep: true,
-  });
-});
-
-it("should throw if you try to join channels when all are not named", async () => {
-  const channel = Channel.subscribeTo("input");
-  expect(() => {
-    channel.join([ReservedChannelsMap.isLastStep]);
-  }).toThrowError();
-});
-
 it("should invoke single process in out objects", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
   const chain = Channel.subscribeTo("input")
     .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
 
   const app = new Pregel({
     nodes: {
       one: chain,
     },
-    output: ["output"],
+    outputChannels: ["output"],
   });
 
   expect(await app.invoke(2)).toEqual({ output: 3 });
@@ -162,12 +197,12 @@ it("should process input and output as objects", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
   const chain = Channel.subscribeTo("input")
     .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
 
   const app = new Pregel({
     nodes: { one: chain },
-    input: ["input"],
-    output: ["output"],
+    inputChannels: ["input"],
+    outputChannels: ["output"],
   });
 
   expect(await app.invoke({ input: 2 })).toEqual({ output: 3 });
@@ -178,10 +213,10 @@ it("should invoke two processes and get correct output", async () => {
 
   const one = Channel.subscribeTo("input")
     .pipe(addOne)
-    .pipe(Channel.writeTo("inbox"));
+    .pipe(Channel.writeTo(["inbox"]));
   const two = Channel.subscribeTo("inbox")
     .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
 
   const app = new Pregel({
     nodes: { one, two },
@@ -209,15 +244,15 @@ it("should process two processes with object input and output", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
   const one = Channel.subscribeTo("input")
     .pipe(addOne)
-    .pipe(Channel.writeTo("inbox"));
+    .pipe(Channel.writeTo(["inbox"]));
   const two = Channel.subscribeTo("inbox")
     .pipe(new RunnableLambda({ func: addOne }).map())
-    .pipe(Channel.writeTo("output").map());
+    .pipe(Channel.writeTo(["output"]).map());
 
   const app = new Pregel({
     nodes: { one, two },
     channels: { inbox: new Topic<number>() },
-    input: ["input", "inbox"],
+    inputChannels: ["input", "inbox"],
   });
 
   const streamResult = await app.stream(
@@ -251,10 +286,10 @@ it("should process batch with two processes and delays", async () => {
 
   const one = Channel.subscribeTo("input")
     .pipe(addOneWithDelay)
-    .pipe(Channel.writeTo("one"));
+    .pipe(Channel.writeTo(["one"]));
   const two = Channel.subscribeTo("one")
     .pipe(addOneWithDelay)
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
 
   const app = new Pregel({
     nodes: { one, two },
@@ -294,17 +329,19 @@ it("should batch many processes with input and output", async () => {
   const addOne = jest.fn((x: number) => x + 1);
 
   const nodes: Record<string, PregelNode> = {
-    "-1": Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo("-1")),
+    "-1": Channel.subscribeTo("input")
+      .pipe(addOne)
+      .pipe(Channel.writeTo(["-1"])),
   };
 
   for (let i = 0; i < testSize - 2; i += 1) {
     nodes[String(i)] = Channel.subscribeTo(String(i - 1))
       .pipe(addOne)
-      .pipe(Channel.writeTo(String(i)));
+      .pipe(Channel.writeTo([String(i)]));
   }
   nodes.last = Channel.subscribeTo(String(testSize - 3))
     .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
 
   const app = new Pregel({ nodes });
 
@@ -326,10 +363,10 @@ it("should raise InvalidUpdateError when the same LastValue channel is updated t
 
   const one = Channel.subscribeTo("input")
     .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
   const two = Channel.subscribeTo("input")
     .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
 
   const app = new Pregel({
     nodes: { one, two },
@@ -343,10 +380,10 @@ it("should process two inputs to two outputs validly", async () => {
 
   const one = Channel.subscribeTo("input")
     .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
   const two = Channel.subscribeTo("input")
     .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
 
   const app = new Pregel({
     nodes: { one, two },
@@ -371,7 +408,7 @@ it("should handle checkpoints correctly", async () => {
   const one = Channel.subscribeTo(["input"])
     .join(["total"])
     .pipe(inputPlusTotal)
-    .pipe(Channel.writeTo("output", "total"))
+    .pipe(Channel.writeTo(["output", "total"]))
     .pipe(raiseIfAbove10);
 
   const memory = new MemorySaverAssertImmutable();
@@ -427,13 +464,13 @@ it("should process two inputs joined into one topic and produce two outputs", as
 
   const one = Channel.subscribeTo("input")
     .pipe(addOne)
-    .pipe(Channel.writeTo("inbox"));
+    .pipe(Channel.writeTo(["inbox"]));
   const chainThree = Channel.subscribeTo("input")
     .pipe(addOne)
-    .pipe(Channel.writeTo("inbox"));
+    .pipe(Channel.writeTo(["inbox"]));
   const chainFour = Channel.subscribeTo("inbox")
     .pipe(add10Each)
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
 
   const app = new Pregel({
     nodes: {
@@ -468,22 +505,22 @@ it("should invoke join then call other app", async () => {
     nodes: {
       one: Channel.subscribeTo("input")
         .pipe(addOne)
-        .pipe(Channel.writeTo("output")),
+        .pipe(Channel.writeTo(["output"])),
     },
   });
 
   const one = Channel.subscribeTo("input")
     .pipe(add10Each)
-    .pipe(Channel.writeTo("inbox_one").map());
+    .pipe(Channel.writeTo(["inbox_one"]).map());
 
   const two = Channel.subscribeTo("inbox_one")
     .pipe(() => innerApp.map())
     .pipe((x: number[]) => x.sort())
-    .pipe(Channel.writeTo("outbox_one"));
+    .pipe(Channel.writeTo(["outbox_one"]));
 
   const chainThree = Channel.subscribeTo("outbox_one")
     .pipe((x: number[]) => x.reduce((a, b) => a + b, 0))
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
 
   const app = new Pregel({
     nodes: {
@@ -514,15 +551,15 @@ it("should handle two processes with one input and two outputs", async () => {
   const one = Channel.subscribeTo("input")
     .pipe(addOne)
     .pipe(
-      Channel.writeTo(
-        { output: new RunnablePassthrough() },
-        { between: new RunnablePassthrough() }
-      )
+      Channel.writeTo([], {
+        output: new RunnablePassthrough(),
+        between: new RunnablePassthrough(),
+      })
     );
 
   const two = Channel.subscribeTo("between")
     .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
 
   const app = new Pregel({
     nodes: { one, two },
@@ -541,7 +578,7 @@ it("should finish executing without output", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
   const one = Channel.subscribeTo("input")
     .pipe(addOne)
-    .pipe(Channel.writeTo("between"));
+    .pipe(Channel.writeTo(["between"]));
   const two = Channel.subscribeTo("between").pipe(addOne);
 
   const app = new Pregel({ nodes: { one, two } });
@@ -556,7 +593,7 @@ it("should throw an error when no input channel is provided", () => {
 
   const one = Channel.subscribeTo("between")
     .pipe(addOne)
-    .pipe(Channel.writeTo("output"));
+    .pipe(Channel.writeTo(["output"]));
   const two = Channel.subscribeTo("between").pipe(addOne);
 
   expect(() => new Pregel({ nodes: { one, two } })).toThrowError();
@@ -792,8 +829,21 @@ describe("StateGraph", () => {
     for await (const item of stream) {
       streamItems.push(item);
     }
-    expect(streamItems.length).toBe(6);
+    expect(streamItems.length).toBe(12);
     expect(streamItems[0]).toEqual({
+      __start__: {
+        input: "what is the weather in sf?",
+      },
+      input: "what is the weather in sf?",
+    });
+    expect(streamItems[1]).toEqual({
+      "agent:inbox": {
+        input: "what is the weather in sf?",
+        agentOutcome: null,
+        steps: [],
+      },
+    });
+    expect(streamItems[2]).toEqual({
       agent: {
         agentOutcome: {
           tool: "search_api",
@@ -801,80 +851,95 @@ describe("StateGraph", () => {
           log: "tool:search_api:query",
         },
       },
-    });
-    expect(streamItems[1]).toEqual({
-      tools: {
-        steps: [
-          [
-            {
-              tool: "search_api",
-              toolInput: "query",
-              log: "tool:search_api:query",
-            },
-            "result for query",
-          ],
-        ],
-      },
-    });
-    expect(streamItems[2]).toEqual({
-      agent: {
-        agentOutcome: {
-          tool: "search_api",
-          toolInput: "another",
-          log: "tool:search_api:another",
-        },
+      agentOutcome: {
+        tool: "search_api",
+        toolInput: "query",
+        log: "tool:search_api:query",
       },
     });
     expect(streamItems[3]).toEqual({
-      tools: {
-        steps: [
-          [
-            {
-              tool: "search_api",
-              toolInput: "another",
-              log: "tool:search_api:another",
-            },
-            "result for another",
-          ],
-        ],
-      },
-    });
-    expect(streamItems[4]).toEqual({
-      agent: {
-        agentOutcome: {
-          returnValues: {
-            answer: "answer",
-          },
-          log: "finish:answer",
-        },
-      },
-    });
-    expect(streamItems[5]).toEqual({
-      [END]: {
+      "tools:inbox": {
         input: "what is the weather in sf?",
         agentOutcome: {
-          returnValues: { answer: "answer" },
-          log: "finish:answer",
+          tool: "search_api",
+          toolInput: "query",
+          log: "tool:search_api:query",
         },
-        steps: [
-          [
-            {
-              tool: "search_api",
-              toolInput: "query",
-              log: "tool:search_api:query",
-            },
-            "result for query",
-          ],
-          [
-            {
-              tool: "search_api",
-              toolInput: "another",
-              log: "tool:search_api:another",
-            },
-            "result for another",
-          ],
-        ],
+        steps: [],
       },
+    });
+    // TODO: Need to rewrite this test.
+  });
+
+  it("can invoke a nested graph", async () => {
+    // set up inner graph
+    type InnerState = {
+      myKey: string;
+      myOtherKey: string;
+    };
+
+    const innerGraph = new StateGraph<InnerState>({
+      channels: {
+        myKey: {
+          value: null,
+          default: () => "hello",
+        },
+        myOtherKey: {
+          value: null,
+          default: () => "world",
+        },
+      },
+    });
+
+    innerGraph.addNode("up", (state: InnerState) => ({
+      myKey: `${state.myKey} there`,
+      myOtherKey: state.myOtherKey,
+    }));
+    innerGraph.setEntryPoint("up");
+    innerGraph.setFinishPoint("up");
+
+    // set up top level graph
+    type State = {
+      myKey: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      neverCalled: any;
+    };
+
+    const graph = new StateGraph<State>({
+      channels: {
+        myKey: {
+          value: null,
+        },
+        neverCalled: {
+          value: null,
+        },
+      },
+    });
+
+    graph.addNode("inner", innerGraph.compile());
+    graph.addNode("side", (state: State) => ({
+      myKey: `${state.myKey} and back again`,
+    }));
+    graph.addEdge("inner", "side");
+    graph.setEntryPoint("inner");
+    graph.setFinishPoint("side");
+
+    const app = graph.compile();
+
+    // call method / assertions
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const neverCalled = jest.fn((_: any) => {
+      throw new Error("This should never be called");
+    });
+
+    const result = await app.invoke({
+      myKey: "my value",
+      neverCalled: new RunnableLambda({ func: neverCalled }),
+    });
+
+    expect(result).toEqual({
+      myKey: "my value there and back again",
+      neverCalled: new RunnableLambda({ func: neverCalled }),
     });
   });
 

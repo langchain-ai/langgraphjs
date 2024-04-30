@@ -112,13 +112,13 @@ export class StateGraph<
       stateKeys.length === 1 && stateKeys[0] === "__root__"
         ? stateKeys[0]
         : stateKeys;
-    let stateChannels: Record<string, string> | string = {};
+    let stateChannels: Record<string, string> | string[] = {};
     if (Array.isArray(stateKeysRead)) {
       for (const chan of stateKeys) {
         stateChannels[chan] = chan;
       }
     } else {
-      stateChannels = stateKeysRead;
+      stateChannels = [stateKeysRead];
     }
 
     const getInputKey = (key: string, input: unknown) => {
@@ -250,7 +250,7 @@ export class StateGraph<
       channels: stateChannels,
     })
       .pipe(new ChannelRead(stateKeysRead))
-      .pipe(Channel.writeTo(`${this.entryPoint}:inbox`));
+      .pipe(Channel.writeTo([`${this.entryPoint}:inbox`]));
 
     return new Pregel({
       nodes,
@@ -261,11 +261,8 @@ export class StateGraph<
         ...nodeOutboxes,
         END: new LastValue(),
       },
-      input: `${START}:inbox`,
-      output: END,
-      hidden: Object.keys(this.nodes)
-        .map((node) => `${node}:inbox`)
-        .concat(START, stateKeys),
+      inputChannels: `${START}:inbox`,
+      outputChannels: END,
       checkpointer,
     });
   }

@@ -6,6 +6,7 @@ import {
   RunnableLambda,
   RunnableLike,
   RunnablePassthrough,
+  RunnableSequence,
   _coerceToRunnable,
 } from "@langchain/core/runnables";
 import { ConfigurableFieldSpec } from "../checkpoint/index.js";
@@ -95,7 +96,7 @@ const defaultRunnableBound =
 
 interface PregelNodeArgs<RunInput, RunOutput>
   extends Partial<RunnableBindingArgs<RunInput, RunOutput>> {
-  channels: Record<string, string> | string;
+  channels: Record<string, string> | string[];
   triggers: Array<string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   mapper?: (args: any) => any;
@@ -119,7 +120,7 @@ export class PregelNode<
 > extends RunnableBinding<RunInput, RunOutput, RunnableConfig> {
   lc_graph_name = "PregelNode";
 
-  channels: Record<string, string> | string;
+  channels: Record<string, string> | string[];
 
   triggers: string[] = [];
 
@@ -157,6 +158,47 @@ export class PregelNode<
     this.writers = writers ?? this.writers;
     this.bound = bound ?? this.bound;
     this.kwargs = kwargs ?? this.kwargs;
+  }
+
+  getWriters(): Array<Runnable> {
+    const newWriters = [...this.writers];
+    while (
+      newWriters.length > 1 &&
+      // eslint-disable-next-line no-instanceof/no-instanceof
+      newWriters[newWriters.length - 1] instanceof ChannelWrite &&
+      // eslint-disable-next-line no-instanceof/no-instanceof
+      newWriters[newWriters.length - 2] instanceof ChannelWrite
+    ) {
+      // we can combine writes if they are consecutive
+      (newWriters[newWriters.length - 2] as ChannelWrite).writes.push(
+        ...(newWriters[newWriters.length - 1] as ChannelWrite).writes
+      );
+      newWriters.pop();
+    }
+    return newWriters;
+  }
+
+  getNode(): Runnable<RunInput, RunOutput> | undefined {
+    const writers = this.getWriters();
+    if (this.bound === defaultRunnableBound && writers.length === 0) {
+      return undefined;
+    } else if (this.bound === defaultRunnableBound && writers.length === 1) {
+      return writers[0];
+    } else if (this.bound === defaultRunnableBound) {
+      return new RunnableSequence({
+        first: writers[0],
+        middle: writers.slice(1, writers.length - 1),
+        last: writers[writers.length - 1],
+      });
+    } else if (writers.length > 0) {
+      return new RunnableSequence({
+        first: this.bound,
+        middle: writers.slice(0, writers.length - 1),
+        last: writers[writers.length - 1],
+      });
+    } else {
+      return this.bound;
+    }
   }
 
   join(channels: Array<string>): PregelNode<RunInput, RunOutput> {

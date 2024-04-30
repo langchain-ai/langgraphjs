@@ -25,11 +25,11 @@ import {
 } from "../checkpoint/base.js";
 import { PregelNode } from "./read.js";
 import { validateGraph } from "./validate.js";
-import { ReservedChannelsMap } from "./reserved.js";
 import { mapInput, mapOutput, readChannel } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { LastValue } from "../channels/last_value.js";
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
@@ -42,13 +42,6 @@ export class GraphRecursionError extends Error {
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
-function _coerceWriteValue(value: WriteValue): Runnable {
-  if (!Runnable.isRunnable(value) && typeof value !== "function") {
-    return _coerceToRunnable(() => value);
-  }
-  return _coerceToRunnable(value as RunnableLike);
-}
-
 function isString(value: unknown): value is string {
   return typeof value === "string";
 }
@@ -60,8 +53,7 @@ export class Channel {
       key?: string;
       tags?: string[];
     }
-  ): // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  PregelNode;
+  ): PregelNode;
 
   static subscribeTo(
     channels: string[],
@@ -84,16 +76,16 @@ export class Channel {
       );
     }
 
-    let channelMappingOrString: string | Record<string, string>;
+    let channelMappingOrArray: string[] | Record<string, string>;
 
     if (isString(channels)) {
       if (key) {
-        channelMappingOrString = { [key]: channels };
+        channelMappingOrArray = { [key]: channels };
       } else {
-        channelMappingOrString = channels;
+        channelMappingOrArray = [channels];
       }
     } else {
-      channelMappingOrString = Object.fromEntries(
+      channelMappingOrArray = Object.fromEntries(
         channels.map((chan) => [chan, chan])
       );
     }
@@ -101,80 +93,96 @@ export class Channel {
     const triggers: string[] = Array.isArray(channels) ? channels : [channels];
 
     return new PregelNode({
-      channels: channelMappingOrString,
+      channels: channelMappingOrArray,
       triggers,
       tags,
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  static writeTo(...args: any[]): ChannelWrite {
-    const channelPairs: Array<ChannelWriteEntry> = [];
+  static writeTo(
+    channels: string[],
+    kwargs?: Record<string, WriteValue>
+  ): ChannelWrite {
+    const channelWriteEntries: Array<ChannelWriteEntry> = [];
 
-    if (args.length === 1 && typeof args[0] === "object") {
-      // Handle the case where named arguments are passed as an object
-      const additionalArgs = args[0];
-      Object.entries(additionalArgs).forEach(([key, value]) => {
-        channelPairs.push({
-          channel: key,
-          value: PASSTHROUGH,
-          skipNone: true,
-          mapper: _coerceWriteValue(value),
-        });
-      });
-    } else {
-      args.forEach((channel) => {
-        if (typeof channel === "string") {
-          channelPairs.push({ channel, value: PASSTHROUGH, skipNone: false });
-        } else if (typeof channel === "object") {
-          Object.entries(channel).forEach(([key, value]) => {
-            channelPairs.push({
-              channel: key,
-              value: PASSTHROUGH,
-              skipNone: true,
-              mapper: _coerceWriteValue(value),
-            });
-          });
-        }
+    for (const channel of channels) {
+      channelWriteEntries.push({
+        channel,
+        value: PASSTHROUGH,
+        skipNone: false,
       });
     }
 
-    return new ChannelWrite(channelPairs);
+    for (const [key, value] of Object.entries(kwargs ?? {})) {
+      if (Runnable.isRunnable(value) || typeof value === "function") {
+        channelWriteEntries.push({
+          channel: key,
+          value: PASSTHROUGH,
+          skipNone: true,
+          mapper: _coerceToRunnable(value as RunnableLike),
+        });
+      } else {
+        channelWriteEntries.push({
+          channel: key,
+          value,
+          skipNone: false,
+        });
+      }
+    }
+
+    return new ChannelWrite(channelWriteEntries);
   }
 }
 
+export type StreamMode = "values" | "updates";
+
 export interface PregelInterface {
+  nodes: Record<string, PregelNode>;
   /**
    * @default {}
    */
   channels?: Record<string, BaseChannel>;
   /**
+   * @default () => new LastValue()
+   */
+  defaultChannelFactory?: () => BaseChannel;
+  /**
+   * @default true
+   */
+  autoValidate?: boolean;
+  /**
+   * @default "values"
+   */
+  streamMode?: StreamMode;
+  /**
    * @default "output"
    */
-  output?: string | Array<string>;
-  /**
-   * @default "input"
-   */
-  input?: string | Array<string>;
+  outputChannels?: string | Array<string>;
+
+  streamChannels?: string | Array<string>;
   /**
    * @default []
    */
-  hidden?: Array<string>;
+  interruptAfterNodes?: Array<string>;
+  /**
+   * @default []
+   */
+  interruptBeforeNodes?: Array<string>;
+  /**
+   * @default "input"
+   */
+  inputChannels?: string | Array<string>;
+  /**
+   * @default undefined
+   */
+  stepTimeout?: number;
   /**
    * @default false
    */
   debug?: boolean;
-  /**
-   * @default []
-   */
-  interrupt?: string[];
-
-  nodes: Record<string, PregelNode>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   checkpointer?: BaseCheckpointSaver<any>;
-
-  stepTimeout?: number;
 }
 
 export interface PregelOptions extends RunnableConfig {
@@ -198,51 +206,83 @@ export class Pregel
   // Because Pregel extends `Runnable`.
   lc_namespace = ["langgraph", "pregel"];
 
-  channels: Record<string, BaseChannel> = {};
-
-  output: string | Array<string> = "output";
-
-  input: string | Array<string> = "input";
-
-  hidden: Array<string> = [];
-
-  debug: boolean = false;
-
   nodes: Record<string, PregelNode>;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  checkpointer?: BaseCheckpointSaver<any>;
+  channels: Record<string, BaseChannel> = {};
+
+  defaultChannelFactory: () => BaseChannel = () => new LastValue();
+
+  autoValidate: boolean = true;
+
+  streamMode: StreamMode = "values";
+
+  outputChannels: string | Array<string> = "output";
+
+  streamChannels?: string | string[];
+
+  interruptAfterNodes: string[] = [];
+
+  interruptBeforeNodes: string[] = [];
+
+  inputChannels: string | Array<string> = "input";
 
   stepTimeout?: number;
 
-  interrupt: string[] = [];
+  debug: boolean = false;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  checkpointer?: BaseCheckpointSaver<any>;
 
   constructor(fields: PregelInterface) {
     super(fields);
 
     // Initialize global async local storage instance for tracing
     initializeAsyncLocalStorageSingleton();
-    this.channels = fields.channels ?? this.channels;
-    this.output = fields.output ?? this.output;
-    this.input = fields.input ?? this.input;
-    this.hidden = fields.hidden ?? this.hidden;
-    this.debug = fields.debug ?? this.debug;
     this.nodes = fields.nodes;
+    this.channels = fields.channels ?? this.channels;
+    this.defaultChannelFactory =
+      fields.defaultChannelFactory ?? this.defaultChannelFactory;
+    this.autoValidate = fields.autoValidate ?? this.autoValidate;
+    this.streamMode = fields.streamMode ?? this.streamMode;
+    this.outputChannels = fields.outputChannels ?? this.outputChannels;
+    this.streamChannels = fields.streamChannels ?? this.streamChannels;
+    this.interruptAfterNodes =
+      fields.interruptAfterNodes ?? this.interruptAfterNodes;
+    this.interruptBeforeNodes =
+      fields.interruptBeforeNodes ?? this.interruptBeforeNodes;
+    this.inputChannels = fields.inputChannels ?? this.inputChannels;
+    this.stepTimeout = fields.stepTimeout ?? this.stepTimeout;
+    this.debug = fields.debug ?? this.debug;
     this.checkpointer = fields.checkpointer;
-    this.stepTimeout = fields.stepTimeout;
-    this.interrupt = fields.interrupt ?? this.interrupt;
 
     // Bind the method to the instance
     this._transform = this._transform.bind(this);
 
+    this.validate();
+  }
+
+  validate(): Pregel {
     validateGraph({
       nodes: this.nodes,
       channels: this.channels,
-      output: this.output,
-      input: this.input,
-      hidden: this.hidden,
-      interrupt: this.interrupt,
+      outputChannels: this.outputChannels,
+      inputChannels: this.inputChannels,
+      streamChannels: this.streamChannels,
+      interruptAfterNodes: this.interruptAfterNodes,
+      interruptBeforeNodes: this.interruptBeforeNodes,
+      defaultChannelFactory: this.defaultChannelFactory,
     });
+
+    if (
+      this.interruptAfterNodes.length > 0 ||
+      this.interruptBeforeNodes.length > 0
+    ) {
+      if (this.checkpointer === undefined) {
+        throw new Error("Interrupts require a checkpointer");
+      }
+    }
+
+    return this;
   }
 
   async *_transform(
@@ -258,10 +298,8 @@ export class Pregel
     ) {
       outputKeys = config.outputKeys;
     } else {
-      for (const chan in this.channels) {
-        if (!this.hidden.includes(chan)) {
-          outputKeys.push(chan);
-        }
+      for (const chan of Object.keys(this.channels)) {
+        outputKeys.push(chan);
       }
     }
     // copy nodes to ignore mutations during execution
@@ -276,7 +314,7 @@ export class Pregel
     // create channels from checkpoint
     const channels = emptyChannels(this.channels, checkpoint);
     // map inputs to channel updates
-    const thisInput = this.input;
+    const thisInput = this.inputChannels;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const inputPendingWrites: Array<[string, any]> = [];
@@ -286,7 +324,7 @@ export class Pregel
       }
     }
 
-    _applyWrites(checkpoint, channels, inputPendingWrites, config, 0);
+    _applyWrites(checkpoint, channels, inputPendingWrites);
 
     const read = (chan: string) => readChannel(channels, chan);
 
@@ -339,7 +377,7 @@ export class Pregel
       await executeTasks(tasks, this.stepTimeout);
 
       // apply writes to channels
-      _applyWrites(checkpoint, channels, pendingWrites, config, step + 1);
+      _applyWrites(checkpoint, channels, pendingWrites);
 
       // yield current value and checkpoint view
       const stepOutput = mapOutput(outputKeys, pendingWrites, channels);
@@ -360,13 +398,6 @@ export class Pregel
         checkpoint = await createCheckpoint(checkpoint, channels);
         await this.checkpointer.put(config, checkpoint);
       }
-
-      // interrupt if any channel written to is in interrupt list
-      if (
-        pendingWrites.some(([chan]) => this.interrupt?.some((i) => i === chan))
-      ) {
-        break;
-      }
     }
 
     // save end of run checkpoint
@@ -382,7 +413,7 @@ export class Pregel
   ): Promise<PregelOutputType> {
     const config = ensureConfig(options);
     if (!config?.outputKeys) {
-      config.outputKeys = this.output;
+      config.outputKeys = this.outputChannels;
     }
 
     let latest: PregelOutputType | undefined;
@@ -457,30 +488,18 @@ function _applyWrites(
   checkpoint: Checkpoint,
   channels: Record<string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pendingWrites: Array<[string, any]>,
-  config: RunnableConfig,
-  forStep: number
+  pendingWrites: Array<[string, any]>
 ): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pendingWritesByChannel: Record<string, Array<any>> = {};
   // Group writes by channel
   for (const [chan, val] of pendingWrites) {
-    for (const c in ReservedChannelsMap) {
-      if (chan === c) {
-        throw new Error(`Can't write to reserved channel ${chan}`);
-      }
-    }
     if (chan in pendingWritesByChannel) {
       pendingWritesByChannel[chan].push(val);
     } else {
       pendingWritesByChannel[chan] = [val];
     }
   }
-
-  // Update reserved channels
-  pendingWritesByChannel[ReservedChannelsMap.isLastStep] = [
-    forStep + 1 === config.recursionLimit,
-  ];
 
   const updatedChannels: Set<string> = new Set();
   // Apply writes to channels
@@ -554,8 +573,12 @@ function _prepareNextTasks(
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let val: Record<string, any> = {};
-        if (typeof proc.channels === "string") {
-          val[proc.channels] = readChannel(channels, proc.channels);
+        if (Array.isArray(proc.channels)) {
+          // eslint-disable-next-line no-unreachable-loop
+          for (const chan of proc.channels) {
+            val[chan] = readChannel(channels, chan);
+            break;
+          }
         } else {
           for (const [k, chan] of Object.entries(proc.channels)) {
             val[k] = readChannel(channels, chan);
@@ -564,8 +587,12 @@ function _prepareNextTasks(
 
         // Processes that subscribe to a single keyless channel get
         // the value directly, instead of a dict
-        if (typeof proc.channels === "string") {
-          val = val[proc.channels];
+        if (Array.isArray(proc.channels)) {
+          // eslint-disable-next-line no-unreachable-loop
+          for (const chan of proc.channels) {
+            val = val[chan];
+            break;
+          }
         } else if (
           Object.keys(proc.channels).length === 1 &&
           proc.channels[Object.keys(proc.channels)[0]] === undefined
