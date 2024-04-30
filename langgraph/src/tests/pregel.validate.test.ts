@@ -8,7 +8,7 @@ describe("validateGraph", () => {
     // set up test
     const nodes: Record<string, PregelNode> = {
       __interrupt__: new PregelNode({
-        channels: "",
+        channels: [""],
         triggers: [],
       }),
     };
@@ -34,7 +34,7 @@ describe("validateGraph", () => {
 
     const nodes: Record<string, PregelNode> = {
       channelName: new PregelNodeSubclass({
-        channels: "",
+        channels: [""],
         triggers: [],
       }),
     };
@@ -58,7 +58,7 @@ describe("validateGraph", () => {
     // set up test
     const nodes: Record<string, PregelNode> = {
       channelName1: new PregelNode({
-        channels: "",
+        channels: [""],
         triggers: ["channelName2"],
       }),
     };
@@ -82,7 +82,7 @@ describe("validateGraph", () => {
     // set up test
     const nodes: Record<string, PregelNode> = {
       channelName1: new PregelNode({
-        channels: "",
+        channels: [""],
         triggers: ["channelName2"],
       }),
     };
@@ -106,7 +106,7 @@ describe("validateGraph", () => {
     // set up test
     const nodes: Record<string, PregelNode> = {
       channelName1: new PregelNode({
-        channels: "",
+        channels: [""],
         triggers: ["channelName2"],
       }),
     };
@@ -130,7 +130,7 @@ describe("validateGraph", () => {
     // set up test
     const nodes: Record<string, PregelNode> = {
       channelName1: new PregelNode({
-        channels: "",
+        channels: [""],
         triggers: ["channelName2"],
       }),
     };
@@ -154,7 +154,7 @@ describe("validateGraph", () => {
     // set up test
     const nodes: Record<string, PregelNode> = {
       channelName1: new PregelNode({
-        channels: "",
+        channels: [""],
         triggers: ["channelName2"],
       }),
     };

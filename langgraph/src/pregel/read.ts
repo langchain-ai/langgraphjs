@@ -96,7 +96,7 @@ const defaultRunnableBound =
 
 interface PregelNodeArgs<RunInput, RunOutput>
   extends Partial<RunnableBindingArgs<RunInput, RunOutput>> {
-  channels: Record<string, string> | string;
+  channels: Record<string, string> | string[];
   triggers: Array<string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   mapper?: (args: any) => any;
@@ -120,7 +120,7 @@ export class PregelNode<
 > extends RunnableBinding<RunInput, RunOutput, RunnableConfig> {
   lc_graph_name = "PregelNode";
 
-  channels: Record<string, string> | string;
+  channels: Record<string, string> | string[];
 
   triggers: string[] = [];
 

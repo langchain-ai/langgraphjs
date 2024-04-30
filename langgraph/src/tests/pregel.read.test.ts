@@ -11,7 +11,7 @@ describe("PregelNode", () => {
     it("should return the expected array of writers", () => {
       // set up test
       const pregelNode = new PregelNode({
-        channels: "foo",
+        channels: ["foo"],
         triggers: ["bar"],
         writers: [
           new ChannelWrite([
@@ -37,7 +37,7 @@ describe("PregelNode", () => {
     it("should return undefined if bound is default andthere are no writers", () => {
       // set up test
       const pregelNode = new PregelNode({
-        channels: "foo",
+        channels: ["foo"],
         triggers: ["bar"],
         writers: [],
         // bound is set to default
@@ -52,7 +52,7 @@ describe("PregelNode", () => {
         { channel: "channel1", value: 1, skipNone: false },
       ]);
       const pregelNode = new PregelNode({
-        channels: "foo",
+        channels: ["foo"],
         triggers: ["bar"],
         writers: [channelWrite],
         // bound is set to default
@@ -70,7 +70,7 @@ describe("PregelNode", () => {
         { channel: "channel2", value: 2, skipNone: false },
       ]);
       const pregelNode = new PregelNode({
-        channels: "foo",
+        channels: ["foo"],
         triggers: ["bar"],
         writers: [channelWrite1, channelWrite2, new RunnablePassthrough()],
         // bound is set to default
@@ -93,7 +93,7 @@ describe("PregelNode", () => {
         { channel: "channel2", value: 2, skipNone: false },
       ]);
       const pregelNode = new PregelNode({
-        channels: "foo",
+        channels: ["foo"],
         triggers: ["bar"],
         writers: [channelWrite1, channelWrite2, new RunnablePassthrough()],
         bound: new RunnablePassthrough(),
@@ -111,7 +111,7 @@ describe("PregelNode", () => {
 
     it("should return the custom bound", () => {
       const pregelNode = new PregelNode({
-        channels: "foo",
+        channels: ["foo"],
         triggers: ["bar"],
         writers: [],
         bound: new RunnablePassthrough(),

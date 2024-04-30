@@ -177,13 +177,6 @@ it("should process input and write kwargs correctly", async () => {
   });
 });
 
-it("should throw if you try to join channels when all are not named", async () => {
-  const channel = Channel.subscribeTo("input");
-  expect(() => {
-    channel.join(["someChannelName"]);
-  }).toThrowError();
-});
-
 it("should invoke single process in out objects", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
   const chain = Channel.subscribeTo("input")

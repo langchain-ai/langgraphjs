@@ -76,13 +76,13 @@ export class Channel {
       );
     }
 
-    let channelMappingOrString: string | Record<string, string>;
+    let channelMappingOrString: string[] | Record<string, string>;
 
     if (isString(channels)) {
       if (key) {
         channelMappingOrString = { [key]: channels };
       } else {
-        channelMappingOrString = channels;
+        channelMappingOrString = [channels];
       }
     } else {
       channelMappingOrString = Object.fromEntries(
@@ -573,8 +573,12 @@ function _prepareNextTasks(
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let val: Record<string, any> = {};
-        if (typeof proc.channels === "string") {
-          val[proc.channels] = readChannel(channels, proc.channels);
+        if (Array.isArray(proc.channels)) {
+          // eslint-disable-next-line no-unreachable-loop
+          for (const chan of proc.channels) {
+            val[chan] = readChannel(channels, chan);
+            break;
+          }
         } else {
           for (const [k, chan] of Object.entries(proc.channels)) {
             val[k] = readChannel(channels, chan);
@@ -583,8 +587,12 @@ function _prepareNextTasks(
 
         // Processes that subscribe to a single keyless channel get
         // the value directly, instead of a dict
-        if (typeof proc.channels === "string") {
-          val = val[proc.channels];
+        if (Array.isArray(proc.channels)) {
+          // eslint-disable-next-line no-unreachable-loop
+          for (const chan of proc.channels) {
+            val = val[chan];
+            break;
+          }
         } else if (
           Object.keys(proc.channels).length === 1 &&
           proc.channels[Object.keys(proc.channels)[0]] === undefined

@@ -112,13 +112,13 @@ export class StateGraph<
       stateKeys.length === 1 && stateKeys[0] === "__root__"
         ? stateKeys[0]
         : stateKeys;
-    let stateChannels: Record<string, string> | string = {};
+    let stateChannels: Record<string, string> | string[] = {};
     if (Array.isArray(stateKeysRead)) {
       for (const chan of stateKeys) {
         stateChannels[chan] = chan;
       }
     } else {
-      stateChannels = stateKeysRead;
+      stateChannels = [stateKeysRead];
     }
 
     const getInputKey = (key: string, input: unknown) => {
