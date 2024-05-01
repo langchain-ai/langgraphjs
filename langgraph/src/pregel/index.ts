@@ -288,6 +288,18 @@ export class Pregel
     return this;
   }
 
+  get streamChannelsList(): Array<string> {
+    if (typeof this.streamChannels === "string") {
+      return [this.streamChannels];
+    } else {
+      if (this.streamChannels && this.streamChannels.length > 0) {
+        return this.streamChannels;
+      } else {
+        return Object.keys(this.channels);
+      }
+    }
+  }
+
   async *_transform(
     input: AsyncGenerator<PregelInputType>,
     runManager?: CallbackManagerForChainRun,

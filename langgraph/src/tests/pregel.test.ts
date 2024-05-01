@@ -109,6 +109,38 @@ describe("Pregel", () => {
       }).toThrowError();
     });
   });
+
+  describe("streamChannelsList", () => {
+    it("should return the expected list of stream channels", () => {
+      // set up test
+      const chain = Channel.subscribeTo("input").pipe(
+        Channel.writeTo(["output"])
+      );
+
+      const pregel1 = new Pregel({
+        nodes: { one: chain },
+        streamChannels: "channel",
+      });
+      const pregel2 = new Pregel({
+        nodes: { one: chain },
+        streamChannels: ["channel1", "channel2"],
+      });
+      const pregel3 = new Pregel({
+        nodes: { one: chain },
+        channels: { channel3: new LastValue() },
+        streamChannels: [],
+      });
+
+      // call method / assertions
+      expect(pregel1.streamChannelsList).toEqual(["channel"]);
+      expect(pregel2.streamChannelsList).toEqual(["channel1", "channel2"]);
+      expect(pregel3.streamChannelsList).toEqual([
+        "channel3",
+        "input",
+        "output",
+      ]);
+    });
+  });
 });
 
 describe("_shouldInterrupt", () => {
