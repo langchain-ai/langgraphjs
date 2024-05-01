@@ -366,6 +366,123 @@ describe("_prepareNextTasks", () => {
     expect(newCheckpoint.versionsSeen.node1.channel1).toBe(1);
     expect(newCheckpoint.versionsSeen.node2.channel2).toBe(5);
   });
+
+  it("should return an array of PregelExecutableTasks", () => {
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: "2024-04-19T17:19:07.952Z",
+      channelValues: {
+        channel1: 1,
+        channel2: 2,
+      },
+      channelVersions: {
+        channel1: 2,
+        channel2: 5,
+        channel3: 4,
+        channel4: 4,
+        channel6: 4,
+      },
+      versionsSeen: {
+        node1: {
+          channel1: 1,
+        },
+        node2: {
+          channel2: 5,
+        },
+        node3: {
+          channel3: 4,
+        },
+        node4: {
+          channel4: 3,
+        },
+        node6: {
+          channel6: 3,
+        },
+      },
+    };
+
+    const processes: Record<string, PregelNode> = {
+      node1: new PregelNode({
+        channels: ["channel1"],
+        triggers: ["channel1"],
+      }),
+      node2: new PregelNode({
+        channels: ["channel2"],
+        triggers: ["channel1", "channel2"],
+        mapper: () => 100, // return 100 no matter what
+      }),
+      node3: new PregelNode({
+        // this task is filtered out because current version of channel3 matches version seen
+        channels: ["channel3"],
+        triggers: ["channel3"],
+      }),
+      node4: new PregelNode({
+        // this task is filtered out because channel5 is empty
+        channels: ["channel5"],
+        triggers: ["channel4"],
+      }),
+      node6: new PregelNode({
+        // this task is filtered out because channel5 is empty
+        channels: { channel5: "channel5" },
+        triggers: ["channel5", "channel6"],
+      }),
+    };
+
+    const channel1 = new LastValue<number>();
+    channel1.update([1]);
+    const channel2 = new LastValue<number>();
+    channel2.update([2]);
+    const channel3 = new LastValue<number>();
+    channel3.update([3]);
+    const channel4 = new LastValue<number>();
+    channel4.update([4]);
+    const channel5 = new LastValue<number>();
+    const channel6 = new LastValue<number>();
+    channel6.update([6]);
+
+    const channels = {
+      channel1,
+      channel2,
+      channel3,
+      channel4,
+      channel5,
+      channel6,
+    };
+
+    // call method / assertions
+    const [newCheckpoint, tasks] = _prepareNextTasks(
+      checkpoint,
+      processes,
+      channels,
+      true
+    );
+
+    expect(tasks.length).toBe(2);
+    expect(tasks[0]).toEqual({
+      name: "node1",
+      input: 1,
+      proc: new PregelNode({ channels: ["channel1"], triggers: ["channel1"] }),
+      writes: [],
+      config: undefined,
+    });
+    expect(JSON.stringify(tasks[1])).toEqual(
+      JSON.stringify({
+        name: "node2",
+        input: 100,
+        proc: new PregelNode({
+          channels: ["channel2"],
+          triggers: ["channel1", "channel2"],
+          mapper: () => 100,
+        }),
+        writes: [],
+        config: undefined,
+      })
+    );
+
+    expect(newCheckpoint.versionsSeen.node1.channel1).toBe(2);
+    expect(newCheckpoint.versionsSeen.node2.channel1).toBe(2);
+    expect(newCheckpoint.versionsSeen.node2.channel2).toBe(5);
+  });
 });
 
 it("can invoke pregel with a single process", async () => {

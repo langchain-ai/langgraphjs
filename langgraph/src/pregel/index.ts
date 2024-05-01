@@ -22,6 +22,7 @@ import {
   BaseCheckpointSaver,
   Checkpoint,
   CheckpointAt,
+  copyCheckpoint,
   emptyCheckpoint,
 } from "../checkpoint/base.js";
 import { PregelNode } from "./read.js";
@@ -338,12 +339,17 @@ export class Pregel
     const recursionLimit = config.recursionLimit ?? DEFAULT_RECURSION_LIMIT;
     for (let step = 0; step < recursionLimit + 1; step += 1) {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const [_, nextTasks] = _prepareNextTasks(
+      const [nextCheckpoint, nextTasks] = _prepareNextTasks(
         checkpoint,
         processes,
         channels,
         true
       );
+
+      // Reassign nextCheckpoint to checkpoint because the subsequent implementation
+      // relies on side effects applied to checkpoint. Example: _applyWrites().
+      checkpoint = nextCheckpoint as Checkpoint;
+
       // if no more tasks, we're done
       if (nextTasks.length === 0) {
         break;
@@ -581,16 +587,17 @@ export function _prepareNextTasks(
   channels: Record<string, BaseChannel>,
   forExecution: boolean
 ): [Checkpoint, Array<PregelTaskDescription> | Array<PregelExecutableTask>] {
+  const newCheckpoint = copyCheckpoint(checkpoint);
   const tasks: Array<PregelExecutableTask> = [];
   const taskDescriptions: Array<PregelTaskDescription> = [];
 
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
   for (const [name, proc] of Object.entries<PregelNode>(processes)) {
-    let seen = checkpoint.versionsSeen[name];
+    let seen = newCheckpoint.versionsSeen[name];
     if (!seen) {
-      checkpoint.versionsSeen[name] = {};
-      seen = checkpoint.versionsSeen[name];
+      newCheckpoint.versionsSeen[name] = {};
+      seen = newCheckpoint.versionsSeen[name];
     }
 
     // If any of the channels read by this process were updated
@@ -600,7 +607,7 @@ export function _prepareNextTasks(
           (chan) =>
             readChannel(channels, chan, true, true) !== EmptyChannelError
         )
-        .some((chan) => checkpoint.channelVersions[chan] > (seen[chan] ?? 0))
+        .some((chan) => newCheckpoint.channelVersions[chan] > (seen[chan] ?? 0))
     ) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let val: any;
@@ -655,9 +662,9 @@ export function _prepareNextTasks(
       if (forExecution) {
         // Update seen versions
         proc.triggers.forEach((chan: string) => {
-          const version = checkpoint.channelVersions[chan];
+          const version = newCheckpoint.channelVersions[chan];
           if (version !== undefined) {
-            // side effect: updates checkpoint
+            // side effect: updates newCheckpoint
             seen[chan] = version;
           }
         });
@@ -678,5 +685,5 @@ export function _prepareNextTasks(
     }
   }
 
-  return [checkpoint, forExecution ? tasks : taskDescriptions];
+  return [newCheckpoint, forExecution ? tasks : taskDescriptions];
 }
