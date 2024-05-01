@@ -2,10 +2,10 @@ import {
   Runnable,
   RunnableConfig,
   RunnableLike,
-  RunnablePassthrough,
 } from "@langchain/core/runnables";
 import { ConfigurableFieldSpec } from "../checkpoint/index.js";
 import { CONFIG_KEY_SEND } from "../constants.js";
+import { RunnableCallable } from "../utils.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TYPE_SEND = (values: Array<[string, any]>) => void;
@@ -20,7 +20,7 @@ export const PASSTHROUGH = {};
 export class ChannelWrite<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   RunInput = any
-> extends RunnablePassthrough<RunInput> {
+> extends RunnableCallable {
   writes: Array<ChannelWriteEntry>;
 
   constructor(writes: Array<ChannelWriteEntry>) {
