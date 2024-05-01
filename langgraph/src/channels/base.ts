@@ -77,15 +77,15 @@ export function emptyChannels(
   return newChannels;
 }
 
-export async function createCheckpoint<ValueType>(
+export function createCheckpoint<ValueType>(
   checkpoint: Checkpoint,
   channels: Record<string, BaseChannel<ValueType>>
-): Promise<Checkpoint> {
+): Checkpoint {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const values: Record<string, any> = {};
   for (const k of Object.keys(channels)) {
     try {
-      values[k] = await channels[k].checkpoint();
+      values[k] = channels[k].checkpoint();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       if (error.name === EmptyChannelError.name) {

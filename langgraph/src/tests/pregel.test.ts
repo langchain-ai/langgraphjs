@@ -21,7 +21,7 @@ import { LastValue } from "../channels/last_value.js";
 import { END, Graph, StateGraph } from "../graph/index.js";
 import { Topic } from "../channels/topic.js";
 import { PregelNode } from "../pregel/read.js";
-import { InvalidUpdateError } from "../channels/base.js";
+import { BaseChannel, InvalidUpdateError } from "../channels/base.js";
 import { MemorySaverAssertImmutable } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
 import {
@@ -29,6 +29,7 @@ import {
   GraphRecursionError,
   Pregel,
   _applyWrites,
+  _localRead,
   _prepareNextTasks,
   _shouldInterrupt,
 } from "../pregel/index.js";
@@ -217,6 +218,73 @@ describe("_shouldInterrupt", () => {
     expect(
       _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, tasks)
     ).toBe(false);
+  });
+});
+
+describe("_localRead", () => {
+  it("should return the channel value when fresh is false", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 0,
+      ts: "",
+      channelValues: {},
+      channelVersions: {},
+      versionsSeen: {},
+    };
+
+    const channel1 = new LastValue<number>();
+    const channel2 = new LastValue<number>();
+    channel1.update([1]);
+    channel2.update([2]);
+
+    const channels: Record<string, BaseChannel> = {
+      channel1,
+      channel2,
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const writes: Array<[string, any]> = [];
+
+    // call method / assertions
+    expect(_localRead(checkpoint, channels, writes, "channel1", false)).toBe(1);
+    expect(
+      _localRead(checkpoint, channels, writes, ["channel1", "channel2"], false)
+    ).toEqual({ channel1: 1, channel2: 2 });
+  });
+
+  it("should return the channel value after applying writes when fresh is true", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 0,
+      ts: "",
+      channelValues: {},
+      channelVersions: {},
+      versionsSeen: {},
+    };
+
+    const channel1 = new LastValue<number>();
+    const channel2 = new LastValue<number>();
+    channel1.update([1]);
+    channel2.update([2]);
+
+    const channels: Record<string, BaseChannel> = {
+      channel1,
+      channel2,
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const writes: Array<[string, any]> = [
+      ["channel1", 100],
+      ["channel2", 200],
+    ];
+
+    // call method / assertions
+    expect(_localRead(checkpoint, channels, writes, "channel1", true)).toBe(
+      100
+    );
+    expect(
+      _localRead(checkpoint, channels, writes, ["channel1", "channel2"], true)
+    ).toEqual({ channel1: 100, channel2: 200 });
   });
 });
 

@@ -27,7 +27,7 @@ import {
 } from "../checkpoint/base.js";
 import { PregelNode } from "./read.js";
 import { validateGraph } from "./validate.js";
-import { mapInput, mapOutput, readChannel } from "./io.js";
+import { mapInput, mapOutput, readChannel, readChannels } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND, INTERRUPT } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
@@ -329,8 +329,6 @@ export class Pregel
 
     _applyWrites(checkpoint, channels, inputPendingWrites);
 
-    const read = (chan: string) => readChannel(channels, chan);
-
     // Similarly to Bulk Synchronous Parallel / Pregel model
     // computation proceeds in steps, while there are channel updates
     // channel updates from step N are only visible in step N+1
@@ -361,6 +359,10 @@ export class Pregel
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pendingWrites: Array<[string, any]> = [];
+      // A copy of the checkpoint is created because `checkpoint` is defined with `let`.
+      // `checkpoint` can be mutated during loop execution and when used in a function,
+      // may cause unintended consequences.
+      const checkpointCopy = copyCheckpoint(checkpoint);
 
       const tasksWithConfig: Array<
         [RunnableInterface, unknown, RunnableConfig]
@@ -375,7 +377,12 @@ export class Pregel
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             [CONFIG_KEY_SEND]: (items: [string, any][]) =>
               pendingWrites.push(...items),
-            [CONFIG_KEY_READ]: read,
+            [CONFIG_KEY_READ]: _localRead.bind(
+              undefined,
+              checkpointCopy,
+              channels,
+              task.writes
+            ),
           },
         }),
       ]);
@@ -508,6 +515,41 @@ export function _shouldInterrupt(
     interruptNodes.includes(task.name)
   );
   return anySnapshotChannelUpdated && anyTaskNodeInInterruptNodes;
+}
+
+export function _localRead(
+  checkpoint: Checkpoint,
+  channels: Record<string, BaseChannel>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  writes: Array<[string, any]>,
+  select: Array<string> | string,
+  fresh: boolean = false
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Record<string, any> | any {
+  if (fresh) {
+    const newCheckpoint = createCheckpoint(checkpoint, channels);
+
+    // create a new copy of channels
+    const newChannels = Object.entries(channels).reduce(
+      (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        acc: Record<string, any>,
+        [channelName, channel]: [string, BaseChannel]
+      ) => {
+        acc[channelName] = channel.fromCheckpoint(
+          newCheckpoint.channelValues[channelName]
+        );
+        return acc;
+      },
+      {}
+    );
+
+    // Note: _applyWrites contains side effects
+    _applyWrites(copyCheckpoint(newCheckpoint), newChannels, writes);
+    return readChannels(newChannels, select);
+  } else {
+    return readChannels(channels, select);
+  }
 }
 
 export function _applyWrites(
