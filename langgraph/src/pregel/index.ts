@@ -669,13 +669,16 @@ export function _prepareNextTasks(
           }
         });
 
-        tasks.push({
-          name,
-          input: val,
-          proc,
-          writes: [],
-          config: undefined,
-        });
+        const node = proc.getNode();
+        if (node !== undefined) {
+          tasks.push({
+            name,
+            input: val,
+            proc: node,
+            writes: [],
+            config: proc.config,
+          });
+        }
       } else {
         taskDescriptions.push({
           name,

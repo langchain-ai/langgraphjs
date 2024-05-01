@@ -405,10 +405,12 @@ describe("_prepareNextTasks", () => {
       node1: new PregelNode({
         channels: ["channel1"],
         triggers: ["channel1"],
+        writers: [new RunnablePassthrough()],
       }),
       node2: new PregelNode({
         channels: ["channel2"],
         triggers: ["channel1", "channel2"],
+        writers: [new RunnablePassthrough()],
         mapper: () => 100, // return 100 no matter what
       }),
       node3: new PregelNode({
@@ -461,23 +463,17 @@ describe("_prepareNextTasks", () => {
     expect(tasks[0]).toEqual({
       name: "node1",
       input: 1,
-      proc: new PregelNode({ channels: ["channel1"], triggers: ["channel1"] }),
+      proc: new RunnablePassthrough(),
       writes: [],
-      config: undefined,
+      config: { tags: [] },
     });
-    expect(JSON.stringify(tasks[1])).toEqual(
-      JSON.stringify({
-        name: "node2",
-        input: 100,
-        proc: new PregelNode({
-          channels: ["channel2"],
-          triggers: ["channel1", "channel2"],
-          mapper: () => 100,
-        }),
-        writes: [],
-        config: undefined,
-      })
-    );
+    expect(tasks[1]).toEqual({
+      name: "node2",
+      input: 100,
+      proc: new RunnablePassthrough(),
+      writes: [],
+      config: { tags: [] },
+    });
 
     expect(newCheckpoint.versionsSeen.node1.channel1).toBe(2);
     expect(newCheckpoint.versionsSeen.node2.channel1).toBe(2);

@@ -232,7 +232,10 @@ export class PregelNode<
         triggers: this.triggers,
         mapper: this.mapper,
         writers: [...this.writers, coerceable as ChannelWrite],
-        bound: this.bound.pipe(coerceable),
+        bound: this.bound as unknown as PregelNode<
+          RunInput,
+          Exclude<NewRunOutput, Error>
+        >,
         config: this.config,
         kwargs: this.kwargs,
       });
