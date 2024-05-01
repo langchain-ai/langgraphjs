@@ -1,4 +1,8 @@
-import { Runnable, RunnableConfig } from "@langchain/core/runnables";
+import {
+  mergeConfigs,
+  Runnable,
+  RunnableConfig,
+} from "@langchain/core/runnables";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface RunnableCallableArgs extends Partial<any> {
@@ -48,9 +52,13 @@ export class RunnableCallable extends Runnable {
 
     // TODO: mergeConfigs() from @langchain/core is not exported
     if (this.trace) {
-      returnValue = await this._callWithConfig(this.func, input, options);
+      returnValue = await this._callWithConfig(
+        this.func,
+        input,
+        mergeConfigs(this.config, options)
+      );
     } else {
-      returnValue = await this.func(input, options);
+      returnValue = await this.func(input, mergeConfigs(this.config, options));
     }
 
     // eslint-disable-next-line no-instanceof/no-instanceof

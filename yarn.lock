@@ -1561,9 +1561,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:0.1.51":
-  version: 0.1.51
-  resolution: "@langchain/core@npm:0.1.51"
+"@langchain/core@npm:0.1.61":
+  version: 0.1.61
+  resolution: "@langchain/core@npm:0.1.61"
   dependencies:
     ansi-styles: ^5.0.0
     camelcase: 6
@@ -1571,12 +1571,13 @@ __metadata:
     js-tiktoken: ^1.0.8
     langsmith: ~0.1.7
     ml-distance: ^4.0.0
+    mustache: ^4.2.0
     p-queue: ^6.6.2
     p-retry: 4
     uuid: ^9.0.0
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
-  checksum: 5ff5851888a6dde4e51368667908406af3c65307f9934da3933b1223f36cfd389ab80dc1ec7aa4706573c5df30a1437cac5f6845214c48d84d05a11387b3db06
+  checksum: f3eadae482f05e2b48c9cbac063460b0282c19ed42939d82736615e8ad1163a498916513261ea49efa2bfbe7c6b716071e437ac76586bd7a4864ed2c869e7cfd
   languageName: node
   linkType: hard
 
@@ -1586,7 +1587,7 @@ __metadata:
   dependencies:
     "@jest/globals": ^29.5.0
     "@langchain/community": ^0.0.43
-    "@langchain/core": ^0.1.51
+    "@langchain/core": ^0.1.61
     "@langchain/openai": ^0.0.23
     "@langchain/scripts": ~0.0
     "@swc/core": ^1.3.90
@@ -7219,6 +7220,15 @@ __metadata:
   version: 2.1.3
   resolution: "ms@npm:2.1.3"
   checksum: aa92de608021b242401676e35cfa5aa42dd70cbdc082b916da7fb925c542173e36bce97ea3e804923fe92c0ad991434e4a38327e15a1b5b5f945d66df615ae6d
+  languageName: node
+  linkType: hard
+
+"mustache@npm:^4.2.0":
+  version: 4.2.0
+  resolution: "mustache@npm:4.2.0"
+  bin:
+    mustache: bin/mustache
+  checksum: 928fcb63e3aa44a562bfe9b59ba202cccbe40a46da50be6f0dd831b495be1dd7e38ca4657f0ecab2c1a89dc7bccba0885eab7ee7c1b215830da765758c7e0506
   languageName: node
   linkType: hard
 
