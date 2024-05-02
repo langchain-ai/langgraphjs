@@ -21,13 +21,23 @@ import { LastValue } from "../channels/last_value.js";
 import { END, Graph, StateGraph } from "../graph/index.js";
 import { Topic } from "../channels/topic.js";
 import { PregelNode } from "../pregel/read.js";
-import { InvalidUpdateError } from "../channels/base.js";
+import { BaseChannel, InvalidUpdateError } from "../channels/base.js";
 import { MemorySaverAssertImmutable } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
-import { Channel, GraphRecursionError, Pregel } from "../pregel/index.js";
+import {
+  Channel,
+  GraphRecursionError,
+  Pregel,
+  _applyWrites,
+  _localRead,
+  _prepareNextTasks,
+  _shouldInterrupt,
+} from "../pregel/index.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
 import { MessageGraph } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
+import { Checkpoint } from "../checkpoint/base.js";
+import { PregelExecutableTask } from "../pregel/types.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -98,6 +108,476 @@ describe("Pregel", () => {
         });
       }).toThrowError();
     });
+  });
+
+  describe("streamChannelsList", () => {
+    it("should return the expected list of stream channels", () => {
+      // set up test
+      const chain = Channel.subscribeTo("input").pipe(
+        Channel.writeTo(["output"])
+      );
+
+      const pregel1 = new Pregel({
+        nodes: { one: chain },
+        streamChannels: "channel",
+      });
+      const pregel2 = new Pregel({
+        nodes: { one: chain },
+        streamChannels: ["channel1", "channel2"],
+      });
+      const pregel3 = new Pregel({
+        nodes: { one: chain },
+        channels: { channel3: new LastValue() },
+        streamChannels: [],
+      });
+
+      // call method / assertions
+      expect(pregel1.streamChannelsList).toEqual(["channel"]);
+      expect(pregel2.streamChannelsList).toEqual(["channel1", "channel2"]);
+      expect(pregel3.streamChannelsList).toEqual([
+        "channel3",
+        "input",
+        "output",
+      ]);
+    });
+  });
+});
+
+describe("_shouldInterrupt", () => {
+  it("should return true if any snapshot channel has been updated since last interrupt and any channel written to is in interrupt nodes list", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: "2024-04-19T17:19:07.952Z",
+      channelValues: {
+        channel1: "channel1value",
+      },
+      channelVersions: {
+        channel1: 2, // current channel version is greater than last version seen
+      },
+      versionsSeen: {
+        __interrupt__: {
+          channel1: 1,
+        },
+      },
+    };
+
+    const interruptNodes = ["node1"];
+    const snapshotChannels = ["channel1"];
+    const tasks: Array<PregelExecutableTask> = [
+      {
+        name: "node1",
+        input: undefined,
+        proc: new RunnablePassthrough(),
+        writes: [],
+        config: undefined,
+      },
+    ];
+
+    // call method / assertions
+    expect(
+      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, tasks)
+    ).toBe(true);
+  });
+
+  it("should return false if all snapshot channels have not been updated", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: "2024-04-19T17:19:07.952Z",
+      channelValues: {
+        channel1: "channel1value",
+      },
+      channelVersions: {
+        channel1: 2, // current channel version is equal to last version seen
+      },
+      versionsSeen: {
+        __interrupt__: {
+          channel1: 2,
+        },
+      },
+    };
+
+    const interruptNodes = ["node1"];
+    const snapshotChannels = ["channel1"];
+    const tasks: Array<PregelExecutableTask> = [
+      {
+        name: "node1",
+        input: undefined,
+        proc: new RunnablePassthrough(),
+        writes: [],
+        config: undefined,
+      },
+    ];
+
+    // call method / assertions
+    expect(
+      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, tasks)
+    ).toBe(false);
+  });
+
+  it("should return false if all task nodes are not in interrupt nodes", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: "2024-04-19T17:19:07.952Z",
+      channelValues: {
+        channel1: "channel1value",
+      },
+      channelVersions: {
+        channel1: 2,
+      },
+      versionsSeen: {
+        __interrupt__: {
+          channel1: 1,
+        },
+      },
+    };
+
+    const interruptNodes = ["node1"];
+    const snapshotChannels = ["channel1"];
+    const tasks: Array<PregelExecutableTask> = [
+      {
+        name: "node2", // node2 is not in interrupt nodes
+        input: undefined,
+        proc: new RunnablePassthrough(),
+        writes: [],
+        config: undefined,
+      },
+    ];
+
+    // call method / assertions
+    expect(
+      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, tasks)
+    ).toBe(false);
+  });
+});
+
+describe("_localRead", () => {
+  it("should return the channel value when fresh is false", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 0,
+      ts: "",
+      channelValues: {},
+      channelVersions: {},
+      versionsSeen: {},
+    };
+
+    const channel1 = new LastValue<number>();
+    const channel2 = new LastValue<number>();
+    channel1.update([1]);
+    channel2.update([2]);
+
+    const channels: Record<string, BaseChannel> = {
+      channel1,
+      channel2,
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const writes: Array<[string, any]> = [];
+
+    // call method / assertions
+    expect(_localRead(checkpoint, channels, writes, "channel1", false)).toBe(1);
+    expect(
+      _localRead(checkpoint, channels, writes, ["channel1", "channel2"], false)
+    ).toEqual({ channel1: 1, channel2: 2 });
+  });
+
+  it("should return the channel value after applying writes when fresh is true", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 0,
+      ts: "",
+      channelValues: {},
+      channelVersions: {},
+      versionsSeen: {},
+    };
+
+    const channel1 = new LastValue<number>();
+    const channel2 = new LastValue<number>();
+    channel1.update([1]);
+    channel2.update([2]);
+
+    const channels: Record<string, BaseChannel> = {
+      channel1,
+      channel2,
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const writes: Array<[string, any]> = [
+      ["channel1", 100],
+      ["channel2", 200],
+    ];
+
+    // call method / assertions
+    expect(_localRead(checkpoint, channels, writes, "channel1", true)).toBe(
+      100
+    );
+    expect(
+      _localRead(checkpoint, channels, writes, ["channel1", "channel2"], true)
+    ).toEqual({ channel1: 100, channel2: 200 });
+  });
+});
+
+describe("_applyWrites", () => {
+  it("should update channels and checkpoints correctly (side effect)", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: "2024-04-19T17:19:07.952Z",
+      channelValues: {
+        channel1: "channel1value",
+      },
+      channelVersions: {
+        channel1: 2,
+        channel2: 5,
+      },
+      versionsSeen: {
+        __interrupt__: {
+          channel1: 1,
+        },
+      },
+    };
+
+    const lastValueChannel1 = new LastValue<string>();
+    lastValueChannel1.update(["channel1value"]);
+    const lastValueChannel2 = new LastValue<string>();
+    lastValueChannel2.update(["channel2value"]);
+    const channels = {
+      channel1: lastValueChannel1,
+      channel2: lastValueChannel2,
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pendingWrites: Array<[string, any]> = [
+      ["channel1", "channel1valueUpdated!"],
+    ];
+
+    // call method / assertions
+    expect(channels.channel1.get()).toBe("channel1value");
+    expect(channels.channel2.get()).toBe("channel2value");
+    expect(checkpoint.channelVersions.channel1).toBe(2);
+
+    _applyWrites(checkpoint, channels, pendingWrites); // contains side effects
+
+    expect(channels.channel1.get()).toBe("channel1valueUpdated!");
+    expect(channels.channel2.get()).toBe("channel2value");
+    expect(checkpoint.channelVersions.channel1).toBe(6);
+  });
+
+  it("should throw an InvalidUpdateError if there are multiple updates to the same channel", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: "2024-04-19T17:19:07.952Z",
+      channelValues: {
+        channel1: "channel1value",
+      },
+      channelVersions: {
+        channel1: 2,
+      },
+      versionsSeen: {
+        __interrupt__: {
+          channel1: 1,
+        },
+      },
+    };
+
+    const lastValueChannel1 = new LastValue<string>();
+    lastValueChannel1.update(["channel1value"]);
+    const channels = {
+      channel1: lastValueChannel1,
+    };
+
+    // LastValue channel can only be updated with one value at a time
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pendingWrites: Array<[string, any]> = [
+      ["channel1", "channel1valueUpdated!"],
+      ["channel1", "channel1valueUpdatedAgain!"],
+    ];
+
+    // call method / assertions
+    expect(() => {
+      _applyWrites(checkpoint, channels, pendingWrites); // contains side effects
+    }).toThrow(InvalidUpdateError);
+  });
+});
+
+describe("_prepareNextTasks", () => {
+  it("should return an array of PregelTaskDescriptions", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: "2024-04-19T17:19:07.952Z",
+      channelValues: {
+        channel1: 1,
+        channel2: 2,
+      },
+      channelVersions: {
+        channel1: 2,
+        channel2: 5,
+      },
+      versionsSeen: {
+        node1: {
+          channel1: 1,
+        },
+        node2: {
+          channel2: 5,
+        },
+      },
+    };
+
+    const processes: Record<string, PregelNode> = {
+      node1: new PregelNode({
+        channels: ["channel1"],
+        triggers: ["channel1"],
+      }),
+      node2: new PregelNode({
+        channels: ["channel2"],
+        triggers: ["channel1", "channel2"],
+        mapper: () => 100, // return 100 no matter what
+      }),
+    };
+
+    const channel1 = new LastValue<number>();
+    channel1.update([1]);
+    const channel2 = new LastValue<number>();
+    channel2.update([2]);
+
+    const channels = {
+      channel1,
+      channel2,
+    };
+
+    // call method / assertions
+    const [newCheckpoint, taskDescriptions] = _prepareNextTasks(
+      checkpoint,
+      processes,
+      channels,
+      false
+    );
+
+    expect(taskDescriptions.length).toBe(2);
+    expect(taskDescriptions[0]).toEqual({ name: "node1", input: 1 });
+    expect(taskDescriptions[1]).toEqual({ name: "node2", input: 100 });
+
+    // the returned checkpoint is a copy of the passed checkpoint without versionsSeen updated
+    expect(newCheckpoint.versionsSeen.node1.channel1).toBe(1);
+    expect(newCheckpoint.versionsSeen.node2.channel2).toBe(5);
+  });
+
+  it("should return an array of PregelExecutableTasks", () => {
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: "2024-04-19T17:19:07.952Z",
+      channelValues: {
+        channel1: 1,
+        channel2: 2,
+      },
+      channelVersions: {
+        channel1: 2,
+        channel2: 5,
+        channel3: 4,
+        channel4: 4,
+        channel6: 4,
+      },
+      versionsSeen: {
+        node1: {
+          channel1: 1,
+        },
+        node2: {
+          channel2: 5,
+        },
+        node3: {
+          channel3: 4,
+        },
+        node4: {
+          channel4: 3,
+        },
+        node6: {
+          channel6: 3,
+        },
+      },
+    };
+
+    const processes: Record<string, PregelNode> = {
+      node1: new PregelNode({
+        channels: ["channel1"],
+        triggers: ["channel1"],
+        writers: [new RunnablePassthrough()],
+      }),
+      node2: new PregelNode({
+        channels: ["channel2"],
+        triggers: ["channel1", "channel2"],
+        writers: [new RunnablePassthrough()],
+        mapper: () => 100, // return 100 no matter what
+      }),
+      node3: new PregelNode({
+        // this task is filtered out because current version of channel3 matches version seen
+        channels: ["channel3"],
+        triggers: ["channel3"],
+      }),
+      node4: new PregelNode({
+        // this task is filtered out because channel5 is empty
+        channels: ["channel5"],
+        triggers: ["channel4"],
+      }),
+      node6: new PregelNode({
+        // this task is filtered out because channel5 is empty
+        channels: { channel5: "channel5" },
+        triggers: ["channel5", "channel6"],
+      }),
+    };
+
+    const channel1 = new LastValue<number>();
+    channel1.update([1]);
+    const channel2 = new LastValue<number>();
+    channel2.update([2]);
+    const channel3 = new LastValue<number>();
+    channel3.update([3]);
+    const channel4 = new LastValue<number>();
+    channel4.update([4]);
+    const channel5 = new LastValue<number>();
+    const channel6 = new LastValue<number>();
+    channel6.update([6]);
+
+    const channels = {
+      channel1,
+      channel2,
+      channel3,
+      channel4,
+      channel5,
+      channel6,
+    };
+
+    // call method / assertions
+    const [newCheckpoint, tasks] = _prepareNextTasks(
+      checkpoint,
+      processes,
+      channels,
+      true
+    );
+
+    expect(tasks.length).toBe(2);
+    expect(tasks[0]).toEqual({
+      name: "node1",
+      input: 1,
+      proc: new RunnablePassthrough(),
+      writes: [],
+      config: { tags: [] },
+    });
+    expect(tasks[1]).toEqual({
+      name: "node2",
+      input: 100,
+      proc: new RunnablePassthrough(),
+      writes: [],
+      config: { tags: [] },
+    });
+
+    expect(newCheckpoint.versionsSeen.node1.channel1).toBe(2);
+    expect(newCheckpoint.versionsSeen.node2.channel1).toBe(2);
+    expect(newCheckpoint.versionsSeen.node2.channel2).toBe(5);
   });
 });
 

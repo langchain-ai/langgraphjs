@@ -3,7 +3,6 @@ import {
   RunnableBinding,
   RunnableBindingArgs,
   RunnableConfig,
-  RunnableLambda,
   RunnableLike,
   RunnablePassthrough,
   RunnableSequence,
@@ -12,13 +11,12 @@ import {
 import { ConfigurableFieldSpec } from "../checkpoint/index.js";
 import { CONFIG_KEY_READ } from "../constants.js";
 import { ChannelWrite } from "./write.js";
+import { RunnableCallable } from "../utils.js";
 
 export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any
-> extends RunnableLambda<RunInput, RunOutput> {
+  RunInput = any
+> extends RunnableCallable {
   lc_graph_name = "ChannelRead";
 
   channel: string | Array<string>;
@@ -232,7 +230,10 @@ export class PregelNode<
         triggers: this.triggers,
         mapper: this.mapper,
         writers: [...this.writers, coerceable as ChannelWrite],
-        bound: this.bound.pipe(coerceable),
+        bound: this.bound as unknown as PregelNode<
+          RunInput,
+          Exclude<NewRunOutput, Error>
+        >,
         config: this.config,
         kwargs: this.kwargs,
       });
