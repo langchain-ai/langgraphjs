@@ -26,13 +26,13 @@ import {
   emptyCheckpoint,
 } from "../checkpoint/base.js";
 import { PregelNode } from "./read.js";
-import { validateGraph } from "./validate.js";
+import { validateGraph, validateKeys } from "./validate.js";
 import { mapInput, mapOutput, readChannel, readChannels } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND, INTERRUPT } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { LastValue } from "../channels/last_value.js";
-import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
+import { All, PregelExecutableTask, PregelTaskDescription } from "./types.js";
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
@@ -298,6 +298,91 @@ export class Pregel
         return Object.keys(this.channels);
       }
     }
+  }
+
+  get streamChannelsAsIs(): string | Array<string> {
+    if (this.streamChannels && this.streamChannels.length > 0) {
+      return this.streamChannels;
+    } else {
+      return Object.keys(this.channels);
+    }
+  }
+
+  _defaults(
+    config?: RunnableConfig,
+    streamMode?: StreamMode,
+    inputKeys?: string | string[],
+    outputKeys?: string | string[],
+    interruptBefore?: All | string[],
+    interruptAfter?: All | string[],
+    debug?: boolean
+  ): [
+    boolean, // debug
+    StreamMode, // stream mode
+    string | string[], // input keys
+    string | string[], // output keys
+    All | string[] | undefined, // interrupt before
+    All | string[] | undefined // interrupt after
+  ] {
+    const defaultDebug = debug !== undefined ? debug : this.debug;
+
+    let defaultOutputKeys = outputKeys;
+    if (defaultOutputKeys === undefined) {
+      defaultOutputKeys = this.streamChannelsAsIs;
+    } else {
+      validateKeys(defaultOutputKeys, this.channels);
+    }
+
+    let defaultInputKeys = inputKeys;
+    if (defaultInputKeys === undefined) {
+      defaultInputKeys = this.inputChannels;
+    } else {
+      validateKeys(defaultInputKeys, this.channels);
+    }
+
+    let defaultInterruptBefore;
+    if (
+      (Array.isArray(interruptBefore) && interruptBefore.length > 0) ||
+      interruptBefore === "*"
+    ) {
+      defaultInterruptBefore = interruptBefore;
+    } else {
+      defaultInterruptBefore = this.interruptBeforeNodes;
+    }
+
+    let defaultInterruptAfter;
+    if (
+      (Array.isArray(interruptAfter) && interruptAfter.length > 0) ||
+      interruptAfter === "*"
+    ) {
+      defaultInterruptAfter = interruptAfter;
+    } else {
+      defaultInterruptAfter = this.interruptAfterNodes;
+    }
+
+    let defaultStreamMode: StreamMode;
+    if (streamMode !== undefined) {
+      defaultStreamMode = streamMode;
+    } else {
+      defaultStreamMode = this.streamMode;
+    }
+
+    if (
+      config !== undefined &&
+      config.configurable !== undefined &&
+      config.configurable[CONFIG_KEY_READ] !== undefined
+    ) {
+      defaultStreamMode = "values";
+    }
+
+    return [
+      defaultDebug,
+      defaultStreamMode,
+      defaultInputKeys,
+      defaultOutputKeys,
+      defaultInterruptBefore,
+      defaultInterruptAfter,
+    ];
   }
 
   async *_transform(

@@ -22,12 +22,16 @@ import { END, Graph, StateGraph } from "../graph/index.js";
 import { Topic } from "../channels/topic.js";
 import { PregelNode } from "../pregel/read.js";
 import { BaseChannel, InvalidUpdateError } from "../channels/base.js";
-import { MemorySaverAssertImmutable } from "../checkpoint/memory.js";
+import {
+  MemorySaver,
+  MemorySaverAssertImmutable,
+} from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
 import {
   Channel,
   GraphRecursionError,
   Pregel,
+  StreamMode,
   _applyWrites,
   _localRead,
   _prepareNextTasks,
@@ -37,7 +41,7 @@ import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
 import { MessageGraph } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
 import { Checkpoint } from "../checkpoint/base.js";
-import { PregelExecutableTask } from "../pregel/types.js";
+import { All, PregelExecutableTask } from "../pregel/types.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -139,6 +143,132 @@ describe("Pregel", () => {
         "input",
         "output",
       ]);
+    });
+  });
+
+  describe("streamChannelsAsIs", () => {
+    it("should return the expected list of stream channels as is", () => {
+      // set up test
+      const chain = Channel.subscribeTo("input").pipe(
+        Channel.writeTo(["output"])
+      );
+
+      const pregel1 = new Pregel({
+        nodes: { one: chain },
+        streamChannels: "channel",
+      });
+      const pregel2 = new Pregel({
+        nodes: { one: chain },
+        channels: { channel2: new LastValue() },
+        streamChannels: [],
+      });
+
+      // call method / assertions
+      expect(pregel1.streamChannelsAsIs).toEqual("channel");
+      expect(pregel2.streamChannelsAsIs).toEqual([
+        "channel2",
+        "input",
+        "output",
+      ]);
+    });
+  });
+
+  describe("_defaults", () => {
+    it("should return the expected tuple of defaults", () => {
+      // Because the implementation of _defaults() contains independent
+      // if-else statements that determine that returned values in the tuple,
+      // this unit test can be separated into 2 parts. The first part of the
+      // test executes the "true" evaluation path of the if-else statements.
+      // The second part evaluates the "false" evaluation path.
+
+      // set up test
+      const config1: RunnableConfig | undefined = undefined;
+      const config2: RunnableConfig | undefined = {
+        configurable: {
+          __pregel_read: (): void => {},
+        },
+      };
+
+      const streamMode1: StreamMode | undefined = undefined;
+      const streamMode2: StreamMode | undefined = "updates";
+
+      const inputKeys1: string | string[] | undefined = undefined;
+      const inputKeys2: string | string[] | undefined = "inputKey";
+
+      const outputKeys1: string | string[] | undefined = undefined;
+      const outputKeys2: string | string[] | undefined = "outputKey";
+
+      const interruptBefore1: All | string[] | undefined = undefined;
+      const interruptBefore2: All | string[] | undefined = "*";
+
+      const interruptAfter1: All | string[] | undefined = undefined;
+      const interruptAfter2: All | string[] | undefined = ["interruptAfter"];
+
+      const debug1: boolean | undefined = undefined;
+      const debug2: boolean | undefined = true;
+
+      // create Pregel class
+      const node = new PregelNode({
+        channels: ["channel3"],
+        triggers: ["channel3"],
+      });
+      const pregel = new Pregel({
+        nodes: { one: node },
+        debug: false,
+        inputChannels: "channel3",
+        interruptBeforeNodes: ["one"],
+        interruptAfterNodes: ["one"],
+        streamMode: "values",
+        channels: {
+          channel3: new LastValue(),
+          outputKey: new LastValue(),
+          inputKey: new LastValue(),
+        },
+        streamChannels: [],
+        checkpointer: new MemorySaver(),
+      });
+
+      // call method / assertions
+      const expectedDefaults1 = [
+        false, // debug
+        "values", // stream mode
+        "channel3", // input keys
+        ["channel3", "outputKey", "inputKey", "output"], // output keys
+        ["one"], // interrupt before
+        ["one"], // interrupt after
+      ];
+
+      const expectedDefaults2 = [
+        true, // debug
+        "values", // stream mode
+        "inputKey", // input keys
+        "outputKey", // output keys
+        "*", // interrupt before
+        ["interruptAfter"], // interrupt after
+      ];
+
+      expect(
+        pregel._defaults(
+          config1,
+          streamMode1,
+          inputKeys1,
+          outputKeys1,
+          interruptBefore1,
+          interruptAfter1,
+          debug1
+        )
+      ).toEqual(expectedDefaults1);
+      expect(
+        pregel._defaults(
+          config2,
+          streamMode2,
+          inputKeys2,
+          outputKeys2,
+          interruptBefore2,
+          interruptAfter2,
+          debug2
+        )
+      ).toEqual(expectedDefaults2);
     });
   });
 });
