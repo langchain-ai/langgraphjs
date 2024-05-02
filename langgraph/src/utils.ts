@@ -50,7 +50,6 @@ export class RunnableCallable extends Runnable {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let returnValue: any;
 
-    // TODO: mergeConfigs() from @langchain/core is not exported
     if (this.trace) {
       returnValue = await this._callWithConfig(
         this.func,
