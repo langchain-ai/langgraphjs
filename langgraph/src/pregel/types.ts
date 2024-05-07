@@ -36,3 +36,5 @@ export interface StateSnapshot {
    */
   parentConfig?: RunnableConfig | undefined;
 }
+
+export type All = "*";
