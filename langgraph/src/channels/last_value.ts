@@ -12,13 +12,13 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
 
   value?: Value;
 
-  fromCheckpoint(checkpoint?: Value): LastValue<Value> {
+  fromCheckpoint(checkpoint?: Value) {
     const empty = new LastValue<Value>();
     if (checkpoint) {
       empty.value = checkpoint;
     }
 
-    return empty;
+    return empty as this;
   }
 
   update(values: Value[]): void {

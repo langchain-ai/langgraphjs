@@ -12,18 +12,12 @@ import { END, MessageGraph } from "../index.js";
 describe("Chatbot", () => {
   it("Simple chat use-case", async () => {
     const model = new ChatOpenAI({ temperature: 0 });
-    const graph = new MessageGraph();
-
-    graph.addNode("oracle", async (state: BaseMessage[]) =>
-      model.invoke(state)
-    );
-
-    graph.addEdge("oracle", END);
-
-    graph.setEntryPoint("oracle");
-
-    const runnable = graph.compile();
-    const res = await runnable.invoke(new HumanMessage("What is 1 + 1?"));
+    const graph = new MessageGraph()
+      .addNode("oracle", async (state: BaseMessage[]) => model.invoke(state))
+      .addEdge("oracle", END)
+      .setEntryPoint("oracle")
+      .compile();
+    const res = await graph.invoke(new HumanMessage("What is 1 + 1?"));
 
     console.log(res);
   });
@@ -36,35 +30,6 @@ describe("Chatbot", () => {
       tool_choice: "auto",
     });
 
-    const graph = new MessageGraph();
-
-    graph.addNode("oracle", async (state: BaseMessage[]) =>
-      model.invoke(state)
-    );
-
-    graph.addNode("calculator", async (state: BaseMessage[]) => {
-      const tool = new Calculator();
-      const toolCalls =
-        state[state.length - 1].additional_kwargs.tool_calls ?? [];
-      const calculatorCall = toolCalls.find(
-        (toolCall) => toolCall.function.name === "calculator"
-      );
-      if (calculatorCall === undefined) {
-        throw new Error("No calculator input found.");
-      }
-      const result = await tool.invoke(
-        JSON.parse(calculatorCall.function.arguments)
-      );
-      return new ToolMessage({
-        tool_call_id: calculatorCall.id,
-        content: result,
-      });
-    });
-
-    graph.addEdge("calculator", END);
-
-    graph.setEntryPoint("oracle");
-
     const router = (state: BaseMessage[]) => {
       const toolCalls =
         state[state.length - 1].additional_kwargs.tool_calls ?? [];
@@ -74,17 +39,39 @@ describe("Chatbot", () => {
         return "end";
       }
     };
-    graph.addConditionalEdges("oracle", router, {
-      calculator: "calculator",
-      end: END,
-    });
 
-    const runnable = graph.compile();
-    const res = await runnable.invoke(new HumanMessage("What is 1 + 1?"));
+    const graph = new MessageGraph()
+      .addNode("oracle", async (state: BaseMessage[]) => model.invoke(state))
+      .addNode("calculator", async (state: BaseMessage[]) => {
+        const tool = new Calculator();
+        const toolCalls =
+          state[state.length - 1].additional_kwargs.tool_calls ?? [];
+        const calculatorCall = toolCalls.find(
+          (toolCall) => toolCall.function.name === "calculator"
+        );
+        if (calculatorCall === undefined) {
+          throw new Error("No calculator input found.");
+        }
+        const result = await tool.invoke(
+          JSON.parse(calculatorCall.function.arguments)
+        );
+        return new ToolMessage({
+          tool_call_id: calculatorCall.id,
+          content: result,
+        });
+      })
+      .addEdge("calculator", END)
+      .setEntryPoint("oracle")
+      .addConditionalEdges("oracle", router, {
+        calculator: "calculator",
+        end: END,
+      })
+      .compile();
+    const res = await graph.invoke(new HumanMessage("What is 1 + 1?"));
 
     console.log(res);
 
-    const res2 = await runnable.invoke(new HumanMessage("What is your name?"));
+    const res2 = await graph.invoke(new HumanMessage("What is your name?"));
 
     console.log(res2);
   });

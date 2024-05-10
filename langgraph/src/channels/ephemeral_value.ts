@@ -15,12 +15,12 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
     this.guard = guard;
   }
 
-  fromCheckpoint(checkpoint?: Value): EphemeralValue<Value> {
+  fromCheckpoint(checkpoint?: Value) {
     const empty = new EphemeralValue<Value>();
     if (checkpoint) {
       empty.value = checkpoint;
     }
-    return empty;
+    return empty as this;
   }
 
   update(values: Value[]): void {

@@ -37,7 +37,7 @@ export class Topic<Value> extends BaseChannel<
     this.values = [];
   }
 
-  public fromCheckpoint(checkpoint?: [Set<Value>, Value[]]): Topic<Value> {
+  public fromCheckpoint(checkpoint?: [Set<Value>, Value[]]) {
     const empty = new Topic<Value>({
       unique: this.unique,
       accumulate: this.accumulate,
@@ -45,7 +45,7 @@ export class Topic<Value> extends BaseChannel<
     if (checkpoint) {
       [empty.seen, empty.values] = checkpoint;
     }
-    return empty;
+    return empty as this;
   }
 
   public update(values: Array<Value | Value[]>): void {

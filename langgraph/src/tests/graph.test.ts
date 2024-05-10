@@ -3,15 +3,17 @@ import { StateGraph } from "../graph/state.js";
 
 describe("State", () => {
   it("should validate a new node key correctly ", () => {
-    const stateGraph = new StateGraph({
-      channels: { existingStateAttributeKey: { value: null } },
+    const stateGraph = new StateGraph<{
+      existingStateAttributeKey: string;
+    }>({
+      channels: { existingStateAttributeKey: null },
     });
     expect(() => {
-      stateGraph.addNode("existingStateAttributeKey", () => {});
+      stateGraph.addNode("existingStateAttributeKey", (_) => ({}));
     }).toThrow("existingStateAttributeKey");
 
     expect(() => {
-      stateGraph.addNode("newNodeKey", () => {});
+      stateGraph.addNode("newNodeKey", (_) => ({}));
     }).not.toThrow();
   });
 });
