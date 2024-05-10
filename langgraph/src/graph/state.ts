@@ -261,8 +261,8 @@ export class StateGraph<
         ...nodeOutboxes,
         END: new LastValue(),
       },
-      inputChannels: `${START}:inbox`,
-      outputChannels: END,
+      inputs: `${START}:inbox`,
+      outputs: END,
       checkpointer,
     });
   }

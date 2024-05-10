@@ -9,7 +9,10 @@ export class GraphValidationError extends Error {
   }
 }
 
-export function validateGraph({
+export function validateGraph<
+  Nn extends Record<string, PregelNode>,
+  Cc extends Record<string, BaseChannel>
+>({
   nodes,
   channels,
   inputChannels,
@@ -17,20 +20,22 @@ export function validateGraph({
   streamChannels,
   interruptAfterNodes,
   interruptBeforeNodes,
-  defaultChannelFactory,
 }: {
-  nodes: Record<string, PregelNode>;
-  channels: { [key: string]: BaseChannel };
-  inputChannels: string | Array<string>;
-  outputChannels: string | Array<string>;
-  streamChannels?: string | Array<string>;
-  interruptAfterNodes: Array<string>;
-  interruptBeforeNodes: Array<string>;
-  defaultChannelFactory: () => BaseChannel;
+  nodes: Nn;
+  channels: Cc;
+  inputChannels: keyof Cc | Array<keyof Cc>;
+  outputChannels: keyof Cc | Array<keyof Cc>;
+  streamChannels?: keyof Cc | Array<keyof Cc>;
+  interruptAfterNodes?: Array<keyof Nn>;
+  interruptBeforeNodes?: Array<keyof Nn>;
 }): void {
+  if (!channels) {
+    throw new GraphValidationError("Channels not provided");
+  }
+
   const newChannels = channels;
-  const subscribedChannels = new Set<string>();
-  const allOutputChannels = new Set<string>();
+  const subscribedChannels = new Set<keyof Cc>();
+  const allOutputChannels = new Set<keyof Cc>();
 
   for (const [name, node] of Object.entries(nodes)) {
     if (name === INTERRUPT) {
@@ -48,14 +53,18 @@ export function validateGraph({
   // side effect: update channels
   for (const chan of subscribedChannels) {
     if (!(chan in newChannels)) {
-      newChannels[chan] = defaultChannelFactory();
+      throw new GraphValidationError(
+        `Subcribed channel '${String(chan)}' not in channels`
+      );
     }
   }
 
-  if (typeof inputChannels === "string") {
+  if (!Array.isArray(inputChannels)) {
     if (!subscribedChannels.has(inputChannels)) {
       throw new GraphValidationError(
-        `Input channel ${inputChannels} is not subscribed to by any node`
+        `Input channel ${String(
+          inputChannels
+        )} is not subscribed to by any node`
       );
     }
   } else {
@@ -66,52 +75,57 @@ export function validateGraph({
     }
   }
 
-  // side effect: update channels
-  if (typeof outputChannels === "string") {
+  if (!Array.isArray(outputChannels)) {
     allOutputChannels.add(outputChannels);
   } else {
     outputChannels.forEach((chan) => allOutputChannels.add(chan));
   }
 
-  if (typeof streamChannels === "string") {
+  if (streamChannels && !Array.isArray(streamChannels)) {
     allOutputChannels.add(streamChannels);
-  } else if (streamChannels) {
+  } else if (Array.isArray(streamChannels)) {
     streamChannels.forEach((chan) => allOutputChannels.add(chan));
   }
 
   for (const chan of allOutputChannels) {
     if (!(chan in newChannels)) {
-      newChannels[chan] = defaultChannelFactory();
+      throw new GraphValidationError(
+        `Output channel '${String(chan)}' not in channels`
+      );
     }
   }
 
   // validate interrupt before/after
-  for (const node of interruptAfterNodes) {
-    if (!(node in nodes)) {
-      throw new GraphValidationError(`Node ${node} not in nodes`);
+  if (interruptAfterNodes) {
+    for (const node of interruptAfterNodes) {
+      if (!(node in nodes)) {
+        throw new GraphValidationError(`Node ${String(node)} not in nodes`);
+      }
     }
   }
 
-  for (const node of interruptBeforeNodes) {
-    if (!(node in nodes)) {
-      throw new GraphValidationError(`Node ${node} not in nodes`);
+  if (interruptBeforeNodes) {
+    for (const node of interruptBeforeNodes) {
+      if (!(node in nodes)) {
+        throw new GraphValidationError(`Node ${String(node)} not in nodes`);
+      }
     }
   }
 }
 
-export function validateKeys(
-  keys: string | Array<string>,
-  channels: { [key: string]: BaseChannel }
+export function validateKeys<Cc extends Record<string, BaseChannel>>(
+  keys: keyof Cc | Array<keyof Cc>,
+  channels: Cc
 ): void {
   if (Array.isArray(keys)) {
     for (const key of keys) {
       if (!(key in channels)) {
-        throw new Error(`Key ${key} not found in channels`);
+        throw new Error(`Key ${String(key)} not found in channels`);
       }
     }
   } else {
     if (!(keys in channels)) {
-      throw new Error(`Key ${keys} not found in channels`);
+      throw new Error(`Key ${String(keys)} not found in channels`);
     }
   }
 }

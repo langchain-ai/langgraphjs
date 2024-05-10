@@ -31,7 +31,6 @@ import { mapInput, mapOutput, readChannel, readChannels } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND, INTERRUPT } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
-import { LastValue } from "../channels/last_value.js";
 import { All, PregelExecutableTask, PregelTaskDescription } from "./types.js";
 
 const DEFAULT_RECURSION_LIMIT = 25;
@@ -139,16 +138,24 @@ export class Channel {
 
 export type StreamMode = "values" | "updates";
 
-export interface PregelInterface {
-  nodes: Record<string, PregelNode>;
-  /**
-   * @default {}
-   */
-  channels?: Record<string, BaseChannel>;
-  /**
-   * @default () => new LastValue()
-   */
-  defaultChannelFactory?: () => BaseChannel;
+/**
+ * Construct a type with a set of properties K of type T
+ */
+type StrRecord<K extends string, T> = {
+  [P in K]: T;
+};
+
+export interface PregelInterface<
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel>
+> {
+  nodes: Nn;
+
+  channels: Cc;
+
+  inputs: keyof Cc | Array<keyof Cc>;
+
+  outputs: keyof Cc | Array<keyof Cc>;
   /**
    * @default true
    */
@@ -157,24 +164,16 @@ export interface PregelInterface {
    * @default "values"
    */
   streamMode?: StreamMode;
-  /**
-   * @default "output"
-   */
-  outputChannels?: string | Array<string>;
 
-  streamChannels?: string | Array<string>;
+  streamChannels?: keyof Cc | Array<keyof Cc>;
   /**
    * @default []
    */
-  interruptAfterNodes?: Array<string>;
+  interruptAfter?: Array<keyof Nn>;
   /**
    * @default []
    */
-  interruptBeforeNodes?: Array<string>;
-  /**
-   * @default "input"
-   */
-  inputChannels?: string | Array<string>;
+  interruptBefore?: Array<keyof Nn>;
   /**
    * @default undefined
    */
@@ -188,8 +187,16 @@ export interface PregelInterface {
   checkpointer?: BaseCheckpointSaver<any>;
 }
 
-export interface PregelOptions extends RunnableConfig {
-  outputKeys?: string | string[];
+export interface PregelOptions<
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel>
+> extends RunnableConfig {
+  streamMode?: StreamMode;
+  inputKeys?: keyof Cc | Array<keyof Cc>;
+  outputKeys?: keyof Cc | Array<keyof Cc>;
+  interruptBefore?: All | Array<keyof Nn>;
+  interruptAfter?: All | Array<keyof Nn>;
+  debug?: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -198,9 +205,12 @@ export type PregelInputType = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PregelOutputType = any;
 
-export class Pregel
-  extends Runnable<PregelInputType, PregelOutputType, PregelOptions>
-  implements PregelInterface
+export class Pregel<
+    Nn extends StrRecord<string, PregelNode>,
+    Cc extends StrRecord<string, BaseChannel>
+  >
+  extends Runnable<PregelInputType, PregelOutputType, PregelOptions<Nn, Cc>>
+  implements PregelInterface<Nn, Cc>
 {
   static lc_name() {
     return "LangGraph";
@@ -209,25 +219,23 @@ export class Pregel
   // Because Pregel extends `Runnable`.
   lc_namespace = ["langgraph", "pregel"];
 
-  nodes: Record<string, PregelNode>;
+  nodes: Nn;
 
-  channels: Record<string, BaseChannel> = {};
+  channels: Cc;
 
-  defaultChannelFactory: () => BaseChannel = () => new LastValue();
+  inputs: keyof Cc | Array<keyof Cc>;
+
+  outputs: keyof Cc | Array<keyof Cc>;
 
   autoValidate: boolean = true;
 
   streamMode: StreamMode = "values";
 
-  outputChannels: string | Array<string> = "output";
+  streamChannels?: keyof Cc | Array<keyof Cc>;
 
-  streamChannels?: string | string[];
+  interruptAfter?: Array<keyof Nn>;
 
-  interruptAfterNodes: string[] = [];
-
-  interruptBeforeNodes: string[] = [];
-
-  inputChannels: string | Array<string> = "input";
+  interruptBefore?: Array<keyof Nn>;
 
   stepTimeout?: number;
 
@@ -236,24 +244,20 @@ export class Pregel
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   checkpointer?: BaseCheckpointSaver<any>;
 
-  constructor(fields: PregelInterface) {
+  constructor(fields: PregelInterface<Nn, Cc>) {
     super(fields);
 
     // Initialize global async local storage instance for tracing
     initializeAsyncLocalStorageSingleton();
     this.nodes = fields.nodes;
-    this.channels = fields.channels ?? this.channels;
-    this.defaultChannelFactory =
-      fields.defaultChannelFactory ?? this.defaultChannelFactory;
+    this.channels = fields.channels;
     this.autoValidate = fields.autoValidate ?? this.autoValidate;
     this.streamMode = fields.streamMode ?? this.streamMode;
-    this.outputChannels = fields.outputChannels ?? this.outputChannels;
+    this.outputs = fields.outputs;
     this.streamChannels = fields.streamChannels ?? this.streamChannels;
-    this.interruptAfterNodes =
-      fields.interruptAfterNodes ?? this.interruptAfterNodes;
-    this.interruptBeforeNodes =
-      fields.interruptBeforeNodes ?? this.interruptBeforeNodes;
-    this.inputChannels = fields.inputChannels ?? this.inputChannels;
+    this.interruptAfter = fields.interruptAfter;
+    this.interruptBefore = fields.interruptBefore;
+    this.inputs = fields.inputs;
     this.stepTimeout = fields.stepTimeout ?? this.stepTimeout;
     this.debug = fields.debug ?? this.debug;
     this.checkpointer = fields.checkpointer;
@@ -264,105 +268,87 @@ export class Pregel
     this.validate();
   }
 
-  validate(): Pregel {
+  validate(): this {
     validateGraph({
       nodes: this.nodes,
       channels: this.channels,
-      outputChannels: this.outputChannels,
-      inputChannels: this.inputChannels,
+      outputChannels: this.outputs,
+      inputChannels: this.inputs,
       streamChannels: this.streamChannels,
-      interruptAfterNodes: this.interruptAfterNodes,
-      interruptBeforeNodes: this.interruptBeforeNodes,
-      defaultChannelFactory: this.defaultChannelFactory,
+      interruptAfterNodes: this.interruptAfter,
+      interruptBeforeNodes: this.interruptBefore,
     });
-
-    if (
-      this.interruptAfterNodes.length > 0 ||
-      this.interruptBeforeNodes.length > 0
-    ) {
-      if (this.checkpointer === undefined) {
-        throw new Error("Interrupts require a checkpointer");
-      }
-    }
 
     return this;
   }
 
-  get streamChannelsList(): Array<string> {
-    if (typeof this.streamChannels === "string") {
+  get streamChannelsList(): Array<keyof Cc> {
+    if (Array.isArray(this.streamChannels)) {
+      return this.streamChannels;
+    } else if (this.streamChannels) {
       return [this.streamChannels];
     } else {
-      if (this.streamChannels && this.streamChannels.length > 0) {
-        return this.streamChannels;
-      } else {
-        return Object.keys(this.channels);
-      }
+      return Object.keys(this.channels);
     }
   }
 
-  get streamChannelsAsIs(): string | Array<string> {
-    if (this.streamChannels && this.streamChannels.length > 0) {
+  get streamChannelsAsIs(): keyof Cc | Array<keyof Cc> {
+    if (this.streamChannels) {
       return this.streamChannels;
     } else {
       return Object.keys(this.channels);
     }
   }
 
-  _defaults(
-    config?: RunnableConfig,
-    streamMode?: StreamMode,
-    inputKeys?: string | string[],
-    outputKeys?: string | string[],
-    interruptBefore?: All | string[],
-    interruptAfter?: All | string[],
-    debug?: boolean
-  ): [
+  _defaults(config: PregelOptions<Nn, Cc>): [
     boolean, // debug
     StreamMode, // stream mode
-    string | string[], // input keys
-    string | string[], // output keys
-    All | string[] | undefined, // interrupt before
-    All | string[] | undefined // interrupt after
+    keyof Cc | Array<keyof Cc>, // input keys
+    keyof Cc | Array<keyof Cc>, // output keys
+    All | Array<keyof Nn> | undefined, // interrupt before
+    All | Array<keyof Nn> | undefined // interrupt after
   ] {
-    const defaultDebug = debug !== undefined ? debug : this.debug;
+    const defaultDebug = config.debug !== undefined ? config.debug : this.debug;
 
-    let defaultOutputKeys = outputKeys;
+    let defaultOutputKeys = config.outputKeys;
     if (defaultOutputKeys === undefined) {
       defaultOutputKeys = this.streamChannelsAsIs;
     } else {
       validateKeys(defaultOutputKeys, this.channels);
     }
 
-    let defaultInputKeys = inputKeys;
+    let defaultInputKeys = config.inputKeys;
     if (defaultInputKeys === undefined) {
-      defaultInputKeys = this.inputChannels;
+      defaultInputKeys = this.inputs;
     } else {
       validateKeys(defaultInputKeys, this.channels);
     }
 
     let defaultInterruptBefore;
     if (
-      (Array.isArray(interruptBefore) && interruptBefore.length > 0) ||
-      interruptBefore === "*"
+      (Array.isArray(config.interruptBefore) &&
+        config.interruptBefore.length > 0) ||
+      config.interruptBefore === "*"
     ) {
-      defaultInterruptBefore = interruptBefore;
+      defaultInterruptBefore = config.interruptBefore;
     } else {
-      defaultInterruptBefore = this.interruptBeforeNodes;
+      defaultInterruptBefore = this.interruptBefore;
     }
 
     let defaultInterruptAfter;
     if (
-      (Array.isArray(interruptAfter) && interruptAfter.length > 0) ||
-      interruptAfter === "*"
+      (Array.isArray(config.interruptAfter) &&
+        config.interruptAfter.length > 0) ||
+      config.interruptAfter === "*"
     ) {
-      defaultInterruptAfter = interruptAfter;
+      defaultInterruptAfter = config.interruptAfter;
     } else {
-      defaultInterruptAfter = this.interruptAfterNodes;
+      defaultInterruptAfter = this.interruptAfter;
     }
 
     let defaultStreamMode: StreamMode;
-    if (streamMode !== undefined) {
-      defaultStreamMode = streamMode;
+    if (config.streamMode !== undefined) {
+      defaultStreamMode = config.streamMode;
     } else {
       defaultStreamMode = this.streamMode;
     }
@@ -388,20 +374,17 @@ export class Pregel
   async *_transform(
     input: AsyncGenerator<PregelInputType>,
     runManager?: CallbackManagerForChainRun,
-    config: RunnableConfig & Partial<Record<string, unknown>> = {}
+    config: PregelOptions<Nn, Cc> = {}
   ): AsyncGenerator<PregelOutputType> {
     // assign defaults
-    let outputKeys: string | Array<string> = [];
-    if (
-      Array.isArray(config.outputKeys) ||
-      typeof config.outputKeys === "string"
-    ) {
-      outputKeys = config.outputKeys;
-    } else {
-      for (const chan of Object.keys(this.channels)) {
-        outputKeys.push(chan);
-      }
-    }
+    const [
+      debug,
+      streamMode,
+      inputKeys,
+      outputKeys,
+      interruptBefore,
+      interruptAfter,
+    ] = this._defaults(config);
     // copy nodes to ignore mutations during execution
     const processes = { ...this.nodes };
     // get checkpoint, or create an empty one
@@ -414,12 +397,11 @@ export class Pregel
     // create channels from checkpoint
     const channels = emptyChannels(this.channels, checkpoint);
     // map inputs to channel updates
-    const thisInput = this.inputChannels;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const inputPendingWrites: Array<[string, any]> = [];
+    const inputPendingWrites: Array<[keyof Cc, any]> = [];
     for await (const c of input) {
-      for (const value of mapInput(thisInput, c)) {
+      for (const value of mapInput(inputKeys, c)) {
         inputPendingWrites.push(value);
       }
     }
@@ -523,11 +505,11 @@ export class Pregel
 
   async invoke(
     input: PregelInputType,
-    options?: PregelOptions
+    options?: PregelOptions<Nn, Cc>
   ): Promise<PregelOutputType> {
     const config = ensureConfig(options);
     if (!config?.outputKeys) {
-      config.outputKeys = this.outputChannels;
+      config.outputKeys = this.outputs;
     }
 
     let latest: PregelOutputType | undefined;
@@ -542,7 +524,7 @@ export class Pregel
 
   async stream(
     input: PregelInputType,
-    config?: PregelOptions
+    config?: PregelOptions<Nn, Cc>
   ): Promise<IterableReadableStream<PregelOutputType>> {
     const inputIterator: AsyncGenerator<PregelInputType> = (async function* () {
       yield input;
@@ -554,7 +536,7 @@ export class Pregel
 
   async *transform(
     generator: AsyncGenerator<PregelInputType>,
-    config?: PregelOptions
+    config?: PregelOptions<Nn, Cc>
   ): AsyncGenerator<PregelOutputType> {
     for await (const chunk of this._transformStreamWithConfig(
       generator,
@@ -649,14 +631,17 @@ export function _localRead(
   }
 }
 
-export function _applyWrites(
+export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   checkpoint: Checkpoint,
-  channels: Record<string, BaseChannel>,
+  channels: Cc,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pendingWrites: Array<[string, any]>
+  pendingWrites: Array<[keyof Cc, any]>
 ): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pendingWritesByChannel: Record<string, Array<any>> = {};
+  const pendingWritesByChannel = {} as Record<
+    keyof Cc,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Array<any>
+  >;
   // Group writes by channel
   for (const [chan, val] of pendingWrites) {
     if (chan in pendingWritesByChannel) {
