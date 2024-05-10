@@ -269,7 +269,7 @@ export class StateGraph<
       ...waitingEdgeChannels,
       ...nodeInboxes,
       ...nodeOutboxes,
-      END: new LastValue(),
+      [END]: new LastValue(),
     };
 
     return new Pregel({

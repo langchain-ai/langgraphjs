@@ -33,7 +33,6 @@ export function validateGraph<
     throw new GraphValidationError("Channels not provided");
   }
 
-  const newChannels = channels;
   const subscribedChannels = new Set<keyof Cc>();
   const allOutputChannels = new Set<keyof Cc>();
 
@@ -52,7 +51,7 @@ export function validateGraph<
 
   // side effect: update channels
   for (const chan of subscribedChannels) {
-    if (!(chan in newChannels)) {
+    if (!(chan in channels)) {
       throw new GraphValidationError(
         `Subcribed channel '${String(chan)}' not in channels`
       );
@@ -88,7 +87,7 @@ export function validateGraph<
   }
 
   for (const chan of allOutputChannels) {
-    if (!(chan in newChannels)) {
+    if (!(chan in channels)) {
       throw new GraphValidationError(
         `Output channel '${String(chan)}' not in channels`
       );
