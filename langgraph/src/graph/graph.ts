@@ -8,6 +8,8 @@ import {
 import { PregelNode } from "../pregel/read.js";
 import { Channel, Pregel } from "../pregel/index.js";
 import { BaseCheckpointSaver } from "../checkpoint/base.js";
+import { BaseChannel } from "../channels/base.js";
+import { EphemeralValue } from "../channels/ephemeral_value.js";
 
 export const END = "__end__";
 
@@ -42,12 +44,13 @@ class Branch {
 }
 
 export class Graph<
+  const N extends string = typeof END,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   RunInput = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   RunOutput = any
 > {
-  nodes: Record<string, Runnable<RunInput, RunOutput>>;
+  nodes: Record<N, Runnable<RunInput, RunOutput>>;
 
   edges: Set<[string, string]>;
 
@@ -60,7 +63,7 @@ export class Graph<
   supportMultipleEdges = false;
 
   constructor() {
-    this.nodes = {};
+    this.nodes = {} as Record<N, Runnable<RunInput, RunOutput>>;
     this.edges = new Set();
     this.branches = {};
   }
@@ -75,22 +78,26 @@ export class Graph<
     return this.edges;
   }
 
-  addNode(key: string, action: RunnableLike<RunInput, RunOutput>): void {
+  addNode<K extends string>(key: K, action: RunnableLike<RunInput, RunOutput>) {
     this.warnIfCompiled(
       `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
     );
 
-    if (this.nodes[key]) {
+    if (key in this.nodes) {
       throw new Error(`Node \`${key}\` already present.`);
     }
     if (key === END) {
       throw new Error(`Node \`${key}\` is reserved.`);
     }
 
-    this.nodes[key] = _coerceToRunnable<RunInput, RunOutput>(action);
+    this.nodes[key as unknown as N] = _coerceToRunnable<RunInput, RunOutput>(
+      action
+    );
+
+    return this as Graph<N | K, RunInput, RunOutput>;
   }
 
-  addEdge(startKey: string, endKey: string): void {
+  addEdge(startKey: N, endKey: N | typeof END): this {
     this.warnIfCompiled(
       `Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph.`
     );
@@ -98,10 +105,10 @@ export class Graph<
     if (startKey === END) {
       throw new Error("END cannot be a start node");
     }
-    if (!this.nodes[startKey]) {
+    if (!(startKey in this.nodes)) {
       throw new Error(`Need to addNode \`${startKey}\` first`);
     }
-    if (!this.nodes[endKey] && endKey !== END) {
+    if (!(endKey in this.nodes) && endKey !== END) {
       throw new Error(`Need to addNode \`${endKey}\` first`);
     }
 
@@ -113,18 +120,20 @@ export class Graph<
     }
 
     this.edges.add([startKey, endKey]);
+
+    return this;
   }
 
   addConditionalEdges(
-    startKey: string,
+    startKey: N,
     condition: CallableFunction,
-    conditionalEdgeMapping?: Record<string, string>
-  ): void {
+    conditionalEdgeMapping?: Record<string, N | typeof END>
+  ): this {
     this.warnIfCompiled(
       "Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
 
-    if (!this.nodes[startKey]) {
+    if (!(startKey in this.nodes)) {
       throw new Error(`Need to addNode \`${startKey}\` first`);
     }
     if (conditionalEdgeMapping) {
@@ -148,29 +157,38 @@ export class Graph<
       this.branches[startKey] = [];
     }
     this.branches[startKey].push(new Branch(condition, conditionalEdgeMapping));
+
+    return this;
   }
 
-  setEntryPoint(key: string): void {
+  setEntryPoint(key: N): this {
     this.warnIfCompiled(
       "Setting the entry point of a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
 
-    if (!this.nodes[key]) {
+    if (!(key in this.nodes)) {
       throw new Error(`Need to addNode \`${key}\` first`);
     }
     this.entryPoint = key;
+
+    return this;
   }
 
-  setFinishPoint(key: string): void {
+  setFinishPoint(key: N): this {
     this.warnIfCompiled(
       "Setting a finish point of a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
 
-    this.addEdge(key, END);
+    return this.addEdge(key, END);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  compile(checkpointer?: BaseCheckpointSaver<any>): Pregel {
+  compile(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    checkpointer?: BaseCheckpointSaver<any>
+  ): Pregel<
+    Record<N, PregelNode<RunInput, RunOutput>>,
+    Record<N, BaseChannel>
+  > {
     this.validate();
 
     const outgoingEdges: Record<string, string[]> = {};
@@ -181,9 +199,17 @@ export class Graph<
       outgoingEdges[start].push(end !== END ? `${end}:inbox` : END);
     });
 
-    const nodes: Record<string, PregelNode<RunInput, RunOutput>> = {};
-    for (const [key, node] of Object.entries(this.nodes)) {
-      nodes[key] = Channel.subscribeTo(`${key}:inbox`)
+    const nodes = {} as Record<string, PregelNode<RunInput, RunOutput>>;
+    const channels = {
+      [END]: new EphemeralValue(),
+    } as Record<string, BaseChannel>;
+    for (const [key, node] of Object.entries<Runnable<RunInput, RunOutput>>(
+      this.nodes
+    )) {
+      const inboxKey = `${key}:inbox`;
+      channels[key] = new EphemeralValue();
+      channels[inboxKey] = new EphemeralValue();
+      nodes[key as N] = Channel.subscribeTo(inboxKey)
         .pipe(node)
         .pipe(Channel.writeTo([key]));
     }
@@ -215,8 +241,9 @@ export class Graph<
     }
     return new Pregel({
       nodes,
-      inputChannels: `${this.entryPoint}:inbox`,
-      outputChannels: END,
+      channels,
+      inputs: `${this.entryPoint}:inbox`,
+      outputs: END,
       checkpointer,
     });
   }

@@ -166,20 +166,20 @@ describe("mapInput", () => {
     expect(tuples[0]).toEqual(["someChannelName1", "some chunk 1"]);
   });
 
-  it("should throw an error if an invalid chunk type is provided", () => {
+  it("should throw an error if an invalid chunk type is provided", async () => {
     // set up test
     const channelNames = ["someChannelName1", "someChannelName2"];
     const chunk = ["array", "of", "chunks"];
 
     // call method / assertions
-    expect(() => {
+    await expect(() => {
       const generator = mapInput(channelNames, chunk);
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for (const _ of generator) {
         // do nothing, error will be thrown
         continue;
       }
-    }).toThrow(Error);
+    }).toThrow("Input chunk must be an object when inputChannels is an array");
   });
 });
 

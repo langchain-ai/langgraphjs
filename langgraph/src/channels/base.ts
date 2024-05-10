@@ -18,9 +18,7 @@ export abstract class BaseChannel<
    * @param {CheckpointType | undefined} initialValue
    * @returns {this}
    */
-  abstract fromCheckpoint(
-    checkpoint?: CheckpointType
-  ): BaseChannel<ValueType, UpdateType, CheckpointType>;
+  abstract fromCheckpoint(checkpoint?: CheckpointType): this;
 
   /**
    * Update the channel's value with the given sequence of updates.
@@ -63,11 +61,11 @@ export class InvalidUpdateError extends Error {
   }
 }
 
-export function emptyChannels(
-  channels: Record<string, BaseChannel>,
+export function emptyChannels<Cc extends Record<string, BaseChannel>>(
+  channels: Cc,
   checkpoint: Checkpoint
-): Record<string, BaseChannel> {
-  const newChannels: Record<string, BaseChannel> = {};
+): Cc {
+  const newChannels = {} as Cc;
   for (const k in channels) {
     if (Object.prototype.hasOwnProperty.call(channels, k)) {
       const channelValue = checkpoint.channelValues[k];

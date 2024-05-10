@@ -1,4 +1,8 @@
-import { RunnableLambda, RunnableLike } from "@langchain/core/runnables";
+import {
+  Runnable,
+  RunnableLambda,
+  RunnableLike,
+} from "@langchain/core/runnables";
 import { BaseChannel } from "../channels/base.js";
 import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { END, Graph } from "./graph.js";
@@ -14,38 +18,49 @@ import { RunnableCallable } from "../utils.js";
 
 export const START = "__start__";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export interface StateGraphArgs<Channels extends Record<string, any>> {
-  channels:
-    | {
-        [K in keyof Channels]:
-          | {
-              value: BinaryOperator<Channels[K]> | null;
-              default?: () => Channels[K];
-            }
-          | string;
-      }
-    | {
-        value: BinaryOperator<unknown> | null;
-        default?: () => unknown;
-      };
+type SingleReducer<T> =
+  | {
+      reducer: BinaryOperator<T>;
+      default?: () => T;
+    }
+  | {
+      /**
+       * @deprecated Use `reducer` instead
+       */
+      value: BinaryOperator<T>;
+      default?: () => T;
+    }
+  | null;
+
+export type ChannelReducers<Channels extends object> = {
+  [K in keyof Channels]: SingleReducer<Channels[K]>;
+};
+
+export interface StateGraphArgs<Channels extends object | unknown> {
+  channels: Channels extends object
+    ? Channels extends unknown[]
+      ? ChannelReducers<{ __root__: Channels }>
+      : ChannelReducers<Channels>
+    : ChannelReducers<{ __root__: Channels }>;
 }
 
 export class StateGraph<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  Channels extends Record<string, any>
-> extends Graph<Channels> {
+  const State extends object | unknown,
+  const Update extends object | unknown = Partial<State>,
+  const N extends string = typeof START
+> extends Graph<N, State, Update> {
   channels: Record<string, BaseChannel>;
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
-  waitingEdges: Set<[string[], string]> = new Set();
+  waitingEdges: Set<[N[], N]> = new Set();
 
-  constructor(fields: StateGraphArgs<Channels>) {
+  constructor(fields: StateGraphArgs<State>) {
     super();
     this.channels = _getChannels(fields.channels);
     for (const c of Object.values(this.channels)) {
       if (c.lc_graph_name === "BinaryOperatorAggregate") {
         this.supportMultipleEdges = true;
+        break;
       }
     }
   }
@@ -59,19 +74,21 @@ export class StateGraph<
     ]);
   }
 
-  addNode(key: string, action: RunnableLike) {
+  addNode<K extends string>(
+    key: K,
+    action: RunnableLike<State, Update>
+  ): StateGraph<State, Update, N | K> {
     if (key in this.channels) {
       throw new Error(
         `${key} is already being used as a state attribute (a.k.a. a channel), cannot also be used as a node name.`
       );
     }
-    super.addNode(key, action);
+    return super.addNode(key, action) as StateGraph<State, Update, N | K>;
   }
 
-  addEdge(startKey: string | string[], endKey: string) {
+  addEdge(startKey: N | N[], endKey: N | typeof END): this {
     if (typeof startKey === "string") {
-      super.addEdge(startKey, endKey);
-      return;
+      return super.addEdge(startKey, endKey);
     }
 
     if (this.compiled) {
@@ -97,10 +114,12 @@ export class StateGraph<
     }
 
     this.waitingEdges.add([startKey, endKey]);
+
+    return this;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  compile(checkpointer?: BaseCheckpointSaver<any>): Pregel {
+  compile(checkpointer?: BaseCheckpointSaver<any>) {
     this.validate();
 
     if (Object.keys(this.nodes).some((key) => key in this.channels)) {
@@ -176,7 +195,9 @@ export class StateGraph<
 
     const nodes: Record<string, PregelNode> = {};
 
-    for (const [key, node] of Object.entries(this.nodes)) {
+    for (const [key, node] of Object.entries<Runnable<State, Update>>(
+      this.nodes
+    )) {
       const triggers = [
         `${key}:inbox`,
         ...Array.from(waitingEdges)
@@ -252,46 +273,47 @@ export class StateGraph<
       .pipe(new ChannelRead(stateKeysRead))
       .pipe(Channel.writeTo([`${this.entryPoint}:inbox`]));
 
+    const channels: Record<string, BaseChannel> = {
+      ...this.channels,
+      ...waitingEdgeChannels,
+      ...nodeInboxes,
+      ...nodeOutboxes,
+      [END]: new LastValue(),
+    };
+
     return new Pregel({
       nodes,
-      channels: {
-        ...this.channels,
-        ...waitingEdgeChannels,
-        ...nodeInboxes,
-        ...nodeOutboxes,
-        END: new LastValue(),
-      },
-      inputChannels: `${START}:inbox`,
-      outputChannels: END,
+      channels,
+      inputs: `${START}:inbox`,
+      outputs: END,
       checkpointer,
     });
   }
 }
 
-function _getChannels<Channels extends Record<string, unknown>>(
+function _getChannels<Channels extends Record<string, unknown> | unknown>(
   schema: StateGraphArgs<Channels>["channels"]
 ): Record<string, BaseChannel> {
-  if ("value" in schema && "default" in schema) {
-    if (!schema.value) {
-      throw new Error("Value is required for channels");
-    }
-    return {
-      __root__: new BinaryOperatorAggregate<Channels["__root__"]>(
-        schema.value as BinaryOperator<Channels["__root__"]>,
-        schema.default as (() => Channels["__root__"]) | undefined
-      ),
-    };
-  }
   const channels: Record<string, BaseChannel> = {};
-  for (const [name, values] of Object.entries(schema)) {
-    if (values.value) {
-      channels[name] = new BinaryOperatorAggregate<Channels[typeof name]>(
-        values.value,
-        values.default
-      );
+  for (const [name, val] of Object.entries(schema)) {
+    if (name === "__root__") {
+      channels[name] = getChannel<Channels>(val as SingleReducer<Channels>);
     } else {
-      channels[name] = new LastValue<typeof values.value>();
+      const key = name as keyof Channels;
+      channels[name] = getChannel<Channels[typeof key]>(
+        val as SingleReducer<Channels[typeof key]>
+      );
     }
   }
   return channels;
+}
+
+function getChannel<T>(reducer: SingleReducer<T>): BaseChannel<T> {
+  if (reducer && "reducer" in reducer && reducer.reducer) {
+    return new BinaryOperatorAggregate<T>(reducer.reducer, reducer.default);
+  }
+  if (reducer && "value" in reducer && reducer.value) {
+    return new BinaryOperatorAggregate<T>(reducer.value, reducer.default);
+  }
+  return new LastValue<T>();
 }

@@ -16,12 +16,12 @@ export class AnyValue<Value> extends BaseChannel<Value, Value, Value> {
     this.value = undefined;
   }
 
-  fromCheckpoint(checkpoint?: Value): AnyValue<Value> {
+  fromCheckpoint(checkpoint?: Value) {
     const empty = new AnyValue<Value>();
     if (checkpoint) {
       empty.value = checkpoint;
     }
-    return empty;
+    return empty as this;
   }
 
   update(values: Value[]): void {

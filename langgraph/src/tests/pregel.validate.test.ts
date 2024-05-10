@@ -12,18 +12,20 @@ describe("validateGraph", () => {
         triggers: [],
       }),
     };
+    const channels = {
+      "": new LastValue(),
+    };
 
     // call method / assertions
     expect(() => {
       validateGraph({
         nodes,
-        channels: {},
+        channels,
         inputChannels: "",
         outputChannels: "",
         streamChannels: "",
         interruptAfterNodes: [],
         interruptBeforeNodes: [],
-        defaultChannelFactory: () => new LastValue(),
       });
     }).toThrow(GraphValidationError);
   });
@@ -39,17 +41,20 @@ describe("validateGraph", () => {
       }),
     };
 
+    const channels = {
+      "": new LastValue(),
+    };
+
     // call method / assertions
     expect(() => {
       validateGraph({
         nodes,
-        channels: {},
+        channels,
         inputChannels: "",
         outputChannels: "",
         streamChannels: "",
         interruptAfterNodes: [],
         interruptBeforeNodes: [],
-        defaultChannelFactory: () => new LastValue(),
       });
     }).toThrow(GraphValidationError);
   });
@@ -63,17 +68,21 @@ describe("validateGraph", () => {
       }),
     };
 
+    const channels = {
+      "": new LastValue(),
+    };
+
     // call method / assertions
     expect(() => {
       validateGraph({
         nodes,
-        channels: {},
+        channels,
+        // @ts-expect-error - testing invalid input
         inputChannels: "channelName3",
         outputChannels: "",
         streamChannels: "",
         interruptAfterNodes: [],
         interruptBeforeNodes: [],
-        defaultChannelFactory: () => new LastValue(),
       });
     }).toThrow(GraphValidationError);
   });
@@ -87,17 +96,21 @@ describe("validateGraph", () => {
       }),
     };
 
+    const channels = {
+      "": new LastValue(),
+    };
+
     // call method / assertions
     expect(() => {
       validateGraph({
         nodes,
-        channels: {},
+        channels,
+        // @ts-expect-error - testing invalid input
         inputChannels: ["channelName3", "channelName4", "channelName5"],
         outputChannels: "",
         streamChannels: "",
         interruptAfterNodes: [],
         interruptBeforeNodes: [],
-        defaultChannelFactory: () => new LastValue(),
       });
     }).toThrow(GraphValidationError);
   });
@@ -110,18 +123,20 @@ describe("validateGraph", () => {
         triggers: ["channelName2"],
       }),
     };
+    const channels = {
+      "": new LastValue(),
+    };
 
     // call method / assertions
     expect(() => {
       validateGraph({
         nodes,
-        channels: {},
-        inputChannels: ["channelName2"],
+        channels,
+        inputChannels: [""],
         outputChannels: "",
         streamChannels: "",
         interruptAfterNodes: ["channelName3"],
         interruptBeforeNodes: [],
-        defaultChannelFactory: () => new LastValue(),
       });
     }).toThrow(GraphValidationError);
   });
@@ -134,23 +149,25 @@ describe("validateGraph", () => {
         triggers: ["channelName2"],
       }),
     };
+    const channels = {
+      "": new LastValue(),
+    };
 
     // call method / assertions
     expect(() => {
       validateGraph({
         nodes,
-        channels: {},
-        inputChannels: ["channelName2"],
+        channels,
+        inputChannels: [""],
         outputChannels: "",
         streamChannels: "",
         interruptAfterNodes: [],
         interruptBeforeNodes: ["channelName3"],
-        defaultChannelFactory: () => new LastValue(),
       });
     }).toThrow(GraphValidationError);
   });
 
-  it("should have the side effect of updating the channels record", () => {
+  it("should thrown on missing channels", () => {
     // set up test
     const nodes: Record<string, PregelNode> = {
       channelName1: new PregelNode({
@@ -159,46 +176,49 @@ describe("validateGraph", () => {
       }),
     };
 
-    const channels1 = {};
-    const channels2 = {};
+    const channels1 = {
+      "": new LastValue(),
+      channelName2: new LastValue(),
+    };
 
     // call method / assertions
-    validateGraph({
-      nodes,
-      channels: channels1,
-      inputChannels: "channelName2",
-      outputChannels: "channelName3",
-      streamChannels: "channelName4",
-      interruptAfterNodes: [],
-      interruptBeforeNodes: [],
-      defaultChannelFactory: () => new LastValue(),
-    });
+    expect(() =>
+      validateGraph({
+        nodes,
+        channels: channels1,
+        inputChannels: "channelName2",
+        // @ts-expect-error - testing invalid input
+        outputChannels: "channelName3",
+        interruptAfterNodes: [],
+        interruptBeforeNodes: [],
+      })
+    ).toThrow(GraphValidationError);
 
-    const expectedChannels1 = {
-      channelName2: new LastValue(),
-      channelName3: new LastValue(),
-      channelName4: new LastValue(),
-    };
+    // call method / assertions
+    expect(() =>
+      validateGraph({
+        nodes,
+        channels: channels1,
+        // @ts-expect-error - testing invalid input
+        inputChannels: "channelName3",
+        outputChannels: "channelName2",
+        interruptAfterNodes: [],
+        interruptBeforeNodes: [],
+      })
+    ).toThrow(GraphValidationError);
 
-    expect(channels1).toEqual(expectedChannels1);
-
-    validateGraph({
-      nodes,
-      channels: channels2,
-      inputChannels: ["channelName2"],
-      outputChannels: ["channelName3"],
-      streamChannels: ["channelName4"],
-      interruptAfterNodes: [],
-      interruptBeforeNodes: [],
-      defaultChannelFactory: () => new LastValue(),
-    });
-
-    const expectedChannels2 = {
-      channelName2: new LastValue(),
-      channelName3: new LastValue(),
-      channelName4: new LastValue(),
-    };
-
-    expect(channels2).toEqual(expectedChannels2);
+    // call method / assertions
+    expect(() =>
+      validateGraph({
+        nodes,
+        channels: channels1,
+        inputChannels: "channelName2",
+        outputChannels: "",
+        // @ts-expect-error - testing invalid input
+        streamChannels: "channelName4",
+        interruptAfterNodes: [],
+        interruptBeforeNodes: [],
+      })
+    ).toThrow(GraphValidationError);
   });
 });
