@@ -1589,7 +1589,7 @@ __metadata:
     "@langchain/community": ^0.0.43
     "@langchain/core": ^0.1.61
     "@langchain/openai": ^0.0.23
-    "@langchain/scripts": ~0.0
+    "@langchain/scripts": ^0.0.13
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
     "@tsconfig/recommended": ^1.0.3
@@ -1645,19 +1645,19 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/scripts@npm:~0.0":
-  version: 0.0.11
-  resolution: "@langchain/scripts@npm:0.0.11"
+"@langchain/scripts@npm:^0.0.13":
+  version: 0.0.13
+  resolution: "@langchain/scripts@npm:0.0.13"
   dependencies:
     axios: ^1.6.7
     commander: ^11.1.0
     glob: ^10.3.10
     rollup: ^4.5.2
     ts-morph: ^21.0.1
-    typescript: <5.2.0
+    typescript: ^5.4.5
   bin:
-    lc-build: build.js
-  checksum: 859e957527bd796a02d65b9444a569251c1fcd8f6471f04a6b581ee827fbcf199095254653c7b308018a62ecd32e6f163acd0288c799364fc74fbcdb39a86b1d
+    lc-build: bin/build
+  checksum: 7ebfbccc40df4d3fc503463dd6c4e6532ecf883bab4a0f8d5e4d50b5f779764d038ee0ec9c40916b4673048827f9d96cb85cd791bb879d42defe98ba1c2536d1
   languageName: node
   linkType: hard
 
@@ -6697,7 +6697,7 @@ __metadata:
     semver: ^7.5.4
     tsx: ^4.7.0
     turbo: latest
-    typescript: <5.2.0
+    typescript: ^5.4.5
   languageName: unknown
   linkType: soft
 
@@ -9285,7 +9285,7 @@ turbo@latest:
   languageName: node
   linkType: hard
 
-"typescript@npm:^5.2.2":
+"typescript@npm:^5.2.2, typescript@npm:^5.4.5":
   version: 5.4.5
   resolution: "typescript@npm:5.4.5"
   bin:
@@ -9305,7 +9305,7 @@ turbo@latest:
   languageName: node
   linkType: hard
 
-"typescript@patch:typescript@^5.2.2#~builtin<compat/typescript>":
+"typescript@patch:typescript@^5.2.2#~builtin<compat/typescript>, typescript@patch:typescript@^5.4.5#~builtin<compat/typescript>":
   version: 5.4.5
   resolution: "typescript@patch:typescript@npm%3A5.4.5#~builtin<compat/typescript>::version=5.4.5&hash=1f5320"
   bin:
