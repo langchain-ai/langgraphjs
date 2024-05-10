@@ -97,7 +97,7 @@ export class Graph<
     return this as Graph<N | K, RunInput, RunOutput>;
   }
 
-  addEdge(startKey: string, endKey: string): void {
+  addEdge(startKey: N, endKey: N | typeof END): this {
     this.warnIfCompiled(
       `Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph.`
     );
@@ -120,13 +120,15 @@ export class Graph<
     }
 
     this.edges.add([startKey, endKey]);
+
+    return this;
   }
 
   addConditionalEdges(
-    startKey: string,
+    startKey: N,
     condition: CallableFunction,
-    conditionalEdgeMapping?: Record<string, string>
-  ): void {
+    conditionalEdgeMapping?: Record<string, N | typeof END>
+  ): this {
     this.warnIfCompiled(
       "Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
@@ -155,9 +157,11 @@ export class Graph<
       this.branches[startKey] = [];
     }
     this.branches[startKey].push(new Branch(condition, conditionalEdgeMapping));
+
+    return this;
   }
 
-  setEntryPoint(key: string): void {
+  setEntryPoint(key: N): this {
     this.warnIfCompiled(
       "Setting the entry point of a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
@@ -166,18 +170,25 @@ export class Graph<
       throw new Error(`Need to addNode \`${key}\` first`);
     }
     this.entryPoint = key;
+
+    return this;
   }
 
-  setFinishPoint(key: string): void {
+  setFinishPoint(key: N): this {
     this.warnIfCompiled(
       "Setting a finish point of a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
 
-    this.addEdge(key, END);
+    return this.addEdge(key, END);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  compile(checkpointer?: BaseCheckpointSaver<any>) {
+  compile(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    checkpointer?: BaseCheckpointSaver<any>
+  ): Pregel<
+    Record<N, PregelNode<RunInput, RunOutput>>,
+    Record<N, BaseChannel>
+  > {
     this.validate();
 
     const outgoingEdges: Record<string, string[]> = {};

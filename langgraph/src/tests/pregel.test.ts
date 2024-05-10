@@ -680,13 +680,13 @@ it("can invoke pregel with a single process", async () => {
 it("can invoke graph with a single process", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
 
-  const graph = new Graph();
-  graph.addNode("add_one", addOne);
-  graph.setEntryPoint("add_one");
-  graph.setFinishPoint("add_one");
-  const gapp = graph.compile();
+  const graph = new Graph()
+    .addNode("add_one", addOne)
+    .setEntryPoint("add_one")
+    .setFinishPoint("add_one")
+    .compile();
 
-  expect(await gapp.invoke(2)).toBe(3);
+  expect(await graph.invoke(2)).toBe(3);
 });
 
 it("should process input and produce output with implicit channels", async () => {
@@ -905,15 +905,15 @@ it("should process batch with two processes and delays with graph", async () => 
       })
   );
 
-  const graph = new Graph();
-  graph.addNode("add_one", addOneWithDelay);
-  graph.addNode("add_one_more", addOneWithDelay);
-  graph.setEntryPoint("add_one");
-  graph.setFinishPoint("add_one_more");
-  graph.addEdge("add_one", "add_one_more");
-  const gapp = graph.compile();
+  const graph = new Graph()
+    .addNode("add_one", addOneWithDelay)
+    .addNode("add_one_more", addOneWithDelay)
+    .setEntryPoint("add_one")
+    .setFinishPoint("add_one_more")
+    .addEdge("add_one", "add_one_more")
+    .compile();
 
-  expect(await gapp.batch([3, 2, 1, 3, 5])).toEqual([5, 4, 3, 5, 7]);
+  expect(await graph.batch([3, 2, 1, 3, 5])).toEqual([5, 4, 3, 5, 7]);
 });
 
 it("should batch many processes with input and output", async () => {
@@ -1293,7 +1293,9 @@ describe.skip("StateGraph", () => {
     steps: Step[];
   };
 
-  const executeTools = async (data: AgentState) => {
+  const executeTools = async (
+    data: AgentState
+  ): Promise<Partial<AgentState>> => {
     const newData = data;
     const { agentOutcome } = newData;
     delete newData.agentOutcome;
@@ -1356,7 +1358,7 @@ describe.skip("StateGraph", () => {
       };
     };
 
-    const workflow = new StateGraph<AgentState>({
+    const graph = new StateGraph<AgentState>({
       channels: {
         input: {
           value: null,
@@ -1369,22 +1371,18 @@ describe.skip("StateGraph", () => {
           default: () => [],
         },
       },
-    });
+    })
+      .addNode("agent", agent)
+      .addNode("tools", executeTools)
+      .setEntryPoint("agent")
+      .addConditionalEdges("agent", shouldContinue, {
+        continue: "tools",
+        exit: END,
+      })
+      .addEdge("tools", "agent")
+      .compile();
 
-    workflow.addNode("agent", agent);
-    workflow.addNode("tools", executeTools);
-
-    workflow.setEntryPoint("agent");
-
-    workflow.addConditionalEdges("agent", shouldContinue, {
-      continue: "tools",
-      exit: END,
-    });
-
-    workflow.addEdge("tools", "agent");
-
-    const app = workflow.compile();
-    const result = await app.invoke({ input: "what is the weather in sf?" });
+    const result = await graph.invoke({ input: "what is the weather in sf?" });
     expect(result).toEqual({
       input: "what is the weather in sf?",
       agentOutcome: {
@@ -1453,7 +1451,7 @@ describe.skip("StateGraph", () => {
       };
     };
 
-    const workflow = new StateGraph<AgentState>({
+    const app = new StateGraph<AgentState>({
       channels: {
         input: {
           value: null,
@@ -1466,21 +1464,17 @@ describe.skip("StateGraph", () => {
           default: () => [],
         },
       },
-    });
+    })
+      .addNode("agent", agent)
+      .addNode("tools", executeTools)
+      .setEntryPoint("agent")
+      .addConditionalEdges("agent", shouldContinue, {
+        continue: "tools",
+        exit: END,
+      })
+      .addEdge("tools", "agent")
+      .compile();
 
-    workflow.addNode("agent", agent);
-    workflow.addNode("tools", executeTools);
-
-    workflow.setEntryPoint("agent");
-
-    workflow.addConditionalEdges("agent", shouldContinue, {
-      continue: "tools",
-      exit: END,
-    });
-
-    workflow.addEdge("tools", "agent");
-
-    const app = workflow.compile();
     const stream = await app.stream({ input: "what is the weather in sf?" });
     const streamItems = [];
     for await (const item of stream) {
@@ -1546,14 +1540,13 @@ describe.skip("StateGraph", () => {
           default: () => "world",
         },
       },
-    });
-
-    innerGraph.addNode("up", (state: InnerState) => ({
-      myKey: `${state.myKey} there`,
-      myOtherKey: state.myOtherKey,
-    }));
-    innerGraph.setEntryPoint("up");
-    innerGraph.setFinishPoint("up");
+    })
+      .addNode("up", (state: InnerState) => ({
+        myKey: `${state.myKey} there`,
+        myOtherKey: state.myOtherKey,
+      }))
+      .setEntryPoint("up")
+      .setFinishPoint("up");
 
     // set up top level graph
     type State = {
@@ -1571,17 +1564,15 @@ describe.skip("StateGraph", () => {
           value: null,
         },
       },
-    });
-
-    graph.addNode("inner", innerGraph.compile());
-    graph.addNode("side", (state: State) => ({
-      myKey: `${state.myKey} and back again`,
-    }));
-    graph.addEdge("inner", "side");
-    graph.setEntryPoint("inner");
-    graph.setFinishPoint("side");
-
-    const app = graph.compile();
+    })
+      .addNode("inner", innerGraph.compile())
+      .addNode("side", (state: State) => ({
+        myKey: `${state.myKey} and back again`,
+      }))
+      .addEdge("inner", "side")
+      .setEntryPoint("inner")
+      .setFinishPoint("side")
+      .compile();
 
     // call method / assertions
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1589,7 +1580,7 @@ describe.skip("StateGraph", () => {
       throw new Error("This should never be called");
     });
 
-    const result = await app.invoke({
+    const result = await graph.invoke({
       myKey: "my value",
       neverCalled: new RunnableLambda({ func: neverCalled }),
     });
@@ -1618,14 +1609,13 @@ describe.skip("StateGraph", () => {
           default: () => "world",
         },
       },
-    });
-
-    innerGraph.addNode("up", (state: InnerState) => ({
-      myKey: `${state.myKey} there`,
-      myOtherKey: state.myOtherKey,
-    }));
-    innerGraph.setEntryPoint("up");
-    innerGraph.setFinishPoint("up");
+    })
+      .addNode("up", (state: InnerState) => ({
+        myKey: `${state.myKey} there`,
+        myOtherKey: state.myOtherKey,
+      }))
+      .setEntryPoint("up")
+      .setFinishPoint("up");
 
     // set up top level graph
     type State = {
@@ -1643,17 +1633,15 @@ describe.skip("StateGraph", () => {
           value: null,
         },
       },
-    });
-
-    graph.addNode("inner", innerGraph.compile());
-    graph.addNode("side", (state: State) => ({
-      myKey: `${state.myKey} and back again`,
-    }));
-    graph.addEdge("inner", "side");
-    graph.setEntryPoint("inner");
-    graph.setFinishPoint("side");
-
-    const app = graph.compile();
+    })
+      .addNode("inner", innerGraph.compile())
+      .addNode("side", (state: State) => ({
+        myKey: `${state.myKey} and back again`,
+      }))
+      .addEdge("inner", "side")
+      .setEntryPoint("inner")
+      .setFinishPoint("side")
+      .compile();
 
     // call method / assertions
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1661,7 +1649,7 @@ describe.skip("StateGraph", () => {
       throw new Error("This should never be called");
     });
 
-    const result = await app.invoke({
+    const result = await graph.invoke({
       myKey: "my value",
       neverCalled: new RunnableLambda({ func: neverCalled }),
     });
@@ -1705,22 +1693,21 @@ describe.skip("StateGraph", () => {
     };
     const decideNext = (_: GraphState) => "two";
 
-    const workflow = new StateGraph<GraphState>({
+    const graph = new StateGraph<GraphState>({
       channels: graphState,
-    });
-    workflow.addNode("one", nodeOne);
-    workflow.addNode("two", nodeTwo);
-    workflow.addNode("three", nodeThree);
-    workflow.setEntryPoint("one");
-    workflow.addConditionalEdges("one", decideNext);
-    workflow.addEdge("two", "three");
-    workflow.addEdge("three", END);
-
-    const app = workflow.compile();
+    })
+      .addNode("one", nodeOne)
+      .addNode("two", nodeTwo)
+      .addNode("three", nodeThree)
+      .setEntryPoint("one")
+      .addConditionalEdges("one", decideNext)
+      .addEdge("two", "three")
+      .addEdge("three", END)
+      .compile();
 
     // This will always return two, and two will always go to three
     // meaning keys.value will always be 3
-    const result = await app.invoke({ keys: { value: 0 } });
+    const result = await graph.invoke({ keys: { value: 0 } });
     expect(result).toEqual({ keys: { value: 3 } });
   });
 
@@ -1730,52 +1717,49 @@ describe.skip("StateGraph", () => {
     );
 
     type State = {
-      query?: string;
-      answer?: string;
-      docs?: string[];
+      query: string;
+      answer: string;
+      docs: string[];
     };
 
-    function rewriteQuery(data: State): State {
+    function rewriteQuery(data: State): Partial<State> {
       return { query: `query: ${data.query}` };
     }
 
-    function analyzerOne(data: State): State {
+    function analyzerOne(data: State): Partial<State> {
       return { query: `analyzed: ${data.query}` };
     }
 
-    function retrieverOne(_data: State): State {
+    function retrieverOne(_data: State): Partial<State> {
       return { docs: ["doc1", "doc2"] };
     }
 
-    function retrieverTwo(_data: State): State {
+    function retrieverTwo(_data: State): Partial<State> {
       return { docs: ["doc3", "doc4"] };
     }
 
-    function qa(data: State): State {
+    function qa(data: State): Partial<State> {
       return { answer: data.docs?.join(",") };
     }
 
-    const schema = {
-      query: { value: null },
-      answer: { value: null },
-      docs: { value: sortedAdd },
-    };
-    const workflow = new StateGraph({
-      channels: schema,
-    });
-
-    workflow.addNode("rewrite_query", rewriteQuery);
-    workflow.addNode("analyzer_one", analyzerOne);
-    workflow.addNode("retriever_one", retrieverOne);
-    workflow.addNode("retriever_two", retrieverTwo);
-    workflow.addNode("qa", qa);
-
-    workflow.setEntryPoint("rewrite_query");
-    workflow.addEdge("rewrite_query", "analyzer_one");
-    workflow.addEdge("analyzer_one", "retriever_one");
-    workflow.addEdge("rewrite_query", "retriever_two");
-    workflow.addEdge(["retriever_one", "retriever_two"], "qa");
-    workflow.setFinishPoint("qa");
+    const workflow = new StateGraph<State>({
+      channels: {
+        query: { value: null },
+        answer: { value: null },
+        docs: { value: sortedAdd },
+      },
+    })
+      .addNode("rewrite_query", rewriteQuery)
+      .addNode("analyzer_one", analyzerOne)
+      .addNode("retriever_one", retrieverOne)
+      .addNode("retriever_two", retrieverTwo)
+      .addNode("qa", qa)
+      .setEntryPoint("rewrite_query")
+      .addEdge("rewrite_query", "analyzer_one")
+      .addEdge("analyzer_one", "retriever_one")
+      .addEdge("rewrite_query", "retriever_two")
+      .addEdge(["retriever_one", "retriever_two"], "qa")
+      .setFinishPoint("qa");
 
     const app = workflow.compile();
 
@@ -1954,21 +1938,16 @@ describe.skip("MessageGraph", () => {
       });
     };
 
-    const workflow = new MessageGraph<Array<BaseMessage>>();
-
-    workflow.addNode("agent", model);
-    workflow.addNode("action", callTool);
-
-    workflow.setEntryPoint("agent");
-
-    workflow.addConditionalEdges("agent", shouldContinue, {
-      continue: "action",
-      end: END,
-    });
-
-    workflow.addEdge("action", "agent");
-
-    const app = workflow.compile();
+    const app = new MessageGraph()
+      .addNode("agent", model)
+      .addNode("action", callTool)
+      .setEntryPoint("agent")
+      .addConditionalEdges("agent", shouldContinue, {
+        continue: "action",
+        end: END,
+      })
+      .addEdge("action", "agent")
+      .compile();
 
     const result = await app.invoke(
       new HumanMessage("what is the weather in sf?")
@@ -2067,21 +2046,16 @@ describe.skip("MessageGraph", () => {
         name: action.tool,
       });
     };
-    const workflow = new MessageGraph<Array<BaseMessage>>();
-
-    workflow.addNode("agent", model);
-    workflow.addNode("action", callTool);
-
-    workflow.setEntryPoint("agent");
-
-    workflow.addConditionalEdges("agent", shouldContinue, {
-      continue: "action",
-      end: END,
-    });
-
-    workflow.addEdge("action", "agent");
-
-    const app = workflow.compile();
+    const app = new MessageGraph()
+      .addNode("agent", model)
+      .addNode("action", callTool)
+      .setEntryPoint("agent")
+      .addConditionalEdges("agent", shouldContinue, {
+        continue: "action",
+        end: END,
+      })
+      .addEdge("action", "agent")
+      .compile();
 
     const stream = await app.stream([
       new HumanMessage("what is the weather in sf?"),
