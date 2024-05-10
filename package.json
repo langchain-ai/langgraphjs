@@ -17,7 +17,7 @@
     "langgraph"
   ],
   "scripts": {
-    "build": "turbo run build --concurrency 1",
+    "build": "turbo run build --concurrency=1",
     "turbo:command": "turbo",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
@@ -48,7 +48,7 @@
     "semver": "^7.5.4",
     "tsx": "^4.7.0",
     "turbo": "latest",
-    "typescript": "<5.2.0"
+    "typescript": "^5.4.5"
   },
   "publishConfig": {
     "access": "public",
