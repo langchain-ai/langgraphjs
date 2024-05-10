@@ -18,27 +18,35 @@ import { RunnableCallable } from "../utils.js";
 
 export const START = "__start__";
 
-export interface StateGraphArgs<
-  Channels extends Record<string, unknown> | unknown
-> {
-  channels: Channels extends Record<string, unknown>
-    ? {
-        [K in keyof Channels]:
-          | {
-              value: BinaryOperator<Channels[K]> | null;
-              default?: () => Channels[K];
-            }
-          | string;
-      }
-    : {
-        value: BinaryOperator<Channels> | null;
-        default?: () => Channels;
-      };
+type SingleReducer<T> =
+  | {
+      reducer: BinaryOperator<T>;
+      default?: () => T;
+    }
+  | {
+      /**
+       * @deprecated Use `reducer` instead
+       */
+      value: BinaryOperator<T>;
+      default?: () => T;
+    }
+  | null;
+
+export type ChannelReducers<Channels extends object> = {
+  [K in keyof Channels]: SingleReducer<Channels[K]>;
+};
+
+export interface StateGraphArgs<Channels extends object | unknown> {
+  channels: Channels extends object
+    ? Channels extends unknown[]
+      ? ChannelReducers<{ __root__: Channels }>
+      : ChannelReducers<Channels>
+    : ChannelReducers<{ __root__: Channels }>;
 }
 
 export class StateGraph<
-  const State extends Record<string, unknown> | unknown,
-  const Update extends Record<string, unknown> | unknown = Partial<State>,
+  const State extends object | unknown,
+  const Update extends object | unknown = Partial<State>,
   const N extends string = typeof START
 > extends Graph<N, State, Update> {
   channels: Record<string, BaseChannel>;
@@ -52,6 +60,7 @@ export class StateGraph<
     for (const c of Object.values(this.channels)) {
       if (c.lc_graph_name === "BinaryOperatorAggregate") {
         this.supportMultipleEdges = true;
+        break;
       }
     }
   }
@@ -285,27 +294,26 @@ export class StateGraph<
 function _getChannels<Channels extends Record<string, unknown> | unknown>(
   schema: StateGraphArgs<Channels>["channels"]
 ): Record<string, BaseChannel> {
-  if ("value" in schema && "default" in schema) {
-    if (!schema.value) {
-      throw new Error("Value is required for channels");
-    }
-    return {
-      __root__: new BinaryOperatorAggregate<Channels>(
-        schema.value as BinaryOperator<Channels>,
-        schema.default as (() => Channels) | undefined
-      ),
-    };
-  }
   const channels: Record<string, BaseChannel> = {};
-  for (const [name, values] of Object.entries(schema)) {
-    if (values.value) {
-      channels[name] = new BinaryOperatorAggregate(
-        values.value,
-        values.default
-      );
+  for (const [name, val] of Object.entries(schema)) {
+    if (name === "__root__") {
+      channels[name] = getChannel<Channels>(val as SingleReducer<Channels>);
     } else {
-      channels[name] = new LastValue<typeof values.value>();
+      const key = name as keyof Channels;
+      channels[name] = getChannel<Channels[typeof key]>(
+        val as SingleReducer<Channels[typeof key]>
+      );
     }
   }
   return channels;
+}
+
+function getChannel<T>(reducer: SingleReducer<T>): BaseChannel<T> {
+  if (reducer && "reducer" in reducer && reducer.reducer) {
+    return new BinaryOperatorAggregate<T>(reducer.reducer, reducer.default);
+  }
+  if (reducer && "value" in reducer && reducer.value) {
+    return new BinaryOperatorAggregate<T>(reducer.value, reducer.default);
+  }
+  return new LastValue<T>();
 }

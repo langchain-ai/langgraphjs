@@ -3,60 +3,28 @@ import { BaseMessage } from "@langchain/core/messages";
 import { Runnable, type RunnableConfig } from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
 import { ToolExecutor } from "./tool_executor.js";
-import { StateGraph, StateGraphArgs } from "../graph/state.js";
+import { StateGraph } from "../graph/state.js";
 import { END } from "../index.js";
-import { Pregel } from "../pregel/index.js";
 
-type Step = [AgentAction | AgentFinish, string];
-interface AgentStateBase {
-  agentOutcome?: AgentAction | AgentFinish;
-  steps: Array<Step>;
+interface Step {
+  action: AgentAction | AgentFinish;
+  observation: unknown;
 }
 
-export interface AgentExecutorState extends AgentStateBase {
+export interface AgentExecutorState {
+  agentOutcome?: AgentAction | AgentFinish;
+  steps: Array<Step>;
   input: string;
   chatHistory?: BaseMessage[];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AgentChannels<T extends AgentExecutorState> = StateGraphArgs<
-  AgentExecutorState | T
->["channels"];
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function _getAgentState<T extends AgentExecutorState>(
-  inputSchema?: AgentChannels<T>
-): AgentChannels<T> {
-  if (!inputSchema) {
-    return {
-      input: {
-        value: null,
-      },
-      agentOutcome: {
-        value: null,
-      },
-      steps: {
-        value: (x: Step[], y: Step[]) => x.concat(y),
-        default: () => [],
-      },
-    };
-  } else {
-    return inputSchema;
-  }
-}
-
-export function createAgentExecutor<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  T extends AgentExecutorState
->({
+export function createAgentExecutor({
   agentRunnable,
   tools,
-  inputSchema,
 }: {
   agentRunnable: Runnable;
   tools: Array<Tool> | ToolExecutor;
-  inputSchema?: AgentChannels<T>;
-}): Pregel {
+}) {
   let toolExecutor: ToolExecutor;
   if (!Array.isArray(tools)) {
     toolExecutor = tools;
@@ -65,8 +33,6 @@ export function createAgentExecutor<
       tools,
     });
   }
-
-  const state = _getAgentState<T>(inputSchema);
 
   // Define logic that will be used to determine which conditional edge to go down
   const shouldContinue = (data: AgentExecutorState) => {
@@ -89,7 +55,7 @@ export function createAgentExecutor<
   const executeTools = async (
     data: AgentExecutorState,
     config?: RunnableConfig
-  ) => {
+  ): Promise<Partial<AgentExecutorState>> => {
     const agentAction = data.agentOutcome;
     if (!agentAction || "returnValues" in agentAction) {
       throw new Error("Agent has not been run yet");
@@ -102,41 +68,44 @@ export function createAgentExecutor<
 
   // Define a new graph
   const workflow = new StateGraph<AgentExecutorState>({
-    channels: state,
-  });
-
-  // Define the two nodes we will cycle between
-  workflow.addNode("agent", runAgent);
-  workflow.addNode("action", executeTools);
-
-  // Set the entrypoint as `agent`
-  // This means that this node is the first one called
-  workflow.setEntryPoint("agent");
-
-  // We now add a conditional edge
-  workflow.addConditionalEdges(
-    // First, we define the start node. We use `agent`.
-    // This means these are the edges taken after the `agent` node is called.
-    "agent",
-    // Next, we pass in the function that will determine which node is called next.
-    shouldContinue,
-    // Finally we pass in a mapping.
-    // The keys are strings, and the values are other nodes.
-    // END is a special node marking that the graph should finish.
-    // What will happen is we will call `should_continue`, and then the output of that
-    // will be matched against the keys in this mapping.
-    // Based on which one it matches, that node will then be called.
-    {
-      // If `tools`, then we call the tool node.
-      continue: "action",
-      // Otherwise we finish.
-      end: END,
-    }
-  );
-
-  // We now add a normal edge from `tools` to `agent`.
-  // This means that after `tools` is called, `agent` node is called next.
-  workflow.addEdge("action", "agent");
+    channels: {
+      input: null,
+      agentOutcome: null,
+      steps: {
+        reducer: (x: Step[], y: Step[]) => x.concat(y),
+        default: () => [] as Step[],
+      },
+    },
+  })
+    // Define the two nodes we will cycle between
+    .addNode("agent", runAgent)
+    .addNode("action", executeTools)
+    // Set the entrypoint as `agent`
+    // This means that this node is the first one called
+    .setEntryPoint("agent")
+    // We now add a conditional edge
+    .addConditionalEdges(
+      // First, we define the start node. We use `agent`.
+      // This means these are the edges taken after the `agent` node is called.
+      "agent",
+      // Next, we pass in the function that will determine which node is called next.
+      shouldContinue,
+      // Finally we pass in a mapping.
+      // The keys are strings, and the values are other nodes.
+      // END is a special node marking that the graph should finish.
+      // What will happen is we will call `should_continue`, and then the output of that
+      // will be matched against the keys in this mapping.
+      // Based on which one it matches, that node will then be called.
+      {
+        // If `tools`, then we call the tool node.
+        continue: "action",
+        // Otherwise we finish.
+        end: END,
+      }
+    )
+    // We now add a normal edge from `tools` to `agent`.
+    // This means that after `tools` is called, `agent` node is called next.
+    .addEdge("action", "agent");
 
   return workflow.compile();
 }

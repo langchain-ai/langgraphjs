@@ -382,8 +382,8 @@ export class Pregel<
       streamMode,
       inputKeys,
       outputKeys,
-      interruptBefore,
-      interruptAfter,
+      // interruptBefore,
+      // interruptAfter,
     ] = this._defaults(config);
     // copy nodes to ignore mutations during execution
     const processes = { ...this.nodes };
@@ -422,6 +422,10 @@ export class Pregel<
         channels,
         true
       );
+
+      if (debug) {
+        console.log(nextTasks);
+      }
 
       // Reassign nextCheckpoint to checkpoint because the subsequent implementation
       // relies on side effects applied to checkpoint. Example: _applyWrites().
@@ -480,10 +484,14 @@ export class Pregel<
       _applyWrites(checkpoint, channels, pendingWrites);
 
       // yield current value and checkpoint view
-      const stepOutput = mapOutput(outputKeys, pendingWrites, channels);
+      if (streamMode === "values") {
+        const stepOutput = mapOutput(outputKeys, pendingWrites, channels);
 
-      if (stepOutput) {
-        yield stepOutput;
+        if (stepOutput) {
+          yield stepOutput;
+        }
+      } else {
+        throw Error("Stream mode 'updates' not implemented yet");
       }
 
       // save end of step checkpoint

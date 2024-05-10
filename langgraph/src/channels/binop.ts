@@ -29,7 +29,7 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
     this.value = initialValueFactory?.();
   }
 
-  public fromCheckpoint(checkpoint?: Value): BinaryOperatorAggregate<Value> {
+  public fromCheckpoint(checkpoint?: Value) {
     const empty = new BinaryOperatorAggregate(
       this.operator,
       this.initialValueFactory
@@ -37,7 +37,7 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
     if (checkpoint) {
       empty.value = checkpoint;
     }
-    return empty;
+    return empty as this;
   }
 
   public update(values: Value[]): void {

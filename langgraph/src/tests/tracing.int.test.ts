@@ -49,25 +49,9 @@ test.skip("Can invoke with tracing", async () => {
     prompt,
   });
 
-  const agentState = {
-    input: {
-      value: null,
-    },
-    steps: {
-      value: (x: any, y: any) => x.concat(y),
-      default: () => [],
-    },
-    agentOutcome: {
-      value: null,
-    },
-  };
-
-  interface AgentStateBase {
+  interface AgentState {
     agentOutcome?: AgentAction | AgentFinish;
     steps: Array<AgentStep>;
-  }
-
-  interface AgentState extends AgentStateBase {
     input: string;
     chatHistory?: BaseMessage[];
   }
@@ -103,42 +87,45 @@ test.skip("Can invoke with tracing", async () => {
   };
 
   // Define a new graph
-  const workflow = new StateGraph({
-    channels: agentState,
-  });
-
-  // Define the two nodes we will cycle between
-  workflow.addNode("agent", new RunnableLambda({ func: runAgent }));
-  workflow.addNode("action", new RunnableLambda({ func: executeTools }));
-
-  // Set the entrypoint as `agent`
-  // This means that this node is the first one called
-  workflow.setEntryPoint("agent");
-
-  // We now add a conditional edge
-  workflow.addConditionalEdges(
-    // First, we define the start node. We use `agent`.
-    // This means these are the edges taken after the `agent` node is called.
-    "agent",
-    // Next, we pass in the function that will determine which node is called next.
-    shouldContinue,
-    // Finally we pass in a mapping.
-    // The keys are strings, and the values are other nodes.
-    // END is a special node marking that the graph should finish.
-    // What will happen is we will call `should_continue`, and then the output of that
-    // will be matched against the keys in this mapping.
-    // Based on which one it matches, that node will then be called.
-    {
-      // If `tools`, then we call the tool node.
-      continue: "action",
-      // Otherwise we finish.
-      end: END,
-    }
-  );
-
-  // We now add a normal edge from `tools` to `agent`.
-  // This means that after `tools` is called, `agent` node is called next.
-  workflow.addEdge("action", "agent");
+  const workflow = new StateGraph<AgentState>({
+    channels: {
+      input: null,
+      steps: {
+        value: (x: any, y: any) => x.concat(y),
+        default: () => [],
+      },
+      agentOutcome: null,
+    },
+  })
+    // Define the two nodes we will cycle between
+    .addNode("agent", new RunnableLambda({ func: runAgent }))
+    .addNode("action", new RunnableLambda({ func: executeTools }))
+    // Set the entrypoint as `agent`
+    // This means that this node is the first one called
+    .setEntryPoint("agent")
+    // We now add a conditional edge
+    .addConditionalEdges(
+      // First, we define the start node. We use `agent`.
+      // This means these are the edges taken after the `agent` node is called.
+      "agent",
+      // Next, we pass in the function that will determine which node is called next.
+      shouldContinue,
+      // Finally we pass in a mapping.
+      // The keys are strings, and the values are other nodes.
+      // END is a special node marking that the graph should finish.
+      // What will happen is we will call `should_continue`, and then the output of that
+      // will be matched against the keys in this mapping.
+      // Based on which one it matches, that node will then be called.
+      {
+        // If `tools`, then we call the tool node.
+        continue: "action",
+        // Otherwise we finish.
+        end: END,
+      }
+    )
+    // We now add a normal edge from `tools` to `agent`.
+    // This means that after `tools` is called, `agent` node is called next.
+    .addEdge("action", "agent");
 
   const app = workflow.compile();
 
@@ -195,21 +182,6 @@ test.skip("Can nest an agent executor", async () => {
     function: functionDef,
   } as const;
 
-  interface AgentStateChannels {
-    messages: {
-      value: (x: BaseMessage[], y: BaseMessage[]) => BaseMessage[];
-      default: () => BaseMessage[];
-    };
-    next: string;
-  }
-
-  const agentStateChannels: AgentStateChannels = {
-    messages: {
-      value: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
-      default: () => [],
-    },
-    next: "initialValueForNext", // Replace 'initialValueForNext' with your initial value if needed
-  };
   const supervisorPrompt = ChatPromptTemplate.fromMessages([
     ["system", systemPrompt],
     new MessagesPlaceholder("messages"),
@@ -234,33 +206,34 @@ test.skip("Can nest an agent executor", async () => {
     // select the first one
     .pipe((x) => x[0].args);
 
+  interface State {
+    next: string;
+    messages: BaseMessage[];
+  }
+
   // 1. Create the graph
-  const workflow = new StateGraph({
-    channels: agentStateChannels,
-  });
-
-  // 2. Add the nodes; these will do the work
-  workflow.addNode("researcher", researcherNode);
-  workflow.addNode("supervisor", supervisorChain);
-  // 3. Define the edges. We will define both regular and conditional ones
-  // After a worker completes, report to supervisor
-  workflow.addEdge("researcher", "supervisor");
-
-  // When the supervisor returns, route to the agent identified in the supervisor's output
-  const conditionalMap: Record<string, any> = {
-    researcher: "researcher",
-  };
-
-  // Or end work if done
-  conditionalMap.FINISH = END;
-
-  workflow.addConditionalEdges(
-    "supervisor",
-    (x: AgentStateChannels) => x.next,
-    conditionalMap
-  );
-
-  workflow.setEntryPoint("supervisor");
+  const workflow = new StateGraph<State>({
+    channels: {
+      messages: {
+        value: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
+        default: () => [],
+      },
+      next: null,
+    },
+  })
+    // 2. Add the nodes; these will do the work
+    .addNode("researcher", researcherNode)
+    .addNode("supervisor", supervisorChain)
+    // 3. Define the edges. We will define both regular and conditional ones
+    // After a worker completes, report to supervisor
+    .addEdge("researcher", "supervisor")
+    // When the supervisor returns, route to the agent identified in the supervisor's output
+    .addConditionalEdges("supervisor", (x: State) => x.next, {
+      researcher: "researcher",
+      // Or end work if done
+      FINISH: END,
+    })
+    .setEntryPoint("supervisor");
 
   const graph = workflow.compile();
 
@@ -328,21 +301,6 @@ test.skip("Can nest a graph within a graph", async () => {
     function: functionDef,
   } as const;
 
-  interface AgentStateChannels {
-    messages: {
-      value: (x: BaseMessage[], y: BaseMessage[]) => BaseMessage[];
-      default: () => BaseMessage[];
-    };
-    next: string;
-  }
-
-  const agentStateChannels: AgentStateChannels = {
-    messages: {
-      value: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
-      default: () => [],
-    },
-    next: "initialValueForNext", // Replace 'initialValueForNext' with your initial value if needed
-  };
   const supervisorPrompt = ChatPromptTemplate.fromMessages([
     ["system", systemPrompt],
     new MessagesPlaceholder("messages"),
@@ -367,33 +325,33 @@ test.skip("Can nest a graph within a graph", async () => {
     // select the first one
     .pipe((x) => x[0].args);
 
+  interface State {
+    next: string;
+    messages: BaseMessage[];
+  }
+
   // 1. Create the graph
-  const workflow = new StateGraph<AgentStateChannels>({
-    channels: agentStateChannels as any,
-  });
-
-  // 2. Add the nodes; these will do the work
-  workflow.addNode("researcher", researcherNode);
-  workflow.addNode("supervisor", supervisorChain);
-  // 3. Define the edges. We will define both regular and conditional ones
-  // After a worker completes, report to supervisor
-  workflow.addEdge("researcher", "supervisor");
-
-  // When the supervisor returns, route to the agent identified in the supervisor's output
-  const conditionalMap: Record<string, any> = {
-    researcher: "researcher",
-  };
-
-  // Or end work if done
-  conditionalMap.FINISH = END;
-
-  workflow.addConditionalEdges(
-    "supervisor",
-    (x: AgentStateChannels) => x.next,
-    conditionalMap
-  );
-
-  workflow.setEntryPoint("supervisor");
+  const workflow = new StateGraph<State>({
+    channels: {
+      messages: {
+        value: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
+        default: () => [],
+      },
+      next: null,
+    },
+  })
+    // 2. Add the nodes; these will do the work
+    .addNode("researcher", researcherNode)
+    .addNode("supervisor", supervisorChain)
+    // 3. Define the edges. We will define both regular and conditional ones
+    // After a worker completes, report to supervisor
+    .addEdge("researcher", "supervisor")
+    // When the supervisor returns, route to the agent identified in the supervisor's output
+    .addConditionalEdges("supervisor", (x: State) => x.next, {
+      researcher: "researcher",
+      FINISH: END,
+    })
+    .setEntryPoint("supervisor");
 
   const graph = workflow.compile();
 
@@ -434,22 +392,6 @@ test.skip("Should trace plan and execute flow", async () => {
     agentRunnable,
     tools,
   });
-  const planExecuteState = {
-    input: {
-      value: null,
-    },
-    plan: {
-      value: null,
-      default: () => [],
-    },
-    pastSteps: {
-      value: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
-      default: () => [],
-    },
-    response: {
-      value: null,
-    },
-  };
 
   const plan = zodToJsonSchema(
     z.object({
@@ -516,12 +458,12 @@ Only add steps to the plan that still NEED to be done. Do not return previously 
     prompt: replannerPrompt as any,
   });
 
-  type PlanExecuteState = {
+  interface PlanExecuteState {
     input: string | null;
     plan: Array<string>;
     pastSteps: Array<string>;
     response: string | null;
-  };
+  }
 
   async function executeStep(
     state: PlanExecuteState
@@ -565,36 +507,37 @@ Only add steps to the plan that still NEED to be done. Do not return previously 
     return "false";
   }
 
-  const workflow = new StateGraph({
-    channels: planExecuteState,
-  });
-
-  // Add the plan node
-  workflow.addNode("planner", planStep);
-
-  // Add the execution step
-  workflow.addNode("agent", executeStep);
-
-  // Add a replan node
-  workflow.addNode("replan", replanStep);
-
-  workflow.setEntryPoint("planner");
-
-  // From plan we go to agent
-  workflow.addEdge("planner", "agent");
-
-  // From agent, we replan
-  workflow.addEdge("agent", "replan");
-
-  workflow.addConditionalEdges(
-    "replan",
-    // Next, we pass in the function that will determine which node is called next.
-    shouldEnd,
-    {
-      true: END,
-      false: "planner",
-    }
-  );
+  const workflow = new StateGraph<PlanExecuteState>({
+    channels: {
+      input: null,
+      plan: null,
+      pastSteps: {
+        reducer: (x, y) => x.concat(y),
+        default: () => [],
+      },
+      response: null,
+    },
+  })
+    // Add the plan node
+    .addNode("planner", planStep)
+    // Add the execution step
+    .addNode("agent", executeStep)
+    // Add a replan node
+    .addNode("replan", replanStep)
+    .setEntryPoint("planner")
+    // From plan we go to agent
+    .addEdge("planner", "agent")
+    // From agent, we replan
+    .addEdge("agent", "replan")
+    .addConditionalEdges(
+      "replan",
+      // Next, we pass in the function that will determine which node is called next.
+      shouldEnd,
+      {
+        true: END,
+        false: "planner",
+      }
+    );
 
   // Finally, we compile it!
   // This compiles it into a LangChain Runnable,

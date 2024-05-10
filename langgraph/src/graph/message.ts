@@ -13,8 +13,10 @@ export class MessageGraph extends StateGraph<BaseMessage[], Messages> {
   constructor() {
     super({
       channels: {
-        value: addMessages,
-        default: () => [],
+        __root__: {
+          reducer: addMessages,
+          default: () => [],
+        },
       },
     });
   }

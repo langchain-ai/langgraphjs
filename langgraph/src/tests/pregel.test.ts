@@ -1263,7 +1263,7 @@ it("should type-error when Channel.subscribeTo would throw at runtime", () => {
   }).toThrow();
 });
 
-describe.skip("StateGraph", () => {
+describe("StateGraph", () => {
   class SearchAPI extends Tool {
     name = "search_api";
 
@@ -1360,12 +1360,8 @@ describe.skip("StateGraph", () => {
 
     const graph = new StateGraph<AgentState>({
       channels: {
-        input: {
-          value: null,
-        },
-        agentOutcome: {
-          value: null,
-        },
+        input: null,
+        agentOutcome: null,
         steps: {
           value: (x: Step[], y: Step[]) => x.concat(y),
           default: () => [],
@@ -1453,12 +1449,8 @@ describe.skip("StateGraph", () => {
 
     const app = new StateGraph<AgentState>({
       channels: {
-        input: {
-          value: null,
-        },
-        agentOutcome: {
-          value: null,
-        },
+        input: null,
+        agentOutcome: null,
         steps: {
           value: (x: Step[], y: Step[]) => x.concat(y),
           default: () => [],
@@ -1531,14 +1523,8 @@ describe.skip("StateGraph", () => {
 
     const innerGraph = new StateGraph<InnerState>({
       channels: {
-        myKey: {
-          value: null,
-          default: () => "hello",
-        },
-        myOtherKey: {
-          value: null,
-          default: () => "world",
-        },
+        myKey: null,
+        myOtherKey: null,
       },
     })
       .addNode("up", (state: InnerState) => ({
@@ -1557,12 +1543,8 @@ describe.skip("StateGraph", () => {
 
     const graph = new StateGraph<State>({
       channels: {
-        myKey: {
-          value: null,
-        },
-        neverCalled: {
-          value: null,
-        },
+        myKey: null,
+        neverCalled: null,
       },
     })
       .addNode("inner", innerGraph.compile())
@@ -1600,14 +1582,8 @@ describe.skip("StateGraph", () => {
 
     const innerGraph = new StateGraph<InnerState>({
       channels: {
-        myKey: {
-          value: null,
-          default: () => "hello",
-        },
-        myOtherKey: {
-          value: null,
-          default: () => "world",
-        },
+        myKey: null,
+        myOtherKey: null,
       },
     })
       .addNode("up", (state: InnerState) => ({
@@ -1626,12 +1602,8 @@ describe.skip("StateGraph", () => {
 
     const graph = new StateGraph<State>({
       channels: {
-        myKey: {
-          value: null,
-        },
-        neverCalled: {
-          value: null,
-        },
+        myKey: null,
+        neverCalled: null,
       },
     })
       .addNode("inner", innerGraph.compile())
@@ -1665,11 +1637,6 @@ describe.skip("StateGraph", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       keys: Record<string, any>;
     };
-    const graphState = {
-      keys: {
-        value: null,
-      },
-    };
     const nodeOne = (state: GraphState) => {
       const { keys } = state;
       keys.value = 1;
@@ -1694,7 +1661,9 @@ describe.skip("StateGraph", () => {
     const decideNext = (_: GraphState) => "two";
 
     const graph = new StateGraph<GraphState>({
-      channels: graphState,
+      channels: {
+        keys: null,
+      },
     })
       .addNode("one", nodeOne)
       .addNode("two", nodeTwo)
@@ -1744,9 +1713,9 @@ describe.skip("StateGraph", () => {
 
     const workflow = new StateGraph<State>({
       channels: {
-        query: { value: null },
-        answer: { value: null },
-        docs: { value: sortedAdd },
+        query: null,
+        answer: null,
+        docs: { reducer: sortedAdd },
       },
     })
       .addNode("rewrite_query", rewriteQuery)
@@ -1771,7 +1740,7 @@ describe.skip("StateGraph", () => {
   });
 });
 
-describe.skip("PreBuilt", () => {
+describe("PreBuilt", () => {
   class SearchAPI extends Tool {
     name = "search_api";
 
@@ -1855,7 +1824,7 @@ describe.skip("PreBuilt", () => {
   });
 });
 
-describe.skip("MessageGraph", () => {
+describe("MessageGraph", () => {
   class SearchAPI extends Tool {
     name = "search_api";
 
