@@ -2,34 +2,16 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import {
   BaseCheckpointSaver,
   Checkpoint,
-  CheckpointAt,
   CheckpointTuple,
   copyCheckpoint,
-  SerializerProtocol,
 } from "./base.js";
+import { SerializerProtocol } from "../serde/base.js";
 
-export class NoopSerializer
-  implements SerializerProtocol<Checkpoint, Checkpoint>
-{
-  dumps(obj: Checkpoint): Checkpoint {
-    return obj;
-  }
+export class MemorySaver extends BaseCheckpointSaver {
+  storage: Record<string, Record<string, string>>;
 
-  loads(data: Checkpoint): Checkpoint {
-    return data;
-  }
-}
-
-export class MemorySaver extends BaseCheckpointSaver<Checkpoint> {
-  serde = new NoopSerializer();
-
-  storage: Record<string, Record<string, Checkpoint>>;
-
-  constructor(
-    serde?: SerializerProtocol<Checkpoint, Checkpoint>,
-    at?: CheckpointAt
-  ) {
-    super(serde, at);
+  constructor(serde?: SerializerProtocol<Checkpoint>) {
+    super(serde);
     this.storage = {};
   }
 
@@ -43,7 +25,7 @@ export class MemorySaver extends BaseCheckpointSaver<Checkpoint> {
       if (checkpoint) {
         return {
           config,
-          checkpoint: this.serde.loads(checkpoint),
+          checkpoint: this.serde.parse(checkpoint),
         };
       }
     } else {
@@ -53,7 +35,7 @@ export class MemorySaver extends BaseCheckpointSaver<Checkpoint> {
         )[0];
         return {
           config: { configurable: { threadId, threadTs: maxThreadTs } },
-          checkpoint: this.serde.loads(checkpoints[maxThreadTs.toString()]),
+          checkpoint: this.serde.parse(checkpoints[maxThreadTs.toString()]),
         };
       }
     }
@@ -71,7 +53,7 @@ export class MemorySaver extends BaseCheckpointSaver<Checkpoint> {
     )) {
       yield {
         config: { configurable: { threadId, threadTs } },
-        checkpoint: this.serde.loads(checkpoint),
+        checkpoint: this.serde.parse(checkpoint),
       };
     }
   }
@@ -83,10 +65,10 @@ export class MemorySaver extends BaseCheckpointSaver<Checkpoint> {
     const threadId = config.configurable?.threadId;
 
     if (this.storage[threadId]) {
-      this.storage[threadId][checkpoint.ts] = this.serde.dumps(checkpoint);
+      this.storage[threadId][checkpoint.ts] = this.serde.stringify(checkpoint);
     } else {
       this.storage[threadId] = {
-        [checkpoint.ts]: this.serde.dumps(checkpoint),
+        [checkpoint.ts]: this.serde.stringify(checkpoint),
       };
     }
 
@@ -106,7 +88,6 @@ export class MemorySaverAssertImmutable extends MemorySaver {
   constructor() {
     super();
     this.storageForCopies = {};
-    this.at = CheckpointAt.END_OF_STEP;
   }
 
   async put(

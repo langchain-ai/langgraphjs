@@ -1,4 +1,5 @@
 import { RunnableConfig } from "@langchain/core/runnables";
+import { SerializerProtocol } from "../serde/base.js";
 
 /** A field that can be configured by the user. It is a specification of a field. */
 export interface ConfigurableFieldSpec {
@@ -40,22 +41,22 @@ export interface Checkpoint {
   versionsSeen: Record<string, Record<string, number>>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function deepCopy(obj: any): any {
+export function deepCopy<T>(obj: T): T {
   if (typeof obj !== "object" || obj === null) {
     return obj;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const newObj: any = Array.isArray(obj) ? [] : {};
+  const newObj = Array.isArray(obj) ? [] : {};
 
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      newObj[key] = deepCopy(obj[key]);
+      (newObj as Record<PropertyKey, unknown>)[key] = deepCopy(
+        (obj as Record<string, unknown>)[key]
+      );
     }
   }
 
-  return newObj;
+  return newObj as T;
 }
 
 export function emptyCheckpoint(): Checkpoint {
@@ -76,11 +77,6 @@ export function copyCheckpoint(checkpoint: Checkpoint): Checkpoint {
     channelVersions: { ...checkpoint.channelVersions },
     versionsSeen: deepCopy(checkpoint.versionsSeen),
   };
-}
-
-export const enum CheckpointAt {
-  END_OF_STEP = "end_of_step",
-  END_OF_RUN = "end_of_run",
 }
 
 export interface CheckpointTuple {
@@ -110,19 +106,11 @@ const CheckpointThreadTs: ConfigurableFieldSpec = {
   dependencies: null,
 };
 
-export interface SerializerProtocol<D, L> {
-  dumps(obj: D): L;
-  loads(data: L): D;
-}
+export abstract class BaseCheckpointSaver {
+  serde: SerializerProtocol<Checkpoint> = JSON;
 
-export abstract class BaseCheckpointSaver<L> {
-  at: CheckpointAt = CheckpointAt.END_OF_STEP;
-
-  serde: SerializerProtocol<Checkpoint, L>;
-
-  constructor(serde?: SerializerProtocol<Checkpoint, L>, at?: CheckpointAt) {
+  constructor(serde?: SerializerProtocol<Checkpoint>) {
     this.serde = serde || this.serde;
-    this.at = at || this.at;
   }
 
   get configSpecs(): Array<ConfigurableFieldSpec> {
