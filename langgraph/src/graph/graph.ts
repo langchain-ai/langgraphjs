@@ -183,7 +183,7 @@ export class Graph<
   }
 
   compile(
-    checkpointer?: BaseCheckpointSaver,
+    checkpointer?: BaseCheckpointSaver
   ): Pregel<
     Record<N, PregelNode<RunInput, RunOutput>>,
     Record<N, BaseChannel>
