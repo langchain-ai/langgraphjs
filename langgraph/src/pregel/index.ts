@@ -168,11 +168,11 @@ export interface PregelInterface<
   /**
    * @default []
    */
-  interruptAfter?: Array<keyof Nn>;
+  interruptAfter?: Array<keyof Nn> | All;
   /**
    * @default []
    */
-  interruptBefore?: Array<keyof Nn>;
+  interruptBefore?: Array<keyof Nn> | All;
   /**
    * @default undefined
    */
@@ -231,9 +231,9 @@ export class Pregel<
 
   streamChannels?: keyof Cc | Array<keyof Cc>;
 
-  interruptAfter?: Array<keyof Nn>;
+  interruptAfter?: Array<keyof Nn> | All;
 
-  interruptBefore?: Array<keyof Nn>;
+  interruptBefore?: Array<keyof Nn> | All;
 
   stepTimeout?: number;
 
@@ -262,7 +262,9 @@ export class Pregel<
     // Bind the method to the instance
     this._transform = this._transform.bind(this);
 
-    this.validate();
+    if (this.autoValidate) {
+      this.validate();
+    }
   }
 
   validate(): this {

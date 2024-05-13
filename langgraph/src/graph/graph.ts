@@ -1,45 +1,69 @@
+/* eslint-disable @typescript-eslint/no-use-before-define */
 import {
   Runnable,
   RunnableConfig,
-  RunnableLambda,
   RunnableLike,
   _coerceToRunnable,
 } from "@langchain/core/runnables";
 import { PregelNode } from "../pregel/read.js";
-import { Channel, Pregel } from "../pregel/index.js";
+import { Channel, Pregel, PregelInterface } from "../pregel/index.js";
 import { BaseCheckpointSaver } from "../checkpoint/base.js";
 import { BaseChannel } from "../channels/base.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
+import { All } from "../pregel/types.js";
+import { ChannelWrite, PASSTHROUGH } from "../pregel/write.js";
+import { TAG_HIDDEN } from "../constants.js";
+import { RunnableCallable } from "../utils.js";
 
+export const START = "__start__";
 export const END = "__end__";
 
-type EndsMap = { [result: string]: string };
+class Branch<IO, N extends string> {
+  condition: (
+    input: IO,
+    config?: RunnableConfig
+  ) => string | string[] | Promise<string> | Promise<string[]>;
 
-class Branch {
-  condition: CallableFunction;
+  ends?: Record<string, N | typeof END>;
 
-  ends?: EndsMap;
-
-  constructor(condition: CallableFunction, ends?: EndsMap) {
+  constructor(
+    condition: Branch<IO, N>["condition"],
+    ends?: Branch<IO, N>["ends"]
+  ) {
     this.condition = condition;
     this.ends = ends;
   }
 
-  public async runnable(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    input: any,
-    options?: { config?: RunnableConfig }
-  ): Promise<Runnable> {
-    const result = await this.condition(input, options?.config);
-    let destination;
-    if (this.ends) {
-      destination = this.ends[result];
-    } else {
-      destination = result;
-    }
-    return Channel.writeTo(
-      destination !== END ? [`${destination}:inbox`] : [END]
+  compile(
+    writer: (dests: string[]) => Runnable | undefined,
+    reader?: (config: RunnableConfig) => IO
+  ) {
+    return ChannelWrite.registerWriter(
+      new RunnableCallable({
+        func: (input: IO, config: RunnableConfig) =>
+          this._route(input, config, writer, reader),
+      })
     );
+  }
+
+  async _route(
+    input: IO,
+    config: RunnableConfig,
+    writer: (dests: string[]) => Runnable | undefined,
+    reader?: (config: RunnableConfig) => IO
+  ): Promise<Runnable | undefined> {
+    let result = await this.condition(reader ? reader(config) : input, config);
+    if (!Array.isArray(result)) {
+      result = [result];
+    }
+
+    let destinations: string[];
+    if (this.ends) {
+      destinations = result.map((r) => this.ends![r]);
+    } else {
+      destinations = result;
+    }
+    return writer(destinations);
   }
 }
 
@@ -52,9 +76,9 @@ export class Graph<
 > {
   nodes: Record<N, Runnable<RunInput, RunOutput>>;
 
-  edges: Set<[string, string]>;
+  edges: Set<[N | typeof START, N | typeof END]>;
 
-  branches: Record<string, Branch[]>;
+  branches: Record<string, Record<string, Branch<RunInput, N>>>;
 
   entryPoint?: string;
 
@@ -97,7 +121,7 @@ export class Graph<
     return this as Graph<N | K, RunInput, RunOutput>;
   }
 
-  addEdge(startKey: N, endKey: N | typeof END): this {
+  addEdge(startKey: N | typeof START, endKey: N | typeof END): this {
     this.warnIfCompiled(
       `Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph.`
     );
@@ -105,13 +129,9 @@ export class Graph<
     if (startKey === END) {
       throw new Error("END cannot be a start node");
     }
-    if (!(startKey in this.nodes)) {
-      throw new Error(`Need to addNode \`${startKey}\` first`);
+    if (endKey === START) {
+      throw new Error("START cannot be an end node");
     }
-    if (!(endKey in this.nodes) && endKey !== END) {
-      throw new Error(`Need to addNode \`${endKey}\` first`);
-    }
-
     if (
       !this.supportMultipleEdges &&
       Array.from(this.edges).some(([start]) => start === startKey)
@@ -126,38 +146,28 @@ export class Graph<
 
   addConditionalEdges(
     startKey: N,
-    condition: CallableFunction,
+    condition: Branch<RunInput, N>["condition"],
     conditionalEdgeMapping?: Record<string, N | typeof END>
   ): this {
     this.warnIfCompiled(
       "Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
-
-    if (!(startKey in this.nodes)) {
-      throw new Error(`Need to addNode \`${startKey}\` first`);
-    }
-    if (conditionalEdgeMapping) {
-      const mappingValues = Array.from(Object.values(conditionalEdgeMapping));
-      const nodesValues = Object.keys(this.nodes);
-      const endExcluded = mappingValues.filter((value) => value !== END);
-      const difference = endExcluded.filter(
-        (value) => !nodesValues.some((nv) => nv === value)
+    // find a name for condition
+    const name = condition.name || "condition";
+    // validate condition
+    if (this.branches[startKey] && this.branches[startKey][name]) {
+      throw new Error(
+        `Condition \`${name}\` already present for node \`${startKey}\``
       );
-
-      if (difference.length > 0) {
-        throw new Error(
-          `Missing nodes which are in conditional edge mapping.\nMapping contains possible destinations: ${mappingValues.join(
-            ", "
-          )}.\nPossible nodes are ${nodesValues.join(", ")}.`
-        );
-      }
     }
-
+    // save it
     if (!this.branches[startKey]) {
-      this.branches[startKey] = [];
+      this.branches[startKey] = {};
     }
-    this.branches[startKey].push(new Branch(condition, conditionalEdgeMapping));
-
+    this.branches[startKey][name] = new Branch(
+      condition,
+      conditionalEdgeMapping
+    );
     return this;
   }
 
@@ -166,12 +176,7 @@ export class Graph<
       "Setting the entry point of a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
 
-    if (!(key in this.nodes)) {
-      throw new Error(`Need to addNode \`${key}\` first`);
-    }
-    this.entryPoint = key;
-
-    return this;
+    return this.addEdge(START, key);
   }
 
   setFinishPoint(key: N): this {
@@ -183,105 +188,215 @@ export class Graph<
   }
 
   compile(
-    checkpointer?: BaseCheckpointSaver
-  ): Pregel<
-    Record<N, PregelNode<RunInput, RunOutput>>,
-    Record<N, BaseChannel>
-  > {
-    this.validate();
+    checkpointer?: BaseCheckpointSaver,
+    interruptBefore?: N[] | All,
+    interruptAfter?: N[] | All
+  ): CompiledGraph<N> {
+    // validate the graph
+    this.validate([
+      ...(Array.isArray(interruptBefore) ? interruptBefore : []),
+      ...(Array.isArray(interruptAfter) ? interruptAfter : []),
+    ]);
 
-    const outgoingEdges: Record<string, string[]> = {};
-    this.edges.forEach(([start, end]) => {
-      if (!outgoingEdges[start]) {
-        outgoingEdges[start] = [];
-      }
-      outgoingEdges[start].push(end !== END ? `${end}:inbox` : END);
+    // create empty compiled graph
+    const compiled = new CompiledGraph({
+      builder: this,
+      checkpointer,
+      interruptAfter,
+      interruptBefore,
+      autoValidate: false,
+      nodes: {} as Record<N | typeof START, PregelNode<RunInput, RunOutput>>,
+      channels: {
+        [START]: new EphemeralValue(),
+        [END]: new EphemeralValue(),
+      } as Record<N | typeof START | typeof END | string, BaseChannel>,
+      inputs: START,
+      outputs: END,
+      streamChannels: [] as N[],
+      streamMode: "values",
     });
 
-    const nodes = {} as Record<string, PregelNode<RunInput, RunOutput>>;
-    const channels = {
-      [END]: new EphemeralValue(),
-    } as Record<string, BaseChannel>;
+    // attach nodes, edges and branches
     for (const [key, node] of Object.entries<Runnable<RunInput, RunOutput>>(
       this.nodes
     )) {
-      const inboxKey = `${key}:inbox`;
-      channels[key] = new EphemeralValue();
-      channels[inboxKey] = new EphemeralValue();
-      nodes[key as N] = Channel.subscribeTo(inboxKey)
-        .pipe(node)
-        .pipe(Channel.writeTo([key]));
+      compiled.attachNode(key as N, node);
     }
-
-    for (const key of Object.keys(this.nodes)) {
-      const outgoing = outgoingEdges[key];
-      const edgesKey = `${key}:edges`;
-      if (outgoing || this.branches[key]) {
-        nodes[edgesKey] = Channel.subscribeTo(key, {
-          tags: ["langsmith:hidden"],
-        });
-      }
-      if (outgoing) {
-        nodes[edgesKey] = nodes[edgesKey].pipe(Channel.writeTo(outgoing));
-      }
-      if (this.branches[key]) {
-        this.branches[key].forEach((branch) => {
-          const runnableLambda = new RunnableLambda<RunInput, RunOutput>({
-            func: (input: RunInput) => branch.runnable(input),
-          });
-
-          nodes[edgesKey] = nodes[edgesKey].pipe(runnableLambda);
-        });
+    for (const [start, end] of this.edges) {
+      compiled.attachEdge(start, end);
+    }
+    for (const [start, branches] of Object.entries(this.branches)) {
+      for (const [name, branch] of Object.entries(branches)) {
+        compiled.attachBranch(start as N, name, branch);
       }
     }
 
-    if (!this.entryPoint) {
-      throw new Error("Entry point not set");
-    }
-    return new Pregel({
-      nodes,
-      channels,
-      inputs: `${this.entryPoint}:inbox`,
-      outputs: END,
-      checkpointer,
-    });
+    return compiled.validate();
   }
 
-  validate(): void {
-    const allStarts = new Set(
-      [...this.allEdges]
-        .map(([src, _]) => src)
-        .concat(Object.keys(this.branches))
-    );
-
-    for (const node of Object.keys(this.nodes)) {
-      if (!allStarts.has(node)) {
-        throw new Error(`Node \`${node}\` is a dead-end`);
-      }
-    }
-
-    const allEndsAreDefined = Object.values(this.branches).every((branchList) =>
-      branchList.every((branch) => branch.ends)
-    );
-
-    if (allEndsAreDefined) {
-      const allEnds = new Set(
-        [...this.allEdges]
-          .map(([_, end]) => end)
-          .concat(
-            ...Object.values(this.branches).flatMap((branchList) =>
-              branchList.flatMap((branch) => Object.values(branch.ends ?? {}))
-            )
-          )
-          .concat(this.entryPoint ? [this.entryPoint] : [])
-      );
-
-      for (const node of Object.keys(this.nodes)) {
-        if (!allEnds.has(node)) {
-          throw new Error(`Node \`${node}\` is not reachable`);
+  validate(interrupt?: string[]): void {
+    // assemble sources
+    const allSources = new Set([...this.allEdges].map(([src, _]) => src));
+    for (const [start, branches] of Object.entries(this.branches)) {
+      allSources.add(start);
+      for (const branch of Object.values(branches)) {
+        // TODO revise when adding branch.then
+        if (branch.ends) {
+          for (const end of Object.values(branch.ends)) {
+            if (end !== END) {
+              allSources.add(end);
+            }
+          }
+        } else {
+          for (const node of Object.keys(this.nodes)) {
+            if (node !== start) {
+              allSources.add(node);
+            }
+          }
         }
       }
     }
+    // validate sources
+    for (const node of Object.keys(this.nodes)) {
+      if (!allSources.has(node)) {
+        throw new Error(`Node \`${node}\` is a dead-end`);
+      }
+    }
+    for (const source of allSources) {
+      if (source !== START && !(source in this.nodes)) {
+        throw new Error(`Found edge starting at unknown node \`${source}\``);
+      }
+    }
+
+    // assemble targets
+    const allTargets = new Set([...this.allEdges].map(([_, target]) => target));
+    for (const [start, branches] of Object.entries(this.branches)) {
+      for (const branch of Object.values(branches)) {
+        // TODO revise when adding branch.then
+        if (branch.ends) {
+          for (const end of Object.values(branch.ends)) {
+            allTargets.add(end);
+          }
+        } else {
+          allTargets.add(END);
+          for (const node of Object.keys(this.nodes)) {
+            if (node !== start) {
+              allTargets.add(node);
+            }
+          }
+        }
+      }
+    }
+    // validate targets
+    for (const node of Object.keys(this.nodes)) {
+      if (!allTargets.has(node)) {
+        throw new Error(`Node \`${node}\` is not reachable`);
+      }
+    }
+    for (const target of allTargets) {
+      if (target !== END && !(target in this.nodes)) {
+        throw new Error(`Found edge ending at unknown node \`${target}\``);
+      }
+    }
+
+    // validate interrupts
+    if (interrupt) {
+      for (const node of interrupt) {
+        if (!(node in this.nodes)) {
+          throw new Error(`Interrupt node \`${node}\` is not present`);
+        }
+      }
+    }
+
     this.compiled = true;
+  }
+}
+
+export class CompiledGraph<
+  N extends string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunInput = any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RunOutput = any
+> extends Pregel<
+  Record<N | typeof START, PregelNode<RunInput, RunOutput>>,
+  Record<N | typeof START | typeof END | string, BaseChannel>
+> {
+  builder: Graph<N, RunInput, RunOutput>;
+
+  constructor({
+    builder,
+    ...rest
+  }: { builder: Graph<N, RunInput, RunOutput> } & PregelInterface<
+    Record<N | typeof START, PregelNode<RunInput, RunOutput>>,
+    Record<N | typeof START | typeof END | string, BaseChannel>
+  >) {
+    super(rest);
+    this.builder = builder;
+  }
+
+  attachNode(key: N, node: Runnable<RunInput, RunOutput>): void {
+    this.channels[key] = new EphemeralValue();
+    this.nodes[key] = new PregelNode({
+      channels: [],
+      triggers: [],
+    })
+      .pipe(node)
+      .pipe(
+        new ChannelWrite([{ channel: key, value: PASSTHROUGH }], [TAG_HIDDEN])
+      );
+    (this.streamChannels as N[]).push(key);
+  }
+
+  attachEdge(start: N | typeof START, end: N | typeof END): void {
+    if (end === END) {
+      if (start === START) {
+        throw new Error("Cannot have an edge from START to END");
+      }
+      this.nodes[start].writers.push(
+        new ChannelWrite([{ channel: END, value: PASSTHROUGH }], [TAG_HIDDEN])
+      );
+    } else {
+      this.nodes[end].triggers.push(start);
+      (this.nodes[end].channels as string[]).push(start);
+    }
+  }
+
+  attachBranch(
+    start: N | typeof START,
+    name: string,
+    branch: Branch<RunInput, N>
+  ) {
+    // add hidden start node
+    if (start === START && this.nodes[START]) {
+      this.nodes[START] = Channel.subscribeTo(START, { tags: [TAG_HIDDEN] });
+    }
+
+    // attach branch writer
+    this.nodes[start].pipe(
+      branch.compile((dests) => {
+        const channels = dests.map((dest) =>
+          dest === END ? END : `branch:${start}:${name}:${dest}`
+        );
+        return new ChannelWrite(
+          channels.map((channel) => ({ channel, value: PASSTHROUGH })),
+          [TAG_HIDDEN]
+        );
+      })
+    );
+
+    // attach branch readers
+    const ends = branch.ends
+      ? Object.values(branch.ends)
+      : (Object.keys(this.nodes) as N[]);
+    for (const end of ends) {
+      if (end !== END) {
+        const channelName = `branch:${start}:${name}:${end}`;
+        (this.channels as Record<string, BaseChannel>)[channelName] =
+          new EphemeralValue();
+        this.nodes[end].triggers.push(channelName);
+        (this.nodes[end].channels as string[]).push(channelName);
+      }
+    }
   }
 }

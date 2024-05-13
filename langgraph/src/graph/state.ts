@@ -5,7 +5,7 @@ import {
 } from "@langchain/core/runnables";
 import { BaseChannel } from "../channels/base.js";
 import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
-import { END, Graph } from "./graph.js";
+import { END, CompiledGraph, Graph, START } from "./graph.js";
 import { LastValue } from "../channels/last_value.js";
 import { ChannelWrite, PASSTHROUGH, SKIP_WRITE } from "../pregel/write.js";
 import { BaseCheckpointSaver } from "../checkpoint/base.js";
@@ -15,8 +15,6 @@ import { NamedBarrierValue } from "../channels/named_barrier_value.js";
 import { AnyValue } from "../channels/any_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { RunnableCallable } from "../utils.js";
-
-export const START = "__start__";
 
 type SingleReducer<T> =
   | {
@@ -86,7 +84,7 @@ export class StateGraph<
     return super.addNode(key, action) as StateGraph<State, Update, N | K>;
   }
 
-  addEdge(startKey: N | N[], endKey: N | typeof END): this {
+  addEdge(startKey: typeof START | N | N[], endKey: N | typeof END): this {
     if (typeof startKey === "string") {
       return super.addEdge(startKey, endKey);
     }
@@ -118,7 +116,9 @@ export class StateGraph<
     return this;
   }
 
-  compile(checkpointer?: BaseCheckpointSaver) {
+  compile(
+    checkpointer?: BaseCheckpointSaver
+  ): CompiledStateGraph<State, Update, N> {
     this.validate();
 
     if (Object.keys(this.nodes).some((key) => key in this.channels)) {
@@ -315,4 +315,12 @@ function getChannel<T>(reducer: SingleReducer<T>): BaseChannel<T> {
     return new BinaryOperatorAggregate<T>(reducer.value, reducer.default);
   }
   return new LastValue<T>();
+}
+
+class CompiledStateGraph<
+  const State extends object | unknown,
+  const Update extends object | unknown,
+  const N extends string
+> extends CompiledGraph<N, State, Update> {
+  declare builder: StateGraph<State, Update, N>;
 }
