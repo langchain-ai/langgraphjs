@@ -183,8 +183,7 @@ export class Graph<
   }
 
   compile(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    checkpointer?: BaseCheckpointSaver<any>
+    checkpointer?: BaseCheckpointSaver,
   ): Pregel<
     Record<N, PregelNode<RunInput, RunOutput>>,
     Record<N, BaseChannel>
