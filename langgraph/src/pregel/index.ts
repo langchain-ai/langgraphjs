@@ -21,7 +21,6 @@ import {
 import {
   BaseCheckpointSaver,
   Checkpoint,
-  CheckpointAt,
   copyCheckpoint,
   emptyCheckpoint,
 } from "../checkpoint/base.js";
@@ -183,8 +182,7 @@ export interface PregelInterface<
    */
   debug?: boolean;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  checkpointer?: BaseCheckpointSaver<any>;
+  checkpointer?: BaseCheckpointSaver;
 }
 
 export interface PregelOptions<
@@ -241,8 +239,7 @@ export class Pregel<
 
   debug: boolean = false;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  checkpointer?: BaseCheckpointSaver<any>;
+  checkpointer?: BaseCheckpointSaver;
 
   constructor(fields: PregelInterface<Nn, Cc>) {
     super(fields);
@@ -408,6 +405,8 @@ export class Pregel<
 
     _applyWrites(checkpoint, channels, inputPendingWrites);
 
+    // TODO checkpoint inputs
+
     // Similarly to Bulk Synchronous Parallel / Pregel model
     // computation proceeds in steps, while there are channel updates
     // channel updates from step N are only visible in step N+1
@@ -439,6 +438,8 @@ export class Pregel<
           `Recursion limit of ${config.recursionLimit} reached without hitting a stop condition. You can increase the limit by setting the "recursionLimit" config key.`
         );
       }
+
+      // TODO interrupt before
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pendingWrites: Array<[string, any]> = [];
@@ -495,19 +496,13 @@ export class Pregel<
       }
 
       // save end of step checkpoint
-      if (
-        this.checkpointer &&
-        this.checkpointer.at === CheckpointAt.END_OF_STEP
-      ) {
+      if (this.checkpointer) {
         checkpoint = await createCheckpoint(checkpoint, channels);
         await this.checkpointer.put(config, checkpoint);
+        // TODO save in background
       }
-    }
 
-    // save end of run checkpoint
-    if (this.checkpointer && this.checkpointer.at === CheckpointAt.END_OF_RUN) {
-      checkpoint = await createCheckpoint(checkpoint, channels);
-      await this.checkpointer.put(config, checkpoint);
+      // TODO interrupt after
     }
   }
 

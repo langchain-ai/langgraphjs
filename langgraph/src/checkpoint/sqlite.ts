@@ -1,22 +1,7 @@
 import Database, { Database as DatabaseType } from "better-sqlite3";
 import { RunnableConfig } from "@langchain/core/runnables";
-import {
-  BaseCheckpointSaver,
-  Checkpoint,
-  CheckpointAt,
-  CheckpointTuple,
-  SerializerProtocol,
-} from "./base.js";
-
-export class JsonSerializer implements SerializerProtocol<Checkpoint, string> {
-  dumps(obj: Checkpoint): string {
-    return JSON.stringify(obj);
-  }
-
-  loads(data: string): Checkpoint {
-    return JSON.parse(data);
-  }
-}
+import { BaseCheckpointSaver, Checkpoint, CheckpointTuple } from "./base.js";
+import { SerializerProtocol } from "../serde/base.js";
 
 // snake_case is used to match Python implementation
 interface Row {
@@ -27,19 +12,16 @@ interface Row {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export class SqliteSaver extends BaseCheckpointSaver<string> {
-  serde = new JsonSerializer();
-
+export class SqliteSaver extends BaseCheckpointSaver {
   db: DatabaseType;
 
   isSetup: boolean;
 
   constructor(
     connStringOrLocalPath: string,
-    serde?: SerializerProtocol<Checkpoint, string>,
-    at?: CheckpointAt
+    serde?: SerializerProtocol<Checkpoint>
   ) {
-    super(serde, at);
+    super(serde);
     this.db = new Database(connStringOrLocalPath);
     this.isSetup = false;
   }
@@ -87,7 +69,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
         if (row) {
           return {
             config,
-            checkpoint: this.serde.loads(row.checkpoint),
+            checkpoint: this.serde.parse(row.checkpoint),
             parentConfig: row.parent_ts
               ? {
                   configurable: {
@@ -117,7 +99,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
               threadTs: row.thread_ts,
             },
           },
-          checkpoint: this.serde.loads(row.checkpoint),
+          checkpoint: this.serde.parse(row.checkpoint),
           parentConfig: row.parent_ts
             ? {
                 configurable: {
@@ -153,7 +135,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
                 threadTs: row.thread_ts,
               },
             },
-            checkpoint: this.serde.loads(row.checkpoint),
+            checkpoint: this.serde.parse(row.checkpoint),
             parentConfig: row.parent_ts
               ? {
                   configurable: {
@@ -182,7 +164,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
         config.configurable?.threadId,
         checkpoint.ts,
         config.configurable?.threadTs,
-        this.serde.dumps(checkpoint),
+        this.serde.stringify(checkpoint),
       ];
 
       this.db

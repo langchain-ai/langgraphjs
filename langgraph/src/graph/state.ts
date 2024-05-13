@@ -118,8 +118,7 @@ export class StateGraph<
     return this;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  compile(checkpointer?: BaseCheckpointSaver<any>) {
+  compile(checkpointer?: BaseCheckpointSaver) {
     this.validate();
 
     if (Object.keys(this.nodes).some((key) => key in this.channels)) {
