@@ -2,11 +2,7 @@
   "extends": "@tsconfig/recommended",
   "compilerOptions": {
     "target": "ES2021",
-    "lib": [
-      "ES2021",
-      "ES2022.Object",
-      "DOM"
-    ],
+    "lib": ["ES2021", "ES2022.Object", "DOM"],
     "module": "NodeNext",
     "moduleResolution": "nodenext",
     "esModuleInterop": true,
@@ -21,8 +17,5 @@
     "strict": true,
     "outDir": "dist"
   },
-  "exclude": [
-    "node_modules",
-    "dist",
-  ],
+  "exclude": ["node_modules", "dist", "examples/web_browsing/labeling.ts", "langgraph/dist/checkpoint/sqlite.js"]
 }

@@ -1,0 +1,140 @@
+site_name: LangGraph
+site_description: Build language agents as graphs
+site_url: https://langchain-ai.github.io/langgraph/
+theme:
+  name: material
+  custom_dir: overrides
+  logo: static/wordmark.png
+  favicon: static/favicon.png
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - content.code.select
+    - content.tabs.link
+    - content.tooltips
+    - header.autohide
+    - navigation.expand
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.prune
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+  palette:
+  - scheme: default
+    primary: white
+    accent: gray
+    toggle:
+      icon: material/brightness-7
+      name: Switch to dark mode
+  - scheme: slate
+    primary: grey
+    accent: white
+    toggle:
+      icon: material/brightness-4
+      name: Switch to light mode
+  font:
+    text: "Public Sans"
+    code: "Roboto Mono"
+plugins:
+  - search:
+      separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - autorefs
+  - mkdocs-jupyter:
+      ignore_h1_titles: true
+      execute: false
+      include_source: True
+      include_requirejs: true
+  - typedoc:
+      source: '../langgraph/*.d.ts'
+      output_dir: './reference'
+      tsconfig: '../tsconfig.json'
+      options: 'typedoc.json'
+      name: 'API Reference'
+      title_link: "/" # optional, default: '/'
+nav:
+  - Home: 
+      - 'index.md'
+  - Tutorials:
+      - 'tutorials/index.md'
+      - Use cases:
+          - Multi-Agent Systems:
+              - tutorials/multi_agent/agent_supervisor.ipynb
+              - tutorials/multi_agent/hierarchical_agent_teams.ipynb
+              - tutorials/multi_agent/multi_agent_collaboration.ipynb
+          - RAG:
+              - tutorials/rag/langgraph_agentic_rag.ipynb
+              - tutorials/rag/langgraph_crag.ipynb
+              - tutorials/rag/langgraph_self_rag.ipynb
+          - Planning Agents:
+              - tutorials/plan-and-execute/plan-and-execute.ipynb
+          - Reflection & Critique:
+              - tutorials/reflection/reflection.ipynb
+              - tutorials/rewoo/rewoo.ipynb
+  - "How-to Guides":
+     - 'how-tos/index.md'
+  - "Conceptual Guides":
+     - 'concepts/index.md'
+  - "Reference":
+     - 'reference/index.html'
+  
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      use_pygments: true
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      normalize_issue_symbols: true
+      repo_url_shorthand: true
+      user: langchain-ai 
+      repo: langgraph
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      auto_append:
+        - includes/mkdocs.md
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      combine_header_slug: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+extra_css:
+  - css/mkdocstrings.css
