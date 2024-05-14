@@ -13,8 +13,6 @@ import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   BaseChannel,
-  EmptyChannelError,
-  InvalidUpdateError,
   createCheckpoint,
   emptyChannels,
 } from "../channels/base.js";
@@ -37,15 +35,14 @@ import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND, INTERRUPT } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { All, PregelExecutableTask, PregelTaskDescription } from "./types.js";
+import {
+  EmptyChannelError,
+  GraphRecursionError,
+  GraphValueError,
+  InvalidUpdateError,
+} from "../errors.js";
 
-const DEFAULT_RECURSION_LIMIT = 25;
-
-export class GraphRecursionError extends Error {
-  constructor(message?: string) {
-    super(message);
-    this.name = "GraphRecursionError";
-  }
-}
+const DEFAULT_LOOP_LIMIT = 25;
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 

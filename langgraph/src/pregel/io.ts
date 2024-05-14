@@ -1,6 +1,7 @@
-import { BaseChannel, EmptyChannelError } from "../channels/base.js";
+import { BaseChannel } from "../channels/base.js";
 import { PregelExecutableTask } from "./types.js";
 import { TAG_HIDDEN } from "../constants.js";
+import { EmptyChannelError } from "../errors.js";
 
 export function readChannel<C extends PropertyKey>(
   channels: Record<C, BaseChannel>,

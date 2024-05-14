@@ -8,8 +8,9 @@ import {
   readChannels,
 } from "../pregel/io.js";
 import { PregelExecutableTask } from "../pregel/types.js";
-import { BaseChannel, EmptyChannelError } from "../channels/base.js";
+import { BaseChannel } from "../channels/base.js";
 import { LastValue } from "../channels/last_value.js";
+import { EmptyChannelError } from "../errors.js";
 
 describe("readChannel", () => {
   it("should read a channel successfully", () => {

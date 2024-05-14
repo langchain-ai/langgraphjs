@@ -1,4 +1,6 @@
-import { Checkpoint, deepCopy } from "../checkpoint/index.js";
+import { deepCopy } from "../checkpoint/base.js";
+import { Checkpoint } from "../checkpoint/index.js";
+import { EmptyChannelError } from "../errors.js";
 
 export abstract class BaseChannel<
   ValueType = unknown,
@@ -45,20 +47,6 @@ export abstract class BaseChannel<
    * @returns {CheckpointType | undefined}
    */
   abstract checkpoint(): CheckpointType | undefined;
-}
-
-export class EmptyChannelError extends Error {
-  constructor(message?: string) {
-    super(message);
-    this.name = "EmptyChannelError";
-  }
-}
-
-export class InvalidUpdateError extends Error {
-  constructor(message?: string) {
-    super(message);
-    this.name = "InvalidUpdateError";
-  }
 }
 
 export function emptyChannels<Cc extends Record<string, BaseChannel>>(
