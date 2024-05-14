@@ -81,7 +81,8 @@ describe("MemorySaver", () => {
     // save checkpoint
     const runnableConfig = await memorySaver.put(
       { configurable: { threadId: "1" } },
-      checkpoint1
+      checkpoint1,
+      { source: "update", step: -1 }
     );
     expect(runnableConfig).toEqual({
       configurable: { threadId: "1", threadTs: "2024-04-19T17:19:07.952Z" },
@@ -97,7 +98,10 @@ describe("MemorySaver", () => {
     expect(checkpointTuple?.checkpoint).toEqual(checkpoint1);
 
     // save another checkpoint
-    await memorySaver.put({ configurable: { threadId: "1" } }, checkpoint2);
+    await memorySaver.put({ configurable: { threadId: "1" } }, checkpoint2, {
+      source: "update",
+      step: -1,
+    });
 
     // list checkpoints
     const checkpointTupleGenerator = await memorySaver.list({
@@ -118,7 +122,7 @@ describe("MemorySaver", () => {
 
 describe("SqliteSaver", () => {
   it("should save and retrieve checkpoints correctly", async () => {
-    const sqliteSaver = new SqliteSaver(":memory:");
+    const sqliteSaver = SqliteSaver.fromConnString(":memory:");
 
     // get undefined checkpoint
     const undefinedCheckpoint = await sqliteSaver.getTuple({
@@ -129,7 +133,8 @@ describe("SqliteSaver", () => {
     // save first checkpoint
     const runnableConfig = await sqliteSaver.put(
       { configurable: { threadId: "1" } },
-      checkpoint1
+      checkpoint1,
+      { source: "update", step: -1 }
     );
     expect(runnableConfig).toEqual({
       configurable: { threadId: "1", threadTs: "2024-04-19T17:19:07.952Z" },
@@ -148,7 +153,8 @@ describe("SqliteSaver", () => {
     // save second checkpoint
     await sqliteSaver.put(
       { configurable: { threadId: "1", threadTs: "2024-04-18T17:19:07.952Z" } },
-      checkpoint2
+      checkpoint2,
+      { source: "update", step: -1 }
     );
 
     // verify that parentTs is set and retrieved correctly for second checkpoint

@@ -1,36 +1,38 @@
 import Database, { Database as DatabaseType } from "better-sqlite3";
 import { RunnableConfig } from "@langchain/core/runnables";
-import { BaseCheckpointSaver, Checkpoint, CheckpointTuple } from "./base.js";
+import {
+  BaseCheckpointSaver,
+  Checkpoint,
+  CheckpointMetadata,
+  CheckpointTuple,
+} from "./base.js";
 import { SerializerProtocol } from "../serde/base.js";
 
 // snake_case is used to match Python implementation
 interface Row {
   checkpoint: string;
-  parent_ts: string;
-  thread_id?: string;
-  thread_ts?: string;
+  metadata: string;
+  parent_ts?: string;
+  thread_id: string;
+  thread_ts: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class SqliteSaver extends BaseCheckpointSaver {
   db: DatabaseType;
 
-  isSetup: boolean;
+  protected isSetup: boolean;
 
-  constructor(
-    connStringOrLocalPath: string,
-    serde?: SerializerProtocol<Checkpoint>
-  ) {
+  constructor(db: DatabaseType, serde?: SerializerProtocol<Checkpoint>) {
     super(serde);
-    this.db = new Database(connStringOrLocalPath);
+    this.db = db;
     this.isSetup = false;
   }
 
   static fromConnString(connStringOrLocalPath: string): SqliteSaver {
-    return new SqliteSaver(connStringOrLocalPath);
+    return new SqliteSaver(new Database(connStringOrLocalPath));
   }
 
-  private async setup(): Promise<void> {
+  private setup(): void {
     if (this.isSetup) {
       return;
     }
@@ -43,6 +45,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
   thread_ts TEXT NOT NULL,
   parent_ts TEXT,
   checkpoint BLOB,
+  metadata BLOB,
   PRIMARY KEY (thread_id, thread_ts)
 );`);
     } catch (error) {
@@ -54,7 +57,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
-    await this.setup();
+    this.setup();
     const threadId = config.configurable?.threadId;
     const threadTs = config.configurable?.threadTs;
 
@@ -62,14 +65,15 @@ CREATE TABLE IF NOT EXISTS checkpoints (
       try {
         const row: Row = this.db
           .prepare(
-            `SELECT checkpoint, parent_ts FROM checkpoints WHERE thread_id = ? AND thread_ts = ?`
+            `SELECT checkpoint, parent_ts, metadata FROM checkpoints WHERE thread_id = ? AND thread_ts = ?`
           )
           .get(threadId, threadTs) as Row;
 
         if (row) {
           return {
             config,
-            checkpoint: this.serde.parse(row.checkpoint),
+            checkpoint: this.serde.parse(row.checkpoint) as Checkpoint,
+            metadata: this.serde.parse(row.metadata) as CheckpointMetadata,
             parentConfig: row.parent_ts
               ? {
                   configurable: {
@@ -87,7 +91,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     } else {
       const row: Row = this.db
         .prepare(
-          `SELECT thread_id, thread_ts, parent_ts, checkpoint FROM checkpoints WHERE thread_id = ? ORDER BY thread_ts DESC LIMIT 1`
+          `SELECT thread_id, thread_ts, parent_ts, checkpoint, metadata FROM checkpoints WHERE thread_id = ? ORDER BY thread_ts DESC LIMIT 1`
         )
         .get(threadId) as Row;
 
@@ -99,7 +103,8 @@ CREATE TABLE IF NOT EXISTS checkpoints (
               threadTs: row.thread_ts,
             },
           },
-          checkpoint: this.serde.parse(row.checkpoint),
+          checkpoint: this.serde.parse(row.checkpoint) as Checkpoint,
+          metadata: this.serde.parse(row.metadata) as CheckpointMetadata,
           parentConfig: row.parent_ts
             ? {
                 configurable: {
@@ -116,13 +121,13 @@ CREATE TABLE IF NOT EXISTS checkpoints (
   }
 
   async *list(config: RunnableConfig): AsyncGenerator<CheckpointTuple> {
-    await this.setup();
+    this.setup();
     const threadId = config.configurable?.threadId;
 
     try {
       const rows: Row[] = this.db
         .prepare(
-          `SELECT thread_id, thread_ts, parent_ts, checkpoint FROM checkpoints WHERE thread_id = ? ORDER BY thread_ts DESC`
+          `SELECT thread_id, thread_ts, parent_ts, checkpoint, metadata FROM checkpoints WHERE thread_id = ? ORDER BY thread_ts DESC`
         )
         .all(threadId) as Row[];
 
@@ -135,7 +140,8 @@ CREATE TABLE IF NOT EXISTS checkpoints (
                 threadTs: row.thread_ts,
               },
             },
-            checkpoint: this.serde.parse(row.checkpoint),
+            checkpoint: this.serde.parse(row.checkpoint) as Checkpoint,
+            metadata: this.serde.parse(row.metadata) as CheckpointMetadata,
             parentConfig: row.parent_ts
               ? {
                   configurable: {
@@ -155,9 +161,10 @@ CREATE TABLE IF NOT EXISTS checkpoints (
 
   async put(
     config: RunnableConfig,
-    checkpoint: Checkpoint
+    checkpoint: Checkpoint,
+    metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
-    await this.setup();
+    this.setup();
 
     try {
       const row = [
@@ -165,11 +172,12 @@ CREATE TABLE IF NOT EXISTS checkpoints (
         checkpoint.ts,
         config.configurable?.threadTs,
         this.serde.stringify(checkpoint),
+        this.serde.stringify(metadata),
       ];
 
       this.db
         .prepare(
-          `INSERT OR REPLACE INTO checkpoints (thread_id, thread_ts, parent_ts, checkpoint) VALUES (?, ?, ?, ?)`
+          `INSERT OR REPLACE INTO checkpoints (thread_id, thread_ts, parent_ts, checkpoint, metadata) VALUES (?, ?, ?, ?, ?)`
         )
         .run(...row);
     } catch (error) {
