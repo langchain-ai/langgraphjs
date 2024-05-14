@@ -18,7 +18,7 @@ import { RunnableCallable } from "../utils.js";
 export const START = "__start__";
 export const END = "__end__";
 
-class Branch<IO, N extends string> {
+export class Branch<IO, N extends string> {
   condition: (
     input: IO,
     config?: RunnableConfig

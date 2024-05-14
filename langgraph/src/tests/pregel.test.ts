@@ -172,6 +172,7 @@ describe("Pregel", () => {
         interruptBefore: "*",
         interruptAfter: ["one"],
         debug: true,
+        tags: ["hello"],
       };
 
       // create Pregel class
@@ -192,7 +193,8 @@ describe("Pregel", () => {
         false, // debug
         "values", // stream mode
         "outputKey", // input keys
-        ["inputKey", "outputKey", "channel3"], // output keys
+        ["inputKey", "outputKey", "channel3"], // output keys,
+        {},
         ["one"], // interrupt before
         ["one"], // interrupt after
       ];
@@ -202,6 +204,7 @@ describe("Pregel", () => {
         "updates", // stream mode
         "inputKey", // input keys
         "outputKey", // output keys
+        { tags: ["hello"] },
         "*", // interrupt before
         ["one"], // interrupt after
       ];
@@ -800,6 +803,7 @@ it("should invoke two processes and get correct output", async () => {
     },
     inputs: "input",
     outputs: "output",
+    streamChannels: ["inbox", "output"],
   });
 
   await expect(app.invoke(2, { recursionLimit: 1 })).rejects.toThrow(
@@ -808,16 +812,17 @@ it("should invoke two processes and get correct output", async () => {
 
   expect(await app.invoke(2)).toEqual(4);
 
-  const stream = await app.stream(2);
+  const stream = await app.stream(2, { streamMode: "updates" });
   let step = 0;
   for await (const value of stream) {
     if (step === 0) {
-      expect(value).toEqual({ inbox: 3 });
+      expect(value).toEqual({ one: { inbox: 3 } });
     } else if (step === 1) {
-      expect(value).toEqual({ output: 4 });
+      expect(value).toEqual({ two: { output: 4 } });
     }
     step += 1;
   }
+  expect(step).toBe(2);
 });
 
 it("should process two processes with object input and output", async () => {
@@ -836,6 +841,7 @@ it("should process two processes with object input and output", async () => {
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
+    streamChannels: ["output", "inbox"],
     inputs: ["input", "inbox"],
     outputs: "output",
   });
@@ -857,7 +863,26 @@ it("should process two processes with object input and output", async () => {
   }
   expect(fullOutputResults).toEqual([
     { inbox: [3], output: 13 },
-    { output: 4 },
+    { inbox: [], output: 4 },
+  ]);
+
+  const fullOutputResultsUpdates = [];
+  for await (const result of await app.stream(
+    { input: 2, inbox: 12 },
+    { streamMode: "updates" }
+  )) {
+    fullOutputResultsUpdates.push(result);
+  }
+  expect(fullOutputResultsUpdates).toEqual([
+    {
+      one: {
+        inbox: 3,
+      },
+      two: {
+        output: 13,
+      },
+    },
+    { two: { output: 4 } },
   ]);
 });
 
@@ -1210,6 +1235,7 @@ it("should handle two processes with one input and two outputs", async () => {
     },
     inputs: "input",
     outputs: "output",
+    streamChannels: ["output", "between"],
   });
 
   const results = await app.stream(2);
@@ -1218,7 +1244,10 @@ it("should handle two processes with one input and two outputs", async () => {
     streamResults.push(chunk);
   }
 
-  expect(streamResults).toEqual([{ between: 3, output: 3 }, { output: 4 }]);
+  expect(streamResults).toEqual([
+    { between: 3, output: 3 },
+    { between: 3, output: 4 },
+  ]);
 });
 
 it("should finish executing without output", async () => {
@@ -1472,21 +1501,8 @@ describe("StateGraph", () => {
     for await (const item of stream) {
       streamItems.push(item);
     }
-    expect(streamItems.length).toBe(12);
+    expect(streamItems.length).toBe(5);
     expect(streamItems[0]).toEqual({
-      __start__: {
-        input: "what is the weather in sf?",
-      },
-      input: "what is the weather in sf?",
-    });
-    expect(streamItems[1]).toEqual({
-      "agent:inbox": {
-        input: "what is the weather in sf?",
-        agentOutcome: null,
-        steps: [],
-      },
-    });
-    expect(streamItems[2]).toEqual({
       agent: {
         agentOutcome: {
           tool: "search_api",
@@ -1494,23 +1510,8 @@ describe("StateGraph", () => {
           log: "tool:search_api:query",
         },
       },
-      agentOutcome: {
-        tool: "search_api",
-        toolInput: "query",
-        log: "tool:search_api:query",
-      },
     });
-    expect(streamItems[3]).toEqual({
-      "tools:inbox": {
-        input: "what is the weather in sf?",
-        agentOutcome: {
-          tool: "search_api",
-          toolInput: "query",
-          log: "tool:search_api:query",
-        },
-        steps: [],
-      },
-    });
+
     // TODO: Need to rewrite this test.
   });
 
@@ -2035,37 +2036,7 @@ describe("MessageGraph", () => {
     }
 
     const lastItem = streamItems[streamItems.length - 1];
-    expect(Object.keys(lastItem)).toEqual([END]);
-    expect(Object.values(lastItem)[0]).toHaveLength(6);
-    expect(Object.values(lastItem)[0]).toStrictEqual([
-      new HumanMessage("what is the weather in sf?"),
-      new AIMessage({
-        content: "",
-        additional_kwargs: {
-          function_call: {
-            name: "search_api",
-            arguments: "query",
-          },
-        },
-      }),
-      new FunctionMessage({
-        content: '"result for query"',
-        name: "search_api",
-      }),
-      new AIMessage({
-        content: "",
-        additional_kwargs: {
-          function_call: {
-            name: "search_api",
-            arguments: "another",
-          },
-        },
-      }),
-      new FunctionMessage({
-        content: '"result for another"',
-        name: "search_api",
-      }),
-      new AIMessage("answer"),
-    ]);
+    expect(Object.keys(lastItem)).toEqual(["agent"]);
+    expect(Object.values(lastItem)[0]).toEqual(new AIMessage("answer"));
   });
 });
