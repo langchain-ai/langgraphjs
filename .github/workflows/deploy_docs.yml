@@ -49,6 +49,7 @@ jobs:
 
       - name: Build site
         run: |
+          yarn build
           source .venv/bin/activate
           cd docs
           make build-docs
