@@ -58,10 +58,10 @@ plugins:
       include_requirejs: true
   - typedoc:
       source: '../langgraph/*.d.ts'
-      output_dir: 'reference'
+      output_dir: './reference'
       tsconfig: '../tsconfig.json'
       options: 'typedoc.json'
-      name: 'Reference'
+      name: 'API Reference'
       title_link: "/" # optional, default: '/'
 nav:
   - Home: 

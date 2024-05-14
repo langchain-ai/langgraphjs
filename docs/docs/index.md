@@ -99,7 +99,7 @@ Check out the [How-To Guides](how-tos/index.md) for instructions on handling com
 
 ## Reference
 
-For documentation on the core APIs, check out the [Reference](reference/) docs.
+For documentation on the core APIs, check out the [Reference](reference) docs.
 
 ## Conceptual Guides
 
