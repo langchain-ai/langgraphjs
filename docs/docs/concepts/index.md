@@ -5,7 +5,7 @@
 🚧 This section is currently in progress and copied from the python documentation. Check back later for updates! 🚧
 
 
-Welcome to LangGraph, a Python library for building complex, scalable AI agents using graph-based state machines. In this guide, we'll explore the core concepts behind LangGraph and why it's uniquely suited for creating reliable, fault-tolerant agent systems. We assume you have already learned the basic covered in the [introduction tutorial](https://langchain-ai.github.io/langgraph/tutorials/introduction/#requirements) and want to deepen your understanding of LangGraph's underlying design and inner workings.
+Welcome to LangGraph, a Python library for building complex, scalable AI agents using graph-based state machines. In this guide, we'll explore the core concepts behind LangGraph and why it's uniquely suited for creating reliable, fault-tolerant agent systems. We assume you have already learned the basic covered in the [quick start](https://langchain-ai.github.io/langgraphjs/) and want to deepen your understanding of LangGraph's underlying design and inner workings.
 
 First off, why graphs?
 
@@ -26,7 +26,7 @@ We think agents are exciting and new, but AI design patterns should apply applic
 - Multi-agent systems resemble multi-player web apps in their need for parallelism + conflict resolution.
 - Everyone loves an undo button and version control.
 
-LangGraph's primary [StateGraph](https://langchain-ai.github.io/langgraph/reference/graphs/#langgraph.graph.StateGraph) abstraction is designed to support these and other needs, providing an API that is lower level than other agent frameworks such as LangChain's [AgentExecutor](https://python.langchain.com/v0.1/docs/modules/agents/) to give you full control of where and how to apply "AI."
+LangGraph's primary [StateGraph](https://langchain-ai.github.io/langgraphjs/reference/classes/index.StateGraph.html) abstraction is designed to support these and other needs, providing an API that is lower level than other agent frameworks such as LangChain's [AgentExecutor](https://python.langchain.com/v0.1/docs/modules/agents/) to give you full control of where and how to apply "AI."
 
 It extends Google's [Pregel](https://research.google/pubs/pregel-a-system-for-large-scale-graph-processing/) graph processing framework to provide fault tolerance and recovery when running long or error-prone workloads. When developing, you can focus on a local action or task-specific agent, and the system composes these actions to form a more capable and scalable application.
 
@@ -58,7 +58,7 @@ We will go through a full execution of a StateGraph later, but first, lets explo
 
 In StateGraph, nodes are typically python functions (sync or `async`) where the **first** positional argument is the `state`, and (optionally), the **second** positional argument is a "config", containing optional [configurable parameters](#configuration) (such as a `thread_id`).
 
-Similar to `NetworkX`, you add these nodes to a graph using the [add_node](https://langchain-ai.github.io/langgraph/reference/graphs/#langgraph.graph.MessageGraph) method:
+Similar to `NetworkX`, you add these nodes to a graph using the [add_node](https://langchain-ai.github.io/langgraphjs/reference/classes/index.MessageGraph.html) method:
 
 ```python
 from langchain_core.runnables import RunnableConfig
@@ -98,9 +98,9 @@ By default, the value is the name of the node or nodes to send the state to next
 
 If you want to reuse an edge, you can optionally provide a dictionary that maps the edge's output to the name of the next node.
 
-If you **always** want to go from node A to node B, you can use the [add_edge](https://langchain-ai.github.io/langgraph/reference/graphs/#langgraph.graph.StateGraph.add_edge) method directly.
+If you **always** want to go from node A to node B, you can use the [add_edge](https://langchain-ai.github.io/langgraphjs/reference/classes/index.StateGraph.html.add_edge) method directly.
 
-If you want to **optionally** route to 1 or more edges (or optionally terminate), you can use the [add_conditional_edges](https://langchain-ai.github.io/langgraph/reference/graphs/#langgraph.graph.StateGraph.add_conditional_edges) method.
+If you want to **optionally** route to 1 or more edges (or optionally terminate), you can use the [add_conditional_edges](https://langchain-ai.github.io/langgraphjs/reference/classes/index.StateGraph.html.add_conditional_edges) method.
 
 If a node has multiple out-going edges, **all** of those destination nodes will be executed in parallel as a part of the next superstep.
 
@@ -190,9 +190,7 @@ graph = builder.compile()
 graph.invoke(5)
 ```
 
-This also means you can [use a pydantic BaseModel](https://langchain-ai.github.io/langgraph/how-tos/state-model/) as your graph state to add **default values** and additional data validation.
-
-When building simple chatbots like ChatGPT, the state can be as simple as a list of chat messages. This is the state used by [MessageGraph](https://langchain-ai.github.io/langgraph/reference/graphs/?h=message+graph#langgraph.graph.MessageGraph) (a light wrapper of `StateGraph`), which is only slightly more involved than the following:
+When building simple chatbots like ChatGPT, the state can be as simple as a list of chat messages. This is the state used by [MessageGraph](https://langchain-ai.github.io/langgraphjs/reference/classes/index.MessageGraph.html) (a light wrapper of `StateGraph`), which is only slightly more involved than the following:
 
 ```python
 builder = StateGraph(Annotated[list, add])
@@ -201,7 +199,7 @@ builder = StateGraph(Annotated[list, add])
 Using a shared state within a graph comes with some design tradeoffs. For instance, you may think it feels like using dreaded global variables (though this can be addressed by namespacing arguments). However, sharing a typed state provides a number of benefits relevant to building AI workflows, including:
 
 1. The data flow is fully inspectable before and after each "superstep".
-2. The state is mutable, making it easy to let users or other software write to the same state between supersteps to control an agent's direction (using [update_state](https://langchain-ai.github.io/langgraph/reference/graphs/#langgraph.graph.graph.CompiledGraph.update_state))
+2. The state is mutable, making it easy to let users or other software write to the same state between supersteps to control an agent's direction (using updateState (Implementation in JS coming soon))
 3. It is well-defined when checkpointing, making it easy to save and resume or even fully version control the execution of your entire workflows in whatever storage backend you wish.
 
 We will talk about checkpointing more in the next section.
@@ -216,7 +214,7 @@ Any "intelligent" system needs memory to function. AI agents are no different, r
 
 That last form of memory covers a lot (personalization, optimization, continual learning, etc.) and is beyond the scope of this conversation, though it can be easily integrated in any LangGraph workflow, and we are actively exploring the best way to expose this functionality natively.
 
-The first two forms of memory are natively supported by the [StateGraph](https://langchain-ai.github.io/langgraph/reference/graphs/#langgraph.graph.StateGraph) API via [checkpointers](https://langchain-ai.github.io/langgraph/reference/checkpoints/#basecheckpointsaver).
+The first two forms of memory are natively supported by the [StateGraph](https://langchain-ai.github.io/langgraphjs/reference/classes/index.StateGraph.html) API via [checkpointers](https://langchain-ai.github.io/langgraphjs/reference/classes/index.BaseCheckpointSaver.html).
 
 #### Checkpoints
 
@@ -228,7 +226,7 @@ Checkpointing supports chat memory and much more, letting you tag and persist ev
 
 **Within** a given run, each step of the agent is checkpointed. This means you could ask your agent to go create world peace. In the likely scenario that it runs into an error as it fails to do so, you can resume its quest at any time by resuming from one of its saved checkpoints.
 
-This also lets you build **human-in-the-loop** workflows, common in use cases like [customer support bots](https://langchain-ai.github.io/langgraph/tutorials/customer-support/customer-support/), [programming assistants](https://langchain-ai.github.io/langgraph/tutorials/usaco/usaco/), and other applications. Before or after executing a given node, you can `interrupt` the graph's execution and "escalate" control to a user or support person. That person may respond immediately. Or they could respond a month from now. Either way, your workflow can resume at any time as if no time had passed at all.
+This also lets you build **human-in-the-loop** workflows, common in use cases like customer support bots, programming assistants, and other applications. Before or after executing a given node, you can `interrupt` the graph's execution and "escalate" control to a user or support person. That person may respond immediately. Or they could respond a month from now. Either way, your workflow can resume at any time as if no time had passed at all.
 
 #### Multi-turn Memory
 
