@@ -13,8 +13,13 @@ _MANUAL = {
     "how-tos": [],
     "tutorials": [
         "rag/langgraph_agentic_rag.ipynb",
-        "langgraph_crag.ipynb",
-        "langgraph_self_rag.ipynb",
+        "rag/langgraph_crag.ipynb",
+        "rag/langgraph_self_rag.ipynb",
+        "multi_agent/multi_agent_collaboration.ipynb",
+        "multi_agent/agent_supervisor.ipynb",
+        "multi_agent/hierarchical_agent_teams.ipynb",
+        "multi_agent/agent-simulation-evaluation.ipynb",
+
     ],
 }
 _MANUAL_INVERSE = {v: docs_dir / k for k, vs in _MANUAL.items() for v in vs}

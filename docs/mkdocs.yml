@@ -84,12 +84,11 @@ nav:
               - tutorials/rewoo/rewoo.ipynb
           - Evaluation:
               - tutorials/multi_agent/agent-simulation-evaluation.ipynb
-          - Web Navigation: tutorials/gpt4v_act.ipynb
   - "How-to Guides":
      - 'how-tos/index.md'
   - "Conceptual Guides":
      - 'concepts/index.md'
-  - "API Reference":
+  - "Reference":
      - 'reference'
   
 

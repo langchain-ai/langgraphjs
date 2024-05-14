@@ -16,7 +16,7 @@ Learn from example implementations of graphs designed for specific scenarios and
 
 - [Supervision](multi_agent/agent_supervisor.ipynb): Using an LLM to orchestrate and delegate to individual agents
 - [Hierarchical Teams](multi_agent/hierarchical_agent_teams.ipynb): Orchestrating nested teams of agents to solve problems
-- [Collaboration](multi_agent/multi_agent_collaboration.ipynb): Enabling two agents to collaborate on a task  
+- [Collaboration](multi_agent/multi_agent_collaboration.ipynb): Enabling two agents to collaborate on a task
 
 #### RAG
 
@@ -26,7 +26,7 @@ Learn from example implementations of graphs designed for specific scenarios and
 
 #### Planning Agents
 
-- [Plan-and-Execute](plan-and-execute/plan-and-execute.ipynb): Implementing a basic planning and execution agent  
+- [Plan-and-Execute](plan-and-execute/plan-and-execute.ipynb): Implementing a basic planning and execution agent
 
 #### Reflection & Critique
 
@@ -36,7 +36,3 @@ Learn from example implementations of graphs designed for specific scenarios and
 #### Evaluation
 
 - [Agent-based](multi_agent/agent-simulation-evaluation.ipynb): Evaluating chatbots via simulated user interactions
-
-#### Web Navigation
-
-- [GPT-4V Act](gpt4v_act.ipynb): Building an agent that can navigate and interact with websites
