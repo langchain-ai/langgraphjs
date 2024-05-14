@@ -68,8 +68,27 @@ nav:
       - 'index.md'
   - Tutorials:
       - 'tutorials/index.md'
+      - Use cases:
+          - Multi-Agent Systems:
+              - tutorials/multi_agent/agent_supervisor.ipynb
+              - tutorials/multi_agent/hierarchical_agent_teams.ipynb
+              - tutorials/multi_agent/multi_agent_collaboration.ipynb
+          - RAG:
+              - tutorials/rag/langgraph_agentic_rag.ipynb
+              - tutorials/rag/langgraph_crag.ipynb
+              - tutorials/rag/langgraph_self_rag.ipynb
+          - Planning Agents:
+              - tutorials/plan-and-execute/plan-and-execute.ipynb
+          - Reflection & Critique:
+              - tutorials/reflection/reflection.ipynb
+              - tutorials/rewoo/rewoo.ipynb
+          - Evaluation:
+              - tutorials/multi_agent/agent-simulation-evaluation.ipynb
+          - Web Navigation: tutorials/gpt4v_act.ipynb
   - "How-to Guides":
      - 'how-tos/index.md'
+  - "Conceptual Guides":
+     - 'concepts/index.md'
   - "API Reference":
      - 'reference'
   
