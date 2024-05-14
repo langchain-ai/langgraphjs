@@ -34,13 +34,8 @@ export class ChannelRead<
     fresh: boolean = false
   ) {
     super({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      func: (input: RunInput, options?: any) => {
-        if ("config" in options) {
-          return this._read(input, options.config);
-        }
-        return this._read(input, options ?? {});
-      },
+      func: (_: RunInput, config: RunnableConfig) =>
+        ChannelRead.doRead(config, this.channel, this.fresh, this.mapper),
     });
     this.fresh = fresh;
     this.mapper = mapper;
@@ -65,26 +60,23 @@ export class ChannelRead<
     ];
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _read(_: any, config: RunnableConfig) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const read: (arg: string, fresh: boolean) => any =
+  static doRead<T = unknown>(
+    config: RunnableConfig,
+    channel: string | Array<string>,
+    fresh: boolean,
+    mapper?: (args: unknown) => unknown
+  ): T {
+    const read: (arg: string | string[], fresh: boolean) => unknown =
       config.configurable?.[CONFIG_KEY_READ];
     if (!read) {
       throw new Error(
         `Runnable ${this} is not configured with a read function. Make sure to call in the context of a Pregel process`
       );
     }
-    if (Array.isArray(this.channel)) {
-      const results = Object.fromEntries(
-        this.channel.map((chan) => [chan, read(chan, this.fresh)])
-      );
-      return results;
-    }
-    if (this.mapper) {
-      return this.mapper(read(this.channel, this.fresh));
+    if (mapper) {
+      return mapper(read(channel, fresh)) as T;
     } else {
-      return read(this.channel, this.fresh);
+      return read(channel, fresh) as T;
     }
   }
 }

@@ -1,6 +1,7 @@
 import { BaseChannel } from "../channels/index.js";
 import { INTERRUPT } from "../constants.js";
 import { PregelNode } from "./read.js";
+import { All } from "./types.js";
 
 export class GraphValidationError extends Error {
   constructor(message?: string) {
@@ -26,8 +27,8 @@ export function validateGraph<
   inputChannels: keyof Cc | Array<keyof Cc>;
   outputChannels: keyof Cc | Array<keyof Cc>;
   streamChannels?: keyof Cc | Array<keyof Cc>;
-  interruptAfterNodes?: Array<keyof Nn>;
-  interruptBeforeNodes?: Array<keyof Nn>;
+  interruptAfterNodes?: Array<keyof Nn> | All;
+  interruptBeforeNodes?: Array<keyof Nn> | All;
 }): void {
   if (!channels) {
     throw new GraphValidationError("Channels not provided");
@@ -95,7 +96,7 @@ export function validateGraph<
   }
 
   // validate interrupt before/after
-  if (interruptAfterNodes) {
+  if (interruptAfterNodes && interruptAfterNodes !== "*") {
     for (const node of interruptAfterNodes) {
       if (!(node in nodes)) {
         throw new GraphValidationError(`Node ${String(node)} not in nodes`);
@@ -103,7 +104,7 @@ export function validateGraph<
     }
   }
 
-  if (interruptBeforeNodes) {
+  if (interruptBeforeNodes && interruptBeforeNodes !== "*") {
     for (const node of interruptBeforeNodes) {
       if (!(node in nodes)) {
         throw new GraphValidationError(`Node ${String(node)} not in nodes`);

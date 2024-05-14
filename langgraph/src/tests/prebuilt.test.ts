@@ -4,7 +4,6 @@ import { PromptTemplate } from "@langchain/core/prompts";
 import { FakeStreamingLLM } from "@langchain/core/utils/testing";
 import { Tool } from "@langchain/core/tools";
 import { createAgentExecutor } from "../prebuilt/index.js";
-import { END } from "../index.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -69,7 +68,6 @@ describe("PreBuilt", () => {
       input: "what is the weather in sf?",
     });
 
-    console.log(result.steps);
     expect(result).toEqual({
       input: "what is the weather in sf?",
       agentOutcome: {
@@ -138,8 +136,6 @@ describe("PreBuilt", () => {
     });
     const fullResponse = [];
     for await (const item of await stream) {
-      console.log("item", item);
-      console.log("-----\n");
       fullResponse.push(item);
     }
 
@@ -148,13 +144,63 @@ describe("PreBuilt", () => {
     const allAgentMessages = fullResponse.filter((res) => "agent" in res);
     expect(allAgentMessages.length >= 3).toBe(true);
 
-    const eneMessage = fullResponse[fullResponse.length - 1];
-
-    expect(END in eneMessage).toBe(true);
-    expect(eneMessage[END].input).toBe("what is the weather in sf?");
-    expect(eneMessage[END].agentOutcome).toEqual({
-      returnValues: { answer: "answer" },
-      log: "finish:answer",
-    });
+    expect(fullResponse).toEqual([
+      {
+        agent: {
+          agentOutcome: {
+            log: "tool:search_api:query",
+            tool: "search_api",
+            toolInput: "query",
+          },
+        },
+      },
+      {
+        action: {
+          steps: [
+            {
+              action: {
+                log: "tool:search_api:query",
+                tool: "search_api",
+                toolInput: "query",
+              },
+              observation: "result for query",
+            },
+          ],
+        },
+      },
+      {
+        agent: {
+          agentOutcome: {
+            log: "tool:search_api:another",
+            tool: "search_api",
+            toolInput: "another",
+          },
+        },
+      },
+      {
+        action: {
+          steps: [
+            {
+              action: {
+                log: "tool:search_api:another",
+                tool: "search_api",
+                toolInput: "another",
+              },
+              observation: "result for another",
+            },
+          ],
+        },
+      },
+      {
+        agent: {
+          agentOutcome: {
+            log: "finish:answer",
+            returnValues: {
+              answer: "answer",
+            },
+          },
+        },
+      },
+    ]);
   });
 });
