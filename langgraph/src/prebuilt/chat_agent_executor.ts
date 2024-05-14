@@ -4,8 +4,12 @@ import { AgentAction } from "@langchain/core/agents";
 import { FunctionMessage, BaseMessage } from "@langchain/core/messages";
 import { type RunnableConfig, RunnableLambda } from "@langchain/core/runnables";
 import { ToolExecutor } from "./tool_executor.js";
-import { StateGraph, StateGraphArgs } from "../graph/state.js";
-import { END } from "../index.js";
+import {
+  CompiledStateGraph,
+  StateGraph,
+  StateGraphArgs,
+} from "../graph/state.js";
+import { END, START } from "../index.js";
 
 export type FunctionCallingExecutorState = { messages: Array<BaseMessage> };
 
@@ -15,7 +19,11 @@ export function createFunctionCallingExecutor<Model extends object>({
 }: {
   model: Model;
   tools: Array<StructuredTool> | ToolExecutor;
-}) {
+}): CompiledStateGraph<
+  FunctionCallingExecutorState,
+  Partial<FunctionCallingExecutorState>,
+  typeof START | "agent" | "action"
+> {
   let toolExecutor: ToolExecutor;
   let toolClasses: Array<StructuredTool>;
   if (!Array.isArray(tools)) {

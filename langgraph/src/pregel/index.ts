@@ -26,7 +26,13 @@ import {
 } from "../checkpoint/base.js";
 import { PregelNode } from "./read.js";
 import { validateGraph, validateKeys } from "./validate.js";
-import { mapInput, mapOutput, readChannel, readChannels } from "./io.js";
+import {
+  mapInput,
+  mapOutputUpdates,
+  mapOutputValues,
+  readChannel,
+  readChannels,
+} from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND, INTERRUPT } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
@@ -304,19 +310,29 @@ export class Pregel<
     StreamMode, // stream mode
     keyof Cc | Array<keyof Cc>, // input keys
     keyof Cc | Array<keyof Cc>, // output keys
+    RunnableConfig, // config without pregel keys
     All | Array<keyof Nn> | undefined, // interrupt before
-    All | Array<keyof Nn> | undefined // interrupt after
+    All | Array<keyof Nn> | undefined // interrupt after,
   ] {
-    const defaultDebug = config.debug !== undefined ? config.debug : this.debug;
+    const {
+      debug,
+      streamMode,
+      inputKeys,
+      outputKeys,
+      interruptAfter,
+      interruptBefore,
+      ...rest
+    } = config;
+    const defaultDebug = debug !== undefined ? debug : this.debug;
 
-    let defaultOutputKeys = config.outputKeys;
+    let defaultOutputKeys = outputKeys;
     if (defaultOutputKeys === undefined) {
       defaultOutputKeys = this.streamChannelsAsIs;
     } else {
       validateKeys(defaultOutputKeys, this.channels);
     }
 
-    let defaultInputKeys = config.inputKeys;
+    let defaultInputKeys = inputKeys;
     if (defaultInputKeys === undefined) {
       defaultInputKeys = this.inputs;
     } else {
@@ -325,35 +341,32 @@ export class Pregel<
 
     let defaultInterruptBefore;
     if (
-      (Array.isArray(config.interruptBefore) &&
-        config.interruptBefore.length > 0) ||
-      config.interruptBefore === "*"
+      (Array.isArray(interruptBefore) && interruptBefore.length > 0) ||
+      interruptBefore === "*"
     ) {
-      defaultInterruptBefore = config.interruptBefore;
+      defaultInterruptBefore = interruptBefore;
     } else {
       defaultInterruptBefore = this.interruptBefore;
     }
 
     let defaultInterruptAfter;
     if (
-      (Array.isArray(config.interruptAfter) &&
-        config.interruptAfter.length > 0) ||
-      config.interruptAfter === "*"
+      (Array.isArray(interruptAfter) && interruptAfter.length > 0) ||
+      interruptAfter === "*"
     ) {
-      defaultInterruptAfter = config.interruptAfter;
+      defaultInterruptAfter = interruptAfter;
     } else {
       defaultInterruptAfter = this.interruptAfter;
     }
 
     let defaultStreamMode: StreamMode;
-    if (config.streamMode !== undefined) {
-      defaultStreamMode = config.streamMode;
+    if (streamMode !== undefined) {
+      defaultStreamMode = streamMode;
     } else {
       defaultStreamMode = this.streamMode;
     }
 
     if (
-      config !== undefined &&
       config.configurable !== undefined &&
       config.configurable[CONFIG_KEY_READ] !== undefined
     ) {
@@ -365,6 +378,7 @@ export class Pregel<
       defaultStreamMode,
       defaultInputKeys,
       defaultOutputKeys,
+      rest,
       defaultInterruptBefore,
       defaultInterruptAfter,
     ];
@@ -381,6 +395,7 @@ export class Pregel<
       streamMode,
       inputKeys,
       outputKeys,
+      restConfig,
       // interruptBefore,
       // interruptAfter,
     ] = this._defaults(config);
@@ -443,8 +458,6 @@ export class Pregel<
 
       // TODO interrupt before
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pendingWrites: Array<[string, any]> = [];
       // A copy of the checkpoint is created because `checkpoint` is defined with `let`.
       // `checkpoint` can be mutated during loop execution and when used in a function,
       // may cause unintended consequences.
@@ -455,14 +468,14 @@ export class Pregel<
       > = nextTasks.map((task) => [
         task.proc,
         task.input,
-        patchConfig(config, {
+        patchConfig(restConfig, {
           callbacks: runManager?.getChild(`graph:step:${step}`),
           runName: task.name,
           configurable: {
             ...config.configurable,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             [CONFIG_KEY_SEND]: (items: [string, any][]) =>
-              pendingWrites.push(...items),
+              task.writes.push(...items),
             [CONFIG_KEY_READ]: _localRead.bind(
               undefined,
               checkpointCopy,
@@ -483,18 +496,20 @@ export class Pregel<
 
       await executeTasks(tasks, this.stepTimeout);
 
+      // combine pending writes from all tasks
+      const pendingWrites: Array<[string, unknown]> = [];
+      for (const task of nextTasks) {
+        pendingWrites.push(...task.writes);
+      }
+
       // apply writes to channels
       _applyWrites(checkpoint, channels, pendingWrites);
 
       // yield current value and checkpoint view
       if (streamMode === "values") {
-        const stepOutput = mapOutput(outputKeys, pendingWrites, channels);
-
-        if (stepOutput) {
-          yield stepOutput;
-        }
-      } else {
-        throw Error("Stream mode 'updates' not implemented yet");
+        yield* mapOutputValues(outputKeys, pendingWrites, channels);
+      } else if (streamMode === "updates") {
+        yield* mapOutputUpdates(outputKeys, nextTasks);
       }
 
       // save end of step checkpoint
@@ -515,6 +530,9 @@ export class Pregel<
     const config = ensureConfig(options);
     if (!config?.outputKeys) {
       config.outputKeys = this.outputs;
+    }
+    if (!config?.streamMode) {
+      config.streamMode = "values";
     }
 
     let latest: PregelOutputType | undefined;
