@@ -14,7 +14,7 @@ export interface RunnableCallableArgs extends Partial<any> {
   recurse?: boolean;
 }
 
-export class RunnableCallable extends Runnable {
+export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
   lc_namespace: string[] = ["langgraph"];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
