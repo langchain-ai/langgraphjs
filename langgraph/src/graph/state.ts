@@ -254,7 +254,7 @@ export class CompiledStateGraph<
 
     // add node and output channel
     if (key === START) {
-      this.nodes[key] = new PregelNode({
+      this.nodes[key] = new PregelNode<State, Update>({
         tags: [TAG_HIDDEN],
         triggers: [START],
         channels: [START],
@@ -262,7 +262,7 @@ export class CompiledStateGraph<
       });
     } else {
       this.channels[key] = new EphemeralValue();
-      this.nodes[key] = new PregelNode({
+      this.nodes[key] = new PregelNode<State, Update>({
         triggers: [],
         // read state keys
         channels:

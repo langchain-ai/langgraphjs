@@ -90,7 +90,7 @@ interface PregelNodeArgs<RunInput, RunOutput>
   triggers: Array<string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   mapper?: (args: any) => any;
-  writers?: Runnable<RunOutput, RunOutput>[];
+  writers?: Runnable<RunOutput, unknown>[];
   tags?: string[];
   bound?: Runnable<RunInput, RunOutput>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

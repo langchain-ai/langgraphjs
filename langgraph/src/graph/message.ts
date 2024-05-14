@@ -21,3 +21,7 @@ export class MessageGraph extends StateGraph<BaseMessage[], Messages> {
     });
   }
 }
+
+export interface MessagesState {
+  messages: BaseMessage[];
+}
