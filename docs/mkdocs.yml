@@ -87,7 +87,7 @@ nav:
   - "Conceptual Guides":
      - 'concepts/index.md'
   - "Reference":
-     - 'reference'
+     - 'reference/index.html'
   
 
 markdown_extensions:
