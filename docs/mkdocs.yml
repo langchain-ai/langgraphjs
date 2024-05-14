@@ -58,7 +58,7 @@ plugins:
       include_requirejs: true
   - typedoc:
       source: '../langgraph/*.d.ts'
-      output_dir: './reference'
+      output_dir: 'reference'
       tsconfig: '../tsconfig.json'
       options: 'typedoc.json'
       name: 'Reference'
@@ -82,8 +82,6 @@ nav:
           - Reflection & Critique:
               - tutorials/reflection/reflection.ipynb
               - tutorials/rewoo/rewoo.ipynb
-          - Evaluation:
-              - tutorials/multi_agent/agent-simulation-evaluation.ipynb
   - "How-to Guides":
      - 'how-tos/index.md'
   - "Conceptual Guides":

@@ -2,12 +2,6 @@
 
 Welcome to the LangGraph Tutorials! These notebooks introduce LangGraph through building various language agents and applications.
 
-## Introduction to LangGraph
-
-Learn the basics of LangGraph through the onboarding tutorials.
-
-- [Introduction to LangGraph](introduction.ipynb)
-
 ## Use cases
 
 Learn from example implementations of graphs designed for specific scenarios and that implement common design patterns.
@@ -32,7 +26,3 @@ Learn from example implementations of graphs designed for specific scenarios and
 
 - [Basic Reflection](reflection/reflection.ipynb): Prompting the agent to reflect on and revise its outputs
 - [Rewoo](rewoo/rewoo.ipynb): Reducing re-planning by saving observations as variables
-
-#### Evaluation
-
-- [Agent-based](multi_agent/agent-simulation-evaluation.ipynb): Evaluating chatbots via simulated user interactions

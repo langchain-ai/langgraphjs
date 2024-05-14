@@ -18,7 +18,6 @@ _MANUAL = {
         "multi_agent/multi_agent_collaboration.ipynb",
         "multi_agent/agent_supervisor.ipynb",
         "multi_agent/hierarchical_agent_teams.ipynb",
-        "multi_agent/agent-simulation-evaluation.ipynb",
 
     ],
 }
