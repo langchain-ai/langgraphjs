@@ -2,15 +2,15 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import {
   BaseCheckpointSaver,
   Checkpoint,
+  CheckpointMetadata,
   CheckpointTuple,
-  copyCheckpoint,
 } from "./base.js";
 import { SerializerProtocol } from "../serde/base.js";
 
 export class MemorySaver extends BaseCheckpointSaver {
-  storage: Record<string, Record<string, string>>;
+  storage: Record<string, Record<string, [string, string]>>;
 
-  constructor(serde?: SerializerProtocol<Checkpoint>) {
+  constructor(serde?: SerializerProtocol<unknown>) {
     super(serde);
     this.storage = {};
   }
@@ -25,7 +25,8 @@ export class MemorySaver extends BaseCheckpointSaver {
       if (checkpoint) {
         return {
           config,
-          checkpoint: this.serde.parse(checkpoint),
+          checkpoint: this.serde.parse(checkpoint[0]) as Checkpoint,
+          metadata: this.serde.parse(checkpoint[1]) as CheckpointMetadata,
         };
       }
     } else {
@@ -33,9 +34,11 @@ export class MemorySaver extends BaseCheckpointSaver {
         const maxThreadTs = Object.keys(checkpoints).sort((a, b) =>
           b.localeCompare(a)
         )[0];
+        const checkpoint = checkpoints[maxThreadTs];
         return {
           config: { configurable: { threadId, threadTs: maxThreadTs } },
-          checkpoint: this.serde.parse(checkpoints[maxThreadTs.toString()]),
+          checkpoint: this.serde.parse(checkpoint[0]) as Checkpoint,
+          metadata: this.serde.parse(checkpoint[1]) as CheckpointMetadata,
         };
       }
     }
@@ -53,22 +56,30 @@ export class MemorySaver extends BaseCheckpointSaver {
     )) {
       yield {
         config: { configurable: { threadId, threadTs } },
-        checkpoint: this.serde.parse(checkpoint),
+        checkpoint: this.serde.parse(checkpoint[0]) as Checkpoint,
+        metadata: this.serde.parse(checkpoint[1]) as CheckpointMetadata,
       };
     }
   }
 
   async put(
     config: RunnableConfig,
-    checkpoint: Checkpoint
+    checkpoint: Checkpoint,
+    metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
     const threadId = config.configurable?.threadId;
 
     if (this.storage[threadId]) {
-      this.storage[threadId][checkpoint.ts] = this.serde.stringify(checkpoint);
+      this.storage[threadId][checkpoint.ts] = [
+        this.serde.stringify(checkpoint),
+        this.serde.stringify(metadata),
+      ];
     } else {
       this.storage[threadId] = {
-        [checkpoint.ts]: this.serde.stringify(checkpoint),
+        [checkpoint.ts]: [
+          this.serde.stringify(checkpoint),
+          this.serde.stringify(metadata),
+        ],
       };
     }
 
@@ -78,39 +89,5 @@ export class MemorySaver extends BaseCheckpointSaver {
         threadTs: checkpoint.ts,
       },
     };
-  }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export class MemorySaverAssertImmutable extends MemorySaver {
-  storageForCopies: Record<string, Record<string, Checkpoint>> = {};
-
-  constructor() {
-    super();
-    this.storageForCopies = {};
-  }
-
-  async put(
-    config: RunnableConfig,
-    checkpoint: Checkpoint
-  ): Promise<RunnableConfig> {
-    const threadId = config.configurable?.threadId;
-    if (!this.storageForCopies[threadId]) {
-      this.storageForCopies[threadId] = {};
-    }
-    // assert checkpoint hasn't been modified since last written
-    const saved = await super.get(config);
-    if (saved) {
-      const savedTs = saved.ts;
-      if (this.storageForCopies[threadId][savedTs]) {
-        console.assert(
-          this.storageForCopies[threadId][savedTs] === saved,
-          "Checkpoint has been modified"
-        );
-      }
-    }
-    this.storageForCopies[threadId][checkpoint.ts] = copyCheckpoint(checkpoint);
-
-    return super.put(config, checkpoint);
   }
 }

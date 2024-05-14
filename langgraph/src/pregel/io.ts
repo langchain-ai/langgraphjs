@@ -152,3 +152,11 @@ export function* mapOutputUpdates<C extends PropertyKey>(
     }
   }
 }
+
+export function single<T>(iter: IterableIterator<T>): T | undefined {
+  // eslint-disable-next-line no-unreachable-loop
+  for (const value of iter) {
+    return value;
+  }
+  return undefined;
+}
