@@ -32,7 +32,7 @@ _HIDE = set(
         "rag/langgraph_crag_mistral.ipynb",
     ]
 )
-_HIDDEN_DIRS = set("advanced_agents")
+_HIDDEN_DIRS = {"advanced_agents"}
 
 
 def clean_notebooks():
@@ -41,7 +41,7 @@ def clean_notebooks():
         traversed = []
         for root, dirs, files in os.walk(dir_):
             for file in files:
-                if file.endswith(".ipynb"):
+                if file.endswith(".ipynb") or file.endswith(".png"):
                     os.remove(os.path.join(root, file))
             # Now delete the dir if it is empty now
             if root not in roots:
@@ -101,5 +101,13 @@ def copy_notebooks():
 
 
 if __name__ == "__main__":
-    clean_notebooks()
-    copy_notebooks()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--no-clean", action="store_true")
+    parser.add_argument("--no-copy", action="store_true")
+    args = parser.parse_args()
+    if not args.no_clean:
+        clean_notebooks()
+    if not args.no_copy:
+        copy_notebooks()
