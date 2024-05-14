@@ -1,6 +1,6 @@
-site_name: LangGraph
+site_name: LangGraphJS
 site_description: Build language agents as graphs
-site_url: https://langchain-ai.github.io/langgraph/
+site_url: https://langchain-ai.github.io/langgraphjs/
 theme:
   name: material
   custom_dir: overrides
@@ -120,7 +120,7 @@ markdown_extensions:
       normalize_issue_symbols: true
       repo_url_shorthand: true
       user: langchain-ai 
-      repo: langgraph
+      repo: langgraphjs
   - pymdownx.mark
   - pymdownx.smartsymbols
   - pymdownx.snippets:
