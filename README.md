@@ -58,7 +58,7 @@ graph.addNode("oracle", async (state: BaseMessage[]) => {
 
 graph.addEdge("oracle", END);
 
-graph.setEntryPoint("oracle");
+graph.addEdge("__start__", "oracle");
 
 const runnable = graph.compile();
 ```
@@ -185,7 +185,7 @@ graph.addNode("calculator", async (state: BaseMessage[]) => {
 
 graph.addEdge("calculator", END);
 
-graph.setEntryPoint("oracle");
+graph.addEdge("__start__", "oracle");
 ```
 
 Now let's think - what do we want to have happen?
@@ -491,7 +491,7 @@ workflow.addNode("action", callTool);
 
 // Set the entrypoint as `agent`
 // This means that this node is the first one called
-workflow.setEntryPoint("agent");
+workflow.addEdge("__start__", "agent");
 
 // We now add a conditional edge
 workflow.addConditionalEdges(
@@ -705,6 +705,15 @@ It takes two arguments.
 - `startKey`: A string representing the name of the start node. This key must have already been registered in the graph.
 - `endKey`: A string representing the name of the end node. This key must have already been registered in the graph.
 
+This is also used to set the **entry point** to the graph by creating an edge from the "virtual" `"__start__"` node to the target node:
+
+```typescript
+addEdge("__start__", entryPoint: string)
+```
+
+To set a **finish point** (the terminal node of a graph), add an edge to the virtual `"__end__"` node ([`END`](#END)):
+
+
 ### `.addConditionalEdges`
 
 ```typescript
@@ -723,31 +732,18 @@ This takes three arguments:
 - `condition`: A function to call to decide what to do next. The input will be the output of the start node. It should return a string that is present in `conditionalEdgeMapping` and represents the edge to take.
 - `conditionalEdgeMapping`: A mapping of string to string. The keys should be strings that may be returned by `condition`. The values should be the downstream node to call if that condition is returned.
 
-### `.setEntryPoint`
+
+### `START`
 
 ```typescript
-setEntryPoint(key: string): void
+import { START } from "@langchain/langgraph";
 ```
 
-The entrypoint to the graph.
-This is the node that is first called.
-It only takes one argument:
+This is a special node representing the start of the graph.
+This means that graph inputs will be passed from this node.
 
-- `key`: The name of the node that should be called first.
-
-### `.setFinishPoint`
-
-```typescript
-setFinishPoint(key: string): void
-```
-
-This is the exit point of the graph.
-When this node is called, the results will be the final result from the graph.
-It only has one argument:
-
-- `key`: The name of the node that, when called, will return the results of calling it as the final output
-
-Note: This does not need to be called if at any point you previously created an edge (conditional or normal) to `END`
+- As the `startKey` in `addEdge`
+- As a value in `conditionalEdgeMapping` as passed to `addConditionalEdges`
 
 ### `END`
 
@@ -827,7 +823,7 @@ workflow.addNode("agent", agent);
 workflow.addNode("tools", executeTools);
 
 // We now set the entry point to be this first agent
-workflow.setEntryPoint("firstAgent");
+workflow.addEdge("__start__", "firstAgent");
 
 // We define the same edges as before
 workflow.addConditionalEdges("agent", shouldContinue, {

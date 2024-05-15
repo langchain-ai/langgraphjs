@@ -79,9 +79,9 @@ function myOtherNode(state) {
 
 builder.addNode("my_node", myNode);
 builder.addNode("other_node", myOtherNode);
-builder.setEntryPoint("my_node");
+builder.addEdge("__start__", "my_node");
 builder.addEdge("my_node", "other_node");
-builder.setFinishPoint("other_node");
+builder.addEdge("other_node", "__end__");
 const graph = builder.compile();
 graph.invoke({ input: "Will" }, { configurable: { user_id: "abcd-123" } });
 // In node:  abcd-123
@@ -124,8 +124,8 @@ const builderA = new StateGraph({
 });
 
 builderA.addNode("my_node", (state) => ({ value: 1 }));
-builderA.setEntryPoint("my_node");
-builderA.setFinishPoint("my_node");
+builderA.addEdge("__start__", "my_node");
+builderA.addEdge("my_node", "__end__");
 const graphA = builderA.compile();
 console.log(graphA.invoke({ value: 5 }));
 // { value: 1 }
@@ -147,8 +147,8 @@ const builderB = new StateGraph({
 });
 
 builderB.addNode("my_node", (state) => ({ value: 1 }));
-builderB.setEntryPoint("my_node");
-builderB.setFinishPoint("my_node");
+builderB.addEdge("__start__", "my_node");
+builderB.addEdge("my_node", "__end__");
 const graphB = builderB.compile();
 console.log(graphB.invoke({ value: 5 }));
 // { value: 6 }
@@ -172,8 +172,8 @@ const builderA = new StateGraph({
 });
 
 builderA.addNode("my_node", (state) => 1);
-builderA.setEntryPoint("my_node");
-builderA.setFinishPoint("my_node");
+builderA.addEdge("__start__", "my_node");
+builderA.addEdge("my_node", "__end__");
 builderA.compile().invoke(5);
 
 // Analogous to StateB
@@ -184,8 +184,8 @@ const builderB = new StateGraph({
 });
 
 builderB.addNode("my_node", (state) => 1);
-builderB.setEntryPoint("my_node");
-builderB.setFinishPoint("my_node");
+builderB.addEdge("__start__", "my_node");
+builderB.addEdge("my_node", "__end__");
 const graphB = builderB.compile();
 graphB.invoke(5);
 ```
@@ -208,8 +208,8 @@ builder.addNode("my_node", (state) => {
     history: [...state.history, `Added 1 to ${state.value}`],
   };
 });
-builder.setEntryPoint("my_node");
-builder.setFinishPoint("my_node");
+builder.addEdge("__start__", "my_node");
+builder.addEdge("my_node", "__end__");
 const graph = builder.compile();
 graph.invoke({ value: 5, history: [] });
 ```
@@ -281,8 +281,8 @@ const builder = new StateGraph({
 });
 
 builder.addNode("add_one", (state) => ({ total: 1 }));
-builder.setEntryPoint("add_one");
-builder.setFinishPoint("add_one");
+builder.addEdge("__start__", "add_one");
+builder.addEdge("add_one", "__end__");
 
 const memory = new MemorySaver();
 const graph = builder.compile({ checkpointer: memory });
@@ -358,7 +358,7 @@ const builder = new StateGraph({
 
 builder.addNode("add_one", (state) => ({ total: 1 }));
 builder.addNode("double", (state) => ({ total: state.total }));
-builder.setEntryPoint("add_one");
+builder.addEdge("__start__", "add_one");
 
 function route(state) {
   if (state.total < 6) {
