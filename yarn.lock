@@ -1594,6 +1594,7 @@ __metadata:
     "@swc/jest": ^0.2.29
     "@tsconfig/recommended": ^1.0.3
     "@types/better-sqlite3": ^7.6.9
+    "@types/uuid": ^9
     "@typescript-eslint/eslint-plugin": ^6.12.0
     "@typescript-eslint/parser": ^6.12.0
     better-sqlite3: ^9.5.0
@@ -1614,6 +1615,7 @@ __metadata:
     ts-jest: ^29.1.0
     tsx: ^4.7.0
     typescript: ^5.4.5
+    uuid: ^9.0.1
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.4
   languageName: unknown
@@ -2367,7 +2369,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/uuid@npm:^9.0.1":
+"@types/uuid@npm:^9, @types/uuid@npm:^9.0.1":
   version: 9.0.8
   resolution: "@types/uuid@npm:9.0.8"
   checksum: b8c60b7ba8250356b5088302583d1704a4e1a13558d143c549c408bf8920535602ffc12394ede77f8a8083511b023704bc66d1345792714002bfa261b17c5275
@@ -9473,7 +9475,7 @@ turbo@latest:
   languageName: node
   linkType: hard
 
-"uuid@npm:^9.0.0":
+"uuid@npm:^9.0.0, uuid@npm:^9.0.1":
   version: 9.0.1
   resolution: "uuid@npm:9.0.1"
   bin:

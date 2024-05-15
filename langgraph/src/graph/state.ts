@@ -125,11 +125,15 @@ export class StateGraph<
     return this;
   }
 
-  compile(
-    checkpointer?: BaseCheckpointSaver,
-    interruptBefore?: N[] | All,
-    interruptAfter?: N[] | All
-  ): CompiledStateGraph<State, Update, N> {
+  compile({
+    checkpointer,
+    interruptBefore,
+    interruptAfter,
+  }: {
+    checkpointer?: BaseCheckpointSaver;
+    interruptBefore?: N[] | All;
+    interruptAfter?: N[] | All;
+  } = {}): CompiledStateGraph<State, Update, N> {
     // validate the graph
     this.validate([
       ...(Array.isArray(interruptBefore) ? interruptBefore : []),

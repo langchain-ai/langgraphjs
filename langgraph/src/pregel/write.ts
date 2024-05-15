@@ -3,7 +3,6 @@ import {
   RunnableConfig,
   RunnableLike,
 } from "@langchain/core/runnables";
-import { ConfigurableFieldSpec } from "../checkpoint/index.js";
 import { CONFIG_KEY_SEND } from "../constants.js";
 import { RunnableCallable } from "../utils.js";
 
@@ -34,20 +33,6 @@ export class ChannelWrite<
     });
 
     this.writes = writes;
-  }
-
-  get configSpecs(): ConfigurableFieldSpec[] {
-    return [
-      {
-        id: CONFIG_KEY_SEND,
-        name: CONFIG_KEY_SEND,
-        description: null,
-        default: null,
-        annotation: "TYPE_SEND",
-        isShared: false,
-        dependencies: null,
-      },
-    ];
   }
 
   async _getWriteValues(
