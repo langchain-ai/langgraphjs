@@ -138,3 +138,8 @@ markdown_extensions:
       custom_checkbox: true
 extra_css:
   - css/mkdocstrings.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/python 
+      link: https://langchain-ai.github.io/langgraph/
