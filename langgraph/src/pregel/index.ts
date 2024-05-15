@@ -786,10 +786,14 @@ export function _prepareNextTasks(
     // If any of the channels read by this process were updated
     if (
       proc.triggers
-        .filter(
-          (chan) =>
-            readChannel(channels, chan, true, true) !== EmptyChannelError
-        )
+        .filter((chan) => {
+          try {
+            readChannel(channels, chan, false);
+            return true;
+          } catch (e) {
+            return false;
+          }
+        })
         .some(
           (chan) => newCheckpoint.channel_versions[chan] > (seen[chan] ?? 0)
         )

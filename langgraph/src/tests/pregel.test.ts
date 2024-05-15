@@ -2049,160 +2049,13 @@ describe("MessageGraph", () => {
   });
 });
 
-/**
- * def test_start_branch_then(snapshot: SnapshotAssertion) -> None:
-    class State(TypedDict):
-        my_key: Annotated[str, operator.add]
-        market: str
-
-    # this graph is invalid because there is no path to END
-    invalid_graph = StateGraph(State)
-    invalid_graph.add_node("tool_two_slow", lambda s: {"my_key": "slow"})
-    invalid_graph.add_node("tool_two_fast", lambda s: {"my_key": "fast"})
-    invalid_graph.set_conditional_entry_point(
-        lambda s: "tool_two_slow" if s["market"] == "DE" else "tool_two_fast"
-    )
-    with pytest.raises(ValueError):
-        invalid_graph.compile()
-
-    tool_two_graph = StateGraph(State)
-    tool_two_graph.add_node("tool_two_slow", lambda s: {"my_key": " slow"})
-    tool_two_graph.add_node("tool_two_fast", lambda s: {"my_key": " fast"})
-    tool_two_graph.set_conditional_entry_point(
-        lambda s: "tool_two_slow" if s["market"] == "DE" else "tool_two_fast", then=END
-    )
-    tool_two = tool_two_graph.compile()
-    assert tool_two.get_graph().draw_mermaid() == snapshot
-
-    assert tool_two.invoke({"my_key": "value", "market": "DE"}) == {
-        "my_key": "value slow",
-        "market": "DE",
-    }
-    assert tool_two.invoke({"my_key": "value", "market": "US"}) == {
-        "my_key": "value fast",
-        "market": "US",
-    }
-
-    with SqliteSaver.from_conn_string(":memory:") as saver:
-        tool_two = tool_two_graph.compile(
-            checkpointer=saver, interrupt_before=["tool_two_fast", "tool_two_slow"]
-        )
-
-        # missing thread_id
-        with pytest.raises(ValueError, match="thread_id"):
-            tool_two.invoke({"my_key": "value", "market": "DE"})
-
-        thread1 = {"configurable": {"thread_id": "1"}}
-        # stop when about to enter node
-        assert tool_two.invoke({"my_key": "value", "market": "DE"}, thread1) == {
-            "my_key": "value",
-            "market": "DE",
-        }
-        assert tool_two.get_state(thread1) == StateSnapshot(
-            values={"my_key": "value", "market": "DE"},
-            next=("tool_two_slow",),
-            config=tool_two.checkpointer.get_tuple(thread1).config,
-            metadata={"source": "loop", "step": 0, "writes": None},
-            parent_config=[*tool_two.checkpointer.list(thread1, limit=2)][-1].config,
-        )
-        # resume, for same result as above
-        assert tool_two.invoke(None, thread1, debug=1) == {
-            "my_key": "value slow",
-            "market": "DE",
-        }
-        assert tool_two.get_state(thread1) == StateSnapshot(
-            values={"my_key": "value slow", "market": "DE"},
-            next=(),
-            config=tool_two.checkpointer.get_tuple(thread1).config,
-            metadata={
-                "source": "loop",
-                "step": 1,
-                "writes": {"tool_two_slow": {"my_key": " slow"}},
-            },
-            parent_config=[*tool_two.checkpointer.list(thread1, limit=2)][-1].config,
-        )
-
-        thread2 = {"configurable": {"thread_id": "2"}}
-        # stop when about to enter node
-        assert tool_two.invoke({"my_key": "value", "market": "US"}, thread2) == {
-            "my_key": "value",
-            "market": "US",
-        }
-        assert tool_two.get_state(thread2) == StateSnapshot(
-            values={"my_key": "value", "market": "US"},
-            next=("tool_two_fast",),
-            config=tool_two.checkpointer.get_tuple(thread2).config,
-            metadata={"source": "loop", "step": 0, "writes": None},
-            parent_config=[*tool_two.checkpointer.list(thread2, limit=2)][-1].config,
-        )
-        # resume, for same result as above
-        assert tool_two.invoke(None, thread2, debug=1) == {
-            "my_key": "value fast",
-            "market": "US",
-        }
-        assert tool_two.get_state(thread2) == StateSnapshot(
-            values={"my_key": "value fast", "market": "US"},
-            next=(),
-            config=tool_two.checkpointer.get_tuple(thread2).config,
-            metadata={
-                "source": "loop",
-                "step": 1,
-                "writes": {"tool_two_fast": {"my_key": " fast"}},
-            },
-            parent_config=[*tool_two.checkpointer.list(thread2, limit=2)][-1].config,
-        )
-
-        thread3 = {"configurable": {"thread_id": "3"}}
-        # stop when about to enter node
-        assert tool_two.invoke({"my_key": "value", "market": "US"}, thread3) == {
-            "my_key": "value",
-            "market": "US",
-        }
-        assert tool_two.get_state(thread3) == StateSnapshot(
-            values={"my_key": "value", "market": "US"},
-            next=("tool_two_fast",),
-            config=tool_two.checkpointer.get_tuple(thread3).config,
-            metadata={"source": "loop", "step": 0, "writes": None},
-            parent_config=[*tool_two.checkpointer.list(thread3, limit=2)][-1].config,
-        )
-        # update state
-        tool_two.update_state(thread3, {"my_key": "key"})  # appends to my_key
-        assert tool_two.get_state(thread3) == StateSnapshot(
-            values={"my_key": "valuekey", "market": "US"},
-            next=("tool_two_fast",),
-            config=tool_two.checkpointer.get_tuple(thread3).config,
-            metadata={
-                "source": "update",
-                "step": 1,
-                "writes": {START: {"my_key": "key"}},
-            },
-            parent_config=[*tool_two.checkpointer.list(thread3, limit=2)][-1].config,
-        )
-        # resume, for same result as above
-        assert tool_two.invoke(None, thread3, debug=1) == {
-            "my_key": "valuekey fast",
-            "market": "US",
-        }
-        assert tool_two.get_state(thread3) == StateSnapshot(
-            values={"my_key": "valuekey fast", "market": "US"},
-            next=(),
-            config=tool_two.checkpointer.get_tuple(thread3).config,
-            metadata={
-                "source": "loop",
-                "step": 2,
-                "writes": {"tool_two_fast": {"my_key": " fast"}},
-            },
-            parent_config=[*tool_two.checkpointer.list(thread3, limit=2)][-1].config,
-        )
- */
-
-it("StateGraph start branch then", async () => {
+it("StateGraph start branch then end", async () => {
   type State = {
     my_key: string;
     market: string;
   };
 
-  const toolTwoBuilder = new StateGraph<State>({
+  const invalidBuilder = new StateGraph<State>({
     channels: {
       my_key: { reducer: (x: string, y: string) => x + y },
       market: null,
@@ -2213,6 +2066,25 @@ it("StateGraph start branch then", async () => {
     .addConditionalEdges(START, (state: State) =>
       state.market === "DE" ? "tool_two_slow" : "tool_two_fast"
     );
+
+  expect(() => invalidBuilder.compile()).toThrowError(
+    "Node `tool_two_slow` is a dead-end"
+  );
+
+  const toolTwoBuilder = new StateGraph<State>({
+    channels: {
+      my_key: { reducer: (x: string, y: string) => x + y },
+      market: null,
+    },
+  })
+    .addNode("tool_two_slow", (_: State) => ({ my_key: ` slow` }))
+    .addNode("tool_two_fast", (_: State) => ({ my_key: ` fast` }))
+    .addConditionalEdges({
+      source: START,
+      path: (state: State) =>
+        state.market === "DE" ? "tool_two_slow" : "tool_two_fast",
+      then: END,
+    });
 
   const toolTwo = toolTwoBuilder.compile();
 
@@ -2252,4 +2124,112 @@ it("StateGraph start branch then", async () => {
   //   config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!.config,
   //   metadata: { source: "loop", step: 1, writes: { tool_two_slow: { my_key: " slow" } } },
   //   parentConfig: [...toolTwoWithCheckpointer.checkpointer!.list(thread1, { limit: 2 })].pop().config
+});
+
+/**
+ * def test_branch_then_node(snapshot: SnapshotAssertion) -> None:
+    class State(TypedDict):
+        my_key: Annotated[str, operator.add]
+        market: str
+
+    # this graph is invalid because there is no path to "finish"
+    invalid_graph = StateGraph(State)
+    invalid_graph.set_entry_point("prepare")
+    invalid_graph.set_finish_point("finish")
+    invalid_graph.add_conditional_edges(
+        source="prepare",
+        path=lambda s: "tool_two_slow" if s["market"] == "DE" else "tool_two_fast",
+        path_map=["tool_two_slow", "tool_two_fast"],
+    )
+    invalid_graph.add_node("prepare", lambda s: {"my_key": " prepared"})
+    invalid_graph.add_node("tool_two_slow", lambda s: {"my_key": " slow"})
+    invalid_graph.add_node("tool_two_fast", lambda s: {"my_key": " fast"})
+    invalid_graph.add_node("finish", lambda s: {"my_key": " finished"})
+    with pytest.raises(ValueError):
+        invalid_graph.compile()
+
+    tool_two_graph = StateGraph(State)
+    tool_two_graph.set_entry_point("prepare")
+    tool_two_graph.set_finish_point("finish")
+    tool_two_graph.add_conditional_edges(
+        source="prepare",
+        path=lambda s: "tool_two_slow" if s["market"] == "DE" else "tool_two_fast",
+        then="finish",
+    )
+    tool_two_graph.add_node("prepare", lambda s: {"my_key": " prepared"})
+    tool_two_graph.add_node("tool_two_slow", lambda s: {"my_key": " slow"})
+    tool_two_graph.add_node("tool_two_fast", lambda s: {"my_key": " fast"})
+    tool_two_graph.add_node("finish", lambda s: {"my_key": " finished"})
+    tool_two = tool_two_graph.compile()
+    assert tool_two.get_graph().draw_mermaid(with_styles=False) == snapshot
+    assert tool_two.get_graph().draw_mermaid() == snapshot
+
+    assert tool_two.invoke({"my_key": "value", "market": "DE"}, debug=1) == {
+        "my_key": "value prepared slow finished",
+        "market": "DE",
+    }
+    assert tool_two.invoke({"my_key": "value", "market": "US"}) == {
+        "my_key": "value prepared fast finished",
+        "market": "US",
+    }
+ */
+
+it("StateGraph branch then node", async () => {
+  interface State {
+    my_key: string;
+    market: string;
+  }
+
+  const invalidBuilder = new StateGraph<State>({
+    channels: {
+      my_key: { reducer: (x: string, y: string) => x + y },
+      market: null,
+    },
+  })
+    .addNode("prepare", (_: State) => ({ my_key: ` prepared` }))
+    .addNode("tool_two_slow", (_: State) => ({ my_key: ` slow` }))
+    .addNode("tool_two_fast", (_: State) => ({ my_key: ` fast` }))
+    .addNode("finish", (_: State) => ({ my_key: ` finished` }))
+    .addEdge(START, "prepare")
+    .addConditionalEdges({
+      source: "prepare",
+      path: (state: State) =>
+        state.market === "DE" ? "tool_two_slow" : "tool_two_fast",
+      pathMap: ["tool_two_slow", "tool_two_fast"],
+    })
+    .addEdge("finish", END);
+
+  expect(() => invalidBuilder.compile()).toThrowError();
+
+  const toolBuilder = new StateGraph<State>({
+    channels: {
+      my_key: { reducer: (x: string, y: string) => x + y },
+      market: null,
+    },
+  })
+    .addNode("prepare", (_: State) => ({ my_key: ` prepared` }))
+    .addNode("tool_two_slow", (_: State) => ({ my_key: ` slow` }))
+    .addNode("tool_two_fast", (_: State) => ({ my_key: ` fast` }))
+    .addNode("finish", (_: State) => ({ my_key: ` finished` }))
+    .addEdge(START, "prepare")
+    .addConditionalEdges({
+      source: "prepare",
+      path: (state: State) =>
+        state.market === "DE" ? "tool_two_slow" : "tool_two_fast",
+      then: "finish",
+    })
+    .addEdge("finish", END);
+
+  const tool = toolBuilder.compile();
+
+  expect(
+    await tool.invoke({ my_key: "value", market: "DE" }, { debug: true })
+  ).toEqual({
+    my_key: "value prepared slow finished",
+    market: "DE",
+  });
+  expect(await tool.invoke({ my_key: "value", market: "FR" })).toEqual({
+    my_key: "value prepared fast finished",
+    market: "FR",
+  });
 });

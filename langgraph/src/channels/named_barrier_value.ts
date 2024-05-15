@@ -1,8 +1,9 @@
 import { EmptyChannelError } from "../errors.js";
 import { BaseChannel } from "./index.js";
 
-const areSetsEqual = (a: Set<unknown>, b: Set<unknown>) =>
+export const areSetsEqual = <T>(a: Set<T>, b: Set<T>) =>
   a.size === b.size && [...a].every((value) => b.has(value));
+
 /**
  * A channel that waits until all named values are received before making the value available.
  *
@@ -10,9 +11,9 @@ const areSetsEqual = (a: Set<unknown>, b: Set<unknown>) =>
  * until N and M have completed updating.
  */
 export class NamedBarrierValue<Value> extends BaseChannel<
+  void,
   Value,
-  Value,
-  Set<Value>
+  Value[]
 > {
   lc_graph_name = "NamedBarrierValue";
 
@@ -26,10 +27,10 @@ export class NamedBarrierValue<Value> extends BaseChannel<
     this.seen = new Set<Value>();
   }
 
-  fromCheckpoint(checkpoint?: Set<Value>) {
+  fromCheckpoint(checkpoint?: Value[]) {
     const empty = new NamedBarrierValue<Value>(this.names);
     if (checkpoint) {
-      empty.seen = checkpoint;
+      empty.seen = new Set(checkpoint);
     }
     return empty as this;
   }
@@ -52,16 +53,16 @@ export class NamedBarrierValue<Value> extends BaseChannel<
     }
   }
 
-  // If we have not yet seen all the node names we want to wait for, throw an error to
-  // prevent continuing.
-  get(): Value {
+  // If we have not yet seen all the node names we want to wait for,
+  // throw an error to prevent continuing.
+  get(): void {
     if (!areSetsEqual(this.names, this.seen)) {
       throw new EmptyChannelError();
     }
-    return undefined as Value;
+    return undefined;
   }
 
-  checkpoint(): Set<Value> {
-    return this.seen;
+  checkpoint(): Value[] {
+    return [...this.seen];
   }
 }

@@ -15,7 +15,7 @@ function* flatten<Value>(
 export class Topic<Value> extends BaseChannel<
   Array<Value>,
   Value | Value[],
-  [Set<Value>, Value[]]
+  [Value[], Value[]]
 > {
   lc_graph_name = "Topic";
 
@@ -37,13 +37,15 @@ export class Topic<Value> extends BaseChannel<
     this.values = [];
   }
 
-  public fromCheckpoint(checkpoint?: [Set<Value>, Value[]]) {
+  public fromCheckpoint(checkpoint?: [Value[], Value[]]) {
     const empty = new Topic<Value>({
       unique: this.unique,
       accumulate: this.accumulate,
     });
     if (checkpoint) {
-      [empty.seen, empty.values] = checkpoint;
+      empty.seen = new Set(checkpoint[0]);
+      // eslint-disable-next-line prefer-destructuring
+      empty.values = checkpoint[1];
     }
     return empty as this;
   }
@@ -71,7 +73,7 @@ export class Topic<Value> extends BaseChannel<
     return this.values;
   }
 
-  public checkpoint(): [Set<Value>, Array<Value>] {
-    return [this.seen, this.values];
+  public checkpoint(): [Value[], Value[]] {
+    return [[...this.seen], this.values];
   }
 }
