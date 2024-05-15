@@ -24,13 +24,13 @@ npm install @langchain/langgraph
 
 Then define your assistant:
 
-```javascript
-import { ChatAnthropic } from "langchain_anthropic";
-import { TavilySearchResults } from "langchain_community/tools/tavily_search";
+```typescript
+import { ChatAnthropic } from "@langchain/anthropic";
+import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 
-import { SqliteSaver } from "langgraph/checkpoint/sqlite";
-import { END, MessageGraph } from "langgraph/graph";
-import { ToolNode } from "langgraph/prebuilt/tool_node";
+import { SqliteSaver } from "@langchain/langgraph/checkpoint/sqlite";
+import { END, MessageGraph } from "@langchain/langgraph";
+import { ToolNode } from "@langchain/langgraph/prebuilt";
 
 // Define the function that determines whether to continue or not
 function shouldContinue(messages) {
