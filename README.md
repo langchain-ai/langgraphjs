@@ -733,6 +733,13 @@ This takes three arguments:
 - `conditionalEdgeMapping`: A mapping of string to string. The keys should be strings that may be returned by `condition`. The values should be the downstream node to call if that condition is returned.
 
 
+This is also how you add a **conditional entry point**, using the virtual `"__start__"` node.:
+
+```typescript
+graph.addConditionalEdges("__start__", condition, conditionalEdgeMapping)
+```
+
+
 ### `START`
 
 ```typescript
