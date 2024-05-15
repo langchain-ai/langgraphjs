@@ -18,7 +18,7 @@ import {
 } from "@langchain/core/messages";
 import { FakeChatModel, MemorySaverAssertImmutable } from "./utils.js";
 import { LastValue } from "../channels/last_value.js";
-import { END, Graph, StateGraph } from "../graph/index.js";
+import { END, Graph, START, StateGraph } from "../graph/index.js";
 import { Topic } from "../channels/topic.js";
 import { PregelNode } from "../pregel/read.js";
 import { BaseChannel } from "../channels/base.js";
@@ -682,8 +682,8 @@ it("can invoke graph with a single process", async () => {
 
   const graph = new Graph()
     .addNode("add_one", addOne)
-    .setEntryPoint("add_one")
-    .setFinishPoint("add_one")
+    .addEdge(START, "add_one")
+    .addEdge("add_one", END)
     .compile();
 
   expect(await graph.invoke(2)).toBe(3);
@@ -930,9 +930,9 @@ it("should process batch with two processes and delays with graph", async () => 
   const graph = new Graph()
     .addNode("add_one", addOneWithDelay)
     .addNode("add_one_more", addOneWithDelay)
-    .setEntryPoint("add_one")
-    .setFinishPoint("add_one_more")
+    .addEdge(START, "add_one")
     .addEdge("add_one", "add_one_more")
+    .addEdge("add_one_more", END)
     .compile();
 
   expect(await graph.batch([3, 2, 1, 3, 5])).toEqual([5, 4, 3, 5, 7]);
@@ -1396,7 +1396,7 @@ describe("StateGraph", () => {
     })
       .addNode("agent", agent)
       .addNode("tools", executeTools)
-      .setEntryPoint("agent")
+      .addEdge(START, "agent")
       .addConditionalEdges("agent", shouldContinue, {
         continue: "tools",
         exit: END,
@@ -1485,7 +1485,7 @@ describe("StateGraph", () => {
     })
       .addNode("agent", agent)
       .addNode("tools", executeTools)
-      .setEntryPoint("agent")
+      .addEdge(START, "agent")
       .addConditionalEdges("agent", shouldContinue, {
         continue: "tools",
         exit: END,
@@ -1529,8 +1529,8 @@ describe("StateGraph", () => {
         myKey: `${state.myKey} there`,
         myOtherKey: state.myOtherKey,
       }))
-      .setEntryPoint("up")
-      .setFinishPoint("up");
+      .addEdge(START, "up")
+      .addEdge("up", END);
 
     // set up top level graph
     type State = {
@@ -1550,8 +1550,8 @@ describe("StateGraph", () => {
         myKey: `${state.myKey} and back again`,
       }))
       .addEdge("inner", "side")
-      .setEntryPoint("inner")
-      .setFinishPoint("side")
+      .addEdge(START, "inner")
+      .addEdge("side", END)
       .compile();
 
     // call method / assertions
@@ -1588,8 +1588,8 @@ describe("StateGraph", () => {
         myKey: `${state.myKey} there`,
         myOtherKey: state.myOtherKey,
       }))
-      .setEntryPoint("up")
-      .setFinishPoint("up");
+      .addEdge(START, "up")
+      .addEdge("up", END);
 
     // set up top level graph
     type State = {
@@ -1609,8 +1609,8 @@ describe("StateGraph", () => {
         myKey: `${state.myKey} and back again`,
       }))
       .addEdge("inner", "side")
-      .setEntryPoint("inner")
-      .setFinishPoint("side")
+      .addEdge(START, "inner")
+      .addEdge("side", END)
       .compile();
 
     // call method / assertions
@@ -1666,7 +1666,7 @@ describe("StateGraph", () => {
       .addNode("one", nodeOne)
       .addNode("two", nodeTwo)
       .addNode("three", nodeThree)
-      .setEntryPoint("one")
+      .addEdge(START, "one")
       .addConditionalEdges("one", decideNext)
       .addEdge("two", "three")
       .addEdge("three", END)
@@ -1721,12 +1721,12 @@ describe("StateGraph", () => {
       .addNode("retriever_one", retrieverOne)
       .addNode("retriever_two", retrieverTwo)
       .addNode("qa", qa)
-      .setEntryPoint("rewrite_query")
+      .addEdge(START, "rewrite_query")
       .addEdge("rewrite_query", "analyzer_one")
       .addEdge("analyzer_one", "retriever_one")
       .addEdge("rewrite_query", "retriever_two")
       .addEdge(["retriever_one", "retriever_two"], "qa")
-      .setFinishPoint("qa");
+      .addEdge("qa", END);
 
     const app = workflow.compile();
 
@@ -1908,7 +1908,7 @@ describe("MessageGraph", () => {
     const app = new MessageGraph()
       .addNode("agent", model)
       .addNode("action", callTool)
-      .setEntryPoint("agent")
+      .addEdge(START, "agent")
       .addConditionalEdges("agent", shouldContinue, {
         continue: "action",
         end: END,
@@ -2016,7 +2016,7 @@ describe("MessageGraph", () => {
     const app = new MessageGraph()
       .addNode("agent", model)
       .addNode("action", callTool)
-      .setEntryPoint("agent")
+      .addEdge(START, "agent")
       .addConditionalEdges("agent", shouldContinue, {
         continue: "action",
         end: END,

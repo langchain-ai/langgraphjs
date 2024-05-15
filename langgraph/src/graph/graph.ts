@@ -171,6 +171,9 @@ export class Graph<
     return this;
   }
 
+  /**
+   * @deprecated use `addEdge(START, key)` instead
+   */
   setEntryPoint(key: N): this {
     this.warnIfCompiled(
       "Setting the entry point of a graph that has already been compiled. This will not be reflected in the compiled graph."
@@ -179,6 +182,9 @@ export class Graph<
     return this.addEdge(START, key);
   }
 
+  /**
+   * @deprecated use `addEdge(key, END)` instead
+   */
   setFinishPoint(key: N): this {
     this.warnIfCompiled(
       "Setting a finish point of a graph that has already been compiled. This will not be reflected in the compiled graph."
