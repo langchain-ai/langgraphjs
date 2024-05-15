@@ -143,3 +143,7 @@ extra:
   social:
     - icon: fontawesome/brands/python 
       link: https://langchain-ai.github.io/langgraph/
+    - icon: fontawesome/brands/github
+      link: https://github.com/langchain-ai/langgraphjs
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/LangChainAI
