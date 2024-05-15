@@ -4,7 +4,7 @@ import { Runnable, type RunnableConfig } from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
 import { ToolExecutor } from "./tool_executor.js";
 import { StateGraph } from "../graph/state.js";
-import { END } from "../index.js";
+import { END, START } from "../index.js";
 
 interface Step {
   action: AgentAction | AgentFinish;
@@ -82,7 +82,7 @@ export function createAgentExecutor({
     .addNode("action", executeTools)
     // Set the entrypoint as `agent`
     // This means that this node is the first one called
-    .setEntryPoint("agent")
+    .addEdge(START, "agent")
     // We now add a conditional edge
     .addConditionalEdges(
       // First, we define the start node. We use `agent`.
