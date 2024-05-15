@@ -440,7 +440,7 @@ export class Pregel<
         _applyWrites(checkpoint, channels, inputPendingWrites);
         // save input checkpoint
         if (this.checkpointer) {
-          checkpoint = createCheckpoint(checkpoint, channels);
+          checkpoint = createCheckpoint(checkpoint, channels, start);
           bg.push(
             this.checkpointer.put(checkpointConfig, checkpoint, {
               source: "input",
@@ -451,7 +451,7 @@ export class Pregel<
           checkpointConfig = {
             configurable: {
               ...checkpointConfig.configurable,
-              checkpoint_id: checkpoint.ts,
+              checkpoint_id: checkpoint.id,
             },
           };
         }
@@ -553,7 +553,7 @@ export class Pregel<
 
         // save end of step checkpoint
         if (this.checkpointer) {
-          checkpoint = createCheckpoint(checkpoint, channels);
+          checkpoint = createCheckpoint(checkpoint, channels, step);
           bg.push(
             this.checkpointer.put(checkpointConfig, checkpoint, {
               source: "loop",
@@ -568,7 +568,7 @@ export class Pregel<
           checkpointConfig = {
             configurable: {
               ...checkpointConfig.configurable,
-              checkpoint_id: checkpoint.ts,
+              checkpoint_id: checkpoint.id,
             },
           };
         }
@@ -684,7 +684,7 @@ export function _localRead(
   fresh: boolean = false
 ): Record<string, unknown> | unknown {
   if (fresh) {
-    const newCheckpoint = createCheckpoint(checkpoint, channels);
+    const newCheckpoint = createCheckpoint(checkpoint, channels, -1);
     // create a new copy of channels
     const newChannels = emptyChannels(channels, newCheckpoint);
     // Note: _applyWrites contains side effects

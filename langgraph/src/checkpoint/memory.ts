@@ -70,13 +70,13 @@ export class MemorySaver extends BaseCheckpointSaver {
     const thread_id = config.configurable?.thread_id;
 
     if (this.storage[thread_id]) {
-      this.storage[thread_id][checkpoint.ts] = [
+      this.storage[thread_id][checkpoint.id] = [
         this.serde.stringify(checkpoint),
         this.serde.stringify(metadata),
       ];
     } else {
       this.storage[thread_id] = {
-        [checkpoint.ts]: [
+        [checkpoint.id]: [
           this.serde.stringify(checkpoint),
           this.serde.stringify(metadata),
         ],
@@ -86,7 +86,7 @@ export class MemorySaver extends BaseCheckpointSaver {
     return {
       configurable: {
         thread_id,
-        checkpoint_id: checkpoint.ts,
+        checkpoint_id: checkpoint.id,
       },
     };
   }

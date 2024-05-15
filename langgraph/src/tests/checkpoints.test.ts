@@ -2,9 +2,11 @@ import { describe, it, expect } from "@jest/globals";
 import { Checkpoint, CheckpointTuple, deepCopy } from "../checkpoint/base.js";
 import { MemorySaver } from "../checkpoint/memory.js";
 import { SqliteSaver } from "../checkpoint/sqlite.js";
+import { convert1to6, uuid6 } from "../checkpoint/id.js";
 
 const checkpoint1: Checkpoint = {
   v: 1,
+  id: uuid6(-1),
   ts: "2024-04-19T17:19:07.952Z",
   channel_values: {
     someKey1: "someValue1",
@@ -20,6 +22,7 @@ const checkpoint1: Checkpoint = {
 };
 const checkpoint2: Checkpoint = {
   v: 1,
+  id: uuid6(1),
   ts: "2024-04-20T17:19:07.952Z",
   channel_values: {
     someKey1: "someValue2",
@@ -87,7 +90,7 @@ describe("MemorySaver", () => {
     expect(runnableConfig).toEqual({
       configurable: {
         thread_id: "1",
-        checkpoint_id: "2024-04-19T17:19:07.952Z",
+        checkpoint_id: checkpoint1.id,
       },
     });
 
@@ -98,7 +101,7 @@ describe("MemorySaver", () => {
     expect(checkpointTuple?.config).toEqual({
       configurable: {
         thread_id: "1",
-        checkpoint_id: "2024-04-19T17:19:07.952Z",
+        checkpoint_id: checkpoint1.id,
       },
     });
     expect(checkpointTuple?.checkpoint).toEqual(checkpoint1);
@@ -145,7 +148,7 @@ describe("SqliteSaver", () => {
     expect(runnableConfig).toEqual({
       configurable: {
         thread_id: "1",
-        checkpoint_id: "2024-04-19T17:19:07.952Z",
+        checkpoint_id: checkpoint1.id,
       },
     });
 
@@ -156,7 +159,7 @@ describe("SqliteSaver", () => {
     expect(firstCheckpointTuple?.config).toEqual({
       configurable: {
         thread_id: "1",
-        checkpoint_id: "2024-04-19T17:19:07.952Z",
+        checkpoint_id: checkpoint1.id,
       },
     });
     expect(firstCheckpointTuple?.checkpoint).toEqual(checkpoint1);
@@ -199,5 +202,29 @@ describe("SqliteSaver", () => {
     const checkpointTuple2 = checkpointTuples[1];
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
     expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
+  });
+});
+
+describe("id", () => {
+  it("should convert uuid1 to uuid6", () => {
+    const regex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+    // [UUIDv1, UUIDv6]
+    const cases = [
+      [
+        "5714f720-1268-11e7-a24b-96d95aa38c32",
+        "1e712685-714f-6720-a24b-96d95aa38c32",
+      ],
+      [
+        "68f820c0-1268-11e7-a24b-671acd892c6a",
+        "1e712686-8f82-60c0-a24b-671acd892c6a",
+      ],
+    ];
+    cases.forEach(([v1, v6]) => {
+      const converted = convert1to6(v1);
+      expect(converted).toBe(v6);
+      expect(converted).toMatch(regex);
+    });
   });
 });

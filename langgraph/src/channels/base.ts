@@ -1,4 +1,5 @@
 import { deepCopy } from "../checkpoint/base.js";
+import { uuid6 } from "../checkpoint/id.js";
 import { Checkpoint } from "../checkpoint/index.js";
 import { EmptyChannelError } from "../errors.js";
 
@@ -65,7 +66,8 @@ export function emptyChannels<Cc extends Record<string, BaseChannel>>(
 
 export function createCheckpoint<ValueType>(
   checkpoint: Checkpoint,
-  channels: Record<string, BaseChannel<ValueType>>
+  channels: Record<string, BaseChannel<ValueType>>,
+  step: number
 ): Checkpoint {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const values: Record<string, any> = {};
@@ -83,6 +85,7 @@ export function createCheckpoint<ValueType>(
   }
   return {
     v: 1,
+    id: uuid6(step),
     ts: new Date().toISOString(),
     channel_values: values,
     channel_versions: { ...checkpoint.channel_versions },
