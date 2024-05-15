@@ -45,7 +45,7 @@ const model = new ChatAnthropic({ model: "claude-3-haiku-20240307" }).bindTools(
 workflow.addNode("agent", model);
 workflow.addNode("action", new ToolNode(tools));
 
-workflow.setEntryPoint("agent");
+workflow.addEdge("__start__", "agent");
 
 // Conditional agent -> action OR agent -> END
 workflow.addConditionalEdges("agent", shouldContinue);
