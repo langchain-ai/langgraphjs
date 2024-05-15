@@ -680,30 +680,14 @@ export function _shouldInterrupt(
 export function _localRead(
   checkpoint: Checkpoint,
   channels: Record<string, BaseChannel>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  writes: Array<[string, any]>,
+  writes: Array<[string, unknown]>,
   select: Array<string> | string,
   fresh: boolean = false
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Record<string, any> | any {
+): Record<string, unknown> | unknown {
   if (fresh) {
     const newCheckpoint = createCheckpoint(checkpoint, channels);
-
     // create a new copy of channels
-    const newChannels = Object.entries(channels).reduce(
-      (
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        acc: Record<string, any>,
-        [channelName, channel]: [string, BaseChannel]
-      ) => {
-        acc[channelName] = channel.fromCheckpoint(
-          newCheckpoint.channelValues[channelName]
-        );
-        return acc;
-      },
-      {}
-    );
-
+    const newChannels = emptyChannels(channels, newCheckpoint);
     // Note: _applyWrites contains side effects
     _applyWrites(copyCheckpoint(newCheckpoint), newChannels, writes);
     return readChannels(newChannels, select);
@@ -715,14 +699,9 @@ export function _localRead(
 export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   checkpoint: Checkpoint,
   channels: Cc,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pendingWrites: Array<[keyof Cc, any]>
+  pendingWrites: Array<[keyof Cc, unknown]>
 ): void {
-  const pendingWritesByChannel = {} as Record<
-    keyof Cc,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Array<any>
-  >;
+  const pendingWritesByChannel = {} as Record<keyof Cc, Array<unknown>>;
   // Group writes by channel
   for (const [chan, val] of pendingWrites) {
     if (chan in pendingWritesByChannel) {
