@@ -1,7 +1,32 @@
 import { v1 } from "uuid";
 
+/**
+ * Returns an unsigned `x`-bit random integer.
+ * @param x - An unsigned integer ranging from 0 to 53, inclusive.
+ * @returns An unsigned `x`-bit random integer (`0 <= f(x) < 2^x`).
+ */
+function getRandomInt(x: number): number {
+  if (x < 0 || x > 53) {
+    return NaN;
+  }
+  const n = 0 | (Math.random() * 0x40000000); // 1 << 30
+  return x > 30
+    ? n + (0 | (Math.random() * (1 << (x - 30)))) * 0x40000000
+    : n >>> (30 - x);
+}
+
 export function uuid6(clockseq: number): string {
-  const node = crypto.getRandomValues(new Uint8Array(6));
+  const node =
+    typeof crypto !== "undefined"
+      ? crypto.getRandomValues(new Uint8Array(6))
+      : [
+          getRandomInt(8),
+          getRandomInt(8),
+          getRandomInt(8),
+          getRandomInt(8),
+          getRandomInt(8),
+          getRandomInt(8),
+        ];
   const uuid1 = v1({ node, clockseq });
   return convert1to6(uuid1);
 }
