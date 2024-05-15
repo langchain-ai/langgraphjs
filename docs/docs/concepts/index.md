@@ -2,7 +2,10 @@
 
 ## In Progress
 
-🚧 This section is currently in progress and is largely copied from the Python documentation. Check back later for updates! 🚧
+!!! note
+    
+    🚧 This section is currently in progress and is largely copied from the Python documentation. Some methods have not yet been landed. Check back later for updates! 🚧
+
 
 Welcome to LangGraph.js, a JavaScript library for building complex, scalable AI agents using graph-based state machines. In this guide, we'll explore the core concepts behind LangGraph.js and why it's uniquely suited for creating reliable, fault-tolerant agent systems. We assume you have already learned the basics covered in the [quick start](https://langchain-ai.github.io/langgraphjs/) and want to deepen your understanding of LangGraph.js's underlying design and inner workings.
 
