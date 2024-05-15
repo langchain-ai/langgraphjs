@@ -26,10 +26,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js 18.x
+      - name: Use Node.js 22.x
         uses: actions/setup-node@v3
         with:
-          node-version: 18.x
+          node-version: 22.x
           cache: "yarn"
       - name: Install dependencies
         run: yarn install --immutable --mode=skip-build
@@ -41,10 +41,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js 18.x
+      - name: Use Node.js 22.x
         uses: actions/setup-node@v3
         with:
-          node-version: 18.x
+          node-version: 22.x
           cache: "yarn"
       - name: Install dependencies
         run: yarn install --immutable --mode=skip-build
@@ -56,10 +56,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js 18.x
+      - name: Use Node.js 22.x
         uses: actions/setup-node@v3
         with:
-          node-version: 18.x
+          node-version: 22.x
           cache: "yarn"
       - name: Install dependencies
         run: yarn install --immutable --mode=skip-build
@@ -70,14 +70,14 @@ jobs:
     name: Unit Tests
     strategy:
       matrix:
-        os: [ubuntu-latest]
-        node-version: [18.x, 20.x]
         # See Node.js release schedule at https://nodejs.org/en/about/releases/
-        # include:
-          # - os: windows-latest
-          #   node-version: 20.x
-          # - os: macos-latest
-          #   node-version: 20.x
+        os: [ubuntu-latest]
+        node-version: [18.x, 20.x, 22.x]
+        include:
+          - os: windows-latest
+            node-version: 22.x
+          - os: macos-latest
+            node-version: 22.x
     runs-on: ${{ matrix.os }}
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
