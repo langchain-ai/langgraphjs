@@ -16,20 +16,16 @@ import {
   FunctionMessage,
   HumanMessage,
 } from "@langchain/core/messages";
-import { FakeChatModel } from "./utils.js";
+import { FakeChatModel, MemorySaverAssertImmutable } from "./utils.js";
 import { LastValue } from "../channels/last_value.js";
 import { END, Graph, StateGraph } from "../graph/index.js";
 import { Topic } from "../channels/topic.js";
 import { PregelNode } from "../pregel/read.js";
-import { BaseChannel, InvalidUpdateError } from "../channels/base.js";
-import {
-  MemorySaver,
-  MemorySaverAssertImmutable,
-} from "../checkpoint/memory.js";
+import { BaseChannel } from "../channels/base.js";
+import { MemorySaver } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
 import {
   Channel,
-  GraphRecursionError,
   Pregel,
   PregelOptions,
   _applyWrites,
@@ -42,6 +38,7 @@ import { MessageGraph } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
 import { Checkpoint } from "../checkpoint/base.js";
 import { PregelExecutableTask } from "../pregel/types.js";
+import { GraphRecursionError, InvalidUpdateError } from "../errors.js";
 
 // Tracing slows down the tests
 beforeAll(() => {

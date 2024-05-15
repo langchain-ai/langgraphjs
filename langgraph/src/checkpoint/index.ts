@@ -1,8 +1,9 @@
-export { MemorySaver, MemorySaverAssertImmutable } from "./memory.js";
+export { MemorySaver } from "./memory.js";
 export {
   type ConfigurableFieldSpec,
   type Checkpoint,
-  deepCopy,
+  type CheckpointMetadata,
+  copyCheckpoint,
   emptyCheckpoint,
   BaseCheckpointSaver,
 } from "./base.js";

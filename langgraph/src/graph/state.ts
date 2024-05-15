@@ -4,7 +4,7 @@ import {
   RunnableConfig,
   RunnableLike,
 } from "@langchain/core/runnables";
-import { BaseChannel, InvalidUpdateError } from "../channels/base.js";
+import { BaseChannel } from "../channels/base.js";
 import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { END, CompiledGraph, Graph, START, Branch } from "./graph.js";
 import { LastValue } from "../channels/last_value.js";
@@ -21,6 +21,7 @@ import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { RunnableCallable } from "../utils.js";
 import { All } from "../pregel/types.js";
 import { TAG_HIDDEN } from "../constants.js";
+import { InvalidUpdateError } from "../errors.js";
 
 const ROOT = "__root__";
 

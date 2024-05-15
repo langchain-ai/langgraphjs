@@ -6,10 +6,29 @@ import {
   mapOutputValues,
   readChannel,
   readChannels,
+  single,
 } from "../pregel/io.js";
 import { PregelExecutableTask } from "../pregel/types.js";
-import { BaseChannel, EmptyChannelError } from "../channels/base.js";
+import { BaseChannel } from "../channels/base.js";
 import { LastValue } from "../channels/last_value.js";
+import { EmptyChannelError } from "../errors.js";
+
+describe("single", () => {
+  it("returns first value of iterator and closes it", () => {
+    let closed = false;
+    function* myiter() {
+      try {
+        yield 1;
+        yield 2;
+      } finally {
+        closed = true;
+      }
+    }
+
+    expect(single(myiter())).toBe(1);
+    expect(closed).toBe(true);
+  });
+});
 
 describe("readChannel", () => {
   it("should read a channel successfully", () => {

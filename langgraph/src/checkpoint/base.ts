@@ -17,6 +17,26 @@ export interface ConfigurableFieldSpec {
   dependencies: Array<string> | null;
 }
 
+export interface CheckpointMetadata {
+  source: "input" | "loop" | "update";
+  /**
+   * The source of the checkpoint.
+   * - "input": The checkpoint was created from an input to invoke/stream/batch.
+   * - "loop": The checkpoint was created from inside the pregel loop.
+   * - "update": The checkpoint was created from a manual state update. */
+  step: number;
+  /**
+   * The step number of the checkpoint.
+   * -1 for the first "input" checkpoint.
+   * 0 for the first "loop" checkpoint.
+   * ... for the nth checkpoint afterwards. */
+  writes?: Record<string, unknown>;
+  /**
+   * The writes that were made between the previous checkpoint and this one.
+   * Mapping from node name to writes emitted by that node.
+   */
+}
+
 export interface Checkpoint {
   /**
    * Version number
@@ -82,6 +102,7 @@ export function copyCheckpoint(checkpoint: Checkpoint): Checkpoint {
 export interface CheckpointTuple {
   config: RunnableConfig;
   checkpoint: Checkpoint;
+  metadata?: CheckpointMetadata;
   parentConfig?: RunnableConfig;
 }
 
@@ -107,9 +128,9 @@ const CheckpointThreadTs: ConfigurableFieldSpec = {
 };
 
 export abstract class BaseCheckpointSaver {
-  serde: SerializerProtocol<Checkpoint> = JSON;
+  serde: SerializerProtocol<unknown> = JSON;
 
-  constructor(serde?: SerializerProtocol<Checkpoint>) {
+  constructor(serde?: SerializerProtocol<unknown>) {
     this.serde = serde || this.serde;
   }
 
@@ -130,6 +151,7 @@ export abstract class BaseCheckpointSaver {
 
   abstract put(
     config: RunnableConfig,
-    checkpoint: Checkpoint
+    checkpoint: Checkpoint,
+    metadata: CheckpointMetadata
   ): Promise<RunnableConfig>;
 }

@@ -1,4 +1,5 @@
-import { BaseChannel, EmptyChannelError } from "./index.js";
+import { EmptyChannelError } from "../errors.js";
+import { BaseChannel } from "./index.js";
 
 const areSetsEqual = (a: Set<unknown>, b: Set<unknown>) =>
   a.size === b.size && [...a].every((value) => b.has(value));

@@ -1,6 +1,7 @@
-import { BaseChannel, EmptyChannelError } from "../channels/base.js";
+import { BaseChannel } from "../channels/base.js";
 import { PregelExecutableTask } from "./types.js";
 import { TAG_HIDDEN } from "../constants.js";
+import { EmptyChannelError } from "../errors.js";
 
 export function readChannel<C extends PropertyKey>(
   channels: Record<C, BaseChannel>,
@@ -150,4 +151,12 @@ export function* mapOutputUpdates<C extends PropertyKey>(
       yield updated;
     }
   }
+}
+
+export function single<T>(iter: IterableIterator<T>): T | undefined {
+  // eslint-disable-next-line no-unreachable-loop
+  for (const value of iter) {
+    return value;
+  }
+  return undefined;
 }
