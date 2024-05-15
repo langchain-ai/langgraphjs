@@ -1,4 +1,5 @@
-import { BaseChannel, EmptyChannelError, InvalidUpdateError } from "./index.js";
+import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
+import { BaseChannel } from "./index.js";
 
 /**
  * Stores the last value received, can receive at most one value per step.

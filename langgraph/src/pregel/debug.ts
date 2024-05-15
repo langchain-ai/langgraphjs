@@ -1,4 +1,5 @@
-import { BaseChannel, EmptyChannelError } from "../channels/base.js";
+import { BaseChannel } from "../channels/base.js";
+import { EmptyChannelError } from "../errors.js";
 import { PregelExecutableTask } from "./types.js";
 
 type ConsoleColors = {

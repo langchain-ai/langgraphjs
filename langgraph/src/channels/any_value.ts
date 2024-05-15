@@ -1,4 +1,5 @@
-import { BaseChannel, EmptyChannelError } from "./index.js";
+import { EmptyChannelError } from "../errors.js";
+import { BaseChannel } from "./index.js";
 
 /**
  * Stores the last value received, assumes that if multiple values are received, they are all equal.

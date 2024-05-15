@@ -1,4 +1,5 @@
-import { BaseChannel, EmptyChannelError } from "./index.js";
+import { EmptyChannelError } from "../errors.js";
+import { BaseChannel } from "./index.js";
 
 export type BinaryOperator<Value> = (a: Value, b: Value) => Value;
 

@@ -13,8 +13,6 @@ import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   BaseChannel,
-  EmptyChannelError,
-  InvalidUpdateError,
   createCheckpoint,
   emptyChannels,
 } from "../channels/base.js";
@@ -32,20 +30,20 @@ import {
   mapOutputValues,
   readChannel,
   readChannels,
+  single,
 } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { CONFIG_KEY_READ, CONFIG_KEY_SEND, INTERRUPT } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { All, PregelExecutableTask, PregelTaskDescription } from "./types.js";
+import {
+  EmptyChannelError,
+  GraphRecursionError,
+  GraphValueError,
+  InvalidUpdateError,
+} from "../errors.js";
 
-const DEFAULT_RECURSION_LIMIT = 25;
-
-export class GraphRecursionError extends Error {
-  constructor(message?: string) {
-    super(message);
-    this.name = "GraphRecursionError";
-  }
-}
+const DEFAULT_LOOP_LIMIT = 25;
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -389,137 +387,197 @@ export class Pregel<
     runManager?: CallbackManagerForChainRun,
     config: PregelOptions<Nn, Cc> = {}
   ): AsyncGenerator<PregelOutputType> {
-    // assign defaults
-    const [
-      debug,
-      streamMode,
-      inputKeys,
-      outputKeys,
-      restConfig,
-      // interruptBefore,
-      // interruptAfter,
-    ] = this._defaults(config);
-    // copy nodes to ignore mutations during execution
-    const processes = { ...this.nodes };
-    // get checkpoint, or create an empty one
-    let checkpoint: Checkpoint | undefined;
-    if (this.checkpointer) {
-      checkpoint = await this.checkpointer.get(config);
-    }
-    checkpoint = checkpoint ?? emptyCheckpoint();
-
-    // create channels from checkpoint
-    const channels = emptyChannels(this.channels, checkpoint);
-    // map inputs to channel updates
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const inputPendingWrites: Array<[keyof Cc, any]> = [];
-    for await (const c of input) {
-      for (const value of mapInput(inputKeys, c)) {
-        inputPendingWrites.push(value);
-      }
-    }
-
-    _applyWrites(checkpoint, channels, inputPendingWrites);
-
-    // TODO checkpoint inputs
-
-    // Similarly to Bulk Synchronous Parallel / Pregel model
-    // computation proceeds in steps, while there are channel updates
-    // channel updates from step N are only visible in step N+1
-    // channels are guaranteed to be immutable for the duration of the step,
-    // with channel updates applied only at the transition between steps
-    const recursionLimit = config.recursionLimit ?? DEFAULT_RECURSION_LIMIT;
-    for (let step = 0; step < recursionLimit + 1; step += 1) {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const [nextCheckpoint, nextTasks] = _prepareNextTasks(
-        checkpoint,
-        processes,
-        channels,
-        true
-      );
-
-      if (debug) {
-        console.log(nextTasks);
-      }
-
-      // Reassign nextCheckpoint to checkpoint because the subsequent implementation
-      // relies on side effects applied to checkpoint. Example: _applyWrites().
-      checkpoint = nextCheckpoint as Checkpoint;
-
-      // if no more tasks, we're done
-      if (nextTasks.length === 0) {
-        break;
-      } else if (step === config.recursionLimit) {
-        throw new GraphRecursionError(
-          `Recursion limit of ${config.recursionLimit} reached without hitting a stop condition. You can increase the limit by setting the "recursionLimit" config key.`
+    const bg: Promise<unknown>[] = [];
+    try {
+      if (config.recursionLimit && config.recursionLimit < 1) {
+        throw new GraphValueError(
+          `Recursion limit must be greater than 0, got ${config.recursionLimit}`
         );
       }
-
-      // TODO interrupt before
-
-      // A copy of the checkpoint is created because `checkpoint` is defined with `let`.
-      // `checkpoint` can be mutated during loop execution and when used in a function,
-      // may cause unintended consequences.
-      const checkpointCopy = copyCheckpoint(checkpoint);
-
-      const tasksWithConfig: Array<
-        [RunnableInterface, unknown, RunnableConfig]
-      > = nextTasks.map((task) => [
-        task.proc,
-        task.input,
-        patchConfig(restConfig, {
-          callbacks: runManager?.getChild(`graph:step:${step}`),
-          runName: task.name,
-          configurable: {
-            ...config.configurable,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            [CONFIG_KEY_SEND]: (items: [string, any][]) =>
-              task.writes.push(...items),
-            [CONFIG_KEY_READ]: _localRead.bind(
-              undefined,
-              checkpointCopy,
-              channels,
-              task.writes
-            ),
-          },
-        }),
-      ]);
-
-      // execute tasks, and wait for one to fail or all to finish.
-      // each task is independent from all other concurrent tasks
-      const tasks = tasksWithConfig.map(
-        ([proc, input, updatedConfig]) =>
-          () =>
-            proc.invoke(input, updatedConfig)
-      );
-
-      await executeTasks(tasks, this.stepTimeout);
-
-      // combine pending writes from all tasks
-      const pendingWrites: Array<[string, unknown]> = [];
-      for (const task of nextTasks) {
-        pendingWrites.push(...task.writes);
+      if (this.checkpointer && !config.configurable) {
+        const keys = this.checkpointer.configSpecs.map((s) => s.id).join(", ");
+        throw new GraphValueError(
+          `Checkpointer requires one or more of the following 'configurable' keys: ${keys}`
+        );
+      }
+      // assign defaults
+      const [
+        debug,
+        streamMode,
+        inputKeys,
+        outputKeys,
+        restConfig,
+        // interruptBefore,
+        // interruptAfter,
+      ] = this._defaults(config);
+      // copy nodes to ignore mutations during execution
+      const processes = { ...this.nodes };
+      // get checkpoint, or create an empty one
+      const saved = this.checkpointer
+        ? await this.checkpointer.getTuple(config)
+        : null;
+      let checkpoint = saved ? saved.checkpoint : emptyCheckpoint();
+      let checkpointConfig = saved ? saved.config : config;
+      let start = (saved?.metadata?.step ?? -2) + 1;
+      // create channels from checkpoint
+      const channels = emptyChannels(this.channels, checkpoint);
+      // map inputs to channel updates
+      const inputPendingWrites: Array<[keyof Cc, unknown]> = [];
+      for await (const c of input) {
+        for (const value of mapInput(inputKeys, c)) {
+          inputPendingWrites.push(value);
+        }
+      }
+      if (inputPendingWrites.length) {
+        // discard any unfinished tasks from previous checkpoint
+        const discarded = _prepareNextTasks(
+          checkpoint,
+          processes,
+          channels,
+          true
+        );
+        checkpoint = discarded[0]; // eslint-disable-line prefer-destructuring
+        // apply input writes
+        _applyWrites(checkpoint, channels, inputPendingWrites);
+        // save input checkpoint
+        if (this.checkpointer) {
+          checkpoint = createCheckpoint(checkpoint, channels);
+          bg.push(
+            this.checkpointer.put(checkpointConfig, checkpoint, {
+              source: "input",
+              step: start,
+              writes: Object.fromEntries(inputPendingWrites),
+            })
+          );
+          checkpointConfig = {
+            configurable: {
+              ...checkpointConfig.configurable,
+              threadTs: checkpoint.ts,
+            },
+          };
+        }
+        // increment start to 0
+        start += 1;
+      } else {
+        // TODO mark INTERRUPT as seen
       }
 
-      // apply writes to channels
-      _applyWrites(checkpoint, channels, pendingWrites);
+      // Similarly to Bulk Synchronous Parallel / Pregel model
+      // computation proceeds in steps, while there are channel updates
+      // channel updates from step N are only visible in step N+1
+      // channels are guaranteed to be immutable for the duration of the step,
+      // with channel updates applied only at the transition between steps
+      const stop = start + (config.recursionLimit ?? DEFAULT_LOOP_LIMIT);
+      for (let step = start; step < stop + 1; step += 1) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const [nextCheckpoint, nextTasks] = _prepareNextTasks(
+          checkpoint,
+          processes,
+          channels,
+          true
+        );
 
-      // yield current value and checkpoint view
-      if (streamMode === "values") {
-        yield* mapOutputValues(outputKeys, pendingWrites, channels);
-      } else if (streamMode === "updates") {
-        yield* mapOutputUpdates(outputKeys, nextTasks);
+        if (debug) {
+          console.log(nextTasks);
+        }
+
+        // Reassign nextCheckpoint to checkpoint because the subsequent implementation
+        // relies on side effects applied to checkpoint. Example: _applyWrites().
+        checkpoint = nextCheckpoint as Checkpoint;
+
+        // if no more tasks, we're done
+        if (nextTasks.length === 0 && step === start) {
+          throw new GraphValueError(`No tasks to run in graph.`);
+        } else if (nextTasks.length === 0) {
+          break;
+        } else if (step === stop) {
+          throw new GraphRecursionError(
+            `Recursion limit of ${config.recursionLimit} reached without hitting a stop condition. You can increase the limit by setting the "recursionLimit" config key.`
+          );
+        }
+
+        // TODO interrupt before
+
+        // A copy of the checkpoint is created because `checkpoint` is defined with `let`.
+        // `checkpoint` can be mutated during loop execution and when used in a function,
+        // may cause unintended consequences.
+        const checkpointCopy = copyCheckpoint(checkpoint);
+
+        const tasksWithConfig: Array<
+          [RunnableInterface, unknown, RunnableConfig]
+        > = nextTasks.map((task) => [
+          task.proc,
+          task.input,
+          patchConfig(restConfig, {
+            callbacks: runManager?.getChild(`graph:step:${step}`),
+            runName: task.name,
+            configurable: {
+              ...config.configurable,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              [CONFIG_KEY_SEND]: (items: [string, any][]) =>
+                task.writes.push(...items),
+              [CONFIG_KEY_READ]: _localRead.bind(
+                undefined,
+                checkpointCopy,
+                channels,
+                task.writes
+              ),
+            },
+          }),
+        ]);
+
+        // execute tasks, and wait for one to fail or all to finish.
+        // each task is independent from all other concurrent tasks
+        const tasks = tasksWithConfig.map(
+          ([proc, input, updatedConfig]) =>
+            () =>
+              proc.invoke(input, updatedConfig)
+        );
+
+        await executeTasks(tasks, this.stepTimeout);
+
+        // combine pending writes from all tasks
+        const pendingWrites: Array<[string, unknown]> = [];
+        for (const task of nextTasks) {
+          pendingWrites.push(...task.writes);
+        }
+
+        // apply writes to channels
+        _applyWrites(checkpoint, channels, pendingWrites);
+
+        // yield current value and checkpoint view
+        if (streamMode === "values") {
+          yield* mapOutputValues(outputKeys, pendingWrites, channels);
+        } else if (streamMode === "updates") {
+          yield* mapOutputUpdates(outputKeys, nextTasks);
+        }
+
+        // save end of step checkpoint
+        if (this.checkpointer) {
+          checkpoint = createCheckpoint(checkpoint, channels);
+          bg.push(
+            this.checkpointer.put(checkpointConfig, checkpoint, {
+              source: "loop",
+              step,
+              writes: single(
+                streamMode === "values"
+                  ? mapOutputValues(outputKeys, pendingWrites, channels)
+                  : mapOutputUpdates(outputKeys, nextTasks)
+              ),
+            })
+          );
+          checkpointConfig = {
+            configurable: {
+              ...checkpointConfig.configurable,
+              threadTs: checkpoint.ts,
+            },
+          };
+        }
+
+        // TODO interrupt after
       }
-
-      // save end of step checkpoint
-      if (this.checkpointer) {
-        checkpoint = await createCheckpoint(checkpoint, channels);
-        await this.checkpointer.put(config, checkpoint);
-        // TODO save in background
-      }
-
-      // TODO interrupt after
+    } finally {
+      await Promise.all(bg);
     }
   }
 
@@ -622,30 +680,14 @@ export function _shouldInterrupt(
 export function _localRead(
   checkpoint: Checkpoint,
   channels: Record<string, BaseChannel>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  writes: Array<[string, any]>,
+  writes: Array<[string, unknown]>,
   select: Array<string> | string,
   fresh: boolean = false
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Record<string, any> | any {
+): Record<string, unknown> | unknown {
   if (fresh) {
     const newCheckpoint = createCheckpoint(checkpoint, channels);
-
     // create a new copy of channels
-    const newChannels = Object.entries(channels).reduce(
-      (
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        acc: Record<string, any>,
-        [channelName, channel]: [string, BaseChannel]
-      ) => {
-        acc[channelName] = channel.fromCheckpoint(
-          newCheckpoint.channelValues[channelName]
-        );
-        return acc;
-      },
-      {}
-    );
-
+    const newChannels = emptyChannels(channels, newCheckpoint);
     // Note: _applyWrites contains side effects
     _applyWrites(copyCheckpoint(newCheckpoint), newChannels, writes);
     return readChannels(newChannels, select);
@@ -657,14 +699,9 @@ export function _localRead(
 export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   checkpoint: Checkpoint,
   channels: Cc,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pendingWrites: Array<[keyof Cc, any]>
+  pendingWrites: Array<[keyof Cc, unknown]>
 ): void {
-  const pendingWritesByChannel = {} as Record<
-    keyof Cc,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Array<any>
-  >;
+  const pendingWritesByChannel = {} as Record<keyof Cc, Array<unknown>>;
   // Group writes by channel
   for (const [chan, val] of pendingWrites) {
     if (chan in pendingWritesByChannel) {
