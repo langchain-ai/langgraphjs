@@ -1,22 +1,6 @@
 import { RunnableConfig } from "@langchain/core/runnables";
 import { SerializerProtocol } from "../serde/base.js";
 
-/** A field that can be configured by the user. It is a specification of a field. */
-export interface ConfigurableFieldSpec {
-  id: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  annotation: any;
-  name: string | null;
-  description: string | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  default: any;
-  /**
-   * @default false
-   */
-  isShared?: boolean;
-  dependencies: Array<string> | null;
-}
-
 export interface CheckpointMetadata {
   source: "input" | "loop" | "update";
   /**
@@ -50,15 +34,15 @@ export interface Checkpoint {
    * @default {}
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  channelValues: Record<string, any>;
+  channel_values: Record<string, any>;
   /**
    * @default {}
    */
-  channelVersions: Record<string, number>;
+  channel_versions: Record<string, number>;
   /**
    * @default {}
    */
-  versionsSeen: Record<string, Record<string, number>>;
+  versions_seen: Record<string, Record<string, number>>;
 }
 
 export function deepCopy<T>(obj: T): T {
@@ -83,9 +67,9 @@ export function emptyCheckpoint(): Checkpoint {
   return {
     v: 1,
     ts: new Date().toISOString(),
-    channelValues: {},
-    channelVersions: {},
-    versionsSeen: {},
+    channel_values: {},
+    channel_versions: {},
+    versions_seen: {},
   };
 }
 
@@ -93,9 +77,9 @@ export function copyCheckpoint(checkpoint: Checkpoint): Checkpoint {
   return {
     v: checkpoint.v,
     ts: checkpoint.ts,
-    channelValues: { ...checkpoint.channelValues },
-    channelVersions: { ...checkpoint.channelVersions },
-    versionsSeen: deepCopy(checkpoint.versionsSeen),
+    channel_values: { ...checkpoint.channel_values },
+    channel_versions: { ...checkpoint.channel_versions },
+    versions_seen: deepCopy(checkpoint.versions_seen),
   };
 }
 
@@ -106,36 +90,11 @@ export interface CheckpointTuple {
   parentConfig?: RunnableConfig;
 }
 
-const CheckpointThreadId: ConfigurableFieldSpec = {
-  id: "threadId",
-  annotation: typeof "",
-  name: "Thread ID",
-  description: null,
-  default: "",
-  isShared: true,
-  dependencies: null,
-};
-
-const CheckpointThreadTs: ConfigurableFieldSpec = {
-  id: "threadTs",
-  annotation: typeof "",
-  name: "Thread Timestamp",
-  description:
-    "Pass to fetch a past checkpoint. If None, fetches the latest checkpoint.",
-  default: null,
-  isShared: true,
-  dependencies: null,
-};
-
 export abstract class BaseCheckpointSaver {
   serde: SerializerProtocol<unknown> = JSON;
 
   constructor(serde?: SerializerProtocol<unknown>) {
     this.serde = serde || this.serde;
-  }
-
-  get configSpecs(): Array<ConfigurableFieldSpec> {
-    return [CheckpointThreadId, CheckpointThreadTs];
   }
 
   async get(config: RunnableConfig): Promise<Checkpoint | undefined> {

@@ -16,12 +16,12 @@ export class MemorySaver extends BaseCheckpointSaver {
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
-    const threadId = config.configurable?.threadId;
-    const threadTs = config.configurable?.threadTs;
-    const checkpoints = this.storage[threadId];
+    const thread_id = config.configurable?.thread_id;
+    const checkpoint_id = config.configurable?.checkpoint_id;
+    const checkpoints = this.storage[thread_id];
 
-    if (threadTs) {
-      const checkpoint = checkpoints[threadTs];
+    if (checkpoint_id) {
+      const checkpoint = checkpoints[checkpoint_id];
       if (checkpoint) {
         return {
           config,
@@ -36,7 +36,7 @@ export class MemorySaver extends BaseCheckpointSaver {
         )[0];
         const checkpoint = checkpoints[maxThreadTs];
         return {
-          config: { configurable: { threadId, threadTs: maxThreadTs } },
+          config: { configurable: { thread_id, checkpoint_id: maxThreadTs } },
           checkpoint: this.serde.parse(checkpoint[0]) as Checkpoint,
           metadata: this.serde.parse(checkpoint[1]) as CheckpointMetadata,
         };
@@ -47,15 +47,15 @@ export class MemorySaver extends BaseCheckpointSaver {
   }
 
   async *list(config: RunnableConfig): AsyncGenerator<CheckpointTuple> {
-    const threadId = config.configurable?.threadId;
-    const checkpoints = this.storage[threadId] ?? {};
+    const thread_id = config.configurable?.thread_id;
+    const checkpoints = this.storage[thread_id] ?? {};
 
     // sort in desc order
-    for (const [threadTs, checkpoint] of Object.entries(checkpoints).sort(
+    for (const [checkpoint_id, checkpoint] of Object.entries(checkpoints).sort(
       (a, b) => b[0].localeCompare(a[0])
     )) {
       yield {
-        config: { configurable: { threadId, threadTs } },
+        config: { configurable: { thread_id, checkpoint_id } },
         checkpoint: this.serde.parse(checkpoint[0]) as Checkpoint,
         metadata: this.serde.parse(checkpoint[1]) as CheckpointMetadata,
       };
@@ -67,15 +67,15 @@ export class MemorySaver extends BaseCheckpointSaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
-    const threadId = config.configurable?.threadId;
+    const thread_id = config.configurable?.thread_id;
 
-    if (this.storage[threadId]) {
-      this.storage[threadId][checkpoint.ts] = [
+    if (this.storage[thread_id]) {
+      this.storage[thread_id][checkpoint.ts] = [
         this.serde.stringify(checkpoint),
         this.serde.stringify(metadata),
       ];
     } else {
-      this.storage[threadId] = {
+      this.storage[thread_id] = {
         [checkpoint.ts]: [
           this.serde.stringify(checkpoint),
           this.serde.stringify(metadata),
@@ -85,8 +85,8 @@ export class MemorySaver extends BaseCheckpointSaver {
 
     return {
       configurable: {
-        threadId,
-        threadTs: checkpoint.ts,
+        thread_id,
+        checkpoint_id: checkpoint.ts,
       },
     };
   }

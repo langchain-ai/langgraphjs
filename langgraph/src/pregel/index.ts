@@ -395,9 +395,8 @@ export class Pregel<
         );
       }
       if (this.checkpointer && !config.configurable) {
-        const keys = this.checkpointer.configSpecs.map((s) => s.id).join(", ");
         throw new GraphValueError(
-          `Checkpointer requires one or more of the following 'configurable' keys: ${keys}`
+          `Checkpointer requires one or more of the following 'configurable' keys: thread_id, checkpoint_id`
         );
       }
       // assign defaults
@@ -452,7 +451,7 @@ export class Pregel<
           checkpointConfig = {
             configurable: {
               ...checkpointConfig.configurable,
-              threadTs: checkpoint.ts,
+              checkpoint_id: checkpoint.ts,
             },
           };
         }
@@ -569,7 +568,7 @@ export class Pregel<
           checkpointConfig = {
             configurable: {
               ...checkpointConfig.configurable,
-              threadTs: checkpoint.ts,
+              checkpoint_id: checkpoint.ts,
             },
           };
         }
@@ -667,9 +666,9 @@ export function _shouldInterrupt(
   snapshotChannels: Array<string>,
   tasks: Array<PregelExecutableTask>
 ): boolean {
-  const seen = checkpoint.versionsSeen[INTERRUPT];
+  const seen = checkpoint.versions_seen[INTERRUPT];
   const anySnapshotChannelUpdated = snapshotChannels.some(
-    (chan) => checkpoint.channelVersions[chan] > seen[chan]
+    (chan) => checkpoint.channel_versions[chan] > seen[chan]
   );
   const anyTaskNodeInInterruptNodes = tasks.some((task) =>
     interruptNodes.includes(task.name)
@@ -713,8 +712,8 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
 
   // find the highest version of all channels
   let maxVersion = 0;
-  if (Object.keys(checkpoint.channelVersions).length > 0) {
-    maxVersion = Math.max(...Object.values(checkpoint.channelVersions));
+  if (Object.keys(checkpoint.channel_versions).length > 0) {
+    maxVersion = Math.max(...Object.values(checkpoint.channel_versions));
   }
 
   const updatedChannels: Set<string> = new Set();
@@ -734,7 +733,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       }
 
       // side effect: update checkpoint channel versions
-      checkpoint.channelVersions[chan] = maxVersion + 1;
+      checkpoint.channel_versions[chan] = maxVersion + 1;
 
       updatedChannels.add(chan);
     } else {
@@ -778,10 +777,10 @@ export function _prepareNextTasks(
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
   for (const [name, proc] of Object.entries<PregelNode>(processes)) {
-    let seen = newCheckpoint.versionsSeen[name];
+    let seen = newCheckpoint.versions_seen[name];
     if (!seen) {
-      newCheckpoint.versionsSeen[name] = {};
-      seen = newCheckpoint.versionsSeen[name];
+      newCheckpoint.versions_seen[name] = {};
+      seen = newCheckpoint.versions_seen[name];
     }
 
     // If any of the channels read by this process were updated
@@ -791,7 +790,9 @@ export function _prepareNextTasks(
           (chan) =>
             readChannel(channels, chan, true, true) !== EmptyChannelError
         )
-        .some((chan) => newCheckpoint.channelVersions[chan] > (seen[chan] ?? 0))
+        .some(
+          (chan) => newCheckpoint.channel_versions[chan] > (seen[chan] ?? 0)
+        )
     ) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let val: any;
@@ -846,7 +847,7 @@ export function _prepareNextTasks(
       if (forExecution) {
         // Update seen versions
         proc.triggers.forEach((chan: string) => {
-          const version = newCheckpoint.channelVersions[chan];
+          const version = newCheckpoint.channel_versions[chan];
           if (version !== undefined) {
             // side effect: updates newCheckpoint
             seen[chan] = version;

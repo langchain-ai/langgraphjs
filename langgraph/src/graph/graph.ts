@@ -193,11 +193,15 @@ export class Graph<
     return this.addEdge(key, END);
   }
 
-  compile(
-    checkpointer?: BaseCheckpointSaver,
-    interruptBefore?: N[] | All,
-    interruptAfter?: N[] | All
-  ): CompiledGraph<N> {
+  compile({
+    checkpointer,
+    interruptBefore,
+    interruptAfter,
+  }: {
+    checkpointer?: BaseCheckpointSaver;
+    interruptBefore?: N[] | All;
+    interruptAfter?: N[] | All;
+  } = {}): CompiledGraph<N> {
     // validate the graph
     this.validate([
       ...(Array.isArray(interruptBefore) ? interruptBefore : []),

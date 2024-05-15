@@ -56,7 +56,7 @@ export function emptyChannels<Cc extends Record<string, BaseChannel>>(
   const newChannels = {} as Cc;
   for (const k in channels) {
     if (Object.prototype.hasOwnProperty.call(channels, k)) {
-      const channelValue = checkpoint.channelValues[k];
+      const channelValue = checkpoint.channel_values[k];
       newChannels[k] = channels[k].fromCheckpoint(channelValue);
     }
   }
@@ -84,8 +84,8 @@ export function createCheckpoint<ValueType>(
   return {
     v: 1,
     ts: new Date().toISOString(),
-    channelValues: values,
-    channelVersions: { ...checkpoint.channelVersions },
-    versionsSeen: deepCopy(checkpoint.versionsSeen),
+    channel_values: values,
+    channel_versions: { ...checkpoint.channel_versions },
+    versions_seen: deepCopy(checkpoint.versions_seen),
   };
 }

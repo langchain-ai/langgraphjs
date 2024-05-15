@@ -218,13 +218,13 @@ describe("_shouldInterrupt", () => {
     const checkpoint: Checkpoint = {
       v: 1,
       ts: "2024-04-19T17:19:07.952Z",
-      channelValues: {
+      channel_values: {
         channel1: "channel1value",
       },
-      channelVersions: {
+      channel_versions: {
         channel1: 2, // current channel version is greater than last version seen
       },
-      versionsSeen: {
+      versions_seen: {
         __interrupt__: {
           channel1: 1,
         },
@@ -254,13 +254,13 @@ describe("_shouldInterrupt", () => {
     const checkpoint: Checkpoint = {
       v: 1,
       ts: "2024-04-19T17:19:07.952Z",
-      channelValues: {
+      channel_values: {
         channel1: "channel1value",
       },
-      channelVersions: {
+      channel_versions: {
         channel1: 2, // current channel version is equal to last version seen
       },
-      versionsSeen: {
+      versions_seen: {
         __interrupt__: {
           channel1: 2,
         },
@@ -290,13 +290,13 @@ describe("_shouldInterrupt", () => {
     const checkpoint: Checkpoint = {
       v: 1,
       ts: "2024-04-19T17:19:07.952Z",
-      channelValues: {
+      channel_values: {
         channel1: "channel1value",
       },
-      channelVersions: {
+      channel_versions: {
         channel1: 2,
       },
-      versionsSeen: {
+      versions_seen: {
         __interrupt__: {
           channel1: 1,
         },
@@ -328,9 +328,9 @@ describe("_localRead", () => {
     const checkpoint: Checkpoint = {
       v: 0,
       ts: "",
-      channelValues: {},
-      channelVersions: {},
-      versionsSeen: {},
+      channel_values: {},
+      channel_versions: {},
+      versions_seen: {},
     };
 
     const channel1 = new LastValue<number>();
@@ -358,9 +358,9 @@ describe("_localRead", () => {
     const checkpoint: Checkpoint = {
       v: 0,
       ts: "",
-      channelValues: {},
-      channelVersions: {},
-      versionsSeen: {},
+      channel_values: {},
+      channel_versions: {},
+      versions_seen: {},
     };
 
     const channel1 = new LastValue<number>();
@@ -395,14 +395,14 @@ describe("_applyWrites", () => {
     const checkpoint: Checkpoint = {
       v: 1,
       ts: "2024-04-19T17:19:07.952Z",
-      channelValues: {
+      channel_values: {
         channel1: "channel1value",
       },
-      channelVersions: {
+      channel_versions: {
         channel1: 2,
         channel2: 5,
       },
-      versionsSeen: {
+      versions_seen: {
         __interrupt__: {
           channel1: 1,
         },
@@ -426,13 +426,13 @@ describe("_applyWrites", () => {
     // call method / assertions
     expect(channels.channel1.get()).toBe("channel1value");
     expect(channels.channel2.get()).toBe("channel2value");
-    expect(checkpoint.channelVersions.channel1).toBe(2);
+    expect(checkpoint.channel_versions.channel1).toBe(2);
 
     _applyWrites(checkpoint, channels, pendingWrites); // contains side effects
 
     expect(channels.channel1.get()).toBe("channel1valueUpdated!");
     expect(channels.channel2.get()).toBe("channel2value");
-    expect(checkpoint.channelVersions.channel1).toBe(6);
+    expect(checkpoint.channel_versions.channel1).toBe(6);
   });
 
   it("should throw an InvalidUpdateError if there are multiple updates to the same channel", () => {
@@ -440,13 +440,13 @@ describe("_applyWrites", () => {
     const checkpoint: Checkpoint = {
       v: 1,
       ts: "2024-04-19T17:19:07.952Z",
-      channelValues: {
+      channel_values: {
         channel1: "channel1value",
       },
-      channelVersions: {
+      channel_versions: {
         channel1: 2,
       },
-      versionsSeen: {
+      versions_seen: {
         __interrupt__: {
           channel1: 1,
         },
@@ -479,15 +479,15 @@ describe("_prepareNextTasks", () => {
     const checkpoint: Checkpoint = {
       v: 1,
       ts: "2024-04-19T17:19:07.952Z",
-      channelValues: {
+      channel_values: {
         channel1: 1,
         channel2: 2,
       },
-      channelVersions: {
+      channel_versions: {
         channel1: 2,
         channel2: 5,
       },
-      versionsSeen: {
+      versions_seen: {
         node1: {
           channel1: 1,
         },
@@ -532,26 +532,26 @@ describe("_prepareNextTasks", () => {
     expect(taskDescriptions[1]).toEqual({ name: "node2", input: 100 });
 
     // the returned checkpoint is a copy of the passed checkpoint without versionsSeen updated
-    expect(newCheckpoint.versionsSeen.node1.channel1).toBe(1);
-    expect(newCheckpoint.versionsSeen.node2.channel2).toBe(5);
+    expect(newCheckpoint.versions_seen.node1.channel1).toBe(1);
+    expect(newCheckpoint.versions_seen.node2.channel2).toBe(5);
   });
 
   it("should return an array of PregelExecutableTasks", () => {
     const checkpoint: Checkpoint = {
       v: 1,
       ts: "2024-04-19T17:19:07.952Z",
-      channelValues: {
+      channel_values: {
         channel1: 1,
         channel2: 2,
       },
-      channelVersions: {
+      channel_versions: {
         channel1: 2,
         channel2: 5,
         channel3: 4,
         channel4: 4,
         channel6: 4,
       },
-      versionsSeen: {
+      versions_seen: {
         node1: {
           channel1: 1,
         },
@@ -644,9 +644,9 @@ describe("_prepareNextTasks", () => {
       config: { tags: [] },
     });
 
-    expect(newCheckpoint.versionsSeen.node1.channel1).toBe(2);
-    expect(newCheckpoint.versionsSeen.node2.channel1).toBe(2);
-    expect(newCheckpoint.versionsSeen.node2.channel2).toBe(5);
+    expect(newCheckpoint.versions_seen.node1.channel1).toBe(2);
+    expect(newCheckpoint.versions_seen.node2.channel1).toBe(2);
+    expect(newCheckpoint.versions_seen.node2.channel2).toBe(5);
   });
 });
 
@@ -1064,39 +1064,39 @@ it("should handle checkpoints correctly", async () => {
 
   // total starts out as 0, so output is 0+2=2
   await expect(
-    app.invoke(2, { configurable: { threadId: "1" } })
+    app.invoke(2, { configurable: { thread_id: "1" } })
   ).resolves.toBe(2);
-  let checkpoint = await memory.get({ configurable: { threadId: "1" } });
+  let checkpoint = await memory.get({ configurable: { thread_id: "1" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.total).toBe(2);
+  expect(checkpoint?.channel_values.total).toBe(2);
 
   // total is now 2, so output is 2+3=5
   await expect(
-    app.invoke(3, { configurable: { threadId: "1" } })
+    app.invoke(3, { configurable: { thread_id: "1" } })
   ).resolves.toBe(5);
-  checkpoint = await memory.get({ configurable: { threadId: "1" } });
+  checkpoint = await memory.get({ configurable: { thread_id: "1" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.total).toBe(7);
+  expect(checkpoint?.channel_values.total).toBe(7);
 
   // total is now 2+5=7, so output would be 7+4=11, but raises Error
   await expect(
-    app.invoke(4, { configurable: { threadId: "1" } })
+    app.invoke(4, { configurable: { thread_id: "1" } })
   ).rejects.toThrow("Input is too large");
   // checkpoint is not updated
-  checkpoint = await memory.get({ configurable: { threadId: "1" } });
+  checkpoint = await memory.get({ configurable: { thread_id: "1" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.total).toBe(7);
+  expect(checkpoint?.channel_values.total).toBe(7);
 
   // on a new thread, total starts out as 0, so output is 0+5=5
   await expect(
-    app.invoke(5, { configurable: { threadId: "2" } })
+    app.invoke(5, { configurable: { thread_id: "2" } })
   ).resolves.toBe(5);
-  checkpoint = await memory.get({ configurable: { threadId: "1" } });
+  checkpoint = await memory.get({ configurable: { thread_id: "1" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.total).toBe(7);
-  checkpoint = await memory.get({ configurable: { threadId: "2" } });
+  expect(checkpoint?.channel_values.total).toBe(7);
+  checkpoint = await memory.get({ configurable: { thread_id: "2" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.total).toBe(5);
+  expect(checkpoint?.channel_values.total).toBe(5);
 });
 
 it("should process two inputs joined into one topic and produce two outputs", async () => {

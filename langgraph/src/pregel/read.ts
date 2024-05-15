@@ -8,7 +8,6 @@ import {
   RunnableSequence,
   _coerceToRunnable,
 } from "@langchain/core/runnables";
-import { ConfigurableFieldSpec } from "../checkpoint/index.js";
 import { CONFIG_KEY_READ } from "../constants.js";
 import { ChannelWrite } from "./write.js";
 import { RunnableCallable } from "../utils.js";
@@ -43,21 +42,6 @@ export class ChannelRead<
     this.name = Array.isArray(channel)
       ? `ChannelRead<${channel.join(",")}>`
       : `ChannelRead<${channel}>`;
-  }
-
-  get configSpecs(): ConfigurableFieldSpec[] {
-    return [
-      {
-        id: CONFIG_KEY_READ,
-        name: CONFIG_KEY_READ,
-        description: null,
-        default: null,
-        // TODO FIX THIS
-        annotation: "Callable[[BaseChannel], Any]",
-        isShared: false,
-        dependencies: null,
-      },
-    ];
   }
 
   static doRead<T = unknown>(
