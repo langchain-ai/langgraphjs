@@ -2222,9 +2222,7 @@ it("StateGraph branch then node", async () => {
 
   const tool = toolBuilder.compile();
 
-  expect(
-    await tool.invoke({ my_key: "value", market: "DE" }, { debug: true })
-  ).toEqual({
+  expect(await tool.invoke({ my_key: "value", market: "DE" })).toEqual({
     my_key: "value prepared slow finished",
     market: "DE",
   });
