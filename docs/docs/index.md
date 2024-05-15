@@ -1,5 +1,11 @@
 # 🦜🕸️LangGraph.js
 
+[![Docs](https://img.shields.io/badge/docs-latest-blue)](https://langchain-ai.github.io/langgraphjs/)
+![Version](https://img.shields.io/npm/v/@langchain/langgraph?logo=npm)
+[![Downloads](https://img.shields.io/npm/dm/@langchain/langgraph)](https://www.npmjs.com/package/langchain/langgraph)
+[![Open Issues](https://img.shields.io/github/issues-raw/langchain-ai/langgraphjs)](https://github.com/langchain-ai/langgraphjs/issues)
+[![](https://dcbadge.vercel.app/api/server/6adMQxSpJS?compact=true&style=flat)](https://discord.com/channels/1038097195422978059/1170024642245832774)
+
 ⚡ Building language agents as graphs ⚡
 
 ## Overview
@@ -18,13 +24,13 @@ npm install @langchain/langgraph
 
 Then define your assistant:
 
-```javascript
-import { ChatAnthropic } from "langchain_anthropic";
-import { TavilySearchResults } from "langchain_community/tools/tavily_search";
+```typescript
+import { ChatAnthropic } from "@langchain/anthropic";
+import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 
-import { SqliteSaver } from "langgraph/checkpoint/sqlite";
-import { END, MessageGraph } from "langgraph/graph";
-import { ToolNode } from "langgraph/prebuilt/tool_node";
+import { SqliteSaver } from "@langchain/langgraph/checkpoint/sqlite";
+import { END, MessageGraph } from "@langchain/langgraph";
+import { ToolNode } from "@langchain/langgraph/prebuilt";
 
 // Define the function that determines whether to continue or not
 function shouldContinue(messages) {
