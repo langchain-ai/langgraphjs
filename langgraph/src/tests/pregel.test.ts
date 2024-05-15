@@ -39,6 +39,8 @@ import { PASSTHROUGH } from "../pregel/write.js";
 import { Checkpoint } from "../checkpoint/base.js";
 import { PregelExecutableTask } from "../pregel/types.js";
 import { GraphRecursionError, InvalidUpdateError } from "../errors.js";
+import { SqliteSaver } from "../checkpoint/sqlite.js";
+import { uuid6 } from "../checkpoint/id.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -217,6 +219,7 @@ describe("_shouldInterrupt", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 1,
+      id: uuid6(-1),
       ts: "2024-04-19T17:19:07.952Z",
       channel_values: {
         channel1: "channel1value",
@@ -253,6 +256,7 @@ describe("_shouldInterrupt", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 1,
+      id: uuid6(-1),
       ts: "2024-04-19T17:19:07.952Z",
       channel_values: {
         channel1: "channel1value",
@@ -289,6 +293,7 @@ describe("_shouldInterrupt", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 1,
+      id: uuid6(-1),
       ts: "2024-04-19T17:19:07.952Z",
       channel_values: {
         channel1: "channel1value",
@@ -327,6 +332,7 @@ describe("_localRead", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 0,
+      id: uuid6(-1),
       ts: "",
       channel_values: {},
       channel_versions: {},
@@ -357,6 +363,7 @@ describe("_localRead", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 0,
+      id: uuid6(-1),
       ts: "",
       channel_values: {},
       channel_versions: {},
@@ -394,6 +401,7 @@ describe("_applyWrites", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 1,
+      id: uuid6(-1),
       ts: "2024-04-19T17:19:07.952Z",
       channel_values: {
         channel1: "channel1value",
@@ -439,6 +447,7 @@ describe("_applyWrites", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 1,
+      id: uuid6(-1),
       ts: "2024-04-19T17:19:07.952Z",
       channel_values: {
         channel1: "channel1value",
@@ -478,6 +487,7 @@ describe("_prepareNextTasks", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 1,
+      id: "123",
       ts: "2024-04-19T17:19:07.952Z",
       channel_values: {
         channel1: 1,
@@ -539,6 +549,7 @@ describe("_prepareNextTasks", () => {
   it("should return an array of PregelExecutableTasks", () => {
     const checkpoint: Checkpoint = {
       v: 1,
+      id: uuid6(-1),
       ts: "2024-04-19T17:19:07.952Z",
       channel_values: {
         channel1: 1,
@@ -2036,4 +2047,209 @@ describe("MessageGraph", () => {
     expect(Object.keys(lastItem)).toEqual(["agent"]);
     expect(Object.values(lastItem)[0]).toEqual(new AIMessage("answer"));
   });
+});
+
+/**
+ * def test_start_branch_then(snapshot: SnapshotAssertion) -> None:
+    class State(TypedDict):
+        my_key: Annotated[str, operator.add]
+        market: str
+
+    # this graph is invalid because there is no path to END
+    invalid_graph = StateGraph(State)
+    invalid_graph.add_node("tool_two_slow", lambda s: {"my_key": "slow"})
+    invalid_graph.add_node("tool_two_fast", lambda s: {"my_key": "fast"})
+    invalid_graph.set_conditional_entry_point(
+        lambda s: "tool_two_slow" if s["market"] == "DE" else "tool_two_fast"
+    )
+    with pytest.raises(ValueError):
+        invalid_graph.compile()
+
+    tool_two_graph = StateGraph(State)
+    tool_two_graph.add_node("tool_two_slow", lambda s: {"my_key": " slow"})
+    tool_two_graph.add_node("tool_two_fast", lambda s: {"my_key": " fast"})
+    tool_two_graph.set_conditional_entry_point(
+        lambda s: "tool_two_slow" if s["market"] == "DE" else "tool_two_fast", then=END
+    )
+    tool_two = tool_two_graph.compile()
+    assert tool_two.get_graph().draw_mermaid() == snapshot
+
+    assert tool_two.invoke({"my_key": "value", "market": "DE"}) == {
+        "my_key": "value slow",
+        "market": "DE",
+    }
+    assert tool_two.invoke({"my_key": "value", "market": "US"}) == {
+        "my_key": "value fast",
+        "market": "US",
+    }
+
+    with SqliteSaver.from_conn_string(":memory:") as saver:
+        tool_two = tool_two_graph.compile(
+            checkpointer=saver, interrupt_before=["tool_two_fast", "tool_two_slow"]
+        )
+
+        # missing thread_id
+        with pytest.raises(ValueError, match="thread_id"):
+            tool_two.invoke({"my_key": "value", "market": "DE"})
+
+        thread1 = {"configurable": {"thread_id": "1"}}
+        # stop when about to enter node
+        assert tool_two.invoke({"my_key": "value", "market": "DE"}, thread1) == {
+            "my_key": "value",
+            "market": "DE",
+        }
+        assert tool_two.get_state(thread1) == StateSnapshot(
+            values={"my_key": "value", "market": "DE"},
+            next=("tool_two_slow",),
+            config=tool_two.checkpointer.get_tuple(thread1).config,
+            metadata={"source": "loop", "step": 0, "writes": None},
+            parent_config=[*tool_two.checkpointer.list(thread1, limit=2)][-1].config,
+        )
+        # resume, for same result as above
+        assert tool_two.invoke(None, thread1, debug=1) == {
+            "my_key": "value slow",
+            "market": "DE",
+        }
+        assert tool_two.get_state(thread1) == StateSnapshot(
+            values={"my_key": "value slow", "market": "DE"},
+            next=(),
+            config=tool_two.checkpointer.get_tuple(thread1).config,
+            metadata={
+                "source": "loop",
+                "step": 1,
+                "writes": {"tool_two_slow": {"my_key": " slow"}},
+            },
+            parent_config=[*tool_two.checkpointer.list(thread1, limit=2)][-1].config,
+        )
+
+        thread2 = {"configurable": {"thread_id": "2"}}
+        # stop when about to enter node
+        assert tool_two.invoke({"my_key": "value", "market": "US"}, thread2) == {
+            "my_key": "value",
+            "market": "US",
+        }
+        assert tool_two.get_state(thread2) == StateSnapshot(
+            values={"my_key": "value", "market": "US"},
+            next=("tool_two_fast",),
+            config=tool_two.checkpointer.get_tuple(thread2).config,
+            metadata={"source": "loop", "step": 0, "writes": None},
+            parent_config=[*tool_two.checkpointer.list(thread2, limit=2)][-1].config,
+        )
+        # resume, for same result as above
+        assert tool_two.invoke(None, thread2, debug=1) == {
+            "my_key": "value fast",
+            "market": "US",
+        }
+        assert tool_two.get_state(thread2) == StateSnapshot(
+            values={"my_key": "value fast", "market": "US"},
+            next=(),
+            config=tool_two.checkpointer.get_tuple(thread2).config,
+            metadata={
+                "source": "loop",
+                "step": 1,
+                "writes": {"tool_two_fast": {"my_key": " fast"}},
+            },
+            parent_config=[*tool_two.checkpointer.list(thread2, limit=2)][-1].config,
+        )
+
+        thread3 = {"configurable": {"thread_id": "3"}}
+        # stop when about to enter node
+        assert tool_two.invoke({"my_key": "value", "market": "US"}, thread3) == {
+            "my_key": "value",
+            "market": "US",
+        }
+        assert tool_two.get_state(thread3) == StateSnapshot(
+            values={"my_key": "value", "market": "US"},
+            next=("tool_two_fast",),
+            config=tool_two.checkpointer.get_tuple(thread3).config,
+            metadata={"source": "loop", "step": 0, "writes": None},
+            parent_config=[*tool_two.checkpointer.list(thread3, limit=2)][-1].config,
+        )
+        # update state
+        tool_two.update_state(thread3, {"my_key": "key"})  # appends to my_key
+        assert tool_two.get_state(thread3) == StateSnapshot(
+            values={"my_key": "valuekey", "market": "US"},
+            next=("tool_two_fast",),
+            config=tool_two.checkpointer.get_tuple(thread3).config,
+            metadata={
+                "source": "update",
+                "step": 1,
+                "writes": {START: {"my_key": "key"}},
+            },
+            parent_config=[*tool_two.checkpointer.list(thread3, limit=2)][-1].config,
+        )
+        # resume, for same result as above
+        assert tool_two.invoke(None, thread3, debug=1) == {
+            "my_key": "valuekey fast",
+            "market": "US",
+        }
+        assert tool_two.get_state(thread3) == StateSnapshot(
+            values={"my_key": "valuekey fast", "market": "US"},
+            next=(),
+            config=tool_two.checkpointer.get_tuple(thread3).config,
+            metadata={
+                "source": "loop",
+                "step": 2,
+                "writes": {"tool_two_fast": {"my_key": " fast"}},
+            },
+            parent_config=[*tool_two.checkpointer.list(thread3, limit=2)][-1].config,
+        )
+ */
+
+it("StateGraph start branch then", async () => {
+  type State = {
+    my_key: string;
+    market: string;
+  };
+
+  const toolTwoBuilder = new StateGraph<State>({
+    channels: {
+      my_key: { reducer: (x: string, y: string) => x + y },
+      market: null,
+    },
+  })
+    .addNode("tool_two_slow", (_: State) => ({ my_key: ` slow` }))
+    .addNode("tool_two_fast", (_: State) => ({ my_key: ` fast` }))
+    .addConditionalEdges(START, (state: State) =>
+      state.market === "DE" ? "tool_two_slow" : "tool_two_fast"
+    );
+
+  const toolTwo = toolTwoBuilder.compile();
+
+  expect(await toolTwo.invoke({ my_key: "value", market: "DE" })).toEqual({
+    my_key: "value slow",
+    market: "DE",
+  });
+  expect(await toolTwo.invoke({ my_key: "value", market: "US" })).toEqual({
+    my_key: "value fast",
+    market: "US",
+  });
+
+  const toolTwoWithCheckpointer = toolTwoBuilder.compile({
+    checkpointer: SqliteSaver.fromConnString(":memory:"),
+    interruptBefore: ["tool_two_fast", "tool_two_slow"],
+  });
+
+  await expect(() =>
+    toolTwoWithCheckpointer.invoke({ my_key: "value", market: "DE" })
+  ).rejects.toThrowError("thread_id");
+
+  // const thread1 = { configurable: { thread_id: "1" } }
+  // expect(toolTwoWithCheckpointer.invoke({ my_key: "value", market: "DE" }, thread1)).toEqual({ my_key: "value", market: "DE" })
+  // expect(toolTwoWithCheckpointer.getState(thread1)).toEqual({
+  //   values: { my_key: "value", market: "DE" },
+  //   next: ["tool_two_slow"],
+  //   config: toolTwoWithCheckpointer.checkpointer.getTuple(thread1).config,
+  //   metadata: { source: "loop", step: 0, writes: null },
+  //   parentConfig: [...toolTwoWithCheckpointer.checkpointer.list(thread1, { limit: 2 })].pop().config
+  // })
+
+  // expect(toolTwoWithCheckpointer.invoke(null, thread1, { debug: 1 })).toEqual({ my_key: "value slow", market: "DE" })
+  // expect(toolTwoWithCheckpointer.getState(thread1)).toEqual({
+  //   values: { my_key
+  //     : "value slow", market: "DE" },
+  //   next: [],
+  //   config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!.config,
+  //   metadata: { source: "loop", step: 1, writes: { tool_two_slow: { my_key: " slow" } } },
+  //   parentConfig: [...toolTwoWithCheckpointer.checkpointer!.list(thread1, { limit: 2 })].pop().config
 });

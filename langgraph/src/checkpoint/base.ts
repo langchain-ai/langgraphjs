@@ -1,5 +1,6 @@
 import { RunnableConfig } from "@langchain/core/runnables";
 import { SerializerProtocol } from "../serde/base.js";
+import { uuid6 } from "./id.js";
 
 export interface CheckpointMetadata {
   source: "input" | "loop" | "update";
@@ -26,6 +27,10 @@ export interface Checkpoint {
    * Version number
    */
   v: number;
+  /**
+   * Checkpoint ID {uuid6}
+   */
+  id: string;
   /**
    * Timestamp {new Date().toISOString()}
    */
@@ -66,6 +71,7 @@ export function deepCopy<T>(obj: T): T {
 export function emptyCheckpoint(): Checkpoint {
   return {
     v: 1,
+    id: uuid6(-2),
     ts: new Date().toISOString(),
     channel_values: {},
     channel_versions: {},
@@ -76,6 +82,7 @@ export function emptyCheckpoint(): Checkpoint {
 export function copyCheckpoint(checkpoint: Checkpoint): Checkpoint {
   return {
     v: checkpoint.v,
+    id: checkpoint.id,
     ts: checkpoint.ts,
     channel_values: { ...checkpoint.channel_values },
     channel_versions: { ...checkpoint.channel_versions },

@@ -169,7 +169,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     try {
       const row = [
         config.configurable?.thread_id,
-        checkpoint.ts,
+        checkpoint.id,
         config.configurable?.checkpoint_id,
         this.serde.stringify(checkpoint),
         this.serde.stringify(metadata),
@@ -188,7 +188,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     return {
       configurable: {
         thread_id: config.configurable?.thread_id,
-        checkpoint_id: checkpoint.ts,
+        checkpoint_id: checkpoint.id,
       },
     };
   }
