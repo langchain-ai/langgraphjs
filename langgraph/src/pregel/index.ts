@@ -4,6 +4,7 @@ import {
   RunnableConfig,
   RunnableFunc,
   RunnableLike,
+  RunnableSequence,
   _coerceToRunnable,
   ensureConfig,
   patchConfig,
@@ -40,7 +41,12 @@ import {
   TAG_HIDDEN,
 } from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
-import { All, PregelExecutableTask, PregelTaskDescription } from "./types.js";
+import {
+  All,
+  PregelExecutableTask,
+  PregelTaskDescription,
+  StateSnapshot,
+} from "./types.js";
 import {
   EmptyChannelError,
   GraphRecursionError,
@@ -306,6 +312,148 @@ export class Pregel<
     } else {
       return Object.keys(this.channels);
     }
+  }
+
+  async getState(config: RunnableConfig): Promise<StateSnapshot> {
+    if (!this.checkpointer) {
+      throw new GraphValueError("No checkpointer set");
+    }
+
+    const saved = await this.checkpointer.getTuple(config);
+    const checkpoint = saved ? saved.checkpoint : emptyCheckpoint();
+    const channels = emptyChannels(this.channels, checkpoint);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const [_, nextTasks] = _prepareNextTasks(
+      checkpoint,
+      this.nodes,
+      channels,
+      false
+    );
+    return {
+      values: readChannels(channels, this.streamChannelsAsIs),
+      next: nextTasks.map((task) => task.name),
+      metadata: saved?.metadata,
+      config: saved ? saved.config : config,
+      parentConfig: saved?.parentConfig,
+    };
+  }
+
+  async *getStateHistory(
+    config: RunnableConfig,
+    limit?: number,
+    before?: RunnableConfig
+  ): AsyncIterableIterator<StateSnapshot> {
+    if (!this.checkpointer) {
+      throw new GraphValueError("No checkpointer set");
+    }
+    for await (const saved of this.checkpointer.list(config, limit, before)) {
+      const channels = emptyChannels(this.channels, saved.checkpoint);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const [_, nextTasks] = _prepareNextTasks(
+        saved.checkpoint,
+        this.nodes,
+        channels,
+        false
+      );
+      yield {
+        values: readChannels(channels, this.streamChannelsAsIs),
+        next: nextTasks.map((task) => task.name),
+        metadata: saved.metadata,
+        config: saved.config,
+        parentConfig: saved.parentConfig,
+      };
+    }
+  }
+
+  async updateState(
+    config: RunnableConfig,
+    values: Record<string, unknown> | unknown,
+    asNode?: keyof Nn
+  ): Promise<RunnableConfig> {
+    if (!this.checkpointer) {
+      throw new GraphValueError("No checkpointer set");
+    }
+
+    // Get the latest checkpoint
+    const saved = await this.checkpointer.getTuple(config);
+    const checkpoint = saved
+      ? copyCheckpoint(saved.checkpoint)
+      : emptyCheckpoint();
+    // Find last that updated the state, if not provided
+    const maxSeens = Object.entries(checkpoint.versions_seen).reduce(
+      (acc, [node, versions]) => {
+        const maxSeen = Math.max(...Object.values(versions));
+        if (maxSeen) {
+          if (!acc[maxSeen]) {
+            acc[maxSeen] = [];
+          }
+          acc[maxSeen].push(node);
+        }
+        return acc;
+      },
+      {} as Record<number, string[]>
+    );
+    if (!asNode && !Object.keys(maxSeens).length) {
+      if (!Array.isArray(this.inputs) && this.inputs in this.nodes) {
+        asNode = this.inputs as keyof Nn;
+      }
+    } else if (!asNode) {
+      const maxSeen = Math.max(...Object.keys(maxSeens).map(Number));
+      const nodes = maxSeens[maxSeen];
+      if (nodes.length === 1) {
+        asNode = nodes[0] as keyof Nn;
+      }
+    }
+    if (!asNode) {
+      throw new InvalidUpdateError("Ambiguous update, specify as_node");
+    }
+    // update channels
+    const channels = emptyChannels(this.channels, checkpoint);
+    // create task to run all writers of the chosen node
+    const writers = this.nodes[asNode].getWriters();
+    if (!writers.length) {
+      throw new InvalidUpdateError(
+        `No writers found for node ${asNode as string}`
+      );
+    }
+    const task: PregelExecutableTask<keyof Nn, keyof Cc> = {
+      name: asNode,
+      input: values,
+      proc:
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        writers.length > 1 ? RunnableSequence.from(writers as any) : writers[0],
+      writes: [],
+      config: undefined,
+    };
+    // execute task
+    await task.proc.invoke(
+      task.input,
+      patchConfig(config, {
+        runName: `${this.name}UpdateState`,
+        configurable: {
+          [CONFIG_KEY_SEND]: (items: [keyof Cc, unknown][]) =>
+            task.writes.push(...items),
+          [CONFIG_KEY_READ]: _localRead.bind(
+            undefined,
+            checkpoint,
+            channels,
+            task.writes as Array<[string, unknown]>
+          ),
+        },
+      })
+    );
+    // apply to checkpoint and save
+    _applyWrites(checkpoint, channels, task.writes);
+    const step = (saved?.metadata?.step ?? -2) + 1;
+    return await this.checkpointer.put(
+      saved?.config ?? config,
+      createCheckpoint(checkpoint, channels, step),
+      {
+        source: "update",
+        step,
+        writes: { [asNode]: values },
+      }
+    );
   }
 
   _defaults(config: PregelOptions<Nn, Cc>): [
