@@ -105,6 +105,15 @@
       "import": "./prebuilt.js",
       "require": "./prebuilt.cjs"
     },
+    "./checkpoint": {
+      "types": {
+        "import": "./checkpoint.d.ts",
+        "require": "./checkpoint.d.cts",
+        "default": "./checkpoint.d.ts"
+      },
+      "import": "./checkpoint.js",
+      "require": "./checkpoint.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
