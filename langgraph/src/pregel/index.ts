@@ -667,14 +667,15 @@ async function executeTasks<RunOutput>(
 }
 
 export function _shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
-  checkpoint: Checkpoint,
+  checkpoint: ReadonlyCheckpoint,
   interruptNodes: All | Array<N>,
   snapshotChannels: Array<C>,
   tasks: Array<PregelExecutableTask<N, C>>
 ): boolean {
   const seen = checkpoint.versions_seen[INTERRUPT];
   const anySnapshotChannelUpdated = snapshotChannels.some(
-    (chan) => checkpoint.channel_versions[chan as string] > seen[chan as string]
+    (chan) =>
+      checkpoint.channel_versions[chan as string] > seen?.[chan as string]
   );
   const anyTaskNodeInInterruptNodes = tasks.some((task) =>
     interruptNodes === "*"
@@ -762,7 +763,7 @@ export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
 >(
-  checkpoint: Checkpoint,
+  checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
   forExecution: false
@@ -772,7 +773,7 @@ export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
 >(
-  checkpoint: Checkpoint,
+  checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
   forExecution: true
@@ -782,7 +783,7 @@ export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
 >(
-  checkpoint: Checkpoint,
+  checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
   forExecution: boolean

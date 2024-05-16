@@ -24,9 +24,9 @@ const COLORS_MAP: ConsoleColorMap = {
 const wrap = (color: ConsoleColors, text: string): string =>
   `${color.start}${text}${color.end}`;
 
-export function printStepStart(
+export function printStepStart<N extends PropertyKey, C extends PropertyKey>(
   step: number,
-  nextTasks: Array<PregelExecutableTask>
+  nextTasks: readonly PregelExecutableTask<N, C>[]
 ): void {
   const nTasks = nextTasks.length;
   console.log(
@@ -35,7 +35,9 @@ export function printStepStart(
       nTasks === 1 ? "" : "s"
     }. Next tasks:\n`,
     `\n${nextTasks
-      .map((task) => `${task.name}(${JSON.stringify(task.input, null, 2)})`)
+      .map(
+        (task) => `${String(task.name)}(${JSON.stringify(task.input, null, 2)})`
+      )
       .join("\n")}`
   );
 }

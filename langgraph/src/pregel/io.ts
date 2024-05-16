@@ -85,8 +85,7 @@ export function* mapInput<C extends PropertyKey>(
  */
 export function* mapOutputValues<C extends PropertyKey>(
   outputChannels: C | Array<C>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pendingWrites: Array<[C, any]>,
+  pendingWrites: readonly [C, unknown][],
   channels: Record<C, BaseChannel>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Generator<Record<string, any>, any> {
@@ -107,7 +106,7 @@ export function* mapOutputValues<C extends PropertyKey>(
  */
 export function* mapOutputUpdates<N extends PropertyKey, C extends PropertyKey>(
   outputChannels: C | Array<C>,
-  tasks: Array<PregelExecutableTask<N, C>>
+  tasks: readonly PregelExecutableTask<N, C>[]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Generator<Record<N, any | Record<string, any>>> {
   const outputTasks = tasks.filter(

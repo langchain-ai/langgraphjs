@@ -86,7 +86,7 @@ export function emptyCheckpoint(): Checkpoint {
   };
 }
 
-export function copyCheckpoint(checkpoint: Checkpoint): Checkpoint {
+export function copyCheckpoint(checkpoint: ReadonlyCheckpoint): Checkpoint {
   return {
     v: checkpoint.v,
     id: checkpoint.id,
