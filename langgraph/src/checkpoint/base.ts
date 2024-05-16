@@ -120,7 +120,11 @@ export abstract class BaseCheckpointSaver {
     config: RunnableConfig
   ): Promise<CheckpointTuple | undefined>;
 
-  abstract list(config: RunnableConfig): AsyncGenerator<CheckpointTuple>;
+  abstract list(
+    config: RunnableConfig,
+    limit?: number,
+    before?: RunnableConfig
+  ): AsyncGenerator<CheckpointTuple>;
 
   abstract put(
     config: RunnableConfig,
