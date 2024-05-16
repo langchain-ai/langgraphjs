@@ -2,17 +2,19 @@ import { describe, it, expect } from "@jest/globals";
 import { Checkpoint, CheckpointTuple, deepCopy } from "../checkpoint/base.js";
 import { MemorySaver } from "../checkpoint/memory.js";
 import { SqliteSaver } from "../checkpoint/sqlite.js";
+import { convert1to6, uuid6 } from "../checkpoint/id.js";
 
 const checkpoint1: Checkpoint = {
   v: 1,
+  id: uuid6(-1),
   ts: "2024-04-19T17:19:07.952Z",
-  channelValues: {
+  channel_values: {
     someKey1: "someValue1",
   },
-  channelVersions: {
+  channel_versions: {
     someKey2: 1,
   },
-  versionsSeen: {
+  versions_seen: {
     someKey3: {
       someKey4: 1,
     },
@@ -20,14 +22,15 @@ const checkpoint1: Checkpoint = {
 };
 const checkpoint2: Checkpoint = {
   v: 1,
+  id: uuid6(1),
   ts: "2024-04-20T17:19:07.952Z",
-  channelValues: {
+  channel_values: {
     someKey1: "someValue2",
   },
-  channelVersions: {
+  channel_versions: {
     someKey2: 2,
   },
-  versionsSeen: {
+  versions_seen: {
     someKey3: {
       someKey4: 2,
     },
@@ -80,32 +83,38 @@ describe("MemorySaver", () => {
 
     // save checkpoint
     const runnableConfig = await memorySaver.put(
-      { configurable: { threadId: "1" } },
+      { configurable: { thread_id: "1" } },
       checkpoint1,
       { source: "update", step: -1 }
     );
     expect(runnableConfig).toEqual({
-      configurable: { threadId: "1", threadTs: "2024-04-19T17:19:07.952Z" },
+      configurable: {
+        thread_id: "1",
+        checkpoint_id: checkpoint1.id,
+      },
     });
 
     // get checkpoint tuple
     const checkpointTuple = await memorySaver.getTuple({
-      configurable: { threadId: "1" },
+      configurable: { thread_id: "1" },
     });
     expect(checkpointTuple?.config).toEqual({
-      configurable: { threadId: "1", threadTs: "2024-04-19T17:19:07.952Z" },
+      configurable: {
+        thread_id: "1",
+        checkpoint_id: checkpoint1.id,
+      },
     });
     expect(checkpointTuple?.checkpoint).toEqual(checkpoint1);
 
     // save another checkpoint
-    await memorySaver.put({ configurable: { threadId: "1" } }, checkpoint2, {
+    await memorySaver.put({ configurable: { thread_id: "1" } }, checkpoint2, {
       source: "update",
       step: -1,
     });
 
     // list checkpoints
     const checkpointTupleGenerator = await memorySaver.list({
-      configurable: { threadId: "1" },
+      configurable: { thread_id: "1" },
     });
     const checkpointTuples: CheckpointTuple[] = [];
     for await (const checkpoint of checkpointTupleGenerator) {
@@ -126,51 +135,62 @@ describe("SqliteSaver", () => {
 
     // get undefined checkpoint
     const undefinedCheckpoint = await sqliteSaver.getTuple({
-      configurable: { threadId: "1" },
+      configurable: { thread_id: "1" },
     });
     expect(undefinedCheckpoint).toBeUndefined();
 
     // save first checkpoint
     const runnableConfig = await sqliteSaver.put(
-      { configurable: { threadId: "1" } },
+      { configurable: { thread_id: "1" } },
       checkpoint1,
       { source: "update", step: -1 }
     );
     expect(runnableConfig).toEqual({
-      configurable: { threadId: "1", threadTs: "2024-04-19T17:19:07.952Z" },
+      configurable: {
+        thread_id: "1",
+        checkpoint_id: checkpoint1.id,
+      },
     });
 
     // get first checkpoint tuple
     const firstCheckpointTuple = await sqliteSaver.getTuple({
-      configurable: { threadId: "1" },
+      configurable: { thread_id: "1" },
     });
     expect(firstCheckpointTuple?.config).toEqual({
-      configurable: { threadId: "1", threadTs: "2024-04-19T17:19:07.952Z" },
+      configurable: {
+        thread_id: "1",
+        checkpoint_id: checkpoint1.id,
+      },
     });
     expect(firstCheckpointTuple?.checkpoint).toEqual(checkpoint1);
     expect(firstCheckpointTuple?.parentConfig).toBeUndefined();
 
     // save second checkpoint
     await sqliteSaver.put(
-      { configurable: { threadId: "1", threadTs: "2024-04-18T17:19:07.952Z" } },
+      {
+        configurable: {
+          thread_id: "1",
+          checkpoint_id: "2024-04-18T17:19:07.952Z",
+        },
+      },
       checkpoint2,
       { source: "update", step: -1 }
     );
 
     // verify that parentTs is set and retrieved correctly for second checkpoint
     const secondCheckpointTuple = await sqliteSaver.getTuple({
-      configurable: { threadId: "1" },
+      configurable: { thread_id: "1" },
     });
     expect(secondCheckpointTuple?.parentConfig).toEqual({
       configurable: {
-        threadId: "1",
-        threadTs: "2024-04-18T17:19:07.952Z",
+        thread_id: "1",
+        checkpoint_id: "2024-04-18T17:19:07.952Z",
       },
     });
 
     // list checkpoints
     const checkpointTupleGenerator = await sqliteSaver.list({
-      configurable: { threadId: "1" },
+      configurable: { thread_id: "1" },
     });
     const checkpointTuples: CheckpointTuple[] = [];
     for await (const checkpoint of checkpointTupleGenerator) {
@@ -182,5 +202,29 @@ describe("SqliteSaver", () => {
     const checkpointTuple2 = checkpointTuples[1];
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
     expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
+  });
+});
+
+describe("id", () => {
+  it("should convert uuid1 to uuid6", () => {
+    const regex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+    // [UUIDv1, UUIDv6]
+    const cases = [
+      [
+        "5714f720-1268-11e7-a24b-96d95aa38c32",
+        "1e712685-714f-6720-a24b-96d95aa38c32",
+      ],
+      [
+        "68f820c0-1268-11e7-a24b-671acd892c6a",
+        "1e712686-8f82-60c0-a24b-671acd892c6a",
+      ],
+    ];
+    cases.forEach(([v1, v6]) => {
+      const converted = convert1to6(v1);
+      expect(converted).toBe(v6);
+      expect(converted).toMatch(regex);
+    });
   });
 });

@@ -7,7 +7,7 @@ import {
 } from "@langchain/core/messages";
 import { Calculator } from "langchain/tools/calculator";
 import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
-import { END, MessageGraph } from "../index.js";
+import { END, MessageGraph, START } from "../index.js";
 
 describe("Chatbot", () => {
   it("Simple chat use-case", async () => {
@@ -61,7 +61,7 @@ describe("Chatbot", () => {
         });
       })
       .addEdge("calculator", END)
-      .setEntryPoint("oracle")
+      .addEdge(START, "oracle")
       .addConditionalEdges("oracle", router, {
         calculator: "calculator",
         end: END,

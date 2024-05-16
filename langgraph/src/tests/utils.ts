@@ -73,23 +73,23 @@ export class MemorySaverAssertImmutable extends MemorySaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
-    const threadId = config.configurable?.threadId;
-    if (!this.storageForCopies[threadId]) {
-      this.storageForCopies[threadId] = {};
+    const thread_id = config.configurable?.thread_id;
+    if (!this.storageForCopies[thread_id]) {
+      this.storageForCopies[thread_id] = {};
     }
     // assert checkpoint hasn't been modified since last written
     const saved = await super.get(config);
     if (saved) {
-      const savedTs = saved.ts;
-      if (this.storageForCopies[threadId][savedTs]) {
+      const savedId = saved.id;
+      if (this.storageForCopies[thread_id][savedId]) {
         assert(
-          JSON.stringify(saved) === this.storageForCopies[threadId][savedTs],
+          JSON.stringify(saved) === this.storageForCopies[thread_id][savedId],
           "Checkpoint has been modified since last written"
         );
       }
     }
     // save a copy of the checkpoint
-    this.storageForCopies[threadId][checkpoint.ts] =
+    this.storageForCopies[thread_id][checkpoint.id] =
       this.serde.stringify(checkpoint);
 
     return super.put(config, checkpoint, metadata);

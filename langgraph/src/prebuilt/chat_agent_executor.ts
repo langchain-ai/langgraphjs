@@ -133,7 +133,7 @@ export function createFunctionCallingExecutor<Model extends object>({
     .addNode("action", new RunnableLambda({ func: callTool }))
     // Set the entrypoint as `agent`
     // This means that this node is the first one called
-    .setEntryPoint("agent")
+    .addEdge(START, "agent")
     // We now add a conditional edge
     .addConditionalEdges(
       // First, we define the start node. We use `agent`.

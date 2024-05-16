@@ -18,7 +18,7 @@ import {
 } from "@langchain/core/messages";
 import { FakeChatModel, MemorySaverAssertImmutable } from "./utils.js";
 import { LastValue } from "../channels/last_value.js";
-import { END, Graph, StateGraph } from "../graph/index.js";
+import { END, Graph, START, StateGraph } from "../graph/index.js";
 import { Topic } from "../channels/topic.js";
 import { PregelNode } from "../pregel/read.js";
 import { BaseChannel } from "../channels/base.js";
@@ -39,6 +39,8 @@ import { PASSTHROUGH } from "../pregel/write.js";
 import { Checkpoint } from "../checkpoint/base.js";
 import { PregelExecutableTask } from "../pregel/types.js";
 import { GraphRecursionError, InvalidUpdateError } from "../errors.js";
+import { SqliteSaver } from "../checkpoint/sqlite.js";
+import { uuid6 } from "../checkpoint/id.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -217,14 +219,15 @@ describe("_shouldInterrupt", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 1,
+      id: uuid6(-1),
       ts: "2024-04-19T17:19:07.952Z",
-      channelValues: {
+      channel_values: {
         channel1: "channel1value",
       },
-      channelVersions: {
+      channel_versions: {
         channel1: 2, // current channel version is greater than last version seen
       },
-      versionsSeen: {
+      versions_seen: {
         __interrupt__: {
           channel1: 1,
         },
@@ -253,14 +256,15 @@ describe("_shouldInterrupt", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 1,
+      id: uuid6(-1),
       ts: "2024-04-19T17:19:07.952Z",
-      channelValues: {
+      channel_values: {
         channel1: "channel1value",
       },
-      channelVersions: {
+      channel_versions: {
         channel1: 2, // current channel version is equal to last version seen
       },
-      versionsSeen: {
+      versions_seen: {
         __interrupt__: {
           channel1: 2,
         },
@@ -289,14 +293,15 @@ describe("_shouldInterrupt", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 1,
+      id: uuid6(-1),
       ts: "2024-04-19T17:19:07.952Z",
-      channelValues: {
+      channel_values: {
         channel1: "channel1value",
       },
-      channelVersions: {
+      channel_versions: {
         channel1: 2,
       },
-      versionsSeen: {
+      versions_seen: {
         __interrupt__: {
           channel1: 1,
         },
@@ -327,10 +332,11 @@ describe("_localRead", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 0,
+      id: uuid6(-1),
       ts: "",
-      channelValues: {},
-      channelVersions: {},
-      versionsSeen: {},
+      channel_values: {},
+      channel_versions: {},
+      versions_seen: {},
     };
 
     const channel1 = new LastValue<number>();
@@ -357,10 +363,11 @@ describe("_localRead", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 0,
+      id: uuid6(-1),
       ts: "",
-      channelValues: {},
-      channelVersions: {},
-      versionsSeen: {},
+      channel_values: {},
+      channel_versions: {},
+      versions_seen: {},
     };
 
     const channel1 = new LastValue<number>();
@@ -394,15 +401,16 @@ describe("_applyWrites", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 1,
+      id: uuid6(-1),
       ts: "2024-04-19T17:19:07.952Z",
-      channelValues: {
+      channel_values: {
         channel1: "channel1value",
       },
-      channelVersions: {
+      channel_versions: {
         channel1: 2,
         channel2: 5,
       },
-      versionsSeen: {
+      versions_seen: {
         __interrupt__: {
           channel1: 1,
         },
@@ -426,27 +434,28 @@ describe("_applyWrites", () => {
     // call method / assertions
     expect(channels.channel1.get()).toBe("channel1value");
     expect(channels.channel2.get()).toBe("channel2value");
-    expect(checkpoint.channelVersions.channel1).toBe(2);
+    expect(checkpoint.channel_versions.channel1).toBe(2);
 
     _applyWrites(checkpoint, channels, pendingWrites); // contains side effects
 
     expect(channels.channel1.get()).toBe("channel1valueUpdated!");
     expect(channels.channel2.get()).toBe("channel2value");
-    expect(checkpoint.channelVersions.channel1).toBe(6);
+    expect(checkpoint.channel_versions.channel1).toBe(6);
   });
 
   it("should throw an InvalidUpdateError if there are multiple updates to the same channel", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 1,
+      id: uuid6(-1),
       ts: "2024-04-19T17:19:07.952Z",
-      channelValues: {
+      channel_values: {
         channel1: "channel1value",
       },
-      channelVersions: {
+      channel_versions: {
         channel1: 2,
       },
-      versionsSeen: {
+      versions_seen: {
         __interrupt__: {
           channel1: 1,
         },
@@ -478,16 +487,17 @@ describe("_prepareNextTasks", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 1,
+      id: "123",
       ts: "2024-04-19T17:19:07.952Z",
-      channelValues: {
+      channel_values: {
         channel1: 1,
         channel2: 2,
       },
-      channelVersions: {
+      channel_versions: {
         channel1: 2,
         channel2: 5,
       },
-      versionsSeen: {
+      versions_seen: {
         node1: {
           channel1: 1,
         },
@@ -532,26 +542,27 @@ describe("_prepareNextTasks", () => {
     expect(taskDescriptions[1]).toEqual({ name: "node2", input: 100 });
 
     // the returned checkpoint is a copy of the passed checkpoint without versionsSeen updated
-    expect(newCheckpoint.versionsSeen.node1.channel1).toBe(1);
-    expect(newCheckpoint.versionsSeen.node2.channel2).toBe(5);
+    expect(newCheckpoint.versions_seen.node1.channel1).toBe(1);
+    expect(newCheckpoint.versions_seen.node2.channel2).toBe(5);
   });
 
   it("should return an array of PregelExecutableTasks", () => {
     const checkpoint: Checkpoint = {
       v: 1,
+      id: uuid6(-1),
       ts: "2024-04-19T17:19:07.952Z",
-      channelValues: {
+      channel_values: {
         channel1: 1,
         channel2: 2,
       },
-      channelVersions: {
+      channel_versions: {
         channel1: 2,
         channel2: 5,
         channel3: 4,
         channel4: 4,
         channel6: 4,
       },
-      versionsSeen: {
+      versions_seen: {
         node1: {
           channel1: 1,
         },
@@ -644,9 +655,9 @@ describe("_prepareNextTasks", () => {
       config: { tags: [] },
     });
 
-    expect(newCheckpoint.versionsSeen.node1.channel1).toBe(2);
-    expect(newCheckpoint.versionsSeen.node2.channel1).toBe(2);
-    expect(newCheckpoint.versionsSeen.node2.channel2).toBe(5);
+    expect(newCheckpoint.versions_seen.node1.channel1).toBe(2);
+    expect(newCheckpoint.versions_seen.node2.channel1).toBe(2);
+    expect(newCheckpoint.versions_seen.node2.channel2).toBe(5);
   });
 });
 
@@ -682,8 +693,8 @@ it("can invoke graph with a single process", async () => {
 
   const graph = new Graph()
     .addNode("add_one", addOne)
-    .setEntryPoint("add_one")
-    .setFinishPoint("add_one")
+    .addEdge(START, "add_one")
+    .addEdge("add_one", END)
     .compile();
 
   expect(await graph.invoke(2)).toBe(3);
@@ -930,9 +941,9 @@ it("should process batch with two processes and delays with graph", async () => 
   const graph = new Graph()
     .addNode("add_one", addOneWithDelay)
     .addNode("add_one_more", addOneWithDelay)
-    .setEntryPoint("add_one")
-    .setFinishPoint("add_one_more")
+    .addEdge(START, "add_one")
     .addEdge("add_one", "add_one_more")
+    .addEdge("add_one_more", END)
     .compile();
 
   expect(await graph.batch([3, 2, 1, 3, 5])).toEqual([5, 4, 3, 5, 7]);
@@ -1064,39 +1075,39 @@ it("should handle checkpoints correctly", async () => {
 
   // total starts out as 0, so output is 0+2=2
   await expect(
-    app.invoke(2, { configurable: { threadId: "1" } })
+    app.invoke(2, { configurable: { thread_id: "1" } })
   ).resolves.toBe(2);
-  let checkpoint = await memory.get({ configurable: { threadId: "1" } });
+  let checkpoint = await memory.get({ configurable: { thread_id: "1" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.total).toBe(2);
+  expect(checkpoint?.channel_values.total).toBe(2);
 
   // total is now 2, so output is 2+3=5
   await expect(
-    app.invoke(3, { configurable: { threadId: "1" } })
+    app.invoke(3, { configurable: { thread_id: "1" } })
   ).resolves.toBe(5);
-  checkpoint = await memory.get({ configurable: { threadId: "1" } });
+  checkpoint = await memory.get({ configurable: { thread_id: "1" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.total).toBe(7);
+  expect(checkpoint?.channel_values.total).toBe(7);
 
   // total is now 2+5=7, so output would be 7+4=11, but raises Error
   await expect(
-    app.invoke(4, { configurable: { threadId: "1" } })
+    app.invoke(4, { configurable: { thread_id: "1" } })
   ).rejects.toThrow("Input is too large");
   // checkpoint is not updated
-  checkpoint = await memory.get({ configurable: { threadId: "1" } });
+  checkpoint = await memory.get({ configurable: { thread_id: "1" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.total).toBe(7);
+  expect(checkpoint?.channel_values.total).toBe(7);
 
   // on a new thread, total starts out as 0, so output is 0+5=5
   await expect(
-    app.invoke(5, { configurable: { threadId: "2" } })
+    app.invoke(5, { configurable: { thread_id: "2" } })
   ).resolves.toBe(5);
-  checkpoint = await memory.get({ configurable: { threadId: "1" } });
+  checkpoint = await memory.get({ configurable: { thread_id: "1" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.total).toBe(7);
-  checkpoint = await memory.get({ configurable: { threadId: "2" } });
+  expect(checkpoint?.channel_values.total).toBe(7);
+  checkpoint = await memory.get({ configurable: { thread_id: "2" } });
   expect(checkpoint).not.toBeNull();
-  expect(checkpoint?.channelValues.total).toBe(5);
+  expect(checkpoint?.channel_values.total).toBe(5);
 });
 
 it("should process two inputs joined into one topic and produce two outputs", async () => {
@@ -1396,7 +1407,7 @@ describe("StateGraph", () => {
     })
       .addNode("agent", agent)
       .addNode("tools", executeTools)
-      .setEntryPoint("agent")
+      .addEdge(START, "agent")
       .addConditionalEdges("agent", shouldContinue, {
         continue: "tools",
         exit: END,
@@ -1485,7 +1496,7 @@ describe("StateGraph", () => {
     })
       .addNode("agent", agent)
       .addNode("tools", executeTools)
-      .setEntryPoint("agent")
+      .addEdge(START, "agent")
       .addConditionalEdges("agent", shouldContinue, {
         continue: "tools",
         exit: END,
@@ -1529,8 +1540,8 @@ describe("StateGraph", () => {
         myKey: `${state.myKey} there`,
         myOtherKey: state.myOtherKey,
       }))
-      .setEntryPoint("up")
-      .setFinishPoint("up");
+      .addEdge(START, "up")
+      .addEdge("up", END);
 
     // set up top level graph
     type State = {
@@ -1550,8 +1561,8 @@ describe("StateGraph", () => {
         myKey: `${state.myKey} and back again`,
       }))
       .addEdge("inner", "side")
-      .setEntryPoint("inner")
-      .setFinishPoint("side")
+      .addEdge(START, "inner")
+      .addEdge("side", END)
       .compile();
 
     // call method / assertions
@@ -1588,8 +1599,8 @@ describe("StateGraph", () => {
         myKey: `${state.myKey} there`,
         myOtherKey: state.myOtherKey,
       }))
-      .setEntryPoint("up")
-      .setFinishPoint("up");
+      .addEdge(START, "up")
+      .addEdge("up", END);
 
     // set up top level graph
     type State = {
@@ -1609,8 +1620,8 @@ describe("StateGraph", () => {
         myKey: `${state.myKey} and back again`,
       }))
       .addEdge("inner", "side")
-      .setEntryPoint("inner")
-      .setFinishPoint("side")
+      .addEdge(START, "inner")
+      .addEdge("side", END)
       .compile();
 
     // call method / assertions
@@ -1666,7 +1677,7 @@ describe("StateGraph", () => {
       .addNode("one", nodeOne)
       .addNode("two", nodeTwo)
       .addNode("three", nodeThree)
-      .setEntryPoint("one")
+      .addEdge(START, "one")
       .addConditionalEdges("one", decideNext)
       .addEdge("two", "three")
       .addEdge("three", END)
@@ -1721,12 +1732,12 @@ describe("StateGraph", () => {
       .addNode("retriever_one", retrieverOne)
       .addNode("retriever_two", retrieverTwo)
       .addNode("qa", qa)
-      .setEntryPoint("rewrite_query")
+      .addEdge(START, "rewrite_query")
       .addEdge("rewrite_query", "analyzer_one")
       .addEdge("analyzer_one", "retriever_one")
       .addEdge("rewrite_query", "retriever_two")
       .addEdge(["retriever_one", "retriever_two"], "qa")
-      .setFinishPoint("qa");
+      .addEdge("qa", END);
 
     const app = workflow.compile();
 
@@ -1908,7 +1919,7 @@ describe("MessageGraph", () => {
     const app = new MessageGraph()
       .addNode("agent", model)
       .addNode("action", callTool)
-      .setEntryPoint("agent")
+      .addEdge(START, "agent")
       .addConditionalEdges("agent", shouldContinue, {
         continue: "action",
         end: END,
@@ -2016,7 +2027,7 @@ describe("MessageGraph", () => {
     const app = new MessageGraph()
       .addNode("agent", model)
       .addNode("action", callTool)
-      .setEntryPoint("agent")
+      .addEdge(START, "agent")
       .addConditionalEdges("agent", shouldContinue, {
         continue: "action",
         end: END,
@@ -2035,5 +2046,188 @@ describe("MessageGraph", () => {
     const lastItem = streamItems[streamItems.length - 1];
     expect(Object.keys(lastItem)).toEqual(["agent"]);
     expect(Object.values(lastItem)[0]).toEqual(new AIMessage("answer"));
+  });
+});
+
+it("StateGraph start branch then end", async () => {
+  type State = {
+    my_key: string;
+    market: string;
+  };
+
+  const invalidBuilder = new StateGraph<State>({
+    channels: {
+      my_key: { reducer: (x: string, y: string) => x + y },
+      market: null,
+    },
+  })
+    .addNode("tool_two_slow", (_: State) => ({ my_key: ` slow` }))
+    .addNode("tool_two_fast", (_: State) => ({ my_key: ` fast` }))
+    .addConditionalEdges(START, (state: State) =>
+      state.market === "DE" ? "tool_two_slow" : "tool_two_fast"
+    );
+
+  expect(() => invalidBuilder.compile()).toThrowError(
+    "Node `tool_two_slow` is a dead-end"
+  );
+
+  const toolTwoBuilder = new StateGraph<State>({
+    channels: {
+      my_key: { reducer: (x: string, y: string) => x + y },
+      market: null,
+    },
+  })
+    .addNode("tool_two_slow", (_: State) => ({ my_key: ` slow` }))
+    .addNode("tool_two_fast", (_: State) => ({ my_key: ` fast` }))
+    .addConditionalEdges({
+      source: START,
+      path: (state: State) =>
+        state.market === "DE" ? "tool_two_slow" : "tool_two_fast",
+      then: END,
+    });
+
+  const toolTwo = toolTwoBuilder.compile();
+
+  expect(await toolTwo.invoke({ my_key: "value", market: "DE" })).toEqual({
+    my_key: "value slow",
+    market: "DE",
+  });
+  expect(await toolTwo.invoke({ my_key: "value", market: "US" })).toEqual({
+    my_key: "value fast",
+    market: "US",
+  });
+
+  const toolTwoWithCheckpointer = toolTwoBuilder.compile({
+    checkpointer: SqliteSaver.fromConnString(":memory:"),
+    interruptBefore: ["tool_two_fast", "tool_two_slow"],
+  });
+
+  await expect(() =>
+    toolTwoWithCheckpointer.invoke({ my_key: "value", market: "DE" })
+  ).rejects.toThrowError("thread_id");
+
+  // const thread1 = { configurable: { thread_id: "1" } }
+  // expect(toolTwoWithCheckpointer.invoke({ my_key: "value", market: "DE" }, thread1)).toEqual({ my_key: "value", market: "DE" })
+  // expect(toolTwoWithCheckpointer.getState(thread1)).toEqual({
+  //   values: { my_key: "value", market: "DE" },
+  //   next: ["tool_two_slow"],
+  //   config: toolTwoWithCheckpointer.checkpointer.getTuple(thread1).config,
+  //   metadata: { source: "loop", step: 0, writes: null },
+  //   parentConfig: [...toolTwoWithCheckpointer.checkpointer.list(thread1, { limit: 2 })].pop().config
+  // })
+
+  // expect(toolTwoWithCheckpointer.invoke(null, thread1, { debug: 1 })).toEqual({ my_key: "value slow", market: "DE" })
+  // expect(toolTwoWithCheckpointer.getState(thread1)).toEqual({
+  //   values: { my_key
+  //     : "value slow", market: "DE" },
+  //   next: [],
+  //   config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!.config,
+  //   metadata: { source: "loop", step: 1, writes: { tool_two_slow: { my_key: " slow" } } },
+  //   parentConfig: [...toolTwoWithCheckpointer.checkpointer!.list(thread1, { limit: 2 })].pop().config
+});
+
+/**
+ * def test_branch_then_node(snapshot: SnapshotAssertion) -> None:
+    class State(TypedDict):
+        my_key: Annotated[str, operator.add]
+        market: str
+
+    # this graph is invalid because there is no path to "finish"
+    invalid_graph = StateGraph(State)
+    invalid_graph.set_entry_point("prepare")
+    invalid_graph.set_finish_point("finish")
+    invalid_graph.add_conditional_edges(
+        source="prepare",
+        path=lambda s: "tool_two_slow" if s["market"] == "DE" else "tool_two_fast",
+        path_map=["tool_two_slow", "tool_two_fast"],
+    )
+    invalid_graph.add_node("prepare", lambda s: {"my_key": " prepared"})
+    invalid_graph.add_node("tool_two_slow", lambda s: {"my_key": " slow"})
+    invalid_graph.add_node("tool_two_fast", lambda s: {"my_key": " fast"})
+    invalid_graph.add_node("finish", lambda s: {"my_key": " finished"})
+    with pytest.raises(ValueError):
+        invalid_graph.compile()
+
+    tool_two_graph = StateGraph(State)
+    tool_two_graph.set_entry_point("prepare")
+    tool_two_graph.set_finish_point("finish")
+    tool_two_graph.add_conditional_edges(
+        source="prepare",
+        path=lambda s: "tool_two_slow" if s["market"] == "DE" else "tool_two_fast",
+        then="finish",
+    )
+    tool_two_graph.add_node("prepare", lambda s: {"my_key": " prepared"})
+    tool_two_graph.add_node("tool_two_slow", lambda s: {"my_key": " slow"})
+    tool_two_graph.add_node("tool_two_fast", lambda s: {"my_key": " fast"})
+    tool_two_graph.add_node("finish", lambda s: {"my_key": " finished"})
+    tool_two = tool_two_graph.compile()
+    assert tool_two.get_graph().draw_mermaid(with_styles=False) == snapshot
+    assert tool_two.get_graph().draw_mermaid() == snapshot
+
+    assert tool_two.invoke({"my_key": "value", "market": "DE"}, debug=1) == {
+        "my_key": "value prepared slow finished",
+        "market": "DE",
+    }
+    assert tool_two.invoke({"my_key": "value", "market": "US"}) == {
+        "my_key": "value prepared fast finished",
+        "market": "US",
+    }
+ */
+
+it("StateGraph branch then node", async () => {
+  interface State {
+    my_key: string;
+    market: string;
+  }
+
+  const invalidBuilder = new StateGraph<State>({
+    channels: {
+      my_key: { reducer: (x: string, y: string) => x + y },
+      market: null,
+    },
+  })
+    .addNode("prepare", (_: State) => ({ my_key: ` prepared` }))
+    .addNode("tool_two_slow", (_: State) => ({ my_key: ` slow` }))
+    .addNode("tool_two_fast", (_: State) => ({ my_key: ` fast` }))
+    .addNode("finish", (_: State) => ({ my_key: ` finished` }))
+    .addEdge(START, "prepare")
+    .addConditionalEdges({
+      source: "prepare",
+      path: (state: State) =>
+        state.market === "DE" ? "tool_two_slow" : "tool_two_fast",
+      pathMap: ["tool_two_slow", "tool_two_fast"],
+    })
+    .addEdge("finish", END);
+
+  expect(() => invalidBuilder.compile()).toThrowError();
+
+  const toolBuilder = new StateGraph<State>({
+    channels: {
+      my_key: { reducer: (x: string, y: string) => x + y },
+      market: null,
+    },
+  })
+    .addNode("prepare", (_: State) => ({ my_key: ` prepared` }))
+    .addNode("tool_two_slow", (_: State) => ({ my_key: ` slow` }))
+    .addNode("tool_two_fast", (_: State) => ({ my_key: ` fast` }))
+    .addNode("finish", (_: State) => ({ my_key: ` finished` }))
+    .addEdge(START, "prepare")
+    .addConditionalEdges({
+      source: "prepare",
+      path: (state: State) =>
+        state.market === "DE" ? "tool_two_slow" : "tool_two_fast",
+      then: "finish",
+    })
+    .addEdge("finish", END);
+
+  const tool = toolBuilder.compile();
+
+  expect(await tool.invoke({ my_key: "value", market: "DE" })).toEqual({
+    my_key: "value prepared slow finished",
+    market: "DE",
+  });
+  expect(await tool.invoke({ my_key: "value", market: "FR" })).toEqual({
+    my_key: "value prepared fast finished",
+    market: "FR",
   });
 });

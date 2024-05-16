@@ -18,6 +18,13 @@ import { RunnableCallable } from "../utils.js";
 export const START = "__start__";
 export const END = "__end__";
 
+export interface BranchOptions<IO, N extends string> {
+  source: N;
+  path: Branch<IO, N>["condition"];
+  pathMap?: Record<string, N | typeof END> | N[];
+  then?: N | typeof END;
+}
+
 export class Branch<IO, N extends string> {
   condition: (
     input: IO,
@@ -26,12 +33,17 @@ export class Branch<IO, N extends string> {
 
   ends?: Record<string, N | typeof END>;
 
-  constructor(
-    condition: Branch<IO, N>["condition"],
-    ends?: Branch<IO, N>["ends"]
-  ) {
-    this.condition = condition;
-    this.ends = ends;
+  then?: BranchOptions<IO, N>["then"];
+
+  constructor(options: Omit<BranchOptions<IO, N>, "source">) {
+    this.condition = options.path;
+    this.ends = Array.isArray(options.pathMap)
+      ? options.pathMap.reduce((acc, n) => {
+          acc[n] = n;
+          return acc;
+        }, {} as Record<string, N | typeof END>)
+      : options.pathMap;
+    this.then = options.then;
   }
 
   compile(
@@ -144,33 +156,43 @@ export class Graph<
     return this;
   }
 
+  addConditionalEdges(source: BranchOptions<RunInput, N>): this;
+
   addConditionalEdges(
-    startKey: N,
-    condition: Branch<RunInput, N>["condition"],
-    conditionalEdgeMapping?: Record<string, N | typeof END>
+    source: N,
+    path: Branch<RunInput, N>["condition"],
+    pathMap?: BranchOptions<RunInput, N>["pathMap"]
+  ): this;
+
+  addConditionalEdges(
+    source: N | BranchOptions<RunInput, N>,
+    path?: Branch<RunInput, N>["condition"],
+    pathMap?: BranchOptions<RunInput, N>["pathMap"]
   ): this {
+    const options: BranchOptions<RunInput, N> =
+      typeof source === "object" ? source : { source, path: path!, pathMap };
     this.warnIfCompiled(
       "Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
     // find a name for condition
-    const name = condition.name || "condition";
+    const name = options.path.name || "condition";
     // validate condition
-    if (this.branches[startKey] && this.branches[startKey][name]) {
+    if (this.branches[options.source] && this.branches[options.source][name]) {
       throw new Error(
-        `Condition \`${name}\` already present for node \`${startKey}\``
+        `Condition \`${name}\` already present for node \`${source}\``
       );
     }
     // save it
-    if (!this.branches[startKey]) {
-      this.branches[startKey] = {};
+    if (!this.branches[options.source]) {
+      this.branches[options.source] = {};
     }
-    this.branches[startKey][name] = new Branch(
-      condition,
-      conditionalEdgeMapping
-    );
+    this.branches[options.source][name] = new Branch(options);
     return this;
   }
 
+  /**
+   * @deprecated use `addEdge(START, key)` instead
+   */
   setEntryPoint(key: N): this {
     this.warnIfCompiled(
       "Setting the entry point of a graph that has already been compiled. This will not be reflected in the compiled graph."
@@ -179,6 +201,9 @@ export class Graph<
     return this.addEdge(START, key);
   }
 
+  /**
+   * @deprecated use `addEdge(key, END)` instead
+   */
   setFinishPoint(key: N): this {
     this.warnIfCompiled(
       "Setting a finish point of a graph that has already been compiled. This will not be reflected in the compiled graph."
@@ -187,11 +212,15 @@ export class Graph<
     return this.addEdge(key, END);
   }
 
-  compile(
-    checkpointer?: BaseCheckpointSaver,
-    interruptBefore?: N[] | All,
-    interruptAfter?: N[] | All
-  ): CompiledGraph<N> {
+  compile({
+    checkpointer,
+    interruptBefore,
+    interruptAfter,
+  }: {
+    checkpointer?: BaseCheckpointSaver;
+    interruptBefore?: N[] | All;
+    interruptAfter?: N[] | All;
+  } = {}): CompiledGraph<N> {
     // validate the graph
     this.validate([
       ...(Array.isArray(interruptBefore) ? interruptBefore : []),
@@ -240,17 +269,18 @@ export class Graph<
     for (const [start, branches] of Object.entries(this.branches)) {
       allSources.add(start);
       for (const branch of Object.values(branches)) {
-        // TODO revise when adding branch.then
-        if (branch.ends) {
-          for (const end of Object.values(branch.ends)) {
-            if (end !== END) {
-              allSources.add(end);
+        if (branch.then) {
+          if (branch.ends) {
+            for (const end of Object.values(branch.ends)) {
+              if (end !== END) {
+                allSources.add(end);
+              }
             }
-          }
-        } else {
-          for (const node of Object.keys(this.nodes)) {
-            if (node !== start) {
-              allSources.add(node);
+          } else {
+            for (const node of Object.keys(this.nodes)) {
+              if (node !== start) {
+                allSources.add(node);
+              }
             }
           }
         }
@@ -272,7 +302,9 @@ export class Graph<
     const allTargets = new Set([...this.allEdges].map(([_, target]) => target));
     for (const [start, branches] of Object.entries(this.branches)) {
       for (const branch of Object.values(branches)) {
-        // TODO revise when adding branch.then
+        if (branch.then) {
+          allTargets.add(branch.then);
+        }
         if (branch.ends) {
           for (const end of Object.values(branch.ends)) {
             allTargets.add(end);
@@ -280,7 +312,7 @@ export class Graph<
         } else {
           allTargets.add(END);
           for (const node of Object.keys(this.nodes)) {
-            if (node !== start) {
+            if (node !== start && node !== branch.then) {
               allTargets.add(node);
             }
           }
