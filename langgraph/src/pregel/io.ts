@@ -89,7 +89,7 @@ export function* mapOutputValues<C extends PropertyKey>(
   pendingWrites: Array<[C, any]>,
   channels: Record<C, BaseChannel>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Generator<[Record<string, any>, any]> {
+): Generator<Record<string, any>, any> {
   if (Array.isArray(outputChannels)) {
     if (pendingWrites.find(([chan, _]) => outputChannels.includes(chan))) {
       yield readChannels(channels, outputChannels);
@@ -105,23 +105,23 @@ export function* mapOutputValues<C extends PropertyKey>(
 /**
  * Map pending writes (a sequence of tuples (channel, value)) to output chunk.
  */
-export function* mapOutputUpdates<C extends PropertyKey>(
+export function* mapOutputUpdates<N extends PropertyKey, C extends PropertyKey>(
   outputChannels: C | Array<C>,
-  tasks: Array<PregelExecutableTask>
+  tasks: Array<PregelExecutableTask<N, C>>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Generator<Record<string, any | Record<string, any>>> {
+): Generator<Record<N, any | Record<string, any>>> {
   const outputTasks = tasks.filter(
     (task) =>
       task.config === undefined || !task.config.tags?.includes(TAG_HIDDEN)
   );
   if (Array.isArray(outputChannels)) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updated: Record<string, any | Record<string, any>> = {};
+    const updated = {} as Record<N, any | Record<string, any>>;
 
     for (const task of outputTasks) {
       if (task.writes.some(([chan, _]) => outputChannels.includes(chan as C))) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const nodes: Record<string, any> = {};
+        const nodes = {} as Record<C, any>;
         for (const [chan, value] of task.writes) {
           if (outputChannels.includes(chan as C)) {
             nodes[chan] = value;
@@ -137,7 +137,7 @@ export function* mapOutputUpdates<C extends PropertyKey>(
     }
   } else {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updated: Record<string, any | Record<string, any>> = {};
+    const updated = {} as Record<N, any | Record<string, any>>;
 
     for (const task of outputTasks) {
       for (const [chan, value] of task.writes) {

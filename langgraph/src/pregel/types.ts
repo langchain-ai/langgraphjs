@@ -2,17 +2,17 @@ import { Runnable, RunnableConfig } from "@langchain/core/runnables";
 
 export interface PregelTaskDescription {
   name: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  input: any;
+  input: unknown;
 }
 
-export interface PregelExecutableTask {
-  name: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  input: any;
+export interface PregelExecutableTask<
+  N extends PropertyKey,
+  C extends PropertyKey
+> {
+  name: N;
+  input: unknown;
   proc: Runnable;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  writes: Array<[string, any]>;
+  writes: Array<[C, unknown]>;
   config: RunnableConfig | undefined;
 }
 

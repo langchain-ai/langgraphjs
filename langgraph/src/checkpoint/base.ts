@@ -38,8 +38,7 @@ export interface Checkpoint {
   /**
    * @default {}
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  channel_values: Record<string, any>;
+  channel_values: Record<string, unknown>;
   /**
    * @default {}
    */
@@ -48,6 +47,14 @@ export interface Checkpoint {
    * @default {}
    */
   versions_seen: Record<string, Record<string, number>>;
+}
+
+export interface ReadonlyCheckpoint extends Readonly<Checkpoint> {
+  readonly channel_values: Readonly<Record<string, unknown>>;
+  readonly channel_versions: Readonly<Record<string, number>>;
+  readonly versions_seen: Readonly<
+    Record<string, Readonly<Record<string, number>>>
+  >;
 }
 
 export function deepCopy<T>(obj: T): T {

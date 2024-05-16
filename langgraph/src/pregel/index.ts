@@ -3,7 +3,6 @@ import {
   Runnable,
   RunnableConfig,
   RunnableFunc,
-  RunnableInterface,
   RunnableLike,
   _coerceToRunnable,
   ensureConfig,
@@ -19,6 +18,7 @@ import {
 import {
   BaseCheckpointSaver,
   Checkpoint,
+  ReadonlyCheckpoint,
   copyCheckpoint,
   emptyCheckpoint,
 } from "../checkpoint/base.js";
@@ -33,7 +33,12 @@ import {
   single,
 } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
-import { CONFIG_KEY_READ, CONFIG_KEY_SEND, INTERRUPT } from "../constants.js";
+import {
+  CONFIG_KEY_READ,
+  CONFIG_KEY_SEND,
+  INTERRUPT,
+  TAG_HIDDEN,
+} from "../constants.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { All, PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import {
@@ -309,8 +314,8 @@ export class Pregel<
     keyof Cc | Array<keyof Cc>, // input keys
     keyof Cc | Array<keyof Cc>, // output keys
     RunnableConfig, // config without pregel keys
-    All | Array<keyof Nn> | undefined, // interrupt before
-    All | Array<keyof Nn> | undefined // interrupt after,
+    All | Array<keyof Nn>, // interrupt before
+    All | Array<keyof Nn> // interrupt after,
   ] {
     const {
       debug,
@@ -337,25 +342,10 @@ export class Pregel<
       validateKeys(defaultInputKeys, this.channels);
     }
 
-    let defaultInterruptBefore;
-    if (
-      (Array.isArray(interruptBefore) && interruptBefore.length > 0) ||
-      interruptBefore === "*"
-    ) {
-      defaultInterruptBefore = interruptBefore;
-    } else {
-      defaultInterruptBefore = this.interruptBefore;
-    }
+    const defaultInterruptBefore =
+      interruptBefore ?? this.interruptBefore ?? [];
 
-    let defaultInterruptAfter;
-    if (
-      (Array.isArray(interruptAfter) && interruptAfter.length > 0) ||
-      interruptAfter === "*"
-    ) {
-      defaultInterruptAfter = interruptAfter;
-    } else {
-      defaultInterruptAfter = this.interruptAfter;
-    }
+    const defaultInterruptAfter = interruptAfter ?? this.interruptAfter ?? [];
 
     let defaultStreamMode: StreamMode;
     if (streamMode !== undefined) {
@@ -406,8 +396,8 @@ export class Pregel<
         inputKeys,
         outputKeys,
         restConfig,
-        // interruptBefore,
-        // interruptAfter,
+        interruptBefore,
+        interruptAfter,
       ] = this._defaults(config);
       // copy nodes to ignore mutations during execution
       const processes = { ...this.nodes };
@@ -458,7 +448,11 @@ export class Pregel<
         // increment start to 0
         start += 1;
       } else {
-        // TODO mark INTERRUPT as seen
+        checkpoint = copyCheckpoint(checkpoint);
+        for (const k of this.streamChannelsList) {
+          const version = checkpoint.channel_versions[k as string];
+          checkpoint.versions_seen[INTERRUPT][k as string] = version;
+        }
       }
 
       // Similarly to Bulk Synchronous Parallel / Pregel model
@@ -468,21 +462,12 @@ export class Pregel<
       // with channel updates applied only at the transition between steps
       const stop = start + (config.recursionLimit ?? DEFAULT_LOOP_LIMIT);
       for (let step = start; step < stop + 1; step += 1) {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const [nextCheckpoint, nextTasks] = _prepareNextTasks(
           checkpoint,
           processes,
           channels,
           true
         );
-
-        if (debug) {
-          console.log(nextTasks);
-        }
-
-        // Reassign nextCheckpoint to checkpoint because the subsequent implementation
-        // relies on side effects applied to checkpoint. Example: _applyWrites().
-        checkpoint = nextCheckpoint as Checkpoint;
 
         // if no more tasks, we're done
         if (nextTasks.length === 0 && step === start) {
@@ -495,35 +480,47 @@ export class Pregel<
           );
         }
 
-        // TODO interrupt before
+        // before execution, check if we should interrupt
+        if (
+          _shouldInterrupt(
+            checkpoint,
+            interruptBefore,
+            this.streamChannelsList,
+            nextTasks
+          )
+        ) {
+          break;
+        } else {
+          checkpoint = nextCheckpoint;
+        }
 
-        // A copy of the checkpoint is created because `checkpoint` is defined with `let`.
-        // `checkpoint` can be mutated during loop execution and when used in a function,
-        // may cause unintended consequences.
-        const checkpointCopy = copyCheckpoint(checkpoint);
+        if (debug) {
+          console.log(nextTasks);
+        }
 
-        const tasksWithConfig: Array<
-          [RunnableInterface, unknown, RunnableConfig]
-        > = nextTasks.map((task) => [
-          task.proc,
-          task.input,
-          patchConfig(restConfig, {
-            callbacks: runManager?.getChild(`graph:step:${step}`),
-            runName: task.name,
-            configurable: {
-              ...config.configurable,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              [CONFIG_KEY_SEND]: (items: [string, any][]) =>
-                task.writes.push(...items),
-              [CONFIG_KEY_READ]: _localRead.bind(
-                undefined,
-                checkpointCopy,
-                channels,
-                task.writes
-              ),
-            },
-          }),
-        ]);
+        const tasksWithConfig = nextTasks.map(
+          // eslint-disable-next-line no-loop-func
+          (task) =>
+            [
+              task.proc,
+              task.input,
+              patchConfig(restConfig, {
+                callbacks: runManager?.getChild(`graph:step:${step}`),
+                runName: task.name as string,
+                configurable: {
+                  ...config.configurable,
+                  [CONFIG_KEY_SEND]: (items: [keyof Cc, unknown][]) =>
+                    task.writes.push(...items),
+                  [CONFIG_KEY_READ]: _localRead.bind(
+                    undefined,
+                    checkpoint,
+                    channels,
+                    task.writes as Array<[string, unknown]>
+                  ),
+                },
+              }),
+            ] as const
+        );
 
         // execute tasks, and wait for one to fail or all to finish.
         // each task is independent from all other concurrent tasks
@@ -536,7 +533,7 @@ export class Pregel<
         await executeTasks(tasks, this.stepTimeout);
 
         // combine pending writes from all tasks
-        const pendingWrites: Array<[string, unknown]> = [];
+        const pendingWrites: Array<[keyof Cc, unknown]> = [];
         for (const task of nextTasks) {
           pendingWrites.push(...task.writes);
         }
@@ -573,7 +570,16 @@ export class Pregel<
           };
         }
 
-        // TODO interrupt after
+        if (
+          _shouldInterrupt(
+            checkpoint,
+            interruptAfter,
+            this.streamChannelsList,
+            nextTasks
+          )
+        ) {
+          break;
+        }
       }
     } finally {
       await Promise.all(bg);
@@ -660,27 +666,29 @@ async function executeTasks<RunOutput>(
   }
 }
 
-export function _shouldInterrupt(
+export function _shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
   checkpoint: Checkpoint,
-  interruptNodes: Array<string>,
-  snapshotChannels: Array<string>,
-  tasks: Array<PregelExecutableTask>
+  interruptNodes: All | Array<N>,
+  snapshotChannels: Array<C>,
+  tasks: Array<PregelExecutableTask<N, C>>
 ): boolean {
   const seen = checkpoint.versions_seen[INTERRUPT];
   const anySnapshotChannelUpdated = snapshotChannels.some(
-    (chan) => checkpoint.channel_versions[chan] > seen[chan]
+    (chan) => checkpoint.channel_versions[chan as string] > seen[chan as string]
   );
   const anyTaskNodeInInterruptNodes = tasks.some((task) =>
-    interruptNodes.includes(task.name)
+    interruptNodes === "*"
+      ? !task.config?.tags?.includes(TAG_HIDDEN)
+      : interruptNodes.includes(task.name)
   );
   return anySnapshotChannelUpdated && anyTaskNodeInInterruptNodes;
 }
 
-export function _localRead(
-  checkpoint: Checkpoint,
-  channels: Record<string, BaseChannel>,
-  writes: Array<[string, unknown]>,
-  select: Array<string> | string,
+export function _localRead<Cc extends StrRecord<string, BaseChannel>>(
+  checkpoint: ReadonlyCheckpoint,
+  channels: Cc,
+  writes: Array<[keyof Cc, unknown]>,
+  select: Array<keyof Cc> | keyof Cc,
   fresh: boolean = false
 ): Record<string, unknown> | unknown {
   if (fresh) {
@@ -750,28 +758,40 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 }
 
-export function _prepareNextTasks(
+export function _prepareNextTasks<
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel>
+>(
   checkpoint: Checkpoint,
-  processes: Record<string, PregelNode>,
-  channels: Record<string, BaseChannel>,
+  processes: Nn,
+  channels: Cc,
   forExecution: false
 ): [Checkpoint, Array<PregelTaskDescription>];
 
-export function _prepareNextTasks(
+export function _prepareNextTasks<
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel>
+>(
   checkpoint: Checkpoint,
-  processes: Record<string, PregelNode>,
-  channels: Record<string, BaseChannel>,
+  processes: Nn,
+  channels: Cc,
   forExecution: true
-): [Checkpoint, Array<PregelExecutableTask>];
+): [Checkpoint, Array<PregelExecutableTask<keyof Nn, keyof Cc>>];
 
-export function _prepareNextTasks(
+export function _prepareNextTasks<
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel>
+>(
   checkpoint: Checkpoint,
-  processes: Record<string, PregelNode>,
-  channels: Record<string, BaseChannel>,
+  processes: Nn,
+  channels: Cc,
   forExecution: boolean
-): [Checkpoint, Array<PregelTaskDescription> | Array<PregelExecutableTask>] {
+): [
+  Checkpoint,
+  PregelTaskDescription[] | PregelExecutableTask<keyof Nn, keyof Cc>[]
+] {
   const newCheckpoint = copyCheckpoint(checkpoint);
-  const tasks: Array<PregelExecutableTask> = [];
+  const tasks: Array<PregelExecutableTask<keyof Nn, keyof Cc>> = [];
   const taskDescriptions: Array<PregelTaskDescription> = [];
 
   // Check if any processes should be run in next step
