@@ -1,4 +1,5 @@
 import { Runnable, RunnableConfig } from "@langchain/core/runnables";
+import { CheckpointMetadata } from "../checkpoint/base.js";
 
 export interface PregelTaskDescription {
   readonly name: string;
@@ -30,6 +31,10 @@ export interface StateSnapshot {
    * Config used to fetch this snapshot
    */
   readonly config: RunnableConfig;
+  /**
+   * Metadata about the checkpoint
+   */
+  readonly metadata?: CheckpointMetadata;
   /**
    * Config used to fetch the parent snapshot, if any
    * @default undefined
