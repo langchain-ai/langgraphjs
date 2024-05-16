@@ -1618,6 +1618,11 @@ __metadata:
     uuid: ^9.0.1
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.4
+  peerDependencies:
+    better-sqlite3: ^9.5.0
+  peerDependenciesMeta:
+    better-sqlite3:
+      optional: true
   languageName: unknown
   linkType: soft
 
