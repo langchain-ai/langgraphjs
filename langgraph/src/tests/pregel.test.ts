@@ -37,7 +37,6 @@ import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
 import { MessageGraph } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
 import { Checkpoint } from "../checkpoint/base.js";
-import { PregelExecutableTask } from "../pregel/types.js";
 import { GraphRecursionError, InvalidUpdateError } from "../errors.js";
 import { SqliteSaver } from "../checkpoint/sqlite.js";
 import { uuid6 } from "../checkpoint/id.js";
@@ -236,19 +235,18 @@ describe("_shouldInterrupt", () => {
 
     const interruptNodes = ["node1"];
     const snapshotChannels = ["channel1"];
-    const tasks: Array<PregelExecutableTask> = [
-      {
-        name: "node1",
-        input: undefined,
-        proc: new RunnablePassthrough(),
-        writes: [],
-        config: undefined,
-      },
-    ];
 
     // call method / assertions
     expect(
-      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, tasks)
+      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, [
+        {
+          name: "node1",
+          input: undefined,
+          proc: new RunnablePassthrough(),
+          writes: [],
+          config: undefined,
+        },
+      ])
     ).toBe(true);
   });
 
@@ -273,19 +271,18 @@ describe("_shouldInterrupt", () => {
 
     const interruptNodes = ["node1"];
     const snapshotChannels = ["channel1"];
-    const tasks: Array<PregelExecutableTask> = [
-      {
-        name: "node1",
-        input: undefined,
-        proc: new RunnablePassthrough(),
-        writes: [],
-        config: undefined,
-      },
-    ];
 
     // call method / assertions
     expect(
-      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, tasks)
+      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, [
+        {
+          name: "node1",
+          input: undefined,
+          proc: new RunnablePassthrough(),
+          writes: [],
+          config: undefined,
+        },
+      ])
     ).toBe(false);
   });
 
@@ -310,19 +307,18 @@ describe("_shouldInterrupt", () => {
 
     const interruptNodes = ["node1"];
     const snapshotChannels = ["channel1"];
-    const tasks: Array<PregelExecutableTask> = [
-      {
-        name: "node2", // node2 is not in interrupt nodes
-        input: undefined,
-        proc: new RunnablePassthrough(),
-        writes: [],
-        config: undefined,
-      },
-    ];
 
     // call method / assertions
     expect(
-      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, tasks)
+      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, [
+        {
+          name: "node2", // node2 is not in interrupt nodes
+          input: undefined,
+          proc: new RunnablePassthrough(),
+          writes: [],
+          config: undefined,
+        },
+      ])
     ).toBe(false);
   });
 });

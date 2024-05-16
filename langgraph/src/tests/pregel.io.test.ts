@@ -302,7 +302,10 @@ describe("mapOutputUpdates", () => {
   it("should return a Generator that yields an object - {string: any}", () => {
     // set up test
     const outputChannels = "someOutputChannelName";
-    const tasks: PregelExecutableTask[] = [
+    const tasks: PregelExecutableTask<
+      "task1" | "task2" | "task3",
+      "someOutputChannelName"
+    >[] = [
       {
         name: "task1",
         input: null,
@@ -323,6 +326,7 @@ describe("mapOutputUpdates", () => {
         name: "task3",
         input: null,
         proc: new RunnablePassthrough(),
+        // @ts-expect-error invalid write
         writes: [["someOutputChannelNameThatDoesntMatch", 3]], // this task should be filtered out
         config: undefined,
       },
@@ -345,7 +349,13 @@ describe("mapOutputUpdates", () => {
       "someOutputChannelName2",
       "someOutputChannelName3",
     ];
-    const tasks: PregelExecutableTask[] = [
+    const tasks: PregelExecutableTask<
+      "task1" | "task2",
+      | "someOutputChannelName1"
+      | "someOutputChannelName2"
+      | "someOutputChannelName3"
+      | "someOutputChannelName4"
+    >[] = [
       {
         name: "task1",
         input: null,
