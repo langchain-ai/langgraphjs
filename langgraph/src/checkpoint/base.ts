@@ -1,5 +1,5 @@
 import { RunnableConfig } from "@langchain/core/runnables";
-import { SerializerProtocol } from "../serde/base.js";
+import { DefaultSerializer, SerializerProtocol } from "../serde/base.js";
 import { uuid6 } from "./id.js";
 
 export interface CheckpointMetadata {
@@ -105,7 +105,7 @@ export interface CheckpointTuple {
 }
 
 export abstract class BaseCheckpointSaver {
-  serde: SerializerProtocol<unknown> = JSON;
+  serde: SerializerProtocol<unknown> = DefaultSerializer;
 
   constructor(serde?: SerializerProtocol<unknown>) {
     this.serde = serde || this.serde;
