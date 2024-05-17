@@ -10,7 +10,9 @@ how_tos_dir = docs_dir / "how-tos"
 tutorials_dir = docs_dir / "tutorials"
 
 _MANUAL = {
-    "how-tos": [],
+    "how-tos": [
+        "examples/how-tos/persistence.ipynb",
+    ],
     "tutorials": [
         "rag/langgraph_agentic_rag.ipynb",
         "rag/langgraph_crag.ipynb",
@@ -18,7 +20,6 @@ _MANUAL = {
         "multi_agent/multi_agent_collaboration.ipynb",
         "multi_agent/agent_supervisor.ipynb",
         "multi_agent/hierarchical_agent_teams.ipynb",
-
     ],
 }
 _MANUAL_INVERSE = {v: docs_dir / k for k, vs in _MANUAL.items() for v in vs}
@@ -88,9 +89,9 @@ def copy_notebooks():
                         dst_path = os.path.join(
                             overridden_dir, os.path.relpath(src_path, examples_dir)
                         )
+                        dst_path = dst_path.replace("how-tos/how-tos", "how-tos")
                         print(f"Overriding: {src_path} to {dst_path}")
                         break
-
                 os.makedirs(os.path.dirname(dst_path), exist_ok=True)
                 print(f"Copying: {src_path} to {dst_path}")
                 shutil.copy(src_path, dst_path)
