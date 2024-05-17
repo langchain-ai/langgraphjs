@@ -24,7 +24,12 @@ _MANUAL = {
     ],
 }
 _MANUAL_INVERSE = {v: docs_dir / k for k, vs in _MANUAL.items() for v in vs}
-_HOW_TOS = {"agent_executor", "chat_agent_executor_with_function_calling", "docs"}
+_HOW_TOS = {
+    "agent_executor",
+    "chat_agent_executor_with_function_calling",
+    "docs",
+    "how-tos",
+}
 _MAP = {
     "persistence_postgres.ipynb": "tutorial",
 }
