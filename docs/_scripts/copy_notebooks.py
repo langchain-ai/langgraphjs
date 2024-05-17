@@ -24,7 +24,12 @@ _MANUAL = {
     ],
 }
 _MANUAL_INVERSE = {v: docs_dir / k for k, vs in _MANUAL.items() for v in vs}
-_HOW_TOS = {"agent_executor", "chat_agent_executor_with_function_calling", "docs"}
+_HOW_TOS = {
+    "agent_executor",
+    "chat_agent_executor_with_function_calling",
+    "docs",
+    "how-tos",
+}
 _MAP = {
     "persistence_postgres.ipynb": "tutorial",
 }
@@ -83,7 +88,7 @@ def copy_notebooks():
                     continue
                 dst_path = os.path.join(
                     dst_dir, os.path.relpath(src_path, examples_dir)
-                )
+                ).replace("how-tos/how-tos", "how-tos")
                 for k in _MANUAL_INVERSE:
                     if src_path.endswith(k):
                         overridden_dir = _MANUAL_INVERSE[k]
