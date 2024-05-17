@@ -13,5 +13,5 @@ The core guides show how to address common needs when building a out AI workflow
 
 - [Persistence](persistence.ipynb): How to give your graph "memory" and resiliance by saving and loading state
 - [Time travel](time-travel.ipynb): How to navigate and manipulate graph state history once it's persisted
-- [Streaming responses](streaming-tokens.ipynb): How to stream agent responses in real-time
+- [Stream tokens](stream-tokens.ipynb): How to stream tokens and tool calls from your agent within a graph
 - [Configuration](configuration.ipynb): How to indicate that a graph can swap out configurable components
