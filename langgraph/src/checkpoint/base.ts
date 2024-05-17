@@ -22,7 +22,10 @@ export interface CheckpointMetadata {
    */
 }
 
-export interface Checkpoint {
+export interface Checkpoint<
+  N extends string = string,
+  C extends string = string
+> {
   /**
    * Version number
    */
@@ -38,15 +41,15 @@ export interface Checkpoint {
   /**
    * @default {}
    */
-  channel_values: Record<string, unknown>;
+  channel_values: Record<C, unknown>;
   /**
    * @default {}
    */
-  channel_versions: Record<string, number>;
+  channel_versions: Record<C, number>;
   /**
    * @default {}
    */
-  versions_seen: Record<string, Record<string, number>>;
+  versions_seen: Record<N, Record<C, number>>;
 }
 
 export interface ReadonlyCheckpoint extends Readonly<Checkpoint> {
@@ -55,6 +58,21 @@ export interface ReadonlyCheckpoint extends Readonly<Checkpoint> {
   readonly versions_seen: Readonly<
     Record<string, Readonly<Record<string, number>>>
   >;
+}
+
+export function getChannelVersion(
+  checkpoint: ReadonlyCheckpoint,
+  channel: string
+): number {
+  return checkpoint.channel_versions[channel] ?? 0;
+}
+
+export function getVersionSeen(
+  checkpoint: ReadonlyCheckpoint,
+  node: string,
+  channel: string
+): number {
+  return checkpoint.versions_seen[node]?.[channel] ?? 0;
 }
 
 export function deepCopy<T>(obj: T): T {
