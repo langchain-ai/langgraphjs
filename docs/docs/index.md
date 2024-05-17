@@ -8,8 +8,9 @@
 
 ⚡ Building language agents as graphs ⚡
 
-!!! Python
-Looking for the Python version? Click [<i class="fa-brands fa-python"></i> here](https://github.com/langchain-ai/langgraph) ([py docs](https://langchain-ai.github.io/langgraph/)).
+!!! note "JS version :fontawesome-brands-square-js:"
+
+    Looking for the Python version? Click [:material-language-python: here](https://github.com/langchain-ai/langgraph) ([:simple-readme: docs](https://langchain-ai.github.io/langgraph/)).
 
 ## Overview
 

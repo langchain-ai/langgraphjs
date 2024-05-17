@@ -83,7 +83,9 @@ nav:
               - tutorials/reflection/reflection.ipynb
               - tutorials/rewoo/rewoo.ipynb
   - "How-to Guides":
-     - 'how-tos/index.md'
+          - 'how-tos/index.md'
+          - Core:
+              - 'how-tos/persistence.ipynb'
   - "Conceptual Guides":
      - 'concepts/index.md'
   - "Reference":
