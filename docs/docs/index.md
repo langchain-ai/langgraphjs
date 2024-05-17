@@ -8,6 +8,9 @@
 
 ⚡ Building language agents as graphs ⚡
 
+!!! Python
+Looking for the Python version? Click [<i class="fa-brands fa-python"></i> here](https://github.com/langchain-ai/langgraph) ([py docs](https://langchain-ai.github.io/langgraph/)).
+
 ## Overview
 
 Suppose you're building a customer support assistant. You want your assistant to be able to:
