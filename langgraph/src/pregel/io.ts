@@ -58,12 +58,11 @@ export function* mapInput<C extends PropertyKey>(
   chunk?: any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Generator<[C, any]> {
-  if (chunk) {
+  if (chunk !== undefined && chunk !== null) {
     if (
       Array.isArray(inputChannels) &&
       typeof chunk === "object" &&
-      !Array.isArray(chunk) &&
-      !!chunk
+      !Array.isArray(chunk)
     ) {
       for (const k in chunk) {
         if (inputChannels.includes(k as C)) {

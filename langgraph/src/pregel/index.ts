@@ -600,7 +600,10 @@ export class Pregel<
       } else {
         checkpoint = copyCheckpoint(checkpoint);
         for (const k of this.streamChannelsList) {
-          const version = checkpoint.channel_versions[k as string];
+          const version = checkpoint.channel_versions[k as string] ?? 0;
+          if (!checkpoint.versions_seen[INTERRUPT]) {
+            checkpoint.versions_seen[INTERRUPT] = {};
+          }
           checkpoint.versions_seen[INTERRUPT][k as string] = version;
         }
       }
