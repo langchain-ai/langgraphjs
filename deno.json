@@ -1,7 +1,7 @@
 {
   "imports": {
-    "langchain/": "npm:/langchain@0.1.29/",
-    "@langchain/openai": "npm:@langchain/openai",
+    "langchain/": "npm:/langchain@0.1.37/",
+    "@langchain/openai": "npm:@langchain/openai@0.0.31",
     "@langchain/community/": "npm:/@langchain/community/",
     "@langchain/cloudflare": "npm:/@langchain/cloudflare",
     "@langchain/groq": "npm:/@langchain/groq",
