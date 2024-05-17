@@ -88,7 +88,7 @@ def copy_notebooks():
                     continue
                 dst_path = os.path.join(
                     dst_dir, os.path.relpath(src_path, examples_dir)
-                )
+                ).replace("how-tos/how-tos", "how-tos")
                 for k in _MANUAL_INVERSE:
                     if src_path.endswith(k):
                         overridden_dir = _MANUAL_INVERSE[k]

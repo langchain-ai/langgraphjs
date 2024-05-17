@@ -1561,14 +1561,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:0.1.61":
-  version: 0.1.61
-  resolution: "@langchain/core@npm:0.1.61"
+"@langchain/core@npm:0.1.63":
+  version: 0.1.63
+  resolution: "@langchain/core@npm:0.1.63"
   dependencies:
     ansi-styles: ^5.0.0
     camelcase: 6
     decamelize: 1.2.0
-    js-tiktoken: ^1.0.8
+    js-tiktoken: ^1.0.12
     langsmith: ~0.1.7
     ml-distance: ^4.0.0
     mustache: ^4.2.0
@@ -1577,7 +1577,7 @@ __metadata:
     uuid: ^9.0.0
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
-  checksum: f3eadae482f05e2b48c9cbac063460b0282c19ed42939d82736615e8ad1163a498916513261ea49efa2bfbe7c6b716071e437ac76586bd7a4864ed2c869e7cfd
+  checksum: 0aa18f55e5e5cab2c609a6c0d37bcfe9a36b574658acaeb7857f6a0e23dd9ad5617d40988a48f6f00c461a33a5abee983d2ed8b311b92c60b641002b42f0ab26
   languageName: node
   linkType: hard
 
@@ -1636,6 +1636,19 @@ __metadata:
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
   checksum: 024a6e431e1d917f09453b090cad37784d801de42dca888b3f5bb969da49d8a342eb2c63cdc3b908e82c5d67da2666b3cf0fdc52ee858aaac139e3798929d052
+  languageName: node
+  linkType: hard
+
+"@langchain/openai@npm:latest":
+  version: 0.0.31
+  resolution: "@langchain/openai@npm:0.0.31"
+  dependencies:
+    "@langchain/core": ~0.1.56
+    js-tiktoken: ^1.0.12
+    openai: ^4.41.1
+    zod: ^3.22.4
+    zod-to-json-schema: ^3.22.3
+  checksum: 26fed30602e82e0b1ee19b78170d07c0b19dc7ad7a77985345b37405c0da0ecd79252f202949aec35b475993531f3759e825939adfba78b484efca58533272eb
   languageName: node
   linkType: hard
 
@@ -6361,7 +6374,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"js-tiktoken@npm:^1.0.7, js-tiktoken@npm:^1.0.8":
+"js-tiktoken@npm:^1.0.12":
+  version: 1.0.12
+  resolution: "js-tiktoken@npm:1.0.12"
+  dependencies:
+    base64-js: ^1.5.1
+  checksum: 07a0e9cd5cb05f304696ac74e76d48f960d62b0443b65f0d09adf79dc903d2fba82d2cff2907491259bbf8b59842c20f89fd1879d2c0249706e7c84507c687fd
+  languageName: node
+  linkType: hard
+
+"js-tiktoken@npm:^1.0.7":
   version: 1.0.11
   resolution: "js-tiktoken@npm:1.0.11"
   dependencies:
@@ -6698,6 +6720,8 @@ __metadata:
   resolution: "langgraph@workspace:."
   dependencies:
     "@jest/globals": ^29.5.0
+    "@langchain/core": 0.1.63
+    "@langchain/openai": latest
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
     "@tsconfig/recommended": ^1.0.3
@@ -6713,6 +6737,7 @@ __metadata:
     turbo: latest
     typedoc: ^0.25.13
     typescript: ^5.4.5
+    zod: 3.22.4
   languageName: unknown
   linkType: soft
 
@@ -7557,6 +7582,24 @@ __metadata:
   bin:
     openai: bin/cli
   checksum: 5f21e3ddded38f0bdaa62abb8300aa64f16156bebbab54b1fbcda559853ac9bfa65ea01bb04581104d9884e618a2aec212f18eddbe00e5af0bfaca548078aa85
+  languageName: node
+  linkType: hard
+
+"openai@npm:^4.41.1":
+  version: 4.47.1
+  resolution: "openai@npm:4.47.1"
+  dependencies:
+    "@types/node": ^18.11.18
+    "@types/node-fetch": ^2.6.4
+    abort-controller: ^3.0.0
+    agentkeepalive: ^4.2.1
+    form-data-encoder: 1.7.2
+    formdata-node: ^4.3.2
+    node-fetch: ^2.6.7
+    web-streams-polyfill: ^3.2.1
+  bin:
+    openai: bin/cli
+  checksum: 746aa39479f7bc62b1536582bd2f068870715a3a1ae372a187ec5fd1a6cf70c6e49b94a5a8b408186ec52aca886ed47b52fccf6010993fcf16915ab11f96b3b9
   languageName: node
   linkType: hard
 
@@ -9792,9 +9835,9 @@ turbo@latest:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.22.3, zod@npm:^3.22.4":
-  version: 3.22.5
-  resolution: "zod@npm:3.22.5"
-  checksum: a7b47685ce53b62d2d895c07b1cc0277ef1eb258736ae2b4b526d0b4cbe94a1fb39a260882e2624af2d59af8533373c0a96d36d71c19e79c341057ea9f528561
+"zod@npm:3.22.4":
+  version: 3.22.4
+  resolution: "zod@npm:3.22.4"
+  checksum: 80bfd7f8039b24fddeb0718a2ec7c02aa9856e4838d6aa4864335a047b6b37a3273b191ef335bf0b2002e5c514ef261ffcda5a589fb084a48c336ffc4cdbab7f
   languageName: node
   linkType: hard
