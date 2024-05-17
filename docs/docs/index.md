@@ -8,7 +8,7 @@
 
 ⚡ Building language agents as graphs ⚡
 
-!!! note "JS version :fontawesome-brands-square-js:"
+???+ note "JS version :fontawesome-brands-square-js:"
 
     Looking for the Python version? Click [:material-language-python: here](https://github.com/langchain-ai/langgraph) ([:simple-readme: docs](https://langchain-ai.github.io/langgraph/)).
 
