@@ -12,6 +12,7 @@ tutorials_dir = docs_dir / "tutorials"
 _MANUAL = {
     "how-tos": [
         "examples/how-tos/persistence.ipynb",
+        "examples/how-tos/stream-tokens.ipynb",
     ],
     "tutorials": [
         "rag/langgraph_agentic_rag.ipynb",
