@@ -86,7 +86,9 @@ nav:
           - 'how-tos/index.md'
           - Core:
               - 'how-tos/persistence.ipynb'
+              - 'how-tos/time-travel.ipynb'
               - 'how-tos/stream-tokens.ipynb'
+              - 'how-tos/configuration.ipynb'
   - "Conceptual Guides":
      - 'concepts/index.md'
   - "Reference":
