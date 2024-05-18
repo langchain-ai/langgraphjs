@@ -250,6 +250,38 @@ describe("_shouldInterrupt", () => {
     ).toBe(true);
   });
 
+  it("should return true if any snapshot channel has been updated since last interrupt and any channel written to is in interrupt nodes list", () => {
+    // set up test
+    const checkpoint: Checkpoint = {
+      v: 1,
+      id: uuid6(-1),
+      ts: "2024-04-19T17:19:07.952Z",
+      channel_values: {
+        channel1: "channel1value",
+      },
+      channel_versions: {
+        channel1: 2, // current channel version is greater than last version seen
+      },
+      versions_seen: {},
+    };
+
+    const interruptNodes = ["node1"];
+    const snapshotChannels = ["channel1"];
+
+    // call method / assertions
+    expect(
+      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, [
+        {
+          name: "node1",
+          input: undefined,
+          proc: new RunnablePassthrough(),
+          writes: [],
+          config: undefined,
+        },
+      ])
+    ).toBe(true);
+  });
+
   it("should return false if all snapshot channels have not been updated", () => {
     // set up test
     const checkpoint: Checkpoint = {

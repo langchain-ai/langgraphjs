@@ -21,7 +21,7 @@ If you want to build a DAG, you should use just use [LangChain Expression Langua
 
 Cycles are important for agent-like behaviors, where you call an LLM in a loop, asking it what action to take next.
 
-> Looking for the Python version? Click [here](https://github.com/langchain-ai/langgraph).
+> Looking for the Python version? Click [here](https://github.com/langchain-ai/langgraph) ([py docs](https://langchain-ai.github.io/langgraph/)).
 
 ## Installation
 

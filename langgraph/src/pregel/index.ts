@@ -22,6 +22,8 @@ import {
   ReadonlyCheckpoint,
   copyCheckpoint,
   emptyCheckpoint,
+  getChannelVersion,
+  getVersionSeen,
 } from "../checkpoint/base.js";
 import { PregelNode } from "./read.js";
 import { validateGraph, validateKeys } from "./validate.js";
@@ -598,7 +600,10 @@ export class Pregel<
       } else {
         checkpoint = copyCheckpoint(checkpoint);
         for (const k of this.streamChannelsList) {
-          const version = checkpoint.channel_versions[k as string];
+          const version = checkpoint.channel_versions[k as string] ?? 0;
+          if (!checkpoint.versions_seen[INTERRUPT]) {
+            checkpoint.versions_seen[INTERRUPT] = {};
+          }
           checkpoint.versions_seen[INTERRUPT][k as string] = version;
         }
       }
@@ -820,10 +825,10 @@ export function _shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
   snapshotChannels: Array<C>,
   tasks: Array<PregelExecutableTask<N, C>>
 ): boolean {
-  const seen = checkpoint.versions_seen[INTERRUPT];
   const anySnapshotChannelUpdated = snapshotChannels.some(
     (chan) =>
-      checkpoint.channel_versions[chan as string] > seen?.[chan as string]
+      getChannelVersion(checkpoint, chan as string) >
+      getVersionSeen(checkpoint, INTERRUPT, chan as string)
   );
   const anyTaskNodeInInterruptNodes = tasks.some((task) =>
     interruptNodes === "*"
@@ -946,12 +951,6 @@ export function _prepareNextTasks<
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
   for (const [name, proc] of Object.entries<PregelNode>(processes)) {
-    let seen = newCheckpoint.versions_seen[name];
-    if (!seen) {
-      newCheckpoint.versions_seen[name] = {};
-      seen = newCheckpoint.versions_seen[name];
-    }
-
     // If any of the channels read by this process were updated
     if (
       proc.triggers
@@ -964,7 +963,9 @@ export function _prepareNextTasks<
           }
         })
         .some(
-          (chan) => newCheckpoint.channel_versions[chan] > (seen[chan] ?? 0)
+          (chan) =>
+            getChannelVersion(newCheckpoint, chan) >
+            getVersionSeen(newCheckpoint, name, chan)
         )
     ) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1019,11 +1020,14 @@ export function _prepareNextTasks<
 
       if (forExecution) {
         // Update seen versions
+        if (!newCheckpoint.versions_seen[name]) {
+          newCheckpoint.versions_seen[name] = {};
+        }
         proc.triggers.forEach((chan: string) => {
           const version = newCheckpoint.channel_versions[chan];
           if (version !== undefined) {
             // side effect: updates newCheckpoint
-            seen[chan] = version;
+            newCheckpoint.versions_seen[name][chan] = version;
           }
         });
 

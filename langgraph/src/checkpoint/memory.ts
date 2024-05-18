@@ -25,8 +25,10 @@ export class MemorySaver extends BaseCheckpointSaver {
       if (checkpoint) {
         return {
           config,
-          checkpoint: this.serde.parse(checkpoint[0]) as Checkpoint,
-          metadata: this.serde.parse(checkpoint[1]) as CheckpointMetadata,
+          checkpoint: (await this.serde.parse(checkpoint[0])) as Checkpoint,
+          metadata: (await this.serde.parse(
+            checkpoint[1]
+          )) as CheckpointMetadata,
         };
       }
     } else {
@@ -37,8 +39,10 @@ export class MemorySaver extends BaseCheckpointSaver {
         const checkpoint = checkpoints[maxThreadTs];
         return {
           config: { configurable: { thread_id, checkpoint_id: maxThreadTs } },
-          checkpoint: this.serde.parse(checkpoint[0]) as Checkpoint,
-          metadata: this.serde.parse(checkpoint[1]) as CheckpointMetadata,
+          checkpoint: (await this.serde.parse(checkpoint[0])) as Checkpoint,
+          metadata: (await this.serde.parse(
+            checkpoint[1]
+          )) as CheckpointMetadata,
         };
       }
     }
@@ -63,8 +67,8 @@ export class MemorySaver extends BaseCheckpointSaver {
       .slice(0, limit)) {
       yield {
         config: { configurable: { thread_id, checkpoint_id } },
-        checkpoint: this.serde.parse(checkpoint[0]) as Checkpoint,
-        metadata: this.serde.parse(checkpoint[1]) as CheckpointMetadata,
+        checkpoint: (await this.serde.parse(checkpoint[0])) as Checkpoint,
+        metadata: (await this.serde.parse(checkpoint[1])) as CheckpointMetadata,
       };
     }
   }
