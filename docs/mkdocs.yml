@@ -95,6 +95,7 @@ nav:
           - "how-tos/human-in-the-loop.ipynb"
           - "how-tos/force-calling-a-tool-first.ipynb"
           - "how-tos/dynamically-returning-directly.ipynb"
+          - "how-tos/respond-in-format.ipynb"
   - "Conceptual Guides":
       - "concepts/index.md"
   - "Reference":
