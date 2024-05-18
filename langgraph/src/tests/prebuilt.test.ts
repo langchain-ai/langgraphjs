@@ -1,9 +1,23 @@
 /* eslint-disable no-process-env */
-import { it, expect, beforeAll, describe } from "@jest/globals";
+import { beforeAll, describe, expect, it } from "@jest/globals";
 import { PromptTemplate } from "@langchain/core/prompts";
+import { StructuredTool, Tool } from "@langchain/core/tools";
 import { FakeStreamingLLM } from "@langchain/core/utils/testing";
-import { Tool } from "@langchain/core/tools";
-import { createAgentExecutor } from "../prebuilt/index.js";
+
+import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
+import { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import { BaseLLMParams } from "@langchain/core/language_models/llms";
+import {
+  AIMessage,
+  BaseMessage,
+  HumanMessage,
+  SystemMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
+import { ChatResult } from "@langchain/core/outputs";
+import { RunnableLambda } from "@langchain/core/runnables";
+import { z } from "zod";
+import { createAgentExecutor, createReactAgent } from "../prebuilt/index.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -201,6 +215,235 @@ describe("PreBuilt", () => {
           },
         },
       },
+    ]);
+  });
+});
+
+export class FakeToolCallingChatModel extends BaseChatModel {
+  sleep?: number = 50;
+
+  responses?: BaseMessage[];
+
+  thrownErrorString?: string;
+
+  idx: number;
+
+  constructor(
+    fields: {
+      sleep?: number;
+      responses?: BaseMessage[];
+      thrownErrorString?: string;
+    } & BaseLLMParams
+  ) {
+    super(fields);
+    this.sleep = fields.sleep ?? this.sleep;
+    this.responses = fields.responses;
+    this.thrownErrorString = fields.thrownErrorString;
+    this.idx = 0;
+  }
+
+  _llmType() {
+    return "fake";
+  }
+
+  async _generate(
+    messages: BaseMessage[],
+    _options: this["ParsedCallOptions"],
+    _runManager?: CallbackManagerForLLMRun
+  ): Promise<ChatResult> {
+    if (this.thrownErrorString) {
+      throw new Error(this.thrownErrorString);
+    }
+    const msg = this.responses?.[this.idx] ?? messages[this.idx];
+    const generation: ChatResult = {
+      generations: [
+        {
+          text: "",
+          message: msg,
+        },
+      ],
+    };
+    this.idx += 1;
+
+    return generation;
+  }
+
+  bindTools(_: Tool[]) {
+    return new FakeToolCallingChatModel({
+      sleep: this.sleep,
+      responses: this.responses,
+      thrownErrorString: this.thrownErrorString,
+    });
+  }
+}
+
+describe("createReactAgent", () => {
+  const searchSchema = z.object({
+    query: z.string().describe("The query to search for."),
+  });
+
+  class SearchAPI extends StructuredTool {
+    name = "search_api";
+
+    description = "A simple API that returns the input string.";
+
+    schema = searchSchema;
+
+    async _call(input: z.infer<typeof searchSchema>) {
+      return `result for ${input?.query}`;
+    }
+  }
+
+  const tools = [new SearchAPI()];
+
+  it("Can use string message modifier", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "result1",
+          tool_calls: [
+            { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+          ],
+        }),
+        new AIMessage("result2"),
+      ],
+    });
+
+    const agent = createReactAgent(llm, tools, "You are a helpful assistant");
+
+    const result = await agent.invoke({
+      messages: [new HumanMessage("Hello Input!")],
+    });
+
+    expect(result.messages).toEqual([
+      new HumanMessage("Hello Input!"),
+      new AIMessage({
+        content: "result1",
+        tool_calls: [
+          { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+        ],
+      }),
+      new ToolMessage({
+        name: "search_api",
+        content: "result for foo",
+        tool_call_id: "tool_abcd123",
+      }),
+      new AIMessage("result2"),
+    ]);
+  });
+
+  it("Can use SystemMessage message modifier", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "result1",
+          tool_calls: [
+            { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+          ],
+        }),
+        new AIMessage("result2"),
+      ],
+    });
+
+    const agent = createReactAgent(
+      llm,
+      tools,
+      new SystemMessage("You are a helpful assistant")
+    );
+
+    const result = await agent.invoke({
+      messages: [],
+    });
+    console.log("RESULT THING", result);
+    expect(result.messages).toEqual([
+      new AIMessage({
+        content: "result1",
+        tool_calls: [
+          { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+        ],
+      }),
+      new ToolMessage({
+        name: "search_api",
+        content: "result for foo",
+        tool_call_id: "tool_abcd123",
+      }),
+      new AIMessage("result2"),
+    ]);
+  });
+
+  it("Can use custom function message modifier", async () => {
+    const aiM1 = new AIMessage({
+      content: "result1",
+      tool_calls: [
+        { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+      ],
+    });
+    const aiM2 = new AIMessage("result2");
+    const llm = new FakeToolCallingChatModel({
+      responses: [aiM1, aiM2],
+    });
+
+    const messageModifier = (messages: BaseMessage[]) => [
+      new SystemMessage("You are a helpful assistant"),
+      ...messages,
+    ];
+
+    const agent = createReactAgent(llm, tools, messageModifier);
+
+    const result = await agent.invoke({
+      messages: [new HumanMessage("Hello Input!")],
+    });
+
+    expect(result.messages).toEqual([
+      new HumanMessage("Hello Input!"),
+      aiM1,
+      new ToolMessage({
+        name: "search_api",
+        content: "result for foo",
+        tool_call_id: "tool_abcd123",
+      }),
+      aiM2,
+    ]);
+  });
+
+  it("Can use RunnableLambda message modifier", async () => {
+    const aiM1 = new AIMessage({
+      content: "result1",
+      tool_calls: [
+        { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+      ],
+    });
+    const aiM2 = new AIMessage("result2");
+    const llm = new FakeToolCallingChatModel({
+      responses: [aiM1, aiM2],
+    });
+
+    const messageModifier = new RunnableLambda({
+      func: (messages: BaseMessage[]) => [
+        new SystemMessage("You are a helpful assistant"),
+        ...messages,
+      ],
+    });
+
+    const agent = createReactAgent(llm, tools, messageModifier);
+
+    const result = await agent.invoke({
+      messages: [
+        new HumanMessage("Hello Input!"),
+        new HumanMessage("Another Input!"),
+      ],
+    });
+
+    expect(result.messages).toEqual([
+      new HumanMessage("Hello Input!"),
+      new HumanMessage("Another Input!"),
+      aiM1,
+      new ToolMessage({
+        name: "search_api",
+        content: "result for foo",
+        tool_call_id: "tool_abcd123",
+      }),
+      aiM2,
     ]);
   });
 });

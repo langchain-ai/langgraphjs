@@ -47,7 +47,7 @@ export type N = typeof START | "agent" | "tools";
  */
 export function createReactAgent(
   model: BaseChatModel,
-  tools: ToolNode<MessagesState> | (StructuredTool | DynamicTool)[],
+  tools: ToolNode<MessagesState> | StructuredTool[],
   messageModifier?:
     | SystemMessage
     | string
@@ -154,13 +154,16 @@ function _createModelWrapper(
   if (!messageModifier) {
     return modelWithTools;
   }
+  const endict = new RunnableLambda({
+    func: (messages: BaseMessage[]) => ({ messages }),
+  });
   if (typeof messageModifier === "string") {
     const systemMessage = new SystemMessage(messageModifier);
     const prompt = ChatPromptTemplate.fromMessages([
       systemMessage,
       ["placeholder", "{messages}"],
     ]);
-    return prompt.pipe(modelWithTools);
+    return endict.pipe(prompt).pipe(modelWithTools);
   }
   if (typeof messageModifier === "function") {
     const lambda = new RunnableLambda({ func: messageModifier }).withConfig({
@@ -176,7 +179,7 @@ function _createModelWrapper(
       messageModifier,
       ["placeholder", "{messages}"],
     ]);
-    return prompt.pipe(modelWithTools);
+    return endict.pipe(prompt).pipe(modelWithTools);
   }
   throw new Error(
     `Unsupported message modifier type: ${typeof messageModifier}`
