@@ -94,6 +94,7 @@ nav:
           - "how-tos/subgraph.ipynb"
           - "how-tos/human-in-the-loop.ipynb"
           - "how-tos/force-calling-a-tool-first.ipynb"
+          - "how-tos/dynamically-returning-directly.ipynb"
   - "Conceptual Guides":
       - "concepts/index.md"
   - "Reference":
