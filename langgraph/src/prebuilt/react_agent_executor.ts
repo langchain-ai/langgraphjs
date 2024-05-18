@@ -27,6 +27,8 @@ import { ToolNode } from "./tool_node.js";
 
 export interface AgentState {
   messages: BaseMessage[];
+  // TODO: This won't be set until we
+  // implement managed values in LangGraphJS
   is_last_step: boolean;
 }
 
@@ -77,7 +79,7 @@ export function createReactAgent(
     toolClasses = tools;
   }
   if (!("bindTools" in model) || typeof model.bindTools !== "function") {
-    throw new Error("Model must define bindTools method.");
+    throw new Error(`Model ${model} must define bindTools method.`);
   }
   const modelWithTools = model.bindTools(toolClasses);
   const modelRunnable = _createModelWrapper(modelWithTools, messageModifier);
@@ -85,7 +87,10 @@ export function createReactAgent(
   const shouldContinue = (state: AgentState) => {
     const { messages } = state;
     const lastMessage = messages[messages.length - 1];
-    if (isAIMessage(lastMessage) && !lastMessage.tool_calls) {
+    if (
+      isAIMessage(lastMessage) &&
+      (!lastMessage.tool_calls || lastMessage.tool_calls.length === 0)
+    ) {
       return END;
     } else {
       return "continue";

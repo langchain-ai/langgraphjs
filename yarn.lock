@@ -1588,7 +1588,7 @@ __metadata:
     "@jest/globals": ^29.5.0
     "@langchain/community": ^0.0.43
     "@langchain/core": ^0.1.61
-    "@langchain/openai": ^0.0.23
+    "@langchain/openai": latest
     "@langchain/scripts": ^0.0.13
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
@@ -1625,19 +1625,6 @@ __metadata:
       optional: true
   languageName: unknown
   linkType: soft
-
-"@langchain/openai@npm:^0.0.23":
-  version: 0.0.23
-  resolution: "@langchain/openai@npm:0.0.23"
-  dependencies:
-    "@langchain/core": ~0.1.45
-    js-tiktoken: ^1.0.7
-    openai: ^4.26.0
-    zod: ^3.22.4
-    zod-to-json-schema: ^3.22.3
-  checksum: 024a6e431e1d917f09453b090cad37784d801de42dca888b3f5bb969da49d8a342eb2c63cdc3b908e82c5d67da2666b3cf0fdc52ee858aaac139e3798929d052
-  languageName: node
-  linkType: hard
 
 "@langchain/openai@npm:latest":
   version: 0.0.31
@@ -7567,7 +7554,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"openai@npm:^4.26.0, openai@npm:^4.32.1":
+"openai@npm:^4.32.1":
   version: 4.38.2
   resolution: "openai@npm:4.38.2"
   dependencies:

@@ -12,10 +12,10 @@ import {
 
 // Tracing slows down the tests
 beforeAll(() => {
-  process.env.LANGCHAIN_TRACING_V2 = "false";
-  process.env.LANGCHAIN_ENDPOINT = "";
-  process.env.LANGCHAIN_API_KEY = "";
-  process.env.LANGCHAIN_PROJECT = "";
+  // process.env.LANGCHAIN_TRACING_V2 = "false";
+  // process.env.LANGCHAIN_ENDPOINT = "";
+  // process.env.LANGCHAIN_API_KEY = "";
+  // process.env.LANGCHAIN_PROJECT = "";
 });
 
 describe("createFunctionCallingExecutor", () => {
@@ -46,7 +46,6 @@ describe("createFunctionCallingExecutor", () => {
       messages: [new HumanMessage("What's the weather like in SF?")],
     });
 
-    console.log(response);
     // It needs at least one human message, one AI and one function message.
     expect(response.messages.length > 3).toBe(true);
     const firstFunctionMessage = (response.messages as Array<BaseMessage>).find(
@@ -81,24 +80,24 @@ describe("createFunctionCallingExecutor", () => {
       tools,
     });
 
-    const stream = await functionsAgentExecutor.stream({
-      messages: [new HumanMessage("What's the weather like in SF?")],
-    });
+    const stream = await functionsAgentExecutor.stream(
+      {
+        messages: [new HumanMessage("What's the weather like in SF?")],
+      },
+      { streamMode: "values" }
+    );
     const fullResponse = [];
     for await (const item of stream) {
-      console.log(item);
-      console.log("-----\n");
       fullResponse.push(item);
     }
 
-    // Needs at least 3 llm calls, plus one `__end__` call.
-    expect(fullResponse.length >= 4).toBe(true);
+    // human -> agent -> action -> agent
+    expect(fullResponse.length).toEqual(4);
 
-    const endMessage = fullResponse[fullResponse.length - 1];
-    expect(END in endMessage).toBe(true);
-    expect(endMessage[END].messages.length > 0).toBe(true);
-
-    const functionCall = endMessage[END].messages.find(
+    const endState = fullResponse[fullResponse.length - 1];
+    // 1 human, 2 llm calls, 1 function call.
+    expect(endState.messages.length).toEqual(4);
+    const functionCall = endState.messages.find(
       (message: BaseMessage) => message._getType() === "function"
     );
     expect(functionCall.content).toBe(weatherResponse);
@@ -130,12 +129,11 @@ describe("createReactAgent", () => {
       messages: [new HumanMessage("What's the weather like in SF?")],
     });
 
-    console.log(response);
     // It needs at least one human message and one AI message.
     expect(response.messages.length > 1).toBe(true);
     const lastMessage = response.messages[response.messages.length - 1];
     expect(lastMessage._getType()).toBe("ai");
-    expect(lastMessage.content).toContain(weatherResponse);
+    expect(lastMessage.content.toLowerCase()).toContain("not too cold");
   });
 
   it("can stream a tool call", async () => {
@@ -160,26 +158,25 @@ describe("createReactAgent", () => {
 
     const reactAgent = createReactAgent(model, tools);
 
-    const stream = await reactAgent.stream({
-      messages: [new HumanMessage("What's the weather like in SF?")],
-    });
+    const stream = await reactAgent.stream(
+      {
+        messages: [new HumanMessage("What's the weather like in SF?")],
+      },
+      { streamMode: "values" }
+    );
     const fullResponse = [];
     for await (const item of stream) {
-      console.log(item);
-      console.log("-----\n");
       fullResponse.push(item);
     }
 
-    // Needs at least 2 llm calls, plus one `__end__` call.
-    expect(fullResponse.length >= 3).toBe(true);
+    // human -> agent -> action -> agent
+    expect(fullResponse.length).toEqual(4);
+    const endState = fullResponse[fullResponse.length - 1];
+    // 1 human, 2 ai, 1 tool.
+    expect(endState.messages.length).toEqual(4);
 
-    const endMessage = fullResponse[fullResponse.length - 1];
-    expect(END in endMessage).toBe(true);
-    expect(endMessage[END].messages.length > 0).toBe(true);
-
-    const lastMessage =
-      endMessage[END].messages[endMessage[END].messages.length - 1];
+    const lastMessage = endState.messages[endState.messages.length - 1];
     expect(lastMessage._getType()).toBe("ai");
-    expect(lastMessage.content).toContain(weatherResponse);
+    expect(lastMessage.content.toLowerCase()).toContain("not too cold");
   });
 });
