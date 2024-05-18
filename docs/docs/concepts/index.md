@@ -505,11 +505,12 @@ To inspect the trace of this run, check out the
 
 And there you have it! We've explored the core concepts behind LangGraph.js and seen how it can be used to create reliable, fault-tolerant agent systems. By modeling agents as state machines, LangGraph.js provides a powerful abstraction for composing AI workflows that are both scalable and controllable.
 
-As you dive deeper into LangGraph.js, remember these key ideas:
+As you learn more of LangGraph.js, remember these key ideas:
 
 - Nodes do the work, edges determine the control flow
 - Reducers precisely define how state is updated at each step
-- Checkpointing enables memory across single-turn and multi-turn interactions
+- Checkpointing enables memory both within a single run and across multi-turn interactions
+- Interruptions let you pause, get, and update the graph's state to enable human-in-the-loop workflows
 - Configurable parameters allow for runtime control separate from the regular data flow
 
 Armed with this knowledge, you're now ready to start building your own AI agents with LangGraph.js. Happy coding!
