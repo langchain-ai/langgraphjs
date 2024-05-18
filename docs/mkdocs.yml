@@ -32,18 +32,18 @@ theme:
     - search.suggest
     - toc.follow
   palette:
-  - scheme: default
-    primary: white
-    accent: gray
-    toggle:
-      icon: material/brightness-7
-      name: Switch to dark mode
-  - scheme: slate
-    primary: grey
-    accent: white
-    toggle:
-      icon: material/brightness-4
-      name: Switch to light mode
+    - scheme: default
+      primary: white
+      accent: gray
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: grey
+      accent: white
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
   font:
     text: "Public Sans"
     code: "Roboto Mono"
@@ -57,17 +57,17 @@ plugins:
       include_source: True
       include_requirejs: true
   - typedoc:
-      source: '../langgraph/*.d.ts'
-      output_dir: './reference'
-      tsconfig: '../tsconfig.json'
-      options: 'typedoc.json'
-      name: 'API Reference'
+      source: "../langgraph/*.d.ts"
+      output_dir: "./reference"
+      tsconfig: "../tsconfig.json"
+      options: "typedoc.json"
+      name: "API Reference"
       title_link: "/" # optional, default: '/'
 nav:
-  - Home: 
-      - 'index.md'
+  - Home:
+      - "index.md"
   - Tutorials:
-      - 'tutorials/index.md'
+      - "tutorials/index.md"
       - Use cases:
           - Multi-Agent Systems:
               - tutorials/multi_agent/agent_supervisor.ipynb
@@ -83,20 +83,20 @@ nav:
               - tutorials/reflection/reflection.ipynb
               - tutorials/rewoo/rewoo.ipynb
   - "How-to Guides":
-          - 'how-tos/index.md'
-          - Core:
-              - 'how-tos/persistence.ipynb'
-              - 'how-tos/time-travel.ipynb'
-              - 'how-tos/stream-tokens.ipynb'
-              - 'how-tos/configuration.ipynb'
-          - Design Patterns:
-              - 'how-tos/branching.ipynb'
-              - 'how-tos/subgraph.ipynb'
+      - "how-tos/index.md"
+      - Core:
+          - "how-tos/persistence.ipynb"
+          - "how-tos/time-travel.ipynb"
+          - "how-tos/stream-tokens.ipynb"
+          - "how-tos/configuration.ipynb"
+      - Design Patterns:
+          - "how-tos/branching.ipynb"
+          - "how-tos/subgraph.ipynb"
+          - "how-tos/human-in-the-loop.ipynb"
   - "Conceptual Guides":
-     - 'concepts/index.md'
+      - "concepts/index.md"
   - "Reference":
-     - 'reference/index.html'
-  
+      - "reference/index.html"
 
 markdown_extensions:
   - abbr
@@ -127,7 +127,7 @@ markdown_extensions:
   - pymdownx.magiclink:
       normalize_issue_symbols: true
       repo_url_shorthand: true
-      user: langchain-ai 
+      user: langchain-ai
       repo: langgraphjs
   - pymdownx.mark
   - pymdownx.smartsymbols
@@ -149,7 +149,7 @@ extra_css:
 
 extra:
   social:
-    - icon: fontawesome/brands/python 
+    - icon: fontawesome/brands/python
       link: https://langchain-ai.github.io/langgraph/
     - icon: fontawesome/brands/github
       link: https://github.com/langchain-ai/langgraphjs
