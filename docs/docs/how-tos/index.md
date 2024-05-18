@@ -11,7 +11,7 @@ The core guides show how to address common needs when building a out AI workflow
 - [Stream tokens](stream-tokens.ipynb): How to stream tokens and tool calls from your agent within a graph
 - [Configuration](configuration.ipynb): How to indicate that a graph can swap out configurable components
 
-### Design patterns
+## Design patterns
 
 How to apply common design patterns in your workflows:
 
