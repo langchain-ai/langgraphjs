@@ -4,7 +4,6 @@ import { it, beforeAll, describe, expect } from "@jest/globals";
 import { Tool } from "@langchain/core/tools";
 import { ChatOpenAI } from "@langchain/openai";
 import { BaseMessage, HumanMessage } from "@langchain/core/messages";
-import { END } from "../index.js";
 import {
   createReactAgent,
   createFunctionCallingExecutor,
@@ -12,10 +11,10 @@ import {
 
 // Tracing slows down the tests
 beforeAll(() => {
-  // process.env.LANGCHAIN_TRACING_V2 = "false";
-  // process.env.LANGCHAIN_ENDPOINT = "";
-  // process.env.LANGCHAIN_API_KEY = "";
-  // process.env.LANGCHAIN_PROJECT = "";
+  process.env.LANGCHAIN_TRACING_V2 = "false";
+  process.env.LANGCHAIN_ENDPOINT = "";
+  process.env.LANGCHAIN_API_KEY = "";
+  process.env.LANGCHAIN_PROJECT = "";
 });
 
 describe("createFunctionCallingExecutor", () => {
