@@ -25,7 +25,7 @@ import { CompiledStateGraph, StateGraphArgs } from "../graph/state.js";
 import { All } from "../pregel/types.js";
 import { ToolNode } from "./tool_node.js";
 
-interface AgentState {
+export interface AgentState {
   messages: BaseMessage[];
   is_last_step: boolean;
 }
