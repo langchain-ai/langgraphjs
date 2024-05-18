@@ -1,11 +1,10 @@
 # How-to guides
 
-Welcome to the LangGraphJS How-to Guides! These guides provide practical, step-by-step instructions for accomplishing key tasks in LangGraphJS. 
+Welcome to the LangGraphJS How-to Guides! These guides provide practical, step-by-step instructions for accomplishing key tasks in LangGraphJS.
 
 ## In progress
 
 🚧 This section is currently in progress. More updates to come! 🚧
-
 
 ## Core
 
@@ -27,3 +26,4 @@ How to apply common design patterns in your workflows:
 The following examples are useful especially if you are used to LangChain's AgentExecutor configurations.
 
 - [Force calling a tool first](force-calling-a-tool-first.ipynb): Define a fixed workflow before ceding control to the ReAct agent
+- [Dynamic direct return](dynamically-returning-directly.ipynb): Let the LLM decide whether the graph should finish after a tool is run or whether the LLM should be able to review the output and keep going
