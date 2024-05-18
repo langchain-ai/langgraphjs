@@ -22,3 +22,4 @@ How to apply common design patterns in your workflows:
 
 - [Subgraphs](subgraph.ipynb): How to compose subgraphs within a larger graph
 - [Branching](branching.ipynb): How to create branching logic in your graphs for parallel node execution
+- [Human-in-the-loop](human-in-the-loop.ipynb): How to incorporate human feedback and intervention
