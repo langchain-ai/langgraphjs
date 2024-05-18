@@ -513,6 +513,4 @@ As you learn more of LangGraph.js, remember these key ideas:
 - Interruptions let you pause, get, and update the graph's state to enable human-in-the-loop workflows
 - Configurable parameters allow for runtime control separate from the regular data flow
 
-Armed with this knowledge, you're now ready to start building your own AI agents with LangGraph.js. Happy coding!
-
 For more examples and tutorials, check out the [LangGraph.js documentation](https://langchain-ai.github.io/langgraphjs/). If you have any questions or run into issues, don't hesitate to reach out on [GitHub](https://github.com/langchain-ai/langgraphjs/discussions).
