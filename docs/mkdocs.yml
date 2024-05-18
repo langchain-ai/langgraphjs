@@ -91,6 +91,7 @@ nav:
               - 'how-tos/configuration.ipynb'
           - Design Patterns:
               - 'how-tos/branching.ipynb'
+              - 'how-tos/subgraph.ipynb'
   - "Conceptual Guides":
      - 'concepts/index.md'
   - "Reference":
