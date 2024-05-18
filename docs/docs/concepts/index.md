@@ -56,12 +56,31 @@ Similar to `NetworkX`, you add these nodes to a graph using the [addNode](https:
 ```typescript
 import { StateGraph } from "@langchain/langgraph";
 
-interface State {
-  input: string;
-  results?: string;
-}
+const upsertKeys = (
+  left?: Record<string, string>,
+  right?: Record<string, string>
+) => {
+  if (!left) {
+    left = {};
+  }
+  if (!right) {
+    return left;
+  }
+  return { ...left, ...right };
+};
+const anyState = {
+  channels: {
+    // The __root__ channel is special, it is applied
+    // at the top level. Typically, you'd define specific
+    // fields to populate within the root.
+    __root__: {
+      reducer: upsertKeys,
+      default: () => {},
+    },
+  },
+};
 
-const builder = new StateGraph<State>({});
+const builder = new StateGraph(anyState);
 
 function myNode(state: State, config: RunnableConfig) {
   console.log("In node: ", config.configurable.user_id);
@@ -75,12 +94,16 @@ function myOtherNode(state: State) {
 
 builder.addNode("my_node", myNode);
 builder.addNode("other_node", myOtherNode);
-builder.setEntryPoint("my_node");
+builder.addEdge(START, "my_node");
 builder.addEdge("my_node", "other_node");
-builder.setFinishPoint("other_node");
+builder.addEdge("other_node", END);
 const graph = builder.compile();
-graph.invoke({ input: "Will" }, { configurable: { user_id: "abcd-123" } });
+const result1 = await graph.invoke(
+  { input: "Will" },
+  { configurable: { user_id: "abcd-123" } }
+);
 // In node:  abcd-123
+console.log(result1);
 // { input: 'Will', results: 'Hello, Will!' }
 ```
 
@@ -114,25 +137,28 @@ We'll illustrate how reducers work with an example. Compare the following two `S
 import { StateGraph } from "@langchain/langgraph";
 
 interface StateA {
-  value: {
+  myField: {
     value: (x: number) => number;
     default: () => number;
   };
 }
 
 const builderA = new StateGraph<StateA>({
-  value: {
-    value: (x: number) => x,
-    default: () => 0,
+  channels: {
+    myField: {
+      // This would be the default:
+      // value: (x: number, y: number) => y,
+      default: () => 0,
+    },
   },
 });
 
-builderA.addNode("my_node", (state) => ({ value: 1 }));
-builderA.setEntryPoint("my_node");
-builderA.setFinishPoint("my_node");
+builderA.addNode("my_node", (_state) => ({ myField: 1 }));
+builderA.addEdge(START, "my_node");
+builderA.addEdge("my_node", END);
 const graphA = builderA.compile();
-console.log(graphA.invoke({ value: 5 }));
-// { value: 1 }
+console.log(await graphA.invoke({ myField: 5 }));
+// { myField: 1 }
 ```
 
 And `StateB`:
@@ -141,7 +167,7 @@ And `StateB`:
 import { StateGraph } from "@langchain/langgraph";
 
 interface StateB {
-  value: {
+  myField: {
     value: (x: number, y?: number) => number;
     default: () => number;
   };
@@ -152,99 +178,51 @@ function add(existing: number, updated?: number) {
 }
 
 const builderB = new StateGraph<StateB>({
-  value: {
-    value: add,
-    default: () => 0,
+  channels: {
+    myField: {
+      value: add,
+      default: () => 0,
+    },
   },
 });
 
-builderB.addNode("my_node", (state) => ({ value: 1 }));
-builderB.setEntryPoint("my_node");
-builderB.setFinishPoint("my_node");
+builderB.addNode("my_node", (_state) => ({ myField: 1 }));
+builderB.addEdge(START, "my_node");
+builderB.addEdge("my_node", END);
 const graphB = builderB.compile();
-console.log(graphB.invoke({ value: 5 }));
-// { value: 6 }
+console.log(await graphB.invoke({ myField: 5 }));
+// { myField: 6 }
 ```
 
 If you guessed "1" and "6", then you're correct!
 
-In the first case (`StateA`), the result is "1", since the default **reducer** for your state is a direct overwrite.
+In the first case (`StateA`), the result is "1", since the default **reducer** for your state is a **direct overwrite.**
 In the second case (`StateB`), the result is "6" since we have created the `add` function as the **reducer**. This function takes the existing state (for that field) and the state update (if provided) and returns the updated value for that state.
 
-In general, **reducers** provided as annotations tell the graph **how to process updates for this field**.
-
-While we typically use objects as the graph's `State` (i.e., `state_schema`), it can be any type, meaning the following graph is also completely valid:
-
-```typescript
-// Analogous to StateA above
-const builderA = new StateGraph({
-  value: {
-    value: (x: number) => x,
-    default: () => 0,
-  },
-});
-
-builderA.addNode("my_node", (state) => 1);
-builderA.setEntryPoint("my_node");
-builderA.setFinishPoint("my_node");
-const graphA = builderA.compile();
-graphA.invoke(5);
-// 1
-
-// Analogous to StateB
-const builderB = new StateGraph({
-  value: {
-    value: add,
-    default: () => 0,
-  },
-});
-
-builderB.addNode("my_node", (state) => 1);
-builderB.setEntryPoint("my_node");
-builderB.setFinishPoint("my_node");
-const graphB = builderB.compile();
-graphB.invoke(5);
-// 6
-```
+In general, **reducers** tell the graph **how to process updates for this field**.
 
 When building simple chatbots like ChatGPT, the state can be as simple as a list of chat messages. This is the state used by [MessageGraph](https://langchain-ai.github.io/langgraphjs/reference/classes/index.MessageGraph.html) (a light wrapper of `StateGraph`), which is only slightly more involved than the following:
 
 ```typescript
-import { BaseMessage } from "@langchain/core/messages";
+import { END, START } from "@langchain/langgraph";
 
-interface State {
-  value: {
-    value: (x: number, y?: number) => number;
-    default: () => number;
-  };
-  history: {
-    value: (x: string[], y?: string[]) => string[];
-    default: () => string[];
-  };
-}
-
-const builder = new StateGraph<State>({
-  value: {
-    value: add,
-    default: () => 0,
-  },
-  history: {
-    value: (x: string[], y?: string[]) => [...x, ...(y ?? [])],
-    default: () => [],
+const builderE = new StateGraph({
+  channels: {
+    __root__: {
+      reducer: (x: string[], y?: string[]) => x.concat(y ?? []),
+      default: () => [],
+    },
   },
 });
 
-builder.addNode("my_node", (state) => {
-  return {
-    value: state.value + 1,
-    history: [`Added 1 to ${state.value}`],
-  };
+builderE.addNode("my_node", (state) => {
+  return [`Adding a message to ${state}`];
 });
-builder.setEntryPoint("my_node");
-builder.setFinishPoint("my_node");
-const graph = builder.compile();
-graph.invoke({ value: 5, history: [] });
-// { value: 6, history: ['Added 1 to 5'] }
+builderE.addEdge(START, "my_node");
+builderE.addEdge("my_node", END);
+const graphE = builderE.compile();
+console.log(await graphE.invoke(["Hi"]));
+// ["Hi", 'Added a message to Hi']
 ```
 
 Using a shared state within a graph comes with some design tradeoffs. For instance, you may think it feels like using dreaded global variables (though this can be addressed by namespacing arguments). However, sharing a typed state provides a number of benefits relevant to building AI workflows, including:
@@ -335,29 +313,31 @@ interface State {
   turn?: string;
 }
 
-function add(existing: number, updated?: number) {
+function addF(existing: number, updated?: number) {
   return existing + (updated ?? 0);
 }
 
-const builder = new StateGraph<State>({
-  total: {
-    value: add,
-    default: () => 0,
+const builderG = new StateGraph<State>({
+  channels: {
+    total: {
+      value: addF,
+      default: () => 0,
+    },
   },
 });
 
-builder.addNode("add_one", (state) => ({ total: 1 }));
-builder.setEntryPoint("add_one");
-builder.setFinishPoint("add_one");
+builderG.addNode("add_one", (_state) => ({ total: 1 }));
+builderG.addEdge(START, "add_one");
+builderG.addEdge("add_one", END);
 
 const memory = new MemorySaver();
-const graph = builder.compile({ checkpointer: memory });
-const threadId = "some-thread";
-const config = { configurable: { thread_id: threadId } };
-const result = graph.invoke({ total: 1, turn: "First Turn" }, config);
-const result2 = graph.invoke({ turn: "Next Turn" }, config);
-const result3 = graph.invoke({ total: 5 }, config);
-const result4 = graph.invoke(
+const graphG = builderG.compile({ checkpointer: memory });
+let threadId = "some-thread";
+let config = { configurable: { thread_id: threadId } };
+const result = await graphG.invoke({ total: 1, turn: "First Turn" }, config);
+const result2 = await graphG.invoke({ turn: "Next Turn" }, config);
+const result3 = await graphG.invoke({ total: 5 }, config);
+const result4 = await graphG.invoke(
   { total: 5 },
   { configurable: { thread_id: "new-thread-id" } }
 );
@@ -391,19 +371,19 @@ You probably noticed that this user-facing behavior is equivalent to running the
 following **without a checkpointer**.
 
 ```typescript
-const graph = builder.compile();
-const result = graph.invoke({ total: 1, turn: "First Turn" });
-const result2 = graph.invoke({ ...result, turn: "Next Turn" });
-const result3 = graph.invoke({ ...result2, total: result2.total + 5 });
-const result4 = graph.invoke({ total: 5 });
+const graphG2 = builderG.compile();
+const resultG1 = await graphG2.invoke({ total: 1, turn: "First Turn" });
+const resultG2 = await graphG2.invoke({ ...result, turn: "Next Turn" });
+const resultG3 = await graphG2.invoke({ ...result2, total: result2.total + 5 });
+const resultG4 = await graphG2.invoke({ total: 5 });
 
-console.log(result);
+console.log(resultG1);
 // { total: 2, turn: 'First Turn' }
-console.log(result2);
+console.log(resultG2);
 // { total: 3, turn: 'Next Turn' }
-console.log(result3);
+console.log(resultG3);
 // { total: 9, turn: 'Next Turn' }
-console.log(result4);
+console.log(resultG4);
 // { total: 6 }
 ```
 
@@ -433,44 +413,47 @@ interface State {
   };
 }
 
-function add(existing: number, updated?: number) {
+function addG(existing: number, updated?: number) {
   return existing + (updated ?? 0);
 }
 
-const builder = new StateGraph<State>({
-  total: {
-    value: add,
-    default: () => 0,
+const builderH = new StateGraph<State>({
+  channels: {
+    total: {
+      value: addG,
+      default: () => 0,
+    },
   },
 });
 
-builder.addNode("add_one", (state) => ({ total: 1 }));
-builder.addNode("double", (state) => ({ total: state.total }));
-builder.setEntryPoint("add_one");
+builderH.addNode("add_one", (_state) => ({ total: 1 }));
+builderH.addNode("double", (state) => ({ total: state.total }));
+builderH.addEdge(START, "add_one");
 
 function route(state: State) {
   if (state.total < 6) {
     return "double";
   }
-  return "__end__";
+  return END;
 }
 
-builder.addConditionalEdges("add_one", route);
-builder.addEdge("double", "add_one");
+builderH.addConditionalEdges("add_one", route);
+builderH.addEdge("double", "add_one");
 
-const memory = new MemorySaver();
-const graph = builder.compile({ checkpointer: memory });
+const memoryH = new MemorySaver();
+const graphH = builderH.compile({ checkpointer: memoryH });
 ```
 
 And then call it for the first time:
 
 ```typescript
-const threadId = "some-thread";
-const config = { configurable: { thread_id: threadId } };
-for await (const step of graph.stream({ total: 1 }, config, {
-  streamMode: "debug",
-})) {
-  console.log(step.step, step.type, step.payload?.values);
+threadId = "some-thread";
+config = { configurable: { thread_id: threadId } };
+for await (const step of await graphH.stream(
+  { total: 1 },
+  { ...config, streamMode: "values" }
+)) {
+  console.log(step);
 }
 // 0 checkpoint { total: 1 }
 // 1 task null
@@ -504,8 +487,8 @@ To inspect the trace of this run, check out the [LangSmith link here](https://sm
 For our second run, we will use the same configuration:
 
 ```typescript
-const result2 = graph.invoke({ total: -2, turn: "First Turn" }, config);
-console.log(result2);
+const resultH2 = await graphH.invoke({ total: -2, turn: "First Turn" }, config);
+console.log(resultH2);
 // { total: 10 }
 ```
 
