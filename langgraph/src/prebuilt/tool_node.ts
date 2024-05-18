@@ -1,14 +1,13 @@
 import { BaseMessage, ToolMessage, AIMessage } from "@langchain/core/messages";
 import { RunnableConfig } from "@langchain/core/runnables";
-import { Tool } from "@langchain/core/tools";
+import { StructuredTool } from "@langchain/core/tools";
 import { RunnableCallable } from "../utils.js";
 import { END } from "../graph/graph.js";
 import { MessagesState } from "../graph/message.js";
 
-export class ToolNode extends RunnableCallable<
-  BaseMessage[] | MessagesState,
-  BaseMessage[] | MessagesState
-> {
+export class ToolNode<
+  T extends BaseMessage[] | MessagesState
+> extends RunnableCallable<T, T> {
   /**
   A node that runs the tools requested in the last AIMessage. It can be used
   either in StateGraph with a "messages" key or in MessageGraph. If multiple
@@ -16,9 +15,13 @@ export class ToolNode extends RunnableCallable<
   a list of ToolMessages, one for each tool call.
   */
 
-  tools: Tool[];
+  tools: StructuredTool[];
 
-  constructor(tools: Tool[], name: string = "tools", tags: string[] = []) {
+  constructor(
+    tools: StructuredTool[],
+    name: string = "tools",
+    tags: string[] = []
+  ) {
     super({ name, tags, func: (input, config) => this.run(input, config) });
     this.tools = tools;
   }
