@@ -20,4 +20,5 @@ The core guides show how to address common needs when building a out AI workflow
 
 How to apply common design patterns in your workflows:
 
+- [Subgraphs](subgraph.ipynb): How to compose subgraphs within a larger graph
 - [Branching](branching.ipynb): How to create branching logic in your graphs for parallel node execution
