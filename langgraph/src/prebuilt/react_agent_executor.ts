@@ -29,7 +29,9 @@ export interface AgentState {
   messages: BaseMessage[];
   // TODO: This won't be set until we
   // implement managed values in LangGraphJS
-  is_last_step: boolean;
+  // Will be useful for inserting a message on
+  // graph recursion end
+  // is_last_step: boolean;
 }
 
 export type N = typeof START | "agent" | "tools";
@@ -66,10 +68,6 @@ export function createReactAgent(
       value: (left: BaseMessage[], right: BaseMessage[]) => left.concat(right),
       default: () => [],
     },
-    is_last_step: {
-      value: (_?: boolean, right?: boolean) => right ?? false,
-      default: () => false,
-    },
   };
 
   let toolClasses: (StructuredTool | DynamicTool)[];
@@ -99,22 +97,8 @@ export function createReactAgent(
 
   const callModel = async (state: AgentState) => {
     const { messages } = state;
-    // TODO: Stream
-    const response = (await modelRunnable.invoke(messages)) as AIMessage;
-    if (
-      state.is_last_step &&
-      response?.tool_calls &&
-      response.tool_calls?.length > 0
-    ) {
-      return {
-        messages: [
-          new AIMessage(
-            "Sorry, more steps are needed to process this request."
-          ),
-        ],
-      };
-    }
-    return { messages: [response] };
+    // TODO: Auto-promote streaming.
+    return { messages: [await modelRunnable.invoke(messages)] };
   };
 
   const workflow = new StateGraph<AgentState>({
