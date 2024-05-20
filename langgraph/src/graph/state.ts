@@ -22,7 +22,6 @@ import { RunnableCallable } from "../utils.js";
 import { All } from "../pregel/types.js";
 import { TAG_HIDDEN } from "../constants.js";
 import { InvalidUpdateError } from "../errors.js";
-import { DynamicBarrierValue } from "../channels/dynamic_barrier_value.js";
 
 const ROOT = "__root__";
 
@@ -341,12 +340,6 @@ export class CompiledStateGraph<
             channel: `branch:${start}:${name}:${dest}`,
             value: start,
           }));
-          if (branch.then && branch.then !== END) {
-            writes.push({
-              channel: `branch:${start}:${name}:then`,
-              value: { __names: filteredDests },
-            });
-          }
           return new ChannelWrite(writes, [TAG_HIDDEN]);
         },
         // reader
@@ -357,7 +350,7 @@ export class CompiledStateGraph<
     // attach branch subscribers
     const ends = branch.ends
       ? Object.values(branch.ends)
-      : Object.keys(this.builder.nodes).filter((n) => n !== branch.then);
+      : Object.keys(this.builder.nodes);
     for (const end of ends) {
       if (end === END) {
         continue;
@@ -366,21 +359,6 @@ export class CompiledStateGraph<
       (this.channels as Record<string, BaseChannel>)[channelName] =
         new EphemeralValue();
       this.nodes[end as N].triggers.push(channelName);
-    }
-
-    if (branch.then && branch.then !== END) {
-      const channelName = `branch:${start}:${name}:then`;
-      (this.channels as Record<string, BaseChannel>)[channelName] =
-        new DynamicBarrierValue();
-      this.nodes[branch.then].triggers.push(channelName);
-      for (const end of ends) {
-        if (end === END) {
-          continue;
-        }
-        this.nodes[end as N].writers.push(
-          new ChannelWrite([{ channel: channelName, value: end }], [TAG_HIDDEN])
-        );
-      }
     }
   }
 }

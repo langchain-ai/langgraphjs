@@ -15,7 +15,7 @@ export interface CheckpointMetadata {
    * -1 for the first "input" checkpoint.
    * 0 for the first "loop" checkpoint.
    * ... for the nth checkpoint afterwards. */
-  writes?: Record<string, unknown>;
+  writes: Record<string, unknown> | null;
   /**
    * The writes that were made between the previous checkpoint and this one.
    * Mapping from node name to writes emitted by that node.

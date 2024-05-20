@@ -22,7 +22,6 @@ export interface BranchOptions<IO, N extends string> {
   source: N;
   path: Branch<IO, N>["condition"];
   pathMap?: Record<string, N | typeof END> | N[];
-  then?: N | typeof END;
 }
 
 export class Branch<IO, N extends string> {
@@ -33,8 +32,6 @@ export class Branch<IO, N extends string> {
 
   ends?: Record<string, N | typeof END>;
 
-  then?: BranchOptions<IO, N>["then"];
-
   constructor(options: Omit<BranchOptions<IO, N>, "source">) {
     this.condition = options.path;
     this.ends = Array.isArray(options.pathMap)
@@ -43,7 +40,6 @@ export class Branch<IO, N extends string> {
           return acc;
         }, {} as Record<string, N | typeof END>)
       : options.pathMap;
-    this.then = options.then;
   }
 
   compile(
@@ -266,25 +262,8 @@ export class Graph<
   validate(interrupt?: string[]): void {
     // assemble sources
     const allSources = new Set([...this.allEdges].map(([src, _]) => src));
-    for (const [start, branches] of Object.entries(this.branches)) {
+    for (const [start] of Object.entries(this.branches)) {
       allSources.add(start);
-      for (const branch of Object.values(branches)) {
-        if (branch.then) {
-          if (branch.ends) {
-            for (const end of Object.values(branch.ends)) {
-              if (end !== END) {
-                allSources.add(end);
-              }
-            }
-          } else {
-            for (const node of Object.keys(this.nodes)) {
-              if (node !== start) {
-                allSources.add(node);
-              }
-            }
-          }
-        }
-      }
     }
     // validate sources
     for (const node of Object.keys(this.nodes)) {
@@ -302,9 +281,6 @@ export class Graph<
     const allTargets = new Set([...this.allEdges].map(([_, target]) => target));
     for (const [start, branches] of Object.entries(this.branches)) {
       for (const branch of Object.values(branches)) {
-        if (branch.then) {
-          allTargets.add(branch.then);
-        }
         if (branch.ends) {
           for (const end of Object.values(branch.ends)) {
             allTargets.add(end);
@@ -312,7 +288,7 @@ export class Graph<
         } else {
           allTargets.add(END);
           for (const node of Object.keys(this.nodes)) {
-            if (node !== start && node !== branch.then) {
+            if (node !== start) {
               allTargets.add(node);
             }
           }
