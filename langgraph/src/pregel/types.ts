@@ -36,6 +36,10 @@ export interface StateSnapshot {
    */
   readonly metadata?: CheckpointMetadata;
   /**
+   * Time when the snapshot was created
+   */
+  readonly createdAt?: string;
+  /**
    * Config used to fetch the parent snapshot, if any
    * @default undefined
    */

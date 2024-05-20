@@ -2156,6 +2156,8 @@ it("StateGraph start branch then end", async () => {
     next: ["tool_two_slow"],
     config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
       .config,
+    createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
+      .checkpoint.ts,
     metadata: { source: "loop", step: 0, writes: null },
     parentConfig: (
       await last(toolTwoWithCheckpointer.checkpointer!.list(thread1, 2))
@@ -2171,6 +2173,8 @@ it("StateGraph start branch then end", async () => {
     next: [],
     config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
       .config,
+    createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
+      .checkpoint.ts,
     metadata: {
       source: "loop",
       step: 1,

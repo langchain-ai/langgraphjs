@@ -336,6 +336,7 @@ export class Pregel<
       next: nextTasks.map((task) => task.name),
       metadata: saved?.metadata,
       config: saved ? saved.config : config,
+      createdAt: saved?.checkpoint.ts,
       parentConfig: saved?.parentConfig,
     };
   }
@@ -362,6 +363,7 @@ export class Pregel<
         next: nextTasks.map((task) => task.name),
         metadata: saved.metadata,
         config: saved.config,
+        createdAt: saved.checkpoint.ts,
         parentConfig: saved.parentConfig,
       };
     }
