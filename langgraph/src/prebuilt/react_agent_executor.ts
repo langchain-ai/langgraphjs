@@ -35,6 +35,20 @@ export interface AgentState {
 
 export type N = typeof START | "agent" | "tools";
 
+export type CreateReactAgentParams = {
+  model: BaseChatModel;
+  tools: ToolNode<MessagesState> | StructuredTool[];
+  messageModifier?:
+    | SystemMessage
+    | string
+    | ((messages: BaseMessage[]) => BaseMessage[])
+    | ((messages: BaseMessage[]) => Promise<BaseMessage[]>)
+    | Runnable;
+  checkpointSaver?: BaseCheckpointSaver;
+  interruptBefore?: N[] | All;
+  interruptAfter?: N[] | All;
+};
+
 /**
  * Creates a StateGraph agent that relies on a chat model utilizing tool calling.
  * @param model The chat model that can utilize OpenAI-style function calling.
@@ -47,21 +61,20 @@ export type N = typeof START | "agent" | "tools";
  * @returns A compiled agent as a LangChain Runnable.
  */
 export function createReactAgent(
-  model: BaseChatModel,
-  tools: ToolNode<MessagesState> | StructuredTool[],
-  messageModifier?:
-    | SystemMessage
-    | string
-    | ((messages: BaseMessage[]) => BaseMessage[])
-    | Runnable,
-  checkpointSaver?: BaseCheckpointSaver,
-  interruptBefore?: N[] | All,
-  interruptAfter?: N[] | All
+  props: CreateReactAgentParams
 ): CompiledStateGraph<
   AgentState,
   Partial<AgentState>,
   typeof START | "agent" | "tools"
 > {
+  const {
+    model,
+    tools,
+    messageModifier,
+    checkpointSaver,
+    interruptBefore,
+    interruptAfter,
+  } = props;
   const schema: StateGraphArgs<AgentState>["channels"] = {
     messages: {
       value: (left: BaseMessage[], right: BaseMessage[]) => left.concat(right),
@@ -132,6 +145,7 @@ function _createModelWrapper(
     | SystemMessage
     | string
     | ((messages: BaseMessage[]) => BaseMessage[])
+    | ((messages: BaseMessage[]) => Promise<BaseMessage[]>)
     | Runnable
 ) {
   if (!messageModifier) {
