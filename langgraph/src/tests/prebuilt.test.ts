@@ -309,7 +309,11 @@ describe("createReactAgent", () => {
       ],
     });
 
-    const agent = createReactAgent(llm, tools, "You are a helpful assistant");
+    const agent = createReactAgent({
+      llm,
+      tools,
+      messageModifier: "You are a helpful assistant",
+    });
 
     const result = await agent.invoke({
       messages: [new HumanMessage("Hello Input!")],
@@ -345,16 +349,15 @@ describe("createReactAgent", () => {
       ],
     });
 
-    const agent = createReactAgent(
+    const agent = createReactAgent({
       llm,
       tools,
-      new SystemMessage("You are a helpful assistant")
-    );
+      messageModifier: new SystemMessage("You are a helpful assistant"),
+    });
 
     const result = await agent.invoke({
       messages: [],
     });
-    console.log("RESULT THING", result);
     expect(result.messages).toEqual([
       new AIMessage({
         content: "result1",
@@ -388,7 +391,42 @@ describe("createReactAgent", () => {
       ...messages,
     ];
 
-    const agent = createReactAgent(llm, tools, messageModifier);
+    const agent = createReactAgent({ llm, tools, messageModifier });
+
+    const result = await agent.invoke({
+      messages: [new HumanMessage("Hello Input!")],
+    });
+
+    expect(result.messages).toEqual([
+      new HumanMessage("Hello Input!"),
+      aiM1,
+      new ToolMessage({
+        name: "search_api",
+        content: "result for foo",
+        tool_call_id: "tool_abcd123",
+      }),
+      aiM2,
+    ]);
+  });
+
+  it("Can use async custom function message modifier", async () => {
+    const aiM1 = new AIMessage({
+      content: "result1",
+      tool_calls: [
+        { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+      ],
+    });
+    const aiM2 = new AIMessage("result2");
+    const llm = new FakeToolCallingChatModel({
+      responses: [aiM1, aiM2],
+    });
+
+    const messageModifier = async (messages: BaseMessage[]) => [
+      new SystemMessage("You are a helpful assistant"),
+      ...messages,
+    ];
+
+    const agent = createReactAgent({ llm, tools, messageModifier });
 
     const result = await agent.invoke({
       messages: [new HumanMessage("Hello Input!")],
@@ -425,7 +463,7 @@ describe("createReactAgent", () => {
       ],
     });
 
-    const agent = createReactAgent(llm, tools, messageModifier);
+    const agent = createReactAgent({ llm, tools, messageModifier });
 
     const result = await agent.invoke({
       messages: [

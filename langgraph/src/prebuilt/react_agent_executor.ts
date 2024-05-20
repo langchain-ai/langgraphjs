@@ -36,7 +36,7 @@ export interface AgentState {
 export type N = typeof START | "agent" | "tools";
 
 export type CreateReactAgentParams = {
-  model: BaseChatModel;
+  llm: BaseChatModel;
   tools: ToolNode<MessagesState> | StructuredTool[];
   messageModifier?:
     | SystemMessage
@@ -50,8 +50,8 @@ export type CreateReactAgentParams = {
 };
 
 /**
- * Creates a StateGraph agent that relies on a chat model utilizing tool calling.
- * @param model The chat model that can utilize OpenAI-style function calling.
+ * Creates a StateGraph agent that relies on a chat llm utilizing tool calling.
+ * @param llm The chat llm that can utilize OpenAI-style function calling.
  * @param tools A list of tools or a ToolNode.
  * @param messageModifier An optional message modifier to apply to messages before being passed to the LLM.
  * Can be a SystemMessage, string, function that takes and returns a list of messages, or a Runnable.
@@ -68,7 +68,7 @@ export function createReactAgent(
   typeof START | "agent" | "tools"
 > {
   const {
-    model,
+    llm,
     tools,
     messageModifier,
     checkpointSaver,
@@ -88,10 +88,10 @@ export function createReactAgent(
   } else {
     toolClasses = tools;
   }
-  if (!("bindTools" in model) || typeof model.bindTools !== "function") {
-    throw new Error(`Model ${model} must define bindTools method.`);
+  if (!("bindTools" in llm) || typeof llm.bindTools !== "function") {
+    throw new Error(`llm ${llm} must define bindTools method.`);
   }
-  const modelWithTools = model.bindTools(toolClasses);
+  const modelWithTools = llm.bindTools(toolClasses);
   const modelRunnable = _createModelWrapper(modelWithTools, messageModifier);
 
   const shouldContinue = (state: AgentState) => {
