@@ -124,7 +124,7 @@ export function createReactAgent(
     .addEdge(START, "agent")
     .addConditionalEdges("agent", shouldContinue, {
       continue: "tools",
-      end: END,
+      [END]: END,
     })
     .addEdge("tools", "agent");
 

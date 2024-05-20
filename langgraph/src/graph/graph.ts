@@ -71,6 +71,9 @@ export class Branch<IO, N extends string> {
     } else {
       destinations = result;
     }
+    if (destinations.some((dest) => !dest)) {
+      throw new Error("Branch condition returned unknown or null destination");
+    }
     return writer(destinations);
   }
 }
