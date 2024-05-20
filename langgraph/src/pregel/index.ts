@@ -709,7 +709,7 @@ export class Pregel<
               source: "loop",
               step,
               writes: single(
-                streamMode === "values"
+                this.streamMode === "values"
                   ? mapOutputValues(outputKeys, pendingWrites, channels)
                   : mapOutputUpdates(outputKeys, nextTasks)
               ),
