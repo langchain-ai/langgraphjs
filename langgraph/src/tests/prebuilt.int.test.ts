@@ -122,7 +122,7 @@ describe("createReactAgent", () => {
     }
     const tools = [new SanFranciscoWeatherTool()];
 
-    const reactAgent = createReactAgent(model, tools);
+    const reactAgent = createReactAgent({ llm: model, tools });
 
     const response = await reactAgent.invoke({
       messages: [new HumanMessage("What's the weather like in SF?")],
@@ -155,7 +155,7 @@ describe("createReactAgent", () => {
     }
     const tools = [new SanFranciscoWeatherTool()];
 
-    const reactAgent = createReactAgent(model, tools);
+    const reactAgent = createReactAgent({ llm: model, tools });
 
     const stream = await reactAgent.stream(
       {

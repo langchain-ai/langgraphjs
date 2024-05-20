@@ -35,9 +35,23 @@ export interface AgentState {
 
 export type N = typeof START | "agent" | "tools";
 
+export type CreateReactAgentParams = {
+  llm: BaseChatModel;
+  tools: ToolNode<MessagesState> | StructuredTool[];
+  messageModifier?:
+    | SystemMessage
+    | string
+    | ((messages: BaseMessage[]) => BaseMessage[])
+    | ((messages: BaseMessage[]) => Promise<BaseMessage[]>)
+    | Runnable;
+  checkpointSaver?: BaseCheckpointSaver;
+  interruptBefore?: N[] | All;
+  interruptAfter?: N[] | All;
+};
+
 /**
- * Creates a StateGraph agent that relies on a chat model utilizing tool calling.
- * @param model The chat model that can utilize OpenAI-style function calling.
+ * Creates a StateGraph agent that relies on a chat llm utilizing tool calling.
+ * @param llm The chat llm that can utilize OpenAI-style function calling.
  * @param tools A list of tools or a ToolNode.
  * @param messageModifier An optional message modifier to apply to messages before being passed to the LLM.
  * Can be a SystemMessage, string, function that takes and returns a list of messages, or a Runnable.
@@ -47,21 +61,20 @@ export type N = typeof START | "agent" | "tools";
  * @returns A compiled agent as a LangChain Runnable.
  */
 export function createReactAgent(
-  model: BaseChatModel,
-  tools: ToolNode<MessagesState> | StructuredTool[],
-  messageModifier?:
-    | SystemMessage
-    | string
-    | ((messages: BaseMessage[]) => BaseMessage[])
-    | Runnable,
-  checkpointSaver?: BaseCheckpointSaver,
-  interruptBefore?: N[] | All,
-  interruptAfter?: N[] | All
+  props: CreateReactAgentParams
 ): CompiledStateGraph<
   AgentState,
   Partial<AgentState>,
   typeof START | "agent" | "tools"
 > {
+  const {
+    llm,
+    tools,
+    messageModifier,
+    checkpointSaver,
+    interruptBefore,
+    interruptAfter,
+  } = props;
   const schema: StateGraphArgs<AgentState>["channels"] = {
     messages: {
       value: (left: BaseMessage[], right: BaseMessage[]) => left.concat(right),
@@ -75,10 +88,10 @@ export function createReactAgent(
   } else {
     toolClasses = tools;
   }
-  if (!("bindTools" in model) || typeof model.bindTools !== "function") {
-    throw new Error(`Model ${model} must define bindTools method.`);
+  if (!("bindTools" in llm) || typeof llm.bindTools !== "function") {
+    throw new Error(`llm ${llm} must define bindTools method.`);
   }
-  const modelWithTools = model.bindTools(toolClasses);
+  const modelWithTools = llm.bindTools(toolClasses);
   const modelRunnable = _createModelWrapper(modelWithTools, messageModifier);
 
   const shouldContinue = (state: AgentState) => {
@@ -132,6 +145,7 @@ function _createModelWrapper(
     | SystemMessage
     | string
     | ((messages: BaseMessage[]) => BaseMessage[])
+    | ((messages: BaseMessage[]) => Promise<BaseMessage[]>)
     | Runnable
 ) {
   if (!messageModifier) {
