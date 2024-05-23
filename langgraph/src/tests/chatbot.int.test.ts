@@ -5,7 +5,7 @@ import {
   HumanMessage,
   ToolMessage,
 } from "@langchain/core/messages";
-import { Calculator } from "langchain/tools/calculator";
+import { Calculator } from "@langchain/community/tools/calculator";
 import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
 import { END, MessageGraph, START } from "../index.js";
 
