@@ -206,10 +206,20 @@ function _getChannels<Channels extends Record<string, unknown> | unknown>(
 }
 
 function getChannel<T>(reducer: SingleReducer<T>): BaseChannel<T> {
-  if (reducer && "reducer" in reducer && reducer.reducer) {
+  if (
+    typeof reducer === "object" &&
+    reducer &&
+    "reducer" in reducer &&
+    reducer.reducer
+  ) {
     return new BinaryOperatorAggregate<T>(reducer.reducer, reducer.default);
   }
-  if (reducer && "value" in reducer && reducer.value) {
+  if (
+    typeof reducer === "object" &&
+    reducer &&
+    "value" in reducer &&
+    reducer.value
+  ) {
     return new BinaryOperatorAggregate<T>(reducer.value, reducer.default);
   }
   return new LastValue<T>();
