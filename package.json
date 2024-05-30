@@ -42,6 +42,9 @@
     "typedoc": "^0.25.13",
     "typescript": "^5.4.5"
   },
+  "resolutions": {
+    "@langchain/core": "0.2.2"
+  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
