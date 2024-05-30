@@ -43,7 +43,7 @@
     "typescript": "^5.4.5"
   },
   "resolutions": {
-    "@langchain/core": "0.2.2"
+    "@langchain/core": "0.2.3"
   },
   "publishConfig": {
     "access": "public",
