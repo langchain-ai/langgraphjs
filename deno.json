@@ -5,7 +5,7 @@
     "@langchain/community/": "npm:/@langchain/community@0.2.3/",
     "@langchain/cloudflare": "npm:/@langchain/cloudflare",
     "@langchain/groq": "npm:/@langchain/groq",
-    "@langchain/core/": "npm:/@langchain/core@0.2.2/",
+    "@langchain/core/": "npm:/@langchain/core@0.2.3/",
     "@langchain/langgraph": "npm:/@langchain/langgraph@0.0.21",
     "@langchain/langgraph/": "npm:/@langchain/langgraph@0.0.21/",
     "@langchain/mistralai": "npm:/@langchain/mistralai",
