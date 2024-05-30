@@ -46,9 +46,9 @@ export OPENAI_API_KEY=sk-...
 
 And now we're ready! The graph below contains a single node called `"model"` that executes a chat model, then returns the result, and streams the tokens as they are generated:
 
-```ts
+```typescript {id=1}
 import { ChatOpenAI } from "@langchain/openai";
-import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
+import { HumanMessage, BaseMessage } from "@langchain/core/messages";
 import { END, START, MessageGraph } from "@langchain/langgraph";
 
 const model = new ChatOpenAI({
@@ -70,7 +70,7 @@ const runnable = graph.compile();
 
 Let's run it and stream the tokens as they are generated!
 
-```ts
+```typescript {id=1}
 const inputs = [new HumanMessage("What is 1 + 1?")];
 
 for await (const step of await runnable.stream(inputs)) {
@@ -87,16 +87,16 @@ Now, let's move onto something a little bit less trivial. Because math can be di
 We'll recreate our graph with an additional `"calculator"` that will take the result of the most recent message, if it is a math expression, and calculate the result.
 We'll also bind the calculator to the OpenAI model as a tool to allow the model to optionally use the tool if it deems necessary:
 
-```ts
+```typescript {id=2}
 import { ChatOpenAI } from "@langchain/openai";
-import { BaseMessage, ToolMessage, AIMessage } from "@langchain/core/messages";
+import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { Calculator } from "@langchain/community/tools/calculator";
 import { END, START, MessageGraph } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
 const calculator = new Calculator();
 const tools = [calculator];
-const toolNode = new ToolNode(tools);
+const toolNode = new ToolNode<BaseMessage[]>(tools);
 const model = new ChatOpenAI({
   temperature: 0,
   // Set streaming to true to enable streaming
@@ -122,7 +122,7 @@ We can achieve this using **conditional edges**, which route execution to a node
 
 Here's what that looks like:
 
-```ts
+```typescript {id=2}
 const router = (state: BaseMessage[]) => {
   const toolCalls = (state[state.length - 1] as AIMessage).tool_calls ?? [];
   if (toolCalls.length) {
@@ -142,7 +142,7 @@ If the model output contains a tool call, we move to the `"calculator"` node. Ot
 
 Great! Now all that's left is to compile the graph and try it out. Math-related questions are routed to the calculator tool:
 
-```ts
+```typescript {id=2}
 const runnable = graph.compile();
 const mathResponse = await runnable.invoke(new HumanMessage("What is 1 + 1?"));
 console.log(mathResponse);
@@ -150,7 +150,7 @@ console.log(mathResponse);
 
 While conversational responses are outputted directly:
 
-```ts
+```typescript {id=2}
 const otherResponse = await runnable.invoke(
   new HumanMessage("What is your name?")
 );
@@ -189,7 +189,7 @@ As above, we will first define the tools we want to use.
 For this simple example, we will use a simple search tool via Tavily.
 However, it is really easy to create your own tools - see documentation [here](https://js.langchain.com/docs/modules/agents/tools/dynamic) on how to do that.
 
-```typescript
+```typescript {id=3}
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 
 const tools = [new TavilySearchResults({ maxResults: 1 })];
@@ -197,10 +197,10 @@ const tools = [new TavilySearchResults({ maxResults: 1 })];
 
 We can now wrap these tools in a ToolNode, which simply takes in an AIMessage with tool_calls, calls those tool, and returns ToolMessages with the observations.
 
-```typescript
+```typescript {id=3}
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
-const toolNode = new ToolNode(tools);
+const toolNode = new ToolNode<{ messages: BaseMessage[] }>(tools);
 ```
 
 ### Set up the model
@@ -208,7 +208,7 @@ const toolNode = new ToolNode(tools);
 Now we need to load the chat model we want to use.
 This time, we'll use the function calling interface. This walkthrough will use OpenAI, but we can choose any model that supports OpenAI function calling.
 
-```typescript
+```typescript {id=3}
 import { ChatOpenAI } from "@langchain/openai";
 
 const model = new ChatOpenAI({
@@ -221,7 +221,7 @@ const model = new ChatOpenAI({
 After we've done this, we should make sure the model knows that it has these tools available to call.
 We can do this by binding the tools to the model.
 
-```typescript
+```typescript {id=3}
 const boundModel = model.bindTools(tools);
 ```
 
@@ -237,7 +237,7 @@ For this example, the state we will track will just be a list of messages.
 We want each node to just add messages to that list.
 Therefore, we will define the state as follows:
 
-```typescript
+```typescript {id=3}
 import { BaseMessage } from "@langchain/core/messages";
 import { StateGraphArgs } from "@langchain/langgraph";
 
@@ -274,10 +274,9 @@ The path that is taken is not known until that node is run (the LLM decides).
 
 Let's define the nodes, as well as a function to decide how what conditional edge to take.
 
-```typescript
+```typescript {id=3}
 import { RunnableConfig } from "@langchain/core/runnables";
-import { AIMessage } from "@langchain/core/messages";
-import { END, START } from "@langchain/langgraph";
+import { END, START, StateGraph } from "@langchain/langgraph";
 import {
   ChatPromptTemplate,
   MessagesPlaceholder,
@@ -317,9 +316,7 @@ const callModel = async (state: IState, config?: RunnableConfig) => {
 
 We can now put it all together and define the graph!
 
-```typescript
-import { StateGraph, END } from "@langchain/langgraph";
-
+```typescript {id=3}
 // Define a new graph
 const workflow = new StateGraph<IState>({
   channels: graphState,
@@ -366,7 +363,7 @@ We can now use it!
 This now exposes the [same interface](https://js.langchain.com/docs/expression_language/) as all other LangChain runnables.
 This runnable accepts a list of messages.
 
-```typescript
+```typescript {id=3}
 import { HumanMessage } from "@langchain/core/messages";
 
 const inputs = {
@@ -386,6 +383,7 @@ for await (const event of await app.streamEvents(
 
 // Or get just the final result
 const result = await app.invoke(inputs);
+console.log(result);
 ```
 
 See a LangSmith trace of this run [here](https://smith.langchain.com/public/144af8a3-b496-43aa-ba9d-f0d5894196e2/r).
