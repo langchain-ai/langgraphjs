@@ -35,7 +35,6 @@
     "@tsconfig/recommended": "^1.0.3",
     "@types/d3": "^7",
     "@types/semver": "^7",
-    "canvas": "^2.11.2",
     "cheerio": "^1.0.0-rc.12",
     "d3": "^7.9.0",
     "esm-hook": "^0.1.4",
