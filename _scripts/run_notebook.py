@@ -40,7 +40,7 @@ def compile_ts_code(ts_code: str, tsconfig_options: list) -> str:
     temp_file_path = "temp.ts"
     with open(temp_file_path, "w") as f:
         f.write(ts_code)
-    cmd = ["npx", "tsc", temp_file_path] + tsconfig_options
+    cmd = ["npx", "tsc", temp_file_path] + tsconfig_options + ["--skipLibCheck"]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         stdout = result.stdout
