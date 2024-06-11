@@ -10,7 +10,7 @@ serve-docs:
 
 serve-clean-docs: clean
 	python _scripts/copy_notebooks.py
-	python -m mkdocs serve -c -f mkdocs.yml --strict -w ../langgraph -o
+	python -m mkdocs serve -c -f mkdocs.yml --strict -w ../langgraph
 
 clean:
 	find ./docs -name "*.ipynb" -type f -delete

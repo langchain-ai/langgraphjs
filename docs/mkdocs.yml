@@ -66,6 +66,7 @@ plugins:
 nav:
   - Home:
       - "index.md"
+      - Quick Start: tutorials/quickstart.ipynb
   - Tutorials:
       - "tutorials/index.md"
       - Use cases:
