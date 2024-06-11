@@ -15,6 +15,7 @@ _MANUAL = {
         "examples/how-tos/stream-tokens.ipynb",
     ],
     "tutorials": [
+        "quickstart.ipynb",
         "rag/langgraph_agentic_rag.ipynb",
         "rag/langgraph_crag.ipynb",
         "rag/langgraph_self_rag.ipynb",
