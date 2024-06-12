@@ -7,6 +7,7 @@ import {
 } from "@langchain/core/messages";
 import {
   Runnable,
+  RunnableConfig,
   RunnableInterface,
   RunnableLambda,
 } from "@langchain/core/runnables";
@@ -107,10 +108,10 @@ export function createReactAgent(
     }
   };
 
-  const callModel = async (state: AgentState) => {
+  const callModel = async (state: AgentState, config?: RunnableConfig) => {
     const { messages } = state;
     // TODO: Auto-promote streaming.
-    return { messages: [await modelRunnable.invoke(messages)] };
+    return { messages: [await modelRunnable.invoke(messages, config)] };
   };
 
   const workflow = new StateGraph<AgentState>({
@@ -118,7 +119,7 @@ export function createReactAgent(
   })
     .addNode(
       "agent",
-      new RunnableLambda({ func: callModel }).withConfig({ runName: "agent" })
+      RunnableLambda.from(callModel).withConfig({ runName: "agent" })
     )
     .addNode("tools", new ToolNode<AgentState>(toolClasses))
     .addEdge(START, "agent")
@@ -151,9 +152,9 @@ function _createModelWrapper(
   if (!messageModifier) {
     return modelWithTools;
   }
-  const endict = new RunnableLambda({
-    func: (messages: BaseMessage[]) => ({ messages }),
-  });
+  const endict = RunnableLambda.from((messages: BaseMessage[]) => ({
+    messages,
+  }));
   if (typeof messageModifier === "string") {
     const systemMessage = new SystemMessage(messageModifier);
     const prompt = ChatPromptTemplate.fromMessages([
@@ -163,7 +164,7 @@ function _createModelWrapper(
     return endict.pipe(prompt).pipe(modelWithTools);
   }
   if (typeof messageModifier === "function") {
-    const lambda = new RunnableLambda({ func: messageModifier }).withConfig({
+    const lambda = RunnableLambda.from(messageModifier).withConfig({
       runName: "message_modifier",
     });
     return lambda.pipe(modelWithTools);

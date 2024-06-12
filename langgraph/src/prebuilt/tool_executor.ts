@@ -46,12 +46,10 @@ export class ToolExecutor extends RunnableBinding<
       invalidToolMsgTemplate: INVALID_TOOL_MSG_TEMPLATE,
       ...fields,
     };
-    const bound = new RunnableLambda({
-      func: async (
-        input: ToolInvocationInterface,
-        options?: { config?: RunnableConfig }
-      ) => this._execute(input, options?.config),
-    });
+    const bound = RunnableLambda.from(
+      async (input: ToolInvocationInterface, config?: RunnableConfig) =>
+        this._execute(input, config)
+    );
     super({
       bound,
       config: {},

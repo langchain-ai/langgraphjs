@@ -123,15 +123,6 @@
       "import": "./prebuilt.js",
       "require": "./prebuilt.cjs"
     },
-    "./prebuilt/web": {
-      "types": {
-        "import": "./prebuilt/web.d.ts",
-        "require": "./prebuilt/web.d.cts",
-        "default": "./prebuilt/web.d.ts"
-      },
-      "import": "./prebuilt/web.js",
-      "require": "./prebuilt/web.cjs"
-    },
     "./checkpoint/sqlite": {
       "types": {
         "import": "./checkpoint/sqlite.d.ts",
@@ -161,10 +152,6 @@
     "prebuilt.js",
     "prebuilt.d.ts",
     "prebuilt.d.cts",
-    "prebuilt/web.cjs",
-    "prebuilt/web.js",
-    "prebuilt/web.d.ts",
-    "prebuilt/web.d.cts",
     "checkpoint/sqlite.cjs",
     "checkpoint/sqlite.js",
     "checkpoint/sqlite.d.ts",

@@ -14,10 +14,6 @@ prebuilt.cjs
 prebuilt.js
 prebuilt.d.ts
 prebuilt.d.cts
-prebuilt/web.cjs
-prebuilt/web.js
-prebuilt/web.d.ts
-prebuilt/web.d.cts
 checkpoint/sqlite.cjs
 checkpoint/sqlite.js
 checkpoint/sqlite.d.ts
