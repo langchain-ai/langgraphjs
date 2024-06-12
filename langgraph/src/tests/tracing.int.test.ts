@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-process-env */
 
-import { test } from "@jest/globals";
+import { beforeAll, test } from "@jest/globals";
 import { pull } from "langchain/hub";
 import { ChatOpenAI } from "@langchain/openai";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
@@ -27,6 +27,12 @@ import { z } from "zod";
 import { StateGraph, END } from "../web.js";
 import { ToolExecutor } from "../prebuilt/tool_executor.js";
 import { createAgentExecutor } from "../prebuilt/agent_executor.js";
+import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+
+beforeAll(() => {
+  // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
+  initializeAsyncLocalStorageSingleton();
+});
 
 test.skip("Can invoke with tracing", async () => {
   const tools = [new TavilySearchResults({ maxResults: 1 })];

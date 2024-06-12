@@ -1,4 +1,4 @@
-import { describe, it } from "@jest/globals";
+import { beforeAll, describe, it } from "@jest/globals";
 import { ChatOpenAI } from "@langchain/openai";
 import {
   BaseMessage,
@@ -8,8 +8,14 @@ import {
 import { Calculator } from "@langchain/community/tools/calculator";
 import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
 import { END, MessageGraph, START } from "../index.js";
+import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 
 describe("Chatbot", () => {
+  beforeAll(() => {
+    // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
+    initializeAsyncLocalStorageSingleton();
+  });
+
   it("Simple chat use-case", async () => {
     const model = new ChatOpenAI({ temperature: 0 });
     const graph = new MessageGraph()
