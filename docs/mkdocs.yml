@@ -1,6 +1,8 @@
 site_name: LangGraphJS
 site_description: Build language agents as graphs
 site_url: https://langchain-ai.github.io/langgraphjs/
+repo_url: https://github.com/langchain-ai/langgraphjs
+edit_uri: edit/main/docs/docs/
 theme:
   name: material
   custom_dir: overrides
