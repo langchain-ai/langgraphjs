@@ -1,4 +1,4 @@
-site_name: LangGraphJS
+site_name: LangGraph.js
 site_description: Build language agents as graphs
 site_url: https://langchain-ai.github.io/langgraphjs/
 theme:

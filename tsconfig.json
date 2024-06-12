@@ -20,6 +20,7 @@
   "exclude": [
     "node_modules",
     "dist",
+    "environment_tests",
     "examples/web_browsing/labeling.ts",
     "langgraph/dist/checkpoint/sqlite.js"
   ]
