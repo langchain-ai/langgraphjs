@@ -52,9 +52,9 @@ export interface StateGraphArgs<Channels extends object | unknown> {
 }
 
 export class StateGraph<
-  const State extends object | unknown,
-  const Update extends object | unknown = Partial<State>,
-  const N extends string = typeof START
+  State extends object | unknown,
+  Update extends object | unknown = Partial<State>,
+  N extends string = typeof START
 > extends Graph<N, State, Update> {
   channels: Record<string, BaseChannel>;
 
@@ -226,9 +226,9 @@ function getChannel<T>(reducer: SingleReducer<T>): BaseChannel<T> {
 }
 
 export class CompiledStateGraph<
-  const State extends object | unknown,
-  const Update extends object | unknown = Partial<State>,
-  const N extends string = typeof START
+  State extends object | unknown,
+  Update extends object | unknown = Partial<State>,
+  N extends string = typeof START
 > extends CompiledGraph<N, State, Update> {
   declare builder: StateGraph<State, Update, N>;
 
