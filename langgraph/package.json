@@ -96,6 +96,15 @@
       "import": "./index.js",
       "require": "./index.cjs"
     },
+    "./web": {
+      "types": {
+        "import": "./web.d.ts",
+        "require": "./web.d.cts",
+        "default": "./web.d.ts"
+      },
+      "import": "./web.js",
+      "require": "./web.cjs"
+    },
     "./pregel": {
       "types": {
         "import": "./pregel.d.ts",
@@ -114,6 +123,15 @@
       "import": "./prebuilt.js",
       "require": "./prebuilt.cjs"
     },
+    "./prebuilt/web": {
+      "types": {
+        "import": "./prebuilt/web.d.ts",
+        "require": "./prebuilt/web.d.cts",
+        "default": "./prebuilt/web.d.ts"
+      },
+      "import": "./prebuilt/web.js",
+      "require": "./prebuilt/web.cjs"
+    },
     "./checkpoint/sqlite": {
       "types": {
         "import": "./checkpoint/sqlite.d.ts",
@@ -131,6 +149,10 @@
     "index.js",
     "index.d.ts",
     "index.d.cts",
+    "web.cjs",
+    "web.js",
+    "web.d.ts",
+    "web.d.cts",
     "pregel.cjs",
     "pregel.js",
     "pregel.d.ts",
@@ -139,6 +161,10 @@
     "prebuilt.js",
     "prebuilt.d.ts",
     "prebuilt.d.cts",
+    "prebuilt/web.cjs",
+    "prebuilt/web.js",
+    "prebuilt/web.d.ts",
+    "prebuilt/web.d.cts",
     "checkpoint/sqlite.cjs",
     "checkpoint/sqlite.js",
     "checkpoint/sqlite.d.ts",

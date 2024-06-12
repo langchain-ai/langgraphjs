@@ -2,6 +2,10 @@ index.cjs
 index.js
 index.d.ts
 index.d.cts
+web.cjs
+web.js
+web.d.ts
+web.d.cts
 pregel.cjs
 pregel.js
 pregel.d.ts
@@ -10,6 +14,10 @@ prebuilt.cjs
 prebuilt.js
 prebuilt.d.ts
 prebuilt.d.cts
+prebuilt/web.cjs
+prebuilt/web.js
+prebuilt/web.d.ts
+prebuilt/web.d.cts
 checkpoint/sqlite.cjs
 checkpoint/sqlite.js
 checkpoint/sqlite.d.ts

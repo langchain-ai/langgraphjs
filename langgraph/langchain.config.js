@@ -13,8 +13,10 @@ export const config = {
   internals: [/node\:/, /@langchain\/core\//, /async_hooks/],
   entrypoints: {
     index: "index",
+    web: "web",
     pregel: "pregel/index",
     prebuilt: "prebuilt/index",
+    "prebuilt/web": "prebuilt/web",
     "checkpoint/sqlite": "checkpoint/sqlite",
   },
   tsConfigPath: resolve("./tsconfig.json"),

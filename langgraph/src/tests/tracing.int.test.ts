@@ -24,7 +24,7 @@ import {
 import { createOpenAIFnRunnable } from "langchain/chains/openai_functions";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { z } from "zod";
-import { StateGraph, END } from "../index.js";
+import { StateGraph, END } from "../web.js";
 import { ToolExecutor } from "../prebuilt/tool_executor.js";
 import { createAgentExecutor } from "../prebuilt/agent_executor.js";
 
