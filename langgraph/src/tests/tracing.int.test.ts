@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-process-env */
 
-import { beforeAll, test } from "@jest/globals";
+import { test } from "@jest/globals";
 import { pull } from "langchain/hub";
 import { ChatOpenAI } from "@langchain/openai";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
@@ -24,15 +24,10 @@ import {
 import { createOpenAIFnRunnable } from "langchain/chains/openai_functions";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { z } from "zod";
-import { StateGraph, END } from "../web.js";
 import { ToolExecutor } from "../prebuilt/tool_executor.js";
 import { createAgentExecutor } from "../prebuilt/agent_executor.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
-
-beforeAll(() => {
-  // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
-  initializeAsyncLocalStorageSingleton();
-});
+// Import from main `@langchain/langgraph` endpoint to turn on automatic config passing
+import { StateGraph, END } from "../index.js";
 
 test.skip("Can invoke with tracing", async () => {
   const tools = [new TavilySearchResults({ maxResults: 1 })];
