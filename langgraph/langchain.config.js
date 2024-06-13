@@ -13,6 +13,7 @@ export const config = {
   internals: [/node\:/, /@langchain\/core\//, /async_hooks/],
   entrypoints: {
     index: "index",
+    web: "web",
     pregel: "pregel/index",
     prebuilt: "prebuilt/index",
     "checkpoint/sqlite": "checkpoint/sqlite",

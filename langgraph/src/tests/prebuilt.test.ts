@@ -4,9 +4,6 @@ import { PromptTemplate } from "@langchain/core/prompts";
 import { StructuredTool, Tool } from "@langchain/core/tools";
 import { FakeStreamingLLM } from "@langchain/core/utils/testing";
 
-import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
-import { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import { BaseLLMParams } from "@langchain/core/language_models/llms";
 import {
   AIMessage,
   BaseMessage,
@@ -14,9 +11,9 @@ import {
   SystemMessage,
   ToolMessage,
 } from "@langchain/core/messages";
-import { ChatResult } from "@langchain/core/outputs";
 import { RunnableLambda } from "@langchain/core/runnables";
 import { z } from "zod";
+import { FakeToolCallingChatModel } from "./utils.js";
 import { createAgentExecutor, createReactAgent } from "../prebuilt/index.js";
 
 // Tracing slows down the tests
@@ -218,64 +215,6 @@ describe("PreBuilt", () => {
     ]);
   });
 });
-
-export class FakeToolCallingChatModel extends BaseChatModel {
-  sleep?: number = 50;
-
-  responses?: BaseMessage[];
-
-  thrownErrorString?: string;
-
-  idx: number;
-
-  constructor(
-    fields: {
-      sleep?: number;
-      responses?: BaseMessage[];
-      thrownErrorString?: string;
-    } & BaseLLMParams
-  ) {
-    super(fields);
-    this.sleep = fields.sleep ?? this.sleep;
-    this.responses = fields.responses;
-    this.thrownErrorString = fields.thrownErrorString;
-    this.idx = 0;
-  }
-
-  _llmType() {
-    return "fake";
-  }
-
-  async _generate(
-    messages: BaseMessage[],
-    _options: this["ParsedCallOptions"],
-    _runManager?: CallbackManagerForLLMRun
-  ): Promise<ChatResult> {
-    if (this.thrownErrorString) {
-      throw new Error(this.thrownErrorString);
-    }
-    const msg = this.responses?.[this.idx] ?? messages[this.idx];
-    const generation: ChatResult = {
-      generations: [
-        {
-          text: "",
-          message: msg,
-        },
-      ],
-    };
-    this.idx += 1;
-
-    return generation;
-  }
-
-  bindTools(_: Tool[]) {
-    return new FakeToolCallingChatModel({
-      sleep: this.sleep,
-      responses: this.responses,
-      thrownErrorString: this.thrownErrorString,
-    });
-  }
-}
 
 describe("createReactAgent", () => {
   const searchSchema = z.object({

@@ -1,0 +1,23 @@
+{
+  "name": "test-exports-tsc",
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": [
+    "libs/*"
+  ],
+  "private": true,
+  "description": "TSC Tests for the things exported by the langchain package",
+  "main": "./index.mjs",
+  "scripts": {
+    "build": "tsc -m nodenext main.ts",
+    "test": "node ./main.js"
+  },
+  "author": "LangChain",
+  "license": "MIT",
+  "dependencies": {
+    "@langchain/core": "latest",
+    "@langchain/langgraph": "workspace:*",
+    "@types/node": "^18.15.11",
+    "typescript": "latest"
+  }
+}

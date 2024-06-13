@@ -42,7 +42,6 @@ import {
   INTERRUPT,
   TAG_HIDDEN,
 } from "../constants.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import {
   All,
   PregelExecutableTask,
@@ -261,8 +260,6 @@ export class Pregel<
   constructor(fields: PregelInterface<Nn, Cc>) {
     super(fields);
 
-    // Initialize global async local storage instance for tracing
-    initializeAsyncLocalStorageSingleton();
     this.nodes = fields.nodes;
     this.channels = fields.channels;
     this.autoValidate = fields.autoValidate ?? this.autoValidate;

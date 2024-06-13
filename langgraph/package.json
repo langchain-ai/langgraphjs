@@ -96,6 +96,15 @@
       "import": "./index.js",
       "require": "./index.cjs"
     },
+    "./web": {
+      "types": {
+        "import": "./web.d.ts",
+        "require": "./web.d.cts",
+        "default": "./web.d.ts"
+      },
+      "import": "./web.js",
+      "require": "./web.cjs"
+    },
     "./pregel": {
       "types": {
         "import": "./pregel.d.ts",
@@ -131,6 +140,10 @@
     "index.js",
     "index.d.ts",
     "index.d.cts",
+    "web.cjs",
+    "web.js",
+    "web.d.ts",
+    "web.d.cts",
     "pregel.cjs",
     "pregel.js",
     "pregel.d.ts",

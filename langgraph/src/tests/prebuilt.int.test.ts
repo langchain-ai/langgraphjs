@@ -8,13 +8,17 @@ import {
   createReactAgent,
   createFunctionCallingExecutor,
 } from "../prebuilt/index.js";
+import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
-  process.env.LANGCHAIN_TRACING_V2 = "false";
-  process.env.LANGCHAIN_ENDPOINT = "";
-  process.env.LANGCHAIN_API_KEY = "";
-  process.env.LANGCHAIN_PROJECT = "";
+  // process.env.LANGCHAIN_TRACING_V2 = "false";
+  // process.env.LANGCHAIN_ENDPOINT = "";
+  // process.env.LANGCHAIN_API_KEY = "";
+  // process.env.LANGCHAIN_PROJECT = "";
+
+  // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
+  initializeAsyncLocalStorageSingleton();
 });
 
 describe("createFunctionCallingExecutor", () => {

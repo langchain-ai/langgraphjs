@@ -24,6 +24,7 @@
     "clean": "turbo run clean",
     "test": "turbo run test",
     "test:int": "turbo run test:int",
+    "test:exports:docker": "docker compose -f environment_tests/docker-compose.yml up --force-recreate",
     "format": "turbo run format",
     "format:check": "turbo run format:check",
     "release": "node scripts/release_workspace.js --workspace"

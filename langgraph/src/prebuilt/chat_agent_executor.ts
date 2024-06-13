@@ -9,7 +9,7 @@ import {
   StateGraph,
   StateGraphArgs,
 } from "../graph/state.js";
-import { END, START } from "../index.js";
+import { END, START } from "../graph/index.js";
 
 export type FunctionCallingExecutorState = { messages: Array<BaseMessage> };
 
@@ -44,8 +44,7 @@ export function createFunctionCallingExecutor<Model extends object>({
   );
   const newModel = model.bind({
     functions: toolsAsOpenAIFunctions,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any);
+  });
 
   // Define the function that determines whether to continue or not
   const shouldContinue = (state: FunctionCallingExecutorState) => {

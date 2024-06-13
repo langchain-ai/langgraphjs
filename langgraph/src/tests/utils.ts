@@ -7,6 +7,7 @@ import {
 import { BaseMessage, AIMessage } from "@langchain/core/messages";
 import { ChatResult } from "@langchain/core/outputs";
 import { RunnableConfig } from "@langchain/core/runnables";
+import { Tool } from "@langchain/core/tools";
 import { MemorySaver } from "../checkpoint/memory.js";
 import { Checkpoint, CheckpointMetadata } from "../checkpoint/base.js";
 
@@ -57,6 +58,64 @@ export class FakeChatModel extends BaseChatModel {
       ],
       llmOutput: {},
     };
+  }
+}
+
+export class FakeToolCallingChatModel extends BaseChatModel {
+  sleep?: number = 50;
+
+  responses?: BaseMessage[];
+
+  thrownErrorString?: string;
+
+  idx: number;
+
+  constructor(
+    fields: {
+      sleep?: number;
+      responses?: BaseMessage[];
+      thrownErrorString?: string;
+    } & BaseChatModelParams
+  ) {
+    super(fields);
+    this.sleep = fields.sleep ?? this.sleep;
+    this.responses = fields.responses;
+    this.thrownErrorString = fields.thrownErrorString;
+    this.idx = 0;
+  }
+
+  _llmType() {
+    return "fake";
+  }
+
+  async _generate(
+    messages: BaseMessage[],
+    _options: this["ParsedCallOptions"],
+    _runManager?: CallbackManagerForLLMRun
+  ): Promise<ChatResult> {
+    if (this.thrownErrorString) {
+      throw new Error(this.thrownErrorString);
+    }
+    const msg = this.responses?.[this.idx] ?? messages[this.idx];
+    const generation: ChatResult = {
+      generations: [
+        {
+          text: "",
+          message: msg,
+        },
+      ],
+    };
+    this.idx += 1;
+
+    return generation;
+  }
+
+  bindTools(_: Tool[]) {
+    return new FakeToolCallingChatModel({
+      sleep: this.sleep,
+      responses: this.responses,
+      thrownErrorString: this.thrownErrorString,
+    });
   }
 }
 
