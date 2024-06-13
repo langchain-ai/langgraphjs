@@ -79,7 +79,7 @@ export class Branch<IO, N extends string> {
 }
 
 export class Graph<
-  const N extends string = typeof END,
+  N extends string = typeof END,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   RunInput = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -113,7 +113,10 @@ export class Graph<
     return this.edges;
   }
 
-  addNode<K extends string>(key: K, action: RunnableLike<RunInput, RunOutput>) {
+  addNode<K extends string>(
+    key: K,
+    action: RunnableLike<RunInput, RunOutput>
+  ): Graph<N | K, RunInput, RunOutput> {
     this.warnIfCompiled(
       `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
     );

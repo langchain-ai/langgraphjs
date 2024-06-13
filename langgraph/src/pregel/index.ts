@@ -221,8 +221,8 @@ export type PregelInputType = any;
 export type PregelOutputType = any;
 
 export class Pregel<
-    const Nn extends StrRecord<string, PregelNode>,
-    const Cc extends StrRecord<string, BaseChannel>
+    Nn extends StrRecord<string, PregelNode>,
+    Cc extends StrRecord<string, BaseChannel>
   >
   extends Runnable<PregelInputType, PregelOutputType, PregelOptions<Nn, Cc>>
   implements PregelInterface<Nn, Cc>
