@@ -27,7 +27,7 @@ import { z } from "zod";
 import { ToolExecutor } from "../prebuilt/tool_executor.js";
 import { createAgentExecutor } from "../prebuilt/agent_executor.js";
 // Import from main `@langchain/langgraph` endpoint to turn on automatic config passing
-import { StateGraph, END } from "../index.js";
+import { StateGraph, END, START } from "../index.js";
 
 test.skip("Can invoke with tracing", async () => {
   const tools = [new TavilySearchResults({ maxResults: 1 })];
@@ -103,7 +103,7 @@ test.skip("Can invoke with tracing", async () => {
     .addNode("action", new RunnableLambda({ func: executeTools }))
     // Set the entrypoint as `agent`
     // This means that this node is the first one called
-    .setEntryPoint("agent")
+    .addEdge(START, "agent")
     // We now add a conditional edge
     .addConditionalEdges(
       // First, we define the start node. We use `agent`.
@@ -234,7 +234,7 @@ test.skip("Can nest an agent executor", async () => {
       // Or end work if done
       FINISH: END,
     })
-    .setEntryPoint("supervisor");
+    .addEdge(START, "supervisor");
 
   const graph = workflow.compile();
 
@@ -352,7 +352,7 @@ test.skip("Can nest a graph within a graph", async () => {
       researcher: "researcher",
       FINISH: END,
     })
-    .setEntryPoint("supervisor");
+    .addEdge(START, "supervisor");
 
   const graph = workflow.compile();
 
@@ -525,7 +525,7 @@ Only add steps to the plan that still NEED to be done. Do not return previously 
     .addNode("agent", executeStep)
     // Add a replan node
     .addNode("replan", replanStep)
-    .setEntryPoint("planner")
+    .addEdge(START, "planner")
     // From plan we go to agent
     .addEdge("planner", "agent")
     // From agent, we replan

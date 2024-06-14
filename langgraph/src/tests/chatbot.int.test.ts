@@ -21,7 +21,7 @@ describe("Chatbot", () => {
     const graph = new MessageGraph()
       .addNode("oracle", async (state: BaseMessage[]) => model.invoke(state))
       .addEdge("oracle", END)
-      .setEntryPoint("oracle")
+      .addEdge(START, "oracle")
       .compile();
     const res = await graph.invoke(new HumanMessage("What is 1 + 1?"));
 
