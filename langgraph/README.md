@@ -46,7 +46,7 @@ And now we're ready! The graph below contains a single node called `"oracle"` th
 ```ts
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, BaseMessage, } from "@langchain/core/messages";
-import { END, MessageGraph } from "@langchain/langgraph";
+import { START, END, MessageGraph } from "@langchain/langgraph";
 
 const model = new ChatOpenAI({ temperature: 0 });
 
@@ -58,7 +58,7 @@ graph.addNode("oracle", async (state: BaseMessage[]) => {
 
 graph.addEdge("oracle", END);
 
-graph.setEntryPoint("oracle");
+graph.addEdge(START, "oracle");
 
 const runnable = graph.compile();
 ```
@@ -90,7 +90,7 @@ So what did we do here? Let's break it down step by step:
 1. First, we initialize our model and a `MessageGraph`.
 2. Next, we add a single node to the graph, called `"oracle"`, which simply calls the model with the given input.
 3. We add an edge from this `"oracle"` node to the special value `END`. This means that execution will end after current node.
-4. We set `"oracle"` as the entrypoint to the graph.
+4. We set `"oracle"` as the entrypoint to the graph by adding an edge from the special `START` value to it.
 5. We compile the graph, ensuring that no more modifications to it can be made.
 
 Then, when we execute the graph:
@@ -185,7 +185,7 @@ graph.addNode("calculator", async (state: BaseMessage[]) => {
 
 graph.addEdge("calculator", END);
 
-graph.setEntryPoint("oracle");
+graph.addEdge(START, "oracle");
 ```
 
 Now let's think - what do we want to have happen?
@@ -477,7 +477,7 @@ const callTool = async (
 We can now put it all together and define the graph!
 
 ```typescript
-import { StateGraph, END } from "@langchain/langgraph";
+import { StateGraph, START, END } from "@langchain/langgraph";
 import { RunnableLambda } from "@langchain/core/runnables";
 
 // Define a new graph
@@ -491,7 +491,7 @@ workflow.addNode("action", callTool);
 
 // Set the entrypoint as `agent`
 // This means that this node is the first one called
-workflow.setEntryPoint("agent");
+workflow.addEdge(START, "agent");
 
 // We now add a conditional edge
 workflow.addConditionalEdges(
@@ -723,31 +723,14 @@ This takes three arguments:
 - `condition`: A function to call to decide what to do next. The input will be the output of the start node. It should return a string that is present in `conditionalEdgeMapping` and represents the edge to take.
 - `conditionalEdgeMapping`: A mapping of string to string. The keys should be strings that may be returned by `condition`. The values should be the downstream node to call if that condition is returned.
 
-### `.setEntryPoint`
+### `START`
 
 ```typescript
-setEntryPoint(key: string): void
+import { START } from "@langchain/langgraph";
 ```
 
-The entrypoint to the graph.
-This is the node that is first called.
-It only takes one argument:
-
-- `key`: The name of the node that should be called first.
-
-### `.setFinishPoint`
-
-```typescript
-setFinishPoint(key: string): void
-```
-
-This is the exit point of the graph.
-When this node is called, the results will be the final result from the graph.
-It only has one argument:
-
-- `key`: The name of the node that, when called, will return the results of calling it as the final output
-
-Note: This does not need to be called if at any point you previously created an edge (conditional or normal) to `END`
+This is a special node representing the start of the graph.
+This means that anything with an edge from this node will be the entrypoint of the graph.
 
 ### `END`
 
@@ -827,7 +810,7 @@ workflow.addNode("agent", agent);
 workflow.addNode("tools", executeTools);
 
 // We now set the entry point to be this first agent
-workflow.setEntryPoint("firstAgent");
+workflow.addEdge(START, "firstAgent");
 
 // We define the same edges as before
 workflow.addConditionalEdges("agent", shouldContinue, {
