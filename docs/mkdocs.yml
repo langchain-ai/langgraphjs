@@ -87,6 +87,9 @@ nav:
               - tutorials/rewoo/rewoo.ipynb
   - "How-to Guides":
       - "how-tos/index.md"
+      - Installation:
+          - "how-tos/manage-ecosystem-dependencies.ipynb"
+          - "how-tos/use-in-web-environments.ipynb"
       - Core:
           - "how-tos/persistence.ipynb"
           - "how-tos/time-travel.ipynb"

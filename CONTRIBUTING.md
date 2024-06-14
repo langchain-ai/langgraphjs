@@ -219,6 +219,28 @@ const entrypoints = {
 This will make sure the entrypoint is included in the published package,
 and in generated documentation.
 
+### Running docs locally
+
+To run docs locally, switch to the `docs/` directory:
+
+```bash
+cd docs
+```
+
+Then, install the required dependencies with:
+
+```bash
+pip install -r docs-requirements.txt
+```
+
+Finally, run:
+
+```bash
+make serve-docs
+```
+
+And navigate to `http://127.0.0.1:8000/` to see your local build.
+
 ### Technical Concepts for Contributing to this Codebase
 
 If you are contributing to this code base, then you need to be familiar with some of the underlying concepts that power the `Graph` class - LangGraph's main entrypoint. These concepts are intentionally not documented in the LangGraph docs because users of LangGraph do not need to understand them. This knowledge is exclusively for contributors.
