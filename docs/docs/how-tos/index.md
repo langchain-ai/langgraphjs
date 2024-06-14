@@ -1,6 +1,11 @@
 # How-to guides
 
-Welcome to the LangGraphJS How-to Guides! These guides provide practical, step-by-step instructions for accomplishing key tasks in LangGraphJS.
+Welcome to the LangGraph.js How-to Guides! These guides provide practical, step-by-step instructions for accomplishing key tasks in LangGraph.js.
+
+## Installation
+
+- [Manage ecosystem dependencies](manage-ecosystem-dependencies.ipynb): How to install and use LangGraph.js alongside other packages in the LangChain ecosystem.
+- [Use in web environments](use-in-web-environments.ipynb): How to install and use LangGraph.js in web environments like the browser.
 
 ## Core
 
