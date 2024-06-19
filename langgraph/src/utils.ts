@@ -85,7 +85,6 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
       returnValue = await this.func(input, mergeConfigs(this.config, options));
     }
 
-    // eslint-disable-next-line no-instanceof/no-instanceof
     if (Runnable.isRunnable(returnValue) && this.recurse) {
       return await returnValue.invoke(input, options);
     }
