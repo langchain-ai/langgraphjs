@@ -10,9 +10,8 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-def extract_code_blocks(content: str, id_: Optional[int] = None):
-    # code_block_regex = re.compile(r"```typescript(?:\s+\{.*?\})?\n([\s\S]*?)```")
-    code_block_regex = re.compile(r"```typescript(?:\s+\{(.*?)\})?\n([\s\S]*?)```")
+def extract_code_blocks(content: str, title: Optional[str] = None):
+    code_block_regex = re.compile(r"```typescript(?:\s+(.*?))?\n([\s\S]*?)```")
 
     matches = code_block_regex.findall(content)
 
@@ -24,15 +23,16 @@ def extract_code_blocks(content: str, id_: Optional[int] = None):
     combined_code = []
 
     for metadata, code in matches:
+        print("Metadata",  metadata)
         if metadata:
             m = {}
             metadata_parts = metadata.split(",")
             for part in metadata_parts:
                 key, value = part.split("=", 1)
-                m[key] = value
+                m[key] = value.strip().strip('"')
             metadata = m
-            if "id" in metadata and id_ and int(metadata["id"]) != id_:
-                logger.info(f'Skipping code block with id: {metadata["id"]}')
+            if "title" in metadata and title and metadata["title"] != title:
+                logger.info(f'Skipping code block with id: {metadata["title"]}')
                 continue
         lines = re.split(r";(?=\n|$)", code)
         for line in lines:
@@ -49,14 +49,14 @@ def extract_code_blocks(content: str, id_: Optional[int] = None):
     return res
 
 
-def extract_ts_code(file_path: str) -> str:
+def extract_ts_code(file_path: str, title: str | None = None) -> str:
     with open(file_path, "r", encoding="utf-8") as notebook_file:
         notebook_content = notebook_file.read()
         if file_path.endswith(".ipynb"):
             notebook = jupytext.reads(notebook_content, fmt="ipynb")
             ts_content = jupytext.writes(notebook, fmt="py:percent")
         else:
-            ts_content = extract_code_blocks(notebook_content)
+            ts_content = extract_code_blocks(notebook_content, title)
 
     # Strip all lines starting with "#"
     ts_content = "\n".join(
@@ -122,9 +122,10 @@ parser = argparse.ArgumentParser(
     description="Run TypeScript code in a Jupyter notebook."
 )
 parser.add_argument("filename", type=str, help="Path to the Jupyter notebook file.")
+parser.add_argument("--title", type=str, help="Title of the code block(s) to run.")
 args = parser.parse_args()
 
-ts_code = extract_ts_code(args.filename)
+ts_code = extract_ts_code(args.filename, args.title)
 tsconfig_options = get_tsconfig_options(tsconfig_path)
 compiled_js_code, compiled_js_path = compile_ts_code(ts_code, tsconfig_options)
 output = run_js_code(compiled_js_path)
