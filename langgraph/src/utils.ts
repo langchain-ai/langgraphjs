@@ -1,8 +1,11 @@
+import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import {
   mergeConfigs,
+  patchConfig,
   Runnable,
   RunnableConfig,
 } from "@langchain/core/runnables";
+import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface RunnableCallableArgs extends Partial<any> {
@@ -13,6 +16,8 @@ export interface RunnableCallableArgs extends Partial<any> {
   trace?: boolean;
   recurse?: boolean;
 }
+
+const DEFAULT_RECURSION_LIMIT = 25;
 
 export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
   lc_namespace: string[] = ["langgraph"];
@@ -37,22 +42,42 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
     this.recurse = fields.recurse ?? this.recurse;
   }
 
+  protected async _tracedInvoke(
+    input: I,
+    config?: Partial<RunnableConfig>,
+    runManager?: CallbackManagerForChainRun
+  ) {
+    return new Promise<O>((resolve, reject) => {
+      const childConfig = patchConfig(config, {
+        callbacks: runManager?.getChild(),
+        recursionLimit: (config?.recursionLimit ?? DEFAULT_RECURSION_LIMIT) - 1,
+      });
+      void AsyncLocalStorageProviderSingleton.getInstance().run(
+        childConfig,
+        async () => {
+          try {
+            const output = await this.func(input, childConfig);
+            resolve(output);
+          } catch (e) {
+            reject(e);
+          }
+        }
+      );
+    });
+  }
+
   async invoke(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     input: any,
     options?: Partial<RunnableConfig> | undefined
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<any> {
-    if (this.func === undefined) {
-      return this.invoke(input, options);
-    }
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let returnValue: any;
 
     if (this.trace) {
       returnValue = await this._callWithConfig(
-        this.func,
+        this._tracedInvoke,
         input,
         mergeConfigs(this.config, options)
       );
@@ -61,7 +86,7 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
     }
 
     // eslint-disable-next-line no-instanceof/no-instanceof
-    if (returnValue instanceof Runnable && this.recurse) {
+    if (Runnable.isRunnable(returnValue) && this.recurse) {
       return await returnValue.invoke(input, options);
     }
 

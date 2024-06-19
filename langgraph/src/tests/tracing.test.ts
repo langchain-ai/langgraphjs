@@ -20,7 +20,13 @@ it("should pass config through if importing from the primary entrypoint", async 
       return { messages: [res] };
     })
     .addEdge(START, "testnode")
-    .addEdge("testnode", END)
+    .addConditionalEdges("testnode", async (_state, config) => {
+      const model = new FakeToolCallingChatModel({
+        responses: [new AIMessage("hey!")],
+      }).withConfig({ runName: "conditional_edge_call" });
+      await model.invoke("testing but should be traced");
+      return END;
+    })
     .compile();
 
   const eventStream = graph.streamEvents({ messages: [] }, { version: "v2" });
@@ -159,6 +165,64 @@ it("should pass config through if importing from the primary entrypoint", async 
       run_id: expect.any(String),
       name: "ChannelWrite<messages,testnode>",
       tags: ["seq:step:2", "langsmith:hidden"],
+      metadata: {},
+    },
+    {
+      event: "on_chain_start",
+      data: {
+        input: {
+          input: undefined,
+        },
+      },
+      name: "func",
+      tags: ["seq:step:3"],
+      run_id: expect.any(String),
+      metadata: {},
+    },
+    {
+      event: "on_chat_model_start",
+      data: {
+        input: {
+          messages: [[new HumanMessage("testing but should be traced")]],
+        },
+      },
+      name: "conditional_edge_call",
+      tags: [],
+      run_id: expect.any(String),
+      metadata: {
+        ls_model_type: "chat",
+        ls_stop: undefined,
+      },
+    },
+    {
+      event: "on_chat_model_end",
+      data: {
+        output: new AIMessage("hey!"),
+        input: {
+          messages: [[new HumanMessage("testing but should be traced")]],
+        },
+      },
+      run_id: expect.any(String),
+      name: "conditional_edge_call",
+      tags: [],
+      metadata: {
+        ls_model_type: "chat",
+        ls_stop: undefined,
+      },
+    },
+    {
+      event: "on_chain_end",
+      data: {
+        output: {
+          output: undefined,
+        },
+        input: {
+          input: undefined,
+        },
+      },
+      run_id: expect.any(String),
+      name: "func",
+      tags: ["seq:step:3"],
       metadata: {},
     },
     {
