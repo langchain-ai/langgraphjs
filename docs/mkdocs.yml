@@ -80,6 +80,7 @@ nav:
               - tutorials/rag/langgraph_agentic_rag.ipynb
               - tutorials/rag/langgraph_crag.ipynb
               - tutorials/rag/langgraph_self_rag.ipynb
+              - tutorials/rag/langgraph_adaptive_rag_local.ipynb
           - Planning Agents:
               - tutorials/plan-and-execute/plan-and-execute.ipynb
           - Reflection & Critique:
