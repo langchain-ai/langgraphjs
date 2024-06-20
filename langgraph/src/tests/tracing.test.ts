@@ -20,7 +20,7 @@ it("should pass config through if importing from the primary entrypoint", async 
       return { messages: [res] };
     })
     .addEdge(START, "testnode")
-    .addConditionalEdges("testnode", async (_state, config) => {
+    .addConditionalEdges("testnode", async (_state) => {
       const model = new FakeToolCallingChatModel({
         responses: [new AIMessage("hey!")],
       }).withConfig({ runName: "conditional_edge_call" });
