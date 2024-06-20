@@ -10,6 +10,7 @@
     "@langchain/langgraph/": "npm:/@langchain/langgraph@0.0.23/",
     "@langchain/mistralai": "npm:/@langchain/mistralai",
     "@langchain/anthropic": "npm:/@langchain/anthropic",
+    "@xenova/transformers": "npm:/@xenova/transformers",
     "uuid": "npm:/uuid",
     "dotenv/": "npm:/dotenv/",
     "zod": "npm:/zod",
