@@ -19,6 +19,7 @@ _MANUAL = {
         "rag/langgraph_agentic_rag.ipynb",
         "rag/langgraph_crag.ipynb",
         "rag/langgraph_self_rag.ipynb",
+        "rag/langgraph_adaptive_rag_local.ipynb",
         "multi_agent/multi_agent_collaboration.ipynb",
         "multi_agent/agent_supervisor.ipynb",
         "multi_agent/hierarchical_agent_teams.ipynb",
