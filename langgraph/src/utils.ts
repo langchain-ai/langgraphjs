@@ -17,8 +17,6 @@ export interface RunnableCallableArgs extends Partial<any> {
   recurse?: boolean;
 }
 
-const DEFAULT_RECURSION_LIMIT = 25;
-
 export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
   lc_namespace: string[] = ["langgraph"];
 
@@ -50,7 +48,6 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
     return new Promise<O>((resolve, reject) => {
       const childConfig = patchConfig(config, {
         callbacks: runManager?.getChild(),
-        recursionLimit: (config?.recursionLimit ?? DEFAULT_RECURSION_LIMIT) - 1,
       });
       void AsyncLocalStorageProviderSingleton.getInstance().run(
         childConfig,
