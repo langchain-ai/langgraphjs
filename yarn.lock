@@ -1429,7 +1429,7 @@ __metadata:
     "@langchain/anthropic": ^0.1.21
     "@langchain/community": ^0.2.12
     "@langchain/core": ">0.1.61 <0.3.0"
-    "@langchain/openai": ^0.0.33
+    "@langchain/openai": ^0.1.3
     "@langchain/scripts": ^0.0.13
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
@@ -1469,16 +1469,16 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/openai@npm:^0.0.33":
-  version: 0.0.33
-  resolution: "@langchain/openai@npm:0.0.33"
+"@langchain/openai@npm:^0.1.3, @langchain/openai@npm:~0.1.0":
+  version: 0.1.3
+  resolution: "@langchain/openai@npm:0.1.3"
   dependencies:
-    "@langchain/core": ">0.1.56 <0.3.0"
+    "@langchain/core": ">=0.2.5 <0.3.0"
     js-tiktoken: ^1.0.12
-    openai: ^4.41.1
+    openai: ^4.49.1
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
-  checksum: 3ee0ae2f7a06cf71aad163c47f6a2bf9d43c64bc9e7fd2b012beae78b4dc4190d28fde768e862b4ae24d7e6b3187b10e62173c49e1ee383203598557ac206728
+  checksum: 43aaafad2e1416bc23846c6c5084502025d3972c0b11b2ef2bcefd9da3dc1cd933cdf838c596404584af024adccc26e34476fededed0e614a19b47a4e5a8c8e5
   languageName: node
   linkType: hard
 
@@ -1492,19 +1492,6 @@ __metadata:
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
   checksum: ba7c8e4e57fd76c9653b9447e294635774e9aa5cda6107ccf28b06499f7464d4df167f878ccdf98006e2b3af531cd2c663df4d01b107ef0871de183f18f29b5d
-  languageName: node
-  linkType: hard
-
-"@langchain/openai@npm:~0.1.0":
-  version: 0.1.3
-  resolution: "@langchain/openai@npm:0.1.3"
-  dependencies:
-    "@langchain/core": ">=0.2.5 <0.3.0"
-    js-tiktoken: ^1.0.12
-    openai: ^4.49.1
-    zod: ^3.22.4
-    zod-to-json-schema: ^3.22.3
-  checksum: 43aaafad2e1416bc23846c6c5084502025d3972c0b11b2ef2bcefd9da3dc1cd933cdf838c596404584af024adccc26e34476fededed0e614a19b47a4e5a8c8e5
   languageName: node
   linkType: hard
 
@@ -8973,24 +8960,6 @@ __metadata:
   bin:
     openai: bin/cli
   checksum: 5f21e3ddded38f0bdaa62abb8300aa64f16156bebbab54b1fbcda559853ac9bfa65ea01bb04581104d9884e618a2aec212f18eddbe00e5af0bfaca548078aa85
-  languageName: node
-  linkType: hard
-
-"openai@npm:^4.41.1":
-  version: 4.47.1
-  resolution: "openai@npm:4.47.1"
-  dependencies:
-    "@types/node": ^18.11.18
-    "@types/node-fetch": ^2.6.4
-    abort-controller: ^3.0.0
-    agentkeepalive: ^4.2.1
-    form-data-encoder: 1.7.2
-    formdata-node: ^4.3.2
-    node-fetch: ^2.6.7
-    web-streams-polyfill: ^3.2.1
-  bin:
-    openai: bin/cli
-  checksum: 746aa39479f7bc62b1536582bd2f068870715a3a1ae372a187ec5fd1a6cf70c6e49b94a5a8b408186ec52aca886ed47b52fccf6010993fcf16915ab11f96b3b9
   languageName: node
   linkType: hard
 
