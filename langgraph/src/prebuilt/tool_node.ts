@@ -1,5 +1,5 @@
 import { BaseMessage, ToolMessage, AIMessage } from "@langchain/core/messages";
-import { RunnableConfig } from "@langchain/core/runnables";
+import { Runnable, RunnableConfig } from "@langchain/core/runnables";
 import { StructuredTool } from "@langchain/core/tools";
 import { RunnableCallable } from "../utils.js";
 import { END } from "../graph/graph.js";
@@ -93,6 +93,30 @@ export class ToolNode<
 
     return Array.isArray(input) ? outputs : { messages: outputs };
   }
+
+  /**
+   * @inheritdoc
+   *
+   * @remarks
+   * Eexecutes all requested tool calls found in the last AIMessage.
+   * It processes all tool calls in parallel and returns the results.
+   * 
+   * @param input - Either an array of BaseMessage or a MessagesState object. Must contain an AIMessage with tool_calls.
+   * @param config - The RunnableConfig object containing the runtime configuration.
+   * @returns An array of ToolMessage objects or a MessagesState object containing the ToolMessage objects.
+   *
+   * @throws Error if the last message is not an AIMessage or if a requested tool is not found.
+   *
+   * @example
+   * ```typescript
+   * const result = await toolNode.invoke([new AIMessage({
+   *   content: "Search for the weather",
+   *   tool_calls: [{ name: "tavily_search_results", args: { query: "weather in New York" } }]
+   * })]);
+   * console.log(result); // Array of ToolMessage objects or MessagesState
+   * ```
+   */
+  invoke: Runnable<T, T>["invoke"];
 }
 
 /**
