@@ -13,7 +13,7 @@ export function readChannel<C extends PropertyKey>(
     return channels[chan].get();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (e: any) {
-    if (e.name === EmptyChannelError.name) {
+    if (e.name === EmptyChannelError.unminifiable_name) {
       if (returnException) {
         return e;
       } else if (catch_) {
@@ -38,7 +38,7 @@ export function readChannels<C extends PropertyKey>(
         values[k] = readChannel(channels, k, !skipEmpty);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (e: any) {
-        if (e.name === EmptyChannelError.name) {
+        if (e.name === EmptyChannelError.unminifiable_name) {
           continue;
         }
       }
