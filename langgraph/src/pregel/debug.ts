@@ -66,7 +66,7 @@ function* _readChannels<Value>(
       yield [name, channel.get()];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
-      if (error.name === EmptyChannelError.name) {
+      if (error.name === EmptyChannelError.unminifiable_name) {
         // Skip the channel if it's empty
         continue;
       } else {

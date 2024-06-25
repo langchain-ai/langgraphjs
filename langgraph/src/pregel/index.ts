@@ -886,7 +886,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
         channels[chan].update(vals);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (e: any) {
-        if (e.name === InvalidUpdateError.name) {
+        if (e.name === InvalidUpdateError.unminifiable_name) {
           throw new InvalidUpdateError(
             `Invalid update for channel ${chan}. Values: ${vals}`
           );
@@ -980,7 +980,7 @@ export function _prepareNextTasks<
             break;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } catch (e: any) {
-            if (e.name === EmptyChannelError.name) {
+            if (e.name === EmptyChannelError.unminifiable_name) {
               emptyChannels += 1;
               continue;
             } else {
@@ -1000,7 +1000,7 @@ export function _prepareNextTasks<
           }
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (e: any) {
-          if (e.name === EmptyChannelError.name) {
+          if (e.name === EmptyChannelError.unminifiable_name) {
             continue;
           } else {
             throw e;
