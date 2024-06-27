@@ -205,3 +205,14 @@ describe("SqliteSaver", () => {
     expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
   });
 });
+
+describe("id", () => {
+  it("should accept clockseq -1", () => {
+    const regex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+    const uuid = uuid6(-1);
+    expect(uuid).toMatch(regex);
+    expect(uuid.includes("u")).toBe(false);
+  });
+});
