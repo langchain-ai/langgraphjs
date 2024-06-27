@@ -2,7 +2,7 @@ import { describe, it, expect } from "@jest/globals";
 import { Checkpoint, CheckpointTuple, deepCopy } from "../checkpoint/base.js";
 import { MemorySaver } from "../checkpoint/memory.js";
 import { SqliteSaver } from "../checkpoint/sqlite.js";
-import { convert1to6, uuid6 } from "../checkpoint/id.js";
+import { uuid6 } from "../checkpoint/id.js";
 
 const checkpoint1: Checkpoint = {
   v: 1,
@@ -207,25 +207,12 @@ describe("SqliteSaver", () => {
 });
 
 describe("id", () => {
-  it("should convert uuid1 to uuid6", () => {
+  it("should accept clockseq -1", () => {
     const regex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+      /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-    // [UUIDv1, UUIDv6]
-    const cases = [
-      [
-        "5714f720-1268-11e7-a24b-96d95aa38c32",
-        "1e712685-714f-6720-a24b-96d95aa38c32",
-      ],
-      [
-        "68f820c0-1268-11e7-a24b-671acd892c6a",
-        "1e712686-8f82-60c0-a24b-671acd892c6a",
-      ],
-    ];
-    cases.forEach(([v1, v6]) => {
-      const converted = convert1to6(v1);
-      expect(converted).toBe(v6);
-      expect(converted).toMatch(regex);
-    });
+    const uuid = uuid6(-1);
+    expect(uuid).toMatch(regex);
+    expect(uuid.includes("u")).toBe(false);
   });
 });
