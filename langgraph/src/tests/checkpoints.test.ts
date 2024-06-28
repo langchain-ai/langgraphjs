@@ -1,8 +1,12 @@
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect, jest } from "@jest/globals";
 import { Checkpoint, CheckpointTuple, deepCopy } from "../checkpoint/base.js";
 import { MemorySaver } from "../checkpoint/memory.js";
 import { SqliteSaver } from "../checkpoint/sqlite.js";
+import { VercelKVSaver } from "../checkpoint/vercel_kv.js";
 import { uuid6 } from "../checkpoint/id.js";
+
+// mock @vercel/kv module
+jest.mock("@vercel/kv");
 
 const checkpoint1: Checkpoint = {
   v: 1,
@@ -194,6 +198,67 @@ describe("SqliteSaver", () => {
       configurable: { thread_id: "1" },
     });
     const checkpointTuples: CheckpointTuple[] = [];
+    for await (const checkpoint of checkpointTupleGenerator) {
+      checkpointTuples.push(checkpoint);
+    }
+    expect(checkpointTuples.length).toBe(2);
+
+    const checkpointTuple1 = checkpointTuples[0];
+    const checkpointTuple2 = checkpointTuples[1];
+    expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
+    expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
+  });
+});
+
+describe("VercelKVSaver", () => {
+  it("should save and retrieve checkpoints correctly", async () => {
+    const vercelSaver = new VercelKVSaver({
+      url: "foobar",
+      token: "foobar",
+    });
+
+    // save checkpoint
+    const runnableConfig = await vercelSaver.put(
+      { configurable: { thread_id: "1" } },
+      checkpoint1,
+      { source: "update", step: -1, writes: null }
+    );
+    expect(runnableConfig).toEqual({
+      configurable: {
+        thread_id: "1",
+        checkpoint_id: checkpoint1.id,
+      },
+    });
+
+    // get checkpoint tuple
+    const checkpointTuple = await vercelSaver.getTuple({
+      configurable: { thread_id: "1" },
+    });
+    expect(checkpointTuple?.config).toEqual({
+      configurable: {
+        thread_id: "1",
+        checkpoint_id: checkpoint1.id,
+      },
+    });
+    expect(checkpointTuple?.checkpoint).toEqual(checkpoint1);
+
+    // save another checkpoint
+    await vercelSaver.put(
+      {
+        configurable: {
+          thread_id: "1",
+        },
+      },
+      checkpoint2,
+      { source: "update", step: -1, writes: null }
+    );
+    // list checkpoints
+    const checkpointTupleGenerator = await vercelSaver.list({
+      configurable: { thread_id: "1" },
+    });
+
+    const checkpointTuples: CheckpointTuple[] = [];
+
     for await (const checkpoint of checkpointTupleGenerator) {
       checkpointTuples.push(checkpoint);
     }

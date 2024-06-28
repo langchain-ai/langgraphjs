@@ -1438,6 +1438,7 @@ __metadata:
     "@types/uuid": ^10
     "@typescript-eslint/eslint-plugin": ^6.12.0
     "@typescript-eslint/parser": ^6.12.0
+    "@vercel/kv": ^2.0.0
     "@xenova/transformers": ^2.17.2
     better-sqlite3: ^9.5.0
     cheerio: 1.0.0-rc.12
@@ -1462,8 +1463,11 @@ __metadata:
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.4
   peerDependencies:
+    "@vercel/kv": ^2.0.0
     better-sqlite3: ^9.5.0
   peerDependenciesMeta:
+    "@vercel/kv":
+      optional: true
     better-sqlite3:
       optional: true
   languageName: unknown
@@ -2848,6 +2852,24 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@upstash/redis@npm:^1.31.3":
+  version: 1.31.6
+  resolution: "@upstash/redis@npm:1.31.6"
+  dependencies:
+    crypto-js: ^4.2.0
+  checksum: ff8371d283a7010439bef1467919282f0b3f1df675a2d03d555a9629d5315c05a92f4b7e3fde402f6ba07cccf8701230c72914ba63917a3f11c2aee2e7ec8fc2
+  languageName: node
+  linkType: hard
+
+"@vercel/kv@npm:^2.0.0":
+  version: 2.0.0
+  resolution: "@vercel/kv@npm:2.0.0"
+  dependencies:
+    "@upstash/redis": ^1.31.3
+  checksum: 16519f42670efce81cea64229f34aeed271e0a9a25329f5a1a0b49aa77f87e6a71a49d5c4593571c0e07f2d68a4e4288feb773cb44d0155df494de132b8eece0
+  languageName: node
+  linkType: hard
+
 "@xenova/transformers@npm:^2.17.2":
   version: 2.17.2
   resolution: "@xenova/transformers@npm:2.17.2"
@@ -4000,6 +4022,13 @@ __metadata:
     shebang-command: ^2.0.0
     which: ^2.0.1
   checksum: 671cc7c7288c3a8406f3c69a3ae2fc85555c04169e9d611def9a675635472614f1c0ed0ef80955d5b6d4e724f6ced67f0ad1bb006c2ea643488fcfef994d7f52
+  languageName: node
+  linkType: hard
+
+"crypto-js@npm:^4.2.0":
+  version: 4.2.0
+  resolution: "crypto-js@npm:4.2.0"
+  checksum: f051666dbc077c8324777f44fbd3aaea2986f198fe85092535130d17026c7c2ccf2d23ee5b29b36f7a4a07312db2fae23c9094b644cc35f7858b1b4fcaf27774
   languageName: node
   linkType: hard
 
