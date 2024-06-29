@@ -59,7 +59,7 @@ export class VercelKVSaver extends BaseCheckpointSaver {
         ? config
         : {
             configurable: {
-              thread_id: thread_id,
+              thread_id,
               checkpoint_id: (checkpoint as Checkpoint).id,
             },
           },
@@ -110,7 +110,7 @@ export class VercelKVSaver extends BaseCheckpointSaver {
         yield {
           config: {
             configurable: {
-              thread_id: thread_id,
+              thread_id,
               checkpoint_id: (checkpoint as Checkpoint).id,
             },
           },
@@ -145,7 +145,7 @@ export class VercelKVSaver extends BaseCheckpointSaver {
 
     return {
       configurable: {
-        thread_id: thread_id,
+        thread_id,
         checkpoint_id: checkpoint.id,
       },
     };
