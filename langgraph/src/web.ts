@@ -11,6 +11,7 @@ export { MemorySaver } from "./checkpoint/memory.js";
 export {
   type Checkpoint,
   type CheckpointMetadata,
+  type CheckpointTuple,
   copyCheckpoint,
   emptyCheckpoint,
   BaseCheckpointSaver,
@@ -21,3 +22,4 @@ export {
   InvalidUpdateError,
   EmptyChannelError,
 } from "./errors.js";
+export { type SerializerProtocol } from "./serde/base.js";
