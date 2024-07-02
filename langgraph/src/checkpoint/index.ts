@@ -5,5 +5,4 @@ export {
   copyCheckpoint,
   emptyCheckpoint,
   BaseCheckpointSaver,
-  type CheckpointTuple,
 } from "./base.js";
