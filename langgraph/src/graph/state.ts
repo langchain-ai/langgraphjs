@@ -25,22 +25,23 @@ import { InvalidUpdateError } from "../errors.js";
 
 const ROOT = "__root__";
 
-type SingleReducer<T> =
+type SingleReducer<ValueType, UpdateType = ValueType> =
   | {
-      reducer: BinaryOperator<T>;
-      default?: () => T;
+      reducer: BinaryOperator<ValueType, UpdateType>;
+      default?: () => ValueType;
     }
   | {
       /**
        * @deprecated Use `reducer` instead
        */
-      value: BinaryOperator<T>;
-      default?: () => T;
+      value: BinaryOperator<ValueType, UpdateType>;
+      default?: () => ValueType;
     }
   | null;
 
 export type ChannelReducers<Channels extends object> = {
-  [K in keyof Channels]: SingleReducer<Channels[K]>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [K in keyof Channels]: SingleReducer<Channels[K], any>;
 };
 
 export interface StateGraphArgs<Channels extends object | unknown> {
@@ -53,7 +54,8 @@ export interface StateGraphArgs<Channels extends object | unknown> {
 
 export class StateGraph<
   State extends object | unknown,
-  Update extends object | unknown = Partial<State>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Update extends object | unknown = Partial<Record<keyof State, any>>,
   N extends string = typeof START
 > extends Graph<N, State, Update> {
   channels: Record<string, BaseChannel>;
@@ -212,7 +214,7 @@ function getChannel<T>(reducer: SingleReducer<T>): BaseChannel<T> {
     "reducer" in reducer &&
     reducer.reducer
   ) {
-    return new BinaryOperatorAggregate<T>(reducer.reducer, reducer.default);
+    return new BinaryOperatorAggregate(reducer.reducer, reducer.default);
   }
   if (
     typeof reducer === "object" &&
@@ -220,7 +222,7 @@ function getChannel<T>(reducer: SingleReducer<T>): BaseChannel<T> {
     "value" in reducer &&
     reducer.value
   ) {
-    return new BinaryOperatorAggregate<T>(reducer.value, reducer.default);
+    return new BinaryOperatorAggregate(reducer.value, reducer.default);
   }
   return new LastValue<T>();
 }

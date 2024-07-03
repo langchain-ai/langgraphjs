@@ -142,7 +142,7 @@ interface StateA {
 const builderA = new StateGraph<StateA>({
   channels: {
     myField: {
-      // "Overrirde" is the default behavior:
+      // "Override" is the default behavior:
       value: (_x: number, y: number) => y,
       default: () => 0,
     },
