@@ -1,27 +1,29 @@
 import { EmptyChannelError } from "../errors.js";
 import { BaseChannel } from "./index.js";
 
-export type BinaryOperator<Value> = (a: Value, b: Value) => Value;
+export type BinaryOperator<ValueType, UpdateType> = (
+  a: ValueType,
+  b: UpdateType
+) => ValueType;
 
 /**
  * Stores the result of applying a binary operator to the current value and each new value.
  */
-export class BinaryOperatorAggregate<Value> extends BaseChannel<
-  Value,
-  Value,
-  Value
-> {
+export class BinaryOperatorAggregate<
+  ValueType,
+  UpdateType = ValueType
+> extends BaseChannel<ValueType, UpdateType, ValueType> {
   lc_graph_name = "BinaryOperatorAggregate";
 
-  value: Value | undefined;
+  value: ValueType | undefined;
 
-  operator: BinaryOperator<Value>;
+  operator: BinaryOperator<ValueType, UpdateType>;
 
-  initialValueFactory?: () => Value;
+  initialValueFactory?: () => ValueType;
 
   constructor(
-    operator: BinaryOperator<Value>,
-    initialValueFactory?: () => Value
+    operator: BinaryOperator<ValueType, UpdateType>,
+    initialValueFactory?: () => ValueType
   ) {
     super();
 
@@ -30,7 +32,7 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
     this.value = initialValueFactory?.();
   }
 
-  public fromCheckpoint(checkpoint?: Value) {
+  public fromCheckpoint(checkpoint?: ValueType) {
     const empty = new BinaryOperatorAggregate(
       this.operator,
       this.initialValueFactory
@@ -41,12 +43,12 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
     return empty as this;
   }
 
-  public update(values: Value[]): void {
+  public update(values: UpdateType[]): void {
     let newValues = values;
     if (!newValues.length) return;
 
     if (this.value === undefined) {
-      [this.value] = newValues;
+      [this.value as UpdateType] = newValues;
       newValues = newValues.slice(1);
     }
 
@@ -57,14 +59,14 @@ export class BinaryOperatorAggregate<Value> extends BaseChannel<
     }
   }
 
-  public get(): Value {
+  public get(): ValueType {
     if (this.value === undefined) {
       throw new EmptyChannelError();
     }
     return this.value;
   }
 
-  public checkpoint(): Value {
+  public checkpoint(): ValueType {
     if (this.value === undefined) {
       throw new EmptyChannelError();
     }
