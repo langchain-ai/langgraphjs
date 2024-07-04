@@ -6,6 +6,11 @@ import {
   RunnableConfig,
 } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
+import {
+  Graph,
+  type Node as RunnableGraphNode,
+} from "@langchain/core/runnables/graph";
+import { validate as isUuid } from "uuid";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface RunnableCallableArgs extends Partial<any> {
@@ -87,5 +92,42 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
     }
 
     return returnValue;
+  }
+}
+
+export class DrawableGraph extends Graph {
+  override extend(graph: Graph, prefix: string = "") {
+    const nodeIds = Object.values(graph.nodes).map((node) => node.id);
+    if (nodeIds.every(isUuid)) {
+      super.extend(graph);
+      return [graph.firstNode(), graph.lastNode()];
+    }
+    const newNodes = Object.entries(graph.nodes).reduce(
+      (nodes: Record<string, RunnableGraphNode>, [key, value]) => {
+        // eslint-disable-next-line no-param-reassign
+        nodes[`${prefix}:${key}`] = {
+          id: `${prefix}:${key}`,
+          data: value.data,
+        };
+        return nodes;
+      },
+      {}
+    );
+    const newEdges = graph.edges.map((edge) => {
+      return {
+        source: `${prefix}:${edge.source}`,
+        target: `${prefix}:${edge.target}`,
+        data: edge.data,
+        conditional: edge.conditional,
+      };
+    });
+    this.nodes = { ...this.nodes, ...newNodes };
+    this.edges = this.edges.concat(newEdges);
+    const first = graph.firstNode();
+    const last = graph.lastNode();
+    return [
+      first ? { id: `${prefix}:${first.id}`, data: first.data } : undefined,
+      last ? { id: `${prefix}:${last.id}`, data: last.data } : undefined,
+    ];
   }
 }
