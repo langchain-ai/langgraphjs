@@ -1,13 +1,12 @@
 import { test, expect } from "@jest/globals";
-import { ChatOpenAI } from "@langchain/openai";
 import { createReactAgent } from "../prebuilt/index.js";
-import { FakeSearchTool } from "./utils.js";
+import { FakeSearchTool, FakeToolCallingChatModel } from "./utils.js";
 
 test("prebuilt agent", async () => {
   // Define the tools for the agent to use
   const tools = [new FakeSearchTool()];
 
-  const model = new ChatOpenAI({ temperature: 0 });
+  const model = new FakeToolCallingChatModel({});
 
   const app = createReactAgent({ llm: model, tools });
 
