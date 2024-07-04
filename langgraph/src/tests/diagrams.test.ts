@@ -1,12 +1,11 @@
 import { test, expect } from "@jest/globals";
-import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 import { ChatOpenAI } from "@langchain/openai";
-// Define the tools for the agent to use
 import { createReactAgent } from "../prebuilt/index.js";
+import { FakeSearchTool } from "./utils.js";
 
-test.only("langgraph", async () => {
+test("prebuilt agent", async () => {
   // Define the tools for the agent to use
-  const tools = [new TavilySearchResults({ maxResults: 1 })];
+  const tools = [new FakeSearchTool()];
 
   const model = new ChatOpenAI({ temperature: 0 });
 
