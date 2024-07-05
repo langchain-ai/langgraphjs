@@ -5,7 +5,10 @@ import {
   RunnableLike,
   _coerceToRunnable,
 } from "@langchain/core/runnables";
-import { Node as RunnableGraphNode } from "@langchain/core/runnables/graph";
+import {
+  Node as RunnableGraphNode,
+  Graph as RunnableGraph,
+} from "@langchain/core/runnables/graph";
 import { z } from "zod";
 import { PregelNode } from "../pregel/read.js";
 import { Channel, Pregel, PregelInterface } from "../pregel/index.js";
@@ -15,7 +18,7 @@ import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { All } from "../pregel/types.js";
 import { ChannelWrite, PASSTHROUGH } from "../pregel/write.js";
 import { TAG_HIDDEN } from "../constants.js";
-import { DrawableGraph, RunnableCallable } from "../utils.js";
+import { RunnableCallable } from "../utils.js";
 
 export const START = "__start__";
 export const END = "__end__";
@@ -421,9 +424,9 @@ export class CompiledGraph<
    */
   override getGraph(
     config?: RunnableConfig & { xray?: boolean | number }
-  ): DrawableGraph {
+  ): RunnableGraph {
     const xray = config?.xray;
-    const graph = new DrawableGraph();
+    const graph = new RunnableGraph();
     const startNodes: Record<string, RunnableGraphNode> = {
       [START]: graph.addNode(
         {
