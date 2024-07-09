@@ -45,11 +45,15 @@ export class ToolNode<
           throw new Error(`Tool ${call.name} not found.`);
         }
         const output = await tool.invoke(call.args, config);
-        return new ToolMessage({
-          name: tool.name,
-          content: typeof output === "string" ? output : JSON.stringify(output),
-          tool_call_id: call.id!,
-        });
+        if (typeof output === "string") {
+          return new ToolMessage({
+            name: tool.name,
+            content: typeof output === "string" ? output : JSON.stringify(output),
+            tool_call_id: call.id!,
+          });
+        } else {
+          return output;
+        }
       }) ?? []
     );
 

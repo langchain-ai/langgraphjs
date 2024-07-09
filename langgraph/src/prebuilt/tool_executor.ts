@@ -1,3 +1,4 @@
+import { ToolMessage } from "@langchain/core/messages";
 import {
   RunnableBinding,
   RunnableConfig,
@@ -29,7 +30,7 @@ type ToolExecutorInputType = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ToolExecutorOutputType = any;
 
-export class ToolExecutor extends RunnableBinding<
+export class ToolExecutor<ToolOutput extends string | ToolMessage = string> extends RunnableBinding<
   ToolExecutorInputType,
   ToolExecutorOutputType
 > {
@@ -62,10 +63,17 @@ export class ToolExecutor extends RunnableBinding<
     }, {} as Record<string, StructuredTool>);
   }
 
+  /**
+   * Execute a tool invocation
+   * 
+   * @param {ToolInvocationInterface} toolInvocation The tool to invoke and the input to pass to it.
+   * @param {RunnableConfig | undefined} config Optional configuration to pass to the tool when invoked.
+   * @returns {ToolOutput | string} Either the result of the tool invocation (`string` or `ToolMessage`, set by the `ToolOutput` generic) or a string error message.
+   */
   async _execute(
     toolInvocation: ToolInvocationInterface,
     config?: RunnableConfig
-  ): Promise<string> {
+  ): Promise<ToolOutput | string> {
     if (!(toolInvocation.tool in this.toolMap)) {
       return this.invalidToolMsgTemplate
         .replace("{requestedToolName}", toolInvocation.tool)
