@@ -8,6 +8,7 @@ import { BaseMessage, AIMessage } from "@langchain/core/messages";
 import { ChatResult } from "@langchain/core/outputs";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
+import { z } from "zod";
 import { MemorySaver } from "../checkpoint/memory.js";
 import { Checkpoint, CheckpointMetadata } from "../checkpoint/base.js";
 
@@ -152,5 +153,25 @@ export class MemorySaverAssertImmutable extends MemorySaver {
       this.serde.stringify(checkpoint);
 
     return super.put(config, checkpoint, metadata);
+  }
+}
+
+export class FakeSearchTool extends Tool {
+  name = "search_api";
+
+  description = "A simple API that returns the input string.";
+
+  schema = z
+    .object({
+      input: z.string().optional(),
+    })
+    .transform((data) => data.input);
+
+  constructor() {
+    super();
+  }
+
+  async _call(query: string): Promise<string> {
+    return `result for ${query}`;
   }
 }

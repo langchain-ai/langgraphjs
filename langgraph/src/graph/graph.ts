@@ -5,6 +5,11 @@ import {
   RunnableLike,
   _coerceToRunnable,
 } from "@langchain/core/runnables";
+import {
+  Node as RunnableGraphNode,
+  Graph as RunnableGraph,
+} from "@langchain/core/runnables/graph";
+import { z } from "zod";
 import { PregelNode } from "../pregel/read.js";
 import { Channel, Pregel, PregelInterface } from "../pregel/index.js";
 import { BaseCheckpointSaver } from "../checkpoint/base.js";
@@ -413,4 +418,99 @@ export class CompiledGraph<
       }
     }
   }
+
+  /**
+   * Returns a drawable representation of the computation graph.
+   */
+  override getGraph(
+    config?: RunnableConfig & { xray?: boolean | number }
+  ): RunnableGraph {
+    const xray = config?.xray;
+    const graph = new RunnableGraph();
+    const startNodes: Record<string, RunnableGraphNode> = {
+      [START]: graph.addNode(
+        {
+          schema: z.any(),
+        },
+        START
+      ),
+    };
+    const endNodes: Record<string, RunnableGraphNode> = {
+      [END]: graph.addNode(
+        {
+          schema: z.any(),
+        },
+        END
+      ),
+    };
+    for (const [key, node] of Object.entries<Runnable>(this.builder.nodes)) {
+      if (config?.xray) {
+        const subgraph = isCompiledGraph(node)
+          ? node.getGraph({
+              ...config,
+              xray: typeof xray === "number" && xray > 0 ? xray - 1 : xray,
+            })
+          : node.getGraph(config);
+        subgraph.trimFirstNode();
+        subgraph.trimLastNode();
+        if (Object.keys(subgraph.nodes).length > 1) {
+          const [newEndNode, newStartNode] = graph.extend(subgraph, key);
+          if (newEndNode !== undefined) {
+            endNodes[key] = newEndNode;
+          }
+          if (newStartNode !== undefined) {
+            startNodes[key] = newStartNode;
+          }
+        } else {
+          const newNode = graph.addNode(node, key);
+          startNodes[key] = newNode;
+          endNodes[key] = newNode;
+        }
+      } else {
+        const newNode = graph.addNode(node, key);
+        startNodes[key] = newNode;
+        endNodes[key] = newNode;
+      }
+    }
+    for (const [start, end] of this.builder.allEdges) {
+      graph.addEdge(startNodes[start], endNodes[end]);
+    }
+    for (const [start, branches] of Object.entries(this.builder.branches)) {
+      const defaultEnds: Record<string, string> = {
+        ...Object.fromEntries(
+          Object.keys(this.builder.nodes)
+            .filter((k) => k !== start)
+            .map((k) => [k, k])
+        ),
+        [END]: END,
+      };
+      for (const branch of Object.values(branches)) {
+        let ends: Record<string, string>;
+        if (branch.ends !== undefined) {
+          ends = branch.ends;
+        } else {
+          ends = defaultEnds;
+        }
+        for (const [label, end] of Object.entries(ends)) {
+          graph.addEdge(
+            startNodes[start],
+            endNodes[end],
+            label !== end ? label : undefined,
+            true
+          );
+        }
+      }
+    }
+    return graph;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isCompiledGraph(x: unknown): x is CompiledGraph<any> {
+  return (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    typeof (x as CompiledGraph<any>).attachNode === "function" &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    typeof (x as CompiledGraph<any>).attachEdge === "function"
+  );
 }
