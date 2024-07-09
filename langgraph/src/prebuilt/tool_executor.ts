@@ -30,10 +30,9 @@ type ToolExecutorInputType = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ToolExecutorOutputType = any;
 
-export class ToolExecutor<ToolOutput extends string | ToolMessage = string> extends RunnableBinding<
-  ToolExecutorInputType,
-  ToolExecutorOutputType
-> {
+export class ToolExecutor<
+  ToolOutput extends string | ToolMessage = string
+> extends RunnableBinding<ToolExecutorInputType, ToolExecutorOutputType> {
   lc_graph_name = "ToolExecutor";
 
   tools: Array<StructuredTool>;
@@ -65,7 +64,7 @@ export class ToolExecutor<ToolOutput extends string | ToolMessage = string> exte
 
   /**
    * Execute a tool invocation
-   * 
+   *
    * @param {ToolInvocationInterface} toolInvocation The tool to invoke and the input to pass to it.
    * @param {RunnableConfig | undefined} config Optional configuration to pass to the tool when invoked.
    * @returns {ToolOutput | string} Either the result of the tool invocation (`string` or `ToolMessage`, set by the `ToolOutput` generic) or a string error message.

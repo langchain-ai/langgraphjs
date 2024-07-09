@@ -48,7 +48,8 @@ export class ToolNode<
         if (typeof output === "string") {
           return new ToolMessage({
             name: tool.name,
-            content: typeof output === "string" ? output : JSON.stringify(output),
+            content:
+              typeof output === "string" ? output : JSON.stringify(output),
             tool_call_id: call.id!,
           });
         } else {
