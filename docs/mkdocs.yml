@@ -1,4 +1,4 @@
-site_name: LangGraph.js
+site_name: ""
 site_description: Build language agents as graphs
 site_url: https://langchain-ai.github.io/langgraphjs/
 repo_url: https://github.com/langchain-ai/langgraphjs
@@ -6,7 +6,8 @@ edit_uri: edit/main/docs/docs/
 theme:
   name: material
   custom_dir: overrides
-  logo: static/wordmark.png
+  logo_dark_mode: static/wordmark_light.svg
+  logo_light_mode: static/wordmark_dark.svg
   favicon: static/favicon.png
   features:
     - announce.dismiss
