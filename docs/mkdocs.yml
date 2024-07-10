@@ -156,6 +156,9 @@ markdown_extensions:
       combine_header_slug: true
   - pymdownx.tasklist:
       custom_checkbox: true
+  - markdown_include.include:
+      base_path: ../
+  - github-callouts
 extra_css:
   - css/mkdocstrings.css
 
