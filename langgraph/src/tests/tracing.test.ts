@@ -45,12 +45,7 @@ it("should pass config through if importing from the primary entrypoint", async 
       name: "LangGraph",
       tags: [],
       run_id: expect.any(String),
-      metadata: {
-        langgraph_node: "__start__",
-        langgraph_step: 0,
-        langgraph_task_idx: 0,
-        langgraph_triggers: ["__pregel_tasks"],
-      },
+      metadata: {},
     },
     {
       event: "on_chain_start",
