@@ -11,7 +11,6 @@ logging.basicConfig(level=logging.INFO)
 
 
 def extract_code_blocks(content: str, title: Optional[str] = None):
-    code_block_regex = re.compile(r"```typescript(?:\s+(.*?))?\n([\s\S]*?)```")
     code_block_regex = re.compile(r"```typescript(?:[ ]+([^\n]+))?\n([\s\S]*?)```", re.DOTALL)
 
     matches = code_block_regex.findall(content)
