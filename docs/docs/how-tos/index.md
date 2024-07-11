@@ -26,6 +26,7 @@ LangGraph.js makes it easy to persist state across graph runs. The guides below 
 
 - [How to add persistence ("memory") to your graph](persistence.ipynb)
 - [How to view and update past graph state](time-travel.ipynb)
+- [How to create a custom checkpointer using Postgres](persistence-postgres.ipynb)
 
 ## Human-in-the-loop
 

@@ -97,6 +97,7 @@ nav:
       - Persistence:
           - Add persistence ("memory") to your graph: "how-tos/persistence.ipynb"
           - View and update past graph state: "how-tos/time-travel.ipynb"
+          - Create a custom checkpointer using Postgres: "how-tos/persistence-postgres.ipynb"
       - Human-in-the-loop:
           - Add human-in-the-loop: "how-tos/human-in-the-loop.ipynb"
       - Streaming:
