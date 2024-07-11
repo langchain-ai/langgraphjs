@@ -32,19 +32,18 @@ npm install @langchain/langgraph
 
 One of the central concepts of LangGraph is state. Each graph execution creates a state that is passed between nodes in the graph as they execute, and each node updates this internal state with its return value after it executes. The way that the graph updates its internal state is defined by either the type of graph chosen or a custom function.
 
-Let's take a look at a simple example of an agent that can search the web using [Tavily Search API](https://tavily.com/).
+Let's take a look at a simple example of an agent that can use a search tool.
 
 First install the required dependencies:
 
 ```bash
-npm install @langchain/openai @langchain/community
+npm install @langchain/anthropic
 ```
 
 Then set the required environment variables:
 
 ```bash
-export OPENAI_API_KEY=sk-...
-export TAVILY_API_KEY=tvly-...
+export ANTHROPIC_API_KEY=sk-...
 ```
 
 Optionally, set up [LangSmith](https://docs.smith.langchain.com/) for best-in-class observability:
@@ -57,9 +56,10 @@ export LANGCHAIN_API_KEY=ls__...
 Now let's define our agent:
 
 ```typescript
-import { HumanMessage } from "@langchain/core/messages";
-import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
-import { ChatOpenAI } from "@langchain/openai";
+import { HumanMessage, AIMessage } from "@langchain/core/messages";
+import { DynamicStructuredTool } from "@langchain/core/tools";
+import { z } from "zod";
+import { ChatAnthropic } from "@langchain/anthropic";
 import { END, START, StateGraph, StateGraphArgs } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
@@ -78,18 +78,38 @@ const graphState: StateGraphArgs<AgentState>["channels"] = {
 };
 
 // Define the tools for the agent to use
-const tools = [new TavilySearchResults({ maxResults: 1 })];
+
+const searchTool = new DynamicStructuredTool({
+  name: "search",
+  description:
+    "Call to surf the web.",
+  schema: z.object({
+    query: z.string().describe("The query to use in your search."),
+  }),
+  func: async ({ query }: { query: string }) => {
+    // This is a placeholder for the actual implementation
+    if (query.toLowerCase().includes("sf") || query.toLowerCase().includes("san francisco")) {
+      return "It's 60 degrees and foggy."
+    }
+    return "It's 90 degrees and sunny."
+  },
+});
+
+const tools = [searchTool];
 const toolNode = new ToolNode<AgentState>(tools);
 
-const model = new ChatOpenAI({ temperature: 0 }).bindTools(tools);
+const model = new ChatAnthropic({
+  model: "claude-3-sonnet-20240229",
+  temperature: 0,
+}).bindTools(tools);
 
 // Define the function that determines whether to continue or not
 function shouldContinue(state: AgentState): "tools" | typeof END {
   const messages = state.messages;
-  const lastMessage = messages[messages.length - 1];
+  const lastMessage = messages[messages.length - 1] as AIMessage;
 
   // If the LLM makes a tool call, then we route to the "tools" node
-  if (lastMessage.additional_kwargs.tool_calls) {
+  if (lastMessage.tool_calls?.length) {
     return "tools";
   }
   // Otherwise, we stop (reply to the user)
@@ -132,15 +152,7 @@ console.log(finalState.messages[finalState.messages.length - 1].content);
 This will output:
 
 ```
-The current weather in San Francisco is as follows:
-- Temperature: 60.1°F (15.6°C)
-- Condition: Partly cloudy
-- Wind: 5.6 mph (9.0 kph) from SSW
-- Humidity: 83%
-- Visibility: 9.0 miles (16.0 km)
-- UV Index: 4.0
-
-For more details, you can visit [Weather API](https://www.weatherapi.com/).
+Based on the search results, I can tell you that the current weather in San Francisco is:\n\nTemperature: 60 degrees Fahrenheit\nConditions: Foggy\n\nSan Francisco is known for its microclimates and frequent fog, especially during the summer months. The temperature of 60°F (about 15.5°C) is quite typical for the city, which tends to have mild temperatures year-round. The fog, often referred to as "Karl the Fog" by locals, is a characteristic feature of San Francisco\'s weather, particularly in the mornings and evenings.\n\nIs there anything else you\'d like to know about the weather in San Francisco or any other location?
 ```
 
 Now when we pass the same `"thread_id"`, the conversation context is retained via the saved state (i.e. stored list of messages):
@@ -154,15 +166,7 @@ console.log(nextState.messages[nextState.messages.length - 1].content);
 ```
 
 ```
-The current weather in New York is as follows:
-- Temperature: 20.3°C (68.5°F)
-- Condition: Overcast
-- Wind: 2.2 mph from the north
-- Humidity: 65%
-- Cloud Cover: 100%
-- UV Index: 5.0
-
-For more details, you can visit [Weather API](https://www.weatherapi.com/).
+Based on the search results, I can tell you that the current weather in New York City is:\n\nTemperature: 90 degrees Fahrenheit (approximately 32.2 degrees Celsius)\nConditions: Sunny\n\nThis weather is quite different from what we just saw in San Francisco. New York is experiencing much warmer temperatures right now. Here are a few points to note:\n\n1. The temperature of 90°F is quite hot, typical of summer weather in New York City.\n2. The sunny conditions suggest clear skies, which is great for outdoor activities but also means it might feel even hotter due to direct sunlight.\n3. This kind of weather in New York often comes with high humidity, which can make it feel even warmer than the actual temperature suggests.\n\nIt's interesting to see the stark contrast between San Francisco's mild, foggy weather and New York's hot, sunny conditions. This difference illustrates how varied weather can be across different parts of the United States, even on the same day.\n\nIs there anything else you'd like to know about the weather in New York or any other location?
 ```
 
 ### Step-by-step Breakdown
@@ -170,8 +174,8 @@ For more details, you can visit [Weather API](https://www.weatherapi.com/).
 1. <details>
     <summary>Initialize the model and tools.</summary>
 
-   - We use `ChatOpenAI` as our LLM. **NOTE:** We need make sure the model knows that it has these tools available to call. We can do this by converting the LangChain tools into the format for OpenAI tool calling using the `.bindTools()` method.
-   - We define the tools we want to use -- a web search tool in our case. It is really easy to create your own tools - see documentation [here](https://js.langchain.com/docs/modules/agents/tools/dynamic) on how to do that.
+   - We use `ChatAnthropic` as our LLM. **NOTE:** We need make sure the model knows that it has these tools available to call. We can do this by converting the LangChain tools into the format for Anthropic tool calling using the `.bindTools()` method.
+   - We define the tools we want to use -- a search tool in our case. It is really easy to create your own tools - see documentation [here](https://js.langchain.com/docs/modules/agents/tools/dynamic) on how to do that.
    </details>
 
 2. <details>
@@ -181,7 +185,7 @@ For more details, you can visit [Weather API](https://www.weatherapi.com/).
    - The `graphState` object defines how updates from each node should be merged into the graph's state.
    </details>
 
-3. <details>  
+3. <details>
     <summary>Define graph nodes.</summary>
 
    There are two main nodes we need:
@@ -193,8 +197,7 @@ For more details, you can visit [Weather API](https://www.weatherapi.com/).
 4. <details>
     <summary>Define entry point and graph edges.</summary>
 
-   First, we need to set the entry point for graph execution - the `agent` node. We do this by
-   creating an edge from the virtual `START` node to the `agent` node.
+   First, we need to set the entry point for graph execution - `agent` node.
 
    Then we define one normal and one conditional edge. A conditional edge means that the destination depends on the contents of the graph's state (`AgentState`). In our case, the destination is not known until the agent (LLM) decides.
 
@@ -212,16 +215,17 @@ For more details, you can visit [Weather API](https://www.weatherapi.com/).
    </details>
 
 6. <details>
-   <summary>Execute the graph.</summary>
+    <summary>Execute the graph.</summary>
 
    1. LangGraph adds the input message to the internal state, then passes the state to the entrypoint node, `"agent"`.
    2. The `"agent"` node executes, invoking the chat model.
    3. The chat model returns an `AIMessage`. LangGraph adds this to the state.
    4. The graph cycles through the following steps until there are no more `tool_calls` on the `AIMessage`:
+
       - If `AIMessage` has `tool_calls`, the `"tools"` node executes.
       - The `"agent"` node executes again and returns an `AIMessage`.
-   5. Execution progresses to the special `END` value and outputs the final state.
 
+   5. Execution progresses to the special `END` value and outputs the final state.
    As a result, we get a list of all our chat messages as output.
    </details>
 
