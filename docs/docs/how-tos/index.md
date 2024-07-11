@@ -27,7 +27,7 @@ LangGraph.js makes it easy to persist state across graph runs. The guides below 
 - [How to add persistence ("memory") to your graph](persistence.ipynb)
 - [How to view and update past graph state](time-travel.ipynb)
 
-## Human in the Loop
+## Human-in-the-loop
 
 One of LangGraph.js's main benefits is that it makes human-in-the-loop workflows easy.
 These guides cover common examples of that.
@@ -39,6 +39,8 @@ These guides cover common examples of that.
 LangGraph is built to be streaming first.
 These guides show how to use different streaming modes.
 
+- [How to stream full state of your graph](stream-values.ipynb)
+- [How to stream state updates of your graph](stream-updates.ipynb)
 - [How to stream LLM tokens](stream-tokens.ipynb)
 
 ## Other
