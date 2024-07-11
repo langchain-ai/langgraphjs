@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from typing import Optional
 import re
@@ -11,7 +12,9 @@ logging.basicConfig(level=logging.INFO)
 
 
 def extract_code_blocks(content: str, title: Optional[str] = None):
-    code_block_regex = re.compile(r"```typescript(?:[ ]+([^\n]+))?\n([\s\S]*?)```", re.DOTALL)
+    code_block_regex = re.compile(
+        r"```typescript(?:[ ]+([^\n]+))?\n([\s\S]*?)```", re.DOTALL
+    )
 
     matches = code_block_regex.findall(content)
 
@@ -23,7 +26,7 @@ def extract_code_blocks(content: str, title: Optional[str] = None):
     combined_code = []
 
     for metadata, code in matches:
-        print("Metadata",  metadata)
+        print("Metadata", metadata)
         if metadata:
             m = {}
             metadata_parts = metadata.split(",")
@@ -49,7 +52,12 @@ def extract_code_blocks(content: str, title: Optional[str] = None):
     return res
 
 
-def extract_ts_code(file_path: str, title: str | None = None) -> str:
+def extract_ts_code(file_path: str, title: str | None = None, strip_env: bool = True) -> str:
+    def replace_env_vars(match):
+        env_var = match.group(1)
+        env_value = os.environ.get(env_var, "")
+        return f'process.env.{env_var} = "{env_value}"'
+
     with open(file_path, "r", encoding="utf-8") as notebook_file:
         notebook_content = notebook_file.read()
         if file_path.endswith(".ipynb"):
@@ -62,6 +70,10 @@ def extract_ts_code(file_path: str, title: str | None = None) -> str:
     ts_content = "\n".join(
         [line for line in ts_content.split("\n") if not line.startswith("#")]
     )
+    
+    if strip_env:
+        ts_content = re.sub(r'process\.env\.([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*".*?"', replace_env_vars, ts_content)
+        
     return ts_content
 
 
@@ -123,9 +135,10 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument("filename", type=str, help="Path to the Jupyter notebook file.")
 parser.add_argument("--title", type=str, help="Title of the code block(s) to run.")
+parser.add_argument("--keep-env", action="store_true", help="Keep the environment.")
 args = parser.parse_args()
 
-ts_code = extract_ts_code(args.filename, args.title)
+ts_code = extract_ts_code(args.filename, args.title, strip_env=not args.keep_env)
 tsconfig_options = get_tsconfig_options(tsconfig_path)
 compiled_js_code, compiled_js_path = compile_ts_code(ts_code, tsconfig_options)
 output = run_js_code(compiled_js_path)
