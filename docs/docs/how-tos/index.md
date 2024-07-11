@@ -1,32 +1,50 @@
+---
+hide:
+  - toc
+---
+
 # How-to guides
 
-Welcome to the LangGraph.js How-to Guides! These guides provide practical, step-by-step instructions for accomplishing key tasks in LangGraph.js.
+Welcome to the LangGraph.js how-to Guides! These guides provide practical, step-by-step instructions for accomplishing key tasks in LangGraph.js.
 
 ## Installation
 
-- [Manage ecosystem dependencies](manage-ecosystem-dependencies.ipynb): How to install and use LangGraph.js alongside other packages in the LangChain ecosystem.
-- [Use in web environments](use-in-web-environments.ipynb): How to install and use LangGraph.js in web environments like the browser.
+- [How to install and manage dependencies](manage-ecosystem-dependencies.ipynb)
+- [How to use LangGraph.js in web environments](use-in-web-environments.ipynb)
 
-## Core
+## Controllability
 
-The core guides show how to address common needs when building a out AI workflows, with special focus placed on [ReAct](https://arxiv.org/abs/2210.03629)-style agents with [tool calling](https://js.langchain.com/v0.2/docs/how_to/tool_calling/).
+LangGraph.js is known for being a highly controllable agent framework.
+These how-to guides show how to achieve that controllability.
 
-- [Persistence](persistence.ipynb): How to give your graph "memory" and resiliance by saving and loading state
-- [Time travel](time-travel.ipynb): How to navigate and manipulate graph state history once it's persisted
-- [Stream tokens](stream-tokens.ipynb): How to stream tokens and tool calls from your agent within a graph
-- [Configuration](configuration.ipynb): How to indicate that a graph can swap out configurable components
+- [How to create subgraphs](subgraph.ipynb)
+- [How to create branches for parallel execution](branching.ipynb)
 
-## Design patterns
+## Persistence
 
-How to apply common design patterns in your workflows:
+LangGraph.js makes it easy to persist state across graph runs. The guides below shows how to add persistence to your graph.
 
-- [Subgraphs](subgraph.ipynb): How to compose subgraphs within a larger graph
-- [Branching](branching.ipynb): How to create branching logic in your graphs for parallel node execution
-- [Human-in-the-loop](human-in-the-loop.ipynb): How to incorporate human feedback and intervention
+- [How to add persistence ("memory") to your graph](persistence.ipynb)
+- [How to view and update past graph state](time-travel.ipynb)
 
-The following examples are useful especially if you are used to LangChain's AgentExecutor configurations.
+## Human in the Loop
 
-- [Force calling a tool first](force-calling-a-tool-first.ipynb): Define a fixed workflow before ceding control to the ReAct agent
-- [Dynamic direct return](dynamically-returning-directly.ipynb): Let the LLM decide whether the graph should finish after a tool is run or whether the LLM should be able to review the output and keep going
-- [Respond in structured format](respond-in-format.ipynb): Let the LLM use tools or populate schema to provide the user. Useful if your agent should generate structured content
-- [Managing agent steps](managing-agent-steps.ipynb): How to format the intermediate steps of your workflow for the agent
+One of LangGraph.js's main benefits is that it makes human-in-the-loop workflows easy.
+These guides cover common examples of that.
+
+- [How to add human-in-the-loop](human-in-the-loop.ipynb)
+
+## Streaming
+
+LangGraph is built to be streaming first.
+These guides show how to use different streaming modes.
+
+- [How to stream LLM tokens](stream-tokens.ipynb)
+
+## Other
+
+- [How to add runtime configuration to your graph](configuration.ipynb)
+- [How to force an agent to call a tool](force-calling-a-tool-first.ipynb)
+- [How to let agent return tool results directly](dynamically-returning-directly.ipynb)
+- [How to have agent respond in structured format](respond-in-format.ipynb)
+- [How to manage agent steps](managing-agent-steps.ipynb)
