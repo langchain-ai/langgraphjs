@@ -57,7 +57,7 @@ export LANGCHAIN_API_KEY=ls__...
 Now let's define our agent:
 
 ```typescript
-import { HumanMessage } from "@langchain/core/messages";
+import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { END, START, StateGraph, StateGraphArgs } from "@langchain/langgraph";
@@ -81,15 +81,18 @@ const graphState: StateGraphArgs<AgentState>["channels"] = {
 const tools = [new TavilySearchResults({ maxResults: 1 })];
 const toolNode = new ToolNode<AgentState>(tools);
 
-const model = new ChatAnthropic({ model: "claude-3-sonnet-20240229", temperature: 0 }).bindTools(tools);
+const model = new ChatAnthropic({
+  model: "claude-3-sonnet-20240229",
+  temperature: 0,
+}).bindTools(tools);
 
 // Define the function that determines whether to continue or not
 function shouldContinue(state: AgentState): "tools" | typeof END {
   const messages = state.messages;
-  const lastMessage = messages[messages.length - 1];
+  const lastMessage = messages[messages.length - 1] as AIMessage;
 
   // If the LLM makes a tool call, then we route to the "tools" node
-  if (lastMessage.tool_calls.length > 0) {
+  if (lastMessage.tool_calls?.length) {
     return "tools";
   }
   // Otherwise, we stop (reply to the user)
@@ -170,59 +173,59 @@ For more details, you can visit [Weather API](https://www.weatherapi.com/).
 1. <details>
     <summary>Initialize the model and tools.</summary>
 
-    - We use `ChatAnthropic` as our LLM. **NOTE:** We need make sure the model knows that it has these tools available to call. We can do this by converting the LangChain tools into the format for Anthropic tool calling using the `.bindTools()` method.
-    - We define the tools we want to use -- a web search tool in our case. It is really easy to create your own tools - see documentation [here](https://js.langchain.com/docs/modules/agents/tools/dynamic) on how to do that.
+   - We use `ChatAnthropic` as our LLM. **NOTE:** We need make sure the model knows that it has these tools available to call. We can do this by converting the LangChain tools into the format for Anthropic tool calling using the `.bindTools()` method.
+   - We define the tools we want to use -- a web search tool in our case. It is really easy to create your own tools - see documentation [here](https://js.langchain.com/docs/modules/agents/tools/dynamic) on how to do that.
    </details>
 
 2. <details>
     <summary>Initialize graph with state.</summary>
 
-    - We initialize the graph (`StateGraph`) by passing the state interface (`AgentState`).
-    - The `graphState` object defines how updates from each node should be merged into the graph's state.
+   - We initialize the graph (`StateGraph`) by passing the state interface (`AgentState`).
+   - The `graphState` object defines how updates from each node should be merged into the graph's state.
    </details>
 
 3. <details>
     <summary>Define graph nodes.</summary>
 
-    There are two main nodes we need:
+   There are two main nodes we need:
 
-      - The `agent` node: responsible for deciding what (if any) actions to take.
-      - The `tools` node that invokes tools: if the agent decides to take an action, this node will then execute that action.
+   - The `agent` node: responsible for deciding what (if any) actions to take.
+   - The `tools` node that invokes tools: if the agent decides to take an action, this node will then execute that action.
    </details>
 
 4. <details>
     <summary>Define entry point and graph edges.</summary>
 
-      First, we need to set the entry point for graph execution - `agent` node.
+   First, we need to set the entry point for graph execution - `agent` node.
 
-      Then we define one normal and one conditional edge. A conditional edge means that the destination depends on the contents of the graph's state (`AgentState`). In our case, the destination is not known until the agent (LLM) decides.
+   Then we define one normal and one conditional edge. A conditional edge means that the destination depends on the contents of the graph's state (`AgentState`). In our case, the destination is not known until the agent (LLM) decides.
 
-      - Conditional edge: after the agent is called, we should either:
-        - a. Run tools if the agent said to take an action, OR
-        - b. Finish (respond to the user) if the agent did not ask to run tools
-      - Normal edge: after the tools are invoked, the graph should always return to the agent to decide what to do next
+   - Conditional edge: after the agent is called, we should either:
+     - a. Run tools if the agent said to take an action, OR
+     - b. Finish (respond to the user) if the agent did not ask to run tools
+   - Normal edge: after the tools are invoked, the graph should always return to the agent to decide what to do next
    </details>
 
 5. <details>
     <summary>Compile the graph.</summary>
 
-    - When we compile the graph, we turn it into a LangChain [Runnable](https://js.langchain.com/docs/expression_language/), which automatically enables calling `.invoke()`, `.stream()` and `.batch()` with your inputs.
-    - We can also optionally pass a checkpointer object for persisting state between graph runs, enabling memory, human-in-the-loop workflows, time travel and more. In our case we use `MemorySaver` - a simple in-memory checkpointer.
+   - When we compile the graph, we turn it into a LangChain [Runnable](https://js.langchain.com/docs/expression_language/), which automatically enables calling `.invoke()`, `.stream()` and `.batch()` with your inputs.
+   - We can also optionally pass a checkpointer object for persisting state between graph runs, enabling memory, human-in-the-loop workflows, time travel and more. In our case we use `MemorySaver` - a simple in-memory checkpointer.
    </details>
 
 6. <details>
     <summary>Execute the graph.</summary>
 
-    1. LangGraph adds the input message to the internal state, then passes the state to the entrypoint node, `"agent"`.
-    2. The `"agent"` node executes, invoking the chat model.
-    3. The chat model returns an `AIMessage`. LangGraph adds this to the state.
-    4. The graph cycles through the following steps until there are no more `tool_calls` on the `AIMessage`:
+   1. LangGraph adds the input message to the internal state, then passes the state to the entrypoint node, `"agent"`.
+   2. The `"agent"` node executes, invoking the chat model.
+   3. The chat model returns an `AIMessage`. LangGraph adds this to the state.
+   4. The graph cycles through the following steps until there are no more `tool_calls` on the `AIMessage`:
 
-        - If `AIMessage` has `tool_calls`, the `"tools"` node executes.
-        - The `"agent"` node executes again and returns an `AIMessage`.
+      - If `AIMessage` has `tool_calls`, the `"tools"` node executes.
+      - The `"agent"` node executes again and returns an `AIMessage`.
 
-    5. Execution progresses to the special `END` value and outputs the final state.
-    As a result, we get a list of all our chat messages as output.
+   5. Execution progresses to the special `END` value and outputs the final state.
+   As a result, we get a list of all our chat messages as output.
    </details>
 
 ## Documentation
