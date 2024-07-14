@@ -1,4 +1,3 @@
-import { ToolMessage } from "@langchain/core/messages";
 import {
   RunnableBinding,
   RunnableConfig,
@@ -30,9 +29,10 @@ type ToolExecutorInputType = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ToolExecutorOutputType = any;
 
-export class ToolExecutor<
-  ToolOutput extends string | ToolMessage = string
-> extends RunnableBinding<ToolExecutorInputType, ToolExecutorOutputType> {
+export class ToolExecutor extends RunnableBinding<
+  ToolExecutorInputType,
+  ToolExecutorOutputType
+> {
   lc_graph_name = "ToolExecutor";
 
   tools: Array<StructuredTool>;
@@ -72,7 +72,7 @@ export class ToolExecutor<
   async _execute(
     toolInvocation: ToolInvocationInterface,
     config?: RunnableConfig
-  ): Promise<ToolOutput | string> {
+  ): Promise<ToolExecutorOutputType> {
     if (!(toolInvocation.tool in this.toolMap)) {
       return this.invalidToolMsgTemplate
         .replace("{requestedToolName}", toolInvocation.tool)
