@@ -49,7 +49,10 @@ export class ToolNode<
         if (tool === undefined) {
           throw new Error(`Tool ${call.name} not found.`);
         }
-        const output = await tool.invoke(call.args, config);
+        const output = await tool.invoke(
+          { ...call, type: "tool_call" },
+          config
+        );
         if (isBaseMessage(output) && output._getType() === "tool") {
           return output;
         } else {
