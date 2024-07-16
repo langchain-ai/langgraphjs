@@ -4,6 +4,8 @@ import { it, beforeAll, describe, expect } from "@jest/globals";
 import { Tool } from "@langchain/core/tools";
 import { ChatOpenAI } from "@langchain/openai";
 import { BaseMessage, HumanMessage } from "@langchain/core/messages";
+import { RunnableLambda } from "@langchain/core/runnables";
+import { z } from "zod";
 import {
   createReactAgent,
   createFunctionCallingExecutor,
@@ -104,6 +106,39 @@ describe("createFunctionCallingExecutor", () => {
       (message: BaseMessage) => message._getType() === "function"
     );
     expect(functionCall.content).toBe(weatherResponse);
+  });
+
+  it("can accept RunnableToolLike tools", async () => {
+    const weatherResponse = `Not too cold, not too hot 😎`;
+    const model = new ChatOpenAI();
+
+    const sfWeatherTool = RunnableLambda.from(async (_) => weatherResponse);
+    const tools = [
+      sfWeatherTool.asTool({
+        name: "current_weather",
+        description: "Get the current weather report for San Francisco, CA",
+        schema: z.object({
+          location: z.string(),
+        }),
+      }),
+    ];
+
+    const functionsAgentExecutor = createFunctionCallingExecutor<ChatOpenAI>({
+      model,
+      tools,
+    });
+
+    const response = await functionsAgentExecutor.invoke({
+      messages: [new HumanMessage("What's the weather like in SF?")],
+    });
+
+    // It needs at least one human message, one AI and one function message.
+    expect(response.messages.length > 3).toBe(true);
+    const firstFunctionMessage = (response.messages as Array<BaseMessage>).find(
+      (message) => message._getType() === "function"
+    );
+    expect(firstFunctionMessage).toBeDefined();
+    expect(firstFunctionMessage?.content).toBe(weatherResponse);
   });
 });
 

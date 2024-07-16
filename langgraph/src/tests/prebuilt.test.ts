@@ -11,6 +11,7 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { z } from "zod";
+import { RunnableLambda } from "@langchain/core/runnables";
 import { FakeToolCallingChatModel } from "./utils.js";
 import { createAgentExecutor, createReactAgent } from "../prebuilt/index.js";
 
@@ -341,6 +342,61 @@ describe("createReactAgent", () => {
     const agent = createReactAgent({
       llm,
       tools: [new SearchAPIWithArtifact()],
+      messageModifier: "You are a helpful assistant",
+    });
+
+    const result = await agent.invoke({
+      messages: [new HumanMessage("Hello Input!")],
+    });
+
+    expect(result.messages).toEqual([
+      new HumanMessage("Hello Input!"),
+      new AIMessage({
+        content: "result1",
+        tool_calls: [
+          { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+        ],
+      }),
+      new ToolMessage({
+        name: "search_api",
+        content: "some response format",
+        tool_call_id: "tool_abcd123",
+        artifact: Buffer.from("123"),
+      }),
+      new AIMessage("result2"),
+    ]);
+  });
+
+  it("Can accept RunnableToolLike", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "result1",
+          tool_calls: [
+            { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+          ],
+        }),
+        new AIMessage("result2"),
+      ],
+    });
+
+    // Instead of re-implementing the tool, wrap it in a RunnableLambda and
+    // call `asTool` to create a RunnableToolLike.
+    const searchApiWithArtifactsTool = new SearchAPIWithArtifact();
+    const runnableToolLikeTool = RunnableLambda.from<
+      z.infer<typeof searchApiWithArtifactsTool.schema>,
+      ToolMessage
+    >(async (input, config) =>
+      searchApiWithArtifactsTool.invoke(input, config)
+    ).asTool({
+      name: searchApiWithArtifactsTool.name,
+      description: searchApiWithArtifactsTool.description,
+      schema: searchApiWithArtifactsTool.schema,
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools: [runnableToolLikeTool],
       messageModifier: "You are a helpful assistant",
     });
 

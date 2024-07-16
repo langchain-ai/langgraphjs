@@ -1,8 +1,12 @@
-import { StructuredTool } from "@langchain/core/tools";
+import { StructuredToolInterface } from "@langchain/core/tools";
 import { convertToOpenAIFunction } from "@langchain/core/utils/function_calling";
 import { AgentAction } from "@langchain/core/agents";
 import { FunctionMessage, BaseMessage } from "@langchain/core/messages";
-import { type RunnableConfig, RunnableLambda } from "@langchain/core/runnables";
+import {
+  type RunnableConfig,
+  RunnableLambda,
+  RunnableToolLike,
+} from "@langchain/core/runnables";
 import { ToolExecutor } from "./tool_executor.js";
 import {
   CompiledStateGraph,
@@ -18,14 +22,14 @@ export function createFunctionCallingExecutor<Model extends object>({
   tools,
 }: {
   model: Model;
-  tools: Array<StructuredTool> | ToolExecutor;
+  tools: Array<StructuredToolInterface | RunnableToolLike> | ToolExecutor;
 }): CompiledStateGraph<
   FunctionCallingExecutorState,
   Partial<FunctionCallingExecutorState>,
   typeof START | "agent" | "action"
 > {
   let toolExecutor: ToolExecutor;
-  let toolClasses: Array<StructuredTool>;
+  let toolClasses: Array<StructuredToolInterface | RunnableToolLike>;
   if (!Array.isArray(tools)) {
     toolExecutor = tools;
     toolClasses = tools.tools;

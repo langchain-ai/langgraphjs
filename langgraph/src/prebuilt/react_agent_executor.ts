@@ -10,8 +10,9 @@ import {
   RunnableConfig,
   RunnableInterface,
   RunnableLambda,
+  RunnableToolLike,
 } from "@langchain/core/runnables";
-import { DynamicTool, StructuredTool } from "@langchain/core/tools";
+import { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
 
 import {
   BaseLanguageModelCallOptions,
@@ -38,7 +39,9 @@ export type N = typeof START | "agent" | "tools";
 
 export type CreateReactAgentParams = {
   llm: BaseChatModel;
-  tools: ToolNode<MessagesState> | StructuredTool[];
+  tools:
+    | ToolNode<MessagesState>
+    | (StructuredToolInterface | RunnableToolLike)[];
   messageModifier?:
     | SystemMessage
     | string
@@ -83,7 +86,7 @@ export function createReactAgent(
     },
   };
 
-  let toolClasses: (StructuredTool | DynamicTool)[];
+  let toolClasses: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
   if (!Array.isArray(tools)) {
     toolClasses = tools.tools;
   } else {
