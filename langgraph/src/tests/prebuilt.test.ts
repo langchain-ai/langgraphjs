@@ -245,21 +245,6 @@ describe("createReactAgent", () => {
     }
   }
 
-  class SearchAPIReturningToolMessage extends StructuredTool {
-    name = "search_api";
-
-    description = "A simple API that returns the input string.";
-
-    schema = searchSchema;
-
-    async _call(_: z.infer<typeof searchSchema>) {
-      return new ToolMessage({
-        content: "returning tool message",
-        tool_call_id: "testid",
-      });
-    }
-  }
-
   const tools = [new SearchAPI()];
 
   it("Can use string message modifier", async () => {
