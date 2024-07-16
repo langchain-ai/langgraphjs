@@ -4,8 +4,8 @@ import {
   AIMessage,
   isBaseMessage,
 } from "@langchain/core/messages";
-import { RunnableConfig } from "@langchain/core/runnables";
-import { StructuredTool } from "@langchain/core/tools";
+import { RunnableConfig, RunnableToolLike } from "@langchain/core/runnables";
+import { StructuredToolInterface } from "@langchain/core/tools";
 import { RunnableCallable } from "../utils.js";
 import { END } from "../graph/graph.js";
 import { MessagesState } from "../graph/message.js";
@@ -20,10 +20,10 @@ export class ToolNode<
   a list of ToolMessages, one for each tool call.
   */
 
-  tools: StructuredTool[];
+  tools: (StructuredToolInterface | RunnableToolLike)[];
 
   constructor(
-    tools: StructuredTool[],
+    tools: (StructuredToolInterface | RunnableToolLike)[],
     name: string = "tools",
     tags: string[] = []
   ) {
