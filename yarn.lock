@@ -33,9 +33,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@anthropic-ai/sdk@npm:^0.21.0":
-  version: 0.21.0
-  resolution: "@anthropic-ai/sdk@npm:0.21.0"
+"@anthropic-ai/sdk@npm:^0.22.0":
+  version: 0.22.0
+  resolution: "@anthropic-ai/sdk@npm:0.22.0"
   dependencies:
     "@types/node": ^18.11.18
     "@types/node-fetch": ^2.6.4
@@ -45,7 +45,7 @@ __metadata:
     formdata-node: ^4.3.2
     node-fetch: ^2.6.7
     web-streams-polyfill: ^3.2.1
-  checksum: fbed720938487495f1d28822fa6eb3871cf7e7be325c299b69efa78e72e1e0b66d9f564003ae5d7a1e96c7555cc69c817be4b901d1847ae002f782546a4c987d
+  checksum: f09fc6ea1f5f68483fd2dbdc1ab78a0914d7a3f39fd4a921f5a04b8959ae82aa210372fa2dbff2ee78143d37fb408e7b7d61e0023e7ea31d5fa1f4873f371af8
   languageName: node
   linkType: hard
 
@@ -1007,16 +1007,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/anthropic@npm:^0.1.21":
-  version: 0.1.21
-  resolution: "@langchain/anthropic@npm:0.1.21"
+"@langchain/anthropic@npm:^0.2.3":
+  version: 0.2.3
+  resolution: "@langchain/anthropic@npm:0.2.3"
   dependencies:
-    "@anthropic-ai/sdk": ^0.21.0
-    "@langchain/core": ">0.1.56 <0.3.0"
+    "@anthropic-ai/sdk": ^0.22.0
+    "@langchain/core": ">=0.2.9 <0.3.0"
     fast-xml-parser: ^4.3.5
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.4
-  checksum: 986b6c771d853653b9c538a995b4bd6c0090ce850d3958a177739ee5d9bb04a2d4cd20c4be5e77b8182943614824aebc66677b9fec4f638174557c03ac37eab2
+  checksum: 040f7446e2cf8ffbde8070e4ff3dbe63a0a0b29a5d33b7269f6311cac26076246702d12d3d812b0edec04958a87e8b2ce640ddac208b21a706bbaada47cc524e
   languageName: node
   linkType: hard
 
@@ -1426,7 +1426,7 @@ __metadata:
   resolution: "@langchain/langgraph@workspace:langgraph"
   dependencies:
     "@jest/globals": ^29.5.0
-    "@langchain/anthropic": ^0.1.21
+    "@langchain/anthropic": ^0.2.3
     "@langchain/community": ^0.2.12
     "@langchain/core": ">=0.2.14 <0.3.0"
     "@langchain/openai": ^0.1.3
