@@ -41,8 +41,7 @@ export type CreateReactAgentParams = {
   llm: BaseChatModel;
   tools:
     | ToolNode<MessagesState>
-    | StructuredToolInterface[]
-    | RunnableToolLike[];
+    | (StructuredToolInterface | RunnableToolLike)[];
   messageModifier?:
     | SystemMessage
     | string
