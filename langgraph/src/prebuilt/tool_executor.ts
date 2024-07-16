@@ -62,10 +62,17 @@ export class ToolExecutor extends RunnableBinding<
     }, {} as Record<string, StructuredTool>);
   }
 
+  /**
+   * Execute a tool invocation
+   *
+   * @param {ToolInvocationInterface} toolInvocation The tool to invoke and the input to pass to it.
+   * @param {RunnableConfig | undefined} config Optional configuration to pass to the tool when invoked.
+   * @returns Either the result of the tool invocation (`string` or `ToolMessage`, set by the `ToolOutput` generic) or a string error message.
+   */
   async _execute(
     toolInvocation: ToolInvocationInterface,
     config?: RunnableConfig
-  ): Promise<string> {
+  ): Promise<ToolExecutorOutputType> {
     if (!(toolInvocation.tool in this.toolMap)) {
       return this.invalidToolMsgTemplate
         .replace("{requestedToolName}", toolInvocation.tool)

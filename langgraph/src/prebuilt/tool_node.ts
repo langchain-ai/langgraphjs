@@ -1,4 +1,9 @@
-import { BaseMessage, ToolMessage, AIMessage } from "@langchain/core/messages";
+import {
+  BaseMessage,
+  ToolMessage,
+  AIMessage,
+  isBaseMessage,
+} from "@langchain/core/messages";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { StructuredTool } from "@langchain/core/tools";
 import { RunnableCallable } from "../utils.js";
@@ -44,12 +49,20 @@ export class ToolNode<
         if (tool === undefined) {
           throw new Error(`Tool ${call.name} not found.`);
         }
-        const output = await tool.invoke(call.args, config);
-        return new ToolMessage({
-          name: tool.name,
-          content: typeof output === "string" ? output : JSON.stringify(output),
-          tool_call_id: call.id!,
-        });
+        const output = await tool.invoke(
+          { ...call, type: "tool_call" },
+          config
+        );
+        if (isBaseMessage(output) && output._getType() === "tool") {
+          return output;
+        } else {
+          return new ToolMessage({
+            name: tool.name,
+            content:
+              typeof output === "string" ? output : JSON.stringify(output),
+            tool_call_id: call.id!,
+          });
+        }
       }) ?? []
     );
 
