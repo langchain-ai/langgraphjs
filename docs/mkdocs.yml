@@ -1,4 +1,4 @@
-site_name: LangGraph.js
+site_name: ""
 site_description: Build language agents as graphs
 site_url: https://langchain-ai.github.io/langgraphjs/
 repo_url: https://github.com/langchain-ai/langgraphjs
@@ -6,12 +6,11 @@ edit_uri: edit/main/docs/docs/
 theme:
   name: material
   custom_dir: overrides
-  logo: static/wordmark.png
+  logo_dark_mode: static/wordmark_light.svg
+  logo_light_mode: static/wordmark_dark.svg
   favicon: static/favicon.png
   features:
     - announce.dismiss
-    - content.action.edit
-    - content.action.view
     - content.code.annotate
     - content.code.copy
     - content.code.select
@@ -25,7 +24,6 @@ theme:
     - navigation.instant.prefetch
     - navigation.instant.progress
     - navigation.prune
-    - navigation.sections
     - navigation.tabs
     - navigation.top
     - navigation.tracking
@@ -89,21 +87,27 @@ nav:
   - "How-to Guides":
       - "how-tos/index.md"
       - Installation:
-          - "how-tos/manage-ecosystem-dependencies.ipynb"
-          - "how-tos/use-in-web-environments.ipynb"
-      - Core:
-          - "how-tos/persistence.ipynb"
-          - "how-tos/time-travel.ipynb"
-          - "how-tos/stream-tokens.ipynb"
-          - "how-tos/configuration.ipynb"
-      - Design Patterns:
-          - "how-tos/branching.ipynb"
-          - "how-tos/subgraph.ipynb"
-          - "how-tos/human-in-the-loop.ipynb"
-          - "how-tos/force-calling-a-tool-first.ipynb"
-          - "how-tos/dynamically-returning-directly.ipynb"
-          - "how-tos/respond-in-format.ipynb"
-          - "how-tos/managing-agent-steps.ipynb"
+          - Install and manage dependencies: "how-tos/manage-ecosystem-dependencies.ipynb"
+          - Use LangGraph.js in web environments: "how-tos/use-in-web-environments.ipynb"
+      - Controllability:
+          - Create subgraphs: "how-tos/subgraph.ipynb"
+          - Create branches for parallel execution: "how-tos/branching.ipynb"
+      - Persistence:
+          - Add persistence ("memory") to your graph: "how-tos/persistence.ipynb"
+          - View and update past graph state: "how-tos/time-travel.ipynb"
+          - Create a custom checkpointer using Postgres: "how-tos/persistence-postgres.ipynb"
+      - Human-in-the-loop:
+          - Add human-in-the-loop: "how-tos/human-in-the-loop.ipynb"
+      - Streaming:
+          - Stream full state: "how-tos/stream-values.ipynb"
+          - Stream state updates: "how-tos/stream-updates.ipynb"
+          - Stream LLM tokens: "how-tos/stream-tokens.ipynb"
+      - Other:
+          - Add runtime configuration: "how-tos/configuration.ipynb"
+          - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
+          - Let agent return tool results directly: "how-tos/dynamically-returning-directly.ipynb"
+          - Have agent respond in structured format: "how-tos/respond-in-format.ipynb"
+          - Manage agent steps: "how-tos/managing-agent-steps.ipynb"
   - "Conceptual Guides":
       - "concepts/index.md"
   - "Reference":
@@ -155,6 +159,9 @@ markdown_extensions:
       combine_header_slug: true
   - pymdownx.tasklist:
       custom_checkbox: true
+  - markdown_include.include:
+      base_path: ../
+  - github-callouts
 extra_css:
   - css/mkdocstrings.css
 

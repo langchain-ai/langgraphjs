@@ -57,7 +57,12 @@ it("should pass config through if importing from the primary entrypoint", async 
       name: "__start__",
       tags: ["graph:step:0", "langsmith:hidden"],
       run_id: expect.any(String),
-      metadata: {},
+      metadata: {
+        langgraph_node: "__start__",
+        langgraph_step: 0,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["__pregel_tasks"],
+      },
     },
     {
       event: "on_chain_end",
@@ -70,7 +75,12 @@ it("should pass config through if importing from the primary entrypoint", async 
       run_id: expect.any(String),
       name: "__start__",
       tags: ["graph:step:0", "langsmith:hidden"],
-      metadata: {},
+      metadata: {
+        langgraph_node: "__start__",
+        langgraph_step: 0,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["__pregel_tasks"],
+      },
     },
     {
       event: "on_chain_start",
@@ -82,7 +92,12 @@ it("should pass config through if importing from the primary entrypoint", async 
       name: "testnode",
       tags: ["graph:step:1"],
       run_id: expect.any(String),
-      metadata: {},
+      metadata: {
+        langgraph_node: "testnode",
+        langgraph_step: 1,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["__pregel_tasks"],
+      },
     },
     {
       event: "on_chain_start",
@@ -94,7 +109,12 @@ it("should pass config through if importing from the primary entrypoint", async 
       name: "RunnableLambda",
       tags: ["seq:step:1"],
       run_id: expect.any(String),
-      metadata: {},
+      metadata: {
+        langgraph_node: "testnode",
+        langgraph_step: 1,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["__pregel_tasks"],
+      },
     },
     {
       event: "on_chat_model_start",
@@ -107,6 +127,10 @@ it("should pass config through if importing from the primary entrypoint", async 
       tags: [],
       run_id: expect.any(String),
       metadata: {
+        langgraph_node: "testnode",
+        langgraph_step: 1,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["__pregel_tasks"],
         ls_model_type: "chat",
         ls_stop: undefined,
       },
@@ -123,6 +147,11 @@ it("should pass config through if importing from the primary entrypoint", async 
       name: "model_call",
       tags: [],
       metadata: {
+        langgraph_node: "testnode",
+        langgraph_step: 1,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["__pregel_tasks"],
+
         ls_model_type: "chat",
         ls_stop: undefined,
       },
@@ -140,7 +169,12 @@ it("should pass config through if importing from the primary entrypoint", async 
       run_id: expect.any(String),
       name: "RunnableLambda",
       tags: ["seq:step:1"],
-      metadata: {},
+      metadata: {
+        langgraph_node: "testnode",
+        langgraph_step: 1,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["__pregel_tasks"],
+      },
     },
     {
       event: "on_chain_start",
@@ -152,7 +186,12 @@ it("should pass config through if importing from the primary entrypoint", async 
       name: "ChannelWrite<messages,testnode>",
       tags: ["seq:step:2", "langsmith:hidden"],
       run_id: expect.any(String),
-      metadata: {},
+      metadata: {
+        langgraph_node: "testnode",
+        langgraph_step: 1,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["__pregel_tasks"],
+      },
     },
     {
       event: "on_chain_end",
@@ -165,7 +204,12 @@ it("should pass config through if importing from the primary entrypoint", async 
       run_id: expect.any(String),
       name: "ChannelWrite<messages,testnode>",
       tags: ["seq:step:2", "langsmith:hidden"],
-      metadata: {},
+      metadata: {
+        langgraph_node: "testnode",
+        langgraph_step: 1,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["__pregel_tasks"],
+      },
     },
     {
       event: "on_chain_start",
@@ -177,7 +221,12 @@ it("should pass config through if importing from the primary entrypoint", async 
       name: "func",
       tags: ["seq:step:3"],
       run_id: expect.any(String),
-      metadata: {},
+      metadata: {
+        langgraph_node: "testnode",
+        langgraph_step: 1,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["__pregel_tasks"],
+      },
     },
     {
       event: "on_chat_model_start",
@@ -190,6 +239,10 @@ it("should pass config through if importing from the primary entrypoint", async 
       tags: [],
       run_id: expect.any(String),
       metadata: {
+        langgraph_node: "testnode",
+        langgraph_step: 1,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["__pregel_tasks"],
         ls_model_type: "chat",
         ls_stop: undefined,
       },
@@ -206,6 +259,10 @@ it("should pass config through if importing from the primary entrypoint", async 
       name: "conditional_edge_call",
       tags: [],
       metadata: {
+        langgraph_node: "testnode",
+        langgraph_step: 1,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["__pregel_tasks"],
         ls_model_type: "chat",
         ls_stop: undefined,
       },
@@ -223,7 +280,12 @@ it("should pass config through if importing from the primary entrypoint", async 
       run_id: expect.any(String),
       name: "func",
       tags: ["seq:step:3"],
-      metadata: {},
+      metadata: {
+        langgraph_node: "testnode",
+        langgraph_step: 1,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["__pregel_tasks"],
+      },
     },
     {
       event: "on_chain_end",
@@ -236,7 +298,12 @@ it("should pass config through if importing from the primary entrypoint", async 
       run_id: expect.any(String),
       name: "testnode",
       tags: ["graph:step:1"],
-      metadata: {},
+      metadata: {
+        langgraph_node: "testnode",
+        langgraph_step: 1,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["__pregel_tasks"],
+      },
     },
     {
       event: "on_chain_stream",

@@ -6,3 +6,5 @@ mkdocs-minify-plugin
 mkdocs-rss-plugin
 mkdocs-material[imaging]
 mkdocs-typedoc
+markdown-include
+markdown-callouts

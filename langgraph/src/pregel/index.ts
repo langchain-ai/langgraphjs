@@ -7,6 +7,7 @@ import {
   RunnableSequence,
   _coerceToRunnable,
   ensureConfig,
+  mergeConfigs,
   patchConfig,
 } from "@langchain/core/runnables";
 import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
@@ -41,6 +42,7 @@ import {
   CONFIG_KEY_SEND,
   INTERRUPT,
   TAG_HIDDEN,
+  TASKS,
 } from "../constants.js";
 import {
   All,
@@ -652,25 +654,35 @@ export class Pregel<
 
         const tasksWithConfig = nextTasks.map(
           // eslint-disable-next-line no-loop-func
-          (task) =>
+          (task, i) =>
             [
               task.proc,
               task.input,
-              patchConfig(restConfig, {
-                callbacks: runManager?.getChild(`graph:step:${step}`),
-                runName: task.name as string,
-                configurable: {
-                  ...config.configurable,
-                  [CONFIG_KEY_SEND]: (items: [keyof Cc, unknown][]) =>
-                    task.writes.push(...items),
-                  [CONFIG_KEY_READ]: _localRead.bind(
-                    undefined,
-                    checkpoint,
-                    channels,
-                    task.writes as Array<[string, unknown]>
-                  ),
-                },
-              }),
+              patchConfig(
+                mergeConfigs(restConfig, processes[task.name].config, {
+                  metadata: {
+                    langgraph_step: step,
+                    langgraph_node: task.name,
+                    langgraph_triggers: [TASKS],
+                    langgraph_task_idx: i,
+                  },
+                }),
+                {
+                  callbacks: runManager?.getChild(`graph:step:${step}`),
+                  runName: task.name as string,
+                  configurable: {
+                    ...config.configurable,
+                    [CONFIG_KEY_SEND]: (items: [keyof Cc, unknown][]) =>
+                      task.writes.push(...items),
+                    [CONFIG_KEY_READ]: _localRead.bind(
+                      undefined,
+                      checkpoint,
+                      channels,
+                      task.writes as Array<[string, unknown]>
+                    ),
+                  },
+                }
+              ),
             ] as const
         );
 

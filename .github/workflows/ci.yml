@@ -7,8 +7,7 @@ on:
   push:
     branches: ["main"]
   pull_request:
-  workflow_dispatch:  # Allows triggering the workflow manually in GitHub UI
-
+  workflow_dispatch: # Allows triggering the workflow manually in GitHub UI
 
 # If another push to the same PR or branch happens while this workflow is still running,
 # cancel the earlier run in favor of the next run.
@@ -93,3 +92,20 @@ jobs:
         run: yarn install --immutable
       - name: Test
         run: yarn run test
+
+  check-readmes-synced:
+    # This checks that the repo README.md is identical to the libs/langgraph/README.md
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Check README.md is in sync
+        run: |
+          if ! diff -q README.md langgraph/README.md >/dev/null; then
+          echo "README.md is out of sync with langgraph/README.md"
+          diff -C 3 README.md langgraph/README.md
+          exit 1
+          fi
