@@ -37,6 +37,7 @@ type SingleReducer<ValueType, UpdateType = ValueType> =
       value: BinaryOperator<ValueType, UpdateType>;
       default?: () => ValueType;
     }
+  | []
   | null;
 
 export type ChannelReducers<Channels extends object> = {
@@ -50,6 +51,12 @@ export interface StateGraphArgs<Channels extends object | unknown> {
       ? ChannelReducers<{ __root__: Channels }>
       : ChannelReducers<Channels>
     : ChannelReducers<{ __root__: Channels }>;
+}
+
+export function mergeArrays<T>(left: T | T[], right: T | T[]): T[] {
+  const leftArray: T[] = Array.isArray(left) ? left : [left];
+  const rightArray: T[] = Array.isArray(right) ? right : [right];
+  return [...leftArray, ...rightArray];
 }
 
 export class StateGraph<
@@ -208,6 +215,12 @@ function _getChannels<Channels extends Record<string, unknown> | unknown>(
 }
 
 function getChannel<T>(reducer: SingleReducer<T>): BaseChannel<T> {
+  if (Array.isArray(reducer)) {
+    return new BinaryOperatorAggregate(
+      mergeArrays as BinaryOperator<T, T>,
+      () => [] as T
+    );
+  }
   if (
     typeof reducer === "object" &&
     reducer &&
