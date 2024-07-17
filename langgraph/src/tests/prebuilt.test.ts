@@ -13,7 +13,11 @@ import {
 import { z } from "zod";
 import { RunnableLambda } from "@langchain/core/runnables";
 import { FakeToolCallingChatModel } from "./utils.js";
-import { createAgentExecutor, createReactAgent } from "../prebuilt/index.js";
+import {
+  ToolNode,
+  createAgentExecutor,
+  createReactAgent,
+} from "../prebuilt/index.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -23,6 +27,36 @@ beforeAll(() => {
   process.env.LANGCHAIN_API_KEY = "";
   process.env.LANGCHAIN_PROJECT = "";
 });
+
+const searchSchema = z.object({
+  query: z.string().describe("The query to search for."),
+});
+
+class SearchAPI extends StructuredTool {
+  name = "search_api";
+
+  description = "A simple API that returns the input string.";
+
+  schema = searchSchema;
+
+  async _call(input: z.infer<typeof searchSchema>) {
+    return `result for ${input?.query}`;
+  }
+}
+
+class SearchAPIWithArtifact extends StructuredTool {
+  name = "search_api";
+
+  description = "A simple API that returns the input string.";
+
+  schema = searchSchema;
+
+  responseFormat = "content_and_artifact";
+
+  async _call(_: z.infer<typeof searchSchema>) {
+    return ["some response format", Buffer.from("123")];
+  }
+}
 
 describe("PreBuilt", () => {
   class SearchAPI extends Tool {
@@ -216,36 +250,6 @@ describe("PreBuilt", () => {
 });
 
 describe("createReactAgent", () => {
-  const searchSchema = z.object({
-    query: z.string().describe("The query to search for."),
-  });
-
-  class SearchAPI extends StructuredTool {
-    name = "search_api";
-
-    description = "A simple API that returns the input string.";
-
-    schema = searchSchema;
-
-    async _call(input: z.infer<typeof searchSchema>) {
-      return `result for ${input?.query}`;
-    }
-  }
-
-  class SearchAPIWithArtifact extends StructuredTool {
-    name = "search_api";
-
-    description = "A simple API that returns the input string.";
-
-    schema = searchSchema;
-
-    responseFormat = "content_and_artifact";
-
-    async _call(_: z.infer<typeof searchSchema>) {
-      return ["some response format", Buffer.from("123")];
-    }
-  }
-
   const tools = [new SearchAPI()];
 
   it("Can use string message modifier", async () => {
@@ -420,5 +424,20 @@ describe("createReactAgent", () => {
       }),
       new AIMessage("result2"),
     ]);
+  });
+});
+
+describe("ToolNode", () => {
+  it("Should support graceful error handling", async () => {
+    const toolNode = new ToolNode([new SearchAPI()]);
+    const res = await toolNode.invoke([
+      new AIMessage({
+        content: "",
+        tool_calls: [{ name: "badtool", args: {}, id: "testid" }],
+      }),
+    ]);
+    expect(res[0].content).toEqual(
+      `Error: Tool "badtool" not found.\n Please fix your mistakes.`
+    );
   });
 });
