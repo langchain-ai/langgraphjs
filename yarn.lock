@@ -1433,7 +1433,7 @@ __metadata:
     "@langchain/community": ^0.2.19
     "@langchain/core": ">=0.2.16 <0.3.0"
     "@langchain/openai": ^0.2.4
-    "@langchain/scripts": ^0.0.13
+    "@langchain/scripts": 0.0.15
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
     "@tsconfig/recommended": ^1.0.3
@@ -1511,19 +1511,21 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/scripts@npm:^0.0.13":
-  version: 0.0.13
-  resolution: "@langchain/scripts@npm:0.0.13"
+"@langchain/scripts@npm:0.0.15":
+  version: 0.0.15
+  resolution: "@langchain/scripts@npm:0.0.15"
   dependencies:
     axios: ^1.6.7
     commander: ^11.1.0
     glob: ^10.3.10
+    rimraf: ^5.0.1
     rollup: ^4.5.2
     ts-morph: ^21.0.1
     typescript: ^5.4.5
   bin:
-    lc-build: bin/build
-  checksum: 7ebfbccc40df4d3fc503463dd6c4e6532ecf883bab4a0f8d5e4d50b5f779764d038ee0ec9c40916b4673048827f9d96cb85cd791bb879d42defe98ba1c2536d1
+    lc-build: bin/build.js
+    v2: bin/build_v2.js
+  checksum: cee5426cd6a1d5dac70e963a5088aad713c613b733762afcd178321a801fcc00b0178bcd4ed51bb28642e8b4980bd45b199f2fd67e7f3ff80aee4aed77aa4178
   languageName: node
   linkType: hard
 
@@ -6101,6 +6103,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"glob@npm:^10.3.7":
+  version: 10.4.5
+  resolution: "glob@npm:10.4.5"
+  dependencies:
+    foreground-child: ^3.1.0
+    jackspeak: ^3.1.2
+    minimatch: ^9.0.4
+    minipass: ^7.1.2
+    package-json-from-dist: ^1.0.0
+    path-scurry: ^1.11.1
+  bin:
+    glob: dist/esm/bin.mjs
+  checksum: 0bc725de5e4862f9f387fd0f2b274baf16850dcd2714502ccf471ee401803997983e2c05590cb65f9675a3c6f2a58e7a53f9e365704108c6ad3cbf1d60934c4a
+  languageName: node
+  linkType: hard
+
 "glob@npm:^7.0.0, glob@npm:^7.1.2, glob@npm:^7.1.3, glob@npm:^7.1.4":
   version: 7.2.3
   resolution: "glob@npm:7.2.3"
@@ -7071,6 +7089,19 @@ __metadata:
   languageName: node
   linkType: hard
 
+"jackspeak@npm:^3.1.2":
+  version: 3.4.3
+  resolution: "jackspeak@npm:3.4.3"
+  dependencies:
+    "@isaacs/cliui": ^8.0.2
+    "@pkgjs/parseargs": ^0.11.0
+  dependenciesMeta:
+    "@pkgjs/parseargs":
+      optional: true
+  checksum: be31027fc72e7cc726206b9f560395604b82e0fddb46c4cbf9f97d049bcef607491a5afc0699612eaa4213ca5be8fd3e1e7cd187b3040988b65c9489838a7c00
+  languageName: node
+  linkType: hard
+
 "jest-changed-files@npm:^29.7.0":
   version: 29.7.0
   resolution: "jest-changed-files@npm:29.7.0"
@@ -8038,7 +8069,7 @@ __metadata:
     semver: ^7.5.4
     tslab: ^1.0.21
     tsx: ^4.7.0
-    turbo: latest
+    turbo: ^1.13.3
     typedoc: ^0.25.13
     typescript: ^4.9.5 || ^5.4.5
   languageName: unknown
@@ -8435,6 +8466,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"minimatch@npm:^9.0.4":
+  version: 9.0.5
+  resolution: "minimatch@npm:9.0.5"
+  dependencies:
+    brace-expansion: ^2.0.1
+  checksum: 2c035575eda1e50623c731ec6c14f65a85296268f749b9337005210bb2b34e2705f8ef1a358b188f69892286ab99dc42c8fb98a57bde55c8d81b3023c19cea28
+  languageName: node
+  linkType: hard
+
 "minimist@npm:^1.2.0, minimist@npm:^1.2.3, minimist@npm:^1.2.6":
   version: 1.2.8
   resolution: "minimist@npm:1.2.8"
@@ -8513,6 +8553,13 @@ __metadata:
   version: 7.0.4
   resolution: "minipass@npm:7.0.4"
   checksum: 87585e258b9488caf2e7acea242fd7856bbe9a2c84a7807643513a338d66f368c7d518200ad7b70a508664d408aa000517647b2930c259a8b1f9f0984f344a21
+  languageName: node
+  linkType: hard
+
+"minipass@npm:^7.1.2":
+  version: 7.1.2
+  resolution: "minipass@npm:7.1.2"
+  checksum: 2bfd325b95c555f2b4d2814d49325691c7bee937d753814861b0b49d5edcda55cbbf22b6b6a60bb91eddac8668771f03c5ff647dcd9d0f798e9548b9cdc46ee3
   languageName: node
   linkType: hard
 
@@ -9208,6 +9255,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"package-json-from-dist@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "package-json-from-dist@npm:1.0.0"
+  checksum: ac706ec856a5a03f5261e4e48fa974f24feb044d51f84f8332e2af0af04fbdbdd5bbbfb9cbbe354190409bc8307c83a9e38c6672c3c8855f709afb0006a009ea
+  languageName: node
+  linkType: hard
+
 "package-json@npm:^8.1.0":
   version: 8.1.1
   resolution: "package-json@npm:8.1.1"
@@ -9327,6 +9381,16 @@ __metadata:
     lru-cache: ^10.2.0
     minipass: ^5.0.0 || ^6.0.2 || ^7.0.0
   checksum: 6739b4290f7d1a949c61c758b481c07ac7d1a841964c68cf5e1fa153d7e18cbde4872b37aadf9c5173c800d627f219c47945859159de36c977dd82419997b9b8
+  languageName: node
+  linkType: hard
+
+"path-scurry@npm:^1.11.1":
+  version: 1.11.1
+  resolution: "path-scurry@npm:1.11.1"
+  dependencies:
+    lru-cache: ^10.2.0
+    minipass: ^5.0.0 || ^6.0.2 || ^7.0.0
+  checksum: 890d5abcd593a7912dcce7cf7c6bf7a0b5648e3dee6caf0712c126ca0a65c7f3d7b9d769072a4d1baf370f61ce493ab5b038d59988688e0c5f3f646ee3c69023
   languageName: node
   linkType: hard
 
@@ -9852,6 +9916,17 @@ __metadata:
   bin:
     rimraf: bin.js
   checksum: 87f4164e396f0171b0a3386cc1877a817f572148ee13a7e113b238e48e8a9f2f31d009a92ec38a591ff1567d9662c6b67fd8818a2dbbaed74bc26a87a2a4a9a0
+  languageName: node
+  linkType: hard
+
+"rimraf@npm:^5.0.1":
+  version: 5.0.9
+  resolution: "rimraf@npm:5.0.9"
+  dependencies:
+    glob: ^10.3.7
+  bin:
+    rimraf: dist/esm/bin.mjs
+  checksum: e6dd5007e34181e1fa732437499d798035b2f3313887435cb855c5c9055bf9646795fc1c63ef843de830df8577cd9862df2dabf913fe08dcc1758c96de4a4fdb
   languageName: node
   linkType: hard
 
@@ -10791,58 +10866,58 @@ __metadata:
   languageName: node
   linkType: hard
 
-"turbo-darwin-64@npm:1.13.2":
-  version: 1.13.2
-  resolution: "turbo-darwin-64@npm:1.13.2"
+"turbo-darwin-64@npm:1.13.4":
+  version: 1.13.4
+  resolution: "turbo-darwin-64@npm:1.13.4"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
 
-"turbo-darwin-arm64@npm:1.13.2":
-  version: 1.13.2
-  resolution: "turbo-darwin-arm64@npm:1.13.2"
+"turbo-darwin-arm64@npm:1.13.4":
+  version: 1.13.4
+  resolution: "turbo-darwin-arm64@npm:1.13.4"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
 
-"turbo-linux-64@npm:1.13.2":
-  version: 1.13.2
-  resolution: "turbo-linux-64@npm:1.13.2"
+"turbo-linux-64@npm:1.13.4":
+  version: 1.13.4
+  resolution: "turbo-linux-64@npm:1.13.4"
   conditions: os=linux & cpu=x64
   languageName: node
   linkType: hard
 
-"turbo-linux-arm64@npm:1.13.2":
-  version: 1.13.2
-  resolution: "turbo-linux-arm64@npm:1.13.2"
+"turbo-linux-arm64@npm:1.13.4":
+  version: 1.13.4
+  resolution: "turbo-linux-arm64@npm:1.13.4"
   conditions: os=linux & cpu=arm64
   languageName: node
   linkType: hard
 
-"turbo-windows-64@npm:1.13.2":
-  version: 1.13.2
-  resolution: "turbo-windows-64@npm:1.13.2"
+"turbo-windows-64@npm:1.13.4":
+  version: 1.13.4
+  resolution: "turbo-windows-64@npm:1.13.4"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
 
-"turbo-windows-arm64@npm:1.13.2":
-  version: 1.13.2
-  resolution: "turbo-windows-arm64@npm:1.13.2"
+"turbo-windows-arm64@npm:1.13.4":
+  version: 1.13.4
+  resolution: "turbo-windows-arm64@npm:1.13.4"
   conditions: os=win32 & cpu=arm64
   languageName: node
   linkType: hard
 
-turbo@latest:
-  version: 1.13.2
-  resolution: "turbo@npm:1.13.2"
+"turbo@npm:^1.13.3":
+  version: 1.13.4
+  resolution: "turbo@npm:1.13.4"
   dependencies:
-    turbo-darwin-64: 1.13.2
-    turbo-darwin-arm64: 1.13.2
-    turbo-linux-64: 1.13.2
-    turbo-linux-arm64: 1.13.2
-    turbo-windows-64: 1.13.2
-    turbo-windows-arm64: 1.13.2
+    turbo-darwin-64: 1.13.4
+    turbo-darwin-arm64: 1.13.4
+    turbo-linux-64: 1.13.4
+    turbo-linux-arm64: 1.13.4
+    turbo-windows-64: 1.13.4
+    turbo-windows-arm64: 1.13.4
   dependenciesMeta:
     turbo-darwin-64:
       optional: true
@@ -10858,7 +10933,7 @@ turbo@latest:
       optional: true
   bin:
     turbo: bin/turbo
-  checksum: 61845a98ac1dca0804f51ed970a74d400373cf0f1174fdd41687e22f31f6180192dd8ea46a7bc06b740de5befdc60d6fe09d1847b2f36cd98ccb1bbdaf5f7bc4
+  checksum: 94533f700dbbb7b556a7152ef04500a44b571232daf1eb9bd82bcfebac473d0cf45a78c851325c6867246656cb0b3be7c62a412381b6e85c77c1eddf51302778
   languageName: node
   linkType: hard
 
