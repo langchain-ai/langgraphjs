@@ -14,7 +14,8 @@
   },
   "scripts": {
     "build": "yarn turbo:command build:internal --filter=@langchain/langgraph",
-    "build:internal": "node ../node_modules/@langchain/scripts/bin/build_v2.js --create-entrypoints --pre --tree-shaking",
+    "build:internal": "yarn lc-build:v2 --create-entrypoints --pre --tree-shaking",
+    "lc-build:v2": "node ../node_modules/@langchain/scripts/bin/build_v2.js",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
     "lint": "yarn lint:eslint && yarn lint:dpdm",
@@ -39,7 +40,7 @@
     "@langchain/anthropic": "^0.2.6",
     "@langchain/community": "^0.2.19",
     "@langchain/openai": "^0.2.4",
-    "@langchain/scripts": "0.0.15",
+    "@langchain/scripts": "0.0.16",
     "@swc/core": "^1.3.90",
     "@swc/jest": "^0.2.29",
     "@tsconfig/recommended": "^1.0.3",
