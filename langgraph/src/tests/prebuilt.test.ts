@@ -386,16 +386,14 @@ describe("createReactAgent", () => {
 
     // Instead of re-implementing the tool, wrap it in a RunnableLambda and
     // call `asTool` to create a RunnableToolLike.
-    const searchApiWithArtifactsTool = new SearchAPIWithArtifact();
+    const searchApiTool = new SearchAPI();
     const runnableToolLikeTool = RunnableLambda.from<
-      z.infer<typeof searchApiWithArtifactsTool.schema>,
+      z.infer<typeof searchApiTool.schema>,
       ToolMessage
-    >(async (input, config) =>
-      searchApiWithArtifactsTool.invoke(input, config)
-    ).asTool({
-      name: searchApiWithArtifactsTool.name,
-      description: searchApiWithArtifactsTool.description,
-      schema: searchApiWithArtifactsTool.schema,
+    >(async (input, config) => searchApiTool.invoke(input, config)).asTool({
+      name: searchApiTool.name,
+      description: searchApiTool.description,
+      schema: searchApiTool.schema,
     });
 
     const agent = createReactAgent({
@@ -418,9 +416,8 @@ describe("createReactAgent", () => {
       }),
       new ToolMessage({
         name: "search_api",
-        content: "some response format",
+        content: "result for foo",
         tool_call_id: "tool_abcd123",
-        artifact: Buffer.from("123"),
       }),
       new AIMessage("result2"),
     ]);

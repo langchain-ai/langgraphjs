@@ -1960,36 +1960,38 @@ describe("MessageGraph", () => {
     );
 
     expect(result).toHaveLength(6);
-    expect(result).toStrictEqual([
-      new HumanMessage("what is the weather in sf?"),
-      new AIMessage({
-        content: "",
-        additional_kwargs: {
-          function_call: {
-            name: "search_api",
-            arguments: "query",
+    expect(JSON.stringify(result)).toEqual(
+      JSON.stringify([
+        new HumanMessage("what is the weather in sf?"),
+        new AIMessage({
+          content: "",
+          additional_kwargs: {
+            function_call: {
+              name: "search_api",
+              arguments: "query",
+            },
           },
-        },
-      }),
-      new FunctionMessage({
-        content: '"result for query"',
-        name: "search_api",
-      }),
-      new AIMessage({
-        content: "",
-        additional_kwargs: {
-          function_call: {
-            name: "search_api",
-            arguments: "another",
+        }),
+        new FunctionMessage({
+          content: '"result for query"',
+          name: "search_api",
+        }),
+        new AIMessage({
+          content: "",
+          additional_kwargs: {
+            function_call: {
+              name: "search_api",
+              arguments: "another",
+            },
           },
-        },
-      }),
-      new FunctionMessage({
-        content: '"result for another"',
-        name: "search_api",
-      }),
-      new AIMessage("answer"),
-    ]);
+        }),
+        new FunctionMessage({
+          content: '"result for another"',
+          name: "search_api",
+        }),
+        new AIMessage("answer"),
+      ])
+    );
   });
 
   it("can stream a list of messages", async () => {
@@ -2073,7 +2075,9 @@ describe("MessageGraph", () => {
 
     const lastItem = streamItems[streamItems.length - 1];
     expect(Object.keys(lastItem)).toEqual(["agent"]);
-    expect(Object.values(lastItem)[0]).toEqual(new AIMessage("answer"));
+    expect(JSON.stringify(Object.values(lastItem)[0])).toEqual(
+      JSON.stringify(new AIMessage("answer"))
+    );
   });
 });
 

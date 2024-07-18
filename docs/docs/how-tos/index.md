@@ -50,5 +50,6 @@ These guides show how to use different streaming modes.
 - [How to add runtime configuration to your graph](configuration.ipynb)
 - [How to force an agent to call a tool](force-calling-a-tool-first.ipynb)
 - [How to let agent return tool results directly](dynamically-returning-directly.ipynb)
+- [How to handle tool calling errors](tool-calling-errors.ipynb)
 - [How to have agent respond in structured format](respond-in-format.ipynb)
 - [How to manage agent steps](managing-agent-steps.ipynb)
