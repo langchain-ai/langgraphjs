@@ -10,6 +10,12 @@ import { RunnableCallable } from "../utils.js";
 import { END } from "../graph/graph.js";
 import { MessagesState } from "../graph/message.js";
 
+export type ToolNodeOptions = {
+  name?: string;
+  tags?: string[];
+  handleToolErrors?: boolean;
+};
+
 export class ToolNode<
   T extends BaseMessage[] | MessagesState
 > extends RunnableCallable<T, T> {
@@ -22,13 +28,16 @@ export class ToolNode<
 
   tools: (StructuredToolInterface | RunnableToolLike)[];
 
+  handleToolErrors = true;
+
   constructor(
     tools: (StructuredToolInterface | RunnableToolLike)[],
-    name: string = "tools",
-    tags: string[] = []
+    options?: ToolNodeOptions
   ) {
+    const { name, tags, handleToolErrors } = options ?? {};
     super({ name, tags, func: (input, config) => this.run(input, config) });
     this.tools = tools;
+    this.handleToolErrors = handleToolErrors ?? this.handleToolErrors;
   }
 
   private async run(
@@ -46,21 +55,33 @@ export class ToolNode<
     const outputs = await Promise.all(
       (message as AIMessage).tool_calls?.map(async (call) => {
         const tool = this.tools.find((tool) => tool.name === call.name);
-        if (tool === undefined) {
-          throw new Error(`Tool ${call.name} not found.`);
-        }
-        const output = await tool.invoke(
-          { ...call, type: "tool_call" },
-          config
-        );
-        if (isBaseMessage(output) && output._getType() === "tool") {
-          return output;
-        } else {
+        try {
+          if (tool === undefined) {
+            throw new Error(`Tool "${call.name}" not found.`);
+          }
+          const output = await tool.invoke(
+            { ...call, type: "tool_call" },
+            config
+          );
+          if (isBaseMessage(output) && output._getType() === "tool") {
+            return output;
+          } else {
+            return new ToolMessage({
+              name: tool.name,
+              content:
+                typeof output === "string" ? output : JSON.stringify(output),
+              tool_call_id: call.id!,
+            });
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } catch (e: any) {
+          if (!this.handleToolErrors) {
+            throw e;
+          }
           return new ToolMessage({
-            name: tool.name,
-            content:
-              typeof output === "string" ? output : JSON.stringify(output),
-            tool_call_id: call.id!,
+            content: `Error: ${e.message}\n Please fix your mistakes.`,
+            name: call.name,
+            tool_call_id: call.id ?? "",
           });
         }
       }) ?? []
