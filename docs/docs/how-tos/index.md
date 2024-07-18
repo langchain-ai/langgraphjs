@@ -25,6 +25,7 @@ These how-to guides show how to achieve that controllability.
 LangGraph.js makes it easy to persist state across graph runs. The guides below shows how to add persistence to your graph.
 
 - [How to add persistence ("memory") to your graph](persistence.ipynb)
+- [How to manage conversation history](manage-conversation-history.ipynb)
 - [How to view and update past graph state](time-travel.ipynb)
 - [How to create a custom checkpointer using Postgres](persistence-postgres.ipynb)
 
@@ -34,6 +35,7 @@ One of LangGraph.js's main benefits is that it makes human-in-the-loop workflows
 These guides cover common examples of that.
 
 - [How to add human-in-the-loop](human-in-the-loop.ipynb)
+- [How to add breakpoints](breakpoints.ipynb)
 
 ## Streaming
 
