@@ -106,6 +106,7 @@ nav:
           - Add runtime configuration: "how-tos/configuration.ipynb"
           - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
           - Let agent return tool results directly: "how-tos/dynamically-returning-directly.ipynb"
+          - Handle tool calling errors: "how-tos/tool-calling-errors.ipynb"
           - Have agent respond in structured format: "how-tos/respond-in-format.ipynb"
           - Manage agent steps: "how-tos/managing-agent-steps.ipynb"
   - "Conceptual Guides":

@@ -13,7 +13,11 @@ import {
 import { z } from "zod";
 import { RunnableLambda } from "@langchain/core/runnables";
 import { FakeToolCallingChatModel } from "./utils.js";
-import { createAgentExecutor, createReactAgent } from "../prebuilt/index.js";
+import {
+  ToolNode,
+  createAgentExecutor,
+  createReactAgent,
+} from "../prebuilt/index.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -23,6 +27,36 @@ beforeAll(() => {
   process.env.LANGCHAIN_API_KEY = "";
   process.env.LANGCHAIN_PROJECT = "";
 });
+
+const searchSchema = z.object({
+  query: z.string().describe("The query to search for."),
+});
+
+class SearchAPI extends StructuredTool {
+  name = "search_api";
+
+  description = "A simple API that returns the input string.";
+
+  schema = searchSchema;
+
+  async _call(input: z.infer<typeof searchSchema>) {
+    return `result for ${input?.query}`;
+  }
+}
+
+class SearchAPIWithArtifact extends StructuredTool {
+  name = "search_api";
+
+  description = "A simple API that returns the input string.";
+
+  schema = searchSchema;
+
+  responseFormat = "content_and_artifact";
+
+  async _call(_: z.infer<typeof searchSchema>) {
+    return ["some response format", Buffer.from("123")];
+  }
+}
 
 describe("PreBuilt", () => {
   class SearchAPI extends Tool {
@@ -216,36 +250,6 @@ describe("PreBuilt", () => {
 });
 
 describe("createReactAgent", () => {
-  const searchSchema = z.object({
-    query: z.string().describe("The query to search for."),
-  });
-
-  class SearchAPI extends StructuredTool {
-    name = "search_api";
-
-    description = "A simple API that returns the input string.";
-
-    schema = searchSchema;
-
-    async _call(input: z.infer<typeof searchSchema>) {
-      return `result for ${input?.query}`;
-    }
-  }
-
-  class SearchAPIWithArtifact extends StructuredTool {
-    name = "search_api";
-
-    description = "A simple API that returns the input string.";
-
-    schema = searchSchema;
-
-    responseFormat = "content_and_artifact";
-
-    async _call(_: z.infer<typeof searchSchema>) {
-      return ["some response format", Buffer.from("123")];
-    }
-  }
-
   const tools = [new SearchAPI()];
 
   it("Can use string message modifier", async () => {
@@ -382,16 +386,14 @@ describe("createReactAgent", () => {
 
     // Instead of re-implementing the tool, wrap it in a RunnableLambda and
     // call `asTool` to create a RunnableToolLike.
-    const searchApiWithArtifactsTool = new SearchAPIWithArtifact();
+    const searchApiTool = new SearchAPI();
     const runnableToolLikeTool = RunnableLambda.from<
-      z.infer<typeof searchApiWithArtifactsTool.schema>,
+      z.infer<typeof searchApiTool.schema>,
       ToolMessage
-    >(async (input, config) =>
-      searchApiWithArtifactsTool.invoke(input, config)
-    ).asTool({
-      name: searchApiWithArtifactsTool.name,
-      description: searchApiWithArtifactsTool.description,
-      schema: searchApiWithArtifactsTool.schema,
+    >(async (input, config) => searchApiTool.invoke(input, config)).asTool({
+      name: searchApiTool.name,
+      description: searchApiTool.description,
+      schema: searchApiTool.schema,
     });
 
     const agent = createReactAgent({
@@ -414,11 +416,25 @@ describe("createReactAgent", () => {
       }),
       new ToolMessage({
         name: "search_api",
-        content: "some response format",
+        content: "result for foo",
         tool_call_id: "tool_abcd123",
-        artifact: Buffer.from("123"),
       }),
       new AIMessage("result2"),
     ]);
+  });
+});
+
+describe("ToolNode", () => {
+  it("Should support graceful error handling", async () => {
+    const toolNode = new ToolNode([new SearchAPI()]);
+    const res = await toolNode.invoke([
+      new AIMessage({
+        content: "",
+        tool_calls: [{ name: "badtool", args: {}, id: "testid" }],
+      }),
+    ]);
+    expect(res[0].content).toEqual(
+      `Error: Tool "badtool" not found.\n Please fix your mistakes.`
+    );
   });
 });
