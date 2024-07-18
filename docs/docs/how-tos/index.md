@@ -35,6 +35,7 @@ One of LangGraph.js's main benefits is that it makes human-in-the-loop workflows
 These guides cover common examples of that.
 
 - [How to add human-in-the-loop](human-in-the-loop.ipynb)
+- [How to add breakpoints](breakpoints.ipynb)
 
 ## Streaming
 
