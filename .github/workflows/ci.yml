@@ -19,18 +19,22 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: "18.x"
+
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js 18.x
+      - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v3
         with:
-          node-version: 18.x
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'yarn'
-          cache-dependency-path: 'yarn.lock'
       - name: Install dependencies
         run: yarn install --immutable
       - name: Check linting
@@ -43,10 +47,11 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js 18.x
+      - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v3
         with:
-          cache: "yarn"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
       - name: Install dependencies
         run: yarn install --immutable
 
@@ -56,13 +61,15 @@ jobs:
   format:
     name: Check formatting
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js 18.x
+      - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v3
         with:
-          node-version: 18.x
-          cache: "yarn"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
       - name: Install dependencies
         run: yarn install --immutable
       - name: Check formatting
@@ -81,6 +88,7 @@ jobs:
           - os: macos-latest
             node-version: 18.x
     runs-on: ${{ matrix.os }}
+    fail-fast: false
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "true"
