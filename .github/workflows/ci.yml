@@ -33,8 +33,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'yarn'
+
       - name: Install dependencies
         run: yarn install --immutable
+
       - name: Check linting
         run: yarn build
 
@@ -48,6 +50,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'yarn'
+
       - name: Install dependencies
         run: yarn install --immutable
 
@@ -64,24 +67,50 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'yarn'
+
       - name: Install dependencies
         run: yarn install --immutable
+
       - name: Check formatting
         run: yarn run format:check
+
+  # test:
+  #   name: Unit Tests
+  #   strategy:
+  #     matrix:
+  #       # See Node.js release schedule at https://nodejs.org/en/about/releases/
+  #       os: [ubuntu-latest]
+  #       # node-version: [18.x, 20.x, 22.x]
+  #       node-version: [18.x, 20.x]
+  #       include:
+  #         - os: windows-latest
+  #           node-version: 18.x
+  #         - os: macos-latest
+  #           node-version: 18.x
+  #   runs-on: ${{ matrix.os }}
+  #   env:
+  #     PUPPETEER_SKIP_DOWNLOAD: "true"
+  #     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "true"
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Use Node.js ${{ matrix.node-version }}
+  #       uses: actions/setup-node@v3
+  #       with:
+  #         node-version: ${{ matrix.node-version }}
+  #         cache: "yarn"
+
+  #     - name: Install dependencies
+  #       run: yarn install --immutable
+
+  #     - name: Test
+  #       run: yarn run test
 
   test:
     name: Unit Tests
     strategy:
       matrix:
-        # See Node.js release schedule at https://nodejs.org/en/about/releases/
-        os: [ubuntu-latest]
-        # node-version: [18.x, 20.x, 22.x]
-        node-version: [18.x, 20.x]
-        include:
-          - os: windows-latest
-            node-version: 18.x
-          - os: macos-latest
-            node-version: 18.x
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: [18.x, 20.x, 22.x]
     runs-on: ${{ matrix.os }}
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
@@ -93,8 +122,10 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: "yarn"
+
       - name: Install dependencies
         run: yarn install --immutable
+
       - name: Test
         run: yarn run test
 
@@ -115,24 +146,26 @@ jobs:
           exit 1
           fi
 
-  unit-tests:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        package: ['langgraph']
-        node-version: [18.x, 20.x, 22.x]
-    env:
-      PUPPETEER_SKIP_DOWNLOAD: "true"
-      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "true"
-    steps:
-      - uses: actions/checkout@v4
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v3
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: "yarn"
-      - name: Install dependencies
-        run: yarn install --immutable
-      - name: Test '@langchain/${{ matrix.package }}' package
-        run: yarn test:unit:ci --filter=@langchain/${{ matrix.package }}
+  # unit-tests:
+  #   name: Unit Tests
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       package: ['langgraph']
+  #       node-version: [18.x, 20.x, 22.x]
+  #   env:
+  #     PUPPETEER_SKIP_DOWNLOAD: "true"
+  #     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "true"
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Use Node.js ${{ env.NODE_VERSION }}
+  #       uses: actions/setup-node@v3
+  #       with:
+  #         node-version: ${{ matrix.node-version }}
+  #         cache: "yarn"
+
+  #     - name: Install dependencies
+  #       run: yarn install --immutable
+
+  #     - name: Test '@langchain/${{ matrix.package }}' package
+  #       run: yarn test:unit:ci --filter=@langchain/${{ matrix.package }}
