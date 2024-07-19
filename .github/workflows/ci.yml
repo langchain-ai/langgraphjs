@@ -29,9 +29,11 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 22.x
-          cache: "yarn"
+          node-version-file: 'api_new/package.json'
+          cache: 'yarn'
+          cache-dependency-path: 'api_new/yarn.lock'
       - name: Install dependencies
-        run: yarn install --immutable --mode=skip-build
+        run: yarn install --immutable
       - name: Check linting
         run: yarn build
 
@@ -46,7 +48,7 @@ jobs:
           node-version: 22.x
           cache: "yarn"
       - name: Install dependencies
-        run: yarn install --immutable --mode=skip-build
+        run: yarn install --immutable
       - name: Check linting
         run: yarn run lint
 
@@ -61,7 +63,7 @@ jobs:
           node-version: 22.x
           cache: "yarn"
       - name: Install dependencies
-        run: yarn install --immutable --mode=skip-build
+        run: yarn install --immutable
       - name: Check formatting
         run: yarn run format:check
 
