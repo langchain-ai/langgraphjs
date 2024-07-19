@@ -105,6 +105,30 @@ jobs:
   #     - name: Test
   #       run: yarn run test
 
+  # test:
+  #   name: Unit Tests
+  #   strategy:
+  #     matrix:
+  #       os: [windows-latest, macos-latest]
+  #       node-version: [18.x, 20.x, 22.x]
+  #   runs-on: ${{ matrix.os }}
+  #   env:
+  #     PUPPETEER_SKIP_DOWNLOAD: "true"
+  #     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "true"
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Use Node.js ${{ matrix.node-version }}
+  #       uses: actions/setup-node@v3
+  #       with:
+  #         node-version: ${{ matrix.node-version }}
+  #         cache: "yarn"
+
+  #     - name: Install dependencies
+  #       run: yarn install --immutable
+
+  #     - name: Test
+  #       run: yarn run test
+
   test:
     name: Unit Tests
     strategy:
@@ -117,14 +141,26 @@ jobs:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "true"
     steps:
       - uses: actions/checkout@v4
+
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v3
         with:
           node-version: ${{ matrix.node-version }}
-          cache: "yarn"
+
+      - name: Get yarn cache directory path
+        id: yarn-cache-dir-path
+        run: echo "dir=$(yarn config get cacheFolder)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v3
+        id: yarn-cache
+        with:
+          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
+          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: yarn install --immutable --immutable-cache
 
       - name: Test
         run: yarn run test
@@ -145,27 +181,3 @@ jobs:
           diff -C 3 README.md langgraph/README.md
           exit 1
           fi
-
-  # unit-tests:
-  #   name: Unit Tests
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     matrix:
-  #       package: ['langgraph']
-  #       node-version: [18.x, 20.x, 22.x]
-  #   env:
-  #     PUPPETEER_SKIP_DOWNLOAD: "true"
-  #     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "true"
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Use Node.js ${{ env.NODE_VERSION }}
-  #       uses: actions/setup-node@v3
-  #       with:
-  #         node-version: ${{ matrix.node-version }}
-  #         cache: "yarn"
-
-  #     - name: Install dependencies
-  #       run: yarn install --immutable
-
-  #     - name: Test '@langchain/${{ matrix.package }}' package
-  #       run: yarn test:unit:ci --filter=@langchain/${{ matrix.package }}
