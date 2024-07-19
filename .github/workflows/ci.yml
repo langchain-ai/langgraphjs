@@ -114,3 +114,25 @@ jobs:
           diff -C 3 README.md langgraph/README.md
           exit 1
           fi
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: ['langgraph']
+        node-version: [18.x, 20.x, 22.x]
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "yarn"
+      - name: Install dependencies
+        run: yarn install --immutable
+      - name: Test '@langchain/${{ matrix.package }}' package
+        run: yarn test:unit:ci --filter=@langchain/${{ matrix.package }}
