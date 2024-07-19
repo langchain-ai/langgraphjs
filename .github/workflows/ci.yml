@@ -29,9 +29,8 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 22.x
-          node-version-file: 'api_new/package.json'
           cache: 'yarn'
-          cache-dependency-path: 'api_new/yarn.lock'
+          cache-dependency-path: 'yarn.lock'
       - name: Install dependencies
         run: yarn install --immutable
       - name: Check linting
@@ -40,15 +39,18 @@ jobs:
   lint:
     name: Check linting
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js 22.x
+      - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v3
         with:
-          node-version: 22.x
+          node-version: ${{ env.NODE_VERSION }}
           cache: "yarn"
       - name: Install dependencies
         run: yarn install --immutable
+
       - name: Check linting
         run: yarn run lint
 
