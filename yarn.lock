@@ -1431,7 +1431,7 @@ __metadata:
     "@jest/globals": ^29.5.0
     "@langchain/anthropic": ^0.2.6
     "@langchain/community": ^0.2.19
-    "@langchain/core": ">=0.2.16 <0.3.0"
+    "@langchain/core": ">=0.2.18 <0.3.0"
     "@langchain/openai": ^0.2.4
     "@langchain/scripts": ^0.0.13
     "@swc/core": ^1.3.90
@@ -8044,7 +8044,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"langsmith@npm:~0.1.30, langsmith@npm:~0.1.39, langsmith@npm:~0.1.7":
+"langsmith@npm:~0.1.30, langsmith@npm:~0.1.39":
   version: 0.1.39
   resolution: "langsmith@npm:0.1.39"
   dependencies:
@@ -8065,6 +8065,19 @@ __metadata:
     openai:
       optional: true
   checksum: df21332662ec3a2d2d5cf915acede52b96aedf2a286259435d683f230af5926500b129cab1f0275450e0d3de6d9d8476e410ac46f5e994beb43f2e2df8a1965f
+  languageName: node
+  linkType: hard
+
+"langsmith@npm:~0.1.7":
+  version: 0.1.18
+  resolution: "langsmith@npm:0.1.18"
+  dependencies:
+    "@types/uuid": ^9.0.1
+    commander: ^10.0.1
+    p-queue: ^6.6.2
+    p-retry: 4
+    uuid: ^9.0.0
+  checksum: 7de6fa53da1df10488dd762ffdf84ef4b56a6672213b194eada2a63f4dbfe53459cdaeba39e759c3406aeb9385c9c0915cddfb4f7bdcb4faabaf1309ce2583fb
   languageName: node
   linkType: hard
 
