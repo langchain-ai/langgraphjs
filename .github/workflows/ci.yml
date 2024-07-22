@@ -83,9 +83,9 @@ jobs:
         node-version: [18.x, 20.x, "22.4.1"]
         include:
           - os: windows-latest
-            node-version: "22.4.1"
+            node-version: ${{ env.NODE_VERSION }}
           - os: macos-latest
-            node-version: "22.4.1"
+            node-version: ${{ env.NODE_VERSION }}
     runs-on: ${{ matrix.os }}
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
