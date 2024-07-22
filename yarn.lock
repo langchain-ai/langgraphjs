@@ -8044,31 +8044,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"langsmith@npm:~0.1.30":
-  version: 0.1.32
-  resolution: "langsmith@npm:0.1.32"
-  dependencies:
-    "@types/uuid": ^9.0.1
-    commander: ^10.0.1
-    p-queue: ^6.6.2
-    p-retry: 4
-    uuid: ^9.0.0
-  peerDependencies:
-    "@langchain/core": "*"
-    langchain: "*"
-    openai: "*"
-  peerDependenciesMeta:
-    "@langchain/core":
-      optional: true
-    langchain:
-      optional: true
-    openai:
-      optional: true
-  checksum: 4444cb343271e7312e3a529331f40aa7f00403ac3323e28b9d5441f86ef476ce84fdaabf70fbea3ba133d2b7f4c559c337079b3475314ac19ca318237a04ff85
-  languageName: node
-  linkType: hard
-
-"langsmith@npm:~0.1.39":
+"langsmith@npm:~0.1.30, langsmith@npm:~0.1.39":
   version: 0.1.39
   resolution: "langsmith@npm:0.1.39"
   dependencies:

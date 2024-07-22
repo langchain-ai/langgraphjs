@@ -102,6 +102,7 @@ nav:
           - Stream full state: "how-tos/stream-values.ipynb"
           - Stream state updates: "how-tos/stream-updates.ipynb"
           - Stream LLM tokens: "how-tos/stream-tokens.ipynb"
+          - Stream LLM tokens without LangChain models: "how-tos/streaming-tokens-without-langchain.ipynb"
       - Other:
           - Add runtime configuration: "how-tos/configuration.ipynb"
           - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
