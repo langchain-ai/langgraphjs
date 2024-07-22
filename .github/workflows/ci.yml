@@ -111,7 +111,7 @@ jobs:
         run: yarn install --immutable
 
       - name: Test
-        run: yarn test
+        run: cd langgraph && yarn build:internal && yarn test
 
   check-readmes-synced:
     # This checks that the repo README.md is identical to the libs/langgraph/README.md
