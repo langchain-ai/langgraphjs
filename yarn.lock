@@ -1511,7 +1511,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/scripts@npm:0.0.18":
+"@langchain/scripts@npm:^0.0.18":
   version: 0.0.18
   resolution: "@langchain/scripts@npm:0.0.18"
   dependencies:
