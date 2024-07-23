@@ -1433,7 +1433,7 @@ __metadata:
     "@langchain/community": ^0.2.19
     "@langchain/core": ">=0.2.18 <0.3.0"
     "@langchain/openai": ^0.2.4
-    "@langchain/scripts": 0.0.17
+    "@langchain/scripts": ^0.0.18
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
     "@tsconfig/recommended": ^1.0.3
@@ -1511,9 +1511,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/scripts@npm:0.0.17":
-  version: 0.0.17
-  resolution: "@langchain/scripts@npm:0.0.17"
+"@langchain/scripts@npm:^0.0.18":
+  version: 0.0.18
+  resolution: "@langchain/scripts@npm:0.0.18"
   dependencies:
     axios: ^1.6.7
     commander: ^11.1.0
@@ -1524,8 +1524,8 @@ __metadata:
     typescript: ^5.4.5
   bin:
     lc-build: bin/build.js
-    lc_build_v2: bin/build_v2.js
-  checksum: 09d384fd9f4f5a787dcf24a46a8ad01bde35b2146061cb85837fb3addf659b7eedbc7ec82c8183da9de8fa1c54f2f46866065bb6e0b98dd9cadcd14d3f96267b
+    v2: bin/build_v2.js
+  checksum: 97d5de819093c951a6af564b917a79f6a13dc6bf21e8a05ab92e14ca0283580257d8db16e353b5b25412231abcd15a797c6f5f8a939b29152f916c115d894143
   languageName: node
   linkType: hard
 
