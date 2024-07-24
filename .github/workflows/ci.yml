@@ -19,7 +19,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
+vars:
   NODE_VERSION: "22.4.1"
 
 jobs:
@@ -28,10 +28,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js ${{ env.NODE_VERSION }}
+      - name: Use Node.js ${{ vars.NODE_VERSION }}
         uses: actions/setup-node@v3
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ vars.NODE_VERSION }}
           cache: 'yarn'
 
       - name: Install dependencies
@@ -45,10 +45,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js ${{ env.NODE_VERSION }}
+      - name: Use Node.js ${{ vars.NODE_VERSION }}
         uses: actions/setup-node@v3
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ vars.NODE_VERSION }}
           cache: 'yarn'
 
       - name: Install dependencies
@@ -62,10 +62,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js ${{ env.NODE_VERSION }}
+      - name: Use Node.js ${{ vars.NODE_VERSION }}
         uses: actions/setup-node@v3
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ vars.NODE_VERSION }}
           cache: 'yarn'
 
       - name: Install dependencies
@@ -83,9 +83,9 @@ jobs:
         node-version: [18.x, 20.x, "22.4.1"]
         include:
           - os: windows-latest
-            node-version: ${{ env.NODE_VERSION }}
+            node-version: ${{ vars.NODE_VERSION }}
           - os: macos-latest
-            node-version: ${{ env.NODE_VERSION }}
+            node-version: ${{ vars.NODE_VERSION }}
     runs-on: ${{ matrix.os }}
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
