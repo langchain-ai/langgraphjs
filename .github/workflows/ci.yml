@@ -19,19 +19,24 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: "22.4.1"
+
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js "22.4.1"
+      - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v3
         with:
-          node-version: "22.4.1"
-          cache: "yarn"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
       - name: Install dependencies
         run: yarn install --immutable
+
       - name: Build
         run: yarn build
 
@@ -40,13 +45,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js "22.4.1"
+      - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v3
         with:
-          node-version: "22.4.1"
-          cache: "yarn"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
       - name: Install dependencies
         run: yarn install --immutable
+
       - name: Check linting
         run: yarn run lint
 
@@ -55,13 +62,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js "22.4.1"
+      - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v3
         with:
-          node-version: "22.4.1"
-          cache: "yarn"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
       - name: Install dependencies
         run: yarn install --immutable
+
       - name: Check formatting
         run: yarn run format:check
 
