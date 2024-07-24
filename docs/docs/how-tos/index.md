@@ -36,6 +36,7 @@ These guides cover common examples of that.
 
 - [How to add human-in-the-loop](human-in-the-loop.ipynb)
 - [How to add breakpoints](breakpoints.ipynb)
+- [How to wait for user input](wait-user-input.ipynb)
 
 ## Streaming
 

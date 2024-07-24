@@ -37,7 +37,7 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Check linting
+      - name: Build
         run: yarn build
 
   lint:
