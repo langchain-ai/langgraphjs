@@ -49,7 +49,7 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
       const childConfig = patchConfig(config, {
         callbacks: runManager?.getChild(),
       });
-      void AsyncLocalStorageProviderSingleton.getInstance().run(
+      void AsyncLocalStorageProviderSingleton.runWithConfig(
         childConfig,
         async () => {
           try {
