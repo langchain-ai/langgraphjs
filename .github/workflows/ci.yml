@@ -19,7 +19,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-vars:
+env:
   NODE_VERSION: "22.4.1"
 
 jobs:
