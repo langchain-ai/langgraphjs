@@ -56,55 +56,52 @@ export LANGCHAIN_API_KEY=ls__...
 Now let's define our agent:
 
 ```typescript
-import { HumanMessage, AIMessage } from "@langchain/core/messages";
-import { DynamicStructuredTool } from "@langchain/core/tools";
+import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
+import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { ChatAnthropic } from "@langchain/anthropic";
-import { END, START, StateGraph, StateGraphArgs } from "@langchain/langgraph";
+import { StateGraph, StateGraphArgs } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
 // Define the state interface
 interface AgentState {
-  messages: HumanMessage[];
+  messages: BaseMessage[];
 }
 
 // Define the graph state
 const graphState: StateGraphArgs<AgentState>["channels"] = {
   messages: {
-    value: (x: HumanMessage[], y: HumanMessage[]) => x.concat(y),
-    default: () => [],
+    reducer: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
   },
 };
 
 // Define the tools for the agent to use
-
-const searchTool = new DynamicStructuredTool({
-  name: "search",
+const weatherTool = tool(async ({ query }) => {
+  // This is a placeholder for the actual implementation
+  if (query.toLowerCase().includes("sf") || query.toLowerCase().includes("san francisco")) {
+    return "It's 60 degrees and foggy."
+  }
+  return "It's 90 degrees and sunny."
+}, {
+  name: "weather",
   description:
-    "Call to surf the web.",
+    "Call to get the current weather for a location.",
   schema: z.object({
     query: z.string().describe("The query to use in your search."),
   }),
-  func: async ({ query }: { query: string }) => {
-    // This is a placeholder for the actual implementation
-    if (query.toLowerCase().includes("sf") || query.toLowerCase().includes("san francisco")) {
-      return "It's 60 degrees and foggy."
-    }
-    return "It's 90 degrees and sunny."
-  },
 });
 
-const tools = [searchTool];
+const tools = [weatherTool];
 const toolNode = new ToolNode<AgentState>(tools);
 
 const model = new ChatAnthropic({
-  model: "claude-3-sonnet-20240229",
+  model: "claude-3-5-sonnet-20240620",
   temperature: 0,
 }).bindTools(tools);
 
 // Define the function that determines whether to continue or not
-function shouldContinue(state: AgentState): "tools" | typeof END {
+function shouldContinue(state: AgentState) {
   const messages = state.messages;
   const lastMessage = messages[messages.length - 1] as AIMessage;
 
@@ -113,7 +110,7 @@ function shouldContinue(state: AgentState): "tools" | typeof END {
     return "tools";
   }
   // Otherwise, we stop (reply to the user)
-  return END;
+  return "__end__";
 }
 
 // Define the function that calls the model
@@ -129,7 +126,7 @@ async function callModel(state: AgentState) {
 const workflow = new StateGraph<AgentState>({ channels: graphState })
   .addNode("agent", callModel)
   .addNode("tools", toolNode)
-  .addEdge(START, "agent")
+  .addEdge("__start__", "agent")
   .addConditionalEdges("agent", shouldContinue)
   .addEdge("tools", "agent");
 
@@ -146,13 +143,21 @@ const finalState = await app.invoke(
   { messages: [new HumanMessage("what is the weather in sf")] },
   { configurable: { thread_id: "42" } }
 );
+
 console.log(finalState.messages[finalState.messages.length - 1].content);
 ```
 
 This will output:
 
 ```
-Based on the search results, I can tell you that the current weather in San Francisco is:\n\nTemperature: 60 degrees Fahrenheit\nConditions: Foggy\n\nSan Francisco is known for its microclimates and frequent fog, especially during the summer months. The temperature of 60°F (about 15.5°C) is quite typical for the city, which tends to have mild temperatures year-round. The fog, often referred to as "Karl the Fog" by locals, is a characteristic feature of San Francisco\'s weather, particularly in the mornings and evenings.\n\nIs there anything else you\'d like to know about the weather in San Francisco or any other location?
+Based on the information I received, the current weather in San Francisco is:
+
+Temperature: 60 degrees Fahrenheit
+Conditions: Foggy
+
+San Francisco is known for its foggy weather, especially during certain times of the year. The moderate temperature of 60°F (about 15.5°C) is quite typical for the city, which generally has mild weather year-round due to its coastal location.
+
+Is there anything else you'd like to know about the weather in San Francisco or any other location?
 ```
 
 Now when we pass the same `"thread_id"`, the conversation context is retained via the saved state (i.e. stored list of messages):
@@ -166,7 +171,16 @@ console.log(nextState.messages[nextState.messages.length - 1].content);
 ```
 
 ```
-Based on the search results, I can tell you that the current weather in New York City is:\n\nTemperature: 90 degrees Fahrenheit (approximately 32.2 degrees Celsius)\nConditions: Sunny\n\nThis weather is quite different from what we just saw in San Francisco. New York is experiencing much warmer temperatures right now. Here are a few points to note:\n\n1. The temperature of 90°F is quite hot, typical of summer weather in New York City.\n2. The sunny conditions suggest clear skies, which is great for outdoor activities but also means it might feel even hotter due to direct sunlight.\n3. This kind of weather in New York often comes with high humidity, which can make it feel even warmer than the actual temperature suggests.\n\nIt's interesting to see the stark contrast between San Francisco's mild, foggy weather and New York's hot, sunny conditions. This difference illustrates how varied weather can be across different parts of the United States, even on the same day.\n\nIs there anything else you'd like to know about the weather in New York or any other location?
+Based on the information I received, the current weather in New York is:
+
+Temperature: 90 degrees Fahrenheit (approximately 32.2 degrees Celsius)
+Conditions: Sunny
+
+New York is experiencing quite warm weather today. A temperature of 90°F is considered hot for most people, and it's significantly warmer than the San Francisco weather we just checked. The sunny conditions suggest it's a clear day without cloud cover, which can make it feel even warmer.
+
+On a day like this in New York, it would be advisable for people to stay hydrated, seek shade when possible, and use sun protection if spending time outdoors.
+
+Is there anything else you'd like to know about the weather in New York or any other location?
 ```
 
 ### Step-by-step Breakdown
@@ -175,7 +189,7 @@ Based on the search results, I can tell you that the current weather in New York
     <summary>Initialize the model and tools.</summary>
 
     - We use `ChatAnthropic` as our LLM. **NOTE:** We need make sure the model knows that it has these tools available to call. We can do this by converting the LangChain tools into the format for Anthropic tool calling using the `.bindTools()` method.
-    - We define the tools we want to use -- a search tool in our case. It is really easy to create your own tools - see documentation [here](https://js.langchain.com/docs/modules/agents/tools/dynamic) on how to do that.
+    - We define the tools we want to use -- a weather tool in our case. See the documentation [here](https://js.langchain.com/docs/modules/agents/tools/dynamic) on how to create your own tools.
    </details>
 
 2. <details>
@@ -197,7 +211,7 @@ Based on the search results, I can tell you that the current weather in New York
 4. <details>
     <summary>Define entry point and graph edges.</summary>
 
-      First, we need to set the entry point for graph execution - `agent` node.
+      First, we need to set the entry point for graph execution - the `agent` node.
 
       Then we define one normal and one conditional edge. A conditional edge means that the destination depends on the contents of the graph's state (`AgentState`). In our case, the destination is not known until the agent (LLM) decides.
 
@@ -225,7 +239,7 @@ Based on the search results, I can tell you that the current weather in New York
         - If `AIMessage` has `tool_calls`, the `"tools"` node executes.
         - The `"agent"` node executes again and returns an `AIMessage`.
 
-    5. Execution progresses to the special `END` value and outputs the final state.
+    5. Execution progresses to the special `__end__` value and outputs the final state.
     As a result, we get a list of all our chat messages as output.
    </details>
 
