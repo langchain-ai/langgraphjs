@@ -239,7 +239,10 @@ Based on the search results, I can tell you that the current weather in New York
 
 ## Running Example Juypter Notebooks
 
-Please note that the *.ipynb notebooks in the examples folder require [tslab](https://github.com/yunabe/tslab?tab=readme-ov-file) be installed. In order to run these notebooks in VSCode, you will also need the [Jupyter](https://marketplace.visualstudio.com/items?itemName=ms-toolsai.jupyter) VSCode Extension installed. After cloning this repository, you can run `yarn build` in the root and add the following tsconfig.json file ot the examples folder:
+Please note that the *.ipynb notebooks in the `examples/` folder require [tslab](https://github.com/yunabe/tslab?tab=readme-ov-file) to be installed. In order to run these notebooks in VSCode, you will also need the [Jupyter](https://marketplace.visualstudio.com/items?itemName=ms-toolsai.jupyter) VSCode Extension installed. After cloning this repository, you can run `yarn build` in the root. You should then be all set!
+
+If you are still having trouble, try adding the following `tsconfig.json` file to the `examples/` directory:
+
 ```
 {
   "compilerOptions": {
@@ -267,6 +270,3 @@ Please note that the *.ipynb notebooks in the examples folder require [tslab](ht
   ]
 }
 ```
-
-Once you tslab kernal, the notebooks should run as expected
-
