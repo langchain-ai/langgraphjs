@@ -29,7 +29,6 @@ Low Level Concepts
     - [Conditional Edges](low_level.md#conditional-edges)
     - [Entry Point](low_level.md#entry-point)
     - [Conditional Entry Point](low_level.md#conditional-entry-point)
-- [Send](low_level.md#send)
 - [Checkpointer](low_level.md#checkpointer)
 - [Threads](low_level.md#threads)
 - [Checkpointer states](low_level.md#checkpointer-state)

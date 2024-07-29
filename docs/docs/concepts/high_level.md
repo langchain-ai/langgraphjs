@@ -48,8 +48,6 @@ So you've built your LangGraph object - now what?
 
 Now you need to deploy it. 
 There are many ways to deploy LangGraph objects, and the right solution depends on your needs and use case.
-We'll highlight two ways here: using [LangGraph Cloud](../cloud/index.md) or rolling your own solution.
+We're working on adding JavaScript/TypeScript support for LangGraph cloud, but in the meantime, here are some options:
 
-[LangGraph Cloud](../cloud/index.md) is an opinionated way to deploy LangGraph objects from the LangChain team. Please see the [LangGraph Cloud documentation](../cloud/index.md) for all the details about what it involves, to see if it is a good fit for you.
-
-If it is not a good fit, you may want to roll your own deployment. In this case, we would recommend using [Express.js](https://expressjs.com/) to stand up a server. You can then call this graph from inside the Express.js server as you see fit.
+- Use [Express.js](https://expressjs.com/) to stand up a server. You can then call this graph from inside the Express.js server as you see fit.
