@@ -231,7 +231,7 @@ graph.addConditionalEdges("nodeA", routingFunction, {
 
 ### Entry Point
 
-The entry point is the first node(s) that are run when the graph starts. You can use the [`addEdge`](https://langchain-ai.github.io/langgraphjs/reference/classes/index.StateGraph.html#addEdge) method from the virtual [`START`][start] node to the first node to execute to specify where to enter the graph.
+The entry point is the first node(s) that are run when the graph starts. You can use the [`addEdge`](https://langchain-ai.github.io/langgraphjs/reference/classes/index.StateGraph.html#addEdge) method from the virtual [`START`](https://langchain-ai.github.io/langgraphjs/reference/variables/index.START.html) node to the first node to execute to specify where to enter the graph.
 
 ```typescript
 import { START } from "@langchain/langgraph" 
