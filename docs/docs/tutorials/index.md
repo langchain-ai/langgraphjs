@@ -2,6 +2,12 @@
 
 Welcome to the LangGraph Tutorials! These notebooks introduce LangGraph through building various language agents and applications.
 
+## Quick Start
+
+Learn the basics of LangGraph through a comprehensive quick start in which you will build an agent from scratch.
+
+- [Quick Start](quickstart.ipynb)
+
 ## Use cases
 
 Learn from example implementations of graphs designed for specific scenarios and that implement common design patterns.

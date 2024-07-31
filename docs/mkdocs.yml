@@ -69,6 +69,7 @@ nav:
       - Quick Start: tutorials/quickstart.ipynb
   - Tutorials:
       - "tutorials/index.md"
+      - "tutorials/quickstart.ipynb"
       - Use cases:
           - Multi-Agent Systems:
               - tutorials/multi_agent/agent_supervisor.ipynb
