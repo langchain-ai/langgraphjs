@@ -8,6 +8,10 @@ export abstract class BaseChannel<
   UpdateType = unknown,
   CheckpointType = unknown
 > {
+  ValueType: ValueType;
+
+  UpdateType: UpdateType;
+
   /**
    * The name of the channel.
    */
