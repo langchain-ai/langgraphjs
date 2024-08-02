@@ -430,15 +430,16 @@ export class CompiledStateGraph<
   }
 }
 
+function isBaseChannel(obj: unknown): obj is BaseChannel {
+  return obj != null && typeof (obj as BaseChannel).lc_graph_name === "string";
+}
+
 function isStateDefinition(obj: unknown): obj is StateDefinition {
   return (
     typeof obj === "object" &&
     obj !== null &&
     !Array.isArray(obj) &&
     Object.keys(obj).length > 0 &&
-    Object.values(obj).every(
-      // eslint-disable-next-line no-instanceof/no-instanceof
-      (v) => typeof v === "function" || v instanceof BaseChannel
-    )
+    Object.values(obj).every((v) => typeof v === "function" || isBaseChannel(v))
   );
 }
