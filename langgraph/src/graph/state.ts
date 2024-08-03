@@ -25,6 +25,47 @@ import { InvalidUpdateError } from "../errors.js";
 
 const ROOT = "__root__";
 
+export function Annotation<ValueType>(): LastValue<ValueType>;
+
+export function Annotation<ValueType, UpdateType = ValueType>(
+  annotation: SingleReducer<ValueType, UpdateType>
+): BinaryOperatorAggregate<ValueType, UpdateType>;
+
+export function Annotation<ValueType, UpdateType = ValueType>(
+  annotation?: SingleReducer<ValueType, UpdateType>
+): BaseChannel<ValueType, UpdateType> {
+  if (annotation) {
+    return getChannel<ValueType, UpdateType>(annotation);
+  } else {
+    // @ts-expect-error - Annotation without reducer
+    return new LastValue<ValueType>();
+  }
+}
+
+interface StateDefinition {
+  [key: string]: BaseChannel | (() => BaseChannel);
+}
+
+type ExtractValueType<C> = C extends BaseChannel
+  ? C["ValueType"]
+  : C extends () => BaseChannel
+  ? ReturnType<C>["ValueType"]
+  : never;
+
+type ExtractUpdateType<C> = C extends BaseChannel
+  ? C["UpdateType"]
+  : C extends () => BaseChannel
+  ? ReturnType<C>["UpdateType"]
+  : never;
+
+export type StateInterface<S extends StateDefinition> = {
+  [key in keyof S]: ExtractValueType<S[key]>;
+};
+
+export type UpdateInterface<S extends StateDefinition> = {
+  [key in keyof S]?: ExtractUpdateType<S[key]>;
+};
+
 type SingleReducer<ValueType, UpdateType = ValueType> =
   | {
       reducer: BinaryOperator<ValueType, UpdateType>;
@@ -53,19 +94,34 @@ export interface StateGraphArgs<Channels extends object | unknown> {
 }
 
 export class StateGraph<
-  State extends object | unknown,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  Update extends object | unknown = Partial<Record<keyof State, any>>,
+  SD extends StateDefinition | unknown,
+  S = SD extends StateDefinition ? StateInterface<SD> : SD,
+  U = SD extends StateDefinition ? UpdateInterface<SD> : Partial<S>,
   N extends string = typeof START
-> extends Graph<N, State, Update> {
+> extends Graph<N, S, U> {
   channels: Record<string, BaseChannel>;
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
   waitingEdges: Set<[N[], N]> = new Set();
 
-  constructor(fields: StateGraphArgs<State>) {
+  constructor(
+    fields: SD extends StateDefinition
+      ? SD | StateGraphArgs<S>
+      : StateGraphArgs<S>
+  ) {
     super();
-    this.channels = _getChannels(fields.channels);
+    if (isStateDefinition(fields)) {
+      this.channels = {};
+      for (const [key, val] of Object.entries(fields)) {
+        if (typeof val === "function") {
+          this.channels[key] = val();
+        } else {
+          this.channels[key] = val;
+        }
+      }
+    } else {
+      this.channels = _getChannels(fields.channels);
+    }
     for (const c of Object.values(this.channels)) {
       if (c.lc_graph_name === "BinaryOperatorAggregate") {
         this.supportMultipleEdges = true;
@@ -85,14 +141,14 @@ export class StateGraph<
 
   addNode<K extends string>(
     key: K,
-    action: RunnableLike<State, Update>
-  ): StateGraph<State, Update, N | K> {
+    action: RunnableLike<S, U>
+  ): StateGraph<SD, S, U, N | K> {
     if (key in this.channels) {
       throw new Error(
         `${key} is already being used as a state attribute (a.k.a. a channel), cannot also be used as a node name.`
       );
     }
-    return super.addNode(key, action) as StateGraph<State, Update, N | K>;
+    return super.addNode(key, action) as StateGraph<SD, S, U, N | K>;
   }
 
   addEdge(startKey: typeof START | N | N[], endKey: N | typeof END): this {
@@ -135,7 +191,7 @@ export class StateGraph<
     checkpointer?: BaseCheckpointSaver;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
-  } = {}): CompiledStateGraph<State, Update, N> {
+  } = {}): CompiledStateGraph<S, U, N> {
     // validate the graph
     this.validate([
       ...(Array.isArray(interruptBefore) ? interruptBefore : []),
@@ -156,7 +212,7 @@ export class StateGraph<
       interruptAfter,
       interruptBefore,
       autoValidate: false,
-      nodes: {} as Record<N | typeof START, PregelNode<State, Update>>,
+      nodes: {} as Record<N | typeof START, PregelNode<S, U>>,
       channels: {
         ...this.channels,
         [START]: new EphemeralValue(),
@@ -169,9 +225,7 @@ export class StateGraph<
 
     // attach nodes, edges and branches
     compiled.attachNode(START);
-    for (const [key, node] of Object.entries<Runnable<State, Update>>(
-      this.nodes
-    )) {
+    for (const [key, node] of Object.entries<Runnable<S, U>>(this.nodes)) {
       compiled.attachNode(key as N, node);
     }
     for (const [start, end] of this.edges) {
@@ -207,7 +261,7 @@ function _getChannels<Channels extends Record<string, unknown> | unknown>(
   return channels;
 }
 
-function getChannel<T>(reducer: SingleReducer<T>): BaseChannel<T> {
+function getChannel<V, U = V>(reducer: SingleReducer<V, U>): BaseChannel<V, U> {
   if (
     typeof reducer === "object" &&
     reducer &&
@@ -224,27 +278,28 @@ function getChannel<T>(reducer: SingleReducer<T>): BaseChannel<T> {
   ) {
     return new BinaryOperatorAggregate(reducer.value, reducer.default);
   }
-  return new LastValue<T>();
+  // @ts-expect-error - Annotation without reducer
+  return new LastValue<V>();
 }
 
 export class CompiledStateGraph<
-  State extends object | unknown,
-  Update extends object | unknown = Partial<State>,
+  S,
+  U,
   N extends string = typeof START
-> extends CompiledGraph<N, State, Update> {
-  declare builder: StateGraph<State, Update, N>;
+> extends CompiledGraph<N, S, U> {
+  declare builder: StateGraph<unknown, S, U, N>;
 
   attachNode(key: typeof START, node?: never): void;
 
-  attachNode(key: N, node: Runnable<State, Update, RunnableConfig>): void;
+  attachNode(key: N, node: Runnable<S, U, RunnableConfig>): void;
 
   attachNode(
     key: N | typeof START,
-    node?: Runnable<State, Update, RunnableConfig>
+    node?: Runnable<S, U, RunnableConfig>
   ): void {
     const stateKeys = Object.keys(this.builder.channels);
 
-    function getStateKey(key: keyof Update, input: Update) {
+    function getStateKey(key: keyof U, input: U) {
       if (!input) {
         return SKIP_WRITE;
       } else if (typeof input !== "object" || Array.isArray(input)) {
@@ -262,7 +317,7 @@ export class CompiledStateGraph<
             channel: key,
             value: PASSTHROUGH,
             mapper: new RunnableCallable({
-              func: getStateKey.bind(null, key as keyof Update),
+              func: getStateKey.bind(null, key as keyof U),
               trace: false,
               recurse: false,
             }),
@@ -271,7 +326,7 @@ export class CompiledStateGraph<
 
     // add node and output channel
     if (key === START) {
-      this.nodes[key] = new PregelNode<State, Update>({
+      this.nodes[key] = new PregelNode<S, U>({
         tags: [TAG_HIDDEN],
         triggers: [START],
         channels: [START],
@@ -279,7 +334,7 @@ export class CompiledStateGraph<
       });
     } else {
       this.channels[key] = new EphemeralValue();
-      this.nodes[key] = new PregelNode<State, Update>({
+      this.nodes[key] = new PregelNode<S, U>({
         triggers: [],
         // read state keys
         channels:
@@ -337,7 +392,7 @@ export class CompiledStateGraph<
   attachBranch(
     start: N | typeof START,
     name: string,
-    branch: Branch<State, N>
+    branch: Branch<S, N>
   ): void {
     // attach branch publisher
     this.nodes[start].writers.push(
@@ -355,7 +410,7 @@ export class CompiledStateGraph<
           return new ChannelWrite(writes, [TAG_HIDDEN]);
         },
         // reader
-        (config) => ChannelRead.doRead<State>(config, this.outputs, true)
+        (config) => ChannelRead.doRead<S>(config, this.outputs, true)
       )
     );
 
@@ -373,4 +428,18 @@ export class CompiledStateGraph<
       this.nodes[end as N].triggers.push(channelName);
     }
   }
+}
+
+function isBaseChannel(obj: unknown): obj is BaseChannel {
+  return obj != null && typeof (obj as BaseChannel).lc_graph_name === "string";
+}
+
+function isStateDefinition(obj: unknown): obj is StateDefinition {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    !Array.isArray(obj) &&
+    Object.keys(obj).length > 0 &&
+    Object.values(obj).every((v) => typeof v === "function" || isBaseChannel(v))
+  );
 }

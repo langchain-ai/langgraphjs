@@ -59,7 +59,11 @@ export function messagesStateReducer(
   return merged.filter((m) => !idsToRemove.has(m.id));
 }
 
-export class MessageGraph extends StateGraph<BaseMessage[], Messages> {
+export class MessageGraph extends StateGraph<
+  BaseMessage[],
+  BaseMessage[],
+  Messages
+> {
   constructor() {
     super({
       channels: {

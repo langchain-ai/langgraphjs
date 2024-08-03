@@ -1,5 +1,5 @@
 import { describe, it, expect } from "@jest/globals";
-import { StateGraph } from "../graph/state.js";
+import { Annotation, StateGraph } from "../graph/state.js";
 import { END, START } from "../web.js";
 
 describe("State", () => {
@@ -19,9 +19,32 @@ describe("State", () => {
   });
 
   it("should allow reducers with different argument types", async () => {
-    const stateGraph = new StateGraph<{
-      testval: string[];
-    }>({
+    const State = {
+      val: Annotation<number>,
+      testval: Annotation<string[], string>({
+        reducer: (left, right) =>
+          right ? left.concat([right.toString()]) : left,
+      }),
+    };
+    const stateGraph = new StateGraph(State);
+
+    const graph = stateGraph
+      .addNode("testnode", (_) => ({ testval: "hi!", val: 3 }))
+      .addEdge(START, "testnode")
+      .addEdge("testnode", END)
+      .compile();
+    expect(await graph.invoke({ testval: ["hello"] })).toEqual({
+      testval: ["hello", "hi!"],
+      val: 3,
+    });
+  });
+
+  it("should allow reducers with different argument types", async () => {
+    const stateGraph = new StateGraph<
+      unknown,
+      { testval: string[] },
+      { testval: string }
+    >({
       channels: {
         testval: {
           reducer: (left: string[], right?: string) =>
