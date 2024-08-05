@@ -1,4 +1,5 @@
 /* eslint-disable no-process-env */
+/* esling-disable no-promise-executor-return */
 import { beforeAll, describe, expect, it } from "@jest/globals";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { StructuredTool, Tool } from "@langchain/core/tools";
