@@ -97,6 +97,9 @@ export class FakeToolCallingChatModel extends BaseChatModel {
     if (this.thrownErrorString) {
       throw new Error(this.thrownErrorString);
     }
+    if (this.sleep !== undefined) {
+      await new Promise((resolve) => setTimeout(resolve, this.sleep));
+    }
     const msg = this.responses?.[this.idx] ?? messages[this.idx];
     const generation: ChatResult = {
       generations: [
