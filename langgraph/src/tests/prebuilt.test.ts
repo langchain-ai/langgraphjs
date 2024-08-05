@@ -330,6 +330,42 @@ describe("createReactAgent", () => {
     ]);
   });
 
+  it("Should respect a passed signal", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "result1",
+          tool_calls: [
+            { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+          ],
+        }),
+        new AIMessage("result2"),
+      ],
+      sleep: 500,
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools: [new SearchAPIWithArtifact()],
+      messageModifier: "You are a helpful assistant",
+    });
+
+    const controller = new AbortController();
+
+    setTimeout(() => controller.abort(), 100);
+
+    await expect(async () => {
+      await agent.invoke(
+        {
+          messages: [new HumanMessage("Hello Input!")],
+        },
+        {
+          signal: controller.signal,
+        }
+      );
+    }).rejects.toThrowError();
+  });
+
   it("Works with tools that return content_and_artifact response format", async () => {
     const llm = new FakeToolCallingChatModel({
       responses: [

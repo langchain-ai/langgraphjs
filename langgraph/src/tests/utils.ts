@@ -1,3 +1,4 @@
+/* eslint-disable no-promise-executor-return */
 import assert from "node:assert";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import {
@@ -96,6 +97,9 @@ export class FakeToolCallingChatModel extends BaseChatModel {
   ): Promise<ChatResult> {
     if (this.thrownErrorString) {
       throw new Error(this.thrownErrorString);
+    }
+    if (this.sleep !== undefined) {
+      await new Promise((resolve) => setTimeout(resolve, this.sleep));
     }
     const msg = this.responses?.[this.idx] ?? messages[this.idx];
     const generation: ChatResult = {

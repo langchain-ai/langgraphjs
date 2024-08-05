@@ -694,7 +694,7 @@ export class Pregel<
               proc.invoke(input, updatedConfig)
         );
 
-        await executeTasks(tasks, this.stepTimeout);
+        await executeTasks(tasks, this.stepTimeout, config.signal);
 
         // combine pending writes from all tasks
         const pendingWrites: Array<[keyof Cc, unknown]> = [];
