@@ -1,3 +1,4 @@
+/* eslint-disable no-promise-executor-return */
 import assert from "node:assert";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import {
