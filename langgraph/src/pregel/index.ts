@@ -798,36 +798,41 @@ export class Pregel<
   }
 }
 
-function timeout(ms: number): Promise<void> {
-  return new Promise((reject) => {
-    setTimeout(reject, ms);
-  });
-}
-
 async function executeTasks<RunOutput>(
   tasks: Array<() => Promise<RunOutput | Error | void>>,
-  stepTimeout?: number
+  stepTimeout?: number,
+  signal?: AbortSignal
 ): Promise<void> {
-  // Wrap each task in a Promise that respects the step timeout
-  const wrappedTasks = tasks.map((task) =>
-    stepTimeout
-      ? Promise.race([
-          task(),
-          stepTimeout ? timeout(stepTimeout) : Promise.resolve(),
-        ])
-      : task()
-  );
+  if (stepTimeout && signal) {
+    if ("any" in AbortSignal) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      signal = (AbortSignal as any).any([
+        signal,
+        AbortSignal.timeout(stepTimeout),
+      ]);
+    }
+  } else if (stepTimeout) {
+    signal = AbortSignal.timeout(stepTimeout);
+  }
+
+  // Abort if signal is aborted
+  signal?.throwIfAborted();
+
+  // Start all tasks
+  const started = tasks.map((task) => task());
 
   // Wait for all tasks to settle
-  const results = await Promise.allSettled(wrappedTasks);
-
-  // Process the results
-  for (const result of results) {
-    if (result.status === "rejected") {
-      // If any task failed, cancel all pending tasks and throw the error
-      throw result.reason;
-    }
-  }
+  // If any tasks fail, or signal is aborted, the promise will reject
+  await Promise.all(
+    signal
+      ? [
+          ...started,
+          new Promise<never>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(new Error("Abort")));
+          }),
+        ]
+      : started
+  );
 }
 
 export function _shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(

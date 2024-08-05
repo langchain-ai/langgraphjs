@@ -1411,7 +1411,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:0.2.20":
+"@langchain/core@npm:>0.1.0  <0.3.0, @langchain/core@npm:>=0.2.11 <0.3.0, @langchain/core@npm:>=0.2.16 <0.3.0, @langchain/core@npm:>=0.2.20 <0.3.0, @langchain/core@npm:>=0.2.5 <0.3.0, @langchain/core@npm:~0.2.0":
   version: 0.2.20
   resolution: "@langchain/core@npm:0.2.20"
   dependencies:
@@ -1427,6 +1427,26 @@ __metadata:
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
   checksum: 0c1c877d9d94d38e32067e1259ca658ca552161ee36b98f9ef6453aa8b1fe37b1b49c321d7789e110c9f515cbb491a6f543f51ba34baff483f073182bcb187e7
+  languageName: node
+  linkType: hard
+
+"@langchain/core@npm:~0.1.56":
+  version: 0.1.63
+  resolution: "@langchain/core@npm:0.1.63"
+  dependencies:
+    ansi-styles: ^5.0.0
+    camelcase: 6
+    decamelize: 1.2.0
+    js-tiktoken: ^1.0.12
+    langsmith: ~0.1.7
+    ml-distance: ^4.0.0
+    mustache: ^4.2.0
+    p-queue: ^6.6.2
+    p-retry: 4
+    uuid: ^9.0.0
+    zod: ^3.22.4
+    zod-to-json-schema: ^3.22.3
+  checksum: 0aa18f55e5e5cab2c609a6c0d37bcfe9a36b574658acaeb7857f6a0e23dd9ad5617d40988a48f6f00c461a33a5abee983d2ed8b311b92c60b641002b42f0ab26
   languageName: node
   linkType: hard
 
