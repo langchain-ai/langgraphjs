@@ -804,7 +804,13 @@ async function executeTasks<RunOutput>(
   signal?: AbortSignal
 ): Promise<void> {
   if (stepTimeout && signal) {
-    signal = AbortSignal.any([signal, AbortSignal.timeout(stepTimeout)]);
+    if ("any" in AbortSignal) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      signal = (AbortSignal as any).any([
+        signal,
+        AbortSignal.timeout(stepTimeout),
+      ]);
+    }
   } else if (stepTimeout) {
     signal = AbortSignal.timeout(stepTimeout);
   }
@@ -822,7 +828,7 @@ async function executeTasks<RunOutput>(
       ? [
           ...started,
           new Promise<never>((_resolve, reject) => {
-            signal.addEventListener("abort", () => reject(new Error("Abort")));
+            signal?.addEventListener("abort", () => reject(new Error("Abort")));
           }),
         ]
       : started
