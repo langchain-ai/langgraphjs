@@ -8,8 +8,8 @@ export {
   MessageGraph,
   messagesStateReducer,
   Annotation,
-  StateInterface,
-  UpdateInterface,
+  type StateType,
+  type UpdateType,
 } from "./graph/index.js";
 export { MemorySaver } from "./checkpoint/memory.js";
 export {

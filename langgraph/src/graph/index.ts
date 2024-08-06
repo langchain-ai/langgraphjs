@@ -4,7 +4,7 @@ export {
   StateGraph,
   type CompiledStateGraph,
   Annotation,
-  StateInterface,
-  UpdateInterface,
+  type StateType,
+  type UpdateType,
 } from "./state.js";
 export { MessageGraph, messagesStateReducer } from "./message.js";
