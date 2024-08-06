@@ -58,11 +58,11 @@ type ExtractUpdateType<C> = C extends BaseChannel
   ? ReturnType<C>["UpdateType"]
   : never;
 
-export type StateInterface<S extends StateDefinition> = {
+export type StateType<S extends StateDefinition> = {
   [key in keyof S]: ExtractValueType<S[key]>;
 };
 
-export type UpdateInterface<S extends StateDefinition> = {
+export type UpdateType<S extends StateDefinition> = {
   [key in keyof S]?: ExtractUpdateType<S[key]>;
 };
 
@@ -95,8 +95,8 @@ export interface StateGraphArgs<Channels extends object | unknown> {
 
 export class StateGraph<
   SD extends StateDefinition | unknown,
-  S = SD extends StateDefinition ? StateInterface<SD> : SD,
-  U = SD extends StateDefinition ? UpdateInterface<SD> : Partial<S>,
+  S = SD extends StateDefinition ? StateType<SD> : SD,
+  U = SD extends StateDefinition ? UpdateType<SD> : Partial<S>,
   N extends string = typeof START
 > extends Graph<N, S, U> {
   channels: Record<string, BaseChannel>;

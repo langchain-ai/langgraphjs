@@ -7,6 +7,9 @@ export {
   type CompiledStateGraph,
   MessageGraph,
   messagesStateReducer,
+  Annotation,
+  type StateType,
+  type UpdateType,
 } from "./graph/index.js";
 export { MemorySaver } from "./checkpoint/memory.js";
 export {
