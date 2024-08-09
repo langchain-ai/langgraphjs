@@ -333,7 +333,7 @@ export class CompiledStateGraph<
         writers: [new ChannelWrite(stateWriteEntries, [TAG_HIDDEN])],
       });
     } else {
-      this.channels[key] = new EphemeralValue();
+      this.channels[key] = new EphemeralValue(false);
       this.nodes[key] = new PregelNode<S, U>({
         triggers: [],
         // read state keys
@@ -424,7 +424,7 @@ export class CompiledStateGraph<
       }
       const channelName = `branch:${start}:${name}:${end}`;
       (this.channels as Record<string, BaseChannel>)[channelName] =
-        new EphemeralValue();
+        new EphemeralValue(false);
       this.nodes[end as N].triggers.push(channelName);
     }
   }

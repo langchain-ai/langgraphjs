@@ -905,7 +905,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       } catch (e: any) {
         if (e.name === InvalidUpdateError.unminifiable_name) {
           throw new InvalidUpdateError(
-            `Invalid update for channel ${chan}. Values: ${vals}`
+            `Invalid update for channel ${chan}. Values: ${vals}\n\nError: ${e.message}`
           );
         }
       }
@@ -967,23 +967,22 @@ export function _prepareNextTasks<
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
   for (const [name, proc] of Object.entries<PregelNode>(processes)) {
+    const hasUpdatedChannels = proc.triggers
+      .filter((chan) => {
+        try {
+          readChannel(channels, chan, false);
+          return true;
+        } catch (e) {
+          return false;
+        }
+      })
+      .some(
+        (chan) =>
+          getChannelVersion(newCheckpoint, chan) >
+          getVersionSeen(newCheckpoint, name, chan)
+      );
     // If any of the channels read by this process were updated
-    if (
-      proc.triggers
-        .filter((chan) => {
-          try {
-            readChannel(channels, chan, false);
-            return true;
-          } catch (e) {
-            return false;
-          }
-        })
-        .some(
-          (chan) =>
-            getChannelVersion(newCheckpoint, chan) >
-            getVersionSeen(newCheckpoint, name, chan)
-        )
-    ) {
+    if (hasUpdatedChannels) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let val: any;
 

@@ -3,13 +3,41 @@ import {
   RunnableConfig,
   RunnableLike,
 } from "@langchain/core/runnables";
-import { CONFIG_KEY_SEND } from "../constants.js";
+import {
+  _isSendPacket,
+  CONFIG_KEY_SEND,
+  SendPacket,
+  TASKS,
+} from "../constants.js";
 import { RunnableCallable } from "../utils.js";
+import { InvalidUpdateError } from "../errors.js";
 
 type TYPE_SEND = (values: Array<[string, unknown]>) => void;
 
-export const SKIP_WRITE = {};
-export const PASSTHROUGH = {};
+export const SKIP_WRITE = {
+  [Symbol.for("LG_SKIP_WRITE")]: true,
+};
+
+function _isSkipWrite(x: unknown) {
+  return (
+    typeof x === "object" &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (x as any)?.[Symbol.for("LG_SKIP_WRITE")] !== undefined
+  );
+}
+
+export const PASSTHROUGH = {
+  [Symbol.for("LG_PASSTHROUGH")]: true,
+};
+
+function _isPassthrough(x: unknown) {
+  return (
+    typeof x === "object" &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (x as any)?.[Symbol.for("LG_PASSTHROUGH")] !== undefined
+  );
+}
+
 const IS_WRITER = Symbol("IS_WRITER");
 
 /**
@@ -20,11 +48,13 @@ export class ChannelWrite<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   RunInput = any
 > extends RunnableCallable {
-  writes: Array<ChannelWriteEntry>;
+  writes: Array<ChannelWriteEntry | SendPacket>;
 
-  constructor(writes: Array<ChannelWriteEntry>, tags?: string[]) {
+  constructor(writes: Array<ChannelWriteEntry | SendPacket>, tags?: string[]) {
     const name = `ChannelWrite<${writes
-      .map(({ channel }) => channel)
+      .map((packet) => {
+        return _isSendPacket(packet) ? packet.node : packet.channel;
+      })
       .join(",")}>`;
     super({
       ...{ writes, name, tags },
@@ -38,33 +68,49 @@ export class ChannelWrite<
   async _getWriteValues(
     input: unknown,
     config: RunnableConfig
-  ): Promise<Record<string, unknown>> {
-    return Promise.all(
-      this.writes
-        .map((write: ChannelWriteEntry) => ({
-          channel: write.channel,
-          value: write.value === PASSTHROUGH ? input : write.value,
-          skipNone: write.skipNone,
-          mapper: write.mapper,
-        }))
-        .map(async (write: ChannelWriteEntry) => ({
-          channel: write.channel,
-          value: write.mapper
-            ? await write.mapper.invoke(write.value, config)
-            : write.value,
-          skipNone: write.skipNone,
-          mapper: write.mapper,
-        }))
-    ).then((writes: Array<ChannelWriteEntry>) =>
-      writes
+  ): Promise<[string, unknown][]> {
+    const writes: [string, SendPacket][] = this.writes
+      .filter(_isSendPacket)
+      .map((packet) => {
+        return [TASKS, packet];
+      });
+    const entries = this.writes.filter((write): write is ChannelWriteEntry => {
+      return !_isSendPacket(write);
+    });
+    const invalidEntry = entries.find((write) => {
+      return write.channel === TASKS;
+    });
+    if (invalidEntry) {
+      throw new InvalidUpdateError(
+        `Cannot write to the reserved channel ${TASKS}`
+      );
+    }
+    const values: [string, unknown][] = await Promise.all(
+      entries.map(async (write: ChannelWriteEntry) => {
+        let value;
+        if (_isPassthrough(write.value)) {
+          value = input;
+        } else {
+          value = write.value;
+        }
+        const mappedValue = write.mapper
+          ? await write.mapper.invoke(value, config)
+          : value;
+        return {
+          ...write,
+          value: mappedValue,
+        };
+      })
+    ).then((writes: Array<ChannelWriteEntry>) => {
+      return writes
         .filter(
           (write: ChannelWriteEntry) => !write.skipNone || write.value !== null
         )
-        .reduce((acc: Record<string, unknown>, write: ChannelWriteEntry) => {
-          acc[write.channel] = write.value;
-          return acc;
-        }, {})
-    );
+        .map((write) => {
+          return [write.channel, write.value];
+        });
+    });
+    return [...writes, ...values];
   }
 
   async _write(input: unknown, config: RunnableConfig): Promise<void> {
@@ -72,14 +118,11 @@ export class ChannelWrite<
     ChannelWrite.doWrite(config, values);
   }
 
-  static doWrite(
-    config: RunnableConfig,
-    values: Record<string, unknown>
-  ): void {
+  // TODO: Support requireAtLeastOneOf
+  static doWrite(config: RunnableConfig, values: [string, unknown][]): void {
     const write: TYPE_SEND = config.configurable?.[CONFIG_KEY_SEND];
-    write(
-      Object.entries(values).filter(([_channel, value]) => value !== SKIP_WRITE)
-    );
+    const filtered = values.filter(([_, value]) => !_isSkipWrite(value));
+    write(filtered);
   }
 
   static isWriter(runnable: RunnableLike): boolean {
