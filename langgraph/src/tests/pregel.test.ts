@@ -47,6 +47,7 @@ import { Checkpoint } from "../checkpoint/base.js";
 import { GraphRecursionError, InvalidUpdateError } from "../errors.js";
 import { SqliteSaver } from "../checkpoint/sqlite.js";
 import { uuid6 } from "../checkpoint/id.js";
+import { TASKS } from "../constants.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -699,21 +700,57 @@ describe("_prepareNextTasks", () => {
       input: { test: true },
       proc: new RunnablePassthrough(),
       writes: [],
-      config: { tags: [] },
+      config: {
+        tags: [],
+        configurable: expect.any(Object),
+        metadata: {
+          langgraph_node: "node1",
+          langgraph_step: -1,
+          langgraph_task_idx: 0,
+          langgraph_triggers: [TASKS],
+        },
+        recursionLimit: 25,
+        runId: undefined,
+        runName: "node1",
+      },
     });
     expect(tasks[1]).toEqual({
       name: "node1",
       input: 1,
       proc: new RunnablePassthrough(),
       writes: [],
-      config: { tags: [] },
+      config: {
+        tags: [],
+        configurable: expect.any(Object),
+        metadata: {
+          langgraph_node: "node1",
+          langgraph_step: -1,
+          langgraph_task_idx: 1,
+          langgraph_triggers: ["channel1"],
+        },
+        recursionLimit: 25,
+        runId: undefined,
+        runName: "node1",
+      },
     });
     expect(tasks[2]).toEqual({
       name: "node2",
       input: 100,
       proc: new RunnablePassthrough(),
       writes: [],
-      config: { tags: [] },
+      config: {
+        tags: [],
+        configurable: expect.any(Object),
+        metadata: {
+          langgraph_node: "node2",
+          langgraph_step: -1,
+          langgraph_task_idx: 2,
+          langgraph_triggers: ["channel1", "channel2"],
+        },
+        recursionLimit: 25,
+        runId: undefined,
+        runName: "node2",
+      },
     });
 
     expect(newCheckpoint.versions_seen.node1.channel1).toBe(2);
