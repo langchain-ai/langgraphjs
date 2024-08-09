@@ -1103,7 +1103,7 @@ it("should process two inputs to two outputs validly", async () => {
   expect(await app.invoke(2)).toEqual([3, 3]);
 });
 
-it.only("should allow a conditional edge after a send", async () => {
+it("should allow a conditional edge after a send", async () => {
   const State = {
     items: Annotation<string[]>({
       reducer: (a, b) => a.concat(b),
