@@ -15,7 +15,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/core": "latest",
+    "@langchain/core": "*",
     "@langchain/langgraph": "workspace:*",
     "@types/node": "^18.15.11",
     "typescript": "latest"
