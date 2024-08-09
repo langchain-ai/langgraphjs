@@ -36,12 +36,12 @@ describe("ChannelWrite", () => {
       // call method / assertions
       const writeValues = await channelWrite._getWriteValues(input, config);
 
-      const expectedWriteValues = {
-        someChannel1: 1,
-        someChannel2: 2, // value is set to input value since PASSTHROUGH value was specified (with mapper)
+      const expectedWriteValues = [
+        ["someChannel1", 1],
+        ["someChannel2", 2], // value is set to input value since PASSTHROUGH value was specified (with mapper)
         // someChannel3 should be filtered out
-        someChannel4: 2, // value is set to input value since PASSTHROUGH value was specified
-      };
+        ["someChannel4", 2], // value is set to input value since PASSTHROUGH value was specified
+      ];
       expect(writeValues).toEqual(expectedWriteValues);
     });
   });

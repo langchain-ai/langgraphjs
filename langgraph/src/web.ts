@@ -27,3 +27,4 @@ export {
   EmptyChannelError,
 } from "./errors.js";
 export { type SerializerProtocol } from "./serde/base.js";
+export { type SendProtocol } from "./constants.js";
