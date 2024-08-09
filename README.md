@@ -249,7 +249,7 @@ Is there anything else you'd like to know about the weather in New York or any o
 - [Conceptual Guides](https://langchain-ai.github.io/langgraphjs/concepts/): In-depth explanations of the key concepts and principles behind LangGraph, such as nodes, edges, state and more.
 - [API Reference](https://langchain-ai.github.io/langgraphjs/reference/graphs/): Review important classes and methods, simple examples of how to use the graph and checkpointing APIs, higher-level prebuilt components and more.
 
-## Running Example Juypter Notebooks
+## Running Example Jupyter Notebooks
 
 Please note that the *.ipynb notebooks in the `examples/` folder require [tslab](https://github.com/yunabe/tslab?tab=readme-ov-file) to be installed. In order to run these notebooks in VSCode, you will also need the [Jupyter](https://marketplace.visualstudio.com/items?itemName=ms-toolsai.jupyter) VSCode Extension installed. After cloning this repository, you can run `yarn build` in the root. You should then be all set!
 
