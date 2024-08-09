@@ -12,7 +12,6 @@
     "test": "next lint"
   },
   "dependencies": {
-    "@langchain/core": "*",
     "@langchain/langgraph": "workspace:*",
     "@types/node": "18.15.11",
     "@types/react": "18.0.33",
