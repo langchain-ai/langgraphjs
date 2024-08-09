@@ -20,7 +20,7 @@ import { NamedBarrierValue } from "../channels/named_barrier_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { RunnableCallable } from "../utils.js";
 import { All } from "../pregel/types.js";
-import { TAG_HIDDEN } from "../constants.js";
+import { _isSendProtocol, SendProtocol, TAG_HIDDEN } from "../constants.js";
 import { InvalidUpdateError } from "../errors.js";
 
 const ROOT = "__root__";
@@ -403,10 +403,16 @@ export class CompiledStateGraph<
           if (!filteredDests.length) {
             return;
           }
-          const writes: ChannelWriteEntry[] = filteredDests.map((dest) => ({
-            channel: `branch:${start}:${name}:${dest}`,
-            value: start,
-          }));
+          const writes: (ChannelWriteEntry | SendProtocol)[] =
+            filteredDests.map((dest) => {
+              if (_isSendProtocol(dest)) {
+                return dest;
+              }
+              return {
+                channel: `branch:${start}:${name}:${dest}`,
+                value: start,
+              };
+            });
           return new ChannelWrite(writes, [TAG_HIDDEN]);
         },
         // reader

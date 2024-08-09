@@ -1,6 +1,7 @@
 import { RunnableConfig } from "@langchain/core/runnables";
 import { DefaultSerializer, SerializerProtocol } from "../serde/base.js";
 import { uuid6 } from "./id.js";
+import { SendProtocol } from "../constants.js";
 
 export interface CheckpointMetadata {
   source: "input" | "loop" | "update";
@@ -50,6 +51,11 @@ export interface Checkpoint<
    * @default {}
    */
   versions_seen: Record<N, Record<C, number>>;
+  /**
+   * List of packets sent to nodes but not yet processed.
+   * Cleared by the next checkpoint.
+   */
+  pending_sends: SendProtocol[];
 }
 
 export interface ReadonlyCheckpoint extends Readonly<Checkpoint> {
@@ -101,6 +107,7 @@ export function emptyCheckpoint(): Checkpoint {
     channel_values: {},
     channel_versions: {},
     versions_seen: {},
+    pending_sends: [],
   };
 }
 
@@ -112,6 +119,7 @@ export function copyCheckpoint(checkpoint: ReadonlyCheckpoint): Checkpoint {
     channel_values: { ...checkpoint.channel_values },
     channel_versions: { ...checkpoint.channel_versions },
     versions_seen: deepCopy(checkpoint.versions_seen),
+    pending_sends: [...checkpoint.pending_sends],
   };
 }
 

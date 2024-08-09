@@ -38,9 +38,11 @@ import {
 } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import {
+  _isSendProtocol,
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
   INTERRUPT,
+  SendProtocol,
   TAG_HIDDEN,
   TASKS,
 } from "../constants.js";
@@ -328,7 +330,8 @@ export class Pregel<
       checkpoint,
       this.nodes,
       channels,
-      false
+      false,
+      { step: -1 }
     );
     return {
       values: readChannels(channels, this.streamChannelsAsIs),
@@ -355,7 +358,8 @@ export class Pregel<
         saved.checkpoint,
         this.nodes,
         channels,
-        false
+        false,
+        { step: -1 }
       );
       yield {
         values: readChannels(channels, this.streamChannelsAsIs),
@@ -574,7 +578,8 @@ export class Pregel<
           checkpoint,
           processes,
           channels,
-          true
+          true,
+          { step: -1 }
         );
         checkpoint = discarded[0]; // eslint-disable-line prefer-destructuring
         // apply input writes
@@ -620,7 +625,8 @@ export class Pregel<
           checkpoint,
           processes,
           channels,
-          true
+          true,
+          { step }
         );
 
         // if no more tasks, we're done
@@ -873,18 +879,54 @@ export function _localRead<Cc extends StrRecord<string, BaseChannel>>(
   }
 }
 
+export function _localWrite(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  commit: (writes: [string, any][]) => void,
+  processes: Record<string, PregelNode>,
+  channels: Record<string, BaseChannel>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  writes: [string, any][]
+) {
+  for (const [chan, value] of writes) {
+    if (chan === TASKS) {
+      if (!_isSendProtocol(value)) {
+        throw new InvalidUpdateError(
+          `Invalid packet type, expected SendProtocol, got ${JSON.stringify(
+            value
+          )}`
+        );
+      }
+      if (!(value.node in processes)) {
+        throw new InvalidUpdateError(
+          `Invalid node name ${value.node} in packet`
+        );
+      }
+    } else if (!(chan in channels)) {
+      console.warn(`Skipping write for channel '${chan}' which has no readers`);
+    }
+  }
+  commit(writes);
+}
+
 export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   checkpoint: Checkpoint,
   channels: Cc,
   pendingWrites: Array<[keyof Cc, unknown]>
 ): void {
+  if (checkpoint.pending_sends) {
+    checkpoint.pending_sends = [];
+  }
   const pendingWritesByChannel = {} as Record<keyof Cc, Array<unknown>>;
   // Group writes by channel
   for (const [chan, val] of pendingWrites) {
-    if (chan in pendingWritesByChannel) {
-      pendingWritesByChannel[chan].push(val);
+    if (chan === TASKS) {
+      checkpoint.pending_sends.push(val as SendProtocol);
     } else {
-      pendingWritesByChannel[chan] = [val];
+      if (chan in pendingWritesByChannel) {
+        pendingWritesByChannel[chan].push(val);
+      } else {
+        pendingWritesByChannel[chan] = [val];
+      }
     }
   }
 
@@ -935,7 +977,8 @@ export function _prepareNextTasks<
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
-  forExecution: false
+  forExecution: false,
+  extra: { step: number }
 ): [Checkpoint, Array<PregelTaskDescription>];
 
 export function _prepareNextTasks<
@@ -945,7 +988,8 @@ export function _prepareNextTasks<
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
-  forExecution: true
+  forExecution: true,
+  extra: { step: number }
 ): [Checkpoint, Array<PregelExecutableTask<keyof Nn, keyof Cc>>];
 
 export function _prepareNextTasks<
@@ -955,7 +999,8 @@ export function _prepareNextTasks<
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
-  forExecution: boolean
+  forExecution: boolean,
+  extra: { step: number }
 ): [
   Checkpoint,
   PregelTaskDescription[] | PregelExecutableTask<keyof Nn, keyof Cc>[]
@@ -963,6 +1008,64 @@ export function _prepareNextTasks<
   const newCheckpoint = copyCheckpoint(checkpoint);
   const tasks: Array<PregelExecutableTask<keyof Nn, keyof Cc>> = [];
   const taskDescriptions: Array<PregelTaskDescription> = [];
+
+  for (const packet of checkpoint.pending_sends) {
+    if (!_isSendProtocol(packet)) {
+      console.warn(
+        `Ignoring invalid packet ${JSON.stringify(packet)} in pending sends.`
+      );
+      continue;
+    }
+    if (!(packet.node in processes)) {
+      console.warn(
+        `Ignoring unknown node name ${packet.node} in pending sends.`
+      );
+      continue;
+    }
+    if (forExecution) {
+      const proc = processes[packet.node];
+      const node = proc.getNode();
+      if (node !== undefined) {
+        const triggers = [TASKS];
+        const metadata = {
+          langgraph_step: extra.step,
+          langgraph_node: packet.node,
+          langgraph_triggers: triggers,
+          langgraph_task_idx: tasks.length,
+        };
+        const writes: [keyof Cc, unknown][] = [];
+        tasks.push({
+          name: packet.node,
+          input: packet.state,
+          proc: node,
+          writes,
+          config: patchConfig(
+            mergeConfigs(proc.config, processes[packet.node].config, {
+              metadata,
+            }),
+            {
+              runName: packet.node,
+              // callbacks:
+              configurable: {
+                [CONFIG_KEY_SEND]: _localWrite.bind(
+                  undefined,
+                  (items: [keyof Cc, unknown][]) => writes.push(...items),
+                  processes,
+                  channels
+                ),
+                [CONFIG_KEY_READ]: _localRead.bind(
+                  undefined,
+                  checkpoint,
+                  channels,
+                  writes as Array<[string, unknown]>
+                ),
+              },
+            }
+          ),
+        });
+      }
+    }
+  }
 
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
@@ -1048,12 +1151,35 @@ export function _prepareNextTasks<
 
         const node = proc.getNode();
         if (node !== undefined) {
+          const metadata = {
+            langgraph_step: extra.step,
+            langgraph_node: name,
+            langgraph_triggers: proc.triggers,
+            langgraph_task_idx: tasks.length,
+          };
+          const writes: [keyof Cc, unknown][] = [];
           tasks.push({
             name,
             input: val,
             proc: node,
-            writes: [],
-            config: proc.config,
+            writes,
+            config: patchConfig(mergeConfigs(proc.config, { metadata }), {
+              runName: name,
+              configurable: {
+                [CONFIG_KEY_SEND]: _localWrite.bind(
+                  undefined,
+                  (items: [keyof Cc, unknown][]) => writes.push(...items),
+                  processes,
+                  channels
+                ),
+                [CONFIG_KEY_READ]: _localRead.bind(
+                  undefined,
+                  checkpoint,
+                  channels,
+                  writes as Array<[string, unknown]>
+                ),
+              },
+            }),
           });
         }
       } else {

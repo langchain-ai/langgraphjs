@@ -4,9 +4,9 @@ import {
   RunnableLike,
 } from "@langchain/core/runnables";
 import {
-  _isSendPacket,
+  _isSendProtocol,
   CONFIG_KEY_SEND,
-  SendPacket,
+  SendProtocol,
   TASKS,
 } from "../constants.js";
 import { RunnableCallable } from "../utils.js";
@@ -48,12 +48,15 @@ export class ChannelWrite<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   RunInput = any
 > extends RunnableCallable {
-  writes: Array<ChannelWriteEntry | SendPacket>;
+  writes: Array<ChannelWriteEntry | SendProtocol>;
 
-  constructor(writes: Array<ChannelWriteEntry | SendPacket>, tags?: string[]) {
+  constructor(
+    writes: Array<ChannelWriteEntry | SendProtocol>,
+    tags?: string[]
+  ) {
     const name = `ChannelWrite<${writes
       .map((packet) => {
-        return _isSendPacket(packet) ? packet.node : packet.channel;
+        return _isSendProtocol(packet) ? packet.node : packet.channel;
       })
       .join(",")}>`;
     super({
@@ -69,13 +72,13 @@ export class ChannelWrite<
     input: unknown,
     config: RunnableConfig
   ): Promise<[string, unknown][]> {
-    const writes: [string, SendPacket][] = this.writes
-      .filter(_isSendPacket)
+    const writes: [string, SendProtocol][] = this.writes
+      .filter(_isSendProtocol)
       .map((packet) => {
         return [TASKS, packet];
       });
     const entries = this.writes.filter((write): write is ChannelWriteEntry => {
-      return !_isSendPacket(write);
+      return !_isSendProtocol(write);
     });
     const invalidEntry = entries.find((write) => {
       return write.channel === TASKS;

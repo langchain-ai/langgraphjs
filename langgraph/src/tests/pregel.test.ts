@@ -18,7 +18,14 @@ import {
 } from "@langchain/core/messages";
 import { FakeChatModel, MemorySaverAssertImmutable } from "./utils.js";
 import { LastValue } from "../channels/last_value.js";
-import { END, Graph, START, StateGraph } from "../graph/index.js";
+import {
+  Annotation,
+  END,
+  Graph,
+  START,
+  StateGraph,
+  StateType,
+} from "../graph/index.js";
 import { Topic } from "../channels/topic.js";
 import { PregelNode } from "../pregel/read.js";
 import { BaseChannel } from "../channels/base.js";
@@ -231,6 +238,7 @@ describe("_shouldInterrupt", () => {
           channel1: 1,
         },
       },
+      pending_sends: [],
     };
 
     const interruptNodes = ["node1"];
@@ -263,6 +271,7 @@ describe("_shouldInterrupt", () => {
         channel1: 2, // current channel version is greater than last version seen
       },
       versions_seen: {},
+      pending_sends: [],
     };
 
     const interruptNodes = ["node1"];
@@ -299,6 +308,7 @@ describe("_shouldInterrupt", () => {
           channel1: 2,
         },
       },
+      pending_sends: [],
     };
 
     const interruptNodes = ["node1"];
@@ -335,6 +345,7 @@ describe("_shouldInterrupt", () => {
           channel1: 1,
         },
       },
+      pending_sends: [],
     };
 
     const interruptNodes = ["node1"];
@@ -365,6 +376,7 @@ describe("_localRead", () => {
       channel_values: {},
       channel_versions: {},
       versions_seen: {},
+      pending_sends: [],
     };
 
     const channel1 = new LastValue<number>();
@@ -396,6 +408,7 @@ describe("_localRead", () => {
       channel_values: {},
       channel_versions: {},
       versions_seen: {},
+      pending_sends: [],
     };
 
     const channel1 = new LastValue<number>();
@@ -443,6 +456,7 @@ describe("_applyWrites", () => {
           channel1: 1,
         },
       },
+      pending_sends: [],
     };
 
     const lastValueChannel1 = new LastValue<string>();
@@ -488,6 +502,7 @@ describe("_applyWrites", () => {
           channel1: 1,
         },
       },
+      pending_sends: [],
     };
 
     const lastValueChannel1 = new LastValue<string>();
@@ -533,6 +548,7 @@ describe("_prepareNextTasks", () => {
           channel2: 5,
         },
       },
+      pending_sends: [],
     };
 
     const processes: Record<string, PregelNode> = {
@@ -562,7 +578,8 @@ describe("_prepareNextTasks", () => {
       checkpoint,
       processes,
       channels,
-      false
+      false,
+      { step: -1 }
     );
 
     expect(taskDescriptions.length).toBe(2);
@@ -607,6 +624,14 @@ describe("_prepareNextTasks", () => {
           channel6: 3,
         },
       },
+      pending_sends: [
+        {
+          node: "node1",
+          state: { test: true },
+        },
+        // Will not appear because node3 has no writers
+        { node: "node3", state: { test3: "value3" } },
+      ],
     };
 
     const processes: Record<string, PregelNode> = {
@@ -664,18 +689,26 @@ describe("_prepareNextTasks", () => {
       checkpoint,
       processes,
       channels,
-      true
+      true,
+      { step: -1 }
     );
 
-    expect(tasks.length).toBe(2);
+    expect(tasks.length).toBe(3);
     expect(tasks[0]).toEqual({
+      name: "node1",
+      input: { test: true },
+      proc: new RunnablePassthrough(),
+      writes: [],
+      config: { tags: [] },
+    });
+    expect(tasks[1]).toEqual({
       name: "node1",
       input: 1,
       proc: new RunnablePassthrough(),
       writes: [],
       config: { tags: [] },
     });
-    expect(tasks[1]).toEqual({
+    expect(tasks[2]).toEqual({
       name: "node2",
       input: 100,
       proc: new RunnablePassthrough(),
@@ -1068,6 +1101,32 @@ it("should process two inputs to two outputs validly", async () => {
 
   // An Inbox channel accumulates updates into a sequence
   expect(await app.invoke(2)).toEqual([3, 3]);
+});
+
+it.only("should allow a conditional edge after a send", async () => {
+  const State = {
+    items: Annotation<string[]>({
+      reducer: (a, b) => a.concat(b),
+    }),
+  };
+  const sendForFun = (state: StateType<typeof State>) => {
+    return [
+      { node: "2", state },
+      { node: "2", state },
+    ];
+  };
+  const routeToThree = () => "3";
+  const graph = new StateGraph(State)
+    .addNode("1", () => ({ items: ["1"] }))
+    .addNode("2", () => ({ items: ["2"] }))
+    .addNode("3", () => ({ items: ["3"] }))
+    .addEdge("__start__", "1")
+    .addConditionalEdges("1", sendForFun)
+    .addConditionalEdges("2", routeToThree)
+    .addEdge("3", "__end__")
+    .compile();
+  const res = await graph.invoke({ items: ["0"] });
+  expect(res).toEqual({ items: ["0", "1", "2", "2", "3"] });
 });
 
 it("should handle checkpoints correctly", async () => {

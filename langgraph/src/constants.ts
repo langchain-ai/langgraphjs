@@ -20,13 +20,13 @@ export const TASKS = "__pregel_tasks";
  * the same node multiple times in parallel with different states,
  * before aggregating the results back into the main graph's state.
  */
-export interface SendPacket {
+export interface SendProtocol {
   node: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   state: any;
 }
 
-export function _isSendPacket(x: unknown): x is SendPacket {
-  const operation = x as SendPacket;
+export function _isSendProtocol(x: unknown): x is SendProtocol {
+  const operation = x as SendProtocol;
   return typeof operation.node === "string" && operation.state !== undefined;
 }
