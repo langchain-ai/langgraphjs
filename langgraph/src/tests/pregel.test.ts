@@ -1871,6 +1871,36 @@ describe("StateGraph", () => {
       answer: "doc1,doc2,doc3,doc4",
     });
   });
+
+  it("Allow map reduce flows", async () => {
+    const OverallState = {
+      subjects: Annotation<string[]>,
+      jokes: Annotation<string[]>({
+        reducer: (a, b) => a.concat(b),
+      }),
+    };
+    const continueToJokes = async (state: StateType<typeof OverallState>) => {
+      return state.subjects.map((subject) => {
+        return {
+          node: "generate_joke",
+          state: { subjects: [subject] },
+        };
+      });
+    };
+    const graph = new StateGraph(OverallState)
+      .addNode("generate_joke", (state) => ({
+        jokes: [`Joke about ${state.subjects}`],
+      }))
+      .addConditionalEdges("__start__", continueToJokes)
+      .addEdge("generate_joke", "__end__")
+      .compile();
+    const res = await graph.invoke({ subjects: ["cats", "dogs"] });
+    // Invoking with two subjects results in a generated joke for each
+    expect(res).toEqual({
+      subjects: ["cats", "dogs"],
+      jokes: [`Joke about cats`, `Joke about dogs`],
+    });
+  });
 });
 
 describe("PreBuilt", () => {
