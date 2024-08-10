@@ -987,6 +987,8 @@ it("should process two processes with object input and output", async () => {
       one: {
         inbox: 3,
       },
+    },
+    {
       two: {
         output: 13,
       },
@@ -1899,7 +1901,7 @@ describe("StateGraph", () => {
     });
   });
 
-  it.only("State graph packets", async () => {
+  it("State graph packets", async () => {
     const AgentState = {
       messages: Annotation({
         reducer: messagesStateReducer,
