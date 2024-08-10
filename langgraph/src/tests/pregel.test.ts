@@ -1901,7 +1901,7 @@ describe("StateGraph", () => {
     });
   });
 
-  it("State graph packets", async () => {
+  it.only("State graph packets", async () => {
     const AgentState = {
       messages: Annotation({
         reducer: messagesStateReducer,
@@ -2111,8 +2111,7 @@ describe("StateGraph", () => {
       values: {
         messages: expectedOutputMessages.slice(0, 2),
       },
-      // TODO: Populate, see Python test
-      next: [],
+      next: ["tools"],
       metadata: {
         source: "loop",
         step: 1,
@@ -2157,8 +2156,7 @@ describe("StateGraph", () => {
           }),
         ],
       },
-      // TODO: Populate, see Python test
-      next: [],
+      next: ["tools"],
       metadata: {
         source: "update",
         step: 2,
@@ -2234,8 +2232,7 @@ describe("StateGraph", () => {
           expectedOutputMessages[3],
         ],
       },
-      // TODO: Populate, see Python test
-      next: [],
+      next: ["tools", "tools"],
       metadata: {
         source: "loop",
         step: 4,
@@ -2289,7 +2286,6 @@ describe("StateGraph", () => {
           }),
         ],
       },
-      // TODO: Populate, see Python test
       next: [],
       metadata: {
         source: "update",

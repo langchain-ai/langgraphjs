@@ -1071,6 +1071,11 @@ export function _prepareNextTasks<
           ),
         });
       }
+    } else {
+      taskDescriptions.push({
+        name: packet.node,
+        input: packet.args,
+      });
     }
   }
 
