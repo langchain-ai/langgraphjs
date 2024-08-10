@@ -94,6 +94,6 @@ export function createCheckpoint<ValueType>(
     channel_values: values,
     channel_versions: { ...checkpoint.channel_versions },
     versions_seen: deepCopy(checkpoint.versions_seen),
-    pending_sends: [],
+    pending_sends: checkpoint.pending_sends ?? [],
   };
 }
