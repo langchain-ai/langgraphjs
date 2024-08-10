@@ -1,4 +1,5 @@
 /* eslint-disable no-process-env */
+/* eslint-disable no-promise-executor-return */
 import { it, expect, jest, beforeAll, describe } from "@jest/globals";
 import {
   RunnableConfig,
@@ -8,14 +9,16 @@ import {
 import { AgentAction, AgentFinish } from "@langchain/core/agents";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { FakeStreamingLLM } from "@langchain/core/utils/testing";
-import { Tool } from "@langchain/core/tools";
+import { tool, Tool } from "@langchain/core/tools";
 import { z } from "zod";
 import {
   AIMessage,
   BaseMessage,
   FunctionMessage,
   HumanMessage,
+  ToolMessage,
 } from "@langchain/core/messages";
+import { ToolCall } from "@langchain/core/messages/tool";
 import { FakeChatModel, MemorySaverAssertImmutable } from "./utils.js";
 import { LastValue } from "../channels/last_value.js";
 import {
@@ -41,13 +44,13 @@ import {
   _shouldInterrupt,
 } from "../pregel/index.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
-import { MessageGraph } from "../graph/message.js";
+import { MessageGraph, messagesStateReducer } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
 import { Checkpoint } from "../checkpoint/base.js";
 import { GraphRecursionError, InvalidUpdateError } from "../errors.js";
 import { SqliteSaver } from "../checkpoint/sqlite.js";
 import { uuid6 } from "../checkpoint/id.js";
-import { TASKS } from "../constants.js";
+import { Send, TASKS } from "../constants.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -628,10 +631,10 @@ describe("_prepareNextTasks", () => {
       pending_sends: [
         {
           node: "node1",
-          state: { test: true },
+          args: { test: true },
         },
         // Will not appear because node3 has no writers
-        { node: "node3", state: { test3: "value3" } },
+        { node: "node3", args: { test3: "value3" } },
       ],
     };
 
@@ -1147,10 +1150,7 @@ it("should allow a conditional edge after a send", async () => {
     }),
   };
   const sendForFun = (state: StateType<typeof State>) => {
-    return [
-      { node: "2", state },
-      { node: "2", state },
-    ];
+    return [new Send("2", state), new Send("2", state)];
   };
   const routeToThree = () => "3";
   const graph = new StateGraph(State)
@@ -1881,10 +1881,7 @@ describe("StateGraph", () => {
     };
     const continueToJokes = async (state: StateType<typeof OverallState>) => {
       return state.subjects.map((subject) => {
-        return {
-          node: "generate_joke",
-          state: { subjects: [subject] },
-        };
+        return new Send("generate_joke", { subjects: [subject] });
       });
     };
     const graph = new StateGraph(OverallState)
@@ -1900,6 +1897,466 @@ describe("StateGraph", () => {
       subjects: ["cats", "dogs"],
       jokes: [`Joke about cats`, `Joke about dogs`],
     });
+  });
+
+  it.only("State graph packets", async () => {
+    const AgentState = {
+      messages: Annotation({
+        reducer: messagesStateReducer,
+      }),
+    };
+    const searchApi = tool(
+      async ({ query }) => {
+        return `result for ${query}`;
+      },
+      {
+        name: "search_api",
+        schema: z.object({
+          query: z.string(),
+        }),
+        description: "Searches the API for the query",
+      }
+    );
+
+    const toolsByName = { [searchApi.name]: searchApi };
+    const model = new FakeChatModel({
+      responses: [
+        new AIMessage({
+          id: "ai1",
+          content: "",
+          tool_calls: [
+            {
+              id: "tool_call123",
+              name: "search_api",
+              args: { query: "query" },
+              type: "tool_call",
+            },
+          ],
+        }),
+        new AIMessage({
+          id: "ai2",
+          content: "",
+          tool_calls: [
+            {
+              id: "tool_call234",
+              name: "search_api",
+              args: { query: "another", idx: 0 },
+              type: "tool_call",
+            },
+            {
+              id: "tool_call567",
+              name: "search_api",
+              args: { query: "a third one", idx: 1 },
+              type: "tool_call",
+            },
+          ],
+        }),
+        new AIMessage({
+          id: "ai3",
+          content: "answer",
+        }),
+      ],
+    });
+
+    const agent = async (state: StateType<typeof AgentState>) => {
+      return {
+        messages: await model.invoke(state.messages),
+      };
+    };
+
+    const shouldContinue = async (state: StateType<typeof AgentState>) => {
+      // TODO: Support this?
+      // expect(state.something_extra).toEqual("hi there");
+      const toolCalls = (state.messages[state.messages.length - 1] as AIMessage)
+        .tool_calls;
+      if (toolCalls?.length) {
+        return toolCalls.map((toolCall) => {
+          return new Send("tools", toolCall);
+        });
+      } else {
+        return "__end__";
+      }
+    };
+
+    const toolsNode = async (toolCall: ToolCall) => {
+      await new Promise((resolve) =>
+        setTimeout(resolve, toolCall.args.idx * 100)
+      );
+      const toolMessage = await toolsByName[toolCall.name].invoke(toolCall);
+      return {
+        messages: new ToolMessage({
+          content: toolMessage.content,
+          id: toolCall.args.idx !== undefined ? `${toolCall.args.idx}` : "abc",
+          tool_call_id: toolMessage.tool_call_id,
+          name: toolMessage.name,
+        }),
+      };
+    };
+
+    const graph = new StateGraph(AgentState)
+      .addNode("agent", agent)
+      .addNode("tools", toolsNode)
+      .addEdge("__start__", "agent")
+      .addConditionalEdges("agent", shouldContinue)
+      .addEdge("tools", "agent")
+      .compile();
+    const inputMessage = new HumanMessage({
+      id: "foo",
+      content: "what is weather in sf",
+    });
+    const expectedOutputMessages = [
+      inputMessage,
+      new AIMessage({
+        id: "ai1",
+        content: "",
+        tool_calls: [
+          {
+            id: "tool_call123",
+            name: "search_api",
+            args: { query: "query" },
+            type: "tool_call",
+          },
+        ],
+      }),
+      new ToolMessage({
+        id: "abc",
+        content: "result for query",
+        name: "search_api",
+        tool_call_id: "tool_call123",
+      }),
+      new AIMessage({
+        id: "ai2",
+        content: "",
+        tool_calls: [
+          {
+            id: "tool_call234",
+            name: "search_api",
+            args: { query: "another", idx: 0 },
+            type: "tool_call",
+          },
+          {
+            id: "tool_call567",
+            name: "search_api",
+            args: { query: "a third one", idx: 1 },
+            type: "tool_call",
+          },
+        ],
+      }),
+      new ToolMessage({
+        id: "0",
+        content: "result for another",
+        name: "search_api",
+        tool_call_id: "tool_call234",
+      }),
+      new ToolMessage({
+        id: "1",
+        content: "result for a third one",
+        name: "search_api",
+        tool_call_id: "tool_call567",
+      }),
+      new AIMessage({
+        id: "ai3",
+        content: "answer",
+      }),
+    ];
+    const res = await graph.invoke({
+      messages: [inputMessage],
+    });
+    expect(res).toEqual({
+      messages: expectedOutputMessages,
+    });
+
+    const stream = await graph.stream({
+      messages: [inputMessage],
+    });
+    const chunks = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    console.log(chunks);
+    const nodeOrder = ["agent", "tools", "agent", "tools", "tools", "agent"];
+    expect(nodeOrder.length).toEqual(chunks.length);
+    expect(chunks).toEqual(
+      // The input message is not streamed back
+      expectedOutputMessages.slice(1).map((message, i) => {
+        return {
+          [nodeOrder[i]]: { messages: message },
+        };
+      })
+    );
+
+    // app_w_interrupt = workflow.compile(
+    //     checkpointer=MemorySaverAssertImmutable(serde=serde),
+    //     interrupt_after=["agent"],
+    // )
+    // config = {"configurable": {"thread_id": "1"}}
+
+    // assert [
+    //     c
+    //     for c in app_w_interrupt.stream(
+    //         {"messages": HumanMessage(content="what is weather in sf")}, config
+    //     )
+    // ] == [
+    //     {
+    //         "agent": {
+    //             "messages": AIMessage(
+    //                 id="ai1",
+    //                 content="",
+    //                 tool_calls=[
+    //                     {
+    //                         "id": "tool_call123",
+    //                         "name": "search_api",
+    //                         "args": {"query": "query"},
+    //                     },
+    //                 ],
+    //             )
+    //         }
+    //     },
+    // ]
+
+    // assert app_w_interrupt.get_state(config) == StateSnapshot(
+    //     values={
+    //         "messages": [
+    //             _AnyIdHumanMessage(content="what is weather in sf"),
+    //             AIMessage(
+    //                 id="ai1",
+    //                 content="",
+    //                 tool_calls=[
+    //                     {
+    //                         "id": "tool_call123",
+    //                         "name": "search_api",
+    //                         "args": {"query": "query"},
+    //                     },
+    //                 ],
+    //             ),
+    //         ]
+    //     },
+    //     next=("tools",),
+    //     config=(app_w_interrupt.checkpointer.get_tuple(config)).config,
+    //     created_at=(app_w_interrupt.checkpointer.get_tuple(config)).checkpoint["ts"],
+    //     metadata={
+    //         "source": "loop",
+    //         "step": 1,
+    //         "writes": {
+    //             "agent": {
+    //                 "messages": AIMessage(
+    //                     id="ai1",
+    //                     content="",
+    //                     tool_calls=[
+    //                         {
+    //                             "id": "tool_call123",
+    //                             "name": "search_api",
+    //                             "args": {"query": "query"},
+    //                         },
+    //                     ],
+    //                 )
+    //             }
+    //         },
+    //     },
+    //     parent_config=[*app_w_interrupt.checkpointer.list(config, limit=2)][-1].config,
+    // )
+
+    // # modify ai message
+    // last_message = (app_w_interrupt.get_state(config)).values["messages"][-1]
+    // last_message.tool_calls[0]["args"]["query"] = "a different query"
+    // app_w_interrupt.update_state(
+    //     config, {"messages": last_message, "something_extra": "hi there"}
+    // )
+
+    // # message was replaced instead of appended
+    // assert app_w_interrupt.get_state(config) == StateSnapshot(
+    //     values={
+    //         "messages": [
+    //             _AnyIdHumanMessage(content="what is weather in sf"),
+    //             AIMessage(
+    //                 id="ai1",
+    //                 content="",
+    //                 tool_calls=[
+    //                     {
+    //                         "id": "tool_call123",
+    //                         "name": "search_api",
+    //                         "args": {"query": "a different query"},
+    //                     },
+    //                 ],
+    //             ),
+    //         ]
+    //     },
+    //     next=("tools",),
+    //     config=app_w_interrupt.checkpointer.get_tuple(config).config,
+    //     created_at=(app_w_interrupt.checkpointer.get_tuple(config)).checkpoint["ts"],
+    //     metadata={
+    //         "source": "update",
+    //         "step": 2,
+    //         "writes": {
+    //             "agent": {
+    //                 "messages": AIMessage(
+    //                     id="ai1",
+    //                     content="",
+    //                     tool_calls=[
+    //                         {
+    //                             "id": "tool_call123",
+    //                             "name": "search_api",
+    //                             "args": {"query": "a different query"},
+    //                         },
+    //                     ],
+    //                 ),
+    //                 "something_extra": "hi there",
+    //             }
+    //         },
+    //     },
+    //     parent_config=[*app_w_interrupt.checkpointer.list(config, limit=2)][-1].config,
+    // )
+
+    // assert [c for c in app_w_interrupt.stream(None, config)] == [
+    //     {
+    //         "tools": {
+    //             "messages": ToolMessage(
+    //                 content="result for a different query",
+    //                 name="search_api",
+    //                 id=AnyStr(),
+    //                 tool_call_id="tool_call123",
+    //             )
+    //         }
+    //     },
+    //     {
+    //         "agent": {
+    //             "messages": AIMessage(
+    //                 id="ai2",
+    //                 content="",
+    //                 tool_calls=[
+    //                     {
+    //                         "id": "tool_call234",
+    //                         "name": "search_api",
+    //                         "args": {"query": "another", "idx": 0},
+    //                     },
+    //                     {
+    //                         "id": "tool_call567",
+    //                         "name": "search_api",
+    //                         "args": {"query": "a third one", "idx": 1},
+    //                     },
+    //                 ],
+    //             )
+    //         },
+    //     },
+    // ]
+
+    // assert app_w_interrupt.get_state(config) == StateSnapshot(
+    //     values={
+    //         "messages": [
+    //             _AnyIdHumanMessage(content="what is weather in sf"),
+    //             AIMessage(
+    //                 id="ai1",
+    //                 content="",
+    //                 tool_calls=[
+    //                     {
+    //                         "id": "tool_call123",
+    //                         "name": "search_api",
+    //                         "args": {"query": "a different query"},
+    //                     },
+    //                 ],
+    //             ),
+    //             ToolMessage(
+    //                 content="result for a different query",
+    //                 name="search_api",
+    //                 id=AnyStr(),
+    //                 tool_call_id="tool_call123",
+    //             ),
+    //             AIMessage(
+    //                 id="ai2",
+    //                 content="",
+    //                 tool_calls=[
+    //                     {
+    //                         "id": "tool_call234",
+    //                         "name": "search_api",
+    //                         "args": {"query": "another", "idx": 0},
+    //                     },
+    //                     {
+    //                         "id": "tool_call567",
+    //                         "name": "search_api",
+    //                         "args": {"query": "a third one", "idx": 1},
+    //                     },
+    //                 ],
+    //             ),
+    //         ]
+    //     },
+    //     next=("tools", "tools"),
+    //     config=app_w_interrupt.checkpointer.get_tuple(config).config,
+    //     created_at=(app_w_interrupt.checkpointer.get_tuple(config)).checkpoint["ts"],
+    //     metadata={
+    //         "source": "loop",
+    //         "step": 4,
+    //         "writes": {
+    //             "agent": {
+    //                 "messages": AIMessage(
+    //                     id="ai2",
+    //                     content="",
+    //                     tool_calls=[
+    //                         {
+    //                             "id": "tool_call234",
+    //                             "name": "search_api",
+    //                             "args": {"query": "another", "idx": 0},
+    //                         },
+    //                         {
+    //                             "id": "tool_call567",
+    //                             "name": "search_api",
+    //                             "args": {"query": "a third one", "idx": 1},
+    //                         },
+    //                     ],
+    //                 )
+    //             },
+    //         },
+    //     },
+    //     parent_config=[*app_w_interrupt.checkpointer.list(config, limit=2)][-1].config,
+    // )
+
+    // app_w_interrupt.update_state(
+    //     config,
+    //     {
+    //         "messages": AIMessage(content="answer", id="ai2"),
+    //         "something_extra": "hi there",
+    //     },
+    // )
+
+    // # replaces message even if object identity is different, as long as id is the same
+    // assert app_w_interrupt.get_state(config) == StateSnapshot(
+    //     values={
+    //         "messages": [
+    //             _AnyIdHumanMessage(content="what is weather in sf"),
+    //             AIMessage(
+    //                 id="ai1",
+    //                 content="",
+    //                 tool_calls=[
+    //                     {
+    //                         "id": "tool_call123",
+    //                         "name": "search_api",
+    //                         "args": {"query": "a different query"},
+    //                     },
+    //                 ],
+    //             ),
+    //             ToolMessage(
+    //                 content="result for a different query",
+    //                 name="search_api",
+    //                 id=AnyStr(),
+    //                 tool_call_id="tool_call123",
+    //             ),
+    //             AIMessage(content="answer", id="ai2"),
+    //         ]
+    //     },
+    //     next=(),
+    //     config=app_w_interrupt.checkpointer.get_tuple(config).config,
+    //     created_at=(app_w_interrupt.checkpointer.get_tuple(config)).checkpoint["ts"],
+    //     metadata={
+    //         "source": "update",
+    //         "step": 5,
+    //         "writes": {
+    //             "agent": {
+    //                 "messages": AIMessage(content="answer", id="ai2"),
+    //                 "something_extra": "hi there",
+    //             }
+    //         },
+    //     },
+    //     parent_config=[*app_w_interrupt.checkpointer.list(config, limit=2)][-1].config,
+    // )
   });
 });
 

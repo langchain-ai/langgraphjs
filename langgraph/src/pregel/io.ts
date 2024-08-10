@@ -107,48 +107,59 @@ export function* mapOutputUpdates<N extends PropertyKey, C extends PropertyKey>(
   outputChannels: C | Array<C>,
   tasks: readonly PregelExecutableTask<N, C>[]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Generator<Record<N, any | Record<string, any>>> {
+): Generator<Record<N, Record<string, any> | Record<string, any>[]>> {
   const outputTasks = tasks.filter(
     (task) =>
       task.config === undefined || !task.config.tags?.includes(TAG_HIDDEN)
   );
-  if (Array.isArray(outputChannels)) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updated = {} as Record<N, any | Record<string, any>>;
-
-    for (const task of outputTasks) {
-      if (task.writes.some(([chan, _]) => outputChannels.includes(chan as C))) {
+  if (!outputTasks.length) {
+    return;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let updated: [N, Record<string, any>][];
+  if (!Array.isArray(outputChannels)) {
+    updated = outputTasks.flatMap((task) =>
+      task.writes
+        .filter(([chan, _]) => chan === outputChannels)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const nodes = {} as Record<C, any>;
-        for (const [chan, value] of task.writes) {
-          if (outputChannels.includes(chan as C)) {
-            nodes[chan] = value;
-          }
-        }
-
-        updated[task.name] = nodes;
-      }
-    }
-
-    if (Object.keys(updated).length > 0) {
-      yield updated;
-    }
+        .map(([_, value]) => [task.name, value] as [N, Record<string, any>])
+    );
   } else {
+    updated = outputTasks
+      .filter((task) =>
+        task.writes.some(([chan]) => outputChannels.includes(chan))
+      )
+      .map((task) => [
+        task.name,
+        Object.fromEntries(
+          task.writes.filter(([chan]) => outputChannels.includes(chan))
+        ),
+      ]);
+  }
+  const grouped = Object.fromEntries(
+    outputTasks.map((t) => [t.name, []])
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updated = {} as Record<N, any | Record<string, any>>;
+  ) as unknown as Record<N, Record<string, any>[]>;
 
-    for (const task of outputTasks) {
-      for (const [chan, value] of task.writes) {
-        if (chan === outputChannels) {
-          updated[task.name] = value;
-        }
-      }
-    }
+  for (const [node, value] of updated) {
+    grouped[node].push(value);
+  }
 
-    if (Object.keys(updated).length > 0) {
-      yield updated;
+  for (const [node, value] of Object.entries(grouped) as [
+    N,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Record<string, any>[]
+  ][]) {
+    if (value.length === 0) {
+      delete grouped[node];
+    } else if (value.length === 1) {
+      // TODO: Fix incorrect cast here
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      grouped[node] = value[0] as Record<string, any>[];
     }
   }
+
+  yield grouped;
 }
 
 export function single<T>(iter: IterableIterator<T>): T | null {

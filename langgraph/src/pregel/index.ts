@@ -38,11 +38,12 @@ import {
 } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import {
-  _isSendProtocol,
+  _isSend,
+  _isSendInterface,
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
   INTERRUPT,
-  SendProtocol,
+  Send,
   TAG_HIDDEN,
   TASKS,
 } from "../constants.js";
@@ -715,7 +716,10 @@ export class Pregel<
         if (streamMode === "values") {
           yield* mapOutputValues(outputKeys, pendingWrites, channels);
         } else if (streamMode === "updates") {
-          yield* mapOutputUpdates(outputKeys, nextTasks);
+          // TODO: Refactor
+          for await (const task of nextTasks) {
+            yield* mapOutputUpdates(outputKeys, [task]);
+          }
         }
 
         // save end of step checkpoint
@@ -889,7 +893,7 @@ export function _localWrite(
 ) {
   for (const [chan, value] of writes) {
     if (chan === TASKS) {
-      if (!_isSendProtocol(value)) {
+      if (!_isSend(value)) {
         throw new InvalidUpdateError(
           `Invalid packet type, expected SendProtocol, got ${JSON.stringify(
             value
@@ -920,7 +924,10 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // Group writes by channel
   for (const [chan, val] of pendingWrites) {
     if (chan === TASKS) {
-      checkpoint.pending_sends.push(val as SendProtocol);
+      checkpoint.pending_sends.push({
+        node: (val as Send).node,
+        args: (val as Send).args,
+      });
     } else {
       if (chan in pendingWritesByChannel) {
         pendingWritesByChannel[chan].push(val);
@@ -1010,7 +1017,7 @@ export function _prepareNextTasks<
   const taskDescriptions: Array<PregelTaskDescription> = [];
 
   for (const packet of checkpoint.pending_sends) {
-    if (!_isSendProtocol(packet)) {
+    if (!_isSendInterface(packet)) {
       console.warn(
         `Ignoring invalid packet ${JSON.stringify(packet)} in pending sends.`
       );
@@ -1036,7 +1043,7 @@ export function _prepareNextTasks<
         const writes: [keyof Cc, unknown][] = [];
         tasks.push({
           name: packet.node,
-          input: packet.state,
+          input: packet.args,
           proc: node,
           writes,
           config: patchConfig(

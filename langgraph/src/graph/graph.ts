@@ -17,7 +17,7 @@ import { BaseChannel } from "../channels/base.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { All } from "../pregel/types.js";
 import { ChannelWrite, PASSTHROUGH } from "../pregel/write.js";
-import { _isSendProtocol, SendProtocol, TAG_HIDDEN } from "../constants.js";
+import { _isSend, Send, TAG_HIDDEN } from "../constants.js";
 import { RunnableCallable } from "../utils.js";
 import { InvalidUpdateError } from "../errors.js";
 
@@ -36,10 +36,9 @@ export class Branch<IO, N extends string> {
     config?: RunnableConfig
   ) =>
     | string
-    | SendProtocol
-    | (string | SendProtocol)[]
-    | Promise<string | SendProtocol>
-    | Promise<(string | SendProtocol)[]>;
+    | Send
+    | (string | Send)[]
+    | Promise<string | Send | (string | Send)[]>;
 
   ends?: Record<string, N | typeof END>;
 
@@ -54,7 +53,7 @@ export class Branch<IO, N extends string> {
   }
 
   compile(
-    writer: (dests: (string | SendProtocol)[]) => Runnable | undefined,
+    writer: (dests: (string | Send)[]) => Runnable | undefined,
     reader?: (config: RunnableConfig) => IO
   ) {
     return ChannelWrite.registerWriter(
@@ -68,7 +67,7 @@ export class Branch<IO, N extends string> {
   async _route(
     input: IO,
     config: RunnableConfig,
-    writer: (dests: (string | SendProtocol)[]) => Runnable | undefined,
+    writer: (dests: (string | Send)[]) => Runnable | undefined,
     reader?: (config: RunnableConfig) => IO
   ): Promise<Runnable | undefined> {
     let result = await this.condition(reader ? reader(config) : input, config);
@@ -76,21 +75,17 @@ export class Branch<IO, N extends string> {
       result = [result];
     }
 
-    let destinations: (string | SendProtocol)[];
+    let destinations: (string | Send)[];
     if (this.ends) {
       // destinations = [r if isinstance(r, Send) else self.ends[r] for r in result]
-      destinations = result.map((r) =>
-        _isSendProtocol(r) ? r : this.ends![r]
-      );
+      destinations = result.map((r) => (_isSend(r) ? r : this.ends![r]));
     } else {
       destinations = result;
     }
     if (destinations.some((dest) => !dest)) {
       throw new Error("Branch condition returned unknown or null destination");
     }
-    if (
-      destinations.filter(_isSendProtocol).some((packet) => packet.node === END)
-    ) {
+    if (destinations.filter(_isSend).some((packet) => packet.node === END)) {
       throw new InvalidUpdateError("Cannot send a packet to the END node");
     }
     return writer(destinations);
@@ -132,9 +127,9 @@ export class Graph<
     return this.edges;
   }
 
-  addNode<K extends string>(
+  addNode<K extends string, NodeInput = RunInput>(
     key: K,
-    action: RunnableLike<RunInput, RunOutput>
+    action: RunnableLike<NodeInput, RunOutput>
   ): Graph<N | K, RunInput, RunOutput> {
     this.warnIfCompiled(
       `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
@@ -148,7 +143,8 @@ export class Graph<
     }
 
     this.nodes[key as unknown as N] = _coerceToRunnable<RunInput, RunOutput>(
-      action
+      // Account for arbitrary state due to Send API
+      action as RunnableLike<RunInput, RunOutput>
     );
 
     return this as Graph<N | K, RunInput, RunOutput>;
@@ -409,7 +405,7 @@ export class CompiledGraph<
     this.nodes[start].pipe(
       branch.compile((dests) => {
         const writes = dests.map((dest) => {
-          if (_isSendProtocol(dest)) {
+          if (_isSend(dest)) {
             return dest;
           }
           return {

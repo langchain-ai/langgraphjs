@@ -1,7 +1,7 @@
 import { RunnableConfig } from "@langchain/core/runnables";
 import { DefaultSerializer, SerializerProtocol } from "../serde/base.js";
 import { uuid6 } from "./id.js";
-import { SendProtocol } from "../constants.js";
+import { SendInterface } from "../constants.js";
 
 export interface CheckpointMetadata {
   source: "input" | "loop" | "update";
@@ -55,7 +55,7 @@ export interface Checkpoint<
    * List of packets sent to nodes but not yet processed.
    * Cleared by the next checkpoint.
    */
-  pending_sends: SendProtocol[];
+  pending_sends: SendInterface[];
 }
 
 export interface ReadonlyCheckpoint extends Readonly<Checkpoint> {

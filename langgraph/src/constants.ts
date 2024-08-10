@@ -7,6 +7,17 @@ export const TAG_HIDDEN = "langsmith:hidden";
 
 export const TASKS = "__pregel_tasks";
 
+export interface SendInterface {
+  node: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  args: any;
+}
+
+export function _isSendInterface(x: unknown): x is SendInterface {
+  const operation = x as SendInterface;
+  return typeof operation.node === "string" && operation.args !== undefined;
+}
+
 /**
  * A message or packet to send to a specific node in the graph.
  *
@@ -20,13 +31,14 @@ export const TASKS = "__pregel_tasks";
  * the same node multiple times in parallel with different states,
  * before aggregating the results back into the main graph's state.
  */
-export interface SendProtocol {
-  node: string;
+export class Send implements SendInterface {
+  lg_name = "Send";
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  state: any;
+  constructor(public node: string, public args: any) {}
 }
 
-export function _isSendProtocol(x: unknown): x is SendProtocol {
-  const operation = x as SendProtocol;
-  return typeof operation.node === "string" && operation.state !== undefined;
+export function _isSend(x: unknown): x is Send {
+  const operation = x as Send;
+  return operation.lg_name === "Send";
 }
