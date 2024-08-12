@@ -49,11 +49,11 @@ export type NodeType<SD extends StateDefinition> = RunnableLike<
 export class AnnotationRoot<SD extends StateDefinition> {
   lc_graph_name = "AnnotationRoot";
 
-  State: StateType<SD>;
+  declare State: StateType<SD>;
 
-  Update: UpdateType<SD>;
+  declare Update: UpdateType<SD>;
 
-  Node: NodeType<SD>;
+  declare Node: NodeType<SD>;
 
   spec: SD;
 
