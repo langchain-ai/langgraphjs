@@ -20,6 +20,8 @@ export interface FakeChatModelArgs extends BaseChatModelParams {
 export class FakeChatModel extends BaseChatModel {
   responses: BaseMessage[];
 
+  callCount = 0;
+
   constructor(fields: FakeChatModelArgs) {
     super(fields);
     this.responses = fields.responses;
@@ -48,8 +50,9 @@ export class FakeChatModel extends BaseChatModel {
         ],
       };
     }
-    const response = this.responses.shift();
+    const response = this.responses[this.callCount % this.responses.length];
     const text = messages.map((m) => m.content).join("\n");
+    this.callCount += 1;
     await runManager?.handleLLMNewToken(text);
     return {
       generations: [

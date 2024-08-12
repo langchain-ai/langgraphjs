@@ -19,6 +19,7 @@ const checkpoint1: Checkpoint = {
       someKey4: 1,
     },
   },
+  pending_sends: [],
 };
 const checkpoint2: Checkpoint = {
   v: 1,
@@ -35,6 +36,7 @@ const checkpoint2: Checkpoint = {
       someKey4: 2,
     },
   },
+  pending_sends: [],
 };
 
 describe("Base", () => {
