@@ -1,6 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
-import { Annotation, StateGraph } from "../graph/state.js";
+import { StateGraph } from "../graph/state.js";
 import { END, START } from "../web.js";
+import { Annotation } from "../graph/annotation.js";
 
 describe("State", () => {
   it("should validate a new node key correctly ", () => {
