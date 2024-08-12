@@ -1,0 +1,17 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`chain arch 1`] = `
+"%%{init: {'flowchart': {'curve': 'linear'}}}%%
+graph TD;
+	__start__[__start__]:::startclass;
+	__end__[__end__]:::endclass;
+	generate_sql([generate_sql]):::otherclass;
+	explain_sql([explain_sql]):::otherclass;
+	__start__ --> generate_sql;
+	generate_sql --> explain_sql;
+	explain_sql --> __end__;
+	classDef startclass fill:#ffdfba;
+	classDef endclass fill:#baffc9;
+	classDef otherclass fill:#fad7de;
+"
+`;

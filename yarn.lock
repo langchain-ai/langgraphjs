@@ -1408,7 +1408,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:>0.1.0  <0.3.0, @langchain/core@npm:>=0.2.11 <0.3.0, @langchain/core@npm:>=0.2.16 <0.3.0, @langchain/core@npm:>=0.2.20 <0.3.0, @langchain/core@npm:>=0.2.21 <0.3.0":
+"@langchain/core@npm:>0.1.0  <0.3.0, @langchain/core@npm:>=0.2.16 <0.3.0, @langchain/core@npm:>=0.2.20 <0.3.0, @langchain/core@npm:>=0.2.21 <0.3.0":
   version: 0.2.21
   resolution: "@langchain/core@npm:0.2.21"
   dependencies:
@@ -1457,7 +1457,7 @@ __metadata:
     eslint-plugin-prettier: ^4.2.1
     jest: ^29.5.0
     jest-environment-node: ^29.6.4
-    langchain: ^0.2.10
+    langchain: ^0.2.15
     prettier: ^2.8.3
     release-it: ^17.6.0
     rollup: ^4.5.2
@@ -3338,13 +3338,6 @@ __metadata:
   version: 2.3.0
   resolution: "binary-extensions@npm:2.3.0"
   checksum: bcad01494e8a9283abf18c1b967af65ee79b0c6a9e6fcfafebfe91dbe6e0fc7272bafb73389e198b310516ae04f7ad17d79aacf6cb4c0d5d5202a7e2e52c7d98
-  languageName: node
-  linkType: hard
-
-"binary-search@npm:^1.3.5":
-  version: 1.3.6
-  resolution: "binary-search@npm:1.3.6"
-  checksum: 2e6b3459a9c1ba1bd674a6a855a5ef7505f70707422244430e3510e989c0df6074a49fe60784a98b93b51545c9bcace1db1defee06ff861b124c036a2f2836bf
   languageName: node
   linkType: hard
 
@@ -6446,13 +6439,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"is-any-array@npm:^2.0.0":
-  version: 2.0.1
-  resolution: "is-any-array@npm:2.0.1"
-  checksum: 472ed80e17d32951435087951af30c29498b163c31bf723dd5af76545b100bcfac6fad2df3f1a648b45e3b027de8f5dc2389935267ba5258eae85762804b4982
-  languageName: node
-  linkType: hard
-
 "is-array-buffer@npm:^3.0.4":
   version: 3.0.4
   resolution: "is-array-buffer@npm:3.0.4"
@@ -7530,20 +7516,18 @@ __metadata:
   languageName: node
   linkType: hard
 
-"langchain@npm:^0.2.10":
-  version: 0.2.10
-  resolution: "langchain@npm:0.2.10"
+"langchain@npm:^0.2.15":
+  version: 0.2.15
+  resolution: "langchain@npm:0.2.15"
   dependencies:
-    "@langchain/core": ">=0.2.11 <0.3.0"
+    "@langchain/core": ">=0.2.21 <0.3.0"
     "@langchain/openai": ">=0.1.0 <0.3.0"
     "@langchain/textsplitters": ~0.0.0
     binary-extensions: ^2.2.0
     js-tiktoken: ^1.0.12
     js-yaml: ^4.1.0
     jsonpointer: ^5.0.1
-    langchainhub: ~0.0.8
-    langsmith: ~0.1.30
-    ml-distance: ^4.0.0
+    langsmith: ~0.1.40
     openapi-types: ^12.1.3
     p-retry: 4
     uuid: ^10.0.0
@@ -7551,55 +7535,64 @@ __metadata:
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
   peerDependencies:
-    "@aws-sdk/client-s3": ^3.310.0
-    "@aws-sdk/client-sagemaker-runtime": ^3.310.0
-    "@aws-sdk/client-sfn": ^3.310.0
-    "@aws-sdk/credential-provider-node": ^3.388.0
-    "@azure/storage-blob": ^12.15.0
+    "@aws-sdk/client-s3": "*"
+    "@aws-sdk/client-sagemaker-runtime": "*"
+    "@aws-sdk/client-sfn": "*"
+    "@aws-sdk/credential-provider-node": "*"
+    "@azure/storage-blob": "*"
     "@browserbasehq/sdk": "*"
-    "@gomomento/sdk": ^1.51.1
-    "@gomomento/sdk-core": ^1.51.1
+    "@gomomento/sdk": "*"
+    "@gomomento/sdk-core": "*"
     "@gomomento/sdk-web": ^1.51.1
-    "@mendable/firecrawl-js": ^0.0.13
-    "@notionhq/client": ^2.2.10
+    "@langchain/anthropic": "*"
+    "@langchain/aws": "*"
+    "@langchain/cohere": "*"
+    "@langchain/community": "*"
+    "@langchain/google-genai": "*"
+    "@langchain/google-vertexai": "*"
+    "@langchain/groq": "*"
+    "@langchain/mistralai": "*"
+    "@langchain/ollama": "*"
+    "@mendable/firecrawl-js": "*"
+    "@notionhq/client": "*"
     "@pinecone-database/pinecone": "*"
-    "@supabase/supabase-js": ^2.10.0
-    "@vercel/kv": ^0.2.3
-    "@xata.io/client": ^0.28.0
-    apify-client: ^2.7.1
-    assemblyai: ^4.0.0
+    "@supabase/supabase-js": "*"
+    "@vercel/kv": "*"
+    "@xata.io/client": "*"
+    apify-client: "*"
+    assemblyai: "*"
     axios: "*"
-    cheerio: ^1.0.0-rc.12
+    cheerio: "*"
     chromadb: "*"
-    convex: ^1.3.1
-    couchbase: ^4.3.0
-    d3-dsv: ^2.0.0
-    epub2: ^3.0.1
+    convex: "*"
+    couchbase: "*"
+    d3-dsv: "*"
+    epub2: "*"
     fast-xml-parser: "*"
     handlebars: ^4.7.8
-    html-to-text: ^9.0.5
-    ignore: ^5.2.0
-    ioredis: ^5.3.2
+    html-to-text: "*"
+    ignore: "*"
+    ioredis: "*"
     jsdom: "*"
-    mammoth: ^1.6.0
-    mongodb: ">=5.2.0"
+    mammoth: "*"
+    mongodb: "*"
     node-llama-cpp: "*"
-    notion-to-md: ^3.1.0
-    officeparser: ^4.0.4
-    pdf-parse: 1.1.1
+    notion-to-md: "*"
+    officeparser: "*"
+    pdf-parse: "*"
     peggy: ^3.0.2
-    playwright: ^1.32.1
-    puppeteer: ^19.7.2
+    playwright: "*"
+    puppeteer: "*"
     pyodide: ^0.24.1
-    redis: ^4.6.4
-    sonix-speech-recognition: ^2.1.1
-    srt-parser-2: ^1.2.3
-    typeorm: ^0.3.20
+    redis: "*"
+    sonix-speech-recognition: "*"
+    srt-parser-2: "*"
+    typeorm: "*"
     weaviate-ts-client: "*"
-    web-auth-library: ^1.0.3
-    ws: ^8.14.2
-    youtube-transcript: ^1.0.6
-    youtubei.js: ^9.1.0
+    web-auth-library: "*"
+    ws: "*"
+    youtube-transcript: "*"
+    youtubei.js: "*"
   peerDependenciesMeta:
     "@aws-sdk/client-s3":
       optional: true
@@ -7618,6 +7611,24 @@ __metadata:
     "@gomomento/sdk-core":
       optional: true
     "@gomomento/sdk-web":
+      optional: true
+    "@langchain/anthropic":
+      optional: true
+    "@langchain/aws":
+      optional: true
+    "@langchain/cohere":
+      optional: true
+    "@langchain/community":
+      optional: true
+    "@langchain/google-genai":
+      optional: true
+    "@langchain/google-vertexai":
+      optional: true
+    "@langchain/groq":
+      optional: true
+    "@langchain/mistralai":
+      optional: true
+    "@langchain/ollama":
       optional: true
     "@mendable/firecrawl-js":
       optional: true
@@ -7701,7 +7712,7 @@ __metadata:
       optional: true
     youtubei.js:
       optional: true
-  checksum: c430247b1c79f6cf1e2edd8a11f655f78862b89d7c1be64c047dd4e39fe72d901eeecefc70151ff944c19d72f16f6764c47f4e8c9ae574830d70807e6316662f
+  checksum: 7d8e7959ce57ddf5192ca6df020fe6086d6d35d80864f2d7ec2c51dcabb1169245c04490afef72e30595675fedf3b18f02388242d3695ab0da70a108c73cd622
   languageName: node
   linkType: hard
 
@@ -7902,13 +7913,6 @@ __metadata:
     youtubei.js:
       optional: true
   checksum: 597a502a7b3c5b69c01105a609688ae34f735d51fd738f3aa688a770d35d592a2acf06eb7e6b8577b679d38c1d3abdee36cd027537cdaa5a23b943428665a882
-  languageName: node
-  linkType: hard
-
-"langchainhub@npm:~0.0.8":
-  version: 0.0.8
-  resolution: "langchainhub@npm:0.0.8"
-  checksum: b46316adbbd5f1971892b423e6a7e9c7681f4c44e4ac3c3b79c6beef96a28fc9582a4ee14affb617fd887f3dac8cae55368e1b7c4a41bb43f86f17c5d63031e3
   languageName: node
   linkType: hard
 
@@ -8458,52 +8462,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ml-array-mean@npm:^1.1.6":
-  version: 1.1.6
-  resolution: "ml-array-mean@npm:1.1.6"
-  dependencies:
-    ml-array-sum: ^1.1.6
-  checksum: 81999dac8bad3bf2dafb23a9bc71883879b9d55889e48d00b91dd4a2568957a6f5373632ae57324760d1e1d7d29ad45ab4ea7ae32de67ce144d57a21e36dd9c2
-  languageName: node
-  linkType: hard
-
-"ml-array-sum@npm:^1.1.6":
-  version: 1.1.6
-  resolution: "ml-array-sum@npm:1.1.6"
-  dependencies:
-    is-any-array: ^2.0.0
-  checksum: 369dbb3681e3f8b0d0facba9fcfc981656dac49a80924859c3ed8f0a5880fb6db2d6e534f8b7b9c3cda59248152e61b27d6419d19c69539de7c3aa6aea3094eb
-  languageName: node
-  linkType: hard
-
-"ml-distance-euclidean@npm:^2.0.0":
-  version: 2.0.0
-  resolution: "ml-distance-euclidean@npm:2.0.0"
-  checksum: e31f98a947ce6971c35d74e6d2521800f0d219efb34c78b20b5f52debd206008d52e677685c09839e6bab5d2ed233aa009314236e4e548d5fafb60f2f71e2b3e
-  languageName: node
-  linkType: hard
-
-"ml-distance@npm:^4.0.0":
-  version: 4.0.1
-  resolution: "ml-distance@npm:4.0.1"
-  dependencies:
-    ml-array-mean: ^1.1.6
-    ml-distance-euclidean: ^2.0.0
-    ml-tree-similarity: ^1.0.0
-  checksum: 21ea014064eb7795c6c8c16e76bb834cba73f9f1ee2f761a3c3c34536f70bd6299b044dd05c495c533f5bdfea7401011dd4bdd159545ef69f5a021f5be4c77a2
-  languageName: node
-  linkType: hard
-
-"ml-tree-similarity@npm:^1.0.0":
-  version: 1.0.0
-  resolution: "ml-tree-similarity@npm:1.0.0"
-  dependencies:
-    binary-search: ^1.3.5
-    num-sort: ^2.0.0
-  checksum: f99e217dc94acf75c089469dc3c278f388146e43c82212160b6b75daa14309902f84eb0a00c67d502fc79dc171cf15a33d392326e024b2e89881adc585d15513
-  languageName: node
-  linkType: hard
-
 "ms@npm:2.1.2":
   version: 2.1.2
   resolution: "ms@npm:2.1.2"
@@ -8713,13 +8671,6 @@ __metadata:
   dependencies:
     boolbase: ^1.0.0
   checksum: 5afc3dafcd1573b08877ca8e6148c52abd565f1d06b1eb08caf982e3fa289a82f2cae697ffb55b5021e146d60443f1590a5d6b944844e944714a5b549675bcd3
-  languageName: node
-  linkType: hard
-
-"num-sort@npm:^2.0.0":
-  version: 2.1.0
-  resolution: "num-sort@npm:2.1.0"
-  checksum: 5a80cd0456c8847f71fb80ad3c3596714cebede76de585aa4fed2b9a4fb0907631edca1f7bb31c24dbb9928b66db3d03059994cc365d2ae011b80ddddac28f6e
   languageName: node
   linkType: hard
 
