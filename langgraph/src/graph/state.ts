@@ -5,9 +5,7 @@ import {
   RunnableLike,
 } from "@langchain/core/runnables";
 import { BaseChannel } from "../channels/base.js";
-import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { END, CompiledGraph, Graph, START, Branch } from "./graph.js";
-import { LastValue } from "../channels/last_value.js";
 import {
   ChannelWrite,
   ChannelWriteEntry,
@@ -22,63 +20,16 @@ import { RunnableCallable } from "../utils.js";
 import { All } from "../pregel/types.js";
 import { _isSend, Send, TAG_HIDDEN } from "../constants.js";
 import { InvalidUpdateError } from "../errors.js";
+import {
+  AnnotationRoot,
+  getChannel,
+  SingleReducer,
+  StateDefinition,
+  StateType,
+  UpdateType,
+} from "./annotation.js";
 
 const ROOT = "__root__";
-
-export function Annotation<ValueType>(): LastValue<ValueType>;
-
-export function Annotation<ValueType, UpdateType = ValueType>(
-  annotation: SingleReducer<ValueType, UpdateType>
-): BinaryOperatorAggregate<ValueType, UpdateType>;
-
-export function Annotation<ValueType, UpdateType = ValueType>(
-  annotation?: SingleReducer<ValueType, UpdateType>
-): BaseChannel<ValueType, UpdateType> {
-  if (annotation) {
-    return getChannel<ValueType, UpdateType>(annotation);
-  } else {
-    // @ts-expect-error - Annotation without reducer
-    return new LastValue<ValueType>();
-  }
-}
-
-interface StateDefinition {
-  [key: string]: BaseChannel | (() => BaseChannel);
-}
-
-type ExtractValueType<C> = C extends BaseChannel
-  ? C["ValueType"]
-  : C extends () => BaseChannel
-  ? ReturnType<C>["ValueType"]
-  : never;
-
-type ExtractUpdateType<C> = C extends BaseChannel
-  ? C["UpdateType"]
-  : C extends () => BaseChannel
-  ? ReturnType<C>["UpdateType"]
-  : never;
-
-export type StateType<S extends StateDefinition> = {
-  [key in keyof S]: ExtractValueType<S[key]>;
-};
-
-export type UpdateType<S extends StateDefinition> = {
-  [key in keyof S]?: ExtractUpdateType<S[key]>;
-};
-
-type SingleReducer<ValueType, UpdateType = ValueType> =
-  | {
-      reducer: BinaryOperator<ValueType, UpdateType>;
-      default?: () => ValueType;
-    }
-  | {
-      /**
-       * @deprecated Use `reducer` instead
-       */
-      value: BinaryOperator<ValueType, UpdateType>;
-      default?: () => ValueType;
-    }
-  | null;
 
 export type ChannelReducers<Channels extends object> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -106,13 +57,14 @@ export class StateGraph<
 
   constructor(
     fields: SD extends StateDefinition
-      ? SD | StateGraphArgs<S>
+      ? SD | AnnotationRoot<SD> | StateGraphArgs<S>
       : StateGraphArgs<S>
   ) {
     super();
-    if (isStateDefinition(fields)) {
+    if (isStateDefinition(fields) || isAnnotationRoot(fields)) {
+      const spec = isAnnotationRoot(fields) ? fields.spec : fields;
       this.channels = {};
-      for (const [key, val] of Object.entries(fields)) {
+      for (const [key, val] of Object.entries(spec)) {
         if (typeof val === "function") {
           this.channels[key] = val();
         } else {
@@ -259,27 +211,6 @@ function _getChannels<Channels extends Record<string, unknown> | unknown>(
     }
   }
   return channels;
-}
-
-function getChannel<V, U = V>(reducer: SingleReducer<V, U>): BaseChannel<V, U> {
-  if (
-    typeof reducer === "object" &&
-    reducer &&
-    "reducer" in reducer &&
-    reducer.reducer
-  ) {
-    return new BinaryOperatorAggregate(reducer.reducer, reducer.default);
-  }
-  if (
-    typeof reducer === "object" &&
-    reducer &&
-    "value" in reducer &&
-    reducer.value
-  ) {
-    return new BinaryOperatorAggregate(reducer.value, reducer.default);
-  }
-  // @ts-expect-error - Annotation without reducer
-  return new LastValue<V>();
 }
 
 export class CompiledStateGraph<
@@ -448,5 +379,16 @@ function isStateDefinition(obj: unknown): obj is StateDefinition {
     !Array.isArray(obj) &&
     Object.keys(obj).length > 0 &&
     Object.values(obj).every((v) => typeof v === "function" || isBaseChannel(v))
+  );
+}
+
+function isAnnotationRoot<SD extends StateDefinition>(
+  obj: unknown | AnnotationRoot<SD>
+): obj is AnnotationRoot<SD> {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    "lc_graph_name" in obj &&
+    obj.lc_graph_name === "AnnotationRoot"
   );
 }

@@ -12,7 +12,7 @@ type Messages =
   | BaseMessageLike;
 
 export function messagesStateReducer(
-  left: Messages,
+  left: BaseMessage[],
   right: Messages
 ): BaseMessage[] {
   const leftArray = Array.isArray(left) ? left : [left];

@@ -1901,12 +1901,12 @@ describe("StateGraph", () => {
     });
   });
 
-  it.only("State graph packets", async () => {
-    const AgentState = {
+  it("State graph packets", async () => {
+    const AgentState = Annotation.Root({
       messages: Annotation({
         reducer: messagesStateReducer,
       }),
-    };
+    });
     const searchApi = tool(
       async ({ query }) => {
         return `result for ${query}`;
@@ -1960,13 +1960,13 @@ describe("StateGraph", () => {
       ],
     });
 
-    const agent = async (state: StateType<typeof AgentState>) => {
+    const agent = async (state: typeof AgentState.State) => {
       return {
         messages: await model.invoke(state.messages),
       };
     };
 
-    const shouldContinue = async (state: StateType<typeof AgentState>) => {
+    const shouldContinue = async (state: typeof AgentState.State) => {
       // TODO: Support this?
       // expect(state.something_extra).toEqual("hi there");
       const toolCalls = (state.messages[state.messages.length - 1] as AIMessage)
