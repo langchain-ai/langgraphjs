@@ -30,6 +30,38 @@ export function _isSendInterface(x: unknown): x is SendInterface {
  * One such example is a "map-reduce" workflow where your graph invokes
  * the same node multiple times in parallel with different states,
  * before aggregating the results back into the main graph's state.
+ *
+ * @example
+ * ```typescript
+ * import { Annotation, Send, StateGraph } from "@langchain/langgraph";
+ *
+ * const ChainState = Annotation.Root({
+ *   subjects: Annotation<string[]>,
+ *   jokes: Annotation<string[]>({
+ *     reducer: (a, b) => a.concat(b),
+ *   }),
+ * });
+ *
+ * const continueToJokes = async (state: typeof ChainState.State) => {
+ *   return state.subjects.map((subject) => {
+ *     return new Send("generate_joke", { subjects: [subject] });
+ *   });
+ * };
+ *
+ * const graph = new StateGraph(ChainState)
+ *   .addNode("generate_joke", (state) => ({
+ *     jokes: [`Joke about ${state.subjects}`],
+ *   }))
+ *   .addConditionalEdges("__start__", continueToJokes)
+ *   .addEdge("generate_joke", "__end__")
+ *   .compile();
+ *
+ * const res = await graph.invoke({ subjects: ["cats", "dogs"] });
+ * console.log(res);
+ *
+ * // Invoking with two subjects results in a generated joke for each
+ * // { subjects: ["cats", "dogs"], jokes: [`Joke about cats`, `Joke about dogs`] }
+ * ```
  */
 export class Send implements SendInterface {
   lg_name = "Send";
