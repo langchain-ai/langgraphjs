@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { describe, it, expect } from "@jest/globals";
 import { StateGraph } from "../graph/state.js";
 import { END, START } from "../web.js";
@@ -34,8 +35,7 @@ describe("State", () => {
         // Should properly be typed as string
         state.testval.concat(["stringval"]);
         // @ts-expect-error Should be typed as a number
-        const valValue: string = state.val;
-        console.log(valValue);
+        const valValue: string | undefined | null = state.val;
         return { testval: "hi!", val: 3 };
       })
       .addEdge(START, "testnode")
