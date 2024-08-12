@@ -1875,13 +1875,13 @@ describe("StateGraph", () => {
   });
 
   it("Allow map reduce flows", async () => {
-    const OverallState = {
+    const OverallState = Annotation.Root({
       subjects: Annotation<string[]>,
       jokes: Annotation<string[]>({
         reducer: (a, b) => a.concat(b),
       }),
-    };
-    const continueToJokes = async (state: StateType<typeof OverallState>) => {
+    });
+    const continueToJokes = async (state: typeof OverallState.State) => {
       return state.subjects.map((subject) => {
         return new Send("generate_joke", { subjects: [subject] });
       });
