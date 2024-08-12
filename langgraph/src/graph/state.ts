@@ -20,7 +20,7 @@ import { NamedBarrierValue } from "../channels/named_barrier_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { RunnableCallable } from "../utils.js";
 import { All } from "../pregel/types.js";
-import { TAG_HIDDEN } from "../constants.js";
+import { _isSend, Send, TAG_HIDDEN } from "../constants.js";
 import { InvalidUpdateError } from "../errors.js";
 
 const ROOT = "__root__";
@@ -139,9 +139,9 @@ export class StateGraph<
     ]);
   }
 
-  addNode<K extends string>(
+  addNode<K extends string, NodeInput = S>(
     key: K,
-    action: RunnableLike<S, U>
+    action: RunnableLike<NodeInput, U>
   ): StateGraph<SD, S, U, N | K> {
     if (key in this.channels) {
       throw new Error(
@@ -333,7 +333,7 @@ export class CompiledStateGraph<
         writers: [new ChannelWrite(stateWriteEntries, [TAG_HIDDEN])],
       });
     } else {
-      this.channels[key] = new EphemeralValue();
+      this.channels[key] = new EphemeralValue(false);
       this.nodes[key] = new PregelNode<S, U>({
         triggers: [],
         // read state keys
@@ -403,10 +403,17 @@ export class CompiledStateGraph<
           if (!filteredDests.length) {
             return;
           }
-          const writes: ChannelWriteEntry[] = filteredDests.map((dest) => ({
-            channel: `branch:${start}:${name}:${dest}`,
-            value: start,
-          }));
+          const writes: (ChannelWriteEntry | Send)[] = filteredDests.map(
+            (dest) => {
+              if (_isSend(dest)) {
+                return dest;
+              }
+              return {
+                channel: `branch:${start}:${name}:${dest}`,
+                value: start,
+              };
+            }
+          );
           return new ChannelWrite(writes, [TAG_HIDDEN]);
         },
         // reader
@@ -424,7 +431,7 @@ export class CompiledStateGraph<
       }
       const channelName = `branch:${start}:${name}:${end}`;
       (this.channels as Record<string, BaseChannel>)[channelName] =
-        new EphemeralValue();
+        new EphemeralValue(false);
       this.nodes[end as N].triggers.push(channelName);
     }
   }

@@ -144,8 +144,12 @@ export class PregelNode<
       newWriters[newWriters.length - 2] instanceof ChannelWrite
     ) {
       // we can combine writes if they are consecutive
-      (newWriters[newWriters.length - 2] as ChannelWrite).writes.push(
-        ...(newWriters[newWriters.length - 1] as ChannelWrite).writes
+      // careful to not modify the original writers list or ChannelWrite
+      const endWriters = newWriters.slice(-2) as ChannelWrite[];
+      const combinedWrites = endWriters[0].writes.concat(endWriters[1].writes);
+      newWriters[newWriters.length - 2] = new ChannelWrite(
+        combinedWrites,
+        endWriters[0].config?.tags
       );
       newWriters.pop();
     }
