@@ -33,8 +33,9 @@ describe("State", () => {
       .addNode("testnode", (state: typeof StateAnnotation.State) => {
         // Should properly be typed as string
         state.testval.concat(["stringval"]);
-        // @ts-expect-error Should be typed as number
-        state.val = "stringval";
+        // @ts-expect-error Should be typed as a number
+        const valValue: string = state.val;
+        console.log(valValue);
         return { testval: "hi!", val: 3 };
       })
       .addEdge(START, "testnode")
