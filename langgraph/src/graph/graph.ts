@@ -351,11 +351,11 @@ export class CompiledGraph<
   Record<N | typeof START, PregelNode<RunInput, RunOutput>>,
   Record<N | typeof START | typeof END | string, BaseChannel>
 > {
-  NodeType: N;
+  declare NodeType: N;
 
-  RunInput: RunInput;
+  declare RunInput: RunInput;
 
-  RunOutput: RunOutput;
+  declare RunOutput: RunOutput;
 
   builder: Graph<N, RunInput, RunOutput>;
 
