@@ -1,10 +1,11 @@
 import httpx
+from starlette.background import BackgroundTask
 import uvicorn
 import orjson
 
 from langgraph.pregel.types import StateSnapshot
 from langgraph.checkpoint.memory import MemorySaver
-from typing import Any, AsyncIterator, Optional, Literal, Union
+from typing import Any, AsyncIterator, Mapping, Optional, Literal, Union
 from langchain_core.runnables.config import RunnableConfig
 
 from server_sent_events import aconnect_sse
@@ -25,17 +26,21 @@ from langchain_core.runnables.schema import (
 
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
-serializer = JsonPlusSerializer()
 
-def default(obj):
-    if hasattr(obj, "_asdict"):
-        return obj._asdict()
-    return serializer._default(obj)
+GRAPH_SOCKET = "./graph.sock"
+CHECKPOINTER_SOCKET = "./checkpointer.sock"
 
 
 class OrjsonResponse(JSONResponse):
+    serializer = JsonPlusSerializer()
+
+    def default(self, obj):
+        if hasattr(obj, "_asdict"):
+            return obj._asdict()
+        return self.serializer._default(obj)
+
     def render(self, content: Any) -> bytes:
-        return orjson.dumps(content, default=default)
+        return orjson.dumps(content, default=self.default)
 
 
 class RemotePregel(Runnable):
@@ -46,7 +51,8 @@ class RemotePregel(Runnable):
     def __init__(self, graph_id: str):
         self.graph_id = graph_id
         self.async_client = httpx.AsyncClient(
-            base_url="http://localhost:9999",
+            base_url="http://graph",
+            transport=httpx.AsyncHTTPTransport(uds=GRAPH_SOCKET),
         )
 
     async def astream_events(
@@ -127,7 +133,6 @@ async def main():
         ):
             result.append(item)
 
-        print(result)
         return OrjsonResponse(result)
 
     async def put(request: Request):
@@ -162,7 +167,7 @@ async def main():
         ]
     )
 
-    server = uvicorn.Server(uvicorn.Config(app, port=9998))
+    server = uvicorn.Server(uvicorn.Config(app, uds=CHECKPOINTER_SOCKET))
     await server.serve()
 
 

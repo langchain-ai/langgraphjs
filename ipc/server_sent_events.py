@@ -1,6 +1,6 @@
 """Adapted from https://github.com/florimondmanca/httpx-sse"""
 
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Iterator, List, Optional, TypedDict
 
 import httpx
@@ -108,18 +108,6 @@ class EventSource:
             sse = decoder.decode(line)
             if sse is not None:
                 yield sse
-
-
-@contextmanager
-def connect_sse(
-    client: httpx.Client, method: str, url: str, **kwargs: Any
-) -> Iterator[EventSource]:
-    headers = kwargs.pop("headers", {})
-    headers["Accept"] = "text/event-stream"
-    headers["Cache-Control"] = "no-store"
-
-    with client.stream(method, url, headers=headers, **kwargs) as response:
-        yield EventSource(response)
 
 
 @asynccontextmanager

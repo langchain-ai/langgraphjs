@@ -12,7 +12,13 @@ import {
   CheckpointTuple,
 } from "@langchain/langgraph";
 import { RunnableConfig } from "@langchain/core/runnables";
+import { Agent, fetch } from "undici";
+import * as fs from "fs/promises";
 
+const GRAPH_SOCKET = "./graph.sock";
+const CHECKPOINTER_SOCKET = "./checkpointer.sock";
+
+const dispatcher = new Agent({ connect: { socketPath: CHECKPOINTER_SOCKET } });
 const RunnableConfigSchema = z.object({
   tags: z.array(z.string()).optional(),
   metadata: z.record(z.unknown()).optional(),
@@ -41,11 +47,12 @@ const getRunnableConfig = (
 class RemoteCheckpointer extends BaseCheckpointSaver {
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     const res = await fetch("http://localhost:9998/get_tuple", {
+      dispatcher,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ config }),
     });
-    return res.json();
+    return (await res.json()) as CheckpointTuple;
   }
   async *list(
     config: RunnableConfig,
@@ -53,11 +60,12 @@ class RemoteCheckpointer extends BaseCheckpointSaver {
     before?: RunnableConfig
   ): AsyncGenerator<CheckpointTuple> {
     const res = await fetch("http://localhost:9998/list", {
+      dispatcher,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ config, limit, before }),
     });
-    const result: CheckpointTuple[] = await res.json();
+    const result = (await res.json()) as CheckpointTuple[];
     for (const item of result) {
       yield item;
     }
@@ -68,6 +76,7 @@ class RemoteCheckpointer extends BaseCheckpointSaver {
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
     const response = await fetch("http://localhost:9998/put", {
+      dispatcher,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -83,7 +92,7 @@ class RemoteCheckpointer extends BaseCheckpointSaver {
       }),
     });
 
-    return response.json();
+    return (await response.json()) as RunnableConfig;
   }
 }
 
@@ -196,9 +205,15 @@ async function main() {
     }
   );
 
-  serve({ fetch: app.fetch, port: 9999 }, (c) => {
-    console.info(`Listening to ${c.address}:${c.port}`);
-  });
+  await fs.unlink(GRAPH_SOCKET).catch(() => void 0);
+  serve(
+    {
+      fetch: app.fetch,
+      hostname: "localhost",
+      port: GRAPH_SOCKET as any,
+    },
+    (c) => console.info(`Listening to ${c}`)
+  );
 }
 
 main();
