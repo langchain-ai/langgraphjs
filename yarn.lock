@@ -330,9 +330,9 @@
     p-retry "4"
     uuid "^9.0.0"
 
-"@langchain/langgraph@../langgraphjs/langgraph/langchain-langgraph-0.0.33-4ace6373.tgz":
-  version "0.0.33"
-  resolved "../langgraphjs/langgraph/langchain-langgraph-0.0.33-4ace6373.tgz#9b56192ad1fe46c43d231baa60f3fe0315d026f0"
+"@langchain/langgraph@../langgraphjs/langgraph/langchain-langgraph-0.0.34-e6bc9067.tgz":
+  version "0.0.34"
+  resolved "../langgraphjs/langgraph/langchain-langgraph-0.0.34-e6bc9067.tgz#4783722371abd31968fcb313e47e6f71f197dc7e"
   dependencies:
     "@langchain/core" ">=0.2.20 <0.3.0"
     uuid "^10.0.0"
@@ -562,6 +562,11 @@ decamelize@1.2.0:
   version "1.2.0"
   resolved "https://registry.yarnpkg.com/decamelize/-/decamelize-1.2.0.tgz#f6534d15148269b20352e7bee26f501f9a191290"
   integrity sha512-z2S+W9X73hAUUki+N+9Za2lBlun89zigOyGrsax+KUQ6wKW4ZoWpEYBkGhQjwAjjDCkWxhY0VKEhk8wzY7F5cA==
+
+dedent@^1.5.3:
+  version "1.5.3"
+  resolved "https://registry.yarnpkg.com/dedent/-/dedent-1.5.3.tgz#99aee19eb9bae55a67327717b6e848d0bf777e5a"
+  integrity sha512-NHQtfOOW68WD8lgypbLA5oT+Bt0xXJhiYvoR6SmmNXZfpzOGXwdKWmcwG8N7PwVVWV3eF/68nmD9BaJSsTBhyQ==
 
 deep-eql@^5.0.1:
   version "5.0.2"

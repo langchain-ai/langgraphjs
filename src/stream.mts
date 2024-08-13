@@ -1,5 +1,5 @@
-import { Config, StreamMode } from "./storage/base.mts";
-import { getGraph } from "./graph.mts";
+import { Config, StreamMode } from "./storage/base.mjs";
+import { getGraph } from "./graph/load.mjs";
 import { CompiledGraph } from "@langchain/langgraph";
 
 type Event<Type, Value> = { type: Type; value: Value };

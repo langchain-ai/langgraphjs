@@ -2,14 +2,13 @@ import { z } from "zod";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as uuid from "uuid";
-import { assistants } from "./storage/index.mts";
+import { assistants } from "../storage/index.mts";
 import {
   BaseCheckpointSaver,
   type CompiledGraph,
   MemorySaver,
 } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
-import { Config } from "./storage/base.mts";
 
 export const GRAPHS: Record<string, CompiledGraph<string>> = {};
 export const NAMESPACE_GRAPH = uuid.parse(
@@ -69,6 +68,7 @@ export function getGraph(
 
   // TODO: support graph factory
   // TODO: inject the checkpointer
+  // TODO: load the state schema
 
   // GRAPHS[graphId].
   const compiled = GRAPHS[graphId];

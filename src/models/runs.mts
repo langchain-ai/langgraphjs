@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import * as storage from "../storage/index.mjs";
-import { GRAPHS, NAMESPACE_GRAPH } from "../graph.mts";
+import { GRAPHS, NAMESPACE_GRAPH } from "../graph/load.mts";
 import { zValidator } from "@hono/zod-validator";
 import * as schemas from "../validate.mjs";
 import { v5 as uuidv5 } from "uuid";
