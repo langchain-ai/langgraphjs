@@ -34,15 +34,13 @@ import { PregelNode } from "../pregel/read.js";
 import { BaseChannel } from "../channels/base.js";
 import { MemorySaver } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
+import { Channel, Pregel, PregelOptions } from "../pregel/index.js";
 import {
-  Channel,
-  Pregel,
-  PregelOptions,
   _applyWrites,
   _localRead,
   _prepareNextTasks,
   _shouldInterrupt,
-} from "../pregel/index.js";
+} from "../pregel/algo.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
 import { MessageGraph, messagesStateReducer } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
@@ -582,6 +580,7 @@ describe("_prepareNextTasks", () => {
       checkpoint,
       processes,
       channels,
+      { configurable: { thread_id: "foo" } },
       false,
       { step: -1 }
     );
@@ -693,6 +692,7 @@ describe("_prepareNextTasks", () => {
       checkpoint,
       processes,
       channels,
+      { configurable: { thread_id: "foo" } },
       true,
       { step: -1 }
     );
@@ -2124,8 +2124,8 @@ describe("StateGraph", () => {
       config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
       createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
         ?.checkpoint.ts,
-      // TODO: Populate, see Python test
-      parentConfig: undefined,
+      // TODO: Fix, see Python test
+      parentConfig: expect.any(Object),
     });
 
     // modify ai message
@@ -2181,8 +2181,8 @@ describe("StateGraph", () => {
       config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
       createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
         ?.checkpoint.ts,
-      // TODO: Populate, see Python test
-      parentConfig: undefined,
+      // TODO: Fix, see Python test
+      parentConfig: expect.any(Object),
     });
 
     chunks = [];
@@ -2245,8 +2245,8 @@ describe("StateGraph", () => {
       createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
         ?.checkpoint.ts,
       config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
-      // TODO: Populate, see Python test
-      parentConfig: undefined,
+      // TODO: Fix, see Python test
+      parentConfig: expect.any(Object),
     });
 
     // replaces message even if object identity is different, as long as id is the same
@@ -2303,8 +2303,8 @@ describe("StateGraph", () => {
       createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
         ?.checkpoint.ts,
       config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
-      // TODO: Populate, see Python test
-      parentConfig: undefined,
+      // TODO: Fix, see Python test
+      parentConfig: expect.any(Object),
     });
   });
 });

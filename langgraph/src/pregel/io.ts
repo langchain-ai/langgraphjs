@@ -1,5 +1,5 @@
 import { BaseChannel } from "../channels/base.js";
-import { PregelExecutableTask } from "./types.js";
+import { PendingWrite, PregelExecutableTask } from "./types.js";
 import { TAG_HIDDEN } from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
 
@@ -84,7 +84,7 @@ export function* mapInput<C extends PropertyKey>(
  */
 export function* mapOutputValues<C extends PropertyKey>(
   outputChannels: C | Array<C>,
-  pendingWrites: readonly [C, unknown][],
+  pendingWrites: readonly PendingWrite<C>[],
   channels: Record<C, BaseChannel>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Generator<Record<string, any>, any> {

@@ -47,3 +47,12 @@ export interface StateSnapshot {
 }
 
 export type All = "*";
+
+export type PendingWriteValue = unknown;
+
+export type PendingWrite<Channel = string> = [Channel, PendingWriteValue];
+
+export type CheckpointPendingWrite<TaskId = string> = [
+  TaskId,
+  ...PendingWrite<string>
+];

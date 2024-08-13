@@ -17,7 +17,12 @@ import { BaseChannel } from "../channels/base.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { All } from "../pregel/types.js";
 import { ChannelWrite, PASSTHROUGH } from "../pregel/write.js";
-import { _isSend, Send, TAG_HIDDEN } from "../constants.js";
+import {
+  _isSend,
+  CHECKPOINT_NAMESPACE_SEPARATOR,
+  Send,
+  TAG_HIDDEN,
+} from "../constants.js";
 import { RunnableCallable } from "../utils.js";
 import { InvalidUpdateError } from "../errors.js";
 
@@ -131,6 +136,11 @@ export class Graph<
     key: K,
     action: RunnableLike<NodeInput, RunOutput>
   ): Graph<N | K, RunInput, RunOutput> {
+    if (key.includes(CHECKPOINT_NAMESPACE_SEPARATOR)) {
+      throw new Error(
+        `"${CHECKPOINT_NAMESPACE_SEPARATOR}" is a reserved character and is not allowed in node names.`
+      );
+    }
     this.warnIfCompiled(
       `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
     );

@@ -85,39 +85,45 @@ describe("MemorySaver", () => {
 
     // save checkpoint
     const runnableConfig = await memorySaver.put(
-      { configurable: { thread_id: "1" } },
+      { configurable: { thread_id: "1", checkpoint_ns: "" } },
       checkpoint1,
       { source: "update", step: -1, writes: null }
     );
     expect(runnableConfig).toEqual({
       configurable: {
         thread_id: "1",
+        checkpoint_ns: "",
         checkpoint_id: checkpoint1.id,
       },
     });
 
     // get checkpoint tuple
     const checkpointTuple = await memorySaver.getTuple({
-      configurable: { thread_id: "1" },
+      configurable: { thread_id: "1", checkpoint_ns: "" },
     });
     expect(checkpointTuple?.config).toEqual({
       configurable: {
         thread_id: "1",
+        checkpoint_ns: "",
         checkpoint_id: checkpoint1.id,
       },
     });
     expect(checkpointTuple?.checkpoint).toEqual(checkpoint1);
 
     // save another checkpoint
-    await memorySaver.put({ configurable: { thread_id: "1" } }, checkpoint2, {
-      source: "update",
-      step: -1,
-      writes: null,
-    });
+    await memorySaver.put(
+      { configurable: { thread_id: "1", checkpoint_ns: "" } },
+      checkpoint2,
+      {
+        source: "update",
+        step: -1,
+        writes: null,
+      }
+    );
 
     // list checkpoints
     const checkpointTupleGenerator = await memorySaver.list({
-      configurable: { thread_id: "1" },
+      configurable: { thread_id: "1", checkpoint_ns: "" },
     });
     const checkpointTuples: CheckpointTuple[] = [];
     for await (const checkpoint of checkpointTupleGenerator) {
