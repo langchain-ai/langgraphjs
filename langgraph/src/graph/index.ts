@@ -1,5 +1,5 @@
 export { Annotation, type StateType, type UpdateType } from "./annotation.js";
-export { END, START, Graph } from "./graph.js";
+export { END, START, Graph, type CompiledGraph } from "./graph.js";
 export {
   type StateGraphArgs,
   StateGraph,
