@@ -1,10 +1,14 @@
+import httpx
+import uvicorn
+import orjson
+
 from langgraph.pregel.types import StateSnapshot
 from langgraph.checkpoint.memory import MemorySaver
 from typing import Any, AsyncIterator, Optional, Literal, Union
 from langchain_core.runnables.config import RunnableConfig
-import httpx
-from ipc.server_sent_events import aconnect_sse
-import uvicorn
+
+from server_sent_events import aconnect_sse
+
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -18,13 +22,15 @@ from langchain_core.runnables.schema import (
     StandardStreamEvent,
     CustomStreamEvent,
 )
-import orjson
 
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
+serializer = JsonPlusSerializer()
 
 def default(obj):
     if hasattr(obj, "_asdict"):
         return obj._asdict()
-    raise TypeError
+    return serializer._default(obj)
 
 
 class OrjsonResponse(JSONResponse):
