@@ -67,7 +67,6 @@ class RemoteCheckpointer extends BaseCheckpointSaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
-    console.log("checkpoint_ns", config.configurable);
     const response = await fetch("http://localhost:9998/put", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

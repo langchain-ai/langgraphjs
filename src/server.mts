@@ -3,11 +3,11 @@ import { Hono } from "hono";
 
 import { logger } from "hono/logger";
 
-import { registerFromEnv } from "./graph.mts";
+import { registerFromEnv } from "./graph/load.mjs";
 
-import { runs } from "./models/runs.mts";
-import { threads } from "./models/threads.mts";
-import { assistants } from "./models/assistants.mts";
+import { runs } from "./models/runs.mjs";
+import { threads } from "./models/threads.mjs";
+import { assistants } from "./models/assistants.mjs";
 
 export const app = new Hono();
 
