@@ -1,11 +1,10 @@
 import httpx
-from starlette.background import BackgroundTask
 import uvicorn
 import orjson
 
 from langgraph.pregel.types import StateSnapshot
 from langgraph.checkpoint.memory import MemorySaver
-from typing import Any, AsyncIterator, Mapping, Optional, Literal, Union
+from typing import Any, AsyncIterator, Optional, Literal, Union
 from langchain_core.runnables.config import RunnableConfig
 
 from server_sent_events import aconnect_sse
