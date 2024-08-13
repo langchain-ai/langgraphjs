@@ -2,29 +2,13 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import { DefaultSerializer, SerializerProtocol } from "../serde/base.js";
 import { uuid6 } from "./id.js";
 import { SendInterface } from "../constants.js";
-import { CheckpointPendingWrite, PendingWrite } from "../pregel/types.js";
+import {
+  CheckpointMetadata,
+  CheckpointPendingWrite,
+  PendingWrite,
+} from "../pregel/types.js";
 
-export interface CheckpointMetadata {
-  /**
-   * The source of the checkpoint.
-   * - "input": The checkpoint was created from an input to invoke/stream/batch.
-   * - "loop": The checkpoint was created from inside the pregel loop.
-   * - "update": The checkpoint was created from a manual state update.
-   */
-  source: "input" | "loop" | "update";
-  /**
-   * The step number of the checkpoint.
-   * -1 for the first "input" checkpoint.
-   * 0 for the first "loop" checkpoint.
-   * ... for the nth checkpoint afterwards.
-   */
-  step: number;
-  /**
-   * The writes that were made between the previous checkpoint and this one.
-   * Mapping from node name to writes emitted by that node.
-   */
-  writes: Record<string, unknown> | null;
-}
+export type { CheckpointMetadata };
 
 export interface Checkpoint<
   N extends string = string,
