@@ -1,0 +1,36 @@
+POST http://localhost:9998/list
+Content-Type: application/json
+
+{
+  "config": {},
+  "limit": 1000
+}
+
+### 
+
+POST http://localhost:9998/put
+Content-Type: application/json
+
+{
+  "config": {
+    "configurable": {
+      "thread_id": "09227664-e3d6-4a9d-ac44-85be8e6adf99",
+      "checkpoint_ns": ""
+    }
+  },
+  "checkpoint": {
+    "id": "11ab6b0a-eb0b-473b-a983-13e98855c6dc"
+  },
+  "metadata": {}
+}
+
+###
+
+POST http://localhost:9998/run
+Content-Type: application/json
+
+{
+  "input": {
+    "messages": []
+  }
+}
