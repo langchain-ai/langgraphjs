@@ -1,6 +1,11 @@
 import httpx
 import uvicorn
 import orjson
+import os
+import asyncio
+
+from concurrent.futures import ThreadPoolExecutor
+import threading
 
 from langgraph.pregel.types import StateSnapshot
 from langgraph.checkpoint.memory import MemorySaver
@@ -112,20 +117,32 @@ class RemotePregel(Runnable):
         pass
 
 
-async def main():
-    # checkpointer ipc
-    saver = MemorySaver()
+async def run_js_process():
+    process = await asyncio.create_subprocess_exec(
+        "/Users/duongtat/.yarn/bin/tsx",
+        "./ipc/client.mts",
+        env={
+            "LANGSERVE_GRAPHS": orjson.dumps(
+                {"agent": "./test/graphs/agent.mts:graph"}
+            ),
+            **os.environ,
+        },
+    )
 
+    await process.wait()
+
+
+async def run_remote_checkpointer(checkpointer: Any):
     async def get_tuple(request: Request):
         payload = orjson.loads(await request.body())
-        res = await saver.aget_tuple(config=payload["config"])
+        res = await checkpointer.aget_tuple(config=payload["config"])
 
         return OrjsonResponse(res)
 
     async def list(request: Request):
         payload = orjson.loads(await request.body())
         result = []
-        async for item in saver.alist(
+        async for item in checkpointer.alist(
             config=payload.get("config"),
             limit=payload.get("limit"),
             before=payload.get("before"),
@@ -136,7 +153,7 @@ async def main():
 
     async def put(request: Request):
         payload = orjson.loads(await request.body())
-        res = await saver.aput(
+        res = await checkpointer.aput(
             config=payload["config"],
             checkpoint=payload["checkpoint"],
             metadata=payload["metadata"],
@@ -144,33 +161,72 @@ async def main():
         )
         return OrjsonResponse(res)
 
-    async def run(request: Request):
-        payload = orjson.loads(await request.body())
-        item = RemotePregel(graph_id="agent")
-
-        result = []
-        async for item in item.astream_events(
-            payload.get("input"),
-            version="v2",
-            config={"configurable": {"thread_id": uuid4()}},
-        ):
-            result.append(item)
-        return OrjsonResponse(result)
-
-    app = Starlette(
+    remote = Starlette(
         routes=[
             Route("/get_tuple", get_tuple, methods=["POST"]),
             Route("/list", list, methods=["POST"]),
             Route("/put", put, methods=["POST"]),
-            Route("/run", run, methods=["POST"]),
+            Route("/ok", lambda _: OrjsonResponse({"ok": True}), methods=["GET"]),
         ]
     )
 
-    server = uvicorn.Server(uvicorn.Config(app, uds=CHECKPOINTER_SOCKET))
+    server = uvicorn.Server(uvicorn.Config(remote, uds=CHECKPOINTER_SOCKET))
     await server.serve()
 
 
-if __name__ == "__main__":
-    import asyncio
+async def wait_until_ready(ready_event: threading.Event):
+    graph_client = httpx.AsyncClient(
+        base_url="http://graph",
+        transport=httpx.AsyncHTTPTransport(uds=GRAPH_SOCKET),
+    )
 
+    checkpointer_client = httpx.AsyncClient(
+        base_url="http://checkpointer",
+        transport=httpx.AsyncHTTPTransport(uds=CHECKPOINTER_SOCKET),
+    )
+
+    while True:
+        try:
+            await graph_client.get("/ok")
+            await checkpointer_client.get("/ok")
+            break
+        except httpx.HTTPError:
+            await asyncio.sleep(0.1)
+
+    ready_event.set()
+
+
+async def start_js_loop(ready_event: threading.Event):
+    checkpointer = MemorySaver()
+    await asyncio.gather(
+        run_remote_checkpointer(checkpointer),
+        run_js_process(),
+        wait_until_ready(ready_event),
+    )
+
+
+def start_js(ready_event: threading.Event):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(start_js_loop(ready_event))
+
+
+js_threads = ThreadPoolExecutor()
+
+
+async def main():
+    ready = threading.Event()
+    js_threads.submit(start_js, ready)
+    ready.wait()
+
+    item = RemotePregel(graph_id="agent")
+    async for item in item.astream_events(
+        {"input": {"messages": []}},
+        version="v2",
+        config={"configurable": {"thread_id": uuid4()}},
+    ):
+        print(item)
+
+
+if __name__ == "__main__":
     asyncio.run(main())

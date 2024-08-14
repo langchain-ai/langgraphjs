@@ -205,6 +205,8 @@ async function main() {
     }
   );
 
+  app.get("/ok", (c) => c.json({ ok: true }));
+
   await fs.unlink(GRAPH_SOCKET).catch(() => void 0);
   serve(
     {
@@ -217,16 +219,3 @@ async function main() {
 }
 
 main();
-
-// graph.astream_events
-
-// graph.get_input_schema
-// graph.get_output_schema
-// graph.config_schema
-// method for getting state schema
-
-// graph.get_graph
-// graph.get_state
-// grpah.update_state
-// graph.get_state_history
-// checkpointers
