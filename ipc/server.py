@@ -118,6 +118,7 @@ class RemotePregel(Runnable):
 
 
 async def run_js_process():
+    # TODO: implement retries
     process = await asyncio.create_subprocess_exec(
         "/Users/duongtat/.yarn/bin/tsx",
         "./ipc/client.mts",
@@ -196,8 +197,7 @@ async def wait_until_ready(ready_event: threading.Event):
     ready_event.set()
 
 
-async def start_js_loop(ready_event: threading.Event):
-    checkpointer = MemorySaver()
+async def start_js_loop(ready_event: threading.Event, checkpointer: Any):
     await asyncio.gather(
         run_remote_checkpointer(checkpointer),
         run_js_process(),
@@ -205,18 +205,20 @@ async def start_js_loop(ready_event: threading.Event):
     )
 
 
-def start_js(ready_event: threading.Event):
+def start_js(ready_event: threading.Event, checkpointer: Any):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(start_js_loop(ready_event))
+    loop.run_until_complete(start_js_loop(ready_event, checkpointer))
 
 
 js_threads = ThreadPoolExecutor()
 
 
 async def main():
+    saver = MemorySaver()
+
     ready = threading.Event()
-    js_threads.submit(start_js, ready)
+    js_threads.submit(start_js, ready, saver)
     ready.wait()
 
     item = RemotePregel(graph_id="agent")
@@ -225,6 +227,9 @@ async def main():
         version="v2",
         config={"configurable": {"thread_id": uuid4()}},
     ):
+        print("event")
+
+    async for item in saver.alist(config=None):
         print(item)
 
 
