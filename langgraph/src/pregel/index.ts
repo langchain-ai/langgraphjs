@@ -58,6 +58,7 @@ import {
   _localRead,
   _applyWrites,
 } from "./algo.js";
+import { uuid5 } from "../checkpoint/id.js";
 
 const DEFAULT_LOOP_LIMIT = 25;
 
@@ -447,6 +448,7 @@ export class Pregel<
       writes: [],
       triggers: [INTERRUPT],
       config: undefined,
+      id: uuid5(INTERRUPT, checkpoint.id),
     };
     // execute task
     await task.proc.invoke(

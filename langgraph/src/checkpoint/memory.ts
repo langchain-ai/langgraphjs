@@ -86,7 +86,7 @@ export class MemorySaver extends BaseCheckpointSaver {
                 configurable: {
                   thread_id,
                   checkpoint_ns,
-                  checkpoint_id,
+                  checkpoint_id: parentCheckpointId,
                 },
               }
             : undefined;

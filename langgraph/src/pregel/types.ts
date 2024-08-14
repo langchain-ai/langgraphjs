@@ -37,6 +37,8 @@ export interface PregelExecutableTask<
   readonly writes: Array<[C, unknown]>;
   readonly config: RunnableConfig | undefined;
   readonly triggers: Array<string>;
+  readonly retry_policy?: string;
+  readonly id: string;
 }
 
 export interface StateSnapshot {

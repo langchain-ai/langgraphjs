@@ -37,6 +37,7 @@ import {
   PregelTaskDescription,
 } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
+import { uuid5 } from "../checkpoint/id.js";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -255,7 +256,7 @@ export function _prepareNextTasks<
   Checkpoint,
   PregelTaskDescription[] | PregelExecutableTask<keyof Nn, keyof Cc>[]
 ] {
-  const parentNamespace = config.configurable?.checkpoint_ns;
+  const parentNamespace = config.configurable?.checkpoint_ns ?? "";
   const newCheckpoint = copyCheckpoint(checkpoint);
   const tasks: Array<PregelExecutableTask<keyof Nn, keyof Cc>> = [];
   const taskDescriptions: Array<PregelTaskDescription> = [];
@@ -285,6 +286,14 @@ export function _prepareNextTasks<
           langgraph_task_idx: tasks.length,
         };
         const writes: [keyof Cc, unknown][] = [];
+        const checkpointNamespace =
+          parentNamespace === ""
+            ? packet.node
+            : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${packet.node}`;
+        const taskId = uuid5(
+          JSON.stringify([checkpointNamespace, metadata]),
+          checkpoint.id
+        );
         tasks.push({
           name: packet.node,
           input: packet.args,
@@ -314,6 +323,7 @@ export function _prepareNextTasks<
               },
             }
           ),
+          id: taskId,
         });
       }
     } else {
@@ -415,9 +425,13 @@ export function _prepareNextTasks<
             langgraph_task_idx: tasks.length,
           };
           const checkpointNamespace =
-            parentNamespace === undefined || parentNamespace === ""
+            parentNamespace === ""
               ? name
               : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${name}`;
+          const taskId = uuid5(
+            JSON.stringify([checkpointNamespace, metadata]),
+            checkpoint.id
+          );
           const writes: [keyof Cc, unknown][] = [];
           tasks.push({
             name,
@@ -444,6 +458,7 @@ export function _prepareNextTasks<
                 checkpoint_ns: checkpointNamespace,
               },
             }),
+            id: taskId,
           });
         }
       } else {
