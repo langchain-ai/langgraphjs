@@ -28,8 +28,10 @@ import {
   mapInput,
   mapOutputUpdates,
   mapOutputValues,
+  mapDebugTasks,
   readChannels,
   single,
+  mapDebugTaskResults,
 } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import {
@@ -63,6 +65,14 @@ type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
 function isString(value: unknown): value is string {
   return typeof value === "string";
+}
+
+function* prefixGenerator<T>(
+  generator: Generator<T>,
+  prefix: string | undefined
+) {
+  if (!prefix) yield* generator;
+  for (const value of generator) yield [prefix, value];
 }
 
 export class Channel {
@@ -153,7 +163,7 @@ export class Channel {
   }
 }
 
-export type StreamMode = "values" | "updates";
+export type StreamMode = "values" | "updates" | "debug";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -180,7 +190,7 @@ export interface PregelInterface<
   /**
    * @default "values"
    */
-  streamMode?: StreamMode;
+  streamMode?: StreamMode | StreamMode[];
 
   streamChannels?: keyof Cc | Array<keyof Cc>;
   /**
@@ -207,7 +217,7 @@ export interface PregelOptions<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
 > extends RunnableConfig {
-  streamMode?: StreamMode;
+  streamMode?: StreamMode | StreamMode[];
   inputKeys?: keyof Cc | Array<keyof Cc>;
   outputKeys?: keyof Cc | Array<keyof Cc>;
   interruptBefore?: All | Array<keyof Nn>;
@@ -245,7 +255,7 @@ export class Pregel<
 
   autoValidate: boolean = true;
 
-  streamMode: StreamMode = "values";
+  streamMode: StreamMode[] = ["values"];
 
   streamChannels?: keyof Cc | Array<keyof Cc>;
 
@@ -262,10 +272,15 @@ export class Pregel<
   constructor(fields: PregelInterface<Nn, Cc>) {
     super(fields);
 
+    let { streamMode } = fields;
+    if (streamMode != null && !Array.isArray(streamMode)) {
+      streamMode = [streamMode];
+    }
+
     this.nodes = fields.nodes;
     this.channels = fields.channels;
     this.autoValidate = fields.autoValidate ?? this.autoValidate;
-    this.streamMode = fields.streamMode ?? this.streamMode;
+    this.streamMode = streamMode ?? this.streamMode;
     this.outputs = fields.outputs;
     this.streamChannels = fields.streamChannels ?? this.streamChannels;
     this.interruptAfter = fields.interruptAfter;
@@ -430,6 +445,7 @@ export class Pregel<
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         writers.length > 1 ? RunnableSequence.from(writers as any) : writers[0],
       writes: [],
+      triggers: [INTERRUPT],
       config: undefined,
     };
     // execute task
@@ -481,7 +497,7 @@ export class Pregel<
 
   _defaults(config: PregelOptions<Nn, Cc>): [
     boolean, // debug
-    StreamMode, // stream mode
+    StreamMode[], // stream mode
     keyof Cc | Array<keyof Cc>, // input keys
     keyof Cc | Array<keyof Cc>, // output keys
     RunnableConfig, // config without pregel keys
@@ -518,9 +534,9 @@ export class Pregel<
 
     const defaultInterruptAfter = interruptAfter ?? this.interruptAfter ?? [];
 
-    let defaultStreamMode: StreamMode;
+    let defaultStreamMode: StreamMode[];
     if (streamMode !== undefined) {
-      defaultStreamMode = streamMode;
+      defaultStreamMode = Array.isArray(streamMode) ? streamMode : [streamMode];
     } else {
       defaultStreamMode = this.streamMode;
     }
@@ -529,7 +545,7 @@ export class Pregel<
       config.configurable !== undefined &&
       config.configurable[CONFIG_KEY_READ] !== undefined
     ) {
-      defaultStreamMode = "values";
+      defaultStreamMode = ["values"];
     }
 
     return [
@@ -681,6 +697,14 @@ export class Pregel<
           checkpoint = nextCheckpoint;
         }
 
+        // produce debug stream mode event
+        if (streamMode.includes("debug")) {
+          yield* prefixGenerator(
+            mapDebugTasks(step, nextTasks),
+            streamMode.length > 1 ? "debug" : undefined
+          );
+        }
+
         if (debug) {
           console.log(nextTasks);
         }
@@ -738,14 +762,29 @@ export class Pregel<
         // apply writes to channels
         _applyWrites(checkpoint, channels, pendingWrites);
 
-        // yield current value and checkpoint view
-        if (streamMode === "values") {
-          yield* mapOutputValues(outputKeys, pendingWrites, channels);
-        } else if (streamMode === "updates") {
+        if (streamMode.includes("updates")) {
           // TODO: Refactor
           for await (const task of nextTasks) {
-            yield* mapOutputUpdates(outputKeys, [task]);
+            yield* prefixGenerator(
+              mapOutputUpdates(outputKeys, [task]),
+              streamMode.length > 1 ? "updates" : undefined
+            );
           }
+        }
+
+        // yield current value and checkpoint view
+        if (streamMode.includes("values")) {
+          yield* prefixGenerator(
+            mapOutputValues(outputKeys, pendingWrites, channels),
+            streamMode.length > 1 ? "values" : undefined
+          );
+        }
+
+        if (streamMode.includes("debug")) {
+          yield* prefixGenerator(
+            mapDebugTaskResults(step, nextTasks, this.streamChannelsList),
+            streamMode.length > 1 ? "debug" : undefined
+          );
         }
 
         // save end of step checkpoint
@@ -756,7 +795,7 @@ export class Pregel<
               source: "loop",
               step,
               writes: single(
-                this.streamMode === "values"
+                this.streamMode.includes("values")
                   ? mapOutputValues(outputKeys, pendingWrites, channels)
                   : mapOutputUpdates(outputKeys, nextTasks)
               ),

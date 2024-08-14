@@ -10,6 +10,7 @@ export {
   Annotation,
   type StateType,
   type UpdateType,
+  type CompiledGraph,
 } from "./graph/index.js";
 export { MemorySaver } from "./checkpoint/memory.js";
 export {

@@ -311,6 +311,7 @@ describe("mapOutputUpdates", () => {
         input: null,
         proc: new RunnablePassthrough(),
         writes: [["someOutputChannelName", 1]],
+        triggers: [],
         config: undefined,
       },
       {
@@ -318,6 +319,7 @@ describe("mapOutputUpdates", () => {
         input: null,
         proc: new RunnablePassthrough(),
         writes: [["someOutputChannelName", 2]],
+        triggers: [],
         config: {
           tags: ["langsmith:hidden"], // this task should be filtered out
         },
@@ -364,6 +366,7 @@ describe("mapOutputUpdates", () => {
           ["someOutputChannelName1", 1],
           ["someOutputChannelName2", 2],
         ],
+        triggers: [],
         config: undefined,
       },
       {
@@ -374,6 +377,7 @@ describe("mapOutputUpdates", () => {
           ["someOutputChannelName3", 3],
           ["someOutputChannelName4", 4],
         ],
+        triggers: [],
         config: undefined,
       },
     ];

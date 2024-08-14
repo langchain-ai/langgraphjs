@@ -290,6 +290,7 @@ export function _prepareNextTasks<
           input: packet.args,
           proc: node,
           writes,
+          triggers,
           config: patchConfig(
             mergeConfigs(proc.config, processes[packet.node].config, {
               metadata,
@@ -423,6 +424,7 @@ export function _prepareNextTasks<
             input: val,
             proc: node,
             writes,
+            triggers: proc.triggers,
             config: patchConfig(mergeConfigs(proc.config, { metadata }), {
               runName: name,
               configurable: {
