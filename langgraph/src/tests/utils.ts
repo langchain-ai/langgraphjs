@@ -183,7 +183,8 @@ export class FakeSearchTool extends Tool {
   }
 }
 
-export async function fromAsync<T>(
+// https://github.com/tc39/proposal-array-from-async
+export async function gatherIterator<T>(
   i: AsyncIterable<T> | Promise<AsyncIterable<T>>
 ): Promise<Array<T>> {
   const out: T[] = [];

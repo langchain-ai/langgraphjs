@@ -20,7 +20,7 @@ import {
 } from "@langchain/core/messages";
 import { ToolCall } from "@langchain/core/messages/tool";
 import {
-  fromAsync,
+  gatherIterator,
   FakeChatModel,
   MemorySaverAssertImmutable,
 } from "./utils.js";
@@ -967,13 +967,13 @@ it("should process two processes with object input and output", async () => {
   });
 
   expect(
-    await fromAsync(
+    await gatherIterator(
       app.stream({ input: 2, inbox: 12 }, { outputKeys: "output" })
     )
   ).toEqual([13, 4]); // [12 + 1, 2 + 1 + 1]
 
   expect(
-    await fromAsync(
+    await gatherIterator(
       app.stream({ input: 2, inbox: 12 }, { streamMode: "updates" })
     )
   ).toEqual([
@@ -982,12 +982,12 @@ it("should process two processes with object input and output", async () => {
     { two: { output: 4 } },
   ]);
 
-  expect(await fromAsync(app.stream({ input: 2, inbox: 12 }))).toEqual([
+  expect(await gatherIterator(app.stream({ input: 2, inbox: 12 }))).toEqual([
     { inbox: [3], output: 13 },
     { inbox: [], output: 4 },
   ]);
 
-  const debug = await fromAsync(
+  const debug = await gatherIterator(
     app.stream({ input: 2, inbox: 12 }, { streamMode: "debug" })
   );
   expect(debug).toEqual([
@@ -2382,7 +2382,9 @@ describe("StateGraph", () => {
     const graph = builder.compile();
 
     expect(
-      await fromAsync(graph.stream({ value: 1 }, { streamMode: ["values"] }))
+      await gatherIterator(
+        graph.stream({ value: 1 }, { streamMode: ["values"] })
+      )
     ).toEqual([
       { value: 1 },
       { value: 2 },
@@ -2393,7 +2395,9 @@ describe("StateGraph", () => {
     ]);
 
     expect(
-      await fromAsync(graph.stream({ value: 1 }, { streamMode: ["updates"] }))
+      await gatherIterator(
+        graph.stream({ value: 1 }, { streamMode: ["updates"] })
+      )
     ).toEqual([
       { add_one: { value: 1 } },
       { add_one: { value: 1 } },
@@ -2403,7 +2407,7 @@ describe("StateGraph", () => {
     ]);
 
     expect(
-      await fromAsync(
+      await gatherIterator(
         graph.stream({ value: 1 }, { streamMode: ["values", "updates"] })
       )
     ).toEqual([
