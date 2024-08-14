@@ -19,7 +19,11 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { ToolCall } from "@langchain/core/messages/tool";
-import { FakeChatModel, MemorySaverAssertImmutable } from "./utils.js";
+import {
+  gatherIterator,
+  FakeChatModel,
+  MemorySaverAssertImmutable,
+} from "./utils.js";
 import { LastValue } from "../channels/last_value.js";
 import {
   Annotation,
@@ -200,7 +204,7 @@ describe("Pregel", () => {
       // call method / assertions
       const expectedDefaults1 = [
         false, // debug
-        "values", // stream mode
+        ["values"], // stream mode
         "outputKey", // input keys
         ["inputKey", "outputKey", "channel3"], // output keys,
         {},
@@ -210,7 +214,7 @@ describe("Pregel", () => {
 
       const expectedDefaults2 = [
         true, // debug
-        "updates", // stream mode
+        ["updates"], // stream mode
         "inputKey", // input keys
         "outputKey", // output keys
         { tags: ["hello"] },
@@ -2306,6 +2310,63 @@ describe("StateGraph", () => {
       // TODO: Populate, see Python test
       parentConfig: undefined,
     });
+  });
+
+  it("multiple stream mode", async () => {
+    const builder = new StateGraph({
+      value: Annotation<number>({ reducer: (a, b) => a + b }),
+    })
+      .addNode("add_one", () => ({ value: 1 }))
+      .addEdge(START, "add_one")
+      .addConditionalEdges("add_one", (state) => {
+        if (state.value < 6) return "add_one";
+        return END;
+      });
+
+    const graph = builder.compile();
+
+    expect(
+      await gatherIterator(
+        graph.stream({ value: 1 }, { streamMode: ["values"] })
+      )
+    ).toEqual([
+      { value: 1 },
+      { value: 2 },
+      { value: 3 },
+      { value: 4 },
+      { value: 5 },
+      { value: 6 },
+    ]);
+
+    expect(
+      await gatherIterator(
+        graph.stream({ value: 1 }, { streamMode: ["updates"] })
+      )
+    ).toEqual([
+      { add_one: { value: 1 } },
+      { add_one: { value: 1 } },
+      { add_one: { value: 1 } },
+      { add_one: { value: 1 } },
+      { add_one: { value: 1 } },
+    ]);
+
+    expect(
+      await gatherIterator(
+        graph.stream({ value: 1 }, { streamMode: ["values", "updates"] })
+      )
+    ).toEqual([
+      ["values", { value: 1 }],
+      ["updates", { add_one: { value: 1 } }],
+      ["values", { value: 2 }],
+      ["updates", { add_one: { value: 1 } }],
+      ["values", { value: 3 }],
+      ["updates", { add_one: { value: 1 } }],
+      ["values", { value: 4 }],
+      ["updates", { add_one: { value: 1 } }],
+      ["values", { value: 5 }],
+      ["updates", { add_one: { value: 1 } }],
+      ["values", { value: 6 }],
+    ]);
   });
 });
 
