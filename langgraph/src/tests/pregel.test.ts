@@ -38,15 +38,13 @@ import { PregelNode } from "../pregel/read.js";
 import { BaseChannel } from "../channels/base.js";
 import { MemorySaver } from "../checkpoint/memory.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
+import { Channel, Pregel, PregelOptions } from "../pregel/index.js";
 import {
-  Channel,
-  Pregel,
-  PregelOptions,
   _applyWrites,
   _localRead,
   _prepareNextTasks,
   _shouldInterrupt,
-} from "../pregel/index.js";
+} from "../pregel/algo.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
 import { MessageGraph, messagesStateReducer } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
