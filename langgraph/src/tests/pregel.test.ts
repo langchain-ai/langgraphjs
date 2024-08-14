@@ -20,7 +20,7 @@ import {
 } from "@langchain/core/messages";
 import { ToolCall } from "@langchain/core/messages/tool";
 import {
-  fromAsync,
+  gatherIterator,
   FakeChatModel,
   MemorySaverAssertImmutable,
 } from "./utils.js";
@@ -2326,7 +2326,9 @@ describe("StateGraph", () => {
     const graph = builder.compile();
 
     expect(
-      await fromAsync(graph.stream({ value: 1 }, { streamMode: ["values"] }))
+      await gatherIterator(
+        graph.stream({ value: 1 }, { streamMode: ["values"] })
+      )
     ).toEqual([
       { value: 1 },
       { value: 2 },
@@ -2337,7 +2339,9 @@ describe("StateGraph", () => {
     ]);
 
     expect(
-      await fromAsync(graph.stream({ value: 1 }, { streamMode: ["updates"] }))
+      await gatherIterator(
+        graph.stream({ value: 1 }, { streamMode: ["updates"] })
+      )
     ).toEqual([
       { add_one: { value: 1 } },
       { add_one: { value: 1 } },
@@ -2347,7 +2351,7 @@ describe("StateGraph", () => {
     ]);
 
     expect(
-      await fromAsync(
+      await gatherIterator(
         graph.stream({ value: 1 }, { streamMode: ["values", "updates"] })
       )
     ).toEqual([
