@@ -32,9 +32,11 @@ import {
   mapInput,
   mapOutputUpdates,
   mapOutputValues,
+  mapDebugTasks,
   readChannel,
   readChannels,
   single,
+  mapDebugTaskResults,
 } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import {
@@ -164,7 +166,7 @@ export class Channel {
   }
 }
 
-export type StreamMode = "values" | "updates";
+export type StreamMode = "values" | "updates" | "debug";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -444,6 +446,7 @@ export class Pregel<
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         writers.length > 1 ? RunnableSequence.from(writers as any) : writers[0],
       writes: [],
+      triggers: [INTERRUPT],
       config: undefined,
     };
     // execute task
@@ -668,6 +671,14 @@ export class Pregel<
           checkpoint = nextCheckpoint;
         }
 
+        // produce debug stream mode event
+        if (streamMode.includes("debug")) {
+          yield* prefixGenerator(
+            mapDebugTasks(step, nextTasks),
+            streamMode.length > 1 ? "debug" : undefined
+          );
+        }
+
         if (debug) {
           console.log(nextTasks);
         }
@@ -740,6 +751,13 @@ export class Pregel<
           yield* prefixGenerator(
             mapOutputValues(outputKeys, pendingWrites, channels),
             streamMode.length > 1 ? "values" : undefined
+          );
+        }
+
+        if (streamMode.includes("debug")) {
+          yield* prefixGenerator(
+            mapDebugTaskResults(step, nextTasks, this.streamChannelsList),
+            streamMode.length > 1 ? "debug" : undefined
           );
         }
 
@@ -1067,6 +1085,7 @@ export function _prepareNextTasks<
           input: packet.args,
           proc: node,
           writes,
+          triggers,
           config: patchConfig(
             mergeConfigs(proc.config, processes[packet.node].config, {
               metadata,
@@ -1196,6 +1215,7 @@ export function _prepareNextTasks<
             input: val,
             proc: node,
             writes,
+            triggers: proc.triggers,
             config: patchConfig(mergeConfigs(proc.config, { metadata }), {
               runName: name,
               configurable: {

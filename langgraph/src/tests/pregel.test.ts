@@ -260,6 +260,7 @@ describe("_shouldInterrupt", () => {
           input: undefined,
           proc: new RunnablePassthrough(),
           writes: [],
+          triggers: [],
           config: undefined,
         },
       ])
@@ -293,6 +294,7 @@ describe("_shouldInterrupt", () => {
           input: undefined,
           proc: new RunnablePassthrough(),
           writes: [],
+          triggers: [],
           config: undefined,
         },
       ])
@@ -330,6 +332,7 @@ describe("_shouldInterrupt", () => {
           input: undefined,
           proc: new RunnablePassthrough(),
           writes: [],
+          triggers: [],
           config: undefined,
         },
       ])
@@ -367,6 +370,7 @@ describe("_shouldInterrupt", () => {
           input: undefined,
           proc: new RunnablePassthrough(),
           writes: [],
+          triggers: [],
           config: undefined,
         },
       ])
@@ -707,6 +711,7 @@ describe("_prepareNextTasks", () => {
       input: { test: true },
       proc: new RunnablePassthrough(),
       writes: [],
+      triggers: [TASKS],
       config: {
         tags: [],
         configurable: expect.any(Object),
@@ -726,6 +731,7 @@ describe("_prepareNextTasks", () => {
       input: 1,
       proc: new RunnablePassthrough(),
       writes: [],
+      triggers: ["channel1"],
       config: {
         tags: [],
         configurable: expect.any(Object),
@@ -745,6 +751,7 @@ describe("_prepareNextTasks", () => {
       input: 100,
       proc: new RunnablePassthrough(),
       writes: [],
+      triggers: ["channel1", "channel2"],
       config: {
         tags: [],
         configurable: expect.any(Object),
@@ -954,50 +961,99 @@ it("should process two processes with object input and output", async () => {
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    streamChannels: ["output", "inbox"],
     inputs: ["input", "inbox"],
+    streamChannels: ["output", "inbox"],
     outputs: "output",
   });
 
-  const streamResult = await app.stream(
-    { input: 2, inbox: 12 },
-    { outputKeys: "output" }
-  );
-  const outputResults = [];
-  for await (const result of streamResult) {
-    outputResults.push(result);
-  }
-  expect(outputResults).toEqual([13, 4]); // [12 + 1, 2 + 1 + 1]
+  expect(
+    await fromAsync(
+      app.stream({ input: 2, inbox: 12 }, { outputKeys: "output" })
+    )
+  ).toEqual([13, 4]); // [12 + 1, 2 + 1 + 1]
 
-  const fullStreamResult = await app.stream({ input: 2, inbox: 12 });
-  const fullOutputResults = [];
-  for await (const result of fullStreamResult) {
-    fullOutputResults.push(result);
-  }
-  expect(fullOutputResults).toEqual([
+  expect(
+    await fromAsync(
+      app.stream({ input: 2, inbox: 12 }, { streamMode: "updates" })
+    )
+  ).toEqual([
+    { one: { inbox: 3 } },
+    { two: { output: 13 } },
+    { two: { output: 4 } },
+  ]);
+
+  expect(await fromAsync(app.stream({ input: 2, inbox: 12 }))).toEqual([
     { inbox: [3], output: 13 },
     { inbox: [], output: 4 },
   ]);
 
-  const fullOutputResultsUpdates = [];
-  for await (const result of await app.stream(
-    { input: 2, inbox: 12 },
-    { streamMode: "updates" }
-  )) {
-    fullOutputResultsUpdates.push(result);
-  }
-  expect(fullOutputResultsUpdates).toEqual([
+  const debug = await fromAsync(
+    app.stream({ input: 2, inbox: 12 }, { streamMode: "debug" })
+  );
+  expect(debug).toEqual([
     {
-      one: {
-        inbox: 3,
+      type: "task",
+      timestamp: expect.any(String),
+      step: 0,
+      payload: {
+        id: "1726020d-12ca-56e2-a3d3-5b5752b526cf",
+        name: "one",
+        input: 2,
+        triggers: ["input"],
       },
     },
     {
-      two: {
-        output: 13,
+      type: "task",
+      timestamp: expect.any(String),
+      step: 0,
+      payload: {
+        id: "ad0a1023-e379-52e7-be4c-5a2c1433aba0",
+        name: "two",
+        input: [12],
+        triggers: ["inbox"],
       },
     },
-    { two: { output: 4 } },
+    {
+      type: "task_result",
+      timestamp: expect.any(String),
+      step: 0,
+      payload: {
+        id: "1726020d-12ca-56e2-a3d3-5b5752b526cf",
+        name: "one",
+        result: [["inbox", 3]],
+      },
+    },
+    {
+      type: "task_result",
+      timestamp: expect.any(String),
+      step: 0,
+      payload: {
+        id: "ad0a1023-e379-52e7-be4c-5a2c1433aba0",
+        name: "two",
+        result: [["output", 13]],
+      },
+    },
+    {
+      type: "task",
+      timestamp: expect.any(String),
+      step: 1,
+      payload: {
+        id: "92ce7404-7c07-5383-b528-6933ac523e6a",
+        name: "two",
+        input: [3],
+        triggers: ["inbox"],
+      },
+    },
+    {
+      type: "task_result",
+      timestamp: expect.any(String),
+      step: 1,
+      payload: {
+        id: "92ce7404-7c07-5383-b528-6933ac523e6a",
+        name: "two",
+        result: [["output", 4]],
+      },
+    },
   ]);
 });
 

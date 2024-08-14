@@ -1,6 +1,7 @@
+import { v5 as uuidv5 } from "uuid";
 import { BaseChannel } from "../channels/base.js";
 import { PregelExecutableTask } from "./types.js";
-import { TAG_HIDDEN } from "../constants.js";
+import { TAG_HIDDEN, TASK_NAMESPACE } from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
 
 export function readChannel<C extends PropertyKey>(
@@ -76,6 +77,61 @@ export function* mapInput<C extends PropertyKey>(
     } else {
       yield [inputChannels, chunk];
     }
+  }
+}
+
+export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
+  step: number,
+  tasks: readonly PregelExecutableTask<N, C>[]
+) {
+  const ts = new Date().toISOString();
+  for (const { name, input, config, triggers } of tasks) {
+    if (config?.tags?.includes(TAG_HIDDEN)) continue;
+
+    const metadata = { ...config?.metadata };
+    delete metadata.checkpoint_id;
+
+    yield {
+      type: "task",
+      timestamp: ts,
+      step,
+      payload: {
+        id: uuidv5(JSON.stringify([name, step, metadata]), TASK_NAMESPACE),
+        name,
+        input,
+        triggers,
+      },
+    };
+  }
+}
+
+export function* mapDebugTaskResults<
+  N extends PropertyKey,
+  C extends PropertyKey
+>(
+  step: number,
+  tasks: readonly PregelExecutableTask<N, C>[],
+  streamChannelsList: Array<PropertyKey>
+) {
+  const ts = new Date().toISOString();
+  for (const { name, writes, config } of tasks) {
+    if (config?.tags?.includes(TAG_HIDDEN)) continue;
+
+    const metadata = { ...config?.metadata };
+    delete metadata.checkpoint_id;
+
+    yield {
+      type: "task_result",
+      timestamp: ts,
+      step,
+      payload: {
+        id: uuidv5(JSON.stringify([name, step, metadata]), TASK_NAMESPACE),
+        name,
+        result: writes.filter(([channel]) =>
+          streamChannelsList.includes(channel)
+        ),
+      },
+    };
   }
 }
 
