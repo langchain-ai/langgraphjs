@@ -273,7 +273,7 @@ export class Pregel<
   constructor(fields: PregelInterface<Nn, Cc>) {
     super(fields);
 
-    let streamMode = fields.streamMode;
+    let { streamMode } = fields;
     if (streamMode != null && !Array.isArray(streamMode)) {
       streamMode = [streamMode];
     }
