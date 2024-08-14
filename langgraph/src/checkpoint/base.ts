@@ -2,26 +2,13 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import { DefaultSerializer, SerializerProtocol } from "../serde/base.js";
 import { uuid6 } from "./id.js";
 import { SendInterface } from "../constants.js";
+import {
+  CheckpointMetadata,
+  CheckpointPendingWrite,
+  PendingWrite,
+} from "../pregel/types.js";
 
-export interface CheckpointMetadata {
-  source: "input" | "loop" | "update";
-  /**
-   * The source of the checkpoint.
-   * - "input": The checkpoint was created from an input to invoke/stream/batch.
-   * - "loop": The checkpoint was created from inside the pregel loop.
-   * - "update": The checkpoint was created from a manual state update. */
-  step: number;
-  /**
-   * The step number of the checkpoint.
-   * -1 for the first "input" checkpoint.
-   * 0 for the first "loop" checkpoint.
-   * ... for the nth checkpoint afterwards. */
-  writes: Record<string, unknown> | null;
-  /**
-   * The writes that were made between the previous checkpoint and this one.
-   * Mapping from node name to writes emitted by that node.
-   */
-}
+export type { CheckpointMetadata };
 
 export interface Checkpoint<
   N extends string = string,
@@ -128,6 +115,7 @@ export interface CheckpointTuple {
   checkpoint: Checkpoint;
   metadata?: CheckpointMetadata;
   parentConfig?: RunnableConfig;
+  pendingWrites?: CheckpointPendingWrite[];
 }
 
 export abstract class BaseCheckpointSaver {
@@ -157,4 +145,13 @@ export abstract class BaseCheckpointSaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig>;
+
+  /**
+   * Store intermediate writes linked to a checkpoint.
+   */
+  abstract putWrites(
+    config: RunnableConfig,
+    writes: PendingWrite[],
+    taskId: string
+  ): Promise<void>;
 }

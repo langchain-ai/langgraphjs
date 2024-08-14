@@ -40,7 +40,12 @@ import {
   INTERRUPT,
   TASKS,
 } from "../constants.js";
-import { All, PregelExecutableTask, StateSnapshot } from "./types.js";
+import {
+  All,
+  PendingWrite,
+  PregelExecutableTask,
+  StateSnapshot,
+} from "./types.js";
 import {
   GraphRecursionError,
   GraphValueError,
@@ -53,6 +58,7 @@ import {
   _localRead,
   _applyWrites,
 } from "./algo.js";
+import { uuid5 } from "../checkpoint/id.js";
 
 const DEFAULT_LOOP_LIMIT = 25;
 
@@ -338,6 +344,7 @@ export class Pregel<
       checkpoint,
       this.nodes,
       channels,
+      saved !== undefined ? saved.config : config,
       false,
       { step: -1 }
     );
@@ -366,6 +373,7 @@ export class Pregel<
         saved.checkpoint,
         this.nodes,
         channels,
+        saved.config,
         false,
         { step: -1 }
       );
@@ -440,6 +448,7 @@ export class Pregel<
       writes: [],
       triggers: [INTERRUPT],
       config: undefined,
+      id: uuid5(INTERRUPT, checkpoint.id),
     };
     // execute task
     await task.proc.invoke(
@@ -461,8 +470,24 @@ export class Pregel<
     // apply to checkpoint and save
     _applyWrites(checkpoint, channels, task.writes);
     const step = (saved?.metadata?.step ?? -2) + 1;
+    let checkpointConfig: RunnableConfig = {
+      ...config,
+      configurable: {
+        ...(config?.configurable ?? {}),
+        // TODO: add proper support for updating nested subgraph state
+        checkpoint_ns: "",
+      },
+    };
+    if (saved !== undefined) {
+      checkpointConfig = {
+        configurable: {
+          ...(config?.configurable ?? {}),
+          ...saved.config.configurable,
+        },
+      };
+    }
     return await this.checkpointer.put(
-      saved?.config ?? config,
+      checkpointConfig,
       createCheckpoint(checkpoint, channels, step),
       {
         source: "update",
@@ -550,7 +575,7 @@ export class Pregel<
       }
       if (this.checkpointer && !config.configurable) {
         throw new GraphValueError(
-          `Checkpointer requires one or more of the following 'configurable' keys: thread_id, checkpoint_id`
+          `Checkpointer requires one or more of the following 'configurable' keys: thread_id, checkpoint_ns, checkpoint_id`
         );
       }
       // assign defaults
@@ -571,11 +596,20 @@ export class Pregel<
         : null;
       let checkpoint = saved ? saved.checkpoint : emptyCheckpoint();
       let checkpointConfig = saved ? saved.config : config;
+      if (
+        this.checkpointer &&
+        checkpointConfig.configurable?.checkpoint_ns === undefined
+      ) {
+        checkpointConfig.configurable = {
+          ...checkpointConfig.configurable,
+          checkpoint_ns: "",
+        };
+      }
       let start = (saved?.metadata?.step ?? -2) + 1;
       // create channels from checkpoint
       const channels = emptyChannels(this.channels, checkpoint);
       // map inputs to channel updates
-      const inputPendingWrites: Array<[keyof Cc, unknown]> = [];
+      const inputPendingWrites: PendingWrite<keyof Cc>[] = [];
       for await (const c of input) {
         for (const value of mapInput(inputKeys, c)) {
           inputPendingWrites.push(value);
@@ -587,6 +621,7 @@ export class Pregel<
           checkpoint,
           processes,
           channels,
+          config,
           true,
           { step: -1 }
         );
@@ -634,6 +669,7 @@ export class Pregel<
           checkpoint,
           processes,
           channels,
+          config,
           true,
           { step }
         );
@@ -720,7 +756,7 @@ export class Pregel<
         await executeTasks(tasks, this.stepTimeout, config.signal);
 
         // combine pending writes from all tasks
-        const pendingWrites: Array<[keyof Cc, unknown]> = [];
+        const pendingWrites: PendingWrite<keyof Cc>[] = [];
         for (const task of nextTasks) {
           pendingWrites.push(...task.writes);
         }

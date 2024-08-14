@@ -1,5 +1,9 @@
 /* eslint-disable no-param-reassign */
-import { mergeConfigs, patchConfig } from "@langchain/core/runnables";
+import {
+  mergeConfigs,
+  patchConfig,
+  RunnableConfig,
+} from "@langchain/core/runnables";
 import {
   BaseChannel,
   createCheckpoint,
@@ -17,6 +21,7 @@ import { readChannel, readChannels } from "./io.js";
 import {
   _isSend,
   _isSendInterface,
+  CHECKPOINT_NAMESPACE_SEPARATOR,
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
   INTERRUPT,
@@ -24,8 +29,15 @@ import {
   TAG_HIDDEN,
   TASKS,
 } from "../constants.js";
-import { All, PregelExecutableTask, PregelTaskDescription } from "./types.js";
+import {
+  All,
+  PendingWrite,
+  PendingWriteValue,
+  PregelExecutableTask,
+  PregelTaskDescription,
+} from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
+import { uuid5 } from "../checkpoint/id.js";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -141,12 +153,15 @@ export function _localWrite(
 export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   checkpoint: Checkpoint,
   channels: Cc,
-  pendingWrites: Array<[keyof Cc, unknown]>
+  pendingWrites: PendingWrite<keyof Cc>[]
 ): void {
   if (checkpoint.pending_sends) {
     checkpoint.pending_sends = [];
   }
-  const pendingWritesByChannel = {} as Record<keyof Cc, Array<unknown>>;
+  const pendingWriteValuesByChannel = {} as Record<
+    keyof Cc,
+    PendingWriteValue[]
+  >;
   // Group writes by channel
   for (const [chan, val] of pendingWrites) {
     if (chan === TASKS) {
@@ -155,10 +170,10 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
         args: (val as Send).args,
       });
     } else {
-      if (chan in pendingWritesByChannel) {
-        pendingWritesByChannel[chan].push(val);
+      if (chan in pendingWriteValuesByChannel) {
+        pendingWriteValuesByChannel[chan].push(val);
       } else {
-        pendingWritesByChannel[chan] = [val];
+        pendingWriteValuesByChannel[chan] = [val];
       }
     }
   }
@@ -171,7 +186,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
 
   const updatedChannels: Set<string> = new Set();
   // Apply writes to channels
-  for (const [chan, vals] of Object.entries(pendingWritesByChannel)) {
+  for (const [chan, vals] of Object.entries(pendingWriteValuesByChannel)) {
     if (chan in channels) {
       // side effect: update channels
       try {
@@ -210,6 +225,7 @@ export function _prepareNextTasks<
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
+  config: RunnableConfig,
   forExecution: false,
   extra: { step: number }
 ): [Checkpoint, Array<PregelTaskDescription>];
@@ -221,6 +237,7 @@ export function _prepareNextTasks<
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
+  config: RunnableConfig,
   forExecution: true,
   extra: { step: number }
 ): [Checkpoint, Array<PregelExecutableTask<keyof Nn, keyof Cc>>];
@@ -232,12 +249,14 @@ export function _prepareNextTasks<
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
+  config: RunnableConfig,
   forExecution: boolean,
   extra: { step: number }
 ): [
   Checkpoint,
   PregelTaskDescription[] | PregelExecutableTask<keyof Nn, keyof Cc>[]
 ] {
+  const parentNamespace = config.configurable?.checkpoint_ns ?? "";
   const newCheckpoint = copyCheckpoint(checkpoint);
   const tasks: Array<PregelExecutableTask<keyof Nn, keyof Cc>> = [];
   const taskDescriptions: Array<PregelTaskDescription> = [];
@@ -267,6 +286,14 @@ export function _prepareNextTasks<
           langgraph_task_idx: tasks.length,
         };
         const writes: [keyof Cc, unknown][] = [];
+        const checkpointNamespace =
+          parentNamespace === ""
+            ? packet.node
+            : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${packet.node}`;
+        const taskId = uuid5(
+          JSON.stringify([checkpointNamespace, metadata]),
+          checkpoint.id
+        );
         tasks.push({
           name: packet.node,
           input: packet.args,
@@ -296,6 +323,7 @@ export function _prepareNextTasks<
               },
             }
           ),
+          id: taskId,
         });
       }
     } else {
@@ -396,6 +424,14 @@ export function _prepareNextTasks<
             langgraph_triggers: proc.triggers,
             langgraph_task_idx: tasks.length,
           };
+          const checkpointNamespace =
+            parentNamespace === ""
+              ? name
+              : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${name}`;
+          const taskId = uuid5(
+            JSON.stringify([checkpointNamespace, metadata]),
+            checkpoint.id
+          );
           const writes: [keyof Cc, unknown][] = [];
           tasks.push({
             name,
@@ -418,8 +454,11 @@ export function _prepareNextTasks<
                   channels,
                   writes as Array<[string, unknown]>
                 ),
+                checkpoint_id: checkpoint.id,
+                checkpoint_ns: checkpointNamespace,
               },
             }),
+            id: taskId,
           });
         }
       } else {

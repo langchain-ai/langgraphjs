@@ -1,8 +1,8 @@
-import { v5 as uuidv5 } from "uuid";
 import { BaseChannel } from "../channels/base.js";
-import { PregelExecutableTask } from "./types.js";
+import type { PendingWrite, PregelExecutableTask } from "./types.js";
 import { TAG_HIDDEN, TASK_NAMESPACE } from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
+import { uuid5 } from "../checkpoint/id.js";
 
 export function readChannel<C extends PropertyKey>(
   channels: Record<C, BaseChannel>,
@@ -96,7 +96,7 @@ export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
       timestamp: ts,
       step,
       payload: {
-        id: uuidv5(JSON.stringify([name, step, metadata]), TASK_NAMESPACE),
+        id: uuid5(JSON.stringify([name, step, metadata]), TASK_NAMESPACE),
         name,
         input,
         triggers,
@@ -125,7 +125,7 @@ export function* mapDebugTaskResults<
       timestamp: ts,
       step,
       payload: {
-        id: uuidv5(JSON.stringify([name, step, metadata]), TASK_NAMESPACE),
+        id: uuid5(JSON.stringify([name, step, metadata]), TASK_NAMESPACE),
         name,
         result: writes.filter(([channel]) =>
           streamChannelsList.includes(channel)
@@ -140,7 +140,7 @@ export function* mapDebugTaskResults<
  */
 export function* mapOutputValues<C extends PropertyKey>(
   outputChannels: C | Array<C>,
-  pendingWrites: readonly [C, unknown][],
+  pendingWrites: readonly PendingWrite<C>[],
   channels: Record<C, BaseChannel>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Generator<Record<string, any>, any> {

@@ -8,6 +8,8 @@ export const TAG_HIDDEN = "langsmith:hidden";
 export const TASKS = "__pregel_tasks";
 export const TASK_NAMESPACE = "6ba7b831-9dad-11d1-80b4-00c04fd430c8";
 
+export const CHECKPOINT_NAMESPACE_SEPARATOR = "|";
+
 export interface SendInterface {
   node: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

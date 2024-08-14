@@ -12,6 +12,7 @@ import { PregelExecutableTask } from "../pregel/types.js";
 import { BaseChannel } from "../channels/base.js";
 import { LastValue } from "../channels/last_value.js";
 import { EmptyChannelError } from "../errors.js";
+import { uuid6 } from "../checkpoint/id.js";
 
 describe("single", () => {
   it("returns first value of iterator and closes it", () => {
@@ -307,6 +308,7 @@ describe("mapOutputUpdates", () => {
       "someOutputChannelName"
     >[] = [
       {
+        id: uuid6(-1),
         name: "task1",
         input: null,
         proc: new RunnablePassthrough(),
@@ -315,6 +317,7 @@ describe("mapOutputUpdates", () => {
         config: undefined,
       },
       {
+        id: uuid6(-1),
         name: "task2",
         input: null,
         proc: new RunnablePassthrough(),
@@ -359,6 +362,7 @@ describe("mapOutputUpdates", () => {
       | "someOutputChannelName4"
     >[] = [
       {
+        id: uuid6(-1),
         name: "task1",
         input: null,
         proc: new RunnablePassthrough(),
@@ -370,6 +374,7 @@ describe("mapOutputUpdates", () => {
         config: undefined,
       },
       {
+        id: uuid6(-1),
         name: "task2",
         input: null,
         proc: new RunnablePassthrough(),

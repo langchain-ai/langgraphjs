@@ -7,6 +7,7 @@ import {
   CheckpointTuple,
 } from "./base.js";
 import { SerializerProtocol } from "../serde/base.js";
+import { PendingWrite } from "../pregel/types.js";
 
 // snake_case is used to match Python implementation
 interface Row {
@@ -206,5 +207,14 @@ CREATE TABLE IF NOT EXISTS checkpoints (
         checkpoint_id: checkpoint.id,
       },
     };
+  }
+
+  // TODO: Implement
+  putWrites(
+    _config: RunnableConfig,
+    _writes: PendingWrite[],
+    _taskId: string
+  ): Promise<void> {
+    throw new Error("Not implemented");
   }
 }

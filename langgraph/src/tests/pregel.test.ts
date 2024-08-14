@@ -51,7 +51,7 @@ import { PASSTHROUGH } from "../pregel/write.js";
 import { Checkpoint } from "../checkpoint/base.js";
 import { GraphRecursionError, InvalidUpdateError } from "../errors.js";
 import { SqliteSaver } from "../checkpoint/sqlite.js";
-import { uuid6 } from "../checkpoint/id.js";
+import { uuid5, uuid6 } from "../checkpoint/id.js";
 import { Send, TASKS } from "../constants.js";
 
 // Tracing slows down the tests
@@ -260,6 +260,7 @@ describe("_shouldInterrupt", () => {
           writes: [],
           triggers: [],
           config: undefined,
+          id: uuid5(JSON.stringify(["", {}]), checkpoint.id),
         },
       ])
     ).toBe(true);
@@ -294,6 +295,7 @@ describe("_shouldInterrupt", () => {
           writes: [],
           triggers: [],
           config: undefined,
+          id: uuid5(JSON.stringify(["", {}]), checkpoint.id),
         },
       ])
     ).toBe(true);
@@ -332,6 +334,7 @@ describe("_shouldInterrupt", () => {
           writes: [],
           triggers: [],
           config: undefined,
+          id: uuid5(JSON.stringify(["", {}]), checkpoint.id),
         },
       ])
     ).toBe(false);
@@ -370,6 +373,7 @@ describe("_shouldInterrupt", () => {
           writes: [],
           triggers: [],
           config: undefined,
+          id: uuid5(JSON.stringify(["", {}]), checkpoint.id),
         },
       ])
     ).toBe(false);
@@ -588,6 +592,7 @@ describe("_prepareNextTasks", () => {
       checkpoint,
       processes,
       channels,
+      { configurable: { thread_id: "foo" } },
       false,
       { step: -1 }
     );
@@ -699,6 +704,7 @@ describe("_prepareNextTasks", () => {
       checkpoint,
       processes,
       channels,
+      { configurable: { thread_id: "foo" } },
       true,
       { step: -1 }
     );
@@ -723,6 +729,7 @@ describe("_prepareNextTasks", () => {
         runId: undefined,
         runName: "node1",
       },
+      id: expect.any(String),
     });
     expect(tasks[1]).toEqual({
       name: "node1",
@@ -743,6 +750,7 @@ describe("_prepareNextTasks", () => {
         runId: undefined,
         runName: "node1",
       },
+      id: expect.any(String),
     });
     expect(tasks[2]).toEqual({
       name: "node2",
@@ -763,6 +771,7 @@ describe("_prepareNextTasks", () => {
         runId: undefined,
         runName: "node2",
       },
+      id: expect.any(String),
     });
 
     expect(newCheckpoint.versions_seen.node1.channel1).toBe(2);
@@ -1431,10 +1440,7 @@ it("should handle two processes with one input and two outputs", async () => {
   });
 
   const results = await app.stream(2);
-  const streamResults = [];
-  for await (const chunk of results) {
-    streamResults.push(chunk);
-  }
+  const streamResults = await gatherIterator(results);
 
   expect(streamResults).toEqual([
     { between: 3, output: 3 },
@@ -1689,10 +1695,7 @@ describe("StateGraph", () => {
       .compile();
 
     const stream = await app.stream({ input: "what is the weather in sf?" });
-    const streamItems = [];
-    for await (const item of stream) {
-      streamItems.push(item);
-    }
+    const streamItems = await gatherIterator(stream);
     expect(streamItems.length).toBe(5);
     expect(streamItems[0]).toEqual({
       agent: {
@@ -2128,10 +2131,7 @@ describe("StateGraph", () => {
     const stream = await builder.compile().stream({
       messages: [inputMessage],
     });
-    let chunks = [];
-    for await (const chunk of stream) {
-      chunks.push(chunk);
-    }
+    let chunks = await gatherIterator(stream);
     const nodeOrder = ["agent", "tools", "agent", "tools", "tools", "agent"];
     expect(nodeOrder.length).toEqual(chunks.length);
     expect(chunks).toEqual(
@@ -2148,15 +2148,14 @@ describe("StateGraph", () => {
       interruptAfter: ["agent"],
     });
     const config = { configurable: { thread_id: "1" } };
-    chunks = [];
-    for await (const chunk of await appWithInterrupt.stream(
-      {
-        messages: [inputMessage],
-      },
-      config
-    )) {
-      chunks.push(chunk);
-    }
+    chunks = await gatherIterator(
+      appWithInterrupt.stream(
+        {
+          messages: [inputMessage],
+        },
+        config
+      )
+    );
     expect(chunks).toEqual([
       {
         agent: {
@@ -2182,8 +2181,9 @@ describe("StateGraph", () => {
       config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
       createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
         ?.checkpoint.ts,
-      // TODO: Populate, see Python test
-      parentConfig: undefined,
+      parentConfig: (
+        await gatherIterator(appWithInterrupt.checkpointer!.list(config, 2))
+      ).slice(-1)[0].config,
     });
 
     // modify ai message
@@ -2239,14 +2239,12 @@ describe("StateGraph", () => {
       config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
       createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
         ?.checkpoint.ts,
-      // TODO: Populate, see Python test
-      parentConfig: undefined,
+      parentConfig: (
+        await gatherIterator(appWithInterrupt.checkpointer!.list(config, 2))
+      ).slice(-1)[0].config,
     });
 
-    chunks = [];
-    for await (const chunk of await appWithInterrupt.stream(null, config)) {
-      chunks.push(chunk);
-    }
+    chunks = await gatherIterator(appWithInterrupt.stream(null, config));
     expect(chunks).toEqual([
       {
         tools: {
@@ -2303,8 +2301,9 @@ describe("StateGraph", () => {
       createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
         ?.checkpoint.ts,
       config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
-      // TODO: Populate, see Python test
-      parentConfig: undefined,
+      parentConfig: (
+        await gatherIterator(appWithInterrupt.checkpointer!.list(config, 2))
+      ).slice(-1)[0].config,
     });
 
     // replaces message even if object identity is different, as long as id is the same
@@ -2361,8 +2360,9 @@ describe("StateGraph", () => {
       createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
         ?.checkpoint.ts,
       config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
-      // TODO: Populate, see Python test
-      parentConfig: undefined,
+      parentConfig: (
+        await gatherIterator(appWithInterrupt.checkpointer!.list(config, 2))
+      ).slice(-1)[0].config,
     });
   });
 
@@ -2715,10 +2715,7 @@ describe("MessageGraph", () => {
     const stream = await app.stream([
       new HumanMessage("what is the weather in sf?"),
     ]);
-    const streamItems = [];
-    for await (const item of stream) {
-      streamItems.push(item);
-    }
+    const streamItems = await gatherIterator(stream);
 
     const lastItem = streamItems[streamItems.length - 1];
     expect(Object.keys(lastItem)).toEqual(["agent"]);
