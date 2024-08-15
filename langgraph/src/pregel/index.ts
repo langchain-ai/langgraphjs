@@ -37,6 +37,7 @@ import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import {
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
+  INPUT,
   INTERRUPT,
   TASKS,
 } from "../constants.js";
@@ -462,13 +463,17 @@ export class Pregel<
             undefined,
             checkpoint,
             channels,
-            task.writes as Array<[string, unknown]>
+            // TODO: Why does keyof StrRecord allow number and symbol?
+            task as PregelExecutableTask<string, string>
           ),
         },
       })
     );
     // apply to checkpoint and save
-    _applyWrites(checkpoint, channels, task.writes);
+    // TODO: Why does keyof StrRecord allow number and symbol?
+    _applyWrites(checkpoint, channels, [
+      task as PregelExecutableTask<string, string>,
+    ]);
     const step = (saved?.metadata?.step ?? -2) + 1;
     let checkpointConfig: RunnableConfig = {
       ...config,
@@ -627,7 +632,9 @@ export class Pregel<
         );
         checkpoint = discarded[0]; // eslint-disable-line prefer-destructuring
         // apply input writes
-        _applyWrites(checkpoint, channels, inputPendingWrites);
+        _applyWrites(checkpoint, channels, [
+          { name: INPUT, writes: inputPendingWrites, triggers: [] },
+        ]);
         // save input checkpoint
         if (this.checkpointer) {
           checkpoint = createCheckpoint(checkpoint, channels, start);
@@ -737,7 +744,8 @@ export class Pregel<
                       undefined,
                       checkpoint,
                       channels,
-                      task.writes as Array<[string, unknown]>
+                      // TODO: Why does keyof StrRecord allow number and symbol?
+                      task as PregelExecutableTask<string, string>
                     ),
                   },
                 }
@@ -762,7 +770,9 @@ export class Pregel<
         }
 
         // apply writes to channels
-        _applyWrites(checkpoint, channels, pendingWrites);
+        _applyWrites(checkpoint, channels, [
+          { name: INPUT, writes: pendingWrites, triggers: [] },
+        ]);
 
         if (streamMode.includes("updates")) {
           // TODO: Refactor

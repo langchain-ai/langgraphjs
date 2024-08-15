@@ -46,6 +46,12 @@ export type StrRecord<K extends string, T> = {
   [P in K]: T;
 };
 
+export type WritesProtocol<C = string> = {
+  name: string;
+  writes: PendingWrite<C>[];
+  triggers: string[];
+};
+
 export async function executeTasks<RunOutput>(
   tasks: Array<() => Promise<RunOutput | Error | void>>,
   stepTimeout?: number,
@@ -69,6 +75,7 @@ export async function executeTasks<RunOutput>(
   // Start all tasks
   const started = tasks.map((task) => task());
 
+  let listener: () => void;
   // Wait for all tasks to settle
   // If any tasks fail, or signal is aborted, the promise will reject
   await Promise.all(
@@ -76,8 +83,9 @@ export async function executeTasks<RunOutput>(
       ? [
           ...started,
           new Promise<never>((_resolve, reject) => {
-            signal?.addEventListener("abort", () => reject(new Error("Abort")));
-          }),
+            listener = () => reject(new Error("Abort"));
+            signal?.addEventListener("abort", listener);
+          }).finally(() => signal?.removeEventListener("abort", listener)),
         ]
       : started
   );
@@ -105,7 +113,7 @@ export function _shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
 export function _localRead<Cc extends StrRecord<string, BaseChannel>>(
   checkpoint: ReadonlyCheckpoint,
   channels: Cc,
-  writes: Array<[keyof Cc, unknown]>,
+  task: WritesProtocol<keyof Cc>,
   select: Array<keyof Cc> | keyof Cc,
   fresh: boolean = false
 ): Record<string, unknown> | unknown {
@@ -114,7 +122,7 @@ export function _localRead<Cc extends StrRecord<string, BaseChannel>>(
     // create a new copy of channels
     const newChannels = emptyChannels(channels, newCheckpoint);
     // Note: _applyWrites contains side effects
-    _applyWrites(copyCheckpoint(newCheckpoint), newChannels, writes);
+    _applyWrites(copyCheckpoint(newCheckpoint), newChannels, [task]);
     return readChannels(newChannels, select);
   } else {
     return readChannels(channels, select);
@@ -153,7 +161,7 @@ export function _localWrite(
 export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   checkpoint: Checkpoint,
   channels: Cc,
-  pendingWrites: PendingWrite<keyof Cc>[]
+  pendingTasks: WritesProtocol<keyof Cc>[]
 ): void {
   if (checkpoint.pending_sends) {
     checkpoint.pending_sends = [];
@@ -163,17 +171,20 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
     PendingWriteValue[]
   >;
   // Group writes by channel
-  for (const [chan, val] of pendingWrites) {
-    if (chan === TASKS) {
-      checkpoint.pending_sends.push({
-        node: (val as Send).node,
-        args: (val as Send).args,
-      });
-    } else {
-      if (chan in pendingWriteValuesByChannel) {
-        pendingWriteValuesByChannel[chan].push(val);
+  for (const pendingTask of pendingTasks) {
+    console.log(pendingTask.writes);
+    for (const [chan, val] of pendingTask.writes) {
+      if (chan === TASKS) {
+        checkpoint.pending_sends.push({
+          node: (val as Send).node,
+          args: (val as Send).args,
+        });
       } else {
-        pendingWriteValuesByChannel[chan] = [val];
+        if (chan in pendingWriteValuesByChannel) {
+          pendingWriteValuesByChannel[chan].push(val);
+        } else {
+          pendingWriteValuesByChannel[chan] = [val];
+        }
       }
     }
   }
@@ -318,7 +329,11 @@ export function _prepareNextTasks<
                   undefined,
                   checkpoint,
                   channels,
-                  writes as Array<[string, unknown]>
+                  {
+                    name: packet.node,
+                    writes: writes as Array<[string, unknown]>,
+                    triggers,
+                  }
                 ),
               },
             }
@@ -452,7 +467,11 @@ export function _prepareNextTasks<
                   undefined,
                   checkpoint,
                   channels,
-                  writes as Array<[string, unknown]>
+                  {
+                    name,
+                    writes: writes as Array<[string, unknown]>,
+                    triggers: proc.triggers,
+                  }
                 ),
                 checkpoint_id: checkpoint.id,
                 checkpoint_ns: checkpointNamespace,

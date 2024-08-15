@@ -407,9 +407,23 @@ describe("_localRead", () => {
     const writes: Array<[string, any]> = [];
 
     // call method / assertions
-    expect(_localRead(checkpoint, channels, writes, "channel1", false)).toBe(1);
     expect(
-      _localRead(checkpoint, channels, writes, ["channel1", "channel2"], false)
+      _localRead(
+        checkpoint,
+        channels,
+        { name: "test", writes, triggers: [] },
+        "channel1",
+        false
+      )
+    ).toBe(1);
+    expect(
+      _localRead(
+        checkpoint,
+        channels,
+        { name: "test", writes, triggers: [] },
+        ["channel1", "channel2"],
+        false
+      )
     ).toEqual({ channel1: 1, channel2: 2 });
   });
 
@@ -442,11 +456,23 @@ describe("_localRead", () => {
     ];
 
     // call method / assertions
-    expect(_localRead(checkpoint, channels, writes, "channel1", true)).toBe(
-      100
-    );
     expect(
-      _localRead(checkpoint, channels, writes, ["channel1", "channel2"], true)
+      _localRead(
+        checkpoint,
+        channels,
+        { name: "test", writes, triggers: [] },
+        "channel1",
+        true
+      )
+    ).toBe(100);
+    expect(
+      _localRead(
+        checkpoint,
+        channels,
+        { name: "test", writes, triggers: [] },
+        ["channel1", "channel2"],
+        true
+      )
     ).toEqual({ channel1: 100, channel2: 200 });
   });
 });
@@ -492,7 +518,9 @@ describe("_applyWrites", () => {
     expect(channels.channel2.get()).toBe("channel2value");
     expect(checkpoint.channel_versions.channel1).toBe(2);
 
-    _applyWrites(checkpoint, channels, pendingWrites); // contains side effects
+    _applyWrites(checkpoint, channels, [
+      { name: "foo", writes: pendingWrites, triggers: [] },
+    ]); // contains side effects
 
     expect(channels.channel1.get()).toBe("channel1valueUpdated!");
     expect(channels.channel2.get()).toBe("channel2value");
@@ -534,7 +562,9 @@ describe("_applyWrites", () => {
 
     // call method / assertions
     expect(() => {
-      _applyWrites(checkpoint, channels, pendingWrites); // contains side effects
+      _applyWrites(checkpoint, channels, [
+        { name: "foo", writes: pendingWrites, triggers: [] },
+      ]); // contains side effects
     }).toThrow(InvalidUpdateError);
   });
 });
