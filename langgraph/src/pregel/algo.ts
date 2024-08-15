@@ -172,7 +172,6 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   >;
   // Group writes by channel
   for (const pendingTask of pendingTasks) {
-    console.log(pendingTask.writes);
     for (const [chan, val] of pendingTask.writes) {
       if (chan === TASKS) {
         checkpoint.pending_sends.push({
