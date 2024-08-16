@@ -337,7 +337,7 @@ export function _prepareNextTasks<
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
   for (const [name, proc] of Object.entries<PregelNode>(processes)) {
-    const hasUpdatedChannels = proc.triggers
+    const updatedChannels = proc.triggers
       .filter((chan) => {
         try {
           readChannel(channels, chan, false);
@@ -346,11 +346,13 @@ export function _prepareNextTasks<
           return false;
         }
       })
-      .some(
+      .filter(
         (chan) =>
           getChannelVersion(newCheckpoint, chan) >
           getVersionSeen(newCheckpoint, name, chan)
       );
+
+    const hasUpdatedChannels = updatedChannels.length > 0;
     // If any of the channels read by this process were updated
     if (hasUpdatedChannels) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -421,7 +423,7 @@ export function _prepareNextTasks<
           const metadata = {
             langgraph_step: extra.step,
             langgraph_node: name,
-            langgraph_triggers: proc.triggers,
+            langgraph_triggers: updatedChannels,
             langgraph_task_idx: tasks.length,
           };
           const checkpointNamespace =
@@ -438,7 +440,7 @@ export function _prepareNextTasks<
             input: val,
             proc: node,
             writes,
-            triggers: proc.triggers,
+            triggers: updatedChannels,
             config: patchConfig(mergeConfigs(proc.config, { metadata }), {
               runName: name,
               configurable: {

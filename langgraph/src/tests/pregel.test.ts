@@ -757,7 +757,7 @@ describe("_prepareNextTasks", () => {
       input: 100,
       proc: new RunnablePassthrough(),
       writes: [],
-      triggers: ["channel1", "channel2"],
+      triggers: ["channel1"],
       config: {
         tags: [],
         configurable: expect.any(Object),
@@ -765,7 +765,7 @@ describe("_prepareNextTasks", () => {
           langgraph_node: "node2",
           langgraph_step: -1,
           langgraph_task_idx: 2,
-          langgraph_triggers: ["channel1", "channel2"],
+          langgraph_triggers: ["channel1"],
         },
         recursionLimit: 25,
         runId: undefined,
@@ -2922,10 +2922,10 @@ it("checkpoint events", async () => {
       timestamp: expect.any(String),
       step: 3,
       payload: {
-        id: "9b41e438-8b1c-5f01-b1cb-cc158ed8bd57",
+        id: "d082881c-b51f-5f07-a0f3-3f4581048aeb",
         name: "finish",
         input: { my_key: "value prepared slow", market: "DE" },
-        triggers: ["tool_two_fast", "tool_two_slow"],
+        triggers: ["tool_two_slow"],
       },
     },
     {
@@ -2933,7 +2933,7 @@ it("checkpoint events", async () => {
       timestamp: expect.any(String),
       step: 3,
       payload: {
-        id: "9b41e438-8b1c-5f01-b1cb-cc158ed8bd57",
+        id: "d082881c-b51f-5f07-a0f3-3f4581048aeb",
         name: "finish",
         result: [["my_key", " finished"]],
       },
