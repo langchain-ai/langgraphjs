@@ -61,6 +61,4 @@ function main() {
   });
 }
 
-if (import.meta.url === import.meta.resolve("./validate-deps-sync.ts")) {
-  main();
-}
+main();
