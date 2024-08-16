@@ -32,6 +32,7 @@ import {
   readChannels,
   single,
   mapDebugTaskResults,
+  mapDebugCheckpoints,
 } from "./io.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import {
@@ -42,6 +43,7 @@ import {
 } from "../constants.js";
 import {
   All,
+  CheckpointMetadata,
   PendingWrite,
   PregelExecutableTask,
   StateSnapshot,
@@ -644,6 +646,30 @@ export class Pregel<
               checkpoint_id: checkpoint.id,
             },
           };
+
+          if (streamMode.includes("debug")) {
+            yield* prefixGenerator(
+              mapDebugCheckpoints(
+                -1,
+                { ...restConfig, ...checkpointConfig },
+                channels,
+                this.streamChannels ?? [],
+                {
+                  source: "input",
+                  step: start,
+                  // TODO: why does the step: -1 checkpoint event
+                  // behave differently in metadata writes?
+                  writes: (inputPendingWrites.at(0)?.[1] ?? null) as Record<
+                    string,
+                    unknown
+                  > | null,
+                },
+                checkpoint,
+                inputPendingWrites.map(([name]) => ({ name }))
+              ),
+              streamMode.length > 1 ? "debug" : undefined
+            );
+          }
         }
         // increment start to 0
         start += 1;
@@ -664,6 +690,8 @@ export class Pregel<
       // channels are guaranteed to be immutable for the duration of the step,
       // with channel updates applied only at the transition between steps
       const stop = start + (config.recursionLimit ?? DEFAULT_LOOP_LIMIT);
+
+      let checkpointMetadata: CheckpointMetadata | null = null;
       for (let step = start; step < stop + 1; step += 1) {
         const [nextCheckpoint, nextTasks] = _prepareNextTasks(
           checkpoint,
@@ -673,6 +701,24 @@ export class Pregel<
           true,
           { step }
         );
+
+        // reason why we send the previous checkpoint is to
+        // get the list of next tasks, which is only known after
+        // the next tick
+        if (streamMode.includes("debug") && checkpointMetadata) {
+          yield* prefixGenerator(
+            mapDebugCheckpoints(
+              step - 1, // this is the previous checkpoint
+              { ...restConfig, ...checkpointConfig },
+              channels,
+              this.streamChannels ?? [],
+              checkpointMetadata,
+              checkpoint,
+              nextTasks
+            ),
+            streamMode.length > 1 ? "debug" : undefined
+          );
+        }
 
         // if no more tasks, we're done
         if (nextTasks.length === 0 && step === start) {
@@ -792,16 +838,22 @@ export class Pregel<
         // save end of step checkpoint
         if (this.checkpointer) {
           checkpoint = createCheckpoint(checkpoint, channels, step);
+          checkpointMetadata = {
+            source: "loop",
+            step,
+            writes: single(
+              this.streamMode.includes("values")
+                ? mapOutputValues(outputKeys, pendingWrites, channels)
+                : mapOutputUpdates(outputKeys, nextTasks)
+            ),
+          };
+
           bg.push(
-            this.checkpointer.put(checkpointConfig, checkpoint, {
-              source: "loop",
-              step,
-              writes: single(
-                this.streamMode.includes("values")
-                  ? mapOutputValues(outputKeys, pendingWrites, channels)
-                  : mapOutputUpdates(outputKeys, nextTasks)
-              ),
-            })
+            this.checkpointer.put(
+              checkpointConfig,
+              checkpoint,
+              checkpointMetadata
+            )
           );
           checkpointConfig = {
             configurable: {
