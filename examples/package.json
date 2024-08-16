@@ -1,0 +1,23 @@
+{
+  "name": "examples",
+  "description": "Dependencies for LangGraph examples.",
+  "devDependencies": {
+    "@langchain/anthropic": "^0.2.15",
+    "@langchain/cloudflare": "^0.0.7",
+    "@langchain/community": "^0.2.27",
+    "@langchain/core": "^0.2.24",
+    "@langchain/groq": "^0.0.16",
+    "@langchain/langgraph": "workspace:*",
+    "@langchain/mistralai": "^0.0.28",
+    "@langchain/openai": "^0.2.6",
+    "@xenova/transformers": "2.17.2",
+    "cheerio": "^1.0.0",
+    "chromadb": "^1.8.1",
+    "d3": "^7.9.0",
+    "langchain": "^0.2.16",
+    "tslab": "^1.0.22",
+    "uuid": "^10.0.0",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.23.2"
+  }
+}
