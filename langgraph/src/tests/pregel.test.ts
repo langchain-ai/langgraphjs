@@ -2826,6 +2826,283 @@ describe("MessageGraph", () => {
   });
 });
 
+it("checkpoint events", async () => {
+  const builder = new StateGraph({
+    my_key: Annotation<string>({ reducer: (a, b) => a + b }),
+    market: Annotation<string>,
+  })
+    .addNode("prepare", () => ({ my_key: " prepared" }))
+    .addNode("tool_two_slow", () => ({ my_key: " slow" }))
+    .addNode("tool_two_fast", () => ({ my_key: " fast" }))
+    .addNode("finish", () => ({ my_key: " finished" }))
+    .addEdge(START, "prepare")
+    .addEdge("finish", END)
+    .addEdge("tool_two_fast", "finish")
+    .addEdge("tool_two_slow", "finish")
+    .addConditionalEdges({
+      source: "prepare",
+      path: function condition(s) {
+        return s.market === "DE" ? "tool_two_slow" : "tool_two_fast";
+      },
+      pathMap: ["tool_two_slow", "tool_two_fast"],
+    });
+
+  let graph = builder.compile();
+
+  expect(await graph.invoke({ my_key: "value", market: "DE" })).toEqual({
+    my_key: "value prepared slow finished",
+    market: "DE",
+  });
+
+  expect(await graph.invoke({ my_key: "value", market: "US" })).toEqual({
+    my_key: "value prepared fast finished",
+    market: "US",
+  });
+
+  const checkpointer = SqliteSaver.fromConnString(":memory:");
+  graph = builder.compile({ checkpointer });
+
+  const config = { configurable: { thread_id: "10" } };
+  const actual = await gatherIterator(
+    graph.stream(
+      { my_key: "value", market: "DE" },
+      { ...config, streamMode: "debug" }
+    )
+  );
+
+  expect(actual).toEqual([
+    {
+      type: "checkpoint",
+      timestamp: expect.any(String),
+      step: -1,
+      payload: {
+        config: {
+          tags: [],
+          metadata: { thread_id: "10" },
+          recursion_limit: 25,
+          configurable: {
+            thread_id: "10",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        values: {},
+        metadata: {
+          source: "input",
+          step: -1,
+          writes: { my_key: "value", market: "DE" },
+        },
+        next: ["__start__"],
+      },
+    },
+    {
+      type: "checkpoint",
+      timestamp: expect.any(String),
+      step: 0,
+      payload: {
+        config: {
+          tags: [],
+          metadata: { thread_id: "10" },
+          recursion_limit: 25,
+          configurable: {
+            thread_id: "10",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        values: {
+          my_key: "value",
+          market: "DE",
+        },
+        metadata: {
+          source: "loop",
+          step: 0,
+          writes: null,
+        },
+        next: ["prepare"],
+      },
+    },
+    {
+      type: "task",
+      timestamp: expect.any(String),
+      step: 1,
+      payload: {
+        id: "f15c7037-0c66-51ce-ba88-969aa769e13e",
+        name: "prepare",
+        input: { my_key: "value", market: "DE" },
+        triggers: ["start:prepare"],
+      },
+    },
+    {
+      type: "task_result",
+      timestamp: expect.any(String),
+      step: 1,
+      payload: {
+        id: "f15c7037-0c66-51ce-ba88-969aa769e13e",
+        name: "prepare",
+        result: [["my_key", " prepared"]],
+      },
+    },
+    {
+      type: "checkpoint",
+      timestamp: expect.any(String),
+      step: 1,
+      payload: {
+        config: {
+          tags: [],
+          metadata: { thread_id: "10" },
+          recursion_limit: 25,
+          configurable: {
+            thread_id: "10",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        values: {
+          my_key: "value prepared",
+          market: "DE",
+        },
+        metadata: {
+          source: "loop",
+          step: 1,
+          writes: { prepare: { my_key: " prepared" } },
+        },
+        next: ["tool_two_slow"],
+      },
+    },
+    {
+      type: "task",
+      timestamp: expect.any(String),
+      step: 2,
+      payload: {
+        id: "e8f57b31-e9f0-55e4-8f8a-913b4d0cb57a",
+        name: "tool_two_slow",
+        input: { my_key: "value prepared", market: "DE" },
+        triggers: ["branch:prepare:condition:tool_two_slow"],
+      },
+    },
+    {
+      type: "task_result",
+      timestamp: expect.any(String),
+      step: 2,
+      payload: {
+        id: "e8f57b31-e9f0-55e4-8f8a-913b4d0cb57a",
+        name: "tool_two_slow",
+        result: [["my_key", " slow"]],
+      },
+    },
+    {
+      type: "checkpoint",
+      timestamp: expect.any(String),
+      step: 2,
+      payload: {
+        config: {
+          tags: [],
+          metadata: { thread_id: "10" },
+          recursion_limit: 25,
+          configurable: {
+            thread_id: "10",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        values: {
+          my_key: "value prepared slow",
+          market: "DE",
+        },
+        metadata: {
+          source: "loop",
+          step: 2,
+          writes: { tool_two_slow: { my_key: " slow" } },
+        },
+        next: ["finish"],
+      },
+    },
+    {
+      type: "task",
+      timestamp: expect.any(String),
+      step: 3,
+      payload: {
+        id: "9b41e438-8b1c-5f01-b1cb-cc158ed8bd57",
+        name: "finish",
+        input: { my_key: "value prepared slow", market: "DE" },
+        triggers: ["tool_two_fast", "tool_two_slow"],
+      },
+    },
+    {
+      type: "task_result",
+      timestamp: expect.any(String),
+      step: 3,
+      payload: {
+        id: "9b41e438-8b1c-5f01-b1cb-cc158ed8bd57",
+        name: "finish",
+        result: [["my_key", " finished"]],
+      },
+    },
+    {
+      type: "checkpoint",
+      timestamp: expect.any(String),
+      step: 3,
+      payload: {
+        config: {
+          tags: [],
+          metadata: { thread_id: "10" },
+          recursion_limit: 25,
+          configurable: {
+            thread_id: "10",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        values: {
+          my_key: "value prepared slow finished",
+          market: "DE",
+        },
+        metadata: {
+          source: "loop",
+          step: 3,
+          writes: { finish: { my_key: " finished" } },
+        },
+        next: [],
+      },
+    },
+  ]);
+
+  // check if the checkpoints actually match
+  const checkpoints = await gatherIterator(checkpointer.list(config));
+  expect(
+    checkpoints.reverse().map((i, idx) => {
+      // input checkpoints do not follow the loop checkpoint
+      // schmea for writes
+      if (idx === 0) {
+        return {
+          metadata: {
+            ...i.metadata,
+            writes: i.metadata?.writes
+              ? Object.values(i.metadata.writes)?.at(0)
+              : null,
+          },
+          config: i.config,
+        };
+      }
+
+      return { metadata: i.metadata, config: i.config };
+    })
+  ).toEqual(
+    actual
+      .filter((i) => i.type === "checkpoint")
+      .map((i) => ({
+        metadata: i.payload.metadata,
+        config: {
+          configurable: {
+            checkpoint_id: i.payload.config.configurable.checkpoint_id,
+            thread_id: i.payload.config.configurable.thread_id,
+          },
+        },
+      }))
+  );
+});
+
 it("StateGraph start branch then end", async () => {
   type State = {
     my_key: string;

@@ -1,6 +1,8 @@
-import { BaseChannel } from "../channels/base.js";
+import type { RunnableConfig } from "@langchain/core/runnables";
+import type { BaseChannel } from "../channels/base.js";
 import type { PregelExecutableTask } from "./types.js";
-import type { PendingWrite } from "../checkpoint/types.js";
+import type { CheckpointMetadata, PendingWrite } from "../checkpoint/types.js";
+import type { Checkpoint } from "../checkpoint/base.js";
 import { TAG_HIDDEN } from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
 
@@ -161,6 +163,55 @@ export function* mapOutputUpdates<N extends PropertyKey, C extends PropertyKey>(
   }
 
   yield grouped;
+}
+
+export function* mapDebugCheckpoints<
+  N extends PropertyKey,
+  C extends PropertyKey
+>(
+  step: number,
+  config: RunnableConfig,
+  channels: Record<C, BaseChannel>,
+  streamChannels: C | C[],
+  metadata: CheckpointMetadata,
+  checkpoint: Checkpoint,
+  tasks: Pick<PregelExecutableTask<N, C>, "name">[]
+) {
+  // https://stackoverflow.com/a/78298178
+  type CamelToSnake<
+    T extends string,
+    A extends string = ""
+  > = T extends `${infer F}${infer R}`
+    ? CamelToSnake<R, `${A}${F extends Lowercase<F> ? F : `_${Lowercase<F>}`}`>
+    : A;
+
+  // make sure the config is consistent with Python
+  const pyConfig: Partial<Record<CamelToSnake<keyof RunnableConfig>, unknown>> =
+    {};
+
+  if (config.callbacks != null) pyConfig.callbacks = config.callbacks;
+  if (config.configurable != null) pyConfig.configurable = config.configurable;
+  if (config.maxConcurrency != null)
+    pyConfig.max_concurrency = config.maxConcurrency;
+
+  if (config.metadata != null) pyConfig.metadata = config.metadata;
+  if (config.recursionLimit != null)
+    pyConfig.recursion_limit = config.recursionLimit;
+  if (config.runId != null) pyConfig.run_id = config.runId;
+  if (config.runName != null) pyConfig.run_name = config.runName;
+  if (config.tags != null) pyConfig.tags = config.tags;
+
+  yield {
+    type: "checkpoint",
+    timestamp: checkpoint.ts,
+    step,
+    payload: {
+      config: pyConfig,
+      values: readChannels(channels, streamChannels),
+      metadata,
+      next: tasks.map((t) => t.name),
+    },
+  };
 }
 
 export function single<T>(iter: IterableIterator<T>): T | null {
