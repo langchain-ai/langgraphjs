@@ -49,7 +49,7 @@ jobs:
       - name: Validate affected notebooks
         if: steps.check_notebooks.outputs.has_affected_notebooks == 'true'
         run: |
-          notebooks=$(echo '${{ steps.changed-files.outputs.all_changed_files }}' | tr ' ' '\n' | grep '^docs/docs/.*\.ipynb$' || true)
+          notebooks=$(echo '${{ steps.changed-files.outputs.all_changed_files }}' | tr ' ' '\n' | grep '^(docs/docs|examples)/.*\.ipynb$' || true)
           if [ -n "$notebooks" ]; then
             cd ./langgraph
             for notebook in $notebooks; do
