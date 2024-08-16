@@ -8779,7 +8779,7 @@ __metadata:
     esm-hook: ^0.1.4
     readline: ^1.3.0
     release-it: ^17.6.0
-    semver: ^7.5.4
+    semver: ^7.6.3
     tslab: ^1.0.21
     tsx: ^4.7.0
     turbo: canary

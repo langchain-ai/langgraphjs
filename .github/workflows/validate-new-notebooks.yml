@@ -22,6 +22,25 @@ on:
       - 'examples/**'
   workflow_dispatch:
 
+env:
+  NODE_VERSION: "22.4.1"
+
+jobs:
+  validate-dep-files:
+    name: Validate Deno and Node dependencies in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      - name: Install dependencies
+        run: yarn install --immutable
+      - name: Validate
+        run: yarn tsx --experimental-wasm-modules ./scripts/validate_deps_sync.ts 
+
 jobs:
   validate-new-notebooks:
     runs-on: ubuntu-latest
