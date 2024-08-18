@@ -19,11 +19,8 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { ToolCall } from "@langchain/core/messages/tool";
-import {
-  gatherIterator,
-  FakeChatModel,
-  MemorySaverAssertImmutable,
-} from "./utils.js";
+import { FakeChatModel, MemorySaverAssertImmutable } from "./utils.js";
+import { gatherIterator } from "../utils.js";
 import { LastValue } from "../channels/last_value.js";
 import {
   Annotation,
@@ -43,7 +40,7 @@ import {
   _applyWrites,
   _localRead,
   _prepareNextTasks,
-  _shouldInterrupt,
+  shouldInterrupt,
 } from "../pregel/algo.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
 import { MessageGraph, messagesStateReducer } from "../graph/message.js";
@@ -52,7 +49,7 @@ import { Checkpoint } from "../checkpoint/base.js";
 import { GraphRecursionError, InvalidUpdateError } from "../errors.js";
 import { SqliteSaver } from "../checkpoint/sqlite.js";
 import { uuid5, uuid6 } from "../checkpoint/id.js";
-import { Send, TASKS } from "../constants.js";
+import { INTERRUPT, Send, TASKS } from "../constants.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -226,7 +223,7 @@ describe("Pregel", () => {
   });
 });
 
-describe("_shouldInterrupt", () => {
+describe("shouldInterrupt", () => {
   it("should return true if any snapshot channel has been updated since last interrupt and any channel written to is in interrupt nodes list", () => {
     // set up test
     const checkpoint: Checkpoint = {
@@ -240,7 +237,7 @@ describe("_shouldInterrupt", () => {
         channel1: 2, // current channel version is greater than last version seen
       },
       versions_seen: {
-        __interrupt__: {
+        [INTERRUPT]: {
           channel1: 1,
         },
       },
@@ -248,11 +245,10 @@ describe("_shouldInterrupt", () => {
     };
 
     const interruptNodes = ["node1"];
-    const snapshotChannels = ["channel1"];
 
     // call method / assertions
     expect(
-      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, [
+      shouldInterrupt(checkpoint, interruptNodes, [
         {
           name: "node1",
           input: undefined,
@@ -283,11 +279,10 @@ describe("_shouldInterrupt", () => {
     };
 
     const interruptNodes = ["node1"];
-    const snapshotChannels = ["channel1"];
 
     // call method / assertions
     expect(
-      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, [
+      shouldInterrupt(checkpoint, interruptNodes, [
         {
           name: "node1",
           input: undefined,
@@ -322,11 +317,10 @@ describe("_shouldInterrupt", () => {
     };
 
     const interruptNodes = ["node1"];
-    const snapshotChannels = ["channel1"];
 
     // call method / assertions
     expect(
-      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, [
+      shouldInterrupt(checkpoint, interruptNodes, [
         {
           name: "node1",
           input: undefined,
@@ -361,11 +355,10 @@ describe("_shouldInterrupt", () => {
     };
 
     const interruptNodes = ["node1"];
-    const snapshotChannels = ["channel1"];
 
     // call method / assertions
     expect(
-      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, [
+      shouldInterrupt(checkpoint, interruptNodes, [
         {
           name: "node2", // node2 is not in interrupt nodes
           input: undefined,
@@ -2842,10 +2835,7 @@ it("StateGraph start branch then end", async () => {
     ).config,
   });
 
-  expect(await toolTwoWithCheckpointer.invoke(null, thread1)).toEqual({
-    my_key: "value slow",
-    market: "DE",
-  });
+  expect(await toolTwoWithCheckpointer.invoke(null, thread1)).toEqual(null);
   expect(await toolTwoWithCheckpointer.getState(thread1)).toEqual({
     values: { my_key: "value slow", market: "DE" },
     next: [],

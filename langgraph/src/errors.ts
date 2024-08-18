@@ -20,6 +20,28 @@ export class GraphValueError extends Error {
   }
 }
 
+export class GraphInterrupt extends Error {
+  constructor(message?: string) {
+    super(message);
+    this.name = "GraphInterrupt";
+  }
+
+  static get unminifiable_name() {
+    return "GraphInterrupt";
+  }
+}
+
+export class EmptyInputError extends Error {
+  constructor(message?: string) {
+    super(message);
+    this.name = "EmptyInputError";
+  }
+
+  static get unminifiable_name() {
+    return "EmptyInputError";
+  }
+}
+
 export class EmptyChannelError extends Error {
   constructor(message?: string) {
     super(message);

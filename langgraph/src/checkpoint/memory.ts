@@ -1,12 +1,11 @@
 import { RunnableConfig } from "@langchain/core/runnables";
-import {
-  BaseCheckpointSaver,
-  Checkpoint,
-  CheckpointMetadata,
-  CheckpointTuple,
-} from "./base.js";
+import { BaseCheckpointSaver, Checkpoint, CheckpointTuple } from "./base.js";
 import { SerializerProtocol } from "../serde/base.js";
-import { CheckpointPendingWrite, PendingWrite } from "../pregel/types.js";
+import {
+  CheckpointMetadata,
+  CheckpointPendingWrite,
+  PendingWrite,
+} from "../checkpoint/types.js";
 
 function _generateKey(
   threadId: string,

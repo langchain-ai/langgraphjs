@@ -52,6 +52,15 @@ export abstract class BaseChannel<
    * @returns {CheckpointType | undefined}
    */
   abstract checkpoint(): CheckpointType | undefined;
+
+  /**
+   * Mark the current value of the channel as consumed. By default, no-op.
+   * This is called by Pregel before the start of the next step, for all
+   * channels that triggered a node. If the channel was updated, return true.
+   */
+  consume(): boolean {
+    return true;
+  }
 }
 
 export function emptyChannels<Cc extends Record<string, BaseChannel>>(

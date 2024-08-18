@@ -89,3 +89,49 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
     return returnValue;
   }
 }
+
+export function prefixGenerator<T, Prefix extends string>(
+  generator: Generator<T>,
+  prefix: Prefix
+): Generator<[Prefix, T]>;
+export function prefixGenerator<T>(
+  generator: Generator<T>,
+  prefix?: undefined
+): Generator<T>;
+export function prefixGenerator<
+  T,
+  Prefix extends string | undefined = undefined
+>(
+  generator: Generator<T>,
+  prefix?: Prefix | undefined
+): Generator<Prefix extends string ? [Prefix, T] : T>;
+export function* prefixGenerator<
+  T,
+  Prefix extends string | undefined = undefined
+>(
+  generator: Generator<T>,
+  prefix?: Prefix | undefined
+): Generator<Prefix extends string ? [Prefix, T] : T> {
+  if (prefix === undefined) {
+    yield* generator as Generator<Prefix extends string ? [Prefix, T] : T>;
+  } else {
+    for (const value of generator) {
+      yield [prefix, value] as Prefix extends string ? [Prefix, T] : T;
+    }
+  }
+}
+
+// https://github.com/tc39/proposal-array-from-async
+export async function gatherIterator<T>(
+  i:
+    | AsyncIterable<T>
+    | Promise<AsyncIterable<T>>
+    | Iterable<T>
+    | Promise<Iterable<T>>
+): Promise<Array<T>> {
+  const out: T[] = [];
+  for await (const item of await i) {
+    out.push(item);
+  }
+  return out;
+}

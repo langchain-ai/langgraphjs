@@ -1,425 +1,497 @@
-// import { type RunnableConfig } from "@langchain/core/runnables";
-// import {
-//   BaseCheckpointSaver,
-//   Checkpoint,
-//   CheckpointMetadata,
-// } from "../checkpoint/base.js";
-// import { BaseChannel } from "../channels/base.js";
-// import {
-//   PendingWrite,
-//   CheckpointPendingWrite,
-//   PregelExecutableTask,
-// } from "./types.js";
-// import { CONFIG_KEY_READ } from "../constants.js";
-// import { _applyWrites } from "./algo.js";
+import { type RunnableConfig } from "@langchain/core/runnables";
+import {
+  BaseCheckpointSaver,
+  Checkpoint,
+  CheckpointTuple,
+  copyCheckpoint,
+  emptyCheckpoint,
+} from "../checkpoint/base.js";
+import { BaseChannel, createCheckpoint } from "../channels/base.js";
+import { PregelExecutableTask, PregelInterface } from "./types.js";
+import {
+  PendingWrite,
+  CheckpointPendingWrite,
+  CheckpointMetadata,
+} from "../checkpoint/types.js";
+import {
+  CONFIG_KEY_READ,
+  CONFIG_KEY_RESUMING,
+  INPUT,
+  INTERRUPT,
+} from "../constants.js";
+import {
+  _applyWrites,
+  _prepareNextTasks,
+  shouldInterrupt,
+  WritesProtocol,
+} from "./algo.js";
+import { gatherIterator, prefixGenerator } from "../utils.js";
+import { mapInput, mapOutputUpdates, mapOutputValues } from "./io.js";
+import { EmptyInputError, GraphInterrupt } from "../errors.js";
+import { getNewChannelVersions } from "./utils.js";
+import { mapDebugTasks, mapDebugCheckpoint } from "./debug.js";
+import { PregelNode } from "./read.js";
 
-// const INPUT_DONE = Symbol.for("INPUT_DONE");
-// const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
+const INPUT_DONE = Symbol.for("INPUT_DONE");
+const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
 
-// export type PregelLoopParams = {
-//   input?: any;
-//   config: RunnableConfig;
-//   checkpointer?: BaseCheckpointSaver;
-//   graph: any;
-// };
+export type PregelLoopInitializeParams = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  input?: any;
+  config: RunnableConfig;
+  checkpointer?: BaseCheckpointSaver;
+  graph: PregelInterface<
+    Record<string, PregelNode>,
+    Record<string, BaseChannel>
+  >;
+};
 
-// export class PregelLoop {
-//   protected input?: any;
-//   protected config: RunnableConfig;
-//   protected checkpointer?: BaseCheckpointSaver;
-//   protected checkpointerGetNextVersion: (checkpoint: any) => any;
-//   protected _checkpointerPutAfterPrevious?: (input: {
-//     config: RunnableConfig;
-//   }) => any;
-//   // TODO: Fix typing
-//   protected graph: any;
-//   // protected submit: Submit;
-//   protected channels: Record<string, BaseChannel>;
-//   // TODO: Fix typing
-//   protected managed: Record<string, any>;
-//   protected checkpoint?: Checkpoint;
-//   protected checkpointConfig: RunnableConfig;
-//   protected checkpointMetadata: CheckpointMetadata;
-//   protected checkpointPendingWrites: CheckpointPendingWrite[] = [];
-//   protected checkpointPreviousVersions: Record<string, string | number>;
-//   protected step: number;
-//   protected stop: number;
-//   protected status:
-//     | "pending"
-//     | "done"
-//     | "interrupt_before"
-//     | "interrupt_after"
-//     | "out_of_steps";
-//   protected tasks: PregelExecutableTask<string, string>[];
-//   protected stream: [string, any][] = [];
-//   protected isNested: boolean;
+type PregelLoopParams = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  input?: any;
+  config: RunnableConfig;
+  checkpointer?: BaseCheckpointSaver;
+  graph: PregelInterface<
+    Record<string, PregelNode>,
+    Record<string, BaseChannel>
+  >;
+  checkpoint: Checkpoint;
+  checkpointMetadata: CheckpointMetadata;
+  checkpointPreviousVersions: Record<string, string | number>;
+  checkpointPendingWrites: CheckpointPendingWrite[];
+  checkpointConfig: RunnableConfig;
+  channels: Record<string, BaseChannel>;
+  step: number;
+  stop: number;
+};
 
-//   constructor(params: PregelLoopParams) {
-//     this.input = params.input;
-//     this.config = params.config;
-//     this.checkpointer = params.checkpointer;
-//     this.graph = params.graph;
-//     this.isNested = CONFIG_KEY_READ in (this.config.configurable ?? {});
-//   }
+export class PregelLoop {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  protected input?: any;
 
-//   /**
-//    * Put writes for a task, to be read by the next tick.
-//    * @param taskId
-//    * @param writes
-//    */
-//   putWrites(taskId: string, writes: PendingWrite<string>[]) {
-//     const pendingWrites: CheckpointPendingWrite<string>[] = writes.map(
-//       ([key, value]) => {
-//         return [taskId, key, value];
-//       }
-//     );
-//     this.checkpointPendingWrites.push(...pendingWrites);
-//     if (this.checkpoint === undefined) {
-//       throw new Error(
-//         "Putting writes failed: Pregel loop has no current checkpoint."
-//       );
-//     }
-//     if (this.checkpointer !== undefined) {
-//       void this.checkpointer.putWrites(
-//         {
-//           ...this.checkpointConfig,
-//           configurable: {
-//             ...this.checkpointConfig.configurable,
-//             checkpoint_ns: this.config.configurable?.checkpoint_ns ?? "",
-//             checkpoint_id: this.checkpoint.id,
-//           },
-//         },
-//         writes,
-//         taskId
-//       );
-//     }
-//   }
+  protected config: RunnableConfig;
 
-//   /**
-//    * Execute a single iteration of the Pregel loop.
-//    * Returns true if more iterations are needed.
-//    * @param params
-//    */
-//   async tick(params: {
-//     outputKeys: string | string[];
-//     interruptAfter: string[];
-//     interruptBefore: string[];
-//     manager?: any;
-//   }): Promise<boolean> {
-//     const {
-//       outputKeys = [],
-//       interruptAfter = [],
-//       interruptBefore = [],
-//       manager,
-//     } = params;
-//     if (this.status !== "pending") {
-//       throw new Error(
-//         `Cannot tick when status is no longer "pending". Current status: "${this.status}"`
-//       );
-//     }
-//     if (this.checkpoint === undefined) {
-//       throw new Error("Tick failed: Pregel loop has no current checkpoint.");
-//     }
-//     if (![INPUT_DONE, INPUT_RESUMING].includes(this.input)) {
-//       await this._first();
-//     } else if (this.tasks.every((task) => task.writes.length > 0)) {
-//       const writes = this.tasks.flatMap((t) => t.writes);
-//       // All tasks have finished
-//       _applyWrites(this.checkpoint, this.channels, this.tasks);
-//     }
-//   }
+  protected checkpointer?: BaseCheckpointSaver;
 
-//   /**
-//    * Resuming from previous checkpoint requires
-//    * - finding a previous checkpoint
-//    * - receiving None input (outer graph) or RESUMING flag (subgraph)
-//    */
-//   protected async _first() {}
-// }
-// //         elif all(task.writes for task in self.tasks):
-// //             writes = [w for t in self.tasks for w in t.writes]
-// //             # all tasks have finished
-// //             apply_writes(
-// //                 self.checkpoint,
-// //                 self.channels,
-// //                 self.tasks,
-// //                 self.checkpointer_get_next_version,
-// //             )
-// //             # produce values output
-// //             self.stream.extend(
-// //                 ("values", v)
-// //                 for v in map_output_values(output_keys, writes, self.channels)
-// //             )
-// //             # clear pending writes
-// //             self.checkpoint_pending_writes.clear()
-// //             # save checkpoint
-// //             self._put_checkpoint(
-// //                 {
-// //                     "source": "loop",
-// //                     "writes": single(
-// //                         map_output_updates(output_keys, self.tasks)
-// //                         if self.graph.stream_mode == "updates"
-// //                         else map_output_values(output_keys, writes, self.channels)
-// //                     ),
-// //                 }
-// //             )
-// //             # after execution, check if we should interrupt
-// //             if should_interrupt(self.checkpoint, interrupt_after, self.tasks):
-// //                 self.status = "interrupt_after"
-// //                 if self.is_nested:
-// //                     raise GraphInterrupt(self)
-// //                 else:
-// //                     return False
-// //         else:
-// //             return False
+  protected checkpointerGetNextVersion: (
+    current: number | undefined,
+    channel: BaseChannel
+  ) => number;
 
-// //         # check if iteration limit is reached
-// //         if self.step > self.stop:
-// //             self.status = "out_of_steps"
-// //             return False
+  // TODO: Fix typing
+  protected graph: PregelInterface<
+    Record<string, PregelNode>,
+    Record<string, BaseChannel>
+  >;
 
-// //         # prepare next tasks
-// //         self.tasks = prepare_next_tasks(
-// //             self.checkpoint,
-// //             self.graph.nodes,
-// //             self.channels,
-// //             self.managed,
-// //             self.config,
-// //             self.step,
-// //             for_execution=True,
-// //             manager=manager,
-// //             checkpointer=self.checkpointer,
-// //             is_resuming=self.input is INPUT_RESUMING,
-// //         )
+  protected channels: Record<string, BaseChannel>;
 
-// //         # if no more tasks, we're done
-// //         if not self.tasks:
-// //             self.status = "done"
-// //             return False
+  // TODO: Fix typing
+  protected managed: Record<string, any>;
 
-// //         # if there are pending writes from a previous loop, apply them
-// //         if self.checkpoint_pending_writes:
-// //             for tid, k, v in self.checkpoint_pending_writes:
-// //                 if task := next((t for t in self.tasks if t.id == tid), None):
-// //                     task.writes.append((k, v))
+  protected checkpoint: Checkpoint;
 
-// //         # if all tasks have finished, re-tick
-// //         if all(task.writes for task in self.tasks):
-// //             return self.tick(
-// //                 output_keys=output_keys,
-// //                 interrupt_after=interrupt_after,
-// //                 interrupt_before=interrupt_before,
-// //                 manager=manager,
-// //             )
+  protected checkpointConfig: RunnableConfig;
 
-// //         # before execution, check if we should interrupt
-// //         if should_interrupt(self.checkpoint, interrupt_before, self.tasks):
-// //             self.status = "interrupt_before"
-// //             if self.is_nested:
-// //                 raise GraphInterrupt()
-// //             else:
-// //                 return False
+  protected checkpointMetadata: CheckpointMetadata;
 
-// //         # produce debug output
-// //         self.stream.extend(("debug", v) for v in map_debug_tasks(self.step, self.tasks))
+  protected checkpointPendingWrites: CheckpointPendingWrite[] = [];
 
-// //         return True
+  protected checkpointPreviousVersions: Record<string, string | number>;
 
-// //     # private
+  protected step: number;
 
-// //     def _first(self) -> None:
-// //         # resuming from previous checkpoint requires
-// //         # - finding a previous checkpoint
-// //         # - receiving None input (outer graph) or RESUMING flag (subgraph)
-// //         is_resuming = bool(self.checkpoint["channel_versions"]) and bool(
-// //             self.config.get("configurable", {}).get(CONFIG_KEY_RESUMING)
-// //             or self.input is None
-// //         )
+  protected stop: number;
 
-// //         # proceed past previous checkpoint
-// //         if is_resuming:
-// //             self.checkpoint["versions_seen"].setdefault(INTERRUPT, {})
-// //             for k in self.channels:
-// //                 if k in self.checkpoint["channel_versions"]:
-// //                     version = self.checkpoint["channel_versions"][k]
-// //                     self.checkpoint["versions_seen"][INTERRUPT][k] = version
-// //         # map inputs to channel updates
-// //         elif input_writes := deque(map_input(self.graph.input_channels, self.input)):
-// //             # discard any unfinished tasks from previous checkpoint
-// //             discard_tasks = prepare_next_tasks(
-// //                 self.checkpoint,
-// //                 self.graph.nodes,
-// //                 self.channels,
-// //                 self.managed,
-// //                 self.config,
-// //                 self.step,
-// //                 for_execution=True,
-// //                 manager=None,
-// //             )
-// //             # apply input writes
-// //             apply_writes(
-// //                 self.checkpoint,
-// //                 self.channels,
-// //                 discard_tasks + [PregelTaskWrites(INPUT, input_writes, [])],
-// //                 self.checkpointer_get_next_version,
-// //             )
-// //             # save input checkpoint
-// //             self._put_checkpoint({"source": "input", "writes": self.input})
-// //         else:
-// //             raise EmptyInputError(f"Received no input for {self.graph.input_channels}")
-// //         # done with input
-// //         self.input = INPUT_RESUMING if is_resuming else INPUT_DONE
+  protected status:
+    | "pending"
+    | "done"
+    | "interrupt_before"
+    | "interrupt_after"
+    | "out_of_steps" = "pending";
 
-// //     def _put_checkpoint(self, metadata: CheckpointMetadata) -> None:
-// //         # assign step
-// //         metadata["step"] = self.step
-// //         # bail if no checkpointer
-// //         if self._checkpointer_put_after_previous is not None:
-// //             # create new checkpoint
-// //             self.checkpoint_metadata = metadata
-// //             self.checkpoint = create_checkpoint(
-// //                 self.checkpoint,
-// //                 self.channels,
-// //                 self.step,
-// //                 # child graphs keep at most one checkpoint per parent checkpoint
-// //                 # this is achieved by writing child checkpoints as progress is made
-// //                 # (so that error recovery / resuming from interrupt don't lose work)
-// //                 # but doing so always with an id equal to that of the parent checkpoint
-// //                 id=self.config["configurable"]["checkpoint_id"]
-// //                 if self.is_nested
-// //                 else None,
-// //             )
+  protected tasks: PregelExecutableTask<string, string>[] = [];
 
-// //             self.checkpoint_config = {
-// //                 **self.checkpoint_config,
-// //                 "configurable": {
-// //                     **self.checkpoint_config["configurable"],
-// //                     "checkpoint_ns": self.config["configurable"].get(
-// //                         "checkpoint_ns", ""
-// //                     ),
-// //                 },
-// //             }
+  protected stream: [string, any][] = [];
 
-// //             channel_versions = self.checkpoint["channel_versions"].copy()
-// //             new_versions = get_new_channel_versions(
-// //                 self.checkpoint_previous_versions, channel_versions
-// //             )
+  protected isNested: boolean;
 
-// //             self.checkpoint_previous_versions = channel_versions
+  protected _putCheckpointPromise: Promise<unknown> = Promise.resolve();
 
-// //             # save it, without blocking
-// //             # if there's a previous checkpoint save in progress, wait for it
-// //             # ensuring checkpointers receive checkpoints in order
-// //             self._put_checkpoint_fut = self.submit(
-// //                 self._checkpointer_put_after_previous,
-// //                 getattr(self, "_put_checkpoint_fut", None),
-// //                 self.checkpoint_config,
-// //                 copy_checkpoint(self.checkpoint),
-// //                 self.checkpoint_metadata,
-// //                 new_versions,
-// //             )
-// //             self.checkpoint_config = {
-// //                 **self.checkpoint_config,
-// //                 "configurable": {
-// //                     **self.checkpoint_config["configurable"],
-// //                     "checkpoint_id": self.checkpoint["id"],
-// //                 },
-// //             }
-// //             # produce debug output
-// //             self.stream.extend(
-// //                 ("debug", v)
-// //                 for v in map_debug_checkpoint(
-// //                     self.step,
-// //                     self.checkpoint_config,
-// //                     self.channels,
-// //                     self.graph.stream_channels_asis,
-// //                     self.checkpoint_metadata,
-// //                 )
-// //             )
-// //         # increment step
-// //         self.step += 1
+  constructor(params: PregelLoopParams) {
+    this.input = params.input;
+    this.config = params.config;
+    this.checkpointer = params.checkpointer;
+    // TODO: if managed values no longer needs graph we can replace with
+    // managed_specs, channel_specs
+    if (this.checkpointer !== undefined) {
+      this.checkpointerGetNextVersion = this.checkpointer.getNextVersion.bind(
+        this.checkpointer
+      );
+    } else {
+      this.checkpointerGetNextVersion = (current) => {
+        return current !== undefined ? current + 1 : 1;
+      };
+    }
+    this.graph = params.graph;
+    this.checkpoint = params.checkpoint;
+    this.checkpointMetadata = params.checkpointMetadata;
+    this.checkpointPreviousVersions = params.checkpointPreviousVersions;
+    this.checkpointPendingWrites = params.checkpointPendingWrites;
+    this.step = params.step;
+    this.stop = params.stop;
+    this.isNested = CONFIG_KEY_READ in (this.config.configurable ?? {});
+  }
 
-// //     def _suppress_interrupt(
-// //         self,
-// //         exc_type: Optional[Type[BaseException]],
-// //         exc_value: Optional[BaseException],
-// //         traceback: Optional[TracebackType],
-// //     ) -> Optional[bool]:
-// //         if exc_type is GraphInterrupt and not self.is_nested:
-// //             return True
+  protected static async initialize(params: PregelLoopInitializeParams) {
+    const saved: CheckpointTuple = (await params.checkpointer?.getTuple(
+      params.config
+    )) ?? {
+      config: params.config,
+      checkpoint: emptyCheckpoint(),
+      metadata: {
+        source: "input",
+        step: -2,
+        writes: null,
+      },
+      pendingWrites: [],
+    };
+    const checkpointConfig = {
+      ...params.config,
+      ...saved.config,
+      configurable: {
+        ...params.config.configurable,
+        ...saved.config.configurable,
+      },
+    };
+    const checkpoint = copyCheckpoint(saved.checkpoint);
+    const checkpointMetadata = { ...saved.metadata } as CheckpointMetadata;
+    const checkpointPendingWrites = saved.pendingWrites ?? [];
 
-// // class SyncPregelLoop(PregelLoop, ContextManager):
-// //     def __init__(
-// //         self,
-// //         input: Optional[Any],
-// //         *,
-// //         config: RunnableConfig,
-// //         checkpointer: Optional[BaseCheckpointSaver],
-// //         graph: "Pregel",
-// //     ) -> None:
-// //         super().__init__(input, config=config, checkpointer=checkpointer, graph=graph)
-// //         self.stack = ExitStack()
-// //         self.stack.push(self._suppress_interrupt)
-// //         if checkpointer:
-// //             self.checkpointer_get_next_version = checkpointer.get_next_version
-// //             self.checkpointer_put_writes = checkpointer.put_writes
-// //         else:
-// //             self.checkpointer_get_next_version = increment
-// //             self._checkpointer_put_after_previous = None
-// //             self.checkpointer_put_writes = None
+    const channels = Object.entries(params.graph.channels).reduce(
+      (channels: Record<string, BaseChannel>, [k, v]) => {
+        // eslint-disable-next-line no-param-reassign
+        channels[k] = v.fromCheckpoint(checkpoint.channel_values[k]);
+        return channels;
+      },
+      {}
+    );
 
-// //     def _checkpointer_put_after_previous(
-// //         self,
-// //         prev: Optional[concurrent.futures.Future],
-// //         config: RunnableConfig,
-// //         checkpoint: Checkpoint,
-// //         metadata: CheckpointMetadata,
-// //         new_versions: Optional[dict[str, Union[str, float, int]]],
-// //     ) -> RunnableConfig:
-// //         try:
-// //             if prev is not None:
-// //                 prev.result()
-// //         finally:
-// //             self.checkpointer.put(config, checkpoint, metadata, new_versions)
+    const step = (checkpointMetadata.step ?? 0) + 1;
+    const stop = step + (params.config.recursionLimit ?? 25) + 1;
+    const checkpointPreviousVersions = { ...checkpoint.channel_versions };
+    return new PregelLoop({
+      input: params.input,
+      config: params.config,
+      checkpointer: params.checkpointer,
+      graph: params.graph,
+      checkpoint,
+      checkpointMetadata,
+      checkpointConfig,
+      channels,
+      step,
+      stop,
+      checkpointPreviousVersions,
+      checkpointPendingWrites,
+    });
+  }
 
-// //     # context manager
+  protected async _checkpointerPutAfterPrevious(input: {
+    config: RunnableConfig;
+    checkpoint: Checkpoint;
+    metadata: CheckpointMetadata;
+    newVersions: Record<string, string | number>;
+  }) {
+    try {
+      await this._putCheckpointPromise;
+    } finally {
+      this._putCheckpointPromise =
+        this.checkpointer?.put(
+          input.config,
+          input.checkpoint,
+          input.metadata
+        ) ?? Promise.resolve();
+    }
+  }
 
-// //     def __enter__(self) -> Self:
-// //         saved = (
-// //             self.checkpointer.get_tuple(self.config) if self.checkpointer else None
-// //         ) or CheckpointTuple(self.config, empty_checkpoint(), {"step": -2}, None, [])
-// //         self.checkpoint_config = {
-// //             **self.config,
-// //             **saved.config,
-// //             "configurable": {
-// //                 **self.config.get("configurable", {}),
-// //                 **saved.config.get("configurable", {}),
-// //             },
-// //         }
-// //         self.checkpoint = copy_checkpoint(saved.checkpoint)
-// //         self.checkpoint_metadata = saved.metadata
-// //         self.checkpoint_pending_writes = saved.pending_writes or []
+  /**
+   * Put writes for a task, to be read by the next tick.
+   * @param taskId
+   * @param writes
+   */
+  putWrites(taskId: string, writes: PendingWrite<string>[]) {
+    const pendingWrites: CheckpointPendingWrite<string>[] = writes.map(
+      ([key, value]) => {
+        return [taskId, key, value];
+      }
+    );
+    this.checkpointPendingWrites.push(...pendingWrites);
+    if (this.checkpointer !== undefined) {
+      void this.checkpointer.putWrites(
+        {
+          ...this.checkpointConfig,
+          configurable: {
+            ...this.checkpointConfig.configurable,
+            checkpoint_ns: this.config.configurable?.checkpoint_ns ?? "",
+            checkpoint_id: this.checkpoint.id,
+          },
+        },
+        writes,
+        taskId
+      );
+    }
+  }
 
-// //         self.submit = self.stack.enter_context(BackgroundExecutor(self.config))
-// //         self.channels = self.stack.enter_context(
-// //             ChannelsManager(self.graph.channels, self.checkpoint, self.config)
-// //         )
-// //         self.managed = self.stack.enter_context(
-// //             ManagedValuesManager(self.graph.managed_values_dict, self.config)
-// //         )
-// //         self.status = "pending"
-// //         self.step = self.checkpoint_metadata["step"] + 1
-// //         self.stop = self.step + self.config["recursion_limit"] + 1
-// //         self.checkpoint_previous_versions = self.checkpoint["channel_versions"].copy()
+  /**
+   * Execute a single iteration of the Pregel loop.
+   * Returns true if more iterations are needed.
+   * @param params
+   */
+  async tick(params: {
+    outputKeys: string | string[];
+    interruptAfter: string[];
+    interruptBefore: string[];
+    manager?: any;
+  }): Promise<boolean> {
+    const {
+      outputKeys = [],
+      interruptAfter = [],
+      interruptBefore = [],
+      manager,
+    } = params;
+    if (this.status !== "pending") {
+      throw new Error(
+        `Cannot tick when status is no longer "pending". Current status: "${this.status}"`
+      );
+    }
+    if (![INPUT_DONE, INPUT_RESUMING].includes(this.input)) {
+      await this._first();
+    } else if (this.tasks.every((task) => task.writes.length > 0)) {
+      const writes = this.tasks.flatMap((t) => t.writes);
+      // All tasks have finished
+      _applyWrites(this.checkpoint, this.channels, this.tasks);
+      // produce values output
+      const valuesOutput = await gatherIterator(
+        prefixGenerator(
+          mapOutputValues(outputKeys, writes, this.channels),
+          "values"
+        )
+      );
+      this.stream.push(...valuesOutput);
+      // clear pending writes
+      this.checkpointPendingWrites = [];
+      const metadataWrites =
+        this.graph.streamMode === "updates"
+          ? mapOutputUpdates(outputKeys, this.tasks).next().value
+          : mapOutputValues(outputKeys, writes, this.channels).next().value;
+      void this._putCheckpoint({
+        source: "loop",
+        writes: metadataWrites,
+      });
+      // after execution, check if we should interrupt
+      if (shouldInterrupt(this.checkpoint, interruptAfter, this.tasks)) {
+        this.status = "interrupt_after";
+        if (this.isNested) {
+          throw new GraphInterrupt();
+        } else {
+          return false;
+        }
+      }
+    } else {
+      return false;
+    }
+    if (this.step > this.stop) {
+      this.status = "out_of_steps";
+      return false;
+    }
 
-// //         return self
+    const [, nextTasks] = _prepareNextTasks(
+      this.checkpoint,
+      this.graph.nodes,
+      this.channels,
+      this.config,
+      true,
+      {
+        step: this.step,
+        checkpointer: this.checkpointer,
+        isResuming: this.input === INPUT_RESUMING,
+      }
+    );
+    this.tasks = nextTasks;
+    if (this.tasks.length === 0) {
+      this.status = "done";
+      return false;
+    }
+    // if there are pending writes from a previous loop, apply them
+    if (this.checkpointPendingWrites.length > 0) {
+      for (const [tid, k, v] of this.checkpointPendingWrites) {
+        const task = this.tasks.find((t) => t.id === tid);
+        if (task) {
+          task.writes.push([k, v]);
+        }
+      }
+    }
+    // if all tasks have finished, re-tick
+    if (this.tasks.every((task) => task.writes.length > 0)) {
+      return this.tick({
+        outputKeys,
+        interruptAfter,
+        interruptBefore,
+        manager,
+      });
+    }
 
-// //     def __exit__(
-// //         self,
-// //         exc_type: Optional[Type[BaseException]],
-// //         exc_value: Optional[BaseException],
-// //         traceback: Optional[TracebackType],
-// //     ) -> Optional[bool]:
-// //         # unwind stack
-// //         del self.graph
-// //         return self.stack.__exit__(exc_type, exc_value, traceback)
+    // Before execution, check if we should interrupt
+    if (shouldInterrupt(this.checkpoint, interruptBefore, this.tasks)) {
+      this.status = "interrupt_before";
+      if (this.isNested) {
+        throw new GraphInterrupt();
+      } else {
+        return false;
+      }
+    }
+    // Produce debug output
+    const debugOutput = await gatherIterator(
+      prefixGenerator(mapDebugTasks(this.step, this.tasks), "debug")
+    );
+    this.stream.push(...debugOutput);
+
+    return true;
+  }
+
+  /**
+   * Resuming from previous checkpoint requires
+   * - finding a previous checkpoint
+   * - receiving None input (outer graph) or RESUMING flag (subgraph)
+   */
+  protected async _first() {
+    const isResuming =
+      (Object.keys(this.checkpoint.channel_versions).length !== 0 &&
+        this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined) ||
+      this.input === undefined;
+    if (isResuming) {
+      for (const channelName of Object.keys(this.channels)) {
+        if (this.checkpoint.channel_versions[channelName] !== undefined) {
+          const version = this.checkpoint.channel_versions[channelName];
+          this.checkpoint.versions_seen[INTERRUPT] = {
+            ...this.checkpoint.versions_seen[INTERRUPT],
+            [channelName]: version,
+          };
+        }
+      }
+      // map inputs to channel updates
+    } else {
+      const inputWrites = await gatherIterator(
+        mapInput(this.graph.inputs, this.input)
+      );
+      if (inputWrites.length === 0) {
+        throw new EmptyInputError(
+          `Received no input writes for ${JSON.stringify(
+            this.graph.inputs,
+            null,
+            2
+          )}`
+        );
+      }
+      const [, discardTasks] = _prepareNextTasks(
+        this.checkpoint,
+        this.graph.nodes,
+        this.channels,
+        this.config,
+        true,
+        { step: this.step }
+      );
+      _applyWrites(
+        this.checkpoint,
+        this.channels,
+        (discardTasks as WritesProtocol[]).concat([
+          {
+            name: INPUT,
+            writes: inputWrites,
+            triggers: [],
+          },
+        ]),
+        this.checkpointerGetNextVersion
+      );
+      // save input checkpoint
+      void this._putCheckpoint({ source: "input", writes: this.input });
+    }
+    // done with input
+    this.input = isResuming ? INPUT_RESUMING : INPUT_DONE;
+  }
+
+  protected async _putCheckpoint(
+    inputMetadata: Omit<CheckpointMetadata, "step">
+  ) {
+    // Assign step
+    const metadata = {
+      ...inputMetadata,
+      step: this.step,
+    };
+    // Bail if no checkpointer
+    if (this.checkpointer !== undefined) {
+      // create new checkpoint
+      this.checkpointMetadata = metadata;
+      // child graphs keep at most one checkpoint per parent checkpoint
+      // this is achieved by writing child checkpoints as progress is made
+      // (so that error recovery / resuming from interrupt don't lose work)
+      // but doing so always with an id equal to that of the parent checkpoint
+      this.checkpoint = createCheckpoint(
+        this.checkpoint,
+        this.channels,
+        this.step
+        // id: this.isNested ? this.config.configurable?.checkpoint_id : undefined,
+      );
+      this.checkpointConfig = {
+        ...this.checkpointConfig,
+        configurable: {
+          ...this.checkpointConfig.configurable,
+          checkpoint_ns: this.config.configurable?.checkpoint_ns ?? "",
+        },
+      };
+      const channelVersions = { ...this.checkpoint.channel_versions };
+      const newVersions = getNewChannelVersions(
+        this.checkpointPreviousVersions,
+        channelVersions
+      );
+      this.checkpointPreviousVersions = channelVersions;
+      // save it, without blocking
+      // if there's a previous checkpoint save in progress, wait for it
+      // ensuring checkpointers receive checkpoints in order
+      const putParams = {
+        config: { ...this.checkpointConfig },
+        checkpoint: copyCheckpoint(this.checkpoint),
+        metadata: { ...this.checkpointMetadata },
+        newVersions,
+      };
+      void this._checkpointerPutAfterPrevious(putParams);
+      this.checkpointConfig = {
+        ...this.checkpointConfig,
+        configurable: {
+          ...this.checkpointConfig.configurable,
+          checkpoint_id: this.checkpoint.id,
+        },
+      };
+
+      // Produce debug output
+      const debugOutput = await gatherIterator(
+        prefixGenerator(
+          mapDebugCheckpoint(
+            this.step,
+            this.checkpointConfig,
+            this.channels,
+            this.graph.streamChannelsAsIs,
+            this.checkpointMetadata
+          ),
+          "debug"
+        )
+      );
+      this.stream.push(...debugOutput);
+    }
+    this.step += 1;
+  }
+
+  protected _suppressInterrupt(error: Error) {
+    return error.name === GraphInterrupt.unminifiable_name && !this.isNested;
+  }
+}

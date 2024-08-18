@@ -1,6 +1,11 @@
+import { RunnableConfig } from "@langchain/core/runnables";
 import { BaseChannel } from "../channels/base.js";
+import { uuid5 } from "../checkpoint/id.js";
+import { TAG_HIDDEN, TASK_NAMESPACE } from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
 import { PregelExecutableTask } from "./types.js";
+import { CheckpointMetadata } from "../web.js";
+import { readChannels } from "./io.js";
 
 type ConsoleColors = {
   start: string;
@@ -74,4 +79,84 @@ function* _readChannels<Value>(
       }
     }
   }
+}
+
+export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
+  step: number,
+  tasks: readonly PregelExecutableTask<N, C>[]
+) {
+  const ts = new Date().toISOString();
+  for (const { name, input, config, triggers } of tasks) {
+    if (config?.tags?.includes(TAG_HIDDEN)) continue;
+
+    const metadata = { ...config?.metadata };
+    delete metadata.checkpoint_id;
+
+    yield {
+      type: "task",
+      timestamp: ts,
+      step,
+      payload: {
+        id: uuid5(JSON.stringify([name, step, metadata]), TASK_NAMESPACE),
+        name,
+        input,
+        triggers,
+      },
+    };
+  }
+}
+
+export function* mapDebugTaskResults<
+  N extends PropertyKey,
+  C extends PropertyKey
+>(
+  step: number,
+  tasks: readonly PregelExecutableTask<N, C>[],
+  streamChannelsList: Array<PropertyKey>
+) {
+  const ts = new Date().toISOString();
+  for (const { name, writes, config } of tasks) {
+    if (config?.tags?.includes(TAG_HIDDEN)) continue;
+
+    const metadata = { ...config?.metadata };
+    delete metadata.checkpoint_id;
+
+    yield {
+      type: "task_result",
+      timestamp: ts,
+      step,
+      payload: {
+        id: uuid5(JSON.stringify([name, step, metadata]), TASK_NAMESPACE),
+        name,
+        result: writes.filter(([channel]) =>
+          streamChannelsList.includes(channel)
+        ),
+      },
+    };
+  }
+}
+
+export function* mapDebugCheckpoint(
+  step: number,
+  config: RunnableConfig,
+  channels: Record<string, BaseChannel>,
+  streamChannels: string | string[],
+  metadata: CheckpointMetadata
+) {
+  function getCurrentUTC() {
+    const now = new Date();
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
+  }
+
+  const ts = getCurrentUTC().toISOString();
+  yield {
+    type: "checkpoint",
+    timestamp: ts,
+    step,
+    payload: {
+      config,
+      values: readChannels(channels, streamChannels),
+      metadata,
+    },
+  };
 }

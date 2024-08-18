@@ -28,11 +28,10 @@ import {
   mapInput,
   mapOutputUpdates,
   mapOutputValues,
-  mapDebugTasks,
   readChannels,
   single,
-  mapDebugTaskResults,
 } from "./io.js";
+import { mapDebugTasks, mapDebugTaskResults } from "./debug.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import {
   CONFIG_KEY_READ,
@@ -43,10 +42,12 @@ import {
 } from "../constants.js";
 import {
   All,
-  PendingWrite,
   PregelExecutableTask,
+  PregelInterface,
   StateSnapshot,
+  StreamMode,
 } from "./types.js";
+import { PendingWrite } from "../checkpoint/types.js";
 import {
   GraphRecursionError,
   GraphValueError,
@@ -55,11 +56,13 @@ import {
 import {
   executeTasks,
   _prepareNextTasks,
-  _shouldInterrupt,
+  shouldInterrupt,
   _localRead,
   _applyWrites,
+  StrRecord,
 } from "./algo.js";
 import { uuid5 } from "../checkpoint/id.js";
+import { prefixGenerator } from "../utils.js";
 
 const DEFAULT_LOOP_LIMIT = 25;
 
@@ -67,14 +70,6 @@ type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
 function isString(value: unknown): value is string {
   return typeof value === "string";
-}
-
-function* prefixGenerator<T>(
-  generator: Generator<T>,
-  prefix: string | undefined
-) {
-  if (!prefix) yield* generator;
-  for (const value of generator) yield [prefix, value];
 }
 
 export class Channel {
@@ -165,56 +160,6 @@ export class Channel {
   }
 }
 
-export type StreamMode = "values" | "updates" | "debug";
-
-/**
- * Construct a type with a set of properties K of type T
- */
-type StrRecord<K extends string, T> = {
-  [P in K]: T;
-};
-
-export interface PregelInterface<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
-> {
-  nodes: Nn;
-
-  channels: Cc;
-
-  inputs: keyof Cc | Array<keyof Cc>;
-
-  outputs: keyof Cc | Array<keyof Cc>;
-  /**
-   * @default true
-   */
-  autoValidate?: boolean;
-  /**
-   * @default "values"
-   */
-  streamMode?: StreamMode | StreamMode[];
-
-  streamChannels?: keyof Cc | Array<keyof Cc>;
-  /**
-   * @default []
-   */
-  interruptAfter?: Array<keyof Nn> | All;
-  /**
-   * @default []
-   */
-  interruptBefore?: Array<keyof Nn> | All;
-  /**
-   * @default undefined
-   */
-  stepTimeout?: number;
-  /**
-   * @default false
-   */
-  debug?: boolean;
-
-  checkpointer?: BaseCheckpointSaver;
-}
-
 export interface PregelOptions<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
@@ -271,7 +216,7 @@ export class Pregel<
 
   checkpointer?: BaseCheckpointSaver;
 
-  constructor(fields: PregelInterface<Nn, Cc>) {
+  constructor(fields: Omit<PregelInterface<Nn, Cc>, "streamChannelsAsIs">) {
     super(fields);
 
     let { streamMode } = fields;
@@ -693,14 +638,7 @@ export class Pregel<
         }
 
         // before execution, check if we should interrupt
-        if (
-          _shouldInterrupt(
-            checkpoint,
-            interruptBefore,
-            this.streamChannelsList,
-            nextTasks
-          )
-        ) {
+        if (shouldInterrupt(checkpoint, interruptBefore, nextTasks)) {
           break;
         } else {
           checkpoint = nextCheckpoint;
@@ -821,14 +759,7 @@ export class Pregel<
           };
         }
 
-        if (
-          _shouldInterrupt(
-            checkpoint,
-            interruptAfter,
-            this.streamChannelsList,
-            nextTasks
-          )
-        ) {
+        if (shouldInterrupt(checkpoint, interruptAfter, nextTasks)) {
           break;
         }
       }
