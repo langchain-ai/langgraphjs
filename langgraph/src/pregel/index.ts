@@ -44,6 +44,7 @@ import {
   All,
   PregelExecutableTask,
   PregelInterface,
+  PregelParams,
   StateSnapshot,
   StreamMode,
 } from "./types.js";
@@ -196,9 +197,9 @@ export class Pregel<
 
   channels: Cc;
 
-  inputs: keyof Cc | Array<keyof Cc>;
+  inputChannels: keyof Cc | Array<keyof Cc>;
 
-  outputs: keyof Cc | Array<keyof Cc>;
+  outputChannels: keyof Cc | Array<keyof Cc>;
 
   autoValidate: boolean = true;
 
@@ -216,7 +217,7 @@ export class Pregel<
 
   checkpointer?: BaseCheckpointSaver;
 
-  constructor(fields: Omit<PregelInterface<Nn, Cc>, "streamChannelsAsIs">) {
+  constructor(fields: PregelParams<Nn, Cc>) {
     super(fields);
 
     let { streamMode } = fields;
@@ -228,11 +229,11 @@ export class Pregel<
     this.channels = fields.channels;
     this.autoValidate = fields.autoValidate ?? this.autoValidate;
     this.streamMode = streamMode ?? this.streamMode;
-    this.outputs = fields.outputs;
+    this.inputChannels = fields.inputChannels;
+    this.outputChannels = fields.outputChannels;
     this.streamChannels = fields.streamChannels ?? this.streamChannels;
     this.interruptAfter = fields.interruptAfter;
     this.interruptBefore = fields.interruptBefore;
-    this.inputs = fields.inputs;
     this.stepTimeout = fields.stepTimeout ?? this.stepTimeout;
     this.debug = fields.debug ?? this.debug;
     this.checkpointer = fields.checkpointer;
@@ -249,8 +250,8 @@ export class Pregel<
     validateGraph({
       nodes: this.nodes,
       channels: this.channels,
-      outputChannels: this.outputs,
-      inputChannels: this.inputs,
+      outputChannels: this.outputChannels,
+      inputChannels: this.inputChannels,
       streamChannels: this.streamChannels,
       interruptAfterNodes: this.interruptAfter,
       interruptBeforeNodes: this.interruptBefore,
@@ -363,8 +364,11 @@ export class Pregel<
       {} as Record<number, string[]>
     );
     if (!asNode && !Object.keys(maxSeens).length) {
-      if (!Array.isArray(this.inputs) && this.inputs in this.nodes) {
-        asNode = this.inputs as keyof Nn;
+      if (
+        !Array.isArray(this.inputChannels) &&
+        this.inputChannels in this.nodes
+      ) {
+        asNode = this.inputChannels as keyof Nn;
       }
     } else if (!asNode) {
       const maxSeen = Math.max(...Object.keys(maxSeens).map(Number));
@@ -476,7 +480,7 @@ export class Pregel<
 
     let defaultInputKeys = inputKeys;
     if (defaultInputKeys === undefined) {
-      defaultInputKeys = this.inputs;
+      defaultInputKeys = this.inputChannels;
     } else {
       validateKeys(defaultInputKeys, this.channels);
     }
@@ -774,7 +778,7 @@ export class Pregel<
   ): Promise<PregelOutputType> {
     const config = ensureConfig(options);
     if (!config?.outputKeys) {
-      config.outputKeys = this.outputs;
+      config.outputKeys = this.outputChannels;
     }
     if (!config?.streamMode) {
       config.streamMode = "values";

@@ -11,7 +11,8 @@ import {
 } from "@langchain/core/runnables/graph";
 import { z } from "zod";
 import { PregelNode } from "../pregel/read.js";
-import { Channel, Pregel, PregelInterface } from "../pregel/index.js";
+import { Channel, Pregel } from "../pregel/index.js";
+import type { PregelParams } from "../pregel/types.js";
 import { BaseCheckpointSaver } from "../checkpoint/base.js";
 import { BaseChannel } from "../channels/base.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
@@ -266,8 +267,8 @@ export class Graph<
         [START]: new EphemeralValue(),
         [END]: new EphemeralValue(),
       } as Record<N | typeof START | typeof END | string, BaseChannel>,
-      inputs: START,
-      outputs: END,
+      inputChannels: START,
+      outputChannels: END,
       streamChannels: [] as N[],
       streamMode: "values",
     });
@@ -372,7 +373,7 @@ export class CompiledGraph<
   constructor({
     builder,
     ...rest
-  }: { builder: Graph<N, RunInput, RunOutput> } & PregelInterface<
+  }: { builder: Graph<N, RunInput, RunOutput> } & PregelParams<
     Record<N | typeof START, PregelNode<RunInput, RunOutput>>,
     Record<N | typeof START | typeof END | string, BaseChannel>
   >) {

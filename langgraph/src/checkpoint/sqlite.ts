@@ -1,13 +1,8 @@
 import Database, { Database as DatabaseType } from "better-sqlite3";
 import { RunnableConfig } from "@langchain/core/runnables";
-import {
-  BaseCheckpointSaver,
-  Checkpoint,
-  CheckpointMetadata,
-  CheckpointTuple,
-} from "./base.js";
+import { BaseCheckpointSaver, Checkpoint, CheckpointTuple } from "./base.js";
 import { SerializerProtocol } from "../serde/base.js";
-import { PendingWrite } from "../pregel/types.js";
+import type { PendingWrite, CheckpointMetadata } from "../checkpoint/types.js";
 
 // snake_case is used to match Python implementation
 interface Row {

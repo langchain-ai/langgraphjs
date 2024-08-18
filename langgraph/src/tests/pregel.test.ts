@@ -117,8 +117,8 @@ describe("Pregel", () => {
           input: new LastValue<number>(),
           output: new LastValue<number>(),
         },
-        inputs: "input",
-        outputs: "output",
+        inputChannels: "input",
+        outputChannels: "output",
         streamChannels: "output",
       });
       const pregel2 = new Pregel({
@@ -127,8 +127,8 @@ describe("Pregel", () => {
           input: new LastValue<number>(),
           output: new LastValue<number>(),
         },
-        inputs: "input",
-        outputs: "output",
+        inputChannels: "input",
+        outputChannels: "output",
         streamChannels: ["input", "output"],
       });
       const pregel3 = new Pregel({
@@ -137,8 +137,8 @@ describe("Pregel", () => {
           input: new LastValue<number>(),
           output: new LastValue<number>(),
         },
-        inputs: "input",
-        outputs: "output",
+        inputChannels: "input",
+        outputChannels: "output",
       });
 
       // call method / assertions
@@ -187,8 +187,8 @@ describe("Pregel", () => {
       const pregel = new Pregel({
         nodes,
         debug: false,
-        inputs: "outputKey",
-        outputs: "outputKey",
+        inputChannels: "outputKey",
+        outputChannels: "outputKey",
         interruptBefore: ["one"],
         interruptAfter: ["one"],
         streamMode: "values",
@@ -817,8 +817,8 @@ it("can invoke pregel with a single process", async () => {
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   expect(await app.invoke(2)).toBe(3);
@@ -854,8 +854,8 @@ it("should process input and produce output with implicit channels", async () =>
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   expect(await app.invoke(2)).toBe(3);
@@ -883,8 +883,8 @@ it("should process input and write kwargs correctly", async () => {
       fixed: new LastValue<number>(),
       outputPlusOne: new LastValue<number>(),
     },
-    outputs: ["output", "fixed", "outputPlusOne"],
-    inputs: "input",
+    outputChannels: ["output", "fixed", "outputPlusOne"],
+    inputChannels: "input",
   });
 
   expect(await app.invoke(2)).toEqual({
@@ -908,8 +908,8 @@ it("should invoke single process in out objects", async () => {
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: ["output"],
+    inputChannels: "input",
+    outputChannels: ["output"],
   });
 
   expect(await app.invoke(2)).toEqual({ output: 3 });
@@ -927,8 +927,8 @@ it("should process input and output as objects", async () => {
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    inputs: ["input"],
-    outputs: ["output"],
+    inputChannels: ["input"],
+    outputChannels: ["output"],
   });
 
   expect(await app.invoke({ input: 2 })).toEqual({ output: 3 });
@@ -951,8 +951,8 @@ it("should invoke two processes and get correct output", async () => {
       output: new LastValue<number>(),
       input: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
     streamChannels: ["inbox", "output"],
   });
 
@@ -991,9 +991,9 @@ it("should process two processes with object input and output", async () => {
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    inputs: ["input", "inbox"],
+    inputChannels: ["input", "inbox"],
     streamChannels: ["output", "inbox"],
-    outputs: "output",
+    outputChannels: "output",
   });
 
   expect(
@@ -1109,8 +1109,8 @@ it("should process batch with two processes and delays", async () => {
       output: new LastValue<number>(),
       input: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   expect(await app.batch([3, 2, 1, 3, 5])).toEqual([5, 4, 3, 5, 7]);
@@ -1170,8 +1170,8 @@ it("should batch many processes with input and output", async () => {
   const app = new Pregel({
     nodes,
     channels,
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   for (let i = 0; i < 3; i += 1) {
@@ -1203,8 +1203,8 @@ it("should raise InvalidUpdateError when the same LastValue channel is updated t
       output: new LastValue<number>(),
       input: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   await expect(app.invoke(2)).rejects.toThrow(InvalidUpdateError);
@@ -1227,8 +1227,8 @@ it("should process two inputs to two outputs validly", async () => {
       input: new LastValue<number>(),
       output2: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   // An Inbox channel accumulates updates into a sequence
@@ -1284,8 +1284,8 @@ it("should handle checkpoints correctly", async () => {
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
     checkpointer: memory,
   });
 
@@ -1353,8 +1353,8 @@ it("should process two inputs joined into one topic and produce two outputs", as
       output: new LastValue<number>(),
       input: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   // Invoke app and check results
@@ -1387,8 +1387,8 @@ it("should invoke join then call other app", async () => {
       output: new LastValue<number>(),
       input: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   const one = Channel.subscribeTo("input")
@@ -1416,8 +1416,8 @@ it("should invoke join then call other app", async () => {
       output: new LastValue<number>(),
       input: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   // Run the test 10 times sequentially
@@ -1457,8 +1457,8 @@ it("should handle two processes with one input and two outputs", async () => {
       output: new LastValue<number>(),
       between: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
     streamChannels: ["output", "between"],
   });
 
@@ -1485,8 +1485,8 @@ it("should finish executing without output", async () => {
       between: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   // It finishes executing (once no more messages being published)

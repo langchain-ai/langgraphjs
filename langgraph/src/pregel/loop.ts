@@ -382,12 +382,12 @@ export class PregelLoop {
       // map inputs to channel updates
     } else {
       const inputWrites = await gatherIterator(
-        mapInput(this.graph.inputs, this.input)
+        mapInput(this.graph.inputChannels, this.input)
       );
       if (inputWrites.length === 0) {
         throw new EmptyInputError(
           `Received no input writes for ${JSON.stringify(
-            this.graph.inputs,
+            this.graph.inputChannels,
             null,
             2
           )}`

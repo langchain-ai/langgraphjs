@@ -152,7 +152,7 @@ export class StateGraph<
 
     // prepare output channels
     const stateKeys = Object.keys(this.channels);
-    const outputs =
+    const outputChannels =
       stateKeys.length === 1 && stateKeys[0] === ROOT
         ? stateKeys[0]
         : stateKeys;
@@ -169,9 +169,9 @@ export class StateGraph<
         ...this.channels,
         [START]: new EphemeralValue(),
       } as Record<N | typeof START | typeof END | string, BaseChannel>,
-      inputs: START,
-      outputs,
-      streamChannels: outputs,
+      inputChannels: START,
+      outputChannels,
+      streamChannels: outputChannels,
       streamMode: "updates",
     });
 
@@ -348,7 +348,7 @@ export class CompiledStateGraph<
           return new ChannelWrite(writes, [TAG_HIDDEN]);
         },
         // reader
-        (config) => ChannelRead.doRead<S>(config, this.outputs, true)
+        (config) => ChannelRead.doRead<S>(config, this.outputChannels, true)
       )
     );
 

@@ -21,34 +21,39 @@ export interface PregelInterface<
 
   channels: Cc;
 
-  inputs: keyof Cc | Array<keyof Cc>;
-
-  outputs: keyof Cc | Array<keyof Cc>;
   /**
    * @default true
    */
   autoValidate?: boolean;
+
   /**
    * @default "values"
    */
   streamMode?: StreamMode | StreamMode[];
+
+  inputChannels: keyof Cc | Array<keyof Cc>;
+
+  outputChannels: keyof Cc | Array<keyof Cc>;
+
+  /**
+   * @default []
+   */
+  interruptAfter?: Array<keyof Nn> | All;
+
+  /**
+   * @default []
+   */
+  interruptBefore?: Array<keyof Nn> | All;
 
   streamChannels?: keyof Cc | Array<keyof Cc>;
 
   get streamChannelsAsIs(): keyof Cc | Array<keyof Cc>;
 
   /**
-   * @default []
-   */
-  interruptAfter?: Array<keyof Nn> | All;
-  /**
-   * @default []
-   */
-  interruptBefore?: Array<keyof Nn> | All;
-  /**
    * @default undefined
    */
   stepTimeout?: number;
+
   /**
    * @default false
    */
@@ -56,6 +61,11 @@ export interface PregelInterface<
 
   checkpointer?: BaseCheckpointSaver;
 }
+
+export type PregelParams<
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel>
+> = Omit<PregelInterface<Nn, Cc>, "streamChannelsAsIs">;
 
 export interface PregelTaskDescription {
   readonly name: string;
