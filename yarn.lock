@@ -1840,9 +1840,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:>0.1.0  <0.3.0, @langchain/core@npm:>=0.2.11 <0.3.0, @langchain/core@npm:>=0.2.16 <0.3.0, @langchain/core@npm:>=0.2.20 <0.3.0, @langchain/core@npm:>=0.2.21 <0.3.0":
-  version: 0.2.21
-  resolution: "@langchain/core@npm:0.2.21"
+"@langchain/core@npm:latest":
+  version: 0.2.27
+  resolution: "@langchain/core@npm:0.2.27"
   dependencies:
     ansi-styles: ^5.0.0
     camelcase: 6
@@ -1855,26 +1855,7 @@ __metadata:
     uuid: ^10.0.0
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
-  checksum: 661e40388156820a05a342db5b3bb65eb27dc2d44306b0946383d578857b96900c2c8a0975463fa3576e6c16dc034a83aa9288b9472f3f0ae0e92968033214ce
-  languageName: node
-  linkType: hard
-
-"@langchain/core@npm:>0.1.0 <0.3.0, @langchain/core@npm:^0.2.24":
-  version: 0.2.24
-  resolution: "@langchain/core@npm:0.2.24"
-  dependencies:
-    ansi-styles: ^5.0.0
-    camelcase: 6
-    decamelize: 1.2.0
-    js-tiktoken: ^1.0.12
-    langsmith: ~0.1.39
-    mustache: ^4.2.0
-    p-queue: ^6.6.2
-    p-retry: 4
-    uuid: ^10.0.0
-    zod: ^3.22.4
-    zod-to-json-schema: ^3.22.3
-  checksum: 8f9dfa746750653a4fbfcdeca3d662c4461c085d97cfea7b68b310551e256c42496e5d364aabd10a641b53f96876ee0ffd072ee6ac844b0e89e21ad3dc4906b0
+  checksum: 188ab834a0a9f4462b81d38b92be61df91d87392b2bd86fb21d5cfe253c080700d09ffd954c90726704fc5fe6c0f06cb2f5bd7705f17632819473c9d8ed57b39
   languageName: node
   linkType: hard
 
@@ -6036,7 +6017,7 @@ __metadata:
     "@langchain/anthropic": ^0.2.15
     "@langchain/cloudflare": ^0.0.7
     "@langchain/community": ^0.2.27
-    "@langchain/core": ^0.2.24
+    "@langchain/core": ^0.2.27
     "@langchain/groq": ^0.0.16
     "@langchain/langgraph": "workspace:*"
     "@langchain/mistralai": ^0.0.28
