@@ -6,6 +6,10 @@ export interface WaitForNames<Value> {
   __names: Value[];
 }
 
+function isWaitForNames<Value>(v: WaitForNames<Value> | Value): v is WaitForNames<Value> {
+  return (v as WaitForNames<Value>).__names !== undefined
+}
+
 /**
   A channel that switches between two states
 
@@ -40,40 +44,44 @@ export class DynamicBarrierValue<Value> extends BaseChannel<
     }
     return empty as this;
   }
-
-  update(values: (Value | WaitForNames<Value>)[]): void {
-    // switch to priming state after reading it once
-    if (this.names && areSetsEqual(this.names, this.seen)) {
-      this.seen = new Set<Value>();
-      this.names = undefined;
-    }
-
-    const newNames = values.filter(
-      (v) =>
-        typeof v === "object" &&
-        !!v &&
-        "__names" in v &&
-        Object.keys(v).join(",") === "__names" &&
-        Array.isArray(v.__names)
-    ) as WaitForNames<Value>[];
-
-    if (newNames.length > 1) {
-      throw new InvalidUpdateError(
-        `Expected at most one WaitForNames object, got ${newNames.length}`
-      );
-    } else if (newNames.length === 1) {
-      this.names = new Set(newNames[0].__names);
-    } else if (this.names) {
+  
+  update(values: (Value | WaitForNames<Value>)[]): boolean {
+    const waitForNames = values.filter(isWaitForNames);
+    if (waitForNames.length > 0) {
+      if (waitForNames.length > 1) {
+        throw new InvalidUpdateError(
+          "Received multiple WaitForNames updates in the same step."
+        );
+      }
+      this.names = new Set(waitForNames[0].__names);
+      return true;
+    } else if (this.names !== undefined) {
+      let updated = false;
       for (const value of values) {
-        if (this.names.has(value as Value)) {
-          this.seen.add(value as Value);
+        if (isWaitForNames(value)) {
+          throw new Error("Assertion Error: Received unexpected WaitForNames instance.");
+        } 
+        if (this.names.has(value)) {
+          if (!this.seen.has(value)) {
+            this.seen.add(value);
+            updated = true;
+          }
         } else {
-          throw new InvalidUpdateError(
-            `Value ${value} not in names ${this.names}`
-          );
+          throw new InvalidUpdateError(`Value ${value} not in ${[...this.names]}`);
         }
       }
+      return updated;
     }
+    return false;
+  }
+  
+  consume(): boolean {
+    if (this.seen && this.names && areSetsEqual(this.seen, this.names)) {
+      this.seen = new Set<Value>();
+      this.names = undefined;
+      return true;
+    }
+    return false;
   }
 
   // If we have not yet seen all the node names we want to wait for,

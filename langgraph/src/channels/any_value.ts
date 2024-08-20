@@ -25,14 +25,15 @@ export class AnyValue<Value> extends BaseChannel<Value, Value, Value> {
     return empty as this;
   }
 
-  update(values: Value[]): void {
+  update(values: Value[]): boolean {
     if (values.length === 0) {
       this.value = undefined;
-      return;
+      return true;
     }
 
     // eslint-disable-next-line prefer-destructuring
     this.value = values[values.length - 1];
+    return false;
   }
 
   get(): Value {

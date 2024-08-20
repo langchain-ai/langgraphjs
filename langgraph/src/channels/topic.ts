@@ -12,6 +12,10 @@ function* flatten<Value>(
   }
 }
 
+function arraysEqual<T>(a: T[], b: T[]): boolean {
+  return a.length === b.length && a.every((val, index) => val === b[index]);
+}
+
 export class Topic<Value> extends BaseChannel<
   Array<Value>,
   Value | Value[],
@@ -50,7 +54,8 @@ export class Topic<Value> extends BaseChannel<
     return empty as this;
   }
 
-  public update(values: Array<Value | Value[]>): void {
+  public update(values: Array<Value | Value[]>): boolean {
+    const current = [...this.values];
     if (!this.accumulate) {
       this.values = [];
     }
@@ -67,6 +72,7 @@ export class Topic<Value> extends BaseChannel<
         this.values.push(...flatValues);
       }
     }
+    return !arraysEqual(this.values, current);
   }
 
   public get(): Array<Value> {

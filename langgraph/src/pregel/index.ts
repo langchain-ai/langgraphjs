@@ -462,13 +462,13 @@ export class Pregel<
             undefined,
             checkpoint,
             channels,
-            task.writes as Array<[string, unknown]>
+            task as PregelExecutableTask<string, string>
           ),
         },
       })
     );
     // apply to checkpoint and save
-    _applyWrites(checkpoint, channels, task.writes);
+    _applyWrites(checkpoint, channels, [task as PregelExecutableTask<string, string>]);
     const step = (saved?.metadata?.step ?? -2) + 1;
     let checkpointConfig: RunnableConfig = {
       ...config,

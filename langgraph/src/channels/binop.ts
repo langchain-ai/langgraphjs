@@ -43,9 +43,9 @@ export class BinaryOperatorAggregate<
     return empty as this;
   }
 
-  public update(values: UpdateType[]): void {
+  public update(values: UpdateType[]): boolean {
     let newValues = values;
-    if (!newValues.length) return;
+    if (!newValues.length) return false;
 
     if (this.value === undefined) {
       [this.value as UpdateType] = newValues;
@@ -57,6 +57,7 @@ export class BinaryOperatorAggregate<
         this.value = this.operator(this.value, value);
       }
     }
+    return true;
   }
 
   public get(): ValueType {

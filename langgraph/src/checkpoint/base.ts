@@ -7,6 +7,7 @@ import {
   CheckpointPendingWrite,
   PendingWrite,
 } from "../pregel/types.js";
+import { ChannelProtocol } from "./serde/types.js";
 
 export type { CheckpointMetadata };
 
@@ -118,7 +119,7 @@ export interface CheckpointTuple {
   pendingWrites?: CheckpointPendingWrite[];
 }
 
-export abstract class BaseCheckpointSaver {
+export abstract class BaseCheckpointSaver<V = string> {
   serde: SerializerProtocol<unknown> = DefaultSerializer;
 
   constructor(serde?: SerializerProtocol<unknown>) {
@@ -154,4 +155,17 @@ export abstract class BaseCheckpointSaver {
     writes: PendingWrite[],
     taskId: string
   ): Promise<void>;
+
+  /**
+   * Generate the next version ID for a channel.
+   *
+   * Default is to use integer versions, incrementing by 1. If you override, you can use str/int/float versions,
+   * as long as they are monotonically increasing.
+   */
+  getNextVersion(current: V | undefined, _channel: ChannelProtocol) {
+    if (typeof current !== "number") {
+      throw new Error("If using non-integer versions, please override this method.");
+    }
+    return current === undefined ? current + 1 : 1;
+  }
 }

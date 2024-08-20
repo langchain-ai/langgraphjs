@@ -34,7 +34,7 @@ export interface PregelExecutableTask<
   readonly name: N;
   readonly input: unknown;
   readonly proc: Runnable;
-  readonly writes: Array<[C, unknown]>;
+  readonly writes: PendingWrite<C>[];
   readonly config: RunnableConfig | undefined;
   readonly triggers: Array<string>;
   readonly retry_policy?: string;
