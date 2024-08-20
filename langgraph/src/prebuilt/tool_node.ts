@@ -17,7 +17,7 @@ export type ToolNodeOptions = {
 };
 
 export class ToolNode<
-  T extends BaseMessage[] | typeof MessagesState.State
+  T extends BaseMessage[] | MessagesState
 > extends RunnableCallable<T, T> {
   /**
   A node that runs the tools requested in the last AIMessage. It can be used
@@ -41,9 +41,9 @@ export class ToolNode<
   }
 
   private async run(
-    input: BaseMessage[] | typeof MessagesState.State,
+    input: BaseMessage[] | MessagesState,
     config: RunnableConfig
-  ): Promise<BaseMessage[] | typeof MessagesState.State> {
+  ): Promise<BaseMessage[] | MessagesState> {
     const message = Array.isArray(input)
       ? input[input.length - 1]
       : input.messages[input.messages.length - 1];
@@ -92,7 +92,7 @@ export class ToolNode<
 }
 
 export function toolsCondition(
-  state: BaseMessage[] | typeof MessagesState.State
+  state: BaseMessage[] | MessagesState
 ): "tools" | typeof END {
   const message = Array.isArray(state)
     ? state[state.length - 1]

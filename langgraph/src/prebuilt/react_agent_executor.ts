@@ -40,7 +40,7 @@ export type N = typeof START | "agent" | "tools";
 export type CreateReactAgentParams = {
   llm: BaseChatModel;
   tools:
-    | ToolNode<typeof MessagesState.State>
+    | ToolNode<MessagesState>
     | (StructuredToolInterface | RunnableToolLike)[];
   messageModifier?:
     | SystemMessage
