@@ -118,6 +118,13 @@ export interface CheckpointTuple {
   pendingWrites?: CheckpointPendingWrite[];
 }
 
+export type CheckpointListOptions = {
+  limit?: number;
+  before?: RunnableConfig;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  filter?: Record<string, any>;
+};
+
 export abstract class BaseCheckpointSaver {
   serde: SerializerProtocol<unknown> = DefaultSerializer;
 
@@ -136,14 +143,14 @@ export abstract class BaseCheckpointSaver {
 
   abstract list(
     config: RunnableConfig,
-    limit?: number,
-    before?: RunnableConfig
+    options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple>;
 
   abstract put(
     config: RunnableConfig,
     checkpoint: Checkpoint,
-    metadata: CheckpointMetadata
+    metadata: CheckpointMetadata,
+    newVersions: ChannelVersions
   ): Promise<RunnableConfig>;
 
   /**

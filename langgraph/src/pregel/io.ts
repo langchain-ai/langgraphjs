@@ -7,7 +7,7 @@ import { EmptyChannelError } from "../errors.js";
 export function readChannel<C extends PropertyKey>(
   channels: Record<C, BaseChannel>,
   chan: C,
-  catch_: boolean = true,
+  catchErrors: boolean = true,
   returnException: boolean = false
 ): unknown | null {
   try {
@@ -17,7 +17,7 @@ export function readChannel<C extends PropertyKey>(
     if (e.name === EmptyChannelError.unminifiable_name) {
       if (returnException) {
         return e;
-      } else if (catch_) {
+      } else if (catchErrors) {
         return null;
       }
     }

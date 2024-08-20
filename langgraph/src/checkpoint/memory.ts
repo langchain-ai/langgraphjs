@@ -1,5 +1,10 @@
 import { RunnableConfig } from "@langchain/core/runnables";
-import { BaseCheckpointSaver, Checkpoint, CheckpointTuple } from "./base.js";
+import {
+  BaseCheckpointSaver,
+  Checkpoint,
+  CheckpointListOptions,
+  CheckpointTuple,
+} from "./base.js";
 import { SerializerProtocol } from "../serde/base.js";
 import {
   CheckpointMetadata,
@@ -110,9 +115,10 @@ export class MemorySaver extends BaseCheckpointSaver {
 
   async *list(
     config: RunnableConfig,
-    limit?: number,
-    before?: RunnableConfig
+    options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
+    // eslint-disable-next-line prefer-const
+    let { before, limit } = options ?? {};
     const threadIds = config.configurable?.thread_id
       ? [config.configurable?.thread_id]
       : Object.keys(this.storage);

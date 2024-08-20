@@ -1,16 +1,32 @@
 import Database, { Database as DatabaseType } from "better-sqlite3";
 import { RunnableConfig } from "@langchain/core/runnables";
-import { BaseCheckpointSaver, Checkpoint, CheckpointTuple } from "./base.js";
+import {
+  BaseCheckpointSaver,
+  Checkpoint,
+  CheckpointListOptions,
+  CheckpointTuple,
+} from "./base.js";
 import { SerializerProtocol } from "../serde/base.js";
 import type { PendingWrite, CheckpointMetadata } from "../checkpoint/types.js";
 
-// snake_case is used to match Python implementation
-interface Row {
+interface CheckpointRow {
   checkpoint: string;
   metadata: string;
-  parent_id?: string;
+  parent_checkpoint_id?: string;
   thread_id: string;
   checkpoint_id: string;
+  checkpoint_ns?: string;
+}
+
+interface WritesRow {
+  thread_id: string;
+  checkpoint_ns: string;
+  checkpoint_id: string;
+  task_id: string;
+  idx: number;
+  channel: string;
+  type?: string;
+  value?: string;
 }
 
 export class SqliteSaver extends BaseCheckpointSaver {
@@ -28,106 +44,123 @@ export class SqliteSaver extends BaseCheckpointSaver {
     return new SqliteSaver(new Database(connStringOrLocalPath));
   }
 
-  private setup(): void {
+  protected setup(): void {
     if (this.isSetup) {
       return;
     }
 
-    try {
-      this.db.pragma("journal_mode=WAL");
-      this.db.exec(`
+    this.db.pragma("journal_mode=WAL");
+    this.db.exec(`
 CREATE TABLE IF NOT EXISTS checkpoints (
   thread_id TEXT NOT NULL,
+  checkpoint_ns TEXT NOT NULL DEFAULT '',
   checkpoint_id TEXT NOT NULL,
-  parent_id TEXT,
+  parent_checkpoint_id TEXT,
+  type TEXT,
   checkpoint BLOB,
   metadata BLOB,
-  PRIMARY KEY (thread_id, checkpoint_id)
+  PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
 );`);
-    } catch (error) {
-      console.log("Error creating checkpoints table", error);
-      throw error;
-    }
+    this.db.exec(`
+CREATE TABLE IF NOT EXISTS writes (
+  thread_id TEXT NOT NULL,
+  checkpoint_ns TEXT NOT NULL DEFAULT '',
+  checkpoint_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  idx INTEGER NOT NULL,
+  channel TEXT NOT NULL,
+  type TEXT,
+  value BLOB,
+  PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
+);`);
 
     this.isSetup = true;
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     this.setup();
-    const thread_id = config.configurable?.thread_id;
-    const checkpoint_id = config.configurable?.checkpoint_id;
-
+    const {
+      thread_id,
+      checkpoint_ns = "",
+      checkpoint_id,
+    } = config.configurable ?? {};
+    let row: CheckpointRow;
     if (checkpoint_id) {
-      try {
-        const row: Row = this.db
-          .prepare(
-            `SELECT checkpoint, parent_id, metadata FROM checkpoints WHERE thread_id = ? AND checkpoint_id = ?`
-          )
-          .get(thread_id, checkpoint_id) as Row;
-
-        if (row) {
-          return {
-            config,
-            checkpoint: (await this.serde.parse(row.checkpoint)) as Checkpoint,
-            metadata: (await this.serde.parse(
-              row.metadata
-            )) as CheckpointMetadata,
-            parentConfig: row.parent_id
-              ? {
-                  configurable: {
-                    thread_id,
-                    checkpoint_id: row.parent_id,
-                  },
-                }
-              : undefined,
-          };
-        }
-      } catch (error) {
-        console.log("Error retrieving checkpoint", error);
-        throw error;
-      }
-    } else {
-      const row: Row = this.db
+      row = this.db
         .prepare(
-          `SELECT thread_id, checkpoint_id, parent_id, checkpoint, metadata FROM checkpoints WHERE thread_id = ? ORDER BY checkpoint_id DESC LIMIT 1`
+          `SELECT thread_id, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata FROM checkpoints WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ?`
         )
-        .get(thread_id) as Row;
-
-      if (row) {
-        return {
-          config: {
+        .get(thread_id, checkpoint_ns, checkpoint_id) as CheckpointRow;
+    } else {
+      row = this.db
+        .prepare(
+          `SELECT thread_id, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata FROM checkpoints WHERE thread_id = ? AND checkpoint_ns = ? ORDER BY checkpoint_id DESC LIMIT 1`
+        )
+        .get(thread_id, checkpoint_ns) as CheckpointRow;
+    }
+    if (row === undefined) {
+      return undefined;
+    }
+    let finalConfig = config;
+    if (!checkpoint_id) {
+      finalConfig = {
+        configurable: {
+          thread_id: row.thread_id,
+          checkpoint_ns,
+          checkpoint_id: row.checkpoint_id,
+        },
+      };
+    }
+    if (
+      finalConfig.configurable?.thread_id === undefined ||
+      finalConfig.configurable?.checkpoint_id === undefined
+    ) {
+      throw new Error("Missing thread_id or checkpoint_id");
+    }
+    // find any pending writes
+    const pendingWritesRows = this.db
+      .prepare(
+        `SELECT task_id, channel, type, value FROM writes WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ?`
+      )
+      .all(
+        finalConfig.configurable.thread_id.toString(),
+        checkpoint_ns,
+        finalConfig.configurable.checkpoint_id.toString()
+      ) as WritesRow[];
+    const pendingWrites = await Promise.all(
+      pendingWritesRows.map(async (row) => {
+        return [
+          row.task_id,
+          row.channel,
+          await this.serde.parse(row.value ?? ""),
+        ] as [string, string, unknown];
+      })
+    );
+    return {
+      config: finalConfig,
+      checkpoint: (await this.serde.parse(row.checkpoint)) as Checkpoint,
+      metadata: (await this.serde.parse(row.metadata)) as CheckpointMetadata,
+      parentConfig: row.parent_checkpoint_id
+        ? {
             configurable: {
               thread_id: row.thread_id,
-              checkpoint_id: row.checkpoint_id,
+              checkpoint_ns,
+              checkpoint_id: row.parent_checkpoint_id,
             },
-          },
-          checkpoint: (await this.serde.parse(row.checkpoint)) as Checkpoint,
-          metadata: (await this.serde.parse(
-            row.metadata
-          )) as CheckpointMetadata,
-          parentConfig: row.parent_id
-            ? {
-                configurable: {
-                  thread_id: row.thread_id,
-                  checkpoint_id: row.parent_id,
-                },
-              }
-            : undefined,
-        };
-      }
-    }
-
-    return undefined;
+          }
+        : undefined,
+      pendingWrites,
+    };
   }
 
   async *list(
     config: RunnableConfig,
-    limit?: number,
-    before?: RunnableConfig
+    options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
+    const { limit, before } = options ?? {};
     this.setup();
     const thread_id = config.configurable?.thread_id;
-    let sql = `SELECT thread_id, checkpoint_id, parent_id, checkpoint, metadata FROM checkpoints WHERE thread_id = ? ${
+    let sql = `SELECT thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata FROM checkpoints WHERE thread_id = ? ${
       before ? "AND checkpoint_id < ?" : ""
     } ORDER BY checkpoint_id DESC`;
     if (limit) {
@@ -137,36 +170,35 @@ CREATE TABLE IF NOT EXISTS checkpoints (
       Boolean
     );
 
-    try {
-      const rows: Row[] = this.db.prepare(sql).all(...args) as Row[];
+    const rows: CheckpointRow[] = this.db
+      .prepare(sql)
+      .all(...args) as CheckpointRow[];
 
-      if (rows) {
-        for (const row of rows) {
-          yield {
-            config: {
-              configurable: {
-                thread_id: row.thread_id,
-                checkpoint_id: row.checkpoint_id,
-              },
+    if (rows) {
+      for (const row of rows) {
+        yield {
+          config: {
+            configurable: {
+              thread_id: row.thread_id,
+              checkpoint_ns: row.checkpoint_ns,
+              checkpoint_id: row.checkpoint_id,
             },
-            checkpoint: (await this.serde.parse(row.checkpoint)) as Checkpoint,
-            metadata: (await this.serde.parse(
-              row.metadata
-            )) as CheckpointMetadata,
-            parentConfig: row.parent_id
-              ? {
-                  configurable: {
-                    thread_id: row.thread_id,
-                    checkpoint_id: row.parent_id,
-                  },
-                }
-              : undefined,
-          };
-        }
+          },
+          checkpoint: (await this.serde.parse(row.checkpoint)) as Checkpoint,
+          metadata: (await this.serde.parse(
+            row.metadata
+          )) as CheckpointMetadata,
+          parentConfig: row.parent_checkpoint_id
+            ? {
+                configurable: {
+                  thread_id: row.thread_id,
+                  checkpoint_ns: row.checkpoint_ns,
+                  checkpoint_id: row.parent_checkpoint_id,
+                },
+              }
+            : undefined,
+        };
       }
-    } catch (error) {
-      console.log("Error listing checkpoints", error);
-      throw error;
     }
   }
 
@@ -177,39 +209,61 @@ CREATE TABLE IF NOT EXISTS checkpoints (
   ): Promise<RunnableConfig> {
     this.setup();
 
-    try {
-      const row = [
-        config.configurable?.thread_id,
-        checkpoint.id,
-        config.configurable?.checkpoint_id,
-        this.serde.stringify(checkpoint),
-        this.serde.stringify(metadata),
-      ];
+    const row = [
+      config.configurable?.thread_id?.toString(),
+      config.configurable?.checkpoint_ns,
+      checkpoint.id,
+      config.configurable?.checkpoint_id,
+      "Checkpoint",
+      this.serde.stringify(checkpoint),
+      this.serde.stringify(metadata),
+    ];
 
-      this.db
-        .prepare(
-          `INSERT OR REPLACE INTO checkpoints (thread_id, checkpoint_id, parent_id, checkpoint, metadata) VALUES (?, ?, ?, ?, ?)`
-        )
-        .run(...row);
-    } catch (error) {
-      console.log("Error saving checkpoint", error);
-      throw error;
-    }
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO checkpoints (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(...row);
 
     return {
       configurable: {
         thread_id: config.configurable?.thread_id,
+        checkpoint_ns: config.configurable?.checkpoint_ns,
         checkpoint_id: checkpoint.id,
       },
     };
   }
 
-  // TODO: Implement
-  putWrites(
-    _config: RunnableConfig,
-    _writes: PendingWrite[],
-    _taskId: string
+  async putWrites(
+    config: RunnableConfig,
+    writes: PendingWrite[],
+    taskId: string
   ): Promise<void> {
-    throw new Error("Not implemented");
+    this.setup();
+
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO writes 
+      (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, value) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const transaction = this.db.transaction((rows) => {
+      for (const row of rows) {
+        stmt.run(...row);
+      }
+    });
+
+    const rows = writes.map((write, idx) => [
+      config.configurable?.thread_id,
+      config.configurable?.checkpoint_ns,
+      config.configurable?.checkpoint_id,
+      taskId,
+      idx,
+      write[0],
+      "Checkpoint",
+      this.serde.stringify(write[1]),
+    ]);
+
+    transaction(rows);
   }
 }

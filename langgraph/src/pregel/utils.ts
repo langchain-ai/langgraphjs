@@ -1,4 +1,4 @@
-import { ChannelVersions } from "../checkpoint/base.js";
+import type { ChannelVersions } from "../checkpoint/base.js";
 
 export function getNewChannelVersions(
   previousVersions: ChannelVersions,
@@ -24,4 +24,15 @@ export function getNewChannelVersions(
   } else {
     return currentVersions;
   }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function _coerceToDict(value: any, defaultKey: string) {
+  return value &&
+    !Array.isArray(value) &&
+    // eslint-disable-next-line no-instanceof/no-instanceof
+    !(value instanceof Date) &&
+    typeof value === "object"
+    ? value
+    : { [defaultKey]: value };
 }

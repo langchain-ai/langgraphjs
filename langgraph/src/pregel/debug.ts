@@ -1,10 +1,10 @@
 import { RunnableConfig } from "@langchain/core/runnables";
 import { BaseChannel } from "../channels/base.js";
+import { CheckpointMetadata } from "../checkpoint/types.js";
 import { uuid5 } from "../checkpoint/id.js";
 import { TAG_HIDDEN, TASK_NAMESPACE } from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
 import { PregelExecutableTask } from "./types.js";
-import { CheckpointMetadata } from "../web.js";
 import { readChannels } from "./io.js";
 
 type ConsoleColors = {
@@ -21,6 +21,14 @@ const COLORS_MAP: ConsoleColorMap = {
     start: "\x1b[34m",
     end: "\x1b[0m",
   },
+  green: {
+    start: "\x1b[32m",
+    end: "\x1b[0m",
+  },
+  yellow: {
+    start: "\x1b[33;1m",
+    end: "\x1b[0m",
+  },
 };
 
 /**
@@ -29,36 +37,20 @@ const COLORS_MAP: ConsoleColorMap = {
 const wrap = (color: ConsoleColors, text: string): string =>
   `${color.start}${text}${color.end}`;
 
-export function printStepStart<N extends PropertyKey, C extends PropertyKey>(
-  step: number,
-  nextTasks: readonly PregelExecutableTask<N, C>[]
-): void {
-  const nTasks = nextTasks.length;
-  console.log(
-    `${wrap(COLORS_MAP.blue, "[langgraph/step]")}`,
-    `Starting step ${step} with ${nTasks} task${
-      nTasks === 1 ? "" : "s"
-    }. Next tasks:\n`,
-    `\n${nextTasks
-      .map(
-        (task) => `${String(task.name)}(${JSON.stringify(task.input, null, 2)})`
-      )
-      .join("\n")}`
-  );
-}
-
 export function printCheckpoint<Value>(
   step: number,
   channels: Record<string, BaseChannel<Value>>
 ) {
   console.log(
-    `${wrap(COLORS_MAP.blue, "[langgraph/checkpoint]")}`,
-    `Finishing step ${step}. Channel values:\n`,
-    `\n${JSON.stringify(
-      Object.fromEntries(_readChannels<Value>(channels)),
-      null,
-      2
-    )}`
+    [
+      `${wrap(COLORS_MAP.blue, "[langgraph/checkpoint]")}`,
+      `Finishing step ${step}. Channel values:\n`,
+      `\n${JSON.stringify(
+        Object.fromEntries(_readChannels<Value>(channels)),
+        null,
+        2
+      )}`,
+    ].join("")
   );
 }
 
@@ -159,4 +151,79 @@ export function* mapDebugCheckpoint(
       metadata,
     },
   };
+}
+
+export function printStepCheckpoint(
+  step: number,
+  channels: Record<string, BaseChannel<unknown>>,
+  whitelist: string[]
+): void {
+  console.log(
+    [
+      `${wrap(COLORS_MAP.blue, `[${step}:checkpoint]`)}`,
+      `\x1b[1m State at the end of step ${step}:\x1b[0m\n`,
+      JSON.stringify(readChannels(channels, whitelist), null, 2),
+    ].join("")
+  );
+}
+
+export function printStepTasks<N extends PropertyKey, C extends PropertyKey>(
+  step: number,
+  nextTasks: readonly PregelExecutableTask<N, C>[]
+): void {
+  const nTasks = nextTasks.length;
+  console.log(
+    [
+      `${wrap(COLORS_MAP.blue, `[${step}:tasks]`)}`,
+      `\x1b[1m Starting step ${step} with ${nTasks} task${
+        nTasks === 1 ? "" : "s"
+      }:\x1b[0m\n`,
+      nextTasks
+        .map(
+          (task) =>
+            `- ${wrap(COLORS_MAP.green, String(task.name))} -> ${JSON.stringify(
+              task.input,
+              null,
+              2
+            )}`
+        )
+        .join("\n"),
+    ].join("")
+  );
+}
+
+export function printStepWrites(
+  step: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  writes: Array<[string, any]>,
+  whitelist: string[]
+): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const byChannel: Record<string, any[]> = {};
+
+  for (const [channel, value] of writes) {
+    if (whitelist.includes(channel)) {
+      if (!byChannel[channel]) {
+        byChannel[channel] = [];
+      }
+      byChannel[channel].push(value);
+    }
+  }
+
+  console.log(
+    [
+      `${wrap(COLORS_MAP.blue, `[${step}:writes]`)}`,
+      `\x1b[1m Finished step ${step} with writes to ${
+        Object.keys(byChannel).length
+      } channel${Object.keys(byChannel).length !== 1 ? "s" : ""}:\x1b[0m\n`,
+      Object.entries(byChannel)
+        .map(
+          ([name, vals]) =>
+            `- ${wrap(COLORS_MAP.yellow, name)} -> ${vals
+              .map((v) => JSON.stringify(v))
+              .join(", ")}`
+        )
+        .join("\n"),
+    ].join("")
+  );
 }

@@ -4,6 +4,7 @@ import {
   patchConfig,
   RunnableConfig,
 } from "@langchain/core/runnables";
+import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import {
   BaseChannel,
   createCheckpoint,
@@ -282,6 +283,7 @@ export type NextTaskExtraFields = {
   step: number;
   isResuming?: boolean;
   checkpointer?: BaseCheckpointSaver;
+  manager?: CallbackManagerForChainRun;
 };
 
 export function _prepareNextTasks<
@@ -326,7 +328,7 @@ export function _prepareNextTasks<
   const newCheckpoint = copyCheckpoint(checkpoint);
   const tasks: Array<PregelExecutableTask<keyof Nn, keyof Cc>> = [];
   const taskDescriptions: Array<PregelTaskDescription> = [];
-  const { step, isResuming = false, checkpointer } = extra;
+  const { step, isResuming = false, checkpointer, manager } = extra;
 
   for (const packet of checkpoint.pending_sends) {
     if (!_isSendInterface(packet)) {
@@ -368,12 +370,12 @@ export function _prepareNextTasks<
           writes,
           triggers,
           config: patchConfig(
-            mergeConfigs(proc.config, processes[packet.node].config, {
+            mergeConfigs(config, processes[packet.node].config, {
               metadata,
             }),
             {
               runName: packet.node,
-              // callbacks:
+              callbacks: manager?.getChild(`graph:step:${step}`),
               configurable: {
                 [CONFIG_KEY_SEND]: _localWrite.bind(
                   undefined,
@@ -510,31 +512,35 @@ export function _prepareNextTasks<
             proc: node,
             writes,
             triggers: proc.triggers,
-            config: patchConfig(mergeConfigs(proc.config, { metadata }), {
-              runName: name,
-              configurable: {
-                [CONFIG_KEY_SEND]: _localWrite.bind(
-                  undefined,
-                  (items: [keyof Cc, unknown][]) => writes.push(...items),
-                  processes,
-                  channels
-                ),
-                [CONFIG_KEY_READ]: _localRead.bind(
-                  undefined,
-                  checkpoint,
-                  channels,
-                  {
-                    name,
-                    writes: writes as Array<[string, unknown]>,
-                    triggers: proc.triggers,
-                  }
-                ),
-                [CONFIG_KEY_CHECKPOINTER]: checkpointer,
-                [CONFIG_KEY_RESUMING]: isResuming,
-                checkpoint_id: checkpoint.id,
-                checkpoint_ns: checkpointNamespace,
-              },
-            }),
+            config: patchConfig(
+              mergeConfigs(config, proc.config, { metadata }),
+              {
+                runName: name,
+                callbacks: manager?.getChild(`graph:step:${step}`),
+                configurable: {
+                  [CONFIG_KEY_SEND]: _localWrite.bind(
+                    undefined,
+                    (items: [keyof Cc, unknown][]) => writes.push(...items),
+                    processes,
+                    channels
+                  ),
+                  [CONFIG_KEY_READ]: _localRead.bind(
+                    undefined,
+                    checkpoint,
+                    channels,
+                    {
+                      name,
+                      writes: writes as Array<[string, unknown]>,
+                      triggers: proc.triggers,
+                    }
+                  ),
+                  [CONFIG_KEY_CHECKPOINTER]: checkpointer,
+                  [CONFIG_KEY_RESUMING]: isResuming,
+                  checkpoint_id: checkpoint.id,
+                  checkpoint_ns: checkpointNamespace,
+                },
+              }
+            ),
             id: taskId,
           });
         }
