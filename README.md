@@ -60,20 +60,15 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { StateGraph, StateGraphArgs } from "@langchain/langgraph";
-import { MemorySaver } from "@langchain/langgraph";
+import { MemorySaver, Annotation } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
-// Define the state interface
-interface AgentState {
-  messages: BaseMessage[];
-}
-
 // Define the graph state
-const graphState: StateGraphArgs<AgentState>["channels"] = {
-  messages: {
-    reducer: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
-  },
-};
+const GraphState = Annotation.Root({
+  messages: Annotation<BaseMessage[]>({
+    reducer: (x, y) => x.concat(y),
+  })
+})
 
 // Define the tools for the agent to use
 const weatherTool = tool(async ({ query }) => {
@@ -92,7 +87,8 @@ const weatherTool = tool(async ({ query }) => {
 });
 
 const tools = [weatherTool];
-const toolNode = new ToolNode<AgentState>(tools);
+// We can extract the state typing via `GraphState.State`
+const toolNode = new ToolNode<typeof GraphState.State>(tools);
 
 const model = new ChatAnthropic({
   model: "claude-3-5-sonnet-20240620",
@@ -100,7 +96,7 @@ const model = new ChatAnthropic({
 }).bindTools(tools);
 
 // Define the function that determines whether to continue or not
-function shouldContinue(state: AgentState) {
+function shouldContinue(state: typeof GraphState.State) {
   const messages = state.messages;
   const lastMessage = messages[messages.length - 1] as AIMessage;
 
@@ -113,7 +109,7 @@ function shouldContinue(state: AgentState) {
 }
 
 // Define the function that calls the model
-async function callModel(state: AgentState) {
+async function callModel(state: typeof GraphState.State) {
   const messages = state.messages;
   const response = await model.invoke(messages);
 
@@ -122,7 +118,7 @@ async function callModel(state: AgentState) {
 }
 
 // Define a new graph
-const workflow = new StateGraph<AgentState>({ channels: graphState })
+const workflow = new StateGraph(GraphState)
   .addNode("agent", callModel)
   .addNode("tools", toolNode)
   .addEdge("__start__", "agent")
