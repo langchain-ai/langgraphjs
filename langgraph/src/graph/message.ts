@@ -77,12 +77,9 @@ export class MessageGraph extends StateGraph<
   }
 }
 
-export const createMessagesState = () =>
-  Annotation.Root({
-    messages: Annotation<BaseMessage[]>({
-      reducer: messagesStateReducer,
-      default: () => [],
-    }),
-  });
-
-export type MessagesState = ReturnType<typeof createMessagesState>["State"];
+export const MessagesState = Annotation.Root({
+  messages: Annotation<BaseMessage[]>({
+    reducer: messagesStateReducer,
+    default: () => [],
+  }),
+});

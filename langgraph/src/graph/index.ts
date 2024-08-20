@@ -8,6 +8,5 @@ export {
 export {
   MessageGraph,
   messagesStateReducer,
-  type MessagesState,
-  createMessagesState,
+  MessagesState,
 } from "./message.js";
