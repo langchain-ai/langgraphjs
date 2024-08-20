@@ -5,6 +5,7 @@ import {
 } from "@langchain/core/messages";
 import { v4 } from "uuid";
 import { StateGraph } from "./state.js";
+import { Annotation } from "./annotation.js";
 
 type Messages =
   | Array<BaseMessage | BaseMessageLike>
@@ -76,6 +77,9 @@ export class MessageGraph extends StateGraph<
   }
 }
 
-export interface MessagesState {
-  messages: BaseMessage[];
-}
+export const MessagesState = Annotation.Root({
+  messages: Annotation<BaseMessage[]>({
+    reducer: messagesStateReducer,
+    default: () => [],
+  }),
+});
