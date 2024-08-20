@@ -168,6 +168,7 @@ describe("SqliteSaver", () => {
     expect(firstCheckpointTuple?.config).toEqual({
       configurable: {
         thread_id: "1",
+        checkpoint_ns: "",
         checkpoint_id: checkpoint1.id,
       },
     });
@@ -193,6 +194,7 @@ describe("SqliteSaver", () => {
     expect(secondCheckpointTuple?.parentConfig).toEqual({
       configurable: {
         thread_id: "1",
+        checkpoint_ns: "",
         checkpoint_id: "2024-04-18T17:19:07.952Z",
       },
     });

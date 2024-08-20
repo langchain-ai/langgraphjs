@@ -11,7 +11,8 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { MemorySaver } from "../checkpoint/memory.js";
-import { Checkpoint, CheckpointMetadata } from "../checkpoint/base.js";
+import { Checkpoint } from "../checkpoint/base.js";
+import { CheckpointMetadata } from "../checkpoint/types.js";
 
 export interface FakeChatModelArgs extends BaseChatModelParams {
   responses: BaseMessage[];
@@ -181,13 +182,4 @@ export class FakeSearchTool extends Tool {
   async _call(query: string): Promise<string> {
     return `result for ${query}`;
   }
-}
-
-// https://github.com/tc39/proposal-array-from-async
-export async function gatherIterator<T>(
-  i: AsyncIterable<T> | Promise<AsyncIterable<T>>
-): Promise<Array<T>> {
-  const out: T[] = [];
-  for await (const item of await i) out.push(item);
-  return out;
 }

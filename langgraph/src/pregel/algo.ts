@@ -4,12 +4,14 @@ import {
   patchConfig,
   RunnableConfig,
 } from "@langchain/core/runnables";
+import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import {
   BaseChannel,
   createCheckpoint,
   emptyChannels,
 } from "../channels/base.js";
 import {
+  BaseCheckpointSaver,
   Checkpoint,
   ReadonlyCheckpoint,
   copyCheckpoint,
@@ -22,20 +24,18 @@ import {
   _isSend,
   _isSendInterface,
   CHECKPOINT_NAMESPACE_SEPARATOR,
+  CONFIG_KEY_CHECKPOINTER,
   CONFIG_KEY_READ,
+  CONFIG_KEY_RESUMING,
   CONFIG_KEY_SEND,
   INTERRUPT,
+  RESERVED,
   Send,
   TAG_HIDDEN,
   TASKS,
 } from "../constants.js";
-import {
-  All,
-  PendingWrite,
-  PendingWriteValue,
-  PregelExecutableTask,
-  PregelTaskDescription,
-} from "./types.js";
+import { All, PregelExecutableTask, PregelTaskDescription } from "./types.js";
+import { PendingWrite, PendingWriteValue } from "../checkpoint/types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { uuid5 } from "../checkpoint/id.js";
 
@@ -44,6 +44,12 @@ import { uuid5 } from "../checkpoint/id.js";
  */
 export type StrRecord<K extends string, T> = {
   [P in K]: T;
+};
+
+export type WritesProtocol<C = string> = {
+  name: string;
+  writes: PendingWrite<C>[];
+  triggers: string[];
 };
 
 export async function executeTasks<RunOutput>(
@@ -69,6 +75,7 @@ export async function executeTasks<RunOutput>(
   // Start all tasks
   const started = tasks.map((task) => task());
 
+  let listener: () => void;
   // Wait for all tasks to settle
   // If any tasks fail, or signal is aborted, the promise will reject
   await Promise.all(
@@ -76,36 +83,49 @@ export async function executeTasks<RunOutput>(
       ? [
           ...started,
           new Promise<never>((_resolve, reject) => {
-            signal?.addEventListener("abort", () => reject(new Error("Abort")));
-          }),
+            listener = () => reject(new Error("Abort"));
+            signal?.addEventListener("abort", listener);
+          }).finally(() => signal?.removeEventListener("abort", listener)),
         ]
       : started
   );
 }
 
-export function _shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
-  checkpoint: ReadonlyCheckpoint,
-  interruptNodes: All | Array<N>,
-  snapshotChannels: Array<C>,
-  tasks: Array<PregelExecutableTask<N, C>>
+export function shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
+  checkpoint: Checkpoint,
+  interruptNodes: All | N[],
+  tasks: PregelExecutableTask<N, C>[]
 ): boolean {
-  const anySnapshotChannelUpdated = snapshotChannels.some(
-    (chan) =>
-      getChannelVersion(checkpoint, chan as string) >
-      getVersionSeen(checkpoint, INTERRUPT, chan as string)
+  const versionValues = Object.values(checkpoint.channel_versions);
+  const versionType =
+    versionValues.length > 0 ? typeof versionValues[0] : undefined;
+  let nullVersion: number | string;
+  if (versionType === "number") {
+    nullVersion = 0;
+  } else if (versionType === "string") {
+    nullVersion = "";
+  }
+  const seen = checkpoint.versions_seen[INTERRUPT] || {};
+
+  const anyChannelUpdated = Object.entries(checkpoint.channel_versions).some(
+    ([chan, version]) => {
+      return version > (seen[chan] ?? nullVersion);
+    }
   );
-  const anyTaskNodeInInterruptNodes = tasks.some((task) =>
+
+  const anyTriggeredNodeInInterruptNodes = tasks.some((task) =>
     interruptNodes === "*"
       ? !task.config?.tags?.includes(TAG_HIDDEN)
       : interruptNodes.includes(task.name)
   );
-  return anySnapshotChannelUpdated && anyTaskNodeInInterruptNodes;
+
+  return anyChannelUpdated && anyTriggeredNodeInInterruptNodes;
 }
 
 export function _localRead<Cc extends StrRecord<string, BaseChannel>>(
   checkpoint: ReadonlyCheckpoint,
   channels: Cc,
-  writes: Array<[keyof Cc, unknown]>,
+  task: WritesProtocol<keyof Cc>,
   select: Array<keyof Cc> | keyof Cc,
   fresh: boolean = false
 ): Record<string, unknown> | unknown {
@@ -114,7 +134,7 @@ export function _localRead<Cc extends StrRecord<string, BaseChannel>>(
     // create a new copy of channels
     const newChannels = emptyChannels(channels, newCheckpoint);
     // Note: _applyWrites contains side effects
-    _applyWrites(copyCheckpoint(newCheckpoint), newChannels, writes);
+    _applyWrites(copyCheckpoint(newCheckpoint), newChannels, [task]);
     return readChannels(newChannels, select);
   } else {
     return readChannels(channels, select);
@@ -153,8 +173,47 @@ export function _localWrite(
 export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   checkpoint: Checkpoint,
   channels: Cc,
-  pendingWrites: PendingWrite<keyof Cc>[]
+  pendingTasks: WritesProtocol<keyof Cc>[],
+  getNextVersion?: (current: number | undefined, channel: BaseChannel) => number
 ): void {
+  // Update seen versions
+  for (const task of pendingTasks) {
+    if (!checkpoint.versions_seen[task.name]) {
+      checkpoint.versions_seen[task.name] = {};
+    }
+    for (const chan of task.triggers) {
+      if (chan in checkpoint.channel_versions) {
+        checkpoint.versions_seen[task.name][chan] =
+          checkpoint.channel_versions[chan];
+      }
+    }
+  }
+
+  // Find the highest version of all channels
+  let maxVersion =
+    Object.values(checkpoint.channel_versions).length > 0
+      ? Math.max(...Object.values(checkpoint.channel_versions))
+      : undefined;
+
+  // Consume all channels that were read
+  const readChannels = new Set(
+    pendingTasks
+      .flatMap((task) => task.triggers)
+      .filter((chan) => !RESERVED.includes(chan))
+  );
+
+  for (const chan of readChannels) {
+    if (channels[chan].consume()) {
+      if (getNextVersion !== undefined) {
+        checkpoint.channel_versions[chan] = getNextVersion(
+          maxVersion,
+          channels[chan]
+        );
+      }
+    }
+  }
+
+  // clear pending sends
   if (checkpoint.pending_sends) {
     checkpoint.pending_sends = [];
   }
@@ -163,26 +222,28 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
     PendingWriteValue[]
   >;
   // Group writes by channel
-  for (const [chan, val] of pendingWrites) {
-    if (chan === TASKS) {
-      checkpoint.pending_sends.push({
-        node: (val as Send).node,
-        args: (val as Send).args,
-      });
-    } else {
-      if (chan in pendingWriteValuesByChannel) {
-        pendingWriteValuesByChannel[chan].push(val);
+  for (const pendingTask of pendingTasks) {
+    for (const [chan, val] of pendingTask.writes) {
+      if (chan === TASKS) {
+        checkpoint.pending_sends.push({
+          node: (val as Send).node,
+          args: (val as Send).args,
+        });
       } else {
-        pendingWriteValuesByChannel[chan] = [val];
+        if (chan in pendingWriteValuesByChannel) {
+          pendingWriteValuesByChannel[chan].push(val);
+        } else {
+          pendingWriteValuesByChannel[chan] = [val];
+        }
       }
     }
   }
 
   // find the highest version of all channels
-  let maxVersion = 0;
-  if (Object.keys(checkpoint.channel_versions).length > 0) {
-    maxVersion = Math.max(...Object.values(checkpoint.channel_versions));
-  }
+  maxVersion =
+    Object.values(checkpoint.channel_versions).length > 0
+      ? Math.max(...Object.values(checkpoint.channel_versions))
+      : undefined;
 
   const updatedChannels: Set<string> = new Set();
   // Apply writes to channels
@@ -201,7 +262,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       }
 
       // side effect: update checkpoint channel versions
-      checkpoint.channel_versions[chan] = maxVersion + 1;
+      checkpoint.channel_versions[chan] = (maxVersion ?? 0) + 1;
 
       updatedChannels.add(chan);
     } else {
@@ -218,6 +279,13 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 }
 
+export type NextTaskExtraFields = {
+  step: number;
+  isResuming?: boolean;
+  checkpointer?: BaseCheckpointSaver;
+  manager?: CallbackManagerForChainRun;
+};
+
 export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
@@ -227,7 +295,7 @@ export function _prepareNextTasks<
   channels: Cc,
   config: RunnableConfig,
   forExecution: false,
-  extra: { step: number }
+  extra: NextTaskExtraFields
 ): [Checkpoint, Array<PregelTaskDescription>];
 
 export function _prepareNextTasks<
@@ -239,7 +307,7 @@ export function _prepareNextTasks<
   channels: Cc,
   config: RunnableConfig,
   forExecution: true,
-  extra: { step: number }
+  extra: NextTaskExtraFields
 ): [Checkpoint, Array<PregelExecutableTask<keyof Nn, keyof Cc>>];
 
 export function _prepareNextTasks<
@@ -251,7 +319,7 @@ export function _prepareNextTasks<
   channels: Cc,
   config: RunnableConfig,
   forExecution: boolean,
-  extra: { step: number }
+  extra: NextTaskExtraFields
 ): [
   Checkpoint,
   PregelTaskDescription[] | PregelExecutableTask<keyof Nn, keyof Cc>[]
@@ -260,6 +328,7 @@ export function _prepareNextTasks<
   const newCheckpoint = copyCheckpoint(checkpoint);
   const tasks: Array<PregelExecutableTask<keyof Nn, keyof Cc>> = [];
   const taskDescriptions: Array<PregelTaskDescription> = [];
+  const { step, isResuming = false, checkpointer, manager } = extra;
 
   for (const packet of checkpoint.pending_sends) {
     if (!_isSendInterface(packet)) {
@@ -280,7 +349,7 @@ export function _prepareNextTasks<
       if (node !== undefined) {
         const triggers = [TASKS];
         const metadata = {
-          langgraph_step: extra.step,
+          langgraph_step: step,
           langgraph_node: packet.node,
           langgraph_triggers: triggers,
           langgraph_task_idx: tasks.length,
@@ -301,12 +370,12 @@ export function _prepareNextTasks<
           writes,
           triggers,
           config: patchConfig(
-            mergeConfigs(proc.config, processes[packet.node].config, {
+            mergeConfigs(config, processes[packet.node].config, {
               metadata,
             }),
             {
               runName: packet.node,
-              // callbacks:
+              callbacks: manager?.getChild(`graph:step:${step}`),
               configurable: {
                 [CONFIG_KEY_SEND]: _localWrite.bind(
                   undefined,
@@ -318,7 +387,11 @@ export function _prepareNextTasks<
                   undefined,
                   checkpoint,
                   channels,
-                  writes as Array<[string, unknown]>
+                  {
+                    name: packet.node,
+                    writes: writes as Array<[string, unknown]>,
+                    triggers,
+                  }
                 ),
               },
             }
@@ -419,7 +492,7 @@ export function _prepareNextTasks<
         const node = proc.getNode();
         if (node !== undefined) {
           const metadata = {
-            langgraph_step: extra.step,
+            langgraph_step: step,
             langgraph_node: name,
             langgraph_triggers: proc.triggers,
             langgraph_task_idx: tasks.length,
@@ -439,25 +512,35 @@ export function _prepareNextTasks<
             proc: node,
             writes,
             triggers: proc.triggers,
-            config: patchConfig(mergeConfigs(proc.config, { metadata }), {
-              runName: name,
-              configurable: {
-                [CONFIG_KEY_SEND]: _localWrite.bind(
-                  undefined,
-                  (items: [keyof Cc, unknown][]) => writes.push(...items),
-                  processes,
-                  channels
-                ),
-                [CONFIG_KEY_READ]: _localRead.bind(
-                  undefined,
-                  checkpoint,
-                  channels,
-                  writes as Array<[string, unknown]>
-                ),
-                checkpoint_id: checkpoint.id,
-                checkpoint_ns: checkpointNamespace,
-              },
-            }),
+            config: patchConfig(
+              mergeConfigs(config, proc.config, { metadata }),
+              {
+                runName: name,
+                callbacks: manager?.getChild(`graph:step:${step}`),
+                configurable: {
+                  [CONFIG_KEY_SEND]: _localWrite.bind(
+                    undefined,
+                    (items: [keyof Cc, unknown][]) => writes.push(...items),
+                    processes,
+                    channels
+                  ),
+                  [CONFIG_KEY_READ]: _localRead.bind(
+                    undefined,
+                    checkpoint,
+                    channels,
+                    {
+                      name,
+                      writes: writes as Array<[string, unknown]>,
+                      triggers: proc.triggers,
+                    }
+                  ),
+                  [CONFIG_KEY_CHECKPOINTER]: checkpointer,
+                  [CONFIG_KEY_RESUMING]: isResuming,
+                  checkpoint_id: checkpoint.id,
+                  checkpoint_ns: checkpointNamespace,
+                },
+              }
+            ),
             id: taskId,
           });
         }

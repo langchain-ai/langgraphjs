@@ -2,11 +2,15 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import {
   BaseCheckpointSaver,
   Checkpoint,
-  CheckpointMetadata,
+  CheckpointListOptions,
   CheckpointTuple,
 } from "./base.js";
 import { SerializerProtocol } from "../serde/base.js";
-import { CheckpointPendingWrite, PendingWrite } from "../pregel/types.js";
+import {
+  CheckpointMetadata,
+  CheckpointPendingWrite,
+  PendingWrite,
+} from "../checkpoint/types.js";
 
 function _generateKey(
   threadId: string,
@@ -111,9 +115,10 @@ export class MemorySaver extends BaseCheckpointSaver {
 
   async *list(
     config: RunnableConfig,
-    limit?: number,
-    before?: RunnableConfig
+    options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
+    // eslint-disable-next-line prefer-const
+    let { before, limit } = options ?? {};
     const threadIds = config.configurable?.thread_id
       ? [config.configurable?.thread_id]
       : Object.keys(this.storage);

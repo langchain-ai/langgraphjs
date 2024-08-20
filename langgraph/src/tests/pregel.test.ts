@@ -1,6 +1,6 @@
 /* eslint-disable no-process-env */
 /* eslint-disable no-promise-executor-return */
-import { it, expect, jest, beforeAll, describe } from "@jest/globals";
+import { it, expect, jest, describe } from "@jest/globals";
 import {
   RunnableConfig,
   RunnableLambda,
@@ -19,11 +19,8 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { ToolCall } from "@langchain/core/messages/tool";
-import {
-  gatherIterator,
-  FakeChatModel,
-  MemorySaverAssertImmutable,
-} from "./utils.js";
+import { FakeChatModel, MemorySaverAssertImmutable } from "./utils.js";
+import { gatherIterator } from "../utils.js";
 import { LastValue } from "../channels/last_value.js";
 import {
   Annotation,
@@ -43,7 +40,7 @@ import {
   _applyWrites,
   _localRead,
   _prepareNextTasks,
-  _shouldInterrupt,
+  shouldInterrupt,
 } from "../pregel/algo.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
 import { MessageGraph, messagesStateReducer } from "../graph/message.js";
@@ -52,16 +49,7 @@ import { Checkpoint } from "../checkpoint/base.js";
 import { GraphRecursionError, InvalidUpdateError } from "../errors.js";
 import { SqliteSaver } from "../checkpoint/sqlite.js";
 import { uuid5, uuid6 } from "../checkpoint/id.js";
-import { Send, TASKS } from "../constants.js";
-
-// Tracing slows down the tests
-beforeAll(() => {
-  process.env.LANGCHAIN_TRACING_V2 = "false";
-  process.env.LANGCHAIN_ENDPOINT = "";
-  process.env.LANGCHAIN_ENDPOINT = "";
-  process.env.LANGCHAIN_API_KEY = "";
-  process.env.LANGCHAIN_PROJECT = "";
-});
+import { INTERRUPT, Send, TASKS } from "../constants.js";
 
 describe("Channel", () => {
   describe("writeTo", () => {
@@ -120,8 +108,8 @@ describe("Pregel", () => {
           input: new LastValue<number>(),
           output: new LastValue<number>(),
         },
-        inputs: "input",
-        outputs: "output",
+        inputChannels: "input",
+        outputChannels: "output",
         streamChannels: "output",
       });
       const pregel2 = new Pregel({
@@ -130,8 +118,8 @@ describe("Pregel", () => {
           input: new LastValue<number>(),
           output: new LastValue<number>(),
         },
-        inputs: "input",
-        outputs: "output",
+        inputChannels: "input",
+        outputChannels: "output",
         streamChannels: ["input", "output"],
       });
       const pregel3 = new Pregel({
@@ -140,8 +128,8 @@ describe("Pregel", () => {
           input: new LastValue<number>(),
           output: new LastValue<number>(),
         },
-        inputs: "input",
-        outputs: "output",
+        inputChannels: "input",
+        outputChannels: "output",
       });
 
       // call method / assertions
@@ -186,17 +174,18 @@ describe("Pregel", () => {
         tags: ["hello"],
       };
 
+      const checkpointer = new MemorySaver();
       // create Pregel class
       const pregel = new Pregel({
         nodes,
         debug: false,
-        inputs: "outputKey",
-        outputs: "outputKey",
+        inputChannels: "outputKey",
+        outputChannels: "outputKey",
         interruptBefore: ["one"],
         interruptAfter: ["one"],
         streamMode: "values",
         channels,
-        checkpointer: new MemorySaver(),
+        checkpointer,
       });
 
       // call method / assertions
@@ -208,6 +197,7 @@ describe("Pregel", () => {
         {},
         ["one"], // interrupt before
         ["one"], // interrupt after
+        checkpointer,
       ];
 
       const expectedDefaults2 = [
@@ -218,6 +208,7 @@ describe("Pregel", () => {
         { tags: ["hello"] },
         "*", // interrupt before
         ["one"], // interrupt after
+        checkpointer,
       ];
 
       expect(pregel._defaults(config1)).toEqual(expectedDefaults1);
@@ -226,7 +217,7 @@ describe("Pregel", () => {
   });
 });
 
-describe("_shouldInterrupt", () => {
+describe("shouldInterrupt", () => {
   it("should return true if any snapshot channel has been updated since last interrupt and any channel written to is in interrupt nodes list", () => {
     // set up test
     const checkpoint: Checkpoint = {
@@ -240,7 +231,7 @@ describe("_shouldInterrupt", () => {
         channel1: 2, // current channel version is greater than last version seen
       },
       versions_seen: {
-        __interrupt__: {
+        [INTERRUPT]: {
           channel1: 1,
         },
       },
@@ -248,11 +239,10 @@ describe("_shouldInterrupt", () => {
     };
 
     const interruptNodes = ["node1"];
-    const snapshotChannels = ["channel1"];
 
     // call method / assertions
     expect(
-      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, [
+      shouldInterrupt(checkpoint, interruptNodes, [
         {
           name: "node1",
           input: undefined,
@@ -283,11 +273,10 @@ describe("_shouldInterrupt", () => {
     };
 
     const interruptNodes = ["node1"];
-    const snapshotChannels = ["channel1"];
 
     // call method / assertions
     expect(
-      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, [
+      shouldInterrupt(checkpoint, interruptNodes, [
         {
           name: "node1",
           input: undefined,
@@ -322,11 +311,10 @@ describe("_shouldInterrupt", () => {
     };
 
     const interruptNodes = ["node1"];
-    const snapshotChannels = ["channel1"];
 
     // call method / assertions
     expect(
-      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, [
+      shouldInterrupt(checkpoint, interruptNodes, [
         {
           name: "node1",
           input: undefined,
@@ -361,11 +349,10 @@ describe("_shouldInterrupt", () => {
     };
 
     const interruptNodes = ["node1"];
-    const snapshotChannels = ["channel1"];
 
     // call method / assertions
     expect(
-      _shouldInterrupt(checkpoint, interruptNodes, snapshotChannels, [
+      shouldInterrupt(checkpoint, interruptNodes, [
         {
           name: "node2", // node2 is not in interrupt nodes
           input: undefined,
@@ -407,9 +394,23 @@ describe("_localRead", () => {
     const writes: Array<[string, any]> = [];
 
     // call method / assertions
-    expect(_localRead(checkpoint, channels, writes, "channel1", false)).toBe(1);
     expect(
-      _localRead(checkpoint, channels, writes, ["channel1", "channel2"], false)
+      _localRead(
+        checkpoint,
+        channels,
+        { name: "test", writes, triggers: [] },
+        "channel1",
+        false
+      )
+    ).toBe(1);
+    expect(
+      _localRead(
+        checkpoint,
+        channels,
+        { name: "test", writes, triggers: [] },
+        ["channel1", "channel2"],
+        false
+      )
     ).toEqual({ channel1: 1, channel2: 2 });
   });
 
@@ -442,11 +443,23 @@ describe("_localRead", () => {
     ];
 
     // call method / assertions
-    expect(_localRead(checkpoint, channels, writes, "channel1", true)).toBe(
-      100
-    );
     expect(
-      _localRead(checkpoint, channels, writes, ["channel1", "channel2"], true)
+      _localRead(
+        checkpoint,
+        channels,
+        { name: "test", writes, triggers: [] },
+        "channel1",
+        true
+      )
+    ).toBe(100);
+    expect(
+      _localRead(
+        checkpoint,
+        channels,
+        { name: "test", writes, triggers: [] },
+        ["channel1", "channel2"],
+        true
+      )
     ).toEqual({ channel1: 100, channel2: 200 });
   });
 });
@@ -492,7 +505,9 @@ describe("_applyWrites", () => {
     expect(channels.channel2.get()).toBe("channel2value");
     expect(checkpoint.channel_versions.channel1).toBe(2);
 
-    _applyWrites(checkpoint, channels, pendingWrites); // contains side effects
+    _applyWrites(checkpoint, channels, [
+      { name: "foo", writes: pendingWrites, triggers: [] },
+    ]); // contains side effects
 
     expect(channels.channel1.get()).toBe("channel1valueUpdated!");
     expect(channels.channel2.get()).toBe("channel2value");
@@ -534,7 +549,9 @@ describe("_applyWrites", () => {
 
     // call method / assertions
     expect(() => {
-      _applyWrites(checkpoint, channels, pendingWrites); // contains side effects
+      _applyWrites(checkpoint, channels, [
+        { name: "foo", writes: pendingWrites, triggers: [] },
+      ]); // contains side effects
     }).toThrow(InvalidUpdateError);
   });
 });
@@ -719,12 +736,12 @@ describe("_prepareNextTasks", () => {
       config: {
         tags: [],
         configurable: expect.any(Object),
-        metadata: {
+        metadata: expect.objectContaining({
           langgraph_node: "node1",
           langgraph_step: -1,
           langgraph_task_idx: 0,
           langgraph_triggers: [TASKS],
-        },
+        }),
         recursionLimit: 25,
         runId: undefined,
         runName: "node1",
@@ -740,12 +757,12 @@ describe("_prepareNextTasks", () => {
       config: {
         tags: [],
         configurable: expect.any(Object),
-        metadata: {
+        metadata: expect.objectContaining({
           langgraph_node: "node1",
           langgraph_step: -1,
           langgraph_task_idx: 1,
           langgraph_triggers: ["channel1"],
-        },
+        }),
         recursionLimit: 25,
         runId: undefined,
         runName: "node1",
@@ -761,12 +778,12 @@ describe("_prepareNextTasks", () => {
       config: {
         tags: [],
         configurable: expect.any(Object),
-        metadata: {
+        metadata: expect.objectContaining({
           langgraph_node: "node2",
           langgraph_step: -1,
           langgraph_task_idx: 2,
           langgraph_triggers: ["channel1", "channel2"],
-        },
+        }),
         recursionLimit: 25,
         runId: undefined,
         runName: "node2",
@@ -794,8 +811,8 @@ it("can invoke pregel with a single process", async () => {
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   expect(await app.invoke(2)).toBe(3);
@@ -831,8 +848,8 @@ it("should process input and produce output with implicit channels", async () =>
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   expect(await app.invoke(2)).toBe(3);
@@ -860,8 +877,8 @@ it("should process input and write kwargs correctly", async () => {
       fixed: new LastValue<number>(),
       outputPlusOne: new LastValue<number>(),
     },
-    outputs: ["output", "fixed", "outputPlusOne"],
-    inputs: "input",
+    outputChannels: ["output", "fixed", "outputPlusOne"],
+    inputChannels: "input",
   });
 
   expect(await app.invoke(2)).toEqual({
@@ -885,8 +902,8 @@ it("should invoke single process in out objects", async () => {
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: ["output"],
+    inputChannels: "input",
+    outputChannels: ["output"],
   });
 
   expect(await app.invoke(2)).toEqual({ output: 3 });
@@ -904,8 +921,8 @@ it("should process input and output as objects", async () => {
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    inputs: ["input"],
-    outputs: ["output"],
+    inputChannels: ["input"],
+    outputChannels: ["output"],
   });
 
   expect(await app.invoke({ input: 2 })).toEqual({ output: 3 });
@@ -928,8 +945,8 @@ it("should invoke two processes and get correct output", async () => {
       output: new LastValue<number>(),
       input: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
     streamChannels: ["inbox", "output"],
   });
 
@@ -968,9 +985,9 @@ it("should process two processes with object input and output", async () => {
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    inputs: ["input", "inbox"],
+    inputChannels: ["input", "inbox"],
     streamChannels: ["output", "inbox"],
-    outputs: "output",
+    outputChannels: "output",
   });
 
   expect(
@@ -1025,7 +1042,7 @@ it("should process two processes with object input and output", async () => {
       timestamp: expect.any(String),
       step: 0,
       payload: {
-        id: "1726020d-12ca-56e2-a3d3-5b5752b526cf",
+        id: "240c2924-b25b-573d-a0b1-b3aee1241331",
         name: "one",
         result: [["inbox", 3]],
       },
@@ -1035,7 +1052,7 @@ it("should process two processes with object input and output", async () => {
       timestamp: expect.any(String),
       step: 0,
       payload: {
-        id: "ad0a1023-e379-52e7-be4c-5a2c1433aba0",
+        id: "7f2c3a63-782c-58c7-ba9e-7c2e4ceafdaa",
         name: "two",
         result: [["output", 13]],
       },
@@ -1056,7 +1073,7 @@ it("should process two processes with object input and output", async () => {
       timestamp: expect.any(String),
       step: 1,
       payload: {
-        id: "92ce7404-7c07-5383-b528-6933ac523e6a",
+        id: "f812355e-0e5c-5b76-9c43-f7fce750d1a0",
         name: "two",
         result: [["output", 4]],
       },
@@ -1086,8 +1103,8 @@ it("should process batch with two processes and delays", async () => {
       output: new LastValue<number>(),
       input: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   expect(await app.batch([3, 2, 1, 3, 5])).toEqual([5, 4, 3, 5, 7]);
@@ -1147,8 +1164,8 @@ it("should batch many processes with input and output", async () => {
   const app = new Pregel({
     nodes,
     channels,
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   for (let i = 0; i < 3; i += 1) {
@@ -1180,8 +1197,8 @@ it("should raise InvalidUpdateError when the same LastValue channel is updated t
       output: new LastValue<number>(),
       input: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   await expect(app.invoke(2)).rejects.toThrow(InvalidUpdateError);
@@ -1204,8 +1221,8 @@ it("should process two inputs to two outputs validly", async () => {
       input: new LastValue<number>(),
       output2: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   // An Inbox channel accumulates updates into a sequence
@@ -1261,8 +1278,8 @@ it("should handle checkpoints correctly", async () => {
       input: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
     checkpointer: memory,
   });
 
@@ -1330,8 +1347,8 @@ it("should process two inputs joined into one topic and produce two outputs", as
       output: new LastValue<number>(),
       input: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   // Invoke app and check results
@@ -1364,8 +1381,8 @@ it("should invoke join then call other app", async () => {
       output: new LastValue<number>(),
       input: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   const one = Channel.subscribeTo("input")
@@ -1393,8 +1410,8 @@ it("should invoke join then call other app", async () => {
       output: new LastValue<number>(),
       input: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   // Run the test 10 times sequentially
@@ -1434,8 +1451,8 @@ it("should handle two processes with one input and two outputs", async () => {
       output: new LastValue<number>(),
       between: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
     streamChannels: ["output", "between"],
   });
 
@@ -1462,8 +1479,8 @@ it("should finish executing without output", async () => {
       between: new LastValue<number>(),
       output: new LastValue<number>(),
     },
-    inputs: "input",
-    outputs: "output",
+    inputChannels: "input",
+    outputChannels: "output",
   });
 
   // It finishes executing (once no more messages being published)
@@ -2182,7 +2199,9 @@ describe("StateGraph", () => {
       createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
         ?.checkpoint.ts,
       parentConfig: (
-        await gatherIterator(appWithInterrupt.checkpointer!.list(config, 2))
+        await gatherIterator(
+          appWithInterrupt.checkpointer!.list(config, { limit: 2 })
+        )
       ).slice(-1)[0].config,
     });
 
@@ -2240,7 +2259,9 @@ describe("StateGraph", () => {
       createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
         ?.checkpoint.ts,
       parentConfig: (
-        await gatherIterator(appWithInterrupt.checkpointer!.list(config, 2))
+        await gatherIterator(
+          appWithInterrupt.checkpointer!.list(config, { limit: 2 })
+        )
       ).slice(-1)[0].config,
     });
 
@@ -2302,7 +2323,9 @@ describe("StateGraph", () => {
         ?.checkpoint.ts,
       config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
       parentConfig: (
-        await gatherIterator(appWithInterrupt.checkpointer!.list(config, 2))
+        await gatherIterator(
+          appWithInterrupt.checkpointer!.list(config, { limit: 2 })
+        )
       ).slice(-1)[0].config,
     });
 
@@ -2361,7 +2384,9 @@ describe("StateGraph", () => {
         ?.checkpoint.ts,
       config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
       parentConfig: (
-        await gatherIterator(appWithInterrupt.checkpointer!.list(config, 2))
+        await gatherIterator(
+          appWithInterrupt.checkpointer!.list(config, { limit: 2 })
+        )
       ).slice(-1)[0].config,
     });
   });
@@ -2795,29 +2820,46 @@ it("StateGraph start branch then end", async () => {
   const thread1 = { configurable: { thread_id: "1" } };
   expect(
     await toolTwoWithCheckpointer.invoke(
-      { my_key: "value", market: "DE" },
+      { my_key: "value ⛰️", market: "DE" },
       thread1
     )
-  ).toEqual({ my_key: "value", market: "DE" });
+  ).toEqual({ my_key: "value ⛰️", market: "DE" });
+  expect(
+    (
+      await gatherIterator(toolTwoWithCheckpointer.checkpointer!.list(thread1))
+    ).map((c) => c.metadata)
+  ).toEqual([
+    {
+      source: "loop",
+      step: 0,
+    },
+    {
+      source: "input",
+      step: -1,
+      writes: { my_key: "value ⛰️", market: "DE" },
+    },
+  ]);
   expect(await toolTwoWithCheckpointer.getState(thread1)).toEqual({
-    values: { my_key: "value", market: "DE" },
+    values: { my_key: "value ⛰️", market: "DE" },
     next: ["tool_two_slow"],
     config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
       .checkpoint.ts,
-    metadata: { source: "loop", step: 0, writes: null },
+    metadata: { source: "loop", step: 0 },
     parentConfig: (
-      await last(toolTwoWithCheckpointer.checkpointer!.list(thread1, 2))
+      await last(
+        toolTwoWithCheckpointer.checkpointer!.list(thread1, { limit: 2 })
+      )
     ).config,
   });
 
   expect(await toolTwoWithCheckpointer.invoke(null, thread1)).toEqual({
-    my_key: "value slow",
+    my_key: "value ⛰️ slow",
     market: "DE",
   });
   expect(await toolTwoWithCheckpointer.getState(thread1)).toEqual({
-    values: { my_key: "value slow", market: "DE" },
+    values: { my_key: "value ⛰️ slow", market: "DE" },
     next: [],
     config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
       .config,
@@ -2829,7 +2871,125 @@ it("StateGraph start branch then end", async () => {
       writes: { tool_two_slow: { my_key: " slow" } },
     },
     parentConfig: (
-      await last(toolTwoWithCheckpointer.checkpointer!.list(thread1, 2))
+      await last(
+        toolTwoWithCheckpointer.checkpointer!.list(thread1, { limit: 2 })
+      )
+    ).config,
+  });
+  const thread2 = { configurable: { thread_id: "2" } };
+  // stop when about to enter node
+  expect(
+    await toolTwoWithCheckpointer.invoke(
+      { my_key: "value", market: "US" },
+      thread2
+    )
+  ).toEqual({
+    my_key: "value",
+    market: "US",
+  });
+  expect(await toolTwoWithCheckpointer.getState(thread2)).toEqual({
+    values: { my_key: "value", market: "US" },
+    next: ["tool_two_fast"],
+    config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
+      .config,
+    createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
+      .checkpoint.ts,
+    metadata: { source: "loop", step: 0 },
+    parentConfig: (
+      await last(
+        toolTwoWithCheckpointer.checkpointer!.list(thread2, { limit: 2 })
+      )
+    ).config,
+  });
+  // resume, for same result as above
+  expect(await toolTwoWithCheckpointer.invoke(null, thread2)).toEqual({
+    my_key: "value fast",
+    market: "US",
+  });
+  expect(await toolTwoWithCheckpointer.getState(thread2)).toEqual({
+    values: { my_key: "value fast", market: "US" },
+    next: [],
+    config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
+      .config,
+    createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
+      .checkpoint.ts,
+    metadata: {
+      source: "loop",
+      step: 1,
+      writes: { tool_two_fast: { my_key: " fast" } },
+    },
+    parentConfig: (
+      await last(
+        toolTwoWithCheckpointer.checkpointer!.list(thread2, { limit: 2 })
+      )
+    ).config,
+  });
+  const thread3 = { configurable: { thread_id: "3" } };
+  // stop when about to enter node
+  expect(
+    await toolTwoWithCheckpointer.invoke(
+      { my_key: "value", market: "US" },
+      thread3
+    )
+  ).toEqual({
+    my_key: "value",
+    market: "US",
+  });
+  expect(await toolTwoWithCheckpointer.getState(thread3)).toEqual({
+    values: { my_key: "value", market: "US" },
+    next: ["tool_two_fast"],
+    config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
+      .config,
+    createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
+      .checkpoint.ts,
+    metadata: { source: "loop", step: 0 },
+    parentConfig: (
+      await last(
+        toolTwoWithCheckpointer.checkpointer!.list(thread3, { limit: 2 })
+      )
+    ).config,
+  });
+  // update state
+  await toolTwoWithCheckpointer.updateState(thread3, { my_key: "key" }); // appends to my_key
+  expect(await toolTwoWithCheckpointer.getState(thread3)).toEqual({
+    values: { my_key: "valuekey", market: "US" },
+    next: ["tool_two_fast"],
+    config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
+      .config,
+    createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
+      .checkpoint.ts,
+    metadata: {
+      source: "update",
+      step: 1,
+      writes: { [START]: { my_key: "key" } },
+    },
+    parentConfig: (
+      await last(
+        toolTwoWithCheckpointer.checkpointer!.list(thread3, { limit: 2 })
+      )
+    ).config,
+  });
+  // resume, for same result as above
+  expect(await toolTwoWithCheckpointer.invoke(null, thread3)).toEqual({
+    my_key: "valuekey fast",
+    market: "US",
+  });
+  expect(await toolTwoWithCheckpointer.getState(thread3)).toEqual({
+    values: { my_key: "valuekey fast", market: "US" },
+    next: [],
+    config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
+      .config,
+    createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
+      .checkpoint.ts,
+    metadata: {
+      source: "loop",
+      step: 2,
+      writes: { tool_two_fast: { my_key: " fast" } },
+    },
+    parentConfig: (
+      await last(
+        toolTwoWithCheckpointer.checkpointer!.list(thread3, { limit: 2 })
+      )
     ).config,
   });
 });

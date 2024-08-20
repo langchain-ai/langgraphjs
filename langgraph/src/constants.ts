@@ -1,12 +1,24 @@
+export const INPUT = "__input__";
 export const CONFIG_KEY_SEND = "__pregel_send";
 export const CONFIG_KEY_READ = "__pregel_read";
-
+export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
+export const CONFIG_KEY_RESUMING = "__pregel_resuming";
 export const INTERRUPT = "__interrupt__";
 
 export const TAG_HIDDEN = "langsmith:hidden";
 
 export const TASKS = "__pregel_tasks";
 export const TASK_NAMESPACE = "6ba7b831-9dad-11d1-80b4-00c04fd430c8";
+
+export const RESERVED = [
+  INTERRUPT,
+  TASKS,
+  CONFIG_KEY_SEND,
+  CONFIG_KEY_READ,
+  CONFIG_KEY_CHECKPOINTER,
+  CONFIG_KEY_RESUMING,
+  INPUT,
+];
 
 export const CHECKPOINT_NAMESPACE_SEPARATOR = "|";
 

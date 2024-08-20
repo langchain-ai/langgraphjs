@@ -1,8 +1,8 @@
 export { MemorySaver } from "./memory.js";
 export {
   type Checkpoint,
-  type CheckpointMetadata,
   copyCheckpoint,
   emptyCheckpoint,
   BaseCheckpointSaver,
 } from "./base.js";
+export { type CheckpointMetadata } from "./types.js";

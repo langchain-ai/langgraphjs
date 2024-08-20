@@ -1886,6 +1886,7 @@ __metadata:
     "@swc/jest": ^0.2.29
     "@tsconfig/recommended": ^1.0.3
     "@types/better-sqlite3": ^7.6.9
+    "@types/double-ended-queue": ^2
     "@types/uuid": ^10
     "@typescript-eslint/eslint-plugin": ^6.12.0
     "@typescript-eslint/parser": ^6.12.0
@@ -1893,6 +1894,7 @@ __metadata:
     better-sqlite3: ^9.5.0
     cheerio: 1.0.0-rc.12
     dotenv: ^16.3.1
+    double-ended-queue: ^2.1.0-0
     dpdm: ^3.12.0
     eslint: ^8.33.0
     eslint-config-airbnb-base: ^15.0.0
@@ -3015,6 +3017,13 @@ __metadata:
     "@types/d3-transition": "*"
     "@types/d3-zoom": "*"
   checksum: 12234aa093c8661546168becdd8956e892b276f525d96f65a7b32fed886fc6a569fe5a1171bff26fef2a5663960635f460c9504a6f2d242ba281a2b6c8c6465c
+  languageName: node
+  linkType: hard
+
+"@types/double-ended-queue@npm:^2":
+  version: 2.1.7
+  resolution: "@types/double-ended-queue@npm:2.1.7"
+  checksum: 6a4a6e339c90048013cf762f07b284492e7e0fe3caf9d8e1d716ca6335d29a23993c21110f869b667a54d605280c072f84030eb18f37f47c1b36884030721d36
   languageName: node
   linkType: hard
 
@@ -5179,6 +5188,13 @@ __metadata:
   version: 16.4.5
   resolution: "dotenv@npm:16.4.5"
   checksum: 301a12c3d44fd49888b74eb9ccf9f07a1f5df43f489e7fcb89647a2edcd84c42d6bc349dc8df099cd18f07c35c7b04685c1a4f3e6a6a9e6b30f8d48c15b7f49c
+  languageName: node
+  linkType: hard
+
+"double-ended-queue@npm:^2.1.0-0":
+  version: 2.1.0-0
+  resolution: "double-ended-queue@npm:2.1.0-0"
+  checksum: 3030cf9dcf6f8e7d8cb6ae5b7304890445d7c32233a614e400ba7b378086ad76f5822d0e501afd5ffe0af1de4bcb842fa23d4c79174d54f6566399435fafc271
   languageName: node
   linkType: hard
 

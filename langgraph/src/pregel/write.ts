@@ -53,8 +53,9 @@ export class ChannelWrite<
       .join(",")}>`;
     super({
       ...{ writes, name, tags },
-      func: async (input: RunInput, config?: RunnableConfig) =>
-        this._write(input, config ?? {}),
+      func: async (input: RunInput, config?: RunnableConfig) => {
+        return this._write(input, config ?? {});
+      },
     });
 
     this.writes = writes;

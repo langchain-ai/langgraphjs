@@ -15,12 +15,12 @@ export {
 export { MemorySaver } from "./checkpoint/memory.js";
 export {
   type Checkpoint,
-  type CheckpointMetadata,
   type CheckpointTuple,
   copyCheckpoint,
   emptyCheckpoint,
   BaseCheckpointSaver,
 } from "./checkpoint/base.js";
+export { type CheckpointMetadata } from "./checkpoint/types.js";
 export {
   GraphRecursionError,
   GraphValueError,

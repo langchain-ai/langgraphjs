@@ -2,13 +2,13 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import { DefaultSerializer, SerializerProtocol } from "../serde/base.js";
 import { uuid6 } from "./id.js";
 import { SendInterface } from "../constants.js";
-import {
-  CheckpointMetadata,
-  CheckpointPendingWrite,
+import type {
   PendingWrite,
-} from "../pregel/types.js";
+  CheckpointPendingWrite,
+  CheckpointMetadata,
+} from "./types.js";
 
-export type { CheckpointMetadata };
+export type ChannelVersions = Record<string, string | number>;
 
 export interface Checkpoint<
   N extends string = string,
@@ -118,6 +118,13 @@ export interface CheckpointTuple {
   pendingWrites?: CheckpointPendingWrite[];
 }
 
+export type CheckpointListOptions = {
+  limit?: number;
+  before?: RunnableConfig;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  filter?: Record<string, any>;
+};
+
 export abstract class BaseCheckpointSaver {
   serde: SerializerProtocol<unknown> = DefaultSerializer;
 
@@ -136,14 +143,14 @@ export abstract class BaseCheckpointSaver {
 
   abstract list(
     config: RunnableConfig,
-    limit?: number,
-    before?: RunnableConfig
+    options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple>;
 
   abstract put(
     config: RunnableConfig,
     checkpoint: Checkpoint,
-    metadata: CheckpointMetadata
+    metadata: CheckpointMetadata,
+    newVersions: ChannelVersions
   ): Promise<RunnableConfig>;
 
   /**
@@ -154,4 +161,17 @@ export abstract class BaseCheckpointSaver {
     writes: PendingWrite[],
     taskId: string
   ): Promise<void>;
+
+  /**
+   * Generate the next version ID for a channel.
+   *
+   * Default is to use integer versions, incrementing by 1. If you override, you can use str/int/float versions,
+   * as long as they are monotonically increasing.
+   *
+   * TODO: Fix type
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getNextVersion(current: number | undefined, _channel: any) {
+    return current !== undefined ? current + 1 : 1;
+  }
 }
