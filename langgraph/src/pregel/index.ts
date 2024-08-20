@@ -591,6 +591,7 @@ export class Pregel<
       undefined,
       inputConfig?.runName ?? this.getName()
     );
+    delete inputConfig.runId;
     // assign defaults
     const [
       debug,

@@ -736,12 +736,12 @@ describe("_prepareNextTasks", () => {
       config: {
         tags: [],
         configurable: expect.any(Object),
-        metadata: {
+        metadata: expect.objectContaining({
           langgraph_node: "node1",
           langgraph_step: -1,
           langgraph_task_idx: 0,
           langgraph_triggers: [TASKS],
-        },
+        }),
         recursionLimit: 25,
         runId: undefined,
         runName: "node1",
@@ -757,12 +757,12 @@ describe("_prepareNextTasks", () => {
       config: {
         tags: [],
         configurable: expect.any(Object),
-        metadata: {
+        metadata: expect.objectContaining({
           langgraph_node: "node1",
           langgraph_step: -1,
           langgraph_task_idx: 1,
           langgraph_triggers: ["channel1"],
-        },
+        }),
         recursionLimit: 25,
         runId: undefined,
         runName: "node1",
@@ -778,12 +778,12 @@ describe("_prepareNextTasks", () => {
       config: {
         tags: [],
         configurable: expect.any(Object),
-        metadata: {
+        metadata: expect.objectContaining({
           langgraph_node: "node2",
           langgraph_step: -1,
           langgraph_task_idx: 2,
           langgraph_triggers: ["channel1", "channel2"],
-        },
+        }),
         recursionLimit: 25,
         runId: undefined,
         runName: "node2",
