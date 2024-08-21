@@ -40,12 +40,13 @@ import {
   _applyWrites,
   _localRead,
   _prepareNextTasks,
+  increment,
   shouldInterrupt,
 } from "../pregel/algo.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
 import { MessageGraph, messagesStateReducer } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
-import { Checkpoint } from "../checkpoint/base.js";
+import { Checkpoint, CheckpointTuple } from "../checkpoint/base.js";
 import { GraphRecursionError, InvalidUpdateError } from "../errors.js";
 import { SqliteSaver } from "../checkpoint/sqlite.js";
 import { uuid5, uuid6 } from "../checkpoint/id.js";
@@ -95,6 +96,76 @@ describe("Channel", () => {
 });
 
 describe("Pregel", () => {
+  describe("checkpoint error handling", () => {
+    it("should catch checkpoint errors", async () => {
+      class FaultyGetCheckpointer extends MemorySaver {
+        async getTuple(): Promise<CheckpointTuple> {
+          throw new Error("Faulty get_tuple");
+        }
+      }
+
+      class FaultyPutCheckpointer extends MemorySaver {
+        async put(): Promise<RunnableConfig> {
+          throw new Error("Faulty put");
+        }
+      }
+
+      class FaultyPutWritesCheckpointer extends MemorySaver {
+        async putWrites(): Promise<void> {
+          throw new Error("Faulty put_writes");
+        }
+      }
+
+      class FaultyVersionCheckpointer extends MemorySaver {
+        getNextVersion(): number {
+          throw new Error("Faulty get_next_version");
+        }
+      }
+
+      const logic = () => ({ foo: "" });
+
+      const State = Annotation.Root({
+        foo: Annotation<string>({
+          reducer: (_, b) => b,
+        }),
+      });
+      const builder = new StateGraph(State)
+        .addNode("agent", logic)
+        .addEdge("__start__", "agent")
+        .addEdge("agent", "__end__");
+      let graph = builder.compile({
+        checkpointer: new FaultyGetCheckpointer(),
+      });
+      await expect(async () => {
+        await graph.invoke({}, { configurable: { thread_id: "1" } });
+      }).rejects.toThrowError("Faulty get_tuple");
+      graph = builder.compile({
+        checkpointer: new FaultyPutCheckpointer(),
+      });
+      await expect(async () => {
+        await graph.invoke({}, { configurable: { thread_id: "1" } });
+      }).rejects.toThrowError("Faulty put");
+      graph = builder.compile({
+        checkpointer: new FaultyVersionCheckpointer(),
+      });
+      await expect(async () => {
+        await graph.invoke({}, { configurable: { thread_id: "1" } });
+      }).rejects.toThrowError("Faulty get_next_version");
+      const graph2 = new StateGraph(State)
+        .addNode("agent", logic)
+        .addEdge("__start__", "agent")
+        .addEdge("agent", "__end__")
+        .addNode("parallel", logic)
+        .addEdge("__start__", "parallel")
+        .addEdge("parallel", "__end__")
+        .compile({
+          checkpointer: new FaultyPutWritesCheckpointer(),
+        });
+      await expect(async () => {
+        await graph2.invoke({}, { configurable: { thread_id: "1" } });
+      }).rejects.toThrowError("Faulty put_writes");
+    });
+  });
   describe("streamChannelsList", () => {
     it("should return the expected list of stream channels", () => {
       // set up test
@@ -505,9 +576,12 @@ describe("_applyWrites", () => {
     expect(channels.channel2.get()).toBe("channel2value");
     expect(checkpoint.channel_versions.channel1).toBe(2);
 
-    _applyWrites(checkpoint, channels, [
-      { name: "foo", writes: pendingWrites, triggers: [] },
-    ]); // contains side effects
+    _applyWrites(
+      checkpoint,
+      channels,
+      [{ name: "foo", writes: pendingWrites, triggers: [] }],
+      increment
+    ); // contains side effects
 
     expect(channels.channel1.get()).toBe("channel1valueUpdated!");
     expect(channels.channel2.get()).toBe("channel2value");
@@ -1008,7 +1082,7 @@ it("should process two processes with object input and output", async () => {
 
   expect(await gatherIterator(app.stream({ input: 2, inbox: 12 }))).toEqual([
     { inbox: [3], output: 13 },
-    { inbox: [], output: 4 },
+    { output: 4 },
   ]);
 
   const debug = await gatherIterator(
@@ -1352,6 +1426,8 @@ it("should process two inputs joined into one topic and produce two outputs", as
   });
 
   // Invoke app and check results
+  // We get a single array result as chain_four waits for all publishers to finish
+  // before operating on all elements published to topic_two as an array
   for (let i = 0; i < 100; i += 1) {
     expect(await app.invoke(2)).toEqual([13, 13]);
   }

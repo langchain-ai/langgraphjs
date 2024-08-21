@@ -52,6 +52,10 @@ export type WritesProtocol<C = string> = {
   triggers: string[];
 };
 
+export const increment = (current?: number) => {
+  return current !== undefined ? current + 1 : 1;
+};
+
 export async function executeTasks<RunOutput>(
   tasks: Array<() => Promise<RunOutput | Error | void>>,
   stepTimeout?: number,
@@ -173,12 +177,13 @@ export function _localWrite(
 export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   checkpoint: Checkpoint,
   channels: Cc,
-  pendingTasks: WritesProtocol<keyof Cc>[],
-  getNextVersion?: (current: number | undefined, channel: BaseChannel) => number
+  tasks: WritesProtocol<keyof Cc>[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getNextVersion?: (version: any, channel: BaseChannel) => any
 ): void {
   // Update seen versions
-  for (const task of pendingTasks) {
-    if (!checkpoint.versions_seen[task.name]) {
+  for (const task of tasks) {
+    if (checkpoint.versions_seen[task.name] === undefined) {
       checkpoint.versions_seen[task.name] = {};
     }
     for (const chan of task.triggers) {
@@ -190,19 +195,19 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // Find the highest version of all channels
-  let maxVersion =
-    Object.values(checkpoint.channel_versions).length > 0
-      ? Math.max(...Object.values(checkpoint.channel_versions))
-      : undefined;
+  let maxVersion: number | undefined;
+  if (Object.keys(checkpoint.channel_versions).length > 0) {
+    maxVersion = Math.max(...Object.values(checkpoint.channel_versions));
+  }
 
   // Consume all channels that were read
-  const readChannels = new Set(
-    pendingTasks
+  const channelsToConsume = new Set(
+    tasks
       .flatMap((task) => task.triggers)
       .filter((chan) => !RESERVED.includes(chan))
   );
 
-  for (const chan of readChannels) {
+  for (const chan of channelsToConsume) {
     if (channels[chan].consume()) {
       if (getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(
@@ -213,17 +218,18 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
     }
   }
 
-  // clear pending sends
+  // Clear pending sends
   if (checkpoint.pending_sends) {
     checkpoint.pending_sends = [];
   }
+
+  // Group writes by channel
   const pendingWriteValuesByChannel = {} as Record<
     keyof Cc,
     PendingWriteValue[]
   >;
-  // Group writes by channel
-  for (const pendingTask of pendingTasks) {
-    for (const [chan, val] of pendingTask.writes) {
+  for (const task of tasks) {
+    for (const [chan, val] of task.writes) {
       if (chan === TASKS) {
         checkpoint.pending_sends.push({
           node: (val as Send).node,
@@ -240,30 +246,36 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // find the highest version of all channels
-  maxVersion =
-    Object.values(checkpoint.channel_versions).length > 0
-      ? Math.max(...Object.values(checkpoint.channel_versions))
-      : undefined;
+  maxVersion = undefined;
+  if (Object.keys(checkpoint.channel_versions).length > 0) {
+    maxVersion = Math.max(...Object.values(checkpoint.channel_versions));
+  }
 
   const updatedChannels: Set<string> = new Set();
   // Apply writes to channels
   for (const [chan, vals] of Object.entries(pendingWriteValuesByChannel)) {
     if (chan in channels) {
-      // side effect: update channels
+      let updated;
       try {
-        channels[chan].update(vals);
+        updated = channels[chan].update(vals);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (e: any) {
         if (e.name === InvalidUpdateError.unminifiable_name) {
           throw new InvalidUpdateError(
-            `Invalid update for channel ${chan}. Values: ${vals}\n\nError: ${e.message}`
+            `Invalid update for channel ${chan} with values ${JSON.stringify(
+              vals
+            )}`
           );
+        } else {
+          throw e;
         }
       }
-
-      // side effect: update checkpoint channel versions
-      checkpoint.channel_versions[chan] = (maxVersion ?? 0) + 1;
-
+      if (updated && getNextVersion !== undefined) {
+        checkpoint.channel_versions[chan] = getNextVersion(
+          maxVersion,
+          channels[chan]
+        );
+      }
       updatedChannels.add(chan);
     } else {
       console.warn(`Skipping write for channel ${chan} which has no readers`);
@@ -271,10 +283,15 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // Channels that weren't updated in this step are notified of a new step
-  for (const chan in channels) {
+  for (const chan of Object.keys(channels)) {
     if (!updatedChannels.has(chan)) {
-      // side effect: update channels
-      channels[chan].update([]);
+      const updated = channels[chan].update([]);
+      if (updated && getNextVersion !== undefined) {
+        checkpoint.channel_versions[chan] = getNextVersion(
+          maxVersion,
+          channels[chan]
+        );
+      }
     }
   }
 }

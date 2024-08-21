@@ -7,6 +7,7 @@ import type {
   CheckpointPendingWrite,
   CheckpointMetadata,
 } from "./types.js";
+import { ChannelProtocol } from "./serde/types.js";
 
 export type ChannelVersions = Record<string, string | number>;
 
@@ -125,7 +126,7 @@ export type CheckpointListOptions = {
   filter?: Record<string, any>;
 };
 
-export abstract class BaseCheckpointSaver {
+export abstract class BaseCheckpointSaver<V = number> {
   serde: SerializerProtocol<unknown> = DefaultSerializer;
 
   constructor(serde?: SerializerProtocol<unknown>) {
@@ -167,11 +168,8 @@ export abstract class BaseCheckpointSaver {
    *
    * Default is to use integer versions, incrementing by 1. If you override, you can use str/int/float versions,
    * as long as they are monotonically increasing.
-   *
-   * TODO: Fix type
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getNextVersion(current: number | undefined, _channel: any) {
-    return current !== undefined ? current + 1 : 1;
+  getNextVersion(current: V | undefined, _channel: ChannelProtocol) {
+    return current !== undefined ? (current as number) + 1 : 1;
   }
 }

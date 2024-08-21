@@ -30,12 +30,17 @@ export abstract class BaseChannel<
   /**
    * Update the channel's value with the given sequence of updates.
    * The order of the updates in the sequence is arbitrary.
+   * This method is called by Pregel for all channels at the end of each step.
+   * If there are no updates, it is called with an empty sequence.
+   *
+   * Raises InvalidUpdateError if the sequence of updates is invalid.
+   * Returns True if the channel was updated, False otherwise.
    *
    * @throws {InvalidUpdateError} if the sequence of updates is invalid.
    * @param {Array<UpdateType>} values
    * @returns {void}
    */
-  abstract update(values: UpdateType[]): void;
+  abstract update(values: UpdateType[]): boolean;
 
   /**
    * Return the current value of the channel.
@@ -59,7 +64,7 @@ export abstract class BaseChannel<
    * channels that triggered a node. If the channel was updated, return true.
    */
   consume(): boolean {
-    return true;
+    return false;
   }
 }
 

@@ -1,15 +1,8 @@
+import { EmptyChannelError } from "../errors.js";
 import { BaseChannel } from "./base.js";
 
-function* flatten<Value>(
-  values: Array<Value | Value[]>
-): IterableIterator<Value> {
-  for (const value of values) {
-    if (Array.isArray(value)) {
-      yield* value;
-    } else {
-      yield value;
-    }
-  }
+function arraysEqual<T>(a: T[], b: T[]): boolean {
+  return a.length === b.length && a.every((val, index) => val === b[index]);
 }
 
 export class Topic<Value> extends BaseChannel<
@@ -50,12 +43,13 @@ export class Topic<Value> extends BaseChannel<
     return empty as this;
   }
 
-  public update(values: Array<Value | Value[]>): void {
+  public update(values: Array<Value | Value[]>): boolean {
+    const current = [...this.values];
     if (!this.accumulate) {
       this.values = [];
     }
-    const flatValues = flatten<Value>(values);
-    if (flatValues) {
+    const flatValues = values.flat() as Value[];
+    if (flatValues.length > 0) {
       if (this.unique) {
         for (const value of flatValues) {
           if (!this.seen.has(value)) {
@@ -67,9 +61,13 @@ export class Topic<Value> extends BaseChannel<
         this.values.push(...flatValues);
       }
     }
+    return !arraysEqual(this.values, current);
   }
 
   public get(): Array<Value> {
+    if (this.values.length === 0) {
+      throw new EmptyChannelError();
+    }
     return this.values;
   }
 

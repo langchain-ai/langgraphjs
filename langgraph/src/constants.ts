@@ -1,4 +1,5 @@
 export const INPUT = "__input__";
+export const ERROR = "__error__";
 export const CONFIG_KEY_SEND = "__pregel_send";
 export const CONFIG_KEY_READ = "__pregel_read";
 export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
@@ -12,6 +13,7 @@ export const TASK_NAMESPACE = "6ba7b831-9dad-11d1-80b4-00c04fd430c8";
 
 export const RESERVED = [
   INTERRUPT,
+  ERROR,
   TASKS,
   CONFIG_KEY_SEND,
   CONFIG_KEY_READ,

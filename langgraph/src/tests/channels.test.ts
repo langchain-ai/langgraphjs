@@ -48,7 +48,7 @@ describe("Topic", () => {
     expect(channel.get()).toEqual(["c", "d", "d"]);
 
     channel.update([]);
-    expect(channel.get()).toEqual([]);
+    expect(() => channel.get()).toThrow(EmptyChannelError);
 
     channel.update(["e"]);
     expect(channel.get()).toEqual(["e"]);
@@ -72,7 +72,7 @@ describe("Topic with unique: true", () => {
     expect(channel.get()).toEqual(["c", "d"]);
 
     channel.update([]);
-    expect(channel.get()).toEqual([]);
+    expect(() => channel.get()).toThrow(EmptyChannelError);
 
     channel.update(["e"]);
     expect(channel.get()).toEqual(["e"]);
