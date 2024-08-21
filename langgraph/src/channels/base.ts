@@ -84,20 +84,25 @@ export function emptyChannels<Cc extends Record<string, BaseChannel>>(
 
 export function createCheckpoint<ValueType>(
   checkpoint: ReadonlyCheckpoint,
-  channels: Record<string, BaseChannel<ValueType>>,
+  channels: Record<string, BaseChannel<ValueType>> | undefined,
   step: number
 ): Checkpoint {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const values: Record<string, any> = {};
-  for (const k of Object.keys(channels)) {
-    try {
-      values[k] = channels[k].checkpoint();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-      if (error.name === EmptyChannelError.unminifiable_name) {
-        // no-op
-      } else {
-        throw error; // Rethrow unexpected errors
+  let values: Record<string, any>;
+  if (channels === undefined) {
+    values = checkpoint.channel_values;
+  } else {
+    values = {};
+    for (const k of Object.keys(channels)) {
+      try {
+        values[k] = channels[k].checkpoint();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (error: any) {
+        if (error.name === EmptyChannelError.unminifiable_name) {
+          // no-op
+        } else {
+          throw error; // Rethrow unexpected errors
+        }
       }
     }
   }

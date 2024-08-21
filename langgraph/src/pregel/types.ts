@@ -114,6 +114,10 @@ export interface StateSnapshot {
    * @default undefined
    */
   readonly parentConfig?: RunnableConfig | undefined;
+  /**
+   * Tasks to execute in this step. If already attempted, may contain an error.
+   */
+  readonly tasks: PregelTaskDescription[];
 }
 
 export type All = "*";

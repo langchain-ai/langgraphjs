@@ -207,8 +207,8 @@ export function* mapDebugCheckpoint<
   };
 }
 
-function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
-  tasks: readonly PregelExecutableTask<N, C>[],
+export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
+  tasks: PregelTaskDescription[] | readonly PregelExecutableTask<N, C>[],
   pendingWrites: CheckpointPendingWrite[]
 ): PregelTaskDescription[] {
   return tasks.map((task): PregelTaskDescription => {

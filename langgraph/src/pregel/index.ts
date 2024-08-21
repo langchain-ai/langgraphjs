@@ -10,6 +10,7 @@ import {
   getCallbackManagerForConfig,
   patchConfig,
 } from "@langchain/core/runnables";
+import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   BaseChannel,
   createCheckpoint,
@@ -29,6 +30,7 @@ import {
   printStepCheckpoint,
   printStepTasks,
   printStepWrites,
+  tasksWithWrites,
 } from "./debug.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import {
@@ -278,6 +280,9 @@ export class Pregel<
     }
   }
 
+  /**
+   * Get the current state of the graph.
+   */
   async getState(config: RunnableConfig): Promise<StateSnapshot> {
     if (!this.checkpointer) {
       throw new GraphValueError("No checkpointer set");
@@ -297,6 +302,7 @@ export class Pregel<
     return {
       values: readChannels(channels, this.streamChannelsAsIs),
       next: nextTasks.map((task) => task.name),
+      tasks: tasksWithWrites(nextTasks, saved?.pendingWrites ?? []),
       metadata: saved?.metadata,
       config: saved ? saved.config : config,
       createdAt: saved?.checkpoint.ts,
@@ -304,6 +310,9 @@ export class Pregel<
     };
   }
 
+  /**
+   * Get the history of the state of the graph.
+   */
   async *getStateHistory(
     config: RunnableConfig,
     options?: CheckpointListOptions
@@ -324,6 +333,7 @@ export class Pregel<
       yield {
         values: readChannels(channels, this.streamChannelsAsIs),
         next: nextTasks.map((task) => task.name),
+        tasks: tasksWithWrites(nextTasks, saved.pendingWrites ?? []),
         metadata: saved.metadata,
         config: saved.config,
         createdAt: saved.checkpoint.ts,
@@ -332,6 +342,11 @@ export class Pregel<
     }
   }
 
+  /**
+   * Update the state of the graph with the given values, as if they came from
+   * node `as_node`. If `as_node` is not provided, it will be set to the last node
+   * that updated the state, if not ambiguous.
+   */
   async updateState(
     config: RunnableConfig,
     values: Record<string, unknown> | unknown,
@@ -361,10 +376,10 @@ export class Pregel<
     };
 
     // Find last node that updated the state, if not provided
-    if (values === undefined && asNode === undefined) {
+    if (values == null && asNode === undefined) {
       return await this.checkpointer.put(
         checkpointConfig,
-        createCheckpoint(checkpoint, {}, step),
+        createCheckpoint(checkpoint, undefined, step),
         {
           source: "update",
           step,
@@ -380,7 +395,7 @@ export class Pregel<
       })
       .flat()
       .find((v) => !!v);
-    if (asNode === undefined && !nonNullVersion) {
+    if (asNode === undefined && nonNullVersion === undefined) {
       if (
         typeof this.inputChannels === "string" &&
         this.nodes[this.inputChannels] !== undefined
@@ -562,7 +577,29 @@ export class Pregel<
     ];
   }
 
-  async *_streamIterator(
+  /**
+   * Stream graph steps for a single input.
+   * @param input The input to the graph.
+   * @param options The configuration to use for the run.
+   * @param options.streamMode The mode to stream output. Defaults to value set on initialization.
+   *   Options are "values", "updates", and "debug". Default is "values".
+   *     values: Emit the current values of the state for each step.
+   *     updates: Emit only the updates to the state for each step.
+   *         Output is a dict with the node name as key and the updated values as value.
+   *     debug: Emit debug events for each step.
+   * @param options.outputKeys The keys to stream. Defaults to all non-context channels.
+   * @param options.interruptBefore Nodes to interrupt before.
+   * @param options.interruptAfter Nodes to interrupt after.
+   * @param options.debug Whether to print debug information during execution.
+   */
+  override async stream(
+    input: PregelInputType,
+    options?: Partial<PregelOptions<Nn, Cc>>
+  ): Promise<IterableReadableStream<PregelOutputType>> {
+    return super.stream(input, options);
+  }
+
+  override async *_streamIterator(
     input: PregelInputType,
     options?: Partial<PregelOptions<Nn, Cc>>
   ): AsyncGenerator<PregelOutputType> {
@@ -722,10 +759,20 @@ export class Pregel<
 
   /**
    * Run the graph with a single input and config.
-   * @param input
-   * @param options
+   * @param input The input to the graph.
+   * @param options The configuration to use for the run.
+   * @param options.streamMode The mode to stream output. Defaults to value set on initialization.
+   *   Options are "values", "updates", and "debug". Default is "values".
+   *     values: Emit the current values of the state for each step.
+   *     updates: Emit only the updates to the state for each step.
+   *         Output is a dict with the node name as key and the updated values as value.
+   *     debug: Emit debug events for each step.
+   * @param options.outputKeys The keys to stream. Defaults to all non-context channels.
+   * @param options.interruptBefore Nodes to interrupt before.
+   * @param options.interruptAfter Nodes to interrupt after.
+   * @param options.debug Whether to print debug information during execution.
    */
-  async invoke(
+  override async invoke(
     input: PregelInputType,
     options?: Partial<PregelOptions<Nn, Cc>>
   ): Promise<PregelOutputType> {
