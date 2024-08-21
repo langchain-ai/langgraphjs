@@ -234,7 +234,8 @@ export class CompiledStateGraph<
       if (!input) {
         return SKIP_WRITE;
       } else if (typeof input !== "object" || Array.isArray(input)) {
-        throw new InvalidUpdateError(`Expected dict, got ${typeof input}`);
+        const typeofInput = Array.isArray(input) ? "array" : typeof input;
+        throw new InvalidUpdateError(`Expected object, got ${typeofInput}`);
       } else {
         return key in input ? input[key] : SKIP_WRITE;
       }
