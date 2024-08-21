@@ -1,8 +1,12 @@
 import { RunnableConfig } from "@langchain/core/runnables";
 import { BaseChannel } from "../channels/base.js";
-import { CheckpointMetadata, CheckpointPendingWrite, PendingWrite } from "../checkpoint/types.js";
+import {
+  CheckpointMetadata,
+  CheckpointPendingWrite,
+  PendingWrite,
+} from "../checkpoint/types.js";
 import { uuid5 } from "../checkpoint/id.js";
-import { TAG_HIDDEN, TASK_NAMESPACE } from "../constants.js";
+import { ERROR, TAG_HIDDEN, TASK_NAMESPACE } from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
 import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { readChannels } from "./io.js";
@@ -82,14 +86,19 @@ export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
     if (config?.tags?.includes(TAG_HIDDEN)) continue;
 
     const metadata = { ...config?.metadata };
-    delete metadata.checkpoint_id;
+    const idMetadata = {
+      langgraph_step: metadata.langgraph_step,
+      langgraph_node: metadata.langgraph_node,
+      langgraph_triggers: metadata.langgraph_triggers,
+      langgraph_task_idx: metadata.langgraph_task_idx,
+    };
 
     yield {
       type: "task",
       timestamp: ts,
       step,
       payload: {
-        id: uuid5(JSON.stringify([name, step, metadata]), TASK_NAMESPACE),
+        id: uuid5(JSON.stringify([name, step, idMetadata]), TASK_NAMESPACE),
         name,
         input,
         triggers,
@@ -111,14 +120,19 @@ export function* mapDebugTaskResults<
     if (config?.tags?.includes(TAG_HIDDEN)) continue;
 
     const metadata = { ...config?.metadata };
-    delete metadata.checkpoint_id;
+    const idMetadata = {
+      langgraph_step: metadata.langgraph_step,
+      langgraph_node: metadata.langgraph_node,
+      langgraph_triggers: metadata.langgraph_triggers,
+      langgraph_task_idx: metadata.langgraph_task_idx,
+    };
 
     yield {
       type: "task_result",
       timestamp: ts,
       step,
       payload: {
-        id: uuid5(JSON.stringify([name, step, metadata]), TASK_NAMESPACE),
+        id: uuid5(JSON.stringify([name, step, idMetadata]), TASK_NAMESPACE),
         name,
         result: writes.filter(([channel]) =>
           streamChannelsList.includes(channel)
@@ -128,13 +142,51 @@ export function* mapDebugTaskResults<
   }
 }
 
-export function* mapDebugCheckpoint(
+export function* mapDebugCheckpoint<
+  N extends PropertyKey,
+  C extends PropertyKey
+>(
   step: number,
   config: RunnableConfig,
   channels: Record<string, BaseChannel>,
   streamChannels: string | string[],
-  metadata: CheckpointMetadata
+  metadata: CheckpointMetadata,
+  tasks: readonly PregelExecutableTask<N, C>[],
+  pendingWrites: CheckpointPendingWrite[]
 ) {
+  function formatConfig(config: RunnableConfig) {
+    // https://stackoverflow.com/a/78298178
+    type CamelToSnake<
+      T extends string,
+      A extends string = ""
+    > = T extends `${infer F}${infer R}`
+      ? CamelToSnake<
+          R,
+          `${A}${F extends Lowercase<F> ? F : `_${Lowercase<F>}`}`
+        >
+      : A;
+
+    // make sure the config is consistent with Python
+    const pyConfig: Partial<
+      Record<CamelToSnake<keyof RunnableConfig>, unknown>
+    > = {};
+
+    if (config.callbacks != null) pyConfig.callbacks = config.callbacks;
+    if (config.configurable != null)
+      pyConfig.configurable = config.configurable;
+    if (config.maxConcurrency != null)
+      pyConfig.max_concurrency = config.maxConcurrency;
+
+    if (config.metadata != null) pyConfig.metadata = config.metadata;
+    if (config.recursionLimit != null)
+      pyConfig.recursion_limit = config.recursionLimit;
+    if (config.runId != null) pyConfig.run_id = config.runId;
+    if (config.runName != null) pyConfig.run_name = config.runName;
+    if (config.tags != null) pyConfig.tags = config.tags;
+
+    return pyConfig;
+  }
+
   function getCurrentUTC() {
     const now = new Date();
     return new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
@@ -146,11 +198,27 @@ export function* mapDebugCheckpoint(
     timestamp: ts,
     step,
     payload: {
-      config,
+      config: formatConfig(config),
       values: readChannels(channels, streamChannels),
       metadata,
+      next: tasks.map((task) => task.name),
+      tasks: tasksWithWrites(tasks, pendingWrites),
     },
   };
+}
+
+function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
+  tasks: readonly PregelExecutableTask<N, C>[],
+  pendingWrites: CheckpointPendingWrite[]
+): PregelTaskDescription[] {
+  return tasks.map((task): PregelTaskDescription => {
+    const error = pendingWrites.find(
+      ([id, n]) => id === task.id && n === ERROR
+    )?.[2];
+
+    if (error) return { id: task.id, name: task.name as string, error };
+    return { id: task.id, name: task.name as string };
+  });
 }
 
 export function printStepCheckpoint(
@@ -194,8 +262,7 @@ export function printStepTasks<N extends PropertyKey, C extends PropertyKey>(
 
 export function printStepWrites(
   step: number,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  writes: Array<[string, any]>,
+  writes: PendingWrite[],
   whitelist: string[]
 ): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -226,21 +293,4 @@ export function printStepWrites(
         .join("\n"),
     ].join("")
   );
-}
-
-function tasksWithWrites(
-  tasks: PregelTaskDescription[],
-  pendingWrites?: CheckpointPendingWrite[]
-): PregelExecutableTask<string, string>[] {
-  return tasks.map(task => {
-    const error = pendingWrites?.find(
-      ([tid, n, exc]) => tid === task.id && n === "ERROR"
-    )?.[2];
-
-    return new PregelTask(
-      task.id,
-      task.name,
-      error || null
-    );
-  });
 }

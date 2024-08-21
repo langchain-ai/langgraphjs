@@ -68,8 +68,9 @@ export type PregelParams<
 > = Omit<PregelInterface<Nn, Cc>, "streamChannelsAsIs">;
 
 export interface PregelTaskDescription {
+  readonly id: string;
   readonly name: string;
-  readonly input: unknown;
+  readonly error?: unknown;
 }
 
 export interface PregelExecutableTask<

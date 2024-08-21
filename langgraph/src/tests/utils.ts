@@ -183,3 +183,52 @@ export class FakeSearchTool extends Tool {
     return `result for ${query}`;
   }
 }
+
+class AnyStringSame {
+  $$typeof = Symbol.for("jest.asymmetricMatcher");
+
+  private lastValue: string | undefined = undefined;
+
+  private key: string;
+
+  constructor(key: string) {
+    this.key = key;
+  }
+
+  asymmetricMatch(other: unknown) {
+    // eslint-disable-next-line no-instanceof/no-instanceof
+    if (!(typeof other === "string" || other instanceof String)) {
+      return false;
+    }
+
+    if (this.lastValue != null && this.lastValue !== other) {
+      return false;
+    }
+
+    this.lastValue = other as string;
+    return true;
+  }
+
+  toString() {
+    return "AnyStringSame";
+  }
+
+  getExpectedType() {
+    return "string";
+  }
+
+  toAsymmetricMatcher() {
+    if (this.lastValue != null)
+      return `AnyStringSame<${this.key}, ${this.lastValue}>`;
+    return `AnyStringSame<${this.key}>`;
+  }
+}
+
+export const createAnyStringSame = () => {
+  const memory = new Map<string, AnyStringSame>();
+
+  return (key: string) => {
+    if (!memory.has(key)) memory.set(key, new AnyStringSame(key));
+    return memory.get(key);
+  };
+};

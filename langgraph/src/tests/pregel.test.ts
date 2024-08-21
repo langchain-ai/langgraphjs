@@ -19,7 +19,11 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { ToolCall } from "@langchain/core/messages/tool";
-import { FakeChatModel, MemorySaverAssertImmutable } from "./utils.js";
+import {
+  createAnyStringSame,
+  FakeChatModel,
+  MemorySaverAssertImmutable,
+} from "./utils.js";
 import { gatherIterator } from "../utils.js";
 import { LastValue } from "../channels/last_value.js";
 import {
@@ -635,7 +639,7 @@ describe("_prepareNextTasks", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 1,
-      id: "123",
+      id: "1ee95cd6-c0f1-5f94-8a67-5c223c8bb55a",
       ts: "2024-04-19T17:19:07.952Z",
       channel_values: {
         channel1: 1,
@@ -689,8 +693,14 @@ describe("_prepareNextTasks", () => {
     );
 
     expect(taskDescriptions.length).toBe(2);
-    expect(taskDescriptions[0]).toEqual({ name: "node1", input: 1 });
-    expect(taskDescriptions[1]).toEqual({ name: "node2", input: 100 });
+    expect(taskDescriptions[0]).toEqual({
+      id: expect.any(String),
+      name: "node1",
+    });
+    expect(taskDescriptions[1]).toEqual({
+      id: expect.any(String),
+      name: "node2",
+    });
 
     // the returned checkpoint is a copy of the passed checkpoint without versionsSeen updated
     expect(newCheckpoint.versions_seen.node1.channel1).toBe(1);
@@ -1100,13 +1110,16 @@ it("should process two processes with object input and output", async () => {
   const debug = await gatherIterator(
     app.stream({ input: 2, inbox: 12 }, { streamMode: "debug" })
   );
+
+  const anyStringSame = createAnyStringSame();
+
   expect(debug).toEqual([
     {
       type: "task",
       timestamp: expect.any(String),
       step: 0,
       payload: {
-        id: "1726020d-12ca-56e2-a3d3-5b5752b526cf",
+        id: anyStringSame("task1"),
         name: "one",
         input: 2,
         triggers: ["input"],
@@ -1117,7 +1130,7 @@ it("should process two processes with object input and output", async () => {
       timestamp: expect.any(String),
       step: 0,
       payload: {
-        id: "ad0a1023-e379-52e7-be4c-5a2c1433aba0",
+        id: anyStringSame("task2"),
         name: "two",
         input: [12],
         triggers: ["inbox"],
@@ -1128,7 +1141,7 @@ it("should process two processes with object input and output", async () => {
       timestamp: expect.any(String),
       step: 0,
       payload: {
-        id: "240c2924-b25b-573d-a0b1-b3aee1241331",
+        id: anyStringSame("task1"),
         name: "one",
         result: [["inbox", 3]],
       },
@@ -1138,7 +1151,7 @@ it("should process two processes with object input and output", async () => {
       timestamp: expect.any(String),
       step: 0,
       payload: {
-        id: "7f2c3a63-782c-58c7-ba9e-7c2e4ceafdaa",
+        id: anyStringSame("task2"),
         name: "two",
         result: [["output", 13]],
       },
@@ -1148,7 +1161,7 @@ it("should process two processes with object input and output", async () => {
       timestamp: expect.any(String),
       step: 1,
       payload: {
-        id: "92ce7404-7c07-5383-b528-6933ac523e6a",
+        id: anyStringSame("task3"),
         name: "two",
         input: [3],
         triggers: ["inbox"],
@@ -1159,7 +1172,7 @@ it("should process two processes with object input and output", async () => {
       timestamp: expect.any(String),
       step: 1,
       payload: {
-        id: "f812355e-0e5c-5b76-9c43-f7fce750d1a0",
+        id: anyStringSame("task3"),
         name: "two",
         result: [["output", 4]],
       },
@@ -2953,6 +2966,270 @@ describe("MessageGraph", () => {
       JSON.stringify(new AIMessage("answer"))
     );
   });
+});
+
+it("checkpoint events", async () => {
+  const builder = new StateGraph({
+    my_key: Annotation<string>({ reducer: (a, b) => a + b }),
+    market: Annotation<string>,
+  })
+    .addNode("prepare", () => ({ my_key: " prepared" }))
+    .addNode("tool_two_slow", () => ({ my_key: " slow" }))
+    .addNode("tool_two_fast", () => ({ my_key: " fast" }))
+    .addNode("finish", () => ({ my_key: " finished" }))
+    .addEdge(START, "prepare")
+    .addEdge("finish", END)
+    .addEdge("tool_two_fast", "finish")
+    .addEdge("tool_two_slow", "finish")
+    .addConditionalEdges({
+      source: "prepare",
+      path: function condition(s) {
+        return s.market === "DE" ? "tool_two_slow" : "tool_two_fast";
+      },
+      pathMap: ["tool_two_slow", "tool_two_fast"],
+    });
+
+  let graph = builder.compile();
+
+  expect(await graph.invoke({ my_key: "value", market: "DE" })).toEqual({
+    my_key: "value prepared slow finished",
+    market: "DE",
+  });
+
+  expect(await graph.invoke({ my_key: "value", market: "US" })).toEqual({
+    my_key: "value prepared fast finished",
+    market: "US",
+  });
+
+  const checkpointer = SqliteSaver.fromConnString(":memory:");
+  graph = builder.compile({ checkpointer });
+
+  const config = { configurable: { thread_id: "10" } };
+  const actual = await gatherIterator(
+    graph.stream(
+      { my_key: "value", market: "DE" },
+      { ...config, streamMode: "debug" }
+    )
+  );
+  const anyStringSame = createAnyStringSame();
+
+  expect(actual).toEqual([
+    {
+      type: "checkpoint",
+      timestamp: expect.any(String),
+      step: -1,
+      payload: {
+        config: {
+          tags: [],
+          metadata: { thread_id: "10" },
+          recursion_limit: 25,
+          configurable: {
+            thread_id: "10",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        values: {},
+        metadata: {
+          source: "input",
+          step: -1,
+          writes: { my_key: "value", market: "DE" },
+        },
+        next: ["__start__"],
+        tasks: [{ id: expect.any(String), name: "__start__" }],
+      },
+    },
+    {
+      type: "checkpoint",
+      timestamp: expect.any(String),
+      step: 0,
+      payload: {
+        config: {
+          tags: [],
+          metadata: { thread_id: "10" },
+          recursion_limit: 25,
+          configurable: {
+            thread_id: "10",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        values: {
+          my_key: "value",
+          market: "DE",
+        },
+        metadata: {
+          source: "loop",
+          step: 0,
+          writes: undefined,
+        },
+        next: ["prepare"],
+        tasks: [{ id: expect.any(String), name: "prepare" }],
+      },
+    },
+    {
+      type: "task",
+      timestamp: expect.any(String),
+      step: 1,
+      payload: {
+        id: anyStringSame("task1"),
+        name: "prepare",
+        input: { my_key: "value", market: "DE" },
+        triggers: ["start:prepare"],
+      },
+    },
+    {
+      type: "task_result",
+      timestamp: expect.any(String),
+      step: 1,
+      payload: {
+        id: anyStringSame("task1"),
+        name: "prepare",
+        result: [["my_key", " prepared"]],
+      },
+    },
+    {
+      type: "checkpoint",
+      timestamp: expect.any(String),
+      step: 1,
+      payload: {
+        config: {
+          tags: [],
+          metadata: { thread_id: "10" },
+          recursion_limit: 25,
+          configurable: {
+            thread_id: "10",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        values: {
+          my_key: "value prepared",
+          market: "DE",
+        },
+        metadata: {
+          source: "loop",
+          step: 1,
+          writes: { prepare: { my_key: " prepared" } },
+        },
+        next: ["tool_two_slow"],
+        tasks: [{ id: expect.any(String), name: "tool_two_slow" }],
+      },
+    },
+    {
+      type: "task",
+      timestamp: expect.any(String),
+      step: 2,
+      payload: {
+        id: anyStringSame("task2"),
+        name: "tool_two_slow",
+        input: { my_key: "value prepared", market: "DE" },
+        triggers: ["branch:prepare:condition:tool_two_slow"],
+      },
+    },
+    {
+      type: "task_result",
+      timestamp: expect.any(String),
+      step: 2,
+      payload: {
+        id: anyStringSame("task2"),
+        name: "tool_two_slow",
+        result: [["my_key", " slow"]],
+      },
+    },
+    {
+      type: "checkpoint",
+      timestamp: expect.any(String),
+      step: 2,
+      payload: {
+        config: {
+          tags: [],
+          metadata: { thread_id: "10" },
+          recursion_limit: 25,
+          configurable: {
+            thread_id: "10",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        values: {
+          my_key: "value prepared slow",
+          market: "DE",
+        },
+        metadata: {
+          source: "loop",
+          step: 2,
+          writes: { tool_two_slow: { my_key: " slow" } },
+        },
+        next: ["finish"],
+        tasks: [{ id: expect.any(String), name: "finish" }],
+      },
+    },
+    {
+      type: "task",
+      timestamp: expect.any(String),
+      step: 3,
+      payload: {
+        id: anyStringSame("task3"),
+        name: "finish",
+        input: { my_key: "value prepared slow", market: "DE" },
+        triggers: ["tool_two_fast", "tool_two_slow"],
+      },
+    },
+    {
+      type: "task_result",
+      timestamp: expect.any(String),
+      step: 3,
+      payload: {
+        id: anyStringSame("task3"),
+        name: "finish",
+        result: [["my_key", " finished"]],
+      },
+    },
+    {
+      type: "checkpoint",
+      timestamp: expect.any(String),
+      step: 3,
+      payload: {
+        config: {
+          tags: [],
+          metadata: { thread_id: "10" },
+          recursion_limit: 25,
+          configurable: {
+            thread_id: "10",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        values: {
+          my_key: "value prepared slow finished",
+          market: "DE",
+        },
+        metadata: {
+          source: "loop",
+          step: 3,
+          writes: { finish: { my_key: " finished" } },
+        },
+        next: [],
+        tasks: [],
+      },
+    },
+  ]);
+
+  // check if the checkpoints actually match
+  const checkpoints = await gatherIterator(checkpointer.list(config));
+  expect(
+    checkpoints.reverse().map((i) => {
+      return { metadata: i.metadata, config: i.config };
+    })
+  ).toEqual(
+    actual
+      .filter((i) => i.type === "checkpoint")
+      .map((i) => ({
+        metadata: i.payload.metadata,
+        config: { configurable: i.payload.config.configurable },
+      }))
+  );
 });
 
 it("StateGraph start branch then end", async () => {

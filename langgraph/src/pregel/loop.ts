@@ -336,6 +336,27 @@ export class PregelLoop {
       }
     );
     this.tasks = nextTasks;
+
+    // Produce debug output
+    if (this.checkpointer) {
+      this.stream.push(
+        ...(await gatherIterator(
+          prefixGenerator(
+            mapDebugCheckpoint(
+              this.step - 1, // printing checkpoint for previous step
+              this.checkpointConfig,
+              this.channels,
+              this.graph.streamChannelsAsIs as string[],
+              this.checkpointMetadata,
+              this.tasks,
+              this.checkpointPendingWrites
+            ),
+            "debug"
+          )
+        ))
+      );
+    }
+
     if (this.tasks.length === 0) {
       this.status = "done";
       return false;
@@ -489,21 +510,6 @@ export class PregelLoop {
           checkpoint_id: this.checkpoint.id,
         },
       };
-
-      // Produce debug output
-      const debugOutput = await gatherIterator(
-        prefixGenerator(
-          mapDebugCheckpoint(
-            this.step,
-            this.checkpointConfig,
-            this.channels,
-            this.graph.streamChannelsAsIs as string[],
-            this.checkpointMetadata
-          ),
-          "debug"
-        )
-      );
-      this.stream.push(...debugOutput);
     }
     this.step += 1;
   }
