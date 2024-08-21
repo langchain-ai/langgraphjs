@@ -21,7 +21,7 @@ import {
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { BaseCheckpointSaver } from "../checkpoint/base.js";
 import { END, START, StateGraph } from "../graph/index.js";
-import { MessagesState } from "../graph/message.js";
+import { MessagesState } from "../graph/message_state.js";
 import { CompiledStateGraph, StateGraphArgs } from "../graph/state.js";
 import { All } from "../pregel/types.js";
 import { ToolNode } from "./tool_node.js";

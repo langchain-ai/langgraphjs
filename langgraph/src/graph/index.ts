@@ -8,5 +8,4 @@ export {
 export {
   MessageGraph,
   messagesStateReducer,
-  MessagesState,
 } from "./message.js";

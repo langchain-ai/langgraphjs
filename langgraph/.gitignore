@@ -18,6 +18,10 @@ checkpoint/sqlite.cjs
 checkpoint/sqlite.js
 checkpoint/sqlite.d.ts
 checkpoint/sqlite.d.cts
+message.cjs
+message.js
+message.d.ts
+message.d.cts
 node_modules
 dist
 .yarn
