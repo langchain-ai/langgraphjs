@@ -17,7 +17,7 @@ export const config = {
     pregel: "pregel/index",
     prebuilt: "prebuilt/index",
     "checkpoint/sqlite": "checkpoint/sqlite",
-    messages: "graph/message_state"
+    messages: "graph/messages_state"
   },
   tsConfigPath: resolve("./tsconfig.json"),
   cjsSource: "./dist-cjs",
