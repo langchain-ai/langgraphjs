@@ -1881,7 +1881,7 @@ __metadata:
     "@langchain/community": ^0.2.25
     "@langchain/core": ">=0.2.20 <0.3.0"
     "@langchain/openai": ^0.2.4
-    "@langchain/scripts": "file:/Users/bracesproul/code/lang-chain-ai/langchainjs/libs/langchain-scripts"
+    "@langchain/scripts": ^0.0.23
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
     "@tsconfig/recommended": ^1.0.3
@@ -1960,9 +1960,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/scripts@file:/Users/bracesproul/code/lang-chain-ai/langchainjs/libs/langchain-scripts::locator=%40langchain%2Flanggraph%40workspace%3Alanggraph":
-  version: 0.0.22
-  resolution: "@langchain/scripts@file:/Users/bracesproul/code/lang-chain-ai/langchainjs/libs/langchain-scripts#/Users/bracesproul/code/lang-chain-ai/langchainjs/libs/langchain-scripts::hash=20b2fe&locator=%40langchain%2Flanggraph%40workspace%3Alanggraph"
+"@langchain/scripts@npm:^0.0.23":
+  version: 0.0.23
+  resolution: "@langchain/scripts@npm:0.0.23"
   dependencies:
     "@rollup/wasm-node": ^4.19.0
     axios: ^1.6.7
@@ -1978,7 +1978,7 @@ __metadata:
     lc-build: bin/build.js
     lc_build_v2: bin/build_v2.js
     notebook_validate: bin/validate_notebook.js
-  checksum: a191625f0db5d4957b730ecf7ff5354d7b072795f418262ca4ffca75bf63c70181d53bb078091a28144983fa8939d50fe083e4b15890b66fdff92463e012294a
+  checksum: 975ac6fea3832353bc15b48ae5e66087dcda9e3f8be02c3f2f5c93b2545cacb803b4d160a04b33ab14da75808909de6077d775fb51d2960d9a769fc968342e54
   languageName: node
   linkType: hard
 
