@@ -360,26 +360,27 @@ export function _prepareNextTasks<
       );
       continue;
     }
+    const triggers = [TASKS];
+    const metadata = {
+      langgraph_step: step,
+      langgraph_node: packet.node,
+      langgraph_triggers: triggers,
+      langgraph_task_idx: tasks.length,
+    };
+    const checkpointNamespace =
+      parentNamespace === ""
+        ? packet.node
+        : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${packet.node}`;
+    const taskId = uuid5(
+      JSON.stringify([checkpointNamespace, metadata]),
+      checkpoint.id
+    );
+
     if (forExecution) {
       const proc = processes[packet.node];
       const node = proc.getNode();
       if (node !== undefined) {
-        const triggers = [TASKS];
-        const metadata = {
-          langgraph_step: step,
-          langgraph_node: packet.node,
-          langgraph_triggers: triggers,
-          langgraph_task_idx: tasks.length,
-        };
         const writes: [keyof Cc, unknown][] = [];
-        const checkpointNamespace =
-          parentNamespace === ""
-            ? packet.node
-            : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${packet.node}`;
-        const taskId = uuid5(
-          JSON.stringify([checkpointNamespace, metadata]),
-          checkpoint.id
-        );
         tasks.push({
           name: packet.node,
           input: packet.args,
@@ -417,10 +418,7 @@ export function _prepareNextTasks<
         });
       }
     } else {
-      taskDescriptions.push({
-        name: packet.node,
-        input: packet.args,
-      });
+      taskDescriptions.push({ id: taskId, name: packet.node });
     }
   }
 
@@ -495,6 +493,23 @@ export function _prepareNextTasks<
         val = proc.mapper(val);
       }
 
+      const metadata = {
+        langgraph_step: step,
+        langgraph_node: name,
+        langgraph_triggers: updatedChannels,
+        langgraph_task_idx: tasks.length,
+      };
+
+      const checkpointNamespace =
+        parentNamespace === ""
+          ? name
+          : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${name}`;
+
+      const taskId = uuid5(
+        JSON.stringify([checkpointNamespace, metadata]),
+        checkpoint.id
+      );
+
       if (forExecution) {
         // Update seen versions
         if (!newCheckpoint.versions_seen[name]) {
@@ -510,20 +525,6 @@ export function _prepareNextTasks<
 
         const node = proc.getNode();
         if (node !== undefined) {
-          const metadata = {
-            langgraph_step: step,
-            langgraph_node: name,
-            langgraph_triggers: updatedChannels,
-            langgraph_task_idx: tasks.length,
-          };
-          const checkpointNamespace =
-            parentNamespace === ""
-              ? name
-              : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${name}`;
-          const taskId = uuid5(
-            JSON.stringify([checkpointNamespace, metadata]),
-            checkpoint.id
-          );
           const writes: [keyof Cc, unknown][] = [];
           tasks.push({
             name,
@@ -564,10 +565,7 @@ export function _prepareNextTasks<
           });
         }
       } else {
-        taskDescriptions.push({
-          name,
-          input: val,
-        });
+        taskDescriptions.push({ id: taskId, name });
       }
     }
   }

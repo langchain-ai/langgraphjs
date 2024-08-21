@@ -19,7 +19,11 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { ToolCall } from "@langchain/core/messages/tool";
-import { FakeChatModel, MemorySaverAssertImmutable } from "./utils.js";
+import {
+  createAnyStringSame,
+  FakeChatModel,
+  MemorySaverAssertImmutable,
+} from "./utils.js";
 import { gatherIterator } from "../utils.js";
 import { LastValue } from "../channels/last_value.js";
 import {
@@ -635,7 +639,7 @@ describe("_prepareNextTasks", () => {
     // set up test
     const checkpoint: Checkpoint = {
       v: 1,
-      id: "123",
+      id: "1ee95cd6-c0f1-5f94-8a67-5c223c8bb55a",
       ts: "2024-04-19T17:19:07.952Z",
       channel_values: {
         channel1: 1,
@@ -689,8 +693,14 @@ describe("_prepareNextTasks", () => {
     );
 
     expect(taskDescriptions.length).toBe(2);
-    expect(taskDescriptions[0]).toEqual({ name: "node1", input: 1 });
-    expect(taskDescriptions[1]).toEqual({ name: "node2", input: 100 });
+    expect(taskDescriptions[0]).toEqual({
+      id: expect.any(String),
+      name: "node1",
+    });
+    expect(taskDescriptions[1]).toEqual({
+      id: expect.any(String),
+      name: "node2",
+    });
 
     // the returned checkpoint is a copy of the passed checkpoint without versionsSeen updated
     expect(newCheckpoint.versions_seen.node1.channel1).toBe(1);
@@ -1088,13 +1098,16 @@ it("should process two processes with object input and output", async () => {
   const debug = await gatherIterator(
     app.stream({ input: 2, inbox: 12 }, { streamMode: "debug" })
   );
+
+  const anyStringSame = createAnyStringSame();
+
   expect(debug).toEqual([
     {
       type: "task",
       timestamp: expect.any(String),
       step: 0,
       payload: {
-        id: "1726020d-12ca-56e2-a3d3-5b5752b526cf",
+        id: anyStringSame("task1"),
         name: "one",
         input: 2,
         triggers: ["input"],
@@ -1105,7 +1118,7 @@ it("should process two processes with object input and output", async () => {
       timestamp: expect.any(String),
       step: 0,
       payload: {
-        id: "ad0a1023-e379-52e7-be4c-5a2c1433aba0",
+        id: anyStringSame("task2"),
         name: "two",
         input: [12],
         triggers: ["inbox"],
@@ -1116,7 +1129,7 @@ it("should process two processes with object input and output", async () => {
       timestamp: expect.any(String),
       step: 0,
       payload: {
-        id: "240c2924-b25b-573d-a0b1-b3aee1241331",
+        id: anyStringSame("task1"),
         name: "one",
         result: [["inbox", 3]],
       },
@@ -1126,7 +1139,7 @@ it("should process two processes with object input and output", async () => {
       timestamp: expect.any(String),
       step: 0,
       payload: {
-        id: "7f2c3a63-782c-58c7-ba9e-7c2e4ceafdaa",
+        id: anyStringSame("task2"),
         name: "two",
         result: [["output", 13]],
       },
@@ -1136,7 +1149,7 @@ it("should process two processes with object input and output", async () => {
       timestamp: expect.any(String),
       step: 1,
       payload: {
-        id: "92ce7404-7c07-5383-b528-6933ac523e6a",
+        id: anyStringSame("task3"),
         name: "two",
         input: [3],
         triggers: ["inbox"],
@@ -1147,7 +1160,7 @@ it("should process two processes with object input and output", async () => {
       timestamp: expect.any(String),
       step: 1,
       payload: {
-        id: "f812355e-0e5c-5b76-9c43-f7fce750d1a0",
+        id: anyStringSame("task3"),
         name: "two",
         result: [["output", 4]],
       },
@@ -2869,6 +2882,7 @@ it("checkpoint events", async () => {
       { ...config, streamMode: "debug" }
     )
   );
+  const anyStringSame = createAnyStringSame();
 
   expect(actual).toEqual([
     {
@@ -2893,6 +2907,7 @@ it("checkpoint events", async () => {
           writes: { my_key: "value", market: "DE" },
         },
         next: ["__start__"],
+        tasks: [{ id: expect.any(String), name: "__start__" }],
       },
     },
     {
@@ -2917,9 +2932,10 @@ it("checkpoint events", async () => {
         metadata: {
           source: "loop",
           step: 0,
-          writes: null,
+          writes: undefined,
         },
         next: ["prepare"],
+        tasks: [{ id: expect.any(String), name: "prepare" }],
       },
     },
     {
@@ -2927,7 +2943,7 @@ it("checkpoint events", async () => {
       timestamp: expect.any(String),
       step: 1,
       payload: {
-        id: "f15c7037-0c66-51ce-ba88-969aa769e13e",
+        id: anyStringSame("task1"),
         name: "prepare",
         input: { my_key: "value", market: "DE" },
         triggers: ["start:prepare"],
@@ -2938,7 +2954,7 @@ it("checkpoint events", async () => {
       timestamp: expect.any(String),
       step: 1,
       payload: {
-        id: "f15c7037-0c66-51ce-ba88-969aa769e13e",
+        id: anyStringSame("task1"),
         name: "prepare",
         result: [["my_key", " prepared"]],
       },
@@ -2968,6 +2984,7 @@ it("checkpoint events", async () => {
           writes: { prepare: { my_key: " prepared" } },
         },
         next: ["tool_two_slow"],
+        tasks: [{ id: expect.any(String), name: "tool_two_slow" }],
       },
     },
     {
@@ -2975,7 +2992,7 @@ it("checkpoint events", async () => {
       timestamp: expect.any(String),
       step: 2,
       payload: {
-        id: "e8f57b31-e9f0-55e4-8f8a-913b4d0cb57a",
+        id: anyStringSame("task2"),
         name: "tool_two_slow",
         input: { my_key: "value prepared", market: "DE" },
         triggers: ["branch:prepare:condition:tool_two_slow"],
@@ -2986,7 +3003,7 @@ it("checkpoint events", async () => {
       timestamp: expect.any(String),
       step: 2,
       payload: {
-        id: "e8f57b31-e9f0-55e4-8f8a-913b4d0cb57a",
+        id: anyStringSame("task2"),
         name: "tool_two_slow",
         result: [["my_key", " slow"]],
       },
@@ -3016,6 +3033,7 @@ it("checkpoint events", async () => {
           writes: { tool_two_slow: { my_key: " slow" } },
         },
         next: ["finish"],
+        tasks: [{ id: expect.any(String), name: "finish" }],
       },
     },
     {
@@ -3023,7 +3041,7 @@ it("checkpoint events", async () => {
       timestamp: expect.any(String),
       step: 3,
       payload: {
-        id: "d082881c-b51f-5f07-a0f3-3f4581048aeb",
+        id: anyStringSame("task3"),
         name: "finish",
         input: { my_key: "value prepared slow", market: "DE" },
         triggers: ["tool_two_slow"],
@@ -3034,7 +3052,7 @@ it("checkpoint events", async () => {
       timestamp: expect.any(String),
       step: 3,
       payload: {
-        id: "d082881c-b51f-5f07-a0f3-3f4581048aeb",
+        id: anyStringSame("task3"),
         name: "finish",
         result: [["my_key", " finished"]],
       },
@@ -3064,6 +3082,7 @@ it("checkpoint events", async () => {
           writes: { finish: { my_key: " finished" } },
         },
         next: [],
+        tasks: [],
       },
     },
   ]);
@@ -3071,21 +3090,7 @@ it("checkpoint events", async () => {
   // check if the checkpoints actually match
   const checkpoints = await gatherIterator(checkpointer.list(config));
   expect(
-    checkpoints.reverse().map((i, idx) => {
-      // input checkpoints do not follow the loop checkpoint
-      // schmea for writes
-      if (idx === 0) {
-        return {
-          metadata: {
-            ...i.metadata,
-            writes: i.metadata?.writes
-              ? Object.values(i.metadata.writes)?.at(0)
-              : null,
-          },
-          config: i.config,
-        };
-      }
-
+    checkpoints.reverse().map((i) => {
       return { metadata: i.metadata, config: i.config };
     })
   ).toEqual(
@@ -3093,12 +3098,7 @@ it("checkpoint events", async () => {
       .filter((i) => i.type === "checkpoint")
       .map((i) => ({
         metadata: i.payload.metadata,
-        config: {
-          configurable: {
-            checkpoint_id: i.payload.config.configurable.checkpoint_id,
-            thread_id: i.payload.config.configurable.thread_id,
-          },
-        },
+        config: { configurable: i.payload.config.configurable },
       }))
   );
 });
