@@ -24,11 +24,12 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
     return empty as this;
   }
 
-  update(values: Value[]): void {
+  update(values: Value[]): boolean {
     if (values.length === 0) {
+      const updated = this.value !== undefined;
       // If there are no updates for this specific channel at the end of the step, wipe it.
       this.value = undefined;
-      return;
+      return updated;
     }
     if (values.length !== 1 && this.guard) {
       throw new InvalidUpdateError(
@@ -38,6 +39,7 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
 
     // eslint-disable-next-line prefer-destructuring
     this.value = values[values.length - 1];
+    return true;
   }
 
   get(): Value {

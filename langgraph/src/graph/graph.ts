@@ -176,7 +176,9 @@ export class Graph<
       !this.supportMultipleEdges &&
       Array.from(this.edges).some(([start]) => start === startKey)
     ) {
-      throw new Error(`Already found path for ${startKey}`);
+      throw new Error(
+        `Already found path for ${startKey}. For multiple edges, use StateGraph with an annotated state key.`
+      );
     }
 
     this.edges.add([startKey, endKey]);

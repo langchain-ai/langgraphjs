@@ -120,14 +120,14 @@ export class StateGraph<
         throw new Error("END cannot be a start node");
       }
       if (!Object.keys(this.nodes).some((node) => node === start)) {
-        throw new Error(`Need to add_node ${start} first`);
+        throw new Error(`Need to addNode ${start} first`);
       }
     }
     if (endKey === END) {
       throw new Error("END cannot be an end node");
     }
     if (!Object.keys(this.nodes).some((node) => node === endKey)) {
-      throw new Error(`Need to add_node ${endKey} first`);
+      throw new Error(`Need to addNode ${endKey} first`);
     }
 
     this.waitingEdges.add([startKey, endKey]);

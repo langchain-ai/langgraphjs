@@ -604,20 +604,26 @@ export class Pregel<
       checkpointer,
     ] = this._defaults(inputConfig);
     let loop;
+    let backgroundError;
+    const onBackgroundError = (e: Error) => {
+      backgroundError = e;
+    };
     try {
       loop = await PregelLoop.initialize({
         input,
         config,
         checkpointer,
         graph: this,
+        onBackgroundError,
       });
       while (
-        await loop.tick({
+        backgroundError === undefined &&
+        (await loop.tick({
           outputKeys,
           interruptAfter,
           interruptBefore,
           manager: runManager,
-        })
+        }))
       ) {
         if (debug) {
           printStepCheckpoint(
@@ -679,6 +685,9 @@ export class Pregel<
             this.streamChannelsList as string[]
           );
         }
+      }
+      if (backgroundError !== undefined) {
+        throw backgroundError;
       }
       while (loop.stream.length > 0) {
         const nextItem = loop.stream.shift();

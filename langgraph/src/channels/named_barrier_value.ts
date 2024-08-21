@@ -1,4 +1,4 @@
-import { EmptyChannelError } from "../errors.js";
+import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { BaseChannel } from "./index.js";
 
 export const areSetsEqual = <T>(a: Set<T>, b: Set<T>) =>
@@ -35,22 +35,23 @@ export class NamedBarrierValue<Value> extends BaseChannel<
     return empty as this;
   }
 
-  update(values: Value[]): void {
-    // We have seen all nodes, so we can reset the seen set in preparation for the next round of updates.
-    if (areSetsEqual(this.names, this.seen)) {
-      this.seen = new Set<Value>();
-    }
+  update(values: Value[]): boolean {
+    let updated = false;
     for (const nodeName of values) {
       if (this.names.has(nodeName)) {
-        this.seen.add(nodeName);
+        if (!this.seen.has(nodeName)) {
+          this.seen.add(nodeName);
+          updated = true;
+        }
       } else {
-        throw new Error(
+        throw new InvalidUpdateError(
           `Value ${JSON.stringify(nodeName)} not in names ${JSON.stringify(
             this.names
           )}`
         );
       }
     }
+    return updated;
   }
 
   // If we have not yet seen all the node names we want to wait for,
@@ -64,5 +65,13 @@ export class NamedBarrierValue<Value> extends BaseChannel<
 
   checkpoint(): Value[] {
     return [...this.seen];
+  }
+
+  consume(): boolean {
+    if (this.seen && this.names && areSetsEqual(this.seen, this.names)) {
+      this.seen = new Set<Value>();
+      return true;
+    }
+    return false;
   }
 }

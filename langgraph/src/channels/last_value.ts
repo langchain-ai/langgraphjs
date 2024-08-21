@@ -22,16 +22,19 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
     return empty as this;
   }
 
-  update(values: Value[]): void {
+  update(values: Value[]): boolean {
     if (values.length === 0) {
-      return;
+      return false;
     }
     if (values.length !== 1) {
-      throw new InvalidUpdateError();
+      throw new InvalidUpdateError(
+        "LastValue can only receive one value per step."
+      );
     }
 
     // eslint-disable-next-line prefer-destructuring
     this.value = values[values.length - 1];
+    return true;
   }
 
   get(): Value {
