@@ -324,6 +324,7 @@ export class Pregel<
       yield {
         values: readChannels(channels, this.streamChannelsAsIs),
         next: nextTasks.map((task) => task.name),
+        tasks,
         metadata: saved.metadata,
         config: saved.config,
         createdAt: saved.checkpoint.ts,

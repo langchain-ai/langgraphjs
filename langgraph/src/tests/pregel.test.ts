@@ -962,6 +962,18 @@ it("should process input and write kwargs correctly", async () => {
   });
 });
 
+// TODO: Check undefined
+const FALSEY_VALUES = [/*undefined,*/ null, 0, "", [], {}, new Set()]
+it.each(FALSEY_VALUES)("should process falsey value: %p", async (falsyValue) => {
+  const graph = new Graph()
+    .addNode("return_falsy_const", () => falsyValue)
+    .addEdge(START, "return_falsy_const")
+    .addEdge("return_falsy_const", END)
+    .compile();
+
+  expect(await graph.invoke(1)).toBe(falsyValue);
+});
+
 it("should invoke single process in out objects", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
   const chain = Channel.subscribeTo("input")
@@ -1208,6 +1220,123 @@ it("should process batch with two processes and delays with graph", async () => 
     .compile();
 
   expect(await graph.batch([3, 2, 1, 3, 5])).toEqual([5, 4, 3, 5, 7]);
+});
+
+it.only("should invoke two processes with input/output and interrupt", async () => {
+  const checkpointer = new MemorySaverAssertImmutable();
+  const addOne = jest.fn((x: number) => {
+    return x + 1
+  });
+  const one = Channel.subscribeTo("input").pipe(addOne).pipe(Channel.writeTo(["inbox"]));
+  const two = Channel.subscribeTo("inbox").pipe(addOne).pipe(Channel.writeTo(["output"]));
+
+  const app = new Pregel({
+    nodes: { one, two },
+    channels: {
+      inbox: new LastValue<number>(),
+      output: new LastValue<number>(),
+      input: new LastValue<number>(),
+    },
+    inputChannels: "input",
+    outputChannels: "output",
+    checkpointer,
+    interruptAfter: ["one"],
+  });
+
+  const thread1 = { configurable: { thread_id: "1" } };
+  const thread2 = { configurable: { thread_id: "2" } };
+
+  // start execution, stop at inbox
+  expect(await app.invoke(2, thread1)).toBeUndefined();
+
+  // inbox == 3
+  let checkpoint = await checkpointer.get(thread1);
+  expect(checkpoint?.channel_values.inbox).toBe(3);
+
+  // resume execution, finish
+  expect(await app.invoke(null, thread1)).toBe(4);
+
+  // start execution again, stop at inbox
+  expect(await app.invoke(20, thread1)).toBeUndefined();
+
+  // inbox == 21
+  checkpoint = await checkpointer.get(thread1);
+  expect(checkpoint).not.toBeUndefined();
+  expect(checkpoint?.channel_values.inbox).toBe(21);
+
+  // send a new value in, interrupting the previous execution
+  expect(await app.invoke(3, thread1)).toBeUndefined();
+  expect(await app.invoke(null, thread1)).toBe(5);
+
+  // start execution again, stopping at inbox
+  expect(await app.invoke(20, thread2)).toBeUndefined();
+
+  // inbox == 21
+  let snapshot = await app.getState(thread2);
+  expect(snapshot.values.inbox).toBe(21);
+  expect(snapshot.next).toEqual(["two"]);
+
+  // update the state, resume
+  await app.updateState(thread2, 25, "one");
+  expect(await app.invoke(null, thread2)).toBe(26);
+
+  // no pending tasks
+  snapshot = await app.getState(thread2);
+  expect(snapshot.next).toEqual([]);
+
+  // list history
+  const history = await gatherIterator(app.getStateHistory(thread1));
+  expect(history).toEqual([
+    expect.objectContaining({
+      values: { inbox: 4, output: 5, input: 3 },
+      tasks: [],
+      next: [],
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        }
+      },
+      metadata: { source: "loop", step: 6, writes: 5 },
+      createdAt: expect.any(String),
+      parentConfig: history[1].config,
+    }),
+    expect.objectContaining({
+      values: { inbox: 4, output: 4, input: 3 },
+      tasks: [],
+      next: [],
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        }
+      },
+      metadata: { source: "loop", step: 6, writes: 5 },
+      createdAt: expect.any(String),
+      parentConfig: history[1].config,
+    }),
+  ]);
+
+  // forking from any previous checkpoint w/out forking should do nothing
+  expect(await gatherIterator(app.stream(null, {...history[0].config, streamMode: "updates"}))).toEqual([]);
+  expect(await gatherIterator(app.stream(null, {...history[1].config, streamMode: "updates" }))).toEqual([]);
+  expect(await gatherIterator(app.stream(null, {...history[2].config, streamMode: "updates" }))).toEqual([]);
+
+  // forking and re-running from any prev checkpoint should re-run nodes
+  let forkConfig = await app.updateState(history[0].config, null);
+  expect(await gatherIterator(app.stream(null, {...forkConfig, streamMode: "updates" }))).toEqual([]);
+
+  forkConfig = await app.updateState(history[1].config, null);
+  expect(await gatherIterator(app.stream(null, {...forkConfig, streamMode: "updates" }))).toEqual([
+    { two: { output: 5 } }
+  ]);
+
+  forkConfig = await app.updateState(history[2].config, null);
+  expect(await gatherIterator(app.stream(null, {...forkConfig, streamMode: "updates" }))).toEqual([
+    { one: { inbox: 4 } }
+  ]);
 });
 
 it("should batch many processes with input and output", async () => {

@@ -1,10 +1,10 @@
 import { RunnableConfig } from "@langchain/core/runnables";
 import { BaseChannel } from "../channels/base.js";
-import { CheckpointMetadata } from "../checkpoint/types.js";
+import { CheckpointMetadata, CheckpointPendingWrite, PendingWrite } from "../checkpoint/types.js";
 import { uuid5 } from "../checkpoint/id.js";
 import { TAG_HIDDEN, TASK_NAMESPACE } from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
-import { PregelExecutableTask } from "./types.js";
+import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { readChannels } from "./io.js";
 
 type ConsoleColors = {
@@ -226,4 +226,21 @@ export function printStepWrites(
         .join("\n"),
     ].join("")
   );
+}
+
+function tasksWithWrites(
+  tasks: PregelTaskDescription[],
+  pendingWrites?: CheckpointPendingWrite[]
+): PregelExecutableTask<string, string>[] {
+  return tasks.map(task => {
+    const error = pendingWrites?.find(
+      ([tid, n, exc]) => tid === task.id && n === "ERROR"
+    )?.[2];
+
+    return new PregelTask(
+      task.id,
+      task.name,
+      error || null
+    );
+  });
 }
