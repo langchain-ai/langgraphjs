@@ -496,7 +496,7 @@ export function _prepareNextTasks<
       const metadata = {
         langgraph_step: step,
         langgraph_node: name,
-        langgraph_triggers: updatedChannels,
+        langgraph_triggers: proc.triggers,
         langgraph_task_idx: tasks.length,
       };
 
@@ -531,7 +531,7 @@ export function _prepareNextTasks<
             input: val,
             proc: node,
             writes,
-            triggers: updatedChannels,
+            triggers: proc.triggers,
             config: patchConfig(
               mergeConfigs(config, proc.config, { metadata }),
               {
@@ -551,7 +551,7 @@ export function _prepareNextTasks<
                     {
                       name,
                       writes: writes as Array<[string, unknown]>,
-                      triggers: updatedChannels,
+                      triggers: proc.triggers,
                     }
                   ),
                   [CONFIG_KEY_CHECKPOINTER]: checkpointer,
