@@ -1,4 +1,4 @@
-import { BaseChannel } from "../channels/base.js";
+import type { BaseChannel } from "../channels/base.js";
 import type { PregelExecutableTask } from "./types.js";
 import type { PendingWrite } from "../checkpoint/types.js";
 import { TAG_HIDDEN } from "../constants.js";
