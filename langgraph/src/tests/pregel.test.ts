@@ -2570,6 +2570,7 @@ describe("StateGraph", () => {
         ],
       },
       next: ["tools"],
+      tasks: [{ id: expect.any(String), name: "tools" }],
       metadata: {
         source: "update",
         step: 2,
@@ -2646,6 +2647,10 @@ describe("StateGraph", () => {
         ],
       },
       next: ["tools", "tools"],
+      tasks: [
+        { id: expect.any(String), name: "tools" },
+        { id: expect.any(String), name: "tools" },
+      ],
       metadata: {
         source: "loop",
         step: 4,
@@ -2703,6 +2708,7 @@ describe("StateGraph", () => {
         ],
       },
       next: [],
+      tasks: [],
       metadata: {
         source: "update",
         step: 5,
@@ -3462,6 +3468,7 @@ it("StateGraph start branch then end", async () => {
   expect(await toolTwoWithCheckpointer.getState(thread1)).toEqual({
     values: { my_key: "value ⛰️ slow", market: "DE" },
     next: [],
+    tasks: [],
     config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
@@ -3491,6 +3498,7 @@ it("StateGraph start branch then end", async () => {
   expect(await toolTwoWithCheckpointer.getState(thread2)).toEqual({
     values: { my_key: "value", market: "US" },
     next: ["tool_two_fast"],
+    tasks: [{ id: expect.any(String), name: "tool_two_fast" }],
     config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
@@ -3510,6 +3518,7 @@ it("StateGraph start branch then end", async () => {
   expect(await toolTwoWithCheckpointer.getState(thread2)).toEqual({
     values: { my_key: "value fast", market: "US" },
     next: [],
+    tasks: [],
     config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
@@ -3539,6 +3548,7 @@ it("StateGraph start branch then end", async () => {
   expect(await toolTwoWithCheckpointer.getState(thread3)).toEqual({
     values: { my_key: "value", market: "US" },
     next: ["tool_two_fast"],
+    tasks: [{ id: expect.any(String), name: "tool_two_fast" }],
     config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
@@ -3555,6 +3565,7 @@ it("StateGraph start branch then end", async () => {
   expect(await toolTwoWithCheckpointer.getState(thread3)).toEqual({
     values: { my_key: "valuekey", market: "US" },
     next: ["tool_two_fast"],
+    tasks: [{ id: expect.any(String), name: "tool_two_fast" }],
     config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
@@ -3578,6 +3589,7 @@ it("StateGraph start branch then end", async () => {
   expect(await toolTwoWithCheckpointer.getState(thread3)).toEqual({
     values: { my_key: "valuekey fast", market: "US" },
     next: [],
+    tasks: [],
     config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
