@@ -170,11 +170,6 @@ export abstract class BaseCheckpointSaver<V = number> {
    * as long as they are monotonically increasing.
    */
   getNextVersion(current: V | undefined, _channel: ChannelProtocol) {
-    if (current !== undefined && typeof current !== "number") {
-      throw new Error(
-        "If using non-integer versions, please override this method."
-      );
-    }
     return current !== undefined ? (current as number) + 1 : 1;
   }
 }
