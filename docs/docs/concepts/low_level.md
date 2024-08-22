@@ -4,7 +4,7 @@
 
 At its core, LangGraph models agent workflows as graphs. You define the behavior of your agents using three key components:
 
-1. [`State`](#state): A shared data structure that represents the current snapshot of your application. It is represented by a [`channels`](https://langchain-ai.github.io/langgraphjs/reference/interfaces/index.StateGraphArgs.html#channels-1) object, and an optional TypeScript `interface`.
+1. [`State`](#state): A shared data structure that represents the current snapshot of your application. It is represented by an [`annotations`](https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph.Annotation-1.html) object.
 
 2. [`Nodes`](#nodes): JavaScript/TypeScript functions that encode the logic of your agents. They receive the current `State` as input, perform some computation or side-effect, and return an updated `State`.
 
@@ -41,11 +41,11 @@ You **MUST** compile your graph before you can use it.
 
 ## State
 
-The first thing you do when you define a graph is define the `State` of the graph. The `State` consists of the [schema of the graph](#schema) as well as [`reducer` functions](#reducers) which specify how to apply updates to the state. The schema of the `State` will be the input schema to all `Nodes` and `Edges` in the graph, and should be defined using the [`channels`](https://langchain-ai.github.io/langgraphjs/reference/interfaces/index.StateGraphArgs.html#channels-1) schema. All `Nodes` will emit updates to the `State` which are then applied using the specified `reducer` function.
+The first thing you do when you define a graph is define the `State` of the graph. The `State` consists of the [schema of the graph](#schema) as well as [`reducer` functions](#reducers) which specify how to apply updates to the state. The schema of the `State` will be the input schema to all `Nodes` and `Edges` in the graph, and should be defined using an [`Annotation`](https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph.Annotation-1.html) object. All `Nodes` will emit updates to the `State` which are then applied using the specified `reducer` function.
 
 ### Schema
 
-The way to specify the schema of a graph is by providing a series of (`channels`)[https://langchain-ai.github.io/langgraphjs/reference/interfaces/index.StateGraphArgs.html#channels-1].
+The way to specify the schema of a graph is by defining an [`Annotation`](https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph.Annotation-1.html) object, where each key is an item in the state.
 
 ### Reducers
 
@@ -54,19 +54,14 @@ Reducers are key to understanding how updates from nodes are applied to the `Sta
 **Example A:**
 
 ```typescript
-import { StateGraph } from "@langchain/langgraph";
+import { StateGraph, Annotation } from "@langchain/langgraph";
 
-interface State {
-  foo: number;
-  bar: string[];
-}
+const State = Annotation.Root({
+  foo: Annotation<number>,
+  bar: Annotation<string[]>,
+})
 
-const graphBuilder = new StateGraph<State>({
-  channels: {
-    foo: null,
-    bar: null,
-  }
-});
+const graphBuilder = new StateGraph(State);
 ```
 
 In this example, no reducer functions are specified for any key. Let's assume the input to the graph is `{ foo: 1, bar: ["hi"] }`. Let's then assume the first `Node` returns `{ foo: 2 }`. This is treated as an update to the state. Notice that the `Node` does not need to return the whole `State` schema - just an update. After applying this update, the `State` would then be `{ foo: 2, bar: ["hi"] }`. If the second node returns `{ bar: ["bye"] }` then the `State` would then be `{ foo: 2, bar: ["bye"] }`
@@ -74,22 +69,17 @@ In this example, no reducer functions are specified for any key. Let's assume th
 **Example B:**
 
 ```typescript
-import { StateGraph } from "@langchain/langgraph";
+import { StateGraph, Annotation } from "@langchain/langgraph";
 
-interface State {
-  foo: number;
-  bar: string[];
-}
+const State = Annotation.Root({
+  foo: Annotation<number>({
+    reducer: (state: string[], update: string[]) => state.concat(update),
+    default: () => [],
+  }),
+  bar: Annotation<string[]>,
+})
 
-const graphBuilder = new StateGraph<State>({
-  channels: {
-    foo: null,
-    bar: {
-      reducer: (state: string[], update: string[]) => state.concat(update),
-      default: () => [],
-    },
-  }
-});
+const graphBuilder = new StateGraph(State);
 ```
 
 In this example, we've updated our `bar` field to be an object containing a `reducer` function. This function will always accept two positional arguments: `state` and `update`, with `state` representing the current state value, and `update` representing the update returned from a `Node`. Note that the first key remains unchanged. Let's assume the input to the graph is `{ foo: 1, bar: ["hi"] }`. Let's then assume the first `Node` returns `{ foo: 2 }`. This is treated as an update to the state. Notice that the `Node` does not need to return the whole `State` schema - just an update. After applying this update, the `State` would then be `{ foo: 2, bar: ["hi"] }`. If the second node returns`{ bar: ["bye"] }` then the `State` would then be `{ foo: 2, bar: ["hi", "bye"] }`. Notice here that the `bar` key is updated by concatenating the two arrays together.
@@ -99,70 +89,67 @@ In this example, we've updated our `bar` field to be an object containing a `red
 `MessageState` is one of the few opinionated components in LangGraph. `MessageState` is a special state designed to make it easy to use a list of messages as a key in your state. Specifically, `MessageState` is defined as:
 
 ```typescript
-import { BaseMessage } from "@langchain/langgraph";
+import { BaseMessage } from "@langchain/core/messages";
+import { Annotation, StateGraph, messagesStateReducer } from "@langchain/langgraph";
 
-interface MessageState {
-  messages: BaseMessage[];
-}
+// This can be imported from @langchain/langgraph
+export const MessagesAnnotation = Annotation.Root({
+  messages: Annotation<BaseMessage[]>({
+    reducer: messagesStateReducer,
+    default: () => [],
+  }),
+});
 
 export class MessageGraph extends StateGraph {
   constructor() {
-    super({
-      channels: {
-        __root__: {
-          reducer: messagesStateReducer,
-          default: () => [],
-        },
-      },
-    });
+    super(MessagesAnnotation);
   }
 }
 ```
 
-What this is doing is creating a `State` with a single key `messages`. This is a list of `BaseMessage`s, with [`messagesStateReducer`](https://langchain-ai.github.io/langgraphjs/reference/functions/index.messagesStateReducer.html) as a reducer. `messagesStateReducer` basically adds messages to the existing list (it also does some nice extra things, like convert from OpenAI message format to the standard LangChain message format, handle updates based on message IDs, etc).
+What this is doing is creating a `State` with a single key `messages`. This is a list of `BaseMessage`s, with [`messagesStateReducer`](https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph.messagesStateReducer.html) as a reducer. `messagesStateReducer` basically adds messages to the existing list (it also does some nice extra things, like convert from OpenAI message format to the standard LangChain message format, handle updates based on message IDs, etc).
 
-We often see a list of messages being a key component of state, so this prebuilt state is intended to make it easy to use messages. Typically, there is more state to track than just messages, so we see people subclass this state and add more fields, like:
+We often see a list of messages being a key component of state, so this prebuilt state is intended to make it easy to use messages. Typically, there is more state to track than just messages, so we see people extend this state and add more fields, like:
 
 ```typescript
-interface State extends MessagesState {
-  documents: Array<string>
-}
+import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
+
+const StateWithDocuments = Annotation.Root({
+  ...MessagesAnnotation.spec, // Spread in the messages state
+  documents: Annotation<string[]>,
+})
 ```
 
 ## Nodes
 
 In LangGraph, nodes are typically JavaScript/TypeScript functions (sync or `async`) where the **first** positional argument is the [state](#state), and (optionally), the **second** positional argument is a "config", containing optional [configurable parameters](#configuration) (such as a `thread_id`).
 
-Similar to `NetworkX`, you add these nodes to a graph using the [addNode](https://langchain-ai.github.io/langgraphjs/reference/classes/index.StateGraph.html#addNode) method:
+Similar to `NetworkX`, you add these nodes to a graph using the [addNode](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.StateGraph.html#addNode) method:
 
 ```typescript
 import { RunnableConfig } from "@langchain/core/runnables";
-import { StateGraph } from "@langchain/langgraph";
+import { StateGraph, Annotation } from "@langchain/langgraph";
 
-interface State {
-  input: string;
-  results: string;
-}
+const GraphAnnotation = Annotation.Root({
+  input: Annotation<string>,
+  results: Annotation<string>,
+})
 
-const myNode = (state: State, config?: RunnableConfig) => {
-  console.log("In node: ", config["configurable"]["user_id"])
+// The state type can be extracted using `typeof <annotation variable name>.State`
+const myNode = (state: typeof GraphAnnotation.State, config?: RunnableConfig) => {
+  console.log("In node: ", config.configurable?.user_id);
   return {
     results: `Hello, ${state.input}!`
   }  
 }
 
-
 // The second argument is optional
-const myOtherNode = (state: State) => {
+const myOtherNode = (state: typeof GraphAnnotation.State) => {
   return state
 }
 
-const builder = new StateGraph<State>({
-  channels: {
-    input: null,
-    results: null,
-  },
-}).addNode("myNode", myNode)
+const builder = new StateGraph(GraphAnnotation)
+  .addNode("myNode", myNode)
   .addNode("myOtherNode", myOtherNode)
   ...
 ```
@@ -202,7 +189,7 @@ A node can have MULTIPLE outgoing edges. If a node has multiple out-going edges,
 
 ### Normal Edges
 
-If you **always** want to go from node A to node B, you can use the [addEdge](https://langchain-ai.github.io/langgraphjs/reference/classes/index.StateGraph.html#addEdge) method directly.
+If you **always** want to go from node A to node B, you can use the [addEdge](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.StateGraph.html#addEdge) method directly.
 
 ```typescript
 graph.addEdge("nodeA", "nodeB");
@@ -210,7 +197,7 @@ graph.addEdge("nodeA", "nodeB");
 
 ### Conditional Edges
 
-If you want to **optionally** route to 1 or more edges (or optionally terminate), you can use the [addConditionalEdges](https://langchain-ai.github.io/langgraphjs/reference/classes/index.StateGraph.html#addConditionalEdges) method. This method accepts the name of a node and a "routing function" to call after that node is executed:
+If you want to **optionally** route to 1 or more edges (or optionally terminate), you can use the [addConditionalEdges](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.StateGraph.html#addConditionalEdges) method. This method accepts the name of a node and a "routing function" to call after that node is executed:
 
 ```typescript
 graph.addConditionalEdges("nodeA", routingFunction);
@@ -231,7 +218,7 @@ graph.addConditionalEdges("nodeA", routingFunction, {
 
 ### Entry Point
 
-The entry point is the first node(s) that are run when the graph starts. You can use the [`addEdge`](https://langchain-ai.github.io/langgraphjs/reference/classes/index.StateGraph.html#addEdge) method from the virtual [`START`](https://langchain-ai.github.io/langgraphjs/reference/variables/index.START.html) node to the first node to execute to specify where to enter the graph.
+The entry point is the first node(s) that are run when the graph starts. You can use the [`addEdge`](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.StateGraph.html#addEdge) method from the virtual [`START`](https://langchain-ai.github.io/langgraphjs/reference/variables/langgraph.START.html) node to the first node to execute to specify where to enter the graph.
 
 ```typescript
 import { START } from "@langchain/langgraph" 
@@ -241,7 +228,7 @@ graph.addEdge(START, "nodeA")
 
 ### Conditional Entry Point
 
-A conditional entry point lets you start at different nodes depending on custom logic. You can use [`addConditionalEdges`](https://langchain-ai.github.io/langgraphjs/reference/classes/index.StateGraph.html#addConditionalEdges) from the virtual [`START`](https://langchain-ai.github.io/langgraphjs/reference/variables/index.START.html) node to accomplish this.
+A conditional entry point lets you start at different nodes depending on custom logic. You can use [`addConditionalEdges`](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.StateGraph.html#addConditionalEdges) from the virtual [`START`](https://langchain-ai.github.io/langgraphjs/reference/variables/langgraph.START.html) node to accomplish this.
 
 ```typescript
 import { START } from "@langchain/langgraph" 
@@ -260,7 +247,7 @@ graph.addConditionalEdges(START, routingFunction, {
 
 ## Checkpointer
 
-LangGraph has a built-in persistence layer, implemented through [checkpointers](https://langchain-ai.github.io/langgraphjs/reference/classes/index.BaseCheckpointSaver.html). When you use a checkpointer with a graph, you can interact with the state of that graph. When you use a checkpointer with a graph, you can interact with and manage the graph's state. The checkpointer saves a _checkpoint_ of the graph state at every super-step, enabling several powerful capabilities:
+LangGraph has a built-in persistence layer, implemented through [checkpointers](https://langchain-ai.github.io/langgraphjs/reference/classes/checkpoint.BaseCheckpointSaver.html). When you use a checkpointer with a graph, you can interact with the state of that graph. When you use a checkpointer with a graph, you can interact with and manage the graph's state. The checkpointer saves a _checkpoint_ of the graph state at every super-step, enabling several powerful capabilities:
 
 First, checkpointers facilitate [human-in-the-loop workflows](agentic_concepts.md#human-in-the-loop) workflows by allowing humans to inspect, interrupt, and approve steps. Checkpointers are needed for these workflows as the human has to be able to view the state of a graph at any point in time, and the graph has to be to resume execution after the human has made any updates to the state.
 
@@ -317,18 +304,13 @@ These are the values that will be used to update the state. Note that this updat
 Let's assume you have defined the state of your graph as:
 
 ```typescript
-interface State {
-  foo: number;
-  bar: string[];
-}
-
-const channels = {
-  foo: null,
-  bar: {
-    reducer: (state: string[], update: string[]) => state.concat(update),
+const GraphAnnotation = Annotation.Root({
+  foo: Annotation<number>,
+  bar: Annotation<string[]>({
+    reducer: (state, update) => state.concat(update),
     default: () => [],
-  },
-}
+  }),
+})
 ```
 
 Let's now assume the current state of the graph is
