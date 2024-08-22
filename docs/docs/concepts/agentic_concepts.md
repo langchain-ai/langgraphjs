@@ -78,7 +78,7 @@ This "reflection" step often uses an LLM, but doesn't have to. A good example of
 
 One of the most common agent architectures is what is commonly called the ReAct agent architecture. In this architecture, an LLM is called repeatedly in a while-loop. At each step the agent decides which tools to call, and what the inputs to those tools should be. Those tools are then executed, and the outputs are fed back into the LLM as observations. The while-loop terminates when the agent decides it is not worth calling any more tools.
 
-One of the few high level, pre-built agents we have in LangGraph - you can use it with [`createReactAgent`](https://langchain-ai.github.io/langgraphjs/reference/functions/prebuilt.createReactAgent.html)
+One of the few high level, pre-built agents we have in LangGraph - you can use it with [`createReactAgent`](https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph_prebuilt.createReactAgent.html)
 
 This is named after and based on the [ReAct](https://arxiv.org/abs/2210.03629) paper. However, there are several differences between this paper and our implementation:
 
