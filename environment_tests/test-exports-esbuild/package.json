@@ -20,6 +20,7 @@
   "license": "MIT",
   "dependencies": {
     "@langchain/langgraph": "workspace:*",
+    "@langchain/langgraph-checkpoint": "workspace:*",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
     "esbuild": "^0.17.18",
