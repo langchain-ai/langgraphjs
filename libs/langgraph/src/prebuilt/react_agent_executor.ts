@@ -21,7 +21,7 @@ import {
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { END, START, StateGraph } from "../graph/index.js";
-import { MessagesState } from "../graph/message.js";
+import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { CompiledStateGraph, StateGraphArgs } from "../graph/state.js";
 import { All } from "../pregel/types.js";
 import { ToolNode } from "./tool_node.js";
@@ -40,7 +40,7 @@ export type N = typeof START | "agent" | "tools";
 export type CreateReactAgentParams = {
   llm: BaseChatModel;
   tools:
-    | ToolNode<MessagesState>
+    | ToolNode<typeof MessagesAnnotation.State>
     | (StructuredToolInterface | RunnableToolLike)[];
   messageModifier?:
     | SystemMessage
