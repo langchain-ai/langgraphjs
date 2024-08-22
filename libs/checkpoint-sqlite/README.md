@@ -1,6 +1,6 @@
 # @langchain/langgraph-checkpoint-sqlite
 
-Implementation of LangGraph.js CheckpointSaver that uses a SQLite DB.
+Implementation of a [LangGraph.js](https://github.com/langchain-ai/langgraphjs) CheckpointSaver that uses a SQLite DB.
 
 ## Usage
 
