@@ -37,6 +37,7 @@ import {
   CONFIG_KEY_CHECKPOINTER,
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
+  ERROR,
   INTERRUPT,
 } from "../constants.js";
 import {
@@ -291,13 +292,13 @@ export class Pregel<
     const saved = await this.checkpointer.getTuple(config);
     const checkpoint = saved ? saved.checkpoint : emptyCheckpoint();
     const channels = emptyChannels(this.channels, checkpoint);
-    const [, nextTasks] = _prepareNextTasks(
+    const nextTasks = _prepareNextTasks(
       checkpoint,
       this.nodes,
       channels,
       saved !== undefined ? saved.config : config,
       false,
-      { step: -1 }
+      { step: saved ? (saved.metadata?.step ?? -1) + 1 : -1 }
     );
     return {
       values: readChannels(channels, this.streamChannelsAsIs),
@@ -322,7 +323,7 @@ export class Pregel<
     }
     for await (const saved of this.checkpointer.list(config, options)) {
       const channels = emptyChannels(this.channels, saved.checkpoint);
-      const [, nextTasks] = _prepareNextTasks(
+      const nextTasks = _prepareNextTasks(
         saved.checkpoint,
         this.nodes,
         channels,
@@ -688,31 +689,61 @@ export class Pregel<
         // execute tasks, and wait for one to fail or all to finish.
         // each task is independent from all other concurrent tasks
         // yield updates/debug output as each task finishes
-        const tasks = loop.tasks.map((pregelTask) => () => {
-          return pregelTask.proc.invoke(pregelTask.input, pregelTask.config);
-        });
+        const tasks = Object.fromEntries(
+          loop.tasks
+            .filter((task) => task.writes.length === 0)
+            .map((pregelTask) => {
+              return [
+                pregelTask.id,
+                async () => {
+                  let error;
+                  let result;
+                  try {
+                    result = await pregelTask.proc.invoke(
+                      pregelTask.input,
+                      pregelTask.config
+                    );
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  } catch (e: any) {
+                    error = e;
+                    error.pregelTaskId = pregelTask.id;
+                  }
+                  return {
+                    task: pregelTask,
+                    result,
+                    error,
+                  };
+                },
+              ];
+            })
+        );
 
-        await executeTasks(tasks, this.stepTimeout, config.signal);
-
-        for (const task of loop.tasks) {
-          loop.putWrites(task.id, task.writes);
-        }
-
-        if (streamMode.includes("updates")) {
-          // TODO: Refactor
-          for await (const task of loop.tasks) {
-            yield* prefixGenerator(
-              mapOutputUpdates(outputKeys, [task]),
-              streamMode.length > 1 ? "updates" : undefined
-            );
+        try {
+          for await (const task of executeTasks(
+            tasks,
+            this.stepTimeout,
+            config.signal
+          )) {
+            loop.putWrites(task.id, task.writes);
+            if (streamMode.includes("updates")) {
+              yield* prefixGenerator(
+                mapOutputUpdates(outputKeys, [task]),
+                streamMode.length > 1 ? "updates" : undefined
+              );
+            }
+            if (streamMode.includes("debug")) {
+              yield* prefixGenerator(
+                mapDebugTaskResults(loop.step, [task], this.streamChannelsList),
+                streamMode.length > 1 ? "debug" : undefined
+              );
+            }
           }
-        }
-
-        if (streamMode.includes("debug")) {
-          yield* prefixGenerator(
-            mapDebugTaskResults(loop.step, loop.tasks, this.streamChannelsList),
-            streamMode.length > 1 ? "debug" : undefined
-          );
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } catch (e: any) {
+          if (e.pregelTaskId) {
+            loop.putWrites(e.pregelTaskId, [[ERROR, { message: e.message }]]);
+          }
+          throw e;
         }
 
         if (debug) {

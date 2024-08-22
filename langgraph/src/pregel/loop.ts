@@ -23,6 +23,7 @@ import {
 import {
   CONFIG_KEY_READ,
   CONFIG_KEY_RESUMING,
+  ERROR,
   INPUT,
   INTERRUPT,
 } from "../constants.js";
@@ -322,7 +323,7 @@ export class PregelLoop {
       return false;
     }
 
-    const [, nextTasks] = _prepareNextTasks(
+    const nextTasks = _prepareNextTasks(
       this.checkpoint,
       this.graph.nodes,
       this.channels,
@@ -364,6 +365,10 @@ export class PregelLoop {
     // if there are pending writes from a previous loop, apply them
     if (this.checkpointPendingWrites.length > 0) {
       for (const [tid, k, v] of this.checkpointPendingWrites) {
+        // TODO: Do the same for INTERRUPT
+        if (k === ERROR) {
+          continue;
+        }
         const task = this.tasks.find((t) => t.id === tid);
         if (task) {
           task.writes.push([k, v]);
@@ -432,7 +437,7 @@ export class PregelLoop {
           )}`
         );
       }
-      const [, discardTasks] = _prepareNextTasks(
+      const discardTasks = _prepareNextTasks(
         this.checkpoint,
         this.graph.nodes,
         this.channels,

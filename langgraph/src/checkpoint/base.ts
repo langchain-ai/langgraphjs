@@ -54,21 +54,6 @@ export interface ReadonlyCheckpoint extends Readonly<Checkpoint> {
   >;
 }
 
-export function getChannelVersion(
-  checkpoint: ReadonlyCheckpoint,
-  channel: string
-): number {
-  return checkpoint.channel_versions[channel] ?? 0;
-}
-
-export function getVersionSeen(
-  checkpoint: ReadonlyCheckpoint,
-  node: string,
-  channel: string
-): number {
-  return checkpoint.versions_seen[node]?.[channel] ?? 0;
-}
-
 export function deepCopy<T>(obj: T): T {
   if (typeof obj !== "object" || obj === null) {
     return obj;

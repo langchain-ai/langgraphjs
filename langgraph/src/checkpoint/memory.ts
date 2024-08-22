@@ -36,7 +36,7 @@ export class MemorySaver extends BaseCheckpointSaver {
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     const thread_id = config.configurable?.thread_id;
     const checkpoint_ns = config.configurable?.checkpoint_ns ?? "";
-    const checkpoint_id = config.configurable?.checkpoint_id;
+    let checkpoint_id = config.configurable?.checkpoint_id;
 
     if (checkpoint_id) {
       const saved = this.storage[thread_id]?.[checkpoint_ns]?.[checkpoint_id];
@@ -71,10 +71,11 @@ export class MemorySaver extends BaseCheckpointSaver {
     } else {
       const checkpoints = this.storage[thread_id]?.[checkpoint_ns];
       if (checkpoints !== undefined) {
-        const maxThreadTs = Object.keys(checkpoints).sort((a, b) =>
+        // eslint-disable-next-line prefer-destructuring
+        checkpoint_id = Object.keys(checkpoints).sort((a, b) =>
           b.localeCompare(a)
         )[0];
-        const saved = checkpoints[maxThreadTs];
+        const saved = checkpoints[checkpoint_id];
         const [checkpoint, metadata, parentCheckpointId] = saved;
         const writes =
           this.writes[_generateKey(thread_id, checkpoint_ns, checkpoint_id)] ??
@@ -98,7 +99,7 @@ export class MemorySaver extends BaseCheckpointSaver {
           config: {
             configurable: {
               thread_id,
-              checkpoint_id: maxThreadTs,
+              checkpoint_id,
               checkpoint_ns,
             },
           },

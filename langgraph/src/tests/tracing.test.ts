@@ -94,10 +94,7 @@ it("stream events for a multi-node graph", async () => {
         langgraph_node: "testnode",
         langgraph_step: 1,
         langgraph_task_idx: 0,
-        langgraph_triggers: [
-          "start:testnode",
-          "branch:testnode:condition:testnode",
-        ],
+        langgraph_triggers: ["start:testnode"],
       }),
     },
     {
@@ -114,10 +111,7 @@ it("stream events for a multi-node graph", async () => {
         langgraph_node: "testnode",
         langgraph_step: 1,
         langgraph_task_idx: 0,
-        langgraph_triggers: [
-          "start:testnode",
-          "branch:testnode:condition:testnode",
-        ],
+        langgraph_triggers: ["start:testnode"],
       }),
     },
     {
@@ -134,10 +128,7 @@ it("stream events for a multi-node graph", async () => {
         langgraph_node: "testnode",
         langgraph_step: 1,
         langgraph_task_idx: 0,
-        langgraph_triggers: [
-          "start:testnode",
-          "branch:testnode:condition:testnode",
-        ],
+        langgraph_triggers: ["start:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -157,10 +148,7 @@ it("stream events for a multi-node graph", async () => {
         langgraph_node: "testnode",
         langgraph_step: 1,
         langgraph_task_idx: 0,
-        langgraph_triggers: [
-          "start:testnode",
-          "branch:testnode:condition:testnode",
-        ],
+        langgraph_triggers: ["start:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -182,10 +170,7 @@ it("stream events for a multi-node graph", async () => {
         langgraph_node: "testnode",
         langgraph_step: 1,
         langgraph_task_idx: 0,
-        langgraph_triggers: [
-          "start:testnode",
-          "branch:testnode:condition:testnode",
-        ],
+        langgraph_triggers: ["start:testnode"],
       }),
     },
     {
@@ -202,10 +187,7 @@ it("stream events for a multi-node graph", async () => {
         langgraph_node: "testnode",
         langgraph_step: 1,
         langgraph_task_idx: 0,
-        langgraph_triggers: [
-          "start:testnode",
-          "branch:testnode:condition:testnode",
-        ],
+        langgraph_triggers: ["start:testnode"],
       }),
     },
     {
@@ -223,10 +205,7 @@ it("stream events for a multi-node graph", async () => {
         langgraph_node: "testnode",
         langgraph_step: 1,
         langgraph_task_idx: 0,
-        langgraph_triggers: [
-          "start:testnode",
-          "branch:testnode:condition:testnode",
-        ],
+        langgraph_triggers: ["start:testnode"],
       }),
     },
     {
@@ -243,10 +222,7 @@ it("stream events for a multi-node graph", async () => {
         langgraph_node: "testnode",
         langgraph_step: 1,
         langgraph_task_idx: 0,
-        langgraph_triggers: [
-          "start:testnode",
-          "branch:testnode:condition:testnode",
-        ],
+        langgraph_triggers: ["start:testnode"],
       }),
     },
     {
@@ -263,10 +239,7 @@ it("stream events for a multi-node graph", async () => {
         langgraph_node: "testnode",
         langgraph_step: 1,
         langgraph_task_idx: 0,
-        langgraph_triggers: [
-          "start:testnode",
-          "branch:testnode:condition:testnode",
-        ],
+        langgraph_triggers: ["start:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -286,10 +259,7 @@ it("stream events for a multi-node graph", async () => {
         langgraph_node: "testnode",
         langgraph_step: 1,
         langgraph_task_idx: 0,
-        langgraph_triggers: [
-          "start:testnode",
-          "branch:testnode:condition:testnode",
-        ],
+        langgraph_triggers: ["start:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -311,10 +281,7 @@ it("stream events for a multi-node graph", async () => {
         langgraph_node: "testnode",
         langgraph_step: 1,
         langgraph_task_idx: 0,
-        langgraph_triggers: [
-          "start:testnode",
-          "branch:testnode:condition:testnode",
-        ],
+        langgraph_triggers: ["start:testnode"],
       }),
     },
     {
@@ -332,10 +299,7 @@ it("stream events for a multi-node graph", async () => {
         langgraph_node: "testnode",
         langgraph_step: 1,
         langgraph_task_idx: 0,
-        langgraph_triggers: [
-          "start:testnode",
-          "branch:testnode:condition:testnode",
-        ],
+        langgraph_triggers: ["start:testnode"],
       }),
     },
     {

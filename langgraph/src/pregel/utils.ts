@@ -1,21 +1,25 @@
 import type { ChannelVersions } from "../checkpoint/base.js";
 
+export function getNullChannelVersion(currentVersions: ChannelVersions) {
+  const versionValues = Object.values(currentVersions);
+  const versionType =
+    versionValues.length > 0 ? typeof versionValues[0] : undefined;
+  let nullVersion: number | string | undefined;
+  if (versionType === "number") {
+    nullVersion = 0;
+  } else if (versionType === "string") {
+    nullVersion = "";
+  }
+  return nullVersion;
+}
+
 export function getNewChannelVersions(
   previousVersions: ChannelVersions,
   currentVersions: ChannelVersions
 ): ChannelVersions {
   // Get new channel versions
   if (Object.keys(previousVersions).length > 0) {
-    const versionValues = Object.values(currentVersions);
-    const versionType =
-      versionValues.length > 0 ? typeof versionValues[0] : undefined;
-    let nullVersion: number | string;
-    if (versionType === "number") {
-      nullVersion = 0;
-    } else if (versionType === "string") {
-      nullVersion = "";
-    }
-
+    const nullVersion = getNullChannelVersion(currentVersions);
     return Object.fromEntries(
       Object.entries(currentVersions).filter(
         ([k, v]) => v > (previousVersions[k] ?? nullVersion)
@@ -35,4 +39,14 @@ export function _coerceToDict(value: any, defaultKey: string) {
     typeof value === "object"
     ? value
     : { [defaultKey]: value };
+}
+
+// Order matters
+export function _getIdMetadata(metadata: Record<string, unknown>) {
+  return {
+    langgraph_step: metadata.langgraph_step,
+    langgraph_node: metadata.langgraph_node,
+    langgraph_triggers: metadata.langgraph_triggers,
+    langgraph_task_idx: metadata.langgraph_task_idx,
+  };
 }

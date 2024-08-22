@@ -15,8 +15,6 @@ import {
   Checkpoint,
   ReadonlyCheckpoint,
   copyCheckpoint,
-  getChannelVersion,
-  getVersionSeen,
 } from "../checkpoint/base.js";
 import { PregelNode } from "./read.js";
 import { readChannel, readChannels } from "./io.js";
@@ -38,6 +36,7 @@ import { All, PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { PendingWrite, PendingWriteValue } from "../checkpoint/types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { uuid5 } from "../checkpoint/id.js";
+import { _getIdMetadata, getNullChannelVersion } from "./utils.js";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -56,11 +55,21 @@ export const increment = (current?: number) => {
   return current !== undefined ? current + 1 : 1;
 };
 
-export async function executeTasks<RunOutput>(
-  tasks: Array<() => Promise<RunOutput | Error | void>>,
+export async function* executeTasks(
+  tasks: Record<
+    string,
+    () => Promise<{
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      task: PregelExecutableTask<any, any>;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      result: any;
+      error: Error;
+    }>
+  >,
   stepTimeout?: number,
   signal?: AbortSignal
-): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): AsyncGenerator<PregelExecutableTask<any, any>> {
   if (stepTimeout && signal) {
     if ("any" in AbortSignal) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -77,22 +86,29 @@ export async function executeTasks<RunOutput>(
   signal?.throwIfAborted();
 
   // Start all tasks
-  const started = tasks.map((task) => task());
-
-  let listener: () => void;
-  // Wait for all tasks to settle
-  // If any tasks fail, or signal is aborted, the promise will reject
-  await Promise.all(
-    signal
-      ? [
-          ...started,
-          new Promise<never>((_resolve, reject) => {
-            listener = () => reject(new Error("Abort"));
-            signal?.addEventListener("abort", listener);
-          }).finally(() => signal?.removeEventListener("abort", listener)),
-        ]
-      : started
+  const executingTasks = Object.fromEntries(
+    Object.entries(tasks).map(([taskId, task]) => {
+      return [taskId, task()];
+    })
   );
+  let listener: () => void;
+  const signalPromise = new Promise<never>((_resolve, reject) => {
+    listener = () => reject(new Error("Abort"));
+    signal?.addEventListener("abort", listener);
+  }).finally(() => signal?.removeEventListener("abort", listener));
+
+  while (Object.keys(executingTasks).length > 0) {
+    const { task, error } = await Promise.race([
+      ...Object.values(executingTasks),
+      signalPromise,
+    ]);
+    if (error !== undefined) {
+      // TODO: don't stop others if exception is interrupt
+      throw error;
+    }
+    yield task;
+    delete executingTasks[task.id];
+  }
 }
 
 export function shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
@@ -109,7 +125,7 @@ export function shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
   } else if (versionType === "string") {
     nullVersion = "";
   }
-  const seen = checkpoint.versions_seen[INTERRUPT] || {};
+  const seen = checkpoint.versions_seen[INTERRUPT] ?? {};
 
   const anyChannelUpdated = Object.entries(checkpoint.channel_versions).some(
     ([chan, version]) => {
@@ -277,8 +293,6 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
         );
       }
       updatedChannels.add(chan);
-    } else {
-      console.warn(`Skipping write for channel ${chan} which has no readers`);
     }
   }
 
@@ -313,7 +327,7 @@ export function _prepareNextTasks<
   config: RunnableConfig,
   forExecution: false,
   extra: NextTaskExtraFields
-): [Checkpoint, Array<PregelTaskDescription>];
+): PregelTaskDescription[];
 
 export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
@@ -325,7 +339,7 @@ export function _prepareNextTasks<
   config: RunnableConfig,
   forExecution: true,
   extra: NextTaskExtraFields
-): [Checkpoint, Array<PregelExecutableTask<keyof Nn, keyof Cc>>];
+): PregelExecutableTask<keyof Nn, keyof Cc>[];
 
 export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
@@ -337,12 +351,8 @@ export function _prepareNextTasks<
   config: RunnableConfig,
   forExecution: boolean,
   extra: NextTaskExtraFields
-): [
-  Checkpoint,
-  PregelTaskDescription[] | PregelExecutableTask<keyof Nn, keyof Cc>[]
-] {
+): PregelTaskDescription[] | PregelExecutableTask<keyof Nn, keyof Cc>[] {
   const parentNamespace = config.configurable?.checkpoint_ns ?? "";
-  const newCheckpoint = copyCheckpoint(checkpoint);
   const tasks: Array<PregelExecutableTask<keyof Nn, keyof Cc>> = [];
   const taskDescriptions: Array<PregelTaskDescription> = [];
   const { step, isResuming = false, checkpointer, manager } = extra;
@@ -361,12 +371,12 @@ export function _prepareNextTasks<
       continue;
     }
     const triggers = [TASKS];
-    const metadata = {
+    const metadata = _getIdMetadata({
       langgraph_step: step,
       langgraph_node: packet.node,
       langgraph_triggers: triggers,
-      langgraph_task_idx: tasks.length,
-    };
+      langgraph_task_idx: forExecution ? tasks.length : taskDescriptions.length,
+    });
     const checkpointNamespace =
       parentNamespace === ""
         ? packet.node
@@ -424,81 +434,41 @@ export function _prepareNextTasks<
 
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
+  const nullVersion = getNullChannelVersion(checkpoint.channel_versions);
+  if (nullVersion === undefined) {
+    return forExecution ? tasks : taskDescriptions;
+  }
   for (const [name, proc] of Object.entries<PregelNode>(processes)) {
-    const updatedChannels = proc.triggers
+    const seen = checkpoint.versions_seen[name] ?? {};
+    const triggers = proc.triggers
       .filter((chan) => {
-        try {
-          readChannel(channels, chan, false);
-          return true;
-        } catch (e) {
-          return false;
-        }
-      })
-      .filter(
-        (chan) =>
-          getChannelVersion(newCheckpoint, chan) >
-          getVersionSeen(newCheckpoint, name, chan)
-      );
-
-    const hasUpdatedChannels = updatedChannels.length > 0;
-    // If any of the channels read by this process were updated
-    if (hasUpdatedChannels) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let val: any;
-
-      // If all trigger channels subscribed by this process are not empty
-      // then invoke the process with the values of all non-empty channels
-      if (Array.isArray(proc.channels)) {
-        let emptyChannels = 0;
-        for (const chan of proc.channels) {
-          try {
-            val = readChannel(channels, chan, false);
-            break;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } catch (e: any) {
-            if (e.name === EmptyChannelError.unminifiable_name) {
-              emptyChannels += 1;
-              continue;
-            } else {
-              throw e;
-            }
-          }
-        }
-
-        if (emptyChannels === proc.channels.length) {
-          continue;
-        }
-      } else if (typeof proc.channels === "object") {
-        val = {};
-        try {
-          for (const [k, chan] of Object.entries(proc.channels)) {
-            val[k] = readChannel(channels, chan, !proc.triggers.includes(chan));
-          }
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } catch (e: any) {
-          if (e.name === EmptyChannelError.unminifiable_name) {
-            continue;
-          } else {
-            throw e;
-          }
-        }
-      } else {
-        throw new Error(
-          `Invalid channels type, expected list or dict, got ${proc.channels}`
+        const result = readChannel(channels, chan, false, true);
+        const isEmptyChannelError =
+          // eslint-disable-next-line no-instanceof/no-instanceof
+          result instanceof Error &&
+          result.name === EmptyChannelError.unminifiable_name;
+        return (
+          !isEmptyChannelError &&
+          (checkpoint.channel_versions[chan] ?? nullVersion) >
+            (seen[chan] ?? nullVersion)
         );
+      })
+      .sort();
+    // If any of the channels read by this process were updated
+    if (triggers.length > 0) {
+      const val = _procInput(proc, channels, forExecution);
+      if (val === undefined) {
+        continue;
       }
 
-      // If the process has a mapper, apply it to the value
-      if (proc.mapper !== undefined) {
-        val = proc.mapper(val);
-      }
-
-      const metadata = {
+      const metadata = _getIdMetadata({
         langgraph_step: step,
         langgraph_node: name,
-        langgraph_triggers: proc.triggers,
-        langgraph_task_idx: tasks.length,
-      };
+        langgraph_triggers: triggers,
+        langgraph_task_idx: forExecution
+          ? tasks.length
+          : taskDescriptions.length,
+      });
 
       const checkpointNamespace =
         parentNamespace === ""
@@ -511,18 +481,6 @@ export function _prepareNextTasks<
       );
 
       if (forExecution) {
-        // Update seen versions
-        if (!newCheckpoint.versions_seen[name]) {
-          newCheckpoint.versions_seen[name] = {};
-        }
-        proc.triggers.forEach((chan: string) => {
-          const version = newCheckpoint.channel_versions[chan];
-          if (version !== undefined) {
-            // side effect: updates newCheckpoint
-            newCheckpoint.versions_seen[name][chan] = version;
-          }
-        });
-
         const node = proc.getNode();
         if (node !== undefined) {
           const writes: [keyof Cc, unknown][] = [];
@@ -531,7 +489,7 @@ export function _prepareNextTasks<
             input: val,
             proc: node,
             writes,
-            triggers: proc.triggers,
+            triggers,
             config: patchConfig(
               mergeConfigs(config, proc.config, { metadata }),
               {
@@ -551,7 +509,7 @@ export function _prepareNextTasks<
                     {
                       name,
                       writes: writes as Array<[string, unknown]>,
-                      triggers: proc.triggers,
+                      triggers,
                     }
                   ),
                   [CONFIG_KEY_CHECKPOINTER]: checkpointer,
@@ -569,6 +527,61 @@ export function _prepareNextTasks<
       }
     }
   }
+  return forExecution ? tasks : taskDescriptions;
+}
 
-  return [newCheckpoint, forExecution ? tasks : taskDescriptions];
+function _procInput(
+  proc: PregelNode,
+  channels: StrRecord<string, BaseChannel>,
+  forExecution: boolean
+) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let val: any;
+  // If all trigger channels subscribed by this process are not empty
+  // then invoke the process with the values of all non-empty channels
+  if (Array.isArray(proc.channels)) {
+    let successfulRead = false;
+    for (const chan of proc.channels) {
+      try {
+        val = readChannel(channels, chan, false);
+        successfulRead = true;
+        break;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (e: any) {
+        if (e.name === EmptyChannelError.unminifiable_name) {
+          continue;
+        } else {
+          throw e;
+        }
+      }
+    }
+    if (!successfulRead) {
+      return;
+    }
+  } else if (typeof proc.channels === "object") {
+    val = {};
+    try {
+      for (const [k, chan] of Object.entries(proc.channels)) {
+        val[k] = readChannel(channels, chan, !proc.triggers.includes(chan));
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (e: any) {
+      if (e.name === EmptyChannelError.unminifiable_name) {
+        return;
+      } else {
+        throw e;
+      }
+    }
+  } else {
+    throw new Error(
+      `Invalid channels type, expected list or dict, got ${proc.channels}`
+    );
+  }
+
+  // If the process has a mapper, apply it to the value
+  if (forExecution && proc.mapper !== undefined) {
+    val = proc.mapper(val);
+  }
+
+  return val;
 }
