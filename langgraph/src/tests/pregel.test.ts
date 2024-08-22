@@ -2002,15 +2002,15 @@ describe("StateGraph", () => {
 
   type Step = [AgentAction | AgentFinish, string];
 
-  type AgentState = {
-    input: string;
-    agentOutcome?: AgentAction | AgentFinish;
-    steps: Step[];
-  };
+  const AgentAnnotation = Annotation.Root({
+    input: Annotation<string>,
+    agentOutcome: Annotation<AgentAction | AgentFinish | undefined>,
+    steps: Annotation<Step[]>({
+      reducer: (x: Step[], y: Step[]) => x.concat(y),
+    }),
+  });
 
-  const executeTools = async (
-    data: AgentState
-  ): Promise<Partial<AgentState>> => {
+  const executeTools = async (data: typeof AgentAnnotation.State) => {
     const newData = data;
     const { agentOutcome } = newData;
     delete newData.agentOutcome;
@@ -2023,11 +2023,13 @@ describe("StateGraph", () => {
         ?.invoke(agentOutcome.toolInput)) ?? "failed";
 
     return {
-      steps: [[agentOutcome, observation]],
+      steps: [[agentOutcome, observation]] as Step[],
     };
   };
 
-  const shouldContinue = async (data: AgentState): Promise<string> => {
+  const shouldContinue = async (
+    data: typeof AgentAnnotation.State
+  ): Promise<string> => {
     if (data.agentOutcome && "returnValues" in data.agentOutcome) {
       return "exit";
     }
@@ -2065,7 +2067,7 @@ describe("StateGraph", () => {
       };
     };
 
-    const agent = async (state: AgentState) => {
+    const agent = async (state: typeof AgentAnnotation.State) => {
       const chain = prompt.pipe(llm).pipe(agentParser);
       const result = await chain.invoke({ input: state.input });
       return {
@@ -2073,27 +2075,35 @@ describe("StateGraph", () => {
       };
     };
 
-    const graph = new StateGraph<AgentState>({
-      channels: {
-        input: null,
-        agentOutcome: null,
-        steps: {
-          value: (x: Step[], y: Step[]) => x.concat(y),
-          default: () => [],
-        },
-      },
-    })
+    const graph = new StateGraph(AgentAnnotation)
       .addNode("agent", agent)
+      .addNode("passthrough", () => {
+        return {};
+      })
       .addNode("tools", executeTools)
       .addEdge(START, "agent")
-      .addConditionalEdges("agent", shouldContinue, {
+      .addEdge("agent", "passthrough")
+      .addConditionalEdges("passthrough", shouldContinue, {
         continue: "tools",
         exit: END,
       })
       .addEdge("tools", "agent")
       .compile();
 
-    const result = await graph.invoke({ input: "what is the weather in sf?" });
+    let callbackOutputs;
+    const result = await graph.invoke(
+      { input: "what is the weather in sf?" },
+      {
+        callbacks: [
+          {
+            handleChainEnd(outputs) {
+              callbackOutputs = outputs;
+            },
+          },
+        ],
+      }
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
     expect(result).toEqual({
       input: "what is the weather in sf?",
       agentOutcome: {
@@ -2121,6 +2131,7 @@ describe("StateGraph", () => {
         ],
       ],
     });
+    expect(result).toEqual(callbackOutputs);
   });
 
   it("can stream", async () => {
@@ -2154,7 +2165,7 @@ describe("StateGraph", () => {
       };
     };
 
-    const agent = async (state: AgentState) => {
+    const agent = async (state: typeof AgentAnnotation.State) => {
       const chain = prompt.pipe(llm).pipe(agentParser);
       const result = await chain.invoke({ input: state.input });
       return {
@@ -2162,16 +2173,7 @@ describe("StateGraph", () => {
       };
     };
 
-    const app = new StateGraph<AgentState>({
-      channels: {
-        input: null,
-        agentOutcome: null,
-        steps: {
-          value: (x: Step[], y: Step[]) => x.concat(y),
-          default: () => [],
-        },
-      },
-    })
+    const app = new StateGraph(AgentAnnotation)
       .addNode("agent", agent)
       .addNode("tools", executeTools)
       .addEdge(START, "agent")
