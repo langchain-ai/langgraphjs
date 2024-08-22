@@ -17,6 +17,10 @@
     "strict": true,
     "outDir": "dist"
   },
+  "include": [
+    "libs/*/src/**/*",
+    "libs/langgraph/*.d.ts",
+  ],
   "exclude": [
     "node_modules",
     "**/dist/",

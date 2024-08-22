@@ -62,6 +62,7 @@ export class AnnotationRoot<SD extends StateDefinition> {
   }
 }
 
+// TODO: Add docstring
 export function Annotation<ValueType>(): LastValue<ValueType>;
 
 export function Annotation<ValueType, UpdateType = ValueType>(
