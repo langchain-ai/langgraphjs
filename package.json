@@ -14,7 +14,7 @@
     "url": "git@github.com:langchain-ai/langgraphjs.git"
   },
   "workspaces": [
-    "langgraph",
+    "libs/*",
     "examples"
   ],
   "scripts": {
