@@ -128,15 +128,6 @@
       "import": "./checkpoint/sqlite.js",
       "require": "./checkpoint/sqlite.cjs"
     },
-    "./messages": {
-      "types": {
-        "import": "./messages.d.ts",
-        "require": "./messages.d.cts",
-        "default": "./messages.d.ts"
-      },
-      "import": "./messages.js",
-      "require": "./messages.cjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -160,10 +151,6 @@
     "checkpoint/sqlite.cjs",
     "checkpoint/sqlite.js",
     "checkpoint/sqlite.d.ts",
-    "checkpoint/sqlite.d.cts",
-    "messages.cjs",
-    "messages.js",
-    "messages.d.ts",
-    "messages.d.cts"
+    "checkpoint/sqlite.d.cts"
   ]
 }
