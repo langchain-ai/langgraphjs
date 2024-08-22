@@ -10,6 +10,7 @@ import { ERROR, TAG_HIDDEN, TASK_NAMESPACE } from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
 import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { readChannels } from "./io.js";
+import { _getIdMetadata } from "./utils.js";
 
 type ConsoleColors = {
   start: string;
@@ -86,12 +87,12 @@ export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
     if (config?.tags?.includes(TAG_HIDDEN)) continue;
 
     const metadata = { ...config?.metadata };
-    const idMetadata = {
+    const idMetadata = _getIdMetadata({
       langgraph_step: metadata.langgraph_step,
       langgraph_node: metadata.langgraph_node,
       langgraph_triggers: metadata.langgraph_triggers,
       langgraph_task_idx: metadata.langgraph_task_idx,
-    };
+    });
 
     yield {
       type: "task",
@@ -120,12 +121,7 @@ export function* mapDebugTaskResults<
     if (config?.tags?.includes(TAG_HIDDEN)) continue;
 
     const metadata = { ...config?.metadata };
-    const idMetadata = {
-      langgraph_step: metadata.langgraph_step,
-      langgraph_node: metadata.langgraph_node,
-      langgraph_triggers: metadata.langgraph_triggers,
-      langgraph_task_idx: metadata.langgraph_task_idx,
-    };
+    const idMetadata = _getIdMetadata(metadata);
 
     yield {
       type: "task_result",

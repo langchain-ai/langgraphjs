@@ -1,5 +1,7 @@
 /* eslint-disable no-process-env */
 /* eslint-disable no-promise-executor-return */
+/* eslint-disable no-instanceof/no-instanceof */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { it, expect, jest, describe } from "@jest/globals";
 import {
   RunnableConfig,
@@ -54,7 +56,7 @@ import { Checkpoint, CheckpointTuple } from "../checkpoint/base.js";
 import { GraphRecursionError, InvalidUpdateError } from "../errors.js";
 import { SqliteSaver } from "../checkpoint/sqlite.js";
 import { uuid5, uuid6 } from "../checkpoint/id.js";
-import { INTERRUPT, Send, TASKS } from "../constants.js";
+import { ERROR, INTERRUPT, Send, TASKS } from "../constants.js";
 
 describe("Channel", () => {
   describe("writeTo", () => {
@@ -683,7 +685,7 @@ describe("_prepareNextTasks", () => {
     };
 
     // call method / assertions
-    const [newCheckpoint, taskDescriptions] = _prepareNextTasks(
+    const taskDescriptions = _prepareNextTasks(
       checkpoint,
       processes,
       channels,
@@ -703,8 +705,8 @@ describe("_prepareNextTasks", () => {
     });
 
     // the returned checkpoint is a copy of the passed checkpoint without versionsSeen updated
-    expect(newCheckpoint.versions_seen.node1.channel1).toBe(1);
-    expect(newCheckpoint.versions_seen.node2.channel2).toBe(5);
+    expect(checkpoint.versions_seen.node1.channel1).toBe(1);
+    expect(checkpoint.versions_seen.node2.channel2).toBe(5);
   });
 
   it("should return an array of PregelExecutableTasks", () => {
@@ -801,7 +803,7 @@ describe("_prepareNextTasks", () => {
     };
 
     // call method / assertions
-    const [newCheckpoint, tasks] = _prepareNextTasks(
+    const tasks = _prepareNextTasks(
       checkpoint,
       processes,
       channels,
@@ -858,7 +860,7 @@ describe("_prepareNextTasks", () => {
       input: 100,
       proc: new RunnablePassthrough(),
       writes: [],
-      triggers: ["channel1", "channel2"],
+      triggers: ["channel1"],
       config: {
         tags: [],
         configurable: expect.any(Object),
@@ -866,7 +868,7 @@ describe("_prepareNextTasks", () => {
           langgraph_node: "node2",
           langgraph_step: -1,
           langgraph_task_idx: 2,
-          langgraph_triggers: ["channel1", "channel2"],
+          langgraph_triggers: ["channel1"],
         }),
         recursionLimit: 25,
         runId: undefined,
@@ -875,9 +877,10 @@ describe("_prepareNextTasks", () => {
       id: expect.any(String),
     });
 
-    expect(newCheckpoint.versions_seen.node1.channel1).toBe(2);
-    expect(newCheckpoint.versions_seen.node2.channel1).toBe(2);
-    expect(newCheckpoint.versions_seen.node2.channel2).toBe(5);
+    // Should not update versions seen, that occurs when applying writes
+    expect(checkpoint.versions_seen.node1.channel1).toBe(1);
+    expect(checkpoint.versions_seen.node2.channel1).not.toBeDefined();
+    expect(checkpoint.versions_seen.node2.channel2).toBe(5);
   });
 });
 
@@ -1537,6 +1540,30 @@ it("should raise InvalidUpdateError when the same LastValue channel is updated t
   await expect(app.invoke(2)).rejects.toThrow(InvalidUpdateError);
 });
 
+it("should fail to process two processes in an invalid way", async () => {
+  const addOne = jest.fn((x: number): number => x + 1);
+
+  const one = Channel.subscribeTo("input")
+    .pipe(addOne)
+    .pipe(Channel.writeTo(["output"]));
+  const two = Channel.subscribeTo("input")
+    .pipe(addOne)
+    .pipe(Channel.writeTo(["output"]));
+
+  const app = new Pregel({
+    nodes: { one, two },
+    channels: {
+      output: new LastValue<number>(),
+      input: new LastValue<number>(),
+    },
+    inputChannels: "input",
+    outputChannels: "output",
+  });
+
+  // LastValue channels can only be updated once per iteration
+  await expect(app.invoke(2)).rejects.toThrow(InvalidUpdateError);
+});
+
 it("should process two inputs to two outputs validly", async () => {
   const addOne = jest.fn((x: number): number => x + 1);
 
@@ -1560,6 +1587,115 @@ it("should process two inputs to two outputs validly", async () => {
 
   // An Inbox channel accumulates updates into a sequence
   expect(await app.invoke(2)).toEqual([3, 3]);
+});
+
+it("pending writes resume", async () => {
+  const checkpointer = new MemorySaverAssertImmutable();
+  const StateAnnotation = Annotation.Root({
+    value: Annotation<number>({ reducer: (a, b) => a + b }),
+  });
+  class AwhileMaker extends RunnableLambda<any, any> {
+    calls: number = 0;
+
+    sleep: number;
+
+    rtn: Record<string, unknown> | Error;
+
+    constructor(sleep: number, rtn: Record<string, unknown> | Error) {
+      super({
+        func: async () => {
+          this.calls += 1;
+          await new Promise((resolve) => setTimeout(resolve, this.sleep));
+          if (this.rtn instanceof Error) {
+            throw this.rtn;
+          }
+          return this.rtn;
+        },
+      });
+      this.sleep = sleep;
+      this.rtn = rtn;
+    }
+
+    reset() {
+      this.calls = 0;
+    }
+  }
+
+  const one = new AwhileMaker(0.2, { value: 2 });
+  const two = new AwhileMaker(0.6, new Error("I'm not good"));
+  const builder = new StateGraph(StateAnnotation)
+    .addNode("one", one)
+    .addNode("two", two)
+    .addEdge("__start__", "one")
+    .addEdge("__start__", "two")
+    .addEdge("one", "__end__")
+    // TODO: Add retry policy
+    .addEdge("two", "__end__");
+  const graph = builder.compile({ checkpointer });
+  const thread1 = { configurable: { thread_id: "1" } };
+  await expect(graph.invoke({ value: 1 }, thread1)).rejects.toThrow(
+    "I'm not good"
+  );
+  expect(one.calls).toEqual(1);
+  expect(two.calls).toEqual(1);
+
+  const state = await graph.getState(thread1);
+  expect(state).toBeDefined();
+  expect(state.values).toEqual({ value: 1 });
+  expect(state.next).toEqual(["one", "two"]);
+  expect(state.tasks).toEqual([
+    { id: expect.any(String), name: "one" },
+    {
+      id: expect.any(String),
+      name: "two",
+      error: expect.objectContaining({
+        message: "I'm not good",
+      }),
+    },
+  ]);
+  expect(state.metadata).toEqual({ source: "loop", step: 0 });
+
+  // should contain pending write of "one" and should contain error from "two"
+  const checkpoint = await checkpointer.getTuple(thread1);
+  expect(checkpoint).toBeDefined();
+  const expectedWrites = [
+    [expect.any(String), "one", "one"],
+    [expect.any(String), "value", 2],
+    [
+      expect.any(String),
+      ERROR,
+      expect.objectContaining({
+        message: "I'm not good",
+      }),
+    ],
+  ];
+  expect(checkpoint?.pendingWrites).toEqual(
+    expect.arrayContaining(expectedWrites)
+  );
+
+  // both non-error pending writes come from same task
+  const nonErrorWrites = checkpoint!.pendingWrites!.filter(
+    (w) => w[1] !== ERROR
+  );
+  expect(nonErrorWrites[0][0]).toEqual(nonErrorWrites[1][0]);
+  const errorWrites = checkpoint!.pendingWrites!.filter((w) => w[1] === ERROR);
+  expect(errorWrites[0][0]).not.toEqual(nonErrorWrites[0][0]);
+
+  // resume execution
+  await expect(graph.invoke(null, thread1)).rejects.toThrow("I'm not good");
+  // node "one" succeeded previously, so shouldn't be called again
+  expect(one.calls).toEqual(1);
+  // node "two" should have been called once again
+  expect(two.calls).toEqual(2);
+
+  // confirm no new checkpoints saved
+  const state2 = await graph.getState(thread1);
+  expect(state2.metadata).toEqual(state.metadata);
+
+  // resume execution, without exception
+  two.rtn = { value: 3 };
+  // both the pending write and the new write were applied, 1 + 2 + 3 = 6
+  expect(await graph.invoke(null, thread1)).toEqual({ value: 6 });
 });
 
 it("should allow a conditional edge after a send", async () => {
@@ -3297,7 +3433,7 @@ it("checkpoint events", async () => {
         id: anyStringSame("task3"),
         name: "finish",
         input: { my_key: "value prepared slow", market: "DE" },
-        triggers: ["tool_two_fast", "tool_two_slow"],
+        triggers: ["tool_two_slow"],
       },
     },
     {
