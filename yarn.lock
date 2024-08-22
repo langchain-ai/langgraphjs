@@ -1991,6 +1991,11 @@ __metadata:
     uuid: ^10.0.0
     zod: ^3.23.8
     zod-to-json-schema: ^3.22.4
+  peerDependencies:
+    better-sqlite3: ^9.5.0
+  peerDependenciesMeta:
+    better-sqlite3:
+      optional: true
   languageName: unknown
   linkType: soft
 

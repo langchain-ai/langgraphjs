@@ -37,6 +37,14 @@
     "uuid": "^10.0.0",
     "zod": "^3.23.8"
   },
+  "peerDependencies": {
+    "better-sqlite3": "^9.5.0"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@jest/globals": "^29.5.0",
     "@langchain/anthropic": "^0.2.12",
