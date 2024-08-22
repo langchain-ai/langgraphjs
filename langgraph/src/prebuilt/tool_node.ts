@@ -8,7 +8,7 @@ import { RunnableConfig, RunnableToolLike } from "@langchain/core/runnables";
 import { StructuredToolInterface } from "@langchain/core/tools";
 import { RunnableCallable } from "../utils.js";
 import { END } from "../graph/graph.js";
-import { MessagesState } from "../graph/messages_state.js";
+import { MessagesAnnotation } from "../graph/messages_annotation.js";
 
 export type ToolNodeOptions = {
   name?: string;
@@ -17,7 +17,7 @@ export type ToolNodeOptions = {
 };
 
 export class ToolNode<
-  T extends BaseMessage[] | typeof MessagesState.State
+  T extends BaseMessage[] | typeof MessagesAnnotation.State
 > extends RunnableCallable<T, T> {
   /**
   A node that runs the tools requested in the last AIMessage. It can be used
@@ -41,9 +41,9 @@ export class ToolNode<
   }
 
   private async run(
-    input: BaseMessage[] | typeof MessagesState.State,
+    input: BaseMessage[] | typeof MessagesAnnotation.State,
     config: RunnableConfig
-  ): Promise<BaseMessage[] | typeof MessagesState.State> {
+  ): Promise<BaseMessage[] | typeof MessagesAnnotation.State> {
     const message = Array.isArray(input)
       ? input[input.length - 1]
       : input.messages[input.messages.length - 1];
@@ -92,7 +92,7 @@ export class ToolNode<
 }
 
 export function toolsCondition(
-  state: BaseMessage[] | typeof MessagesState.State
+  state: BaseMessage[] | typeof MessagesAnnotation.State
 ): "tools" | typeof END {
   const message = Array.isArray(state)
     ? state[state.length - 1]

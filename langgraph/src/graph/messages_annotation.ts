@@ -4,7 +4,7 @@ import { BaseMessage } from "@langchain/core/messages";
 import { Annotation } from "./annotation.js";
 import { messagesStateReducer } from "./message.js";
 
-export const MessagesState = Annotation.Root({
+export const MessagesAnnotation = Annotation.Root({
   messages: Annotation<BaseMessage[]>({
     reducer: messagesStateReducer,
     default: () => [],

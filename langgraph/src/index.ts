@@ -6,4 +6,4 @@ import { initializeAsyncLocalStorageSingleton } from "./setup/async_local_storag
 initializeAsyncLocalStorageSingleton();
 
 export * from "./web.js";
-export { MessagesState } from "./graph/messages_state.js";
+export { MessagesAnnotation } from "./graph/messages_annotation.js";
