@@ -57,7 +57,8 @@ plugins:
       include_source: True
       include_requirejs: true
   - typedoc:
-      source: "../langgraph/*.d.ts"
+      # One level of globbing is intentional
+      source: "../libs/*/*.d.ts"
       output_dir: "./reference"
       tsconfig: "../tsconfig.json"
       options: "typedoc.json"
