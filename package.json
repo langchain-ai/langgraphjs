@@ -28,7 +28,7 @@
     "test:exports:docker": "docker compose -f environment_tests/docker-compose.yml up --force-recreate",
     "format": "turbo run format",
     "format:check": "turbo run format:check",
-    "release": "node scripts/release_workspace.js --workspace"
+    "release": "node scripts/release_workspace.cjs --workspace"
   },
   "author": "LangChain",
   "license": "MIT",

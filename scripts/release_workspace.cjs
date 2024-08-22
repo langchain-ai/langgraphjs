@@ -1,9 +1,10 @@
-import { execSync, spawn } from 'child_process';
-import { Command } from 'commander';
-import fs from 'fs';
-import path from 'path';
-import readline from 'readline';
-import semver from 'semver';
+const { execSync } = require("child_process");
+const { Command } = require("commander");
+const fs = require("fs");
+const path = require("path");
+const { spawn } = require("child_process");
+const readline = require("readline");
+const semver = require('semver')
 
 const PRIMARY_PROJECTS = ["@langchain/langgraph"];
 const RELEASE_BRANCH = "release";
@@ -26,32 +27,28 @@ function getWorkspaceVersion(workspaceDirectory) {
  * Each object in the return value contains the relative path to the workspace
  * directory, along with the full package.json file contents.
  * 
- * @returns {Promise<Array<{ dir: string, packageJSON: Record<string, any>}>>}
+ * @returns {Array<{ dir: string, packageJSON: Record<string, any>}>}
  */
-async function getAllWorkspaces() {
-  const possibleWorkspaceDirectories = ["./langgraph"];
-  const allWorkspacesPromise = possibleWorkspaceDirectories.flatMap(async (workspaceDirectory) => {
+function getAllWorkspaces() {
+  const possibleWorkspaceDirectories = ["./libs/*"];
+  const allWorkspaces = possibleWorkspaceDirectories.flatMap((workspaceDirectory) => {
     if (workspaceDirectory.endsWith("*")) {
       // List all folders inside directory, require, and return the package.json.
       const allDirs = fs.readdirSync(path.join(process.cwd(), workspaceDirectory.replace("*", "")));
-      const filePath = path.join(process.cwd(), `${workspaceDirectory.replace("*", "")}${dir}`, "package.json");
-      const packageJSON = JSON.parse(fs.readFileSync(filePath, "utf-8"));
       const subDirs = allDirs.map((dir) => {
         return {
           dir: `${workspaceDirectory.replace("*", "")}${dir}`,
-          packageJSON: packageJSON
+          packageJSON: require(path.join(process.cwd(), `${workspaceDirectory.replace("*", "")}${dir}`, "package.json"))
         }
       });
       return subDirs;
     }
-    const filePath = path.join(process.cwd(), workspaceDirectory, "package.json")
-    const packageJSON = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    const packageJSON = require(path.join(process.cwd(), workspaceDirectory, "package.json"));
     return {
       dir: workspaceDirectory,
       packageJSON,
     };
   });
-  const allWorkspaces = await Promise.all(allWorkspacesPromise);
   return allWorkspaces;
 }
 
@@ -269,7 +266,7 @@ async function main() {
   }
 
   // Find the workspace package.json's.
-  const allWorkspaces = await getAllWorkspaces();
+  const allWorkspaces = getAllWorkspaces();
   const matchingWorkspace = allWorkspaces.find(({ packageJSON }) => packageJSON.name === options.workspace);
   
   if (!matchingWorkspace) {
@@ -281,15 +278,16 @@ async function main() {
 
   // Run build, lint, tests
   console.log("Running build, lint, and tests.");
-  execSync(`yarn turbo:command run --filter ${options.workspace} build lint test --concurrency=1`);
+  execSync(`yarn turbo:command run --filter ${options.workspace} build lint test --concurrency 1`);
   console.log("Successfully ran build, lint, and tests.");
 
   // Only run export tests for primary projects.
   if (PRIMARY_PROJECTS.includes(options.workspace.trim())) {
     // Run export tests.
     // LangChain must be built before running export tests.
-    console.log("Building '@langchain/langchain' and running export tests.");
+    console.log("Building '@langchain/langgraph' and running export tests.");
     execSync(`yarn run turbo:command build --filter=@langchain/langgraph`);
+    execSync(`yarn run test:exports:docker`);
     console.log("Successfully built @langchain/langgraph, and tested exports.");
   } else {
     console.log("Skipping export tests for non primary project.");
