@@ -1993,6 +1993,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@langchain/textsplitters@npm:^0.0.3":
+  version: 0.0.3
+  resolution: "@langchain/textsplitters@npm:0.0.3"
+  dependencies:
+    "@langchain/core": ">0.2.0 <0.3.0"
+    js-tiktoken: ^1.0.12
+  checksum: f0b32d65c863a280ce7104bff4d367734b8f76f2ec42b741fb690fbc20737bb4a3a412b82d8ba308a524441b6084ecd59cf61c3ce13cbb9639fbd02241c341d1
+  languageName: node
+  linkType: hard
+
 "@langchain/textsplitters@npm:~0.0.0":
   version: 0.0.2
   resolution: "@langchain/textsplitters@npm:0.0.2"
@@ -6034,6 +6044,7 @@ __metadata:
     "@langchain/mistralai": ^0.0.28
     "@langchain/ollama": ^0.0.4
     "@langchain/openai": ^0.2.6
+    "@langchain/textsplitters": ^0.0.3
     "@xenova/transformers": 2.17.2
     cheerio: ^1.0.0
     chromadb: ^1.8.1

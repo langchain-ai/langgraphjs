@@ -25,5 +25,8 @@
   },
   "resolutions": {
     "@langchain/core": "0.2.27"
+  },
+  "dependencies": {
+    "@langchain/textsplitters": "^0.0.3"
   }
 }
