@@ -72,11 +72,11 @@ In this example, no reducer functions are specified for any key. Let's assume th
 import { StateGraph, Annotation } from "@langchain/langgraph";
 
 const State = Annotation.Root({
-  foo: Annotation<number>({
+  foo: Annotation<number>,
+  bar: Annotation<string[]>({
     reducer: (state: string[], update: string[]) => state.concat(update),
     default: () => [],
   }),
-  bar: Annotation<string[]>,
 })
 
 const graphBuilder = new StateGraph(State);

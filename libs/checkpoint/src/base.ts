@@ -1,5 +1,5 @@
 import type { RunnableConfig } from "@langchain/core/runnables";
-import { DefaultSerializer, SerializerProtocol } from "./serde/base.js";
+import { SerializerProtocol } from "./serde/base.js";
 import { uuid6 } from "./id.js";
 import type {
   PendingWrite,
@@ -7,6 +7,7 @@ import type {
   CheckpointMetadata,
 } from "./types.js";
 import type { ChannelProtocol, SendProtocol } from "./serde/types.js";
+import { JsonPlusSerializer } from "./serde/jsonplus.js";
 
 export type ChannelVersions = Record<string, string | number>;
 
@@ -111,9 +112,9 @@ export type CheckpointListOptions = {
 };
 
 export abstract class BaseCheckpointSaver<V = number> {
-  serde: SerializerProtocol<unknown> = DefaultSerializer;
+  serde: SerializerProtocol = new JsonPlusSerializer();
 
-  constructor(serde?: SerializerProtocol<unknown>) {
+  constructor(serde?: SerializerProtocol) {
     this.serde = serde || this.serde;
   }
 

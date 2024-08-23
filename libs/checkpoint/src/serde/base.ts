@@ -1,11 +1,6 @@
-import { load } from "@langchain/core/load";
-
-export interface SerializerProtocol<D> {
-  stringify(obj: D): string;
-  parse(data: string): Promise<D>;
+export interface SerializerProtocol {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  dumpsTyped(data: any): [string, Uint8Array];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  loadsTyped(type: string, data: Uint8Array | string): any;
 }
-
-export const DefaultSerializer = {
-  stringify: JSON.stringify,
-  parse: load,
-};

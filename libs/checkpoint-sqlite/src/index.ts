@@ -17,6 +17,7 @@ interface CheckpointRow {
   thread_id: string;
   checkpoint_id: string;
   checkpoint_ns?: string;
+  type?: string;
 }
 
 interface WritesRow {
@@ -35,7 +36,7 @@ export class SqliteSaver extends BaseCheckpointSaver {
 
   protected isSetup: boolean;
 
-  constructor(db: DatabaseType, serde?: SerializerProtocol<Checkpoint>) {
+  constructor(db: DatabaseType, serde?: SerializerProtocol) {
     super(serde);
     this.db = db;
     this.isSetup = false;
@@ -133,14 +134,20 @@ CREATE TABLE IF NOT EXISTS writes (
         return [
           row.task_id,
           row.channel,
-          await this.serde.parse(row.value ?? ""),
+          await this.serde.loadsTyped(row.type ?? "json", row.value ?? ""),
         ] as [string, string, unknown];
       })
     );
     return {
       config: finalConfig,
-      checkpoint: (await this.serde.parse(row.checkpoint)) as Checkpoint,
-      metadata: (await this.serde.parse(row.metadata)) as CheckpointMetadata,
+      checkpoint: (await this.serde.loadsTyped(
+        row.type ?? "json",
+        row.checkpoint
+      )) as Checkpoint,
+      metadata: (await this.serde.loadsTyped(
+        row.type ?? "json",
+        row.metadata
+      )) as CheckpointMetadata,
       parentConfig: row.parent_checkpoint_id
         ? {
             configurable: {
@@ -185,8 +192,12 @@ CREATE TABLE IF NOT EXISTS writes (
               checkpoint_id: row.checkpoint_id,
             },
           },
-          checkpoint: (await this.serde.parse(row.checkpoint)) as Checkpoint,
-          metadata: (await this.serde.parse(
+          checkpoint: (await this.serde.loadsTyped(
+            row.type ?? "json",
+            row.checkpoint
+          )) as Checkpoint,
+          metadata: (await this.serde.loadsTyped(
+            row.type ?? "json",
             row.metadata
           )) as CheckpointMetadata,
           parentConfig: row.parent_checkpoint_id
@@ -210,14 +221,21 @@ CREATE TABLE IF NOT EXISTS writes (
   ): Promise<RunnableConfig> {
     this.setup();
 
+    const [type1, serializedCheckpoint] = this.serde.dumpsTyped(checkpoint);
+    const [type2, serializedMetadata] = this.serde.dumpsTyped(metadata);
+    if (type1 !== type2) {
+      throw new Error(
+        "Failed to serialized checkpoint and metadata to the same type."
+      );
+    }
     const row = [
       config.configurable?.thread_id?.toString(),
       config.configurable?.checkpoint_ns,
       checkpoint.id,
       config.configurable?.checkpoint_id,
-      "Checkpoint",
-      this.serde.stringify(checkpoint),
-      this.serde.stringify(metadata),
+      type1,
+      serializedCheckpoint,
+      serializedMetadata,
     ];
 
     this.db
@@ -254,16 +272,19 @@ CREATE TABLE IF NOT EXISTS writes (
       }
     });
 
-    const rows = writes.map((write, idx) => [
-      config.configurable?.thread_id,
-      config.configurable?.checkpoint_ns,
-      config.configurable?.checkpoint_id,
-      taskId,
-      idx,
-      write[0],
-      "Checkpoint",
-      this.serde.stringify(write[1]),
-    ]);
+    const rows = writes.map((write, idx) => {
+      const [type, serializedWrite] = this.serde.dumpsTyped(write[1]);
+      return [
+        config.configurable?.thread_id,
+        config.configurable?.checkpoint_ns,
+        config.configurable?.checkpoint_id,
+        taskId,
+        idx,
+        write[0],
+        type,
+        serializedWrite,
+      ];
+    });
 
     transaction(rows);
   }
