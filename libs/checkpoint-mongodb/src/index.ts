@@ -105,7 +105,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       pendingWrites,
       metadata: (await this.serde.parse(doc.metadata)) as CheckpointMetadata,
       parentConfig:
-        doc.parent_checkpoint_id != undefined
+        doc.parent_checkpoint_id != null
           ? {
               configurable: {
                 thread_id,
@@ -127,7 +127,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
     const { limit, before, filter } = options ?? {};
-    let query: Record<string, any> = {};
+    let query: Record<string, unknown> = {};
 
     if (config?.configurable) {
       query = {
@@ -213,7 +213,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpoint_ns,
       checkpoint_id,
     };
-    this.db.collection(this.checkpointCollectionName).updateOne(
+    await this.db.collection(this.checkpointCollectionName).updateOne(
       upsertQuery,
       {
         $set: doc,

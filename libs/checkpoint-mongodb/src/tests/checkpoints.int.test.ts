@@ -1,11 +1,12 @@
 import { describe, it, expect, afterAll } from "@jest/globals";
+import { MongoClient } from "mongodb";
 import {
   Checkpoint,
   CheckpointTuple,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
+import { getEnvironmentVariable } from "@langchain/core/utils/env";
 import { MongoDBSaver } from "../index.js";
-import { MongoClient } from "mongodb";
 
 const checkpoint1: Checkpoint = {
   v: 1,
@@ -42,7 +43,7 @@ const checkpoint2: Checkpoint = {
   pending_sends: [],
 };
 
-const client = new MongoClient(process.env.MONGODB_URL!);
+const client = new MongoClient(getEnvironmentVariable("MONGODB_URL")!);
 
 afterAll(async () => {
   const db = client.db();

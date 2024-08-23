@@ -5,6 +5,7 @@ Implementation of a [LangGraph.js](https://github.com/langchain-ai/langgraphjs) 
 ## Usage
 
 ```ts
+import { MongoClient } from "mongodb";
 import { MongoDBSaver } from "@langchain/langgraph-checkpoint-mongodb";
 
 const writeConfig = {
@@ -19,7 +20,10 @@ const readConfig = {
   }
 };
 
-const checkpointer = MongoDBSaver.fromConnString(":memory:");
+
+const client = new MongoClient(process.env.MONGODB_URL);
+
+const checkpointer = new MongoDBSaver({ client });
 const checkpoint = {
   v: 1,
   ts: "2024-07-31T20:14:19.804150+00:00",
@@ -48,13 +52,15 @@ const checkpoint = {
 }
 
 // store checkpoint
-await checkpointer.put(writeConfig, checkpoint, {}, {})
+await checkpointer.put(writeConfig, checkpoint, {}, {});
 
 // load checkpoint
-await checkpointer.get(readConfig)
+await checkpointer.get(readConfig);
 
 // list checkpoints
 for await (const checkpoint of checkpointer.list(readConfig)) {
   console.log(checkpoint);
 }
+
+await client.close();
 ```
