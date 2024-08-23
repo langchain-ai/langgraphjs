@@ -1,8 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable no-instanceof/no-instanceof */
 import { load } from "@langchain/core/load";
 import { SerializerProtocol } from "./base.js";
 
 export class JsonPlusSerializer implements SerializerProtocol {
   private _encodeConstructorArgs(
+    // eslint-disable-next-line @typescript-eslint/ban-types
     constructor: Function,
     method?: string,
     args?: any[],
@@ -12,7 +15,7 @@ export class JsonPlusSerializer implements SerializerProtocol {
       lc: 2,
       type: "constructor",
       id: [...constructor.name.split("."), constructor.name],
-      method: method,
+      method,
       args: args ?? [],
       kwargs: kwargs ?? {},
     };
