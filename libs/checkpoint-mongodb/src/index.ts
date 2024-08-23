@@ -102,7 +102,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
             serializedWrite.type,
             serializedWrite.value.value()
           ),
-        ] as const;
+        ] as CheckpointPendingWrite;
       })
     );
     return {
