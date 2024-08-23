@@ -99,6 +99,7 @@ nav:
           - View and update past graph state: "how-tos/time-travel.ipynb"
           - Manage conversation history: how-tos/manage-conversation-history.ipynb
           - Create a custom checkpointer using Postgres: "how-tos/persistence-postgres.ipynb"
+          - How to delete messages: "how-tos/delete-messages.ipynb"
       - Human-in-the-loop:
           - Add human-in-the-loop: "how-tos/human-in-the-loop.ipynb"
           - Add breakpoints: how-tos/breakpoints.ipynb
