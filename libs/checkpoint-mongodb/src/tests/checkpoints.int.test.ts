@@ -78,6 +78,19 @@ describe("MongoDBSaver", () => {
       },
     });
 
+    // add some writes
+    await saver.putWrites(
+      {
+        configurable: {
+          checkpoint_id: checkpoint1.id,
+          checkpoint_ns: "",
+          thread_id: "1",
+        },
+      },
+      [["bar", "baz"]],
+      "foo"
+    );
+
     // get first checkpoint tuple
     const firstCheckpointTuple = await saver.getTuple({
       configurable: { thread_id: "1" },
@@ -91,6 +104,9 @@ describe("MongoDBSaver", () => {
     });
     expect(firstCheckpointTuple?.checkpoint).toEqual(checkpoint1);
     expect(firstCheckpointTuple?.parentConfig).toBeUndefined();
+    expect(firstCheckpointTuple?.pendingWrites).toEqual([
+      ["foo", "bar", "baz"],
+    ]);
 
     // save second checkpoint
     await saver.put(

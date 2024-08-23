@@ -64,6 +64,19 @@ describe("SqliteSaver", () => {
       },
     });
 
+    // add some writes
+    await sqliteSaver.putWrites(
+      {
+        configurable: {
+          checkpoint_id: checkpoint1.id,
+          checkpoint_ns: "",
+          thread_id: "1",
+        },
+      },
+      [["bar", "baz"]],
+      "foo"
+    );
+
     // get first checkpoint tuple
     const firstCheckpointTuple = await sqliteSaver.getTuple({
       configurable: { thread_id: "1" },
@@ -77,6 +90,9 @@ describe("SqliteSaver", () => {
     });
     expect(firstCheckpointTuple?.checkpoint).toEqual(checkpoint1);
     expect(firstCheckpointTuple?.parentConfig).toBeUndefined();
+    expect(firstCheckpointTuple?.pendingWrites).toEqual([
+      ["foo", "bar", "baz"],
+    ]);
 
     // save second checkpoint
     await sqliteSaver.put(

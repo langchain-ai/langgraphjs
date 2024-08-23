@@ -37,7 +37,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpointCollectionName,
       checkpointWritesCollectionName,
     }: MongoDBSaverParams,
-    serde?: SerializerProtocol<Checkpoint>
+    serde?: SerializerProtocol
   ) {
     super(serde);
     this.client = client;
@@ -85,7 +85,10 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpoint_ns,
       checkpoint_id: doc.checkpoint_id,
     };
-    const checkpoint = (await this.serde.parse(doc.checkpoint)) as Checkpoint;
+    const checkpoint = (await this.serde.loadsTyped(
+      doc.type,
+      doc.checkpoint.value()
+    )) as Checkpoint;
     const serializedWrites = await this.db
       .collection(this.checkpointWritesCollectionName)
       .find(configurableValues)
@@ -95,7 +98,10 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         return [
           serializedWrite.task_id,
           serializedWrite.channel,
-          await this.serde.parse(serializedWrite.value),
+          await this.serde.loadsTyped(
+            serializedWrite.type,
+            serializedWrite.value.value()
+          ),
         ] as const;
       })
     );
@@ -103,7 +109,10 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       config: { configurable: configurableValues },
       checkpoint,
       pendingWrites,
-      metadata: (await this.serde.parse(doc.metadata)) as CheckpointMetadata,
+      metadata: (await this.serde.loadsTyped(
+        doc.type,
+        doc.metadata.value()
+      )) as CheckpointMetadata,
       parentConfig:
         doc.parent_checkpoint_id != null
           ? {
@@ -156,9 +165,13 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     }
 
     for await (const doc of result) {
-      const checkpoint = (await this.serde.parse(doc.checkpoint)) as Checkpoint;
-      const metadata = (await this.serde.parse(
-        doc.metadata
+      const checkpoint = (await this.serde.loadsTyped(
+        doc.type,
+        doc.checkpoint.value()
+      )) as Checkpoint;
+      const metadata = (await this.serde.loadsTyped(
+        doc.type,
+        doc.metadata.value()
       )) as CheckpointMetadata;
 
       yield {
@@ -201,12 +214,17 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         `The provided config must contain a configurable field with a "thread_id" field.`
       );
     }
-    const serializedCheckpoint = this.serde.stringify(checkpoint);
+    const [checkpointType, serializedCheckpoint] =
+      this.serde.dumpsTyped(checkpoint);
+    const [metadataType, serializedMetadata] = this.serde.dumpsTyped(metadata);
+    if (checkpointType !== metadataType) {
+      throw new Error("Mismatched checkpoint and metadata types.");
+    }
     const doc = {
       parent_checkpoint_id: config.configurable?.checkpoint_id,
-      type: "json",
+      type: checkpointType,
       checkpoint: serializedCheckpoint,
-      metadata: this.serde.stringify(metadata),
+      metadata: serializedMetadata,
     };
     const upsertQuery = {
       thread_id,
@@ -259,7 +277,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         idx,
       };
 
-      const serializedValue = this.serde.stringify(value);
+      const [type, serializedValue] = this.serde.dumpsTyped(value);
 
       return {
         updateOne: {
@@ -267,7 +285,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
           update: {
             $set: {
               channel,
-              type: "json",
+              type,
               value: serializedValue,
             },
           },
