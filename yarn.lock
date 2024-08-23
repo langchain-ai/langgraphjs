@@ -1877,7 +1877,7 @@ __metadata:
   resolution: "@langchain/langgraph-checkpoint-mongodb@workspace:libs/checkpoint-mongodb"
   dependencies:
     "@jest/globals": ^29.5.0
-    "@langchain/scripts": 0.1.2-rc.1
+    "@langchain/scripts": ">=0.1.2 <0.2.0"
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
     "@tsconfig/recommended": ^1.0.3
@@ -1915,7 +1915,7 @@ __metadata:
   dependencies:
     "@jest/globals": ^29.5.0
     "@langchain/langgraph-checkpoint": ~0.0.1
-    "@langchain/scripts": 0.1.2-rc.1
+    "@langchain/scripts": ">=0.1.2 <0.2.0"
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
     "@tsconfig/recommended": ^1.0.3
@@ -1955,7 +1955,7 @@ __metadata:
   resolution: "@langchain/langgraph-checkpoint@workspace:libs/checkpoint"
   dependencies:
     "@jest/globals": ^29.5.0
-    "@langchain/scripts": 0.1.2-rc.1
+    "@langchain/scripts": ">=0.1.2 <0.2.0"
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
     "@tsconfig/recommended": ^1.0.3
@@ -1996,7 +1996,7 @@ __metadata:
     "@langchain/langgraph-checkpoint": ~0.0.1
     "@langchain/langgraph-checkpoint-sqlite": ~0.0.1
     "@langchain/openai": ^0.2.4
-    "@langchain/scripts": 0.1.2-rc.1
+    "@langchain/scripts": ">=0.1.2 <0.2.0"
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
     "@tsconfig/recommended": ^1.0.3
@@ -2086,9 +2086,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/scripts@npm:0.1.2-rc.1":
-  version: 0.1.2-rc.1
-  resolution: "@langchain/scripts@npm:0.1.2-rc.1"
+"@langchain/scripts@npm:>=0.1.2 <0.2.0":
+  version: 0.1.2
+  resolution: "@langchain/scripts@npm:0.1.2"
   dependencies:
     "@rollup/wasm-node": ^4.19.0
     axios: ^1.6.7
@@ -2103,7 +2103,7 @@ __metadata:
   bin:
     lc_build: bin/build.js
     notebook_validate: bin/validate_notebook.js
-  checksum: b29866945c641e7bdc9bb3b4fb418e03372f917b1d507f1b8e27df3c7f72a513bc26836382cbe2d98f5d67cda074199d199137ff73c44dea1e6d1b007a5f1ff6
+  checksum: b6ae7f02b2f486af15c1e41dbd8113ef16b78d86c7d9d17e337a93e31e131778513418b9de81d9ba6e8f869bd0d32b395772f25ef8e579154adc280c8f9237a7
   languageName: node
   linkType: hard
 
