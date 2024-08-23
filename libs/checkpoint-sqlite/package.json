@@ -30,7 +30,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/langgraph-checkpoint": "~0.0.0"
+    "@langchain/langgraph-checkpoint": "~0.0.1"
   },
   "peerDependencies": {
     "@langchain/core": ">=0.2.20 <0.3.0",
