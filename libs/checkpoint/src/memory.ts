@@ -24,12 +24,12 @@ export class MemorySaver extends BaseCheckpointSaver {
   // thread ID ->  checkpoint namespace -> checkpoint ID -> checkpoint mapping
   storage: Record<
     string,
-    Record<string, Record<string, [string, string, string | undefined]>>
+    Record<string, Record<string, [Uint8Array, Uint8Array, string | undefined]>>
   > = {};
 
   writes: Record<string, CheckpointPendingWrite[]> = {};
 
-  constructor(serde?: SerializerProtocol<unknown>) {
+  constructor(serde?: SerializerProtocol) {
     super(serde);
   }
 
@@ -47,7 +47,11 @@ export class MemorySaver extends BaseCheckpointSaver {
           [];
         const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
           writes.map(async ([taskId, channel, value]) => {
-            return [taskId, channel, await this.serde.parse(value as string)];
+            return [
+              taskId,
+              channel,
+              await this.serde.loadsTyped("json", value as string),
+            ];
           })
         );
         const parentConfig =
@@ -62,8 +66,14 @@ export class MemorySaver extends BaseCheckpointSaver {
             : undefined;
         return {
           config,
-          checkpoint: (await this.serde.parse(checkpoint)) as Checkpoint,
-          metadata: (await this.serde.parse(metadata)) as CheckpointMetadata,
+          checkpoint: (await this.serde.loadsTyped(
+            "json",
+            checkpoint
+          )) as Checkpoint,
+          metadata: (await this.serde.loadsTyped(
+            "json",
+            metadata
+          )) as CheckpointMetadata,
           pendingWrites,
           parentConfig,
         };
@@ -82,7 +92,11 @@ export class MemorySaver extends BaseCheckpointSaver {
           [];
         const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
           writes.map(async ([taskId, channel, value]) => {
-            return [taskId, channel, await this.serde.parse(value as string)];
+            return [
+              taskId,
+              channel,
+              await this.serde.loadsTyped("json", value as string),
+            ];
           })
         );
         const parentConfig =
@@ -103,8 +117,14 @@ export class MemorySaver extends BaseCheckpointSaver {
               checkpoint_ns,
             },
           },
-          checkpoint: (await this.serde.parse(checkpoint)) as Checkpoint,
-          metadata: (await this.serde.parse(metadata)) as CheckpointMetadata,
+          checkpoint: (await this.serde.loadsTyped(
+            "json",
+            checkpoint
+          )) as Checkpoint,
+          metadata: (await this.serde.loadsTyped(
+            "json",
+            metadata
+          )) as CheckpointMetadata,
           pendingWrites,
           parentConfig,
         };
@@ -145,7 +165,8 @@ export class MemorySaver extends BaseCheckpointSaver {
         }
 
         // Parse metadata
-        const metadata = (await this.serde.parse(
+        const metadata = (await this.serde.loadsTyped(
+          "json",
           metadataStr
         )) as CheckpointMetadata;
 
@@ -162,7 +183,11 @@ export class MemorySaver extends BaseCheckpointSaver {
           ] ?? [];
         const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
           writes.map(async ([taskId, channel, value]) => {
-            return [taskId, channel, await this.serde.parse(value as string)];
+            return [
+              taskId,
+              channel,
+              await this.serde.loadsTyped("json", value as string),
+            ];
           })
         );
 
@@ -174,7 +199,10 @@ export class MemorySaver extends BaseCheckpointSaver {
               checkpoint_id: checkpointId,
             },
           },
-          checkpoint: (await this.serde.parse(checkpoint)) as Checkpoint,
+          checkpoint: (await this.serde.loadsTyped(
+            "json",
+            checkpoint
+          )) as Checkpoint,
           metadata,
           pendingWrites,
           parentConfig: parentCheckpointId
@@ -216,9 +244,11 @@ export class MemorySaver extends BaseCheckpointSaver {
       this.storage[threadId][checkpointNamespace] = {};
     }
 
+    const [, serializedCheckpoint] = this.serde.dumpsTyped(checkpoint);
+    const [, serializedMetadata] = this.serde.dumpsTyped(metadata);
     this.storage[threadId][checkpointNamespace][checkpoint.id] = [
-      this.serde.stringify(checkpoint),
-      this.serde.stringify(metadata),
+      serializedCheckpoint,
+      serializedMetadata,
       config.configurable?.checkpoint_id, // parent
     ];
 
@@ -255,7 +285,8 @@ export class MemorySaver extends BaseCheckpointSaver {
     }
     const pendingWrites: CheckpointPendingWrite[] = writes.map(
       ([channel, value]) => {
-        return [taskId, channel, this.serde.stringify(value)];
+        const [, serializedValue] = this.serde.dumpsTyped(value);
+        return [taskId, channel, serializedValue];
       }
     );
     this.writes[key].push(...pendingWrites);
