@@ -245,6 +245,21 @@ graph.addConditionalEdges(START, routingFunction, {
 });
 ```
 
+## `Send`
+
+By default, `Nodes` and `Edges` are defined ahead of time and operate on the same shared state. However, there can be cases where the exact edges are not known ahead of time and/or you may want different versions of `State` to exist at the same time. A common of example of this is with `map-reduce` design patterns. In this design pattern, a first node may generate a list of objects, and you may want to apply some other node to all those objects. The number of objects may be unknown ahead of time (meaning the number of edges may not be known) and the input `State` to the downstream `Node` should be different (one for each generated object).
+
+To support this design pattern, LangGraph supports returning [`Send`](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.Send.html) objects from conditional edges. `Send` takes two arguments: first is the name of the node, and second is the state to pass to that node.
+
+```typescript
+const continueToJokes = (state: { subjects: string[] }) => {
+  return state.subjects.map(s => new Send("generate_joke", { subject: s }));
+  return [new Send()]
+}
+
+graph.addConditionalEdges("nodeA", continueToJokes);
+```
+
 ## Checkpointer
 
 LangGraph has a built-in persistence layer, implemented through [checkpointers](https://langchain-ai.github.io/langgraphjs/reference/classes/checkpoint.BaseCheckpointSaver.html). When you use a checkpointer with a graph, you can interact with the state of that graph. When you use a checkpointer with a graph, you can interact with and manage the graph's state. The checkpointer saves a _checkpoint_ of the graph state at every super-step, enabling several powerful capabilities:
