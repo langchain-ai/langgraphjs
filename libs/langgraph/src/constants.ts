@@ -36,6 +36,7 @@ export function _isSendInterface(x: unknown): x is SendInterface {
 }
 
 /**
+ * 
  * A message or packet to send to a specific node in the graph.
  *
  * The `Send` class is used within a `StateGraph`'s conditional edges to
