@@ -160,8 +160,8 @@ export class MemorySaverAssertImmutable extends MemorySaver {
     }
     const [, serializedCheckpoint] = this.serde.dumpsTyped(checkpoint);
     // save a copy of the checkpoint
-    this.storageForCopies[thread_id][checkpoint.id] = JSON.parse(
-      new TextDecoder().decode(serializedCheckpoint)
+    this.storageForCopies[thread_id][checkpoint.id] = new TextDecoder().decode(
+      serializedCheckpoint
     );
 
     return super.put(config, checkpoint, metadata);

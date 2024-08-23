@@ -3,47 +3,9 @@
 import { load } from "@langchain/core/load";
 import { SerializerProtocol } from "./base.js";
 
-export class JsonPlusSerializer implements SerializerProtocol {
-  private _encodeConstructorArgs(
-    // eslint-disable-next-line @typescript-eslint/ban-types
-    constructor: Function,
-    method?: string,
-    args?: any[],
-    kwargs?: Record<string, any>
-  ): object {
-    return {
-      lc: 2,
-      type: "constructor",
-      id: [...constructor.name.split("."), constructor.name],
-      method,
-      args: args ?? [],
-      kwargs: kwargs ?? {},
-    };
-  }
-
-  private _default(_key: string, obj: any): any {
-    if (obj instanceof Set || obj instanceof Map) {
-      return this._encodeConstructorArgs(obj.constructor, undefined, [
-        Array.from(obj),
-      ]);
-    } else if (obj instanceof RegExp) {
-      return this._encodeConstructorArgs(RegExp, undefined, [
-        obj.source,
-        obj.flags,
-      ]);
-    } else if (obj instanceof Error) {
-      return this._encodeConstructorArgs(obj.constructor, undefined, [
-        obj.message,
-      ]);
-    } else {
-      return JSON.stringify(obj);
-    }
-  }
-
-  private _reviver(_key: string, value: any): any {
+async function _reviver(value: any): Promise<any> {
+  if (value && typeof value === "object") {
     if (
-      value &&
-      typeof value === "object" &&
       value.lc === 2 &&
       value.type === "constructor" &&
       Array.isArray(value.id)
@@ -68,7 +30,6 @@ export class JsonPlusSerializer implements SerializerProtocol {
           default:
             return value;
         }
-
         if (value.method) {
           return (constructor as any)[value.method](...(value.args || []));
         } else {
@@ -77,17 +38,74 @@ export class JsonPlusSerializer implements SerializerProtocol {
       } catch (error) {
         return value;
       }
+    } else if (value.lc === 1) {
+      return load(JSON.stringify(value));
+    } else if (Array.isArray(value)) {
+      return Promise.all(value.map((item) => _reviver(item)));
+    } else {
+      const revivedObj: any = {};
+      for (const [k, v] of Object.entries(value)) {
+        revivedObj[k] = await _reviver(v);
+      }
+      return revivedObj;
     }
-    return load(value);
   }
+  return value;
+}
 
-  _dumps(obj: any): Uint8Array {
-    const jsonString = JSON.stringify(obj, this._default.bind(this));
+function _encodeConstructorArgs(
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  constructor: Function,
+  method?: string,
+  args?: any[],
+  kwargs?: Record<string, any>
+): object {
+  return {
+    lc: 2,
+    type: "constructor",
+    id: [constructor.name],
+    method,
+    args: args ?? [],
+    kwargs: kwargs ?? {},
+  };
+}
+
+function _default(_key: string, obj: any): any {
+  if (obj instanceof Set || obj instanceof Map) {
+    return _encodeConstructorArgs(obj.constructor, undefined, [
+      Array.from(obj),
+    ]);
+  } else if (obj instanceof RegExp) {
+    return _encodeConstructorArgs(RegExp, undefined, [obj.source, obj.flags]);
+  } else if (obj instanceof Error) {
+    return _encodeConstructorArgs(obj.constructor, undefined, [obj.message]);
+  } else {
+    return obj;
+  }
+}
+
+export class JsonPlusSerializer implements SerializerProtocol {
+  protected _dumps(obj: any): Uint8Array {
+    const jsonString = JSON.stringify(obj, (key, value) => {
+      if (value && typeof value === "object") {
+        if (Array.isArray(value)) {
+          // Handle arrays
+          return value.map((item) => _default(key, item));
+        } else {
+          // Handle objects
+          const serialized: any = {};
+          for (const [k, v] of Object.entries(value)) {
+            serialized[k] = _default(k, v);
+          }
+          return serialized;
+        }
+      }
+      return _default(key, value);
+    });
     return new TextEncoder().encode(jsonString);
   }
 
   dumpsTyped(obj: any): [string, Uint8Array] {
-    // eslint-disable-next-line no-instanceof/no-instanceof
     if (obj instanceof Uint8Array) {
       return ["bytes", obj];
     } else {
@@ -95,8 +113,9 @@ export class JsonPlusSerializer implements SerializerProtocol {
     }
   }
 
-  _loads(data: string): any {
-    return JSON.parse(data, this._reviver);
+  protected async _loads(data: string): Promise<any> {
+    const parsed = JSON.parse(data);
+    return _reviver(parsed);
   }
 
   async loadsTyped(type: string, data: Uint8Array | string): Promise<any> {
