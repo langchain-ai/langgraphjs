@@ -2050,8 +2050,8 @@ __metadata:
   linkType: hard
 
 "@langchain/scripts@npm:>=0.1.0 <0.2.0":
-  version: 0.1.0
-  resolution: "@langchain/scripts@npm:0.1.0"
+  version: 0.1.1
+  resolution: "@langchain/scripts@npm:0.1.1"
   dependencies:
     "@rollup/wasm-node": ^4.19.0
     axios: ^1.6.7
@@ -2066,7 +2066,7 @@ __metadata:
   bin:
     lc_build: bin/build.js
     notebook_validate: bin/validate_notebook.js
-  checksum: 6f9f90195688a08326f49430cea8b844b3db222b6a86d94827e31e637dcb77de5330e1733df0373914b3920807e81b1598a6ac6b1a9ddee2ee0db204362d4645
+  checksum: 4c56c081b456b072ea0e9b6eddbe9f8e8d69996027800084ae871e20fc76453a12fcf64794c6b3e0d5aae5177603a772a906d4a2b591dbe70ca7bb51327bfa8c
   languageName: node
   linkType: hard
 
