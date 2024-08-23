@@ -17,8 +17,10 @@ Welcome to the LangGraph.js how-to Guides! These guides provide practical, step-
 LangGraph.js is known for being a highly controllable agent framework.
 These how-to guides show how to achieve that controllability.
 
+- [How to define graph state](define-state.ipynb)
 - [How to create subgraphs](subgraph.ipynb)
 - [How to create branches for parallel execution](branching.ipynb)
+- [How to create map-reduce branches for parallel execution](map-reduce.ipynb)
 
 ## Persistence
 
@@ -37,6 +39,7 @@ These guides cover common examples of that.
 - [How to add human-in-the-loop](human-in-the-loop.ipynb)
 - [How to add breakpoints](breakpoints.ipynb)
 - [How to wait for user input](wait-user-input.ipynb)
+- [How to edit graph state](edit-graph-state.ipynb)
 
 ## Streaming
 
@@ -49,11 +52,15 @@ These guides show how to use different streaming modes.
 - [How to stream LLM tokens without LangChain models](streaming-tokens-without-langchain.ipynb)
 - [How to stream events from within a tool](streaming-events-from-within-tools.ipynb)
 
+## Tool calling
+
+- [How to call tools using ToolNode](tool-calling.ipynb)
+- [How to force an agent to call a tool](force-calling-a-tool-first.ipynb)
+- [How to handle tool calling errors](tool-calling-errors.ipynb)
+
 ## Other
 
 - [How to add runtime configuration to your graph](configuration.ipynb)
-- [How to force an agent to call a tool](force-calling-a-tool-first.ipynb)
 - [How to let agent return tool results directly](dynamically-returning-directly.ipynb)
-- [How to handle tool calling errors](tool-calling-errors.ipynb)
 - [How to have agent respond in structured format](respond-in-format.ipynb)
 - [How to manage agent steps](managing-agent-steps.ipynb)
