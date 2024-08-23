@@ -92,8 +92,10 @@ nav:
           - Install and manage dependencies: "how-tos/manage-ecosystem-dependencies.ipynb"
           - Use LangGraph.js in web environments: "how-tos/use-in-web-environments.ipynb"
       - Controllability:
+          - Define graph state: "how-tos/define-state.ipynb"
           - Create subgraphs: "how-tos/subgraph.ipynb"
           - Create branches for parallel execution: "how-tos/branching.ipynb"
+          - Create map-reduce branches for parallel execution: "how-tos/map-reduce.ipynb"
       - Persistence:
           - Add persistence ("memory") to your graph: "how-tos/persistence.ipynb"
           - View and update past graph state: "how-tos/time-travel.ipynb"
@@ -113,8 +115,8 @@ nav:
       - Tool calling:
           - Call tools using ToolNode: how-tos/tool-calling.ipynb
           - Handle tool calling errors: how-tos/tool-calling-errors.ipynb
+          - Force an agent to call a tool: how-tos/force-calling-a-tool-first.ipynb
           # - Pass graph state to tools: how-tos/pass-run-time-values-to-tools.ipynb TODO
-          # - Pass config to tools: how-tos/pass-config-to-tools.ipynb TODO
       - Other:
           - Add runtime configuration: "how-tos/configuration.ipynb"
           - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
