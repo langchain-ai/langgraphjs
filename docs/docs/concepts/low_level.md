@@ -253,8 +253,7 @@ To support this design pattern, LangGraph supports returning [`Send`](https://la
 
 ```typescript
 const continueToJokes = (state: { subjects: string[] }) => {
-  return state.subjects.map(s => new Send("generate_joke", { subject: s }));
-  return [new Send()]
+  return state.subjects.map((subject) => new Send("generate_joke", { subject }));
 }
 
 graph.addConditionalEdges("nodeA", continueToJokes);
