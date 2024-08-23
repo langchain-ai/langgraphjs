@@ -1,10 +1,12 @@
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect, afterAll } from "@jest/globals";
+import { MongoClient } from "mongodb";
 import {
   Checkpoint,
   CheckpointTuple,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
-import { SqliteSaver } from "../index.js";
+import { getEnvironmentVariable } from "@langchain/core/utils/env";
+import { MongoDBSaver } from "../index.js";
 
 const checkpoint1: Checkpoint = {
   v: 1,
@@ -41,18 +43,29 @@ const checkpoint2: Checkpoint = {
   pending_sends: [],
 };
 
-describe("SqliteSaver", () => {
+const client = new MongoClient(getEnvironmentVariable("MONGODB_URL")!);
+
+afterAll(async () => {
+  const db = client.db();
+  await db.dropCollection("checkpoints");
+  await db.dropCollection("checkpoint_writes");
+  await client.close();
+});
+
+describe("MongoDBSaver", () => {
   it("should save and retrieve checkpoints correctly", async () => {
-    const sqliteSaver = SqliteSaver.fromConnString(":memory:");
+    const saver = new MongoDBSaver({
+      client,
+    });
 
     // get undefined checkpoint
-    const undefinedCheckpoint = await sqliteSaver.getTuple({
+    const undefinedCheckpoint = await saver.getTuple({
       configurable: { thread_id: "1" },
     });
     expect(undefinedCheckpoint).toBeUndefined();
 
     // save first checkpoint
-    const runnableConfig = await sqliteSaver.put(
+    const runnableConfig = await saver.put(
       { configurable: { thread_id: "1" } },
       checkpoint1,
       { source: "update", step: -1, writes: null }
@@ -60,12 +73,13 @@ describe("SqliteSaver", () => {
     expect(runnableConfig).toEqual({
       configurable: {
         thread_id: "1",
+        checkpoint_ns: "",
         checkpoint_id: checkpoint1.id,
       },
     });
 
     // add some writes
-    await sqliteSaver.putWrites(
+    await saver.putWrites(
       {
         configurable: {
           checkpoint_id: checkpoint1.id,
@@ -78,7 +92,7 @@ describe("SqliteSaver", () => {
     );
 
     // get first checkpoint tuple
-    const firstCheckpointTuple = await sqliteSaver.getTuple({
+    const firstCheckpointTuple = await saver.getTuple({
       configurable: { thread_id: "1" },
     });
     expect(firstCheckpointTuple?.config).toEqual({
@@ -95,7 +109,7 @@ describe("SqliteSaver", () => {
     ]);
 
     // save second checkpoint
-    await sqliteSaver.put(
+    await saver.put(
       {
         configurable: {
           thread_id: "1",
@@ -107,7 +121,7 @@ describe("SqliteSaver", () => {
     );
 
     // verify that parentTs is set and retrieved correctly for second checkpoint
-    const secondCheckpointTuple = await sqliteSaver.getTuple({
+    const secondCheckpointTuple = await saver.getTuple({
       configurable: { thread_id: "1" },
     });
     expect(secondCheckpointTuple?.parentConfig).toEqual({
@@ -119,7 +133,7 @@ describe("SqliteSaver", () => {
     });
 
     // list checkpoints
-    const checkpointTupleGenerator = await sqliteSaver.list({
+    const checkpointTupleGenerator = saver.list({
       configurable: { thread_id: "1" },
     });
     const checkpointTuples: CheckpointTuple[] = [];
