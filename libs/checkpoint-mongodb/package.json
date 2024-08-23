@@ -13,7 +13,7 @@
     "url": "git@github.com:langchain-ai/langgraphjs.git"
   },
   "scripts": {
-    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-checkpoint-sqlite",
+    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-checkpoint --filter=@langchain/langgraph-checkpoint-mongodb",
     "build:internal": "yarn clean && yarn lc_build --create-entrypoints --pre --tree-shaking",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
