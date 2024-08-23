@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint-mongodb",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "LangGraph",
   "type": "module",
   "engines": {
@@ -13,7 +13,7 @@
     "url": "git@github.com:langchain-ai/langgraphjs.git"
   },
   "scripts": {
-    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-checkpoint --filter=@langchain/langgraph-checkpoint-mongodb",
+    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-checkpoint-mongodb",
     "build:internal": "yarn clean && yarn lc_build --create-entrypoints --pre --tree-shaking",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
@@ -39,6 +39,7 @@
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",
+    "@langchain/langgraph-checkpoint": "workspace:*",
     "@langchain/scripts": ">=0.1.2 <0.2.0",
     "@swc/core": "^1.3.90",
     "@swc/jest": "^0.2.29",
