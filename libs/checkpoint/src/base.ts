@@ -72,6 +72,7 @@ export function deepCopy<T>(obj: T): T {
   return newObj as T;
 }
 
+/** @hidden */
 export function emptyCheckpoint(): Checkpoint {
   return {
     v: 1,
@@ -84,6 +85,7 @@ export function emptyCheckpoint(): Checkpoint {
   };
 }
 
+/** @hidden */
 export function copyCheckpoint(checkpoint: ReadonlyCheckpoint): Checkpoint {
   return {
     v: checkpoint.v,

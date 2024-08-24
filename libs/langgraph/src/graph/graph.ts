@@ -27,7 +27,9 @@ import {
 import { RunnableCallable } from "../utils.js";
 import { InvalidUpdateError } from "../errors.js";
 
+/** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
+/** Special reserved node name denoting the end of a graph. */
 export const END = "__end__";
 
 export interface BranchOptions<IO, N extends string> {
