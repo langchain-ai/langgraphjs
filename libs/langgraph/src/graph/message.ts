@@ -11,6 +11,11 @@ type Messages =
   | BaseMessage
   | BaseMessageLike;
 
+/**
+ * Prebuilt reducer that combines returned messages.
+ * Can handle standard messages and special modifiers like {@link RemoveMessage}
+ * instances.
+ */
 export function messagesStateReducer(
   left: BaseMessage[],
   right: Messages
@@ -59,6 +64,7 @@ export function messagesStateReducer(
   return merged.filter((m) => !idsToRemove.has(m.id));
 }
 
+/** @ignore */
 export class MessageGraph extends StateGraph<
   BaseMessage[],
   BaseMessage[],

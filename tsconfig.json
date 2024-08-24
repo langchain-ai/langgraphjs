@@ -19,6 +19,8 @@
   },
   "include": [
     "libs/*/src/**/*",
+    "libs/*/*.d.ts",
+    "libs/langgraph/*.d.ts",
     "libs/langgraph/*.d.ts",
   ],
   "exclude": [

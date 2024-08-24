@@ -11,6 +11,7 @@ interface Step {
   observation: unknown;
 }
 
+/** @ignore */
 export interface AgentExecutorState {
   agentOutcome?: AgentAction | AgentFinish;
   steps: Array<Step>;
@@ -18,6 +19,7 @@ export interface AgentExecutorState {
   chatHistory?: BaseMessage[];
 }
 
+/** @ignore */
 export function createAgentExecutor({
   agentRunnable,
   tools,

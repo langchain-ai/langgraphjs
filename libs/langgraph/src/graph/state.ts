@@ -44,6 +44,68 @@ export interface StateGraphArgs<Channels extends object | unknown> {
     : ChannelReducers<{ __root__: Channels }>;
 }
 
+/**
+ * A graph whose nodes communicate by reading and writing to a shared state.
+ * Each node takes a defined `State` as input and returns a `Partial<State>`.
+ *
+ * Each state key can optionally be annotated with a reducer function that
+ * will be used to aggregate the values of that key received from multiple nodes.
+ * The signature of a reducer function is (left: Value, right: UpdateValue) => Value.
+ *
+ * See {@link Annotation} for more on defining state.
+ *
+ * After adding nodes and edges to your graph, you must call `.compile()` on it before
+ * you can use it.
+ *
+ * @example
+ * ```ts
+ * import {
+ *   type BaseMessage,
+ *   AIMessage,
+ *   HumanMessage,
+ * } from "@langchain/core/messages";
+ * import { StateGraph, Annotation } from "@langchain/langgraph";
+ *
+ * // Define a state with a single key named "messages" that will
+ * // combine a returned BaseMessage or arrays of BaseMessages
+ * const StateAnnotation = Annotation.Root({
+ *   sentiment: Annotation<string>,
+ *   messages: Annotation<BaseMessage[]>({
+ *     reducer: (left: BaseMessage[], right: BaseMessage | BaseMessage[]) => {
+ *       if (Array.isArray(right)) {
+ *         return left.concat(right);
+ *       }
+ *       return left.concat([right]);
+ *     },
+ *     default: () => [],
+ *   }),
+ * });
+ *
+ * const graphBuilder = new StateGraph(StateAnnotation);
+ *
+ * // A node in the graph that returns an object with a "messages" key
+ * // will update the state by combining the existing value with the returned one.
+ * const myNode = (state: typeof StateAnnotation.State) => {
+ *   return {
+ *     messages: [new AIMessage("Some new response")],
+ *     sentiment: "positive",
+ *   };
+ * };
+ *
+ * const graph = graphBuilder
+ *   .addNode("myNode", myNode)
+ *   .addEdge("__start__", "myNode")
+ *   .addEdge("myNode", "__end__")
+ *   .compile();
+ *
+ * await graph.invoke({ messages: [new HumanMessage("how are you?")] });
+ *
+ * // {
+ * //   messages: [HumanMessage("how are you?"), AIMessage("Some new response")],
+ * //   sentiment: "positive",
+ * // }
+ * ```
+ */
 export class StateGraph<
   SD extends StateDefinition | unknown,
   S = SD extends StateDefinition ? StateType<SD> : SD,
