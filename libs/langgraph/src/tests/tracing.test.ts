@@ -4,6 +4,10 @@ import { FakeToolCallingChatModel } from "./utils.js";
 // Import from main `@langchain/langgraph` endpoint to turn on automatic config passing
 import { END, START, StateGraph } from "../index.js";
 import { gatherIterator } from "../utils.js";
+import { tool } from "@langchain/core/tools";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { z } from "zod";
+import { createReactAgent } from "../prebuilt/react_agent_executor.js";
 
 it("stream events for a multi-node graph", async () => {
   const stateGraph = new StateGraph<{
@@ -329,4 +333,71 @@ it("stream events for a multi-node graph", async () => {
       metadata: {},
     },
   ]);
+});
+
+it("stream events with a tool with a custom tag", async () => {
+  const model = new FakeToolCallingChatModel({
+    responses: [
+      new AIMessage({
+        tool_calls: [
+          {
+            id: "test_id",
+            args: {
+              place: "somewhere ",
+            },
+            name: "get_items",
+            type: "tool_call",
+          },
+        ],
+        content: "",
+      }),
+      new AIMessage("foo"),
+    ],
+  });
+  const getItems = tool(
+    async (input, config) => {
+      const template = ChatPromptTemplate.fromMessages([
+        [
+          "human",
+          "Can you tell me what kind of items i might find in the following place: '{place}'. " +
+            "List at least 3 such items separating them by a comma. And include a brief description of each item..",
+        ],
+      ]);
+
+      const modelWithConfig = model.withConfig({
+        runName: "Get Items LLM",
+        tags: ["tool_llm"],
+      });
+
+      const chain = template.pipe(modelWithConfig);
+      const result = await chain.invoke(input, config);
+      return result.content;
+    },
+    {
+      name: "get_items",
+      description:
+        "Use this tool to look up which items are in the given place.",
+      schema: z.object({
+        place: z.string(),
+      }),
+    }
+  );
+  const agent = createReactAgent({
+    llm: model,
+    tools: [getItems],
+  });
+  const chunks = await gatherIterator(
+    agent.streamEvents(
+      {
+        messages: [["human", "what items are on the shelf?"]],
+      },
+      {
+        version: "v2",
+      },
+      {
+        includeTags: ["tool_llm"],
+      }
+    )
+  );
+  expect(chunks.length).toEqual(3);
 });
