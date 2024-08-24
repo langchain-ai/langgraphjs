@@ -1,12 +1,17 @@
 import { expect, it } from "@jest/globals";
-import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
+import { z } from "zod";
+import { tool } from "@langchain/core/tools";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+import {
+  AIMessage,
+  AIMessageChunk,
+  BaseMessage,
+  HumanMessage,
+} from "@langchain/core/messages";
 import { FakeToolCallingChatModel } from "./utils.js";
 // Import from main `@langchain/langgraph` endpoint to turn on automatic config passing
 import { END, START, StateGraph } from "../index.js";
 import { gatherIterator } from "../utils.js";
-import { tool } from "@langchain/core/tools";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { z } from "zod";
 import { createReactAgent } from "../prebuilt/react_agent_executor.js";
 
 it("stream events for a multi-node graph", async () => {
@@ -138,6 +143,23 @@ it("stream events for a multi-node graph", async () => {
       }),
     },
     {
+      event: "on_chat_model_stream",
+      data: {
+        chunk: new AIMessageChunk("hey!"),
+      },
+      name: "model_call",
+      tags: [],
+      run_id: expect.any(String),
+      metadata: expect.objectContaining({
+        langgraph_node: "testnode",
+        langgraph_step: 1,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["start:testnode"],
+        ls_model_type: "chat",
+        ls_stop: undefined,
+      }),
+    },
+    {
       event: "on_chat_model_end",
       data: {
         output: new AIMessage("hey!"),
@@ -235,6 +257,23 @@ it("stream events for a multi-node graph", async () => {
         input: {
           messages: [[new HumanMessage("testing but should be traced")]],
         },
+      },
+      name: "conditional_edge_call",
+      tags: [],
+      run_id: expect.any(String),
+      metadata: expect.objectContaining({
+        langgraph_node: "testnode",
+        langgraph_step: 1,
+        langgraph_task_idx: 0,
+        langgraph_triggers: ["start:testnode"],
+        ls_model_type: "chat",
+        ls_stop: undefined,
+      }),
+    },
+    {
+      event: "on_chat_model_stream",
+      data: {
+        chunk: new AIMessageChunk("hey!"),
       },
       name: "conditional_edge_call",
       tags: [],
