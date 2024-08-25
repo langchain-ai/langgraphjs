@@ -42,9 +42,12 @@ const VALUES = [
   ["various data types", complexValue],
 ] satisfies [string, unknown][];
 
-it.each(VALUES)("should serialize and deserialize %s", async (_description, value) => {
-  const serde = new JsonPlusSerializer();
-  const [type, serialized] = serde.dumpsTyped(value);
-  const deserialized = await serde.loadsTyped(type, serialized);
-  expect(deserialized).toEqual(value);
-});
+it.each(VALUES)(
+  "should serialize and deserialize %s",
+  async (_description, value) => {
+    const serde = new JsonPlusSerializer();
+    const [type, serialized] = serde.dumpsTyped(value);
+    const deserialized = await serde.loadsTyped(type, serialized);
+    expect(deserialized).toEqual(value);
+  }
+);
