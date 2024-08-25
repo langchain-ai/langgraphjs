@@ -2943,7 +2943,7 @@ describe("StateGraph", () => {
       test: null,
       reducerField: {
         default: () => "",
-        reducer: (x, y?: string) => (y ?? x),
+        reducer: (x, y?: string) => y ?? x,
       },
     };
 
@@ -3001,8 +3001,8 @@ describe("StateGraph", () => {
           source: "loop",
           writes: {
             wipeFields: {
-              test: null,
-              reducerField: null,
+              test: undefined,
+              reducerField: undefined,
             },
           },
           step: 2,

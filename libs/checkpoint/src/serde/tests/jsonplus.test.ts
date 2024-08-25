@@ -35,6 +35,7 @@ const complexValue = {
 };
 
 const VALUES = [
+  ["undefined", undefined],
   ["null", null],
   ["empty string", ""],
   ["simple string", "foobar"],
@@ -46,11 +47,4 @@ it.each(VALUES)("should serialize and deserialize %s", async (_description, valu
   const [type, serialized] = serde.dumpsTyped(value);
   const deserialized = await serde.loadsTyped(type, serialized);
   expect(deserialized).toEqual(value);
-});
-
-it(`should serialize "undefined" as "null"`, async () => {
-  const serde = new JsonPlusSerializer();
-  const [type, serialized] = serde.dumpsTyped(undefined);
-  const deserialized = await serde.loadsTyped(type, serialized);
-  expect(deserialized).toEqual(null);
 });

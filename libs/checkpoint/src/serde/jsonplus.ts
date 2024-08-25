@@ -5,7 +5,9 @@ import { SerializerProtocol } from "./base.js";
 
 async function _reviver(value: any): Promise<any> {
   if (value && typeof value === "object") {
-    if (
+    if (value.lc === 2 && value.type === "undefined") {
+      return undefined;
+    } else if (
       value.lc === 2 &&
       value.type === "constructor" &&
       Array.isArray(value.id)
@@ -72,8 +74,10 @@ function _encodeConstructorArgs(
 
 function _default(_key: string, obj: any): any {
   if (obj === undefined) {
-    console.warn(`Serializer received an explicit "undefined" value. Converting to "null".`);
-    return null;
+    return {
+      lc: 2,
+      type: "undefined",
+    };
   } else if (obj instanceof Set || obj instanceof Map) {
     return _encodeConstructorArgs(obj.constructor, undefined, [
       Array.from(obj),
