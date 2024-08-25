@@ -54,17 +54,7 @@ export class MemorySaver extends BaseCheckpointSaver {
             ];
           })
         );
-        const parentConfig =
-          parentCheckpointId !== undefined
-            ? {
-                configurable: {
-                  thread_id,
-                  checkpoint_ns,
-                  checkpoint_id,
-                },
-              }
-            : undefined;
-        return {
+        const checkpointTuple: CheckpointTuple = {
           config,
           checkpoint: (await this.serde.loadsTyped(
             "json",
@@ -75,8 +65,17 @@ export class MemorySaver extends BaseCheckpointSaver {
             metadata
           )) as CheckpointMetadata,
           pendingWrites,
-          parentConfig,
         };
+        if (parentCheckpointId !== undefined) {
+          checkpointTuple.parentConfig = {
+            configurable: {
+              thread_id,
+              checkpoint_ns,
+              checkpoint_id,
+            },
+          };
+        }
+        return checkpointTuple;
       }
     } else {
       const checkpoints = this.storage[thread_id]?.[checkpoint_ns];
@@ -99,17 +98,7 @@ export class MemorySaver extends BaseCheckpointSaver {
             ];
           })
         );
-        const parentConfig =
-          parentCheckpointId !== undefined
-            ? {
-                configurable: {
-                  thread_id,
-                  checkpoint_ns,
-                  checkpoint_id: parentCheckpointId,
-                },
-              }
-            : undefined;
-        return {
+        const checkpointTuple: CheckpointTuple = {
           config: {
             configurable: {
               thread_id,
@@ -126,8 +115,17 @@ export class MemorySaver extends BaseCheckpointSaver {
             metadata
           )) as CheckpointMetadata,
           pendingWrites,
-          parentConfig,
         };
+        if (parentCheckpointId !== undefined) {
+          checkpointTuple.parentConfig = {
+            configurable: {
+              thread_id,
+              checkpoint_ns,
+              checkpoint_id: parentCheckpointId,
+            },
+          };
+        }
+        return checkpointTuple;
       }
     }
 
@@ -191,7 +189,7 @@ export class MemorySaver extends BaseCheckpointSaver {
           })
         );
 
-        yield {
+        const checkpointTuple: CheckpointTuple = {
           config: {
             configurable: {
               thread_id: threadId,
@@ -205,16 +203,17 @@ export class MemorySaver extends BaseCheckpointSaver {
           )) as Checkpoint,
           metadata,
           pendingWrites,
-          parentConfig: parentCheckpointId
-            ? {
-                configurable: {
-                  thread_id: threadId,
-                  checkpoint_ns: checkpointNamespace,
-                  checkpoint_id: parentCheckpointId,
-                },
-              }
-            : undefined,
         };
+        if (parentCheckpointId !== undefined) {
+          checkpointTuple.parentConfig = {
+            configurable: {
+              thread_id: threadId,
+              checkpoint_ns: checkpointNamespace,
+              checkpoint_id: parentCheckpointId,
+            },
+          };
+        }
+        yield checkpointTuple;
       }
     }
   }

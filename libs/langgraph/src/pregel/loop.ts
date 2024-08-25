@@ -302,7 +302,7 @@ export class PregelLoop {
         : mapOutputValues(outputKeys, writes, this.channels).next().value;
       await this._putCheckpoint({
         source: "loop",
-        writes: metadataWrites,
+        writes: metadataWrites ?? null,
       });
       // after execution, check if we should interrupt
       if (shouldInterrupt(this.checkpoint, interruptAfter, this.tasks)) {
@@ -456,7 +456,10 @@ export class PregelLoop {
         this.checkpointerGetNextVersion
       );
       // save input checkpoint
-      await this._putCheckpoint({ source: "input", writes: this.input });
+      await this._putCheckpoint({
+        source: "input",
+        writes: this.input ?? null,
+      });
     }
     // done with input
     this.input = isResuming ? INPUT_RESUMING : INPUT_DONE;

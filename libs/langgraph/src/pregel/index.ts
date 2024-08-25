@@ -454,7 +454,6 @@ export class Pregel<
         writers.length > 1 ? RunnableSequence.from(writers as any) : writers[0],
       writes: [],
       triggers: [INTERRUPT],
-      config: undefined,
       id: uuid5(INTERRUPT, checkpoint.id),
     };
 

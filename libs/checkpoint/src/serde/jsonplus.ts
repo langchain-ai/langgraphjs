@@ -64,14 +64,17 @@ function _encodeConstructorArgs(
     lc: 2,
     type: "constructor",
     id: [constructor.name],
-    method,
+    method: method ?? null,
     args: args ?? [],
     kwargs: kwargs ?? {},
   };
 }
 
 function _default(_key: string, obj: any): any {
-  if (obj instanceof Set || obj instanceof Map) {
+  if (obj === undefined) {
+    console.warn(`Serializer received an explicit "undefined" value. Converting to "null".`);
+    return null;
+  } else if (obj instanceof Set || obj instanceof Map) {
     return _encodeConstructorArgs(obj.constructor, undefined, [
       Array.from(obj),
     ]);
