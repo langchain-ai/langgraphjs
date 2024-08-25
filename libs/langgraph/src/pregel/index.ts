@@ -462,7 +462,7 @@ export class Pregel<
     await task.proc.invoke(
       task.input,
       patchConfig(config, {
-        runName: `${this.name}UpdateState`,
+        runName: config.runName ?? `${this.getName()}UpdateState`,
         configurable: {
           [CONFIG_KEY_SEND]: (items: [keyof Cc, unknown][]) =>
             task.writes.push(...items),
