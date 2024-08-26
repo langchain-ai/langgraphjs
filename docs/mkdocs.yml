@@ -114,6 +114,7 @@ nav:
           - Stream LLM tokens: "how-tos/stream-tokens.ipynb"
           - Stream LLM tokens without LangChain models: "how-tos/streaming-tokens-without-langchain.ipynb"
           - Stream events from within a tool: "how-tos/streaming-events-from-within-tools.ipynb"
+          - Stream from the final node: "how-tos/streaming-from-final-node.ipynb"
       - Tool calling:
           - Call tools using ToolNode: "how-tos/tool-calling.ipynb"
           - Handle tool calling errors: "how-tos/tool-calling-errors.ipynb"
@@ -195,3 +196,11 @@ extra:
       link: https://github.com/langchain-ai/langgraphjs
     - icon: fontawesome/brands/twitter
       link: https://twitter.com/LangChainAI
+
+validation:
+  omitted_files: warn
+  unrecognized_links: warn
+  nav:
+    not_found: warn
+  links:
+    not_found: warn

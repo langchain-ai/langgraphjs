@@ -4,7 +4,7 @@
 
 At its core, LangGraph models agent workflows as graphs. You define the behavior of your agents using three key components:
 
-1. [`State`](#state): A shared data structure that represents the current snapshot of your application. It is represented by an [`annotations`](https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph.Annotation-1.html) object.
+1. [`State`](#state): A shared data structure that represents the current snapshot of your application. It is represented by an [`annotations`](/langgraphjs/reference/functions/langgraph.Annotation-1.html) object.
 
 2. [`Nodes`](#nodes): JavaScript/TypeScript functions that encode the logic of your agents. They receive the current `State` as input, perform some computation or side-effect, and return an updated `State`.
 
@@ -22,6 +22,10 @@ A super-step can be considered a single iteration over the graph nodes. Nodes th
 
 The `StateGraph` class is the main graph class to uses. This is parameterized by a user defined `State` object. (defined using the `Annotation` object and passed as the first argument)
 
+### MessageGraph
+
+The `MessageGraph` class is a special type of graph. The `State` of a `MessageGraph` is ONLY an array of messages. This class is rarely used except for chatbots, as most applications require the `State` to be more complex than an array of messages.
+
 ### Compiling your graph
 
 To build your graph, you first define the [state](#state), you then add [nodes](#nodes) and [edges](#edges), and then you compile it. What exactly is compiling your graph and why is it needed?
@@ -36,11 +40,11 @@ You **MUST** compile your graph before you can use it.
 
 ## State
 
-The first thing you do when you define a graph is define the `State` of the graph. The `State` consists of the [schema of the graph](#schema) as well as [`reducer` functions](#reducers) which specify how to apply updates to the state. The schema of the `State` will be the input schema to all `Nodes` and `Edges` in the graph, and should be defined using an [`Annotation`](https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph.Annotation-1.html) object. All `Nodes` will emit updates to the `State` which are then applied using the specified `reducer` function.
+The first thing you do when you define a graph is define the `State` of the graph. The `State` consists of the [schema of the graph](#schema) as well as [`reducer` functions](#reducers) which specify how to apply updates to the state. The schema of the `State` will be the input schema to all `Nodes` and `Edges` in the graph, and should be defined using an [`Annotation`](/langgraphjs/reference/functions/langgraph.Annotation-1.html) object. All `Nodes` will emit updates to the `State` which are then applied using the specified `reducer` function.
 
 ### Schema
 
-The way to specify the schema of a graph is by defining an [`Annotation`](https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph.Annotation-1.html) object, where each key is an item in the state.
+The way to specify the schema of a graph is by defining an [`Annotation`](/langgraphjs/reference/functions/langgraph.Annotation-1.html) object, where each key is an item in the state.
 
 ### Reducers
 
@@ -81,7 +85,7 @@ In this example, we've updated our `bar` field to be an object containing a `red
 
 ### MessageState
 
-`MessageState` is one of the few opinionated components in LangGraph. `MessageState` is a special state designed to make it easy to use a list of messages as a key in your state. Specifically, `MessageState` is defined as:
+`MessageState` is one of the few opinionated components in LangGraph. `MessageState` is a special state designed to make it easy to use an array of messages as a key in your state. Specifically, `MessageState` is defined as:
 
 ```typescript
 import { BaseMessage } from "@langchain/core/messages";
@@ -102,9 +106,9 @@ export class MessageGraph extends StateGraph {
 }
 ```
 
-What this is doing is creating a `State` with a single key `messages`. This is a list of `BaseMessage`s, with [`messagesStateReducer`](https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph.messagesStateReducer.html) as a reducer. `messagesStateReducer` basically adds messages to the existing list (it also does some nice extra things, like convert from OpenAI message format to the standard LangChain message format, handle updates based on message IDs, etc).
+What this is doing is creating a `State` with a single key `messages`. This is an array of `BaseMessage`s, with [`messagesStateReducer`](/langgraphjs/reference/functions/langgraph.messagesStateReducer.html) as a reducer. `messagesStateReducer` basically adds messages to the existing list (it also does some nice extra things, like convert from OpenAI message format to the standard LangChain message format, handle updates based on message IDs, etc).
 
-We often see a list of messages being a key component of state, so this prebuilt state is intended to make it easy to use messages. Typically, there is more state to track than just messages, so we see people extend this state and add more fields, like:
+We often see an array of messages being a key component of state, so this prebuilt state is intended to make it easy to use messages. Typically, there is more state to track than just messages, so we see people extend this state and add more fields, like:
 
 ```typescript
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
@@ -119,7 +123,7 @@ const StateWithDocuments = Annotation.Root({
 
 In LangGraph, nodes are typically JavaScript/TypeScript functions (sync or `async`) where the **first** positional argument is the [state](#state), and (optionally), the **second** positional argument is a "config", containing optional [configurable parameters](#configuration) (such as a `thread_id`).
 
-Similar to `NetworkX`, you add these nodes to a graph using the [addNode](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.StateGraph.html#addNode) method:
+Similar to `NetworkX`, you add these nodes to a graph using the [addNode](/langgraphjs/reference/classes/langgraph.StateGraph.html#addNode) method:
 
 ```typescript
 import { RunnableConfig } from "@langchain/core/runnables";
@@ -184,7 +188,7 @@ A node can have MULTIPLE outgoing edges. If a node has multiple out-going edges,
 
 ### Normal Edges
 
-If you **always** want to go from node A to node B, you can use the [addEdge](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.StateGraph.html#addEdge) method directly.
+If you **always** want to go from node A to node B, you can use the [addEdge](/langgraphjs/reference/classes/langgraph.StateGraph.html#addEdge) method directly.
 
 ```typescript
 graph.addEdge("nodeA", "nodeB");
@@ -192,7 +196,7 @@ graph.addEdge("nodeA", "nodeB");
 
 ### Conditional Edges
 
-If you want to **optionally** route to 1 or more edges (or optionally terminate), you can use the [addConditionalEdges](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.StateGraph.html#addConditionalEdges) method. This method accepts the name of a node and a "routing function" to call after that node is executed:
+If you want to **optionally** route to 1 or more edges (or optionally terminate), you can use the [addConditionalEdges](/langgraphjs/reference/classes/langgraph.StateGraph.html#addConditionalEdges) method. This method accepts the name of a node and a "routing function" to call after that node is executed:
 
 ```typescript
 graph.addConditionalEdges("nodeA", routingFunction);
@@ -200,7 +204,7 @@ graph.addConditionalEdges("nodeA", routingFunction);
 
 Similar to nodes, the `routingFunction` accept the current `state` of the graph and return a value.
 
-By default, the return value `routingFunction` is used as the name of the node (or a list of nodes) to send the state to next. All those nodes will be run in parallel as a part of the next superstep.
+By default, the return value `routingFunction` is used as the name of the node (or an array of nodes) to send the state to next. All those nodes will be run in parallel as a part of the next superstep.
 
 You can optionally provide an object that maps the `routingFunction`'s output to the name of the next node.
 
@@ -213,7 +217,7 @@ graph.addConditionalEdges("nodeA", routingFunction, {
 
 ### Entry Point
 
-The entry point is the first node(s) that are run when the graph starts. You can use the [`addEdge`](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.StateGraph.html#addEdge) method from the virtual [`START`](https://langchain-ai.github.io/langgraphjs/reference/variables/langgraph.START.html) node to the first node to execute to specify where to enter the graph.
+The entry point is the first node(s) that are run when the graph starts. You can use the [`addEdge`](/langgraphjs/reference/classes/langgraph.StateGraph.html#addEdge) method from the virtual [`START`](/langgraphjs/reference/variables/langgraph.START.html) node to the first node to execute to specify where to enter the graph.
 
 ```typescript
 import { START } from "@langchain/langgraph" 
@@ -223,7 +227,7 @@ graph.addEdge(START, "nodeA")
 
 ### Conditional Entry Point
 
-A conditional entry point lets you start at different nodes depending on custom logic. You can use [`addConditionalEdges`](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.StateGraph.html#addConditionalEdges) from the virtual [`START`](https://langchain-ai.github.io/langgraphjs/reference/variables/langgraph.START.html) node to accomplish this.
+A conditional entry point lets you start at different nodes depending on custom logic. You can use [`addConditionalEdges`](/langgraphjs/reference/classes/langgraph.StateGraph.html#addConditionalEdges) from the virtual [`START`](/langgraphjs/reference/variables/langgraph.START.html) node to accomplish this.
 
 ```typescript
 import { START } from "@langchain/langgraph" 
@@ -242,9 +246,9 @@ graph.addConditionalEdges(START, routingFunction, {
 
 ## `Send`
 
-By default, `Nodes` and `Edges` are defined ahead of time and operate on the same shared state. However, there can be cases where the exact edges are not known ahead of time and/or you may want different versions of `State` to exist at the same time. A common of example of this is with `map-reduce` design patterns. In this design pattern, a first node may generate a list of objects, and you may want to apply some other node to all those objects. The number of objects may be unknown ahead of time (meaning the number of edges may not be known) and the input `State` to the downstream `Node` should be different (one for each generated object).
+By default, `Nodes` and `Edges` are defined ahead of time and operate on the same shared state. However, there can be cases where the exact edges are not known ahead of time and/or you may want different versions of `State` to exist at the same time. A common of example of this is with `map-reduce` design patterns. In this design pattern, a first node may generate an array of objects, and you may want to apply some other node to all those objects. The number of objects may be unknown ahead of time (meaning the number of edges may not be known) and the input `State` to the downstream `Node` should be different (one for each generated object).
 
-To support this design pattern, LangGraph supports returning [`Send`](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.Send.html) objects from conditional edges. `Send` takes two arguments: first is the name of the node, and second is the state to pass to that node.
+To support this design pattern, LangGraph supports returning [`Send`](/langgraphjs/reference/classes/langgraph.Send.html) objects from conditional edges. `Send` takes two arguments: first is the name of the node, and second is the state to pass to that node.
 
 ```typescript
 const continueToJokes = (state: { subjects: string[] }) => {
@@ -256,7 +260,7 @@ graph.addConditionalEdges("nodeA", continueToJokes);
 
 ## Checkpointer
 
-LangGraph has a built-in persistence layer, implemented through [checkpointers](https://langchain-ai.github.io/langgraphjs/reference/classes/checkpoint.BaseCheckpointSaver.html). When you use a checkpointer with a graph, you can interact with the state of that graph. When you use a checkpointer with a graph, you can interact with and manage the graph's state. The checkpointer saves a _checkpoint_ of the graph state at every super-step, enabling several powerful capabilities:
+LangGraph has a built-in persistence layer, implemented through [checkpointers](/langgraphjs/reference/classes/checkpoint.BaseCheckpointSaver.html). When you use a checkpointer with a graph, you can interact with the state of that graph. When you use a checkpointer with a graph, you can interact with and manage the graph's state. The checkpointer saves a _checkpoint_ of the graph state at every super-step, enabling several powerful capabilities:
 
 First, checkpointers facilitate [human-in-the-loop workflows](agentic_concepts.md#human-in-the-loop) workflows by allowing humans to inspect, interrupt, and approve steps. Checkpointers are needed for these workflows as the human has to be able to view the state of a graph at any point in time, and the graph has to be to resume execution after the human has made any updates to the state.
 
