@@ -1841,21 +1841,21 @@ __metadata:
   linkType: hard
 
 "@langchain/core@npm:latest":
-  version: 0.2.27
-  resolution: "@langchain/core@npm:0.2.27"
+  version: 0.2.29
+  resolution: "@langchain/core@npm:0.2.29"
   dependencies:
     ansi-styles: ^5.0.0
     camelcase: 6
     decamelize: 1.2.0
     js-tiktoken: ^1.0.12
-    langsmith: ~0.1.39
+    langsmith: ^0.1.43
     mustache: ^4.2.0
     p-queue: ^6.6.2
     p-retry: 4
     uuid: ^10.0.0
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
-  checksum: 188ab834a0a9f4462b81d38b92be61df91d87392b2bd86fb21d5cfe253c080700d09ffd954c90726704fc5fe6c0f06cb2f5bd7705f17632819473c9d8ed57b39
+  checksum: 8c42017d567595866ddc57421f2d7b6dca0e42becf992ae92f1b2715667f0455ade90ebeb11dff9e739080ca5b49776013b2b2e55a16502bf42041d5f91388ce
   languageName: node
   linkType: hard
 
@@ -1993,7 +1993,7 @@ __metadata:
     "@jest/globals": ^29.5.0
     "@langchain/anthropic": ^0.2.12
     "@langchain/community": ^0.2.25
-    "@langchain/core": ">=0.2.20 <0.3.0"
+    "@langchain/core": ^0.2.29
     "@langchain/langgraph-checkpoint": ~0.0.2
     "@langchain/langgraph-checkpoint-sqlite": ~0.0.1
     "@langchain/openai": ^0.2.4
@@ -3329,7 +3329,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/uuid@npm:^10":
+"@types/uuid@npm:^10, @types/uuid@npm:^10.0.0":
   version: 10.0.0
   resolution: "@types/uuid@npm:10.0.0"
   checksum: e3958f8b0fe551c86c14431f5940c3470127293280830684154b91dc7eb3514aeb79fe3216968833cf79d4d1c67f580f054b5be2cd562bebf4f728913e73e944
@@ -8954,7 +8954,32 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"langsmith@npm:~0.1.30, langsmith@npm:~0.1.39":
+"langsmith@npm:^0.1.43":
+  version: 0.1.47
+  resolution: "langsmith@npm:0.1.47"
+  dependencies:
+    "@types/uuid": ^10.0.0
+    commander: ^10.0.1
+    p-queue: ^6.6.2
+    p-retry: 4
+    semver: ^7.6.3
+    uuid: ^10.0.0
+  peerDependencies:
+    "@langchain/core": "*"
+    langchain: "*"
+    openai: "*"
+  peerDependenciesMeta:
+    "@langchain/core":
+      optional: true
+    langchain:
+      optional: true
+    openai:
+      optional: true
+  checksum: 52b663619f4bec5c935555ce3fc25b413c2670b696ec715f0d3fdcfcf5a444332acdd6729c7f34579e57201802d1d6d23811a5202fa03a1d4da7fe2ba8782335
+  languageName: node
+  linkType: hard
+
+"langsmith@npm:~0.1.30":
   version: 0.1.39
   resolution: "langsmith@npm:0.1.39"
   dependencies:
