@@ -2933,6 +2933,102 @@ describe("StateGraph", () => {
     ]);
   });
 
+  it("should use a retry policy", async () => {
+    const checkpointer = new MemorySaverAssertImmutable(); // Replace with actual checkpointer implementation
+
+    let erroredOnce = false;
+    let nonRetryableErrorCount = 0;
+
+    const GraphAnnotation = Annotation.Root({
+      total: Annotation<number>,
+      input: Annotation<number>,
+    });
+
+    const raiseIfAbove10 = ({ total }: typeof GraphAnnotation.State) => {
+      if (total > 2) {
+        if (!erroredOnce) {
+          erroredOnce = true;
+          const error = new Error("I will be retried");
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (error as any).status = 500;
+          throw error;
+        }
+      }
+      if (total > 8) {
+        nonRetryableErrorCount += 1;
+        const error = new Error("Total is too large");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (error as any).status = 400;
+        throw error;
+      }
+      return { total };
+    };
+
+    const add = ({ input, total }: typeof GraphAnnotation.State) => ({
+      total: input + total,
+    });
+
+    const app = new StateGraph(GraphAnnotation)
+      .addNode("add", add)
+      .addNode("check", raiseIfAbove10, {
+        retryPolicy: {},
+      })
+      .addEdge("__start__", "add")
+      .addEdge("add", "check")
+      .addEdge("check", "__end__")
+      .compile({ checkpointer });
+
+    // total starts out as 0, so output is 0+2=2
+    expect(
+      await app.invoke({ input: 2 }, { configurable: { thread_id: "1" } })
+    ).toEqual({ input: 2, total: 2 });
+    let checkpoint = await checkpointer.get({
+      configurable: { thread_id: "1" },
+    });
+    expect(checkpoint).not.toBeNull();
+    expect(checkpoint?.channel_values.total).toBe(2);
+    expect(erroredOnce).toBe(false);
+    expect(nonRetryableErrorCount).toBe(0);
+
+    // total is now 2, so output is 2+3=5
+    expect(
+      await app.invoke({ input: 3 }, { configurable: { thread_id: "1" } })
+    ).toEqual({ input: 3, total: 5 });
+    expect(erroredOnce).toBeTruthy();
+    let checkpointTuple = await checkpointer.getTuple({
+      configurable: { thread_id: "1" },
+    });
+    expect(checkpointTuple).not.toBeNull();
+    expect(erroredOnce).toBe(true);
+    expect(nonRetryableErrorCount).toBe(0);
+
+    // total is now 2+3=5, so output would be 5+4=9, but raises Error
+    await expect(
+      app.invoke({ input: 4 }, { configurable: { thread_id: "1" } })
+    ).rejects.toThrow("Total is too large");
+
+    // checkpoint is not updated, error is recorded
+    checkpointTuple = await checkpointer.getTuple({
+      configurable: { thread_id: "1" },
+    });
+    expect(checkpointTuple).not.toBeNull();
+    expect(checkpointTuple?.pendingWrites).toEqual([
+      [expect.any(String), "__error__", { message: "Total is too large" }],
+    ]);
+    expect(nonRetryableErrorCount).toBe(1);
+
+    // on a new thread, total starts out as 0, so output is 0+5=5
+    expect(
+      await app.invoke({ input: 5 }, { configurable: { thread_id: "2" } })
+    ).toEqual({ input: 5, total: 5 });
+    checkpoint = await checkpointer.get({ configurable: { thread_id: "1" } });
+    expect(checkpoint).not.toBeNull();
+    checkpoint = await checkpointer.get({ configurable: { thread_id: "2" } });
+    expect(checkpoint).not.toBeNull();
+    expect(checkpoint?.channel_values.total).toBe(5);
+    expect(nonRetryableErrorCount).toBe(1);
+  });
+
   it("should allow undefined values returned in a node update", async () => {
     interface GraphState {
       test?: string;

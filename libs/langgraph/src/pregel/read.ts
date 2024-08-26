@@ -11,6 +11,7 @@ import {
 import { CONFIG_KEY_READ } from "../constants.js";
 import { ChannelWrite } from "./write.js";
 import { RunnableCallable } from "../utils.js";
+import type { RetryPolicy } from "./utils.js";
 
 export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -80,6 +81,8 @@ interface PregelNodeArgs<RunInput, RunOutput>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   kwargs?: Record<string, any>;
   config?: RunnableConfig;
+  metadata?: Record<string, unknown>;
+  retryPolicy?: RetryPolicy;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -108,8 +111,21 @@ export class PregelNode<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   kwargs: Record<string, any> = {};
 
+  metadata: Record<string, unknown> = {};
+
+  retryPolicy?: RetryPolicy;
+
   constructor(fields: PregelNodeArgs<RunInput, RunOutput>) {
-    const { channels, triggers, mapper, writers, bound, kwargs } = fields;
+    const {
+      channels,
+      triggers,
+      mapper,
+      writers,
+      bound,
+      kwargs,
+      metadata,
+      retryPolicy,
+    } = fields;
     const mergedTags = [
       ...(fields.config?.tags ? fields.config.tags : []),
       ...(fields.tags ? fields.tags : []),
@@ -132,6 +148,8 @@ export class PregelNode<
     this.writers = writers ?? this.writers;
     this.bound = bound ?? this.bound;
     this.kwargs = kwargs ?? this.kwargs;
+    this.metadata = metadata ?? this.metadata;
+    this.retryPolicy = retryPolicy;
   }
 
   getWriters(): Array<Runnable> {
@@ -198,6 +216,7 @@ export class PregelNode<
       bound: this.bound,
       kwargs: this.kwargs,
       config: this.config,
+      retryPolicy: this.retryPolicy,
     });
   }
 
@@ -216,6 +235,7 @@ export class PregelNode<
         >,
         config: this.config,
         kwargs: this.kwargs,
+        retryPolicy: this.retryPolicy,
       });
     } else if (this.bound === defaultRunnableBound) {
       return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
@@ -226,6 +246,7 @@ export class PregelNode<
         bound: _coerceToRunnable<RunInput, NewRunOutput>(coerceable),
         config: this.config,
         kwargs: this.kwargs,
+        retryPolicy: this.retryPolicy,
       });
     } else {
       return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
@@ -236,6 +257,7 @@ export class PregelNode<
         bound: this.bound.pipe(coerceable),
         config: this.config,
         kwargs: this.kwargs,
+        retryPolicy: this.retryPolicy,
       });
     }
   }

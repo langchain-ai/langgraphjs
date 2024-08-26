@@ -55,15 +55,15 @@ import {
   InvalidUpdateError,
 } from "../errors.js";
 import {
-  executeTasks,
   _prepareNextTasks,
   _localRead,
   _applyWrites,
   StrRecord,
 } from "./algo.js";
 import { prefixGenerator } from "../utils.js";
-import { _coerceToDict, getNewChannelVersions } from "./utils.js";
+import { _coerceToDict, getNewChannelVersions, RetryPolicy } from "./utils.js";
 import { PregelLoop } from "./loop.js";
+import { executeTasksWithRetry } from "./retry.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -223,6 +223,8 @@ export class Pregel<
 
   checkpointer?: BaseCheckpointSaver;
 
+  retryPolicy?: RetryPolicy;
+
   constructor(fields: PregelParams<Nn, Cc>) {
     super(fields);
 
@@ -243,6 +245,7 @@ export class Pregel<
     this.stepTimeout = fields.stepTimeout ?? this.stepTimeout;
     this.debug = fields.debug ?? this.debug;
     this.checkpointer = fields.checkpointer;
+    this.retryPolicy = fields.retryPolicy;
 
     if (this.autoValidate) {
       this.validate();
@@ -685,43 +688,17 @@ export class Pregel<
         if (debug) {
           printStepTasks(loop.step, loop.tasks);
         }
-        // execute tasks, and wait for one to fail or all to finish.
-        // each task is independent from all other concurrent tasks
-        // yield updates/debug output as each task finishes
-        const tasks = Object.fromEntries(
-          loop.tasks
-            .filter((task) => task.writes.length === 0)
-            .map((pregelTask) => {
-              return [
-                pregelTask.id,
-                async () => {
-                  let error;
-                  let result;
-                  try {
-                    result = await pregelTask.proc.invoke(
-                      pregelTask.input,
-                      pregelTask.config
-                    );
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  } catch (e: any) {
-                    error = e;
-                    error.pregelTaskId = pregelTask.id;
-                  }
-                  return {
-                    task: pregelTask,
-                    result,
-                    error,
-                  };
-                },
-              ];
-            })
-        );
-
         try {
-          for await (const task of executeTasks(
-            tasks,
-            this.stepTimeout,
-            config.signal
+          // execute tasks, and wait for one to fail or all to finish.
+          // each task is independent from all other concurrent tasks
+          // yield updates/debug output as each task finishes
+          for await (const task of executeTasksWithRetry(
+            loop.tasks.filter((task) => task.writes.length === 0),
+            {
+              stepTimeout: this.stepTimeout,
+              signal: config.signal,
+              retryPolicy: this.retryPolicy,
+            }
           )) {
             loop.putWrites(task.id, task.writes);
             if (streamMode.includes("updates")) {
