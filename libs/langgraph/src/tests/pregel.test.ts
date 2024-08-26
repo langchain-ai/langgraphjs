@@ -42,6 +42,7 @@ import {
   Graph,
   START,
   StateGraph,
+  StateGraphArgs,
   StateType,
 } from "../graph/index.js";
 import { Topic } from "../channels/topic.js";
@@ -1340,7 +1341,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 5 },
+      metadata: { source: "loop", step: 5, writes: null },
       createdAt: expect.any(String),
       parentConfig: history[2].config,
     }),
@@ -1370,7 +1371,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 3 },
+      metadata: { source: "loop", step: 3, writes: null },
       createdAt: expect.any(String),
       parentConfig: history[4].config,
     }),
@@ -1415,7 +1416,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 0 },
+      metadata: { source: "loop", step: 0, writes: null },
       createdAt: expect.any(String),
       parentConfig: history[7].config,
     }),
@@ -1657,7 +1658,7 @@ it("pending writes resume", async () => {
       }),
     },
   ]);
-  expect(state.metadata).toEqual({ source: "loop", step: 0 });
+  expect(state.metadata).toEqual({ source: "loop", step: 0, writes: null });
 
   // should contain pending write of "one" and should contain error from "two"
   const checkpoint = await checkpointer.getTuple(thread1);
@@ -2931,6 +2932,293 @@ describe("StateGraph", () => {
       ["values", { value: 6 }],
     ]);
   });
+
+  it("should use a retry policy", async () => {
+    const checkpointer = new MemorySaverAssertImmutable(); // Replace with actual checkpointer implementation
+
+    let erroredOnce = false;
+    let nonRetryableErrorCount = 0;
+
+    const GraphAnnotation = Annotation.Root({
+      total: Annotation<number>,
+      input: Annotation<number>,
+    });
+
+    const raiseIfAbove10 = ({ total }: typeof GraphAnnotation.State) => {
+      if (total > 2) {
+        if (!erroredOnce) {
+          erroredOnce = true;
+          const error = new Error("I will be retried");
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (error as any).status = 500;
+          throw error;
+        }
+      }
+      if (total > 8) {
+        nonRetryableErrorCount += 1;
+        const error = new Error("Total is too large");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (error as any).status = 400;
+        throw error;
+      }
+      return { total };
+    };
+
+    const add = ({ input, total }: typeof GraphAnnotation.State) => ({
+      total: input + total,
+    });
+
+    const app = new StateGraph(GraphAnnotation)
+      .addNode("add", add)
+      .addNode("check", raiseIfAbove10, {
+        retryPolicy: {},
+      })
+      .addEdge("__start__", "add")
+      .addEdge("add", "check")
+      .addEdge("check", "__end__")
+      .compile({ checkpointer });
+
+    // total starts out as 0, so output is 0+2=2
+    expect(
+      await app.invoke({ input: 2 }, { configurable: { thread_id: "1" } })
+    ).toEqual({ input: 2, total: 2 });
+    let checkpoint = await checkpointer.get({
+      configurable: { thread_id: "1" },
+    });
+    expect(checkpoint).not.toBeNull();
+    expect(checkpoint?.channel_values.total).toBe(2);
+    expect(erroredOnce).toBe(false);
+    expect(nonRetryableErrorCount).toBe(0);
+
+    // total is now 2, so output is 2+3=5
+    expect(
+      await app.invoke({ input: 3 }, { configurable: { thread_id: "1" } })
+    ).toEqual({ input: 3, total: 5 });
+    expect(erroredOnce).toBeTruthy();
+    let checkpointTuple = await checkpointer.getTuple({
+      configurable: { thread_id: "1" },
+    });
+    expect(checkpointTuple).not.toBeNull();
+    expect(erroredOnce).toBe(true);
+    expect(nonRetryableErrorCount).toBe(0);
+
+    // total is now 2+3=5, so output would be 5+4=9, but raises Error
+    await expect(
+      app.invoke({ input: 4 }, { configurable: { thread_id: "1" } })
+    ).rejects.toThrow("Total is too large");
+
+    // checkpoint is not updated, error is recorded
+    checkpointTuple = await checkpointer.getTuple({
+      configurable: { thread_id: "1" },
+    });
+    expect(checkpointTuple).not.toBeNull();
+    expect(checkpointTuple?.pendingWrites).toEqual([
+      [expect.any(String), "__error__", { message: "Total is too large" }],
+    ]);
+    expect(nonRetryableErrorCount).toBe(1);
+
+    // on a new thread, total starts out as 0, so output is 0+5=5
+    expect(
+      await app.invoke({ input: 5 }, { configurable: { thread_id: "2" } })
+    ).toEqual({ input: 5, total: 5 });
+    checkpoint = await checkpointer.get({ configurable: { thread_id: "1" } });
+    expect(checkpoint).not.toBeNull();
+    checkpoint = await checkpointer.get({ configurable: { thread_id: "2" } });
+    expect(checkpoint).not.toBeNull();
+    expect(checkpoint?.channel_values.total).toBe(5);
+    expect(nonRetryableErrorCount).toBe(1);
+  });
+
+  it("should allow undefined values returned in a node update", async () => {
+    interface GraphState {
+      test?: string;
+      reducerField?: string;
+    }
+
+    const graphState: StateGraphArgs<GraphState>["channels"] = {
+      test: null,
+      reducerField: {
+        default: () => "",
+        reducer: (x, y?: string) => y ?? x,
+      },
+    };
+
+    const workflow = new StateGraph<GraphState>({ channels: graphState });
+
+    async function updateTest(
+      _state: GraphState
+    ): Promise<Partial<GraphState>> {
+      return {
+        test: "test",
+        reducerField: "should not be wiped",
+      };
+    }
+
+    async function wipeFields(
+      _state: GraphState
+    ): Promise<Partial<GraphState>> {
+      return {
+        test: undefined,
+        reducerField: undefined,
+      };
+    }
+
+    workflow
+      .addNode("updateTest", updateTest)
+      .addNode("wipeFields", wipeFields)
+      .addEdge(START, "updateTest")
+      .addEdge("updateTest", "wipeFields")
+      .addEdge("wipeFields", END);
+
+    const checkpointer = new MemorySaver();
+
+    const app = workflow.compile({ checkpointer });
+    const config: RunnableConfig = {
+      configurable: { thread_id: "102" },
+    };
+    const res = await app.invoke(
+      {
+        messages: ["initial input"],
+      },
+      config
+    );
+    expect(res).toEqual({
+      reducerField: "should not be wiped",
+    });
+    const history = await gatherIterator(app.getStateHistory(config));
+    expect(history).toEqual([
+      {
+        values: {
+          reducerField: "should not be wiped",
+        },
+        next: [],
+        tasks: [],
+        metadata: {
+          source: "loop",
+          writes: {
+            wipeFields: {
+              test: undefined,
+              reducerField: undefined,
+            },
+          },
+          step: 2,
+        },
+        config: {
+          configurable: {
+            thread_id: "102",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "102",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: {
+          test: "test",
+          reducerField: "should not be wiped",
+        },
+        next: ["wipeFields"],
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "wipeFields",
+          },
+        ],
+        metadata: {
+          source: "loop",
+          writes: {
+            updateTest: {
+              test: "test",
+              reducerField: "should not be wiped",
+            },
+          },
+          step: 1,
+        },
+        config: {
+          configurable: {
+            thread_id: "102",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "102",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: {
+          reducerField: "",
+        },
+        next: ["updateTest"],
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "updateTest",
+          },
+        ],
+        metadata: {
+          source: "loop",
+          writes: null,
+          step: 0,
+        },
+        config: {
+          configurable: {
+            thread_id: "102",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "102",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: {
+          reducerField: "",
+        },
+        next: ["__start__"],
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "__start__",
+          },
+        ],
+        metadata: {
+          source: "input",
+          writes: {
+            messages: ["initial input"],
+          },
+          step: -1,
+        },
+        config: {
+          configurable: {
+            thread_id: "102",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
+        parentConfig: undefined,
+      },
+    ]);
+  });
 });
 
 describe("PreBuilt", () => {
@@ -3111,6 +3399,59 @@ describe("MessageGraph", () => {
       .addEdge("action", "agent")
       .compile();
 
+    expect(app.getGraph().toJSON()).toMatchObject({
+      nodes: expect.arrayContaining([
+        {
+          id: "__start__",
+          type: "schema",
+          data: {
+            $schema: "http://json-schema.org/draft-07/schema#",
+            title: undefined,
+          },
+        },
+        {
+          id: "agent",
+          type: "runnable",
+          data: {
+            id: ["langchain", "chat_models", "fake", "FakeChatModel"],
+            name: "FakeChatModel",
+          },
+        },
+        {
+          id: "action",
+          type: "runnable",
+          data: {
+            id: ["langchain_core", "runnables", "RunnableLambda"],
+            name: "RunnableLambda",
+          },
+        },
+        {
+          id: "__end__",
+          type: "schema",
+          data: {
+            $schema: "http://json-schema.org/draft-07/schema#",
+            title: undefined,
+          },
+        },
+      ]),
+      edges: expect.arrayContaining([
+        { source: "__start__", target: "agent" },
+        { source: "action", target: "agent" },
+        {
+          source: "agent",
+          target: "action",
+          data: "continue",
+          conditional: true,
+        },
+        {
+          source: "agent",
+          target: "__end__",
+          data: "end",
+          conditional: true,
+        },
+      ]),
+    });
+
     const result = await app.invoke(
       new HumanMessage("what is the weather in sf?")
     );
@@ -3221,6 +3562,45 @@ describe("MessageGraph", () => {
       .addEdge("action", "agent")
       .compile();
 
+    expect(app.getGraph().toJSON()).toMatchObject({
+      nodes: expect.arrayContaining([
+        expect.objectContaining({ id: "__start__", type: "schema" }),
+        expect.objectContaining({ id: "__end__", type: "schema" }),
+        {
+          id: "agent",
+          type: "runnable",
+          data: {
+            id: ["langchain", "chat_models", "fake", "FakeChatModel"],
+            name: "FakeChatModel",
+          },
+        },
+        {
+          id: "action",
+          type: "runnable",
+          data: {
+            id: ["langchain_core", "runnables", "RunnableLambda"],
+            name: "RunnableLambda",
+          },
+        },
+      ]),
+      edges: expect.arrayContaining([
+        { source: "__start__", target: "agent" },
+        { source: "action", target: "agent" },
+        {
+          source: "agent",
+          target: "action",
+          data: "continue",
+          conditional: true,
+        },
+        {
+          source: "agent",
+          target: "__end__",
+          data: "end",
+          conditional: true,
+        },
+      ]),
+    });
+
     const stream = await app.stream([
       new HumanMessage("what is the weather in sf?"),
     ]);
@@ -3327,7 +3707,7 @@ it("checkpoint events", async () => {
         metadata: {
           source: "loop",
           step: 0,
-          writes: undefined,
+          writes: null,
         },
         next: ["prepare"],
         tasks: [{ id: expect.any(String), name: "prepare" }],
@@ -3580,6 +3960,7 @@ it("StateGraph start branch then end", async () => {
     {
       source: "loop",
       step: 0,
+      writes: null,
     },
     {
       source: "input",
@@ -3595,7 +3976,7 @@ it("StateGraph start branch then end", async () => {
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
       .checkpoint.ts,
-    metadata: { source: "loop", step: 0 },
+    metadata: { source: "loop", step: 0, writes: null },
     parentConfig: (
       await last(
         toolTwoWithCheckpointer.checkpointer!.list(thread1, { limit: 2 })
@@ -3645,7 +4026,7 @@ it("StateGraph start branch then end", async () => {
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
       .checkpoint.ts,
-    metadata: { source: "loop", step: 0 },
+    metadata: { source: "loop", step: 0, writes: null },
     parentConfig: (
       await last(
         toolTwoWithCheckpointer.checkpointer!.list(thread2, { limit: 2 })
@@ -3695,7 +4076,7 @@ it("StateGraph start branch then end", async () => {
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
       .checkpoint.ts,
-    metadata: { source: "loop", step: 0 },
+    metadata: { source: "loop", step: 0, writes: null },
     parentConfig: (
       await last(
         toolTwoWithCheckpointer.checkpointer!.list(thread3, { limit: 2 })
@@ -3797,6 +4178,55 @@ it("StateGraph branch then node", async () => {
     .addEdge("finish", END);
 
   const tool = toolBuilder.compile();
+
+  expect(tool.getGraph().toJSON()).toMatchObject({
+    nodes: expect.arrayContaining([
+      expect.objectContaining({ id: "__start__", type: "schema" }),
+      expect.objectContaining({ id: "__end__", type: "schema" }),
+      {
+        id: "prepare",
+        type: "runnable",
+        data: {
+          id: ["langchain_core", "runnables", "RunnableLambda"],
+          name: "RunnableLambda",
+        },
+      },
+      {
+        id: "tool_two_slow",
+        type: "runnable",
+        data: {
+          id: ["langchain_core", "runnables", "RunnableLambda"],
+          name: "RunnableLambda",
+        },
+      },
+      {
+        id: "tool_two_fast",
+        type: "runnable",
+        data: {
+          id: ["langchain_core", "runnables", "RunnableLambda"],
+          name: "RunnableLambda",
+        },
+      },
+      {
+        id: "finish",
+        type: "runnable",
+        data: {
+          id: ["langchain_core", "runnables", "RunnableLambda"],
+          name: "RunnableLambda",
+        },
+      },
+    ]),
+    edges: expect.arrayContaining([
+      { source: "__start__", target: "prepare" },
+      { source: "tool_two_fast", target: "finish" },
+      { source: "tool_two_slow", target: "finish" },
+      { source: "finish", target: "__end__" },
+      { source: "prepare", target: "tool_two_slow", conditional: true },
+      { source: "prepare", target: "tool_two_fast", conditional: true },
+      { source: "prepare", target: "finish", conditional: true },
+      { source: "prepare", target: "__end__", conditional: true },
+    ]),
+  });
 
   expect(await tool.invoke({ my_key: "value", market: "DE" })).toEqual({
     my_key: "value prepared slow finished",

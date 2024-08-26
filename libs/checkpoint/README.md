@@ -81,7 +81,6 @@ const checkpoint = {
     }
   },
   pending_sends: [],
-  current_tasks: {}
 }
 
 // store checkpoint

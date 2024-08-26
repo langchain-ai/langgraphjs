@@ -22,11 +22,6 @@ A super-step can be considered a single iteration over the graph nodes. Nodes th
 
 The `StateGraph` class is the main graph class to uses. This is parameterized by a user defined `State` object. (defined using the `Annotation` object and passed as the first argument)
 
-
-### MessageGraph
-
-The `MessageGraph` class is a special type of graph. The `State` of a `MessageGraph` is ONLY a list of messages. This class is rarely used except for chatbots, as most applications require the `State` to be more complex than a list of messages.
-
 ### Compiling your graph
 
 To build your graph, you first define the [state](#state), you then add [nodes](#nodes) and [edges](#edges), and then you compile it. What exactly is compiling your graph and why is it needed?
@@ -352,16 +347,6 @@ The `foo` key is completely changed (because there is no reducer specified for t
 The final thing you specify when calling `updateState` is `asNode`. This update will be applied as if it came from node `asNode`. If `asNode` is not provided, it will be set to the last node that updated the state, if not ambiguous.
 
 The reason this matters is that the next steps in the graph to execute depend on the last node to have given an update, so this can be used to control which node executes next.
-
-## Graph Migrations
-
-LangGraph can easily handle migrations of graph definitions (nodes, edges, and state) even when using a checkpointer to track state.
-
-- For threads at the end of the graph (i.e. not interrupted) you can change the entire topology of the graph (i.e. all nodes and edges, remove, add, rename, etc)
-- For threads currently interrupted, we support all topology changes other than renaming / removing nodes (as that thread could now be about to enter a node that no longer exists) -- if this is a blocker please reach out and we can prioritize a solution.
-- For modifying state, we have full backwards and forwards compatibility for adding and removing keys
-- State keys that are renamed lose their saved state in existing threads
-- State keys whose types change in incompatible ways could currently cause issues in threads with state from before the change -- if this is a blocker please reach out and we can prioritize a solution.
 
 ## Configuration
 

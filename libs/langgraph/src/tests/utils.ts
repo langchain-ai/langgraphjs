@@ -99,7 +99,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
   async _generate(
     messages: BaseMessage[],
     _options: this["ParsedCallOptions"],
-    _runManager?: CallbackManagerForLLMRun
+    runManager?: CallbackManagerForLLMRun
   ): Promise<ChatResult> {
     if (this.thrownErrorString) {
       throw new Error(this.thrownErrorString);
@@ -118,6 +118,9 @@ export class FakeToolCallingChatModel extends BaseChatModel {
     };
     this.idx += 1;
 
+    if (typeof msg.content === "string") {
+      await runManager?.handleLLMNewToken(msg.content);
+    }
     return generation;
   }
 

@@ -1,12 +1,20 @@
 /* eslint-disable @typescript-eslint/no-use-before-define */
 import {
+  _coerceToRunnable,
   Runnable,
-  RunnableConfig,
   RunnableLike,
 } from "@langchain/core/runnables";
 import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { BaseChannel } from "../channels/base.js";
-import { END, CompiledGraph, Graph, START, Branch } from "./graph.js";
+import {
+  END,
+  CompiledGraph,
+  Graph,
+  START,
+  Branch,
+  AddNodeOptions,
+  NodeSpec,
+} from "./graph.js";
 import {
   ChannelWrite,
   ChannelWriteEntry,
@@ -18,7 +26,12 @@ import { NamedBarrierValue } from "../channels/named_barrier_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { RunnableCallable } from "../utils.js";
 import { All } from "../pregel/types.js";
-import { _isSend, Send, TAG_HIDDEN } from "../constants.js";
+import {
+  _isSend,
+  CHECKPOINT_NAMESPACE_SEPARATOR,
+  Send,
+  TAG_HIDDEN,
+} from "../constants.js";
 import { InvalidUpdateError } from "../errors.js";
 import {
   AnnotationRoot,
@@ -28,6 +41,7 @@ import {
   StateType,
   UpdateType,
 } from "./annotation.js";
+import type { RetryPolicy } from "../pregel/utils.js";
 
 const ROOT = "__root__";
 
@@ -44,12 +58,87 @@ export interface StateGraphArgs<Channels extends object | unknown> {
     : ChannelReducers<{ __root__: Channels }>;
 }
 
+export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
+  RunInput,
+  RunOutput
+> & {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  input?: any;
+  retryPolicy?: RetryPolicy;
+};
+
+export type StateGraphAddNodeOptions = {
+  retryPolicy?: RetryPolicy;
+} & AddNodeOptions;
+
+/**
+ * A graph whose nodes communicate by reading and writing to a shared state.
+ * Each node takes a defined `State` as input and returns a `Partial<State>`.
+ *
+ * Each state key can optionally be annotated with a reducer function that
+ * will be used to aggregate the values of that key received from multiple nodes.
+ * The signature of a reducer function is (left: Value, right: UpdateValue) => Value.
+ *
+ * See {@link Annotation} for more on defining state.
+ *
+ * After adding nodes and edges to your graph, you must call `.compile()` on it before
+ * you can use it.
+ *
+ * @example
+ * ```ts
+ * import {
+ *   type BaseMessage,
+ *   AIMessage,
+ *   HumanMessage,
+ * } from "@langchain/core/messages";
+ * import { StateGraph, Annotation } from "@langchain/langgraph";
+ *
+ * // Define a state with a single key named "messages" that will
+ * // combine a returned BaseMessage or arrays of BaseMessages
+ * const StateAnnotation = Annotation.Root({
+ *   sentiment: Annotation<string>,
+ *   messages: Annotation<BaseMessage[]>({
+ *     reducer: (left: BaseMessage[], right: BaseMessage | BaseMessage[]) => {
+ *       if (Array.isArray(right)) {
+ *         return left.concat(right);
+ *       }
+ *       return left.concat([right]);
+ *     },
+ *     default: () => [],
+ *   }),
+ * });
+ *
+ * const graphBuilder = new StateGraph(StateAnnotation);
+ *
+ * // A node in the graph that returns an object with a "messages" key
+ * // will update the state by combining the existing value with the returned one.
+ * const myNode = (state: typeof StateAnnotation.State) => {
+ *   return {
+ *     messages: [new AIMessage("Some new response")],
+ *     sentiment: "positive",
+ *   };
+ * };
+ *
+ * const graph = graphBuilder
+ *   .addNode("myNode", myNode)
+ *   .addEdge("__start__", "myNode")
+ *   .addEdge("myNode", "__end__")
+ *   .compile();
+ *
+ * await graph.invoke({ messages: [new HumanMessage("how are you?")] });
+ *
+ * // {
+ * //   messages: [HumanMessage("how are you?"), AIMessage("Some new response")],
+ * //   sentiment: "positive",
+ * // }
+ * ```
+ */
 export class StateGraph<
   SD extends StateDefinition | unknown,
   S = SD extends StateDefinition ? StateType<SD> : SD,
   U = SD extends StateDefinition ? UpdateType<SD> : Partial<S>,
   N extends string = typeof START
-> extends Graph<N, S, U> {
+> extends Graph<N, S, U, StateGraphNodeSpec<S, U>> {
   channels: Record<string, BaseChannel>;
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
@@ -93,14 +182,40 @@ export class StateGraph<
 
   addNode<K extends string, NodeInput = S>(
     key: K,
-    action: RunnableLike<NodeInput, U>
+    action: RunnableLike<NodeInput, U>,
+    options?: StateGraphAddNodeOptions
   ): StateGraph<SD, S, U, N | K> {
     if (key in this.channels) {
       throw new Error(
         `${key} is already being used as a state attribute (a.k.a. a channel), cannot also be used as a node name.`
       );
     }
-    return super.addNode(key, action) as StateGraph<SD, S, U, N | K>;
+
+    if (key.includes(CHECKPOINT_NAMESPACE_SEPARATOR)) {
+      throw new Error(
+        `"${CHECKPOINT_NAMESPACE_SEPARATOR}" is a reserved character and is not allowed in node names.`
+      );
+    }
+    this.warnIfCompiled(
+      `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
+    );
+
+    if (key in this.nodes) {
+      throw new Error(`Node \`${key}\` already present.`);
+    }
+    if (key === END || key === START) {
+      throw new Error(`Node \`${key}\` is reserved.`);
+    }
+
+    const nodeSpec: StateGraphNodeSpec<S, U> = {
+      runnable: _coerceToRunnable(action) as unknown as Runnable<S, U>,
+      retryPolicy: options?.retryPolicy,
+      metadata: options?.metadata,
+    };
+
+    this.nodes[key as unknown as N] = nodeSpec;
+
+    return this as StateGraph<SD, S, U, N | K>;
   }
 
   addEdge(startKey: typeof START | N | N[], endKey: N | typeof END): this {
@@ -177,7 +292,9 @@ export class StateGraph<
 
     // attach nodes, edges and branches
     compiled.attachNode(START);
-    for (const [key, node] of Object.entries<Runnable<S, U>>(this.nodes)) {
+    for (const [key, node] of Object.entries<StateGraphNodeSpec<S, U>>(
+      this.nodes
+    )) {
       compiled.attachNode(key as N, node);
     }
     for (const [start, end] of this.edges) {
@@ -222,12 +339,9 @@ export class CompiledStateGraph<
 
   attachNode(key: typeof START, node?: never): void;
 
-  attachNode(key: N, node: Runnable<S, U, RunnableConfig>): void;
+  attachNode(key: N, node: StateGraphNodeSpec<S, U>): void;
 
-  attachNode(
-    key: N | typeof START,
-    node?: Runnable<S, U, RunnableConfig>
-  ): void {
+  attachNode(key: N | typeof START, node?: StateGraphNodeSpec<S, U>): void {
     const stateKeys = Object.keys(this.builder.channels);
 
     function getStateKey(key: keyof U, input: U) {
@@ -283,7 +397,8 @@ export class CompiledStateGraph<
             [TAG_HIDDEN]
           ),
         ],
-        bound: node,
+        bound: node?.runnable,
+        retryPolicy: node?.retryPolicy,
       });
     }
   }

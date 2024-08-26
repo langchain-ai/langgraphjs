@@ -15,8 +15,10 @@ import {
 } from "../graph/state.js";
 import { END, START } from "../graph/index.js";
 
+/** @ignore */
 export type FunctionCallingExecutorState = { messages: Array<BaseMessage> };
 
+/** @ignore */
 export function createFunctionCallingExecutor<Model extends object>({
   model,
   tools,
