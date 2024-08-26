@@ -3399,6 +3399,59 @@ describe("MessageGraph", () => {
       .addEdge("action", "agent")
       .compile();
 
+    expect(app.getGraph().toJSON()).toMatchObject({
+      nodes: expect.arrayContaining([
+        {
+          id: "__start__",
+          type: "schema",
+          data: {
+            $schema: "http://json-schema.org/draft-07/schema#",
+            title: undefined,
+          },
+        },
+        {
+          id: "agent",
+          type: "runnable",
+          data: {
+            id: ["langchain", "chat_models", "fake", "FakeChatModel"],
+            name: "FakeChatModel",
+          },
+        },
+        {
+          id: "action",
+          type: "runnable",
+          data: {
+            id: ["langchain_core", "runnables", "RunnableLambda"],
+            name: "RunnableLambda",
+          },
+        },
+        {
+          id: "__end__",
+          type: "schema",
+          data: {
+            $schema: "http://json-schema.org/draft-07/schema#",
+            title: undefined,
+          },
+        },
+      ]),
+      edges: expect.arrayContaining([
+        { source: "__start__", target: "agent" },
+        { source: "action", target: "agent" },
+        {
+          source: "agent",
+          target: "action",
+          data: "continue",
+          conditional: true,
+        },
+        {
+          source: "agent",
+          target: "__end__",
+          data: "end",
+          conditional: true,
+        },
+      ]),
+    });
+
     const result = await app.invoke(
       new HumanMessage("what is the weather in sf?")
     );
@@ -3508,6 +3561,45 @@ describe("MessageGraph", () => {
       })
       .addEdge("action", "agent")
       .compile();
+
+    expect(app.getGraph().toJSON()).toMatchObject({
+      nodes: expect.arrayContaining([
+        expect.objectContaining({ id: "__start__", type: "schema" }),
+        expect.objectContaining({ id: "__end__", type: "schema" }),
+        {
+          id: "agent",
+          type: "runnable",
+          data: {
+            id: ["langchain", "chat_models", "fake", "FakeChatModel"],
+            name: "FakeChatModel",
+          },
+        },
+        {
+          id: "action",
+          type: "runnable",
+          data: {
+            id: ["langchain_core", "runnables", "RunnableLambda"],
+            name: "RunnableLambda",
+          },
+        },
+      ]),
+      edges: expect.arrayContaining([
+        { source: "__start__", target: "agent" },
+        { source: "action", target: "agent" },
+        {
+          source: "agent",
+          target: "action",
+          data: "continue",
+          conditional: true,
+        },
+        {
+          source: "agent",
+          target: "__end__",
+          data: "end",
+          conditional: true,
+        },
+      ]),
+    });
 
     const stream = await app.stream([
       new HumanMessage("what is the weather in sf?"),
@@ -4086,6 +4178,55 @@ it("StateGraph branch then node", async () => {
     .addEdge("finish", END);
 
   const tool = toolBuilder.compile();
+
+  expect(tool.getGraph().toJSON()).toMatchObject({
+    nodes: expect.arrayContaining([
+      expect.objectContaining({ id: "__start__", type: "schema" }),
+      expect.objectContaining({ id: "__end__", type: "schema" }),
+      {
+        id: "prepare",
+        type: "runnable",
+        data: {
+          id: ["langchain_core", "runnables", "RunnableLambda"],
+          name: "RunnableLambda",
+        },
+      },
+      {
+        id: "tool_two_slow",
+        type: "runnable",
+        data: {
+          id: ["langchain_core", "runnables", "RunnableLambda"],
+          name: "RunnableLambda",
+        },
+      },
+      {
+        id: "tool_two_fast",
+        type: "runnable",
+        data: {
+          id: ["langchain_core", "runnables", "RunnableLambda"],
+          name: "RunnableLambda",
+        },
+      },
+      {
+        id: "finish",
+        type: "runnable",
+        data: {
+          id: ["langchain_core", "runnables", "RunnableLambda"],
+          name: "RunnableLambda",
+        },
+      },
+    ]),
+    edges: expect.arrayContaining([
+      { source: "__start__", target: "prepare" },
+      { source: "tool_two_fast", target: "finish" },
+      { source: "tool_two_slow", target: "finish" },
+      { source: "finish", target: "__end__" },
+      { source: "prepare", target: "tool_two_slow", conditional: true },
+      { source: "prepare", target: "tool_two_fast", conditional: true },
+      { source: "prepare", target: "finish", conditional: true },
+      { source: "prepare", target: "__end__", conditional: true },
+    ]),
+  });
 
   expect(await tool.invoke({ my_key: "value", market: "DE" })).toEqual({
     my_key: "value prepared slow finished",
