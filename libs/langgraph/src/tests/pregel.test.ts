@@ -42,6 +42,7 @@ import {
   Graph,
   START,
   StateGraph,
+  StateGraphArgs,
   StateType,
 } from "../graph/index.js";
 import { Topic } from "../channels/topic.js";
@@ -1340,7 +1341,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 5 },
+      metadata: { source: "loop", step: 5, writes: null },
       createdAt: expect.any(String),
       parentConfig: history[2].config,
     }),
@@ -1370,7 +1371,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 3 },
+      metadata: { source: "loop", step: 3, writes: null },
       createdAt: expect.any(String),
       parentConfig: history[4].config,
     }),
@@ -1415,7 +1416,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 0 },
+      metadata: { source: "loop", step: 0, writes: null },
       createdAt: expect.any(String),
       parentConfig: history[7].config,
     }),
@@ -1657,7 +1658,7 @@ it("pending writes resume", async () => {
       }),
     },
   ]);
-  expect(state.metadata).toEqual({ source: "loop", step: 0 });
+  expect(state.metadata).toEqual({ source: "loop", step: 0, writes: null });
 
   // should contain pending write of "one" and should contain error from "two"
   const checkpoint = await checkpointer.getTuple(thread1);
@@ -3027,6 +3028,197 @@ describe("StateGraph", () => {
     expect(checkpoint?.channel_values.total).toBe(5);
     expect(nonRetryableErrorCount).toBe(1);
   });
+
+  it("should allow undefined values returned in a node update", async () => {
+    interface GraphState {
+      test?: string;
+      reducerField?: string;
+    }
+
+    const graphState: StateGraphArgs<GraphState>["channels"] = {
+      test: null,
+      reducerField: {
+        default: () => "",
+        reducer: (x, y?: string) => y ?? x,
+      },
+    };
+
+    const workflow = new StateGraph<GraphState>({ channels: graphState });
+
+    async function updateTest(
+      _state: GraphState
+    ): Promise<Partial<GraphState>> {
+      return {
+        test: "test",
+        reducerField: "should not be wiped",
+      };
+    }
+
+    async function wipeFields(
+      _state: GraphState
+    ): Promise<Partial<GraphState>> {
+      return {
+        test: undefined,
+        reducerField: undefined,
+      };
+    }
+
+    workflow
+      .addNode("updateTest", updateTest)
+      .addNode("wipeFields", wipeFields)
+      .addEdge(START, "updateTest")
+      .addEdge("updateTest", "wipeFields")
+      .addEdge("wipeFields", END);
+
+    const checkpointer = new MemorySaver();
+
+    const app = workflow.compile({ checkpointer });
+    const config: RunnableConfig = {
+      configurable: { thread_id: "102" },
+    };
+    const res = await app.invoke(
+      {
+        messages: ["initial input"],
+      },
+      config
+    );
+    expect(res).toEqual({
+      reducerField: "should not be wiped",
+    });
+    const history = await gatherIterator(app.getStateHistory(config));
+    expect(history).toEqual([
+      {
+        values: {
+          reducerField: "should not be wiped",
+        },
+        next: [],
+        tasks: [],
+        metadata: {
+          source: "loop",
+          writes: {
+            wipeFields: {
+              test: undefined,
+              reducerField: undefined,
+            },
+          },
+          step: 2,
+        },
+        config: {
+          configurable: {
+            thread_id: "102",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "102",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: {
+          test: "test",
+          reducerField: "should not be wiped",
+        },
+        next: ["wipeFields"],
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "wipeFields",
+          },
+        ],
+        metadata: {
+          source: "loop",
+          writes: {
+            updateTest: {
+              test: "test",
+              reducerField: "should not be wiped",
+            },
+          },
+          step: 1,
+        },
+        config: {
+          configurable: {
+            thread_id: "102",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "102",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: {
+          reducerField: "",
+        },
+        next: ["updateTest"],
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "updateTest",
+          },
+        ],
+        metadata: {
+          source: "loop",
+          writes: null,
+          step: 0,
+        },
+        config: {
+          configurable: {
+            thread_id: "102",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "102",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: {
+          reducerField: "",
+        },
+        next: ["__start__"],
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "__start__",
+          },
+        ],
+        metadata: {
+          source: "input",
+          writes: {
+            messages: ["initial input"],
+          },
+          step: -1,
+        },
+        config: {
+          configurable: {
+            thread_id: "102",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
+        parentConfig: undefined,
+      },
+    ]);
+  });
 });
 
 describe("PreBuilt", () => {
@@ -3423,7 +3615,7 @@ it("checkpoint events", async () => {
         metadata: {
           source: "loop",
           step: 0,
-          writes: undefined,
+          writes: null,
         },
         next: ["prepare"],
         tasks: [{ id: expect.any(String), name: "prepare" }],
@@ -3676,6 +3868,7 @@ it("StateGraph start branch then end", async () => {
     {
       source: "loop",
       step: 0,
+      writes: null,
     },
     {
       source: "input",
@@ -3691,7 +3884,7 @@ it("StateGraph start branch then end", async () => {
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
       .checkpoint.ts,
-    metadata: { source: "loop", step: 0 },
+    metadata: { source: "loop", step: 0, writes: null },
     parentConfig: (
       await last(
         toolTwoWithCheckpointer.checkpointer!.list(thread1, { limit: 2 })
@@ -3741,7 +3934,7 @@ it("StateGraph start branch then end", async () => {
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
       .checkpoint.ts,
-    metadata: { source: "loop", step: 0 },
+    metadata: { source: "loop", step: 0, writes: null },
     parentConfig: (
       await last(
         toolTwoWithCheckpointer.checkpointer!.list(thread2, { limit: 2 })
@@ -3791,7 +3984,7 @@ it("StateGraph start branch then end", async () => {
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
       .checkpoint.ts,
-    metadata: { source: "loop", step: 0 },
+    metadata: { source: "loop", step: 0, writes: null },
     parentConfig: (
       await last(
         toolTwoWithCheckpointer.checkpointer!.list(thread3, { limit: 2 })
