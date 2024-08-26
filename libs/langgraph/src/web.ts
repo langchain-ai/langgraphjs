@@ -18,6 +18,7 @@ export {
   InvalidUpdateError,
   EmptyChannelError,
 } from "./errors.js";
+export { type RetryPolicy } from "./pregel/utils.js";
 export { Send } from "./constants.js";
 
 export {

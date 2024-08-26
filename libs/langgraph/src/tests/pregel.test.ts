@@ -1982,6 +1982,100 @@ it("should type-error when Channel.subscribeTo would throw at runtime", () => {
   }).toThrow();
 });
 
+it("should invoke checkpoint two", async () => {
+  const checkpointer = new MemorySaverAssertImmutable(); // Replace with actual checkpointer implementation
+  const addOne = jest.fn(
+    (x: { total: number; input: number }) => x.total + x.input
+  );
+  let erroredOnce = false;
+  let nonRetryableErrorCount = 0;
+
+  const raiseIfAbove10 = (input: number): number => {
+    if (input > 4) {
+      if (!erroredOnce) {
+        erroredOnce = true;
+        const error = new Error("I will be retried");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (error as any).status = 500;
+        throw error;
+      }
+    }
+    if (input > 10) {
+      nonRetryableErrorCount += 1;
+      const error = new Error("Input is too large");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (error as any).status = 400;
+      throw error;
+    }
+    return input;
+  };
+
+  const one = Channel.subscribeTo(["input"])
+    .join(["total"])
+    .pipe(addOne)
+    .pipe(Channel.writeTo(["output", "total"]))
+    .pipe(raiseIfAbove10);
+
+  const app = new Pregel({
+    nodes: { one },
+    channels: {
+      total: new BinaryOperatorAggregate<number>((a, b) => a + b),
+      input: new LastValue<number>(),
+      output: new LastValue<number>(),
+    },
+    inputChannels: "input",
+    outputChannels: "output",
+    checkpointer,
+    // Use the default policy
+    retryPolicy: {},
+  });
+
+  // total starts out as 0, so output is 0+2=2
+  expect(await app.invoke(2, { configurable: { thread_id: "1" } })).toBe(2);
+  let checkpoint = await checkpointer.get({ configurable: { thread_id: "1" } });
+  expect(checkpoint).not.toBeNull();
+  expect(checkpoint?.channel_values.total).toBe(2);
+  expect(erroredOnce).toBe(false);
+  expect(nonRetryableErrorCount).toBe(0);
+
+  // total is now 2, so output is 2+3=5
+  expect(await app.invoke(3, { configurable: { thread_id: "1" } })).toBe(5);
+  expect(erroredOnce).toBeTruthy();
+  let checkpointTuple = await checkpointer.getTuple({
+    configurable: { thread_id: "1" },
+  });
+  expect(checkpointTuple).not.toBeNull();
+  expect(checkpointTuple?.checkpoint.channel_values.total).toBe(7);
+  expect(erroredOnce).toBe(true);
+  expect(nonRetryableErrorCount).toBe(0);
+
+  // total is now 2+5=7, so output would be 7+4=11, but raises Error
+  await expect(
+    app.invoke(4, { configurable: { thread_id: "1" } })
+  ).rejects.toThrow("Input is too large");
+
+  // checkpoint is not updated, error is recorded
+  checkpointTuple = await checkpointer.getTuple({
+    configurable: { thread_id: "1" },
+  });
+  expect(checkpointTuple).not.toBeNull();
+  expect(checkpointTuple?.checkpoint.channel_values.total).toBe(7);
+  expect(checkpointTuple?.pendingWrites).toEqual([
+    [expect.any(String), "__error__", { message: "Input is too large" }],
+  ]);
+  expect(nonRetryableErrorCount).toBe(1);
+
+  // on a new thread, total starts out as 0, so output is 0+5=5
+  expect(await app.invoke(5, { configurable: { thread_id: "2" } })).toBe(5);
+  checkpoint = await checkpointer.get({ configurable: { thread_id: "1" } });
+  expect(checkpoint).not.toBeNull();
+  expect(checkpoint?.channel_values.total).toBe(7);
+  checkpoint = await checkpointer.get({ configurable: { thread_id: "2" } });
+  expect(checkpoint).not.toBeNull();
+  expect(checkpoint?.channel_values.total).toBe(5);
+  expect(nonRetryableErrorCount).toBe(1);
+});
+
 describe("StateGraph", () => {
   class SearchAPI extends Tool {
     name = "search_api";

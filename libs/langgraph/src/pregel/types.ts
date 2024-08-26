@@ -6,6 +6,7 @@ import type {
 } from "@langchain/langgraph-checkpoint";
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
+import { RetryPolicy } from "./utils.js";
 
 export type StreamMode = "values" | "updates" | "debug";
 
@@ -63,6 +64,8 @@ export interface PregelInterface<
   debug?: boolean;
 
   checkpointer?: BaseCheckpointSaver;
+
+  retryPolicy?: RetryPolicy;
 }
 
 export type PregelParams<
@@ -86,7 +89,7 @@ export interface PregelExecutableTask<
   readonly writes: PendingWrite<C>[];
   readonly config: RunnableConfig | undefined;
   readonly triggers: Array<string>;
-  readonly retry_policy?: string;
+  readonly retry_policy?: RetryPolicy;
   readonly id: string;
 }
 

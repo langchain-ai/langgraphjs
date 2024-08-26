@@ -56,62 +56,6 @@ export const increment = (current?: number) => {
   return current !== undefined ? current + 1 : 1;
 };
 
-export async function* executeTasks(
-  tasks: Record<
-    string,
-    () => Promise<{
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      task: PregelExecutableTask<any, any>;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      result: any;
-      error: Error;
-    }>
-  >,
-  stepTimeout?: number,
-  signal?: AbortSignal
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): AsyncGenerator<PregelExecutableTask<any, any>> {
-  if (stepTimeout && signal) {
-    if ("any" in AbortSignal) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      signal = (AbortSignal as any).any([
-        signal,
-        AbortSignal.timeout(stepTimeout),
-      ]);
-    }
-  } else if (stepTimeout) {
-    signal = AbortSignal.timeout(stepTimeout);
-  }
-
-  // Abort if signal is aborted
-  signal?.throwIfAborted();
-
-  // Start all tasks
-  const executingTasks = Object.fromEntries(
-    Object.entries(tasks).map(([taskId, task]) => {
-      return [taskId, task()];
-    })
-  );
-  let listener: () => void;
-  const signalPromise = new Promise<never>((_resolve, reject) => {
-    listener = () => reject(new Error("Abort"));
-    signal?.addEventListener("abort", listener);
-  }).finally(() => signal?.removeEventListener("abort", listener));
-
-  while (Object.keys(executingTasks).length > 0) {
-    const { task, error } = await Promise.race([
-      ...Object.values(executingTasks),
-      signalPromise,
-    ]);
-    if (error !== undefined) {
-      // TODO: don't stop others if exception is interrupt
-      throw error;
-    }
-    yield task;
-    delete executingTasks[task.id];
-  }
-}
-
 export function shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
   checkpoint: Checkpoint,
   interruptNodes: All | N[],
@@ -426,6 +370,7 @@ export function _prepareNextTasks<
             }
           ),
           id: taskId,
+          retry_policy: proc.retryPolicy,
         });
       }
     } else {
@@ -521,6 +466,7 @@ export function _prepareNextTasks<
               }
             ),
             id: taskId,
+            retry_policy: proc.retryPolicy,
           });
         }
       } else {

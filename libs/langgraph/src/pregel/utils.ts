@@ -50,3 +50,31 @@ export function _getIdMetadata(metadata: Record<string, unknown>) {
     langgraph_task_idx: metadata.langgraph_task_idx,
   };
 }
+
+export type RetryPolicy = {
+  /**
+   * Amount of time that must elapse before the first retry occurs in milliseconds.
+   * @default 500
+   */
+  initialInterval?: number;
+  /**
+   * Multiplier by which the interval increases after each retry.
+   * @default 2
+   */
+  backoffFactor?: number;
+  /**
+   * Maximum amount of time that may elapse between retries in milliseconds.
+   * @default 128000
+   */
+  maxInterval?: number;
+  /**
+   * Maximum amount of time that may elapse between retries.
+   * @default 3
+   */
+  maxAttempts?: number;
+  /** Whether to add random jitter to the interval between retries. */
+  jitter?: boolean;
+  /** A function that returns True for exceptions that should trigger a retry. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  retryOn?: (e: any) => boolean;
+};
