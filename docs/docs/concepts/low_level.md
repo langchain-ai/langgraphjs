@@ -22,6 +22,10 @@ A super-step can be considered a single iteration over the graph nodes. Nodes th
 
 The `StateGraph` class is the main graph class to uses. This is parameterized by a user defined `State` object. (defined using the `Annotation` object and passed as the first argument)
 
+### MessageGraph
+
+The `MessageGraph` class is a special type of graph. The `State` of a `MessageGraph` is ONLY an array of messages. This class is rarely used except for chatbots, as most applications require the `State` to be more complex than an array of messages.
+
 ### Compiling your graph
 
 To build your graph, you first define the [state](#state), you then add [nodes](#nodes) and [edges](#edges), and then you compile it. What exactly is compiling your graph and why is it needed?
@@ -81,7 +85,7 @@ In this example, we've updated our `bar` field to be an object containing a `red
 
 ### MessageState
 
-`MessageState` is one of the few opinionated components in LangGraph. `MessageState` is a special state designed to make it easy to use a list of messages as a key in your state. Specifically, `MessageState` is defined as:
+`MessageState` is one of the few opinionated components in LangGraph. `MessageState` is a special state designed to make it easy to use an array of messages as a key in your state. Specifically, `MessageState` is defined as:
 
 ```typescript
 import { BaseMessage } from "@langchain/core/messages";
@@ -102,9 +106,9 @@ export class MessageGraph extends StateGraph {
 }
 ```
 
-What this is doing is creating a `State` with a single key `messages`. This is a list of `BaseMessage`s, with [`messagesStateReducer`](/langgraphjs/reference/functions/langgraph.messagesStateReducer.html) as a reducer. `messagesStateReducer` basically adds messages to the existing list (it also does some nice extra things, like convert from OpenAI message format to the standard LangChain message format, handle updates based on message IDs, etc).
+What this is doing is creating a `State` with a single key `messages`. This is an array of `BaseMessage`s, with [`messagesStateReducer`](/langgraphjs/reference/functions/langgraph.messagesStateReducer.html) as a reducer. `messagesStateReducer` basically adds messages to the existing list (it also does some nice extra things, like convert from OpenAI message format to the standard LangChain message format, handle updates based on message IDs, etc).
 
-We often see a list of messages being a key component of state, so this prebuilt state is intended to make it easy to use messages. Typically, there is more state to track than just messages, so we see people extend this state and add more fields, like:
+We often see an array of messages being a key component of state, so this prebuilt state is intended to make it easy to use messages. Typically, there is more state to track than just messages, so we see people extend this state and add more fields, like:
 
 ```typescript
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
@@ -200,7 +204,7 @@ graph.addConditionalEdges("nodeA", routingFunction);
 
 Similar to nodes, the `routingFunction` accept the current `state` of the graph and return a value.
 
-By default, the return value `routingFunction` is used as the name of the node (or a list of nodes) to send the state to next. All those nodes will be run in parallel as a part of the next superstep.
+By default, the return value `routingFunction` is used as the name of the node (or an array of nodes) to send the state to next. All those nodes will be run in parallel as a part of the next superstep.
 
 You can optionally provide an object that maps the `routingFunction`'s output to the name of the next node.
 
@@ -242,7 +246,7 @@ graph.addConditionalEdges(START, routingFunction, {
 
 ## `Send`
 
-By default, `Nodes` and `Edges` are defined ahead of time and operate on the same shared state. However, there can be cases where the exact edges are not known ahead of time and/or you may want different versions of `State` to exist at the same time. A common of example of this is with `map-reduce` design patterns. In this design pattern, a first node may generate a list of objects, and you may want to apply some other node to all those objects. The number of objects may be unknown ahead of time (meaning the number of edges may not be known) and the input `State` to the downstream `Node` should be different (one for each generated object).
+By default, `Nodes` and `Edges` are defined ahead of time and operate on the same shared state. However, there can be cases where the exact edges are not known ahead of time and/or you may want different versions of `State` to exist at the same time. A common of example of this is with `map-reduce` design patterns. In this design pattern, a first node may generate an array of objects, and you may want to apply some other node to all those objects. The number of objects may be unknown ahead of time (meaning the number of edges may not be known) and the input `State` to the downstream `Node` should be different (one for each generated object).
 
 To support this design pattern, LangGraph supports returning [`Send`](/langgraphjs/reference/classes/langgraph.Send.html) objects from conditional edges. `Send` takes two arguments: first is the name of the node, and second is the state to pass to that node.
 

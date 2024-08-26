@@ -195,3 +195,13 @@ extra:
       link: https://github.com/langchain-ai/langgraphjs
     - icon: fontawesome/brands/twitter
       link: https://twitter.com/LangChainAI
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  nav:
+    absolute_links: warn
+    not_found: warn
+  links:
+    not_found: warn
+    absolute_links: warn
