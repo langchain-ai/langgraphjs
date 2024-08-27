@@ -1,4 +1,5 @@
 /* eslint-disable no-process-env */
+/* eslint-disable no-param-reassign */
 import { beforeAll, describe, expect, it } from "@jest/globals";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { StructuredTool, Tool } from "@langchain/core/tools";
@@ -275,7 +276,7 @@ describe("createReactAgent", () => {
       messages: [new HumanMessage("Hello Input!")],
     });
 
-    expect(result.messages).toEqual([
+    const expected = [
       new HumanMessage("Hello Input!"),
       new AIMessage({
         content: "result1",
@@ -287,9 +288,14 @@ describe("createReactAgent", () => {
         name: "search_api",
         content: "result for foo",
         tool_call_id: "tool_abcd123",
+        artifact: undefined,
       }),
       new AIMessage("result2"),
-    ]);
+    ].map((message, i) => {
+      message.id = result.messages[i].id;
+      return message;
+    });
+    expect(result.messages).toEqual(expected);
   });
 
   it("Can use SystemMessage message modifier", async () => {
@@ -314,7 +320,7 @@ describe("createReactAgent", () => {
     const result = await agent.invoke({
       messages: [],
     });
-    expect(result.messages).toEqual([
+    const expected = [
       new AIMessage({
         content: "result1",
         tool_calls: [
@@ -325,9 +331,14 @@ describe("createReactAgent", () => {
         name: "search_api",
         content: "result for foo",
         tool_call_id: "tool_abcd123",
+        artifact: undefined,
       }),
       new AIMessage("result2"),
-    ]);
+    ].map((message, i) => {
+      message.id = result.messages[i].id;
+      return message;
+    });
+    expect(result.messages).toEqual(expected);
   });
 
   it("Should respect a passed signal", async () => {
@@ -389,7 +400,7 @@ describe("createReactAgent", () => {
       messages: [new HumanMessage("Hello Input!")],
     });
 
-    expect(result.messages).toEqual([
+    const expected = [
       new HumanMessage("Hello Input!"),
       new AIMessage({
         content: "result1",
@@ -404,7 +415,11 @@ describe("createReactAgent", () => {
         artifact: Buffer.from("123"),
       }),
       new AIMessage("result2"),
-    ]);
+    ].map((message, i) => {
+      message.id = result.messages[i].id;
+      return message;
+    });
+    expect(result.messages).toEqual(expected);
   });
 
   it("Can accept RunnableToolLike", async () => {
@@ -442,7 +457,7 @@ describe("createReactAgent", () => {
       messages: [new HumanMessage("Hello Input!")],
     });
 
-    expect(result.messages).toEqual([
+    const expected = [
       new HumanMessage("Hello Input!"),
       new AIMessage({
         content: "result1",
@@ -456,7 +471,11 @@ describe("createReactAgent", () => {
         tool_call_id: "tool_abcd123",
       }),
       new AIMessage("result2"),
-    ]);
+    ].map((message, i) => {
+      message.id = result.messages[i].id;
+      return message;
+    });
+    expect(result.messages).toEqual(expected);
   });
 });
 
