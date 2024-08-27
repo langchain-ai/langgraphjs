@@ -3,6 +3,44 @@ import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { uuid6 } from "../../id.js";
 import { JsonPlusSerializer } from "../jsonplus.js";
 
+const messageWithToolCall = new AIMessage({
+  content: "",
+  tool_calls: [
+    {
+      name: "current_weather_sf",
+      args: {
+        input: "",
+      },
+      type: "tool_call",
+      id: "call_Co6nrPmiAdWWZQHCNdEZUjTe",
+    },
+  ],
+  invalid_tool_calls: [],
+  additional_kwargs: {
+    function_call: undefined,
+    tool_calls: [
+      {
+        id: "call_Co6nrPmiAdWWZQHCNdEZUjTe",
+        type: "function",
+        function: {
+          name: "current_weather_sf",
+          arguments: '{"input":""}',
+        },
+      },
+    ],
+  },
+  response_metadata: {
+    tokenUsage: {
+      completionTokens: 15,
+      promptTokens: 84,
+      totalTokens: 99,
+    },
+    finish_reason: "tool_calls",
+    system_fingerprint: "fp_a2ff031fb5",
+  },
+  id: "chatcmpl-A0s8Rd97RnFo6xMlYgpJDDfV8J1cl",
+});
+
 const complexValue = {
   number: 1,
   id: uuid6(-1),
@@ -14,6 +52,7 @@ const complexValue = {
   ]),
   regex: /foo*/gi,
   message: new AIMessage("test message"),
+  messageWithToolCall,
   array: [
     new Error("nestedfoo"),
     5,
@@ -40,6 +79,7 @@ const VALUES = [
   ["empty string", ""],
   ["simple string", "foobar"],
   ["various data types", complexValue],
+  ["an AIMessage with a tool call", messageWithToolCall],
 ] satisfies [string, unknown][];
 
 it.each(VALUES)(
@@ -51,3 +91,17 @@ it.each(VALUES)(
     expect(deserialized).toEqual(value);
   }
 );
+
+it("Should throw an error for circular JSON inputs", async () => {
+  const a: Record<string, unknown> = {};
+  const b: Record<string, unknown> = {};
+  a.b = b;
+  b.a = a;
+
+  const circular = {
+    a,
+    b,
+  };
+  const serde = new JsonPlusSerializer();
+  expect(() => serde.dumpsTyped(circular)).toThrow();
+});

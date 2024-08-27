@@ -3,6 +3,55 @@
 import { load } from "@langchain/core/load";
 import { SerializerProtocol } from "./base.js";
 
+function isLangChainSerializable(value: Record<string, unknown>) {
+  return (
+    typeof value.lc_serializable === "boolean" && Array.isArray(value.lc_id)
+  );
+}
+
+function isLangChainSerializedObject(value: Record<string, unknown>) {
+  return (
+    value !== null &&
+    value.lc === 1 &&
+    value.type === "constructor" &&
+    Array.isArray(value.id)
+  );
+}
+
+const _serialize = (value: any, seen = new WeakSet()): string => {
+  const defaultValue = _default("", value);
+
+  if (defaultValue === null) return "null";
+  if (typeof defaultValue === "string") return JSON.stringify(defaultValue);
+  if (typeof defaultValue === "number" || typeof defaultValue === "boolean")
+    return defaultValue.toString();
+  if (typeof defaultValue === "object") {
+    if (seen.has(defaultValue)) {
+      throw new TypeError("Circular reference detected");
+    }
+    seen.add(defaultValue);
+
+    if (Array.isArray(defaultValue)) {
+      const result = `[${defaultValue
+        .map((item) => _serialize(item, seen))
+        .join(",")}]`;
+      seen.delete(defaultValue);
+      return result;
+    } else if (isLangChainSerializable(defaultValue)) {
+      return JSON.stringify(defaultValue);
+    } else {
+      const entries = Object.entries(defaultValue).map(
+        ([k, v]) => `${JSON.stringify(k)}:${_serialize(v, seen)}`
+      );
+      const result = `{${entries.join(",")}}`;
+      seen.delete(defaultValue);
+      return result;
+    }
+  }
+  // Only be reached for functions or symbols
+  return JSON.stringify(defaultValue);
+};
+
 async function _reviver(value: any): Promise<any> {
   if (value && typeof value === "object") {
     if (value.lc === 2 && value.type === "undefined") {
@@ -40,7 +89,7 @@ async function _reviver(value: any): Promise<any> {
       } catch (error) {
         return value;
       }
-    } else if (value.lc === 1) {
+    } else if (isLangChainSerializedObject(value)) {
       return load(JSON.stringify(value));
     } else if (Array.isArray(value)) {
       return Promise.all(value.map((item) => _reviver(item)));
@@ -93,23 +142,8 @@ function _default(_key: string, obj: any): any {
 
 export class JsonPlusSerializer implements SerializerProtocol {
   protected _dumps(obj: any): Uint8Array {
-    const jsonString = JSON.stringify(obj, (key, value) => {
-      if (value && typeof value === "object") {
-        if (Array.isArray(value)) {
-          // Handle arrays
-          return value.map((item) => _default(key, item));
-        } else {
-          // Handle objects
-          const serialized: any = {};
-          for (const [k, v] of Object.entries(value)) {
-            serialized[k] = _default(k, v);
-          }
-          return serialized;
-        }
-      }
-      return _default(key, value);
-    });
-    return new TextEncoder().encode(jsonString);
+    const encoder = new TextEncoder();
+    return encoder.encode(_serialize(obj));
   }
 
   dumpsTyped(obj: any): [string, Uint8Array] {
