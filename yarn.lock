@@ -2119,18 +2119,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph-checkpoint@npm:~0.0.3":
-  version: 0.0.3
-  resolution: "@langchain/langgraph-checkpoint@npm:0.0.3"
-  dependencies:
-    uuid: ^10.0.0
-  peerDependencies:
-    "@langchain/core": ">=0.2.20 <0.3.0"
-  checksum: d5c5905630309f2f24b9e8cd9c147d5c21c39ac970fb81e850d61da55bf52030cda390b4655b827cf75c1c55b825c2c35b8ee1d1071ca9ec984332e8f1bf17c6
-  languageName: node
-  linkType: hard
-
-"@langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint, @langchain/langgraph-checkpoint@~0.0.2":
+"@langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint, @langchain/langgraph-checkpoint@~0.0.2, @langchain/langgraph-checkpoint@~0.0.3":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-checkpoint@workspace:libs/checkpoint"
   dependencies:
