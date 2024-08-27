@@ -21,11 +21,16 @@ function isLangChainSerializedObject(value: Record<string, unknown>) {
 const _serialize = (value: any, seen = new WeakSet()): string => {
   const defaultValue = _default("", value);
 
-  if (defaultValue === null) return "null";
-  if (typeof defaultValue === "string") return JSON.stringify(defaultValue);
-  if (typeof defaultValue === "number" || typeof defaultValue === "boolean")
+  if (defaultValue === null) {
+    return "null";
+  } else if (typeof defaultValue === "string") {
+    return JSON.stringify(defaultValue);
+  } else if (
+    typeof defaultValue === "number" ||
+    typeof defaultValue === "boolean"
+  ) {
     return defaultValue.toString();
-  if (typeof defaultValue === "object") {
+  } else if (typeof defaultValue === "object") {
     if (seen.has(defaultValue)) {
       throw new TypeError("Circular reference detected");
     }
