@@ -176,14 +176,7 @@ export function compareChannelVersions(
     return Math.sign(a - b);
   }
 
-  const [aStrInt, ...aRest] = String(a).split(".");
-  const [bStrInt, ...bRest] = String(b).split(".");
-
-  if (aStrInt !== bStrInt) return Math.sign(+aStrInt - +bStrInt);
-
-  const aStrRest = aRest.join(".");
-  const bStrRest = bRest.join(".");
-  return aStrRest.localeCompare(bStrRest);
+  return String(a).localeCompare(String(b));
 }
 
 export function maxChannelVersion(

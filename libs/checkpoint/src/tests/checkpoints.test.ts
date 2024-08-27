@@ -163,6 +163,6 @@ describe("channel versions", () => {
     expect(compareChannelVersions("1.abc", "2")).toBe(-1);
     expect(compareChannelVersions("10.a", "10.b")).toBe(-1);
 
-    expect(maxChannelVersion("1.a", "2.a", "10.a")).toBe("10.a");
+    expect(maxChannelVersion("01.a", "02.a", "10.a")).toBe("10.a");
   });
 });
