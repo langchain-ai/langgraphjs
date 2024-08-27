@@ -13,12 +13,12 @@ import {
   StateGraph,
   StateGraphArgs,
 } from "../graph/state.js";
-import { END, START, messagesStateReducer } from "../graph/index.js";
+import { END, START } from "../graph/index.js";
 
-/** @ignore */
+/** @deprecated Use {@link createReactAgent} instead with tool calling. */
 export type FunctionCallingExecutorState = { messages: Array<BaseMessage> };
 
-/** @ignore */
+/** @deprecated Use {@link createReactAgent} instead with tool calling. */
 export function createFunctionCallingExecutor<Model extends object>({
   model,
   tools,
@@ -124,7 +124,7 @@ export function createFunctionCallingExecutor<Model extends object>({
   // So we annotate the messages attribute with operator.add
   const schema: StateGraphArgs<FunctionCallingExecutorState>["channels"] = {
     messages: {
-      value: messagesStateReducer,
+      value: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y),
       default: () => [],
     },
   };
