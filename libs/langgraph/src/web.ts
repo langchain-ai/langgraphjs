@@ -18,6 +18,11 @@ export {
   InvalidUpdateError,
   EmptyChannelError,
 } from "./errors.js";
+export {
+  BaseChannel,
+  type BinaryOperator,
+  BinaryOperatorAggregate,
+} from "./channels/index.js";
 export { type RetryPolicy } from "./pregel/utils.js";
 export { Send } from "./constants.js";
 
