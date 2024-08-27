@@ -309,7 +309,7 @@ export class PregelLoop {
         writes:
           mapOutputUpdates(this.outputKeys, this.tasks).next().value ?? null,
       });
-      // after execution, check if we should inte`rrupt
+      // after execution, check if we should interrupt
       if (shouldInterrupt(this.checkpoint, interruptAfter, this.tasks)) {
         this.status = "interrupt_after";
         if (this.isNested) {
