@@ -113,7 +113,7 @@ export type CheckpointListOptions = {
   filter?: Record<string, any>;
 };
 
-export abstract class BaseCheckpointSaver<V = number> {
+export abstract class BaseCheckpointSaver<V extends string | number = number> {
   serde: SerializerProtocol = new JsonPlusSerializer();
 
   constructor(serde?: SerializerProtocol) {
@@ -156,7 +156,10 @@ export abstract class BaseCheckpointSaver<V = number> {
    * Default is to use integer versions, incrementing by 1. If you override, you can use str/int/float versions,
    * as long as they are monotonically increasing.
    */
-  getNextVersion(current: V | undefined, _channel: ChannelProtocol) {
-    return current !== undefined ? (current as number) + 1 : 1;
+  getNextVersion(current: V | undefined, _channel: ChannelProtocol): V {
+    if (typeof current !== "number") {
+      throw new Error("Please override this method to use string versions.");
+    }
+    return (current !== undefined ? current + 1 : 1) as V;
   }
 }
