@@ -9,7 +9,9 @@ import type {
 import type { ChannelProtocol, SendProtocol } from "./serde/types.js";
 import { JsonPlusSerializer } from "./serde/jsonplus.js";
 
-export type ChannelVersions = Record<string, string | number>;
+type ChannelVersion = number | string;
+
+export type ChannelVersions = Record<string, ChannelVersion>;
 
 export interface Checkpoint<
   N extends string = string,
@@ -34,11 +36,11 @@ export interface Checkpoint<
   /**
    * @default {}
    */
-  channel_versions: Record<C, number>;
+  channel_versions: Record<C, ChannelVersion>;
   /**
    * @default {}
    */
-  versions_seen: Record<N, Record<C, number>>;
+  versions_seen: Record<N, Record<C, ChannelVersion>>;
   /**
    * List of packets sent to nodes but not yet processed.
    * Cleared by the next checkpoint.
@@ -48,9 +50,9 @@ export interface Checkpoint<
 
 export interface ReadonlyCheckpoint extends Readonly<Checkpoint> {
   readonly channel_values: Readonly<Record<string, unknown>>;
-  readonly channel_versions: Readonly<Record<string, number>>;
+  readonly channel_versions: Readonly<Record<string, ChannelVersion>>;
   readonly versions_seen: Readonly<
-    Record<string, Readonly<Record<string, number>>>
+    Record<string, Readonly<Record<string, ChannelVersion>>>
   >;
 }
 
@@ -162,4 +164,31 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
     }
     return (current !== undefined ? current + 1 : 1) as V;
   }
+}
+
+export function compareChannelVersions(
+  a: ChannelVersion,
+  b: ChannelVersion
+): number {
+  if (typeof a === "number" && typeof b === "number") {
+    return Math.sign(a - b);
+  }
+
+  const [aStrInt, ...aRest] = String(a).split(".");
+  const [bStrInt, ...bRest] = String(b).split(".");
+
+  if (aStrInt !== bStrInt) return Math.sign(+aStrInt - +bStrInt);
+
+  const aStrRest = aRest.join(".");
+  const bStrRest = bRest.join(".");
+  return aStrRest.localeCompare(bStrRest);
+}
+
+export function maxChannelVersion(
+  ...versions: ChannelVersion[]
+): ChannelVersion {
+  return versions.reduce((max, version, idx) => {
+    if (idx === 0) return version;
+    return compareChannelVersions(max, version) >= 0 ? max : version;
+  });
 }
