@@ -9,7 +9,9 @@ import type {
 import type { ChannelProtocol, SendProtocol } from "./serde/types.js";
 import { JsonPlusSerializer } from "./serde/jsonplus.js";
 
-export type ChannelVersions = Record<string, string | number>;
+type ChannelVersion = number | string;
+
+export type ChannelVersions = Record<string, ChannelVersion>;
 
 export interface Checkpoint<
   N extends string = string,
@@ -34,11 +36,11 @@ export interface Checkpoint<
   /**
    * @default {}
    */
-  channel_versions: Record<C, number>;
+  channel_versions: Record<C, ChannelVersion>;
   /**
    * @default {}
    */
-  versions_seen: Record<N, Record<C, number>>;
+  versions_seen: Record<N, Record<C, ChannelVersion>>;
   /**
    * List of packets sent to nodes but not yet processed.
    * Cleared by the next checkpoint.
@@ -48,9 +50,9 @@ export interface Checkpoint<
 
 export interface ReadonlyCheckpoint extends Readonly<Checkpoint> {
   readonly channel_values: Readonly<Record<string, unknown>>;
-  readonly channel_versions: Readonly<Record<string, number>>;
+  readonly channel_versions: Readonly<Record<string, ChannelVersion>>;
   readonly versions_seen: Readonly<
-    Record<string, Readonly<Record<string, number>>>
+    Record<string, Readonly<Record<string, ChannelVersion>>>
   >;
 }
 
@@ -113,7 +115,7 @@ export type CheckpointListOptions = {
   filter?: Record<string, any>;
 };
 
-export abstract class BaseCheckpointSaver<V = number> {
+export abstract class BaseCheckpointSaver<V extends string | number = number> {
   serde: SerializerProtocol = new JsonPlusSerializer();
 
   constructor(serde?: SerializerProtocol) {
@@ -156,7 +158,39 @@ export abstract class BaseCheckpointSaver<V = number> {
    * Default is to use integer versions, incrementing by 1. If you override, you can use str/int/float versions,
    * as long as they are monotonically increasing.
    */
-  getNextVersion(current: V | undefined, _channel: ChannelProtocol) {
-    return current !== undefined ? (current as number) + 1 : 1;
+  getNextVersion(current: V | undefined, _channel: ChannelProtocol): V {
+    if (typeof current === "string") {
+      throw new Error("Please override this method to use string versions.");
+    }
+    return (
+      current !== undefined && typeof current === "number" ? current + 1 : 1
+    ) as V;
   }
+}
+
+export function compareChannelVersions(
+  a: ChannelVersion,
+  b: ChannelVersion
+): number {
+  if (typeof a === "number" && typeof b === "number") {
+    return Math.sign(a - b);
+  }
+
+  const [aStrInt, ...aRest] = String(a).split(".");
+  const [bStrInt, ...bRest] = String(b).split(".");
+
+  if (aStrInt !== bStrInt) return Math.sign(+aStrInt - +bStrInt);
+
+  const aStrRest = aRest.join(".");
+  const bStrRest = bRest.join(".");
+  return aStrRest.localeCompare(bStrRest);
+}
+
+export function maxChannelVersion(
+  ...versions: ChannelVersion[]
+): ChannelVersion {
+  return versions.reduce((max, version, idx) => {
+    if (idx === 0) return version;
+    return compareChannelVersions(max, version) >= 0 ? max : version;
+  });
 }

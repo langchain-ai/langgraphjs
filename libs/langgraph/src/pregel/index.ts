@@ -14,6 +14,7 @@ import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   BaseCheckpointSaver,
   CheckpointListOptions,
+  compareChannelVersions,
   copyCheckpoint,
   emptyCheckpoint,
   uuid5,
@@ -415,9 +416,9 @@ export class Pregel<
           });
         })
         .flat()
-        .sort(([aNumber], [bNumber]) => {
-          return aNumber - bNumber;
-        });
+        .sort(([aNumber], [bNumber]) =>
+          compareChannelVersions(aNumber, bNumber)
+        );
       // if two nodes updated the state at the same time, it's ambiguous
       if (lastSeenByNode) {
         if (lastSeenByNode.length === 1) {
