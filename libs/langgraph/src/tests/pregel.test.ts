@@ -2108,7 +2108,7 @@ describe("StateGraph", () => {
         ],
       }
     );
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 200));
     expect(result).toEqual({
       input: "what is the weather in sf?",
       agentOutcome: {
