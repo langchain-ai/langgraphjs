@@ -31,6 +31,7 @@ LangGraph.js makes it easy to persist state across graph runs. The guides below 
 - [How to view and update past graph state](time-travel.ipynb)
 - [How to create a custom checkpointer using Postgres](persistence-postgres.ipynb)
 - [How to delete messages](delete-messages.ipynb)
+- [How to add summary of the conversation history](add-summary-conversation-history.ipynb)
 
 ## Human-in-the-loop
 
@@ -52,6 +53,7 @@ These guides show how to use different streaming modes.
 - [How to stream LLM tokens](stream-tokens.ipynb)
 - [How to stream LLM tokens without LangChain models](streaming-tokens-without-langchain.ipynb)
 - [How to stream events from within a tool](streaming-events-from-within-tools.ipynb)
+- [How to stream from the final node](streaming-from-final-node.ipynb)
 
 ## Tool calling
 
