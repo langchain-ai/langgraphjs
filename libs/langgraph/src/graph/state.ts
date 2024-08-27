@@ -4,7 +4,7 @@ import {
   Runnable,
   RunnableLike,
 } from "@langchain/core/runnables";
-import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
+import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { BaseChannel } from "../channels/base.js";
 import {
   END,
@@ -25,7 +25,6 @@ import { ChannelRead, PregelNode } from "../pregel/read.js";
 import { NamedBarrierValue } from "../channels/named_barrier_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { RunnableCallable } from "../utils.js";
-import { All } from "../pregel/types.js";
 import {
   _isSend,
   CHECKPOINT_NAMESPACE_SEPARATOR,
@@ -139,10 +138,16 @@ export class StateGraph<
   U = SD extends StateDefinition ? UpdateType<SD> : Partial<S>,
   N extends string = typeof START
 > extends Graph<N, S, U, StateGraphNodeSpec<S, U>> {
-  channels: Record<string, BaseChannel>;
+  channels: Record<string, BaseChannel> = {};
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
   waitingEdges: Set<[N[], N]> = new Set();
+
+  schema: StateDefinition;
+
+  input: StateDefinition;
+
+  output: StateDefinition;
 
   constructor(
     fields: SD extends StateDefinition
@@ -152,17 +157,19 @@ export class StateGraph<
     super();
     if (isStateDefinition(fields) || isAnnotationRoot(fields)) {
       const spec = isAnnotationRoot(fields) ? fields.spec : fields;
-      this.channels = {};
-      for (const [key, val] of Object.entries(spec)) {
-        if (typeof val === "function") {
-          this.channels[key] = val();
-        } else {
-          this.channels[key] = val;
-        }
-      }
+      this.schema = spec;
+    } else if (isStateGraphArgs(fields)) {
+      const spec = _getChannels(fields.channels);
+      this.schema = spec;
     } else {
-      this.channels = _getChannels(fields.channels);
+      throw new Error("Invalid StateGraph input.");
     }
+    this.input = this.schema;
+    this.output = this.schema;
+    this._addSchema(this.schema);
+    // Placeholder for now until we figure out proper input/output schema support
+    this._addSchema(this.input);
+    this._addSchema(this.output);
     for (const c of Object.values(this.channels)) {
       if (c.lc_graph_name === "BinaryOperatorAggregate") {
         this.supportMultipleEdges = true;
@@ -178,6 +185,28 @@ export class StateGraph<
         starts.map((start) => [start, end] as [string, string])
       ),
     ]);
+  }
+
+  _addSchema(stateDefinition: StateDefinition) {
+    for (const [key, val] of Object.entries(stateDefinition)) {
+      let channel;
+      if (typeof val === "function") {
+        channel = val();
+      } else {
+        channel = val;
+      }
+      if (this.channels[key] !== undefined) {
+        if (this.channels[key].lc_graph_name !== channel.lc_graph_name) {
+          if (channel.lc_graph_name !== "LastValue") {
+            throw new Error(
+              `Channel "${key}" already exists with a different type.`
+            );
+          }
+        }
+      } else {
+        this.channels[key] = channel;
+      }
+    }
   }
 
   addNode<K extends string, NodeInput = S>(
@@ -266,14 +295,16 @@ export class StateGraph<
     ]);
 
     // prepare output channels
-    const stateKeys = Object.keys(this.channels);
+    const stateKeys = Object.keys(this.schema);
     const outputChannels =
-      stateKeys.length === 1 && stateKeys[0] === ROOT
-        ? stateKeys[0]
-        : stateKeys;
+      stateKeys.length === 1 && stateKeys[0] === ROOT ? ROOT : stateKeys;
+
+    const outputKeys = Object.keys(this.output);
+    const streamChannels =
+      outputKeys.length === 1 && outputKeys[0] === ROOT ? ROOT : outputKeys;
 
     // create empty compiled graph
-    const compiled = new CompiledStateGraph({
+    const compiled = new CompiledStateGraph<S, U, N>({
       builder: this,
       checkpointer,
       interruptAfter,
@@ -286,7 +317,7 @@ export class StateGraph<
       } as Record<N | typeof START | typeof END | string, BaseChannel>,
       inputChannels: START,
       outputChannels,
-      streamChannels: outputChannels,
+      streamChannels,
       streamMode: "updates",
     });
 
@@ -337,12 +368,22 @@ export class CompiledStateGraph<
 > extends CompiledGraph<N, S, U> {
   declare builder: StateGraph<unknown, S, U, N>;
 
+  // Stopgap until we add proper input/output schema support
+  get inputDefinition() {
+    return this.builder.input;
+  }
+
+  // Stopgap until we add proper input/output schema support
+  get outputDefinition() {
+    return this.builder.output;
+  }
+
   attachNode(key: typeof START, node?: never): void;
 
   attachNode(key: N, node: StateGraphNodeSpec<S, U>): void;
 
   attachNode(key: N | typeof START, node?: StateGraphNodeSpec<S, U>): void {
-    const stateKeys = Object.keys(this.builder.channels);
+    const stateKeys = Object.keys(this.builder.input);
 
     function getStateKey(key: keyof U, input: U) {
       if (!input) {
@@ -506,5 +547,15 @@ function isAnnotationRoot<SD extends StateDefinition>(
     obj !== null &&
     "lc_graph_name" in obj &&
     obj.lc_graph_name === "AnnotationRoot"
+  );
+}
+
+function isStateGraphArgs<Channels extends object | unknown>(
+  obj: unknown | StateGraphArgs<Channels>
+): obj is StateGraphArgs<Channels> {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    (obj as StateGraphArgs<Channels>).channels !== undefined
   );
 }

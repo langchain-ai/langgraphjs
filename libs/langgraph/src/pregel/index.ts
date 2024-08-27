@@ -12,6 +12,7 @@ import {
 } from "@langchain/core/runnables";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
+  All,
   BaseCheckpointSaver,
   CheckpointListOptions,
   copyCheckpoint,
@@ -42,7 +43,6 @@ import {
   INTERRUPT,
 } from "../constants.js";
 import {
-  All,
   PregelExecutableTask,
   PregelInterface,
   PregelParams,
@@ -653,13 +653,16 @@ export class Pregel<
         input,
         config,
         checkpointer,
-        graph: this,
+        nodes: this.nodes,
+        channelSpecs: this.channels,
         onBackgroundError,
+        outputKeys,
+        streamKeys: this.streamChannelsAsIs as string | string[],
       });
       while (
         backgroundError === undefined &&
         (await loop.tick({
-          outputKeys,
+          inputKeys: this.inputChannels as string | string[],
           interruptAfter,
           interruptBefore,
           manager: runManager,
