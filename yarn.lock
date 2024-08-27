@@ -2119,7 +2119,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint, @langchain/langgraph-checkpoint@~0.0.2, @langchain/langgraph-checkpoint@~0.0.3":
+"@langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint, @langchain/langgraph-checkpoint@~0.0.2, @langchain/langgraph-checkpoint@~0.0.4":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-checkpoint@workspace:libs/checkpoint"
   dependencies:
@@ -2162,7 +2162,7 @@ __metadata:
     "@langchain/anthropic": ^0.2.12
     "@langchain/community": ^0.2.25
     "@langchain/core": ^0.2.29
-    "@langchain/langgraph-checkpoint": ~0.0.3
+    "@langchain/langgraph-checkpoint": ~0.0.4
     "@langchain/langgraph-checkpoint-sqlite": ~0.0.1
     "@langchain/openai": ^0.2.4
     "@langchain/scripts": ">=0.1.2 <0.2.0"
