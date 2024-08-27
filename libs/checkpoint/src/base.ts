@@ -159,10 +159,12 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
    * as long as they are monotonically increasing.
    */
   getNextVersion(current: V | undefined, _channel: ChannelProtocol): V {
-    if (typeof current !== "number") {
+    if (typeof current === "string") {
       throw new Error("Please override this method to use string versions.");
     }
-    return (current !== undefined ? current + 1 : 1) as V;
+    return (
+      current !== undefined && typeof current === "number" ? current + 1 : 1
+    ) as V;
   }
 }
 
