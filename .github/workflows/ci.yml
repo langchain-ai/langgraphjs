@@ -118,3 +118,55 @@ jobs:
           diff -C 3 README.md langgraph/README.md
           exit 1
           fi
+
+  validate-dep-files:
+    name: Validate Deno and Node dependencies in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      - name: Install dependencies
+        run: yarn install --immutable
+      - name: Validate
+        run: yarn tsx --experimental-wasm-modules ./scripts/validate_deps_sync.ts 
+
+  validate-new-notebooks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "yarn"
+      - name: Install dependencies
+        run: yarn install --immutable
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+      - name: Check for new or modified notebooks
+        id: check_notebooks
+        run: |
+          notebooks=$(echo '${{ steps.changed-files.outputs.all_changed_files }}' | tr ' ' '\n' | grep -E '^(docs/docs|examples)/.*\.ipynb$' || true)
+          echo "Affected notebooks: $notebooks"
+          echo "has_affected_notebooks=$([ -n "$notebooks" ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+      - name: Build LangGraph
+        if: steps.check_notebooks.outputs.has_affected_notebooks == 'true'
+        run: yarn build
+      - name: Validate affected notebooks
+        if: steps.check_notebooks.outputs.has_affected_notebooks == 'true'
+        run: |
+          notebooks=$(echo '${{ steps.changed-files.outputs.all_changed_files }}' | tr ' ' '\n' | grep -E '^(docs/docs|examples)/.*\.ipynb$' || true)
+          if [ -n "$notebooks" ]; then
+            cd ./libs/langgraph
+            for notebook in $notebooks; do
+              absolute_path="$GITHUB_WORKSPACE/$notebook"
+              yarn notebook_validate "$absolute_path"
+            done
+          else
+            echo "No notebooks to validate."
+          fi
