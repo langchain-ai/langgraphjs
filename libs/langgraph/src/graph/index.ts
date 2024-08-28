@@ -4,7 +4,7 @@ export {
   type UpdateType,
   type NodeType,
   AnnotationRoot,
-  StateDefinition,
+  type StateDefinition,
   type SingleReducer,
 } from "./annotation.js";
 export { END, START, Graph, type CompiledGraph } from "./graph.js";
