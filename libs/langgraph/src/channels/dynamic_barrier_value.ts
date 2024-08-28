@@ -13,13 +13,14 @@ function isWaitForNames<Value>(
 }
 
 /**
-  A channel that switches between two states
-
-    - in the "priming" state it can't be read from.
-        - if it receives a WaitForNames update, it switches to the "waiting" state.
-    - in the "waiting" state it collects named values until all are received.
-        - once all named values are received, it can be read once, and it switches
-          back to the "priming" state.
+ * A channel that switches between two states
+ *
+ * - in the "priming" state it can't be read from.
+ *     - if it receives a WaitForNames update, it switches to the "waiting" state.
+ * - in the "waiting" state it collects named values until all are received.
+ *     - once all named values are received, it can be read once, and it switches
+ *       back to the "priming" state.
+ * @internal
  */
 export class DynamicBarrierValue<Value> extends BaseChannel<
   void,

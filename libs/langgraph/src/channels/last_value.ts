@@ -7,6 +7,7 @@ import { BaseChannel } from "./base.js";
  * Since `update` is only called once per step and value can only be of length 1,
  * LastValue always stores the last value of a single node. If multiple nodes attempt to
  * write to this channel in a single step, an error will be thrown.
+ * @internal
  */
 export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
   lc_graph_name = "LastValue";
