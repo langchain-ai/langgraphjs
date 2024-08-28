@@ -21,9 +21,8 @@ import {
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import {
-  END,
   messagesStateReducer,
-  START,
+  type START,
   StateGraph,
 } from "../graph/index.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
@@ -110,9 +109,9 @@ export function createReactAgent(
       isAIMessage(lastMessage) &&
       (!lastMessage.tool_calls || lastMessage.tool_calls.length === 0)
     ) {
-      return END;
+      return "__end__";
     } else {
-      return "continue";
+      return "tools";
     }
   };
 
@@ -130,11 +129,8 @@ export function createReactAgent(
       RunnableLambda.from(callModel).withConfig({ runName: "agent" })
     )
     .addNode("tools", new ToolNode<AgentState>(toolClasses))
-    .addEdge(START, "agent")
-    .addConditionalEdges("agent", shouldContinue, {
-      continue: "tools",
-      [END]: END,
-    })
+    .addEdge("__start__", "agent")
+    .addConditionalEdges("agent", shouldContinue, ["tools", "__end__"])
     .addEdge("tools", "agent");
 
   return workflow.compile({
