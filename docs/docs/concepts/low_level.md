@@ -44,7 +44,7 @@ The first thing you do when you define a graph is define the `State` of the grap
 
 ### Schema
 
-The way to specify the schema of a graph is by defining an [`Annotation`](/anggraphjs/reference/modules/langgraph.Annotation.html) object, where each key is an item in the state.
+The way to specify the schema of a graph is by defining an [`Annotation`](/langgraphjs/reference/modules/langgraph.Annotation.html) object, where each key is an item in the state.
 
 ### Reducers
 
