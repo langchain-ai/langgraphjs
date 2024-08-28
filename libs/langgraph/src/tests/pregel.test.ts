@@ -2036,9 +2036,9 @@ describe("StateGraph", () => {
     data: typeof AgentAnnotation.State
   ): Promise<string> => {
     if (data.agentOutcome && "returnValues" in data.agentOutcome) {
-      return "exit";
+      return "__end__";
     }
-    return "continue";
+    return "tools";
   };
 
   it("can invoke", async () => {
@@ -2088,10 +2088,7 @@ describe("StateGraph", () => {
       .addNode("tools", executeTools)
       .addEdge(START, "agent")
       .addEdge("agent", "passthrough")
-      .addConditionalEdges("passthrough", shouldContinue, {
-        continue: "tools",
-        exit: END,
-      })
+      .addConditionalEdges("passthrough", shouldContinue, ["tools", "__end__"])
       .addEdge("tools", "agent")
       .compile();
 
@@ -2182,10 +2179,7 @@ describe("StateGraph", () => {
       .addNode("agent", agent)
       .addNode("tools", executeTools)
       .addEdge(START, "agent")
-      .addConditionalEdges("agent", shouldContinue, {
-        continue: "tools",
-        exit: END,
-      })
+      .addConditionalEdges("agent", shouldContinue, ["tools", "__end__"])
       .addEdge("tools", "agent")
       .compile();
 
