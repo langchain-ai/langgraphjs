@@ -14,9 +14,6 @@ on:
   push:
     branches: ["main"]
   pull_request:
-    paths:
-      - '**.ipynb'
-      - 'deno.json'
   workflow_dispatch:
 
 env:
