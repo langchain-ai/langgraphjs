@@ -16,15 +16,16 @@ export type ToolNodeOptions = {
   handleToolErrors?: boolean;
 };
 
-/**
- * A node that runs the tools requested in the last AIMessage. It can be used
- * either in StateGraph with a "messages" key or in MessageGraph. If multiple
- * tool calls are requested, they will be run in parallel. The output will be
- * a list of ToolMessages, one for each tool call.
- */
 export class ToolNode<
-  T extends BaseMessage[] | Partial<typeof MessagesAnnotation.State>
+  T extends BaseMessage[] | typeof MessagesAnnotation.State
 > extends RunnableCallable<T, T> {
+  /**
+  A node that runs the tools requested in the last AIMessage. It can be used
+  either in StateGraph with a "messages" key or in MessageGraph. If multiple
+  tool calls are requested, they will be run in parallel. The output will be
+  a list of ToolMessages, one for each tool call.
+  */
+
   tools: (StructuredToolInterface | RunnableToolLike)[];
 
   handleToolErrors = true;
@@ -39,12 +40,15 @@ export class ToolNode<
     this.handleToolErrors = handleToolErrors ?? this.handleToolErrors;
   }
 
-  private async run(input: T, config: RunnableConfig): Promise<T> {
+  private async run(
+    input: BaseMessage[] | typeof MessagesAnnotation.State,
+    config: RunnableConfig
+  ): Promise<BaseMessage[] | typeof MessagesAnnotation.State> {
     const message = Array.isArray(input)
       ? input[input.length - 1]
-      : input.messages?.[input.messages.length - 1];
+      : input.messages[input.messages.length - 1];
 
-    if (message?._getType() !== "ai") {
+    if (message._getType() !== "ai") {
       throw new Error("ToolNode only accepts AIMessages as input.");
     }
 
@@ -83,7 +87,7 @@ export class ToolNode<
       }) ?? []
     );
 
-    return (Array.isArray(input) ? outputs : { messages: outputs }) as T;
+    return Array.isArray(input) ? outputs : { messages: outputs };
   }
 }
 
