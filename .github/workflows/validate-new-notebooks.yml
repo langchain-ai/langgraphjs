@@ -14,6 +14,9 @@ on:
   push:
     branches: ["main"]
   pull_request:
+    paths:
+      - '**.ipynb'
+      - 'deno.json'
   workflow_dispatch:
 
 env:
@@ -35,7 +38,6 @@ jobs:
       - name: Validate
         run: yarn tsx --experimental-wasm-modules ./scripts/validate_deps_sync.ts 
 
-jobs:
   validate-new-notebooks:
     runs-on: ubuntu-latest
     steps:
