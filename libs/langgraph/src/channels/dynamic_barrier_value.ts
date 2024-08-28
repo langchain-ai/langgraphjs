@@ -1,5 +1,5 @@
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
-import { BaseChannel } from "./index.js";
+import { BaseChannel } from "./base.js";
 import { areSetsEqual } from "./named_barrier_value.js";
 
 export interface WaitForNames<Value> {

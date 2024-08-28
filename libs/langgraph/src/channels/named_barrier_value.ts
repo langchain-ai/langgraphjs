@@ -1,5 +1,5 @@
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
-import { BaseChannel } from "./index.js";
+import { BaseChannel } from "./base.js";
 
 export const areSetsEqual = <T>(a: Set<T>, b: Set<T>) =>
   a.size === b.size && [...a].every((value) => b.has(value));
