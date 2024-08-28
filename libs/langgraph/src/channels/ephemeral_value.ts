@@ -3,6 +3,7 @@ import { BaseChannel } from "./index.js";
 
 /**
  * Stores the value received in the step immediately preceding, clears after.
+ * @internal
  */
 export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
   lc_graph_name = "EphemeralValue";

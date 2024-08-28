@@ -9,6 +9,7 @@ export const areSetsEqual = <T>(a: Set<T>, b: Set<T>) =>
  *
  * This ensures that if node N and node M both write to channel C, the value of C will not be updated
  * until N and M have completed updating.
+ * @internal
  */
 export class NamedBarrierValue<Value> extends BaseChannel<
   void,

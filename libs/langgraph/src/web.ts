@@ -9,8 +9,11 @@ export {
   messagesStateReducer,
   Annotation,
   AnnotationRoot,
+  type StateDefinition,
+  type SingleReducer,
   type StateType,
   type UpdateType,
+  type NodeType,
   type CompiledGraph,
 } from "./graph/index.js";
 export {
