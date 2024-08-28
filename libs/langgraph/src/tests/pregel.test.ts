@@ -3878,22 +3878,6 @@ it("StateGraph start branch then end", async () => {
     market: string;
   };
 
-  const invalidBuilder = new StateGraph<State>({
-    channels: {
-      my_key: { reducer: (x: string, y: string) => x + y },
-      market: null,
-    },
-  })
-    .addNode("tool_two_slow", (_: State) => ({ my_key: ` slow` }))
-    .addNode("tool_two_fast", (_: State) => ({ my_key: ` fast` }))
-    .addConditionalEdges(START, (state: State) =>
-      state.market === "DE" ? "tool_two_slow" : "tool_two_fast"
-    );
-
-  expect(() => invalidBuilder.compile()).toThrowError(
-    "Node `tool_two_slow` is a dead-end"
-  );
-
   const toolTwoBuilder = new StateGraph<State>({
     channels: {
       my_key: { reducer: (x: string, y: string) => x + y },
@@ -3906,9 +3890,7 @@ it("StateGraph start branch then end", async () => {
       source: START,
       path: (state: State) =>
         state.market === "DE" ? "tool_two_slow" : "tool_two_fast",
-    })
-    .addEdge("tool_two_fast", END)
-    .addEdge("tool_two_slow", END);
+    });
 
   const toolTwo = toolTwoBuilder.compile();
 
