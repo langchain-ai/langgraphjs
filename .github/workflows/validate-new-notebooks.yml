@@ -12,14 +12,12 @@ concurrency:
 
 on:
   push:
-    branches:
-      - main
+    branches: ["main"]
   pull_request:
     branches:
       - main
     paths:
-      - 'docs/docs/**'
-      - 'examples/**'
+      - '**.ipynb'
       - 'deno.json'
   workflow_dispatch:
 
@@ -71,7 +69,7 @@ jobs:
         run: |
           notebooks=$(echo '${{ steps.changed-files.outputs.all_changed_files }}' | tr ' ' '\n' | grep -E '^(docs/docs|examples)/.*\.ipynb$' || true)
           if [ -n "$notebooks" ]; then
-            cd ./langgraph
+            cd ./libs/langgraph
             for notebook in $notebooks; do
               absolute_path="$GITHUB_WORKSPACE/$notebook"
               yarn notebook_validate "$absolute_path"
