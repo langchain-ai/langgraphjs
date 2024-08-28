@@ -20,6 +20,7 @@ on:
     paths:
       - 'docs/docs/**'
       - 'examples/**'
+      - '*.ipynb'
       - 'deno.json'
   workflow_dispatch:
 
