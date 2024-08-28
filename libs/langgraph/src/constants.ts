@@ -92,3 +92,8 @@ export function _isSend(x: unknown): x is Send {
   const operation = x as Send;
   return operation.lg_name === "Send";
 }
+
+export type Interrupt = {
+  value: any;
+  when: "during";
+};

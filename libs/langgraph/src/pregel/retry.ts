@@ -45,6 +45,12 @@ const DEFAULT_RETRY_ON_HANDLER = (error: any) => {
   return true;
 };
 
+export type SettledPregelTask = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  task: PregelExecutableTask<any, any>;
+  error: Error;
+};
+
 export async function* executeTasksWithRetry(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tasks: PregelExecutableTask<any, any>[],
@@ -53,8 +59,7 @@ export async function* executeTasksWithRetry(
     signal?: AbortSignal;
     retryPolicy?: RetryPolicy;
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): AsyncGenerator<PregelExecutableTask<any, any>> {
+): AsyncGenerator<SettledPregelTask> {
   const { stepTimeout, retryPolicy } = options ?? {};
   let signal = options?.signal;
   // Start tasks
@@ -85,16 +90,12 @@ export async function* executeTasksWithRetry(
   }).finally(() => signal?.removeEventListener("abort", listener));
 
   while (Object.keys(executingTasksMap).length > 0) {
-    const { task, error } = await Promise.race([
+    const settledTask = await Promise.race([
       ...Object.values(executingTasksMap),
       signalPromise,
     ]);
-    if (error !== undefined) {
-      // TODO: don't stop others if exception is interrupt
-      throw error;
-    }
-    yield task;
-    delete executingTasksMap[task.id];
+    yield settledTask;
+    delete executingTasksMap[settledTask.task.id];
   }
 }
 

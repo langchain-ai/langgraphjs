@@ -3007,7 +3007,11 @@ describe("StateGraph", () => {
     });
     expect(checkpointTuple).not.toBeNull();
     expect(checkpointTuple?.pendingWrites).toEqual([
-      [expect.any(String), "__error__", { message: "Total is too large" }],
+      [
+        expect.any(String),
+        "__error__",
+        { message: "Total is too large", name: "Error" },
+      ],
     ]);
     expect(nonRetryableErrorCount).toBe(1);
 
