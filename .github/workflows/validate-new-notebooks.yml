@@ -12,13 +12,12 @@ concurrency:
 
 on:
   push:
-    branches:
-      - main
+    branches: ["main"]
   pull_request:
     paths:
       - 'docs/docs/**'
       - 'examples/**'
-      - '*.ipynb'
+      - 'examples/*'
       - 'deno.json'
   workflow_dispatch:
 
