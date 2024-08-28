@@ -550,9 +550,9 @@ describe("ToolNode", () => {
       return { messages: [aiMessage] };
     }
 
-    function shouldContinue(
-      { messages }: typeof AgentAnnotation.State
-    ): "tools" | "__end__" {
+    function shouldContinue({
+      messages,
+    }: typeof AgentAnnotation.State): "tools" | "__end__" {
       const lastMessage: AIMessage = messages[messages.length - 1];
 
       // If the LLM makes a tool call, then we route to the "tools" node
