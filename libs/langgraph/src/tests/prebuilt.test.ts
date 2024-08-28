@@ -2,11 +2,12 @@
 /* eslint-disable no-param-reassign */
 import { beforeAll, describe, expect, it } from "@jest/globals";
 import { PromptTemplate } from "@langchain/core/prompts";
-import { StructuredTool, Tool } from "@langchain/core/tools";
+import { StructuredTool, tool, Tool } from "@langchain/core/tools";
 import { FakeStreamingLLM } from "@langchain/core/utils/testing";
 
 import {
   AIMessage,
+  BaseMessage,
   HumanMessage,
   SystemMessage,
   ToolMessage,
@@ -19,6 +20,7 @@ import {
   createAgentExecutor,
   createReactAgent,
 } from "../prebuilt/index.js";
+import { Annotation, messagesStateReducer, StateGraph } from "../web.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -491,5 +493,70 @@ describe("ToolNode", () => {
     expect(res[0].content).toEqual(
       `Error: Tool "badtool" not found.\n Please fix your mistakes.`
     );
+  });
+
+  it("Should work in a state graph", async () => {
+    const AgentAnnotation = Annotation.Root({
+      messages: Annotation<BaseMessage[]>({
+        reducer: messagesStateReducer,
+        default: () => [],
+      }),
+      prop2: Annotation<string>,
+    });
+
+    const weatherTool = tool(
+      async ({ query }) => {
+        // This is a placeholder for the actual implementation
+        if (
+          query.toLowerCase().includes("sf") ||
+          query.toLowerCase().includes("san francisco")
+        ) {
+          return "It's 60 degrees and foggy.";
+        }
+        return "It's 90 degrees and sunny.";
+      },
+      {
+        name: "weather",
+        description: "Call to get the current weather for a location.",
+        schema: z.object({
+          query: z.string().describe("The query to use in your search."),
+        }),
+      }
+    );
+
+    const graph = new StateGraph(AgentAnnotation)
+      .addNode("tools", new ToolNode([weatherTool]))
+      .addEdge("__start__", "tools")
+      .addEdge("tools", "__end__")
+      .compile();
+    const aiMessage = new AIMessage({
+      content: "",
+      tool_calls: [
+        {
+          id: "call_1234",
+          args: {
+            query: "SF",
+          },
+          name: "weather",
+          type: "tool_call",
+        },
+      ],
+    });
+    const res = await graph.invoke({
+      messages: [aiMessage],
+    });
+    const toolMessageId = res.messages[1].id;
+    expect(res).toEqual({
+      messages: [
+        aiMessage,
+        expect.objectContaining({
+          id: toolMessageId,
+          name: "weather",
+          artifact: undefined,
+          content: "It's 60 degrees and foggy.",
+          tool_call_id: "call_1234",
+        }),
+      ],
+    });
   });
 });
