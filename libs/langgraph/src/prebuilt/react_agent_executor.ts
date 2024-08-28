@@ -20,7 +20,12 @@ import {
 } from "@langchain/core/language_models/base";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
-import { END, START, StateGraph } from "../graph/index.js";
+import {
+  END,
+  messagesStateReducer,
+  START,
+  StateGraph,
+} from "../graph/index.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { CompiledStateGraph, StateGraphArgs } from "../graph/state.js";
 import { ToolNode } from "./tool_node.js";
@@ -80,7 +85,7 @@ export function createReactAgent(
   } = props;
   const schema: StateGraphArgs<AgentState>["channels"] = {
     messages: {
-      value: (left: BaseMessage[], right: BaseMessage[]) => left.concat(right),
+      value: messagesStateReducer,
       default: () => [],
     },
   };

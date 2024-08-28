@@ -5,6 +5,9 @@ function arraysEqual<T>(a: T[], b: T[]): boolean {
   return a.length === b.length && a.every((val, index) => val === b[index]);
 }
 
+/**
+ * @internal
+ */
 export class Topic<Value> extends BaseChannel<
   Array<Value>,
   Value | Value[],

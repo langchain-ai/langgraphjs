@@ -14,6 +14,7 @@ import {
   type PendingWrite,
   type PendingWriteValue,
   uuid5,
+  maxChannelVersion,
 } from "@langchain/langgraph-checkpoint";
 import {
   BaseChannel,
@@ -157,9 +158,11 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // Find the highest version of all channels
-  let maxVersion: number | undefined;
+  let maxVersion: string | number | undefined;
   if (Object.keys(checkpoint.channel_versions).length > 0) {
-    maxVersion = Math.max(...Object.values(checkpoint.channel_versions));
+    maxVersion = maxChannelVersion(
+      ...Object.values(checkpoint.channel_versions)
+    );
   }
 
   // Consume all channels that were read
@@ -210,7 +213,9 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // find the highest version of all channels
   maxVersion = undefined;
   if (Object.keys(checkpoint.channel_versions).length > 0) {
-    maxVersion = Math.max(...Object.values(checkpoint.channel_versions));
+    maxVersion = maxChannelVersion(
+      ...Object.values(checkpoint.channel_versions)
+    );
   }
 
   const updatedChannels: Set<string> = new Set();

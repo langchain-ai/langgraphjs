@@ -15,10 +15,10 @@ import {
 } from "../graph/state.js";
 import { END, START } from "../graph/index.js";
 
-/** @ignore */
+/** @deprecated Use {@link createReactAgent} instead with tool calling. */
 export type FunctionCallingExecutorState = { messages: Array<BaseMessage> };
 
-/** @ignore */
+/** @deprecated Use {@link createReactAgent} instead with tool calling. */
 export function createFunctionCallingExecutor<Model extends object>({
   model,
   tools,

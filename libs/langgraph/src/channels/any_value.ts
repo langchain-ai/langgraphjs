@@ -1,11 +1,13 @@
 import { EmptyChannelError } from "../errors.js";
-import { BaseChannel } from "./index.js";
+import { BaseChannel } from "./base.js";
 
 /**
  * Stores the last value received, assumes that if multiple values are received, they are all equal.
  *
  * Note: Unlike 'LastValue' if multiple nodes write to this channel in a single step, the values
  * will be continuously overwritten.
+ *
+ * @internal
  */
 export class AnyValue<Value> extends BaseChannel<Value, Value, Value> {
   lc_graph_name = "AnyValue";

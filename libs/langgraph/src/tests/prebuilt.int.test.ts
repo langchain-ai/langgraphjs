@@ -3,14 +3,10 @@
 import { it, beforeAll, describe, expect } from "@jest/globals";
 import { Tool } from "@langchain/core/tools";
 import { ChatOpenAI } from "@langchain/openai";
-import { BaseMessage, HumanMessage } from "@langchain/core/messages";
-import { RunnableLambda } from "@langchain/core/runnables";
-import { z } from "zod";
-import {
-  createReactAgent,
-  createFunctionCallingExecutor,
-} from "../prebuilt/index.js";
+import { HumanMessage } from "@langchain/core/messages";
+import { createReactAgent } from "../prebuilt/index.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { MemorySaverAssertImmutable } from "./utils.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -23,144 +19,40 @@ beforeAll(() => {
   initializeAsyncLocalStorageSingleton();
 });
 
-describe("createFunctionCallingExecutor", () => {
-  it("can call a function", async () => {
-    const weatherResponse = `Not too cold, not too hot 😎`;
-    const model = new ChatOpenAI();
-    class SanFranciscoWeatherTool extends Tool {
-      name = "current_weather";
-
-      description = "Get the current weather report for San Francisco, CA";
-
-      constructor() {
-        super();
-      }
-
-      async _call(_: string): Promise<string> {
-        return weatherResponse;
-      }
-    }
-    const tools = [new SanFranciscoWeatherTool()];
-
-    const functionsAgentExecutor = createFunctionCallingExecutor<ChatOpenAI>({
-      model,
-      tools,
-    });
-
-    const response = await functionsAgentExecutor.invoke({
-      messages: [new HumanMessage("What's the weather like in SF?")],
-    });
-
-    // It needs at least one human message, one AI and one function message.
-    expect(response.messages.length > 3).toBe(true);
-    const firstFunctionMessage = (response.messages as Array<BaseMessage>).find(
-      (message) => message._getType() === "function"
-    );
-    expect(firstFunctionMessage).toBeDefined();
-    expect(firstFunctionMessage?.content).toBe(weatherResponse);
-  });
-
-  it("can stream a function", async () => {
-    const weatherResponse = `Not too cold, not too hot 😎`;
-    const model = new ChatOpenAI({
-      streaming: true,
-    });
-    class SanFranciscoWeatherTool extends Tool {
-      name = "current_weather";
-
-      description = "Get the current weather report for San Francisco, CA";
-
-      constructor() {
-        super();
-      }
-
-      async _call(_: string): Promise<string> {
-        return weatherResponse;
-      }
-    }
-    const tools = [new SanFranciscoWeatherTool()];
-
-    const functionsAgentExecutor = createFunctionCallingExecutor({
-      model,
-      tools,
-    });
-
-    const stream = await functionsAgentExecutor.stream(
-      {
-        messages: [new HumanMessage("What's the weather like in SF?")],
-      },
-      { streamMode: "values" }
-    );
-    const fullResponse = [];
-    for await (const item of stream) {
-      fullResponse.push(item);
-    }
-
-    // human -> agent -> action -> agent
-    expect(fullResponse.length).toEqual(4);
-
-    const endState = fullResponse[fullResponse.length - 1];
-    // 1 human, 2 llm calls, 1 function call.
-    expect(endState.messages.length).toEqual(4);
-    const functionCall = endState.messages.find(
-      (message: BaseMessage) => message._getType() === "function"
-    );
-    expect(functionCall.content).toBe(weatherResponse);
-  });
-
-  it("can accept RunnableToolLike tools", async () => {
-    const weatherResponse = `Not too cold, not too hot 😎`;
-    const model = new ChatOpenAI();
-
-    const sfWeatherTool = RunnableLambda.from(async (_) => weatherResponse);
-    const tools = [
-      sfWeatherTool.asTool({
-        name: "current_weather",
-        description: "Get the current weather report for San Francisco, CA",
-        schema: z.object({
-          location: z.string(),
-        }),
-      }),
-    ];
-
-    const functionsAgentExecutor = createFunctionCallingExecutor<ChatOpenAI>({
-      model,
-      tools,
-    });
-
-    const response = await functionsAgentExecutor.invoke({
-      messages: [new HumanMessage("What's the weather like in SF?")],
-    });
-
-    // It needs at least one human message, one AI and one function message.
-    expect(response.messages.length > 3).toBe(true);
-    const firstFunctionMessage = (response.messages as Array<BaseMessage>).find(
-      (message) => message._getType() === "function"
-    );
-    expect(firstFunctionMessage).toBeDefined();
-    expect(firstFunctionMessage?.content).toBe(weatherResponse);
-  });
-});
-
 describe("createReactAgent", () => {
-  it("can call a tool", async () => {
-    const weatherResponse = `Not too cold, not too hot 😎`;
-    const model = new ChatOpenAI();
-    class SanFranciscoWeatherTool extends Tool {
-      name = "current_weather";
+  const weatherResponse = `Not too cold, not too hot 😎`;
+  class SanFranciscoWeatherTool extends Tool {
+    name = "current_weather_sf";
 
-      description = "Get the current weather report for San Francisco, CA";
+    description = "Get the current weather report for San Francisco, CA";
 
-      constructor() {
-        super();
-      }
-
-      async _call(_: string): Promise<string> {
-        return weatherResponse;
-      }
+    constructor() {
+      super();
     }
-    const tools = [new SanFranciscoWeatherTool()];
 
+    async _call(_: string): Promise<string> {
+      return weatherResponse;
+    }
+  }
+  class NewYorkWeatherTool extends Tool {
+    name = "current_weather_ny";
+
+    description = "Get the current weather report for New York City, NY";
+
+    constructor() {
+      super();
+    }
+
+    async _call(_: string): Promise<string> {
+      return weatherResponse;
+    }
+  }
+  const tools = [new SanFranciscoWeatherTool(), new NewYorkWeatherTool()];
+
+  it("can call a tool", async () => {
+    const model = new ChatOpenAI({
+      model: "gpt-4o",
+    });
     const reactAgent = createReactAgent({ llm: model, tools });
 
     const response = await reactAgent.invoke({
@@ -174,40 +66,31 @@ describe("createReactAgent", () => {
     expect(lastMessage.content.toLowerCase()).toContain("not too cold");
   });
 
-  it("can stream a tool call", async () => {
-    const weatherResponse = `Not too cold, not too hot 😎`;
+  it("can stream a tool call with a checkpointer", async () => {
     const model = new ChatOpenAI({
-      streaming: true,
+      model: "gpt-4o",
     });
-    class SanFranciscoWeatherTool extends Tool {
-      name = "current_weather";
 
-      description = "Get the current weather report for San Francisco, CA";
+    const checkpointer = new MemorySaverAssertImmutable();
 
-      constructor() {
-        super();
-      }
-
-      async _call(_: string): Promise<string> {
-        return weatherResponse;
-      }
-    }
-    const tools = [new SanFranciscoWeatherTool()];
-
-    const reactAgent = createReactAgent({ llm: model, tools });
+    const reactAgent = createReactAgent({
+      llm: model,
+      tools,
+      checkpointSaver: checkpointer,
+    });
 
     const stream = await reactAgent.stream(
       {
         messages: [new HumanMessage("What's the weather like in SF?")],
       },
-      { streamMode: "values" }
+      { configurable: { thread_id: "foo" }, streamMode: "values" }
     );
     const fullResponse = [];
     for await (const item of stream) {
       fullResponse.push(item);
     }
 
-    // human -> agent -> action -> agent
+    // human -> agent -> tool -> agent
     expect(fullResponse.length).toEqual(4);
     const endState = fullResponse[fullResponse.length - 1];
     // 1 human, 2 ai, 1 tool.
@@ -216,5 +99,24 @@ describe("createReactAgent", () => {
     const lastMessage = endState.messages[endState.messages.length - 1];
     expect(lastMessage._getType()).toBe("ai");
     expect(lastMessage.content.toLowerCase()).toContain("not too cold");
+    const stream2 = await reactAgent.stream(
+      {
+        messages: [new HumanMessage("What about NYC?")],
+      },
+      { configurable: { thread_id: "foo" }, streamMode: "values" }
+    );
+    const fullResponse2 = [];
+    for await (const item of stream2) {
+      fullResponse2.push(item);
+    }
+    // human -> agent -> tool -> agent
+    expect(fullResponse2.length).toEqual(4);
+    const endState2 = fullResponse2[fullResponse2.length - 1];
+    // 2 human, 4 ai, 2 tool.
+    expect(endState2.messages.length).toEqual(8);
+
+    const lastMessage2 = endState.messages[endState.messages.length - 1];
+    expect(lastMessage2._getType()).toBe("ai");
+    expect(lastMessage2.content.toLowerCase()).toContain("not too cold");
   });
 });

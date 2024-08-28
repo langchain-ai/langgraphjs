@@ -34,7 +34,7 @@ export const END = "__end__";
 export interface BranchOptions<IO, N extends string> {
   source: N;
   path: Branch<IO, N>["condition"];
-  pathMap?: Record<string, N | typeof END> | N[];
+  pathMap?: Record<string, N | typeof END> | (N | typeof END)[];
 }
 
 export class Branch<IO, N extends string> {
