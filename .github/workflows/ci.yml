@@ -124,43 +124,56 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Get changed files
+        id: changed_files
+        uses: tj-actions/changed-files@v44
+      - name: Check for deno.json changes
+        id: check_deno_json
+        run: |
+          deno_json=$(echo '${{ steps.changed_files.outputs.all_changed_files }}' | tr ' ' '\n' | grep -E '^./deno.json$' || true)
+          echo "has_deno_json_changes=$([ -n "$deno_json" ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
       - name: Use Node.js ${{ env.NODE_VERSION }}
+        if: steps.check_deno_json.outputs.has_deno_json_changes == 'true'
         uses: actions/setup-node@v3
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'yarn'
       - name: Install dependencies
+        if: steps.check_deno_json.outputs.has_deno_json_changes == 'true'
         run: yarn install --immutable
       - name: Validate
+        if: steps.check_deno_json.outputs.has_deno_json_changes == 'true'
         run: yarn tsx --experimental-wasm-modules ./scripts/validate_deps_sync.ts 
 
   validate-new-notebooks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v3
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: "yarn"
-      - name: Install dependencies
-        run: yarn install --immutable
       - name: Get changed files
-        id: changed-files
+        id: changed_files
         uses: tj-actions/changed-files@v44
       - name: Check for new or modified notebooks
         id: check_notebooks
         run: |
-          notebooks=$(echo '${{ steps.changed-files.outputs.all_changed_files }}' | tr ' ' '\n' | grep -E '^(docs/docs|examples)/.*\.ipynb$' || true)
+          notebooks=$(echo '${{ steps.changed_files.outputs.all_changed_files }}' | tr ' ' '\n' | grep -E '^(docs/docs|examples)/.*\.ipynb$' || true)
           echo "Affected notebooks: $notebooks"
           echo "has_affected_notebooks=$([ -n "$notebooks" ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+      - name: Use Node.js ${{ env.NODE_VERSION }}
+        if: steps.check_notebooks.outputs.has_affected_notebooks == 'true'
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      - name: Install dependencies
+        if: steps.check_notebooks.outputs.has_affected_notebooks == 'true'
+        run: yarn install --immutable
       - name: Build LangGraph
         if: steps.check_notebooks.outputs.has_affected_notebooks == 'true'
         run: yarn build
       - name: Validate affected notebooks
         if: steps.check_notebooks.outputs.has_affected_notebooks == 'true'
         run: |
-          notebooks=$(echo '${{ steps.changed-files.outputs.all_changed_files }}' | tr ' ' '\n' | grep -E '^(docs/docs|examples)/.*\.ipynb$' || true)
+          notebooks=$(echo '${{ steps.changed_files.outputs.all_changed_files }}' | tr ' ' '\n' | grep -E '^(docs/docs|examples)/.*\.ipynb$' || true)
           if [ -n "$notebooks" ]; then
             cd ./libs/langgraph
             for notebook in $notebooks; do
