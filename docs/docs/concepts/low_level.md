@@ -4,7 +4,7 @@
 
 At its core, LangGraph models agent workflows as graphs. You define the behavior of your agents using three key components:
 
-1. [`State`](#state): A shared data structure that represents the current snapshot of your application. It is represented by an [`annotations`](/langgraphjs/reference/functions/langgraph.Annotation-1.html) object.
+1. [`State`](#state): A shared data structure that represents the current snapshot of your application. It is represented by an [`annotations`](/langgraphjs/reference/modules/langgraph.Annotation.html) object.
 
 2. [`Nodes`](#nodes): JavaScript/TypeScript functions that encode the logic of your agents. They receive the current `State` as input, perform some computation or side-effect, and return an updated `State`.
 
@@ -40,11 +40,11 @@ You **MUST** compile your graph before you can use it.
 
 ## State
 
-The first thing you do when you define a graph is define the `State` of the graph. The `State` consists of the [schema of the graph](#schema) as well as [`reducer` functions](#reducers) which specify how to apply updates to the state. The schema of the `State` will be the input schema to all `Nodes` and `Edges` in the graph, and should be defined using an [`Annotation`](/langgraphjs/reference/functions/langgraph.Annotation-1.html) object. All `Nodes` will emit updates to the `State` which are then applied using the specified `reducer` function.
+The first thing you do when you define a graph is define the `State` of the graph. The `State` consists of the [schema of the graph](#schema) as well as [`reducer` functions](#reducers) which specify how to apply updates to the state. The schema of the `State` will be the input schema to all `Nodes` and `Edges` in the graph, and should be defined using an [`Annotation`](/langgraphjs/reference/modules/langgraph.Annotation.html) object. All `Nodes` will emit updates to the `State` which are then applied using the specified `reducer` function.
 
 ### Schema
 
-The way to specify the schema of a graph is by defining an [`Annotation`](/langgraphjs/reference/functions/langgraph.Annotation-1.html) object, where each key is an item in the state.
+The way to specify the schema of a graph is by defining an [`Annotation`](/langgraphjs/reference/modules/langgraph.Annotation.html) object, where each key is an item in the state.
 
 ### Reducers
 
