@@ -524,11 +524,6 @@ describe("ToolNode", () => {
       }
     );
 
-    const graph = new StateGraph(AgentAnnotation)
-      .addNode("tools", new ToolNode([weatherTool]))
-      .addEdge("__start__", "tools")
-      .addEdge("tools", "__end__")
-      .compile();
     const aiMessage = new AIMessage({
       content: "",
       tool_calls: [
@@ -542,8 +537,41 @@ describe("ToolNode", () => {
         },
       ],
     });
+
+    const aiMessage2 = new AIMessage({
+      content: "FOO",
+    });
+
+    async function callModel(state: typeof AgentAnnotation.State) {
+      // We return a list, because this will get added to the existing list
+      if (state.messages.includes(aiMessage)) {
+        return { messages: [aiMessage2] };
+      }
+      return { messages: [aiMessage] };
+    }
+
+    function shouldContinue(
+      { messages }: typeof AgentAnnotation.State
+    ): "tools" | "__end__" {
+      const lastMessage: AIMessage = messages[messages.length - 1];
+
+      // If the LLM makes a tool call, then we route to the "tools" node
+      if ((lastMessage.tool_calls?.length ?? 0) > 0) {
+        return "tools";
+      }
+      // Otherwise, we stop (reply to the user)
+      return "__end__";
+    }
+
+    const graph = new StateGraph(AgentAnnotation)
+      .addNode("agent", callModel)
+      .addNode("tools", new ToolNode([weatherTool]))
+      .addEdge("__start__", "agent")
+      .addConditionalEdges("agent", shouldContinue)
+      .addEdge("tools", "agent")
+      .compile();
     const res = await graph.invoke({
-      messages: [aiMessage],
+      messages: [],
     });
     const toolMessageId = res.messages[1].id;
     expect(res).toEqual({
@@ -556,6 +584,7 @@ describe("ToolNode", () => {
           content: "It's 60 degrees and foggy.",
           tool_call_id: "call_1234",
         }),
+        aiMessage2,
       ],
     });
   });
