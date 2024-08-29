@@ -1,4 +1,4 @@
-import { GraphInterrupt } from "../errors.js";
+import { isGraphInterrupt } from "../errors.js";
 import { PregelExecutableTask } from "./types.js";
 import type { RetryPolicy } from "./utils.js";
 
@@ -129,7 +129,7 @@ async function _runWithRetry(
     } catch (e: any) {
       error = e;
       error.pregelTaskId = pregelTask.id;
-      if (error.name === GraphInterrupt.unminifiable_name) {
+      if (isGraphInterrupt(error)) {
         break;
       }
       if (resolvedRetryPolicy === undefined) {

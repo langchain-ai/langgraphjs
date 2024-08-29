@@ -38,8 +38,13 @@ export class GraphInterrupt extends Error {
 
 /** Raised by a node to interrupt execution. */
 export class NodeInterrupt extends GraphInterrupt {
-  constructor(interrupt: Interrupt) {
-    super([interrupt]);
+  constructor(message: string) {
+    super([
+      {
+        value: message,
+        when: "during",
+      },
+    ]);
     this.name = "NodeInterrupt";
   }
 

@@ -6,7 +6,13 @@ import {
   uuid5,
 } from "@langchain/langgraph-checkpoint";
 import { BaseChannel } from "../channels/base.js";
-import { ERROR, TAG_HIDDEN, TASK_NAMESPACE } from "../constants.js";
+import {
+  ERROR,
+  Interrupt,
+  INTERRUPT,
+  TAG_HIDDEN,
+  TASK_NAMESPACE,
+} from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
 import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { readChannels } from "./io.js";
@@ -212,8 +218,26 @@ export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
       ([id, n]) => id === task.id && n === ERROR
     )?.[2];
 
-    if (error) return { id: task.id, name: task.name as string, error };
-    return { id: task.id, name: task.name as string };
+    const interrupts = pendingWrites
+      .filter(([id, n]) => {
+        return id === task.id && n === INTERRUPT;
+      })
+      .map(([, , v]) => {
+        return v;
+      }) as Interrupt[];
+    if (error) {
+      return {
+        id: task.id,
+        name: task.name as string,
+        error,
+        interrupts,
+      };
+    }
+    return {
+      id: task.id,
+      name: task.name as string,
+      interrupts,
+    };
   });
 }
 
