@@ -22,9 +22,8 @@ export type ToolNodeOptions = {
  * tool calls are requested, they will be run in parallel. The output will be
  * a list of ToolMessages, one for each tool call.
  */
-export class ToolNode<
-  T extends BaseMessage[] | Partial<typeof MessagesAnnotation.State>
-> extends RunnableCallable<T, T> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class ToolNode<T = any> extends RunnableCallable<T, T> {
   tools: (StructuredToolInterface | RunnableToolLike)[];
 
   handleToolErrors = true;
@@ -39,10 +38,11 @@ export class ToolNode<
     this.handleToolErrors = handleToolErrors ?? this.handleToolErrors;
   }
 
-  private async run(input: T, config: RunnableConfig): Promise<T> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async run(input: any, config: RunnableConfig): Promise<T> {
     const message = Array.isArray(input)
       ? input[input.length - 1]
-      : input.messages?.[input.messages.length - 1];
+      : input.messages[input.messages.length - 1];
 
     if (message?._getType() !== "ai") {
       throw new Error("ToolNode only accepts AIMessages as input.");
