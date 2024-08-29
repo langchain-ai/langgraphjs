@@ -38,8 +38,8 @@ LangGraph.js makes it easy to persist state across graph runs. The guides below 
 One of LangGraph.js's main benefits is that it makes human-in-the-loop workflows easy.
 These guides cover common examples of that.
 
-- [How to add human-in-the-loop](human-in-the-loop.ipynb)
 - [How to add breakpoints](breakpoints.ipynb)
+- [How to add dynamic breakpoints](dynamic_breakpoints.ipynb)
 - [How to wait for user input](wait-user-input.ipynb)
 - [How to edit graph state](edit-graph-state.ipynb)
 
