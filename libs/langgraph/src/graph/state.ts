@@ -70,6 +70,10 @@ export type StateGraphAddNodeOptions = {
   retryPolicy?: RetryPolicy;
 } & AddNodeOptions;
 
+export type StateGraphOptions<SD extends StateDefinition | unknown> = {
+  output?: AnnotationRoot<SD extends StateDefinition ? SD : StateDefinition>;
+}
+
 /**
  * A graph whose nodes communicate by reading and writing to a shared state.
  * Each node takes a defined `State` as input and returns a `Partial<State>`.
@@ -152,7 +156,8 @@ export class StateGraph<
   constructor(
     fields: SD extends StateDefinition
       ? SD | AnnotationRoot<SD> | StateGraphArgs<S>
-      : StateGraphArgs<S>
+      : StateGraphArgs<S>,
+    options?: StateGraphOptions<SD>
   ) {
     super();
     if (isStateDefinition(fields) || isAnnotationRoot(fields)) {
@@ -165,9 +170,8 @@ export class StateGraph<
       throw new Error("Invalid StateGraph input.");
     }
     this.input = this.schema;
-    this.output = this.schema;
+    this.output = options?.output?.spec ?? this.schema;
     this._addSchema(this.schema);
-    // Placeholder for now until we figure out proper input/output schema support
     this._addSchema(this.input);
     this._addSchema(this.output);
     for (const c of Object.values(this.channels)) {
