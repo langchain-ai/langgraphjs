@@ -54,4 +54,5 @@ jobs:
         env:
           CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |
+          pwd
           yarn check-links
