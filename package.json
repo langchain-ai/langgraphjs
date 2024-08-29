@@ -29,7 +29,7 @@
     "format": "turbo run format",
     "format:check": "turbo run format:check",
     "release": "node scripts/release_workspace.cjs --workspace",
-    "check-links": "node scripts/check-links.js"
+    "check-links": "node scripts/check-links.cjs"
   },
   "author": "LangChain",
   "license": "MIT",

@@ -54,5 +54,4 @@ jobs:
         env:
           CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |
-          chmod +x scripts/check-links.js
           yarn check-links
