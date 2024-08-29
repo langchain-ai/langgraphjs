@@ -6,7 +6,7 @@ import {
 import { v4 } from "uuid";
 import { StateGraph } from "./state.js";
 
-type Messages =
+export type Messages =
   | Array<BaseMessage | BaseMessageLike>
   | BaseMessage
   | BaseMessageLike;

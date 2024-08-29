@@ -8,6 +8,7 @@ import type {
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
 import { RetryPolicy } from "./utils.js";
+import { Interrupt } from "../constants.js";
 
 export type StreamMode = "values" | "updates" | "debug";
 
@@ -78,6 +79,7 @@ export interface PregelTaskDescription {
   readonly id: string;
   readonly name: string;
   readonly error?: unknown;
+  readonly interrupts: Interrupt[];
 }
 
 export interface PregelExecutableTask<

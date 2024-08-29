@@ -64,6 +64,7 @@ plugins:
       options: "typedoc.json"
       name: "API Reference"
       title_link: "/" # optional, default: '/'
+
 nav:
   - Home:
       - "index.md"
@@ -104,8 +105,8 @@ nav:
           - How to delete messages: "how-tos/delete-messages.ipynb"
           - Add summary of the conversation history: "how-tos/add-summary-conversation-history.ipynb"
       - Human-in-the-loop:
-          - Add human-in-the-loop: "how-tos/human-in-the-loop.ipynb"
           - Add breakpoints: "how-tos/breakpoints.ipynb"
+          - Add dynamic breakpoints: "how-tos/dynamic_breakpoints.ipynb"
           - Wait for user input: "how-tos/wait-user-input.ipynb"
           - View and update past graph state: "how-tos/time-travel.ipynb"
           - Edit graph state: "how-tos/edit-graph-state.ipynb"

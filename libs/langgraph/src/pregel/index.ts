@@ -27,9 +27,8 @@ import {
 } from "../channels/base.js";
 import { PregelNode } from "./read.js";
 import { validateGraph, validateKeys } from "./validate.js";
-import { mapOutputUpdates, readChannels } from "./io.js";
+import { readChannels } from "./io.js";
 import {
-  mapDebugTaskResults,
   printStepCheckpoint,
   printStepTasks,
   printStepWrites,
@@ -54,6 +53,7 @@ import {
   GraphRecursionError,
   GraphValueError,
   InvalidUpdateError,
+  isGraphInterrupt,
 } from "../errors.js";
 import {
   _prepareNextTasks,
@@ -61,7 +61,6 @@ import {
   _applyWrites,
   StrRecord,
 } from "./algo.js";
-import { prefixGenerator } from "../utils.js";
 import { _coerceToDict, getNewChannelVersions, RetryPolicy } from "./utils.js";
 import { PregelLoop } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
@@ -692,38 +691,49 @@ export class Pregel<
         if (debug) {
           printStepTasks(loop.step, loop.tasks);
         }
-        try {
-          // execute tasks, and wait for one to fail or all to finish.
-          // each task is independent from all other concurrent tasks
-          // yield updates/debug output as each task finishes
-          for await (const task of executeTasksWithRetry(
-            loop.tasks.filter((task) => task.writes.length === 0),
-            {
-              stepTimeout: this.stepTimeout,
-              signal: config.signal,
-              retryPolicy: this.retryPolicy,
+        // execute tasks, and wait for one to fail or all to finish.
+        // each task is independent from all other concurrent tasks
+        // yield updates/debug output as each task finishes
+        const taskStream = executeTasksWithRetry(
+          loop.tasks.filter((task) => task.writes.length === 0),
+          {
+            stepTimeout: this.stepTimeout,
+            signal: config.signal,
+            retryPolicy: this.retryPolicy,
+          }
+        );
+        // Timeouts will be thrown
+        for await (const { task, error } of taskStream) {
+          if (error !== undefined) {
+            if (isGraphInterrupt(error)) {
+              loop.putWrites(
+                task.id,
+                error.interrupts.map((interrupt) => [INTERRUPT, interrupt])
+              );
+            } else {
+              loop.putWrites(task.id, [
+                [ERROR, { message: error.message, name: error.name }],
+              ]);
             }
-          )) {
+          } else {
             loop.putWrites(task.id, task.writes);
-            if (streamMode.includes("updates")) {
-              yield* prefixGenerator(
-                mapOutputUpdates(outputKeys, [task]),
-                streamMode.length > 1 ? "updates" : undefined
-              );
+          }
+          while (loop.stream.length > 0) {
+            const nextItem = loop.stream.shift();
+            if (nextItem === undefined) {
+              throw new Error("Data structure error.");
             }
-            if (streamMode.includes("debug")) {
-              yield* prefixGenerator(
-                mapDebugTaskResults(loop.step, [task], this.streamChannelsList),
-                streamMode.length > 1 ? "debug" : undefined
-              );
+            if (streamMode.includes(nextItem[0])) {
+              if (streamMode.length === 1) {
+                yield nextItem[1];
+              } else {
+                yield nextItem;
+              }
             }
           }
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } catch (e: any) {
-          if (e.pregelTaskId) {
-            loop.putWrites(e.pregelTaskId, [[ERROR, { message: e.message }]]);
+          if (error !== undefined && !isGraphInterrupt(error)) {
+            throw error;
           }
-          throw e;
         }
 
         if (debug) {
@@ -734,6 +744,7 @@ export class Pregel<
           );
         }
       }
+      // Checkpointing failures
       if (backgroundError !== undefined) {
         throw backgroundError;
       }

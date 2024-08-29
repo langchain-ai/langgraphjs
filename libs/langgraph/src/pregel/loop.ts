@@ -32,11 +32,15 @@ import {
   shouldInterrupt,
   WritesProtocol,
 } from "./algo.js";
-import { gatherIterator, prefixGenerator } from "../utils.js";
+import {
+  gatherIterator,
+  gatherIteratorSync,
+  prefixGenerator,
+} from "../utils.js";
 import { mapInput, mapOutputUpdates, mapOutputValues } from "./io.js";
 import { EmptyInputError, GraphInterrupt } from "../errors.js";
 import { getNewChannelVersions } from "./utils.js";
-import { mapDebugTasks, mapDebugCheckpoint } from "./debug.js";
+import { mapDebugTasks, mapDebugCheckpoint, mapDebugTaskResults } from "./debug.js";
 import { PregelNode } from "./read.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
@@ -259,6 +263,22 @@ export class PregelLoop {
         )
         .catch(this.onBackgroundError);
     }
+    const task = this.tasks.find((task) => task.id === taskId);
+    if (task !== undefined) {
+      this.stream.push(
+        ...gatherIteratorSync(
+          prefixGenerator(mapOutputUpdates(this.outputKeys, [task]), "updates")
+        )
+      );
+      this.stream.push(
+        ...gatherIteratorSync(
+          prefixGenerator(
+            mapDebugTaskResults(this.step, [[task, writes]], this.streamKeys),
+            "debug"
+          )
+        )
+      );
+    }
   }
 
   /**
@@ -368,8 +388,7 @@ export class PregelLoop {
     // if there are pending writes from a previous loop, apply them
     if (this.checkpointPendingWrites.length > 0) {
       for (const [tid, k, v] of this.checkpointPendingWrites) {
-        // TODO: Do the same for INTERRUPT
-        if (k === ERROR) {
+        if (k === ERROR || k === INTERRUPT) {
           continue;
         }
         const task = this.tasks.find((t) => t.id === tid);

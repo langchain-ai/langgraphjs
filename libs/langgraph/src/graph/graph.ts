@@ -315,12 +315,6 @@ export class Graph<
     for (const [start] of Object.entries(this.branches)) {
       allSources.add(start);
     }
-    // validate sources
-    for (const node of Object.keys(this.nodes)) {
-      if (!allSources.has(node)) {
-        throw new Error(`Node \`${node}\` is a dead-end`);
-      }
-    }
     for (const source of allSources) {
       if (source !== START && !(source in this.nodes)) {
         throw new Error(`Found edge starting at unknown node \`${source}\``);

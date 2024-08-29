@@ -1,3 +1,5 @@
+import { Interrupt } from "./constants.js";
+
 export class GraphRecursionError extends Error {
   constructor(message?: string) {
     super(message);
@@ -21,14 +23,43 @@ export class GraphValueError extends Error {
 }
 
 export class GraphInterrupt extends Error {
-  constructor(message?: string) {
-    super(message);
+  interrupts: Interrupt[];
+
+  constructor(interrupts: Interrupt[] = []) {
+    super(JSON.stringify(interrupts, null, 2));
     this.name = "GraphInterrupt";
+    this.interrupts = interrupts;
   }
 
   static get unminifiable_name() {
     return "GraphInterrupt";
   }
+}
+
+/** Raised by a node to interrupt execution. */
+export class NodeInterrupt extends GraphInterrupt {
+  constructor(message: string) {
+    super([
+      {
+        value: message,
+        when: "during",
+      },
+    ]);
+    this.name = "NodeInterrupt";
+  }
+
+  static get unminifiable_name() {
+    return "NodeInterrupt";
+  }
+}
+
+export function isGraphInterrupt(
+  e: GraphInterrupt | Error
+): e is GraphInterrupt {
+  return [
+    GraphInterrupt.unminifiable_name,
+    NodeInterrupt.unminifiable_name,
+  ].includes(e.name);
 }
 
 export class EmptyInputError extends Error {
