@@ -29,7 +29,7 @@
     "format": "turbo run format",
     "format:check": "turbo run format:check",
     "release": "node scripts/release_workspace.cjs --workspace",
-    "pytest": "pytest"
+    "check-links": "node scripts/check-links.js"
   },
   "author": "LangChain",
   "license": "MIT",
@@ -49,7 +49,8 @@
     "tsx": "^4.7.0",
     "turbo": "canary",
     "typedoc": "^0.25.13",
-    "typescript": "^4.9.5 || ^5.4.5"
+    "typescript": "^4.9.5 || ^5.4.5",
+    "markdown-link-check": "^3.10.3"
   },
   "resolutions": {
     "cheerio": "^1.0.0-rc.12",
