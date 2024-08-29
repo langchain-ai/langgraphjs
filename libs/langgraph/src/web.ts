@@ -8,7 +8,7 @@ export {
   MessageGraph,
   messagesStateReducer,
   Annotation,
-  AnnotationRoot,
+  type AnnotationRoot,
   type StateDefinition,
   type SingleReducer,
   type StateType,

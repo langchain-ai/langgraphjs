@@ -26,9 +26,8 @@ import {
 } from "../channels/base.js";
 import { PregelNode } from "./read.js";
 import { validateGraph, validateKeys } from "./validate.js";
-import { mapOutputUpdates, readChannels } from "./io.js";
+import { readChannels } from "./io.js";
 import {
-  mapDebugTaskResults,
   printStepCheckpoint,
   printStepTasks,
   printStepWrites,
@@ -62,7 +61,6 @@ import {
   _applyWrites,
   StrRecord,
 } from "./algo.js";
-import { prefixGenerator } from "../utils.js";
 import { _coerceToDict, getNewChannelVersions, RetryPolicy } from "./utils.js";
 import { PregelLoop } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
@@ -657,11 +655,12 @@ export class Pregel<
         checkpointer,
         graph: this,
         onBackgroundError,
+        outputKeys,
+        streamKeys: this.streamChannelsAsIs as string | string[],
       });
       while (
         backgroundError === undefined &&
         (await loop.tick({
-          outputKeys,
           interruptAfter,
           interruptBefore,
           manager: runManager,
@@ -717,17 +716,18 @@ export class Pregel<
           } else {
             loop.putWrites(task.id, task.writes);
           }
-          if (streamMode.includes("updates")) {
-            yield* prefixGenerator(
-              mapOutputUpdates(outputKeys, [task]),
-              streamMode.length > 1 ? "updates" : undefined
-            );
-          }
-          if (streamMode.includes("debug")) {
-            yield* prefixGenerator(
-              mapDebugTaskResults(loop.step, [task], this.streamChannelsList),
-              streamMode.length > 1 ? "debug" : undefined
-            );
+          while (loop.stream.length > 0) {
+            const nextItem = loop.stream.shift();
+            if (nextItem === undefined) {
+              throw new Error("Data structure error.");
+            }
+            if (streamMode.includes(nextItem[0])) {
+              if (streamMode.length === 1) {
+                yield nextItem[1];
+              } else {
+                yield nextItem;
+              }
+            }
           }
           if (error !== undefined && !isGraphInterrupt(error)) {
             throw error;

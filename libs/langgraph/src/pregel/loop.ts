@@ -32,11 +32,19 @@ import {
   shouldInterrupt,
   WritesProtocol,
 } from "./algo.js";
-import { gatherIterator, prefixGenerator } from "../utils.js";
+import {
+  gatherIterator,
+  gatherIteratorSync,
+  prefixGenerator,
+} from "../utils.js";
 import { mapInput, mapOutputUpdates, mapOutputValues } from "./io.js";
 import { EmptyInputError, GraphInterrupt } from "../errors.js";
 import { getNewChannelVersions } from "./utils.js";
-import { mapDebugTasks, mapDebugCheckpoint } from "./debug.js";
+import {
+  mapDebugTasks,
+  mapDebugCheckpoint,
+  mapDebugTaskResults,
+} from "./debug.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
@@ -49,6 +57,8 @@ export type PregelLoopInitializeParams = {
   checkpointer?: BaseCheckpointSaver;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   graph: PregelInterface<any, any>;
+  outputKeys: string | string[];
+  streamKeys: string | string[];
   onBackgroundError: (e: Error) => void;
 };
 
@@ -67,6 +77,8 @@ type PregelLoopParams = {
   channels: Record<string, BaseChannel>;
   step: number;
   stop: number;
+  outputKeys: string | string[];
+  streamKeys: string | string[];
   onBackgroundError: (e: Error) => void;
 };
 
@@ -120,6 +132,10 @@ export class PregelLoop {
 
   protected _putCheckpointPromise: Promise<unknown> = Promise.resolve();
 
+  outputKeys: string | string[];
+
+  streamKeys: string | string[];
+
   onBackgroundError: (e: Error) => void;
 
   get backgroundTasksPromise() {
@@ -149,6 +165,8 @@ export class PregelLoop {
     this.step = params.step;
     this.stop = params.stop;
     this.isNested = CONFIG_KEY_READ in (this.config.configurable ?? {});
+    this.outputKeys = params.outputKeys;
+    this.streamKeys = params.streamKeys;
     this.onBackgroundError = params.onBackgroundError;
   }
 
@@ -196,6 +214,8 @@ export class PregelLoop {
       stop,
       checkpointPreviousVersions,
       checkpointPendingWrites,
+      outputKeys: params.outputKeys,
+      streamKeys: params.streamKeys,
       onBackgroundError: params.onBackgroundError,
     });
   }
@@ -249,6 +269,22 @@ export class PregelLoop {
         )
         .catch(this.onBackgroundError);
     }
+    const task = this.tasks.find((task) => task.id === taskId);
+    if (task !== undefined) {
+      this.stream.push(
+        ...gatherIteratorSync(
+          prefixGenerator(mapOutputUpdates(this.outputKeys, [task]), "updates")
+        )
+      );
+      this.stream.push(
+        ...gatherIteratorSync(
+          prefixGenerator(
+            mapDebugTaskResults(this.step, [[task, writes]], this.streamKeys),
+            "debug"
+          )
+        )
+      );
+    }
   }
 
   /**
@@ -257,17 +293,11 @@ export class PregelLoop {
    * @param params
    */
   async tick(params: {
-    outputKeys: string | string[];
     interruptAfter: string[] | All;
     interruptBefore: string[] | All;
     manager?: CallbackManagerForChainRun;
   }): Promise<boolean> {
-    const {
-      outputKeys = [],
-      interruptAfter = [],
-      interruptBefore = [],
-      manager,
-    } = params;
+    const { interruptAfter = [], interruptBefore = [], manager } = params;
     if (this.status !== "pending") {
       throw new Error(
         `Cannot tick when status is no longer "pending". Current status: "${this.status}"`
@@ -287,19 +317,17 @@ export class PregelLoop {
       // produce values output
       const valuesOutput = await gatherIterator(
         prefixGenerator(
-          mapOutputValues(outputKeys, writes, this.channels),
+          mapOutputValues(this.outputKeys, writes, this.channels),
           "values"
         )
       );
       this.stream.push(...valuesOutput);
       // clear pending writes
       this.checkpointPendingWrites = [];
-      const updatesOnly =
-        this.graph.streamMode?.length === 1 &&
-        this.graph.streamMode?.includes("updates");
-      const metadataWrites = updatesOnly
-        ? mapOutputUpdates(outputKeys, this.tasks).next().value
-        : mapOutputValues(outputKeys, writes, this.channels).next().value;
+      const metadataWrites = mapOutputUpdates(
+        this.outputKeys,
+        this.tasks
+      ).next().value;
       await this._putCheckpoint({
         source: "loop",
         writes: metadataWrites ?? null,
@@ -363,8 +391,7 @@ export class PregelLoop {
     // if there are pending writes from a previous loop, apply them
     if (this.checkpointPendingWrites.length > 0) {
       for (const [tid, k, v] of this.checkpointPendingWrites) {
-        // TODO: Do the same for INTERRUPT
-        if (k === ERROR) {
+        if (k === ERROR || k === INTERRUPT) {
           continue;
         }
         const task = this.tasks.find((t) => t.id === tid);
@@ -376,7 +403,6 @@ export class PregelLoop {
     // if all tasks have finished, re-tick
     if (this.tasks.every((task) => task.writes.length > 0)) {
       return this.tick({
-        outputKeys,
         interruptAfter,
         interruptBefore,
         manager,

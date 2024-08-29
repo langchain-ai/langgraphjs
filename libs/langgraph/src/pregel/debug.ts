@@ -127,11 +127,11 @@ export function* mapDebugTaskResults<
   C extends PropertyKey
 >(
   step: number,
-  tasks: readonly PregelExecutableTask<N, C>[],
-  streamChannelsList: Array<PropertyKey>
+  tasks: readonly [PregelExecutableTask<N, C>, PendingWrite<C>[]][],
+  streamChannels: PropertyKey | Array<PropertyKey>
 ) {
   const ts = new Date().toISOString();
-  for (const { name, writes, config } of tasks) {
+  for (const [{ name, config }, writes] of tasks) {
     if (config?.tags?.includes(TAG_HIDDEN)) continue;
 
     const metadata = { ...config?.metadata };
@@ -145,7 +145,9 @@ export function* mapDebugTaskResults<
         id: uuid5(JSON.stringify([name, step, idMetadata]), TASK_NAMESPACE),
         name,
         result: writes.filter(([channel]) =>
-          streamChannelsList.includes(channel)
+          Array.isArray(streamChannels)
+            ? streamChannels.includes(channel)
+            : channel === streamChannels
         ),
       },
     };

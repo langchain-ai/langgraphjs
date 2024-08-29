@@ -1336,7 +1336,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 6, writes: 5 },
+      metadata: { source: "loop", step: 6, writes: { two: 5 } },
       createdAt: expect.any(String),
       parentConfig: history[1].config,
     }),
@@ -1351,7 +1351,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 5, writes: null },
+      metadata: { source: "loop", step: 5, writes: {} },
       createdAt: expect.any(String),
       parentConfig: history[2].config,
     }),
@@ -1381,7 +1381,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 3, writes: null },
+      metadata: { source: "loop", step: 3, writes: {} },
       createdAt: expect.any(String),
       parentConfig: history[4].config,
     }),
@@ -1411,7 +1411,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 1, writes: 4 },
+      metadata: { source: "loop", step: 1, writes: { two: 4 } },
       createdAt: expect.any(String),
       parentConfig: history[6].config,
     }),
@@ -1426,7 +1426,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 0, writes: null },
+      metadata: { source: "loop", step: 0, writes: {} },
       createdAt: expect.any(String),
       parentConfig: history[7].config,
     }),
@@ -2536,6 +2536,62 @@ describe("StateGraph", () => {
         await gatherIterator(toolTwo.checkpointer!.list(thread1, { limit: 2 }))
       ).slice(-1)[0].config,
     });
+  });
+
+  it("should not cancel node on other node interrupted", async () => {
+    const checkpointer = new MemorySaverAssertImmutable();
+
+    const StateAnnotation = Annotation.Root({
+      hello: Annotation<string>,
+    });
+
+    let awhiles = 0;
+    let awhileReturns = 0;
+
+    const awhile = async (
+      _: typeof StateAnnotation.State
+    ): Promise<Partial<typeof StateAnnotation.State>> => {
+      awhiles += 1;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      awhileReturns += 1;
+      return { hello: "again" };
+    };
+
+    const iambad = async (input: typeof StateAnnotation.State) => {
+      if (input.hello !== "bye") {
+        throw new NodeInterrupt("I am bad");
+      }
+      return {};
+    };
+
+    const builder = new StateGraph(StateAnnotation)
+      .addNode("agent", awhile)
+      .addNode("bad", iambad)
+      .addConditionalEdges(START, () => ["agent", "bad"]);
+
+    const graph = builder.compile({ checkpointer });
+    const thread = { configurable: { thread_id: "1" } };
+
+    // Return state at interrupt time
+    expect(await graph.invoke({ hello: "world" }, thread)).toEqual({
+      hello: "world",
+    });
+
+    expect(awhileReturns).toBe(1);
+    expect(awhiles).toBe(1);
+
+    // No more tasks, so no return value
+    expect(await graph.invoke(null, thread)).toBeUndefined();
+
+    expect(awhileReturns).toBe(1);
+    expect(awhiles).toBe(1);
+
+    expect(await graph.invoke({ hello: "bye" }, thread)).toEqual({
+      hello: "again",
+    });
+
+    expect(awhileReturns).toBe(2);
+    expect(awhiles).toBe(2);
   });
 
   it("Allow map reduce flows", async () => {
