@@ -45,7 +45,6 @@ jobs:
       - name: Install dependencies
         run: |
           yarn install --frozen-lockfile
-          npm install linkinator
 
       - name: Get changed files
         id: changed-files

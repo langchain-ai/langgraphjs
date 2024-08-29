@@ -19,7 +19,7 @@ function checkLinks() {
   for (const file of ipynbFiles) {
     console.log(`Checking links in ${file}`);
     try {
-      execSync(`npx linkinator ${file} ${ignorePatterns.map(pattern => `--skip "${pattern}"`).join(' ')}`, { stdio: 'inherit' });
+      execSync(`yarn linkinator ${file} ${ignorePatterns.map(pattern => `--skip "${pattern}"`).join(' ')}`, { stdio: 'inherit' });
     } catch (error) {
       console.error(`Error checking links in ${file}:`, error);
       process.exit(1);
