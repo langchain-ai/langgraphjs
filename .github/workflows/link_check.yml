@@ -54,5 +54,19 @@ jobs:
         env:
           CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |
+          echo "Current directory:"
           pwd
+          echo "\nDirectory contents:"
+          ls -la
+          echo "\nScripts directory contents:"
+          ls -la scripts/
+          echo "\nNode.js version:"
+          node --version
+          echo "\nYarn version:"
+          yarn --version
+          echo "\nRepository structure:"
+          tree -L 3
+          echo "\nFile permissions of scripts directory:"
+          ls -l scripts/
+          echo "\nContent of check-links.js:"
           yarn check-links
