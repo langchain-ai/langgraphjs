@@ -61,13 +61,13 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
   RunInput,
   RunOutput
 > & {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  input?: any;
+  input?: StateDefinition;
   retryPolicy?: RetryPolicy;
 };
 
-export type StateGraphAddNodeOptions = {
+export type StateGraphAddNodeOptions<SD extends StateDefinition> = {
   retryPolicy?: RetryPolicy;
+  input?: AnnotationRoot<SD>;
 } & AddNodeOptions;
 
 export type StateGraphArgsWithStateSchema<
@@ -254,7 +254,7 @@ export class StateGraph<
   addNode<K extends string, NodeInput = S>(
     key: K,
     action: RunnableLike<NodeInput, U>,
-    options?: StateGraphAddNodeOptions
+    options?: StateGraphAddNodeOptions<StateDefinition>
   ): StateGraph<SD, S, U, N | K, I, O> {
     if (key in this.channels) {
       throw new Error(
@@ -278,10 +278,14 @@ export class StateGraph<
       throw new Error(`Node \`${key}\` is reserved.`);
     }
 
+    if (options?.input !== undefined) {
+      this._addSchema(options.input.spec);
+    }
     const nodeSpec: StateGraphNodeSpec<S, U> = {
       runnable: _coerceToRunnable(action) as unknown as Runnable<S, U>,
       retryPolicy: options?.retryPolicy,
       metadata: options?.metadata,
+      input: options?.input?.spec ?? this._schemaDefinition,
     };
 
     this.nodes[key as unknown as N] = nodeSpec;
