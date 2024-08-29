@@ -1,16 +1,20 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { LinkChecker } = require('linkinator');
 
-// Function to find all .ipynb files in the given directory
-function findIpynbFiles(dir) {
+const ignorePatterns = [
+  'https://(api|web)\\.smith\\.langchain\\.com/.*',
+  'https://x\\.com/.*'
+];
+
+async function findIpynbFiles(dir) {
+  const files = await fs.promises.readdir(dir);
   let results = [];
-  const files = fs.readdirSync(dir);
   for (const file of files) {
     const filePath = path.join(dir, file);
-    const stat = fs.statSync(filePath);
+    const stat = await fs.promises.stat(filePath);
     if (stat.isDirectory()) {
-      results = results.concat(findIpynbFiles(filePath));
+      results = results.concat(await findIpynbFiles(filePath));
     } else if (path.extname(file) === '.ipynb') {
       results.push(filePath);
     }
@@ -18,28 +22,39 @@ function findIpynbFiles(dir) {
   return results;
 }
 
-// Main function to check links
-function checkLinks() {
-  const ignorePatterns = [
-    'https://(api|web)\\.smith\\.langchain\\.com/.*',
-    'https://x\\.com/.*'
-  ];
-
-  const ipynbFiles = findIpynbFiles('.');
+async function checkLinks() {
+  const ipynbFiles = await findIpynbFiles('.');
   console.log('Found .ipynb files:', ipynbFiles);
+
+  const checker = new LinkChecker();
+
+  checker.on('link', (result) => {
+    console.log(`${result.status} ${result.url}`);
+  });
 
   for (const file of ipynbFiles) {
     console.log(`Checking links in ${file}`);
     try {
-      execSync(`yarn run linkinator ${file} ${ignorePatterns.map(pattern => `--skip "${pattern}"`).join(' ')}`, { stdio: 'inherit' });
-    } catch (error) {
-      if (error.status === 5) {
-        console.log('Broken links found, but continuing...');
+      const result = await checker.check({
+        path: file,
+        recurse: false,
+        linksToSkip: ignorePatterns,
+      });
+      
+      if (result.passed) {
+        console.log(`All links in ${file} are valid.`);
       } else {
-        throw error;
+        console.error(`Broken links found in ${file}.`);
+        process.exitCode = 1;
       }
+    } catch (error) {
+      console.error(`Error checking links in ${file}:`, error);
+      process.exitCode = 1;
     }
   }
 }
 
-checkLinks();
+checkLinks().catch(error => {
+  console.error('An error occurred:', error);
+  process.exitCode = 1;
+});
