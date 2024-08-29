@@ -708,10 +708,12 @@ describe("_prepareNextTasks", () => {
     expect(taskDescriptions[0]).toEqual({
       id: expect.any(String),
       name: "node1",
+      interrupts: [],
     });
     expect(taskDescriptions[1]).toEqual({
       id: expect.any(String),
       name: "node2",
+      interrupts: [],
     });
 
     // the returned checkpoint is a copy of the passed checkpoint without versionsSeen updated
@@ -1139,6 +1141,7 @@ it("should process two processes with object input and output", async () => {
         name: "one",
         input: 2,
         triggers: ["input"],
+        interrupts: [],
       },
     },
     {
@@ -1150,6 +1153,7 @@ it("should process two processes with object input and output", async () => {
         name: "two",
         input: [12],
         triggers: ["inbox"],
+        interrupts: [],
       },
     },
     {
@@ -1181,6 +1185,7 @@ it("should process two processes with object input and output", async () => {
         name: "two",
         input: [3],
         triggers: ["inbox"],
+        interrupts: [],
       },
     },
     {
@@ -3832,6 +3837,7 @@ it("checkpoint events", async () => {
         name: "prepare",
         input: { my_key: "value", market: "DE" },
         triggers: ["start:prepare"],
+        interrupts: [],
       },
     },
     {
@@ -3883,6 +3889,7 @@ it("checkpoint events", async () => {
         name: "tool_two_slow",
         input: { my_key: "value prepared", market: "DE" },
         triggers: ["branch:prepare:condition:tool_two_slow"],
+        interrupts: [],
       },
     },
     {
@@ -3932,6 +3939,7 @@ it("checkpoint events", async () => {
         name: "finish",
         input: { my_key: "value prepared slow", market: "DE" },
         triggers: ["tool_two_slow"],
+        interrupts: [],
       },
     },
     {

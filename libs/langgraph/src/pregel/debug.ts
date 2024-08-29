@@ -89,7 +89,7 @@ export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
   tasks: readonly PregelExecutableTask<N, C>[]
 ) {
   const ts = new Date().toISOString();
-  for (const { name, input, config, triggers } of tasks) {
+  for (const { id, name, input, config, triggers, writes } of tasks) {
     if (config?.tags?.includes(TAG_HIDDEN)) continue;
 
     const metadata = { ...config?.metadata };
@@ -100,6 +100,13 @@ export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
       langgraph_task_idx: metadata.langgraph_task_idx,
     });
 
+    const interrupts = writes
+      .filter(([writeId, n]) => {
+        return writeId === id && n === INTERRUPT;
+      })
+      .map(([, v]) => {
+        return v;
+      });
     yield {
       type: "task",
       timestamp: ts,
@@ -109,6 +116,7 @@ export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
         name,
         input,
         triggers,
+        interrupts,
       },
     };
   }

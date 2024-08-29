@@ -94,6 +94,7 @@ export function _isSend(x: unknown): x is Send {
 }
 
 export type Interrupt = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   value: any;
   when: "during";
 };
