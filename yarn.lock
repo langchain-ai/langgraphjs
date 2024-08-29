@@ -4022,6 +4022,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"async@npm:^3.2.5":
+  version: 3.2.6
+  resolution: "async@npm:3.2.6"
+  checksum: ee6eb8cd8a0ab1b58bd2a3ed6c415e93e773573a91d31df9d5ef559baafa9dab37d3b096fa7993e84585cac3697b2af6ddb9086f45d3ac8cae821bb2aab65682
+  languageName: node
+  linkType: hard
+
 "asynckit@npm:^0.4.0":
   version: 0.4.0
   resolution: "asynckit@npm:0.4.0"
@@ -4752,6 +4759,13 @@ __metadata:
   version: 11.1.0
   resolution: "commander@npm:11.1.0"
   checksum: fd1a8557c6b5b622c89ecdfde703242ab7db3b628ea5d1755784c79b8e7cb0d74d65b4a262289b533359cd58e1bfc0bf50245dfbcd2954682a6f367c828b79ef
+  languageName: node
+  linkType: hard
+
+"commander@npm:^12.1.0":
+  version: 12.1.0
+  resolution: "commander@npm:12.1.0"
+  checksum: 68e9818b00fc1ed9cdab9eb16905551c2b768a317ae69a5e3c43924c2b20ac9bb65b27e1cab36aeda7b6496376d4da908996ba2c0b5d79463e0fb1e77935d514
   languageName: node
   linkType: hard
 
@@ -7273,6 +7287,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"html-link-extractor@npm:^1.0.5":
+  version: 1.0.5
+  resolution: "html-link-extractor@npm:1.0.5"
+  dependencies:
+    cheerio: ^1.0.0-rc.10
+  checksum: 8974e15fb2cbe451274ab1704a984b75bdb66e56ac69fa0d14b100280de9782f0248deef200dafa92021f3313a25933ce86b06f218c7098414553a70bda93560
+  languageName: node
+  linkType: hard
+
 "htmlparser2@npm:^8.0.1":
   version: 8.0.2
   resolution: "htmlparser2@npm:8.0.2"
@@ -7355,7 +7378,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"iconv-lite@npm:0.6, iconv-lite@npm:^0.6.2":
+"iconv-lite@npm:0.6, iconv-lite@npm:^0.6.2, iconv-lite@npm:^0.6.3":
   version: 0.6.3
   resolution: "iconv-lite@npm:0.6.3"
   dependencies:
@@ -7513,6 +7536,13 @@ __metadata:
     jsbn: 1.1.0
     sprintf-js: ^1.1.3
   checksum: aa15f12cfd0ef5e38349744e3654bae649a34c3b10c77a674a167e99925d1549486c5b14730eebce9fea26f6db9d5e42097b00aa4f9f612e68c79121c71652dc
+  languageName: node
+  linkType: hard
+
+"is-absolute-url@npm:^4.0.1":
+  version: 4.0.1
+  resolution: "is-absolute-url@npm:4.0.1"
+  checksum: de172a718439982a54477fdae55f21be69ec0e6a4b205db5484975d2f4ee749851fd46c28f3790dfc51a274c2ed1d0f8457b6d1fff02ab829069fd9cc761e48c
   languageName: node
   linkType: hard
 
@@ -7778,6 +7808,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"is-relative-url@npm:^4.0.0":
+  version: 4.0.0
+  resolution: "is-relative-url@npm:4.0.0"
+  dependencies:
+    is-absolute-url: ^4.0.1
+  checksum: 9556fc1d7d88b147428f237408a02ecab2a9bf45e2b93cf17069ada5207ff4050dcd5c3a1cf9bbc8c9133a858de9228a0c6c9c45a6a84eb0b98e210cacbe99ea
+  languageName: node
+  linkType: hard
+
 "is-shared-array-buffer@npm:^1.0.2, is-shared-array-buffer@npm:^1.0.3":
   version: 1.0.3
   resolution: "is-shared-array-buffer@npm:1.0.3"
@@ -7887,6 +7926,15 @@ __metadata:
   version: 2.0.5
   resolution: "isarray@npm:2.0.5"
   checksum: bd5bbe4104438c4196ba58a54650116007fa0262eccef13a4c55b2e09a5b36b59f1e75b9fcc49883dd9d4953892e6fc007eef9e9155648ceea036e184b0f930a
+  languageName: node
+  linkType: hard
+
+"isemail@npm:^3.2.0":
+  version: 3.2.0
+  resolution: "isemail@npm:3.2.0"
+  dependencies:
+    punycode: 2.x.x
+  checksum: 77adfbe8d6b3f9970c37516e008fd1c2e33be186f4cd09b31daf37a9fa8f82adc0dd8ce4bd12818f0c0e63018f9ec0c22490793d704ed635770c98a9d48b21c4
   languageName: node
   linkType: hard
 
@@ -9204,6 +9252,7 @@ __metadata:
     cheminfo-types: ^1.4.0
     d3: ^7.9.0
     esm-hook: ^0.1.4
+    markdown-link-check: ^3.10.3
     readline: ^1.3.0
     release-it: ^17.6.0
     semver: ^7.6.3
@@ -9319,6 +9368,19 @@ __metadata:
   version: 1.2.4
   resolution: "lines-and-columns@npm:1.2.4"
   checksum: 0c37f9f7fa212b38912b7145e1cd16a5f3cd34d782441c3e6ca653485d326f58b3caccda66efce1c5812bde4961bbde3374fae4b0d11bf1226152337f3894aa5
+  languageName: node
+  linkType: hard
+
+"link-check@npm:^5.3.0":
+  version: 5.3.0
+  resolution: "link-check@npm:5.3.0"
+  dependencies:
+    is-relative-url: ^4.0.0
+    isemail: ^3.2.0
+    ms: ^2.1.3
+    needle: ^3.3.1
+    proxy-agent: ^6.4.0
+  checksum: e4a19314bee54eda5f55ca8a53750b0177a45ff11c5df58d71e251ae8fdebbdd24ef28c84a26be5cda51967d394ed57c0d7413a6aa0a4d11a83d87cb2498b7b2
   languageName: node
   linkType: hard
 
@@ -9517,6 +9579,44 @@ __metadata:
   dependencies:
     tmpl: 1.0.5
   checksum: b38a025a12c8146d6eeea5a7f2bf27d51d8ad6064da8ca9405fcf7bf9b54acd43e3b30ddd7abb9b1bfa4ddb266019133313482570ddb207de568f71ecfcf6060
+  languageName: node
+  linkType: hard
+
+"markdown-link-check@npm:^3.10.3":
+  version: 3.12.2
+  resolution: "markdown-link-check@npm:3.12.2"
+  dependencies:
+    async: ^3.2.5
+    chalk: ^5.3.0
+    commander: ^12.1.0
+    link-check: ^5.3.0
+    lodash: ^4.17.21
+    markdown-link-extractor: ^4.0.2
+    needle: ^3.3.1
+    progress: ^2.0.3
+    proxy-agent: ^6.4.0
+  bin:
+    markdown-link-check: markdown-link-check
+  checksum: da67cf618cafe432b546e51990985fdffd5bb399d884c9bd4f9418aa51f4d7ab12d876b9418b3f4bb17992e6fe8ec9f91cc739a586482dff3b5078ef94a8c949
+  languageName: node
+  linkType: hard
+
+"markdown-link-extractor@npm:^4.0.2":
+  version: 4.0.2
+  resolution: "markdown-link-extractor@npm:4.0.2"
+  dependencies:
+    html-link-extractor: ^1.0.5
+    marked: ^12.0.1
+  checksum: c3e0f2f6dca39a91bd074b44c51026ad59c1704a67fc9e0b6df12a559d3c7b7722ba9db78fcc0f6860d74b56f1dfc811daccd891d75228da93b3eff407a248a5
+  languageName: node
+  linkType: hard
+
+"marked@npm:^12.0.1":
+  version: 12.0.2
+  resolution: "marked@npm:12.0.2"
+  bin:
+    marked: bin/marked.js
+  checksum: 966422e2ba519294aa657bacb2e51784e4b641c1c8f15bdf9315878993c4ea09fe0d00ba2da761e443a3c52cc285c452644fd107ab0f356669bd5aac08d5c0bd
   languageName: node
   linkType: hard
 
@@ -9860,7 +9960,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ms@npm:^2.0.0, ms@npm:^2.1.1":
+"ms@npm:^2.0.0, ms@npm:^2.1.1, ms@npm:^2.1.3":
   version: 2.1.3
   resolution: "ms@npm:2.1.3"
   checksum: aa92de608021b242401676e35cfa5aa42dd70cbdc082b916da7fb925c542173e36bce97ea3e804923fe92c0ad991434e4a38327e15a1b5b5f945d66df615ae6d
@@ -9894,6 +9994,18 @@ __metadata:
   version: 1.4.0
   resolution: "natural-compare@npm:1.4.0"
   checksum: 23ad088b08f898fc9b53011d7bb78ec48e79de7627e01ab5518e806033861bef68d5b0cd0e2205c2f36690ac9571ff6bcb05eb777ced2eeda8d4ac5b44592c3d
+  languageName: node
+  linkType: hard
+
+"needle@npm:^3.3.1":
+  version: 3.3.1
+  resolution: "needle@npm:3.3.1"
+  dependencies:
+    iconv-lite: ^0.6.3
+    sax: ^1.2.4
+  bin:
+    needle: bin/needle
+  checksum: ed4864d7ee85f1037ac803154868bf7151fa59399c1e55e5d93ca26a9d16e1c8ccbe9552d846ce7e2519b4bce1de3e81a501f0dc33244e02902e27cf5a9bc11d
   languageName: node
   linkType: hard
 
@@ -10836,6 +10948,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"progress@npm:^2.0.3":
+  version: 2.0.3
+  resolution: "progress@npm:2.0.3"
+  checksum: f67403fe7b34912148d9252cb7481266a354bd99ce82c835f79070643bb3c6583d10dbcfda4d41e04bbc1d8437e9af0fb1e1f2135727878f5308682a579429b7
+  languageName: node
+  linkType: hard
+
 "promise-retry@npm:^2.0.1":
   version: 2.0.1
   resolution: "promise-retry@npm:2.0.1"
@@ -10894,7 +11013,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"proxy-agent@npm:6.4.0":
+"proxy-agent@npm:6.4.0, proxy-agent@npm:^6.4.0":
   version: 6.4.0
   resolution: "proxy-agent@npm:6.4.0"
   dependencies:
@@ -10927,7 +11046,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"punycode@npm:^2.1.0, punycode@npm:^2.3.0":
+"punycode@npm:2.x.x, punycode@npm:^2.1.0, punycode@npm:^2.3.0":
   version: 2.3.1
   resolution: "punycode@npm:2.3.1"
   checksum: bb0a0ceedca4c3c57a9b981b90601579058903c62be23c5e8e843d2c2d4148a3ecf029d5133486fb0e1822b098ba8bba09e89d6b21742d02fa26bda6441a6fb2
@@ -11391,6 +11510,13 @@ __metadata:
   version: 2.1.2
   resolution: "safer-buffer@npm:2.1.2"
   checksum: cab8f25ae6f1434abee8d80023d7e72b598cf1327164ddab31003c51215526801e40b66c5e65d658a0af1e9d6478cadcb4c745f4bd6751f97d8644786c0978b0
+  languageName: node
+  linkType: hard
+
+"sax@npm:^1.2.4":
+  version: 1.4.1
+  resolution: "sax@npm:1.4.1"
+  checksum: 3ad64df16b743f0f2eb7c38ced9692a6d924f1cd07bbe45c39576c2cf50de8290d9d04e7b2228f924c7d05fecc4ec5cf651423278e0c7b63d260c387ef3af84a
   languageName: node
   linkType: hard
 
