@@ -15,6 +15,7 @@ import {
   CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
 import { z } from "zod";
+import { BaseTracer, Run } from "@langchain/core/tracers/base";
 
 export interface FakeChatModelArgs extends BaseChatModelParams {
   responses: BaseMessage[];
@@ -239,3 +240,13 @@ export const createAnyStringSame = () => {
     return memory.get(key);
   };
 };
+
+export class FakeTracer extends BaseTracer {
+  runs: Run[] = [];
+
+  name = "fake_tracer";
+
+  protected async persistRun(run: Run): Promise<void> {
+    this.runs.push(run);
+  }
+}

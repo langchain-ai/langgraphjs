@@ -379,7 +379,7 @@ export function _prepareNextTasks<
         });
       }
     } else {
-      taskDescriptions.push({ id: taskId, name: packet.node });
+      taskDescriptions.push({ id: taskId, name: packet.node, interrupts: [] });
     }
   }
 
@@ -475,7 +475,7 @@ export function _prepareNextTasks<
           });
         }
       } else {
-        taskDescriptions.push({ id: taskId, name });
+        taskDescriptions.push({ id: taskId, name, interrupts: [] });
       }
     }
   }

@@ -135,3 +135,11 @@ export async function gatherIterator<T>(
   }
   return out;
 }
+
+export function gatherIteratorSync<T>(i: Iterable<T>): Array<T> {
+  const out: T[] = [];
+  for (const item of i) {
+    out.push(item);
+  }
+  return out;
+}
