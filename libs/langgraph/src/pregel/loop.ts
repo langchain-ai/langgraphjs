@@ -40,7 +40,11 @@ import {
 import { mapInput, mapOutputUpdates, mapOutputValues } from "./io.js";
 import { EmptyInputError, GraphInterrupt } from "../errors.js";
 import { getNewChannelVersions } from "./utils.js";
-import { mapDebugTasks, mapDebugCheckpoint, mapDebugTaskResults } from "./debug.js";
+import {
+  mapDebugTasks,
+  mapDebugCheckpoint,
+  mapDebugTaskResults,
+} from "./debug.js";
 import { PregelNode } from "./read.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");

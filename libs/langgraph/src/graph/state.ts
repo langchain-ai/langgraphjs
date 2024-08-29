@@ -70,9 +70,23 @@ export type StateGraphAddNodeOptions = {
   retryPolicy?: RetryPolicy;
 } & AddNodeOptions;
 
-export type StateGraphOptions<SD extends StateDefinition | unknown> = {
-  output?: AnnotationRoot<SD extends StateDefinition ? SD : StateDefinition>;
-}
+export type StateGraphArgsWithStateSchema<
+  SD extends StateDefinition,
+  I extends StateDefinition,
+  O extends StateDefinition
+> = {
+  stateSchema: AnnotationRoot<SD>;
+  input?: AnnotationRoot<I>;
+  output?: AnnotationRoot<O>;
+};
+
+export type StateGraphArgsWithInputOutputSchemas<
+  SD extends StateDefinition,
+  O extends StateDefinition = SD
+> = {
+  input: AnnotationRoot<SD>;
+  output: AnnotationRoot<O>;
+};
 
 /**
  * A graph whose nodes communicate by reading and writing to a shared state.
@@ -140,40 +154,64 @@ export class StateGraph<
   SD extends StateDefinition | unknown,
   S = SD extends StateDefinition ? StateType<SD> : SD,
   U = SD extends StateDefinition ? UpdateType<SD> : Partial<S>,
-  N extends string = typeof START
+  N extends string = typeof START,
+  I extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition,
+  O extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition
 > extends Graph<N, S, U, StateGraphNodeSpec<S, U>> {
   channels: Record<string, BaseChannel> = {};
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
   waitingEdges: Set<[N[], N]> = new Set();
 
-  schema: StateDefinition;
+  /** @internal */
+  _schemaDefinition: StateDefinition;
 
-  input: StateDefinition;
+  /** @internal */
+  _inputDefinition: I;
 
-  output: StateDefinition;
+  /** @internal */
+  _outputDefinition: O;
 
   constructor(
     fields: SD extends StateDefinition
-      ? SD | AnnotationRoot<SD> | StateGraphArgs<S>
-      : StateGraphArgs<S>,
-    options?: StateGraphOptions<SD>
+      ?
+          | SD
+          | AnnotationRoot<SD>
+          | StateGraphArgs<S>
+          | StateGraphArgsWithStateSchema<SD, I, O>
+          | StateGraphArgsWithInputOutputSchemas<SD, O>
+      : StateGraphArgs<S>
   ) {
     super();
-    if (isStateDefinition(fields) || isAnnotationRoot(fields)) {
+    if (
+      isStateGraphArgsWithInputOutputSchemas<
+        SD extends StateDefinition ? SD : never,
+        O
+      >(fields)
+    ) {
+      this._schemaDefinition = fields.input.spec;
+      this._inputDefinition = fields.input.spec as unknown as I;
+      this._outputDefinition = fields.output.spec;
+    } else if (isStateGraphArgsWithStateSchema(fields)) {
+      this._schemaDefinition = fields.stateSchema.spec;
+      this._inputDefinition = (fields.input?.spec ??
+        this._schemaDefinition) as I;
+      this._outputDefinition = (fields.output?.spec ??
+        this._schemaDefinition) as O;
+    } else if (isStateDefinition(fields) || isAnnotationRoot(fields)) {
       const spec = isAnnotationRoot(fields) ? fields.spec : fields;
-      this.schema = spec;
+      this._schemaDefinition = spec;
     } else if (isStateGraphArgs(fields)) {
       const spec = _getChannels(fields.channels);
-      this.schema = spec;
+      this._schemaDefinition = spec;
     } else {
       throw new Error("Invalid StateGraph input.");
     }
-    this.input = this.schema;
-    this.output = options?.output?.spec ?? this.schema;
-    this._addSchema(this.schema);
-    this._addSchema(this.input);
-    this._addSchema(this.output);
+    this._inputDefinition = this._inputDefinition ?? this._schemaDefinition;
+    this._outputDefinition = this._outputDefinition ?? this._schemaDefinition;
+    this._addSchema(this._schemaDefinition);
+    this._addSchema(this._inputDefinition);
+    this._addSchema(this._outputDefinition);
     for (const c of Object.values(this.channels)) {
       if (c.lc_graph_name === "BinaryOperatorAggregate") {
         this.supportMultipleEdges = true;
@@ -217,7 +255,7 @@ export class StateGraph<
     key: K,
     action: RunnableLike<NodeInput, U>,
     options?: StateGraphAddNodeOptions
-  ): StateGraph<SD, S, U, N | K> {
+  ): StateGraph<SD, S, U, N | K, I, O> {
     if (key in this.channels) {
       throw new Error(
         `${key} is already being used as a state attribute (a.k.a. a channel), cannot also be used as a node name.`
@@ -248,7 +286,7 @@ export class StateGraph<
 
     this.nodes[key as unknown as N] = nodeSpec;
 
-    return this as StateGraph<SD, S, U, N | K>;
+    return this as StateGraph<SD, S, U, N | K, I, O>;
   }
 
   addEdge(startKey: typeof START | N | N[], endKey: N | typeof END): this {
@@ -291,7 +329,7 @@ export class StateGraph<
     checkpointer?: BaseCheckpointSaver;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
-  } = {}): CompiledStateGraph<S, U, N> {
+  } = {}): CompiledStateGraph<S, U, N, I, O> {
     // validate the graph
     this.validate([
       ...(Array.isArray(interruptBefore) ? interruptBefore : []),
@@ -299,16 +337,16 @@ export class StateGraph<
     ]);
 
     // prepare output channels
-    const stateKeys = Object.keys(this.schema);
+    const outputKeys = Object.keys(this._outputDefinition);
     const outputChannels =
-      stateKeys.length === 1 && stateKeys[0] === ROOT ? ROOT : stateKeys;
-
-    const outputKeys = Object.keys(this.output);
-    const streamChannels =
       outputKeys.length === 1 && outputKeys[0] === ROOT ? ROOT : outputKeys;
 
+    const streamKeys = Object.keys(this.channels);
+    const streamChannels =
+      streamKeys.length === 1 && streamKeys[0] === ROOT ? ROOT : streamKeys;
+
     // create empty compiled graph
-    const compiled = new CompiledStateGraph<S, U, N>({
+    const compiled = new CompiledStateGraph<S, U, N, I, O>({
       builder: this,
       checkpointer,
       interruptAfter,
@@ -368,26 +406,18 @@ function _getChannels<Channels extends Record<string, unknown> | unknown>(
 export class CompiledStateGraph<
   S,
   U,
-  N extends string = typeof START
+  N extends string = typeof START,
+  I extends StateDefinition = StateDefinition,
+  O extends StateDefinition = StateDefinition
 > extends CompiledGraph<N, S, U> {
-  declare builder: StateGraph<unknown, S, U, N>;
-
-  // Stopgap until we add proper input/output schema support
-  get inputDefinition() {
-    return this.builder.input;
-  }
-
-  // Stopgap until we add proper input/output schema support
-  get outputDefinition() {
-    return this.builder.output;
-  }
+  declare builder: StateGraph<unknown, S, U, N, I, O>;
 
   attachNode(key: typeof START, node?: never): void;
 
   attachNode(key: N, node: StateGraphNodeSpec<S, U>): void;
 
   attachNode(key: N | typeof START, node?: StateGraphNodeSpec<S, U>): void {
-    const stateKeys = Object.keys(this.builder.input);
+    const stateKeys = Object.keys(this.builder._inputDefinition);
 
     function getStateKey(key: keyof U, input: U) {
       if (!input) {
@@ -561,5 +591,35 @@ function isStateGraphArgs<Channels extends object | unknown>(
     typeof obj === "object" &&
     obj !== null &&
     (obj as StateGraphArgs<Channels>).channels !== undefined
+  );
+}
+
+function isStateGraphArgsWithStateSchema<
+  SD extends StateDefinition,
+  I extends StateDefinition,
+  O extends StateDefinition
+>(
+  obj: unknown | StateGraphArgsWithStateSchema<SD, I, O>
+): obj is StateGraphArgsWithStateSchema<SD, I, O> {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    (obj as StateGraphArgsWithStateSchema<SD, I, O>).stateSchema !== undefined
+  );
+}
+
+function isStateGraphArgsWithInputOutputSchemas<
+  SD extends StateDefinition,
+  O extends StateDefinition
+>(
+  obj: unknown | StateGraphArgsWithInputOutputSchemas<SD, O>
+): obj is StateGraphArgsWithInputOutputSchemas<SD, O> {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (obj as any).stateSchema === undefined &&
+    (obj as StateGraphArgsWithInputOutputSchemas<SD, O>).input !== undefined &&
+    (obj as StateGraphArgsWithInputOutputSchemas<SD, O>).output !== undefined
   );
 }
