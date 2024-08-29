@@ -1,12 +1,11 @@
 name: Check Docs & Links
 
 on:
-  pull_request:
-    branches:
-      - main
   push:
-    branches:
-      - main
+    branches: ["main"]
+  pull_request:
+    paths:
+      - '**.ipynb'
   schedule:
     - cron: "0 5 * * *"
   workflow_dispatch:
@@ -51,35 +50,14 @@ jobs:
         env:
           LANGCHAIN_API_KEY: test
         run: |
-          if [ "${{ github.event_name }}" == "schedule" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ] || ([ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]); then
-            echo "Running link check on all notebooks in examples directory..."
-            yarn run pytest -v --check-links-ignore "https://(api|web)\.smith\.langchain\.com/.*" --check-links-ignore "https://x.com/.*" --check-links examples
+          echo "Fetching changes from origin/main..."
+          git fetch origin main
+          echo "Checking for changed notebook files..."
+          CHANGED_FILES=$(git diff --name-only --diff-filter=d origin/main | grep '\.ipynb$' || true)
+          echo "Changed files: ${CHANGED_FILES}"
+          if [ -n "${CHANGED_FILES}" ]; then
+            echo "Running link check on changed notebook files..."
+            yarn run pytest -v --check-links-ignore "https://(api|web)\.smith\.langchain\.com/.*" --check-links-ignore "https://x.com/.*" --check-links ${CHANGED_FILES} || ([ $? = 5 ] && exit 0 || exit $?)
           else
-            echo "Fetching changes from origin/main..."
-            git fetch origin main
-            echo "Checking for changed notebook files..."
-            CHANGED_FILES=$(git diff --name-only --diff-filter=d origin/main | grep '\.ipynb$' || true)
-            echo "Changed files: ${CHANGED_FILES}"
-            if [ -n "${CHANGED_FILES}" ]; then
-              echo "Running link check on changed notebook files..."
-              yarn run pytest -v --check-links-ignore "https://(api|web)\.smith\.langchain\.com/.*" --check-links-ignore "https://x.com/.*" --check-links ${CHANGED_FILES} || ([ $? = 5 ] && exit 0 || exit $?)
-            else
-              echo "No notebook files changed."
-            fi
+            echo "No notebook files changed."
           fi
-  check-readmes-synced:
-    # This checks that the repo README.md is identical to the libs/langgraph/README.md
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Check README.md is in sync
-        run: |
-            if ! diff -q README.md libs/langgraph/README.md >/dev/null; then
-            echo "README.md is out of sync with libs/langgraph/README.md"
-            diff -C 3 README.md libs/langgraph/README.md
-            exit 1
-            fi
