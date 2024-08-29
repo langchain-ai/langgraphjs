@@ -64,9 +64,7 @@ plugins:
       options: "typedoc.json"
       name: "API Reference"
       title_link: "/" # optional, default: '/'
-  - redirects:
-      redirect_maps:
-          "how-tos/human-in-the-loop.md": "how-tos/breakpoints.md"
+
 nav:
   - Home:
       - "index.md"
