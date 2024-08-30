@@ -17,9 +17,15 @@
     "strict": true,
     "outDir": "dist"
   },
+  "include": [
+    "libs/*/src/**/*",
+    "libs/*/*.d.ts",
+    "libs/langgraph/*.d.ts",
+    "libs/langgraph/*.d.ts",
+  ],
   "exclude": [
     "node_modules",
-    "dist",
+    "**/dist/",
     "environment_tests",
     "examples/web_browsing/labeling.ts",
     "langgraph/dist/checkpoint/sqlite.js"

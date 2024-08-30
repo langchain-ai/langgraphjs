@@ -11,8 +11,10 @@ shopt -s extglob
 cp -r ../package/!(node_modules|dist|dist-cjs|dist-esm|build|.next|.turbo) .
 
 mkdir -p ./libs/langgraph/
+mkdir -p ./libs/checkpoint/
 
 cp -r ../langgraph ./libs/
+cp -r ../checkpoint ./libs/
 
 # copy cache
 mkdir -p ./.yarn

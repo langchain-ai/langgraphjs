@@ -13,8 +13,8 @@
     "test": "tsc"
   },
   "dependencies": {
-    "@langchain/core": "latest",
     "@langchain/langgraph": "workspace:*",
+    "@langchain/langgraph-checkpoint": "workspace:*",
     "typescript": "^5.0.0",
     "vite": "^4.2.0"
   }

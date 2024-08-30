@@ -1,15 +1,15 @@
 {
   "imports": {
-    "langchain/": "npm:/langchain@0.2.2/",
+    "langchain/": "npm:/langchain@0.2.8/",
     "@langchain/openai": "npm:@langchain/openai@0.0.33",
-    "@langchain/community/": "npm:/@langchain/community@0.2.3/",
+    "@langchain/community/": "npm:/@langchain/community@0.2.17/",
     "@langchain/cloudflare": "npm:/@langchain/cloudflare",
     "@langchain/groq": "npm:/@langchain/groq",
-    "@langchain/core/": "npm:/@langchain/core@0.2.3/",
-    "@langchain/langgraph": "npm:/@langchain/langgraph@0.0.24",
-    "@langchain/langgraph/": "npm:/@langchain/langgraph@0.0.24/",
+    "@langchain/core/": "npm:/@langchain/core@latest/",
+    "@langchain/langgraph": "npm:/@langchain/langgraph@0.1.1",
+    "@langchain/langgraph/": "npm:/@langchain/langgraph@0.1.1/",
     "@langchain/mistralai": "npm:/@langchain/mistralai",
-    "@langchain/anthropic": "npm:/@langchain/anthropic",
+    "@langchain/anthropic": "npm:/@langchain/anthropic@latest",
     "@xenova/transformers": "npm:/@xenova/transformers",
     "uuid": "npm:/uuid",
     "dotenv/": "npm:/dotenv/",
@@ -17,6 +17,7 @@
     "d3": "npm:/d3",
     "zod-to-json-schema": "npm:/zod-to-json-schema",
     "chromadb": "npm:/chromadb",
-    "cheerio": "npm:/cheerio"
+    "cheerio": "npm:/cheerio",
+    "tslab": "npm:/tslab"
   }
 }

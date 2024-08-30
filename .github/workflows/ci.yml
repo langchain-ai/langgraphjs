@@ -7,8 +7,7 @@ on:
   push:
     branches: ["main"]
   pull_request:
-  workflow_dispatch:  # Allows triggering the workflow manually in GitHub UI
-
+  workflow_dispatch: # Allows triggering the workflow manually in GitHub UI
 
 # If another push to the same PR or branch happens while this workflow is still running,
 # cancel the earlier run in favor of the next run.
@@ -20,20 +19,25 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: "22.4.1"
+
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js 22.x
+      - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v3
         with:
-          node-version: 22.x
-          cache: "yarn"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
       - name: Install dependencies
-        run: yarn install --immutable --mode=skip-build
-      - name: Check linting
+        run: yarn install --immutable
+
+      - name: Build
         run: yarn build
 
   lint:
@@ -41,13 +45,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js 22.x
+      - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v3
         with:
-          node-version: 22.x
-          cache: "yarn"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
       - name: Install dependencies
-        run: yarn install --immutable --mode=skip-build
+        run: yarn install --immutable
+
       - name: Check linting
         run: yarn run lint
 
@@ -56,13 +62,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js 22.x
+      - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v3
         with:
-          node-version: 22.x
-          cache: "yarn"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
       - name: Install dependencies
-        run: yarn install --immutable --mode=skip-build
+        run: yarn install --immutable
+
       - name: Check formatting
         run: yarn run format:check
 
@@ -72,12 +80,12 @@ jobs:
       matrix:
         # See Node.js release schedule at https://nodejs.org/en/about/releases/
         os: [ubuntu-latest]
-        node-version: [18.x, 20.x, 22.x]
+        node-version: [18.x, 20.x, "22.4.1"]
         include:
           - os: windows-latest
-            node-version: 22.x
+            node-version: "22.4.1"
           - os: macos-latest
-            node-version: 22.x
+            node-version: "22.4.1"
     runs-on: ${{ matrix.os }}
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
@@ -93,3 +101,85 @@ jobs:
         run: yarn install --immutable
       - name: Test
         run: yarn run test
+
+  check-readmes-synced:
+    # This checks that the repo README.md is identical to the libs/langgraph/README.md
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Check README.md is in sync
+        run: |
+          if ! diff -q README.md libs/langgraph/README.md >/dev/null; then
+          echo "README.md is out of sync with langgraph/README.md"
+          diff -C 3 README.md langgraph/README.md
+          exit 1
+          fi
+
+  validate-dep-files:
+    name: Validate Deno and Node dependencies in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get changed files
+        id: changed_files
+        uses: tj-actions/changed-files@v44
+      - name: Check for deno.json changes
+        id: check_deno_json
+        run: |
+          deno_json=$(echo '${{ steps.changed_files.outputs.all_changed_files }}' | tr ' ' '\n' | grep -E '^./deno.json$' || true)
+          echo "has_deno_json_changes=$([ -n "$deno_json" ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+      - name: Use Node.js ${{ env.NODE_VERSION }}
+        if: steps.check_deno_json.outputs.has_deno_json_changes == 'true'
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      - name: Install dependencies
+        if: steps.check_deno_json.outputs.has_deno_json_changes == 'true'
+        run: yarn install --immutable
+      - name: Validate
+        if: steps.check_deno_json.outputs.has_deno_json_changes == 'true'
+        run: yarn tsx --experimental-wasm-modules ./scripts/validate_deps_sync.ts 
+
+  validate-new-notebooks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get changed files
+        id: changed_files
+        uses: tj-actions/changed-files@v44
+      - name: Check for new or modified notebooks
+        id: check_notebooks
+        run: |
+          notebooks=$(echo '${{ steps.changed_files.outputs.all_changed_files }}' | tr ' ' '\n' | grep -E '^(docs/docs|examples)/.*\.ipynb$' || true)
+          echo "Affected notebooks: $notebooks"
+          echo "has_affected_notebooks=$([ -n "$notebooks" ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+      - name: Use Node.js ${{ env.NODE_VERSION }}
+        if: steps.check_notebooks.outputs.has_affected_notebooks == 'true'
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      - name: Install dependencies
+        if: steps.check_notebooks.outputs.has_affected_notebooks == 'true'
+        run: yarn install --immutable
+      - name: Build LangGraph
+        if: steps.check_notebooks.outputs.has_affected_notebooks == 'true'
+        run: yarn build
+      - name: Validate affected notebooks
+        if: steps.check_notebooks.outputs.has_affected_notebooks == 'true'
+        run: |
+          notebooks=$(echo '${{ steps.changed_files.outputs.all_changed_files }}' | tr ' ' '\n' | grep -E '^(docs/docs|examples)/.*\.ipynb$' || true)
+          if [ -n "$notebooks" ]; then
+            cd ./libs/langgraph
+            for notebook in $notebooks; do
+              absolute_path="$GITHUB_WORKSPACE/$notebook"
+              yarn notebook_validate "$absolute_path"
+            done
+          else
+            echo "No notebooks to validate."
+          fi

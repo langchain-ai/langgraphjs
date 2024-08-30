@@ -1,4 +1,4 @@
-site_name: LangGraph.js
+site_name: ""
 site_description: Build language agents as graphs
 site_url: https://langchain-ai.github.io/langgraphjs/
 repo_url: https://github.com/langchain-ai/langgraphjs
@@ -6,12 +6,11 @@ edit_uri: edit/main/docs/docs/
 theme:
   name: material
   custom_dir: overrides
-  logo: static/wordmark.png
+  logo_dark_mode: static/wordmark_light.svg
+  logo_light_mode: static/wordmark_dark.svg
   favicon: static/favicon.png
   features:
     - announce.dismiss
-    - content.action.edit
-    - content.action.view
     - content.code.annotate
     - content.code.copy
     - content.code.select
@@ -25,7 +24,6 @@ theme:
     - navigation.instant.prefetch
     - navigation.instant.progress
     - navigation.prune
-    - navigation.sections
     - navigation.tabs
     - navigation.top
     - navigation.tracking
@@ -59,18 +57,21 @@ plugins:
       include_source: True
       include_requirejs: true
   - typedoc:
-      source: "../langgraph/*.d.ts"
+      # One level of globbing is intentional
+      source: "../libs/*/*.d.ts"
       output_dir: "./reference"
       tsconfig: "../tsconfig.json"
       options: "typedoc.json"
       name: "API Reference"
       title_link: "/" # optional, default: '/'
+
 nav:
   - Home:
       - "index.md"
       - Quick Start: tutorials/quickstart.ipynb
   - Tutorials:
       - "tutorials/index.md"
+      - "tutorials/quickstart.ipynb"
       - Use cases:
           - Multi-Agent Systems:
               - tutorials/multi_agent/agent_supervisor.ipynb
@@ -89,23 +90,51 @@ nav:
   - "How-to Guides":
       - "how-tos/index.md"
       - Installation:
-          - "how-tos/manage-ecosystem-dependencies.ipynb"
-          - "how-tos/use-in-web-environments.ipynb"
-      - Core:
-          - "how-tos/persistence.ipynb"
-          - "how-tos/time-travel.ipynb"
-          - "how-tos/stream-tokens.ipynb"
-          - "how-tos/configuration.ipynb"
-      - Design Patterns:
-          - "how-tos/branching.ipynb"
-          - "how-tos/subgraph.ipynb"
-          - "how-tos/human-in-the-loop.ipynb"
-          - "how-tos/force-calling-a-tool-first.ipynb"
-          - "how-tos/dynamically-returning-directly.ipynb"
-          - "how-tos/respond-in-format.ipynb"
-          - "how-tos/managing-agent-steps.ipynb"
+          - Install and manage dependencies: "how-tos/manage-ecosystem-dependencies.ipynb"
+          - Use LangGraph.js in web environments: "how-tos/use-in-web-environments.ipynb"
+      - Controllability:
+          - Define graph state: "how-tos/define-state.ipynb"
+          - Create subgraphs: "how-tos/subgraph.ipynb"
+          - Create branches for parallel execution: "how-tos/branching.ipynb"
+          - Create map-reduce branches for parallel execution: "how-tos/map-reduce.ipynb"
+      - Persistence:
+          - Add persistence ("memory") to your graph: "how-tos/persistence.ipynb"
+          - View and update past graph state: "how-tos/time-travel.ipynb"
+          - Manage conversation history: "how-tos/manage-conversation-history.ipynb"
+          - Create a custom checkpointer using Postgres: "how-tos/persistence-postgres.ipynb"
+          - How to delete messages: "how-tos/delete-messages.ipynb"
+          - Add summary of the conversation history: "how-tos/add-summary-conversation-history.ipynb"
+      - Human-in-the-loop:
+          - Add breakpoints: "how-tos/breakpoints.ipynb"
+          - Add dynamic breakpoints: "how-tos/dynamic_breakpoints.ipynb"
+          - Wait for user input: "how-tos/wait-user-input.ipynb"
+          - View and update past graph state: "how-tos/time-travel.ipynb"
+          - Edit graph state: "how-tos/edit-graph-state.ipynb"
+      - Streaming:
+          - Stream full state: "how-tos/stream-values.ipynb"
+          - Stream state updates: "how-tos/stream-updates.ipynb"
+          - Stream LLM tokens: "how-tos/stream-tokens.ipynb"
+          - Stream LLM tokens without LangChain models: "how-tos/streaming-tokens-without-langchain.ipynb"
+          - Stream events from within a tool: "how-tos/streaming-events-from-within-tools.ipynb"
+          - Stream from the final node: "how-tos/streaming-from-final-node.ipynb"
+      - Tool calling:
+          - Call tools using ToolNode: "how-tos/tool-calling.ipynb"
+          - Handle tool calling errors: "how-tos/tool-calling-errors.ipynb"
+          - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
+          # - Pass graph state to tools: how-tos/pass-run-time-values-to-tools.ipynb TODO
+      - Other:
+          - Add runtime configuration: "how-tos/configuration.ipynb"
+          - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
+          - Let agent return tool results directly: "how-tos/dynamically-returning-directly.ipynb"
+          - Handle tool calling errors: "how-tos/tool-calling-errors.ipynb"
+          - Have agent respond in structured format: "how-tos/respond-in-format.ipynb"
+          - Manage agent steps: "how-tos/managing-agent-steps.ipynb"
   - "Conceptual Guides":
       - "concepts/index.md"
+      - LangGraph for Agentic Applications: concepts/high_level.md
+      - Low Level LangGraph Concepts: concepts/low_level.md
+      - Common Agentic Patterns: concepts/agentic_concepts.md
+      - FAQ: concepts/faq.md
   - "Reference":
       - "reference/index.html"
 
@@ -155,6 +184,9 @@ markdown_extensions:
       combine_header_slug: true
   - pymdownx.tasklist:
       custom_checkbox: true
+  - markdown_include.include:
+      base_path: ../
+  - github-callouts
 extra_css:
   - css/mkdocstrings.css
 
@@ -166,3 +198,11 @@ extra:
       link: https://github.com/langchain-ai/langgraphjs
     - icon: fontawesome/brands/twitter
       link: https://twitter.com/LangChainAI
+
+validation:
+  omitted_files: warn
+  unrecognized_links: warn
+  nav:
+    not_found: warn
+  links:
+    not_found: warn
