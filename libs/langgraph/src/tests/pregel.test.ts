@@ -3491,7 +3491,7 @@ describe("StateGraph", () => {
     ]);
   });
 
-  it.only("should allow custom configuration values", async () => {
+  it("should allow custom configuration values", async () => {
     const StateAnnotation = Annotation.Root({
       hello: Annotation<string>,
     });
@@ -3526,6 +3526,42 @@ describe("StateGraph", () => {
     expect(
       await graph.invoke({ hello: "there" }, { configurable: { foo: "bar" } })
     ).toEqual({
+      hello: "again",
+    });
+  });
+
+  it("should allow private state passing between nodes", async () => {
+    const StateAnnotation = Annotation.Root({
+      hello: Annotation<string>,
+    });
+
+    const PrivateAnnotation = Annotation.Root({
+      ...StateAnnotation.spec,
+      privateProp: Annotation<string>,
+    });
+
+    const nodeA = (_: typeof StateAnnotation.State) => {
+      return {
+        privateProp: "secret",
+      };
+    };
+
+    const nodeB = (state: typeof PrivateAnnotation.State) => {
+      expect(state).toEqual({ privateProp: "secret", hello: "there" });
+      return {
+        hello: "again",
+        now: 123,
+      };
+    };
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("a", nodeA)
+      .addNode("b", nodeB, { input: PrivateAnnotation })
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .compile();
+
+    expect(await graph.invoke({ hello: "there" })).toEqual({
       hello: "again",
     });
   });

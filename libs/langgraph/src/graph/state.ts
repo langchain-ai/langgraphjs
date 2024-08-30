@@ -65,9 +65,11 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
   retryPolicy?: RetryPolicy;
 };
 
-export type StateGraphAddNodeOptions<SD extends StateDefinition> = {
+export type StateGraphAddNodeOptions = {
   retryPolicy?: RetryPolicy;
-  input?: AnnotationRoot<SD>;
+  // TODO: Fix generic typing
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  input?: AnnotationRoot<any>;
 } & AddNodeOptions;
 
 export type StateGraphArgsWithStateSchema<
@@ -172,6 +174,12 @@ export class StateGraph<
   /** @internal */
   _outputDefinition: O;
 
+  /**
+   * Map schemas to managed values
+   * @internal
+   */
+  _schemaDefinitions = new Map();
+
   constructor(
     fields: SD extends StateDefinition
       ?
@@ -230,6 +238,11 @@ export class StateGraph<
   }
 
   _addSchema(stateDefinition: StateDefinition) {
+    if (this._schemaDefinitions.has(stateDefinition)) {
+      return;
+    }
+    // TODO: Support managed values
+    this._schemaDefinitions.set(stateDefinition, stateDefinition);
     for (const [key, val] of Object.entries(stateDefinition)) {
       let channel;
       if (typeof val === "function") {
@@ -253,8 +266,12 @@ export class StateGraph<
 
   addNode<K extends string, NodeInput = S>(
     key: K,
-    action: RunnableLike<NodeInput, U>,
-    options?: StateGraphAddNodeOptions<StateDefinition>
+    action: RunnableLike<
+      NodeInput,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      U extends object ? U & Record<string, any> : U
+    >,
+    options?: StateGraphAddNodeOptions
   ): StateGraph<SD, S, U, N | K, I, O> {
     if (key in this.channels) {
       throw new Error(
@@ -341,7 +358,9 @@ export class StateGraph<
     ]);
 
     // prepare output channels
-    const outputKeys = Object.keys(this._outputDefinition);
+    const outputKeys = Object.keys(
+      this._schemaDefinitions.get(this._outputDefinition)
+    );
     const outputChannels =
       outputKeys.length === 1 && outputKeys[0] === ROOT ? ROOT : outputKeys;
 
@@ -421,7 +440,7 @@ export class CompiledStateGraph<
   attachNode(key: N, node: StateGraphNodeSpec<S, U>): void;
 
   attachNode(key: N | typeof START, node?: StateGraphNodeSpec<S, U>): void {
-    const stateKeys = Object.keys(this.builder._inputDefinition);
+    const stateKeys = Object.keys(this.builder.channels);
 
     function getStateKey(key: keyof U, input: U) {
       if (!input) {
@@ -458,17 +477,19 @@ export class CompiledStateGraph<
         writers: [new ChannelWrite(stateWriteEntries, [TAG_HIDDEN])],
       });
     } else {
+      const inputDefinition = node?.input ?? this.builder._schemaDefinition;
+      const inputValues = Object.fromEntries(
+        Object.keys(this.builder._schemaDefinitions.get(inputDefinition)).map(
+          (k) => [k, k]
+        )
+      );
+      const isSingleInput =
+        Object.keys(inputValues).length === 1 && ROOT in inputValues;
       this.channels[key] = new EphemeralValue(false);
       this.nodes[key] = new PregelNode<S, U>({
         triggers: [],
         // read state keys
-        channels:
-          stateKeys.length === 1 && stateKeys[0] === ROOT
-            ? stateKeys
-            : stateKeys.reduce((acc, k) => {
-                acc[k] = k;
-                return acc;
-              }, {} as Record<string, string>),
+        channels: isSingleInput ? Object.keys(inputValues) : inputValues,
         // publish to this channel and state keys
         writers: [
           new ChannelWrite(
@@ -476,7 +497,16 @@ export class CompiledStateGraph<
             [TAG_HIDDEN]
           ),
         ],
+        mapper: isSingleInput
+          ? undefined
+          : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (input: Record<string, any>) => {
+              return Object.fromEntries(
+                Object.entries(input).filter(([k]) => k in inputValues)
+              );
+            },
         bound: node?.runnable,
+        metadata: node?.metadata,
         retryPolicy: node?.retryPolicy,
       });
     }
