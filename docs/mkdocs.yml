@@ -113,7 +113,7 @@ nav:
       - Streaming:
           - Stream full state: "how-tos/stream-values.ipynb"
           - Stream state updates: "how-tos/stream-updates.ipynb"
-          - Configure multiple streaming modes: "how-tos/streaming-multiple.ipynb"
+          - Configure multiple streaming modes: "how-tos/stream-multiple.ipynb"
           - Stream LLM tokens: "how-tos/stream-tokens.ipynb"
           - Stream LLM tokens without LangChain models: "how-tos/streaming-tokens-without-langchain.ipynb"
           - Stream events from within a tool: "how-tos/streaming-events-from-within-tools.ipynb"
@@ -123,7 +123,7 @@ nav:
           - Handle tool calling errors: "how-tos/tool-calling-errors.ipynb"
           - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
           - Pass config to tools: "how-tos/pass-config-to-tools.ipynb"
-          # - Pass graph state to tools: how-tos/pass-run-time-values-to-tools.ipynb TODO
+          - Pass graph state to tools: "how-tos/pass-graph-state-to-tools.ipynb"
       - Other:
           - Add runtime configuration: "how-tos/configuration.ipynb"
           - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
