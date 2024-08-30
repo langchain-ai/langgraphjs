@@ -72,6 +72,13 @@ These guides show how to use different streaming modes.
 - [How to add a system prompt to a ReAct agent](react-system-prompt.ipynb)
 - [How to add Human-in-the-loop to a ReAct agent](react-human-in-the-loop.ipynb)
 
+## Prebuilt ReAct Agent
+
+- [How to create a ReAct agent](create-react-agent.ipynb)
+- [How to add memory to a ReAct agent](react-memory.ipynb)
+- [How to add a system prompt to a ReAct agent](react-system-prompt.ipynb)
+- [How to add Human-in-the-loop to a ReAct agent](react-human-in-the-loop.ipynb)
+
 ## Other
 
 - [How to add runtime configuration to your graph](configuration.ipynb)
