@@ -3097,6 +3097,106 @@ describe("StateGraph", () => {
     ]);
   });
 
+  it("should handle node schemas with custom output", async () => {
+    const StateAnnotation = Annotation.Root({
+      hello: Annotation<string>,
+      bye: Annotation<string>,
+      messages: Annotation<string[]>({
+        reducer: (a: string[], b: string[]) => [...a, ...b],
+        default: () => [],
+      }),
+    });
+
+    const OutputAnnotation = Annotation.Root({
+      messages: Annotation<string[]>,
+    });
+
+    const nodeA = (state: { hello: string; messages: string[] }) => {
+      // Unfortunately can't infer input types at runtime :(
+      expect(state).toEqual({
+        bye: "world",
+        hello: "there",
+        messages: ["hello"],
+      });
+      return {};
+    };
+
+    const nodeB = (state: { bye: string; now: number }) => {
+      // Unfortunately can't infer input types at runtime :(
+      expect(state).toEqual({
+        bye: "world",
+        hello: "there",
+        messages: ["hello"],
+      });
+      return {
+        hello: "again",
+        now: 123,
+      };
+    };
+
+    const nodeC = (state: { hello: string }) => {
+      // Unfortunately can't infer input types at runtime :(
+      expect(state).toEqual({
+        bye: "world",
+        hello: "again",
+        messages: ["hello"],
+      });
+      return {};
+    };
+
+    const graph = new StateGraph({
+      stateSchema: StateAnnotation,
+      output: OutputAnnotation,
+    })
+      .addNode("a", nodeA)
+      .addNode("b", nodeB)
+      .addNode("c", nodeC)
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .addEdge("b", "c")
+      .compile();
+
+    expect(
+      await graph.invoke({ hello: "there", bye: "world", messages: ["hello"] })
+    ).toEqual({
+      messages: ["hello"],
+    });
+
+    const graphWithInput = new StateGraph({
+      input: StateAnnotation,
+      output: OutputAnnotation,
+    })
+      .addNode("a", nodeA)
+      .addNode("b", nodeB)
+      .addNode("c", nodeC)
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .addEdge("b", "c")
+      .compile();
+
+    expect(
+      await graphWithInput.invoke({
+        hello: "there",
+        bye: "world",
+        messages: ["hello"],
+        now: 345, // ignored because not in input schema
+      })
+    ).toEqual({
+      messages: ["hello"],
+    });
+
+    expect(
+      await gatherIterator(
+        graphWithInput.stream({
+          hello: "there",
+          bye: "world",
+          messages: ["hello"],
+          now: 345, // ignored because not in input schema
+        })
+      )
+    ).toEqual([{}, { b: { hello: "again" } }, {}]);
+  });
+
   it("should use a retry policy", async () => {
     const checkpointer = new MemorySaverAssertImmutable(); // Replace with actual checkpointer implementation
 
@@ -3389,6 +3489,81 @@ describe("StateGraph", () => {
         parentConfig: undefined,
       },
     ]);
+  });
+
+  it("should allow custom configuration values", async () => {
+    const StateAnnotation = Annotation.Root({
+      hello: Annotation<string>,
+    });
+
+    const nodeA = (
+      _: typeof StateAnnotation.State,
+      config?: RunnableConfig
+    ) => {
+      // Unfortunately can't infer input types at runtime :(
+      expect(config?.configurable?.foo).toEqual("bar");
+      return {};
+    };
+
+    const nodeB = (
+      _: typeof StateAnnotation.State,
+      config?: RunnableConfig
+    ) => {
+      expect(config?.configurable?.foo).toEqual("bar");
+      return {
+        hello: "again",
+        now: 123,
+      };
+    };
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("a", nodeA)
+      .addNode("b", nodeB)
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .compile();
+
+    expect(
+      await graph.invoke({ hello: "there" }, { configurable: { foo: "bar" } })
+    ).toEqual({
+      hello: "again",
+    });
+  });
+
+  it("should allow private state passing between nodes", async () => {
+    const StateAnnotation = Annotation.Root({
+      hello: Annotation<string>,
+    });
+
+    const PrivateAnnotation = Annotation.Root({
+      ...StateAnnotation.spec,
+      privateProp: Annotation<string>,
+    });
+
+    const nodeA = (_: typeof StateAnnotation.State) => {
+      return {
+        privateProp: "secret",
+      };
+    };
+
+    const nodeB = (state: typeof PrivateAnnotation.State) => {
+      expect(state).toEqual({ privateProp: "secret", hello: "there" });
+      return {
+        hello: "again",
+        now: 123,
+      };
+    };
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("a", nodeA)
+      .addNode("b", nodeB, { input: PrivateAnnotation })
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .compile();
+
+    expect(await graph.invoke({ hello: "there" })).toEqual({
+      hello: "again",
+    });
   });
 });
 

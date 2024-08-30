@@ -7,6 +7,7 @@ export {
   type CompiledStateGraph,
   MessageGraph,
   messagesStateReducer,
+  type Messages,
   Annotation,
   type AnnotationRoot,
   type StateDefinition,

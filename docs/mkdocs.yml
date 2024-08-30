@@ -124,6 +124,11 @@ nav:
           - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
           - Pass config to tools: "how-tos/pass-config-to-tools.ipynb"
           - Pass graph state to tools: "how-tos/pass-graph-state-to-tools.ipynb"
+      - Prebuilt ReAct Agent:
+          - Create a ReAct agent: "how-tos/create-react-agent.ipynb"
+          - Add memory to a ReAct agent: "how-tos/react-memory.ipynb"
+          - Add a system prompt to a ReAct agent: "how-tos/react-system-prompt.ipynb"
+          - Add Human-in-the-loop to a ReAct agent: "how-tos/react-human-in-the-loop.ipynb"
       - Other:
           - Add runtime configuration: "how-tos/configuration.ipynb"
           - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
