@@ -35,7 +35,7 @@ export const END = "__end__";
 export interface BranchOptions<IO, N extends string> {
   source: N;
   path: Branch<IO, N>["condition"];
-  pathMap?: Record<string, N | typeof END> | N[];
+  pathMap?: Record<string, N | typeof END> | (N | typeof END)[];
 }
 
 export class Branch<IO, N extends string> {
@@ -315,12 +315,6 @@ export class Graph<
     const allSources = new Set([...this.allEdges].map(([src, _]) => src));
     for (const [start] of Object.entries(this.branches)) {
       allSources.add(start);
-    }
-    // validate sources
-    for (const node of Object.keys(this.nodes)) {
-      if (!allSources.has(node)) {
-        throw new Error(`Node \`${node}\` is a dead-end`);
-      }
     }
     for (const source of allSources) {
       if (source !== START && !(source in this.nodes)) {

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "@jest/globals";
-import { Checkpoint, CheckpointTuple, deepCopy } from "../base.js";
+import {
+  Checkpoint,
+  CheckpointTuple,
+  compareChannelVersions,
+  deepCopy,
+  maxChannelVersion,
+} from "../base.js";
 import { MemorySaver } from "../memory.js";
 import { uuid6 } from "../id.js";
 
@@ -145,5 +151,18 @@ describe("id", () => {
     const uuid = uuid6(-1);
     expect(uuid).toMatch(regex);
     expect(uuid.includes("u")).toBe(false);
+  });
+});
+
+describe("channel versions", () => {
+  it("comparison", () => {
+    expect(compareChannelVersions(1, 2)).toBe(-1);
+    expect(compareChannelVersions(1, 1)).toBe(0);
+    expect(compareChannelVersions(2, 1)).toBe(1);
+
+    expect(compareChannelVersions("1.abc", "2")).toBe(-1);
+    expect(compareChannelVersions("10.a", "10.b")).toBe(-1);
+
+    expect(maxChannelVersion("01.a", "02.a", "10.a")).toBe("10.a");
   });
 });
