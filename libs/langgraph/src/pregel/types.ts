@@ -1,5 +1,6 @@
 import type { Runnable, RunnableConfig } from "@langchain/core/runnables";
 import type {
+  All,
   PendingWrite,
   CheckpointMetadata,
   BaseCheckpointSaver,
@@ -127,5 +128,3 @@ export interface StateSnapshot {
    */
   readonly tasks: PregelTaskDescription[];
 }
-
-export type All = "*";
