@@ -2,11 +2,7 @@ import { expect, it } from "@jest/globals";
 import { z } from "zod";
 import { tool } from "@langchain/core/tools";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import {
-  AIMessage,
-  BaseMessage,
-  HumanMessage,
-} from "@langchain/core/messages";
+import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 import {
   _AnyIdAIMessage,
   _AnyIdAIMessageChunk,
