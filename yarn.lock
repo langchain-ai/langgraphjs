@@ -1627,7 +1627,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:latest":
+"@langchain/core@npm:>0.1.0  <0.3.0, @langchain/core@npm:>0.1.0 <0.3.0, @langchain/core@npm:>0.2.0 <0.3.0, @langchain/core@npm:>=0.2.11 <0.3.0, @langchain/core@npm:>=0.2.16 <0.3.0, @langchain/core@npm:>=0.2.21 <0.3.0, @langchain/core@npm:^0.2.31":
   version: 0.2.31
   resolution: "@langchain/core@npm:0.2.31"
   dependencies:
