@@ -42,6 +42,7 @@ These guides cover common examples of that.
 - [How to add dynamic breakpoints](dynamic_breakpoints.ipynb)
 - [How to wait for user input](wait-user-input.ipynb)
 - [How to edit graph state](edit-graph-state.ipynb)
+- [How to review tool calls](review-tool-calls.ipynb)
 
 ## Streaming
 
@@ -77,3 +78,4 @@ These guides show how to use different streaming modes.
 - [How to let agent return tool results directly](dynamically-returning-directly.ipynb)
 - [How to have agent respond in structured format](respond-in-format.ipynb)
 - [How to manage agent steps](managing-agent-steps.ipynb)
+- [How to add node retry policies](node-retry-policies.ipynb)
