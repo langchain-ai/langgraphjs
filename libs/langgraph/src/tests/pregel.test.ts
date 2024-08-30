@@ -3490,6 +3490,81 @@ describe("StateGraph", () => {
       },
     ]);
   });
+
+  it("should allow custom configuration values", async () => {
+    const StateAnnotation = Annotation.Root({
+      hello: Annotation<string>,
+    });
+
+    const nodeA = (
+      _: typeof StateAnnotation.State,
+      config?: RunnableConfig
+    ) => {
+      // Unfortunately can't infer input types at runtime :(
+      expect(config?.configurable?.foo).toEqual("bar");
+      return {};
+    };
+
+    const nodeB = (
+      _: typeof StateAnnotation.State,
+      config?: RunnableConfig
+    ) => {
+      expect(config?.configurable?.foo).toEqual("bar");
+      return {
+        hello: "again",
+        now: 123,
+      };
+    };
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("a", nodeA)
+      .addNode("b", nodeB)
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .compile();
+
+    expect(
+      await graph.invoke({ hello: "there" }, { configurable: { foo: "bar" } })
+    ).toEqual({
+      hello: "again",
+    });
+  });
+
+  it("should allow private state passing between nodes", async () => {
+    const StateAnnotation = Annotation.Root({
+      hello: Annotation<string>,
+    });
+
+    const PrivateAnnotation = Annotation.Root({
+      ...StateAnnotation.spec,
+      privateProp: Annotation<string>,
+    });
+
+    const nodeA = (_: typeof StateAnnotation.State) => {
+      return {
+        privateProp: "secret",
+      };
+    };
+
+    const nodeB = (state: typeof PrivateAnnotation.State) => {
+      expect(state).toEqual({ privateProp: "secret", hello: "there" });
+      return {
+        hello: "again",
+        now: 123,
+      };
+    };
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("a", nodeA)
+      .addNode("b", nodeB, { input: PrivateAnnotation })
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .compile();
+
+    expect(await graph.invoke({ hello: "there" })).toEqual({
+      hello: "again",
+    });
+  });
 });
 
 describe("PreBuilt", () => {
