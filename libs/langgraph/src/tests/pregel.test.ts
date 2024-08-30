@@ -2,6 +2,7 @@
 /* eslint-disable no-promise-executor-return */
 /* eslint-disable no-instanceof/no-instanceof */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable import/no-extraneous-dependencies */
 import { it, expect, jest, describe } from "@jest/globals";
 import {
   RunnableConfig,

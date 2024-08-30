@@ -2,13 +2,12 @@ import { expect, it } from "@jest/globals";
 import { z } from "zod";
 import { tool } from "@langchain/core/tools";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 import {
-  AIMessage,
-  AIMessageChunk,
-  BaseMessage,
-  HumanMessage,
-} from "@langchain/core/messages";
-import { FakeToolCallingChatModel } from "./utils.js";
+  _AnyIdAIMessage,
+  _AnyIdAIMessageChunk,
+  FakeToolCallingChatModel,
+} from "./utils.js";
 // Import from main `@langchain/langgraph` endpoint to turn on automatic config passing
 import { END, START, StateGraph } from "../index.js";
 import { gatherIterator } from "../utils.js";
@@ -145,7 +144,7 @@ it("stream events for a multi-node graph", async () => {
     {
       event: "on_chat_model_stream",
       data: {
-        chunk: new AIMessageChunk("hey!"),
+        chunk: new _AnyIdAIMessageChunk("hey!"),
       },
       name: "model_call",
       tags: [],
@@ -162,7 +161,7 @@ it("stream events for a multi-node graph", async () => {
     {
       event: "on_chat_model_end",
       data: {
-        output: new AIMessage("hey!"),
+        output: new _AnyIdAIMessage("hey!"),
         input: {
           messages: [[new HumanMessage("hello!")]],
         },
@@ -183,7 +182,7 @@ it("stream events for a multi-node graph", async () => {
       event: "on_chain_end",
       data: {
         output: {
-          messages: [new AIMessage("hey!")],
+          messages: [new _AnyIdAIMessage("hey!")],
         },
         input: {
           messages: [],
@@ -203,7 +202,7 @@ it("stream events for a multi-node graph", async () => {
       event: "on_chain_start",
       data: {
         input: {
-          messages: [new AIMessage("hey!")],
+          messages: [new _AnyIdAIMessage("hey!")],
         },
       },
       name: "ChannelWrite<messages,testnode>",
@@ -221,7 +220,7 @@ it("stream events for a multi-node graph", async () => {
       data: {
         output: { output: undefined },
         input: {
-          messages: [new AIMessage("hey!")],
+          messages: [new _AnyIdAIMessage("hey!")],
         },
       },
       run_id: expect.any(String),
@@ -273,7 +272,7 @@ it("stream events for a multi-node graph", async () => {
     {
       event: "on_chat_model_stream",
       data: {
-        chunk: new AIMessageChunk("hey!"),
+        chunk: new _AnyIdAIMessageChunk("hey!"),
       },
       name: "conditional_edge_call",
       tags: [],
@@ -290,7 +289,7 @@ it("stream events for a multi-node graph", async () => {
     {
       event: "on_chat_model_end",
       data: {
-        output: new AIMessage("hey!"),
+        output: new _AnyIdAIMessage("hey!"),
         input: {
           messages: [[new HumanMessage("testing but should be traced")]],
         },
@@ -354,7 +353,7 @@ it("stream events for a multi-node graph", async () => {
       data: {
         chunk: {
           testnode: {
-            messages: [new AIMessage("hey!")],
+            messages: [new _AnyIdAIMessage("hey!")],
           },
         },
       },
@@ -363,7 +362,7 @@ it("stream events for a multi-node graph", async () => {
       event: "on_chain_end",
       data: {
         output: {
-          messages: [new AIMessage("hey!")],
+          messages: [new _AnyIdAIMessage("hey!")],
         },
       },
       run_id: expect.any(String),
