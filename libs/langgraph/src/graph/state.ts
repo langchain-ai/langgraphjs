@@ -440,7 +440,7 @@ export class CompiledStateGraph<
   attachNode(key: N, node: StateGraphNodeSpec<S, U>): void;
 
   attachNode(key: N | typeof START, node?: StateGraphNodeSpec<S, U>): void {
-    const stateKeys = Object.keys(this.builder._inputDefinition);
+    const stateKeys = Object.keys(this.builder.channels);
 
     function getStateKey(key: keyof U, input: U) {
       if (!input) {
