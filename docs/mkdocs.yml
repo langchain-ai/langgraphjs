@@ -110,9 +110,11 @@ nav:
           - Wait for user input: "how-tos/wait-user-input.ipynb"
           - View and update past graph state: "how-tos/time-travel.ipynb"
           - Edit graph state: "how-tos/edit-graph-state.ipynb"
+          - Review tool calls: "how-tos/review-tool-calls.ipynb"
       - Streaming:
           - Stream full state: "how-tos/stream-values.ipynb"
           - Stream state updates: "how-tos/stream-updates.ipynb"
+          - Configure multiple streaming modes: "how-tos/stream-multiple.ipynb"
           - Stream LLM tokens: "how-tos/stream-tokens.ipynb"
           - Stream LLM tokens without LangChain models: "how-tos/streaming-tokens-without-langchain.ipynb"
           - Stream events from within a tool: "how-tos/streaming-events-from-within-tools.ipynb"
@@ -121,7 +123,13 @@ nav:
           - Call tools using ToolNode: "how-tos/tool-calling.ipynb"
           - Handle tool calling errors: "how-tos/tool-calling-errors.ipynb"
           - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
-          # - Pass graph state to tools: how-tos/pass-run-time-values-to-tools.ipynb TODO
+          - Pass config to tools: "how-tos/pass-config-to-tools.ipynb"
+          - Pass graph state to tools: "how-tos/pass-graph-state-to-tools.ipynb"
+      - Prebuilt ReAct Agent:
+          - Create a ReAct agent: "how-tos/create-react-agent.ipynb"
+          - Add memory to a ReAct agent: "how-tos/react-memory.ipynb"
+          - Add a system prompt to a ReAct agent: "how-tos/react-system-prompt.ipynb"
+          - Add Human-in-the-loop to a ReAct agent: "how-tos/react-human-in-the-loop.ipynb"
       - Other:
           - Add runtime configuration: "how-tos/configuration.ipynb"
           - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
@@ -129,6 +137,7 @@ nav:
           - Handle tool calling errors: "how-tos/tool-calling-errors.ipynb"
           - Have agent respond in structured format: "how-tos/respond-in-format.ipynb"
           - Manage agent steps: "how-tos/managing-agent-steps.ipynb"
+          - Add node retry policies: "how-tos/node-retry-policies.ipynb"
   - "Conceptual Guides":
       - "concepts/index.md"
       - LangGraph for Agentic Applications: concepts/high_level.md
