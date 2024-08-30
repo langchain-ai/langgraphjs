@@ -135,6 +135,7 @@ nav:
           - Handle tool calling errors: "how-tos/tool-calling-errors.ipynb"
           - Have agent respond in structured format: "how-tos/respond-in-format.ipynb"
           - Manage agent steps: "how-tos/managing-agent-steps.ipynb"
+          - Add node retry policies: "how-tos/node-retry-policies.ipynb"
   - "Conceptual Guides":
       - "concepts/index.md"
       - LangGraph for Agentic Applications: concepts/high_level.md
