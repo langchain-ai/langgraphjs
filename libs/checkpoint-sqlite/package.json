@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint-sqlite",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "LangGraph",
   "type": "module",
   "engines": {
