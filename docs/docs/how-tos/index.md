@@ -42,6 +42,7 @@ These guides cover common examples of that.
 - [How to add dynamic breakpoints](dynamic_breakpoints.ipynb)
 - [How to wait for user input](wait-user-input.ipynb)
 - [How to edit graph state](edit-graph-state.ipynb)
+- [How to review tool calls](review-tool-calls.ipynb)
 
 ## Streaming
 
