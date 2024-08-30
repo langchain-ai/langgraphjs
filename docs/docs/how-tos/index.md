@@ -50,6 +50,7 @@ These guides show how to use different streaming modes.
 
 - [How to stream full state of your graph](stream-values.ipynb)
 - [How to stream state updates of your graph](stream-updates.ipynb)
+- [How to configure multiple streaming modes](streaming-multiple.ipynb)
 - [How to stream LLM tokens](stream-tokens.ipynb)
 - [How to stream LLM tokens without LangChain models](streaming-tokens-without-langchain.ipynb)
 - [How to stream events from within a tool](streaming-events-from-within-tools.ipynb)
@@ -60,6 +61,7 @@ These guides show how to use different streaming modes.
 - [How to call tools using ToolNode](tool-calling.ipynb)
 - [How to force an agent to call a tool](force-calling-a-tool-first.ipynb)
 - [How to handle tool calling errors](tool-calling-errors.ipynb)
+- [How to pass config to tools](pass-config-to-tools.ipynb)
 
 ## Other
 
