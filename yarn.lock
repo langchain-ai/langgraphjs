@@ -2078,12 +2078,12 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph-checkpoint-sqlite@workspace:libs/checkpoint-sqlite, @langchain/langgraph-checkpoint-sqlite@~0.0.1":
+"@langchain/langgraph-checkpoint-sqlite@workspace:libs/checkpoint-sqlite":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-checkpoint-sqlite@workspace:libs/checkpoint-sqlite"
   dependencies:
     "@jest/globals": ^29.5.0
-    "@langchain/langgraph-checkpoint": ~0.0.2
+    "@langchain/langgraph-checkpoint": ~0.0.4
     "@langchain/scripts": ">=0.1.2 <0.2.0"
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
@@ -2112,14 +2112,10 @@ __metadata:
     typescript: ^4.9.5 || ^5.4.5
   peerDependencies:
     "@langchain/core": ">=0.2.20 <0.3.0"
-    better-sqlite3: ^9.5.0
-  peerDependenciesMeta:
-    better-sqlite3:
-      optional: true
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint, @langchain/langgraph-checkpoint@~0.0.2, @langchain/langgraph-checkpoint@~0.0.4":
+"@langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint, @langchain/langgraph-checkpoint@~0.0.4":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-checkpoint@workspace:libs/checkpoint"
   dependencies:
@@ -2163,7 +2159,6 @@ __metadata:
     "@langchain/community": ^0.2.25
     "@langchain/core": ^0.2.29
     "@langchain/langgraph-checkpoint": ~0.0.4
-    "@langchain/langgraph-checkpoint-sqlite": ~0.0.1
     "@langchain/openai": ^0.2.4
     "@langchain/scripts": ">=0.1.2 <0.2.0"
     "@swc/core": ^1.3.90
@@ -2198,10 +2193,7 @@ __metadata:
     zod: ^3.23.8
     zod-to-json-schema: ^3.22.4
   peerDependencies:
-    better-sqlite3: ^9.5.0
-  peerDependenciesMeta:
-    better-sqlite3:
-      optional: true
+    "@langchain/core": ">=0.2.31 <0.3.0"
   languageName: unknown
   linkType: soft
 
