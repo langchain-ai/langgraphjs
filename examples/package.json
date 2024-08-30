@@ -8,8 +8,8 @@
   "devDependencies": {
     "@langchain/anthropic": "^0.2.15",
     "@langchain/cloudflare": "^0.0.7",
-    "@langchain/community": "^0.2.27",
-    "@langchain/core": "^0.2.27",
+    "@langchain/community": "^0.2.31",
+    "@langchain/core": "^0.2.31",
     "@langchain/groq": "^0.0.16",
     "@langchain/langgraph": "workspace:*",
     "@langchain/mistralai": "^0.0.28",
