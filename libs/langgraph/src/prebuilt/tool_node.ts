@@ -17,10 +17,10 @@ export type ToolNodeOptions = {
 };
 
 /**
- * ToolNode executes the provided functions when requested by an LLM as tool_calls.
+ * The prebuilt ToolNode executes the provided functions when requested by an LLM as tool_calls.
  *
  * Key expectations:
- * 1. Input: Expects either a BaseMessage[] or an object with a messages key containing a list of BaseMessages.
+ * 1. Input: Expects either a state object with a messages key containing a list of BaseMessages, or a list of messages directly.
  *     The last message **must** be an AIMessage containing `tool_call`'s.
  * 2. Tool Execution: Processes all tool calls found in the last AIMessage, executing them in parallel.
  * 3. Output: Returns either an array of `ToolMessage`'s or an object with a messages key containing the `ToolMessage`'s, depending on the input type.
@@ -31,17 +31,19 @@ export type ToolNodeOptions = {
  * - Ensure the AI model is aware of and can request the tools available to the ToolNode (e.g., by calling .llm.bind_tools(tools))
  * - Route to the tool node only if the last message contains tool calls.
  *
- * @typeparam T - The type of input, either an array of `BaseMessage` or `MessagesState`.
+ * @typeparam T - Optional: the type of input, either an array of `BaseMessage` or `MessagesState`.
  *
  * @example
  * ```typescript
- * import { MessagesAnnotation } from "@langchain/langgraph";
+ * import { ToolNode, toolsCondition } from "@langchain/langgraph/prebuilt";
+ * import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
+ * import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
  * 
  * const tools = [new TavilySearchResults({ maxResults: 1 })];
  * const toolNode = new ToolNode(tools);
  *
  * const workflow = new StateGraph(MessagesAnnotation)
- *   .addNode("agent", callModel) // contains an LLM that will emit an AIMessage with tool_calls
+ *   .addNode("agent", callModel) // contains an LLM call that will emit an AIMessage with tool_calls
  *   .addNode("tools", toolNode)
  *   .addConditionalEdges("agent", toolsCondition)
  *   .addEdge("tools", "agent"); // After tools are executed, return to the agent to summarize results.
