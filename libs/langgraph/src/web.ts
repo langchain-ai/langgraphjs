@@ -9,25 +9,15 @@ export {
   messagesStateReducer,
   type Messages,
   Annotation,
-  type AnnotationRoot,
   type StateDefinition,
   type SingleReducer,
-  type StateType,
-  type UpdateType,
-  type NodeType,
   type CompiledGraph,
 } from "./graph/index.js";
 export * from "./errors.js";
 export {
   BaseChannel,
   type BinaryOperator,
-  BinaryOperatorAggregate,
-  type AnyValue,
-  type WaitForNames,
-  type DynamicBarrierValue,
-  type LastValue,
-  type NamedBarrierValue,
-  type Topic,
+  BinaryOperatorAggregate
 } from "./channels/index.js";
 export { type RetryPolicy } from "./pregel/utils.js";
 export { Send } from "./constants.js";

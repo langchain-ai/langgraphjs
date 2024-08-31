@@ -52,3 +52,5 @@ const fullResponse = [];
 for await (const item of stream) {
   fullResponse.push(item);
 }
+
+export const COMPILED_GRAPH = compiledGraph;

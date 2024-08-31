@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph",
-  "version": "0.2.0-rc.0",
+  "version": "0.2.0-rc.2",
   "description": "LangGraph",
   "type": "module",
   "engines": {
@@ -81,6 +81,15 @@
     "registry": "https://registry.npmjs.org/"
   },
   "exports": {
+    "./_types": {
+      "types": {
+        "import": "./_types.d.ts",
+        "require": "./_types.d.cts",
+        "default": "./_types.d.ts"
+      },
+      "import": "./_types.js",
+      "require": "./_types.cjs"
+    },
     ".": {
       "types": {
         "import": "./index.d.ts",
@@ -121,6 +130,10 @@
   },
   "files": [
     "dist/",
+    "_types.cjs",
+    "_types.js",
+    "_types.d.ts",
+    "_types.d.cts",
     "index.cjs",
     "index.js",
     "index.d.ts",
