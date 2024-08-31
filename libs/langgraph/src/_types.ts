@@ -8,7 +8,7 @@ export {
   type Topic,
 } from "./channels/index.js";
 
-export { 
+export {
   type AnnotationRoot,
   type StateType,
   type UpdateType,
