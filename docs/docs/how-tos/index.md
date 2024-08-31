@@ -65,6 +65,11 @@ These guides show how to use different streaming modes.
 - [How to pass config to tools](pass-config-to-tools.ipynb)
 - [How to pass graph state to tools](pass-graph-state-to-tools.ipynb)
 
+## State management
+
+- [Have a separate input and output schema](input_output_schema.ipynb)
+- [Pass private state between nodes inside the graph](pass_private_state.ipynb)
+
 ## Prebuilt ReAct Agent
 
 - [How to create a ReAct agent](create-react-agent.ipynb)

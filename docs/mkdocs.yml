@@ -125,6 +125,9 @@ nav:
           - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
           - Pass config to tools: "how-tos/pass-config-to-tools.ipynb"
           - Pass graph state to tools: "how-tos/pass-graph-state-to-tools.ipynb"
+      - State management:
+          - Have a separate input and output schema: "how-tos/input_output_schema.ipynb"
+          - Pass private state between nodes inside the graph: "how-tos/pass_private_state.ipynb"
       - Prebuilt ReAct Agent:
           - Create a ReAct agent: "how-tos/create-react-agent.ipynb"
           - Add memory to a ReAct agent: "how-tos/react-memory.ipynb"
