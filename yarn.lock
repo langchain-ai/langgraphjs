@@ -458,13 +458,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@cloudflare/ai@npm:1.0.47":
-  version: 1.0.47
-  resolution: "@cloudflare/ai@npm:1.0.47"
-  checksum: a9e371f789256bb5795c0cb60d975749b07d6cb50141b997da6b5c94380ddf18e851cba518e246414fcab4239d8f4438c5fe29172e6f06c136be3be19a3b65e0
-  languageName: node
-  linkType: hard
-
 "@esbuild/aix-ppc64@npm:0.19.12":
   version: 0.19.12
   resolution: "@esbuild/aix-ppc64@npm:0.19.12"
@@ -1230,22 +1223,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/cloudflare@npm:^0.0.7":
-  version: 0.0.7
-  resolution: "@langchain/cloudflare@npm:0.0.7"
-  dependencies:
-    "@cloudflare/ai": 1.0.47
-    "@langchain/core": ">0.1.0 <0.3.0"
-    uuid: ^10.0.0
-  peerDependencies:
-    "@langchain/langgraph": <0.1.0
-  peerDependenciesMeta:
-    "@langchain/langgraph":
-      optional: true
-  checksum: 7bc5d07a49a9b81d16e3dd8ca17c84b675dae9dfcc3e1cc74118af2ca95d985bb104b98a31035b7b14319efb127279383d308b456f60c1632df239a7f016d818
-  languageName: node
-  linkType: hard
-
 "@langchain/community@npm:^0.2.31":
   version: 0.2.31
   resolution: "@langchain/community@npm:0.2.31"
@@ -1627,7 +1604,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:>0.1.0  <0.3.0, @langchain/core@npm:>0.1.0 <0.3.0, @langchain/core@npm:>0.2.0 <0.3.0, @langchain/core@npm:>=0.2.11 <0.3.0, @langchain/core@npm:>=0.2.16 <0.3.0, @langchain/core@npm:>=0.2.21 <0.3.0, @langchain/core@npm:^0.2.31":
+"@langchain/core@npm:>0.1.0  <0.3.0, @langchain/core@npm:>0.2.0 <0.3.0, @langchain/core@npm:>=0.2.11 <0.3.0, @langchain/core@npm:>=0.2.16 <0.3.0, @langchain/core@npm:>=0.2.21 <0.3.0, @langchain/core@npm:^0.2.31":
   version: 0.2.31
   resolution: "@langchain/core@npm:0.2.31"
   dependencies:
@@ -6060,7 +6037,6 @@ __metadata:
   resolution: "examples@workspace:examples"
   dependencies:
     "@langchain/anthropic": ^0.2.15
-    "@langchain/cloudflare": ^0.0.7
     "@langchain/community": ^0.2.31
     "@langchain/core": ^0.2.31
     "@langchain/groq": ^0.0.16

@@ -8,9 +8,4 @@ export {
   type Topic,
 } from "./channels/index.js";
 
-export {
-  type AnnotationRoot,
-  type StateType,
-  type UpdateType,
-  type NodeType,
-} from "./graph/index.js";
+export { type AnnotationRoot } from "./graph/index.js";

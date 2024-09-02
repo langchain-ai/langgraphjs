@@ -7,7 +7,6 @@
   },
   "devDependencies": {
     "@langchain/anthropic": "^0.2.15",
-    "@langchain/cloudflare": "^0.0.7",
     "@langchain/community": "^0.2.31",
     "@langchain/core": "^0.2.31",
     "@langchain/groq": "^0.0.16",
