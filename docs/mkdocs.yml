@@ -72,16 +72,18 @@ nav:
   - Tutorials:
       - "tutorials/index.md"
       - "tutorials/quickstart.ipynb"
-      - Use cases:
+      - Chatbots:
+          - Customer support with a small model: tutorials/chatbots/customer_support_small_model.ipynb
+      - RAG:
+          - tutorials/rag/langgraph_agentic_rag.ipynb
+          - tutorials/rag/langgraph_crag.ipynb
+          - tutorials/rag/langgraph_self_rag.ipynb
+          - tutorials/rag/langgraph_adaptive_rag_local.ipynb
+      - Agent architectures:
           - Multi-Agent Systems:
               - tutorials/multi_agent/agent_supervisor.ipynb
               - tutorials/multi_agent/hierarchical_agent_teams.ipynb
               - tutorials/multi_agent/multi_agent_collaboration.ipynb
-          - RAG:
-              - tutorials/rag/langgraph_agentic_rag.ipynb
-              - tutorials/rag/langgraph_crag.ipynb
-              - tutorials/rag/langgraph_self_rag.ipynb
-              - tutorials/rag/langgraph_adaptive_rag_local.ipynb
           - Planning Agents:
               - tutorials/plan-and-execute/plan-and-execute.ipynb
           - Reflection & Critique:
