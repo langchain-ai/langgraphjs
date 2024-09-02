@@ -29,7 +29,6 @@ LangGraph.js makes it easy to persist state across graph runs. The guides below 
 - [How to add persistence ("memory") to your graph](persistence.ipynb)
 - [How to manage conversation history](manage-conversation-history.ipynb)
 - [How to view and update past graph state](time-travel.ipynb)
-- [How to create a custom checkpointer using Postgres](persistence-postgres.ipynb)
 - [How to delete messages](delete-messages.ipynb)
 - [How to add summary of the conversation history](add-summary-conversation-history.ipynb)
 

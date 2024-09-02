@@ -33,13 +33,10 @@ _HOW_TOS = {
     "docs",
     "how-tos",
 }
-_MAP = {
-    "persistence_postgres.ipynb": "tutorial",
-}
+_MAP = {}
 _HIDE = set(
     str(examples_dir / f)
     for f in [
-        "persistence_postgres.ipynb",
         "agent_executor/base.ipynb",
         "chat_agent_executor_with_function_calling/base.ipynb",
         "rag/langgraph_crag_mistral.ipynb",
