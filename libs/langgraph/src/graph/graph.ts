@@ -127,8 +127,6 @@ export class Graph<
 
   compiled = false;
 
-  supportMultipleEdges = false;
-
   constructor() {
     this.nodes = {} as Record<N, NodeSpecType>;
     this.edges = new Set();
@@ -189,11 +187,11 @@ export class Graph<
       throw new Error("START cannot be an end node");
     }
     if (
-      !this.supportMultipleEdges &&
-      Array.from(this.edges).some(([start]) => start === startKey)
+      Array.from(this.edges).some(([start]) => start === startKey) &&
+      !("channels" in this)
     ) {
       throw new Error(
-        `Already found path for ${startKey}. For multiple edges, use StateGraph with an annotated state key.`
+        `Already found path for ${startKey}. For multiple edges, use StateGraph.`
       );
     }
 
