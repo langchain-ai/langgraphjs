@@ -150,6 +150,8 @@ nav:
       - FAQ: concepts/faq.md
   - "Reference":
       - "reference/index.html"
+  - "Versions":
+      - "versions/index.md"
 
 markdown_extensions:
   - abbr

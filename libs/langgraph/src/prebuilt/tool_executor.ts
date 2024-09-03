@@ -8,6 +8,7 @@ import { StructuredToolInterface } from "@langchain/core/tools";
 
 const INVALID_TOOL_MSG_TEMPLATE = `{requestedToolName} is not a valid tool, try one of {availableToolNamesString}.`;
 
+/** @deprecated Use {@link ToolNode} instead. */
 export interface ToolExecutorArgs {
   tools: Array<StructuredToolInterface | RunnableToolLike>;
   /**
@@ -30,6 +31,7 @@ type ToolExecutorInputType = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ToolExecutorOutputType = any;
 
+/** @deprecated Use {@link ToolNode} instead. */
 export class ToolExecutor extends RunnableBinding<
   ToolExecutorInputType,
   ToolExecutorOutputType
