@@ -1464,7 +1464,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "input", step: 4, writes: 3 },
+      metadata: { source: "input", step: 4, writes: { input: 3 } },
       createdAt: expect.any(String),
       parentConfig: history[3].config,
     }),
@@ -1494,7 +1494,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "input", step: 2, writes: 20 },
+      metadata: { source: "input", step: 2, writes: { input: 20 } },
       createdAt: expect.any(String),
       parentConfig: history[5].config,
     }),
@@ -1539,7 +1539,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "input", step: -1, writes: 2 },
+      metadata: { source: "input", step: -1, writes: { input: 2 } },
       createdAt: expect.any(String),
       parentConfig: undefined,
     }),
@@ -2607,7 +2607,7 @@ describe("StateGraph", () => {
       {
         source: "input",
         step: -1,
-        writes: { my_key: "value ⛰️", market: "DE" },
+        writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
       },
     ]);
 
@@ -3572,7 +3572,9 @@ describe("StateGraph", () => {
         metadata: {
           source: "input",
           writes: {
-            messages: ["initial input"],
+            __start__: {
+              messages: ["initial input"],
+            },
           },
           step: -1,
         },
@@ -4123,7 +4125,7 @@ it("checkpoint events", async () => {
         metadata: {
           source: "input",
           step: -1,
-          writes: { my_key: "value", market: "DE" },
+          writes: { __start__: { my_key: "value", market: "DE" } },
         },
         next: ["__start__"],
         tasks: [{ id: expect.any(String), name: "__start__", interrupts: [] }],
@@ -4396,7 +4398,7 @@ it("StateGraph start branch then end", async () => {
     {
       source: "input",
       step: -1,
-      writes: { my_key: "value ⛰️", market: "DE" },
+      writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
     },
   ]);
   expect(await toolTwoWithCheckpointer.getState(thread1)).toEqual({
