@@ -1,3 +1,5 @@
+export const TASKS = "__pregel_tasks";
+
 // Mirrors BaseChannel in "@langchain/langgraph"
 export interface ChannelProtocol<
   ValueType = unknown,

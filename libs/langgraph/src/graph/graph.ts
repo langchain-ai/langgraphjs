@@ -84,7 +84,6 @@ export class Branch<IO, N extends string> {
 
     let destinations: (string | Send)[];
     if (this.ends) {
-      // destinations = [r if isinstance(r, Send) else self.ends[r] for r in result]
       destinations = result.map((r) => (_isSend(r) ? r : this.ends![r]));
     } else {
       destinations = result;
