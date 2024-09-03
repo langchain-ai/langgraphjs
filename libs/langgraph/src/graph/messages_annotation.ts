@@ -8,9 +8,9 @@ import { Messages, messagesStateReducer } from "./message.js";
  * Prebuilt state annotation that combines returned messages.
  * Can handle standard messages and special modifiers like {@link RemoveMessage}
  * instances.
- * 
+ *
  * Specifically, importing and using the prebuilt MessagesAnnotation like this:
- * 
+ *
  * @example
  * ```ts
  * import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
@@ -19,9 +19,9 @@ import { Messages, messagesStateReducer } from "./message.js";
  *   .addNode(...)
  *   ...
  * ```
- * 
+ *
  * Is equivalent to initializing your state manually like this:
- * 
+ *
  * @example
  * ```ts
  * import { BaseMessage } from "@langchain/core/messages";
