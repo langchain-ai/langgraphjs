@@ -18,6 +18,7 @@ import {
   compareChannelVersions,
   copyCheckpoint,
   emptyCheckpoint,
+  PendingWrite,
   uuid5,
 } from "@langchain/langgraph-checkpoint";
 import {
@@ -479,7 +480,15 @@ export class Pregel<
       })
     );
 
-    // apply to checkpoint and save
+    if (saved !== undefined) {
+      await this.checkpointer.putWrites(
+        checkpointConfig,
+        task.writes as PendingWrite[],
+        task.id
+      );
+    }
+
+    // apply to checkpoint
     // TODO: Why does keyof StrRecord allow number and symbol?
     _applyWrites(
       checkpoint,

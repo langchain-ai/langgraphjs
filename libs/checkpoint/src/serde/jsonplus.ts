@@ -140,6 +140,12 @@ function _default(_key: string, obj: any): any {
     return _encodeConstructorArgs(RegExp, undefined, [obj.source, obj.flags]);
   } else if (obj instanceof Error) {
     return _encodeConstructorArgs(obj.constructor, undefined, [obj.message]);
+    // TODO: Remove special case
+  } else if (obj?.lg_name === "Send") {
+    return {
+      node: obj.node,
+      args: obj.args,
+    };
   } else {
     return obj;
   }
