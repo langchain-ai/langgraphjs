@@ -150,6 +150,8 @@ nav:
       - FAQ: concepts/faq.md
   - "Reference":
       - "reference/index.html"
+  - "Cloud (beta)":
+      - "https://langchain-ai.github.io/langgraph/cloud/"
   - "Versions":
       - "versions/index.md"
 
