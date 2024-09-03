@@ -387,7 +387,7 @@ See [this guide](../how-tos/configuration.ipynb) for a full breakdown on configu
 
 ## Breakpoints
 
-It can often be useful to set breakpoints before or after certain nodes execute. This can be used to wait for human approval before continuing. These can be set when you ["compile" a graph](#compiling-your-graph), or thrown dynamically using a special error called a [`NodeInterrupt`](../how-tos/dynamic_breakpoints/). You can set breakpoints either _before_ a node executes (using `interruptBefore`) or after a node executes (using `interruptAfter`).
+It can often be useful to set breakpoints before or after certain nodes execute. This can be used to wait for human approval before continuing. These can be set when you ["compile" a graph](#compiling-your-graph), or thrown dynamically using a special error called a [`NodeInterrupt`](../how-tos/dynamic_breakpoints.ipynb). You can set breakpoints either _before_ a node executes (using `interruptBefore`) or after a node executes (using `interruptAfter`).
 
 You **MUST** use a [checkpoiner](#checkpointer) when using breakpoints. This is because your graph needs to be able to resume execution.
 
