@@ -644,10 +644,6 @@ export class Pregel<
       checkpointer,
     ] = this._defaults(inputConfig);
     let loop;
-    let backgroundError;
-    const onBackgroundError = (e: Error) => {
-      backgroundError = e;
-    };
     try {
       loop = await PregelLoop.initialize({
         input,
@@ -655,18 +651,16 @@ export class Pregel<
         checkpointer,
         nodes: this.nodes,
         channelSpecs: this.channels,
-        onBackgroundError,
         outputKeys,
         streamKeys: this.streamChannelsAsIs as string | string[],
       });
       while (
-        backgroundError === undefined &&
-        (await loop.tick({
+        await loop.tick({
           inputKeys: this.inputChannels as string | string[],
           interruptAfter,
           interruptBefore,
           manager: runManager,
-        }))
+        })
       ) {
         if (debug) {
           printStepCheckpoint(
@@ -744,10 +738,6 @@ export class Pregel<
           );
         }
       }
-      // Checkpointing failures
-      if (backgroundError !== undefined) {
-        throw backgroundError;
-      }
       while (loop.stream.length > 0) {
         const nextItem = loop.stream.shift();
         if (nextItem === undefined) {
@@ -770,12 +760,13 @@ export class Pregel<
           ].join(" ")
         );
       }
+      await Promise.all(loop?.checkpointerPromises ?? []);
       await runManager?.handleChainEnd(readChannels(loop.channels, outputKeys));
     } catch (e) {
       await runManager?.handleChainError(e);
       throw e;
     } finally {
-      await loop?.backgroundTasksPromise;
+      await Promise.all(loop?.checkpointerPromises ?? []);
     }
   }
 
