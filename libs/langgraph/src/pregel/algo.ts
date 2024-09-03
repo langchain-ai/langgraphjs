@@ -231,7 +231,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
           throw new InvalidUpdateError(
             `Invalid update for channel ${chan} with values ${JSON.stringify(
               vals
-            )}`
+            )}: ${e.message}`
           );
         } else {
           throw e;

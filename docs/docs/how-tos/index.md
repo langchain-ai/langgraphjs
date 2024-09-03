@@ -29,7 +29,6 @@ LangGraph.js makes it easy to persist state across graph runs. The guides below 
 - [How to add persistence ("memory") to your graph](persistence.ipynb)
 - [How to manage conversation history](manage-conversation-history.ipynb)
 - [How to view and update past graph state](time-travel.ipynb)
-- [How to create a custom checkpointer using Postgres](persistence-postgres.ipynb)
 - [How to delete messages](delete-messages.ipynb)
 - [How to add summary of the conversation history](add-summary-conversation-history.ipynb)
 
@@ -51,6 +50,7 @@ These guides show how to use different streaming modes.
 
 - [How to stream full state of your graph](stream-values.ipynb)
 - [How to stream state updates of your graph](stream-updates.ipynb)
+- [How to configure multiple streaming modes](stream-multiple.ipynb)
 - [How to stream LLM tokens](stream-tokens.ipynb)
 - [How to stream LLM tokens without LangChain models](streaming-tokens-without-langchain.ipynb)
 - [How to stream events from within a tool](streaming-events-from-within-tools.ipynb)
@@ -61,6 +61,20 @@ These guides show how to use different streaming modes.
 - [How to call tools using ToolNode](tool-calling.ipynb)
 - [How to force an agent to call a tool](force-calling-a-tool-first.ipynb)
 - [How to handle tool calling errors](tool-calling-errors.ipynb)
+- [How to pass config to tools](pass-config-to-tools.ipynb)
+- [How to pass graph state to tools](pass-graph-state-to-tools.ipynb)
+
+## State management
+
+- [Have a separate input and output schema](input_output_schema.ipynb)
+- [Pass private state between nodes inside the graph](pass_private_state.ipynb)
+
+## Prebuilt ReAct Agent
+
+- [How to create a ReAct agent](create-react-agent.ipynb)
+- [How to add memory to a ReAct agent](react-memory.ipynb)
+- [How to add a system prompt to a ReAct agent](react-system-prompt.ipynb)
+- [How to add Human-in-the-loop to a ReAct agent](react-human-in-the-loop.ipynb)
 
 ## Prebuilt ReAct Agent
 

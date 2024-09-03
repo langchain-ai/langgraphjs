@@ -12,17 +12,21 @@ Learn the basics of LangGraph through a comprehensive quick start in which you w
 
 Learn from example implementations of graphs designed for specific scenarios and that implement common design patterns.
 
-#### Multi-Agent Systems
+#### Chatbots
 
-- [Supervision](multi_agent/agent_supervisor.ipynb): Using an LLM to orchestrate and delegate to individual agents
-- [Hierarchical Teams](multi_agent/hierarchical_agent_teams.ipynb): Orchestrating nested teams of agents to solve problems
-- [Collaboration](multi_agent/multi_agent_collaboration.ipynb): Enabling two agents to collaborate on a task
+- [Customer support with a small model](chatbots/customer_support_small_model.ipynb)
 
 #### RAG
 
 - [Agentic RAG](rag/langgraph_agentic_rag.ipynb)
 - [Corrective RAG](rag/langgraph_crag.ipynb)
 - [Self-RAG](rag/langgraph_self_rag.ipynb)
+
+#### Multi-Agent Systems
+
+- [Collaboration](multi_agent/multi_agent_collaboration.ipynb): Enabling two agents to collaborate on a task
+- [Supervision](multi_agent/agent_supervisor.ipynb): Using an LLM to orchestrate and delegate to individual agents
+- [Hierarchical Teams](multi_agent/hierarchical_agent_teams.ipynb): Orchestrating nested teams of agents to solve problems
 
 #### Planning Agents
 

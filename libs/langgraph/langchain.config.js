@@ -12,11 +12,11 @@ function abs(relativePath) {
 export const config = {
   internals: [/node\:/, /@langchain\/core\//, /async_hooks/],
   entrypoints: {
+    _types: "_types",
     index: "index",
     web: "web",
     pregel: "pregel/index",
-    prebuilt: "prebuilt/index",
-    "checkpoint/sqlite": "checkpoint/sqlite"
+    prebuilt: "prebuilt/index"
   },
   tsConfigPath: resolve("./tsconfig.json"),
   cjsSource: "./dist-cjs",

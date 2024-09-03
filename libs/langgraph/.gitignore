@@ -1,3 +1,7 @@
+_types.cjs
+_types.js
+_types.d.ts
+_types.d.cts
 index.cjs
 index.js
 index.d.ts
@@ -14,10 +18,6 @@ prebuilt.cjs
 prebuilt.js
 prebuilt.d.ts
 prebuilt.d.cts
-checkpoint/sqlite.cjs
-checkpoint/sqlite.js
-checkpoint/sqlite.d.ts
-checkpoint/sqlite.d.cts
 node_modules
 dist
 .yarn

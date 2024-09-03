@@ -24,7 +24,7 @@ LangGraph is inspired by [Pregel](https://research.google/pubs/pub37252/) and [A
 ## Installation
 
 ```bash
-npm install @langchain/langgraph
+npm install @langchain/langgraph @langchain/core
 ```
 
 ## Example
