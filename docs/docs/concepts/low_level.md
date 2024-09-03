@@ -95,7 +95,7 @@ const graph = new StateGraph(MessagesAnnotation)
   ...
 ```
 
-Is the same as initializing your state manually like this:
+Is equivalent to initializing your state manually like this:
 
 ```typescript
 import { BaseMessage } from "@langchain/core/messages";
@@ -108,7 +108,9 @@ export const StateAnnotation = Annotation.Root({
   }),
 });
 
-const graph = new StateGraph(StateAnnotation);
+const graph = new StateGraph(StateAnnotation)
+  .addNode(...)
+  ...
 ```
 
 The state of a `MessagesAnnotation` has a single key called `messages`. This is an array of `BaseMessage`s, with [`messagesStateReducer`](/langgraphjs/reference/functions/langgraph.messagesStateReducer.html) as a reducer. `messagesStateReducer` basically adds messages to the existing list (it also does some nice extra things, like convert from OpenAI message format to the standard LangChain message format, handle updates based on message IDs, etc).
