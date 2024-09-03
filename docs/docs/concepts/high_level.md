@@ -44,10 +44,10 @@ LangGraph comes with first class support for streaming. Agentic applications oft
 
 ## Deployment
 
-So you've built your LangGraph object - now what?
+So you've built your graph - now what?
 
-Now you need to deploy it. 
-There are many ways to deploy LangGraph objects, and the right solution depends on your needs and use case.
-We're working on adding JavaScript/TypeScript support for LangGraph cloud, but in the meantime, here are some options:
+Now you need to deploy it. There are many ways to deploy LangGraph.js objects, and the right solution depends on your needs and use case. We'll highlight two ways here: using [LangGraph Cloud](https://langchain-ai.github.io/langgraph/cloud) or rolling your own solution.
 
-- Use [Express.js](https://expressjs.com/) to stand up a server. You can then call this graph from inside the Express.js server as you see fit.
+[LangGraph Cloud](https://langchain-ai.github.io/langgraph/cloud) is an opinionated way to deploy LangGraph objects from the LangChain team. Please see the [LangGraph Cloud documentation](https://langchain-ai.github.io/langgraph/cloud/) for all the details about what it involves, to see if it is a good fit for you.
+
+If it is not a good fit, you'll need to roll your own deployment. We've taken as much care as possible to make LangGraph.js portable with a [wide variety of JavaScript environments and frameworks](../how-tos/use-in-web-environments/). Some options include evergreen frameworks like [Express.js](https://expressjs.com/) or newer ones like [Next.js](https://nextjs.org/) and [Hono](https://hono.dev/).

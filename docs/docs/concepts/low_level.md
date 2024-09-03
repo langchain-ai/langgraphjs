@@ -4,7 +4,7 @@
 
 At its core, LangGraph models agent workflows as graphs. You define the behavior of your agents using three key components:
 
-1. [`State`](#state): A shared data structure that represents the current snapshot of your application. It is represented by an [`annotations`](/langgraphjs/reference/modules/langgraph.Annotation.html) object.
+1. [`State`](#state): A shared data structure that represents the current snapshot of your application. It is represented by an [`Annotation`](/langgraphjs/reference/modules/langgraph.Annotation.html) object.
 
 2. [`Nodes`](#nodes): JavaScript/TypeScript functions that encode the logic of your agents. They receive the current `State` as input, perform some computation or side-effect, and return an updated `State`.
 
@@ -22,7 +22,7 @@ A super-step can be considered a single iteration over the graph nodes. Nodes th
 
 The `StateGraph` class is the main graph class to uses. This is parameterized by a user defined `State` object. (defined using the `Annotation` object and passed as the first argument)
 
-### MessageGraph
+### MessageGraph (legacy) {#messagegraph}
 
 The `MessageGraph` class is a special type of graph. The `State` of a `MessageGraph` is ONLY an array of messages. This class is rarely used except for chatbots, as most applications require the `State` to be more complex than an array of messages.
 
@@ -42,9 +42,9 @@ You **MUST** compile your graph before you can use it.
 
 The first thing you do when you define a graph is define the `State` of the graph. The `State` consists of the [schema of the graph](#schema) as well as [`reducer` functions](#reducers) which specify how to apply updates to the state. The schema of the `State` will be the input schema to all `Nodes` and `Edges` in the graph, and should be defined using an [`Annotation`](/langgraphjs/reference/modules/langgraph.Annotation.html) object. All `Nodes` will emit updates to the `State` which are then applied using the specified `reducer` function.
 
-### Schema
+### Annotation
 
-The way to specify the schema of a graph is by defining an [`Annotation`](/langgraphjs/reference/modules/langgraph.Annotation.html) object, where each key is an item in the state.
+The way to specify the schema of a graph is by defining a root [`Annotation`](/langgraphjs/reference/modules/langgraph.Annotation.html) object, where each key is an item in the state.
 
 ### Reducers
 
@@ -83,30 +83,35 @@ const graphBuilder = new StateGraph(State);
 
 In this example, we've updated our `bar` field to be an object containing a `reducer` function. This function will always accept two positional arguments: `state` and `update`, with `state` representing the current state value, and `update` representing the update returned from a `Node`. Note that the first key remains unchanged. Let's assume the input to the graph is `{ foo: 1, bar: ["hi"] }`. Let's then assume the first `Node` returns `{ foo: 2 }`. This is treated as an update to the state. Notice that the `Node` does not need to return the whole `State` schema - just an update. After applying this update, the `State` would then be `{ foo: 2, bar: ["hi"] }`. If the second node returns`{ bar: ["bye"] }` then the `State` would then be `{ foo: 2, bar: ["hi", "bye"] }`. Notice here that the `bar` key is updated by concatenating the two arrays together.
 
-### MessageState
+### MessagesAnnotation
 
-`MessageState` is one of the few opinionated components in LangGraph. `MessageState` is a special state designed to make it easy to use an array of messages as a key in your state. Specifically, `MessageState` is defined as:
+`MessagesAnnotation` is one of the few opinionated components in LangGraph. `MessagesAnnotation` is a special state annotation designed to make it easy to use an array of messages as a key in your state. Specifically, importing and using the prebuilt `MessagesAnnotation` like this:
+
+```typescript
+import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
+
+const graph = new StateGraph(MessagesAnnotation)
+  .addNode(...)
+  ...
+```
+
+Is the same as initializing your state manually like this:
 
 ```typescript
 import { BaseMessage } from "@langchain/core/messages";
 import { Annotation, StateGraph, messagesStateReducer } from "@langchain/langgraph";
 
-// This can be imported from @langchain/langgraph
-export const MessagesAnnotation = Annotation.Root({
+export const StateAnnotation = Annotation.Root({
   messages: Annotation<BaseMessage[]>({
     reducer: messagesStateReducer,
     default: () => [],
   }),
 });
 
-export class MessageGraph extends StateGraph {
-  constructor() {
-    super(MessagesAnnotation);
-  }
-}
+const graph = new StateGraph(StateAnnotation);
 ```
 
-What this is doing is creating a `State` with a single key `messages`. This is an array of `BaseMessage`s, with [`messagesStateReducer`](/langgraphjs/reference/functions/langgraph.messagesStateReducer.html) as a reducer. `messagesStateReducer` basically adds messages to the existing list (it also does some nice extra things, like convert from OpenAI message format to the standard LangChain message format, handle updates based on message IDs, etc).
+The state of a `MessagesAnnotation` has a single key called `messages`. This is an array of `BaseMessage`s, with [`messagesStateReducer`](/langgraphjs/reference/functions/langgraph.messagesStateReducer.html) as a reducer. `messagesStateReducer` basically adds messages to the existing list (it also does some nice extra things, like convert from OpenAI message format to the standard LangChain message format, handle updates based on message IDs, etc).
 
 We often see an array of messages being a key component of state, so this prebuilt state is intended to make it easy to use messages. Typically, there is more state to track than just messages, so we see people extend this state and add more fields, like:
 
@@ -382,13 +387,15 @@ See [this guide](../how-tos/configuration.ipynb) for a full breakdown on configu
 
 ## Breakpoints
 
-It can often be useful to set breakpoints before or after certain nodes execute. This can be used to wait for human approval before continuing. These can be set when you ["compile" a graph](#compiling-your-graph). You can set breakpoints either _before_ a node executes (using `interruptBefore`) or after a node executes (using `interruptAfter`.)
+It can often be useful to set breakpoints before or after certain nodes execute. This can be used to wait for human approval before continuing. These can be set when you ["compile" a graph](#compiling-your-graph), or thrown dynamically using a special error called a [`NodeInterrupt`](../how-tos/dynamic_breakpoints/). You can set breakpoints either _before_ a node executes (using `interruptBefore`) or after a node executes (using `interruptAfter`).
 
 You **MUST** use a [checkpoiner](#checkpointer) when using breakpoints. This is because your graph needs to be able to resume execution.
 
-In order to resume execution, you can just invoke your graph with `null` as the input.
+In order to resume execution, you can just invoke your graph with `null` as the input and the same `thread_id`.
 
 ```typescript
+const config = { configurable: { thread_id: "foo" } };
+
 // Initial run of graph
 await graph.invoke(inputs, config);
 
@@ -400,7 +407,16 @@ See [this guide](../how-tos/breakpoints.ipynb) for a full walkthrough of how to 
 
 ## Visualization
 
-It's often nice to be able to visualize graphs, especially as they get more complex. LangGraph comes with several built-in ways to visualize graphs.
+It's often nice to be able to visualize graphs, especially as they get more complex. LangGraph comes with a nice built-in way to render a graph as a Mermaid diagram. You can use the `getGraph()` method like this:
+
+```ts
+const representation = graph.getGraph();
+const image = await representation.drawMermaidPng();
+const arrayBuffer = await image.arrayBuffer();
+const buffer = new Uint8Array(arrayBuffer);
+```
+
+You can also check out [LangGraph Studio](https://github.com/langchain-ai/langgraph-studio) for a bespoke IDE that includes powerful visualization and debugging features.
 
 ## Streaming
 
@@ -409,4 +425,4 @@ LangGraph is built with first class support for streaming. There are several dif
 - [`"values"`](../how-tos/stream-values.ipynb): This streams the full value of the state after each step of the graph.
 - [`"updates`](../how-tos/stream-updates.ipynb): This streams the updates to the state after each step of the graph. If multiple updates are made in the same step (e.g. multiple nodes are run) then those updates are streamed separately.
 
-In addition, you can use the [`streamEvents`](https://v02.api.js.langchain.com/classes/langchain_core_runnables.Runnable.html#streamEvents) method to stream back events that happen _inside_ nodes. This is useful for [streaming tokens of LLM calls](../how-tos/streaming-tokens-without-langchain.ipynb).
+In addition, you can use the [`streamEvents`](https://api.js.langchain.com/classes/langchain_core_runnables.Runnable.html#streamEvents) method to stream back events that happen _inside_ nodes. This is useful for [streaming tokens of LLM calls](../how-tos/streaming-tokens-without-langchain.ipynb).
