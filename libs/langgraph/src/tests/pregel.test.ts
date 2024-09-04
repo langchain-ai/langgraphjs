@@ -1545,7 +1545,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
     }),
   ]);
 
-  // forking from any previous checkpoint w/out forking should do nothing
+  // forking from any previous checkpoint w/out forking should re-run nodes
   expect(
     await gatherIterator(
       app.stream(null, { ...history[0].config, streamMode: "updates" })
@@ -1555,32 +1555,10 @@ it("should invoke two processes with input/output and interrupt", async () => {
     await gatherIterator(
       app.stream(null, { ...history[1].config, streamMode: "updates" })
     )
-  ).toEqual([]);
+  ).toEqual([{ two: { output: 5 } }]);
   expect(
     await gatherIterator(
       app.stream(null, { ...history[2].config, streamMode: "updates" })
-    )
-  ).toEqual([]);
-
-  // forking and re-running from any prev checkpoint should re-run nodes
-  let forkConfig = await app.updateState(history[0].config, null);
-  expect(
-    await gatherIterator(
-      app.stream(null, { ...forkConfig, streamMode: "updates" })
-    )
-  ).toEqual([]);
-
-  forkConfig = await app.updateState(history[1].config, null);
-  expect(
-    await gatherIterator(
-      app.stream(null, { ...forkConfig, streamMode: "updates" })
-    )
-  ).toEqual([{ two: { output: 5 } }]);
-
-  forkConfig = await app.updateState(history[2].config, null);
-  expect(
-    await gatherIterator(
-      app.stream(null, { ...forkConfig, streamMode: "updates" })
     )
   ).toEqual([{ one: { inbox: 4 } }]);
 });
