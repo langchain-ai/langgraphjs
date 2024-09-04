@@ -66,8 +66,20 @@ export class Branch<IO, N extends string> {
   ) {
     return ChannelWrite.registerWriter(
       new RunnableCallable({
-        func: (input: IO, config: RunnableConfig) =>
-          this._route(input, config, writer, reader),
+        func: async (input: IO, config: RunnableConfig) => {
+          try {
+            return await this._route(input, config, writer, reader);
+          } catch (e: any) {
+            // Detect & warn if NodeInterrupt is thrown in a conditional edge
+            if (e.name === "NodeInterrupt") {
+              console.warn(
+                "[WARN]: 'NodeInterrupt' thrown in conditional edge. This is likely a bug in your graph implementation.\n" +
+                  "NodeInterrupt should only be thrown inside a node, not in edge conditions."
+              );
+            }
+            throw e;
+          }
+        },
       })
     );
   }
@@ -85,7 +97,6 @@ export class Branch<IO, N extends string> {
 
     let destinations: (string | Send)[];
     if (this.ends) {
-      // destinations = [r if isinstance(r, Send) else self.ends[r] for r in result]
       destinations = result.map((r) => (_isSend(r) ? r : this.ends![r]));
     } else {
       destinations = result;
