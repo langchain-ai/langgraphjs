@@ -31,11 +31,11 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/langgraph-checkpoint": "~0.0.4",
     "better-sqlite3": "^9.5.0"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.31 <0.3.0"
+    "@langchain/core": ">=0.2.31 <0.3.0",
+    "@langchain/langgraph-checkpoint": "~0.0.4"
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",
