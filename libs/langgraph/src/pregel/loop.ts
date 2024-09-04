@@ -115,6 +115,8 @@ export class PregelLoop {
 
   protected nodes: Record<string, PregelNode>;
 
+  protected skipDoneTasks: boolean;
+
   status:
     | "pending"
     | "done"
@@ -159,6 +161,7 @@ export class PregelLoop {
     this.outputKeys = params.outputKeys;
     this.streamKeys = params.streamKeys;
     this.nodes = params.nodes;
+    this.skipDoneTasks = this.config.configurable?.checkpoint_id === undefined;
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
@@ -379,7 +382,7 @@ export class PregelLoop {
       return false;
     }
     // if there are pending writes from a previous loop, apply them
-    if (this.checkpointPendingWrites.length > 0) {
+    if (this.checkpointPendingWrites.length > 0 && this.skipDoneTasks) {
       for (const [tid, k, v] of this.checkpointPendingWrites) {
         if (k === ERROR || k === INTERRUPT) {
           continue;
@@ -469,7 +472,7 @@ export class PregelLoop {
       // save input checkpoint
       await this._putCheckpoint({
         source: "input",
-        writes: this.input ?? null,
+        writes: Object.fromEntries(inputWrites),
       });
     }
     // done with input
