@@ -2,6 +2,7 @@
 /* eslint-disable no-promise-executor-return */
 /* eslint-disable no-instanceof/no-instanceof */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable import/no-extraneous-dependencies */
 import { it, expect, jest, describe } from "@jest/globals";
 import {
   RunnableConfig,
@@ -23,8 +24,10 @@ import {
 import { ToolCall } from "@langchain/core/messages/tool";
 import {
   Checkpoint,
+  CheckpointMetadata,
   CheckpointTuple,
   MemorySaver,
+  PendingWrite,
   uuid5,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
@@ -114,25 +117,25 @@ describe("Channel", () => {
 describe("Pregel", () => {
   describe("checkpoint error handling", () => {
     it("should catch checkpoint errors", async () => {
-      class FaultyGetCheckpointer extends MemorySaver {
+      class FaultyGetCheckpointer extends MemorySaverAssertImmutable {
         async getTuple(): Promise<CheckpointTuple> {
           throw new Error("Faulty get_tuple");
         }
       }
 
-      class FaultyPutCheckpointer extends MemorySaver {
+      class FaultyPutCheckpointer extends MemorySaverAssertImmutable {
         async put(): Promise<RunnableConfig> {
           throw new Error("Faulty put");
         }
       }
 
-      class FaultyPutWritesCheckpointer extends MemorySaver {
+      class FaultyPutWritesCheckpointer extends MemorySaverAssertImmutable {
         async putWrites(): Promise<void> {
           throw new Error("Faulty put_writes");
         }
       }
 
-      class FaultyVersionCheckpointer extends MemorySaver {
+      class FaultyVersionCheckpointer extends MemorySaverAssertImmutable {
         getNextVersion(): number {
           throw new Error("Faulty get_next_version");
         }
@@ -180,6 +183,101 @@ describe("Pregel", () => {
       await expect(async () => {
         await graph2.invoke({}, { configurable: { thread_id: "1" } });
       }).rejects.toThrowError("Faulty put_writes");
+    });
+
+    it("should wait for slow checkpointer errors", async () => {
+      class SlowGetCheckpointer extends MemorySaverAssertImmutable {
+        async getTuple(config: RunnableConfig) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          if (config.configurable?.shouldThrow) {
+            throw new Error("Faulty get_tuple");
+          }
+          return super.getTuple(config);
+        }
+      }
+
+      class SlowPutCheckpointer extends MemorySaverAssertImmutable {
+        async put(
+          config: RunnableConfig,
+          checkpoint: Checkpoint,
+          metadata: CheckpointMetadata
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          if (config.configurable?.shouldThrow) {
+            throw new Error("Faulty put");
+          }
+          return super.put(config, checkpoint, metadata);
+        }
+      }
+
+      class SlowPutWritesCheckpointer extends MemorySaverAssertImmutable {
+        async putWrites(
+          config: RunnableConfig,
+          writes: PendingWrite[],
+          taskId: string
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          if (config.configurable?.shouldThrow) {
+            throw new Error("Faulty put_writes");
+          }
+          return super.putWrites(config, writes, taskId);
+        }
+      }
+
+      const logic = () => ({ foo: "" });
+
+      const State = Annotation.Root({
+        foo: Annotation<string>({
+          reducer: (_, b) => b,
+        }),
+      });
+      const builder = new StateGraph(State)
+        .addNode("agent", logic)
+        .addEdge("__start__", "agent")
+        .addEdge("agent", "__end__");
+      let graph = builder.compile({
+        checkpointer: new SlowGetCheckpointer(),
+      });
+      await expect(async () => {
+        await graph.invoke(
+          {},
+          { configurable: { thread_id: "1", shouldThrow: true } }
+        );
+      }).rejects.toThrowError("Faulty get_tuple");
+      expect(
+        await graph.invoke({}, { configurable: { thread_id: "1" } })
+      ).toEqual({ foo: "" });
+      graph = builder.compile({
+        checkpointer: new SlowPutCheckpointer(),
+      });
+      await expect(async () => {
+        await graph.invoke(
+          {},
+          { configurable: { thread_id: "1", shouldThrow: true } }
+        );
+      }).rejects.toThrowError("Faulty put");
+      expect(
+        await graph.invoke({}, { configurable: { thread_id: "1" } })
+      ).toEqual({ foo: "" });
+      const graph2 = new StateGraph(State)
+        .addNode("agent", logic)
+        .addEdge("__start__", "agent")
+        .addEdge("agent", "__end__")
+        .addNode("parallel", logic)
+        .addEdge("__start__", "parallel")
+        .addEdge("parallel", "__end__")
+        .compile({
+          checkpointer: new SlowPutWritesCheckpointer(),
+        });
+      await expect(async () => {
+        await graph2.invoke(
+          {},
+          { configurable: { thread_id: "1", shouldThrow: true } }
+        );
+      }).rejects.toThrowError("Faulty put_writes");
+      expect(
+        await graph.invoke({}, { configurable: { thread_id: "1" } })
+      ).toEqual({ foo: "" });
     });
   });
   describe("streamChannelsList", () => {
@@ -1366,7 +1464,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "input", step: 4, writes: 3 },
+      metadata: { source: "input", step: 4, writes: { input: 3 } },
       createdAt: expect.any(String),
       parentConfig: history[3].config,
     }),
@@ -1396,7 +1494,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "input", step: 2, writes: 20 },
+      metadata: { source: "input", step: 2, writes: { input: 20 } },
       createdAt: expect.any(String),
       parentConfig: history[5].config,
     }),
@@ -1441,13 +1539,13 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "input", step: -1, writes: 2 },
+      metadata: { source: "input", step: -1, writes: { input: 2 } },
       createdAt: expect.any(String),
       parentConfig: undefined,
     }),
   ]);
 
-  // forking from any previous checkpoint w/out forking should do nothing
+  // forking from any previous checkpoint w/out forking should re-run nodes
   expect(
     await gatherIterator(
       app.stream(null, { ...history[0].config, streamMode: "updates" })
@@ -1457,32 +1555,10 @@ it("should invoke two processes with input/output and interrupt", async () => {
     await gatherIterator(
       app.stream(null, { ...history[1].config, streamMode: "updates" })
     )
-  ).toEqual([]);
+  ).toEqual([{ two: { output: 5 } }]);
   expect(
     await gatherIterator(
       app.stream(null, { ...history[2].config, streamMode: "updates" })
-    )
-  ).toEqual([]);
-
-  // forking and re-running from any prev checkpoint should re-run nodes
-  let forkConfig = await app.updateState(history[0].config, null);
-  expect(
-    await gatherIterator(
-      app.stream(null, { ...forkConfig, streamMode: "updates" })
-    )
-  ).toEqual([]);
-
-  forkConfig = await app.updateState(history[1].config, null);
-  expect(
-    await gatherIterator(
-      app.stream(null, { ...forkConfig, streamMode: "updates" })
-    )
-  ).toEqual([{ two: { output: 5 } }]);
-
-  forkConfig = await app.updateState(history[2].config, null);
-  expect(
-    await gatherIterator(
-      app.stream(null, { ...forkConfig, streamMode: "updates" })
     )
   ).toEqual([{ one: { inbox: 4 } }]);
 });
@@ -2509,7 +2585,7 @@ describe("StateGraph", () => {
       {
         source: "input",
         step: -1,
-        writes: { my_key: "value ⛰️", market: "DE" },
+        writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
       },
     ]);
 
@@ -3144,6 +3220,106 @@ describe("StateGraph", () => {
     ]);
   });
 
+  it("should handle node schemas with custom output", async () => {
+    const StateAnnotation = Annotation.Root({
+      hello: Annotation<string>,
+      bye: Annotation<string>,
+      messages: Annotation<string[]>({
+        reducer: (a: string[], b: string[]) => [...a, ...b],
+        default: () => [],
+      }),
+    });
+
+    const OutputAnnotation = Annotation.Root({
+      messages: Annotation<string[]>,
+    });
+
+    const nodeA = (state: { hello: string; messages: string[] }) => {
+      // Unfortunately can't infer input types at runtime :(
+      expect(state).toEqual({
+        bye: "world",
+        hello: "there",
+        messages: ["hello"],
+      });
+      return {};
+    };
+
+    const nodeB = (state: { bye: string; now: number }) => {
+      // Unfortunately can't infer input types at runtime :(
+      expect(state).toEqual({
+        bye: "world",
+        hello: "there",
+        messages: ["hello"],
+      });
+      return {
+        hello: "again",
+        now: 123,
+      };
+    };
+
+    const nodeC = (state: { hello: string }) => {
+      // Unfortunately can't infer input types at runtime :(
+      expect(state).toEqual({
+        bye: "world",
+        hello: "again",
+        messages: ["hello"],
+      });
+      return {};
+    };
+
+    const graph = new StateGraph({
+      stateSchema: StateAnnotation,
+      output: OutputAnnotation,
+    })
+      .addNode("a", nodeA)
+      .addNode("b", nodeB)
+      .addNode("c", nodeC)
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .addEdge("b", "c")
+      .compile();
+
+    expect(
+      await graph.invoke({ hello: "there", bye: "world", messages: ["hello"] })
+    ).toEqual({
+      messages: ["hello"],
+    });
+
+    const graphWithInput = new StateGraph({
+      input: StateAnnotation,
+      output: OutputAnnotation,
+    })
+      .addNode("a", nodeA)
+      .addNode("b", nodeB)
+      .addNode("c", nodeC)
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .addEdge("b", "c")
+      .compile();
+
+    expect(
+      await graphWithInput.invoke({
+        hello: "there",
+        bye: "world",
+        messages: ["hello"],
+        now: 345, // ignored because not in input schema
+      })
+    ).toEqual({
+      messages: ["hello"],
+    });
+
+    expect(
+      await gatherIterator(
+        graphWithInput.stream({
+          hello: "there",
+          bye: "world",
+          messages: ["hello"],
+          now: 345, // ignored because not in input schema
+        })
+      )
+    ).toEqual([{}, { b: { hello: "again" } }, {}]);
+  });
+
   it("should use a retry policy", async () => {
     const checkpointer = new MemorySaverAssertImmutable(); // Replace with actual checkpointer implementation
 
@@ -3421,7 +3597,9 @@ describe("StateGraph", () => {
         metadata: {
           source: "input",
           writes: {
-            messages: ["initial input"],
+            __start__: {
+              messages: ["initial input"],
+            },
           },
           step: -1,
         },
@@ -3436,6 +3614,81 @@ describe("StateGraph", () => {
         parentConfig: undefined,
       },
     ]);
+  });
+
+  it("should allow custom configuration values", async () => {
+    const StateAnnotation = Annotation.Root({
+      hello: Annotation<string>,
+    });
+
+    const nodeA = (
+      _: typeof StateAnnotation.State,
+      config?: RunnableConfig
+    ) => {
+      // Unfortunately can't infer input types at runtime :(
+      expect(config?.configurable?.foo).toEqual("bar");
+      return {};
+    };
+
+    const nodeB = (
+      _: typeof StateAnnotation.State,
+      config?: RunnableConfig
+    ) => {
+      expect(config?.configurable?.foo).toEqual("bar");
+      return {
+        hello: "again",
+        now: 123,
+      };
+    };
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("a", nodeA)
+      .addNode("b", nodeB)
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .compile();
+
+    expect(
+      await graph.invoke({ hello: "there" }, { configurable: { foo: "bar" } })
+    ).toEqual({
+      hello: "again",
+    });
+  });
+
+  it("should allow private state passing between nodes", async () => {
+    const StateAnnotation = Annotation.Root({
+      hello: Annotation<string>,
+    });
+
+    const PrivateAnnotation = Annotation.Root({
+      ...StateAnnotation.spec,
+      privateProp: Annotation<string>,
+    });
+
+    const nodeA = (_: typeof StateAnnotation.State) => {
+      return {
+        privateProp: "secret",
+      };
+    };
+
+    const nodeB = (state: typeof PrivateAnnotation.State) => {
+      expect(state).toEqual({ privateProp: "secret", hello: "there" });
+      return {
+        hello: "again",
+        now: 123,
+      };
+    };
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("a", nodeA)
+      .addNode("b", nodeB, { input: PrivateAnnotation })
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .compile();
+
+    expect(await graph.invoke({ hello: "there" })).toEqual({
+      hello: "again",
+    });
   });
 });
 
@@ -3897,7 +4150,7 @@ it("checkpoint events", async () => {
         metadata: {
           source: "input",
           step: -1,
-          writes: { my_key: "value", market: "DE" },
+          writes: { __start__: { my_key: "value", market: "DE" } },
         },
         next: ["__start__"],
         tasks: [{ id: expect.any(String), name: "__start__", interrupts: [] }],
@@ -4170,7 +4423,7 @@ it("StateGraph start branch then end", async () => {
     {
       source: "input",
       step: -1,
-      writes: { my_key: "value ⛰️", market: "DE" },
+      writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
     },
   ]);
   expect(await toolTwoWithCheckpointer.getState(thread1)).toEqual({

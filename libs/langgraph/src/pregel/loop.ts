@@ -17,7 +17,7 @@ import {
   createCheckpoint,
   emptyChannels,
 } from "../channels/base.js";
-import { PregelExecutableTask, PregelInterface, StreamMode } from "./types.js";
+import { PregelExecutableTask, StreamMode } from "./types.js";
 import {
   CONFIG_KEY_READ,
   CONFIG_KEY_RESUMING,
@@ -45,6 +45,7 @@ import {
   mapDebugCheckpoint,
   mapDebugTaskResults,
 } from "./debug.js";
+import { PregelNode } from "./read.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
@@ -55,11 +56,10 @@ export type PregelLoopInitializeParams = {
   input?: any;
   config: RunnableConfig;
   checkpointer?: BaseCheckpointSaver;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  graph: PregelInterface<any, any>;
   outputKeys: string | string[];
   streamKeys: string | string[];
-  onBackgroundError: (e: Error) => void;
+  nodes: Record<string, PregelNode>;
+  channelSpecs: Record<string, BaseChannel>;
 };
 
 type PregelLoopParams = {
@@ -67,8 +67,6 @@ type PregelLoopParams = {
   input?: any;
   config: RunnableConfig;
   checkpointer?: BaseCheckpointSaver;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  graph: PregelInterface<any, any>;
   checkpoint: Checkpoint;
   checkpointMetadata: CheckpointMetadata;
   checkpointPreviousVersions: Record<string, string | number>;
@@ -79,7 +77,7 @@ type PregelLoopParams = {
   stop: number;
   outputKeys: string | string[];
   streamKeys: string | string[];
-  onBackgroundError: (e: Error) => void;
+  nodes: Record<string, PregelNode>;
 };
 
 export class PregelLoop {
@@ -94,10 +92,6 @@ export class PregelLoop {
     current: number | undefined,
     channel: BaseChannel
   ) => number;
-
-  // TODO: Fix typing
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  protected graph: PregelInterface<any, any>;
 
   channels: Record<string, BaseChannel>;
 
@@ -115,6 +109,14 @@ export class PregelLoop {
 
   protected stop: number;
 
+  protected outputKeys: string | string[];
+
+  protected streamKeys: string | string[];
+
+  protected nodes: Record<string, PregelNode>;
+
+  protected skipDoneTasks: boolean;
+
   status:
     | "pending"
     | "done"
@@ -128,19 +130,11 @@ export class PregelLoop {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   stream: Deque<[StreamMode, any]> = new Deque();
 
+  checkpointerPromises: Promise<unknown>[] = [];
+
   protected isNested: boolean;
 
-  protected _putCheckpointPromise: Promise<unknown> = Promise.resolve();
-
-  outputKeys: string | string[];
-
-  streamKeys: string | string[];
-
-  onBackgroundError: (e: Error) => void;
-
-  get backgroundTasksPromise() {
-    return this._putCheckpointPromise;
-  }
+  protected _checkpointerChainedPromise: Promise<unknown> = Promise.resolve();
 
   constructor(params: PregelLoopParams) {
     this.input = params.input;
@@ -155,7 +149,6 @@ export class PregelLoop {
     } else {
       this.checkpointerGetNextVersion = increment;
     }
-    this.graph = params.graph;
     this.checkpoint = params.checkpoint;
     this.checkpointConfig = params.checkpointConfig;
     this.checkpointMetadata = params.checkpointMetadata;
@@ -167,7 +160,8 @@ export class PregelLoop {
     this.isNested = CONFIG_KEY_READ in (this.config.configurable ?? {});
     this.outputKeys = params.outputKeys;
     this.streamKeys = params.streamKeys;
-    this.onBackgroundError = params.onBackgroundError;
+    this.nodes = params.nodes;
+    this.skipDoneTasks = this.config.configurable?.checkpoint_id === undefined;
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
@@ -195,7 +189,7 @@ export class PregelLoop {
     const checkpointMetadata = { ...saved.metadata } as CheckpointMetadata;
     const checkpointPendingWrites = saved.pendingWrites ?? [];
 
-    const channels = emptyChannels(params.graph.channels, checkpoint);
+    const channels = emptyChannels(params.channelSpecs, checkpoint);
 
     const step = (checkpointMetadata.step ?? 0) + 1;
     const stop =
@@ -205,7 +199,6 @@ export class PregelLoop {
       input: params.input,
       config: params.config,
       checkpointer: params.checkpointer,
-      graph: params.graph,
       checkpoint,
       checkpointMetadata,
       checkpointConfig,
@@ -214,31 +207,29 @@ export class PregelLoop {
       stop,
       checkpointPreviousVersions,
       checkpointPendingWrites,
-      outputKeys: params.outputKeys,
-      streamKeys: params.streamKeys,
-      onBackgroundError: params.onBackgroundError,
+      outputKeys: params.outputKeys ?? [],
+      streamKeys: params.streamKeys ?? [],
+      nodes: params.nodes,
     });
   }
 
-  protected async _checkpointerPutAfterPrevious(input: {
+  protected _checkpointerPutAfterPrevious(input: {
     config: RunnableConfig;
     checkpoint: Checkpoint;
     metadata: CheckpointMetadata;
     newVersions: Record<string, string | number>;
   }) {
-    try {
-      await this._putCheckpointPromise;
-    } finally {
-      this._putCheckpointPromise =
-        this.checkpointer
-          ?.put(
-            input.config,
-            input.checkpoint,
-            input.metadata,
-            input.newVersions
-          )
-          .catch(this.onBackgroundError) ?? Promise.resolve();
-    }
+    this._checkpointerChainedPromise = this._checkpointerChainedPromise.then(
+      () => {
+        return this.checkpointer?.put(
+          input.config,
+          input.checkpoint,
+          input.metadata,
+          input.newVersions
+        );
+      }
+    );
+    this.checkpointerPromises.push(this._checkpointerChainedPromise);
   }
 
   /**
@@ -253,21 +244,20 @@ export class PregelLoop {
       }
     );
     this.checkpointPendingWrites.push(...pendingWrites);
-    if (this.checkpointer !== undefined) {
-      void this.checkpointer
-        .putWrites(
-          {
-            ...this.checkpointConfig,
-            configurable: {
-              ...this.checkpointConfig.configurable,
-              checkpoint_ns: this.config.configurable?.checkpoint_ns ?? "",
-              checkpoint_id: this.checkpoint.id,
-            },
-          },
-          writes,
-          taskId
-        )
-        .catch(this.onBackgroundError);
+    const putWritePromise = this.checkpointer?.putWrites(
+      {
+        ...this.checkpointConfig,
+        configurable: {
+          ...this.checkpointConfig.configurable,
+          checkpoint_ns: this.config.configurable?.checkpoint_ns ?? "",
+          checkpoint_id: this.checkpoint.id,
+        },
+      },
+      writes,
+      taskId
+    );
+    if (putWritePromise !== undefined) {
+      this.checkpointerPromises.push(putWritePromise);
     }
     const task = this.tasks.find((task) => task.id === taskId);
     if (task !== undefined) {
@@ -293,18 +283,24 @@ export class PregelLoop {
    * @param params
    */
   async tick(params: {
+    inputKeys?: string | string[];
     interruptAfter: string[] | All;
     interruptBefore: string[] | All;
     manager?: CallbackManagerForChainRun;
   }): Promise<boolean> {
-    const { interruptAfter = [], interruptBefore = [], manager } = params;
+    const {
+      inputKeys = [],
+      interruptAfter = [],
+      interruptBefore = [],
+      manager,
+    } = params;
     if (this.status !== "pending") {
       throw new Error(
         `Cannot tick when status is no longer "pending". Current status: "${this.status}"`
       );
     }
     if (![INPUT_DONE, INPUT_RESUMING].includes(this.input)) {
-      await this._first();
+      await this._first(inputKeys);
     } else if (this.tasks.every((task) => task.writes.length > 0)) {
       const writes = this.tasks.flatMap((t) => t.writes);
       // All tasks have finished
@@ -324,13 +320,10 @@ export class PregelLoop {
       this.stream.push(...valuesOutput);
       // clear pending writes
       this.checkpointPendingWrites = [];
-      const metadataWrites = mapOutputUpdates(
-        this.outputKeys,
-        this.tasks
-      ).next().value;
       await this._putCheckpoint({
         source: "loop",
-        writes: metadataWrites ?? null,
+        writes:
+          mapOutputUpdates(this.outputKeys, this.tasks).next().value ?? null,
       });
       // after execution, check if we should interrupt
       if (shouldInterrupt(this.checkpoint, interruptAfter, this.tasks)) {
@@ -351,7 +344,7 @@ export class PregelLoop {
 
     const nextTasks = _prepareNextTasks(
       this.checkpoint,
-      this.graph.nodes,
+      this.nodes,
       this.channels,
       this.config,
       true,
@@ -373,7 +366,7 @@ export class PregelLoop {
               this.step - 1, // printing checkpoint for previous step
               this.checkpointConfig,
               this.channels,
-              this.graph.streamChannelsAsIs as string[],
+              this.streamKeys,
               this.checkpointMetadata,
               this.tasks,
               this.checkpointPendingWrites
@@ -389,7 +382,7 @@ export class PregelLoop {
       return false;
     }
     // if there are pending writes from a previous loop, apply them
-    if (this.checkpointPendingWrites.length > 0) {
+    if (this.checkpointPendingWrites.length > 0 && this.skipDoneTasks) {
       for (const [tid, k, v] of this.checkpointPendingWrites) {
         if (k === ERROR || k === INTERRUPT) {
           continue;
@@ -403,6 +396,7 @@ export class PregelLoop {
     // if all tasks have finished, re-tick
     if (this.tasks.every((task) => task.writes.length > 0)) {
       return this.tick({
+        inputKeys,
         interruptAfter,
         interruptBefore,
         manager,
@@ -432,7 +426,7 @@ export class PregelLoop {
    * - finding a previous checkpoint
    * - receiving None input (outer graph) or RESUMING flag (subgraph)
    */
-  protected async _first() {
+  protected async _first(inputKeys: string | string[]) {
     const isResuming =
       (Object.keys(this.checkpoint.channel_versions).length !== 0 &&
         this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined) ||
@@ -449,21 +443,15 @@ export class PregelLoop {
       }
       // map inputs to channel updates
     } else {
-      const inputWrites = await gatherIterator(
-        mapInput(this.graph.inputChannels, this.input)
-      );
+      const inputWrites = await gatherIterator(mapInput(inputKeys, this.input));
       if (inputWrites.length === 0) {
         throw new EmptyInputError(
-          `Received no input writes for ${JSON.stringify(
-            this.graph.inputChannels,
-            null,
-            2
-          )}`
+          `Received no input writes for ${JSON.stringify(inputKeys, null, 2)}`
         );
       }
       const discardTasks = _prepareNextTasks(
         this.checkpoint,
-        this.graph.nodes,
+        this.nodes,
         this.channels,
         this.config,
         true,
@@ -484,7 +472,7 @@ export class PregelLoop {
       // save input checkpoint
       await this._putCheckpoint({
         source: "input",
-        writes: this.input ?? null,
+        writes: Object.fromEntries(inputWrites),
       });
     }
     // done with input

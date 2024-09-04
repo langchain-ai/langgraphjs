@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Library with base interfaces for LangGraph checkpoint savers.",
   "type": "module",
   "engines": {
@@ -34,7 +34,7 @@
     "uuid": "^10.0.0"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.20 <0.3.0"
+    "@langchain/core": ">=0.2.31 <0.3.0"
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",

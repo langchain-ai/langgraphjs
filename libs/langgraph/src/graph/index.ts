@@ -13,4 +13,8 @@ export {
   StateGraph,
   type CompiledStateGraph,
 } from "./state.js";
-export { MessageGraph, messagesStateReducer } from "./message.js";
+export {
+  MessageGraph,
+  messagesStateReducer,
+  type Messages,
+} from "./message.js";

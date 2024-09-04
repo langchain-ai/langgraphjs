@@ -19,7 +19,7 @@ import {
   BaseLanguageModelInput,
 } from "@langchain/core/language_models/base";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
+import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import {
   END,
   messagesStateReducer,
@@ -28,7 +28,6 @@ import {
 } from "../graph/index.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { CompiledStateGraph, StateGraphArgs } from "../graph/state.js";
-import { All } from "../pregel/types.js";
 import { ToolNode } from "./tool_node.js";
 
 export interface AgentState {
@@ -59,18 +58,57 @@ export type CreateReactAgentParams = {
 };
 
 /**
- * Creates a StateGraph agent that relies on a chat llm utilizing tool calling.
- * @param llm The chat llm that can utilize OpenAI-style function calling.
- * @param tools A list of tools or a ToolNode.
- * @param messageModifier An optional message modifier to apply to messages before being passed to the LLM.
+ * Creates a StateGraph agent that relies on a chat model utilizing tool calling.
+ * @param params.llm The chat model that can utilize OpenAI-style tool calling.
+ * @param params.tools A list of tools or a ToolNode.
+ * @param params.messageModifier An optional message modifier to apply to messages before being passed to the LLM.
  * Can be a SystemMessage, string, function that takes and returns a list of messages, or a Runnable.
- * @param checkpointSaver An optional checkpoint saver to persist the agent's state.
- * @param interruptBefore An optional list of node names to interrupt before running.
- * @param interruptAfter An optional list of node names to interrupt after running.
- * @returns A compiled agent as a LangChain Runnable.
+ * @param params.checkpointer An optional checkpoint saver to persist the agent's state.
+ * @param params.interruptBefore An optional list of node names to interrupt before running.
+ * @param params.interruptAfter An optional list of node names to interrupt after running.
+ * @returns A prebuilt compiled graph.
+ *
+ * @example
+ * ```ts
+ * import { ChatOpenAI } from "@langchain/openai";
+ * import { tool } from "@langchain/core/tools";
+ * import { z } from "zod";
+ * import { createReactAgent } from "@langchain/langgraph/prebuilt";
+ *
+ * const model = new ChatOpenAI({
+ *   model: "gpt-4o",
+ * });
+ *
+ * const getWeather = tool((input) => {
+ *   if (["sf", "san francisco"].includes(input.location.toLowerCase())) {
+ *     return "It's 60 degrees and foggy.";
+ *   } else {
+ *     return "It's 90 degrees and sunny.";
+ *   }
+ * }, {
+ *   name: "get_weather",
+ *   description: "Call to get the current weather.",
+ *   schema: z.object({
+ *     location: z.string().describe("Location to get the weather for."),
+ *   })
+ * })
+ *
+ * const agent = createReactAgent({ llm: model, tools: [getWeather] });
+ *
+ * const inputs = {
+ *   messages: [{ role: "user", content: "what is the weather in SF?" }],
+ * };
+ *
+ * const stream = await agent.stream(inputs, { streamMode: "values" });
+ *
+ * for await (const { messages } of stream) {
+ *   console.log(messages);
+ * }
+ * // Returns the messages in the state at each step of execution
+ * ```
  */
 export function createReactAgent(
-  props: CreateReactAgentParams
+  params: CreateReactAgentParams
 ): CompiledStateGraph<
   AgentState,
   Partial<AgentState>,
@@ -83,7 +121,7 @@ export function createReactAgent(
     checkpointSaver,
     interruptBefore,
     interruptAfter,
-  } = props;
+  } = params;
   const schema: StateGraphArgs<AgentState>["channels"] = {
     messages: {
       value: messagesStateReducer,

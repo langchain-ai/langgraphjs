@@ -9,14 +9,13 @@ import {
   Node as RunnableGraphNode,
   Graph as RunnableGraph,
 } from "@langchain/core/runnables/graph";
-import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
+import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { z } from "zod";
 import { PregelNode } from "../pregel/read.js";
 import { Channel, Pregel } from "../pregel/index.js";
 import type { PregelParams } from "../pregel/types.js";
 import { BaseChannel } from "../channels/base.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
-import { All } from "../pregel/types.js";
 import { ChannelWrite, PASSTHROUGH } from "../pregel/write.js";
 import {
   _isSend,
@@ -139,8 +138,6 @@ export class Graph<
 
   compiled = false;
 
-  supportMultipleEdges = false;
-
   constructor() {
     this.nodes = {} as Record<N, NodeSpecType>;
     this.edges = new Set();
@@ -201,11 +198,11 @@ export class Graph<
       throw new Error("START cannot be an end node");
     }
     if (
-      !this.supportMultipleEdges &&
-      Array.from(this.edges).some(([start]) => start === startKey)
+      Array.from(this.edges).some(([start]) => start === startKey) &&
+      !("channels" in this)
     ) {
       throw new Error(
-        `Already found path for ${startKey}. For multiple edges, use StateGraph with an annotated state key.`
+        `Already found path for ${startKey}. For multiple edges, use StateGraph.`
       );
     }
 

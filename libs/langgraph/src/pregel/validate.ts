@@ -1,7 +1,7 @@
+import { All } from "@langchain/langgraph-checkpoint";
 import { BaseChannel } from "../channels/index.js";
 import { INTERRUPT } from "../constants.js";
 import { PregelNode } from "./read.js";
-import { All } from "./types.js";
 
 export class GraphValidationError extends Error {
   constructor(message?: string) {

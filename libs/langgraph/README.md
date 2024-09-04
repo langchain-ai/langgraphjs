@@ -24,14 +24,14 @@ LangGraph is inspired by [Pregel](https://research.google/pubs/pub37252/) and [A
 ## Installation
 
 ```bash
-npm install @langchain/langgraph
+npm install @langchain/langgraph @langchain/core
 ```
 
 ## Example
 
 One of the central concepts of LangGraph is state. Each graph execution creates a state that is passed between nodes in the graph as they execute, and each node updates this internal state with its return value after it executes. The way that the graph updates its internal state is defined by either the type of graph chosen or a custom function.
 
-Let's take a look at a simple example of an agent that can use a search tool.
+Let's take a look at an example of an agent that can use a search tool.
 
 First install the required dependencies:
 
@@ -64,7 +64,8 @@ import { MemorySaver, Annotation } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
 // Define the graph state
-const GraphState = Annotation.Root({
+// See here for more info: https://langchain-ai.github.io/langgraphjs/how-tos/define-state/
+const StateAnnotation = Annotation.Root({
   messages: Annotation<BaseMessage[]>({
     reducer: (x, y) => x.concat(y),
   })
@@ -87,8 +88,7 @@ const weatherTool = tool(async ({ query }) => {
 });
 
 const tools = [weatherTool];
-// We can extract the state typing via `GraphState.State`
-const toolNode = new ToolNode<typeof GraphState.State>(tools);
+const toolNode = new ToolNode(tools);
 
 const model = new ChatAnthropic({
   model: "claude-3-5-sonnet-20240620",
@@ -96,7 +96,8 @@ const model = new ChatAnthropic({
 }).bindTools(tools);
 
 // Define the function that determines whether to continue or not
-function shouldContinue(state: typeof GraphState.State) {
+// We can extract the state typing via `StateAnnotation.State`
+function shouldContinue(state: typeof StateAnnotation.State) {
   const messages = state.messages;
   const lastMessage = messages[messages.length - 1] as AIMessage;
 
@@ -109,7 +110,7 @@ function shouldContinue(state: typeof GraphState.State) {
 }
 
 // Define the function that calls the model
-async function callModel(state: typeof GraphState.State) {
+async function callModel(state: typeof StateAnnotation.State) {
   const messages = state.messages;
   const response = await model.invoke(messages);
 
@@ -118,7 +119,7 @@ async function callModel(state: typeof GraphState.State) {
 }
 
 // Define a new graph
-const workflow = new StateGraph(GraphState)
+const workflow = new StateGraph(StateAnnotation)
   .addNode("agent", callModel)
   .addNode("tools", toolNode)
   .addEdge("__start__", "agent")
@@ -191,7 +192,7 @@ Is there anything else you'd like to know about the weather in New York or any o
     <summary>Initialize graph with state.</summary>
 
     - We initialize the graph (`StateGraph`) by passing the state interface (`AgentState`).
-    - The `graphState` object defines how updates from each node should be merged into the graph's state.
+    - The `StateAnnotation` object defines how updates from each node should be merged into the graph's state.
    </details>
 
 3. <details>
