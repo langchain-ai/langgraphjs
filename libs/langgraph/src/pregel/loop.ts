@@ -472,7 +472,7 @@ export class PregelLoop {
       // save input checkpoint
       await this._putCheckpoint({
         source: "input",
-        writes: this.input ?? null,
+        writes: Object.fromEntries(inputWrites),
       });
     }
     // done with input
