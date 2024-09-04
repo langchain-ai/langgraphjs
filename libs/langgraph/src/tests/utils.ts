@@ -1,11 +1,19 @@
 /* eslint-disable no-promise-executor-return */
+/* eslint-disable import/no-extraneous-dependencies */
 import assert from "node:assert";
+import { expect } from "@jest/globals";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import {
   BaseChatModel,
   BaseChatModelParams,
 } from "@langchain/core/language_models/chat_models";
-import { BaseMessage, AIMessage } from "@langchain/core/messages";
+import {
+  BaseMessage,
+  AIMessage,
+  HumanMessage,
+  BaseMessageFields,
+  AIMessageChunk,
+} from "@langchain/core/messages";
 import { ChatResult } from "@langchain/core/outputs";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
@@ -248,5 +256,77 @@ export class FakeTracer extends BaseTracer {
 
   protected async persistRun(run: Run): Promise<void> {
     this.runs.push(run);
+  }
+}
+
+export class _AnyIdHumanMessage extends HumanMessage {
+  get lc_id() {
+    return ["langchain_core", "messages", "HumanMessage"];
+  }
+
+  constructor(fields: BaseMessageFields | string) {
+    let fieldsWithJestMatcher: Partial<BaseMessageFields> = {
+      id: expect.any(String) as unknown as string,
+    };
+    if (typeof fields === "string") {
+      fieldsWithJestMatcher = {
+        content: fields,
+        ...fieldsWithJestMatcher,
+      };
+    } else {
+      fieldsWithJestMatcher = {
+        ...fields,
+        ...fieldsWithJestMatcher,
+      };
+    }
+    super(fieldsWithJestMatcher as BaseMessageFields);
+  }
+}
+
+export class _AnyIdAIMessage extends AIMessage {
+  get lc_id() {
+    return ["langchain_core", "messages", "AIMessage"];
+  }
+
+  constructor(fields: BaseMessageFields | string) {
+    let fieldsWithJestMatcher: Partial<BaseMessageFields> = {
+      id: expect.any(String) as unknown as string,
+    };
+    if (typeof fields === "string") {
+      fieldsWithJestMatcher = {
+        content: fields,
+        ...fieldsWithJestMatcher,
+      };
+    } else {
+      fieldsWithJestMatcher = {
+        ...fields,
+        ...fieldsWithJestMatcher,
+      };
+    }
+    super(fieldsWithJestMatcher as BaseMessageFields);
+  }
+}
+
+export class _AnyIdAIMessageChunk extends AIMessageChunk {
+  get lc_id() {
+    return ["langchain_core", "messages", "AIMessageChunk"];
+  }
+
+  constructor(fields: BaseMessageFields | string) {
+    let fieldsWithJestMatcher: Partial<BaseMessageFields> = {
+      id: expect.any(String) as unknown as string,
+    };
+    if (typeof fields === "string") {
+      fieldsWithJestMatcher = {
+        content: fields,
+        ...fieldsWithJestMatcher,
+      };
+    } else {
+      fieldsWithJestMatcher = {
+        ...fields,
+        ...fieldsWithJestMatcher,
+      };
+    }
+    super(fieldsWithJestMatcher as BaseMessageFields);
   }
 }

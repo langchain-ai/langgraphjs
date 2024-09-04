@@ -220,12 +220,6 @@ export class StateGraph<
     this._addSchema(this._schemaDefinition);
     this._addSchema(this._inputDefinition);
     this._addSchema(this._outputDefinition);
-    for (const c of Object.values(this.channels)) {
-      if (c.lc_graph_name === "BinaryOperatorAggregate") {
-        this.supportMultipleEdges = true;
-        break;
-      }
-    }
   }
 
   get allEdges(): Set<[string, string]> {

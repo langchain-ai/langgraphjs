@@ -2,6 +2,7 @@
 /* eslint-disable no-promise-executor-return */
 /* eslint-disable no-instanceof/no-instanceof */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable import/no-extraneous-dependencies */
 import { it, expect, jest, describe } from "@jest/globals";
 import {
   RunnableConfig,
@@ -23,8 +24,10 @@ import {
 import { ToolCall } from "@langchain/core/messages/tool";
 import {
   Checkpoint,
+  CheckpointMetadata,
   CheckpointTuple,
   MemorySaver,
+  PendingWrite,
   uuid5,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
@@ -114,25 +117,25 @@ describe("Channel", () => {
 describe("Pregel", () => {
   describe("checkpoint error handling", () => {
     it("should catch checkpoint errors", async () => {
-      class FaultyGetCheckpointer extends MemorySaver {
+      class FaultyGetCheckpointer extends MemorySaverAssertImmutable {
         async getTuple(): Promise<CheckpointTuple> {
           throw new Error("Faulty get_tuple");
         }
       }
 
-      class FaultyPutCheckpointer extends MemorySaver {
+      class FaultyPutCheckpointer extends MemorySaverAssertImmutable {
         async put(): Promise<RunnableConfig> {
           throw new Error("Faulty put");
         }
       }
 
-      class FaultyPutWritesCheckpointer extends MemorySaver {
+      class FaultyPutWritesCheckpointer extends MemorySaverAssertImmutable {
         async putWrites(): Promise<void> {
           throw new Error("Faulty put_writes");
         }
       }
 
-      class FaultyVersionCheckpointer extends MemorySaver {
+      class FaultyVersionCheckpointer extends MemorySaverAssertImmutable {
         getNextVersion(): number {
           throw new Error("Faulty get_next_version");
         }
@@ -180,6 +183,101 @@ describe("Pregel", () => {
       await expect(async () => {
         await graph2.invoke({}, { configurable: { thread_id: "1" } });
       }).rejects.toThrowError("Faulty put_writes");
+    });
+
+    it("should wait for slow checkpointer errors", async () => {
+      class SlowGetCheckpointer extends MemorySaverAssertImmutable {
+        async getTuple(config: RunnableConfig) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          if (config.configurable?.shouldThrow) {
+            throw new Error("Faulty get_tuple");
+          }
+          return super.getTuple(config);
+        }
+      }
+
+      class SlowPutCheckpointer extends MemorySaverAssertImmutable {
+        async put(
+          config: RunnableConfig,
+          checkpoint: Checkpoint,
+          metadata: CheckpointMetadata
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          if (config.configurable?.shouldThrow) {
+            throw new Error("Faulty put");
+          }
+          return super.put(config, checkpoint, metadata);
+        }
+      }
+
+      class SlowPutWritesCheckpointer extends MemorySaverAssertImmutable {
+        async putWrites(
+          config: RunnableConfig,
+          writes: PendingWrite[],
+          taskId: string
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          if (config.configurable?.shouldThrow) {
+            throw new Error("Faulty put_writes");
+          }
+          return super.putWrites(config, writes, taskId);
+        }
+      }
+
+      const logic = () => ({ foo: "" });
+
+      const State = Annotation.Root({
+        foo: Annotation<string>({
+          reducer: (_, b) => b,
+        }),
+      });
+      const builder = new StateGraph(State)
+        .addNode("agent", logic)
+        .addEdge("__start__", "agent")
+        .addEdge("agent", "__end__");
+      let graph = builder.compile({
+        checkpointer: new SlowGetCheckpointer(),
+      });
+      await expect(async () => {
+        await graph.invoke(
+          {},
+          { configurable: { thread_id: "1", shouldThrow: true } }
+        );
+      }).rejects.toThrowError("Faulty get_tuple");
+      expect(
+        await graph.invoke({}, { configurable: { thread_id: "1" } })
+      ).toEqual({ foo: "" });
+      graph = builder.compile({
+        checkpointer: new SlowPutCheckpointer(),
+      });
+      await expect(async () => {
+        await graph.invoke(
+          {},
+          { configurable: { thread_id: "1", shouldThrow: true } }
+        );
+      }).rejects.toThrowError("Faulty put");
+      expect(
+        await graph.invoke({}, { configurable: { thread_id: "1" } })
+      ).toEqual({ foo: "" });
+      const graph2 = new StateGraph(State)
+        .addNode("agent", logic)
+        .addEdge("__start__", "agent")
+        .addEdge("agent", "__end__")
+        .addNode("parallel", logic)
+        .addEdge("__start__", "parallel")
+        .addEdge("parallel", "__end__")
+        .compile({
+          checkpointer: new SlowPutWritesCheckpointer(),
+        });
+      await expect(async () => {
+        await graph2.invoke(
+          {},
+          { configurable: { thread_id: "1", shouldThrow: true } }
+        );
+      }).rejects.toThrowError("Faulty put_writes");
+      expect(
+        await graph.invoke({}, { configurable: { thread_id: "1" } })
+      ).toEqual({ foo: "" });
     });
   });
   describe("streamChannelsList", () => {

@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint-sqlite",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "LangGraph",
   "type": "module",
   "engines": {
@@ -31,16 +31,11 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/langgraph-checkpoint": "~0.0.2"
-  },
-  "peerDependencies": {
-    "@langchain/core": ">=0.2.20 <0.3.0",
+    "@langchain/langgraph-checkpoint": "~0.0.4",
     "better-sqlite3": "^9.5.0"
   },
-  "peerDependenciesMeta": {
-    "better-sqlite3": {
-      "optional": true
-    }
+  "peerDependencies": {
+    "@langchain/core": ">=0.2.31 <0.3.0"
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",

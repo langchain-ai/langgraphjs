@@ -84,7 +84,6 @@ export class Branch<IO, N extends string> {
 
     let destinations: (string | Send)[];
     if (this.ends) {
-      // destinations = [r if isinstance(r, Send) else self.ends[r] for r in result]
       destinations = result.map((r) => (_isSend(r) ? r : this.ends![r]));
     } else {
       destinations = result;
@@ -126,8 +125,6 @@ export class Graph<
   entryPoint?: string;
 
   compiled = false;
-
-  supportMultipleEdges = false;
 
   constructor() {
     this.nodes = {} as Record<N, NodeSpecType>;
@@ -189,11 +186,11 @@ export class Graph<
       throw new Error("START cannot be an end node");
     }
     if (
-      !this.supportMultipleEdges &&
-      Array.from(this.edges).some(([start]) => start === startKey)
+      Array.from(this.edges).some(([start]) => start === startKey) &&
+      !("channels" in this)
     ) {
       throw new Error(
-        `Already found path for ${startKey}. For multiple edges, use StateGraph with an annotated state key.`
+        `Already found path for ${startKey}. For multiple edges, use StateGraph.`
       );
     }
 

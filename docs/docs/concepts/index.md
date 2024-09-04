@@ -15,12 +15,11 @@ Low Level Concepts
 
 - [Graphs](low_level.md#graphs)
     - [StateGraph](low_level.md#stategraph)
-    - [MessageGraph](low_level.md#messagegraph)
     - [Compiling Your Graph](low_level.md#compiling-your-graph)
 - [State](low_level.md#state)
-    - [Schema](low_level.md#schema)
+    - [Schema](low_level.md#annotation)
     - [Reducers](low_level.md#reducers)
-    - [MessageState](low_level.md#messagestate)
+    - [MessagesAnnotation](low_level.md#messagesannotation)
 - [Nodes](low_level.md#nodes)
     - [`START` node](low_level.md#start-node)
     - [`END` node](low_level.md#end-node)
@@ -36,6 +35,7 @@ Low Level Concepts
     - [Get state history](low_level.md#get-state-history)
     - [Update state](low_level.md#update-state)
 - [Configuration](low_level.md#configuration)
+- [Breakpoints](low_level.md#breakpoints)
 - [Visualization](low_level.md#visualization)
 - [Streaming](low_level.md#streaming)
 
