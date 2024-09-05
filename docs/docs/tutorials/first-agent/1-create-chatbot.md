@@ -1,13 +1,13 @@
 # Part 1: Create a chatbot
 
-We'll first create a simple chatbot using LangGraph.js. This chatbot will respond directly to user messages. Though simple, it will illustrate the core concepts of building with LangGraph. By the end of this section, you will have a built rudimentary chatbot.
+We'll first create a simple chatbot using LangGraph.js. This chatbot will respond directly to user messages. Though simple, it will illustrate the core concepts of building with LangGraph. By the end of this section, you will have built a rudimentary chatbot.
 
 ## Step 1: Create an LLM agent
 
 The first thing we need to do is create an LLM agent. LangGraph makes it easy to use any LLM provider, and we will be using Anthropic's Claude 3.5 Sonnet model. Add the following code to your `chatbot.ts` file:
 
 ```ts
-import { chatAnthropic } from "@langchain/anthropic";
+import { ChatAnthropic } from "@langchain/anthropic";
 
 const model = new ChatAnthropic({
   model: "claude-3-5-sonnet-20240620",
@@ -41,7 +41,7 @@ Later, we will use the `graphBuilder` object to build a graph that defines how o
 Now that we have a basic `StateGraph` and and LLM, we need to define a node that will invoke the LLM with the correct state. That's done using a function that takes the current state and returns the new state. Add the following code to your `chatbot.ts` file:
 
 ```ts
-async function callClaude(state: typeof MessageAnnotation.State) {
+async function callModel(state: typeof MessageAnnotation.State) {
   const response = await model.invoke(state.messages);
 
   // We return the response in an array and the `MessageAnnotation` reducer will append it to the state
@@ -58,8 +58,8 @@ With the LLM, the `StateGraph`, and a way for them to communicate, we're ready t
 ```ts
 // Create a graph that defines our chatbot workflow and compile it into a `runnable`
 const app = graphBuilder
-  .addNode("agent", callClaude)
-  .addEdge("__start__", callClaude)
+  .addNode("agent", callModel)
+  .addEdge("__start__", callModel)
   .compile();
 ```
 
@@ -149,23 +149,21 @@ However, you may have noticed that the bot's knowledge is limited to what's in i
 
 Below is the full code for this section for your reference:
 
+<details>
 ```ts
 import { ChatAnthropic } from "@langchain/anthropic";
 import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
+import { BaseMessageLike } from "@langchain/core/messages";
 import dotenv from "dotenv";
 
 // read the environment variables from .env
 dotenv.config();
 
 // Create a model and give it access to the tools
-const model = new ChatOpenAI({
-  model: "gpt-4o-mini",
+const model = new ChatAnthropic({
+  model: "claude-3-5-sonnet-20240620",
   temperature: 0,
 });
-
-import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
-
-const graphBuilder = new StateGraph(MessagesAnnotation);
 
 // Define the function that calls the model
 async function callModel(state: typeof MessagesAnnotation.State) {
@@ -174,16 +172,17 @@ async function callModel(state: typeof MessagesAnnotation.State) {
   const response = await model.invoke(messages);
 
   // We return a list, because this will get added to the existing list
-  return { messages: [response] };
+  return { messages: response };
 }
+
+const graphBuilder = new StateGraph(MessagesAnnotation);
 
 // Create a graph that defines our chatbot workflow and compile it into a `runnable`
 const app = graphBuilder
-  .addNode("agent", callClaude)
-  .addEdge("__start__", callClaude)
+  .addNode("agent", callModel)
+  .addEdge("__start__", callModel)
   .compile();
 
-import { BaseMessageLike } from "@langchain/core/messages";
 
 // We'll use these helpers to read from the standard input in the command line
 import * as readline from "node:readline/promises";
@@ -200,9 +199,13 @@ while (true) {
     lineReader.close();
     break;
   }
+  // Add the user's message to the conversation history
   messages.push({ content: answer, type: "user" });
+
+  // Run the chatbot and add its response to the conversation history
   const output = await app.invoke({ messages });
   messages.push(output.messages[output.messages.length - 1]);
   console.log("Agent: ", output.messages[output.messages.length - 1].content);
 }
 ```
+</details>
