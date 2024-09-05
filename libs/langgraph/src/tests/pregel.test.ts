@@ -4648,3 +4648,135 @@ it("StateGraph branch then node", async () => {
     market: "FR",
   });
 });
+
+describe("SubGraph", () => {
+  it("should handle nested graph", async () => {
+    const neverCalledFn = (state: any) => {
+      throw new Error("This function should never be called");
+    };
+  
+    const neverCalled = RunnableLambda.from(neverCalledFn)
+
+    const InnerState = Annotation.Root({
+      myKey: Annotation<string>(),
+      myOtherKey: Annotation<string>(),
+    })
+  
+    const up = (state: typeof InnerState.State): Partial<typeof InnerState.State> => ({
+      myKey: `${state.myKey} there`,
+      myOtherKey: state.myKey,
+    });
+  
+    const inner = new StateGraph(InnerState)
+      .addNode("up", up)
+      .addEdge(START, "up")
+      .addEdge("up", END);
+  
+    const StateAnnotation = Annotation.Root({
+      myKey: Annotation<string>(),
+      neverCalled: Annotation<any>(),
+    });
+  
+    const side = async (state: typeof StateAnnotation.State): Promise<Partial<typeof StateAnnotation.State>> => ({
+      myKey: `${state.myKey} and back again`,
+    });
+  
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("inner", inner.compile())
+      .addNode("side", side)
+      .addEdge(START, "inner")
+      .addEdge("inner", "side")
+      .addEdge("side", END);
+  
+    const app = graph.compile();
+  
+    expect(await app.invoke({ myKey: "my value", neverCalled })).toEqual({
+      myKey: "my value there and back again",
+      neverCalled,
+    });
+  
+    const streamResult = await gatherIterator(
+      app.stream({ myKey: "my value", neverCalled })
+    );
+    expect(streamResult).toEqual([
+      { inner: { myKey: "my value there" } },
+      { side: { myKey: "my value there and back again" } },
+    ]);
+  
+    const streamValuesResult = await gatherIterator(
+      app.stream({ myKey: "my value", neverCalled }, { streamMode: ["values"] })
+    );
+    expect(streamValuesResult).toEqual([
+      { myKey: "my value", neverCalled },
+      { myKey: "my value there", neverCalled },
+      { myKey: "my value there and back again", neverCalled },
+    ]);
+  
+    // Note: TypeScript doesn't have a direct equivalent to Python's UUID(int=0)
+    // You might want to use a fixed UUID string for testing purposes
+    const fixedUUID = "00000000-0000-0000-0000-000000000000";
+  
+    let timesCalled = 0;
+    const eventStream = app.streamEvents(
+      { myKey: "my value", neverCalled },
+      { runId: fixedUUID, streamMode: ["values" as const], version: "v2" }
+    );
+    for await (const event of eventStream) {
+      if (event.type === "checkpoint" && event.run_id === fixedUUID) {
+        timesCalled += 1;
+        expect(event.values).toEqual({
+          myKey: "my value there and back again",
+          neverCalled,
+        });
+      }
+    }
+    expect(timesCalled).toBe(1);
+  
+    timesCalled = 0;
+    const defaultEventStream = app.streamEvents(
+      { myKey: "my value", neverCalled },
+      { runId: fixedUUID, version: "v2" }
+    );
+    for await (const event of defaultEventStream) {
+      if (event.type === "checkpoint" && event.run_id === fixedUUID) {
+        timesCalled += 1;
+        expect(event.payload.values).toEqual({
+          myKey: "my value there and back again",
+          neverCalled,
+        });
+      }
+    }
+    expect(timesCalled).toBe(1);
+  
+    const chain = app.pipe(new RunnablePassthrough());
+  
+    expect(await chain.invoke({ myKey: "my value", neverCalled })).toEqual({
+      myKey: "my value there and back again",
+      neverCalled,
+    });
+  
+    const chainStreamResult = await gatherIterator(
+      chain.stream({ myKey: "my value", neverCalled })
+    );
+    expect(chainStreamResult).toEqual([
+      { inner: { myKey: "my value there" } },
+      { side: { myKey: "my value there and back again" } },
+    ]);
+  
+    timesCalled = 0;
+    const chainEventStream = chain.streamEvents(
+      { myKey: "my value", neverCalled },
+      { runId: fixedUUID, version: "v2" }
+    );
+    for await (const event of chainEventStream) {
+      if (event.type === "checkpoint" && event.payload.config.configurable.run_id === fixedUUID) {
+        timesCalled += 1;
+        expect(event.payload.values).toEqual([
+          { inner: { myKey: "my value there" } },
+          { side: { myKey: "my value there and back again" } },
+        ]);
+      }
+    }
+    expect(timesCalled).toBe(1);
+  });
+})
