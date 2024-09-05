@@ -4,6 +4,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable import/no-extraneous-dependencies */
 import { it, expect, jest, describe } from "@jest/globals";
+import { MockedFunction } from 'jest-mock';
+import axios, { AxiosInstance } from 'axios';
 import {
   RunnableConfig,
   RunnableLambda,
@@ -70,6 +72,8 @@ import {
   NodeInterrupt,
 } from "../errors.js";
 import { ERROR, INTERRUPT, Send, TASKS } from "../constants.js";
+import { Context } from "../channels/context.js";
+import { AsyncContextManager, ContextManager } from "../managed/context.js";
 
 describe("Channel", () => {
   describe("writeTo", () => {
@@ -1155,7 +1159,7 @@ it("should invoke two processes and get correct output", async () => {
     channels: {
       inbox: new LastValue<number>(),
       output: new LastValue<number>(),
-      input: new LastValue<number>(),
+      input: new LastValue<number>(), 
     },
     inputChannels: "input",
     outputChannels: "output",
@@ -2070,6 +2074,81 @@ it("should type-error when Channel.subscribeTo would throw at runtime", () => {
   }).toThrow();
 });
 
+describe('Channel Enter/Exit Timing', () => {
+  let setupSync = jest.fn();
+  let cleanupSync = jest.fn();
+  let setupAsync = jest.fn();
+  let cleanupAsync = jest.fn();
+  const addOne = jest.fn((x: number): number => x + 1);
+
+  function* anInt(): Generator<number, void, unknown> {
+    setupSync();
+    try {
+      yield 5;
+    } finally {
+      cleanupSync();
+    }
+  }
+
+  async function* anIntAsync(): AsyncGenerator<number, void, unknown> {
+    setupAsync();
+    try {
+      yield 5;
+    } finally {
+      cleanupAsync();
+    }
+  }
+
+  it.only('should handle enter/exit timing correctly', async () => {
+    const one = (Channel.subscribeTo as MockedFunction<typeof Channel.subscribeTo>)("input")
+      .pipe(addOne)
+      .pipe(Channel.writeTo(["inbox"]));
+    
+    const two = (Channel.subscribeTo as MockedFunction<typeof Channel.subscribeTo>)("inbox")
+      .pipe((new RunnableLambda({ func: addOne })).batch)
+      .pipe(Channel.writeTo(["output"]).batch);
+
+    const app = new Pregel({
+      nodes: { one, two },
+      channels: {
+        input: new LastValue<number>(),
+        output: new LastValue<number>(),
+        inbox: new Topic<number>(),
+        ctx: Context<number>(anInt as unknown as ContextManager<number>, anIntAsync as unknown as AsyncContextManager<number>) as unknown as BaseChannel<number>,
+      },
+      inputChannels: ["input"],
+      outputChannels: ["inbox", "output"],
+      streamChannels: ["inbox", "output"],
+    });
+
+    expect(setupSync).not.toHaveBeenCalled();
+    expect(cleanupSync).not.toHaveBeenCalled();
+    expect(setupAsync).not.toHaveBeenCalled();
+    expect(cleanupAsync).not.toHaveBeenCalled();
+
+    let i = 0;
+    for await (const chunk of await app.stream(2)) {
+      expect(setupSync).not.toHaveBeenCalled();
+      expect(cleanupSync).not.toHaveBeenCalled();
+      expect(setupAsync).toHaveBeenCalledTimes(1);
+
+      if (i === 0) {
+        expect(chunk).toEqual({ inbox: [3] });
+      } else if (i === 1) {
+        expect(chunk).toEqual({ output: 4 });
+      } else {
+        throw new Error("Expected only two chunks");
+      }
+      i++;
+    }
+
+    expect(setupSync).not.toHaveBeenCalled();
+    expect(cleanupSync).not.toHaveBeenCalled();
+    expect(setupAsync).toHaveBeenCalledTimes(1);
+    expect(cleanupAsync).toHaveBeenCalledTimes(1);
+  });
+})
+
 describe("StateGraph", () => {
   class SearchAPI extends Tool {
     name = "search_api";
@@ -2094,12 +2173,50 @@ describe("StateGraph", () => {
 
   type Step = [AgentAction | AgentFinish, string];
 
+  type MyContextModel = {
+    session: AxiosInstance;
+    something_else: string;
+  };
+
+  let setup = jest.fn();
+  let teardown = jest.fn();
+
+  async function assertCtxOnce<T>(fn: () => Promise<T>): Promise<T> {
+    expect(setup).toHaveBeenCalledTimes(0);
+    expect(teardown).toHaveBeenCalledTimes(0);
+    try {
+        return await fn();
+    } finally {
+        expect(setup).toHaveBeenCalledTimes(1);
+        expect(teardown).toHaveBeenCalledTimes(1);
+        setup.mockReset();
+        teardown.mockReset();
+    }
+  }
+
+  // Make context function with async context management
+  async function* makeContext(config: Record<string, unknown>): AsyncGenerator<MyContextModel> {
+    if (typeof config !== "object" || config === null) {
+        throw new Error("Config must be an object");
+    }
+    
+    setup();
+    const session = axios.create();
+    try {
+        yield { session, something_else: "hello" };
+    } finally {
+        await session.request({ method: "CLOSE" }); // Simulating axios closing (adjust as needed)
+        teardown();
+    }
+  }
+
   const AgentAnnotation = Annotation.Root({
     input: Annotation<string>,
     agentOutcome: Annotation<AgentAction | AgentFinish | undefined>,
     steps: Annotation<Step[]>({
       reducer: (x: Step[], y: Step[]) => x.concat(y),
     }),
+    context: Annotation<MyContextModel>(Context(makeContext)),
   });
 
   const executeTools = async (data: typeof AgentAnnotation.State) => {
