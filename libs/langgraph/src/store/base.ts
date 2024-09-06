@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type V = Record<string, any>;
 
 export abstract class BaseStore {

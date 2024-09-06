@@ -4,6 +4,7 @@ export class MemoryStore extends BaseStore {
   private data: Map<string, Map<string, V>> = new Map();
 
   async list(prefixes: string[]): Promise<Record<string, Record<string, V>>> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result: Record<string, Record<string, any>> = {};
     for (const prefix of prefixes) {
       if (this.data.has(prefix)) {

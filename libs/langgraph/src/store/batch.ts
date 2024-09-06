@@ -9,7 +9,9 @@ interface PutOp {
 }
 
 type QueueItem = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resolve: (value?: any) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   reject: (reason?: any) => void;
   op: ListOp | PutOp;
 };
@@ -29,7 +31,7 @@ export class AsyncBatchedStore extends BaseStore {
   constructor(store: BaseStore) {
     super();
     this.store = store;
-    this.runTask();
+    void this.runTask();
   }
 
   /**
@@ -69,7 +71,9 @@ export class AsyncBatchedStore extends BaseStore {
    */
   private async runTask(): Promise<void> {
     while (this.running) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
       if (this.queue.length === 0) continue;
 
       const taken = this.queue.splice(0);
@@ -82,7 +86,7 @@ export class AsyncBatchedStore extends BaseStore {
           );
           const results = await this.store.list(allPrefixes);
           lists.forEach((item) => {
-            const {prefixes} = (item.op as ListOp);
+            const { prefixes } = item.op as ListOp;
             item.resolve(
               Object.fromEntries(prefixes.map((p) => [p, results[p] || {}]))
             );

@@ -1,8 +1,10 @@
 import { RunnableConfig } from "@langchain/core/runnables";
 import { RUNTIME_PLACEHOLDER } from "../constants.js";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface ManagedValueParams extends Record<string, any> {}
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export abstract class ManagedValue<Value = any> {
   runtime: boolean = false;
 
@@ -20,6 +22,7 @@ export abstract class ManagedValue<Value = any> {
       params?: ManagedValueParams
     ) => ManagedValue<Value>,
     config: RunnableConfig,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ...args: any[]
   ): Promise<ManagedValue<Value>> {
     return new this(config, {
@@ -52,12 +55,19 @@ export abstract class WritableManagedValue<
 
 export interface ConfiguredManagedValue<Value> {
   cls: typeof ManagedValue<Value>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   params: Record<string, any>;
 }
 
 export class ManagedValueMapping {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private mapping: Record<string, ManagedValue<any>> = {};
 
+  /**
+   * TODO: this will have side effects updating `value`. Do we want to
+   * instead return a new `value` and re-assign after the fact?
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   replaceRuntimeValues(step: number, values: Record<string, any> | any): void {
     if (Object.keys(this.mapping).length === 0 || !values) return;
     if (Object.values(this.mapping).every((mv) => !mv.runtime)) return;
@@ -77,8 +87,12 @@ export class ManagedValueMapping {
               values[key] = { [RUNTIME_PLACEHOLDER]: chan };
             }
           }
-        } catch (error) {
-          if (!(error instanceof TypeError)) throw error;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } catch (error: any) {
+          // Do not throw if TypeError
+          if (error.name !== TypeError.name) {
+            throw error;
+          }
         }
       }
     } else if (typeof values === "object" && values !== null) {
@@ -96,6 +110,7 @@ export class ManagedValueMapping {
 
   replaceRuntimePlaceholders(
     step: number,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     values: Record<string, any> | any
   ): void {
     if (Object.keys(this.mapping).length === 0 || !values) return;
@@ -119,8 +134,12 @@ export class ManagedValueMapping {
             const chan = value[RUNTIME_PLACEHOLDER] as string;
             values[key] = this.mapping[chan]?.call(step);
           }
-        } catch (error) {
-          if (!(error instanceof TypeError)) throw error;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } catch (error: any) {
+          // Do not throw if TypeError
+          if (error.name !== TypeError.name) {
+            throw error;
+          }
         }
       }
     } else if (typeof values === "object" && values !== null) {
