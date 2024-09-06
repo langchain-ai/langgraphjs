@@ -69,7 +69,13 @@ import {
   InvalidUpdateError,
   NodeInterrupt,
 } from "../errors.js";
-import { ERROR, INTERRUPT, RECURSION_LIMIT_DEFAULT, Send, TASKS } from "../constants.js";
+import {
+  ERROR,
+  INTERRUPT,
+  RECURSION_LIMIT_DEFAULT,
+  Send,
+  TASKS,
+} from "../constants.js";
 
 describe("Channel", () => {
   describe("writeTo", () => {

@@ -1,5 +1,9 @@
 import { type RunnableConfig } from "@langchain/core/runnables";
-import { ManagedValue, type ManagedValueParams, type ConfiguredManagedValue } from "./base.js";
+import {
+  ManagedValue,
+  type ManagedValueParams,
+  type ConfiguredManagedValue,
+} from "./base.js";
 
 interface ContextParams<Value> extends ManagedValueParams {
   ctx?: () => AsyncGenerator<Value, void, unknown>;
@@ -15,22 +19,22 @@ interface ContextParams<Value> extends ManagedValueParams {
  *     yield "Initial value";
  *     console.log("Context cleanup");
  *   }
- * 
+ *
  *   // Initialize the Context
  *   const context = await Context.initialize(
  *     {}, // RunnableConfig (empty in this example)
  *     { ctx: contextGenerator }
  *   );
- * 
+ *
  *   try {
  *     let shouldContinue = true;
  *     while (shouldContinue) {
  *       // Use the context value
  *       console.log("Current value:", context.call(0));
- * 
+ *
  *       // Perform your loop logic here
  *       // ...
- * 
+ *
  *       // Call tick to see if we should continue
  *       shouldContinue = await context.tick();
  *     }
@@ -53,26 +57,33 @@ export class Context<Value> extends ManagedValue<Value> {
     this.ctx = params.ctx;
   }
 
-  static async initialize<Value>(config: RunnableConfig, params: ContextParams<Value>): Promise<Context<Value>> {
+  static async initialize<Value>(
+    config: RunnableConfig,
+    params: ContextParams<Value>
+  ): Promise<Context<Value>> {
     const instance = new Context<Value>(config, params);
     if (!instance.ctx) {
-      throw new Error("Synchronous context manager not found. Please initialize Context value with a sync context manager, or invoke your graph asynchronously.");
+      throw new Error(
+        "Synchronous context manager not found. Please initialize Context value with a sync context manager, or invoke your graph asynchronously."
+      );
     }
     const ctxGenerator = instance.ctx();
     const { value } = await ctxGenerator.next();
     if (!value) {
-      throw new Error("Context manager did not yield a value. Please ensure your context manager yields a value.");
+      throw new Error(
+        "Context manager did not yield a value. Please ensure your context manager yields a value."
+      );
     }
     instance.value = value;
     return instance;
   }
 
-  static of<V>(
-    ctx?: () => AsyncGenerator<V, void, unknown>
-  ): ConfiguredManagedValue<V> {
+  static of<Value>(
+    ctx?: () => AsyncGenerator<Value, void, unknown>
+  ): ConfiguredManagedValue<Value> {
     return {
       cls: Context,
-      kwargs: { ctx },
+      params: { ctx },
     };
   }
 
@@ -93,12 +104,15 @@ export class Context<Value> extends ManagedValue<Value> {
       const ctxGenerator = this.ctx();
       const { value } = await ctxGenerator.return();
       if (!value) {
-        throw new Error("Context manager did not return a value. Please ensure your context manager returns a value.");
+        throw new Error(
+          "Context manager did not return a value. Please ensure your context manager returns a value."
+        );
       }
-      return [value];
+      return value;
     } else {
-      throw new Error("Context manager not found. Please initialize Context value with a context manager.");
+      throw new Error(
+        "Context manager not found. Please initialize Context value with a context manager."
+      );
     }
   }
-
 }

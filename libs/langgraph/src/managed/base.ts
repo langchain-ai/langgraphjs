@@ -3,7 +3,7 @@ import { RUNTIME_PLACEHOLDER } from "../constants.js";
 
 export interface ManagedValueParams extends Record<string, any> {}
 
-export abstract class ManagedValue<Value> {
+export abstract class ManagedValue<Value = any> {
   runtime: boolean = false;
 
   config: RunnableConfig;
@@ -15,12 +15,15 @@ export abstract class ManagedValue<Value> {
   }
 
   static async initialize<Value>(
-    this: new (config: RunnableConfig, params?: ManagedValueParams) => ManagedValue<Value>,
+    this: new (
+      config: RunnableConfig,
+      params?: ManagedValueParams
+    ) => ManagedValue<Value>,
     config: RunnableConfig,
     ...args: any[]
   ): Promise<ManagedValue<Value>> {
     return new this(config, {
-      ...args
+      ...args,
     });
   }
 
@@ -28,7 +31,7 @@ export abstract class ManagedValue<Value> {
 
   abstract call(step: number): Value;
 
-  async promises(): Promise<unknown[]> {
+  async promises(): Promise<unknown> {
     return Promise.all(this._promises);
   }
 
@@ -37,14 +40,16 @@ export abstract class ManagedValue<Value> {
   }
 }
 
-export abstract class WritableManagedValue<Value, Update> extends ManagedValue<Value> {
-  abstract update(writes: Update[]): void;
-  abstract aupdate(writes: Update[]): Promise<void>;
+export abstract class WritableManagedValue<
+  Value,
+  Update
+> extends ManagedValue<Value> {
+  abstract update(writes: Update[]): Promise<void>;
 }
 
 export interface ConfiguredManagedValue<Value> {
   cls: typeof ManagedValue<Value>;
-  kwargs: Record<string, any>;
+  params: Record<string, any>;
 }
 
 export class ManagedValueMapping {
@@ -52,10 +57,16 @@ export class ManagedValueMapping {
 
   replaceRuntimeValues(step: number, values: Record<string, any> | any): void {
     if (Object.keys(this.mapping).length === 0 || !values) return;
-    if (Object.values(this.mapping).every(mv => !mv.runtime)) return;
+    if (Object.values(this.mapping).every((mv) => !mv.runtime)) return;
 
-    if (typeof values === 'object' && values !== null && 'constructor' in values) {
-      for (const key of Object.getOwnPropertyNames(Object.getPrototypeOf(values))) {
+    if (
+      typeof values === "object" &&
+      values !== null &&
+      "constructor" in values
+    ) {
+      for (const key of Object.getOwnPropertyNames(
+        Object.getPrototypeOf(values)
+      )) {
         try {
           const value = values[key];
           for (const [chan, mv] of Object.entries(this.mapping)) {
@@ -67,7 +78,7 @@ export class ManagedValueMapping {
           if (!(error instanceof TypeError)) throw error;
         }
       }
-    } else if (typeof values === 'object' && values !== null) {
+    } else if (typeof values === "object" && values !== null) {
       if (Array.isArray(values)) return;
 
       for (const [key, value] of Object.entries(values)) {
@@ -80,16 +91,28 @@ export class ManagedValueMapping {
     }
   }
 
-  replaceRuntimePlaceholders(step: number, values: Record<string, any> | any): void {
+  replaceRuntimePlaceholders(
+    step: number,
+    values: Record<string, any> | any
+  ): void {
     if (Object.keys(this.mapping).length === 0 || !values) return;
-    if (Object.values(this.mapping).every(mv => !mv.runtime)) return;
+    if (Object.values(this.mapping).every((mv) => !mv.runtime)) return;
 
-    
-    if (typeof values === 'object' && values !== null && 'constructor' in values) {
-      for (const key of Object.getOwnPropertyNames(Object.getPrototypeOf(values))) {
+    if (
+      typeof values === "object" &&
+      values !== null &&
+      "constructor" in values
+    ) {
+      for (const key of Object.getOwnPropertyNames(
+        Object.getPrototypeOf(values)
+      )) {
         try {
           const value = values[key];
-          if (typeof value === 'object' && value !== null && RUNTIME_PLACEHOLDER in value) {
+          if (
+            typeof value === "object" &&
+            value !== null &&
+            RUNTIME_PLACEHOLDER in value
+          ) {
             const chan = value[RUNTIME_PLACEHOLDER] as string;
             values[key] = this.mapping[chan]?.call(step);
           }
@@ -97,11 +120,15 @@ export class ManagedValueMapping {
           if (!(error instanceof TypeError)) throw error;
         }
       }
-    } else if (typeof values === 'object' && values !== null) {
+    } else if (typeof values === "object" && values !== null) {
       if (Array.isArray(values)) return;
 
       for (const [key, value] of Object.entries(values)) {
-        if (typeof value === 'object' && value !== null && RUNTIME_PLACEHOLDER in value) {
+        if (
+          typeof value === "object" &&
+          value !== null &&
+          RUNTIME_PLACEHOLDER in value
+        ) {
           const chan = value[RUNTIME_PLACEHOLDER] as string;
           values[key] = this.mapping[chan]?.call(step);
         }
