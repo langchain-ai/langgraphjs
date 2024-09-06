@@ -21,7 +21,9 @@ type QueueItem = {
  */
 export class AsyncBatchedStore extends BaseStore {
   private store: BaseStore;
+
   private queue: QueueItem[] = [];
+
   private running = true;
 
   constructor(store: BaseStore) {
@@ -80,7 +82,7 @@ export class AsyncBatchedStore extends BaseStore {
           );
           const results = await this.store.list(allPrefixes);
           lists.forEach((item) => {
-            const prefixes = (item.op as ListOp).prefixes;
+            const {prefixes} = (item.op as ListOp);
             item.resolve(
               Object.fromEntries(prefixes.map((p) => [p, results[p] || {}]))
             );

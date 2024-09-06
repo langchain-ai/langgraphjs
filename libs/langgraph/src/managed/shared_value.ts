@@ -18,8 +18,11 @@ export interface SharedValueParams extends ManagedValueParams {
 
 export class SharedValue extends WritableManagedValue<Value, Update> {
   scope: string;
+
   store: BaseStore | null;
+
   ns: string | null;
+
   value: Value = {};
 
   constructor(config: RunnableConfig, params: SharedValueParams) {

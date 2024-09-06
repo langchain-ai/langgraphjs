@@ -91,13 +91,6 @@ export class Context<Value> extends ManagedValue<Value> {
     return this.value;
   }
 
-  async tick(): Promise<boolean> {
-    // In this implementation, we don't need to do anything in the tick method
-    // as the context is already set up in the initialize method.
-    // Return false to indicate that the iteration should continue.
-    return false;
-  }
-
   async promises() {
     // If there are any cleanup operations needed, they can be performed here
     if (this.ctx) {

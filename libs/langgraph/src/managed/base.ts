@@ -27,7 +27,10 @@ export abstract class ManagedValue<Value = any> {
     });
   }
 
-  abstract tick(): Promise<boolean>;
+  tick(): Promise<boolean> {
+    // By default, return false.
+    return Promise.resolve(false);
+  }
 
   abstract call(step: number): Value;
 
