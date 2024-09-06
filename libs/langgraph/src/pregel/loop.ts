@@ -24,6 +24,7 @@ import {
   ERROR,
   INPUT,
   INTERRUPT,
+  RECURSION_LIMIT_DEFAULT,
 } from "../constants.js";
 import {
   _applyWrites,
@@ -49,7 +50,6 @@ import { PregelNode } from "./read.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
-const DEFAULT_LOOP_LIMIT = 25;
 
 export type PregelLoopInitializeParams = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -193,7 +193,7 @@ export class PregelLoop {
 
     const step = (checkpointMetadata.step ?? 0) + 1;
     const stop =
-      step + (params.config.recursionLimit ?? DEFAULT_LOOP_LIMIT) + 1;
+      step + (params.config.recursionLimit ?? RECURSION_LIMIT_DEFAULT) + 1;
     const checkpointPreviousVersions = { ...checkpoint.channel_versions };
     return new PregelLoop({
       input: params.input,

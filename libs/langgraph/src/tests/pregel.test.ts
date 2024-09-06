@@ -69,7 +69,7 @@ import {
   InvalidUpdateError,
   NodeInterrupt,
 } from "../errors.js";
-import { ERROR, INTERRUPT, Send, TASKS } from "../constants.js";
+import { ERROR, INTERRUPT, RECURSION_LIMIT_DEFAULT, Send, TASKS } from "../constants.js";
 
 describe("Channel", () => {
   describe("writeTo", () => {
@@ -938,7 +938,7 @@ describe("_prepareNextTasks", () => {
           langgraph_task_idx: 0,
           langgraph_triggers: [TASKS],
         }),
-        recursionLimit: 25,
+        recursionLimit: RECURSION_LIMIT_DEFAULT,
         runId: undefined,
         runName: "node1",
       },
@@ -959,7 +959,7 @@ describe("_prepareNextTasks", () => {
           langgraph_task_idx: 1,
           langgraph_triggers: ["channel1"],
         }),
-        recursionLimit: 25,
+        recursionLimit: RECURSION_LIMIT_DEFAULT,
         runId: undefined,
         runName: "node1",
       },
@@ -980,7 +980,7 @@ describe("_prepareNextTasks", () => {
           langgraph_task_idx: 2,
           langgraph_triggers: ["channel1"],
         }),
-        recursionLimit: 25,
+        recursionLimit: RECURSION_LIMIT_DEFAULT,
         runId: undefined,
         runName: "node2",
       },
@@ -4092,7 +4092,7 @@ it("checkpoint events", async () => {
         config: {
           tags: [],
           metadata: { thread_id: "10" },
-          recursion_limit: 25,
+          recursion_limit: RECURSION_LIMIT_DEFAULT,
           configurable: {
             thread_id: "10",
             checkpoint_ns: "",
@@ -4117,7 +4117,7 @@ it("checkpoint events", async () => {
         config: {
           tags: [],
           metadata: { thread_id: "10" },
-          recursion_limit: 25,
+          recursion_limit: RECURSION_LIMIT_DEFAULT,
           configurable: {
             thread_id: "10",
             checkpoint_ns: "",
@@ -4167,7 +4167,7 @@ it("checkpoint events", async () => {
         config: {
           tags: [],
           metadata: { thread_id: "10" },
-          recursion_limit: 25,
+          recursion_limit: RECURSION_LIMIT_DEFAULT,
           configurable: {
             thread_id: "10",
             checkpoint_ns: "",
@@ -4219,7 +4219,7 @@ it("checkpoint events", async () => {
         config: {
           tags: [],
           metadata: { thread_id: "10" },
-          recursion_limit: 25,
+          recursion_limit: RECURSION_LIMIT_DEFAULT,
           configurable: {
             thread_id: "10",
             checkpoint_ns: "",
@@ -4269,7 +4269,7 @@ it("checkpoint events", async () => {
         config: {
           tags: [],
           metadata: { thread_id: "10" },
-          recursion_limit: 25,
+          recursion_limit: RECURSION_LIMIT_DEFAULT,
           configurable: {
             thread_id: "10",
             checkpoint_ns: "",
