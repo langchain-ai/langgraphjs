@@ -7,7 +7,7 @@ To handle queries our chatbot can't answer "from memory", we'll integrate a web 
 If you already completed the [setup steps](/first-agent/0-setup.md) you are ready to get started! To recap, you should have already done the following:
 
 - Signed up for Tavily and received an API key
-- Created a `.env` file in the root of your project and added your Tavily API to it
+- Created a `.env` file in the root of your project and added your Tavily API key to it
 - Installed the `dotenv` package to load your environment variables from the `.env` file
 - Used npm to install the `@langchain/community` package containing the Tavily search tool
 
@@ -70,7 +70,7 @@ The results are page summaries our chat bot can use to answer questions.
 
 When you're getting an output similar to this, you've got it working right! If not, verify that your `TAVILY_API_KEY` is set in your `.env` file and loaded using `dotenv.config()`. Also verify that you have the `dotenv` and `@langchain/community` packages installed.
 
-You can delete the call to `searachTool.invoke()` and the `prettyPrintJSON()` function and move on to the next step.
+You can delete the call to `searchTool.invoke()` and the `prettyPrintJSON()` function and move on to the next step.
 
 ## Step 2: Bind the tool to your LLM
 
@@ -94,7 +94,7 @@ const model = new ChatAnthropic({
 }).bindTools([searchTool]);
 ```
 
-Notice how we passed to tool to `bindTools()`: it was as an array using `[searchTool]`. LLMs can use multiple tools, so the LangGraph APIs typically operate on tool _arrays_ rather than individual tools.
+Notice how we passed the tool to `bindTools()`: it was as an array using `[searchTool]`. LLMs can use multiple tools, so the Langchain and LangGraph APIs typically operate on tool _arrays_ rather than individual tools.
 
 Now the LLM will know about the available tools. If it decides any of them would be helpful it will communicate that by responding with a message asking for the tool to be run. The message will contain structured JSON data for its request.
 
@@ -113,6 +113,8 @@ Then, add the following code after the definition of `searchTool`. Notice that w
 ```ts
 const tools = new ToolNode([searchTool]);
 ```
+
+The `ToolNode` helper handles parsing the message from the LLM to extract the request data, crafting the request to the tool, and returns a tool message containing the response from the tool. You can learn more about `ToolNode` from its [API documentation](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph_prebuilt.ToolNode.html) and the [how-to guide on calling tools using `ToolNode`](https://langchain-ai.github.io/langgraphjs/how-tos/tool-calling/).
 
 The last step is to update our graph to include the new tool. Recall from [part 1: create a chatbot](/first-agent/1-create-chatbot.md) that `edges` route the control flow from one node to the next. **Conditional edges** usually contain `if` statements to route to different nodes depending on the current graph state. These functions receive the current graph state and return a string indicating which node to call next. For our new `tools` node to be run, it's going to need an edge that connects to it.
 
