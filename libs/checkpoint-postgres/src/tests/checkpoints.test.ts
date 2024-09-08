@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from "@jest/globals";
-import pg from "pg";
 import {
   Checkpoint,
   CheckpointTuple,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
-import { PostgresSaver } from "../index.js"; // Assuming PostgresSaver is in the same index.js file
+import pg from "pg";
+import { PostgresSaver } from "../index.js"; // Adjust the import path as needed
 
 const { Pool } = pg;
 
@@ -26,6 +26,7 @@ const checkpoint1: Checkpoint = {
   },
   pending_sends: [],
 };
+
 const checkpoint2: Checkpoint = {
   v: 1,
   id: uuid6(1),
@@ -45,15 +46,20 @@ const checkpoint2: Checkpoint = {
 };
 
 describe("PostgresSaver", () => {
-  let pool: Pool;
+  let pool: pg.Pool;
   let postgresSaver: PostgresSaver;
 
   beforeAll(async () => {
     pool = new Pool({
-      connectionString: "postgresql://user:password@localhost:5432/testdb", // Update with your credentials and database
+      user: "user",
+      host: "localhost",
+      database: "testdb",
+      password: "password",
+      port: 5432,
     });
+
     postgresSaver = new PostgresSaver(pool);
-    await postgresSaver.setup();
+    // await postgresSaver.setup();
   });
 
   afterAll(async () => {
@@ -76,6 +82,7 @@ describe("PostgresSaver", () => {
     expect(runnableConfig).toEqual({
       configurable: {
         thread_id: "1",
+        checkpoint_ns: "",
         checkpoint_id: checkpoint1.id,
       },
     });
@@ -135,7 +142,7 @@ describe("PostgresSaver", () => {
     });
 
     // list checkpoints
-    const checkpointTupleGenerator = await postgresSaver.list({
+    const checkpointTupleGenerator = postgresSaver.list({
       configurable: { thread_id: "1" },
     });
     const checkpointTuples: CheckpointTuple[] = [];
@@ -143,7 +150,6 @@ describe("PostgresSaver", () => {
       checkpointTuples.push(checkpoint);
     }
     expect(checkpointTuples.length).toBe(2);
-
     const checkpointTuple1 = checkpointTuples[0];
     const checkpointTuple2 = checkpointTuples[1];
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");

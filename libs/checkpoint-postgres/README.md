@@ -57,3 +57,8 @@ for await (const checkpoint of checkpointer.list(readConfig)) {
   console.log(checkpoint);
 }
 ```
+## Testing
+Spin up testing PostgreSQL
+```bash
+docker-compose up -d && docker-compose logs -f
+```
