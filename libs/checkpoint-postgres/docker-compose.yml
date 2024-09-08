@@ -3,7 +3,7 @@ version: "3.8"
 services:
   postgres:
     image: postgres:latest
-    container_name: my-postgres
+    container_name: langgraphjs-postgres-test
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
@@ -11,6 +11,6 @@ services:
       # Enable logging of connections and disconnections
       POSTGRES_LOG_CONNECTIONS: "on"
       POSTGRES_LOG_DISCONNECTIONS: "on"
-      POSTGRES_LOG_MIN_MESSAGES: "debug" # Logs messages of level INFO and above
+      POSTGRES_LOG_MIN_MESSAGES: "info" # Logs messages of level INFO and above
     ports:
       - "5432:5432"
