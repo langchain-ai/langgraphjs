@@ -89,6 +89,7 @@ You should see the API keys you added to your `.env` file printed to the console
 
 You'll also need to install a few dependencies to create an agent:
 
+- **@langchain/core** provides the core functionality of Langchain that LangGraph depends on
 - **@langchain/langgraph** contains the building blocks used to assemble an agent
 - **@langchain/anthropic** enable you to use Anthropic's LLMs in LangGraph
 - **@langchain/community** contains the Tavily search tool that will be used by the agent
