@@ -51,10 +51,10 @@ export type ChannelReducers<Channels extends object> = {
 
 export interface StateGraphArgs<Channels extends object | unknown> {
   channels: Channels extends object
-    ? Channels extends unknown[]
-      ? ChannelReducers<{ __root__: Channels }>
-      : ChannelReducers<Channels>
-    : ChannelReducers<{ __root__: Channels }>;
+  ? Channels extends unknown[]
+  ? ChannelReducers<{ __root__: Channels }>
+  : ChannelReducers<Channels>
+  : ChannelReducers<{ __root__: Channels }>;
 }
 
 export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
@@ -154,25 +154,36 @@ export type StateGraphArgsWithInputOutputSchemas<
  */
 export class StateGraph<
   SD extends StateDefinition | unknown,
-  S = SD extends StateDefinition ? StateType<SD> : SD,
-  U = SD extends StateDefinition ? UpdateType<SD> : Partial<S>,
-  N extends string = typeof START,
-  I extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition,
-  O extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition
-> extends Graph<N, S, U, StateGraphNodeSpec<S, U>> {
+  NodeInputState = SD extends StateDefinition ? StateType<SD> : SD,
+  NodeOutputState = SD extends StateDefinition
+  ? UpdateType<SD>
+  : Partial<NodeInputState>,
+  NodeNames extends string = typeof START,
+  InputDefinition extends StateDefinition = SD extends StateDefinition
+  ? SD
+  : StateDefinition,
+  OutputDefinition extends StateDefinition = SD extends StateDefinition
+  ? SD
+  : StateDefinition
+> extends Graph<
+  NodeNames,
+  NodeInputState,
+  NodeOutputState,
+  StateGraphNodeSpec<NodeInputState, NodeOutputState>
+> {
   channels: Record<string, BaseChannel> = {};
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
-  waitingEdges: Set<[N[], N]> = new Set();
+  waitingEdges: Set<[NodeNames[], NodeNames]> = new Set();
 
   /** @internal */
   _schemaDefinition: StateDefinition;
 
   /** @internal */
-  _inputDefinition: I;
+  _inputDefinition: InputDefinition;
 
   /** @internal */
-  _outputDefinition: O;
+  _outputDefinition: OutputDefinition;
 
   /**
    * Map schemas to managed values
@@ -183,29 +194,29 @@ export class StateGraph<
   constructor(
     fields: SD extends StateDefinition
       ?
-          | SD
-          | AnnotationRoot<SD>
-          | StateGraphArgs<S>
-          | StateGraphArgsWithStateSchema<SD, I, O>
-          | StateGraphArgsWithInputOutputSchemas<SD, O>
-      : StateGraphArgs<S>
+      | SD
+      | AnnotationRoot<SD>
+      | StateGraphArgs<NodeInputState>
+      | StateGraphArgsWithStateSchema<SD, InputDefinition, OutputDefinition>
+      | StateGraphArgsWithInputOutputSchemas<SD, OutputDefinition>
+      : StateGraphArgs<NodeInputState>
   ) {
     super();
     if (
       isStateGraphArgsWithInputOutputSchemas<
         SD extends StateDefinition ? SD : never,
-        O
+        OutputDefinition
       >(fields)
     ) {
       this._schemaDefinition = fields.input.spec;
-      this._inputDefinition = fields.input.spec as unknown as I;
+      this._inputDefinition = fields.input.spec as unknown as InputDefinition;
       this._outputDefinition = fields.output.spec;
     } else if (isStateGraphArgsWithStateSchema(fields)) {
       this._schemaDefinition = fields.stateSchema.spec;
       this._inputDefinition = (fields.input?.spec ??
-        this._schemaDefinition) as I;
+        this._schemaDefinition) as InputDefinition;
       this._outputDefinition = (fields.output?.spec ??
-        this._schemaDefinition) as O;
+        this._schemaDefinition) as OutputDefinition;
     } else if (isStateDefinition(fields) || isAnnotationRoot(fields)) {
       const spec = isAnnotationRoot(fields) ? fields.spec : fields;
       this._schemaDefinition = spec;
@@ -258,15 +269,24 @@ export class StateGraph<
     }
   }
 
-  addNode<K extends string, NodeInput = S>(
-    key: K,
+  addNode<NewNodeName extends string, NewNodeInput = NodeInputState>(
+    key: NewNodeName,
     action: RunnableLike<
-      NodeInput,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      U extends object ? U & Record<string, any> : U
+      NewNodeInput,
+      NodeOutputState extends object
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      NodeOutputState & Record<string, any>
+      : NodeOutputState
     >,
     options?: StateGraphAddNodeOptions
-  ): StateGraph<SD, S, U, N | K, I, O> {
+  ): StateGraph<
+    SD,
+    NodeInputState,
+    NodeOutputState,
+    NodeNames | NewNodeName,
+    InputDefinition,
+    OutputDefinition
+  > {
     if (key in this.channels) {
       throw new Error(
         `${key} is already being used as a state attribute (a.k.a. a channel), cannot also be used as a node name.`
@@ -292,19 +312,32 @@ export class StateGraph<
     if (options?.input !== undefined) {
       this._addSchema(options.input.spec);
     }
-    const nodeSpec: StateGraphNodeSpec<S, U> = {
-      runnable: _coerceToRunnable(action) as unknown as Runnable<S, U>,
+    const nodeSpec: StateGraphNodeSpec<NodeInputState, NodeOutputState> = {
+      runnable: _coerceToRunnable(action) as unknown as Runnable<
+        NodeInputState,
+        NodeOutputState
+      >,
       retryPolicy: options?.retryPolicy,
       metadata: options?.metadata,
       input: options?.input?.spec ?? this._schemaDefinition,
     };
 
-    this.nodes[key as unknown as N] = nodeSpec;
+    this.nodes[key as unknown as NodeNames] = nodeSpec;
 
-    return this as StateGraph<SD, S, U, N | K, I, O>;
+    return this as StateGraph<
+      SD,
+      NodeInputState,
+      NodeOutputState,
+      NodeNames | NewNodeName,
+      InputDefinition,
+      OutputDefinition
+    >;
   }
 
-  addEdge(startKey: typeof START | N | N[], endKey: N | typeof END): this {
+  addEdge(
+    startKey: typeof START | NodeNames | NodeNames[],
+    endKey: NodeNames | typeof END
+  ): this {
     if (typeof startKey === "string") {
       return super.addEdge(startKey, endKey);
     }
@@ -312,7 +345,7 @@ export class StateGraph<
     if (this.compiled) {
       console.warn(
         "Adding an edge to a graph that has already been compiled. This will " +
-          "not be reflected in the compiled graph."
+        "not be reflected in the compiled graph."
       );
     }
 
@@ -342,9 +375,15 @@ export class StateGraph<
     interruptAfter,
   }: {
     checkpointer?: BaseCheckpointSaver;
-    interruptBefore?: N[] | All;
-    interruptAfter?: N[] | All;
-  } = {}): CompiledStateGraph<S, U, N, I, O> {
+    interruptBefore?: NodeNames[] | All;
+    interruptAfter?: NodeNames[] | All;
+  } = {}): CompiledStateGraph<
+    NodeInputState,
+    NodeOutputState,
+    NodeNames,
+    InputDefinition,
+    OutputDefinition
+  > {
     // validate the graph
     this.validate([
       ...(Array.isArray(interruptBefore) ? interruptBefore : []),
@@ -363,17 +402,26 @@ export class StateGraph<
       streamKeys.length === 1 && streamKeys[0] === ROOT ? ROOT : streamKeys;
 
     // create empty compiled graph
-    const compiled = new CompiledStateGraph<S, U, N, I, O>({
+    const compiled = new CompiledStateGraph<
+      NodeInputState,
+      NodeOutputState,
+      NodeNames,
+      InputDefinition,
+      OutputDefinition
+    >({
       builder: this,
       checkpointer,
       interruptAfter,
       interruptBefore,
       autoValidate: false,
-      nodes: {} as Record<N | typeof START, PregelNode<S, U>>,
+      nodes: {} as Record<
+        NodeNames | typeof START,
+        PregelNode<NodeInputState, NodeOutputState>
+      >,
       channels: {
         ...this.channels,
         [START]: new EphemeralValue(),
-      } as Record<N | typeof START | typeof END | string, BaseChannel>,
+      } as Record<NodeNames | typeof START | typeof END | string, BaseChannel>,
       inputChannels: START,
       outputChannels,
       streamChannels,
@@ -382,10 +430,10 @@ export class StateGraph<
 
     // attach nodes, edges and branches
     compiled.attachNode(START);
-    for (const [key, node] of Object.entries<StateGraphNodeSpec<S, U>>(
-      this.nodes
-    )) {
-      compiled.attachNode(key as N, node);
+    for (const [key, node] of Object.entries<
+      StateGraphNodeSpec<NodeInputState, NodeOutputState>
+    >(this.nodes)) {
+      compiled.attachNode(key as NodeNames, node);
     }
     for (const [start, end] of this.edges) {
       compiled.attachEdge(start, end);
@@ -395,7 +443,7 @@ export class StateGraph<
     }
     for (const [start, branches] of Object.entries(this.branches)) {
       for (const [name, branch] of Object.entries(branches)) {
-        compiled.attachBranch(start as N, name, branch);
+        compiled.attachBranch(start as NodeNames, name, branch);
       }
     }
 
@@ -421,19 +469,29 @@ function _getChannels<Channels extends Record<string, unknown> | unknown>(
 }
 
 export class CompiledStateGraph<
-  S,
+  StateType,
   U,
-  N extends string = typeof START,
-  I extends StateDefinition = StateDefinition,
-  O extends StateDefinition = StateDefinition
-> extends CompiledGraph<N, S, U> {
-  declare builder: StateGraph<unknown, S, U, N, I, O>;
+  NodeName extends string = typeof START,
+  InputState extends StateDefinition = StateDefinition,
+  OutputState extends StateDefinition = StateDefinition
+> extends CompiledGraph<NodeName, StateType, U> {
+  declare builder: StateGraph<
+    unknown,
+    StateType,
+    U,
+    NodeName,
+    InputState,
+    OutputState
+  >;
 
   attachNode(key: typeof START, node?: never): void;
 
-  attachNode(key: N, node: StateGraphNodeSpec<S, U>): void;
+  attachNode(key: NodeName, node: StateGraphNodeSpec<StateType, U>): void;
 
-  attachNode(key: N | typeof START, node?: StateGraphNodeSpec<S, U>): void {
+  attachNode(
+    key: NodeName | typeof START,
+    node?: StateGraphNodeSpec<StateType, U>
+  ): void {
     const stateKeys = Object.keys(this.builder.channels);
 
     function getStateKey(key: keyof U, input: U) {
@@ -452,19 +510,19 @@ export class CompiledStateGraph<
       key === ROOT
         ? { channel: key, value: PASSTHROUGH, skipNone: true }
         : {
-            channel: key,
-            value: PASSTHROUGH,
-            mapper: new RunnableCallable({
-              func: getStateKey.bind(null, key as keyof U),
-              trace: false,
-              recurse: false,
-            }),
-          }
+          channel: key,
+          value: PASSTHROUGH,
+          mapper: new RunnableCallable({
+            func: getStateKey.bind(null, key as keyof U),
+            trace: false,
+            recurse: false,
+          }),
+        }
     );
 
     // add node and output channel
     if (key === START) {
-      this.nodes[key] = new PregelNode<S, U>({
+      this.nodes[key] = new PregelNode<StateType, U>({
         tags: [TAG_HIDDEN],
         triggers: [START],
         channels: [START],
@@ -480,7 +538,7 @@ export class CompiledStateGraph<
       const isSingleInput =
         Object.keys(inputValues).length === 1 && ROOT in inputValues;
       this.channels[key] = new EphemeralValue(false);
-      this.nodes[key] = new PregelNode<S, U>({
+      this.nodes[key] = new PregelNode<StateType, U>({
         triggers: [],
         // read state keys
         channels: isSingleInput ? Object.keys(inputValues) : inputValues,
@@ -494,11 +552,11 @@ export class CompiledStateGraph<
         mapper: isSingleInput
           ? undefined
           : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (input: Record<string, any>) => {
-              return Object.fromEntries(
-                Object.entries(input).filter(([k]) => k in inputValues)
-              );
-            },
+          (input: Record<string, any>) => {
+            return Object.fromEntries(
+              Object.entries(input).filter(([k]) => k in inputValues)
+            );
+          },
         bound: node?.runnable,
         metadata: node?.metadata,
         retryPolicy: node?.retryPolicy,
@@ -506,7 +564,10 @@ export class CompiledStateGraph<
     }
   }
 
-  attachEdge(start: N | N[] | "__start__", end: N | "__end__"): void {
+  attachEdge(
+    start: NodeName | NodeName[] | "__start__",
+    end: NodeName | "__end__"
+  ): void {
     if (end === END) {
       return;
     }
@@ -540,9 +601,9 @@ export class CompiledStateGraph<
   }
 
   attachBranch(
-    start: N | typeof START,
+    start: NodeName | typeof START,
     name: string,
-    branch: Branch<S, N>
+    branch: Branch<StateType, NodeName>
   ): void {
     // attach branch publisher
     this.nodes[start].writers.push(
@@ -567,7 +628,8 @@ export class CompiledStateGraph<
           return new ChannelWrite(writes, [TAG_HIDDEN]);
         },
         // reader
-        (config) => ChannelRead.doRead<S>(config, this.outputChannels, true)
+        (config) =>
+          ChannelRead.doRead<StateType>(config, this.outputChannels, true)
       )
     );
 
@@ -582,7 +644,7 @@ export class CompiledStateGraph<
       const channelName = `branch:${start}:${name}:${end}`;
       (this.channels as Record<string, BaseChannel>)[channelName] =
         new EphemeralValue(false);
-      this.nodes[end as N].triggers.push(channelName);
+      this.nodes[end as NodeName].triggers.push(channelName);
     }
   }
 }

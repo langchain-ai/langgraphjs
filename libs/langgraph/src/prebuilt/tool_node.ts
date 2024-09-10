@@ -134,7 +134,7 @@ export type ToolNodeOptions = {
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export class ToolNode<T = any> extends RunnableCallable<T, T> {
+export class ToolNode<T = unknown> extends RunnableCallable<T, T> {
   tools: (StructuredToolInterface | RunnableToolLike)[];
 
   handleToolErrors = true;
