@@ -5,6 +5,7 @@ import {
   Checkpoint,
 } from "@langchain/langgraph-checkpoint";
 import { EmptyChannelError } from "../errors.js";
+import { ManagedValueSpec } from "../managed/base.js";
 
 export abstract class BaseChannel<
   ValueType = unknown,
@@ -71,10 +72,9 @@ export abstract class BaseChannel<
   }
 }
 
-export function emptyChannels<Cc extends Record<string, BaseChannel>>(
-  channels: Cc,
-  checkpoint: ReadonlyCheckpoint
-): Cc {
+export function emptyChannels<
+  Cc extends Record<string, BaseChannel | ManagedValueSpec>
+>(channels: Cc, checkpoint: ReadonlyCheckpoint): Cc {
   const newChannels = {} as Cc;
   for (const k in channels) {
     if (Object.prototype.hasOwnProperty.call(channels, k)) {

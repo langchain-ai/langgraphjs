@@ -65,6 +65,9 @@ import {
 import { _coerceToDict, getNewChannelVersions, RetryPolicy } from "./utils.js";
 import { PregelLoop } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
+import { BaseStore } from "../store/base.js";
+import { ManagedValueSpec } from "../managed/base.js";
+import { isBaseChannel } from "../graph/state.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -165,7 +168,7 @@ export class Channel {
  */
 export interface PregelOptions<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
 > extends RunnableConfig {
   /** The stream mode for the graph run. Default is ["values"]. */
   streamMode?: StreamMode | StreamMode[];
@@ -188,7 +191,7 @@ export type PregelOutputType = any;
 
 export class Pregel<
     Nn extends StrRecord<string, PregelNode>,
-    Cc extends StrRecord<string, BaseChannel>
+    Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
   >
   extends Runnable<PregelInputType, PregelOutputType, PregelOptions<Nn, Cc>>
   implements PregelInterface<Nn, Cc>
@@ -226,6 +229,12 @@ export class Pregel<
 
   retryPolicy?: RetryPolicy;
 
+  /**
+   * Memory store to use for SharedValues.
+   * @default undefined
+   */
+  store?: BaseStore;
+
   constructor(fields: PregelParams<Nn, Cc>) {
     super(fields);
 
@@ -247,6 +256,7 @@ export class Pregel<
     this.debug = fields.debug ?? this.debug;
     this.checkpointer = fields.checkpointer;
     this.retryPolicy = fields.retryPolicy;
+    this.store = fields.store;
 
     if (this.autoValidate) {
       this.validate();
@@ -300,6 +310,7 @@ export class Pregel<
       checkpoint,
       this.nodes,
       channels,
+      managed,
       saved !== undefined ? saved.config : config,
       false,
       { step: saved ? (saved.metadata?.step ?? -1) + 1 : -1 }
@@ -331,6 +342,7 @@ export class Pregel<
         saved.checkpoint,
         this.nodes,
         channels,
+        managed,
         saved.config,
         false,
         { step: -1 }
@@ -654,14 +666,26 @@ export class Pregel<
     ] = this._defaults(inputConfig);
     let loop;
     try {
+      const channelSpecs = {} as Record<string, BaseChannel>;
+      const managedSpecs = {} as Record<string, ManagedValueSpec>;
+      for (const [key, channel] of Object.entries(this.channels)) {
+        if (isBaseChannel(channel)) {
+          channelSpecs[key] = channel;
+        } else {
+          managedSpecs[key] = channel;
+        }
+      }
+
       loop = await PregelLoop.initialize({
         input,
         config,
         checkpointer,
         nodes: this.nodes,
-        channelSpecs: this.channels,
+        channelSpecs,
+        managedSpecs,
         outputKeys,
         streamKeys: this.streamChannelsAsIs as string | string[],
+        store: this.store,
       });
       while (
         await loop.tick({
