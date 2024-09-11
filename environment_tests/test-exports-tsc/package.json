@@ -19,6 +19,6 @@
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@types/node": "^18.15.11",
-    "typescript": "latest"
+    "typescript": "5.5.4"
   }
 }
