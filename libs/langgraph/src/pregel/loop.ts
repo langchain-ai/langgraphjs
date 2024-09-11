@@ -49,6 +49,7 @@ import {
 } from "./debug.js";
 import { PregelNode } from "./read.js";
 import { BaseStore } from "../store/base.js";
+import { AsyncBatchedStore } from "../store/batch.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
@@ -206,6 +207,16 @@ export class PregelLoop {
     const stop =
       step + (configForManaged.recursionLimit ?? DEFAULT_LOOP_LIMIT) + 1;
     const checkpointPreviousVersions = { ...checkpoint.channel_versions };
+
+    const store = params.store
+      ? new AsyncBatchedStore(params.store)
+      : undefined;
+    if (store) {
+      // Start the store. This is a batch store, so it will run continuously
+      // TODO: Find better way to stop the store. Maybe some sort of async storage like what we use for passing config around?
+      store.start();
+    }
+
     return new PregelLoop({
       input: params.input,
       config: configForManaged,
@@ -221,7 +232,7 @@ export class PregelLoop {
       outputKeys: params.outputKeys ?? [],
       streamKeys: params.streamKeys ?? [],
       nodes: params.nodes,
-      store: params.store,
+      store,
     });
   }
 

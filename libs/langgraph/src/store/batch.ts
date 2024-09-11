@@ -1,18 +1,45 @@
 import { BaseStore, type Values } from "./base.js";
 
+/**
+ * A list operation to be processed in batch.
+ */
 interface ListOp {
+  /**
+   * An array of prefixes to list.
+   * @type {string[]}
+   */
   prefixes: string[];
 }
 
+/**
+ * A put operation to be processed in batch.
+ */
 interface PutOp {
+  /**
+   * An array of write operations to be performed.
+   * @type {Array<[string, string, Values | null]>}
+   */
   writes: Array<[string, string, Values | null]>;
 }
 
 type QueueItem = {
+  /**
+   * A function to resolve the promise. This function should be called when the operation is complete.
+   * @param {any | undefined} value The value to resolve the promise with.
+   * @returns {void}
+   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resolve: (value?: any) => void;
+  /**
+   * A function to reject the promise. This function should be called when the operation fails.
+   * @param {any | undefined} reason The reason for rejecting the promise.
+   * @returns {void}
+   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   reject: (reason?: any) => void;
+  /**
+   * The operation to be processed. This can be either a list or put operation.
+   */
   op: ListOp | PutOp;
 };
 
@@ -22,16 +49,28 @@ type QueueItem = {
  * designed to run for the full duration of the process, or until `stop()` is called.
  */
 export class AsyncBatchedStore extends BaseStore {
+  /**
+   * The store to batch operations for.
+   * @type {BaseStore}
+   */
   private store: BaseStore;
 
+  /**
+   * A queue of operations to be processed in batch.
+   * @type {QueueItem[]}
+   */
   private queue: QueueItem[] = [];
 
-  private running = true;
+  /**
+   * Whether or not the batched processing is currently running.
+   * @type {boolean}
+   * @default {false}
+   */
+  private running = false;
 
   constructor(store: BaseStore) {
     super();
     this.store = store;
-    void this.runTask();
   }
 
   /**
@@ -56,6 +95,16 @@ export class AsyncBatchedStore extends BaseStore {
     return new Promise((resolve, reject) => {
       this.queue.push({ resolve, reject, op: { writes } });
     });
+  }
+
+  /**
+   * Start running the batched processing of operations.
+   * This process will run continuously until the store is stopped,
+   * which can be done by calling the `stop()` method.
+   */
+  start() {
+    this.running = true;
+    void this.runTask();
   }
 
   /**

@@ -25,6 +25,9 @@ describe("AsyncBatchedStore", () => {
 
     const store = new AsyncBatchedStore(new MockStore());
 
+    // Start the store
+    store.start();
+
     // Concurrent calls are batched
     const results = await Promise.all([
       store.list(["a", "b"]),
