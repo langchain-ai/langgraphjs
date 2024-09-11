@@ -1,0 +1,57 @@
+name: Check Docs & Links
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    paths:
+      - '**.ipynb'
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+env:
+  POETRY_VERSION: "1.7.1"
+
+jobs:
+  markdown-link-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check links in Markdown files
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          folder-path: "examples/,docs/"
+          check-modified-files-only: ${{ github.event_name != 'schedule' }}
+          file-path: "./README.md"
+          config-file: "./.markdown-link-check.config.json"
+
+  notebook-link-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16.x'
+          cache: 'yarn'
+      
+      - name: Install dependencies
+        run: |
+          yarn install --frozen-lockfile
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v35
+
+      - name: Check links in notebooks
+        env:
+          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+        run: |
+          yarn check-links
