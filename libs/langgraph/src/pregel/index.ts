@@ -66,6 +66,8 @@ import { _coerceToDict, getNewChannelVersions, RetryPolicy } from "./utils.js";
 import { PregelLoop } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
 import { BaseStore } from "../store/base.js";
+import { isManagedValue, ManagedValueMapping, type ManagedValueSpec } from "../managed/base.js";
+import { isBaseChannel } from "../graph/state.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -166,7 +168,7 @@ export class Channel {
  */
 export interface PregelOptions<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
 > extends RunnableConfig {
   /** The stream mode for the graph run. Default is ["values"]. */
   streamMode?: StreamMode | StreamMode[];
@@ -189,7 +191,7 @@ export type PregelOutputType = any;
 
 export class Pregel<
     Nn extends StrRecord<string, PregelNode>,
-    Cc extends StrRecord<string, BaseChannel>
+    Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
   >
   extends Runnable<PregelInputType, PregelOutputType, PregelOptions<Nn, Cc>>
   implements PregelInterface<Nn, Cc>
@@ -258,7 +260,7 @@ export class Pregel<
   }
 
   validate(): this {
-    validateGraph({
+    validateGraph<Nn, Cc>({
       nodes: this.nodes,
       channels: this.channels,
       outputChannels: this.outputChannels,
@@ -299,7 +301,10 @@ export class Pregel<
 
     const saved = await this.checkpointer.getTuple(config);
     const checkpoint = saved ? saved.checkpoint : emptyCheckpoint();
-    const channels = emptyChannels(this.channels, checkpoint);
+    const channels = emptyChannels(this.channels as Record<string, BaseChannel>, checkpoint);
+    const managedSpecs = Object.fromEntries(
+      Object.entries(this.channels).filter(([_, value]) => !isBaseChannel(value))
+    ) as Record<string, ManagedValueSpec>;
     const nextTasks = _prepareNextTasks(
       checkpoint,
       this.nodes,

@@ -591,7 +591,7 @@ export class CompiledStateGraph<
   }
 }
 
-function isBaseChannel(obj: unknown): obj is BaseChannel {
+export function isBaseChannel(obj: unknown): obj is BaseChannel {
   return obj != null && typeof (obj as BaseChannel).lc_graph_name === "string";
 }
 

@@ -2,6 +2,7 @@ import { RunnableLike } from "@langchain/core/runnables";
 import { BaseChannel } from "../channels/base.js";
 import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { LastValue } from "../channels/last_value.js";
+import { isConfiguredManagedValue, ManagedValueSpec, type ConfiguredManagedValue } from "../managed/base.js";
 
 export type SingleReducer<ValueType, UpdateType = ValueType> =
   | {
@@ -150,10 +151,14 @@ export const Annotation: AnnotationFunction = function <
   ValueType,
   UpdateType = ValueType
 >(
-  annotation?: SingleReducer<ValueType, UpdateType>
-): BaseChannel<ValueType, UpdateType> {
-  if (annotation) {
+  annotation?: SingleReducer<ValueType, UpdateType> | ConfiguredManagedValue
+): BaseChannel<ValueType, UpdateType> | ManagedValueSpec {
+  if (isSingleReducer<ValueType, UpdateType>(annotation)) {
     return getChannel<ValueType, UpdateType>(annotation);
+  } else if (isConfiguredManagedValue(annotation)) {
+    // Is context value. Not a channel
+    // TOD (brace/PR reviewer): Should I be instantiating the `ManagedValue` class here?
+    return annotation;
   } else {
     // @ts-expect-error - Annotation without reducer
     return new LastValue<ValueType>();
@@ -183,4 +188,14 @@ export function getChannel<V, U = V>(
   }
   // @ts-expect-error - Annotation without reducer
   return new LastValue<V>();
+}
+
+function isSingleReducer<
+ValueType,
+UpdateType = ValueType
+>(annotation: unknown): annotation is SingleReducer<ValueType, UpdateType> {
+  if (typeof annotation === "object" && annotation && ("reducer" in annotation || "value" in annotation)) {
+    return true;
+  }
+  return false;
 }
