@@ -21,6 +21,7 @@ import { PregelExecutableTask, StreamMode } from "./types.js";
 import {
   CONFIG_KEY_READ,
   CONFIG_KEY_RESUMING,
+  CONFIG_KEY_STORE,
   ERROR,
   INPUT,
   INTERRUPT,
@@ -35,6 +36,7 @@ import {
 import {
   gatherIterator,
   gatherIteratorSync,
+  patchConfigurable,
   prefixGenerator,
 } from "../utils.js";
 import { mapInput, mapOutputUpdates, mapOutputValues } from "./io.js";
@@ -46,6 +48,7 @@ import {
   mapDebugTaskResults,
 } from "./debug.js";
 import { PregelNode } from "./read.js";
+import { BaseStore } from "../store/base.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
@@ -60,6 +63,7 @@ export type PregelLoopInitializeParams = {
   streamKeys: string | string[];
   nodes: Record<string, PregelNode>;
   channelSpecs: Record<string, BaseChannel>;
+  store?: BaseStore;
 };
 
 type PregelLoopParams = {
@@ -78,6 +82,7 @@ type PregelLoopParams = {
   outputKeys: string | string[];
   streamKeys: string | string[];
   nodes: Record<string, PregelNode>;
+  store?: BaseStore;
 };
 
 export class PregelLoop {
@@ -136,6 +141,8 @@ export class PregelLoop {
 
   protected _checkpointerChainedPromise: Promise<unknown> = Promise.resolve();
 
+  protected store?: BaseStore;
+
   constructor(params: PregelLoopParams) {
     this.input = params.input;
     this.config = params.config;
@@ -162,13 +169,17 @@ export class PregelLoop {
     this.streamKeys = params.streamKeys;
     this.nodes = params.nodes;
     this.skipDoneTasks = this.config.configurable?.checkpoint_id === undefined;
+    this.store = params.store;
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
+    const configForManaged = patchConfigurable(params.config, {
+      [CONFIG_KEY_STORE]: params.store,
+    });
     const saved: CheckpointTuple = (await params.checkpointer?.getTuple(
-      params.config
+      configForManaged
     )) ?? {
-      config: params.config,
+      config: configForManaged,
       checkpoint: emptyCheckpoint(),
       metadata: {
         source: "input",
@@ -178,10 +189,10 @@ export class PregelLoop {
       pendingWrites: [],
     };
     const checkpointConfig = {
-      ...params.config,
+      ...configForManaged,
       ...saved.config,
       configurable: {
-        ...params.config.configurable,
+        ...configForManaged.configurable,
         ...saved.config.configurable,
       },
     };
@@ -193,11 +204,11 @@ export class PregelLoop {
 
     const step = (checkpointMetadata.step ?? 0) + 1;
     const stop =
-      step + (params.config.recursionLimit ?? DEFAULT_LOOP_LIMIT) + 1;
+      step + (configForManaged.recursionLimit ?? DEFAULT_LOOP_LIMIT) + 1;
     const checkpointPreviousVersions = { ...checkpoint.channel_versions };
     return new PregelLoop({
       input: params.input,
-      config: params.config,
+      config: configForManaged,
       checkpointer: params.checkpointer,
       checkpoint,
       checkpointMetadata,
@@ -210,6 +221,7 @@ export class PregelLoop {
       outputKeys: params.outputKeys ?? [],
       streamKeys: params.streamKeys ?? [],
       nodes: params.nodes,
+      store: params.store,
     });
   }
 

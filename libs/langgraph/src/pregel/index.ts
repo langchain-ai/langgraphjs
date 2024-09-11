@@ -65,6 +65,7 @@ import {
 import { _coerceToDict, getNewChannelVersions, RetryPolicy } from "./utils.js";
 import { PregelLoop } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
+import { BaseStore } from "../store/base.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -226,6 +227,8 @@ export class Pregel<
 
   retryPolicy?: RetryPolicy;
 
+  store?: BaseStore;
+
   constructor(fields: PregelParams<Nn, Cc>) {
     super(fields);
 
@@ -247,6 +250,7 @@ export class Pregel<
     this.debug = fields.debug ?? this.debug;
     this.checkpointer = fields.checkpointer;
     this.retryPolicy = fields.retryPolicy;
+    this.store = fields.store;
 
     if (this.autoValidate) {
       this.validate();
@@ -662,6 +666,7 @@ export class Pregel<
         channelSpecs: this.channels,
         outputKeys,
         streamKeys: this.streamChannelsAsIs as string | string[],
+        store: this.store,
       });
       while (
         await loop.tick({

@@ -41,6 +41,7 @@ import {
   UpdateType,
 } from "./annotation.js";
 import type { RetryPolicy } from "../pregel/utils.js";
+import { BaseStore } from "../store/base.js";
 
 const ROOT = "__root__";
 
@@ -338,10 +339,12 @@ export class StateGraph<
 
   compile({
     checkpointer,
+    store,
     interruptBefore,
     interruptAfter,
   }: {
     checkpointer?: BaseCheckpointSaver;
+    store?: BaseStore;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
   } = {}): CompiledStateGraph<S, U, N, I, O> {
@@ -378,6 +381,7 @@ export class StateGraph<
       outputChannels,
       streamChannels,
       streamMode: "updates",
+      store,
     });
 
     // attach nodes, edges and branches

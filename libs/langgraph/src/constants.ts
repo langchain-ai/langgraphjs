@@ -5,6 +5,7 @@ export const CONFIG_KEY_READ = "__pregel_read";
 export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
 export const CONFIG_KEY_RESUMING = "__pregel_resuming";
 export const INTERRUPT = "__interrupt__";
+export const CONFIG_KEY_STORE = "__pregel_store";
 
 export const TAG_HIDDEN = "langsmith:hidden";
 
