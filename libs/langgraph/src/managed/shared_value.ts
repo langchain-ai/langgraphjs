@@ -35,7 +35,13 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
       this.ns = null;
     } else if (config.configurable?.[this.scope]) {
       const scopeValue = config.configurable[this.scope];
-      this.ns = `scoped:${this.scope}:${params.key}:${scopeValue}`;
+      let scopedValueString = "";
+      try {
+        scopedValueString = typeof scopeValue === "string" ? scopeValue : JSON.stringify(scopeValue);
+      } catch (_) {
+        // no-op
+      }
+      this.ns = `scoped:${this.scope}:${params.key}:${scopedValueString}`;
     } else {
       throw new Error(
         `Scope ${this.scope} for shared state key not in config.configurable`
@@ -48,9 +54,9 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
     config: RunnableConfig,
     args: SharedValueParams
   ): Promise<ManagedValue<Value>> {
-    return Promise.resolve(
-      new this(config, args) as unknown as ManagedValue<Value>
-    );
+    const instance = new this(config, args);
+    await instance.tick();
+    return instance as unknown as ManagedValue<Value>;
   }
 
   static on(scope: string): ConfiguredManagedValue<Value> {

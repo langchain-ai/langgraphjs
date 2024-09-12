@@ -70,6 +70,7 @@ import { executeTasksWithRetry } from "./retry.js";
 import { BaseStore } from "../store/base.js";
 import {
   isConfiguredManagedValue,
+  ManagedValue,
   ManagedValueMapping,
   type ManagedValueSpec,
 } from "../managed/base.js";
@@ -682,23 +683,24 @@ export class Pregel<
         managedSpecs[name] = spec;
       }
     }
-    const managed: ManagedValueMapping = new ManagedValueMapping(
-      Object.fromEntries(
-        await Promise.all(
-          Object.entries(managedSpecs).map(async ([key, value]) => {
-            if (isConfiguredManagedValue(value)) {
-              return [
-                key,
-                await value.cls.initialize(configForManaged, value.params),
-              ];
-            } else {
-              return [key, await value.initialize(configForManaged)];
-            }
-          })
-        )
-      )
+    const managed = new ManagedValueMapping(
+      await Object.entries(managedSpecs).reduce(async (accPromise, [key, value]) => {
+        const acc = await accPromise;
+        let initializedValue;
+    
+        if (isConfiguredManagedValue(value)) {
+          initializedValue = await value.cls.initialize(configForManaged, value.params);
+        } else {
+          initializedValue = await value.initialize(configForManaged);
+        }
+    
+        if (initializedValue !== undefined) {
+          acc.push([key, initializedValue]);
+        }
+    
+        return acc;
+      }, Promise.resolve([] as [string, ManagedValue][]))
     );
-
     return {
       channelSpecs,
       managed,
@@ -874,6 +876,7 @@ export class Pregel<
       await runManager?.handleChainError(e);
       throw e;
     } finally {
+      this.store?.stop();
       await Promise.all([
         loop?.checkpointerPromises ?? [],
         Object.values(managed).map((mv) => mv.promises()),

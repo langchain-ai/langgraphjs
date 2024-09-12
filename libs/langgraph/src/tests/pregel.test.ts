@@ -4690,14 +4690,14 @@ describe.only("StateGraph start branch then end", () => {
     const threadId = config.configurable?.thread_id;
     if (threadId) {
       if (threadId === "1") {
-        expect(data.shared).toBeFalsy();
-        console.log("BEFORE RETURNING SHARED DATA!");
+        expect(data.shared).toEqual({});
         // @ts-expect-error todo: fix types in annotation file
         return { shared: { "1": { hello: "world" } } };
       } else if (threadId === "2") {
         expect(data.shared).toEqual({ "1": { hello: "world" } });
       } else if (threadId === "3") {
-        expect(data.shared).toBeFalsy();
+        // Should not contain a value because the "assistant_id" is different
+        expect(data.shared).toEqual({});
       }
     }
     return {};
@@ -4719,6 +4719,7 @@ describe.only("StateGraph start branch then end", () => {
 
   it("should handle start branch then end", async () => {
     const toolTwoGraph = new StateGraph(GraphAnnotation);
+    const debug = false;
 
     toolTwoGraph
       .addNode("tool_two_slow", toolTwoSlow)
@@ -4732,14 +4733,14 @@ describe.only("StateGraph start branch then end", () => {
     let toolTwo = toolTwoGraph.compile();
 
     expect(
-      await toolTwo.invoke({ my_key: "value", market: "DE", shared: {} })
+      await toolTwo.invoke({ my_key: "value", market: "DE" }, { debug, })
     ).toEqual({
       my_key: "value slow",
       market: "DE",
     });
 
     expect(
-      await toolTwo.invoke({ my_key: "value", market: "US", shared: {} })
+      await toolTwo.invoke({ my_key: "value", market: "US" }, { debug, })
     ).toEqual({
       my_key: "value fast",
       market: "US",
@@ -4753,14 +4754,14 @@ describe.only("StateGraph start branch then end", () => {
 
     // Will throw an error if a checkpointer is passed but `configurable` isn't.
     await expect(
-      toolTwo.invoke({ my_key: "value", market: "DE", shared: {} })
+      toolTwo.invoke({ my_key: "value", market: "DE" })
     ).rejects.toThrow(/thread_id/);
 
-    const thread1 = { configurable: { thread_id: "1", assistant_id: "a" } };
+    const thread1 = { configurable: { thread_id: "1", assistant_id: "a" }, debug, };
 
     expect(
       await toolTwo.invoke(
-        { my_key: "value ⛰️", market: "DE", shared: {} },
+        { my_key: "value ⛰️", market: "DE" },
         thread1
       )
     ).toEqual({
@@ -4784,7 +4785,7 @@ describe.only("StateGraph start branch then end", () => {
       {
         source: "input",
         step: -1,
-        writes: { __start__: { my_key: "value ⛰️", market: "DE", shared: {} } },
+        writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
       },
     ]);
 
@@ -4798,14 +4799,12 @@ describe.only("StateGraph start branch then end", () => {
     expect(await toolTwo.invoke(null, thread1)).toEqual({
       my_key: "value ⛰️ slow",
       market: "DE",
-      shared: { "1": { hello: "world" } },
     });
 
     expect(await toolTwo.getState(thread1)).toMatchObject({
       values: {
         my_key: "value ⛰️ slow",
         market: "DE",
-        shared: { "1": { hello: "world" } },
       },
       tasks: [],
       next: [],
@@ -4815,33 +4814,29 @@ describe.only("StateGraph start branch then end", () => {
         writes: {
           tool_two_slow: {
             my_key: " slow",
-            shared: { "1": { hello: "world" } },
           },
         },
       },
     });
 
-    const thread2 = { configurable: { thread_id: "2", assistant_id: "a" } };
+    const thread2 = { configurable: { thread_id: "2", assistant_id: "a" }, debug, };
     expect(
       await toolTwo.invoke(
         {
           my_key: "value",
           market: "US",
-          shared: {},
         },
         thread2
       )
     ).toEqual({
       my_key: "value",
       market: "US",
-      shared: {},
     });
 
     expect(await toolTwo.getState(thread2)).toMatchObject({
       values: {
         my_key: "value",
         market: "US",
-        shared: {},
       },
       tasks: [{ name: "tool_two_fast" }],
       next: ["tool_two_fast"],
@@ -4851,14 +4846,12 @@ describe.only("StateGraph start branch then end", () => {
     expect(await toolTwo.invoke(null, thread2)).toEqual({
       my_key: "value fast",
       market: "US",
-      shared: { "1": { hello: "world" } },
     });
 
     expect(await toolTwo.getState(thread2)).toMatchObject({
       values: {
         my_key: "value fast",
         market: "US",
-        shared: { "1": { hello: "world" } },
       },
       tasks: [],
       next: [],
@@ -4872,17 +4865,16 @@ describe.only("StateGraph start branch then end", () => {
     const thread3 = { configurable: { thread_id: "3", assistant_id: "b" } };
     expect(
       await toolTwo.invoke(
-        { my_key: "value", market: "US", shared: {} },
+        { my_key: "value", market: "US" },
         thread3
       )
     ).toEqual({
       my_key: "value",
       market: "US",
-      shared: {},
     });
 
     expect(await toolTwo.getState(thread3)).toMatchObject({
-      values: { my_key: "value", market: "US", shared: {} },
+      values: { my_key: "value", market: "US" },
       tasks: [{ name: "tool_two_fast" }],
       next: ["tool_two_fast"],
       metadata: { source: "loop", step: 0, writes: null },
@@ -4891,7 +4883,7 @@ describe.only("StateGraph start branch then end", () => {
     await toolTwo.updateState(thread3, { my_key: "key" });
 
     expect(await toolTwo.getState(thread3)).toMatchObject({
-      values: { my_key: "valuekey", market: "US", shared: {} },
+      values: { my_key: "valuekey", market: "US" },
       tasks: [{ name: "tool_two_fast" }],
       next: ["tool_two_fast"],
       metadata: {
@@ -4904,11 +4896,10 @@ describe.only("StateGraph start branch then end", () => {
     expect(await toolTwo.invoke(null, thread3)).toEqual({
       my_key: "valuekey fast",
       market: "US",
-      shared: {},
     });
 
     expect(await toolTwo.getState(thread3)).toMatchObject({
-      values: { my_key: "valuekey fast", market: "US", shared: {} },
+      values: { my_key: "valuekey fast", market: "US" },
       tasks: [],
       next: [],
       metadata: {

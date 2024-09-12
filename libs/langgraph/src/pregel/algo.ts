@@ -112,8 +112,8 @@ export function _localRead<Cc extends Record<string, BaseChannel>>(
     }
     updated = updated || new Set();
   } else {
-    managedKeys = select.filter((k) => k in managed) as Array<keyof Cc>;
-    select = select.filter((k) => !(k in managed)) as Array<keyof Cc>;
+    managedKeys = select.filter((k) => managed.get(k as string)) as Array<keyof Cc>;
+    select = select.filter((k) => !managed.get(k as string)) as Array<keyof Cc>;
     updated = new Set(
       select.filter((c) => task.writes.some(([key, _]) => key === c))
     );
@@ -139,7 +139,8 @@ export function _localRead<Cc extends Record<string, BaseChannel>>(
     for (const k of managedKeys) {
       const managedValue = managed.get(k as string);
       if (managedValue) {
-        values[k as string] = managedValue.call(step);
+        const resultOfManagedCall = managedValue.call(step);
+        values[k as string] = resultOfManagedCall;
       }
     }
   }
@@ -173,7 +174,7 @@ export function _localWrite(
       }
       // replace any runtime values with placeholders
       managed.replaceRuntimeValues(step, value.args);
-    } else if (!(chan in channels)) {
+    } else if (!(chan in channels) && !managed.get(chan)) {
       console.warn(`Skipping write for channel '${chan}' which has no readers`);
     }
   }

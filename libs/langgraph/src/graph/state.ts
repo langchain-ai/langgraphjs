@@ -42,7 +42,7 @@ import {
 } from "./annotation.js";
 import type { RetryPolicy } from "../pregel/utils.js";
 import { BaseStore } from "../store/base.js";
-import { ManagedValueSpec } from "../managed/base.js";
+import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
 
 const ROOT = "__root__";
 
@@ -359,9 +359,17 @@ export class StateGraph<
     ]);
 
     // prepare output channels
+    // const outputKeys = Object.keys(
+    //   this._schemaDefinitions.get(this._outputDefinition)
+    // ).filter(key => {
+    //   // remove any keys which are managed values
+    //   const schemaDef = this._schemaDefinitions.get(this._outputDefinition);
+    //   return !isConfiguredManagedValue(schemaDef[key]);
+    // });
     const outputKeys = Object.keys(
       this._schemaDefinitions.get(this._outputDefinition)
-    );
+    )
+    
     const outputChannels =
       outputKeys.length === 1 && outputKeys[0] === ROOT ? ROOT : outputKeys;
 
@@ -417,15 +425,12 @@ function _getChannels<Channels extends Record<string, unknown> | unknown>(
   const channels: Record<string, BaseChannel> = {};
   for (const [name, val] of Object.entries(schema)) {
     if (name === ROOT) {
-      console.log("root");
       channels[name] = getChannel<Channels>(val as SingleReducer<Channels>);
     } else {
-      console.log("not root");
       const key = name as keyof Channels;
       const cha = getChannel<Channels[typeof key]>(
         val as SingleReducer<Channels[typeof key]>
       );
-      console.log("cha", cha);
       channels[name] = cha;
     }
   }

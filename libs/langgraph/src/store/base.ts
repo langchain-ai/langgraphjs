@@ -7,4 +7,8 @@ export abstract class BaseStore {
   ): Promise<Record<string, Record<string, Values>>>;
 
   abstract put(writes: Array<[string, string, Values | null]>): Promise<void>;
+
+  stop(): void {
+    // no-op if not implemented.
+  }
 }
