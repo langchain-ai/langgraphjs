@@ -37,7 +37,10 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
       const scopeValue = config.configurable[this.scope];
       let scopedValueString = "";
       try {
-        scopedValueString = typeof scopeValue === "string" ? scopeValue : JSON.stringify(scopeValue);
+        scopedValueString =
+          typeof scopeValue === "string"
+            ? scopeValue
+            : JSON.stringify(scopeValue);
       } catch (_) {
         // no-op
       }

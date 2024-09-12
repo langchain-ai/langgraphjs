@@ -112,7 +112,9 @@ export function _localRead<Cc extends Record<string, BaseChannel>>(
     }
     updated = updated || new Set();
   } else {
-    managedKeys = select.filter((k) => managed.get(k as string)) as Array<keyof Cc>;
+    managedKeys = select.filter((k) => managed.get(k as string)) as Array<
+      keyof Cc
+    >;
     select = select.filter((k) => !managed.get(k as string)) as Array<keyof Cc>;
     updated = new Set(
       select.filter((c) => task.writes.some(([key, _]) => key === c))

@@ -684,22 +684,28 @@ export class Pregel<
       }
     }
     const managed = new ManagedValueMapping(
-      await Object.entries(managedSpecs).reduce(async (accPromise, [key, value]) => {
-        const acc = await accPromise;
-        let initializedValue;
-    
-        if (isConfiguredManagedValue(value)) {
-          initializedValue = await value.cls.initialize(configForManaged, value.params);
-        } else {
-          initializedValue = await value.initialize(configForManaged);
-        }
-    
-        if (initializedValue !== undefined) {
-          acc.push([key, initializedValue]);
-        }
-    
-        return acc;
-      }, Promise.resolve([] as [string, ManagedValue][]))
+      await Object.entries(managedSpecs).reduce(
+        async (accPromise, [key, value]) => {
+          const acc = await accPromise;
+          let initializedValue;
+
+          if (isConfiguredManagedValue(value)) {
+            initializedValue = await value.cls.initialize(
+              configForManaged,
+              value.params
+            );
+          } else {
+            initializedValue = await value.initialize(configForManaged);
+          }
+
+          if (initializedValue !== undefined) {
+            acc.push([key, initializedValue]);
+          }
+
+          return acc;
+        },
+        Promise.resolve([] as [string, ManagedValue][])
+      )
     );
     return {
       channelSpecs,

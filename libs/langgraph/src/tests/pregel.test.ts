@@ -4667,7 +4667,7 @@ it("StateGraph branch then node", async () => {
   });
 });
 
-describe.only("StateGraph start branch then end", () => {
+describe("StateGraph start branch then end", () => {
   let checkpointer: BaseCheckpointSaver<number>;
 
   const GraphAnnotation = Annotation.Root({
@@ -4733,14 +4733,14 @@ describe.only("StateGraph start branch then end", () => {
     let toolTwo = toolTwoGraph.compile();
 
     expect(
-      await toolTwo.invoke({ my_key: "value", market: "DE" }, { debug, })
+      await toolTwo.invoke({ my_key: "value", market: "DE" }, { debug })
     ).toEqual({
       my_key: "value slow",
       market: "DE",
     });
 
     expect(
-      await toolTwo.invoke({ my_key: "value", market: "US" }, { debug, })
+      await toolTwo.invoke({ my_key: "value", market: "US" }, { debug })
     ).toEqual({
       my_key: "value fast",
       market: "US",
@@ -4757,13 +4757,13 @@ describe.only("StateGraph start branch then end", () => {
       toolTwo.invoke({ my_key: "value", market: "DE" })
     ).rejects.toThrow(/thread_id/);
 
-    const thread1 = { configurable: { thread_id: "1", assistant_id: "a" }, debug, };
+    const thread1 = {
+      configurable: { thread_id: "1", assistant_id: "a" },
+      debug,
+    };
 
     expect(
-      await toolTwo.invoke(
-        { my_key: "value ⛰️", market: "DE" },
-        thread1
-      )
+      await toolTwo.invoke({ my_key: "value ⛰️", market: "DE" }, thread1)
     ).toEqual({
       my_key: "value ⛰️",
       market: "DE",
@@ -4819,7 +4819,10 @@ describe.only("StateGraph start branch then end", () => {
       },
     });
 
-    const thread2 = { configurable: { thread_id: "2", assistant_id: "a" }, debug, };
+    const thread2 = {
+      configurable: { thread_id: "2", assistant_id: "a" },
+      debug,
+    };
     expect(
       await toolTwo.invoke(
         {
@@ -4864,10 +4867,7 @@ describe.only("StateGraph start branch then end", () => {
 
     const thread3 = { configurable: { thread_id: "3", assistant_id: "b" } };
     expect(
-      await toolTwo.invoke(
-        { my_key: "value", market: "US" },
-        thread3
-      )
+      await toolTwo.invoke({ my_key: "value", market: "US" }, thread3)
     ).toEqual({
       my_key: "value",
       market: "US",

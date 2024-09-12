@@ -42,7 +42,7 @@ import {
 } from "./annotation.js";
 import type { RetryPolicy } from "../pregel/utils.js";
 import { BaseStore } from "../store/base.js";
-import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
+import { ManagedValueSpec } from "../managed/base.js";
 
 const ROOT = "__root__";
 
@@ -368,8 +368,8 @@ export class StateGraph<
     // });
     const outputKeys = Object.keys(
       this._schemaDefinitions.get(this._outputDefinition)
-    )
-    
+    );
+
     const outputChannels =
       outputKeys.length === 1 && outputKeys[0] === ROOT ? ROOT : outputKeys;
 
