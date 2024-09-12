@@ -46,7 +46,8 @@ interface ContextParams<Value> extends ManagedValueParams {
  * }
  * ```
  */
-export class Context<Value> extends ManagedValue<Value> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class Context<Value = any> extends ManagedValue<Value> {
   runtime = true;
 
   value: Value;
@@ -55,9 +56,9 @@ export class Context<Value> extends ManagedValue<Value> {
 
   readonly isContextManagedValue: true = true as const;
 
-  constructor(config: RunnableConfig, params: ContextParams<Value>) {
+  constructor(config: RunnableConfig, params?: ContextParams<Value>) {
     super(config, params);
-    this.ctx = params.ctx;
+    this.ctx = params?.ctx;
   }
 
   static async initialize<Value>(

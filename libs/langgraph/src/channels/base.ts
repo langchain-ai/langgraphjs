@@ -79,14 +79,18 @@ export function emptyChannels<Cc extends Record<string, BaseChannel>>(
   channels: Cc,
   checkpoint: ReadonlyCheckpoint
 ): Cc {
+  const filteredChannels = Object.fromEntries(
+    Object.entries(channels).filter(([, value]) => isBaseChannel(value))
+  ) as Cc;
+
   const newChannels = {} as Cc;
-  for (const k in channels) {
+  for (const k in filteredChannels) {
     if (
-      isBaseChannel(channels[k]) &&
-      Object.prototype.hasOwnProperty.call(channels, k)
+      isBaseChannel(filteredChannels[k]) &&
+      Object.prototype.hasOwnProperty.call(filteredChannels, k)
     ) {
       const channelValue = checkpoint.channel_values[k];
-      newChannels[k] = channels[k].fromCheckpoint(channelValue);
+      newChannels[k] = filteredChannels[k].fromCheckpoint(channelValue);
     }
   }
   return newChannels;

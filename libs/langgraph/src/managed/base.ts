@@ -64,6 +64,11 @@ export interface ConfiguredManagedValue<Value = any> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ManagedValueMapping extends Map<string, ManagedValue<any>> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(entries?: Iterable<[string, ManagedValue<any>]> | null) {
+    super(entries ? Array.from(entries) : undefined);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   replaceRuntimeValues(step: number, values: Record<string, any> | any): void {
     if (this.size === 0 || !values) {
       return;

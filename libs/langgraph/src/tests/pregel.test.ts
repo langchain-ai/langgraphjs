@@ -70,6 +70,7 @@ import {
   NodeInterrupt,
 } from "../errors.js";
 import { ERROR, INTERRUPT, Send, TASKS } from "../constants.js";
+import { ManagedValueMapping } from "../managed/base.js";
 
 describe("Channel", () => {
   describe("writeTo", () => {
@@ -574,6 +575,7 @@ describe("_localRead", () => {
       channel1,
       channel2,
     };
+    const managed = new ManagedValueMapping();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const writes: Array<[string, any]> = [];
@@ -581,8 +583,10 @@ describe("_localRead", () => {
     // call method / assertions
     expect(
       _localRead(
+        0,
         checkpoint,
         channels,
+        managed,
         { name: "test", writes, triggers: [] },
         "channel1",
         false
@@ -590,8 +594,10 @@ describe("_localRead", () => {
     ).toBe(1);
     expect(
       _localRead(
+        0,
         checkpoint,
         channels,
+        managed,
         { name: "test", writes, triggers: [] },
         ["channel1", "channel2"],
         false
@@ -626,12 +632,15 @@ describe("_localRead", () => {
       ["channel1", 100],
       ["channel2", 200],
     ];
+    const managed = new ManagedValueMapping();
 
     // call method / assertions
     expect(
       _localRead(
+        0,
         checkpoint,
         channels,
+        managed,
         { name: "test", writes, triggers: [] },
         "channel1",
         true
@@ -639,8 +648,10 @@ describe("_localRead", () => {
     ).toBe(100);
     expect(
       _localRead(
+        0,
         checkpoint,
         channels,
+        managed,
         { name: "test", writes, triggers: [] },
         ["channel1", "channel2"],
         true
@@ -791,12 +802,14 @@ describe("_prepareNextTasks", () => {
       channel1,
       channel2,
     };
+    const managed = new ManagedValueMapping();
 
     // call method / assertions
     const taskDescriptions = _prepareNextTasks(
       checkpoint,
       processes,
       channels,
+      managed,
       { configurable: { thread_id: "foo" } },
       false,
       { step: -1 }
@@ -911,12 +924,14 @@ describe("_prepareNextTasks", () => {
       channel5,
       channel6,
     };
+    const managed = new ManagedValueMapping();
 
     // call method / assertions
     const tasks = _prepareNextTasks(
       checkpoint,
       processes,
       channels,
+      managed,
       { configurable: { thread_id: "foo" } },
       true,
       { step: -1 }

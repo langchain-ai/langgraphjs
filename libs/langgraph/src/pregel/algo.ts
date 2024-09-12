@@ -20,6 +20,7 @@ import {
   BaseChannel,
   createCheckpoint,
   emptyChannels,
+  isBaseChannel,
 } from "../channels/base.js";
 import { PregelNode } from "./read.js";
 import { readChannel, readChannels } from "./io.js";
@@ -186,6 +187,9 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getNextVersion?: (version: any, channel: BaseChannel) => any
 ): Record<string, PendingWriteValue[]> {
+  const filteredChannels = Object.fromEntries(
+    Object.entries(channels).filter(([_, value]) => isBaseChannel(value))
+  ) as Cc;
   // Update seen versions
   for (const task of tasks) {
     if (checkpoint.versions_seen[task.name] === undefined) {
@@ -215,11 +219,11 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   );
 
   for (const chan of channelsToConsume) {
-    if (channels[chan].consume()) {
+    if (chan in filteredChannels && filteredChannels[chan].consume()) {
       if (getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(
           maxVersion,
-          channels[chan]
+          filteredChannels[chan]
         );
       }
     }
@@ -243,7 +247,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
           node: (val as Send).node,
           args: (val as Send).args,
         });
-      } else if (chan in channels) {
+      } else if (chan in filteredChannels) {
         if (chan in pendingWriteValuesByChannel) {
           pendingWriteValuesByChannel[chan].push(val);
         } else {
@@ -270,10 +274,10 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   const updatedChannels: Set<string> = new Set();
   // Apply writes to channels
   for (const [chan, vals] of Object.entries(pendingWriteValuesByChannel)) {
-    if (chan in channels) {
+    if (chan in filteredChannels) {
       let updated;
       try {
-        updated = channels[chan].update(vals);
+        updated = filteredChannels[chan].update(vals);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (e: any) {
         if (e.name === InvalidUpdateError.unminifiable_name) {
@@ -289,7 +293,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       if (updated && getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(
           maxVersion,
-          channels[chan]
+          filteredChannels[chan]
         );
       }
       updatedChannels.add(chan);
@@ -297,13 +301,13 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // Channels that weren't updated in this step are notified of a new step
-  for (const chan of Object.keys(channels)) {
+  for (const chan of Object.keys(filteredChannels)) {
     if (!updatedChannels.has(chan)) {
       const updated = channels[chan].update([]);
       if (updated && getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(
           maxVersion,
-          channels[chan]
+          filteredChannels[chan]
         );
       }
     }
