@@ -114,10 +114,9 @@ export function validateGraph<
   }
 }
 
-export function validateKeys<Cc extends Record<string, BaseChannel | ManagedValueSpec>>(
-  keys: keyof Cc | Array<keyof Cc>,
-  channels: Cc
-): void {
+export function validateKeys<
+  Cc extends Record<string, BaseChannel | ManagedValueSpec>
+>(keys: keyof Cc | Array<keyof Cc>, channels: Cc): void {
   if (Array.isArray(keys)) {
     for (const key of keys) {
       if (!(key in channels)) {

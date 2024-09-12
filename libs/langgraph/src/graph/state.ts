@@ -5,7 +5,7 @@ import {
   RunnableLike,
 } from "@langchain/core/runnables";
 import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
-import { BaseChannel } from "../channels/base.js";
+import { BaseChannel, isBaseChannel } from "../channels/base.js";
 import {
   END,
   CompiledGraph,
@@ -589,10 +589,6 @@ export class CompiledStateGraph<
       this.nodes[end as N].triggers.push(channelName);
     }
   }
-}
-
-export function isBaseChannel(obj: unknown): obj is BaseChannel {
-  return obj != null && typeof (obj as BaseChannel).lc_graph_name === "string";
 }
 
 function isStateDefinition(obj: unknown): obj is StateDefinition {

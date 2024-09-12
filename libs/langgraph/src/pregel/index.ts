@@ -25,6 +25,7 @@ import {
   BaseChannel,
   createCheckpoint,
   emptyChannels,
+  isBaseChannel,
 } from "../channels/base.js";
 import { PregelNode } from "./read.js";
 import { validateGraph, validateKeys } from "./validate.js";
@@ -40,6 +41,7 @@ import {
   CONFIG_KEY_CHECKPOINTER,
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
+  CONFIG_KEY_STORE,
   ERROR,
   INTERRUPT,
 } from "../constants.js";
@@ -66,8 +68,17 @@ import { _coerceToDict, getNewChannelVersions, RetryPolicy } from "./utils.js";
 import { PregelLoop } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
 import { BaseStore } from "../store/base.js";
-import { isManagedValue, ManagedValueMapping, type ManagedValueSpec } from "../managed/base.js";
-import { isBaseChannel } from "../graph/state.js";
+import {
+  isConfiguredManagedValue,
+  ManagedValueMapping,
+  type ManagedValueSpec,
+} from "../managed/base.js";
+import { patchConfigurable } from "../utils.js";
+import {
+  Context,
+  isContextManagedValue,
+  noopContext,
+} from "../managed/context.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -231,6 +242,8 @@ export class Pregel<
 
   store?: BaseStore;
 
+  skipContext?: boolean;
+
   constructor(fields: PregelParams<Nn, Cc>) {
     super(fields);
 
@@ -253,6 +266,7 @@ export class Pregel<
     this.checkpointer = fields.checkpointer;
     this.retryPolicy = fields.retryPolicy;
     this.store = fields.store;
+    this.skipContext = fields.skipContext;
 
     if (this.autoValidate) {
       this.validate();
@@ -301,20 +315,26 @@ export class Pregel<
 
     const saved = await this.checkpointer.getTuple(config);
     const checkpoint = saved ? saved.checkpoint : emptyCheckpoint();
-    const channels = emptyChannels(this.channels as Record<string, BaseChannel>, checkpoint);
-    const managedSpecs = Object.fromEntries(
-      Object.entries(this.channels).filter(([_, value]) => !isBaseChannel(value))
-    ) as Record<string, ManagedValueSpec>;
+    const channels = emptyChannels(
+      this.channels as Record<string, BaseChannel>,
+      checkpoint
+    );
+    const { managed } = await this.prepareSpecs(config);
+
     const nextTasks = _prepareNextTasks(
       checkpoint,
       this.nodes,
       channels,
+      managed,
       saved !== undefined ? saved.config : config,
       false,
       { step: saved ? (saved.metadata?.step ?? -1) + 1 : -1 }
     );
     return {
-      values: readChannels(channels, this.streamChannelsAsIs),
+      values: readChannels(
+        channels,
+        this.streamChannelsAsIs as string | string[]
+      ),
       next: nextTasks.map((task) => task.name),
       tasks: tasksWithWrites(nextTasks, saved?.pendingWrites ?? []),
       metadata: saved?.metadata,
@@ -334,18 +354,28 @@ export class Pregel<
     if (!this.checkpointer) {
       throw new GraphValueError("No checkpointer set");
     }
+    const { managed } = await this.prepareSpecs(config);
+
     for await (const saved of this.checkpointer.list(config, options)) {
-      const channels = emptyChannels(this.channels, saved.checkpoint);
+      const channels = emptyChannels(
+        this.channels as Record<string, BaseChannel>,
+        saved.checkpoint
+      );
+
       const nextTasks = _prepareNextTasks(
         saved.checkpoint,
         this.nodes,
         channels,
+        managed,
         saved.config,
         false,
         { step: -1 }
       );
       yield {
-        values: readChannels(channels, this.streamChannelsAsIs),
+        values: readChannels(
+          channels,
+          this.streamChannelsAsIs as string | string[]
+        ),
         next: nextTasks.map((task) => task.name),
         tasks: tasksWithWrites(nextTasks, saved.pendingWrites ?? []),
         metadata: saved.metadata,
@@ -451,7 +481,12 @@ export class Pregel<
       );
     }
     // update channels
-    const channels = emptyChannels(this.channels, checkpoint);
+    const channels = emptyChannels(
+      this.channels as Record<string, BaseChannel>,
+      checkpoint
+    );
+    const { managed } = await this.prepareSpecs(config);
+
     // run all writers of the chosen node
     const writers = this.nodes[asNode].getWriters();
     if (!writers.length) {
@@ -478,13 +513,20 @@ export class Pregel<
         configurable: {
           [CONFIG_KEY_SEND]: (items: [keyof Cc, unknown][]) =>
             task.writes.push(...items),
-          [CONFIG_KEY_READ]: _localRead.bind(
-            undefined,
-            checkpoint,
-            channels,
-            // TODO: Why does keyof StrRecord allow number and symbol?
-            task as PregelExecutableTask<string, string>
-          ),
+          [CONFIG_KEY_READ]: (
+            select_: Array<keyof Cc> | keyof Cc,
+            fresh_: boolean = false
+          ) =>
+            _localRead(
+              step,
+              checkpoint,
+              channels,
+              managed,
+              // TODO: Why does keyof StrRecord allow number and symbol?
+              task as PregelExecutableTask<string, string>,
+              select_ as string | string[],
+              fresh_
+            ),
         },
       })
     );
@@ -620,6 +662,46 @@ export class Pregel<
     return super.stream(input, options);
   }
 
+  protected async prepareSpecs(config: RunnableConfig) {
+    const configForManaged = patchConfigurable(config, {
+      [CONFIG_KEY_STORE]: this.store,
+    });
+    const channelSpecs: Record<string, BaseChannel> = {};
+    const managedSpecs: Record<string, ManagedValueSpec> = {};
+
+    for (const [name, spec] of Object.entries(this.channels)) {
+      if (isBaseChannel(spec)) {
+        channelSpecs[name] = spec;
+      } else if (
+        this.skipContext &&
+        isConfiguredManagedValue(spec) &&
+        isContextManagedValue(spec.cls)
+      ) {
+        managedSpecs[name] = Context.of(noopContext);
+      } else {
+        managedSpecs[name] = spec;
+      }
+    }
+    const managed: ManagedValueMapping = new ManagedValueMapping(
+      Object.fromEntries(
+        await Promise.all(
+          Object.entries(managedSpecs).map(async ([key, value]) => {
+            if (isConfiguredManagedValue(value)) {
+              return [key, await value.cls.initialize(configForManaged)];
+            } else {
+              return [key, await value.initialize(configForManaged)];
+            }
+          })
+        )
+      )
+    );
+
+    return {
+      channelSpecs,
+      managed,
+    };
+  }
+
   override async *_streamIterator(
     input: PregelInputType,
     options?: Partial<PregelOptions<Nn, Cc>>
@@ -661,6 +743,9 @@ export class Pregel<
       interruptAfter,
       checkpointer,
     ] = this._defaults(inputConfig);
+
+    const { channelSpecs, managed } = await this.prepareSpecs(config);
+
     let loop;
     try {
       loop = await PregelLoop.initialize({
@@ -668,7 +753,8 @@ export class Pregel<
         config,
         checkpointer,
         nodes: this.nodes,
-        channelSpecs: this.channels,
+        channelSpecs,
+        managed,
         outputKeys,
         streamKeys: this.streamChannelsAsIs as string | string[],
         store: this.store,
@@ -785,7 +871,10 @@ export class Pregel<
       await runManager?.handleChainError(e);
       throw e;
     } finally {
-      await Promise.all(loop?.checkpointerPromises ?? []);
+      await Promise.all([
+        loop?.checkpointerPromises ?? [],
+        Object.values(managed).map((mv) => mv.promises()),
+      ]);
     }
   }
 

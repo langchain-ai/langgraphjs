@@ -18,18 +18,13 @@ export abstract class ManagedValue<Value = any> {
     this.config = config;
   }
 
-  static async initialize<Value>(
-    this: new (
-      config: RunnableConfig,
-      params?: ManagedValueParams
-    ) => ManagedValue<Value>,
-    config: RunnableConfig,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static async initialize<Value = any>(
+    _config: RunnableConfig,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ...args: any[]
+    _args?: any
   ): Promise<ManagedValue<Value>> {
-    return new this(config, {
-      ...args,
-    });
+    throw new Error("Not implemented");
   }
 
   tick(): Promise<boolean> {
@@ -175,8 +170,15 @@ export function isManagedValue(value: unknown): value is typeof ManagedValue {
   return false;
 }
 
-export function isConfiguredManagedValue(value: unknown): value is ConfiguredManagedValue {
-  if (typeof value === "object" && value && "cls" in value && "params" in value) {
+export function isConfiguredManagedValue(
+  value: unknown
+): value is ConfiguredManagedValue {
+  if (
+    typeof value === "object" &&
+    value &&
+    "cls" in value &&
+    "params" in value
+  ) {
     return true;
   }
   return false;

@@ -2,6 +2,7 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import { BaseStore, type Values } from "../store/base.js";
 import {
   ConfiguredManagedValue,
+  ManagedValue,
   ManagedValueParams,
   WritableManagedValue,
 } from "./base.js";
@@ -42,6 +43,16 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static async initialize<Value = any>(
+    config: RunnableConfig,
+    args: SharedValueParams
+  ): Promise<ManagedValue<Value>> {
+    return Promise.resolve(
+      new this(config, args) as unknown as ManagedValue<Value>
+    );
+  }
+
   static on(scope: string): ConfiguredManagedValue<Value> {
     return {
       cls: SharedValue,
@@ -56,7 +67,9 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
     return { ...this.value };
   }
 
-  private processUpdate(values: Update[]): Array<[string, string, Values | null]> {
+  private processUpdate(
+    values: Update[]
+  ): Array<[string, string, Values | null]> {
     const writes: Array<[string, string, Values | null]> = [];
 
     for (const vv of values) {

@@ -40,6 +40,7 @@ import {
 import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { _getIdMetadata, getNullChannelVersion } from "./utils.js";
+import { ManagedValueMapping } from "../managed/base.js";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -89,30 +90,69 @@ export function shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
   return anyChannelUpdated && anyTriggeredNodeInInterruptNodes;
 }
 
-export function _localRead<Cc extends StrRecord<string, BaseChannel>>(
+export function _localRead<Cc extends Record<string, BaseChannel>>(
+  step: number,
   checkpoint: ReadonlyCheckpoint,
   channels: Cc,
+  managed: ManagedValueMapping,
   task: WritesProtocol<keyof Cc>,
   select: Array<keyof Cc> | keyof Cc,
   fresh: boolean = false
 ): Record<string, unknown> | unknown {
-  if (fresh) {
-    const newCheckpoint = createCheckpoint(checkpoint, channels, -1);
-    // create a new copy of channels
-    const newChannels = emptyChannels(channels, newCheckpoint);
-    // Note: _applyWrites contains side effects
-    _applyWrites(copyCheckpoint(newCheckpoint), newChannels, [task]);
-    return readChannels(newChannels, select);
+  let managedKeys: Array<keyof Cc> = [];
+  let updated = new Set<keyof Cc>();
+
+  if (!Array.isArray(select)) {
+    for (const [c] of task.writes) {
+      if (c === select) {
+        updated = new Set([c]);
+        break;
+      }
+    }
+    updated = updated || new Set();
   } else {
-    return readChannels(channels, select);
+    managedKeys = select.filter((k) => k in managed) as Array<keyof Cc>;
+    select = select.filter((k) => !(k in managed)) as Array<keyof Cc>;
+    updated = new Set(
+      select.filter((c) => task.writes.some(([key, _]) => key === c))
+    );
   }
+
+  let values: Record<string, unknown>;
+
+  if (fresh && updated.size > 0) {
+    const localChannels = Object.fromEntries(
+      Object.entries(channels).filter(([k, _]) => updated.has(k as keyof Cc))
+    ) as Partial<Cc>;
+
+    const newCheckpoint = createCheckpoint(checkpoint, localChannels as Cc, -1);
+    const newChannels = emptyChannels(localChannels as Cc, newCheckpoint);
+
+    _applyWrites(copyCheckpoint(newCheckpoint), newChannels, [task]);
+    values = readChannels({ ...channels, ...newChannels }, select);
+  } else {
+    values = readChannels(channels, select);
+  }
+
+  if (managedKeys.length > 0) {
+    for (const k of managedKeys) {
+      const managedValue = managed.get(k as string);
+      if (managedValue) {
+        values[k as string] = managedValue.call(step);
+      }
+    }
+  }
+
+  return values;
 }
 
 export function _localWrite(
+  step: number,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  commit: (writes: [string, any][]) => void,
+  commit: (writes: [string, any][]) => any,
   processes: Record<string, PregelNode>,
   channels: Record<string, BaseChannel>,
+  managed: ManagedValueMapping,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   writes: [string, any][]
 ) {
@@ -130,6 +170,8 @@ export function _localWrite(
           `Invalid node name ${value.node} in packet`
         );
       }
+      // replace any runtime values with placeholders
+      managed.replaceRuntimeValues(step, value.args);
     } else if (!(chan in channels)) {
       console.warn(`Skipping write for channel '${chan}' which has no readers`);
     }
@@ -143,7 +185,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   tasks: WritesProtocol<keyof Cc>[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getNextVersion?: (version: any, channel: BaseChannel) => any
-): void {
+): Record<string, PendingWriteValue[]> {
   // Update seen versions
   for (const task of tasks) {
     if (checkpoint.versions_seen[task.name] === undefined) {
@@ -193,6 +235,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
     keyof Cc,
     PendingWriteValue[]
   >;
+  const pendingWritesByManaged = {} as Record<keyof Cc, PendingWriteValue[]>;
   for (const task of tasks) {
     for (const [chan, val] of task.writes) {
       if (chan === TASKS) {
@@ -200,11 +243,17 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
           node: (val as Send).node,
           args: (val as Send).args,
         });
-      } else {
+      } else if (chan in channels) {
         if (chan in pendingWriteValuesByChannel) {
           pendingWriteValuesByChannel[chan].push(val);
         } else {
           pendingWriteValuesByChannel[chan] = [val];
+        }
+      } else {
+        if (chan in pendingWritesByManaged) {
+          pendingWritesByManaged[chan].push(val);
+        } else {
+          pendingWritesByManaged[chan] = [val];
         }
       }
     }
@@ -259,6 +308,9 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       }
     }
   }
+
+  // Return managed values writes to be applied externally
+  return pendingWritesByManaged;
 }
 
 export type NextTaskExtraFields = {
@@ -275,6 +327,7 @@ export function _prepareNextTasks<
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
+  managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: false,
   extra: NextTaskExtraFields
@@ -287,6 +340,7 @@ export function _prepareNextTasks<
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
+  managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: true,
   extra: NextTaskExtraFields
@@ -299,6 +353,7 @@ export function _prepareNextTasks<
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
+  managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: boolean,
   extra: NextTaskExtraFields
@@ -342,6 +397,7 @@ export function _prepareNextTasks<
       const node = proc.getNode();
       if (node !== undefined) {
         const writes: [keyof Cc, unknown][] = [];
+        managed.replaceRuntimePlaceholders(step, packet.args);
         tasks.push({
           name: packet.node,
           input: packet.args,
@@ -356,22 +412,33 @@ export function _prepareNextTasks<
               runName: packet.node,
               callbacks: manager?.getChild(`graph:step:${step}`),
               configurable: {
-                [CONFIG_KEY_SEND]: _localWrite.bind(
-                  undefined,
-                  (items: [keyof Cc, unknown][]) => writes.push(...items),
-                  processes,
-                  channels
-                ),
-                [CONFIG_KEY_READ]: _localRead.bind(
-                  undefined,
-                  checkpoint,
-                  channels,
-                  {
-                    name: packet.node,
-                    writes: writes as Array<[string, unknown]>,
-                    triggers,
-                  }
-                ),
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                [CONFIG_KEY_SEND]: (writes_: [string, any][]) =>
+                  _localWrite(
+                    step,
+                    (items: [keyof Cc, unknown][]) => writes.push(...items),
+                    processes,
+                    channels,
+                    managed,
+                    writes_
+                  ),
+                [CONFIG_KEY_READ]: (
+                  select_: Array<keyof Cc> | keyof Cc,
+                  fresh_: boolean = false
+                ) =>
+                  _localRead(
+                    step,
+                    checkpoint,
+                    channels,
+                    managed,
+                    {
+                      name: packet.node,
+                      writes: writes as Array<[string, unknown]>,
+                      triggers,
+                    },
+                    select_,
+                    fresh_
+                  ),
               },
             }
           ),
@@ -408,7 +475,7 @@ export function _prepareNextTasks<
       .sort();
     // If any of the channels read by this process were updated
     if (triggers.length > 0) {
-      const val = _procInput(proc, channels, forExecution);
+      const val = _procInput(step, proc, managed, channels, forExecution);
       if (val === undefined) {
         continue;
       }
@@ -448,22 +515,33 @@ export function _prepareNextTasks<
                 runName: name,
                 callbacks: manager?.getChild(`graph:step:${step}`),
                 configurable: {
-                  [CONFIG_KEY_SEND]: _localWrite.bind(
-                    undefined,
-                    (items: [keyof Cc, unknown][]) => writes.push(...items),
-                    processes,
-                    channels
-                  ),
-                  [CONFIG_KEY_READ]: _localRead.bind(
-                    undefined,
-                    checkpoint,
-                    channels,
-                    {
-                      name,
-                      writes: writes as Array<[string, unknown]>,
-                      triggers,
-                    }
-                  ),
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  [CONFIG_KEY_SEND]: (writes_: [string, any][]) =>
+                    _localWrite(
+                      step,
+                      (items: [keyof Cc, unknown][]) => writes.push(...items),
+                      processes,
+                      channels,
+                      managed,
+                      writes_
+                    ),
+                  [CONFIG_KEY_READ]: (
+                    select_: Array<keyof Cc> | keyof Cc,
+                    fresh_: boolean = false
+                  ) =>
+                    _localRead(
+                      step,
+                      checkpoint,
+                      channels,
+                      managed,
+                      {
+                        name,
+                        writes: writes as Array<[string, unknown]>,
+                        triggers,
+                      },
+                      select_,
+                      fresh_
+                    ),
                   [CONFIG_KEY_CHECKPOINTER]: checkpointer,
                   [CONFIG_KEY_RESUMING]: isResuming,
                   checkpoint_id: checkpoint.id,
@@ -484,15 +562,45 @@ export function _prepareNextTasks<
 }
 
 function _procInput(
+  step: number,
   proc: PregelNode,
+  managed: ManagedValueMapping,
   channels: StrRecord<string, BaseChannel>,
   forExecution: boolean
 ) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let val: any;
-  // If all trigger channels subscribed by this process are not empty
-  // then invoke the process with the values of all non-empty channels
-  if (Array.isArray(proc.channels)) {
+
+  if (typeof proc.channels === "object" && !Array.isArray(proc.channels)) {
+    val = {};
+    for (const [k, chan] of Object.entries(proc.channels)) {
+      if (proc.triggers.includes(chan)) {
+        try {
+          val[k] = readChannel(channels, chan, false);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } catch (e: any) {
+          if (e.name === EmptyChannelError.unminifiable_name) {
+            return undefined;
+          } else {
+            throw e;
+          }
+        }
+      } else if (chan in channels) {
+        try {
+          val[k] = readChannel(channels, chan, false);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } catch (e: any) {
+          if (e.name === EmptyChannelError.unminifiable_name) {
+            continue;
+          } else {
+            throw e;
+          }
+        }
+      } else {
+        val[k] = managed.get(k)?.call(step);
+      }
+    }
+  } else if (Array.isArray(proc.channels)) {
     let successfulRead = false;
     for (const chan of proc.channels) {
       try {
@@ -509,21 +617,7 @@ function _procInput(
       }
     }
     if (!successfulRead) {
-      return;
-    }
-  } else if (typeof proc.channels === "object") {
-    val = {};
-    for (const [k, chan] of Object.entries(proc.channels)) {
-      try {
-        val[k] = readChannel(channels, chan, !proc.triggers.includes(chan));
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (e: any) {
-        if (e.name === EmptyChannelError.unminifiable_name) {
-          continue;
-        } else {
-          throw e;
-        }
-      }
+      return undefined;
     }
   } else {
     throw new Error(

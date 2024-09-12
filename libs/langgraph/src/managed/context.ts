@@ -53,6 +53,8 @@ export class Context<Value> extends ManagedValue<Value> {
 
   ctx?: () => AsyncGenerator<Value, void, unknown>;
 
+  readonly isContextManagedValue: true = true as const;
+
   constructor(config: RunnableConfig, params: ContextParams<Value>) {
     super(config, params);
     this.ctx = params.ctx;
@@ -112,4 +114,20 @@ export class Context<Value> extends ManagedValue<Value> {
       );
     }
   }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function isContextManagedValue(value: unknown): value is Context<any> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (value as Context<any>).isContextManagedValue === true
+  );
+}
+
+export function noopContext(): AsyncGenerator<undefined, void, unknown> {
+  return (async function* () {
+    yield;
+  })();
 }
