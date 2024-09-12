@@ -306,7 +306,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // Channels that weren't updated in this step are notified of a new step
   for (const chan of Object.keys(filteredChannels)) {
     if (!updatedChannels.has(chan)) {
-      const updated = channels[chan].update([]);
+      const updated = filteredChannels[chan].update([]);
       if (updated && getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(
           maxVersion,

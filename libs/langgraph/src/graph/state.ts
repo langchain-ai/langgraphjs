@@ -359,17 +359,9 @@ export class StateGraph<
     ]);
 
     // prepare output channels
-    // const outputKeys = Object.keys(
-    //   this._schemaDefinitions.get(this._outputDefinition)
-    // ).filter(key => {
-    //   // remove any keys which are managed values
-    //   const schemaDef = this._schemaDefinitions.get(this._outputDefinition);
-    //   return !isConfiguredManagedValue(schemaDef[key]);
-    // });
     const outputKeys = Object.keys(
       this._schemaDefinitions.get(this._outputDefinition)
     );
-
     const outputChannels =
       outputKeys.length === 1 && outputKeys[0] === ROOT ? ROOT : outputKeys;
 
@@ -428,10 +420,9 @@ function _getChannels<Channels extends Record<string, unknown> | unknown>(
       channels[name] = getChannel<Channels>(val as SingleReducer<Channels>);
     } else {
       const key = name as keyof Channels;
-      const cha = getChannel<Channels[typeof key]>(
+      channels[name] = getChannel<Channels[typeof key]>(
         val as SingleReducer<Channels[typeof key]>
       );
-      channels[name] = cha;
     }
   }
   return channels;

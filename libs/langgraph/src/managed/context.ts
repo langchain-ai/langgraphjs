@@ -10,42 +10,6 @@ interface ContextParams<Value> extends ManagedValueParams {
   ctx?: () => AsyncGenerator<Value, void, unknown>;
 }
 
-/**
- * Example implementation:
- * ```typescript
- * async function useContext() {
- *   // Define a context generator function
- *   async function* contextGenerator(): AsyncGenerator<string, void, unknown> {
- *     console.log("Context setup");
- *     yield "Initial value";
- *     console.log("Context cleanup");
- *   }
- *
- *   // Initialize the Context
- *   const context = await Context.initialize(
- *     {}, // RunnableConfig (empty in this example)
- *     { ctx: contextGenerator }
- *   );
- *
- *   try {
- *     let shouldContinue = true;
- *     while (shouldContinue) {
- *       // Use the context value
- *       console.log("Current value:", context.call(0));
- *
- *       // Perform your loop logic here
- *       // ...
- *
- *       // Call tick to see if we should continue
- *       shouldContinue = await context.tick();
- *     }
- *   } finally {
- *     // Cleanup
- *     await context.promises();
- *   }
- * }
- * ```
- */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class Context<Value = any> extends ManagedValue<Value> {
   runtime = true;
@@ -68,7 +32,7 @@ export class Context<Value = any> extends ManagedValue<Value> {
     const instance = new Context<Value>(config, params);
     if (!instance.ctx) {
       throw new Error(
-        "Synchronous context manager not found. Please initialize Context value with a sync context manager, or invoke your graph asynchronously."
+        "Context manager not found. Please initialize Context value with a context manager."
       );
     }
     const ctxGenerator = instance.ctx();

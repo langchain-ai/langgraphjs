@@ -146,7 +146,7 @@ export class PregelLoop {
 
   protected _checkpointerChainedPromise: Promise<unknown> = Promise.resolve();
 
-  protected store?: BaseStore;
+  store?: BaseStore;
 
   constructor(params: PregelLoopParams) {
     this.input = params.input;
