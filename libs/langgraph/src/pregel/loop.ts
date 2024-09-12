@@ -179,6 +179,7 @@ export class PregelLoop {
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
+    console.log("params", params);
     const saved: CheckpointTuple = (await params.checkpointer?.getTuple(
       params.config
     )) ?? {

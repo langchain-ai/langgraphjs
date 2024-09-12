@@ -417,12 +417,16 @@ function _getChannels<Channels extends Record<string, unknown> | unknown>(
   const channels: Record<string, BaseChannel> = {};
   for (const [name, val] of Object.entries(schema)) {
     if (name === ROOT) {
+      console.log("root");
       channels[name] = getChannel<Channels>(val as SingleReducer<Channels>);
     } else {
+      console.log("not root");
       const key = name as keyof Channels;
-      channels[name] = getChannel<Channels[typeof key]>(
+      const cha = getChannel<Channels[typeof key]>(
         val as SingleReducer<Channels[typeof key]>
       );
+      console.log("cha", cha);
+      channels[name] = cha;
     }
   }
   return channels;

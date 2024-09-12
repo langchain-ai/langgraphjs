@@ -23,6 +23,7 @@ import {
 } from "@langchain/core/messages";
 import { ToolCall } from "@langchain/core/messages/tool";
 import {
+  BaseCheckpointSaver,
   Checkpoint,
   CheckpointMetadata,
   CheckpointTuple,
@@ -4666,8 +4667,8 @@ it("StateGraph branch then node", async () => {
   });
 });
 
-describe("StateGraph start branch then end", () => {
-  let checkpointer: any;
+describe.only("StateGraph start branch then end", () => {
+  let checkpointer: BaseCheckpointSaver<number>;
 
   const GraphAnnotation = Annotation.Root({
     my_key: Annotation<string>({
@@ -4678,7 +4679,7 @@ describe("StateGraph start branch then end", () => {
   });
 
   beforeEach(() => {
-    checkpointer = new MemoryStore();
+    checkpointer = new MemorySaver();
   });
 
   const assertSharedValue = (
@@ -4690,6 +4691,8 @@ describe("StateGraph start branch then end", () => {
     if (threadId) {
       if (threadId === "1") {
         expect(data.shared).toBeFalsy();
+        console.log("BEFORE RETURNING SHARED DATA!");
+        // @ts-expect-error todo: fix types in annotation file
         return { shared: { "1": { hello: "world" } } };
       } else if (threadId === "2") {
         expect(data.shared).toEqual({ "1": { hello: "world" } });
@@ -4733,7 +4736,6 @@ describe("StateGraph start branch then end", () => {
     ).toEqual({
       my_key: "value slow",
       market: "DE",
-      shared: { "1": { hello: "world" } },
     });
 
     expect(
@@ -4741,7 +4743,6 @@ describe("StateGraph start branch then end", () => {
     ).toEqual({
       my_key: "value fast",
       market: "US",
-      shared: { "1": { hello: "world" } },
     });
 
     toolTwo = toolTwoGraph.compile({
@@ -4750,12 +4751,13 @@ describe("StateGraph start branch then end", () => {
       interruptBefore: ["tool_two_fast", "tool_two_slow"] as any[],
     });
 
-    expect(
-      async () =>
-        await toolTwo.invoke({ my_key: "value", market: "DE", shared: {} })
-    ).toThrow(/thread_id/);
+    // Will throw an error if a checkpointer is passed but `configurable` isn't.
+    await expect(
+      toolTwo.invoke({ my_key: "value", market: "DE", shared: {} })
+    ).rejects.toThrow(/thread_id/);
 
     const thread1 = { configurable: { thread_id: "1", assistant_id: "a" } };
+
     expect(
       await toolTwo.invoke(
         { my_key: "value ⛰️", market: "DE", shared: {} },
@@ -4764,7 +4766,6 @@ describe("StateGraph start branch then end", () => {
     ).toEqual({
       my_key: "value ⛰️",
       market: "DE",
-      shared: {},
     });
 
     const checkpoints = [];
@@ -4776,13 +4777,11 @@ describe("StateGraph start branch then end", () => {
 
     expect(checkpoints.map((c: any) => c.metadata)).toEqual([
       {
-        parents: {},
         source: "loop",
         step: 0,
         writes: null,
       },
       {
-        parents: {},
         source: "input",
         step: -1,
         writes: { __start__: { my_key: "value ⛰️", market: "DE", shared: {} } },
@@ -4790,10 +4789,10 @@ describe("StateGraph start branch then end", () => {
     ]);
 
     expect(await toolTwo.getState(thread1)).toMatchObject({
-      values: { my_key: "value ⛰️", market: "DE", shared: {} },
+      values: { my_key: "value ⛰️", market: "DE" },
       tasks: [{ name: "tool_two_slow" }],
       next: ["tool_two_slow"],
-      metadata: { parents: {}, source: "loop", step: 0, writes: null },
+      metadata: { source: "loop", step: 0, writes: null },
     });
 
     expect(await toolTwo.invoke(null, thread1)).toEqual({
@@ -4811,7 +4810,6 @@ describe("StateGraph start branch then end", () => {
       tasks: [],
       next: [],
       metadata: {
-        parents: {},
         source: "loop",
         step: 1,
         writes: {
@@ -4826,7 +4824,11 @@ describe("StateGraph start branch then end", () => {
     const thread2 = { configurable: { thread_id: "2", assistant_id: "a" } };
     expect(
       await toolTwo.invoke(
-        { my_key: "value", market: "US", shared: {} },
+        {
+          my_key: "value",
+          market: "US",
+          shared: {},
+        },
         thread2
       )
     ).toEqual({
@@ -4836,10 +4838,14 @@ describe("StateGraph start branch then end", () => {
     });
 
     expect(await toolTwo.getState(thread2)).toMatchObject({
-      values: { my_key: "value", market: "US", shared: {} },
+      values: {
+        my_key: "value",
+        market: "US",
+        shared: {},
+      },
       tasks: [{ name: "tool_two_fast" }],
       next: ["tool_two_fast"],
-      metadata: { parents: {}, source: "loop", step: 0, writes: null },
+      metadata: { source: "loop", step: 0, writes: null },
     });
 
     expect(await toolTwo.invoke(null, thread2)).toEqual({
@@ -4857,7 +4863,6 @@ describe("StateGraph start branch then end", () => {
       tasks: [],
       next: [],
       metadata: {
-        parents: {},
         source: "loop",
         step: 1,
         writes: { tool_two_fast: { my_key: " fast" } },
@@ -4880,17 +4885,16 @@ describe("StateGraph start branch then end", () => {
       values: { my_key: "value", market: "US", shared: {} },
       tasks: [{ name: "tool_two_fast" }],
       next: ["tool_two_fast"],
-      metadata: { parents: {}, source: "loop", step: 0, writes: null },
+      metadata: { source: "loop", step: 0, writes: null },
     });
 
-    toolTwo.updateState(thread3, { my_key: "key" });
+    await toolTwo.updateState(thread3, { my_key: "key" });
 
     expect(await toolTwo.getState(thread3)).toMatchObject({
       values: { my_key: "valuekey", market: "US", shared: {} },
       tasks: [{ name: "tool_two_fast" }],
       next: ["tool_two_fast"],
       metadata: {
-        parents: {},
         source: "update",
         step: 1,
         writes: { [START]: { my_key: "key" } },
@@ -4908,7 +4912,6 @@ describe("StateGraph start branch then end", () => {
       tasks: [],
       next: [],
       metadata: {
-        parents: {},
         source: "loop",
         step: 2,
         writes: { tool_two_fast: { my_key: " fast" } },

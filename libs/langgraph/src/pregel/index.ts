@@ -687,7 +687,10 @@ export class Pregel<
         await Promise.all(
           Object.entries(managedSpecs).map(async ([key, value]) => {
             if (isConfiguredManagedValue(value)) {
-              return [key, await value.cls.initialize(configForManaged)];
+              return [
+                key,
+                await value.cls.initialize(configForManaged, value.params),
+              ];
             } else {
               return [key, await value.initialize(configForManaged)];
             }
