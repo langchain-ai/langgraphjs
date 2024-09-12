@@ -4691,7 +4691,6 @@ describe("StateGraph start branch then end", () => {
     if (threadId) {
       if (threadId === "1") {
         expect(data.shared).toEqual({});
-        // @ts-expect-error todo: fix types in annotation file
         return { shared: { "1": { hello: "world" } } };
       } else if (threadId === "2") {
         expect(data.shared).toEqual({ "1": { hello: "world" } });

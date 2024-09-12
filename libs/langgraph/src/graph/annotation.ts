@@ -30,12 +30,16 @@ type ExtractValueType<C> = C extends BaseChannel
   ? C["ValueType"]
   : C extends () => BaseChannel
   ? ReturnType<C>["ValueType"]
+  : C extends ConfiguredManagedValue<infer V>
+  ? V
   : never;
 
 type ExtractUpdateType<C> = C extends BaseChannel
   ? C["UpdateType"]
   : C extends () => BaseChannel
   ? ReturnType<C>["UpdateType"]
+  : C extends ConfiguredManagedValue<infer V>
+  ? V
   : never;
 
 export type StateType<SD extends StateDefinition> = {
@@ -48,7 +52,7 @@ export type UpdateType<SD extends StateDefinition> = {
 
 export type NodeType<SD extends StateDefinition> = RunnableLike<
   StateType<SD>,
-  UpdateType<SD>
+  UpdateType<SD> | Partial<StateType<SD>>
 >;
 
 /** @ignore */
