@@ -23,7 +23,7 @@ export type SingleReducer<ValueType, UpdateType = ValueType> =
   | null;
 
 export interface StateDefinition {
-  [key: string]: BaseChannel | (() => BaseChannel);
+  [key: string]: BaseChannel | (() => BaseChannel) | ConfiguredManagedValue;
 }
 
 type ExtractValueType<C> = C extends BaseChannel

@@ -3,7 +3,7 @@
 /* eslint-disable no-instanceof/no-instanceof */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable import/no-extraneous-dependencies */
-import { it, expect, jest, describe } from "@jest/globals";
+import { it, expect, jest, describe, beforeEach } from "@jest/globals";
 import {
   RunnableConfig,
   RunnableLambda,
@@ -71,6 +71,8 @@ import {
 } from "../errors.js";
 import { ERROR, INTERRUPT, Send, TASKS } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
+import { SharedValue } from "../managed/shared_value.js";
+import { MemoryStore } from "../store/memory.js";
 
 describe("Channel", () => {
   describe("writeTo", () => {
@@ -4661,5 +4663,256 @@ it("StateGraph branch then node", async () => {
   expect(await tool.invoke({ my_key: "value", market: "FR" })).toEqual({
     my_key: "value prepared fast finished",
     market: "FR",
+  });
+});
+
+describe("StateGraph start branch then end", () => {
+  let checkpointer: any;
+
+  const GraphAnnotation = Annotation.Root({
+    my_key: Annotation<string>({
+      reducer: (a: string, b: string) => a + b,
+    }),
+    market: Annotation<string>(),
+    shared: SharedValue.on("assistant_id"),
+  });
+
+  beforeEach(() => {
+    checkpointer = new MemoryStore();
+  });
+
+  const assertSharedValue = (
+    data: typeof GraphAnnotation.State,
+    config: RunnableConfig
+  ): Partial<typeof GraphAnnotation.State> => {
+    expect(data).toHaveProperty("shared");
+    const threadId = config.configurable?.thread_id;
+    if (threadId) {
+      if (threadId === "1") {
+        expect(data.shared).toBeFalsy();
+        return { shared: { "1": { hello: "world" } } };
+      } else if (threadId === "2") {
+        expect(data.shared).toEqual({ "1": { hello: "world" } });
+      } else if (threadId === "3") {
+        expect(data.shared).toBeFalsy();
+      }
+    }
+    return {};
+  };
+
+  const toolTwoSlow = (
+    data: typeof GraphAnnotation.State,
+    config: any
+  ): Partial<typeof GraphAnnotation.State> => {
+    return { my_key: " slow", ...assertSharedValue(data, config) };
+  };
+
+  const toolTwoFast = (
+    data: typeof GraphAnnotation.State,
+    config: any
+  ): Partial<typeof GraphAnnotation.State> => {
+    return { my_key: " fast", ...assertSharedValue(data, config) };
+  };
+
+  it("should handle start branch then end", async () => {
+    const toolTwoGraph = new StateGraph(GraphAnnotation);
+
+    toolTwoGraph
+      .addNode("tool_two_slow", toolTwoSlow)
+      .addNode("tool_two_fast", toolTwoFast)
+      .addConditionalEdges(START, (s) =>
+        s.market === "DE" ? "tool_two_slow" : "tool_two_fast"
+      )
+      .addEdge("tool_two_slow", END)
+      .addEdge("tool_two_fast", END);
+
+    let toolTwo = toolTwoGraph.compile();
+
+    expect(
+      await toolTwo.invoke({ my_key: "value", market: "DE", shared: {} })
+    ).toEqual({
+      my_key: "value slow",
+      market: "DE",
+      shared: { "1": { hello: "world" } },
+    });
+
+    expect(
+      await toolTwo.invoke({ my_key: "value", market: "US", shared: {} })
+    ).toEqual({
+      my_key: "value fast",
+      market: "US",
+      shared: { "1": { hello: "world" } },
+    });
+
+    toolTwo = toolTwoGraph.compile({
+      store: new MemoryStore(),
+      checkpointer,
+      interruptBefore: ["tool_two_fast", "tool_two_slow"] as any[],
+    });
+
+    expect(
+      async () =>
+        await toolTwo.invoke({ my_key: "value", market: "DE", shared: {} })
+    ).toThrow(/thread_id/);
+
+    const thread1 = { configurable: { thread_id: "1", assistant_id: "a" } };
+    expect(
+      await toolTwo.invoke(
+        { my_key: "value ⛰️", market: "DE", shared: {} },
+        thread1
+      )
+    ).toEqual({
+      my_key: "value ⛰️",
+      market: "DE",
+      shared: {},
+    });
+
+    const checkpoints = [];
+    if (toolTwo.checkpointer) {
+      for await (const checkpoint of toolTwo.checkpointer.list(thread1)) {
+        checkpoints.push(checkpoint);
+      }
+    }
+
+    expect(checkpoints.map((c: any) => c.metadata)).toEqual([
+      {
+        parents: {},
+        source: "loop",
+        step: 0,
+        writes: null,
+      },
+      {
+        parents: {},
+        source: "input",
+        step: -1,
+        writes: { __start__: { my_key: "value ⛰️", market: "DE", shared: {} } },
+      },
+    ]);
+
+    expect(await toolTwo.getState(thread1)).toMatchObject({
+      values: { my_key: "value ⛰️", market: "DE", shared: {} },
+      tasks: [{ name: "tool_two_slow" }],
+      next: ["tool_two_slow"],
+      metadata: { parents: {}, source: "loop", step: 0, writes: null },
+    });
+
+    expect(await toolTwo.invoke(null, thread1)).toEqual({
+      my_key: "value ⛰️ slow",
+      market: "DE",
+      shared: { "1": { hello: "world" } },
+    });
+
+    expect(await toolTwo.getState(thread1)).toMatchObject({
+      values: {
+        my_key: "value ⛰️ slow",
+        market: "DE",
+        shared: { "1": { hello: "world" } },
+      },
+      tasks: [],
+      next: [],
+      metadata: {
+        parents: {},
+        source: "loop",
+        step: 1,
+        writes: {
+          tool_two_slow: {
+            my_key: " slow",
+            shared: { "1": { hello: "world" } },
+          },
+        },
+      },
+    });
+
+    const thread2 = { configurable: { thread_id: "2", assistant_id: "a" } };
+    expect(
+      await toolTwo.invoke(
+        { my_key: "value", market: "US", shared: {} },
+        thread2
+      )
+    ).toEqual({
+      my_key: "value",
+      market: "US",
+      shared: {},
+    });
+
+    expect(await toolTwo.getState(thread2)).toMatchObject({
+      values: { my_key: "value", market: "US", shared: {} },
+      tasks: [{ name: "tool_two_fast" }],
+      next: ["tool_two_fast"],
+      metadata: { parents: {}, source: "loop", step: 0, writes: null },
+    });
+
+    expect(await toolTwo.invoke(null, thread2)).toEqual({
+      my_key: "value fast",
+      market: "US",
+      shared: { "1": { hello: "world" } },
+    });
+
+    expect(await toolTwo.getState(thread2)).toMatchObject({
+      values: {
+        my_key: "value fast",
+        market: "US",
+        shared: { "1": { hello: "world" } },
+      },
+      tasks: [],
+      next: [],
+      metadata: {
+        parents: {},
+        source: "loop",
+        step: 1,
+        writes: { tool_two_fast: { my_key: " fast" } },
+      },
+    });
+
+    const thread3 = { configurable: { thread_id: "3", assistant_id: "b" } };
+    expect(
+      await toolTwo.invoke(
+        { my_key: "value", market: "US", shared: {} },
+        thread3
+      )
+    ).toEqual({
+      my_key: "value",
+      market: "US",
+      shared: {},
+    });
+
+    expect(await toolTwo.getState(thread3)).toMatchObject({
+      values: { my_key: "value", market: "US", shared: {} },
+      tasks: [{ name: "tool_two_fast" }],
+      next: ["tool_two_fast"],
+      metadata: { parents: {}, source: "loop", step: 0, writes: null },
+    });
+
+    toolTwo.updateState(thread3, { my_key: "key" });
+
+    expect(await toolTwo.getState(thread3)).toMatchObject({
+      values: { my_key: "valuekey", market: "US", shared: {} },
+      tasks: [{ name: "tool_two_fast" }],
+      next: ["tool_two_fast"],
+      metadata: {
+        parents: {},
+        source: "update",
+        step: 1,
+        writes: { [START]: { my_key: "key" } },
+      },
+    });
+
+    expect(await toolTwo.invoke(null, thread3)).toEqual({
+      my_key: "valuekey fast",
+      market: "US",
+      shared: {},
+    });
+
+    expect(await toolTwo.getState(thread3)).toMatchObject({
+      values: { my_key: "valuekey fast", market: "US", shared: {} },
+      tasks: [],
+      next: [],
+      metadata: {
+        parents: {},
+        source: "loop",
+        step: 2,
+        writes: { tool_two_fast: { my_key: " fast" } },
+      },
+    });
   });
 });

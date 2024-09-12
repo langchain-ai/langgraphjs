@@ -42,6 +42,7 @@ import {
 } from "./annotation.js";
 import type { RetryPolicy } from "../pregel/utils.js";
 import { BaseStore } from "../store/base.js";
+import { ManagedValueSpec } from "../managed/base.js";
 
 const ROOT = "__root__";
 
@@ -161,7 +162,7 @@ export class StateGraph<
   I extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition,
   O extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition
 > extends Graph<N, S, U, StateGraphNodeSpec<S, U>> {
-  channels: Record<string, BaseChannel> = {};
+  channels: Record<string, BaseChannel | ManagedValueSpec> = {};
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
   waitingEdges: Set<[N[], N]> = new Set();
@@ -247,7 +248,10 @@ export class StateGraph<
       }
       if (this.channels[key] !== undefined) {
         if (this.channels[key] !== channel) {
-          if (channel.lc_graph_name !== "LastValue") {
+          if (
+            !isBaseChannel(channel) ||
+            channel.lc_graph_name !== "LastValue"
+          ) {
             throw new Error(
               `Channel "${key}" already exists with a different type.`
             );
