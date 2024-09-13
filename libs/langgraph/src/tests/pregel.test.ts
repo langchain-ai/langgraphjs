@@ -4919,18 +4919,14 @@ describe("Channel enter exit timing", () => {
     /** TODO how to handle values returned in the `finally` block? */
     async function* anInt() {
       setup();
-      console.log("setup called");
       try {
-        console.log("yielded");
         yield 5;
       } finally {
-        console.log("finally called");
         cleanup();
       }
     }
 
     const addOne = jest.fn((x: number | number[]) => {
-      console.log("addOne called", x);
       if (Array.isArray(x)) {
         return x[0] + 1;
       }
