@@ -70,7 +70,6 @@ export class Context<Value = any> extends ManagedValue<Value> {
       if (!done) {
         throw new Error("Context manager did not successfully complete.");
       }
-      
     } else {
       throw new Error(
         "Context manager not found. Please initialize Context value with a context manager."

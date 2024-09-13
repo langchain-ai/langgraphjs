@@ -4945,6 +4945,7 @@ describe("Channel enter exit timing", () => {
       nodes: { one, two },
       channels: {
         inbox: new Topic<number>(),
+        // @TODO: py API exposes `Context` as a re-exported `Context.of` for a cleaner api. Do we want to do the same?
         ctx: Context.of(anInt),
         output: new LastValue<number>(),
         input: new LastValue<number>(),
@@ -4969,5 +4970,168 @@ describe("Channel enter exit timing", () => {
     }
 
     expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Agent with HTTP Client Context", () => {
+  let setup: jest.Mock;
+  let cleanup: jest.Mock;
+
+  beforeEach(() => {
+    setup = jest.fn();
+    cleanup = jest.fn();
+  });
+
+  const assertCtxOnce = async (fn: () => Promise<void>) => {
+    expect(setup).not.toHaveBeenCalled();
+    expect(cleanup).not.toHaveBeenCalled();
+    await fn();
+    expect(setup).toHaveBeenCalledTimes(1);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    setup.mockReset();
+    cleanup.mockReset();
+  };
+
+  const makeHttpClient = async function* () {
+    setup();
+    try {
+      yield fetch;
+    } finally {
+      cleanup();
+    }
+  };
+
+  const AgentAnnotation = Annotation.Root({
+    input: Annotation<string>(),
+    agent_outcome: Annotation<AgentAction | AgentFinish>(),
+    intermediate_steps: Annotation<[AgentAction, string][]>({
+      reducer: (a: [AgentAction, string][], b: [AgentAction, string][]) => [
+        ...a,
+        ...b,
+      ],
+      default: () => [],
+    }),
+    session: Context.of(makeHttpClient),
+  });
+
+  const ToolAnnotation = Annotation.Root({
+    agent_outcome: Annotation<AgentAction | AgentFinish>(),
+    session: Context.of(makeHttpClient),
+  });
+
+  const searchApi = tool(
+    (query: string) => {
+      return `result for ${query}`;
+    },
+    {
+      name: "search_api",
+      description: "Searches the API for the query.",
+      schema: z.string(),
+    }
+  );
+
+  it("should handle context manager correctly", async () => {
+    const tools = [searchApi];
+
+    const prompt = PromptTemplate.fromTemplate("Hello!");
+
+    const llm = new FakeStreamingLLM({
+      responses: [
+        "tool:search_api:query",
+        "tool:search_api:another",
+        "finish:answer",
+      ],
+    });
+
+    const agentParser = (
+      input: string
+    ): { agent_outcome: AgentAction | AgentFinish } => {
+      if (input.startsWith("finish")) {
+        const [, answer] = input.split(":");
+        return {
+          agent_outcome: {
+            returnValues: { answer },
+            log: input,
+          },
+        };
+      } else {
+        const [, toolName, toolInput] = input.split(":");
+        return {
+          agent_outcome: {
+            tool: toolName,
+            toolInput,
+            log: input,
+          },
+        };
+      }
+    };
+
+    const agent = prompt.pipe(llm).pipe(agentParser);
+
+    const executeTools = async (
+      data: typeof AgentAnnotation.State
+    ): Promise<{ intermediate_steps: [AgentAction, string][] }> => {
+      expect(data.session).toBeDefined(); // Mock fetch client
+      expect(data.input).toBeUndefined();
+      expect(data.intermediate_steps).toBeUndefined();
+
+      const agentAction = data.agent_outcome as AgentAction;
+      const agentTool = tools.find((t) => t.name === agentAction.tool);
+      if (!agentTool) {
+        throw new Error(`Tool not found: ${agentAction.tool}`);
+      }
+      const observation = await agentTool.invoke(agentAction.toolInput);
+      return { intermediate_steps: [[agentAction, observation]] };
+    };
+
+    const shouldContinue = (
+      data: typeof AgentAnnotation.State
+    ): "continue" | "exit" => {
+      expect(data.session).toBeDefined(); // Mock fetch client
+      return "returnValues" in data.agent_outcome ? "exit" : "continue";
+    };
+
+    const workflow = new StateGraph(AgentAnnotation)
+      .addNode("agent", agent)
+      .addNode("tools", executeTools, {
+        input: ToolAnnotation,
+      })
+      .addEdge(START, "agent")
+      .addConditionalEdges("agent", shouldContinue, {
+        continue: "tools",
+        exit: END,
+      })
+      .addEdge("tools", "agent");
+
+    const app = workflow.compile();
+
+    await assertCtxOnce(async () => {
+      const result = await app.invoke({ input: "what is the weather in sf?" });
+      expect(result).toEqual({
+        input: "what is the weather in sf?",
+        agent_outcome: {
+          returnValues: { answer: "answer" },
+          log: "finish:answer",
+        },
+        intermediate_steps: [
+          [
+            {
+              tool: "search_api",
+              toolInput: "query",
+              log: "tool:search_api:query",
+            },
+            "result for query",
+          ],
+          [
+            {
+              tool: "search_api",
+              toolInput: "another",
+              log: "tool:search_api:another",
+            },
+            "result for another",
+          ],
+        ],
+      });
+    });
   });
 });

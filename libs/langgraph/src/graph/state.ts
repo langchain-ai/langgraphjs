@@ -42,7 +42,7 @@ import {
 } from "./annotation.js";
 import type { RetryPolicy } from "../pregel/utils.js";
 import { BaseStore } from "../store/base.js";
-import { ManagedValueSpec } from "../managed/base.js";
+import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
 
 const ROOT = "__root__";
 
@@ -249,7 +249,7 @@ export class StateGraph<
       if (this.channels[key] !== undefined) {
         if (this.channels[key] !== channel) {
           if (
-            !isBaseChannel(channel) ||
+            !isConfiguredManagedValue(channel) &&
             channel.lc_graph_name !== "LastValue"
           ) {
             throw new Error(
