@@ -69,17 +69,13 @@ import { PregelLoop } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
 import { BaseStore } from "../store/base.js";
 import {
+  ChannelKeyPlaceholder,
   isConfiguredManagedValue,
   ManagedValue,
   ManagedValueMapping,
   type ManagedValueSpec,
 } from "../managed/base.js";
 import { patchConfigurable } from "../utils.js";
-import {
-  Context,
-  isContextManagedValue,
-  noopContext,
-} from "../managed/context.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -243,8 +239,6 @@ export class Pregel<
 
   store?: BaseStore;
 
-  skipContext?: boolean;
-
   constructor(fields: PregelParams<Nn, Cc>) {
     super(fields);
 
@@ -267,7 +261,6 @@ export class Pregel<
     this.checkpointer = fields.checkpointer;
     this.retryPolicy = fields.retryPolicy;
     this.store = fields.store;
-    this.skipContext = fields.skipContext;
 
     if (this.autoValidate) {
       this.validate();
@@ -673,12 +666,6 @@ export class Pregel<
     for (const [name, spec] of Object.entries(this.channels)) {
       if (isBaseChannel(spec)) {
         channelSpecs[name] = spec;
-      } else if (
-        this.skipContext &&
-        isConfiguredManagedValue(spec) &&
-        isContextManagedValue(spec.cls)
-      ) {
-        managedSpecs[name] = Context.of(noopContext);
       } else {
         managedSpecs[name] = spec;
       }
@@ -690,6 +677,12 @@ export class Pregel<
           let initializedValue;
 
           if (isConfiguredManagedValue(value)) {
+            if (
+              "key" in value.params &&
+              value.params.key === ChannelKeyPlaceholder
+            ) {
+              value.params.key = key;
+            }
             initializedValue = await value.cls.initialize(
               configForManaged,
               value.params

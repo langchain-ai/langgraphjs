@@ -75,8 +75,6 @@ export interface PregelInterface<
    * Memory store to use for SharedValues.
    */
   store?: BaseStore;
-
-  skipContext?: boolean;
 }
 
 export type PregelParams<

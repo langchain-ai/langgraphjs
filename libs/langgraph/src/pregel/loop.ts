@@ -65,7 +65,6 @@ export type PregelLoopInitializeParams = {
   channelSpecs: Record<string, BaseChannel>;
   managed: ManagedValueMapping;
   store?: BaseStore;
-  skipContext?: boolean;
 };
 
 type PregelLoopParams = {

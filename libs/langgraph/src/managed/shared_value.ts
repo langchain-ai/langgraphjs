@@ -1,6 +1,7 @@
 import { RunnableConfig } from "@langchain/core/runnables";
 import { BaseStore, type Values } from "../store/base.js";
 import {
+  ChannelKeyPlaceholder,
   ConfiguredManagedValue,
   ManagedValue,
   ManagedValueParams,
@@ -58,7 +59,7 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
     args: SharedValueParams
   ): Promise<ManagedValue<Value>> {
     const instance = new this(config, args);
-    await instance.tick();
+    await instance.loadStore();
     return instance as unknown as ManagedValue<Value>;
   }
 
@@ -67,7 +68,7 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
       cls: SharedValue,
       params: {
         scope,
-        key: {},
+        key: ChannelKeyPlaceholder,
       },
     };
   }
@@ -112,7 +113,7 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
     }
   }
 
-  async tick(): Promise<boolean> {
+  private async loadStore(): Promise<boolean> {
     if (this.store && this.ns) {
       const saved = await this.store.list([this.ns]);
       this.value = saved[this.ns] || {};

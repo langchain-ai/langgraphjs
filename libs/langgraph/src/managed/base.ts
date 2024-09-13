@@ -27,11 +27,6 @@ export abstract class ManagedValue<Value = any> {
     throw new Error("Not implemented");
   }
 
-  tick(): Promise<boolean> {
-    // By default, return false.
-    return Promise.resolve(false);
-  }
-
   abstract call(step: number): Value;
 
   async promises(): Promise<unknown> {
@@ -51,6 +46,8 @@ export abstract class WritableManagedValue<
 > extends ManagedValue<Value> {
   abstract update(writes: Update[]): Promise<void>;
 }
+
+export const ChannelKeyPlaceholder = "__channel_key_placeholder__";
 
 export type ManagedValueSpec = typeof ManagedValue | ConfiguredManagedValue;
 
