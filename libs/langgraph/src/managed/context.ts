@@ -66,13 +66,11 @@ export class Context<Value = any> extends ManagedValue<Value> {
 
   async promises() {
     if (this.ctxGenerator) {
-      const { value } = await this.ctxGenerator.return();
-      if (value === undefined) {
-        throw new Error(
-          "Context manager did not return a value. Please ensure your context manager returns a value."
-        );
+      const { done } = await this.ctxGenerator.return();
+      if (!done) {
+        throw new Error("Context manager did not successfully complete.");
       }
-      return value;
+      
     } else {
       throw new Error(
         "Context manager not found. Please initialize Context value with a context manager."

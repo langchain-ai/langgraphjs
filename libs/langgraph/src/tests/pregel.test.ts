@@ -4911,7 +4911,7 @@ describe("StateGraph start branch then end", () => {
   });
 });
 
-describe.only("Channel enter exit timing", () => {
+describe("Channel enter exit timing", () => {
   it("should handle context manager correctly", async () => {
     const setup = jest.fn();
     const cleanup = jest.fn();
@@ -4926,18 +4926,24 @@ describe.only("Channel enter exit timing", () => {
       } finally {
         console.log("finally called");
         cleanup();
-        yield 0;
       }
     }
 
-    const addOne = jest.fn((x: number) => x + 1);
+    const addOne = jest.fn((x: number | number[]) => {
+      console.log("addOne called", x);
+      if (Array.isArray(x)) {
+        return x[0] + 1;
+      }
+      return x + 1;
+    });
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["inbox"]));
+
     const two = Channel.subscribeTo("inbox")
-      .pipe(new RunnableLambda({ func: addOne }).batch)
-      .pipe(Channel.writeTo(["output"]).batch);
+      .pipe(new RunnableLambda({ func: addOne }))
+      .pipe(Channel.writeTo(["output"]));
 
     const app = new Pregel({
       nodes: { one, two },
