@@ -1604,7 +1604,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:>0.1.0  <0.3.0, @langchain/core@npm:>0.2.0 <0.3.0, @langchain/core@npm:>=0.2.11 <0.3.0, @langchain/core@npm:>=0.2.16 <0.3.0, @langchain/core@npm:>=0.2.21 <0.3.0, @langchain/core@npm:^0.2.31":
+"@langchain/core@npm:>0.1.0  <0.3.0, @langchain/core@npm:>0.2.0 <0.3.0, @langchain/core@npm:>=0.2.11 <0.3.0, @langchain/core@npm:>=0.2.16 <0.3.0, @langchain/core@npm:>=0.2.21 <0.3.0":
   version: 0.2.31
   resolution: "@langchain/core@npm:0.2.31"
   dependencies:
@@ -1620,6 +1620,25 @@ __metadata:
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
   checksum: 902d1582073d9de321d36bf0b25e9220422a71f10a2f1f8d433883f22d8a9372276c6b501dbf512a71dbb5c147a745abb06f65ef0d9d1f9aadf751270b56db69
+  languageName: node
+  linkType: hard
+
+"@langchain/core@npm:^0.3.0":
+  version: 0.3.0
+  resolution: "@langchain/core@npm:0.3.0"
+  dependencies:
+    ansi-styles: ^5.0.0
+    camelcase: 6
+    decamelize: 1.2.0
+    js-tiktoken: ^1.0.12
+    langsmith: ^0.1.43
+    mustache: ^4.2.0
+    p-queue: ^6.6.2
+    p-retry: 4
+    uuid: ^10.0.0
+    zod: ^3.22.4
+    zod-to-json-schema: ^3.22.3
+  checksum: c18a7f143a186067caa76a4544b1519d2e293a4c8ce0aec7942c9661edc2001971e47786967405357cdafd74d31ce44dde34a500bf7f7c7a3619b2c20578196d
   languageName: node
   linkType: hard
 
@@ -1669,7 +1688,7 @@ __metadata:
     tsx: ^4.7.0
     typescript: ^4.9.5 || ^5.4.5
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.3.0"
+    "@langchain/core": ">=0.2.31 <0.4.0"
     "@langchain/langgraph-checkpoint": ~0.0.2
   languageName: unknown
   linkType: soft
@@ -1707,7 +1726,7 @@ __metadata:
     tsx: ^4.7.0
     typescript: ^4.9.5 || ^5.4.5
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.3.0"
+    "@langchain/core": ">=0.2.31 <0.4.0"
     "@langchain/langgraph-checkpoint": ~0.0.4
   languageName: unknown
   linkType: soft
@@ -1743,7 +1762,7 @@ __metadata:
     typescript: ^4.9.5 || ^5.4.5
     uuid: ^10.0.0
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.3.0"
+    "@langchain/core": ">=0.2.31 <0.4.0"
   languageName: unknown
   linkType: soft
 
@@ -1754,7 +1773,7 @@ __metadata:
     "@jest/globals": ^29.5.0
     "@langchain/anthropic": ^0.2.12
     "@langchain/community": ^0.2.31
-    "@langchain/core": ^0.2.31
+    "@langchain/core": ^0.3.0
     "@langchain/langgraph-checkpoint": ~0.0.5
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
     "@langchain/openai": ^0.2.4
@@ -1791,7 +1810,7 @@ __metadata:
     zod: ^3.23.8
     zod-to-json-schema: ^3.22.4
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.3.0"
+    "@langchain/core": ">=0.2.31 <0.4.0"
   languageName: unknown
   linkType: soft
 
@@ -6039,7 +6058,7 @@ __metadata:
   dependencies:
     "@langchain/anthropic": ^0.2.15
     "@langchain/community": ^0.2.31
-    "@langchain/core": ^0.2.31
+    "@langchain/core": ^0.3.0
     "@langchain/groq": ^0.0.16
     "@langchain/langgraph": "workspace:*"
     "@langchain/mistralai": ^0.0.28

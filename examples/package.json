@@ -8,7 +8,7 @@
   "devDependencies": {
     "@langchain/anthropic": "^0.2.15",
     "@langchain/community": "^0.2.31",
-    "@langchain/core": "^0.2.31",
+    "@langchain/core": "^0.3.0",
     "@langchain/groq": "^0.0.16",
     "@langchain/langgraph": "workspace:*",
     "@langchain/mistralai": "^0.0.28",

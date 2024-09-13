@@ -37,13 +37,13 @@
     "zod": "^3.23.8"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.31 <0.3.0"
+    "@langchain/core": ">=0.2.31 <0.4.0"
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",
     "@langchain/anthropic": "^0.2.12",
     "@langchain/community": "^0.2.31",
-    "@langchain/core": "^0.2.31",
+    "@langchain/core": "^0.3.0",
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*",
     "@langchain/openai": "^0.2.4",
     "@langchain/scripts": ">=0.1.2 <0.2.0",
