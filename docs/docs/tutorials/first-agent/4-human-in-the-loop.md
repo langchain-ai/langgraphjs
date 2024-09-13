@@ -91,7 +91,7 @@ Right now, the code in our chat loop that is responsible for running the agent a
 // Run the chatbot and add its response to the conversation history
 const output = await app.invoke(
   {
-    messages: [{ content: answer, type: "user" }],
+    messages: [{ content: answer, role: "user" }],
   },
   { configurable: { thread_id: "42" } }
 );
@@ -221,51 +221,51 @@ import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 import { MemorySaver } from "@langchain/langgraph";
-import dotenv from "dotenv";
 
 // read the environment variables from .env
-dotenv.config();
+import "dotenv/config";
 
 const tools = [new TavilySearchResults({ maxResults: 3 })];
+
 // Create a model and give it access to the tools
 const model = new ChatOpenAI({
-model: "gpt-4o-mini",
-temperature: 0,
+  model: "gpt-4o-mini",
+  temperature: 0,
 }).bindTools(tools);
 
 // Define the function that calls the model
 async function callModel(state: typeof MessagesAnnotation.State) {
-const messages = state.messages;
+  const messages = state.messages;
 
-const response = await model.invoke(messages);
+  const response = await model.invoke(messages);
 
-return { messages: response };
+  return { messages: response };
 }
 
 function shouldUseTool(state: typeof MessagesAnnotation.State) {
-const lastMessage = state.messages[state.messages.length - 1];
+  const lastMessage: AIMessage = state.messages[state.messages.length - 1];
 
-// If the LLM makes a tool call, then we route to the "tools" node
-if (lastMessage.additional_kwargs.tool_calls) {
-return "tools";
-}
-// Otherwise, we stop (reply to the user) using the special "**end**" node
-return "**end**";
+  // If the LLM makes a tool call, then we route to the "tools" node
+  if (!!lastMessage.tool_calls?.length) {
+    return "tools";
+  }
+  // Otherwise, we stop (reply to the user) using the special "__end__" node
+  return "__end__";
 }
 
 // Define the graph and compile it into a runnable
 const app = new StateGraph(MessagesAnnotation)
-.addNode("agent", callModel)
-.addEdge("**start**", "agent")
-.addNode("tools", new ToolNode(tools))
-.addConditionalEdges("agent", shouldUseTool)
-.addEdge("tools", "agent")
-.compile({ checkpointer: new MemorySaver(), interruptBefore: ["tools"] });
+  .addNode("agent", callModel)
+  .addEdge("__start__", "agent")
+  .addNode("tools", new ToolNode(tools))
+  .addConditionalEdges("agent", shouldUseTool)
+  .addEdge("tools", "agent")
+  .compile({ checkpointer: new MemorySaver(), interruptBefore: ["tools"] });
 
 // Create a command line interface to interact with the chat bot
 
 // We'll use these helpers to read from the standard input in the command line
-import \* as readline from "node:readline/promises";
+import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
 const lineReader = readline.createInterface({ input, output });
@@ -283,7 +283,7 @@ break;
 // Run the chatbot and add its response to the conversation history
 const output = await app.invoke(
 {
-messages: [{ content: answer, type: "user" }],
+messages: [{ content: answer, role: "user" }],
 },
 { configurable: { thread_id: "42" } },
 );
@@ -321,9 +321,7 @@ lastMessage.tool_calls,
 
 }
 
-console.log("Agent: ", output.messages[output.messages.length - 1]);
+  console.log("Agent: ", output.messages[output.messages.length - 1]);
 }
-
 ```
 </details>
-```

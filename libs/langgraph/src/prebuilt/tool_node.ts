@@ -7,7 +7,6 @@ import {
 import { RunnableConfig, RunnableToolLike } from "@langchain/core/runnables";
 import { StructuredToolInterface } from "@langchain/core/tools";
 import { RunnableCallable } from "../utils.js";
-import { END } from "../graph/graph.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 
 export type ToolNodeOptions = {

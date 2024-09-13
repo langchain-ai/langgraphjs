@@ -121,11 +121,13 @@ The last step is to update our graph to include the new tool. Recall from [part 
 Let's create a _conditional edge_ function that detects when the chatbot wants to use a tool and communicates that to the graph. Add the following function to your `chatbot.ts` file:
 
 ```ts
+import type { AIMessage } from "@langchain/core/messages";
+
 function shouldUseTool({ messages }: typeof MessagesAnnotation.State) {
-  const lastMessage = messages[messages.length - 1];
+  const lastMessage: AIMessage = messages[messages.length - 1];
 
   // If the LLM makes a tool call, then we route to the "tools" node
-  if (lastMessage.additional_kwargs.tool_calls) {
+  if (!!lastMessage.tool_calls?.length) {
     return "tools";
   }
   // Otherwise, we stop (reply to the user)
@@ -185,10 +187,10 @@ import { BaseMessageLike } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
-import dotenv from "dotenv";
+import type { AIMessage } from "@langchain/core/messages";
 
 // read the environment variables from .env
-dotenv.config();
+import "dotenv/config";
 
 const tools = [new TavilySearchResults({ maxResults: 3 })];
 // Create a model and give it access to the tools
@@ -207,10 +209,10 @@ async function callModel(state: typeof MessagesAnnotation.State) {
 }
 
 function shouldUseTool(state: typeof MessagesAnnotation.State) {
-  const lastMessage = state.messages[state.messages.length - 1];
+  const lastMessage: AIMessage = state.messages[state.messages.length - 1];
 
   // If the LLM makes a tool call, then we route to the "tools" node
-  if (lastMessage.additional_kwargs.tool_calls) {
+  if (!!lastMessage.tool_calls?.length) {
     return "tools";
   }
   // Otherwise, we stop (reply to the user) using the special "__end__" node
@@ -245,7 +247,7 @@ while (true) {
     break;
   }
   // Add the user's message to the conversation history
-  messages.push({ content: answer, type: "user" });
+  messages.push({ content: answer, role: "user" });
 
   // Run the chatbot and add its response to the conversation history
   const output = await app.invoke({ messages });

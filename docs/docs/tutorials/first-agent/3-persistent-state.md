@@ -45,7 +45,7 @@ Let's remove the `messages` array and the code that updates it with messages fro
 const messages = Array<BaseMessageLike>();
 
 // Add the user's message to the conversation history
-messages.push({ content: answer, type: "user" });
+messages.push({ content: answer, role: "user" });
 
 messages.push(output.messages[output.messages.length - 1]);
 ```
@@ -60,7 +60,7 @@ The app still needs us to pass the *new* message from the user when we invoke it
 
 ```ts
   const output = await app.invoke({
-      messages: [{ content: answer, type: "user" }],
+      messages: [{ content: answer, role: "user" }],
     },
     { configurable: { thread_id: "42" } }
   );
@@ -102,10 +102,10 @@ import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 import { MemorySaver } from "@langchain/langgraph";
-import dotenv from "dotenv";
+import type { AIMessage } from "@langchain/core/messages";
 
 // read the environment variables from .env
-dotenv.config();
+import "dotenv/config";
 
 const tools = [new TavilySearchResults({ maxResults: 3 })];
 
@@ -125,10 +125,10 @@ async function callModel(state: typeof MessagesAnnotation.State) {
 }
 
 function shouldUseTool(state: typeof MessagesAnnotation.State) {
-  const lastMessage = state.messages[state.messages.length - 1];
+  const lastMessage: AIMessage = state.messages[state.messages.length - 1];
 
   // If the LLM makes a tool call, then we route to the "tools" node
-  if (lastMessage.additional_kwargs.tool_calls) {
+  if (lastMessage.tool_calls?.length) {
     return "tools";
   }
   // Otherwise, we stop (reply to the user) using the special "__end__" node
@@ -165,13 +165,12 @@ while (true) {
   // Run the chatbot with the user's input, using the same thread_id each time. 
   const output = await app.invoke(
     {
-      messages: [{ content: answer, type: "user" }],
+      messages: [{ content: answer, role: "user" }],
     },
     { configurable: { thread_id: "42" } },
   );
 
   console.log("Agent: ", output.messages[output.messages.length - 1].content);
-}
- 
- ```
+} 
+```
 </details>

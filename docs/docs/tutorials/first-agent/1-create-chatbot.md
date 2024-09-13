@@ -83,7 +83,7 @@ while (true) {
     lineReader.close();
     break;
   }
-  messages.push({ content: answer, type: "user" });
+  messages.push({ content: answer, role: "user" });
   const output = await app.invoke({ messages });
   messages.push(output.messages[output.messages.length - 1]);
   console.log("Agent: ", output.messages[output.messages.length - 1].content);
@@ -154,10 +154,9 @@ Below is the full code for this section for your reference:
 import { ChatAnthropic } from "@langchain/anthropic";
 import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
 import { BaseMessageLike } from "@langchain/core/messages";
-import dotenv from "dotenv";
 
 // read the environment variables from .env
-dotenv.config();
+import "dotenv/config";
 
 // Create a model and give it access to the tools
 const model = new ChatAnthropic({
@@ -199,8 +198,9 @@ while (true) {
     lineReader.close();
     break;
   }
+
   // Add the user's message to the conversation history
-  messages.push({ content: answer, type: "user" });
+  messages.push({ content: answer, role: "user" });
 
   // Run the chatbot and add its response to the conversation history
   const output = await app.invoke({ messages });

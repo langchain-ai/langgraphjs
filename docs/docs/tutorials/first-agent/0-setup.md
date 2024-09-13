@@ -65,8 +65,7 @@ Now we need to make sure dotenv loads the environment variables from the `.env` 
 
 ```ts
 // chatbot
-import dotenv from "dotenv";
-dotenv.config();
+import "dotenv/config";
 ```
 
 This will load the environment variables from the `.env` file onto the `process.env` object when the project starts. To verify it's working, let's log the environment variables to the console.
