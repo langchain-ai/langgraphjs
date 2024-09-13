@@ -4930,10 +4930,6 @@ describe("Managed Values (context) can be passed through state", () => {
   });
 
   it("should be passed through state but not stored in checkpointer", async () => {
-    /**
-     * Verifies that `shared` is not in state, and not in checkpointer.
-     * It will then return a shared value, along with a non shared state value.
-     */
     const nodeOne = async (
       data: typeof AgentAnnotation.State,
       config?: RunnableConfig
@@ -4955,11 +4951,6 @@ describe("Managed Values (context) can be passed through state", () => {
       };
     };
 
-    /**
-     * Verifies that `shared` __is__ in state, and not in checkpointer.
-     * Confirms the non shared value is stored in the checkpointer.
-     * It then updates the shared value.
-     */
     const nodeTwo = async (
       data: typeof AgentAnnotation.State,
       config?: RunnableConfig
@@ -5002,9 +4993,6 @@ describe("Managed Values (context) can be passed through state", () => {
       };
     };
 
-    /**
-     * Verifies that the new `shared` value is in state, not in checkpointer.
-     */
     const nodeThree = async (
       data: typeof AgentAnnotation.State,
       config?: RunnableConfig
@@ -5019,7 +5007,8 @@ describe("Managed Values (context) can be passed through state", () => {
         },
       });
 
-      return {};
+      // Return entire state so the result of `.invoke` can be verified.
+      return data;
     };
 
     const workflow = new StateGraph(AgentAnnotation)
@@ -5034,11 +5023,13 @@ describe("Managed Values (context) can be passed through state", () => {
     const app = workflow.compile({
       store,
       checkpointer,
+      interruptBefore: ["nodeTwo", "nodeThree"],
     });
 
     const config = { configurable: { thread_id: threadId, assistant_id: "a" } };
 
-    const result = await app.invoke(
+    // Invoke the first time to cause `nodeOne` to be executed.
+    await app.invoke(
       {
         messages: [
           new HumanMessage({
@@ -5048,6 +5039,28 @@ describe("Managed Values (context) can be passed through state", () => {
       },
       config
     );
+
+    // Get state and verify shared value is not present
+    const currentState1 = await app.getState(config);
+    expect(currentState1.next).toEqual(["nodeTwo"]);
+    expect(currentState1.values).toHaveProperty("messages");
+    expect(currentState1.values).not.toHaveProperty("sharedStateKey");
+
+    // Invoke a second time to cause `nodeTwo` to be executed.
+    await app.invoke(null, config);
+
+    const currentState2 = await app.getState(config);
+    expect(currentState2.next).toEqual(["nodeThree"]);
+    expect(currentState2.values).toHaveProperty("messages");
+    expect(currentState2.values).not.toHaveProperty("sharedStateKey");
+
+    // Invoke the final time to cause `nodeThree` to be executed.
+    const result = await app.invoke(null, config);
+
+    const currentState3 = await app.getState(config);
+    expect(currentState3.next).toEqual([]);
+    expect(currentState3.values).toHaveProperty("messages");
+    expect(currentState3.values).not.toHaveProperty("sharedStateKey");
 
     expect(result).not.toHaveProperty("sharedStateKey");
     expect(Object.keys(result)).toEqual(["messages"]);
@@ -5096,9 +5109,6 @@ describe("Managed Values (context) can be passed through state", () => {
       };
     };
 
-    /**
-     * Verifies that the new `shared` value is in state, not in checkpointer.
-     */
     const nodeThree = async (
       data: typeof AgentAnnotation.State,
       config?: RunnableConfig
