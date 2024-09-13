@@ -886,7 +886,7 @@ export class Pregel<
       loop?.store?.stop();
       await Promise.all([
         loop?.checkpointerPromises ?? [],
-        Object.values(managed).map((mv) => mv.promises()),
+        ...Array.from(managed.values()).map((mv) => mv.promises()),
       ]);
     }
   }

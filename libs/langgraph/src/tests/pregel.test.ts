@@ -74,6 +74,7 @@ import { ERROR, INTERRUPT, Send, TASKS } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
 import { MemoryStore } from "../store/memory.js";
+import { Context } from "../managed/context.js";
 
 describe("Channel", () => {
   describe("writeTo", () => {
@@ -4907,5 +4908,64 @@ describe("StateGraph start branch then end", () => {
         writes: { tool_two_fast: { my_key: " fast" } },
       },
     });
+  });
+});
+
+describe.only("Channel enter exit timing", () => {
+  it("should handle context manager correctly", async () => {
+    const setup = jest.fn();
+    const cleanup = jest.fn();
+
+    /** TODO how to handle values returned in the `finally` block? */
+    async function* anInt() {
+      setup();
+      console.log("setup called");
+      try {
+        console.log("yielded");
+        yield 5;
+      } finally {
+        console.log("finally called");
+        cleanup();
+        yield 0;
+      }
+    }
+
+    const addOne = jest.fn((x: number) => x + 1);
+
+    const one = Channel.subscribeTo("input")
+      .pipe(addOne)
+      .pipe(Channel.writeTo(["inbox"]));
+    const two = Channel.subscribeTo("inbox")
+      .pipe(new RunnableLambda({ func: addOne }).batch)
+      .pipe(Channel.writeTo(["output"]).batch);
+
+    const app = new Pregel({
+      nodes: { one, two },
+      channels: {
+        inbox: new Topic<number>(),
+        ctx: Context.of(anInt),
+        output: new LastValue<number>(),
+        input: new LastValue<number>(),
+      },
+      inputChannels: "input",
+      outputChannels: ["inbox", "output"],
+      streamChannels: ["inbox", "output"],
+    });
+
+    expect(setup).not.toHaveBeenCalled();
+    expect(cleanup).not.toHaveBeenCalled();
+
+    let idx = 0;
+    for await (const chunk of await app.stream(2)) {
+      expect(setup).toHaveBeenCalledTimes(1);
+      if (idx === 0) {
+        expect(chunk).toEqual({ inbox: [3] });
+      } else if (idx === 1) {
+        expect(chunk).toEqual({ output: 4 });
+      }
+      idx += 1;
+    }
+
+    expect(cleanup).toHaveBeenCalledTimes(1);
   });
 });

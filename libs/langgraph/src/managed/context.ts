@@ -25,6 +25,8 @@ export class Context<Value = any> extends ManagedValue<Value> {
     this.ctx = params?.ctx;
   }
 
+  private ctxGenerator?: AsyncGenerator<Value, void, unknown>;
+
   static async initialize<Value>(
     config: RunnableConfig,
     params: ContextParams<Value>
@@ -35,8 +37,8 @@ export class Context<Value = any> extends ManagedValue<Value> {
         "Context manager not found. Please initialize Context value with a context manager."
       );
     }
-    const ctxGenerator = instance.ctx();
-    const { value } = await ctxGenerator.next();
+    instance.ctxGenerator = instance.ctx();
+    const { value } = await instance.ctxGenerator.next();
     if (!value) {
       throw new Error(
         "Context manager did not yield a value. Please ensure your context manager yields a value."
@@ -63,11 +65,9 @@ export class Context<Value = any> extends ManagedValue<Value> {
   }
 
   async promises() {
-    // If there are any cleanup operations needed, they can be performed here
-    if (this.ctx) {
-      const ctxGenerator = this.ctx();
-      const { value } = await ctxGenerator.return();
-      if (!value) {
+    if (this.ctxGenerator) {
+      const { value } = await this.ctxGenerator.return();
+      if (value === undefined) {
         throw new Error(
           "Context manager did not return a value. Please ensure your context manager returns a value."
         );
