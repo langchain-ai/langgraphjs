@@ -1646,7 +1646,7 @@ __metadata:
     typescript: ^4.9.5 || ^5.4.5
   peerDependencies:
     "@langchain/core": ">=0.2.31 <0.4.0"
-    "@langchain/langgraph-checkpoint": ~0.0.2
+    "@langchain/langgraph-checkpoint": ~0.0.6
   languageName: unknown
   linkType: soft
 
@@ -1684,11 +1684,11 @@ __metadata:
     typescript: ^4.9.5 || ^5.4.5
   peerDependencies:
     "@langchain/core": ">=0.2.31 <0.4.0"
-    "@langchain/langgraph-checkpoint": ~0.0.4
+    "@langchain/langgraph-checkpoint": ~0.0.6
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint, @langchain/langgraph-checkpoint@~0.0.5":
+"@langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint, @langchain/langgraph-checkpoint@~0.0.6":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-checkpoint@workspace:libs/checkpoint"
   dependencies:
@@ -1731,7 +1731,7 @@ __metadata:
     "@langchain/anthropic": ^0.3.0
     "@langchain/community": ^0.3.0
     "@langchain/core": ^0.3.0
-    "@langchain/langgraph-checkpoint": ~0.0.5
+    "@langchain/langgraph-checkpoint": ~0.0.6
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
     "@langchain/openai": ^0.3.0
     "@langchain/scripts": ">=0.1.2 <0.2.0"
