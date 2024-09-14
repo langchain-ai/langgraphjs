@@ -3795,7 +3795,7 @@ describe("MessageGraph", () => {
 
     const callTool = async (
       data: Array<BaseMessage>,
-      options?: { config?: RunnableConfig }
+      options?: RunnableConfig
     ) => {
       const lastMessage = data[data.length - 1];
 
@@ -3805,7 +3805,7 @@ describe("MessageGraph", () => {
         log: "",
       };
 
-      const response = await toolExecutor.invoke(action, options?.config);
+      const response = await toolExecutor.invoke(action, options);
       return new FunctionMessage({
         content: JSON.stringify(response),
         name: action.tool,
@@ -3959,7 +3959,7 @@ describe("MessageGraph", () => {
 
     const callTool = async (
       data: Array<BaseMessage>,
-      options?: { config?: RunnableConfig }
+      options?: RunnableConfig
     ) => {
       const lastMessage = data[data.length - 1];
 
@@ -3969,7 +3969,7 @@ describe("MessageGraph", () => {
         log: "",
       };
 
-      const response = await toolExecutor.invoke(action, options?.config);
+      const response = await toolExecutor.invoke(action, options);
       return new FunctionMessage({
         content: JSON.stringify(response),
         name: action.tool,
