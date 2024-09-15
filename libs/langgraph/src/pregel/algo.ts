@@ -40,6 +40,7 @@ import {
 import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { _getIdMetadata, getNullChannelVersion } from "./utils.js";
+import { ManagedValueMapping } from "../managed/base.js";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -109,10 +110,12 @@ export function _localRead<Cc extends StrRecord<string, BaseChannel>>(
 }
 
 export function _localWrite(
+  step: number,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   commit: (writes: [string, any][]) => void,
   processes: Record<string, PregelNode>,
   channels: Record<string, BaseChannel>,
+  managed: ManagedValueMapping,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   writes: [string, any][]
 ) {
@@ -130,6 +133,8 @@ export function _localWrite(
           `Invalid node name ${value.node} in packet`
         );
       }
+      // replace any runtime values with placeholders
+      managed.replaceRuntimeValues(step, value.args);
     } else if (!(chan in channels)) {
       console.warn(`Skipping write for channel '${chan}' which has no readers`);
     }
@@ -143,7 +148,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   tasks: WritesProtocol<keyof Cc>[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getNextVersion?: (version: any, channel: BaseChannel) => any
-): void {
+): Record<string, PendingWriteValue[]> {
   // Update seen versions
   for (const task of tasks) {
     if (checkpoint.versions_seen[task.name] === undefined) {
@@ -193,6 +198,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
     keyof Cc,
     PendingWriteValue[]
   >;
+  const pendingWritesByManaged = {} as Record<keyof Cc, PendingWriteValue[]>;
   for (const task of tasks) {
     for (const [chan, val] of task.writes) {
       if (chan === TASKS) {
@@ -200,11 +206,17 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
           node: (val as Send).node,
           args: (val as Send).args,
         });
-      } else {
+      } else if (chan in channels) {
         if (chan in pendingWriteValuesByChannel) {
           pendingWriteValuesByChannel[chan].push(val);
         } else {
           pendingWriteValuesByChannel[chan] = [val];
+        }
+      } else {
+        if (chan in pendingWritesByManaged) {
+          pendingWritesByManaged[chan].push(val);
+        } else {
+          pendingWritesByManaged[chan] = [val];
         }
       }
     }
@@ -259,6 +271,9 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       }
     }
   }
+
+  // Return managed values writes to be applied externally
+  return pendingWritesByManaged;
 }
 
 export type NextTaskExtraFields = {
@@ -275,6 +290,7 @@ export function _prepareNextTasks<
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
+  managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: false,
   extra: NextTaskExtraFields
@@ -287,6 +303,7 @@ export function _prepareNextTasks<
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
+  managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: true,
   extra: NextTaskExtraFields
@@ -299,6 +316,7 @@ export function _prepareNextTasks<
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
   channels: Cc,
+  managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: boolean,
   extra: NextTaskExtraFields
@@ -341,6 +359,7 @@ export function _prepareNextTasks<
       const proc = processes[packet.node];
       const node = proc.getNode();
       if (node !== undefined) {
+        managed.replaceRuntimePlaceholders(step, packet.args);
         const writes: [keyof Cc, unknown][] = [];
         tasks.push({
           name: packet.node,
@@ -358,9 +377,11 @@ export function _prepareNextTasks<
               configurable: {
                 [CONFIG_KEY_SEND]: _localWrite.bind(
                   undefined,
+                  step,
                   (items: [keyof Cc, unknown][]) => writes.push(...items),
                   processes,
-                  channels
+                  channels,
+                  managed
                 ),
                 [CONFIG_KEY_READ]: _localRead.bind(
                   undefined,
@@ -450,6 +471,7 @@ export function _prepareNextTasks<
                 configurable: {
                   [CONFIG_KEY_SEND]: _localWrite.bind(
                     undefined,
+                    step,
                     (items: [keyof Cc, unknown][]) => writes.push(...items),
                     processes,
                     channels

@@ -9,6 +9,8 @@ import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
 import { RetryPolicy } from "./utils.js";
 import { Interrupt } from "../constants.js";
+import { BaseStore } from "../store/base.js";
+import { ManagedValueSpec } from "../managed/base.js";
 
 export type StreamMode = "values" | "updates" | "debug";
 
@@ -21,7 +23,7 @@ type StrRecord<K extends string, T> = {
 
 export interface PregelInterface<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
 > {
   nodes: Nn;
 
@@ -68,6 +70,8 @@ export interface PregelInterface<
   checkpointer?: BaseCheckpointSaver;
 
   retryPolicy?: RetryPolicy;
+
+  store?: BaseStore;
 }
 
 export type PregelParams<

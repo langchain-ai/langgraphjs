@@ -41,6 +41,7 @@ import {
   UpdateType,
 } from "./annotation.js";
 import type { RetryPolicy } from "../pregel/utils.js";
+import { BaseStore } from "../store/base.js";
 
 const ROOT = "__root__";
 
@@ -340,10 +341,12 @@ export class StateGraph<
     checkpointer,
     interruptBefore,
     interruptAfter,
+    store,
   }: {
     checkpointer?: BaseCheckpointSaver;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
+    store?: BaseStore;
   } = {}): CompiledStateGraph<S, U, N, I, O> {
     // validate the graph
     this.validate([
@@ -378,6 +381,7 @@ export class StateGraph<
       outputChannels,
       streamChannels,
       streamMode: "updates",
+      store,
     });
 
     // attach nodes, edges and branches
@@ -587,7 +591,7 @@ export class CompiledStateGraph<
   }
 }
 
-function isBaseChannel(obj: unknown): obj is BaseChannel {
+export function isBaseChannel(obj: unknown): obj is BaseChannel {
   return obj != null && typeof (obj as BaseChannel).lc_graph_name === "string";
 }
 
