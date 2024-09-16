@@ -108,7 +108,7 @@ export class AsyncBatchedStore extends BaseStore {
    */
   start() {
     this.running = true;
-    void this.runTask();
+    void this.processBatchQueue();
   }
 
   /**
@@ -124,7 +124,7 @@ export class AsyncBatchedStore extends BaseStore {
    * or the process is terminated.
    * @returns {Promise<void>} A promise that resolves when the task is complete.
    */
-  private async runTask(): Promise<void> {
+  private async processBatchQueue(): Promise<void> {
     while (this.running) {
       await new Promise((resolve) => {
         setTimeout(resolve, 0);
