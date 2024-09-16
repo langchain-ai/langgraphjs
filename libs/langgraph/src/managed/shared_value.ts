@@ -36,15 +36,10 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
       this.ns = null;
     } else if (config.configurable?.[this.scope]) {
       const scopeValue = config.configurable[this.scope];
-      let scopedValueString = "";
-      try {
-        scopedValueString =
-          typeof scopeValue === "string"
-            ? scopeValue
-            : JSON.stringify(scopeValue);
-      } catch (_) {
-        // no-op
-      }
+      const scopedValueString =
+        typeof scopeValue === "string"
+          ? scopeValue
+          : JSON.stringify(scopeValue);
       this.ns = `scoped:${this.scope}:${params.key}:${scopedValueString}`;
     } else {
       throw new Error(

@@ -190,7 +190,8 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getNextVersion?: (version: any, channel: BaseChannel) => any
 ): Record<string, PendingWriteValue[]> {
-  const filteredChannels = Object.fromEntries(
+  // Filter out non instances of BaseChannel
+  const onlyChannels = Object.fromEntries(
     Object.entries(channels).filter(([_, value]) => isBaseChannel(value))
   ) as Cc;
   // Update seen versions
@@ -222,11 +223,11 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   );
 
   for (const chan of channelsToConsume) {
-    if (chan in filteredChannels && filteredChannels[chan].consume()) {
+    if (chan in onlyChannels && onlyChannels[chan].consume()) {
       if (getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(
           maxVersion,
-          filteredChannels[chan]
+          onlyChannels[chan]
         );
       }
     }
@@ -250,7 +251,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
           node: (val as Send).node,
           args: (val as Send).args,
         });
-      } else if (chan in filteredChannels) {
+      } else if (chan in onlyChannels) {
         if (chan in pendingWriteValuesByChannel) {
           pendingWriteValuesByChannel[chan].push(val);
         } else {
@@ -277,10 +278,10 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   const updatedChannels: Set<string> = new Set();
   // Apply writes to channels
   for (const [chan, vals] of Object.entries(pendingWriteValuesByChannel)) {
-    if (chan in filteredChannels) {
+    if (chan in onlyChannels) {
       let updated;
       try {
-        updated = filteredChannels[chan].update(vals);
+        updated = onlyChannels[chan].update(vals);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (e: any) {
         if (e.name === InvalidUpdateError.unminifiable_name) {
@@ -296,7 +297,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       if (updated && getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(
           maxVersion,
-          filteredChannels[chan]
+          onlyChannels[chan]
         );
       }
       updatedChannels.add(chan);
@@ -304,13 +305,13 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // Channels that weren't updated in this step are notified of a new step
-  for (const chan of Object.keys(filteredChannels)) {
+  for (const chan of Object.keys(onlyChannels)) {
     if (!updatedChannels.has(chan)) {
-      const updated = filteredChannels[chan].update([]);
+      const updated = onlyChannels[chan].update([]);
       if (updated && getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(
           maxVersion,
-          filteredChannels[chan]
+          onlyChannels[chan]
         );
       }
     }

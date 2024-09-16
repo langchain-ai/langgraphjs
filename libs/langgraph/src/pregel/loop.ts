@@ -258,7 +258,7 @@ export class PregelLoop {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  protected async updateMv(key: string, values: any[]) {
+  protected async updateManagedValues(key: string, values: any[]) {
     const mv = this.managed.get(key);
     if (mv && "update" in mv && typeof mv.update === "function") {
       await (mv as WritableManagedValue).update(values);
@@ -344,7 +344,7 @@ export class PregelLoop {
         this.checkpointerGetNextVersion
       );
       for (const [key, values] of Object.entries(myWrites)) {
-        await this.updateMv(key, values);
+        await this.updateManagedValues(key, values);
       }
       // produce values output
       const valuesOutput = await gatherIterator(

@@ -12,7 +12,7 @@ export abstract class ManagedValue<Value = any> {
 
   private _promises: Promise<unknown>[] = [];
 
-  ls_is_managed_value = true;
+  lg_is_managed_value = true;
 
   constructor(config: RunnableConfig, _params?: ManagedValueParams) {
     this.config = config;
@@ -166,7 +166,7 @@ export class ManagedValueMapping extends Map<string, ManagedValue<any>> {
 }
 
 export function isManagedValue(value: unknown): value is typeof ManagedValue {
-  if (typeof value === "object" && value && "ls_is_managed_value" in value) {
+  if (typeof value === "object" && value && "lg_is_managed_value" in value) {
     return true;
   }
   return false;
