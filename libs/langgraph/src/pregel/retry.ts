@@ -118,6 +118,7 @@ async function _runWithRetry(
     while (pregelTask.writes.length > 0) {
       pregelTask.writes.pop();
     }
+
     error = undefined;
     try {
       result = await pregelTask.proc.invoke(
@@ -130,6 +131,9 @@ async function _runWithRetry(
       error = e;
       error.pregelTaskId = pregelTask.id;
       if (isGraphInterrupt(error)) {
+        console.log(
+          `Task "${pregelTask.name}" was interrupted with error: "${error}".`
+        );
         break;
       }
       if (resolvedRetryPolicy === undefined) {

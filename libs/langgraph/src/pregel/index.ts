@@ -361,6 +361,7 @@ export class Pregel<
       throw new GraphValueError("No checkpointer set");
     }
 
+    console.log("Running updateState()...");
     // Get the latest checkpoint
     const saved = await this.checkpointer.getTuple(config);
     const checkpoint = saved
@@ -369,6 +370,7 @@ export class Pregel<
     const checkpointPreviousVersions = saved?.checkpoint.channel_versions ?? {};
     const step = saved?.metadata?.step ?? -1;
 
+    console.log("Saved state from the checkpoint:", { saved });
     // merge configurable fields with previous checkpoint config
     const checkpointConfig = {
       ...config,
@@ -652,7 +654,7 @@ export class Pregel<
       interruptAfter,
       checkpointer,
     ] = this._defaults(inputConfig);
-    let loop;
+    let loop: PregelLoop | undefined;
     try {
       loop = await PregelLoop.initialize({
         input,
@@ -707,6 +709,7 @@ export class Pregel<
         );
         // Timeouts will be thrown
         for await (const { task, error } of taskStream) {
+          console.log(`Ran task "${task.name}"`);
           if (error !== undefined) {
             if (isGraphInterrupt(error)) {
               loop.putWrites(
@@ -772,6 +775,7 @@ export class Pregel<
       await Promise.all(loop?.checkpointerPromises ?? []);
       await runManager?.handleChainEnd(readChannels(loop.channels, outputKeys));
     } catch (e) {
+      console.log("Caught an error when generating the iterator:", { e });
       await runManager?.handleChainError(e);
       throw e;
     } finally {

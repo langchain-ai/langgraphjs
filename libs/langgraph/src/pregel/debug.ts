@@ -229,6 +229,7 @@ export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
     )?.[2];
 
     const interrupts = pendingWrites
+      // filter the writes down to interrupts from this task
       .filter(([id, n]) => {
         return id === task.id && n === INTERRUPT;
       })

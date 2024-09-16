@@ -53,9 +53,9 @@ export class Branch<IO, N extends string> {
     this.condition = options.path;
     this.ends = Array.isArray(options.pathMap)
       ? options.pathMap.reduce((acc, n) => {
-        acc[n] = n;
-        return acc;
-      }, {} as Record<string, N | typeof END>)
+          acc[n] = n;
+          return acc;
+        }, {} as Record<string, N | typeof END>)
       : options.pathMap;
   }
 
@@ -496,9 +496,9 @@ export class CompiledGraph<
       if (config?.xray) {
         const subgraph = isCompiledGraph(node)
           ? node.getGraph({
-            ...config,
-            xray: typeof xray === "number" && xray > 0 ? xray - 1 : xray,
-          })
+              ...config,
+              xray: typeof xray === "number" && xray > 0 ? xray - 1 : xray,
+            })
           : node.runnable.getGraph(config);
         subgraph.trimFirstNode();
         subgraph.trimLastNode();

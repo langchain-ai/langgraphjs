@@ -36,6 +36,7 @@ import {
   Send,
   TAG_HIDDEN,
   TASKS,
+  CONFIG_KEY_CHECKPOINT_MAP,
 } from "../constants.js";
 import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
@@ -466,6 +467,13 @@ export function _prepareNextTasks<
                   ),
                   [CONFIG_KEY_CHECKPOINTER]: checkpointer,
                   [CONFIG_KEY_RESUMING]: isResuming,
+                  [CONFIG_KEY_CHECKPOINT_MAP]: {
+                    parentNamespace: checkpoint.id,
+                    // If the config has a checkpoint map, make sure it's patched in here
+                    ...(config.configurable
+                      ? config.configurable[CONFIG_KEY_CHECKPOINT_MAP]
+                      : {}),
+                  },
                   checkpoint_id: checkpoint.id,
                   checkpoint_ns: checkpointNamespace,
                 },

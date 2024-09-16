@@ -19,6 +19,7 @@ import {
 } from "../channels/base.js";
 import { PregelExecutableTask, StreamMode } from "./types.js";
 import {
+  CONFIG_KEY_CHECKPOINT_MAP,
   CONFIG_KEY_READ,
   CONFIG_KEY_RESUMING,
   ERROR,
@@ -300,6 +301,7 @@ export class PregelLoop {
       );
     }
     if (![INPUT_DONE, INPUT_RESUMING].includes(this.input)) {
+      // Run the first task in the task queue
       await this._first(inputKeys);
     } else if (this.tasks.every((task) => task.writes.length > 0)) {
       const writes = this.tasks.flatMap((t) => t.writes);
@@ -331,6 +333,7 @@ export class PregelLoop {
         if (this.isNested) {
           throw new GraphInterrupt();
         } else {
+          console.log("Interrupting after a parent graph node...");
           return false;
         }
       }
@@ -406,7 +409,12 @@ export class PregelLoop {
     // Before execution, check if we should interrupt
     if (shouldInterrupt(this.checkpoint, interruptBefore, this.tasks)) {
       this.status = "interrupt_before";
+      console.log("Interrupting before a node with checkpoint:", {
+        checkpoint: this.checkpoint,
+      });
+
       if (this.isNested) {
+        console.log("in a subgraph...");
         throw new GraphInterrupt();
       } else {
         return false;
@@ -422,11 +430,15 @@ export class PregelLoop {
   }
 
   /**
-   * Resuming from previous checkpoint requires
-   * - finding a previous checkpoint
-   * - receiving None input (outer graph) or RESUMING flag (subgraph)
+   * Execute the first
+   * @param inputKeys
    */
   protected async _first(inputKeys: string | string[]) {
+    /**
+     * Resuming from previous checkpoint requires
+     * - finding a previous checkpoint
+     * - receiving None input (outer graph) or RESUMING flag (subgraph)
+     */
     const isResuming =
       (Object.keys(this.checkpoint.channel_versions).length !== 0 &&
         this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined) ||
@@ -486,6 +498,9 @@ export class PregelLoop {
     const metadata = {
       ...inputMetadata,
       step: this.step,
+      parent: this.config.configurable
+        ? this.config.configurable[CONFIG_KEY_CHECKPOINT_MAP]
+        : undefined,
     };
     // Bail if no checkpointer
     if (this.checkpointer !== undefined) {
