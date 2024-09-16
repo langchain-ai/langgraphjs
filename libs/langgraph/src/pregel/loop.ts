@@ -84,7 +84,7 @@ type PregelLoopParams = {
   outputKeys: string | string[];
   streamKeys: string | string[];
   nodes: Record<string, PregelNode>;
-  store?: BaseStore;
+  store?: AsyncBatchedStore;
 };
 
 export class PregelLoop {
@@ -145,7 +145,7 @@ export class PregelLoop {
 
   protected _checkpointerChainedPromise: Promise<unknown> = Promise.resolve();
 
-  store?: BaseStore;
+  store?: AsyncBatchedStore;
 
   constructor(params: PregelLoopParams) {
     this.input = params.input;
@@ -214,7 +214,6 @@ export class PregelLoop {
       : undefined;
     if (store) {
       // Start the store. This is a batch store, so it will run continuously
-      // TODO: Find better way to stop the store. Maybe some sort of async storage like what we use for passing config around?
       store.start();
     }
 
@@ -321,6 +320,9 @@ export class PregelLoop {
     interruptBefore: string[] | All;
     manager?: CallbackManagerForChainRun;
   }): Promise<boolean> {
+    if (this.store && !this.store.isRunning) {
+      this.store?.start();
+    }
     const {
       inputKeys = [],
       interruptAfter = [],

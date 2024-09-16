@@ -875,8 +875,10 @@ export class Pregel<
       await runManager?.handleChainError(e);
       throw e;
     } finally {
-      this.store?.stop();
-      loop?.store?.stop();
+      // Call `.stop()` again incase it was not called in the loop, e.g due to an error.
+      if (loop) {
+        loop.store?.stop();
+      }
       await Promise.all([
         loop?.checkpointerPromises ?? [],
         ...Array.from(managed.values()).map((mv) => mv.promises()),

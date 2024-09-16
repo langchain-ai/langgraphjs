@@ -11,4 +11,8 @@ export abstract class BaseStore {
   stop(): void {
     // no-op if not implemented.
   }
+
+  start(): void {
+    // no-op if not implemented.
+  }
 }

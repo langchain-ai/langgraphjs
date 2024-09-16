@@ -68,6 +68,10 @@ export class AsyncBatchedStore extends BaseStore {
    */
   private running = false;
 
+  get isRunning(): boolean {
+    return this.running;
+  }
+
   constructor(store: BaseStore) {
     super();
     this.store = store;
