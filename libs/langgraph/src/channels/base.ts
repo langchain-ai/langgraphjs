@@ -24,7 +24,8 @@ export abstract class BaseChannel<
    */
   abstract lc_graph_name: string;
 
-  lg_is_channel: boolean = true;
+  /** @ignore */
+  lg_is_channel = true;
 
   /**
    * Return a new identical channel, optionally initialized from a checkpoint.
