@@ -595,7 +595,7 @@ function _procInput(
         }
       } else if (chan in channels) {
         try {
-          val[k] = readChannel(channels, chan, false);
+          val[k] = readChannel(channels, chan, true);
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (e: any) {
           if (e.name === EmptyChannelError.unminifiable_name) {
