@@ -143,3 +143,28 @@ export function gatherIteratorSync<T>(i: Iterable<T>): Array<T> {
   }
   return out;
 }
+
+export function patchConfigurable(
+  config: RunnableConfig | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  patch: Record<string, any>
+): RunnableConfig {
+  if (!config) {
+    return {
+      configurable: patch,
+    };
+  } else if (!("configurable" in config)) {
+    return {
+      ...config,
+      configurable: patch,
+    };
+  } else {
+    return {
+      ...config,
+      configurable: {
+        ...config.configurable,
+        ...patch,
+      },
+    };
+  }
+}

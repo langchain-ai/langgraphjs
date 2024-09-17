@@ -5,7 +5,7 @@ import {
   RunnableLike,
 } from "@langchain/core/runnables";
 import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
-import { BaseChannel } from "../channels/base.js";
+import { BaseChannel, isBaseChannel } from "../channels/base.js";
 import {
   END,
   CompiledGraph,
@@ -41,6 +41,8 @@ import {
   UpdateType,
 } from "./annotation.js";
 import type { RetryPolicy } from "../pregel/utils.js";
+import { BaseStore } from "../store/base.js";
+import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
 
 const ROOT = "__root__";
 
@@ -160,7 +162,7 @@ export class StateGraph<
   I extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition,
   O extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition
 > extends Graph<N, S, U, StateGraphNodeSpec<S, U>> {
-  channels: Record<string, BaseChannel> = {};
+  channels: Record<string, BaseChannel | ManagedValueSpec> = {};
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
   waitingEdges: Set<[N[], N]> = new Set();
@@ -246,7 +248,10 @@ export class StateGraph<
       }
       if (this.channels[key] !== undefined) {
         if (this.channels[key] !== channel) {
-          if (channel.lc_graph_name !== "LastValue") {
+          if (
+            !isConfiguredManagedValue(channel) &&
+            channel.lc_graph_name !== "LastValue"
+          ) {
             throw new Error(
               `Channel "${key}" already exists with a different type.`
             );
@@ -338,10 +343,12 @@ export class StateGraph<
 
   compile({
     checkpointer,
+    store,
     interruptBefore,
     interruptAfter,
   }: {
     checkpointer?: BaseCheckpointSaver;
+    store?: BaseStore;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
   } = {}): CompiledStateGraph<S, U, N, I, O> {
@@ -378,6 +385,7 @@ export class StateGraph<
       outputChannels,
       streamChannels,
       streamMode: "updates",
+      store,
     });
 
     // attach nodes, edges and branches
@@ -585,10 +593,6 @@ export class CompiledStateGraph<
       this.nodes[end as N].triggers.push(channelName);
     }
   }
-}
-
-function isBaseChannel(obj: unknown): obj is BaseChannel {
-  return obj != null && typeof (obj as BaseChannel).lc_graph_name === "string";
 }
 
 function isStateDefinition(obj: unknown): obj is StateDefinition {

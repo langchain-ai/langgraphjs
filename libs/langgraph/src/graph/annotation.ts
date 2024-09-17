@@ -2,6 +2,11 @@ import { RunnableLike } from "@langchain/core/runnables";
 import { BaseChannel } from "../channels/base.js";
 import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { LastValue } from "../channels/last_value.js";
+import {
+  isConfiguredManagedValue,
+  ManagedValueSpec,
+  type ConfiguredManagedValue,
+} from "../managed/base.js";
 
 export type SingleReducer<ValueType, UpdateType = ValueType> =
   | {
@@ -18,19 +23,23 @@ export type SingleReducer<ValueType, UpdateType = ValueType> =
   | null;
 
 export interface StateDefinition {
-  [key: string]: BaseChannel | (() => BaseChannel);
+  [key: string]: BaseChannel | (() => BaseChannel) | ConfiguredManagedValue;
 }
 
 type ExtractValueType<C> = C extends BaseChannel
   ? C["ValueType"]
   : C extends () => BaseChannel
   ? ReturnType<C>["ValueType"]
+  : C extends ConfiguredManagedValue<infer V>
+  ? V
   : never;
 
 type ExtractUpdateType<C> = C extends BaseChannel
   ? C["UpdateType"]
   : C extends () => BaseChannel
   ? ReturnType<C>["UpdateType"]
+  : C extends ConfiguredManagedValue<infer V>
+  ? V
   : never;
 
 export type StateType<SD extends StateDefinition> = {
@@ -43,7 +52,7 @@ export type UpdateType<SD extends StateDefinition> = {
 
 export type NodeType<SD extends StateDefinition> = RunnableLike<
   StateType<SD>,
-  UpdateType<SD>
+  UpdateType<SD> | Partial<StateType<SD>>
 >;
 
 /** @ignore */
@@ -150,9 +159,11 @@ export const Annotation: AnnotationFunction = function <
   ValueType,
   UpdateType = ValueType
 >(
-  annotation?: SingleReducer<ValueType, UpdateType>
-): BaseChannel<ValueType, UpdateType> {
-  if (annotation) {
+  annotation?: SingleReducer<ValueType, UpdateType> | ConfiguredManagedValue
+): BaseChannel<ValueType, UpdateType> | ManagedValueSpec {
+  if (isConfiguredManagedValue(annotation)) {
+    return annotation;
+  } else if (annotation) {
     return getChannel<ValueType, UpdateType>(annotation);
   } else {
     // @ts-expect-error - Annotation without reducer

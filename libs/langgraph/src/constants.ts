@@ -5,6 +5,9 @@ export const CONFIG_KEY_READ = "__pregel_read";
 export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
 export const CONFIG_KEY_RESUMING = "__pregel_resuming";
 export const INTERRUPT = "__interrupt__";
+export const CONFIG_KEY_STORE = "__pregel_store";
+export const RUNTIME_PLACEHOLDER = "__pregel_runtime_placeholder__";
+export const RECURSION_LIMIT_DEFAULT = 25;
 
 export const TAG_HIDDEN = "langsmith:hidden";
 

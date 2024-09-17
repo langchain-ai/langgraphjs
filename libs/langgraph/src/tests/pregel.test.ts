@@ -3,7 +3,7 @@
 /* eslint-disable no-instanceof/no-instanceof */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable import/no-extraneous-dependencies */
-import { it, expect, jest, describe } from "@jest/globals";
+import { it, expect, jest, describe, beforeEach } from "@jest/globals";
 import {
   RunnableConfig,
   RunnableLambda,
@@ -23,6 +23,7 @@ import {
 } from "@langchain/core/messages";
 import { ToolCall } from "@langchain/core/messages/tool";
 import {
+  BaseCheckpointSaver,
   Checkpoint,
   CheckpointMetadata,
   CheckpointTuple,
@@ -70,6 +71,10 @@ import {
   NodeInterrupt,
 } from "../errors.js";
 import { ERROR, INTERRUPT, Send, TASKS } from "../constants.js";
+import { ManagedValueMapping } from "../managed/base.js";
+import { SharedValue } from "../managed/shared_value.js";
+import { MemoryStore } from "../store/memory.js";
+import { MessagesAnnotation } from "../graph/messages_annotation.js";
 
 describe("Channel", () => {
   describe("writeTo", () => {
@@ -574,6 +579,7 @@ describe("_localRead", () => {
       channel1,
       channel2,
     };
+    const managed = new ManagedValueMapping();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const writes: Array<[string, any]> = [];
@@ -581,8 +587,10 @@ describe("_localRead", () => {
     // call method / assertions
     expect(
       _localRead(
+        0,
         checkpoint,
         channels,
+        managed,
         { name: "test", writes, triggers: [] },
         "channel1",
         false
@@ -590,8 +598,10 @@ describe("_localRead", () => {
     ).toBe(1);
     expect(
       _localRead(
+        0,
         checkpoint,
         channels,
+        managed,
         { name: "test", writes, triggers: [] },
         ["channel1", "channel2"],
         false
@@ -626,12 +636,15 @@ describe("_localRead", () => {
       ["channel1", 100],
       ["channel2", 200],
     ];
+    const managed = new ManagedValueMapping();
 
     // call method / assertions
     expect(
       _localRead(
+        0,
         checkpoint,
         channels,
+        managed,
         { name: "test", writes, triggers: [] },
         "channel1",
         true
@@ -639,8 +652,10 @@ describe("_localRead", () => {
     ).toBe(100);
     expect(
       _localRead(
+        0,
         checkpoint,
         channels,
+        managed,
         { name: "test", writes, triggers: [] },
         ["channel1", "channel2"],
         true
@@ -791,12 +806,14 @@ describe("_prepareNextTasks", () => {
       channel1,
       channel2,
     };
+    const managed = new ManagedValueMapping();
 
     // call method / assertions
     const taskDescriptions = _prepareNextTasks(
       checkpoint,
       processes,
       channels,
+      managed,
       { configurable: { thread_id: "foo" } },
       false,
       { step: -1 }
@@ -911,12 +928,14 @@ describe("_prepareNextTasks", () => {
       channel5,
       channel6,
     };
+    const managed = new ManagedValueMapping();
 
     // call method / assertions
     const tasks = _prepareNextTasks(
       checkpoint,
       processes,
       channels,
+      managed,
       { configurable: { thread_id: "foo" } },
       true,
       { step: -1 }
@@ -4646,5 +4665,554 @@ it("StateGraph branch then node", async () => {
   expect(await tool.invoke({ my_key: "value", market: "FR" })).toEqual({
     my_key: "value prepared fast finished",
     market: "FR",
+  });
+});
+
+describe("StateGraph start branch then end", () => {
+  let checkpointer: BaseCheckpointSaver<number>;
+
+  const GraphAnnotation = Annotation.Root({
+    my_key: Annotation<string>({
+      reducer: (a: string, b: string) => a + b,
+    }),
+    market: Annotation<string>(),
+    shared: SharedValue.on("assistant_id"),
+  });
+
+  beforeEach(() => {
+    checkpointer = new MemorySaver();
+  });
+
+  const assertSharedValue = (
+    data: typeof GraphAnnotation.State,
+    config: RunnableConfig
+  ): Partial<typeof GraphAnnotation.State> => {
+    expect(data).toHaveProperty("shared");
+    const threadId = config.configurable?.thread_id;
+    if (threadId) {
+      if (threadId === "1") {
+        expect(data.shared).toEqual({});
+        return { shared: { "1": { hello: "world" } } };
+      } else if (threadId === "2") {
+        expect(data.shared).toEqual({ "1": { hello: "world" } });
+      } else if (threadId === "3") {
+        // Should not contain a value because the "assistant_id" is different
+        expect(data.shared).toEqual({});
+      }
+    }
+    return {};
+  };
+
+  const toolTwoSlow = (
+    data: typeof GraphAnnotation.State,
+    config: any
+  ): Partial<typeof GraphAnnotation.State> => {
+    return { my_key: " slow", ...assertSharedValue(data, config) };
+  };
+
+  const toolTwoFast = (
+    data: typeof GraphAnnotation.State,
+    config: any
+  ): Partial<typeof GraphAnnotation.State> => {
+    return { my_key: " fast", ...assertSharedValue(data, config) };
+  };
+
+  it("should handle start branch then end", async () => {
+    const toolTwoGraph = new StateGraph(GraphAnnotation);
+    const debug = false;
+
+    toolTwoGraph
+      .addNode("tool_two_slow", toolTwoSlow)
+      .addNode("tool_two_fast", toolTwoFast)
+      .addConditionalEdges(START, (s) =>
+        s.market === "DE" ? "tool_two_slow" : "tool_two_fast"
+      )
+      .addEdge("tool_two_slow", END)
+      .addEdge("tool_two_fast", END);
+
+    let toolTwo = toolTwoGraph.compile();
+
+    expect(
+      await toolTwo.invoke({ my_key: "value", market: "DE" }, { debug })
+    ).toEqual({
+      my_key: "value slow",
+      market: "DE",
+    });
+
+    expect(
+      await toolTwo.invoke({ my_key: "value", market: "US" }, { debug })
+    ).toEqual({
+      my_key: "value fast",
+      market: "US",
+    });
+
+    toolTwo = toolTwoGraph.compile({
+      store: new MemoryStore(),
+      checkpointer,
+      interruptBefore: ["tool_two_fast", "tool_two_slow"] as any[],
+    });
+
+    // Will throw an error if a checkpointer is passed but `configurable` isn't.
+    await expect(
+      toolTwo.invoke({ my_key: "value", market: "DE" })
+    ).rejects.toThrow(/thread_id/);
+
+    const thread1 = {
+      configurable: { thread_id: "1", assistant_id: "a" },
+      debug,
+    };
+
+    expect(
+      await toolTwo.invoke({ my_key: "value ⛰️", market: "DE" }, thread1)
+    ).toEqual({
+      my_key: "value ⛰️",
+      market: "DE",
+    });
+
+    const checkpoints = [];
+    if (toolTwo.checkpointer) {
+      for await (const checkpoint of toolTwo.checkpointer.list(thread1)) {
+        checkpoints.push(checkpoint);
+      }
+    }
+
+    expect(checkpoints.map((c: any) => c.metadata)).toEqual([
+      {
+        source: "loop",
+        step: 0,
+        writes: null,
+      },
+      {
+        source: "input",
+        step: -1,
+        writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
+      },
+    ]);
+
+    expect(await toolTwo.getState(thread1)).toMatchObject({
+      values: { my_key: "value ⛰️", market: "DE" },
+      tasks: [{ name: "tool_two_slow" }],
+      next: ["tool_two_slow"],
+      metadata: { source: "loop", step: 0, writes: null },
+    });
+
+    expect(await toolTwo.invoke(null, thread1)).toEqual({
+      my_key: "value ⛰️ slow",
+      market: "DE",
+    });
+
+    expect(await toolTwo.getState(thread1)).toMatchObject({
+      values: {
+        my_key: "value ⛰️ slow",
+        market: "DE",
+      },
+      tasks: [],
+      next: [],
+      metadata: {
+        source: "loop",
+        step: 1,
+        writes: {
+          tool_two_slow: {
+            my_key: " slow",
+          },
+        },
+      },
+    });
+
+    const thread2 = {
+      configurable: { thread_id: "2", assistant_id: "a" },
+      debug,
+    };
+    expect(
+      await toolTwo.invoke(
+        {
+          my_key: "value",
+          market: "US",
+        },
+        thread2
+      )
+    ).toEqual({
+      my_key: "value",
+      market: "US",
+    });
+
+    expect(await toolTwo.getState(thread2)).toMatchObject({
+      values: {
+        my_key: "value",
+        market: "US",
+      },
+      tasks: [{ name: "tool_two_fast" }],
+      next: ["tool_two_fast"],
+      metadata: { source: "loop", step: 0, writes: null },
+    });
+
+    expect(await toolTwo.invoke(null, thread2)).toEqual({
+      my_key: "value fast",
+      market: "US",
+    });
+
+    expect(await toolTwo.getState(thread2)).toMatchObject({
+      values: {
+        my_key: "value fast",
+        market: "US",
+      },
+      tasks: [],
+      next: [],
+      metadata: {
+        source: "loop",
+        step: 1,
+        writes: { tool_two_fast: { my_key: " fast" } },
+      },
+    });
+
+    const thread3 = { configurable: { thread_id: "3", assistant_id: "b" } };
+    expect(
+      await toolTwo.invoke({ my_key: "value", market: "US" }, thread3)
+    ).toEqual({
+      my_key: "value",
+      market: "US",
+    });
+
+    expect(await toolTwo.getState(thread3)).toMatchObject({
+      values: { my_key: "value", market: "US" },
+      tasks: [{ name: "tool_two_fast" }],
+      next: ["tool_two_fast"],
+      metadata: { source: "loop", step: 0, writes: null },
+    });
+
+    await toolTwo.updateState(thread3, { my_key: "key" });
+
+    expect(await toolTwo.getState(thread3)).toMatchObject({
+      values: { my_key: "valuekey", market: "US" },
+      tasks: [{ name: "tool_two_fast" }],
+      next: ["tool_two_fast"],
+      metadata: {
+        source: "update",
+        step: 1,
+        writes: { [START]: { my_key: "key" } },
+      },
+    });
+
+    expect(await toolTwo.invoke(null, thread3)).toEqual({
+      my_key: "valuekey fast",
+      market: "US",
+    });
+
+    expect(await toolTwo.getState(thread3)).toMatchObject({
+      values: { my_key: "valuekey fast", market: "US" },
+      tasks: [],
+      next: [],
+      metadata: {
+        source: "loop",
+        step: 2,
+        writes: { tool_two_fast: { my_key: " fast" } },
+      },
+    });
+  });
+});
+
+describe("Managed Values (context) can be passed through state", () => {
+  let store: MemoryStore;
+  let checkpointer: MemorySaver;
+  let threadId = "";
+  let iter = 0;
+
+  beforeEach(() => {
+    iter += 1;
+    threadId = iter.toString();
+    store = new MemoryStore();
+    checkpointer = new MemorySaver();
+  });
+
+  const AgentAnnotation = Annotation.Root({
+    ...MessagesAnnotation.spec,
+    sharedStateKey: SharedValue.on("assistant_id"),
+  });
+
+  it("should be passed through state but not stored in checkpointer", async () => {
+    const nodeOne = async (
+      data: typeof AgentAnnotation.State,
+      config?: RunnableConfig
+    ): Promise<Partial<typeof AgentAnnotation.State>> => {
+      if (!config) {
+        throw new Error("config is undefined");
+      }
+      expect(config.configurable?.thread_id).toEqual(threadId);
+
+      expect(data.sharedStateKey).toEqual({});
+
+      return {
+        sharedStateKey: {
+          sharedStateValue: {
+            value: "shared",
+          },
+        },
+        messages: [new AIMessage("hello")],
+      };
+    };
+
+    const nodeTwo = async (
+      data: typeof AgentAnnotation.State,
+      config?: RunnableConfig
+    ): Promise<Partial<typeof AgentAnnotation.State>> => {
+      if (!config) {
+        throw new Error("config is undefined");
+      }
+
+      expect(data.sharedStateKey).toEqual({
+        sharedStateValue: {
+          value: "shared",
+        },
+      });
+
+      const storeData: Map<
+        string,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        Map<string, Record<string, any>>
+        // @ts-expect-error protected property, API not yet built for accessing values.
+      > = store.data;
+      expect(storeData.size).toEqual(1);
+
+      // Namespace is scoped:<shared value on key><state key><shared value on value>
+      const namespace = "scoped:assistant_id:sharedStateKey:a";
+      const scopedData = storeData.get(namespace);
+      expect(scopedData).toBeDefined();
+      expect(scopedData?.size).toEqual(1);
+      const sharedValue = scopedData?.get("sharedStateValue");
+
+      expect(sharedValue).toEqual({
+        value: "shared",
+      });
+
+      return {
+        sharedStateKey: {
+          sharedStateValue: {
+            value: "updated",
+          },
+        },
+      };
+    };
+
+    const nodeThree = async (
+      data: typeof AgentAnnotation.State,
+      config?: RunnableConfig
+    ): Promise<Partial<typeof AgentAnnotation.State>> => {
+      if (!config) {
+        throw new Error("config is undefined");
+      }
+
+      expect(data.sharedStateKey).toEqual({
+        sharedStateValue: {
+          value: "updated",
+        },
+      });
+
+      // Return entire state so the result of `.invoke` can be verified.
+      return data;
+    };
+
+    const workflow = new StateGraph(AgentAnnotation)
+      .addNode("nodeOne", nodeOne)
+      .addNode("nodeTwo", nodeTwo)
+      .addNode("nodeThree", nodeThree)
+      .addEdge(START, "nodeOne")
+      .addEdge("nodeOne", "nodeTwo")
+      .addEdge("nodeTwo", "nodeThree")
+      .addEdge("nodeThree", END);
+
+    const app = workflow.compile({
+      store,
+      checkpointer,
+      interruptBefore: ["nodeTwo", "nodeThree"],
+    });
+
+    const config = { configurable: { thread_id: threadId, assistant_id: "a" } };
+
+    // Invoke the first time to cause `nodeOne` to be executed.
+    await app.invoke(
+      {
+        messages: [
+          new HumanMessage({
+            content: "what is weather in sf",
+          }),
+        ],
+      },
+      config
+    );
+
+    // Get state and verify shared value is not present
+    const currentState1 = await app.getState(config);
+    expect(currentState1.next).toEqual(["nodeTwo"]);
+    expect(currentState1.values).toHaveProperty("messages");
+    expect(currentState1.values).not.toHaveProperty("sharedStateKey");
+
+    // Invoke a second time to cause `nodeTwo` to be executed.
+    await app.invoke(null, config);
+
+    const currentState2 = await app.getState(config);
+    expect(currentState2.next).toEqual(["nodeThree"]);
+    expect(currentState2.values).toHaveProperty("messages");
+    expect(currentState2.values).not.toHaveProperty("sharedStateKey");
+
+    // Invoke the final time to cause `nodeThree` to be executed.
+    const result = await app.invoke(null, config);
+
+    const currentState3 = await app.getState(config);
+    expect(currentState3.next).toEqual([]);
+    expect(currentState3.values).toHaveProperty("messages");
+    expect(currentState3.values).not.toHaveProperty("sharedStateKey");
+
+    expect(result).not.toHaveProperty("sharedStateKey");
+    expect(Object.keys(result)).toEqual(["messages"]);
+  });
+
+  it("can not access shared values from other 'on' keys", async () => {
+    const nodeOne = async (
+      data: typeof AgentAnnotation.State,
+      config?: RunnableConfig
+    ): Promise<Partial<typeof AgentAnnotation.State>> => {
+      if (!config) {
+        throw new Error("config is undefined");
+      }
+      expect(config.configurable?.thread_id).toBe(threadId);
+      expect(config.configurable?.assistant_id).toBe("a");
+
+      expect(data.sharedStateKey).toEqual({});
+
+      return {
+        sharedStateKey: {
+          valueForA: {
+            value: "assistant_id a",
+          },
+        },
+      };
+    };
+
+    const nodeTwo = async (
+      data: typeof AgentAnnotation.State,
+      config?: RunnableConfig
+    ): Promise<Partial<typeof AgentAnnotation.State>> => {
+      if (!config) {
+        throw new Error("config is undefined");
+      }
+      expect(config.configurable?.thread_id).toBe(threadId);
+      expect(config.configurable?.assistant_id).toBe("b");
+
+      expect(data.sharedStateKey).toEqual({});
+
+      return {
+        sharedStateKey: {
+          valueForB: {
+            value: "assistant_id b",
+          },
+        },
+      };
+    };
+
+    const nodeThree = async (
+      data: typeof AgentAnnotation.State,
+      config?: RunnableConfig
+    ): Promise<Partial<typeof AgentAnnotation.State>> => {
+      if (!config) {
+        throw new Error("config is undefined");
+      }
+
+      expect(config.configurable?.thread_id).toBe(threadId);
+      expect(config.configurable?.assistant_id).toBe("a");
+
+      expect(data.sharedStateKey).toEqual({
+        valueForA: {
+          value: "assistant_id a",
+        },
+      });
+
+      return {};
+    };
+
+    const nodeFour = async (
+      data: typeof AgentAnnotation.State,
+      config?: RunnableConfig
+    ): Promise<Partial<typeof AgentAnnotation.State>> => {
+      if (!config) {
+        throw new Error("config is undefined");
+      }
+
+      expect(config.configurable?.thread_id).toBe(threadId);
+      expect(config.configurable?.assistant_id).toBe("b");
+
+      expect(data.sharedStateKey).toEqual({
+        valueForB: {
+          value: "assistant_id b",
+        },
+      });
+
+      return {};
+    };
+
+    const workflow = new StateGraph(AgentAnnotation)
+      .addNode("nodeOne", nodeOne)
+      .addNode("nodeTwo", nodeTwo)
+      .addNode("nodeThree", nodeThree)
+      .addNode("nodeFour", nodeFour)
+      .addEdge(START, "nodeOne")
+      .addEdge("nodeOne", "nodeTwo")
+      .addEdge("nodeTwo", "nodeThree")
+      .addEdge("nodeThree", "nodeFour")
+      .addEdge("nodeFour", END);
+
+    const app = workflow.compile({
+      store,
+      checkpointer,
+      interruptBefore: ["nodeTwo", "nodeThree", "nodeFour"],
+    });
+
+    const input = {
+      messages: [
+        new HumanMessage({
+          content: "what is weather in sf",
+          id: "1",
+        }),
+      ],
+    };
+
+    // Invoke once, passing in config with `assistant_id` set to `a`.
+    // This will cause the shared value to be set in the state.
+    // After we'll update the config to have `assistant_id` set to `b`,
+    // and verify that the shared value set under `assistant_id` `a` is not accessible.
+    // Finally, we'll repeat for `b` after switching back to `a`.
+    const config1 = {
+      configurable: { thread_id: threadId, assistant_id: "a" },
+    };
+    await app.invoke(input, config1);
+
+    const currentState1 = await app.getState(config1);
+    expect(currentState1.next).toEqual(["nodeTwo"]);
+    expect(currentState1.values).toEqual(input);
+
+    // Will resume the graph, execute `nodeTwo` then interrupt again.
+    const config2 = {
+      configurable: { thread_id: threadId, assistant_id: "b" },
+    };
+    await app.invoke(null, config2);
+
+    const currentState2 = await app.getState(config2);
+    expect(currentState2.next).toEqual(["nodeThree"]);
+    expect(currentState1.values).toEqual(input);
+
+    // Will resume the graph, execute `nodeThree` then finish.
+    const config3 = {
+      configurable: { thread_id: threadId, assistant_id: "a" },
+    };
+    await app.invoke(null, config3);
+
+    const currentState3 = await app.getState(config3);
+    expect(currentState3.next).toEqual(["nodeFour"]);
+    expect(currentState1.values).toEqual(input);
+
+    // Finally, resume the graph with `assistant_id` set to `b`, and verify that the shared value is accessible.
+    const config4 = {
+      configurable: { thread_id: threadId, assistant_id: "b" },
+    };
+    await app.invoke(null, config4);
   });
 });
