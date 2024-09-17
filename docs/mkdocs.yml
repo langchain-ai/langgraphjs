@@ -105,6 +105,7 @@ nav:
           - Manage conversation history: "how-tos/manage-conversation-history.ipynb"
           - How to delete messages: "how-tos/delete-messages.ipynb"
           - Add summary of the conversation history: "how-tos/add-summary-conversation-history.ipynb"
+          - Share state between threads: "how-tos/shared-state.ipynb"
       - Human-in-the-loop:
           - Add breakpoints: "how-tos/breakpoints.ipynb"
           - Add dynamic breakpoints: "how-tos/dynamic_breakpoints.ipynb"
