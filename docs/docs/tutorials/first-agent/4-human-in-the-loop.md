@@ -16,13 +16,13 @@ Locate the code that builds and compiles the graph in your `chatbot.ts` file. It
 
 ```ts
 // Define the graph and compile it into a runnable
-const app = new StateGraph(MessagesAnnotation)
-  .addNode("agent", callModel)
-  .addEdge("__start__", "agent")
-  .addNode("tools", new ToolNode(tools))
-  .addConditionalEdges("agent", shouldUseTool)
-  .addEdge("tools", "agent")
-  .compile({ checkpointer: new MemorySaver() });
+export const app = new StateGraph(MessagesAnnotation)
+	.addNode("agent", callModel)
+	.addEdge("__start__", "agent")
+	.addNode("tools", new ToolNode(tools))
+	.addConditionalEdges("agent", shouldUseTool)
+	.addEdge("tools", "agent")
+	.compile({ checkpointer: new MemorySaver() });
 ```
 
 We need to change the last line - the `.compile()` call - to specify we want an interrupt before the `"tools"` node runs. It's possible to add interrupts before multiple nodes, so we will specify our interrupts as an array. Since we only want to interrupt before one node, it'll be an array with a single value. Update the `compile` code to the following:
@@ -46,7 +46,7 @@ Let's update how we log the output of the agent so we can see what's going on. F
 console.log("Agent: ", output.messages[output.messages.length - 1]);
 ```
 
-Now when the agent wants to use a tool, we can see the full request. Try it out by running `npx tsx chatbot.ts`. Your result should look something like this:
+Now when the agent wants to use a tool, we can see the full request. Try it out by running `npx tsx chatloop.ts`. Your result should look something like this:
 
 ```
 User: I'm learning LangGraph. Could you do some research on it for me?
@@ -90,10 +90,10 @@ Right now, the code in our chat loop that is responsible for running the agent a
 ```ts
 // Run the chatbot and add its response to the conversation history
 const output = await app.invoke(
-  {
-    messages: [{ content: answer, role: "user" }],
-  },
-  { configurable: { thread_id: "42" } }
+	{
+		messages: [{ content: answer, role: "user" }]
+	},
+	{ configurable: { thread_id: "42" } }
 );
 
 console.log("Agent: ", output.messages[output.messages.length - 1]);
@@ -109,30 +109,30 @@ Add the following code in between the `app.invoke()` call and the subsequent `co
 // 1. Check if the AI is trying to use a tool
 const lastMessage = output.messages[output.messages.length - 1];
 if (lastMessage instanceof AIMessage && lastMessage.tool_calls !== undefined) {
-  console.log(
-    "Agent: I would like to make the following tool calls: ",
-    lastMessage.tool_calls
-  );
+	console.log(
+		"Agent: I would like to make the following tool calls: ",
+		lastMessage.tool_calls
+	);
 
-  // 2. Let the human decide whether to continue or not
-  const humanFeedback = await lineReader.question(
-    "Type 'y' to continue, or anything else to exit: "
-  );
-  if (humanFeedback.toLowerCase() !== "y") {
-    console.log("Goodbye!");
-    lineReader.close();
-    break;
-  }
+	// 2. Let the human decide whether to continue or not
+	const humanFeedback = await lineReader.question(
+		"Type 'y' to continue, or anything else to exit: "
+	);
+	if (humanFeedback.toLowerCase() !== "y") {
+		console.log("Goodbye!");
+		lineReader.close();
+		break;
+	}
 
-  // 3. No new state is needed for the agent to use the tool, so pass `null`
-  const outputWithTool = await app.invoke(null, {
-    configurable: { thread_id: "42" },
-  });
-  console.log(
-    "Agent: ",
-    outputWithTool.messages[outputWithTool.messages.length - 1].content
-  );
-  continue;
+	// 3. No new state is needed for the agent to use the tool, so pass `null`
+	const outputWithTool = await app.invoke(null, {
+		configurable: { thread_id: "42" }
+	});
+	console.log(
+		"Agent: ",
+		outputWithTool.messages[outputWithTool.messages.length - 1].content
+	);
+	continue;
 }
 ```
 
@@ -142,7 +142,7 @@ There are three things going on here:
 2. We ask the human if they want to continue. If they don't, we exit the chat loop.
 3. Since the graph execution was simply paused, we don't need to add any new state to continue. Once the human has approved the tool call, we continue execution by calling `app.invoke()` again with `null` as the new state.
 
-Try running the chatbot again with `npx tsx chatbot.ts`. When the agent requests a tool, you should see the details of the request tool call and be prompted to continue. If you type `y`, the agent will continue and run the tool. If you type anything else, the chat loop will exit.
+Try running the chatbot again with `npx tsx chatloop.ts`. When the agent requests a tool, you should see the details of the request tool call and be prompted to continue. If you type `y`, the agent will continue and run the tool. If you type anything else, the chat loop will exit.
 
 Here's an example run:
 
@@ -215,7 +215,7 @@ Below is a copy of the final code from this section.
 
 <details>
 ```ts
-import { ChatOpenAI, wrapOpenAIClientError } from "@langchain/openai";
+import { ChatAnthropic } from "@langchain/anthropic";
 import { AIMessage, BaseMessageLike } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
@@ -228,25 +228,25 @@ import "dotenv/config";
 const tools = [new TavilySearchResults({ maxResults: 3 })];
 
 // Create a model and give it access to the tools
-const model = new ChatOpenAI({
-  model: "gpt-4o-mini",
-  temperature: 0,
+const model = new ChatAnthropic({
+model: "claude-3-5-sonnet-20240620",
+temperature: 0,
 }).bindTools(tools);
 
 // Define the function that calls the model
 async function callModel(state: typeof MessagesAnnotation.State) {
-  const messages = state.messages;
+const messages = state.messages;
 
-  const response = await model.invoke(messages);
+const response = await model.invoke(messages);
 
-  return { messages: response };
+return { messages: response };
 }
 
 function shouldUseTool(state: typeof MessagesAnnotation.State) {
   const lastMessage: AIMessage = state.messages[state.messages.length - 1];
 
   // If the LLM makes a tool call, then we route to the "tools" node
-  if (!!lastMessage.tool_calls?.length) {
+  if (lastMessage.tool_calls?.length) {
     return "tools";
   }
   // Otherwise, we stop (reply to the user) using the special "__end__" node
@@ -254,14 +254,19 @@ function shouldUseTool(state: typeof MessagesAnnotation.State) {
 }
 
 // Define the graph and compile it into a runnable
-const app = new StateGraph(MessagesAnnotation)
+export const app = new StateGraph(MessagesAnnotation)
   .addNode("agent", callModel)
   .addEdge("__start__", "agent")
   .addNode("tools", new ToolNode(tools))
   .addConditionalEdges("agent", shouldUseTool)
   .addEdge("tools", "agent")
   .compile({ checkpointer: new MemorySaver(), interruptBefore: ["tools"] });
-
+```
+</details>
+<details>
+```ts
+// chatloop.ts
+import { app } from "./chatbot.ts";
 // Create a command line interface to interact with the chat bot
 
 // We'll use these helpers to read from the standard input in the command line
@@ -273,31 +278,31 @@ const lineReader = readline.createInterface({ input, output });
 console.log("Type 'exit' or 'quit' to quit");
 
 while (true) {
-const answer = await lineReader.question("User: ");
-if (["exit", "quit", "q"].includes(answer.toLowerCase())) {
-console.log("Goodbye!");
-lineReader.close();
-break;
-}
+  const answer = await lineReader.question("User: ");
+  if ( ["exit", "quit", "q"].includes( answer.toLowerCase() ) ) {
+    console.log("Goodbye!");
+    lineReader.close();
+    break;
+  }
 
-// Run the chatbot and add its response to the conversation history
-const output = await app.invoke(
-{
-messages: [{ content: answer, role: "user" }],
-},
-{ configurable: { thread_id: "42" } },
-);
+  // Run the chatbot and add its response to the conversation history
+  const output = await app.invoke(
+    {
+      messages: [{ content: answer, type: "user" }],
+    },
+    { configurable: { thread_id: "42" } },
+  );
 
-// Check if the AI is trying to use a tool
-const lastMessage = output.messages[output.messages.length - 1];
-if (
-lastMessage instanceof AIMessage &&
-lastMessage.tool_calls !== undefined
-) {
-console.log(
-"Agent: I would like to make the following tool calls: ",
-lastMessage.tool_calls,
-);
+  // Check if the AI is trying to use a tool
+  const lastMessage = output.messages[output.messages.length - 1];
+  if (
+    lastMessage instanceof AIMessage &&
+      lastMessage.tool_calls !== undefined
+  ) {
+    console.log(
+      "Agent: I would like to make the following tool calls: ",
+      lastMessage.tool_calls,
+    );
 
     // Let the human decide whether to continue or not
     const humanFeedback = await lineReader.question(
@@ -318,8 +323,7 @@ lastMessage.tool_calls,
       outputWithTool.messages[outputWithTool.messages.length - 1].content,
     );
     continue;
-
-}
+  }
 
   console.log("Agent: ", output.messages[output.messages.length - 1]);
 }

@@ -29,12 +29,12 @@ If you want, you can use the tool directly right now! Add the following lines ri
 
 ```ts
 function prettyPrintJSON(json: string) {
-  console.log(JSON.stringify(JSON.parse(json), null, 2));
+	console.log(JSON.stringify(JSON.parse(json), null, 2));
 }
 
 prettyPrintJSON(
-  // Run the tool
-  await searchTool.invoke("What's a 'node' in LangGraph?")
+	// Run the tool
+	await searchTool.invoke("What's a 'node' in LangGraph?")
 );
 ```
 
@@ -42,33 +42,33 @@ The `prettyPrintJSON` function makes the content easier to read for us humans. Y
 
 ```json
 [
-  {
-    "title": "Low Level LangGraph Concepts - GitHub Pages",
-    "url": "https://langchain-ai.github.io/langgraph/concepts/low_level/",
-    "content": "Nodes¶ In LangGraph, nodes are typically python functions (sync or async) where the first positional argument is the state, and (optionally), the second positional argument is a \"config\", containing optional configurable parameters (such as a thread_id). Similar to NetworkX, you add these nodes to a graph using the add_node method:",
-    "score": 0.999685,
-    "raw_content": null
-  },
-  {
-    "title": "LangGraph Tutorial: What Is LangGraph and How to Use It?",
-    "url": "https://www.datacamp.com/tutorial/langgraph-tutorial",
-    "content": "In LangGraph, each node represents an LLM agent, and the edges are the communication channels between these agents. This structure allows for clear and manageable workflows, where each agent performs specific tasks and passes information to other agents as needed. State management. One of LangGraph's standout features is its automatic state ...",
-    "score": 0.998862,
-    "raw_content": null
-  },
-  {
-    "title": "Beginner's Guide to LangGraph: Understanding State, Nodes ... - Medium",
-    "url": "https://medium.com/@kbdhunga/beginners-guide-to-langgraph-understanding-state-nodes-and-edges-part-1-897e6114fa48",
-    "content": "Each node in a LangGraph graph has the ability to access, read, and write to the state. When a node modifies the state, it effectively broadcasts this information to all other nodes within the graph .",
-    "score": 0.99819684,
-    "raw_content": null
-  }
+	{
+		"title": "Low Level LangGraph Concepts - GitHub Pages",
+		"url": "https://langchain-ai.github.io/langgraph/concepts/low_level/",
+		"content": "Nodes¶ In LangGraph, nodes are typically python functions (sync or async) where the first positional argument is the state, and (optionally), the second positional argument is a \"config\", containing optional configurable parameters (such as a thread_id). Similar to NetworkX, you add these nodes to a graph using the add_node method:",
+		"score": 0.999685,
+		"raw_content": null
+	},
+	{
+		"title": "LangGraph Tutorial: What Is LangGraph and How to Use It?",
+		"url": "https://www.datacamp.com/tutorial/langgraph-tutorial",
+		"content": "In LangGraph, each node represents an LLM agent, and the edges are the communication channels between these agents. This structure allows for clear and manageable workflows, where each agent performs specific tasks and passes information to other agents as needed. State management. One of LangGraph's standout features is its automatic state ...",
+		"score": 0.998862,
+		"raw_content": null
+	},
+	{
+		"title": "Beginner's Guide to LangGraph: Understanding State, Nodes ... - Medium",
+		"url": "https://medium.com/@kbdhunga/beginners-guide-to-langgraph-understanding-state-nodes-and-edges-part-1-897e6114fa48",
+		"content": "Each node in a LangGraph graph has the ability to access, read, and write to the state. When a node modifies the state, it effectively broadcasts this information to all other nodes within the graph .",
+		"score": 0.99819684,
+		"raw_content": null
+	}
 ]
 ```
 
-The results are page summaries our chat bot can use to answer questions.
+These search results are the summaries of web pages that our chat bot can use to answer questions.
 
-When you're getting an output similar to this, you've got it working right! If not, verify that your `TAVILY_API_KEY` is set in your `.env` file and loaded using `dotenv.config()`. Also verify that you have the `dotenv` and `@langchain/community` packages installed.
+When you're getting an output similar to this, you've got it working right! If not, verify that your `TAVILY_API_KEY` is set in your `.env` file and loaded using `dotenv`. Also verify that you have the `dotenv` and `@langchain/community` packages installed.
 
 You can delete the call to `searchTool.invoke()` and the `prettyPrintJSON()` function and move on to the next step.
 
@@ -80,8 +80,8 @@ In your `chatbot.ts` file, find the following code where you defined your chat m
 
 ```ts
 const model = new ChatAnthropic({
-  model: "claude-3-5-sonnet-20240620",
-  temperature: 0,
+	model: "claude-3-5-sonnet-20240620",
+	temperature: 0
 });
 ```
 
@@ -89,8 +89,8 @@ Update it to bind the tool node to the model as follows:
 
 ```ts
 const model = new ChatAnthropic({
-  model: "claude-3-5-sonnet-20240620",
-  temperature: 0,
+	model: "claude-3-5-sonnet-20240620",
+	temperature: 0
 }).bindTools([searchTool]);
 ```
 
@@ -124,14 +124,14 @@ Let's create a _conditional edge_ function that detects when the chatbot wants t
 import type { AIMessage } from "@langchain/core/messages";
 
 function shouldUseTool({ messages }: typeof MessagesAnnotation.State) {
-  const lastMessage: AIMessage = messages[messages.length - 1];
+	const lastMessage: AIMessage = messages[messages.length - 1];
 
-  // If the LLM makes a tool call, then we route to the "tools" node
-  if (!!lastMessage.tool_calls?.length) {
-    return "tools";
-  }
-  // Otherwise, we stop (reply to the user)
-  return "__end__";
+	// If the LLM makes a tool call, then we route to the "tools" node
+	if (!!lastMessage.tool_calls?.length) {
+		return "tools";
+	}
+	// Otherwise, we stop (reply to the user)
+	return "__end__";
 }
 ```
 
@@ -141,21 +141,22 @@ Now that we have the node and logic for a conditional edge that connects to it, 
 
 ```ts
 // Create a graph that defines our chatbot workflow and compile it into a `runnable`
-const app = graphBuilder
-  .addNode("agent", callClaude)
-  .addEdge("__start__", callClaude)
-  .compile();
+export const app = graphBuilder
+	.addNode("agent", callClaude)
+	.addEdge("__start__", callClaude)
+	.compile();
 ```
 
 Update it to include the new `tools` node and the conditional edge function:
 
 ```ts
-const app = graphBuilder
-  .addNode("agent", callClaude)
-  .addEdge("__start__", callClaude)
-  .addNode("tools", tools)
-  .addEdge("agent", shouldUseTool)
-  .addEdge("tools", "agent");
+export const app = graphBuilder
+	.addNode("agent", callClaude)
+	.addEdge("__start__", callClaude)
+	.addNode("tools", tools)
+	.addEdge("agent", shouldUseTool)
+	.addEdge("tools", "agent")
+	.compile();
 ```
 
 One helpful feature of the graph builder is that if you try to add an edge that connects to a node that doesn't exist, it will result in a type error. This helps you catch bugs in your graph immediately, rather than at runtime.
@@ -164,7 +165,7 @@ Conditional edges start from a single node. This tells the graph that any time t
 
 You may or may not have noticed that this graph has a simple loop in it: `agent` -> `tools` -> `agent`. The presence of loops is a common pattern in LangGraph graphs. They allow the graph to continue running until the agent has nothing left to do. This is a major difference from common AI chat interfaces, where a single message will only receive a single response. The ability to add loops to a graph enables **agentic behavior**, where the agent can perform multiple actions in service of a single request.
 
-We're ready to put our agent to work! With the update to the graph, it should now be able to use the search tool to find information on the web. Run your project using `npx tsx chatbot.ts` and test it out. You can ask it questions that require current information to answer, like "what's the weather in sf?":
+We're ready to put our agent to work! With the update to the graph, it should now be able to use the search tool to find information on the web. Run your project using `npx tsx chatloop.ts` and test it out. You can ask it questions that require current information to answer, like "what's the weather in sf?":
 
 ```
 User: What's the weather in sf?
@@ -177,11 +178,11 @@ Just lovely! If your weather is anything like San Francisco's right now, this is
 
 When you're ready, continue on to part 3, where we'll [add persistent state to the chatbot](/first-agent/3-persistent-state.md). This will allow the chatbot to remember past conversations and have multiple threads of discussion.
 
-
 The final code from this section should look something like the below example. We've cleaned this version up a bit to make it easier to follow:
 
 <details>
 ```ts
+// chatbot.ts
 import { ChatAnthropic } from "@langchain/anthropic";
 import { BaseMessageLike } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
@@ -195,41 +196,47 @@ import "dotenv/config";
 const tools = [new TavilySearchResults({ maxResults: 3 })];
 // Create a model and give it access to the tools
 const model = new ChatAnthropic({
-  model: "claude-3-5-sonnet-20240620",
-  temperature: 0,
+	model: "claude-3-5-sonnet-20240620",
+	temperature: 0,
 }).bindTools(tools);
 
 // Define the function that calls the model
 async function callModel(state: typeof MessagesAnnotation.State) {
-  const messages = state.messages;
+	const messages = state.messages;
 
-  const response = await model.invoke(messages);
+	const response = await model.invoke(messages);
 
-  return { messages: response };
+	return { messages: response };
 }
 
 function shouldUseTool(state: typeof MessagesAnnotation.State) {
-  const lastMessage: AIMessage = state.messages[state.messages.length - 1];
+	const lastMessage: AIMessage = state.messages[state.messages.length - 1];
 
-  // If the LLM makes a tool call, then we route to the "tools" node
-  if (!!lastMessage.tool_calls?.length) {
-    return "tools";
-  }
-  // Otherwise, we stop (reply to the user) using the special "__end__" node
-  return "__end__";
+	// If the LLM makes a tool call, then we route to the "tools" node
+	if (!!lastMessage.tool_calls?.length) {
+		return "tools";
+	}
+	// Otherwise, we stop (reply to the user) using the special "__end__" node
+	return "__end__";
 }
 
 // Define the graph and compile it into a runnable
-const app = new StateGraph(MessagesAnnotation)
-  .addNode("agent", callModel)
-  .addEdge("__start__", "agent")
-  .addNode("tools", new ToolNode(tools))
-  .addConditionalEdges("agent", shouldUseTool)
-  .addEdge("tools", "agent")
-  .compile();
+export const app = new StateGraph(MessagesAnnotation)
+	.addNode("agent", callModel)
+	.addEdge("__start__", "agent")
+	.addNode("tools", new ToolNode(tools))
+	.addConditionalEdges("agent", shouldUseTool)
+	.addEdge("tools", "agent")
+	.compile();
+
+````
+</details>
+<details>
+```ts
+// chatloop.ts
+import { app } from "./chatbot.ts";
 
 // Create a command line interface to interact with the chat bot
-
 // We'll use these helpers to read from the standard input in the command line
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
@@ -241,7 +248,7 @@ console.log("Type 'exit' or 'quit' to quit");
 const messages = Array<BaseMessageLike>();
 while (true) {
   const answer = await lineReader.question("User: ");
-  if (["exit", "quit", "q"].includes(answer.toLowerCase())) {
+  if ( ["exit", "quit", "q"].includes( answer.toLowerCase() ) ) {
     console.log("Goodbye!");
     lineReader.close();
     break;

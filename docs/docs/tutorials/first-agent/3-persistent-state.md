@@ -15,31 +15,33 @@ First, we need to import the `MemorySaver` class from LangGraph. Add the import 
 ```ts
 import { MemorySaver } from "@langchain/langgraph";
 ```
+
 Then, update the code that creates the runnable agent to use a checkpointer. As a reminder, it should currently look like this:
 
 ```ts
 // Define the graph and compile it into a runnable
-const app = new StateGraph(MessagesAnnotation)
-  .addNode("agent", callModel)
-  .addEdge("__start__", "agent")
-  .addNode("tools", new ToolNode(tools))
-  .addConditionalEdges("agent", shouldUseTool)
-  .addEdge("tools", "agent")
-  .compile();
+export const app = new StateGraph(MessagesAnnotation)
+	.addNode("agent", callModel)
+	.addEdge("__start__", "agent")
+	.addNode("tools", new ToolNode(tools))
+	.addConditionalEdges("agent", shouldUseTool)
+	.addEdge("tools", "agent")
+	.compile();
 ```
 
-We need to pass an instance of `MemorySaver` to the `compile` method. Update the last to the following:
+We need to pass an instance of `MemorySaver` to the `compile` method. Update the call to `compile` to the following:
+
 ```ts
 .compile({ checkpointer: new MemorySaver() });
 ```
 
-This change doesn't affect how the graph runs. All we are doing is saving a checkpoint of the graph state as it works through each node.
+This change doesn't affect how the graph runs. What it does is specify that the state of the graph should be saved every time it finishes executing a node.
 
 ## Step 2: Replace manual state track with the checkpointer
 
-Previously, we were manually tracking the state of the conversation using the `messages` array. Now that the graph has a checkpointer, we don't have to track the state manually. 
+Previously, we were manually tracking the state of the conversation using the `messages` array. Now that the graph has a checkpointer, we don't have to track the state manually.
 
-Let's remove the `messages` array and the code that updates it with messages from the user and agent. Delete the following 3 bits of code from near the bottom of your `chatbot.ts` file:
+Let's remove the `messages` array and the code that updates it with messages from the user and agent. Delete the following 3 bits of code from near the bottom of your `chatloop.ts` file:
 
 ```ts
 const messages = Array<BaseMessageLike>();
@@ -56,14 +58,15 @@ Since `messages` is no longer defined, we're getting an error now on the followi
 const output = await app.invoke({ messages });
 ```
 
-The app still needs us to pass the *new* message from the user when we invoke it, but the checkpointer will save it to the graph's state after that. Update the line to the following:
+The app still needs us to pass the _new_ message from the user when we invoke it, but the checkpointer will save it to the graph's state after that. Update the line to the following:
 
 ```ts
-  const output = await app.invoke({
-      messages: [{ content: answer, role: "user" }],
-    },
-    { configurable: { thread_id: "42" } }
-  );
+const output = await app.invoke(
+	{
+		messages: [{ content: answer, type: "user" }]
+	},
+	{ configurable: { thread_id: "42" } }
+);
 ```
 
 Notice that we are now passing **two** arguments to `invoke()` - the first object contains the messages, and the second object contains the configurable `thread_id`.
@@ -72,9 +75,11 @@ We're using the `MessagesAnnotation` helper, which has a reducer that will appen
 
 The `Runnable` now has access to a checkpointer to save progress as it executes the graph. To use it, we are providing a `thread_id` value when calling `.invoke()`. In a real application, you'd probably want to generate unique thread IDs using something like UUID or nanoid. For now, we're using a hardcoded value of "42".
 
+## Step 3: Test the chatbot
+
 At this point, the chatbot should be back to a runnable state! Test it's memory out by asking some questions that depend on the context of the previous question(s).
 
-As a reminder, you can run it with `npx tsx chatbot.ts`. Let's try asking it about the weather in a few locations, but not tell it we're asking about the weather each time. If it has context of the previous questions, it should be able to figure it out anyway.
+As a reminder, you can run it with `npx tsx chatloop.ts`. Let's try asking it about the weather in a few locations, but not tell it we're asking about the weather each time. If it has context of the previous questions, it should be able to figure it out anyway.
 
 ```
 User: what's the weather in seattle?
@@ -97,6 +102,7 @@ Here's what the final code from this section looks like:
 
 <details>
 ```ts
+// chatbot.ts
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
@@ -143,6 +149,12 @@ const app = new StateGraph(MessagesAnnotation)
   .addConditionalEdges("agent", shouldUseTool)
   .addEdge("tools", "agent")
   .compile({ checkpointer: new MemorySaver() });
+```
+</details>
+<details>
+```ts
+// chatloop.ts
+import { app } from "./chatbot.ts";
 
 // Create a command line interface to interact with the chat bot
 
@@ -162,7 +174,7 @@ while (true) {
     break;
   }
 
-  // Run the chatbot with the user's input, using the same thread_id each time. 
+  // Run the chatbot with the user's input, using the same thread_id each time.
   const output = await app.invoke(
     {
       messages: [{ content: answer, role: "user" }],
@@ -171,6 +183,6 @@ while (true) {
   );
 
   console.log("Agent: ", output.messages[output.messages.length - 1].content);
-} 
+}
 ```
 </details>

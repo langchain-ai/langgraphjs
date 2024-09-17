@@ -10,8 +10,8 @@ The first thing we need to do is create an LLM agent. LangGraph makes it easy to
 import { ChatAnthropic } from "@langchain/anthropic";
 
 const model = new ChatAnthropic({
-  model: "claude-3-5-sonnet-20240620",
-  temperature: 0,
+	model: "claude-3-5-sonnet-20240620",
+	temperature: 0
 });
 ```
 
@@ -42,10 +42,10 @@ Now that we have a basic `StateGraph` and and LLM, we need to define a node that
 
 ```ts
 async function callModel(state: typeof MessageAnnotation.State) {
-  const response = await model.invoke(state.messages);
+	const response = await model.invoke(state.messages);
 
-  // We return the response in an array and the `MessageAnnotation` reducer will append it to the state
-  return { messages: [response] };
+	// We return the response in an array and the `MessageAnnotation` reducer will append it to the state
+	return { messages: [response] };
 }
 ```
 
@@ -53,20 +53,26 @@ This function is the glue between our `StateGraph` and the LLM. Without it, the 
 
 ## Step 4: Build and run the graph
 
-With the LLM, the `StateGraph`, and a way for them to communicate, we're ready to build our first agent graph! The entrypoint is a node named `"__start__"`. We need to add our LLM node and connect it to the start node. Add the following code to your `chatbot.ts` file:
+With the LLM, the `StateGraph`, and a way for them to communicate, we're ready to build our first agent graph! In LangGraph, the entrypoint is defined using a node named `"__start__"`. We need to add our LLM node and connect it to the start node. Add the following code to your `chatbot.ts` file:
 
 ```ts
 // Create a graph that defines our chatbot workflow and compile it into a `runnable`
-const app = graphBuilder
-  .addNode("agent", callModel)
-  .addEdge("__start__", callModel)
-  .compile();
+export const app = graphBuilder
+	.addNode("agent", callModel)
+	.addEdge("__start__", callModel)
+	.compile();
 ```
 
-At this point we have an app object we can invoke to run our chatbot. To try it out, let's add a chat loop at the end of our `chatbot.ts` file:
+Notice that we're `export`ing the `app` object. This helps us keep the code organized; the agent is defined in `chatbot.ts` and we will write the code that uses it in a separate file. When we go over how to [iterate on an agent using a GUI](5-iterate-studio.md), we will `import` our agent into [LangGraph Studio](https://github.com/langchain-ai/langgraph-studio) too.
+
+At this point we have an app object we can invoke to run our chatbot. To try it out, we're going to need a chat loop that lets us interact with the bot. Let's create a new file called `chatloop.ts` and add logic for our chat loop to it:
 
 ```ts
+// chatloop.ts
 import { BaseMessageLike } from "@langchain/core/messages";
+
+// We need to import the chatbot we created so we can use it here
+import { app } from "./chatbot.ts";
 
 // We'll use these helpers to read from the standard input in the command line
 import * as readline from "node:readline/promises";
@@ -77,16 +83,18 @@ const lineReader = readline.createInterface({ input, output });
 console.log("Type 'exit' or 'quit' to quit");
 const messages = Array<BaseMessageLike>();
 while (true) {
-  const answer = await lineReader.question("User: ");
-  if (["exit", "quit", "q"].includes(answer.toLowerCase())) {
-    console.log("Goodbye!");
-    lineReader.close();
-    break;
-  }
-  messages.push({ content: answer, role: "user" });
-  const output = await app.invoke({ messages });
-  messages.push(output.messages[output.messages.length - 1]);
-  console.log("Agent: ", output.messages[output.messages.length - 1].content);
+	const answer = await lineReader.question("User: ");
+	if (["exit", "quit", "q"].includes(answer.toLowerCase())) {
+		console.log("Goodbye!");
+		lineReader.close();
+		break;
+	}
+	messages.push({ content: answer, role: "user" });
+
+	// Run the chatbot, providing it the `messages` array containing the conversation
+	const output = await app.invoke({ messages });
+	messages.push(output.messages[output.messages.length - 1]);
+	console.log("Agent: ", output.messages[output.messages.length - 1].content);
 }
 ```
 
@@ -97,7 +105,7 @@ We're calling `app.invoke()` to use the chatbot. Passing it an array of messages
 Now that we have a way to interact with the agent, try it out by running the following command:
 
 ```bash
-npx tsx chatbot.ts
+npx tsx chatloop.ts
 ```
 
 Here's an example chat session:
@@ -151,37 +159,46 @@ Below is the full code for this section for your reference:
 
 <details>
 ```ts
+// chatbot.ts
 import { ChatAnthropic } from "@langchain/anthropic";
 import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
-import { BaseMessageLike } from "@langchain/core/messages";
 
 // read the environment variables from .env
 import "dotenv/config";
 
 // Create a model and give it access to the tools
 const model = new ChatAnthropic({
-  model: "claude-3-5-sonnet-20240620",
-  temperature: 0,
+	model: "claude-3-5-sonnet-20240620",
+	temperature: 0,
 });
 
 // Define the function that calls the model
 async function callModel(state: typeof MessagesAnnotation.State) {
-  const messages = state.messages;
+	const messages = state.messages;
 
   const response = await model.invoke(messages);
 
   // We return a list, because this will get added to the existing list
-  return { messages: response };
+	return { messages: response };
 }
 
 const graphBuilder = new StateGraph(MessagesAnnotation);
 
 // Create a graph that defines our chatbot workflow and compile it into a `runnable`
-const app = graphBuilder
-  .addNode("agent", callModel)
-  .addEdge("__start__", callModel)
-  .compile();
+export const app = graphBuilder
+	.addNode("agent", callModel)
+	.addEdge("__start__", callModel)
+	.compile();
 
+````
+</details>
+
+<details>
+```ts
+// chatloop.ts
+import { app } from "./chatbot.ts";
+
+import { BaseMessageLike } from "@langchain/core/messages";
 
 // We'll use these helpers to read from the standard input in the command line
 import * as readline from "node:readline/promises";
@@ -192,20 +209,20 @@ const lineReader = readline.createInterface({ input, output });
 console.log("Type 'exit' or 'quit' to quit");
 const messages = Array<BaseMessageLike>();
 while (true) {
-  const answer = await lineReader.question("User: ");
-  if (["exit", "quit", "q"].includes(answer.toLowerCase())) {
-    console.log("Goodbye!");
-    lineReader.close();
-    break;
-  }
+	const answer = await lineReader.question("User: ");
+	if ( ["exit", "quit", "q"].includes( answer.toLowerCase() ) ) {
+		console.log("Goodbye!");
+		lineReader.close();
+		break;
+	}
 
-  // Add the user's message to the conversation history
-  messages.push({ content: answer, role: "user" });
+	// Add the user's message to the conversation history
+	messages.push({ content: answer, type: "user" });
 
-  // Run the chatbot and add its response to the conversation history
-  const output = await app.invoke({ messages });
-  messages.push(output.messages[output.messages.length - 1]);
-  console.log("Agent: ", output.messages[output.messages.length - 1].content);
+	// Run the chatbot and add its response to the conversation history
+	const output = await app.invoke({ messages });
+	messages.push(output.messages[output.messages.length - 1]);
+	console.log("Agent: ", output.messages[output.messages.length - 1].content);
 }
 ```
 </details>

@@ -58,17 +58,17 @@ TAVILY_API_KEY=your-Tavily-key-here
 While we're at it, let's make sure the environment variables defined in the `.env` file are available to our project. We can do this by installing the `dotenv` package:
 
 ```bash
-npm install dotenv
+npm install dotenv --save
 ```
 
 Now we need to make sure dotenv loads the environment variables from the `.env` file. To do this, create a new file called `chatbot.ts` and add the following lines at the top of the:
 
 ```ts
-// chatbot
+// chatbot.ts
 import "dotenv/config";
 ```
 
-This will load the environment variables from the `.env` file onto the `process.env` object when the project starts. To verify it's working, let's log the environment variables to the console.
+This will load the environment variables from the `.env` file into the global `process.env` object when the project starts. To verify it's working, let's log the environment variables to the console.
 Add the following lines to the end of the `chatbot.ts` file:
 
 ```ts
