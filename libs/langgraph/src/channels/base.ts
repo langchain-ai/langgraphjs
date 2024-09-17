@@ -7,7 +7,7 @@ import {
 import { EmptyChannelError } from "../errors.js";
 
 export function isBaseChannel(obj: unknown): obj is BaseChannel {
-  return obj != null && typeof (obj as BaseChannel).lc_graph_name === "string";
+  return obj != null && (obj as BaseChannel).lg_is_channel === true;
 }
 
 export abstract class BaseChannel<
@@ -23,6 +23,8 @@ export abstract class BaseChannel<
    * The name of the channel.
    */
   abstract lc_graph_name: string;
+
+  lg_is_channel: boolean = true;
 
   /**
    * Return a new identical channel, optionally initialized from a checkpoint.
