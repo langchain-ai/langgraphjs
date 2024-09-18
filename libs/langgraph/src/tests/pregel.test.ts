@@ -3710,7 +3710,7 @@ describe("StateGraph", () => {
     });
   });
 
-  it("should allow private state passing between nodes", async () => {
+  it("should expose config schema as a type", async () => {
     const StateAnnotation = Annotation.Root({
       hello: Annotation<string>,
     });
@@ -3721,7 +3721,9 @@ describe("StateGraph", () => {
 
     const nodeA = (_: typeof StateAnnotation.State, config: RunnableConfig) => {
       expect(config.configurable?.shouldExist).toEqual("I exist");
-      expect(config.configurable?.shouldNotExist).toBeUndefined();
+      expect(config.configurable?.shouldAlsoExist).toEqual(
+        "I should also exist"
+      );
       return {
         hello: "again",
       };
@@ -3738,7 +3740,7 @@ describe("StateGraph", () => {
         {
           configurable: {
             shouldExist: "I exist",
-            shouldNotExist: "I should not exist",
+            shouldAlsoExist: "I should also exist",
           },
         }
       )
