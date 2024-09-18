@@ -24,7 +24,7 @@ import {
   TAG_HIDDEN,
 } from "../constants.js";
 import { RunnableCallable } from "../utils.js";
-import { InvalidUpdateError } from "../errors.js";
+import { InvalidUpdateError, NodeInterrupt } from "../errors.js";
 
 /** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
@@ -70,7 +70,7 @@ export class Branch<IO, N extends string> {
             return await this._route(input, config, writer, reader);
           } catch (e: any) {
             // Detect & warn if NodeInterrupt is thrown in a conditional edge
-            if (e.name === "NodeInterrupt") {
+            if (e.name === NodeInterrupt.unminifiable_name) {
               console.warn(
                 "[WARN]: 'NodeInterrupt' thrown in conditional edge. This is likely a bug in your graph implementation.\n" +
                   "NodeInterrupt should only be thrown inside a node, not in edge conditions."
