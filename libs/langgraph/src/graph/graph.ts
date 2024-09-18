@@ -68,6 +68,7 @@ export class Branch<IO, N extends string> {
         func: async (input: IO, config: RunnableConfig) => {
           try {
             return await this._route(input, config, writer, reader);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } catch (e: any) {
             // Detect & warn if NodeInterrupt is thrown in a conditional edge
             if (e.name === NodeInterrupt.unminifiable_name) {
