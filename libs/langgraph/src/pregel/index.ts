@@ -486,7 +486,7 @@ export class Pregel<
       checkpoint
     );
 
-    // Pass `skipManaged: true` as managed values should not be returned in get state calls.
+    // Pass `skipManaged: true` as managed values are not used/relevant in update state calls.
     const { managed } = await this.prepareSpecs(config, { skipManaged: true });
 
     // run all writers of the chosen node
