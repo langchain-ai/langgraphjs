@@ -3729,10 +3729,11 @@ describe("StateGraph", () => {
       };
     };
 
+    const checkpointer = new MemorySaverAssertImmutable();
     const graph = new StateGraph(StateAnnotation, ConfigAnnotation)
       .addNode("a", nodeA)
       .addEdge(START, "a")
-      .compile();
+      .compile({ checkpointer });
 
     expect(
       await graph.invoke(
@@ -3741,6 +3742,7 @@ describe("StateGraph", () => {
           configurable: {
             shouldExist: "I exist",
             shouldAlsoExist: "I should also exist",
+            thread_id: "foo",
           },
         }
       )
