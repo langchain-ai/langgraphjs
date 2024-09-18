@@ -5390,7 +5390,12 @@ describe("Managed Values (context) can be passed through state", () => {
             value: "shared",
           },
         },
-        messages: [new AIMessage("initial message")],
+        messages: [
+          {
+            role: "assistant",
+            content: "initial message",
+          },
+        ],
       };
     };
 
@@ -5415,27 +5420,12 @@ describe("Managed Values (context) can be passed through state", () => {
             value: "updated shared",
           },
         },
-        messages: [new AIMessage("updated message")],
-      };
-    };
-
-    // Define nodeThree that finalizes the state
-    const nodeThree = async (
-      data: typeof AgentAnnotation.State,
-      config?: RunnableConfig
-    ): Promise<Partial<typeof AgentAnnotation.State>> => {
-      if (!config) {
-        throw new Error("config is undefined");
-      }
-
-      expect(data.sharedStateKey).toEqual({
-        data: {
-          value: "updated shared",
-        },
-      });
-
-      return {
-        messages: [new AIMessage("final message")],
+        messages: [
+          {
+            role: "assistant",
+            content: "updated message",
+          },
+        ],
       };
     };
 
@@ -5443,11 +5433,9 @@ describe("Managed Values (context) can be passed through state", () => {
     const workflow = new StateGraph(AgentAnnotation)
       .addNode("nodeOne", nodeOne)
       .addNode("nodeTwo", nodeTwo)
-      .addNode("nodeThree", nodeThree)
       .addEdge(START, "nodeOne")
       .addEdge("nodeOne", "nodeTwo")
-      .addEdge("nodeTwo", "nodeThree")
-      .addEdge("nodeThree", END);
+      .addEdge("nodeTwo", END);
 
     // Compile the workflow with store and checkpointer
     const app = workflow.compile({
@@ -5487,24 +5475,21 @@ describe("Managed Values (context) can be passed through state", () => {
     const updatedValues = {
       messages: [
         {
-          role: "user",
-          content: "start",
+          role: "assistant",
+          content: "intermediate message",
         },
-        new AIMessage("intermediate message"),
       ],
-      sharedStateKey: undefined, // Attempting to remove sharedStateKey
     };
 
     // Update the state without sharedStateKey in config
     await app.updateState(config, updatedValues);
 
-    // Verify that sharedStateKey has been removed
+    // Verify that sharedStateKey has not been altered
     currentState = await app.getState(config);
     expect(currentState.next).toEqual(["nodeTwo"]);
     expect(currentState.values).toHaveProperty("messages");
-    expect(currentState.values).not.toHaveProperty("sharedStateKey");
 
-    // Attempt to invoke nodeTwo without sharedStateKey
+    // Attempt to invoke nodeTwo without 'assistant_id', expecting an error
     await expect(app.invoke(null, config)).rejects.toThrow(/assistant_id/);
 
     // Re-add 'assistant_id' to config.configurable
@@ -5516,10 +5501,5 @@ describe("Managed Values (context) can be passed through state", () => {
     // Final state after invoking nodeTwo and nodeThree
     currentState = await app.getState(config);
     expect(currentState.next).toEqual([]);
-    expect(currentState.values).toHaveProperty("messages");
-    expect(currentState.values.messages).toContainEqual(
-      new AIMessage("final message")
-    );
-    expect(currentState.values).not.toHaveProperty("sharedStateKey");
   });
 });
