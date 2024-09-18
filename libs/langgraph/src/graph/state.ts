@@ -184,7 +184,7 @@ export class StateGraph<
    */
   _schemaDefinitions = new Map();
 
-  /** @internal */
+  /** @internal Used only for typing. */
   _configSchema: C | undefined;
 
   constructor(
@@ -384,9 +384,6 @@ export class StateGraph<
     // create empty compiled graph
     const compiled = new CompiledStateGraph<S, U, N, I, O, C>({
       builder: this,
-      configKeys: this._configSchema
-        ? Object.keys(this._configSchema)
-        : undefined,
       checkpointer,
       interruptAfter,
       interruptBefore,

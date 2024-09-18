@@ -43,8 +43,6 @@ export interface PregelInterface<
 
   outputChannels: keyof Cc | Array<keyof Cc>;
 
-  configKeys?: string[];
-
   /**
    * @default []
    */

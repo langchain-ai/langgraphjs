@@ -239,8 +239,6 @@ export class Pregel<
 
   outputChannels: keyof Cc | Array<keyof Cc>;
 
-  configKeys?: string[];
-
   autoValidate: boolean = true;
 
   streamMode: StreamMode[] = ["values"];
@@ -275,7 +273,6 @@ export class Pregel<
     this.streamMode = streamMode ?? this.streamMode;
     this.inputChannels = fields.inputChannels;
     this.outputChannels = fields.outputChannels;
-    this.configKeys = fields.configKeys;
     this.streamChannels = fields.streamChannels ?? this.streamChannels;
     this.interruptAfter = fields.interruptAfter;
     this.interruptBefore = fields.interruptBefore;
@@ -689,15 +686,6 @@ export class Pregel<
       defaultCheckpointer = config.configurable[CONFIG_KEY_CHECKPOINTER];
     } else {
       defaultCheckpointer = this.checkpointer;
-    }
-
-    if (this.configKeys !== undefined) {
-      const newConfigurable = Object.fromEntries(
-        Object.entries(rest.configurable ?? {}).filter(([key]) => {
-          return this.configKeys?.includes(key);
-        })
-      );
-      rest.configurable = newConfigurable;
     }
 
     return [
