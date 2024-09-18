@@ -9,7 +9,7 @@ shopt -s extglob
 
 # avoid copying build artifacts from the host
 cp -r ../package/!(node_modules|dist|dist-cjs|dist-esm|build|.next|.turbo) .
-cp -r ../package/.eslintrc.json .
+cp -f ../package/.eslintrc.json .
 
 mkdir -p ./libs/langgraph/
 mkdir -p ./libs/checkpoint/
