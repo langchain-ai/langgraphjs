@@ -191,12 +191,11 @@ export function isConfiguredManagedValue(
  * in get state calls.
  */
 export class NoopManagedValue extends ManagedValue {
-  call() {
-    
-  }
+  call() {}
 
   static async initialize(
     config: RunnableConfig,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     _args?: any
   ): Promise<ManagedValue> {
     return Promise.resolve(new NoopManagedValue(config));
