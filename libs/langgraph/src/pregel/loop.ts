@@ -46,6 +46,9 @@ import {
   mapDebugTaskResults,
 } from "./debug.js";
 import { PregelNode } from "./read.js";
+import { BaseStore } from "../store/base.js";
+import { AsyncBatchedStore } from "../store/batch.js";
+import { ManagedValueMapping, WritableManagedValue } from "../managed/base.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
@@ -60,6 +63,8 @@ export type PregelLoopInitializeParams = {
   streamKeys: string | string[];
   nodes: Record<string, PregelNode>;
   channelSpecs: Record<string, BaseChannel>;
+  managed: ManagedValueMapping;
+  store?: BaseStore;
 };
 
 type PregelLoopParams = {
@@ -73,11 +78,13 @@ type PregelLoopParams = {
   checkpointPendingWrites: CheckpointPendingWrite[];
   checkpointConfig: RunnableConfig;
   channels: Record<string, BaseChannel>;
+  managed: ManagedValueMapping;
   step: number;
   stop: number;
   outputKeys: string | string[];
   streamKeys: string | string[];
   nodes: Record<string, PregelNode>;
+  store?: AsyncBatchedStore;
 };
 
 export class PregelLoop {
@@ -94,6 +101,8 @@ export class PregelLoop {
   ) => number;
 
   channels: Record<string, BaseChannel>;
+
+  managed: ManagedValueMapping;
 
   protected checkpoint: Checkpoint;
 
@@ -136,6 +145,8 @@ export class PregelLoop {
 
   protected _checkpointerChainedPromise: Promise<unknown> = Promise.resolve();
 
+  store?: AsyncBatchedStore;
+
   constructor(params: PregelLoopParams) {
     this.input = params.input;
     this.config = params.config;
@@ -154,6 +165,7 @@ export class PregelLoop {
     this.checkpointMetadata = params.checkpointMetadata;
     this.checkpointPreviousVersions = params.checkpointPreviousVersions;
     this.channels = params.channels;
+    this.managed = params.managed;
     this.checkpointPendingWrites = params.checkpointPendingWrites;
     this.step = params.step;
     this.stop = params.stop;
@@ -162,6 +174,7 @@ export class PregelLoop {
     this.streamKeys = params.streamKeys;
     this.nodes = params.nodes;
     this.skipDoneTasks = this.config.configurable?.checkpoint_id === undefined;
+    this.store = params.store;
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
@@ -195,6 +208,15 @@ export class PregelLoop {
     const stop =
       step + (params.config.recursionLimit ?? DEFAULT_LOOP_LIMIT) + 1;
     const checkpointPreviousVersions = { ...checkpoint.channel_versions };
+
+    const store = params.store
+      ? new AsyncBatchedStore(params.store)
+      : undefined;
+    if (store) {
+      // Start the store. This is a batch store, so it will run continuously
+      store.start();
+    }
+
     return new PregelLoop({
       input: params.input,
       config: params.config,
@@ -203,6 +225,7 @@ export class PregelLoop {
       checkpointMetadata,
       checkpointConfig,
       channels,
+      managed: params.managed,
       step,
       stop,
       checkpointPreviousVersions,
@@ -210,6 +233,7 @@ export class PregelLoop {
       outputKeys: params.outputKeys ?? [],
       streamKeys: params.streamKeys ?? [],
       nodes: params.nodes,
+      store,
     });
   }
 
@@ -230,6 +254,14 @@ export class PregelLoop {
       }
     );
     this.checkpointerPromises.push(this._checkpointerChainedPromise);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  protected async updateManagedValues(key: string, values: any[]) {
+    const mv = this.managed.get(key);
+    if (mv && "update" in mv && typeof mv.update === "function") {
+      await (mv as WritableManagedValue).update(values);
+    }
   }
 
   /**
@@ -288,6 +320,9 @@ export class PregelLoop {
     interruptBefore: string[] | All;
     manager?: CallbackManagerForChainRun;
   }): Promise<boolean> {
+    if (this.store && !this.store.isRunning) {
+      this.store?.start();
+    }
     const {
       inputKeys = [],
       interruptAfter = [],
@@ -304,12 +339,15 @@ export class PregelLoop {
     } else if (this.tasks.every((task) => task.writes.length > 0)) {
       const writes = this.tasks.flatMap((t) => t.writes);
       // All tasks have finished
-      _applyWrites(
+      const myWrites = _applyWrites(
         this.checkpoint,
         this.channels,
         this.tasks,
         this.checkpointerGetNextVersion
       );
+      for (const [key, values] of Object.entries(myWrites)) {
+        await this.updateManagedValues(key, values);
+      }
       // produce values output
       const valuesOutput = await gatherIterator(
         prefixGenerator(
@@ -346,6 +384,7 @@ export class PregelLoop {
       this.checkpoint,
       this.nodes,
       this.channels,
+      this.managed,
       this.config,
       true,
       {
@@ -453,6 +492,7 @@ export class PregelLoop {
         this.checkpoint,
         this.nodes,
         this.channels,
+        this.managed,
         this.config,
         true,
         { step: this.step }

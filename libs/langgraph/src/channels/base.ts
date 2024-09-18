@@ -6,6 +6,10 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { EmptyChannelError } from "../errors.js";
 
+export function isBaseChannel(obj: unknown): obj is BaseChannel {
+  return obj != null && (obj as BaseChannel).lg_is_channel === true;
+}
+
 export abstract class BaseChannel<
   ValueType = unknown,
   UpdateType = unknown,
@@ -19,6 +23,9 @@ export abstract class BaseChannel<
    * The name of the channel.
    */
   abstract lc_graph_name: string;
+
+  /** @ignore */
+  lg_is_channel = true;
 
   /**
    * Return a new identical channel, optionally initialized from a checkpoint.
@@ -75,11 +82,15 @@ export function emptyChannels<Cc extends Record<string, BaseChannel>>(
   channels: Cc,
   checkpoint: ReadonlyCheckpoint
 ): Cc {
+  const filteredChannels = Object.fromEntries(
+    Object.entries(channels).filter(([, value]) => isBaseChannel(value))
+  ) as Cc;
+
   const newChannels = {} as Cc;
-  for (const k in channels) {
-    if (Object.prototype.hasOwnProperty.call(channels, k)) {
+  for (const k in filteredChannels) {
+    if (Object.prototype.hasOwnProperty.call(filteredChannels, k)) {
       const channelValue = checkpoint.channel_values[k];
-      newChannels[k] = channels[k].fromCheckpoint(channelValue);
+      newChannels[k] = filteredChannels[k].fromCheckpoint(channelValue);
     }
   }
   return newChannels;
