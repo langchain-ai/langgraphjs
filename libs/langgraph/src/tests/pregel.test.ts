@@ -5390,12 +5390,7 @@ describe("Managed Values (context) can be passed through state", () => {
             value: "shared",
           },
         },
-        messages: [
-          {
-            role: "assistant",
-            content: "initial message",
-          },
-        ],
+        messages: [new AIMessage("initial message")],
       };
     };
 
@@ -5420,12 +5415,7 @@ describe("Managed Values (context) can be passed through state", () => {
             value: "updated shared",
           },
         },
-        messages: [
-          {
-            role: "assistant",
-            content: "updated message",
-          },
-        ],
+        messages: [new AIMessage("updated message")],
       };
     };
 
