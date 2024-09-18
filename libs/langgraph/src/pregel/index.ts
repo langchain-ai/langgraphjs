@@ -485,7 +485,9 @@ export class Pregel<
       this.channels as Record<string, BaseChannel>,
       checkpoint
     );
-    const { managed } = await this.prepareSpecs(config);
+
+    // Pass `skipManaged: true` as managed values are not used/relevant in update state calls.
+    const { managed } = await this.prepareSpecs(config, { skipManaged: true });
 
     // run all writers of the chosen node
     const writers = this.nodes[asNode].getWriters();

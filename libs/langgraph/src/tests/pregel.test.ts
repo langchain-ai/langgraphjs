@@ -5370,4 +5370,126 @@ describe("Managed Values (context) can be passed through state", () => {
     config.configurable.assistant_id = "a";
     await app.invoke(null, config);
   });
+
+  it("can update state without shared state key in config", async () => {
+    // Define nodeOne that sets sharedStateKey and adds a message
+    const nodeOne = async (
+      data: typeof AgentAnnotation.State,
+      config?: RunnableConfig
+    ): Promise<Partial<typeof AgentAnnotation.State>> => {
+      if (!config) {
+        throw new Error("config is undefined");
+      }
+      expect(config.configurable?.thread_id).toEqual(threadId);
+
+      expect(data.sharedStateKey).toEqual({});
+
+      return {
+        sharedStateKey: {
+          data: {
+            value: "shared",
+          },
+        },
+        messages: [new AIMessage("initial message")],
+      };
+    };
+
+    // Define nodeTwo that updates sharedStateKey
+    const nodeTwo = async (
+      data: typeof AgentAnnotation.State,
+      config?: RunnableConfig
+    ): Promise<Partial<typeof AgentAnnotation.State>> => {
+      if (!config) {
+        throw new Error("config is undefined");
+      }
+
+      expect(data.sharedStateKey).toEqual({
+        data: {
+          value: "shared",
+        },
+      });
+
+      return {
+        sharedStateKey: {
+          data: {
+            value: "updated shared",
+          },
+        },
+        messages: [new AIMessage("updated message")],
+      };
+    };
+
+    // Create the workflow
+    const workflow = new StateGraph(AgentAnnotation)
+      .addNode("nodeOne", nodeOne)
+      .addNode("nodeTwo", nodeTwo)
+      .addEdge(START, "nodeOne")
+      .addEdge("nodeOne", "nodeTwo")
+      .addEdge("nodeTwo", END);
+
+    // Compile the workflow with store and checkpointer
+    const app = workflow.compile({
+      store,
+      checkpointer,
+      interruptBefore: ["nodeTwo"],
+    });
+
+    // Initial configuration with sharedStateKey
+    const config: Record<string, Record<string, unknown>> = {
+      configurable: { thread_id: threadId, assistant_id: "a" },
+    };
+
+    // Execute nodeOne to set sharedStateKey and add initial message
+    await app.invoke(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "start",
+          },
+        ],
+      },
+      config
+    );
+
+    // Verify initial state after nodeOne
+    let currentState = await app.getState(config);
+    expect(currentState.next).toEqual(["nodeTwo"]);
+    expect(currentState.values).toHaveProperty("messages");
+    expect(currentState.values).not.toHaveProperty("sharedStateKey");
+
+    // Remove 'assistant_id' from config.configurable
+    delete config.configurable.assistant_id;
+
+    // Prepare updated values to be applied
+    const updatedValues = {
+      messages: [
+        {
+          role: "assistant",
+          content: "intermediate message",
+        },
+      ],
+    };
+
+    // Update the state without sharedStateKey in config
+    await app.updateState(config, updatedValues);
+
+    // Verify that sharedStateKey has not been altered
+    currentState = await app.getState(config);
+    expect(currentState.next).toEqual(["nodeTwo"]);
+    expect(currentState.values).toHaveProperty("messages");
+
+    // Attempt to invoke nodeTwo without 'assistant_id', expecting an error
+    await expect(app.invoke(null, config)).rejects.toThrow(/assistant_id/);
+
+    // Re-add 'assistant_id' to config.configurable
+    config.configurable.assistant_id = "a";
+
+    // Successfully invoke nodeTwo after restoring 'assistant_id'
+    await app.invoke(null, config);
+
+    // Final state after invoking nodeTwo and nodeThree
+    currentState = await app.getState(config);
+    expect(currentState.next).toEqual([]);
+  });
 });
