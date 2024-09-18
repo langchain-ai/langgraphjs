@@ -27,6 +27,7 @@ import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { RunnableCallable } from "../utils.js";
 import {
   _isSend,
+  CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Send,
   TAG_HIDDEN,
@@ -284,10 +285,15 @@ export class StateGraph<
       );
     }
 
-    if (key.includes(CHECKPOINT_NAMESPACE_SEPARATOR)) {
-      throw new Error(
-        `"${CHECKPOINT_NAMESPACE_SEPARATOR}" is a reserved character and is not allowed in node names.`
-      );
+    for (const reservedChar of [
+      CHECKPOINT_NAMESPACE_SEPARATOR,
+      CHECKPOINT_NAMESPACE_END,
+    ]) {
+      if (key.includes(reservedChar)) {
+        throw new Error(
+          `"${reservedChar}" is a reserved character and is not allowed in node names.`
+        );
+      }
     }
     this.warnIfCompiled(
       `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`

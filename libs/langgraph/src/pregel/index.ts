@@ -15,6 +15,7 @@ import {
   All,
   BaseCheckpointSaver,
   CheckpointListOptions,
+  CheckpointTuple,
   compareChannelVersions,
   copyCheckpoint,
   emptyCheckpoint,
@@ -44,6 +45,8 @@ import {
   CONFIG_KEY_STORE,
   ERROR,
   INTERRUPT,
+  CHECKPOINT_NAMESPACE_SEPARATOR,
+  CHECKPOINT_NAMESPACE_END,
 } from "../constants.js";
 import {
   PregelExecutableTask,
@@ -193,6 +196,22 @@ export interface PregelOptions<
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isPregel(x: Pregel<any, any> | Runnable): x is Pregel<any, any> {
+  return (
+    "inputChannels" in x &&
+    x.inputChannels !== undefined &&
+    "outputChannels" &&
+    x.outputChannels !== undefined
+  );
+}
+
+function isRunnableSequence(
+  x: RunnableSequence | Runnable
+): x is RunnableSequence {
+  return "steps" in x && Array.isArray(x.steps);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PregelInputType = any;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -300,6 +319,48 @@ export class Pregel<
       return this.streamChannels;
     } else {
       return Object.keys(this.channels);
+    }
+  }
+
+  *getSubgraphs(recurse?: boolean): Generator<[string, Pregel<any, any>]> {
+    for (const [name, node] of Object.entries(this.nodes)) {
+      // find the subgraph if any
+      let graph;
+      if (isPregel(node.bound)) {
+        graph = node.bound;
+      } else if (isRunnableSequence(node.bound)) {
+        for (const runnable of node.bound.steps) {
+          if (isPregel(runnable)) {
+            graph = runnable;
+            break;
+          }
+        }
+      }
+      // if found, yield recursively
+      if (graph !== undefined) {
+        yield [name, graph];
+        if (recurse) {
+          for (const [subgraphName, subgraph] of graph.getSubgraphs(recurse)) {
+            yield [
+              `${name}${CHECKPOINT_NAMESPACE_SEPARATOR}${subgraphName}`,
+              subgraph,
+            ];
+          }
+        }
+      }
+    }
+  }
+
+  protected _prepareStateSnapshot({
+    config,
+    saved,
+    recurse,
+  }: {
+    config: RunnableConfig;
+    saved?: CheckpointTuple;
+    recurse?: BaseCheckpointSaver;
+  }) {
+    if (saved === undefined) {
     }
   }
 

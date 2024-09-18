@@ -3,6 +3,7 @@ export const ERROR = "__error__";
 export const CONFIG_KEY_SEND = "__pregel_send";
 export const CONFIG_KEY_READ = "__pregel_read";
 export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
+export const CONFIG_KEY_CHECKPOINT_MAP = "checkpoint_map";
 export const CONFIG_KEY_RESUMING = "__pregel_resuming";
 export const INTERRUPT = "__interrupt__";
 export const CONFIG_KEY_STORE = "__pregel_store";
@@ -21,11 +22,13 @@ export const RESERVED = [
   CONFIG_KEY_SEND,
   CONFIG_KEY_READ,
   CONFIG_KEY_CHECKPOINTER,
+  CONFIG_KEY_CHECKPOINT_MAP,
   CONFIG_KEY_RESUMING,
   INPUT,
 ];
 
 export const CHECKPOINT_NAMESPACE_SEPARATOR = "|";
+export const CHECKPOINT_NAMESPACE_END = ":";
 
 export interface SendInterface {
   node: string;
