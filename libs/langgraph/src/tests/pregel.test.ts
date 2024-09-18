@@ -2689,6 +2689,53 @@ describe("StateGraph", () => {
     expect(awhiles).toBe(2);
   });
 
+  it("Should log a warning if a NodeInterrupt is thrown in a conditional edge", async () => {
+    // Mock console.warn
+    const originalWarn = console.warn;
+    console.warn = jest.fn();
+
+    const GraphAnnotation = Annotation.Root({
+      count: Annotation<number>({ reducer: (a, b) => a + b }),
+    });
+
+    const nodeOne = (_: typeof GraphAnnotation.State) => {
+      return {
+        count: 1,
+      };
+    };
+
+    const nodeTwo = (_: typeof GraphAnnotation.State) => {
+      return {
+        count: 1,
+      };
+    };
+
+    const shouldContinue = (
+      _: typeof GraphAnnotation.State
+    ): typeof END | "nodeTwo" => {
+      throw new NodeInterrupt("Interrupted");
+    };
+
+    const workflow = new StateGraph(GraphAnnotation)
+      .addNode("nodeOne", nodeOne)
+      .addNode("nodeTwo", nodeTwo)
+      .addEdge(START, "nodeOne")
+      .addEdge("nodeTwo", "nodeOne")
+      .addConditionalEdges("nodeOne", shouldContinue, [END, "nodeTwo"]);
+    const app = workflow.compile();
+    await app.invoke({
+      count: 0,
+    });
+    // expect console.warn to have been called
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(console.warn).toHaveBeenCalledWith(
+      "[WARN]: 'NodeInterrupt' thrown in conditional edge. This is likely a bug in your graph implementation.\n" +
+        "NodeInterrupt should only be thrown inside a node, not in edge conditions."
+    );
+    // Restore console.warn
+    console.warn = originalWarn;
+  });
+
   it("Allow map reduce flows", async () => {
     const OverallState = Annotation.Root({
       subjects: Annotation<string[]>,
