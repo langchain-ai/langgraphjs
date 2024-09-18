@@ -3662,6 +3662,43 @@ describe("StateGraph", () => {
       hello: "again",
     });
   });
+
+  it("should allow private state passing between nodes", async () => {
+    const StateAnnotation = Annotation.Root({
+      hello: Annotation<string>,
+    });
+
+    const ConfigAnnotation = Annotation.Root({
+      shouldExist: Annotation<string>,
+    });
+
+    const nodeA = (_: typeof StateAnnotation.State, config: RunnableConfig) => {
+      expect(config.configurable?.shouldExist).toEqual("I exist");
+      expect(config.configurable?.shouldNotExist).toBeUndefined();
+      return {
+        hello: "again",
+      };
+    };
+
+    const graph = new StateGraph(StateAnnotation, ConfigAnnotation)
+      .addNode("a", nodeA)
+      .addEdge(START, "a")
+      .compile();
+
+    expect(
+      await graph.invoke(
+        { hello: "there" },
+        {
+          configurable: {
+            shouldExist: "I exist",
+            shouldNotExist: "I should not exist",
+          },
+        }
+      )
+    ).toEqual({
+      hello: "again",
+    });
+  });
 });
 
 describe("PreBuilt", () => {
