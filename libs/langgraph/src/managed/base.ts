@@ -192,7 +192,7 @@ export function isConfiguredManagedValue(
  */
 export class NoopManagedValue extends ManagedValue {
   call() {
-    return;
+    
   }
 
   static async initialize(

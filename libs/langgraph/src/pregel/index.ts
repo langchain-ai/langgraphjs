@@ -691,7 +691,7 @@ export class Pregel<
       } else if (options?.skipManaged) {
         managedSpecs[name] = {
           cls: NoopManagedValue,
-          params: { config },
+          params: { config: {} },
         };
       } else {
         managedSpecs[name] = spec;

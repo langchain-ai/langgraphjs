@@ -5303,22 +5303,24 @@ describe("Managed Values (context) can be passed through state", () => {
   it("can get state when state has shared values", async () => {
     const nodeOne = (_: typeof AgentAnnotation.State) => {
       return {
-        messages: [{
-          role: "assistant",
-          content: "no-op"
-        }],
+        messages: [
+          {
+            role: "assistant",
+            content: "no-op",
+          },
+        ],
         sharedStateKey: {
           data: {
             value: "shared",
           },
-        }
-      }
-    }
+        },
+      };
+    };
 
     const nodeTwo = (_: typeof AgentAnnotation.State) => {
       // no-op
       return {};
-    }
+    };
 
     const workflow = new StateGraph(AgentAnnotation)
       .addNode("nodeOne", nodeOne)
@@ -5335,16 +5337,21 @@ describe("Managed Values (context) can be passed through state", () => {
 
     const config: Record<string, Record<string, unknown>> = {
       configurable: { thread_id: threadId, assistant_id: "a" },
-    }
+    };
 
     // Execute the graph. This will run `nodeOne` which sets the shared value,
     // then is interrupted before executing `nodeTwo`.
-    await app.invoke({
-      messages: [{
-        role: "user",
-        content: "no-op"
-      }]
-    }, config);
+    await app.invoke(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "no-op",
+          },
+        ],
+      },
+      config
+    );
 
     // Remove the "assistant_id" from the config and attempt to fetch the state.
     // Since a `noop` managed value class is used when getting state, it should work
@@ -5356,12 +5363,11 @@ describe("Managed Values (context) can be passed through state", () => {
     // is not found in the config.
     expect(await app.getState(config)).toBeTruthy();
 
-
     // Re-running without re-setting the `assistant_id` key in the config should throw an error.
     await expect(app.invoke(null, config)).rejects.toThrow(/assistant_id/);
 
     // Re-set the `assistant_id` key in the config and attempt to fetch the state.
     config.configurable.assistant_id = "a";
     await app.invoke(null, config);
-  })
+  });
 });
