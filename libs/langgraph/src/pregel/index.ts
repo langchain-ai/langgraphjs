@@ -73,6 +73,7 @@ import {
   isConfiguredManagedValue,
   ManagedValue,
   ManagedValueMapping,
+  NoopManagedValue,
   type ManagedValueSpec,
 } from "../managed/base.js";
 import { patchConfigurable } from "../utils.js";
@@ -316,7 +317,8 @@ export class Pregel<
       this.channels as Record<string, BaseChannel>,
       checkpoint
     );
-    const { managed } = await this.prepareSpecs(config);
+    // Pass `skipManaged: true` as managed values should not be returned in get state calls.
+    const { managed } = await this.prepareSpecs(config, { skipManaged: true });
 
     const nextTasks = _prepareNextTasks(
       checkpoint,
@@ -351,7 +353,8 @@ export class Pregel<
     if (!this.checkpointer) {
       throw new GraphValueError("No checkpointer set");
     }
-    const { managed } = await this.prepareSpecs(config);
+    // Pass `skipManaged: true` as managed values should not be returned in get state calls.
+    const { managed } = await this.prepareSpecs(config, { skipManaged: true });
 
     for await (const saved of this.checkpointer.list(config, options)) {
       const channels = emptyChannels(
@@ -668,7 +671,14 @@ export class Pregel<
     return super.stream(input, options);
   }
 
-  protected async prepareSpecs(config: RunnableConfig) {
+  protected async prepareSpecs(
+    config: RunnableConfig,
+    options?: {
+      // Equivalent to the `skip_context` option in Python, but renamed
+      // to `managed` since JS does not implement the `Context` class.
+      skipManaged?: boolean;
+    }
+  ) {
     const configForManaged = patchConfigurable(config, {
       [CONFIG_KEY_STORE]: this.store,
     });
@@ -678,6 +688,11 @@ export class Pregel<
     for (const [name, spec] of Object.entries(this.channels)) {
       if (isBaseChannel(spec)) {
         channelSpecs[name] = spec;
+      } else if (options?.skipManaged) {
+        managedSpecs[name] = {
+          cls: NoopManagedValue,
+          params: { config },
+        };
       } else {
         managedSpecs[name] = spec;
       }

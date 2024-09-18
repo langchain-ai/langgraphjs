@@ -185,3 +185,20 @@ export function isConfiguredManagedValue(
   }
   return false;
 }
+
+/**
+ * No-op class used when getting state values, as managed values should never be returned
+ * in get state calls.
+ */
+export class NoopManagedValue extends ManagedValue {
+  call() {
+    return;
+  }
+
+  static async initialize(
+    config: RunnableConfig,
+    _args?: any
+  ): Promise<ManagedValue> {
+    return Promise.resolve(new NoopManagedValue(config));
+  }
+}
