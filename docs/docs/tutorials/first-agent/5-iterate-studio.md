@@ -39,13 +39,13 @@ Additionally, you'll need to tell LangGraph Studio where your agent is located. 
 
 ```json
 {
-  "node_version": "20",
-  "dockerfile_lines": [],
-  "dependencies": ["."],
-  "graphs": {
-    "agent": "./chatbot.ts:app"
-  },
-  "env": ".env"
+	"node_version": "20",
+	"dockerfile_lines": [],
+	"dependencies": ["."],
+	"graphs": {
+		"agent": "./chatbot.ts:app"
+	},
+	"env": ".env"
 }
 ```
 
