@@ -132,26 +132,26 @@ Imagine that the agent was producing some weird or unexpected results, such as c
 
 ```json
 "content": {
-    'location': {
-        'name': 'San Francisco',
-        'region': 'California',
-        'country': 'United States of America',
+    "location": {
+        "name": "San Francisco",
+        "region": "California",
+        "country": "United States of America",
     },
-    'current': {
-        'temp_c': 17.8,
-        'temp_f': 64.0,
-        'condition': {
-            'text': 'Overcast',
+    "current": {
+        "temp_c": 17.8,
+        "temp_f": 64.0,
+        "condition": {
+            "text": "Overcast",
         },
-        'humidity': 90,
-        'cloud': 100,
-        'feelslike_c': 17.8,
-        'feelslike_f': 64.0,
-        'windchill_c': 14.2,
-        'windchill_f': 57.5,
-        'vis_km': 16.0,
-        'vis_miles': 9.0,
-        'uv': 3.0,
+        "humidity": 90,
+        "cloud": 100,
+        "feelslike_c": 17.8,
+        "feelslike_f": 64.0,
+        "windchill_c": 14.2,
+        "windchill_f": 57.5,
+        "vis_km": 16.0,
+        "vis_miles": 9.0,
+        "uv": 3.0,
     }
 }
 ```
