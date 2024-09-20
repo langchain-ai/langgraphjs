@@ -3,6 +3,7 @@ export const ERROR = "__error__";
 export const CONFIG_KEY_SEND = "__pregel_send";
 export const CONFIG_KEY_READ = "__pregel_read";
 export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
+// this one is part of public API so more readable
 export const CONFIG_KEY_CHECKPOINT_MAP = "checkpoint_map";
 export const CONFIG_KEY_RESUMING = "__pregel_resuming";
 export const INTERRUPT = "__interrupt__";

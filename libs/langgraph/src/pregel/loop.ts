@@ -19,6 +19,8 @@ import {
 } from "../channels/base.js";
 import { PregelExecutableTask, StreamMode } from "./types.js";
 import {
+  CHECKPOINT_NAMESPACE_SEPARATOR,
+  CONFIG_KEY_CHECKPOINT_MAP,
   CONFIG_KEY_READ,
   CONFIG_KEY_RESUMING,
   ERROR,
@@ -39,7 +41,7 @@ import {
 } from "../utils.js";
 import { mapInput, mapOutputUpdates, mapOutputValues } from "./io.js";
 import { EmptyInputError, GraphInterrupt } from "../errors.js";
-import { getNewChannelVersions } from "./utils.js";
+import { getNewChannelVersions, patchConfigurable } from "./utils/index.js";
 import {
   mapDebugTasks,
   mapDebugCheckpoint,
@@ -110,6 +112,8 @@ export class PregelLoop {
 
   checkpointMetadata: CheckpointMetadata;
 
+  protected checkpointNamespace: string[];
+
   protected checkpointPendingWrites: CheckpointPendingWrite[] = [];
 
   protected checkpointPreviousVersions: Record<string, string | number>;
@@ -149,7 +153,6 @@ export class PregelLoop {
 
   constructor(params: PregelLoopParams) {
     this.input = params.input;
-    this.config = params.config;
     this.checkpointer = params.checkpointer;
     // TODO: if managed values no longer needs graph we can replace with
     // managed_specs, channel_specs
@@ -161,7 +164,6 @@ export class PregelLoop {
       this.checkpointerGetNextVersion = increment;
     }
     this.checkpoint = params.checkpoint;
-    this.checkpointConfig = params.checkpointConfig;
     this.checkpointMetadata = params.checkpointMetadata;
     this.checkpointPreviousVersions = params.checkpointPreviousVersions;
     this.channels = params.channels;
@@ -169,12 +171,46 @@ export class PregelLoop {
     this.checkpointPendingWrites = params.checkpointPendingWrites;
     this.step = params.step;
     this.stop = params.stop;
+    this.config = params.config;
     this.isNested = CONFIG_KEY_READ in (this.config.configurable ?? {});
     this.outputKeys = params.outputKeys;
     this.streamKeys = params.streamKeys;
     this.nodes = params.nodes;
     this.skipDoneTasks = this.config.configurable?.checkpoint_id === undefined;
     this.store = params.store;
+
+    if (
+      !this.isNested &&
+      this.config.configurable?.checkpoint_ns !== undefined &&
+      this.config.configurable?.checkpoint_ns !== ""
+    ) {
+      this.config = patchConfigurable(this.config, {
+        checkpoint_ns: "",
+        checkpoint_id: undefined,
+      });
+    }
+
+    if (
+      this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] !== undefined &&
+      this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP]?.[
+        this.config.configurable?.checkpoint_ns
+      ]
+    ) {
+      this.checkpointConfig = patchConfigurable(this.config, {
+        checkpoint_id:
+          this.config.configurable[CONFIG_KEY_CHECKPOINT_MAP][
+            this.config.configurable?.checkpoint_ns
+          ],
+      });
+    } else {
+      this.checkpointConfig = params.checkpointConfig;
+    }
+
+    this.checkpointNamespace = this.config.configurable?.checkpoint_ns
+      ? this.config.configurable.checkpoint_ns.split(
+          CHECKPOINT_NAMESPACE_SEPARATOR
+        )
+      : [];
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
@@ -187,6 +223,7 @@ export class PregelLoop {
         source: "input",
         step: -2,
         writes: null,
+        parents: {},
       },
       pendingWrites: [],
     };
@@ -194,6 +231,7 @@ export class PregelLoop {
       ...params.config,
       ...saved.config,
       configurable: {
+        checkpoint_ns: "",
         ...params.config.configurable,
         ...saved.config.configurable,
       },
@@ -520,12 +558,13 @@ export class PregelLoop {
   }
 
   protected async _putCheckpoint(
-    inputMetadata: Omit<CheckpointMetadata, "step">
+    inputMetadata: Omit<CheckpointMetadata, "step" | "parents">
   ) {
     // Assign step
     const metadata = {
       ...inputMetadata,
       step: this.step,
+      parents: this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] ?? {},
     };
     // Bail if no checkpointer
     if (this.checkpointer !== undefined) {
@@ -539,7 +578,6 @@ export class PregelLoop {
         this.checkpoint,
         this.channels,
         this.step
-        // id: this.isNested ? this.config.configurable?.checkpoint_id : undefined,
       );
       this.checkpointConfig = {
         ...this.checkpointConfig,

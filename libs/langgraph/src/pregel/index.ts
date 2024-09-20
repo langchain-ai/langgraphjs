@@ -6,8 +6,8 @@ import {
   RunnableLike,
   RunnableSequence,
   _coerceToRunnable,
-  ensureConfig,
   getCallbackManagerForConfig,
+  mergeConfigs,
   patchConfig,
 } from "@langchain/core/runnables";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
@@ -67,7 +67,12 @@ import {
   _applyWrites,
   StrRecord,
 } from "./algo.js";
-import { _coerceToDict, getNewChannelVersions, RetryPolicy } from "./utils.js";
+import {
+  _coerceToDict,
+  getNewChannelVersions,
+  patchCheckpointMap,
+  RetryPolicy,
+} from "./utils/index.js";
 import { PregelLoop } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
 import { BaseStore } from "../store/base.js";
@@ -79,7 +84,8 @@ import {
   NoopManagedValue,
   type ManagedValueSpec,
 } from "../managed/base.js";
-import { patchConfigurable } from "../utils.js";
+import { gatherIterator, patchConfigurable } from "../utils.js";
+import { ensureLangGraphConfig } from "./utils/config.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -257,6 +263,8 @@ export class Pregel<
 
   retryPolicy?: RetryPolicy;
 
+  config?: RunnableConfig;
+
   store?: BaseStore;
 
   constructor(fields: PregelParams<Nn, Cc>) {
@@ -280,11 +288,19 @@ export class Pregel<
     this.debug = fields.debug ?? this.debug;
     this.checkpointer = fields.checkpointer;
     this.retryPolicy = fields.retryPolicy;
+    this.config = fields.config;
     this.store = fields.store;
 
     if (this.autoValidate) {
       this.validate();
     }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore Remove ignore when we remove support for 0.2 versions of core
+  override withConfig(config: RunnableConfig): typeof this {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return new (this.constructor as any)({ ...this, config });
   }
 
   validate(): this {
@@ -319,6 +335,7 @@ export class Pregel<
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   *getSubgraphs(recurse?: boolean): Generator<[string, Pregel<any, any>]> {
     for (const [name, node] of Object.entries(this.nodes)) {
       // find the subgraph if any
@@ -348,45 +365,77 @@ export class Pregel<
     }
   }
 
-  protected _prepareStateSnapshot({
+  protected async _prepareStateSnapshot({
     config,
     saved,
-    recurse,
+    subgraphCheckpointer,
   }: {
     config: RunnableConfig;
     saved?: CheckpointTuple;
-    recurse?: BaseCheckpointSaver;
-  }) {
+    subgraphCheckpointer?: BaseCheckpointSaver;
+  }): Promise<StateSnapshot> {
     if (saved === undefined) {
+      return {
+        values: {},
+        next: [],
+        config,
+        tasks: [],
+      };
     }
-  }
-
-  /**
-   * Get the current state of the graph.
-   */
-  async getState(config: RunnableConfig): Promise<StateSnapshot> {
-    if (!this.checkpointer) {
-      throw new GraphValueError("No checkpointer set");
-    }
-
-    const saved = await this.checkpointer.getTuple(config);
-    const checkpoint = saved ? saved.checkpoint : emptyCheckpoint();
-    const channels = emptyChannels(
-      this.channels as Record<string, BaseChannel>,
-      checkpoint
-    );
     // Pass `skipManaged: true` as managed values should not be returned in get state calls.
     const { managed } = await this.prepareSpecs(config, { skipManaged: true });
 
+    const channels = emptyChannels(
+      this.channels as Record<string, BaseChannel>,
+      saved.checkpoint
+    );
+
     const nextTasks = _prepareNextTasks(
-      checkpoint,
+      saved.checkpoint,
       this.nodes,
       channels,
       managed,
-      saved !== undefined ? saved.config : config,
+      saved.config,
       false,
-      { step: saved ? (saved.metadata?.step ?? -1) + 1 : -1 }
+      { step: (saved.metadata?.step ?? -1) + 1 }
     );
+    const subgraphs = await gatherIterator(this.getSubgraphs());
+    const parentNamespace = saved.config.configurable?.checkpoint_ns ?? "";
+    const taskStates: Record<string, RunnableConfig | StateSnapshot> = {};
+    for (const task of nextTasks) {
+      const matchingSubgraph = subgraphs.find(([name]) => name === task.name);
+      if (!matchingSubgraph) {
+        continue;
+      }
+      // assemble checkpoint_ns for this task
+      let taskNs = `${task.name}${CHECKPOINT_NAMESPACE_END}${task.id}`;
+      if (parentNamespace) {
+        taskNs = `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${taskNs}`;
+      }
+      if (!subgraphCheckpointer) {
+        // set config as signal that subgraph checkpoints exist
+        const config: RunnableConfig = {
+          configurable: {
+            thread_id: saved.config.configurable?.thread_id,
+            checkpoint_ns: taskNs,
+          },
+        };
+        taskStates[task.id] = config;
+      } else {
+        // get the state of the subgraph
+        const config: RunnableConfig = {
+          configurable: {
+            [CONFIG_KEY_CHECKPOINTER]: subgraphCheckpointer,
+            thread_id: saved.config.configurable?.thread_id,
+            checkpoint_ns: taskNs,
+          },
+        };
+        taskStates[task.id] = await matchingSubgraph[1].getState(config, {
+          subgraphs: true,
+        });
+      }
+    }
+    // assemble the state snapshot
     return {
       values: readChannels(
         channels,
@@ -394,11 +443,60 @@ export class Pregel<
       ),
       next: nextTasks.map((task) => task.name),
       tasks: tasksWithWrites(nextTasks, saved?.pendingWrites ?? []),
-      metadata: saved?.metadata,
-      config: saved ? saved.config : config,
-      createdAt: saved?.checkpoint.ts,
-      parentConfig: saved?.parentConfig,
+      metadata: saved.metadata,
+      config: patchCheckpointMap(saved.config, saved.metadata),
+      createdAt: saved.checkpoint.ts,
+      parentConfig: saved.parentConfig,
     };
+  }
+
+  /**
+   * Get the current state of the graph.
+   */
+  async getState(
+    config: RunnableConfig,
+    options?: { subgraphs?: boolean }
+  ): Promise<StateSnapshot> {
+    const checkpointer =
+      config.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
+    if (!checkpointer) {
+      throw new GraphValueError("No checkpointer set");
+    }
+
+    const checkpointNamespace: string =
+      config.configurable?.checkpoint_ns ?? "";
+    if (
+      checkpointNamespace !== "" &&
+      config.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
+    ) {
+      // remove task_ids from checkpoint_ns
+      const recastCheckpointNamespace = checkpointNamespace
+        .split(CHECKPOINT_NAMESPACE_SEPARATOR)
+        .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
+        .join(CHECKPOINT_NAMESPACE_SEPARATOR);
+      for (const [name, subgraph] of this.getSubgraphs(true)) {
+        if (name === recastCheckpointNamespace) {
+          return await subgraph.getState(
+            patchConfigurable(config, {
+              [CONFIG_KEY_CHECKPOINTER]: checkpointer,
+            }),
+            { subgraphs: options?.subgraphs }
+          );
+        }
+      }
+      throw new Error(
+        `Subgraph with namespace "${recastCheckpointNamespace}" not found.`
+      );
+    }
+
+    const mergedConfig = mergeConfigs(this.config, config);
+    const saved = await checkpointer.getTuple(config);
+    const snapshot = await this._prepareStateSnapshot({
+      config: mergedConfig,
+      saved,
+      subgraphCheckpointer: options?.subgraphs ? checkpointer : undefined,
+    });
+    return snapshot;
   }
 
   /**
@@ -486,6 +584,7 @@ export class Pregel<
           source: "update",
           step,
           writes: {},
+          parents: saved?.metadata?.parents ?? {},
         },
         {}
       );
@@ -619,6 +718,7 @@ export class Pregel<
         source: "update",
         step: step + 1,
         writes: { [asNode]: values },
+        parents: saved?.metadata?.parents ?? {},
       },
       newVersions
     );
@@ -680,8 +780,7 @@ export class Pregel<
     }
     if (
       config !== undefined &&
-      config.configurable?.[CONFIG_KEY_CHECKPOINTER] !== undefined &&
-      (defaultInterruptAfter.length > 0 || defaultInterruptBefore.length > 0)
+      config.configurable?.[CONFIG_KEY_CHECKPOINTER] !== undefined
     ) {
       defaultCheckpointer = config.configurable[CONFIG_KEY_CHECKPOINTER];
     } else {
@@ -788,7 +887,7 @@ export class Pregel<
     input: PregelInputType,
     options?: Partial<PregelOptions<Nn, Cc>>
   ): AsyncGenerator<PregelOutputType> {
-    const inputConfig = ensureConfig(options);
+    const inputConfig = ensureLangGraphConfig(this.config, options);
     if (
       inputConfig.recursionLimit === undefined ||
       inputConfig.recursionLimit < 1
@@ -985,7 +1084,7 @@ export class Pregel<
   ): Promise<PregelOutputType> {
     const streamMode = options?.streamMode ?? "values";
     const config = {
-      ...ensureConfig(options),
+      ...options,
       outputKeys: options?.outputKeys ?? this.outputChannels,
       streamMode,
     };

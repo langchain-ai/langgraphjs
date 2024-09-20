@@ -11,7 +11,7 @@ import {
 import { CONFIG_KEY_READ } from "../constants.js";
 import { ChannelWrite } from "./write.js";
 import { RunnableCallable } from "../utils.js";
-import type { RetryPolicy } from "./utils.js";
+import type { RetryPolicy } from "./utils/index.js";
 
 export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

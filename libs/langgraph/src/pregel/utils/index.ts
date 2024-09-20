@@ -1,4 +1,9 @@
-import type { ChannelVersions } from "@langchain/langgraph-checkpoint";
+import { RunnableConfig } from "@langchain/core/runnables";
+import type {
+  ChannelVersions,
+  CheckpointMetadata,
+} from "@langchain/langgraph-checkpoint";
+import { CONFIG_KEY_CHECKPOINT_MAP } from "../../constants.js";
 
 export function getNullChannelVersion(currentVersions: ChannelVersions) {
   const versionValues = Object.values(currentVersions);
@@ -78,3 +83,39 @@ export type RetryPolicy = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   retryOn?: (e: any) => boolean;
 };
+
+export function patchConfigurable(
+  config: RunnableConfig | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  patch: Record<string, any>
+): RunnableConfig {
+  if (config === null) {
+    return { configurable: patch };
+  } else if (config?.configurable === undefined) {
+    return { ...config, configurable: patch };
+  } else {
+    return {
+      ...config,
+      configurable: { ...config.configurable, ...patch },
+    };
+  }
+}
+
+export function patchCheckpointMap(
+  config: RunnableConfig,
+  metadata?: CheckpointMetadata
+): RunnableConfig {
+  const parents = metadata?.parents ?? {};
+
+  if (Object.keys(parents).length > 0) {
+    return patchConfigurable(config, {
+      [CONFIG_KEY_CHECKPOINT_MAP]: {
+        ...parents,
+        [config.configurable?.checkpoint_ns ?? ""]:
+          config.configurable?.checkpoint_id,
+      },
+    });
+  } else {
+    return config;
+  }
+}

@@ -27,6 +27,7 @@ import { readChannel, readChannels } from "./io.js";
 import {
   _isSend,
   _isSendInterface,
+  CONFIG_KEY_CHECKPOINT_MAP,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   CONFIG_KEY_CHECKPOINTER,
   CONFIG_KEY_READ,
@@ -37,10 +38,11 @@ import {
   Send,
   TAG_HIDDEN,
   TASKS,
+  CHECKPOINT_NAMESPACE_END,
 } from "../constants.js";
 import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
-import { _getIdMetadata, getNullChannelVersion } from "./utils.js";
+import { _getIdMetadata, getNullChannelVersion } from "./utils/index.js";
 import { ManagedValueMapping } from "../managed/base.js";
 
 /**
@@ -366,7 +368,8 @@ export function _prepareNextTasks<
   forExecution: boolean,
   extra: NextTaskExtraFields
 ): PregelTaskDescription[] | PregelExecutableTask<keyof Nn, keyof Cc>[] {
-  const parentNamespace = config.configurable?.checkpoint_ns ?? "";
+  const configurable = config.configurable ?? {};
+  const parentNamespace = configurable.checkpoint_ns ?? "";
   const tasks: Array<PregelExecutableTask<keyof Nn, keyof Cc>> = [];
   const taskDescriptions: Array<PregelTaskDescription> = [];
   const { step, isResuming = false, checkpointer, manager } = extra;
@@ -399,6 +402,7 @@ export function _prepareNextTasks<
       JSON.stringify([checkpointNamespace, metadata]),
       checkpoint.id
     );
+    const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
 
     if (forExecution) {
       const proc = processes[packet.node];
@@ -447,6 +451,14 @@ export function _prepareNextTasks<
                     select_,
                     fresh_
                   ),
+                [CONFIG_KEY_CHECKPOINTER]:
+                  checkpointer ?? configurable[CONFIG_KEY_CHECKPOINTER],
+                [CONFIG_KEY_CHECKPOINT_MAP]: {
+                  ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
+                  [parentNamespace]: checkpoint.id,
+                },
+                [CONFIG_KEY_RESUMING]: isResuming,
+                checkpoint_ns: taskCheckpointNamespace,
               },
             }
           ),
@@ -511,6 +523,7 @@ export function _prepareNextTasks<
         const node = proc.getNode();
         if (node !== undefined) {
           const writes: [keyof Cc, unknown][] = [];
+          const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
           tasks.push({
             name,
             input: val,
@@ -550,10 +563,14 @@ export function _prepareNextTasks<
                       select_,
                       fresh_
                     ),
-                  [CONFIG_KEY_CHECKPOINTER]: checkpointer,
+                  [CONFIG_KEY_CHECKPOINTER]:
+                    checkpointer ?? configurable[CONFIG_KEY_CHECKPOINTER],
+                  [CONFIG_KEY_CHECKPOINT_MAP]: {
+                    ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
+                    [parentNamespace]: checkpoint.id,
+                  },
                   [CONFIG_KEY_RESUMING]: isResuming,
-                  checkpoint_id: checkpoint.id,
-                  checkpoint_ns: checkpointNamespace,
+                  checkpoint_ns: taskCheckpointNamespace,
                 },
               }
             ),

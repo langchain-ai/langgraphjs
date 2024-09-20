@@ -1453,7 +1453,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 6, writes: { two: 5 } },
+      metadata: { source: "loop", step: 6, writes: { two: 5 }, parents: {} },
       createdAt: expect.any(String),
       parentConfig: history[1].config,
     }),
@@ -1468,7 +1468,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 5, writes: {} },
+      metadata: { source: "loop", step: 5, writes: {}, parents: {} },
       createdAt: expect.any(String),
       parentConfig: history[2].config,
     }),
@@ -1483,7 +1483,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "input", step: 4, writes: { input: 3 } },
+      metadata: { source: "input", step: 4, writes: { input: 3 }, parents: {} },
       createdAt: expect.any(String),
       parentConfig: history[3].config,
     }),
@@ -1498,7 +1498,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 3, writes: {} },
+      metadata: { source: "loop", step: 3, writes: {}, parents: {} },
       createdAt: expect.any(String),
       parentConfig: history[4].config,
     }),
@@ -1513,7 +1513,12 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "input", step: 2, writes: { input: 20 } },
+      metadata: {
+        source: "input",
+        step: 2,
+        writes: { input: 20 },
+        parents: {},
+      },
       createdAt: expect.any(String),
       parentConfig: history[5].config,
     }),
@@ -1528,7 +1533,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 1, writes: { two: 4 } },
+      metadata: { source: "loop", step: 1, writes: { two: 4 }, parents: {} },
       createdAt: expect.any(String),
       parentConfig: history[6].config,
     }),
@@ -1543,7 +1548,7 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "loop", step: 0, writes: {} },
+      metadata: { source: "loop", step: 0, writes: {}, parents: {} },
       createdAt: expect.any(String),
       parentConfig: history[7].config,
     }),
@@ -1558,7 +1563,12 @@ it("should invoke two processes with input/output and interrupt", async () => {
           checkpoint_id: expect.any(String),
         },
       },
-      metadata: { source: "input", step: -1, writes: { input: 2 } },
+      metadata: {
+        source: "input",
+        step: -1,
+        writes: { input: 2 },
+        parents: {},
+      },
       createdAt: expect.any(String),
       parentConfig: undefined,
     }),
@@ -1764,7 +1774,12 @@ it("pending writes resume", async () => {
       interrupts: [],
     },
   ]);
-  expect(state.metadata).toEqual({ source: "loop", step: 0, writes: null });
+  expect(state.metadata).toEqual({
+    source: "loop",
+    step: 0,
+    writes: null,
+    parents: {},
+  });
 
   // should contain pending write of "one" and should contain error from "two"
   const checkpoint = await checkpointer.getTuple(thread1);
@@ -2600,11 +2615,13 @@ describe("StateGraph", () => {
         source: "loop",
         step: 0,
         writes: null,
+        parents: {},
       },
       {
         source: "input",
         step: -1,
         writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
+        parents: {},
       },
     ]);
 
@@ -2626,7 +2643,7 @@ describe("StateGraph", () => {
       ],
       config: (await toolTwo.checkpointer!.getTuple(thread1))!.config,
       createdAt: (await toolTwo.checkpointer!.getTuple(thread1))!.checkpoint.ts,
-      metadata: { source: "loop", step: 0, writes: null },
+      metadata: { source: "loop", step: 0, writes: null, parents: {} },
       parentConfig: (
         await gatherIterator(toolTwo.checkpointer!.list(thread1, { limit: 2 }))
       ).slice(-1)[0].config,
@@ -2979,6 +2996,7 @@ describe("StateGraph", () => {
             messages: expectedOutputMessages[1],
           },
         },
+        parents: {},
       },
       config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
       createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
@@ -3021,6 +3039,7 @@ describe("StateGraph", () => {
       next: ["tools"],
       tasks: [{ id: expect.any(String), name: "tools", interrupts: [] }],
       metadata: {
+        parents: {},
         source: "update",
         step: 2,
         writes: {
@@ -3101,6 +3120,7 @@ describe("StateGraph", () => {
         { id: expect.any(String), name: "tools", interrupts: [] },
       ],
       metadata: {
+        parents: {},
         source: "loop",
         step: 4,
         writes: {
@@ -3161,6 +3181,7 @@ describe("StateGraph", () => {
       metadata: {
         source: "update",
         step: 5,
+        parents: {},
         writes: {
           agent: {
             messages: new AIMessage({
@@ -3512,6 +3533,7 @@ describe("StateGraph", () => {
             },
           },
           step: 2,
+          parents: {},
         },
         config: {
           configurable: {
@@ -3551,6 +3573,7 @@ describe("StateGraph", () => {
             },
           },
           step: 1,
+          parents: {},
         },
         config: {
           configurable: {
@@ -3584,6 +3607,7 @@ describe("StateGraph", () => {
           source: "loop",
           writes: null,
           step: 0,
+          parents: {},
         },
         config: {
           configurable: {
@@ -3621,6 +3645,7 @@ describe("StateGraph", () => {
             },
           },
           step: -1,
+          parents: {},
         },
         config: {
           configurable: {
@@ -4211,6 +4236,7 @@ it("checkpoint events", async () => {
           source: "input",
           step: -1,
           writes: { __start__: { my_key: "value", market: "DE" } },
+          parents: {},
         },
         next: ["__start__"],
         tasks: [{ id: expect.any(String), name: "__start__", interrupts: [] }],
@@ -4239,6 +4265,7 @@ it("checkpoint events", async () => {
           source: "loop",
           step: 0,
           writes: null,
+          parents: {},
         },
         next: ["prepare"],
         tasks: [{ id: expect.any(String), name: "prepare", interrupts: [] }],
@@ -4289,6 +4316,7 @@ it("checkpoint events", async () => {
           source: "loop",
           step: 1,
           writes: { prepare: { my_key: " prepared" } },
+          parents: {},
         },
         next: ["tool_two_slow"],
         tasks: [
@@ -4341,6 +4369,7 @@ it("checkpoint events", async () => {
           source: "loop",
           step: 2,
           writes: { tool_two_slow: { my_key: " slow" } },
+          parents: {},
         },
         next: ["finish"],
         tasks: [{ id: expect.any(String), name: "finish", interrupts: [] }],
@@ -4391,6 +4420,7 @@ it("checkpoint events", async () => {
           source: "loop",
           step: 3,
           writes: { finish: { my_key: " finished" } },
+          parents: {},
         },
         next: [],
         tasks: [],
@@ -4479,11 +4509,13 @@ it("StateGraph start branch then end", async () => {
       source: "loop",
       step: 0,
       writes: null,
+      parents: {},
     },
     {
       source: "input",
       step: -1,
       writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
+      parents: {},
     },
   ]);
   expect(await toolTwoWithCheckpointer.getState(thread1)).toEqual({
@@ -4494,7 +4526,7 @@ it("StateGraph start branch then end", async () => {
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
       .checkpoint.ts,
-    metadata: { source: "loop", step: 0, writes: null },
+    metadata: { source: "loop", step: 0, writes: null, parents: {} },
     parentConfig: (
       await last(
         toolTwoWithCheckpointer.checkpointer!.list(thread1, { limit: 2 })
@@ -4518,6 +4550,7 @@ it("StateGraph start branch then end", async () => {
       source: "loop",
       step: 1,
       writes: { tool_two_slow: { my_key: " slow" } },
+      parents: {},
     },
     parentConfig: (
       await last(
@@ -4544,7 +4577,7 @@ it("StateGraph start branch then end", async () => {
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
       .checkpoint.ts,
-    metadata: { source: "loop", step: 0, writes: null },
+    metadata: { source: "loop", step: 0, writes: null, parents: {} },
     parentConfig: (
       await last(
         toolTwoWithCheckpointer.checkpointer!.list(thread2, { limit: 2 })
@@ -4568,6 +4601,7 @@ it("StateGraph start branch then end", async () => {
       source: "loop",
       step: 1,
       writes: { tool_two_fast: { my_key: " fast" } },
+      parents: {},
     },
     parentConfig: (
       await last(
@@ -4594,7 +4628,7 @@ it("StateGraph start branch then end", async () => {
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
       .checkpoint.ts,
-    metadata: { source: "loop", step: 0, writes: null },
+    metadata: { source: "loop", step: 0, writes: null, parents: {} },
     parentConfig: (
       await last(
         toolTwoWithCheckpointer.checkpointer!.list(thread3, { limit: 2 })
@@ -4615,6 +4649,7 @@ it("StateGraph start branch then end", async () => {
       source: "update",
       step: 1,
       writes: { [START]: { my_key: "key" } },
+      parents: {},
     },
     parentConfig: (
       await last(
@@ -4639,6 +4674,7 @@ it("StateGraph start branch then end", async () => {
       source: "loop",
       step: 2,
       writes: { tool_two_fast: { my_key: " fast" } },
+      parents: {},
     },
     parentConfig: (
       await last(
@@ -4835,7 +4871,6 @@ describe("StateGraph start branch then end", () => {
     });
 
     toolTwo = toolTwoGraph.compile({
-      store: new MemoryStore(),
       checkpointer,
       interruptBefore: ["tool_two_fast", "tool_two_slow"] as any[],
     });
@@ -4844,6 +4879,22 @@ describe("StateGraph start branch then end", () => {
     await expect(
       toolTwo.invoke({ my_key: "value", market: "DE" })
     ).rejects.toThrow(/thread_id/);
+
+    toolTwo = toolTwoGraph.compile({
+      store: new MemoryStore(),
+      interruptBefore: ["tool_two_fast", "tool_two_slow"] as any[],
+    });
+
+    // Will throw an error if a store is passed but `configurable` isn't.
+    await expect(
+      toolTwo.invoke({ my_key: "value", market: "DE" })
+    ).rejects.toThrow(/assistant_id/);
+
+    toolTwo = toolTwoGraph.compile({
+      store: new MemoryStore(),
+      checkpointer,
+      interruptBefore: ["tool_two_fast", "tool_two_slow"] as any[],
+    });
 
     const thread1 = {
       configurable: { thread_id: "1", assistant_id: "a" },
@@ -4869,11 +4920,13 @@ describe("StateGraph start branch then end", () => {
         source: "loop",
         step: 0,
         writes: null,
+        parents: {},
       },
       {
         source: "input",
         step: -1,
         writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
+        parents: {},
       },
     ]);
 
@@ -4904,6 +4957,7 @@ describe("StateGraph start branch then end", () => {
             my_key: " slow",
           },
         },
+        parents: {},
       },
     });
 
@@ -4931,7 +4985,7 @@ describe("StateGraph start branch then end", () => {
       },
       tasks: [{ name: "tool_two_fast" }],
       next: ["tool_two_fast"],
-      metadata: { source: "loop", step: 0, writes: null },
+      metadata: { source: "loop", step: 0, writes: null, parents: {} },
     });
 
     expect(await toolTwo.invoke(null, thread2)).toEqual({
@@ -4950,6 +5004,7 @@ describe("StateGraph start branch then end", () => {
         source: "loop",
         step: 1,
         writes: { tool_two_fast: { my_key: " fast" } },
+        parents: {},
       },
     });
 
@@ -4965,7 +5020,7 @@ describe("StateGraph start branch then end", () => {
       values: { my_key: "value", market: "US" },
       tasks: [{ name: "tool_two_fast" }],
       next: ["tool_two_fast"],
-      metadata: { source: "loop", step: 0, writes: null },
+      metadata: { source: "loop", step: 0, writes: null, parents: {} },
     });
 
     await toolTwo.updateState(thread3, { my_key: "key" });
@@ -4978,6 +5033,7 @@ describe("StateGraph start branch then end", () => {
         source: "update",
         step: 1,
         writes: { [START]: { my_key: "key" } },
+        parents: {},
       },
     });
 
@@ -4994,6 +5050,7 @@ describe("StateGraph start branch then end", () => {
         source: "loop",
         step: 2,
         writes: { tool_two_fast: { my_key: " fast" } },
+        parents: {},
       },
     });
   });

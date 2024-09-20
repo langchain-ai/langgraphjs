@@ -43,7 +43,7 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
       this.ns = `scoped:${this.scope}:${params.key}:${scopedValueString}`;
     } else {
       throw new Error(
-        `Scope ${this.scope} for shared state key not in config.configurable`
+        `Required scope "${this.scope}" for shared state key was not passed in "config.configurable".`
       );
     }
   }

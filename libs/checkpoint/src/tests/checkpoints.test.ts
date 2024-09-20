@@ -92,7 +92,7 @@ describe("MemorySaver", () => {
     const runnableConfig = await memorySaver.put(
       { configurable: { thread_id: "1", checkpoint_ns: "" } },
       checkpoint1,
-      { source: "update", step: -1, writes: null }
+      { source: "update", step: -1, writes: null, parents: {} }
     );
     expect(runnableConfig).toEqual({
       configurable: {
@@ -123,6 +123,7 @@ describe("MemorySaver", () => {
         source: "update",
         step: -1,
         writes: null,
+        parents: {}
       }
     );
 

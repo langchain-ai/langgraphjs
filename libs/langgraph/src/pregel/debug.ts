@@ -14,9 +14,13 @@ import {
   TASK_NAMESPACE,
 } from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
-import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
+import {
+  PregelExecutableTask,
+  PregelTaskDescription,
+  StateSnapshot,
+} from "./types.js";
 import { readChannels } from "./io.js";
-import { _getIdMetadata } from "./utils.js";
+import { _getIdMetadata } from "./utils/index.js";
 
 type ConsoleColors = {
   start: string;
@@ -221,7 +225,8 @@ export function* mapDebugCheckpoint<
 
 export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
   tasks: PregelTaskDescription[] | readonly PregelExecutableTask<N, C>[],
-  pendingWrites: CheckpointPendingWrite[]
+  pendingWrites: CheckpointPendingWrite[],
+  states?: Record<string, RunnableConfig | StateSnapshot>
 ): PregelTaskDescription[] {
   return tasks.map((task): PregelTaskDescription => {
     const error = pendingWrites.find(
@@ -247,6 +252,7 @@ export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
       id: task.id,
       name: task.name as string,
       interrupts,
+      state: states?.[task.id],
     };
   });
 }

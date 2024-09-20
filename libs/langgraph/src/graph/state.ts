@@ -41,7 +41,7 @@ import {
   StateType,
   UpdateType,
 } from "./annotation.js";
-import type { RetryPolicy } from "../pregel/utils.js";
+import type { RetryPolicy } from "../pregel/utils/index.js";
 import { BaseStore } from "../store/base.js";
 import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
 
