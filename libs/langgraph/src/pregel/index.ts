@@ -506,39 +506,52 @@ export class Pregel<
     config: RunnableConfig,
     options?: CheckpointListOptions
   ): AsyncIterableIterator<StateSnapshot> {
-    if (!this.checkpointer) {
-      throw new GraphValueError("No checkpointer set");
+    const checkpointer: BaseCheckpointSaver =
+      config.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
+    if (!checkpointer) {
+      throw new Error("No checkpointer set");
     }
-    // Pass `skipManaged: true` as managed values should not be returned in get state calls.
-    const { managed } = await this.prepareSpecs(config, { skipManaged: true });
 
-    for await (const saved of this.checkpointer.list(config, options)) {
-      const channels = emptyChannels(
-        this.channels as Record<string, BaseChannel>,
-        saved.checkpoint
-      );
+    const checkpointNamespace: string =
+      config.configurable?.checkpoint_ns ?? "";
+    if (
+      checkpointNamespace !== "" &&
+      config.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
+    ) {
+      const recastCheckpointNamespace = checkpointNamespace
+        .split(CHECKPOINT_NAMESPACE_SEPARATOR)
+        .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
+        .join(CHECKPOINT_NAMESPACE_SEPARATOR);
 
-      const nextTasks = _prepareNextTasks(
-        saved.checkpoint,
-        this.nodes,
-        channels,
-        managed,
-        saved.config,
-        false,
-        { step: -1 }
+      // find the subgraph with the matching name
+      for (const [name, pregel] of this.getSubgraphs(true)) {
+        if (name === recastCheckpointNamespace) {
+          yield* pregel.getStateHistory(
+            patchConfigurable(config, {
+              [CONFIG_KEY_CHECKPOINTER]: checkpointer,
+            }),
+            options
+          );
+          return;
+        }
+      }
+      throw new Error(
+        `Subgraph with namespace "${recastCheckpointNamespace}" not found.`
       );
-      yield {
-        values: readChannels(
-          channels,
-          this.streamChannelsAsIs as string | string[]
-        ),
-        next: nextTasks.map((task) => task.name),
-        tasks: tasksWithWrites(nextTasks, saved.pendingWrites ?? []),
-        metadata: saved.metadata,
-        config: saved.config,
-        createdAt: saved.checkpoint.ts,
-        parentConfig: saved.parentConfig,
-      };
+    }
+
+    const mergedConfig = mergeConfigs(this.config, config, {
+      configurable: { checkpoint_ns: checkpointNamespace },
+    });
+
+    for await (const checkpointTuple of checkpointer.list(
+      mergedConfig,
+      options
+    )) {
+      yield this._prepareStateSnapshot({
+        config: checkpointTuple.config,
+        saved: checkpointTuple,
+      });
     }
   }
 
