@@ -3744,6 +3744,20 @@ describe("StateGraph", () => {
       hello: "again",
     });
   });
+
+  it("can be passed a conditional edge with required config arg", async () => {
+    const workflow = new StateGraph(MessagesAnnotation)
+      .addNode("nodeOne", (): Partial<typeof MessagesAnnotation.State> => ({}))
+      .addConditionalEdges("nodeOne", (_, config) => {
+        expect(config).toBeDefined();
+        if (!config) {
+          throw new Error("config must be defined.");
+        }
+        return END;
+      });
+    const app = workflow.compile();
+    await app.invoke({ messages: [] });
+  });
 });
 
 describe("PreBuilt", () => {
