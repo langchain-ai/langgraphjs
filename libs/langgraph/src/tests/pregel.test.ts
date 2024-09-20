@@ -3640,19 +3640,13 @@ describe("StateGraph", () => {
       hello: Annotation<string>,
     });
 
-    const nodeA = (
-      _: typeof StateAnnotation.State,
-      config: RunnableConfig
-    ) => {
+    const nodeA = (_: typeof StateAnnotation.State, config: RunnableConfig) => {
       // Unfortunately can't infer input types at runtime :(
       expect(config.configurable?.foo).toEqual("bar");
       return {};
     };
 
-    const nodeB = (
-      _: typeof StateAnnotation.State,
-      config: RunnableConfig
-    ) => {
+    const nodeB = (_: typeof StateAnnotation.State, config: RunnableConfig) => {
       expect(config.configurable?.foo).toEqual("bar");
       return {
         hello: "again",
@@ -5037,7 +5031,7 @@ describe("Managed Values (context) can be passed through state", () => {
     };
 
     const nodeTwo = async (
-      data: typeof AgentAnnotation.State,
+      data: typeof AgentAnnotation.State
     ): Promise<Partial<typeof AgentAnnotation.State>> => {
       expect(data.sharedStateKey).toEqual({
         sharedStateValue: {
@@ -5074,7 +5068,7 @@ describe("Managed Values (context) can be passed through state", () => {
     };
 
     const nodeThree = async (
-      data: typeof AgentAnnotation.State,
+      data: typeof AgentAnnotation.State
     ): Promise<Partial<typeof AgentAnnotation.State>> => {
       expect(data.sharedStateKey).toEqual({
         sharedStateValue: {
@@ -5370,7 +5364,7 @@ describe("Managed Values (context) can be passed through state", () => {
 
     // Define nodeTwo that updates sharedStateKey
     const nodeTwo = async (
-      data: typeof AgentAnnotation.State,
+      data: typeof AgentAnnotation.State
     ): Promise<Partial<typeof AgentAnnotation.State>> => {
       expect(data.sharedStateKey).toEqual({
         data: {

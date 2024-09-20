@@ -44,10 +44,7 @@ export function createAgentExecutor({
     return "continue";
   };
 
-  const runAgent = async (
-    data: AgentExecutorState,
-    config: RunnableConfig
-  ) => {
+  const runAgent = async (data: AgentExecutorState, config: RunnableConfig) => {
     const agentOutcome = await agentRunnable.invoke(data, config);
     return {
       agentOutcome,
