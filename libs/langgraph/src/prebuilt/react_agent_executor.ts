@@ -154,7 +154,7 @@ export function createReactAgent(
     }
   };
 
-  const callModel = async (state: AgentState, config?: RunnableConfig) => {
+  const callModel = async (state: AgentState, config: RunnableConfig) => {
     const { messages } = state;
     // TODO: Auto-promote streaming.
     return { messages: [await modelRunnable.invoke(messages, config)] };

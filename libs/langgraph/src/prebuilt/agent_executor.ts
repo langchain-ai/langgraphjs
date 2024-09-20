@@ -46,7 +46,7 @@ export function createAgentExecutor({
 
   const runAgent = async (
     data: AgentExecutorState,
-    config?: RunnableConfig
+    config: RunnableConfig
   ) => {
     const agentOutcome = await agentRunnable.invoke(data, config);
     return {
@@ -56,7 +56,7 @@ export function createAgentExecutor({
 
   const executeTools = async (
     data: AgentExecutorState,
-    config?: RunnableConfig
+    config: RunnableConfig
   ): Promise<Partial<AgentExecutorState>> => {
     const agentAction = data.agentOutcome;
     if (!agentAction || "returnValues" in agentAction) {

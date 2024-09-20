@@ -70,7 +70,7 @@ export function createFunctionCallingExecutor<Model extends object>({
   // Define the function that calls the model
   const callModel = async (
     state: FunctionCallingExecutorState,
-    config?: RunnableConfig
+    config: RunnableConfig
   ) => {
     const { messages } = state;
     const response = await newModel.invoke(messages, config);
@@ -104,7 +104,7 @@ export function createFunctionCallingExecutor<Model extends object>({
 
   const callTool = async (
     state: FunctionCallingExecutorState,
-    config?: RunnableConfig
+    config: RunnableConfig
   ) => {
     const action = _getAction(state);
     // We call the tool_executor and get back a response

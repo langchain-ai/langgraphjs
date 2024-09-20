@@ -50,7 +50,7 @@ export class ToolExecutor extends RunnableBinding<
       ...fields,
     };
     const bound = RunnableLambda.from(
-      async (input: ToolInvocationInterface, config?: RunnableConfig) =>
+      async (input: ToolInvocationInterface, config: RunnableConfig) =>
         this._execute(input, config)
     );
     super({
@@ -74,7 +74,7 @@ export class ToolExecutor extends RunnableBinding<
    */
   async _execute(
     toolInvocation: ToolInvocationInterface,
-    config?: RunnableConfig
+    config: RunnableConfig
   ): Promise<ToolExecutorOutputType> {
     if (!(toolInvocation.tool in this.toolMap)) {
       return this.invalidToolMsgTemplate

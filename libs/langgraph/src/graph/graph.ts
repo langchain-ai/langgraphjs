@@ -40,7 +40,7 @@ export interface BranchOptions<IO, N extends string> {
 export class Branch<IO, N extends string> {
   condition: (
     input: IO,
-    config?: RunnableConfig
+    config: RunnableConfig
   ) =>
     | string
     | Send
