@@ -55,7 +55,7 @@ describe("SqliteSaver", () => {
     const runnableConfig = await sqliteSaver.put(
       { configurable: { thread_id: "1" } },
       checkpoint1,
-      { source: "update", step: -1, writes: null }
+      { source: "update", step: -1, writes: null, parents: {} }
     );
     expect(runnableConfig).toEqual({
       configurable: {
@@ -103,7 +103,7 @@ describe("SqliteSaver", () => {
         },
       },
       checkpoint2,
-      { source: "update", step: -1, writes: null }
+      { source: "update", step: -1, writes: null, parents: {} }
     );
 
     // verify that parentTs is set and retrieved correctly for second checkpoint
