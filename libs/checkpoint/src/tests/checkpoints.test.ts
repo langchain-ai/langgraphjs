@@ -123,7 +123,7 @@ describe("MemorySaver", () => {
         source: "update",
         step: -1,
         writes: null,
-        parents: {}
+        parents: {},
       }
     );
 

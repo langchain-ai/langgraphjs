@@ -39,7 +39,7 @@ export function ensureLangGraphConfig(
           if (Array.isArray(v)) {
             copiedValue = [...v];
           } else if (typeof v === "object") {
-            copiedValue = { ...v};
+            copiedValue = { ...v };
           } else {
             copiedValue = v;
           }
