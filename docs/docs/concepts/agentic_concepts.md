@@ -66,7 +66,7 @@ The big question in multi-agent systems is how they communicate. This involves b
 
 ## Planning
 
-One of the big things that agentic systems struggle with is long term planning. A common technique to overcome this is to have an explicit planning this. This generally involves calling an LLM to come up with a series of steps to execute. From there, the system then tries to execute the series of tasks (this could use a sub-agent to do so). Optionally, you can revisit the plan after each step and update it if needed.
+One of the big challenges that agentic systems struggle with is long-term planning. A common technique to overcome this is to have an explicit planning phase. This generally involves calling an LLM to come up with a series of steps to execute. From there, the system tries to execute the series of tasks (this could use a sub-agent to do so). Optionally, you can revisit the plan after each step and update it if needed.
 
 ## Reflection
 
