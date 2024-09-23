@@ -113,6 +113,8 @@ export class PregelNode<
 
   metadata: Record<string, unknown> = {};
 
+  tags: string[] = [];
+
   retryPolicy?: RetryPolicy;
 
   constructor(fields: PregelNodeArgs<RunInput, RunOutput>) {
@@ -125,10 +127,11 @@ export class PregelNode<
       kwargs,
       metadata,
       retryPolicy,
+      tags,
     } = fields;
     const mergedTags = [
       ...(fields.config?.tags ? fields.config.tags : []),
-      ...(fields.tags ? fields.tags : []),
+      ...(tags ?? []),
     ];
 
     super({
@@ -149,6 +152,7 @@ export class PregelNode<
     this.bound = bound ?? this.bound;
     this.kwargs = kwargs ?? this.kwargs;
     this.metadata = metadata ?? this.metadata;
+    this.tags = mergedTags;
     this.retryPolicy = retryPolicy;
   }
 

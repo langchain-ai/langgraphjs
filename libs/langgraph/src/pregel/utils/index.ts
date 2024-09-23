@@ -46,16 +46,6 @@ export function _coerceToDict(value: any, defaultKey: string) {
     : { [defaultKey]: value };
 }
 
-// Order matters
-export function _getIdMetadata(metadata: Record<string, unknown>) {
-  return {
-    langgraph_step: metadata.langgraph_step,
-    langgraph_node: metadata.langgraph_node,
-    langgraph_triggers: metadata.langgraph_triggers,
-    langgraph_task_idx: metadata.langgraph_task_idx,
-  };
-}
-
 export type RetryPolicy = {
   /**
    * Amount of time that must elapse before the first retry occurs in milliseconds.

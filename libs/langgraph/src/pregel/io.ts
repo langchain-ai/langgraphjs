@@ -85,16 +85,22 @@ export function* mapInput<C extends PropertyKey>(
  */
 export function* mapOutputValues<C extends PropertyKey>(
   outputChannels: C | Array<C>,
-  pendingWrites: readonly PendingWrite<C>[],
+  pendingWrites: readonly PendingWrite<C>[] | true,
   channels: Record<C, BaseChannel>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Generator<Record<string, any>, any> {
   if (Array.isArray(outputChannels)) {
-    if (pendingWrites.find(([chan, _]) => outputChannels.includes(chan))) {
+    if (
+      pendingWrites === true ||
+      pendingWrites.find(([chan, _]) => outputChannels.includes(chan))
+    ) {
       yield readChannels(channels, outputChannels);
     }
   } else {
-    if (pendingWrites.some(([chan, _]) => chan === outputChannels)) {
+    if (
+      pendingWrites === true ||
+      pendingWrites.some(([chan, _]) => chan === outputChannels)
+    ) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       yield readChannel(channels, outputChannels) as any;
     }
@@ -109,10 +115,9 @@ export function* mapOutputUpdates<N extends PropertyKey, C extends PropertyKey>(
   tasks: readonly PregelExecutableTask<N, C>[]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Generator<Record<N, Record<string, any> | Record<string, any>[]>> {
-  const outputTasks = tasks.filter(
-    (task) =>
-      task.config === undefined || !task.config.tags?.includes(TAG_HIDDEN)
-  );
+  const outputTasks = tasks.filter((task) => {
+    return task.config === undefined || !task.config.tags?.includes(TAG_HIDDEN);
+  });
   if (!outputTasks.length) {
     return;
   }

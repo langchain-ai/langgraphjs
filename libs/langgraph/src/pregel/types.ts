@@ -90,6 +90,7 @@ export interface PregelTaskDescription {
   readonly error?: unknown;
   readonly interrupts: Interrupt[];
   readonly state?: RunnableConfig | StateSnapshot;
+  readonly path?: [string, ...(string | number)[]];
 }
 
 export interface PregelExecutableTask<
@@ -104,6 +105,7 @@ export interface PregelExecutableTask<
   readonly triggers: Array<string>;
   readonly retry_policy?: RetryPolicy;
   readonly id: string;
+  readonly path?: [string, ...(string | number)[]];
 }
 
 export interface StateSnapshot {

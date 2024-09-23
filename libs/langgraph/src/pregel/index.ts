@@ -390,14 +390,16 @@ export class Pregel<
       saved.checkpoint
     );
 
-    const nextTasks = _prepareNextTasks(
-      saved.checkpoint,
-      this.nodes,
-      channels,
-      managed,
-      saved.config,
-      false,
-      { step: (saved.metadata?.step ?? -1) + 1 }
+    const nextTasks = Object.values(
+      _prepareNextTasks(
+        saved.checkpoint,
+        this.nodes,
+        channels,
+        managed,
+        saved.config,
+        false,
+        { step: (saved.metadata?.step ?? -1) + 1 }
+      )
     );
     const subgraphs = await gatherIterator(this.getSubgraphs());
     const parentNamespace = saved.config.configurable?.checkpoint_ns ?? "";
@@ -982,13 +984,13 @@ export class Pregel<
           }
         }
         if (debug) {
-          printStepTasks(loop.step, loop.tasks);
+          printStepTasks(loop.step, Object.values(loop.tasks));
         }
         // execute tasks, and wait for one to fail or all to finish.
         // each task is independent from all other concurrent tasks
         // yield updates/debug output as each task finishes
         const taskStream = executeTasksWithRetry(
-          loop.tasks.filter((task) => task.writes.length === 0),
+          Object.values(loop.tasks).filter((task) => task.writes.length === 0),
           {
             stepTimeout: this.stepTimeout,
             signal: config.signal,
@@ -999,10 +1001,12 @@ export class Pregel<
         for await (const { task, error } of taskStream) {
           if (error !== undefined) {
             if (isGraphInterrupt(error)) {
-              loop.putWrites(
-                task.id,
-                error.interrupts.map((interrupt) => [INTERRUPT, interrupt])
-              );
+              if (error.interrupts.length) {
+                loop.putWrites(
+                  task.id,
+                  error.interrupts.map((interrupt) => [INTERRUPT, interrupt])
+                );
+              }
             } else {
               loop.putWrites(task.id, [
                 [ERROR, { message: error.message, name: error.name }],
@@ -1032,7 +1036,9 @@ export class Pregel<
         if (debug) {
           printStepWrites(
             loop.step,
-            loop.tasks.map((task) => task.writes).flat(),
+            Object.values(loop.tasks)
+              .map((task) => task.writes)
+              .flat(),
             this.streamChannelsList as string[]
           );
         }
@@ -1060,7 +1066,7 @@ export class Pregel<
         );
       }
       await Promise.all(loop?.checkpointerPromises ?? []);
-      await runManager?.handleChainEnd(readChannels(loop.channels, outputKeys));
+      await runManager?.handleChainEnd(loop.output);
     } catch (e) {
       await runManager?.handleChainError(e);
       throw e;
