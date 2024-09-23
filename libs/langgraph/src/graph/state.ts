@@ -545,7 +545,7 @@ export class CompiledStateGraph<
         );
       }
     } else if (start === START) {
-      const channelName = `start:${end}`;
+      const channelName = `${START}:${end}`;
       // register channel
       (this.channels as Record<string, BaseChannel>)[channelName] =
         new EphemeralValue();

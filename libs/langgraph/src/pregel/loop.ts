@@ -554,9 +554,9 @@ export class PregelLoop {
    */
   protected async _first(inputKeys: string | string[]) {
     const isResuming =
-      (Object.keys(this.checkpoint.channel_versions).length !== 0 &&
-        this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined) ||
-      this.input === null;
+      Object.keys(this.checkpoint.channel_versions).length !== 0 &&
+      (this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined ||
+        this.input === null);
     if (isResuming) {
       for (const channelName of Object.keys(this.channels)) {
         if (this.checkpoint.channel_versions[channelName] !== undefined) {
@@ -612,6 +612,11 @@ export class PregelLoop {
     }
     // done with input
     this.input = isResuming ? INPUT_RESUMING : INPUT_DONE;
+    if (!this.isNested) {
+      this.config = patchConfigurable(this.config, {
+        [CONFIG_KEY_RESUMING]: isResuming,
+      });
+    }
   }
 
   protected async _putCheckpoint(

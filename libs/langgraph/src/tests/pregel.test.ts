@@ -4301,7 +4301,7 @@ it("checkpoint events", async () => {
         id: anyStringSame("task1"),
         name: "prepare",
         input: { my_key: "value", market: "DE" },
-        triggers: ["start:prepare"],
+        triggers: ["__start__:prepare"],
         interrupts: [],
       },
     },
@@ -5581,7 +5581,7 @@ describe("Managed Values (context) can be passed through state", () => {
 });
 
 describe("Subgraphs", () => {
-  it("nested graph interrupts parallel", async () => {
+  it.only("nested graph interrupts parallel", async () => {
     const InnerStateAnnotation = Annotation.Root({
       myKey: Annotation<string>({
         reducer: (a, b) => a + b,
@@ -5618,7 +5618,6 @@ describe("Subgraphs", () => {
     });
 
     const outer1 = (_state: typeof StateAnnotation.State) => {
-      console.log(_state);
       return { myKey: " and parallel" };
     };
 
@@ -5634,7 +5633,9 @@ describe("Subgraphs", () => {
       .addEdge(START, "outer1")
       .addEdge(["inner", "outer1"], "outer2");
 
-    const app = graph.compile();
+    const checkpointer = new MemorySaverAssertImmutable();
+
+    const app = graph.compile({ checkpointer });
 
     // test invoke w/ nested interrupt
     const config1 = { configurable: { thread_id: "1" } };
@@ -5646,8 +5647,12 @@ describe("Subgraphs", () => {
       myKey: "got here and there and parallel and back again",
     });
 
-    // // test stream updates w/ nested interrupt
-    // const config2 = { configurable: { thread_id: "2" } };
+    // test stream updates w/ nested interrupt
+    const config2 = { configurable: { thread_id: "2" } };
+    const stream = await app.stream({ myKey: "" }, config2);
+
+    const events = await gatherIterator(stream);
+    console.log(events);
     // expect([...app.stream({ my_key: "" }, config2, { subgraphs: true })]).toEqual([
     //   // we got to parallel node first
     //   [[], { outer_1: { my_key: " and parallel" } }],
