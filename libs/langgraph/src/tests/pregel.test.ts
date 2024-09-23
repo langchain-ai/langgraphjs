@@ -2689,6 +2689,53 @@ describe("StateGraph", () => {
     expect(awhiles).toBe(2);
   });
 
+  it("Should log a warning if a NodeInterrupt is thrown in a conditional edge", async () => {
+    // Mock console.warn
+    const originalWarn = console.warn;
+    console.warn = jest.fn();
+
+    const GraphAnnotation = Annotation.Root({
+      count: Annotation<number>({ reducer: (a, b) => a + b }),
+    });
+
+    const nodeOne = (_: typeof GraphAnnotation.State) => {
+      return {
+        count: 1,
+      };
+    };
+
+    const nodeTwo = (_: typeof GraphAnnotation.State) => {
+      return {
+        count: 1,
+      };
+    };
+
+    const shouldContinue = (
+      _: typeof GraphAnnotation.State
+    ): typeof END | "nodeTwo" => {
+      throw new NodeInterrupt("Interrupted");
+    };
+
+    const workflow = new StateGraph(GraphAnnotation)
+      .addNode("nodeOne", nodeOne)
+      .addNode("nodeTwo", nodeTwo)
+      .addEdge(START, "nodeOne")
+      .addEdge("nodeTwo", "nodeOne")
+      .addConditionalEdges("nodeOne", shouldContinue, [END, "nodeTwo"]);
+    const app = workflow.compile();
+    await app.invoke({
+      count: 0,
+    });
+    // expect console.warn to have been called
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(console.warn).toHaveBeenCalledWith(
+      "[WARN]: 'NodeInterrupt' thrown in conditional edge. This is likely a bug in your graph implementation.\n" +
+        "NodeInterrupt should only be thrown inside a node, not in edge conditions."
+    );
+    // Restore console.warn
+    console.warn = originalWarn;
+  });
+
   it("Allow map reduce flows", async () => {
     const OverallState = Annotation.Root({
       subjects: Annotation<string[]>,
@@ -3659,6 +3706,47 @@ describe("StateGraph", () => {
       .compile();
 
     expect(await graph.invoke({ hello: "there" })).toEqual({
+      hello: "again",
+    });
+  });
+
+  it("should expose config schema as a type", async () => {
+    const StateAnnotation = Annotation.Root({
+      hello: Annotation<string>,
+    });
+
+    const ConfigAnnotation = Annotation.Root({
+      shouldExist: Annotation<string>,
+    });
+
+    const nodeA = (_: typeof StateAnnotation.State, config: RunnableConfig) => {
+      expect(config.configurable?.shouldExist).toEqual("I exist");
+      expect(config.configurable?.shouldAlsoExist).toEqual(
+        "I should also exist"
+      );
+      return {
+        hello: "again",
+      };
+    };
+
+    const checkpointer = new MemorySaverAssertImmutable();
+    const graph = new StateGraph(StateAnnotation, ConfigAnnotation)
+      .addNode("a", nodeA)
+      .addEdge(START, "a")
+      .compile({ checkpointer });
+
+    expect(
+      await graph.invoke(
+        { hello: "there" },
+        {
+          configurable: {
+            shouldExist: "I exist",
+            shouldAlsoExist: "I should also exist",
+            thread_id: "foo",
+          },
+        }
+      )
+    ).toEqual({
       hello: "again",
     });
   });
@@ -5214,5 +5302,198 @@ describe("Managed Values (context) can be passed through state", () => {
       configurable: { thread_id: threadId, assistant_id: "b" },
     };
     await app.invoke(null, config4);
+  });
+
+  it("can get state when state has shared values", async () => {
+    const nodeOne = (_: typeof AgentAnnotation.State) => {
+      return {
+        messages: [
+          {
+            role: "assistant",
+            content: "no-op",
+          },
+        ],
+        sharedStateKey: {
+          data: {
+            value: "shared",
+          },
+        },
+      };
+    };
+
+    const nodeTwo = (_: typeof AgentAnnotation.State) => {
+      // no-op
+      return {};
+    };
+
+    const workflow = new StateGraph(AgentAnnotation)
+      .addNode("nodeOne", nodeOne)
+      .addNode("nodeTwo", nodeTwo)
+      .addEdge(START, "nodeOne")
+      .addEdge("nodeOne", "nodeTwo")
+      .addEdge("nodeTwo", END);
+
+    const app = workflow.compile({
+      store,
+      checkpointer,
+      interruptBefore: ["nodeTwo"],
+    });
+
+    const config: Record<string, Record<string, unknown>> = {
+      configurable: { thread_id: threadId, assistant_id: "a" },
+    };
+
+    // Execute the graph. This will run `nodeOne` which sets the shared value,
+    // then is interrupted before executing `nodeTwo`.
+    await app.invoke(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "no-op",
+          },
+        ],
+      },
+      config
+    );
+
+    // Remove the "assistant_id" from the config and attempt to fetch the state.
+    // Since a `noop` managed value class is used when getting state, it should work
+    // even though the shared value key is not present.
+    if (config.configurable.assistant_id) {
+      delete config.configurable.assistant_id;
+    }
+    // Expect it does not throw an error complaining that the `assistant_id` key
+    // is not found in the config.
+    expect(await app.getState(config)).toBeTruthy();
+
+    // Re-running without re-setting the `assistant_id` key in the config should throw an error.
+    await expect(app.invoke(null, config)).rejects.toThrow(/assistant_id/);
+
+    // Re-set the `assistant_id` key in the config and attempt to fetch the state.
+    config.configurable.assistant_id = "a";
+    await app.invoke(null, config);
+  });
+
+  it("can update state without shared state key in config", async () => {
+    // Define nodeOne that sets sharedStateKey and adds a message
+    const nodeOne = async (
+      data: typeof AgentAnnotation.State,
+      config?: RunnableConfig
+    ): Promise<Partial<typeof AgentAnnotation.State>> => {
+      if (!config) {
+        throw new Error("config is undefined");
+      }
+      expect(config.configurable?.thread_id).toEqual(threadId);
+
+      expect(data.sharedStateKey).toEqual({});
+
+      return {
+        sharedStateKey: {
+          data: {
+            value: "shared",
+          },
+        },
+        messages: [new AIMessage("initial message")],
+      };
+    };
+
+    // Define nodeTwo that updates sharedStateKey
+    const nodeTwo = async (
+      data: typeof AgentAnnotation.State,
+      config?: RunnableConfig
+    ): Promise<Partial<typeof AgentAnnotation.State>> => {
+      if (!config) {
+        throw new Error("config is undefined");
+      }
+
+      expect(data.sharedStateKey).toEqual({
+        data: {
+          value: "shared",
+        },
+      });
+
+      return {
+        sharedStateKey: {
+          data: {
+            value: "updated shared",
+          },
+        },
+        messages: [new AIMessage("updated message")],
+      };
+    };
+
+    // Create the workflow
+    const workflow = new StateGraph(AgentAnnotation)
+      .addNode("nodeOne", nodeOne)
+      .addNode("nodeTwo", nodeTwo)
+      .addEdge(START, "nodeOne")
+      .addEdge("nodeOne", "nodeTwo")
+      .addEdge("nodeTwo", END);
+
+    // Compile the workflow with store and checkpointer
+    const app = workflow.compile({
+      store,
+      checkpointer,
+      interruptBefore: ["nodeTwo"],
+    });
+
+    // Initial configuration with sharedStateKey
+    const config: Record<string, Record<string, unknown>> = {
+      configurable: { thread_id: threadId, assistant_id: "a" },
+    };
+
+    // Execute nodeOne to set sharedStateKey and add initial message
+    await app.invoke(
+      {
+        messages: [
+          {
+            role: "user",
+            content: "start",
+          },
+        ],
+      },
+      config
+    );
+
+    // Verify initial state after nodeOne
+    let currentState = await app.getState(config);
+    expect(currentState.next).toEqual(["nodeTwo"]);
+    expect(currentState.values).toHaveProperty("messages");
+    expect(currentState.values).not.toHaveProperty("sharedStateKey");
+
+    // Remove 'assistant_id' from config.configurable
+    delete config.configurable.assistant_id;
+
+    // Prepare updated values to be applied
+    const updatedValues = {
+      messages: [
+        {
+          role: "assistant",
+          content: "intermediate message",
+        },
+      ],
+    };
+
+    // Update the state without sharedStateKey in config
+    await app.updateState(config, updatedValues);
+
+    // Verify that sharedStateKey has not been altered
+    currentState = await app.getState(config);
+    expect(currentState.next).toEqual(["nodeTwo"]);
+    expect(currentState.values).toHaveProperty("messages");
+
+    // Attempt to invoke nodeTwo without 'assistant_id', expecting an error
+    await expect(app.invoke(null, config)).rejects.toThrow(/assistant_id/);
+
+    // Re-add 'assistant_id' to config.configurable
+    config.configurable.assistant_id = "a";
+
+    // Successfully invoke nodeTwo after restoring 'assistant_id'
+    await app.invoke(null, config);
+
+    // Final state after invoking nodeTwo and nodeThree
+    currentState = await app.getState(config);
+    expect(currentState.next).toEqual([]);
   });
 });
