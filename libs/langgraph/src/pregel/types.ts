@@ -59,15 +59,15 @@ export type StreamOutput<
   ? SingleStreamModeOutput<S[0], Nn, Cc, Schema>
   : S extends [SingleStreamMode, SingleStreamMode]
   ? [
-    SingleStreamModeOutput<S[0], Nn, Cc, Schema>,
-    SingleStreamModeOutput<S[1], Nn, Cc, Schema>
-  ]
+      SingleStreamModeOutput<S[0], Nn, Cc, Schema>,
+      SingleStreamModeOutput<S[1], Nn, Cc, Schema>
+    ]
   : S extends [SingleStreamMode, SingleStreamMode, SingleStreamMode]
   ? [
-    SingleStreamModeOutput<S[0], Nn, Cc, Schema>,
-    SingleStreamModeOutput<S[1], Nn, Cc, Schema>,
-    SingleStreamModeOutput<S[2], Nn, Cc, Schema>
-  ]
+      SingleStreamModeOutput<S[0], Nn, Cc, Schema>,
+      SingleStreamModeOutput<S[1], Nn, Cc, Schema>,
+      SingleStreamModeOutput<S[2], Nn, Cc, Schema>
+    ]
   : never;
 
 /**

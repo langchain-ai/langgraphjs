@@ -202,9 +202,9 @@ export type PregelInputType = any;
 export type PregelOutputType = any;
 
 export class Pregel<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
->
+    Nn extends StrRecord<string, PregelNode>,
+    Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
+  >
   extends Runnable<PregelInputType, PregelOutputType, PregelOptions<Nn, Cc>>
   implements PregelInterface<Nn, Cc>
 {
