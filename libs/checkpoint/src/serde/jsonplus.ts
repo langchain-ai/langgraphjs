@@ -13,7 +13,14 @@ function isLangChainSerializedObject(value: Record<string, unknown>) {
   );
 }
 
-// Bottom-up reviver
+/**
+ * The replacer in stringify does not allow delegation to built-in LangChain
+ * serialization methods, and instead immediately calls `.toJSON()` and
+ * continues to stringify subfields.
+ *
+ * We therefore must start from the most nested elements in the input and
+ * deserialize upwards rather than top-down.
+ */
 async function _reviver(value: any): Promise<any> {
   if (value && typeof value === "object") {
     if (Array.isArray(value)) {
