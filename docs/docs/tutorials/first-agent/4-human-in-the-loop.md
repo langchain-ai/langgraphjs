@@ -207,7 +207,7 @@ Goodbye!
 
 ## Conclusion
 
-**Congrats!** You've used an `interrupt` to add human-in-the-loop execution to your chatbot, allowing for human oversight and intervention when needed. In practice, breakpoints like this are used to guard sensitive tools that perform potentially destructive actions against LLM hallucinations or prompt injection. They can be used to present end-users a UI to confirm details before performing a transaction such as buying a stock or booking a flight, or to collect more information by [updating the graph state]() before resuming.
+**Congrats!** You've used an `interrupt` to add human-in-the-loop execution to your chatbot, allowing for human oversight and intervention when needed. In practice, breakpoints like this are used to guard sensitive tools that perform potentially destructive actions against LLM hallucinations or prompt injection. They can be used to present end-users a UI to confirm details before performing a transaction such as buying a stock or booking a flight, or to collect more information by [updating the graph state](https://langchain-ai.github.io/langgraphjs/how-tos/edit-graph-state/) before resuming.
 
 Now you have built a very capable chatbot. It can handle complex queries using external tools, wait for human confirmation before performing sensitive actions, and can keep track of conversations. At this point, you have a solid foundation to build AI agents for your own applications using LangGraph. We have [a plethora of how-to guides](https://langchain-ai.github.io/langgraphjs/how-tos/) that can help you improve your agent app, such as:
 
