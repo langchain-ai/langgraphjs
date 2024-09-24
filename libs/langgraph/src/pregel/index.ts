@@ -178,8 +178,8 @@ export class Channel {
  * Config for executing the graph.
  */
 export interface PregelOptions<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+  Nn extends Record<string, PregelNode>,
+  Cc extends Record<string, BaseChannel | ManagedValueSpec>,
   Sm extends StreamMode = StreamMode
 > extends RunnableConfig {
   /** The stream mode for the graph run. Default is ["values"]. */
@@ -202,9 +202,9 @@ export type PregelInputType = any;
 export type PregelOutputType = any;
 
 export class Pregel<
-    Nn extends StrRecord<string, PregelNode>,
-    Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
-  >
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
+>
   extends Runnable<PregelInputType, PregelOutputType, PregelOptions<Nn, Cc>>
   implements PregelInterface<Nn, Cc>
 {
@@ -655,7 +655,9 @@ export class Pregel<
   override async stream<Sm extends StreamMode>(
     input: PregelInputType,
     options?: Partial<PregelOptions<Nn, Cc, Sm>>
-  ): Promise<IterableReadableStream<StreamOutput<Sm, Nn, PregelOutputType>>> {
+  ): Promise<
+    IterableReadableStream<StreamOutput<Sm, Nn, Cc, PregelOutputType>>
+  > {
     return super.stream(input, options);
   }
 
