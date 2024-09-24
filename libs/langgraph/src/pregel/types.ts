@@ -12,22 +12,73 @@ import { Interrupt } from "../constants.js";
 import { BaseStore } from "../store/base.js";
 import { type ManagedValueSpec } from "../managed/base.js";
 
-export type StreamMode = "values" | "updates" | "debug";
+export type ChannelsType = Record<string, BaseChannel | ManagedValueSpec>;
 
-/**
- * Construct a type with a set of properties K of type T
- */
-type StrRecord<K extends string, T> = {
-  [P in K]: T;
+export type NodesType = Record<string, PregelNode>;
+
+export type DebugOutput<Channels extends ChannelsType> = {
+  type: string;
+  timestamp: string;
+  step: number;
+  payload: {
+    id: string;
+    name: string;
+    result: PendingWrite<keyof Channels>[];
+    config: RunnableConfig;
+    metadata?: CheckpointMetadata;
+  };
 };
 
-export interface PregelInterface<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
-> {
-  nodes: Nn;
+export type SingleStreamMode = "values" | "updates" | "debug";
 
-  channels: Cc;
+export type StreamMode =
+  | SingleStreamMode
+  | [SingleStreamMode]
+  | [SingleStreamMode, SingleStreamMode]
+  | [SingleStreamMode, SingleStreamMode, SingleStreamMode];
+
+type SingleStreamModeOutput<
+  Mode extends SingleStreamMode,
+  Nodes extends NodesType,
+  Channels extends ChannelsType,
+  Schema
+> = Mode extends "values"
+  ? Schema
+  : Mode extends "updates"
+  ? { [K in keyof Nodes]: Partial<Schema> }
+  : Mode extends "debug"
+  ? DebugOutput<Channels>
+  : never;
+
+export type StreamOutput<
+  Mode extends StreamMode,
+  Nodes extends NodesType,
+  Channels extends ChannelsType,
+  Schema
+> = Mode extends SingleStreamMode
+  ? SingleStreamModeOutput<Mode, Nodes, Channels, Schema>
+  : Mode extends [SingleStreamMode]
+  ? SingleStreamModeOutput<Mode[0], Nodes, Channels, Schema>
+  : Mode extends [SingleStreamMode, SingleStreamMode]
+  ? [
+      SingleStreamModeOutput<Mode[0], Nodes, Channels, Schema>,
+      SingleStreamModeOutput<Mode[1], Nodes, Channels, Schema>
+    ]
+  : Mode extends [SingleStreamMode, SingleStreamMode, SingleStreamMode]
+  ? [
+      SingleStreamModeOutput<Mode[0], Nodes, Channels, Schema>,
+      SingleStreamModeOutput<Mode[1], Nodes, Channels, Schema>,
+      SingleStreamModeOutput<Mode[2], Nodes, Channels, Schema>
+    ]
+  : never;
+
+export interface PregelInterface<
+  Nodes extends NodesType,
+  Channels extends ChannelsType
+> {
+  nodes: Nodes;
+
+  channels: Channels;
 
   /**
    * @default true
@@ -37,25 +88,25 @@ export interface PregelInterface<
   /**
    * @default "values"
    */
-  streamMode?: StreamMode | StreamMode[];
+  streamMode?: SingleStreamMode;
 
-  inputChannels: keyof Cc | Array<keyof Cc>;
+  inputChannels: keyof Channels | Array<keyof Channels>;
 
-  outputChannels: keyof Cc | Array<keyof Cc>;
-
-  /**
-   * @default []
-   */
-  interruptAfter?: Array<keyof Nn> | All;
+  outputChannels: keyof Channels | Array<keyof Channels>;
 
   /**
    * @default []
    */
-  interruptBefore?: Array<keyof Nn> | All;
+  interruptAfter?: Array<keyof Nodes> | All;
 
-  streamChannels?: keyof Cc | Array<keyof Cc>;
+  /**
+   * @default []
+   */
+  interruptBefore?: Array<keyof Nodes> | All;
 
-  get streamChannelsAsIs(): keyof Cc | Array<keyof Cc>;
+  streamChannels?: keyof Channels | Array<keyof Channels>;
+
+  get streamChannelsAsIs(): keyof Channels | Array<keyof Channels>;
 
   /**
    * @default undefined
@@ -78,9 +129,9 @@ export interface PregelInterface<
 }
 
 export type PregelParams<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
-> = Omit<PregelInterface<Nn, Cc>, "streamChannelsAsIs">;
+  Nodes extends NodesType,
+  Channels extends ChannelsType
+> = Omit<PregelInterface<Nodes, Channels>, "streamChannelsAsIs">;
 
 export interface PregelTaskDescription {
   readonly id: string;

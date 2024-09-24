@@ -1,8 +1,7 @@
 import { All } from "@langchain/langgraph-checkpoint";
-import { BaseChannel } from "../channels/index.js";
 import { INTERRUPT } from "../constants.js";
 import { PregelNode } from "./read.js";
-import { type ManagedValueSpec } from "../managed/base.js";
+import { ChannelsType, NodesType } from "./types.js";
 
 export class GraphValidationError extends Error {
   constructor(message?: string) {
@@ -12,8 +11,8 @@ export class GraphValidationError extends Error {
 }
 
 export function validateGraph<
-  Nn extends Record<string, PregelNode>,
-  Cc extends Record<string, BaseChannel | ManagedValueSpec>
+  Nodes extends NodesType,
+  Channels extends ChannelsType
 >({
   nodes,
   channels,
@@ -23,20 +22,20 @@ export function validateGraph<
   interruptAfterNodes,
   interruptBeforeNodes,
 }: {
-  nodes: Nn;
-  channels: Cc;
-  inputChannels: keyof Cc | Array<keyof Cc>;
-  outputChannels: keyof Cc | Array<keyof Cc>;
-  streamChannels?: keyof Cc | Array<keyof Cc>;
-  interruptAfterNodes?: Array<keyof Nn> | All;
-  interruptBeforeNodes?: Array<keyof Nn> | All;
+  nodes: Nodes;
+  channels: Channels;
+  inputChannels: keyof Channels | Array<keyof Channels>;
+  outputChannels: keyof Channels | Array<keyof Channels>;
+  streamChannels?: keyof Channels | Array<keyof Channels>;
+  interruptAfterNodes?: Array<keyof Nodes> | All;
+  interruptBeforeNodes?: Array<keyof Nodes> | All;
 }): void {
   if (!channels) {
     throw new GraphValidationError("Channels not provided");
   }
 
-  const subscribedChannels = new Set<keyof Cc>();
-  const allOutputChannels = new Set<keyof Cc>();
+  const subscribedChannels = new Set<keyof Channels>();
+  const allOutputChannels = new Set<keyof Channels>();
 
   for (const [name, node] of Object.entries(nodes)) {
     if (name === INTERRUPT) {
@@ -114,9 +113,10 @@ export function validateGraph<
   }
 }
 
-export function validateKeys<
-  Cc extends Record<string, BaseChannel | ManagedValueSpec>
->(keys: keyof Cc | Array<keyof Cc>, channels: Cc): void {
+export function validateKeys<Channels extends ChannelsType>(
+  keys: keyof Channels | Array<keyof Channels>,
+  channels: Channels
+): void {
   if (Array.isArray(keys)) {
     for (const key of keys) {
       if (!(key in channels)) {

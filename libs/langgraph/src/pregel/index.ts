@@ -46,11 +46,15 @@ import {
   INTERRUPT,
 } from "../constants.js";
 import {
+  NodesType,
+  ChannelsType,
   PregelExecutableTask,
   PregelInterface,
   PregelParams,
+  SingleStreamMode,
   StateSnapshot,
   StreamMode,
+  StreamOutput,
 } from "./types.js";
 import {
   GraphRecursionError,
@@ -58,12 +62,7 @@ import {
   InvalidUpdateError,
   isGraphInterrupt,
 } from "../errors.js";
-import {
-  _prepareNextTasks,
-  _localRead,
-  _applyWrites,
-  StrRecord,
-} from "./algo.js";
+import { _prepareNextTasks, _localRead, _applyWrites } from "./algo.js";
 import { _coerceToDict, getNewChannelVersions, RetryPolicy } from "./utils.js";
 import { PregelLoop } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
@@ -176,18 +175,19 @@ export class Channel {
  * Config for executing the graph.
  */
 export interface PregelOptions<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
+  Nodes extends NodesType,
+  Channels extends ChannelsType,
+  Mode extends StreamMode = StreamMode
 > extends RunnableConfig {
   /** The stream mode for the graph run. Default is ["values"]. */
-  streamMode?: StreamMode | StreamMode[];
-  inputKeys?: keyof Cc | Array<keyof Cc>;
+  streamMode?: Mode;
+  inputKeys?: keyof Channels | Array<keyof Channels>;
   /** The output keys to retrieve from the graph run. */
-  outputKeys?: keyof Cc | Array<keyof Cc>;
+  outputKeys?: keyof Channels | Array<keyof Channels>;
   /** The nodes to interrupt the graph run before. */
-  interruptBefore?: All | Array<keyof Nn>;
+  interruptBefore?: All | Array<keyof Nodes>;
   /** The nodes to interrupt the graph run after. */
-  interruptAfter?: All | Array<keyof Nn>;
+  interruptAfter?: All | Array<keyof Nodes>;
   /** Enable debug mode for the graph run. */
   debug?: boolean;
 }
@@ -198,12 +198,13 @@ export type PregelInputType = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PregelOutputType = any;
 
-export class Pregel<
-    Nn extends StrRecord<string, PregelNode>,
-    Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
+export class Pregel<Nodes extends NodesType, Channels extends ChannelsType>
+  extends Runnable<
+    PregelInputType,
+    PregelOutputType,
+    PregelOptions<Nodes, Channels>
   >
-  extends Runnable<PregelInputType, PregelOutputType, PregelOptions<Nn, Cc>>
-  implements PregelInterface<Nn, Cc>
+  implements PregelInterface<Nodes, Channels>
 {
   static lc_name() {
     return "LangGraph";
@@ -212,23 +213,23 @@ export class Pregel<
   // Because Pregel extends `Runnable`.
   lc_namespace = ["langgraph", "pregel"];
 
-  nodes: Nn;
+  nodes: Nodes;
 
-  channels: Cc;
+  channels: Channels;
 
-  inputChannels: keyof Cc | Array<keyof Cc>;
+  inputChannels: keyof Channels | Array<keyof Channels>;
 
-  outputChannels: keyof Cc | Array<keyof Cc>;
+  outputChannels: keyof Channels | Array<keyof Channels>;
 
   autoValidate: boolean = true;
 
-  streamMode: StreamMode[] = ["values"];
+  streamMode: SingleStreamMode = "values";
 
-  streamChannels?: keyof Cc | Array<keyof Cc>;
+  streamChannels?: keyof Channels | Array<keyof Channels>;
 
-  interruptAfter?: Array<keyof Nn> | All;
+  interruptAfter?: Array<keyof Nodes> | All;
 
-  interruptBefore?: Array<keyof Nn> | All;
+  interruptBefore?: Array<keyof Nodes> | All;
 
   stepTimeout?: number;
 
@@ -240,18 +241,13 @@ export class Pregel<
 
   store?: BaseStore;
 
-  constructor(fields: PregelParams<Nn, Cc>) {
+  constructor(fields: PregelParams<Nodes, Channels>) {
     super(fields);
-
-    let { streamMode } = fields;
-    if (streamMode != null && !Array.isArray(streamMode)) {
-      streamMode = [streamMode];
-    }
 
     this.nodes = fields.nodes;
     this.channels = fields.channels;
     this.autoValidate = fields.autoValidate ?? this.autoValidate;
-    this.streamMode = streamMode ?? this.streamMode;
+    this.streamMode = fields.streamMode ?? this.streamMode;
     this.inputChannels = fields.inputChannels;
     this.outputChannels = fields.outputChannels;
     this.streamChannels = fields.streamChannels ?? this.streamChannels;
@@ -269,7 +265,7 @@ export class Pregel<
   }
 
   validate(): this {
-    validateGraph<Nn, Cc>({
+    validateGraph<Nodes, Channels>({
       nodes: this.nodes,
       channels: this.channels,
       outputChannels: this.outputChannels,
@@ -282,7 +278,7 @@ export class Pregel<
     return this;
   }
 
-  get streamChannelsList(): Array<keyof Cc> {
+  get streamChannelsList(): Array<keyof Channels> {
     if (Array.isArray(this.streamChannels)) {
       return this.streamChannels;
     } else if (this.streamChannels) {
@@ -292,7 +288,7 @@ export class Pregel<
     }
   }
 
-  get streamChannelsAsIs(): keyof Cc | Array<keyof Cc> {
+  get streamChannelsAsIs(): keyof Channels | Array<keyof Channels> {
     if (this.streamChannels) {
       return this.streamChannels;
     } else {
@@ -391,7 +387,7 @@ export class Pregel<
   async updateState(
     config: RunnableConfig,
     values: Record<string, unknown> | unknown,
-    asNode?: keyof Nn
+    asNode?: keyof Nodes
   ): Promise<RunnableConfig> {
     if (!this.checkpointer) {
       throw new GraphValueError("No checkpointer set");
@@ -493,7 +489,7 @@ export class Pregel<
         `No writers found for node "${asNode.toString()}"`
       );
     }
-    const task: PregelExecutableTask<keyof Nn, keyof Cc> = {
+    const task: PregelExecutableTask<keyof Nodes, keyof Channels> = {
       name: asNode,
       input: values,
       proc:
@@ -510,10 +506,10 @@ export class Pregel<
       patchConfig(config, {
         runName: config.runName ?? `${this.getName()}UpdateState`,
         configurable: {
-          [CONFIG_KEY_SEND]: (items: [keyof Cc, unknown][]) =>
+          [CONFIG_KEY_SEND]: (items: [keyof Channels, unknown][]) =>
             task.writes.push(...items),
           [CONFIG_KEY_READ]: (
-            select_: Array<keyof Cc> | keyof Cc,
+            select_: Array<keyof Channels> | keyof Channels,
             fresh_: boolean = false
           ) =>
             _localRead(
@@ -563,9 +559,9 @@ export class Pregel<
     );
   }
 
-  _defaults(config: PregelOptions<Nn, Cc>): [
+  _defaults(config: PregelOptions<Nodes, Channels>): [
     boolean, // debug
-    StreamMode[], // stream mode
+    SingleStreamMode[], // stream mode
     string | string[], // input keys
     string | string[], // output keys
     RunnableConfig, // config without pregel keys
@@ -603,11 +599,11 @@ export class Pregel<
 
     const defaultInterruptAfter = interruptAfter ?? this.interruptAfter ?? [];
 
-    let defaultStreamMode: StreamMode[];
+    let defaultStreamMode: SingleStreamMode[];
     if (streamMode !== undefined) {
       defaultStreamMode = Array.isArray(streamMode) ? streamMode : [streamMode];
     } else {
-      defaultStreamMode = this.streamMode;
+      defaultStreamMode = [this.streamMode];
     }
 
     let defaultCheckpointer: BaseCheckpointSaver | undefined;
@@ -654,10 +650,12 @@ export class Pregel<
    * @param options.interruptAfter Nodes to interrupt after.
    * @param options.debug Whether to print debug information during execution.
    */
-  override async stream(
+  override async stream<Sm extends StreamMode>(
     input: PregelInputType,
-    options?: Partial<PregelOptions<Nn, Cc>>
-  ): Promise<IterableReadableStream<PregelOutputType>> {
+    options?: Partial<PregelOptions<Nodes, Channels, Sm>>
+  ): Promise<
+    IterableReadableStream<StreamOutput<Sm, Nodes, Channels, PregelOutputType>>
+  > {
     return super.stream(input, options);
   }
 
@@ -725,7 +723,7 @@ export class Pregel<
 
   override async *_streamIterator(
     input: PregelInputType,
-    options?: Partial<PregelOptions<Nn, Cc>>
+    options?: Partial<PregelOptions<Nodes, Channels>>
   ): AsyncGenerator<PregelOutputType> {
     const inputConfig = ensureConfig(options);
     if (
@@ -920,7 +918,7 @@ export class Pregel<
    */
   override async invoke(
     input: PregelInputType,
-    options?: Partial<PregelOptions<Nn, Cc>>
+    options?: Partial<PregelOptions<Nodes, Channels>>
   ): Promise<PregelOutputType> {
     const streamMode = options?.streamMode ?? "values";
     const config = {
