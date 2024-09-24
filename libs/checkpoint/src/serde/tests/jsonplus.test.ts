@@ -80,6 +80,10 @@ const VALUES = [
   ["simple string", "foobar"],
   ["various data types", complexValue],
   ["an AIMessage with a tool call", messageWithToolCall],
+  [
+    "object with the same value in memory duplicated but not nested",
+    { duped1: complexValue, duped2: complexValue },
+  ],
 ] satisfies [string, unknown][];
 
 it.each(VALUES)(
@@ -92,7 +96,7 @@ it.each(VALUES)(
   }
 );
 
-it("Should throw an error for circular JSON inputs", async () => {
+it("Should replace circular JSON inputs", async () => {
   const a: Record<string, unknown> = {};
   const b: Record<string, unknown> = {};
   a.b = b;
@@ -103,5 +107,10 @@ it("Should throw an error for circular JSON inputs", async () => {
     b,
   };
   const serde = new JsonPlusSerializer();
-  expect(() => serde.dumpsTyped(circular)).toThrow();
+  const decoder = new TextDecoder();
+  const [type, serialized] = serde.dumpsTyped(circular);
+  expect(type).toEqual("json");
+  expect(decoder.decode(serialized)).toEqual(
+    `{"a":{"b":{"a":"[Circular]"}},"b":{"a":"[Circular]"}}`
+  );
 });
