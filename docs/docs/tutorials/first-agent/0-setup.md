@@ -96,7 +96,7 @@ You'll also need to install a few dependencies to create an agent:
 Let's do that using the Node Package Manager (npm). Run the following command in your terminal:
 
 ```bash
-npm install @langchain/langgraph @langchain/anthropic @langchain/community
+npm install @langchain/core @langchain/langgraph @langchain/anthropic @langchain/community
 ```
 
 ### (Encouraged) Set up tracing with LangSmith

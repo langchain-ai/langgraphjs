@@ -20,6 +20,7 @@ Once they're done, you're ready to move on and get your chatbot connected to the
 Let's start by setting up the search tool. We'll need to import the `TavilySearchResults` class and use it to construct a tool the LLM can use.
 
 ```ts
+// chatbot.ts
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 
 const searchTool = new TavilySearchResults({ maxResults: 3 });
@@ -142,8 +143,8 @@ Now that we have the node and logic for a conditional edge that connects to it, 
 ```ts
 // Create a graph that defines our chatbot workflow and compile it into a `runnable`
 export const app = graphBuilder
-	.addNode("agent", callClaude)
-	.addEdge("__start__", callClaude)
+	.addNode("agent", callModel)
+	.addEdge("__start__", "agent")
 	.compile();
 ```
 
@@ -151,10 +152,10 @@ Update it to include the new `tools` node and the conditional edge function:
 
 ```ts
 export const app = graphBuilder
-	.addNode("agent", callClaude)
-	.addEdge("__start__", callClaude)
+	.addNode("agent", callModel)
+	.addEdge("__start__", "agent")
 	.addNode("tools", tools)
-	.addEdge("agent", shouldUseTool)
+    .addConditionalEdges("agent", shouldUseTool)
 	.addEdge("tools", "agent")
 	.compile();
 ```
@@ -193,7 +194,9 @@ import type { AIMessage } from "@langchain/core/messages";
 // read the environment variables from .env
 import "dotenv/config";
 
-const tools = [new TavilySearchResults({ maxResults: 3 })];
+const searchTool = new TavilySearchResults({ maxResults: 3 });
+const tools = new ToolNode([searchTool]);
+
 // Create a model and give it access to the tools
 const model = new ChatAnthropic({
 	model: "claude-3-5-sonnet-20240620",
@@ -224,13 +227,13 @@ function shouldUseTool(state: typeof MessagesAnnotation.State) {
 export const app = new StateGraph(MessagesAnnotation)
 	.addNode("agent", callModel)
 	.addEdge("__start__", "agent")
-	.addNode("tools", new ToolNode(tools))
+	.addNode("tools", tools)
 	.addConditionalEdges("agent", shouldUseTool)
 	.addEdge("tools", "agent")
 	.compile();
-
-````
+```
 </details>
+
 <details>
 ```ts
 // chatloop.ts

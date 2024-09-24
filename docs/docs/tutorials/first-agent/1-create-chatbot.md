@@ -41,10 +41,10 @@ Later, we will use the `graphBuilder` object to build a graph that defines how o
 Now that we have a basic `StateGraph` and and LLM, we need to define a node that will invoke the LLM with the correct state. That's done using a function that takes the current state and returns the new state. Add the following code to your `chatbot.ts` file:
 
 ```ts
-async function callModel(state: typeof MessageAnnotation.State) {
+async function callModel(state: typeof MessagesAnnotation.State) {
 	const response = await model.invoke(state.messages);
 
-	// We return the response in an array and the `MessageAnnotation` reducer will append it to the state
+	// We return the response in an array and the `MessagesAnnotation` reducer will append it to the state
 	return { messages: [response] };
 }
 ```
@@ -58,8 +58,8 @@ With the LLM, the `StateGraph`, and a way for them to communicate, we're ready t
 ```ts
 // Create a graph that defines our chatbot workflow and compile it into a `runnable`
 export const app = graphBuilder
-	.addNode("agent", callModel)
-	.addEdge("__start__", callModel)
+  .addNode("agent", callModel)
+	.addEdge("__start__", "agent")
 	.compile();
 ```
 

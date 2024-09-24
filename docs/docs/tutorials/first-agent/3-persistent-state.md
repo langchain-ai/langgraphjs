@@ -23,7 +23,7 @@ Then, update the code that creates the runnable agent to use a checkpointer. As 
 export const app = new StateGraph(MessagesAnnotation)
 	.addNode("agent", callModel)
 	.addEdge("__start__", "agent")
-	.addNode("tools", new ToolNode(tools))
+	.addNode("tools", tools)
 	.addConditionalEdges("agent", shouldUseTool)
 	.addEdge("tools", "agent")
 	.compile();
@@ -73,7 +73,7 @@ Notice that we are now passing **two** arguments to `invoke()` - the first objec
 
 We're using the `MessagesAnnotation` helper, which has a reducer that will append the new message to the graph's `messages` state. This way each time we invoke the chatbot it will get the new message and all the previous messages from this conversation thread.
 
-The `Runnable` now has access to a checkpointer to save progress as it executes the graph. To use it, we are providing a `thread_id` value when calling `.invoke()`. In a real application, you'd probably want to generate unique thread IDs using something like UUID or nanoid. For now, we're using a hardcoded value of "42".
+The compiled graph now has access to a checkpointer to save progress as it executes the graph. To use it, we are providing a `thread_id` value when calling `.invoke()`. In a real application, you'd probably want to generate unique thread IDs using something like UUID or nanoid. For now, we're using a hardcoded value of "42".
 
 ## Step 3: Test the chatbot
 
@@ -113,7 +113,8 @@ import type { AIMessage } from "@langchain/core/messages";
 // read the environment variables from .env
 import "dotenv/config";
 
-const tools = [new TavilySearchResults({ maxResults: 3 })];
+const searchTool = new TavilySearchResults({ maxResults: 3 });
+const tools = new ToolNode([searchTool]);
 
 // Create a model and give it access to the tools
 const model = new ChatAnthropic({
@@ -145,7 +146,7 @@ function shouldUseTool(state: typeof MessagesAnnotation.State) {
 const app = new StateGraph(MessagesAnnotation)
   .addNode("agent", callModel)
   .addEdge("__start__", "agent")
-  .addNode("tools", new ToolNode(tools))
+  .addNode("tools", tools)
   .addConditionalEdges("agent", shouldUseTool)
   .addEdge("tools", "agent")
   .compile({ checkpointer: new MemorySaver() });

@@ -19,7 +19,7 @@ Locate the code that builds and compiles the graph in your `chatbot.ts` file. It
 export const app = new StateGraph(MessagesAnnotation)
 	.addNode("agent", callModel)
 	.addEdge("__start__", "agent")
-	.addNode("tools", new ToolNode(tools))
+	.addNode("tools", tools)
 	.addConditionalEdges("agent", shouldUseTool)
 	.addEdge("tools", "agent")
 	.compile({ checkpointer: new MemorySaver() });
@@ -85,7 +85,7 @@ If you try to continue the conversation, you'll get an error because it's expect
 
 ## Step 2: Add human confirmation
 
-Right now, the code in our chat loop that is responsible for running the agent and printing the result looks something like this:
+Right now, the code in `chatloop.ts` that is responsible for running the agent and printing the result looks something like this:
 
 ```ts
 // Run the chatbot and add its response to the conversation history
@@ -136,7 +136,13 @@ if (lastMessage instanceof AIMessage && lastMessage.tool_calls !== undefined) {
 }
 ```
 
-There are three things going on here:
+We're also using the `AIMessage` class, which you'll need to import at the top:
+
+```ts
+import { AIMessage } from "@langchain/core/messages";
+```
+
+Great! There are three things going on in this addition to the chat loop:
 
 1. We are checking if the agent wants to use a tool. If it does, we print out the details of the requested tool call so the human can make a decision.
 2. We ask the human if they want to continue. If they don't, we exit the chat loop.
@@ -225,7 +231,8 @@ import { MemorySaver } from "@langchain/langgraph";
 // read the environment variables from .env
 import "dotenv/config";
 
-const tools = [new TavilySearchResults({ maxResults: 3 })];
+const searchTool = new TavilySearchResults({ maxResults: 3 });
+const tools = new ToolNode([searchTool]);
 
 // Create a model and give it access to the tools
 const model = new ChatAnthropic({
@@ -257,7 +264,7 @@ function shouldUseTool(state: typeof MessagesAnnotation.State) {
 export const app = new StateGraph(MessagesAnnotation)
   .addNode("agent", callModel)
   .addEdge("__start__", "agent")
-  .addNode("tools", new ToolNode(tools))
+  .addNode("tools", tools)
   .addConditionalEdges("agent", shouldUseTool)
   .addEdge("tools", "agent")
   .compile({ checkpointer: new MemorySaver(), interruptBefore: ["tools"] });
