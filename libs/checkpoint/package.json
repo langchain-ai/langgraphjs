@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Library with base interfaces for LangGraph checkpoint savers.",
   "type": "module",
   "engines": {
