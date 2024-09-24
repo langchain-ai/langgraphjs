@@ -43,13 +43,6 @@ import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { _getIdMetadata, getNullChannelVersion } from "./utils.js";
 import { ManagedValueMapping } from "../managed/base.js";
 
-/**
- * Construct a type with a set of properties K of type T
- */
-export type StrRecord<K extends string, T> = {
-  [P in K]: T;
-};
-
 export type WritesProtocol<C = string> = {
   name: string;
   writes: PendingWrite<C>[];
@@ -329,8 +322,8 @@ export type NextTaskExtraFields = {
 };
 
 export function _prepareNextTasks<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Nn extends Record<string, PregelNode>,
+  Cc extends Record<string, BaseChannel>
 >(
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
@@ -342,8 +335,8 @@ export function _prepareNextTasks<
 ): PregelTaskDescription[];
 
 export function _prepareNextTasks<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Nn extends Record<string, PregelNode>,
+  Cc extends Record<string, BaseChannel>
 >(
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
@@ -355,8 +348,8 @@ export function _prepareNextTasks<
 ): PregelExecutableTask<keyof Nn, keyof Cc>[];
 
 export function _prepareNextTasks<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Nn extends Record<string, PregelNode>,
+  Cc extends Record<string, BaseChannel>
 >(
   checkpoint: ReadonlyCheckpoint,
   processes: Nn,
@@ -573,7 +566,7 @@ function _procInput(
   step: number,
   proc: PregelNode,
   managed: ManagedValueMapping,
-  channels: StrRecord<string, BaseChannel>,
+  channels: Record<string, BaseChannel>,
   forExecution: boolean
 ) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

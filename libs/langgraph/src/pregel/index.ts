@@ -60,12 +60,7 @@ import {
   InvalidUpdateError,
   isGraphInterrupt,
 } from "../errors.js";
-import {
-  _prepareNextTasks,
-  _localRead,
-  _applyWrites,
-  StrRecord,
-} from "./algo.js";
+import { _prepareNextTasks, _localRead, _applyWrites } from "./algo.js";
 import { _coerceToDict, getNewChannelVersions, RetryPolicy } from "./utils.js";
 import { PregelLoop } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
@@ -202,8 +197,8 @@ export type PregelInputType = any;
 export type PregelOutputType = any;
 
 export class Pregel<
-    Nn extends StrRecord<string, PregelNode>,
-    Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
+    Nn extends Record<string, PregelNode>,
+    Cc extends Record<string, BaseChannel | ManagedValueSpec>
   >
   extends Runnable<PregelInputType, PregelOutputType, PregelOptions<Nn, Cc>>
   implements PregelInterface<Nn, Cc>
