@@ -12,7 +12,37 @@ import { Interrupt } from "../constants.js";
 import { BaseStore } from "../store/base.js";
 import { type ManagedValueSpec } from "../managed/base.js";
 
-export type StreamMode = "values" | "updates" | "debug";
+export type DebugOutput = unknown; // TODO
+
+export type SingleStreamMode = "values" | "updates" | "debug";
+
+export type StreamMode =
+  | SingleStreamMode
+  | [SingleStreamMode]
+  | [SingleStreamMode, SingleStreamMode]
+  | [SingleStreamMode, SingleStreamMode, SingleStreamMode];
+
+export type StreamOutput<
+  S extends StreamMode,
+  Nn extends StrRecord<string, PregelNode>,
+  Schema
+> = S extends "values"
+  ? Schema
+  : S extends "updates"
+  ? { [K in keyof Nn]: Partial<Schema> }
+  : S extends "debug"
+  ? DebugOutput
+  : S extends [SingleStreamMode]
+  ? StreamOutput<S[0], Nn, Schema>
+  : S extends [SingleStreamMode, SingleStreamMode]
+  ? [StreamOutput<S[0], Nn, Schema>, StreamOutput<S[1], Nn, Schema>]
+  : S extends [SingleStreamMode, SingleStreamMode, SingleStreamMode]
+  ? [
+      StreamOutput<S[0], Nn, Schema>,
+      StreamOutput<S[1], Nn, Schema>,
+      StreamOutput<S[2], Nn, Schema>
+    ]
+  : never;
 
 /**
  * Construct a type with a set of properties K of type T
@@ -37,7 +67,7 @@ export interface PregelInterface<
   /**
    * @default "values"
    */
-  streamMode?: StreamMode | StreamMode[];
+  streamMode?: SingleStreamMode;
 
   inputChannels: keyof Cc | Array<keyof Cc>;
 

@@ -17,7 +17,7 @@ import {
   createCheckpoint,
   emptyChannels,
 } from "../channels/base.js";
-import { PregelExecutableTask, StreamMode } from "./types.js";
+import { PregelExecutableTask, SingleStreamMode } from "./types.js";
 import {
   CONFIG_KEY_READ,
   CONFIG_KEY_RESUMING,
@@ -137,7 +137,7 @@ export class PregelLoop {
   tasks: PregelExecutableTask<any, any>[] = [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stream: Deque<[StreamMode, any]> = new Deque();
+  stream: Deque<[SingleStreamMode, any]> = new Deque();
 
   checkpointerPromises: Promise<unknown>[] = [];
 

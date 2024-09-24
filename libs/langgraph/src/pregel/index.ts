@@ -49,8 +49,10 @@ import {
   PregelExecutableTask,
   PregelInterface,
   PregelParams,
+  SingleStreamMode,
   StateSnapshot,
   StreamMode,
+  StreamOutput,
 } from "./types.js";
 import {
   GraphRecursionError,
@@ -177,10 +179,11 @@ export class Channel {
  */
 export interface PregelOptions<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
+  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+  Sm extends StreamMode = StreamMode
 > extends RunnableConfig {
   /** The stream mode for the graph run. Default is ["values"]. */
-  streamMode?: StreamMode | StreamMode[];
+  streamMode?: Sm;
   inputKeys?: keyof Cc | Array<keyof Cc>;
   /** The output keys to retrieve from the graph run. */
   outputKeys?: keyof Cc | Array<keyof Cc>;
@@ -222,7 +225,7 @@ export class Pregel<
 
   autoValidate: boolean = true;
 
-  streamMode: StreamMode[] = ["values"];
+  streamMode: SingleStreamMode = "values";
 
   streamChannels?: keyof Cc | Array<keyof Cc>;
 
@@ -243,15 +246,10 @@ export class Pregel<
   constructor(fields: PregelParams<Nn, Cc>) {
     super(fields);
 
-    let { streamMode } = fields;
-    if (streamMode != null && !Array.isArray(streamMode)) {
-      streamMode = [streamMode];
-    }
-
     this.nodes = fields.nodes;
     this.channels = fields.channels;
     this.autoValidate = fields.autoValidate ?? this.autoValidate;
-    this.streamMode = streamMode ?? this.streamMode;
+    this.streamMode = fields.streamMode ?? this.streamMode;
     this.inputChannels = fields.inputChannels;
     this.outputChannels = fields.outputChannels;
     this.streamChannels = fields.streamChannels ?? this.streamChannels;
@@ -565,7 +563,7 @@ export class Pregel<
 
   _defaults(config: PregelOptions<Nn, Cc>): [
     boolean, // debug
-    StreamMode[], // stream mode
+    SingleStreamMode[], // stream mode
     string | string[], // input keys
     string | string[], // output keys
     RunnableConfig, // config without pregel keys
@@ -603,11 +601,11 @@ export class Pregel<
 
     const defaultInterruptAfter = interruptAfter ?? this.interruptAfter ?? [];
 
-    let defaultStreamMode: StreamMode[];
+    let defaultStreamMode: SingleStreamMode[];
     if (streamMode !== undefined) {
       defaultStreamMode = Array.isArray(streamMode) ? streamMode : [streamMode];
     } else {
-      defaultStreamMode = this.streamMode;
+      defaultStreamMode = [this.streamMode];
     }
 
     let defaultCheckpointer: BaseCheckpointSaver | undefined;
@@ -654,10 +652,10 @@ export class Pregel<
    * @param options.interruptAfter Nodes to interrupt after.
    * @param options.debug Whether to print debug information during execution.
    */
-  override async stream(
+  override async stream<Sm extends StreamMode>(
     input: PregelInputType,
-    options?: Partial<PregelOptions<Nn, Cc>>
-  ): Promise<IterableReadableStream<PregelOutputType>> {
+    options?: Partial<PregelOptions<Nn, Cc, Sm>>
+  ): Promise<IterableReadableStream<StreamOutput<Sm, Nn, PregelOutputType>>> {
     return super.stream(input, options);
   }
 
