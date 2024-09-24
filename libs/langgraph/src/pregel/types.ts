@@ -12,14 +12,16 @@ import { Interrupt } from "../constants.js";
 import { BaseStore } from "../store/base.js";
 import { type ManagedValueSpec } from "../managed/base.js";
 
-export type DebugOutput = {
+export type DebugOutput<
+  Cc extends Record<string, BaseChannel | ManagedValueSpec>
+> = {
   type: string;
   timestamp: string;
   step: number;
   payload: {
     id: string;
-    name: any;
-    result: PendingWrite<any>[];
+    name: string;
+    result: PendingWrite<keyof Cc>[];
     config: RunnableConfig;
     metadata?: CheckpointMetadata;
   };
@@ -36,33 +38,35 @@ export type StreamMode =
 type SingleStreamModeOutput<
   S extends SingleStreamMode,
   Nn extends Record<string, PregelNode>,
+  Cc extends Record<string, BaseChannel | ManagedValueSpec>,
   Schema
 > = S extends "values"
   ? Schema
   : S extends "updates"
   ? { [K in keyof Nn]: Partial<Schema> }
   : S extends "debug"
-  ? DebugOutput
+  ? DebugOutput<Cc>
   : never;
 
 export type StreamOutput<
   S extends StreamMode,
   Nn extends Record<string, PregelNode>,
+  Cc extends Record<string, BaseChannel | ManagedValueSpec>,
   Schema
 > = S extends SingleStreamMode
-  ? SingleStreamModeOutput<S, Nn, Schema>
+  ? SingleStreamModeOutput<S, Nn, Cc, Schema>
   : S extends [SingleStreamMode]
-  ? SingleStreamModeOutput<S[0], Nn, Schema>
+  ? SingleStreamModeOutput<S[0], Nn, Cc, Schema>
   : S extends [SingleStreamMode, SingleStreamMode]
   ? [
-    SingleStreamModeOutput<S[0], Nn, Schema>,
-    SingleStreamModeOutput<S[1], Nn, Schema>
+    SingleStreamModeOutput<S[0], Nn, Cc, Schema>,
+    SingleStreamModeOutput<S[1], Nn, Cc, Schema>
   ]
   : S extends [SingleStreamMode, SingleStreamMode, SingleStreamMode]
   ? [
-    SingleStreamModeOutput<S[0], Nn, Schema>,
-    SingleStreamModeOutput<S[1], Nn, Schema>,
-    SingleStreamModeOutput<S[2], Nn, Schema>
+    SingleStreamModeOutput<S[0], Nn, Cc, Schema>,
+    SingleStreamModeOutput<S[1], Nn, Cc, Schema>,
+    SingleStreamModeOutput<S[2], Nn, Cc, Schema>
   ]
   : never;
 
