@@ -12,7 +12,18 @@ import { Interrupt } from "../constants.js";
 import { BaseStore } from "../store/base.js";
 import { type ManagedValueSpec } from "../managed/base.js";
 
-export type DebugOutput = unknown; // TODO
+export type DebugOutput = {
+  type: string;
+  timestamp: string;
+  step: number;
+  payload: {
+    id: string;
+    name: any;
+    result: PendingWrite<any>[];
+    config: RunnableConfig;
+    metadata?: CheckpointMetadata;
+  };
+};
 
 export type SingleStreamMode = "values" | "updates" | "debug";
 
