@@ -38,7 +38,12 @@ import {
   TAG_HIDDEN,
   TASKS,
 } from "../constants.js";
-import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
+import {
+  ChannelsType,
+  NodesType,
+  PregelExecutableTask,
+  PregelTaskDescription,
+} from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { _getIdMetadata, getNullChannelVersion } from "./utils.js";
 import { ManagedValueMapping } from "../managed/base.js";
@@ -84,17 +89,17 @@ export function shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
   return anyChannelUpdated && anyTriggeredNodeInInterruptNodes;
 }
 
-export function _localRead<Cc extends Record<string, BaseChannel>>(
+export function _localRead<LocalChannels extends Record<string, BaseChannel>>(
   step: number,
   checkpoint: ReadonlyCheckpoint,
-  channels: Cc,
+  channels: LocalChannels,
   managed: ManagedValueMapping,
-  task: WritesProtocol<keyof Cc>,
-  select: Array<keyof Cc> | keyof Cc,
+  task: WritesProtocol<keyof LocalChannels>,
+  select: Array<keyof LocalChannels> | keyof LocalChannels,
   fresh: boolean = false
 ): Record<string, unknown> | unknown {
-  let managedKeys: Array<keyof Cc> = [];
-  let updated = new Set<keyof Cc>();
+  let managedKeys: Array<keyof LocalChannels> = [];
+  let updated = new Set<keyof LocalChannels>();
 
   if (!Array.isArray(select)) {
     for (const [c] of task.writes) {
@@ -106,9 +111,11 @@ export function _localRead<Cc extends Record<string, BaseChannel>>(
     updated = updated || new Set();
   } else {
     managedKeys = select.filter((k) => managed.get(k as string)) as Array<
-      keyof Cc
+      keyof LocalChannels
     >;
-    select = select.filter((k) => !managed.get(k as string)) as Array<keyof Cc>;
+    select = select.filter((k) => !managed.get(k as string)) as Array<
+      keyof LocalChannels
+    >;
     updated = new Set(
       select.filter((c) => task.writes.some(([key, _]) => key === c))
     );
@@ -118,11 +125,20 @@ export function _localRead<Cc extends Record<string, BaseChannel>>(
 
   if (fresh && updated.size > 0) {
     const localChannels = Object.fromEntries(
-      Object.entries(channels).filter(([k, _]) => updated.has(k as keyof Cc))
-    ) as Partial<Cc>;
+      Object.entries(channels).filter(([k, _]) =>
+        updated.has(k as keyof LocalChannels)
+      )
+    ) as Partial<LocalChannels>;
 
-    const newCheckpoint = createCheckpoint(checkpoint, localChannels as Cc, -1);
-    const newChannels = emptyChannels(localChannels as Cc, newCheckpoint);
+    const newCheckpoint = createCheckpoint(
+      checkpoint,
+      localChannels as LocalChannels,
+      -1
+    );
+    const newChannels = emptyChannels(
+      localChannels as LocalChannels,
+      newCheckpoint
+    );
 
     _applyWrites(copyCheckpoint(newCheckpoint), newChannels, [task]);
     values = readChannels({ ...channels, ...newChannels }, select);
@@ -176,17 +192,17 @@ export function _localWrite(
   commit(writes);
 }
 
-export function _applyWrites<Cc extends Record<string, BaseChannel>>(
+export function _applyWrites<LocalChannels extends Record<string, BaseChannel>>(
   checkpoint: Checkpoint,
-  channels: Cc,
-  tasks: WritesProtocol<keyof Cc>[],
+  channels: LocalChannels,
+  tasks: WritesProtocol<keyof LocalChannels>[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getNextVersion?: (version: any, channel: BaseChannel) => any
 ): Record<string, PendingWriteValue[]> {
   // Filter out non instances of BaseChannel
   const onlyChannels = Object.fromEntries(
     Object.entries(channels).filter(([_, value]) => isBaseChannel(value))
-  ) as Cc;
+  ) as LocalChannels;
   // Update seen versions
   for (const task of tasks) {
     if (checkpoint.versions_seen[task.name] === undefined) {
@@ -233,10 +249,13 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
 
   // Group writes by channel
   const pendingWriteValuesByChannel = {} as Record<
-    keyof Cc,
+    keyof LocalChannels,
     PendingWriteValue[]
   >;
-  const pendingWritesByManaged = {} as Record<keyof Cc, PendingWriteValue[]>;
+  const pendingWritesByManaged = {} as Record<
+    keyof LocalChannels,
+    PendingWriteValue[]
+  >;
   for (const task of tasks) {
     for (const [chan, val] of task.writes) {
       if (chan === TASKS) {
@@ -322,12 +341,12 @@ export type NextTaskExtraFields = {
 };
 
 export function _prepareNextTasks<
-  Nn extends Record<string, PregelNode>,
-  Cc extends Record<string, BaseChannel>
+  Nodes extends NodesType,
+  Channels extends ChannelsType
 >(
   checkpoint: ReadonlyCheckpoint,
-  processes: Nn,
-  channels: Cc,
+  processes: Nodes,
+  channels: Channels,
   managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: false,
@@ -335,32 +354,35 @@ export function _prepareNextTasks<
 ): PregelTaskDescription[];
 
 export function _prepareNextTasks<
-  Nn extends Record<string, PregelNode>,
-  Cc extends Record<string, BaseChannel>
+  Nodes extends NodesType,
+  Channels extends ChannelsType
 >(
   checkpoint: ReadonlyCheckpoint,
-  processes: Nn,
-  channels: Cc,
+  processes: Nodes,
+  channels: Channels,
   managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: true,
   extra: NextTaskExtraFields
-): PregelExecutableTask<keyof Nn, keyof Cc>[];
+): PregelExecutableTask<keyof Nodes, keyof Channels>[];
 
 export function _prepareNextTasks<
-  Nn extends Record<string, PregelNode>,
-  Cc extends Record<string, BaseChannel>
+  Nodes extends NodesType,
+  LocalChannels extends Record<string, BaseChannel>
 >(
   checkpoint: ReadonlyCheckpoint,
-  processes: Nn,
-  channels: Cc,
+  processes: Nodes,
+  channels: LocalChannels,
   managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: boolean,
   extra: NextTaskExtraFields
-): PregelTaskDescription[] | PregelExecutableTask<keyof Nn, keyof Cc>[] {
+):
+  | PregelTaskDescription[]
+  | PregelExecutableTask<keyof Nodes, keyof LocalChannels>[] {
   const parentNamespace = config.configurable?.checkpoint_ns ?? "";
-  const tasks: Array<PregelExecutableTask<keyof Nn, keyof Cc>> = [];
+  const tasks: Array<PregelExecutableTask<keyof Nodes, keyof LocalChannels>> =
+    [];
   const taskDescriptions: Array<PregelTaskDescription> = [];
   const { step, isResuming = false, checkpointer, manager } = extra;
 
@@ -397,7 +419,7 @@ export function _prepareNextTasks<
       const proc = processes[packet.node];
       const node = proc.getNode();
       if (node !== undefined) {
-        const writes: [keyof Cc, unknown][] = [];
+        const writes: [keyof LocalChannels, unknown][] = [];
         managed.replaceRuntimePlaceholders(step, packet.args);
         tasks.push({
           name: packet.node,
@@ -417,14 +439,15 @@ export function _prepareNextTasks<
                 [CONFIG_KEY_SEND]: (writes_: [string, any][]) =>
                   _localWrite(
                     step,
-                    (items: [keyof Cc, unknown][]) => writes.push(...items),
+                    (items: [keyof LocalChannels, unknown][]) =>
+                      writes.push(...items),
                     processes,
                     channels,
                     managed,
                     writes_
                   ),
                 [CONFIG_KEY_READ]: (
-                  select_: Array<keyof Cc> | keyof Cc,
+                  select_: Array<keyof LocalChannels> | keyof LocalChannels,
                   fresh_: boolean = false
                 ) =>
                   _localRead(
@@ -503,7 +526,7 @@ export function _prepareNextTasks<
       if (forExecution) {
         const node = proc.getNode();
         if (node !== undefined) {
-          const writes: [keyof Cc, unknown][] = [];
+          const writes: [keyof LocalChannels, unknown][] = [];
           tasks.push({
             name,
             input: val,
@@ -520,14 +543,15 @@ export function _prepareNextTasks<
                   [CONFIG_KEY_SEND]: (writes_: [string, any][]) =>
                     _localWrite(
                       step,
-                      (items: [keyof Cc, unknown][]) => writes.push(...items),
+                      (items: [keyof LocalChannels, unknown][]) =>
+                        writes.push(...items),
                       processes,
                       channels,
                       managed,
                       writes_
                     ),
                   [CONFIG_KEY_READ]: (
-                    select_: Array<keyof Cc> | keyof Cc,
+                    select_: Array<keyof LocalChannels> | keyof LocalChannels,
                     fresh_: boolean = false
                   ) =>
                     _localRead(
