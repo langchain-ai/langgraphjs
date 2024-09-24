@@ -2,12 +2,7 @@
 /* eslint-disable no-instanceof/no-instanceof */
 import { load } from "@langchain/core/load";
 import { SerializerProtocol } from "./base.js";
-
-function isLangChainSerializable(value: Record<string, unknown>) {
-  return (
-    typeof value.lc_serializable === "boolean" && Array.isArray(value.lc_id)
-  );
-}
+import { stringify } from "./utils/fast-safe-stringify/index.js";
 
 function isLangChainSerializedObject(value: Record<string, unknown>) {
   return (
@@ -18,91 +13,61 @@ function isLangChainSerializedObject(value: Record<string, unknown>) {
   );
 }
 
-const _serialize = (value: any, seen = new WeakSet()): string => {
-  const defaultValue = _default("", value);
-
-  if (defaultValue === null) {
-    return "null";
-  } else if (typeof defaultValue === "string") {
-    return JSON.stringify(defaultValue);
-  } else if (
-    typeof defaultValue === "number" ||
-    typeof defaultValue === "boolean"
-  ) {
-    return defaultValue.toString();
-  } else if (typeof defaultValue === "object") {
-    if (seen.has(defaultValue)) {
-      throw new TypeError("Circular reference detected");
-    }
-    seen.add(defaultValue);
-
-    if (Array.isArray(defaultValue)) {
-      const result = `[${defaultValue
-        .map((item) => _serialize(item, seen))
-        .join(",")}]`;
-      seen.delete(defaultValue);
-      return result;
-    } else if (isLangChainSerializable(defaultValue)) {
-      return JSON.stringify(defaultValue);
-    } else {
-      const entries = Object.entries(defaultValue).map(
-        ([k, v]) => `${JSON.stringify(k)}:${_serialize(v, seen)}`
-      );
-      const result = `{${entries.join(",")}}`;
-      seen.delete(defaultValue);
-      return result;
-    }
-  }
-  // Only be reached for functions or symbols
-  return JSON.stringify(defaultValue);
-};
-
+// Bottom-up reviver
 async function _reviver(value: any): Promise<any> {
   if (value && typeof value === "object") {
-    if (value.lc === 2 && value.type === "undefined") {
-      return undefined;
-    } else if (
-      value.lc === 2 &&
-      value.type === "constructor" &&
-      Array.isArray(value.id)
-    ) {
-      try {
-        const constructorName = value.id[value.id.length - 1];
-        let constructor: any;
-
-        switch (constructorName) {
-          case "Set":
-            constructor = Set;
-            break;
-          case "Map":
-            constructor = Map;
-            break;
-          case "RegExp":
-            constructor = RegExp;
-            break;
-          case "Error":
-            constructor = Error;
-            break;
-          default:
-            return value;
-        }
-        if (value.method) {
-          return (constructor as any)[value.method](...(value.args || []));
-        } else {
-          return new (constructor as any)(...(value.args || []));
-        }
-      } catch (error) {
-        return value;
-      }
-    } else if (isLangChainSerializedObject(value)) {
-      return load(JSON.stringify(value));
-    } else if (Array.isArray(value)) {
-      return Promise.all(value.map((item) => _reviver(item)));
+    if (Array.isArray(value)) {
+      const revivedArray = await Promise.all(
+        value.map((item) => _reviver(item))
+      );
+      return revivedArray;
     } else {
       const revivedObj: any = {};
       for (const [k, v] of Object.entries(value)) {
         revivedObj[k] = await _reviver(v);
       }
+
+      if (revivedObj.lc === 2 && revivedObj.type === "undefined") {
+        return undefined;
+      } else if (
+        revivedObj.lc === 2 &&
+        revivedObj.type === "constructor" &&
+        Array.isArray(revivedObj.id)
+      ) {
+        try {
+          const constructorName = revivedObj.id[revivedObj.id.length - 1];
+          let constructor: any;
+
+          switch (constructorName) {
+            case "Set":
+              constructor = Set;
+              break;
+            case "Map":
+              constructor = Map;
+              break;
+            case "RegExp":
+              constructor = RegExp;
+              break;
+            case "Error":
+              constructor = Error;
+              break;
+            default:
+              return revivedObj;
+          }
+          if (revivedObj.method) {
+            return (constructor as any)[revivedObj.method](
+              ...(revivedObj.args || [])
+            );
+          } else {
+            return new (constructor as any)(...(revivedObj.args || []));
+          }
+        } catch (error) {
+          return revivedObj;
+        }
+      } else if (isLangChainSerializedObject(revivedObj)) {
+        return load(JSON.stringify(revivedObj));
+      }
+
       return revivedObj;
     }
   }
@@ -126,7 +91,7 @@ function _encodeConstructorArgs(
   };
 }
 
-function _default(_key: string, obj: any): any {
+function _default(obj: any): any {
   if (obj === undefined) {
     return {
       lc: 2,
@@ -154,7 +119,11 @@ function _default(_key: string, obj: any): any {
 export class JsonPlusSerializer implements SerializerProtocol {
   protected _dumps(obj: any): Uint8Array {
     const encoder = new TextEncoder();
-    return encoder.encode(_serialize(obj));
+    return encoder.encode(
+      stringify(obj, (_: string, value: any) => {
+        return _default(value);
+      })
+    );
   }
 
   dumpsTyped(obj: any): [string, Uint8Array] {
