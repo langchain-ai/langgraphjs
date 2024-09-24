@@ -22,9 +22,9 @@ export type StreamMode =
   | [SingleStreamMode, SingleStreamMode]
   | [SingleStreamMode, SingleStreamMode, SingleStreamMode];
 
-export type StreamOutput<
-  S extends StreamMode,
-  Nn extends StrRecord<string, PregelNode>,
+type SingleStreamModeOutput<
+  S extends SingleStreamMode,
+  Nn extends Record<string, PregelNode>,
   Schema
 > = S extends "values"
   ? Schema
@@ -32,16 +32,27 @@ export type StreamOutput<
   ? { [K in keyof Nn]: Partial<Schema> }
   : S extends "debug"
   ? DebugOutput
+  : never;
+
+export type StreamOutput<
+  S extends StreamMode,
+  Nn extends Record<string, PregelNode>,
+  Schema
+> = S extends SingleStreamMode
+  ? SingleStreamModeOutput<S, Nn, Schema>
   : S extends [SingleStreamMode]
-  ? StreamOutput<S[0], Nn, Schema>
+  ? SingleStreamModeOutput<S[0], Nn, Schema>
   : S extends [SingleStreamMode, SingleStreamMode]
-  ? [StreamOutput<S[0], Nn, Schema>, StreamOutput<S[1], Nn, Schema>]
+  ? [
+    SingleStreamModeOutput<S[0], Nn, Schema>,
+    SingleStreamModeOutput<S[1], Nn, Schema>
+  ]
   : S extends [SingleStreamMode, SingleStreamMode, SingleStreamMode]
   ? [
-      StreamOutput<S[0], Nn, Schema>,
-      StreamOutput<S[1], Nn, Schema>,
-      StreamOutput<S[2], Nn, Schema>
-    ]
+    SingleStreamModeOutput<S[0], Nn, Schema>,
+    SingleStreamModeOutput<S[1], Nn, Schema>,
+    SingleStreamModeOutput<S[2], Nn, Schema>
+  ]
   : never;
 
 /**
