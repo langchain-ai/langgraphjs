@@ -54,12 +54,15 @@ export class NodeInterrupt extends GraphInterrupt {
 }
 
 export function isGraphInterrupt(
-  e: GraphInterrupt | Error
+  e?: GraphInterrupt | Error
 ): e is GraphInterrupt {
-  return [
-    GraphInterrupt.unminifiable_name,
-    NodeInterrupt.unminifiable_name,
-  ].includes(e.name);
+  return (
+    e !== undefined &&
+    [
+      GraphInterrupt.unminifiable_name,
+      NodeInterrupt.unminifiable_name,
+    ].includes(e.name)
+  );
 }
 
 export class EmptyInputError extends Error {

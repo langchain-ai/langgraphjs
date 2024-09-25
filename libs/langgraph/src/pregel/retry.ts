@@ -1,6 +1,6 @@
 import { isGraphInterrupt } from "../errors.js";
 import { PregelExecutableTask } from "./types.js";
-import type { RetryPolicy } from "./utils.js";
+import type { RetryPolicy } from "./utils/index.js";
 
 export const DEFAULT_INITIAL_INTERVAL = 500;
 export const DEFAULT_BACKOFF_FACTOR = 2;
