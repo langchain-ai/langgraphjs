@@ -112,10 +112,11 @@ export function* mapOutputValues<C extends PropertyKey>(
  */
 export function* mapOutputUpdates<N extends PropertyKey, C extends PropertyKey>(
   outputChannels: C | Array<C>,
-  tasks: readonly PregelExecutableTask<N, C>[]
+  tasks: readonly [PregelExecutableTask<N, C>, PendingWrite<C>[]][],
+  cached?: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Generator<Record<N, Record<string, any> | Record<string, any>[]>> {
-  const outputTasks = tasks.filter((task) => {
+): Generator<Record<N, Record<string, any> | any>> {
+  const outputTasks = tasks.filter(([task]) => {
     return task.config === undefined || !task.config.tags?.includes(TAG_HIDDEN);
   });
   if (!outputTasks.length) {
@@ -124,7 +125,7 @@ export function* mapOutputUpdates<N extends PropertyKey, C extends PropertyKey>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let updated: [N, Record<string, any>][];
   if (!Array.isArray(outputChannels)) {
-    updated = outputTasks.flatMap((task) =>
+    updated = outputTasks.flatMap(([task]) =>
       task.writes
         .filter(([chan, _]) => chan === outputChannels)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -132,10 +133,10 @@ export function* mapOutputUpdates<N extends PropertyKey, C extends PropertyKey>(
     );
   } else {
     updated = outputTasks
-      .filter((task) =>
+      .filter(([task]) =>
         task.writes.some(([chan]) => outputChannels.includes(chan))
       )
-      .map((task) => [
+      .map(([task]) => [
         task.name,
         Object.fromEntries(
           task.writes.filter(([chan]) => outputChannels.includes(chan))
@@ -143,9 +144,9 @@ export function* mapOutputUpdates<N extends PropertyKey, C extends PropertyKey>(
       ]);
   }
   const grouped = Object.fromEntries(
-    outputTasks.map((t) => [t.name, []])
+    outputTasks.map(([t]) => [t.name, []])
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ) as unknown as Record<N, Record<string, any>[]>;
+  ) as unknown as Record<N, Record<string, any>>;
 
   for (const [node, value] of updated) {
     grouped[node].push(value);
@@ -164,7 +165,9 @@ export function* mapOutputUpdates<N extends PropertyKey, C extends PropertyKey>(
       grouped[node] = value[0] as Record<string, any>[];
     }
   }
-
+  if (cached) {
+    grouped["__metadata__" as N] = { cached };
+  }
   yield grouped;
 }
 

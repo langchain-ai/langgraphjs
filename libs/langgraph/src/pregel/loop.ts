@@ -1,4 +1,3 @@
-import Deque from "double-ended-queue";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import type { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import {
@@ -23,9 +22,11 @@ import {
   CONFIG_KEY_CHECKPOINT_MAP,
   CONFIG_KEY_READ,
   CONFIG_KEY_RESUMING,
+  CONFIG_KEY_STREAM,
   ERROR,
   INPUT,
   INTERRUPT,
+  TAG_HIDDEN,
 } from "../constants.js";
 import {
   _applyWrites,
@@ -65,6 +66,9 @@ const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
 const DEFAULT_LOOP_LIMIT = 25;
 
+// [namespace, streamMode, payload]
+export type StreamChunk = [string[], StreamMode, unknown];
+
 export type PregelLoopInitializeParams = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   input?: any;
@@ -75,6 +79,7 @@ export type PregelLoopInitializeParams = {
   nodes: Record<string, PregelNode>;
   channelSpecs: Record<string, BaseChannel>;
   managed: ManagedValueMapping;
+  stream: StreamProtocol;
   store?: BaseStore;
 };
 
@@ -95,8 +100,30 @@ type PregelLoopParams = {
   outputKeys: string | string[];
   streamKeys: string | string[];
   nodes: Record<string, PregelNode>;
+  stream: StreamProtocol;
   store?: AsyncBatchedStore;
 };
+
+export class StreamProtocol {
+  push: (chunk: StreamChunk) => void;
+
+  modes: Set<StreamMode>;
+
+  constructor(pushFn: (chunk: StreamChunk) => void, modes: Set<StreamMode>) {
+    this.push = pushFn;
+    this.modes = modes;
+  }
+}
+
+function createDuplexStream(...streams: StreamProtocol[]) {
+  return new StreamProtocol((value: StreamChunk) => {
+    for (const stream of streams) {
+      if (stream.modes.has(value[1])) {
+        stream.push(value);
+      }
+    }
+  }, new Set(streams.flatMap((s) => Array.from(s.modes))));
+}
 
 export class PregelLoop {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -153,7 +180,7 @@ export class PregelLoop {
   tasks: Record<string, PregelExecutableTask<any, any>> = {};
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stream: Deque<[StreamMode, any]> = new Deque();
+  stream: StreamProtocol;
 
   checkpointerPromises: Promise<unknown>[] = [];
 
@@ -190,6 +217,13 @@ export class PregelLoop {
     this.nodes = params.nodes;
     this.skipDoneTasks = this.config.configurable?.checkpoint_id === undefined;
     this.store = params.store;
+    this.stream = params.stream;
+    if (this.config.configurable?.[CONFIG_KEY_STREAM] !== undefined) {
+      this.stream = createDuplexStream(
+        this.stream,
+        this.config.configurable[CONFIG_KEY_STREAM]
+      );
+    }
 
     if (
       !this.isNested &&
@@ -283,6 +317,7 @@ export class PregelLoop {
       outputKeys: params.outputKeys ?? [],
       streamKeys: params.streamKeys ?? [],
       nodes: params.nodes,
+      stream: params.stream,
       store,
     });
   }
@@ -341,21 +376,42 @@ export class PregelLoop {
     if (putWritePromise !== undefined) {
       this.checkpointerPromises.push(putWritePromise);
     }
-    const task = Object.values(this.tasks).find((task) => task.id === taskId);
+    this._outputWrites(taskId, writes);
+  }
+
+  _outputWrites(taskId: string, writes: [string, unknown][], cached = false) {
+    const task = this.tasks[taskId];
     if (task !== undefined) {
-      this.stream.push(
-        ...gatherIteratorSync(
-          prefixGenerator(mapOutputUpdates(this.outputKeys, [task]), "updates")
-        )
-      );
-      this.stream.push(
-        ...gatherIteratorSync(
-          prefixGenerator(
-            mapDebugTaskResults(this.step, [[task, writes]], this.streamKeys),
-            "debug"
+      if (
+        task.config !== undefined &&
+        (task.config.tags ?? []).includes(TAG_HIDDEN)
+      ) {
+        return;
+      }
+      if (
+        writes.length > 0 &&
+        writes[0][0] !== ERROR &&
+        writes[0][0] !== INTERRUPT
+      ) {
+        this._emit(
+          gatherIteratorSync(
+            prefixGenerator(
+              mapOutputUpdates(this.outputKeys, [[task, writes]], cached),
+              "updates"
+            )
           )
-        )
-      );
+        );
+      }
+      if (!cached) {
+        this._emit(
+          gatherIteratorSync(
+            prefixGenerator(
+              mapDebugTaskResults(this.step, [[task, writes]], this.streamKeys),
+              "debug"
+            )
+          )
+        );
+      }
     }
   }
 
@@ -409,14 +465,16 @@ export class PregelLoop {
             "values"
           )
         );
-        this.stream.push(...valuesOutput);
+        this._emit(valuesOutput);
         // clear pending writes
         this.checkpointPendingWrites = [];
         await this._putCheckpoint({
           source: "loop",
           writes:
-            mapOutputUpdates(this.outputKeys, Object.values(this.tasks)).next()
-              .value ?? null,
+            mapOutputUpdates(
+              this.outputKeys,
+              Object.values(this.tasks).map((task) => [task, task.writes])
+            ).next().value ?? null,
         });
         // after execution, check if we should interrupt
         if (
@@ -459,8 +517,8 @@ export class PregelLoop {
 
       // Produce debug output
       if (this.checkpointer) {
-        this.stream.push(
-          ...(await gatherIterator(
+        this._emit(
+          await gatherIterator(
             prefixGenerator(
               mapDebugCheckpoint(
                 this.step - 1, // printing checkpoint for previous step
@@ -473,7 +531,7 @@ export class PregelLoop {
               ),
               "debug"
             )
-          ))
+          )
         );
       }
 
@@ -482,7 +540,7 @@ export class PregelLoop {
         return false;
       }
       // if there are pending writes from a previous loop, apply them
-      if (this.checkpointPendingWrites.length > 0 && this.skipDoneTasks) {
+      if (this.skipDoneTasks && this.checkpointPendingWrites.length > 0) {
         for (const [tid, k, v] of this.checkpointPendingWrites) {
           if (k === ERROR || k === INTERRUPT) {
             continue;
@@ -490,6 +548,11 @@ export class PregelLoop {
           const task = Object.values(this.tasks).find((t) => t.id === tid);
           if (task) {
             task.writes.push([k, v]);
+          }
+        }
+        for (const task of Object.values(this.tasks)) {
+          if (task.writes.length > 0) {
+            this._outputWrites(task.id, task.writes, true);
           }
         }
       }
@@ -525,7 +588,7 @@ export class PregelLoop {
           "debug"
         )
       );
-      this.stream.push(...debugOutput);
+      this._emit(debugOutput);
 
       return true;
     } catch (e) {
@@ -574,7 +637,7 @@ export class PregelLoop {
           "values"
         )
       );
-      this.stream.push(...valuesOutput);
+      this._emit(valuesOutput);
       // map inputs to channel updates
     } else {
       const inputWrites = await gatherIterator(mapInput(inputKeys, this.input));
@@ -616,6 +679,14 @@ export class PregelLoop {
       this.config = patchConfigurable(this.config, {
         [CONFIG_KEY_RESUMING]: isResuming,
       });
+    }
+  }
+
+  protected _emit(values: [StreamMode, unknown][]) {
+    for (const chunk of values) {
+      if (this.stream.modes.has(chunk[0])) {
+        this.stream.push([this.checkpointNamespace, ...chunk]);
+      }
     }
   }
 

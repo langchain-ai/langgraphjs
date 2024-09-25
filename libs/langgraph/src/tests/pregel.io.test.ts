@@ -338,7 +338,10 @@ describe("mapOutputUpdates", () => {
     ];
 
     // call method / assertions
-    const generator = mapOutputUpdates(outputChannels, tasks);
+    const generator = mapOutputUpdates(
+      outputChannels,
+      tasks.map((task) => [task, task.writes])
+    );
     const values = [];
     for (const value of generator) {
       values.push(value);
@@ -388,7 +391,10 @@ describe("mapOutputUpdates", () => {
     ];
 
     // call method / assertions
-    const generator = mapOutputUpdates(outputChannels, tasks);
+    const generator = mapOutputUpdates(
+      outputChannels,
+      tasks.map((task) => [task, task.writes])
+    );
     const values = [];
     for (const value of generator) {
       values.push(value);

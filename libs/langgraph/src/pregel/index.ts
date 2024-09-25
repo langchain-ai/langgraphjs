@@ -22,6 +22,7 @@ import {
   PendingWrite,
   uuid5,
 } from "@langchain/langgraph-checkpoint";
+import Deque from "double-ended-queue";
 import {
   BaseChannel,
   createCheckpoint,
@@ -47,6 +48,8 @@ import {
   INTERRUPT,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   CHECKPOINT_NAMESPACE_END,
+  CONFIG_KEY_STREAM,
+  CONFIG_KEY_TASK_ID,
 } from "../constants.js";
 import {
   PregelExecutableTask,
@@ -73,7 +76,7 @@ import {
   patchCheckpointMap,
   RetryPolicy,
 } from "./utils/index.js";
-import { PregelLoop } from "./loop.js";
+import { PregelLoop, StreamChunk, StreamProtocol } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
 import { BaseStore } from "../store/base.js";
 import {
@@ -199,6 +202,8 @@ export interface PregelOptions<
   interruptAfter?: All | Array<keyof Nn>;
   /** Enable debug mode for the graph run. */
   debug?: boolean;
+  /** Whether to stream subgraphs. */
+  subgraphs?: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -786,13 +791,12 @@ export class Pregel<
       defaultStreamMode = this.streamMode;
     }
 
-    let defaultCheckpointer: BaseCheckpointSaver | undefined;
-    if (
-      config.configurable !== undefined &&
-      config.configurable[CONFIG_KEY_READ] !== undefined
-    ) {
+    // if being called as a node in another graph, always use values mode
+    if (config.configurable?.[CONFIG_KEY_TASK_ID] !== undefined) {
       defaultStreamMode = ["values"];
     }
+
+    let defaultCheckpointer: BaseCheckpointSaver | undefined;
     if (
       config !== undefined &&
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] !== undefined
@@ -902,6 +906,7 @@ export class Pregel<
     input: PregelInputType,
     options?: Partial<PregelOptions<Nn, Cc>>
   ): AsyncGenerator<PregelOutputType> {
+    const streamSubgraphs = options?.subgraphs;
     const inputConfig = ensureLangGraphConfig(this.config, options);
     if (
       inputConfig.recursionLimit === undefined ||
@@ -942,7 +947,28 @@ export class Pregel<
 
     const { channelSpecs, managed } = await this.prepareSpecs(config);
 
-    let loop;
+    let loop: PregelLoop | undefined;
+    const stream = new Deque<StreamChunk>();
+    function* emitCurrentLoopOutputs() {
+      while (loop !== undefined && stream.length > 0) {
+        const nextItem = stream.shift();
+        if (nextItem === undefined) {
+          throw new Error("Data structure error.");
+        }
+        const [namespace, mode, payload] = nextItem;
+        if (streamMode.includes(mode)) {
+          if (streamSubgraphs && streamMode.length > 1) {
+            yield [namespace, mode, payload];
+          } else if (streamMode.length > 1) {
+            yield [mode, payload];
+          } else if (streamSubgraphs) {
+            yield [namespace, payload];
+          } else {
+            yield payload;
+          }
+        }
+      }
+    }
     try {
       loop = await PregelLoop.initialize({
         input,
@@ -954,7 +980,17 @@ export class Pregel<
         outputKeys,
         streamKeys: this.streamChannelsAsIs as string | string[],
         store: this.store,
+        stream: new StreamProtocol(
+          (chunk) => stream.push(chunk),
+          new Set(streamMode)
+        ),
       });
+      if (options?.subgraphs) {
+        loop.config.configurable = {
+          ...loop.config.configurable,
+          [CONFIG_KEY_STREAM]: loop.stream,
+        };
+      }
       while (
         await loop.tick({
           inputKeys: this.inputChannels as string | string[],
@@ -970,19 +1006,7 @@ export class Pregel<
             this.streamChannelsList as string[]
           );
         }
-        while (loop.stream.length > 0) {
-          const nextItem = loop.stream.shift();
-          if (nextItem === undefined) {
-            throw new Error("Data structure error.");
-          }
-          if (streamMode.includes(nextItem[0])) {
-            if (streamMode.length === 1) {
-              yield nextItem[1];
-            } else {
-              yield nextItem;
-            }
-          }
-        }
+        yield* emitCurrentLoopOutputs();
         if (debug) {
           printStepTasks(loop.step, Object.values(loop.tasks));
         }
@@ -1015,19 +1039,7 @@ export class Pregel<
           } else {
             loop.putWrites(task.id, task.writes);
           }
-          while (loop.stream.length > 0) {
-            const nextItem = loop.stream.shift();
-            if (nextItem === undefined) {
-              throw new Error("Data structure error.");
-            }
-            if (streamMode.includes(nextItem[0])) {
-              if (streamMode.length === 1) {
-                yield nextItem[1];
-              } else {
-                yield nextItem;
-              }
-            }
-          }
+          yield* emitCurrentLoopOutputs();
           if (error !== undefined && !isGraphInterrupt(error)) {
             throw error;
           }
@@ -1043,19 +1055,7 @@ export class Pregel<
           );
         }
       }
-      while (loop.stream.length > 0) {
-        const nextItem = loop.stream.shift();
-        if (nextItem === undefined) {
-          throw new Error("Data structure error.");
-        }
-        if (streamMode.includes(nextItem[0])) {
-          if (streamMode.length === 1) {
-            yield nextItem[1];
-          } else {
-            yield nextItem;
-          }
-        }
-      }
+      yield* emitCurrentLoopOutputs();
       if (loop.status === "out_of_steps") {
         throw new GraphRecursionError(
           [

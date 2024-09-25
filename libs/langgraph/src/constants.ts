@@ -6,6 +6,7 @@ export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
 export const CONFIG_KEY_STORE = "__pregel_store";
 export const CONFIG_KEY_RESUMING = "__pregel_resuming";
 export const CONFIG_KEY_TASK_ID = "__pregel_task_id";
+export const CONFIG_KEY_STREAM = "__pregel_stream";
 
 // this one is part of public API
 export const CONFIG_KEY_CHECKPOINT_MAP = "checkpoint_map";
@@ -31,6 +32,7 @@ export const RESERVED = [
   CONFIG_KEY_CHECKPOINTER,
   CONFIG_KEY_RESUMING,
   CONFIG_KEY_TASK_ID,
+  CONFIG_KEY_STREAM,
   CONFIG_KEY_CHECKPOINT_MAP,
   INPUT,
 ];

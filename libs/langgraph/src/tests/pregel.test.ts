@@ -5581,7 +5581,7 @@ describe("Managed Values (context) can be passed through state", () => {
 });
 
 describe("Subgraphs", () => {
-  it.only("nested graph interrupts parallel", async () => {
+  it("nested graph interrupts parallel", async () => {
     const InnerStateAnnotation = Annotation.Root({
       myKey: Annotation<string>({
         reducer: (a, b) => a + b,
@@ -5647,64 +5647,88 @@ describe("Subgraphs", () => {
       myKey: "got here and there and parallel and back again",
     });
 
+    // below combo of assertions is asserting two things
+    // - outer_1 finishes before inner interrupts (because we see its output in stream, which only happens after node finishes)
+    // - the writes of outer are persisted in 1st call and used in 2nd call, ie outer isn't called again (because we dont see outer_1 output again in 2nd stream)
     // test stream updates w/ nested interrupt
     const config2 = { configurable: { thread_id: "2" } };
-    const stream = await app.stream({ myKey: "" }, config2);
 
-    const events = await gatherIterator(stream);
-    console.log(events);
-    // expect([...app.stream({ my_key: "" }, config2, { subgraphs: true })]).toEqual([
-    //   // we got to parallel node first
-    //   [[], { outer_1: { my_key: " and parallel" } }],
-    //   [[expect.any(String)], { inner_1: { my_key: "got here", my_other_key: "" } }],
-    // ]);
-    // expect([...app.stream(null, config2)]).toEqual([
-    //   { outer_1: { my_key: " and parallel" }, __metadata__: { cached: true } },
-    //   { inner: { my_key: "got here and there" } },
-    //   { outer_2: { my_key: " and back again" } },
-    // ]);
+    expect(
+      await gatherIterator(
+        await app.stream({ myKey: "" }, { ...config2, subgraphs: true })
+      )
+    ).toEqual([
+      // we got to parallel node first
+      [[], { outer1: { myKey: " and parallel" } }],
+      [
+        [expect.stringContaining("inner:")],
+        { inner1: { myKey: "got here", myOtherKey: "" } },
+      ],
+    ]);
+    expect(await gatherIterator(await app.stream(null, config2))).toEqual([
+      { outer1: { myKey: " and parallel" }, __metadata__: { cached: true } },
+      { inner: { myKey: "got here and there" } },
+      { outer2: { myKey: " and back again" } },
+    ]);
 
-    // // test stream values w/ nested interrupt
-    // const config3 = { configurable: { thread_id: "3" } };
-    // expect([...app.stream({ my_key: "" }, config3, { streamMode: "values" })]).toEqual([
-    //   { my_key: "" },
-    // ]);
-    // expect([...app.stream(null, config3, { streamMode: "values" })]).toEqual([
-    //   { my_key: "" },
-    //   { my_key: "got here and there and parallel" },
-    //   { my_key: "got here and there and parallel and back again" },
-    // ]);
+    // test stream values w/ nested interrupt
+    const config3 = {
+      configurable: { thread_id: "3" },
+      streamMode: "values" as const,
+    };
+    expect(
+      await gatherIterator(await app.stream({ myKey: "" }, config3))
+    ).toEqual([{ myKey: "" }]);
+    expect(await gatherIterator(await app.stream(null, config3))).toEqual([
+      { myKey: "" },
+      { myKey: "got here and there and parallel" },
+      { myKey: "got here and there and parallel and back again" },
+    ]);
 
-    // // test interrupts BEFORE the parallel node
-    // const appBefore = graph.compile({ interruptBefore: ["outer_1"] });
-    // const config4 = { configurable: { thread_id: "4" } };
-    // expect([...appBefore.stream({ my_key: "" }, config4, { streamMode: "values" })]).toEqual([
-    //   { my_key: "" },
-    // ]);
-    // // while we're waiting for the node w/ interrupt inside to finish
-    // expect([...appBefore.stream(null, config4, { streamMode: "values" })]).toEqual([
-    //   { my_key: "" },
-    // ]);
-    // expect([...appBefore.stream(null, config4, { streamMode: "values" })]).toEqual([
-    //   { my_key: "" },
-    //   { my_key: "got here and there and parallel" },
-    //   { my_key: "got here and there and parallel and back again" },
-    // ]);
+    // test interrupts BEFORE the parallel node
+    const appBefore = graph.compile({
+      checkpointer,
+      interruptBefore: ["outer1"],
+    });
+    const config4 = {
+      configurable: { thread_id: "4" },
+      streamMode: "values" as const,
+    };
+    expect(
+      await gatherIterator(await appBefore.stream({ myKey: "" }, config4))
+    ).toEqual([{ myKey: "" }]);
+    // while we're waiting for the node w/ interrupt inside to finish
+    expect(await gatherIterator(await appBefore.stream(null, config4))).toEqual(
+      [{ myKey: "" }]
+    );
+    expect(await gatherIterator(await appBefore.stream(null, config4))).toEqual(
+      [
+        { myKey: "" },
+        { myKey: "got here and there and parallel" },
+        { myKey: "got here and there and parallel and back again" },
+      ]
+    );
 
-    // // test interrupts AFTER the parallel node
-    // const appAfter = graph.compile({ interruptAfter: ["outer_1"] });
-    // const config5 = { configurable: { thread_id: "5" } };
-    // expect([...appAfter.stream({ my_key: "" }, config5, { streamMode: "values" })]).toEqual([
-    //   { my_key: "" },
-    // ]);
-    // expect([...appAfter.stream(null, config5, { streamMode: "values" })]).toEqual([
-    //   { my_key: "" },
-    //   { my_key: "got here and there and parallel" },
-    // ]);
-    // expect([...appAfter.stream(null, config5, { streamMode: "values" })]).toEqual([
-    //   { my_key: "got here and there and parallel" },
-    //   { my_key: "got here and there and parallel and back again" },
-    // ]);
+    // test interrupts AFTER the parallel node
+    const appAfter = graph.compile({
+      checkpointer,
+      interruptAfter: ["outer1"],
+    });
+    const config5 = {
+      configurable: { thread_id: "5" },
+      streamMode: "values" as const,
+    };
+    expect(
+      await gatherIterator(await appAfter.stream({ myKey: "" }, config5))
+    ).toEqual([{ myKey: "" }]);
+    expect(await gatherIterator(await appAfter.stream(null, config5))).toEqual([
+      { myKey: "" },
+      { myKey: "got here and there and parallel" },
+    ]);
+    expect(await gatherIterator(await appAfter.stream(null, config5))).toEqual([
+      { myKey: "got here and there and parallel" },
+      { myKey: "got here and there and parallel and back again" },
+    ]);
   });
 
   //   @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
