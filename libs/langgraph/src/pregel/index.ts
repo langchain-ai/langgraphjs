@@ -1025,6 +1025,9 @@ export class Pregel<
         for await (const { task, error } of taskStream) {
           if (error !== undefined) {
             if (isGraphInterrupt(error)) {
+              if (loop.isNested) {
+                throw error;
+              }
               if (error.interrupts.length) {
                 loop.putWrites(
                   task.id,

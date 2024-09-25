@@ -3,6 +3,7 @@
 /* eslint-disable no-instanceof/no-instanceof */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable import/no-extraneous-dependencies */
+/* eslint-disable prefer-template */
 import { it, expect, jest, describe, beforeEach } from "@jest/globals";
 import {
   RunnableConfig,
@@ -5655,7 +5656,7 @@ describe("Subgraphs", () => {
 
     expect(
       await gatherIterator(
-        await app.stream({ myKey: "" }, { ...config2, subgraphs: true })
+        app.stream({ myKey: "" }, { ...config2, subgraphs: true })
       )
     ).toEqual([
       // we got to parallel node first
@@ -5665,7 +5666,7 @@ describe("Subgraphs", () => {
         { inner1: { myKey: "got here", myOtherKey: "" } },
       ],
     ]);
-    expect(await gatherIterator(await app.stream(null, config2))).toEqual([
+    expect(await gatherIterator(app.stream(null, config2))).toEqual([
       { outer1: { myKey: " and parallel" }, __metadata__: { cached: true } },
       { inner: { myKey: "got here and there" } },
       { outer2: { myKey: " and back again" } },
@@ -5695,19 +5696,17 @@ describe("Subgraphs", () => {
       streamMode: "values" as const,
     };
     expect(
-      await gatherIterator(await appBefore.stream({ myKey: "" }, config4))
+      await gatherIterator(appBefore.stream({ myKey: "" }, config4))
     ).toEqual([{ myKey: "" }]);
     // while we're waiting for the node w/ interrupt inside to finish
-    expect(await gatherIterator(await appBefore.stream(null, config4))).toEqual(
-      [{ myKey: "" }]
-    );
-    expect(await gatherIterator(await appBefore.stream(null, config4))).toEqual(
-      [
-        { myKey: "" },
-        { myKey: "got here and there and parallel" },
-        { myKey: "got here and there and parallel and back again" },
-      ]
-    );
+    expect(await gatherIterator(appBefore.stream(null, config4))).toEqual([
+      { myKey: "" },
+    ]);
+    expect(await gatherIterator(appBefore.stream(null, config4))).toEqual([
+      { myKey: "" },
+      { myKey: "got here and there and parallel" },
+      { myKey: "got here and there and parallel and back again" },
+    ]);
 
     // test interrupts AFTER the parallel node
     const appAfter = graph.compile({
@@ -5719,276 +5718,203 @@ describe("Subgraphs", () => {
       streamMode: "values" as const,
     };
     expect(
-      await gatherIterator(await appAfter.stream({ myKey: "" }, config5))
+      await gatherIterator(appAfter.stream({ myKey: "" }, config5))
     ).toEqual([{ myKey: "" }]);
-    expect(await gatherIterator(await appAfter.stream(null, config5))).toEqual([
+    expect(await gatherIterator(appAfter.stream(null, config5))).toEqual([
       { myKey: "" },
       { myKey: "got here and there and parallel" },
     ]);
-    expect(await gatherIterator(await appAfter.stream(null, config5))).toEqual([
+    expect(await gatherIterator(appAfter.stream(null, config5))).toEqual([
       { myKey: "got here and there and parallel" },
       { myKey: "got here and there and parallel and back again" },
     ]);
   });
 
-  //   @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
-  // def test_nested_graph_interrupts_parallel(
-  //     request: pytest.FixtureRequest, checkpointer_name: str
-  // ) -> None:
-  //     checkpointer = request.getfixturevalue("checkpointer_" + checkpointer_name)
+  it("doubly nested graph interrupts", async () => {
+    const checkpointer = new MemorySaverAssertImmutable();
 
-  //     class InnerState(TypedDict):
-  //         my_key: Annotated[str, operator.add]
-  //         my_other_key: str
+    const StateAnnotation = Annotation.Root({
+      myKey: Annotation<string>,
+    });
 
-  //     def inner_1(state: InnerState):
-  //         time.sleep(0.1)
-  //         return {"my_key": "got here", "my_other_key": state["my_key"]}
+    const ChildStateAnnotation = Annotation.Root({
+      myKey: Annotation<string>,
+    });
 
-  //     def inner_2(state: InnerState):
-  //         return {
-  //             "my_key": " and there",
-  //             "my_other_key": state["my_key"],
-  //         }
+    const GrandchildStateAnnotation = Annotation.Root({
+      myKey: Annotation<string>,
+    });
 
-  //     inner = StateGraph(InnerState)
-  //     inner.add_node("inner_1", inner_1)
-  //     inner.add_node("inner_2", inner_2)
-  //     inner.add_edge("inner_1", "inner_2")
-  //     inner.set_entry_point("inner_1")
-  //     inner.set_finish_point("inner_2")
+    const grandchild1 = async (
+      state: typeof GrandchildStateAnnotation.State
+    ) => {
+      return {
+        myKey: state.myKey + " here",
+      };
+    };
+    const grandchild2 = async (
+      state: typeof GrandchildStateAnnotation.State
+    ) => {
+      return {
+        myKey: state.myKey + " and there",
+      };
+    };
 
-  //     class State(TypedDict):
-  //         my_key: Annotated[str, operator.add]
+    const grandchild = new StateGraph(GrandchildStateAnnotation)
+      .addNode("grandchild1", grandchild1)
+      .addNode("grandchild2", grandchild2)
+      .addEdge("__start__", "grandchild1")
+      .addEdge("grandchild1", "grandchild2");
 
-  //     def outer_1(state: State):
-  //         return {"my_key": " and parallel"}
+    const child = new StateGraph(ChildStateAnnotation)
+      .addNode(
+        "child1",
+        grandchild.compile({ interruptBefore: ["grandchild2"] })
+      )
+      .addEdge("__start__", "child1");
 
-  //     def outer_2(state: State):
-  //         return {"my_key": " and back again"}
+    const parent1 = (state: typeof StateAnnotation.State) => {
+      return { myKey: "hi " + state.myKey };
+    };
+    const parent2 = (state: typeof StateAnnotation.State) => {
+      return { myKey: state.myKey + " and back again" };
+    };
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("parent1", parent1)
+      .addNode("child", child.compile())
+      .addNode("parent2", parent2)
+      .addEdge("__start__", "parent1")
+      .addEdge("parent1", "child")
+      .addEdge("child", "parent2");
 
-  //     graph = StateGraph(State)
-  //     graph.add_node("inner", inner.compile(interrupt_before=["inner_2"]))
-  //     graph.add_node("outer_1", outer_1)
-  //     graph.add_node("outer_2", outer_2)
+    const app = graph.compile({ checkpointer });
 
-  //     graph.add_edge(START, "inner")
-  //     graph.add_edge(START, "outer_1")
-  //     graph.add_edge(["inner", "outer_1"], "outer_2")
-  //     graph.set_finish_point("outer_2")
+    // test invoke w/ nested interrupt
+    const config = { configurable: { thread_id: "1" } };
+    expect(await app.invoke({ myKey: "my value" }, config)).toEqual({
+      myKey: "hi my value",
+    });
+    expect(await app.invoke(null, config)).toEqual({
+      myKey: "hi my value here and there and back again",
+    });
 
-  //     app = graph.compile(checkpointer=checkpointer)
+    // test stream updates w/ nested interrupt
+    const config2 = { configurable: { thread_id: "2" } };
+    expect(
+      await gatherIterator(app.stream({ myKey: "my value" }, config2))
+    ).toEqual([{ parent1: { myKey: "hi my value" } }]);
+    expect(await gatherIterator(app.stream(null, config2))).toEqual([
+      { child: { myKey: "hi my value here and there" } },
+      { parent2: { myKey: "hi my value here and there and back again" } },
+    ]);
 
-  //     # test invoke w/ nested interrupt
-  //     config = {"configurable": {"thread_id": "1"}}
-  //     assert app.invoke({"my_key": ""}, config, debug=True) == {
-  //         "my_key": "",
-  //     }
+    // test stream values w/ nested interrupt
+    const config3 = {
+      configurable: { thread_id: "3" },
+      streamMode: "values" as const,
+    };
+    expect(
+      await gatherIterator(app.stream({ myKey: "my value" }, config3))
+    ).toEqual([{ myKey: "my value" }, { myKey: "hi my value" }]);
+    expect(await gatherIterator(app.stream(null, config3))).toEqual([
+      { myKey: "hi my value" },
+      { myKey: "hi my value here and there" },
+      { myKey: "hi my value here and there and back again" },
+    ]);
+  });
 
-  //     assert app.invoke(None, config, debug=True) == {
-  //         "my_key": "got here and there and parallel and back again",
-  //     }
+  it.only("nested graph state", async () => {
+    const checkpointer = new MemorySaverAssertImmutable();
 
-  //     # below combo of assertions is asserting two things
-  //     # - outer_1 finishes before inner interrupts (because we see its output in stream, which only happens after node finishes)
-  //     # - the writes of outer are persisted in 1st call and used in 2nd call, ie outer isn't called again (because we dont see outer_1 output again in 2nd stream)
-  //     # test stream updates w/ nested interrupt
-  //     config = {"configurable": {"thread_id": "2"}}
-  //     assert [*app.stream({"my_key": ""}, config, subgraphs=True)] == [
-  //         # we got to parallel node first
-  //         ((), {"outer_1": {"my_key": " and parallel"}}),
-  //         ((AnyStr("inner:"),), {"inner_1": {"my_key": "got here", "my_other_key": ""}}),
-  //     ]
-  //     assert [*app.stream(None, config)] == [
-  //         {"outer_1": {"my_key": " and parallel"}, "__metadata__": {"cached": True}},
-  //         {"inner": {"my_key": "got here and there"}},
-  //         {"outer_2": {"my_key": " and back again"}},
-  //     ]
+    const InnerStateAnnotation = Annotation.Root({
+      myKey: Annotation<string>,
+      myOtherKey: Annotation<string>,
+    });
+    const inner1 = async (state: typeof InnerStateAnnotation.State) => {
+      return {
+        myKey: state.myKey + " here",
+        myOtherKey: state.myKey,
+      };
+    };
+    const inner2 = async (state: typeof InnerStateAnnotation.State) => {
+      return {
+        myKey: state.myKey + " and there",
+        myOtherKey: state.myKey,
+      };
+    };
+    const inner = new StateGraph(InnerStateAnnotation)
+      .addNode("inner1", inner1)
+      .addNode("inner2", inner2)
+      .addEdge("__start__", "inner1")
+      .addEdge("inner1", "inner2");
 
-  //     # test stream values w/ nested interrupt
-  //     config = {"configurable": {"thread_id": "3"}}
-  //     assert [*app.stream({"my_key": ""}, config, stream_mode="values")] == [
-  //         {"my_key": ""},
-  //     ]
-  //     assert [*app.stream(None, config, stream_mode="values")] == [
-  //         {"my_key": ""},
-  //         {"my_key": "got here and there and parallel"},
-  //         {"my_key": "got here and there and parallel and back again"},
-  //     ]
+    const StateAnnotation = Annotation.Root({
+      myKey: Annotation<string>,
+      otherParentKey: Annotation<string>,
+    });
+    const outer1 = async (state: typeof StateAnnotation.State) => {
+      return { myKey: "hi " + state.myKey };
+    };
+    const outer2 = async (state: typeof StateAnnotation.State) => {
+      return { myKey: state.myKey + " and back again" };
+    };
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("outer1", outer1)
+      .addNode("inner", inner.compile({ interruptBefore: ["inner2"] }))
+      .addNode("outer2", outer2)
+      .addEdge("__start__", "outer1")
+      .addEdge("outer1", "inner")
+      .addEdge("inner", "outer2");
 
-  //     # test interrupts BEFORE the parallel node
-  //     app = graph.compile(checkpointer=checkpointer, interrupt_before=["outer_1"])
-  //     config = {"configurable": {"thread_id": "4"}}
-  //     assert [*app.stream({"my_key": ""}, config, stream_mode="values")] == [
-  //         {"my_key": ""}
-  //     ]
-  //     # while we're waiting for the node w/ interrupt inside to finish
-  //     assert [*app.stream(None, config, stream_mode="values")] == [
-  //         {"my_key": ""},
-  //     ]
-  //     assert [*app.stream(None, config, stream_mode="values")] == [
-  //         {"my_key": ""},
-  //         {"my_key": "got here and there and parallel"},
-  //         {"my_key": "got here and there and parallel and back again"},
-  //     ]
+    const app = graph.compile({ checkpointer });
+    const config = { configurable: { thread_id: "1" } };
+    await app.invoke(
+      {
+        myKey: "my value",
+      },
+      config
+    );
+    // test state w/ nested subgraph state (right after interrupt)
+    // first get_state without subgraph state
+    const state = await app.getState(config);
 
-  //     # test interrupts AFTER the parallel node
-  //     app = graph.compile(checkpointer=checkpointer, interrupt_after=["outer_1"])
-  //     config = {"configurable": {"thread_id": "5"}}
-  //     assert [*app.stream({"my_key": ""}, config, stream_mode="values")] == [
-  //         {"my_key": ""}
-  //     ]
-  //     assert [*app.stream(None, config, stream_mode="values")] == [
-  //         {"my_key": ""},
-  //         {"my_key": "got here and there and parallel"},
-  //     ]
-  //     assert [*app.stream(None, config, stream_mode="values")] == [
-  //         {"my_key": "got here and there and parallel"},
-  //         {"my_key": "got here and there and parallel and back again"},
-  //     ]
+    expect(state).toEqual({
+      values: { myKey: "hi my value" },
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "inner",
+          path: [PULL, "inner"],
+          state: {
+            configurable: { thread_id: "1", checkpoint_ns: expect.any(String) },
+          },
+        },
+      ],
+      next: ["inner"],
+      config: {
+        cofigurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+      metadata: {
+        parents: {},
+        source: "loop",
+        writes: { outer1: { myKey: "hi my value" } },
+        step: 1,
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+    });
+  });
 
-  // @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
-  // def test_doubly_nested_graph_interrupts(
-  //     request: pytest.FixtureRequest, checkpointer_name: str
-  // ) -> None:
-  //     checkpointer = request.getfixturevalue("checkpointer_" + checkpointer_name)
-
-  //     class State(TypedDict):
-  //         my_key: str
-
-  //     class ChildState(TypedDict):
-  //         my_key: str
-
-  //     class GrandChildState(TypedDict):
-  //         my_key: str
-
-  //     def grandchild_1(state: ChildState):
-  //         return {"my_key": state["my_key"] + " here"}
-
-  //     def grandchild_2(state: ChildState):
-  //         return {
-  //             "my_key": state["my_key"] + " and there",
-  //         }
-
-  //     grandchild = StateGraph(GrandChildState)
-  //     grandchild.add_node("grandchild_1", grandchild_1)
-  //     grandchild.add_node("grandchild_2", grandchild_2)
-  //     grandchild.add_edge("grandchild_1", "grandchild_2")
-  //     grandchild.set_entry_point("grandchild_1")
-  //     grandchild.set_finish_point("grandchild_2")
-
-  //     child = StateGraph(ChildState)
-  //     child.add_node(
-  //         "child_1",
-  //         grandchild.compile(interrupt_before=["grandchild_2"]),
-  //     )
-  //     child.set_entry_point("child_1")
-  //     child.set_finish_point("child_1")
-
-  //     def parent_1(state: State):
-  //         return {"my_key": "hi " + state["my_key"]}
-
-  //     def parent_2(state: State):
-  //         return {"my_key": state["my_key"] + " and back again"}
-
-  //     graph = StateGraph(State)
-  //     graph.add_node("parent_1", parent_1)
-  //     graph.add_node("child", child.compile())
-  //     graph.add_node("parent_2", parent_2)
-  //     graph.set_entry_point("parent_1")
-  //     graph.add_edge("parent_1", "child")
-  //     graph.add_edge("child", "parent_2")
-  //     graph.set_finish_point("parent_2")
-
-  //     app = graph.compile(checkpointer=checkpointer)
-
-  //     # test invoke w/ nested interrupt
-  //     config = {"configurable": {"thread_id": "1"}}
-  //     assert app.invoke({"my_key": "my value"}, config, debug=True) == {
-  //         "my_key": "hi my value",
-  //     }
-
-  //     assert app.invoke(None, config, debug=True) == {
-  //         "my_key": "hi my value here and there and back again",
-  //     }
-
-  //     # test stream updates w/ nested interrupt
-  //     config = {"configurable": {"thread_id": "2"}}
-  //     assert [*app.stream({"my_key": "my value"}, config)] == [
-  //         {"parent_1": {"my_key": "hi my value"}},
-  //     ]
-  //     assert [*app.stream(None, config)] == [
-  //         {"child": {"my_key": "hi my value here and there"}},
-  //         {"parent_2": {"my_key": "hi my value here and there and back again"}},
-  //     ]
-
-  //     # test stream values w/ nested interrupt
-  //     config = {"configurable": {"thread_id": "3"}}
-  //     assert [*app.stream({"my_key": "my value"}, config, stream_mode="values")] == [
-  //         {"my_key": "my value"},
-  //         {"my_key": "hi my value"},
-  //     ]
-  //     assert [*app.stream(None, config, stream_mode="values")] == [
-  //         {"my_key": "hi my value"},
-  //         {"my_key": "hi my value here and there"},
-  //         {"my_key": "hi my value here and there and back again"},
-  //     ]
-
-  // @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
-  // def test_nested_graph_state(
-  //     request: pytest.FixtureRequest, checkpointer_name: str
-  // ) -> None:
-  //     checkpointer = request.getfixturevalue("checkpointer_" + checkpointer_name)
-
-  //     class InnerState(TypedDict):
-  //         my_key: str
-  //         my_other_key: str
-
-  //     def inner_1(state: InnerState):
-  //         return {
-  //             "my_key": state["my_key"] + " here",
-  //             "my_other_key": state["my_key"],
-  //         }
-
-  //     def inner_2(state: InnerState):
-  //         return {
-  //             "my_key": state["my_key"] + " and there",
-  //             "my_other_key": state["my_key"],
-  //         }
-
-  //     inner = StateGraph(InnerState)
-  //     inner.add_node("inner_1", inner_1)
-  //     inner.add_node("inner_2", inner_2)
-  //     inner.add_edge("inner_1", "inner_2")
-  //     inner.set_entry_point("inner_1")
-  //     inner.set_finish_point("inner_2")
-
-  //     class State(TypedDict):
-  //         my_key: str
-  //         other_parent_key: str
-
-  //     def outer_1(state: State):
-  //         return {"my_key": "hi " + state["my_key"]}
-
-  //     def outer_2(state: State):
-  //         return {"my_key": state["my_key"] + " and back again"}
-
-  //     graph = StateGraph(State)
-  //     graph.add_node("outer_1", outer_1)
-  //     graph.add_node(
-  //         "inner",
-  //         inner.compile(interrupt_before=["inner_2"]),
-  //     )
-  //     graph.add_node("outer_2", outer_2)
-  //     graph.set_entry_point("outer_1")
-  //     graph.add_edge("outer_1", "inner")
-  //     graph.add_edge("inner", "outer_2")
-  //     graph.set_finish_point("outer_2")
-
-  //     app = graph.compile(checkpointer=checkpointer)
-
-  //     config = {"configurable": {"thread_id": "1"}}
-  //     app.invoke({"my_key": "my value"}, config, debug=True)
   //     # test state w/ nested subgraph state (right after interrupt)
   //     # first get_state without subgraph state
   //     assert app.get_state(config) == StateSnapshot(

@@ -184,7 +184,7 @@ export class PregelLoop {
 
   checkpointerPromises: Promise<unknown>[] = [];
 
-  protected isNested: boolean;
+  isNested: boolean;
 
   protected _checkpointerChainedPromise: Promise<unknown> = Promise.resolve();
 
@@ -595,19 +595,19 @@ export class PregelLoop {
       tickError = e as Error;
       if (!this._suppressInterrupt(tickError)) {
         throw tickError;
+      } else {
+        this.output = readChannels(this.channels, this.outputKeys);
       }
       return false;
     } finally {
-      this._suppressInterrupt(tickError);
+      if (tickError === undefined) {
+        this.output = readChannels(this.channels, this.outputKeys);
+      }
     }
   }
 
   protected _suppressInterrupt(e?: Error): boolean {
-    const suppress = isGraphInterrupt(e) && !this.isNested;
-    if (suppress || e === undefined) {
-      this.output = readChannels(this.channels, this.outputKeys);
-    }
-    return suppress;
+    return isGraphInterrupt(e) && !this.isNested;
   }
 
   /**
