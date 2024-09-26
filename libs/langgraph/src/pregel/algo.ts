@@ -582,7 +582,8 @@ export function _prepareSingleTask<
                 [CONFIG_KEY_CHECKPOINT_MAP]: {
                   ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                   [parentNamespace]: checkpoint.id,
-                [CONFIG_KEY_STORE]: extra.store ?? configurable[CONFIG_KEY_STORE],
+                  [CONFIG_KEY_STORE]:
+                    extra.store ?? configurable[CONFIG_KEY_STORE],
                 },
                 checkpoint_id: undefined,
                 checkpoint_ns: taskCheckpointNamespace,
@@ -708,7 +709,8 @@ export function _prepareSingleTask<
                   },
                   checkpoint_id: undefined,
                   checkpoint_ns: taskCheckpointNamespace,
-                  [CONFIG_KEY_STORE]: extra.store ?? configurable[CONFIG_KEY_STORE],
+                  [CONFIG_KEY_STORE]:
+                    extra.store ?? configurable[CONFIG_KEY_STORE],
                 },
               }
             ),

@@ -1,4 +1,11 @@
-import { BaseStore, type Item, type SearchOperation, type PutOperation, type GetOperation, type Operation } from "./base.js";
+import {
+  BaseStore,
+  type Item,
+  type SearchOperation,
+  type PutOperation,
+  type GetOperation,
+  type Operation,
+} from "./base.js";
 
 /**
  * AsyncBatchedStore extends BaseStore to provide batched operations for list and put methods.
@@ -49,7 +56,11 @@ export class AsyncBatchedStore extends BaseStore {
     return promise;
   }
 
-  async put(namespace: string[], id: string, value: Record<string, any>): Promise<void> {
+  async put(
+    namespace: string[],
+    id: string,
+    value: Record<string, any>
+  ): Promise<void> {
     const promise = new Promise<void>((resolve, reject) => {
       this.queue.set(promise, { namespace, id, value } as PutOperation);
       promise.then(resolve, reject);
@@ -90,7 +101,9 @@ export class AsyncBatchedStore extends BaseStore {
       try {
         const results = await this.store.batch(Array.from(taken.values()));
         taken.forEach((_, promise) => {
-          (promise as any).resolve(results[Array.from(taken.keys()).indexOf(promise)]);
+          (promise as any).resolve(
+            results[Array.from(taken.keys()).indexOf(promise)]
+          );
         });
       } catch (e) {
         taken.forEach((_, promise) => {

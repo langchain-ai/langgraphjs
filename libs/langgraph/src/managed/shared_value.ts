@@ -72,9 +72,7 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
     return { ...this.value };
   }
 
-  private processUpdate(
-    values: Update[]
-  ): Array<PutOperation> {
+  private processUpdate(values: Update[]): Array<PutOperation> {
     const writes: Array<PutOperation> = [];
 
     for (const vv of values) {

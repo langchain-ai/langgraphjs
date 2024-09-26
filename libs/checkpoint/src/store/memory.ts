@@ -1,40 +1,52 @@
-import { BaseStore, type OperationResults, type Item, type Operation } from "./base.js";
+import {
+  BaseStore,
+  type OperationResults,
+  type Item,
+  type Operation,
+} from "./base.js";
 
 export class MemoryStore extends BaseStore {
   private data: Map<string, Map<string, Item>> = new Map();
 
-  async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
+  async batch<Op extends Operation[]>(
+    operations: Op
+  ): Promise<OperationResults<Op>> {
     const results = [];
 
     for (const op of operations) {
-      if ('id' in op && 'namespace' in op && !('value' in op)) {
+      if ("id" in op && "namespace" in op && !("value" in op)) {
         // GetOperation
-        const namespaceKey = op.namespace.join(':');
+        const namespaceKey = op.namespace.join(":");
         const item = this.data.get(namespaceKey)?.get(op.id);
         if (item) {
           item.lastAccessedAt = new Date();
         }
         results.push(item || null);
-      } else if ('namespacePrefix' in op) {
+      } else if ("namespacePrefix" in op) {
         // SearchOperation
         const candidates: Item[] = [];
         for (const [namespace, items] of this.data.entries()) {
-          if (namespace.startsWith(op.namespacePrefix.join(':'))) {
+          if (namespace.startsWith(op.namespacePrefix.join(":"))) {
             candidates.push(...items.values());
           }
         }
 
         let filteredCandidates = candidates;
         if (op.filter) {
-          filteredCandidates = candidates.filter(item => 
-            Object.entries(op.filter!).every(([key, value]) => item.value[key] === value)
+          filteredCandidates = candidates.filter((item) =>
+            Object.entries(op.filter!).every(
+              ([key, value]) => item.value[key] === value
+            )
           );
         }
-        const searchResults = filteredCandidates.slice(op.offset || 0, (op.offset || 0) + (op.limit || 10));
+        const searchResults = filteredCandidates.slice(
+          op.offset || 0,
+          (op.offset || 0) + (op.limit || 10)
+        );
         results.push(searchResults);
-      } else if ('value' in op) {
+      } else if ("value" in op) {
         // PutOperation
-        const namespaceKey = op.namespace.join(':');
+        const namespaceKey = op.namespace.join(":");
         if (!this.data.has(namespaceKey)) {
           this.data.set(namespaceKey, new Map());
         }

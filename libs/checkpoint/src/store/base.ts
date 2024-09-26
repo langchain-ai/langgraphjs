@@ -12,7 +12,7 @@ export interface Item {
    * as well as any key present in the 'value' object. This allows
    * for multi-dimensional scoring of items.
    */
-  scores: Record<string, number>
+  scores: Record<string, number>;
   /**
    * Unique identifier within the namespace.
    */
@@ -62,7 +62,7 @@ export interface SearchOperation {
   /**
    * Key-value pairs to filter results.
    */
-  filter?: Record<string, any>
+  filter?: Record<string, any>;
   /**
    * Maximum number of items to return.
    * @default 10
@@ -104,11 +104,14 @@ export interface PutOperation {
 export type Operation = GetOperation | SearchOperation | PutOperation;
 
 export type OperationResults<Tuple extends readonly Operation[]> = {
-  [K in keyof Tuple]: Tuple[K] extends PutOperation ? void :
-  Tuple[K] extends SearchOperation ? Item[] :
-  Tuple[K] extends GetOperation ? Item | null :
-  never
-}
+  [K in keyof Tuple]: Tuple[K] extends PutOperation
+    ? void
+    : Tuple[K] extends SearchOperation
+    ? Item[]
+    : Tuple[K] extends GetOperation
+    ? Item | null
+    : never;
+};
 
 /**
  * Abstract base class for key-value stores.
@@ -119,12 +122,14 @@ export abstract class BaseStore {
    * @param _operations An array of operations to execute.
    * @returns A promise that resolves to the results of the operations.
    */
-  async batch<Op extends Operation[]>(_operations: Op): Promise<OperationResults<Op>> {
+  async batch<Op extends Operation[]>(
+    _operations: Op
+  ): Promise<OperationResults<Op>> {
     throw new Error("Method not implemented.");
   }
-  
+
   // convenience methods
-  
+
   /**
    * Retrieve a single item.
    * @param namespace Hierarchical path for the item.
@@ -135,7 +140,7 @@ export abstract class BaseStore {
     const batchResult = await this.batch<[GetOperation]>([{ namespace, id }]);
     return batchResult[0];
   }
-  
+
   /**
    * Search for items within a namespace prefix.
    * @param namespacePrefix Hierarchical path prefix to search within.
@@ -145,30 +150,39 @@ export abstract class BaseStore {
    * @param options.offset Number of items to skip before returning results (default: 0).
    * @returns A promise that resolves to a list of items matching the search criteria.
    */
-  async search(namespacePrefix: string[], options?: {
-    filter?: Record<string, any>,
-    limit?: number,
-    offset?: number,
-  }): Promise<Item[]> {
+  async search(
+    namespacePrefix: string[],
+    options?: {
+      filter?: Record<string, any>;
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<Item[]> {
     const optionsWithDefaults = {
       limit: 10,
       offset: 0,
       ...(options || {}),
     };
-    const batchResults = await this.batch<[SearchOperation]>([{ namespacePrefix, ...optionsWithDefaults }]);
+    const batchResults = await this.batch<[SearchOperation]>([
+      { namespacePrefix, ...optionsWithDefaults },
+    ]);
     return batchResults[0];
   }
-  
+
   /**
    * Store or update an item.
    * @param namespace Hierarchical path for the item.
    * @param id Unique identifier within the namespace.
    * @param value Object containing the item's data.
    */
-  async put(namespace: string[], id: string, value: Record<string, any>): Promise<void> {
-   await this.batch<[PutOperation]>([{ namespace, id, value }]);
+  async put(
+    namespace: string[],
+    id: string,
+    value: Record<string, any>
+  ): Promise<void> {
+    await this.batch<[PutOperation]>([{ namespace, id, value }]);
   }
-  
+
   /**
    * Delete an item.
    * @param namespace Hierarchical path for the item.
