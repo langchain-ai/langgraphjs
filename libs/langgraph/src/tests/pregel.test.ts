@@ -77,6 +77,24 @@ import { SharedValue } from "../managed/shared_value.js";
 import { MemoryStore } from "../store/memory.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 
+expect.extend({
+  toHaveKeyStartingWith(received: object, prefix: string) {
+    const pass = Object.keys(received).some((key) => key.startsWith(prefix));
+    if (pass) {
+      return {
+        message: () =>
+          `expected object to not have key starting with ${prefix}`,
+        pass: true,
+      };
+    } else {
+      return {
+        message: () => `expected object to have key starting with ${prefix}`,
+        pass: false,
+      };
+    }
+  },
+});
+
 describe("Channel", () => {
   describe("writeTo", () => {
     it("should return a ChannelWrite instance with the expected writes", () => {
@@ -1480,7 +1498,14 @@ it("should invoke two processes with input/output and interrupt", async () => {
     }),
     expect.objectContaining({
       values: { inbox: 4, output: 4, input: 3 },
-      tasks: [{ id: expect.any(String), name: "two", interrupts: [] }],
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "two",
+          interrupts: [],
+          path: [PULL, "two"],
+        },
+      ],
       next: ["two"],
       config: {
         configurable: {
@@ -1495,7 +1520,14 @@ it("should invoke two processes with input/output and interrupt", async () => {
     }),
     expect.objectContaining({
       values: { inbox: 21, output: 4, input: 3 },
-      tasks: [{ id: expect.any(String), name: "one", interrupts: [] }],
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "one",
+          interrupts: [],
+          path: [PULL, "one"],
+        },
+      ],
       next: ["one"],
       config: {
         configurable: {
@@ -1510,7 +1542,14 @@ it("should invoke two processes with input/output and interrupt", async () => {
     }),
     expect.objectContaining({
       values: { inbox: 21, output: 4, input: 20 },
-      tasks: [{ id: expect.any(String), name: "two", interrupts: [] }],
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "two",
+          interrupts: [],
+          path: [PULL, "two"],
+        },
+      ],
       next: ["two"],
       config: {
         configurable: {
@@ -1525,7 +1564,14 @@ it("should invoke two processes with input/output and interrupt", async () => {
     }),
     expect.objectContaining({
       values: { inbox: 3, output: 4, input: 20 },
-      tasks: [{ id: expect.any(String), name: "one", interrupts: [] }],
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "one",
+          interrupts: [],
+          path: [PULL, "one"],
+        },
+      ],
       next: ["one"],
       config: {
         configurable: {
@@ -1560,7 +1606,14 @@ it("should invoke two processes with input/output and interrupt", async () => {
     }),
     expect.objectContaining({
       values: { inbox: 3, input: 2 },
-      tasks: [{ id: expect.any(String), name: "two", interrupts: [] }],
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "two",
+          interrupts: [],
+          path: [PULL, "two"],
+        },
+      ],
       next: ["two"],
       config: {
         configurable: {
@@ -1575,7 +1628,14 @@ it("should invoke two processes with input/output and interrupt", async () => {
     }),
     expect.objectContaining({
       values: { input: 2 },
-      tasks: [{ id: expect.any(String), name: "one", interrupts: [] }],
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "one",
+          interrupts: [],
+          path: [PULL, "one"],
+        },
+      ],
       next: ["one"],
       config: {
         configurable: {
@@ -1785,13 +1845,19 @@ it("pending writes resume", async () => {
   expect(state.values).toEqual({ value: 1 });
   expect(state.next).toEqual(["one", "two"]);
   expect(state.tasks).toEqual([
-    { id: expect.any(String), name: "one", interrupts: [] },
+    {
+      id: expect.any(String),
+      name: "one",
+      interrupts: [],
+      path: [PULL, "one"],
+    },
     {
       id: expect.any(String),
       name: "two",
       error: expect.objectContaining({
         message: "I'm not good",
       }),
+      path: [PULL, "two"],
       interrupts: [],
     },
   ]);
@@ -2654,6 +2720,7 @@ describe("StateGraph", () => {
         {
           id: expect.any(String),
           name: "tool_two",
+          path: [PULL, "tool_two"],
           interrupts: [
             {
               value: "Just because...",
@@ -3009,7 +3076,14 @@ describe("StateGraph", () => {
       values: {
         messages: expectedOutputMessages.slice(0, 2),
       },
-      tasks: [{ id: expect.any(String), name: "tools", interrupts: [] }],
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "tools",
+          path: [PUSH, 0],
+          interrupts: [],
+        },
+      ],
       next: ["tools"],
       metadata: {
         source: "loop",
@@ -3060,7 +3134,14 @@ describe("StateGraph", () => {
         ],
       },
       next: ["tools"],
-      tasks: [{ id: expect.any(String), name: "tools", interrupts: [] }],
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "tools",
+          path: [PUSH, 0],
+          interrupts: [],
+        },
+      ],
       metadata: {
         parents: {},
         source: "update",
@@ -3139,8 +3220,18 @@ describe("StateGraph", () => {
       },
       next: ["tools", "tools"],
       tasks: [
-        { id: expect.any(String), name: "tools", interrupts: [] },
-        { id: expect.any(String), name: "tools", interrupts: [] },
+        {
+          id: expect.any(String),
+          name: "tools",
+          path: [PUSH, 0],
+          interrupts: [],
+        },
+        {
+          id: expect.any(String),
+          name: "tools",
+          path: [PUSH, 1],
+          interrupts: [],
+        },
       ],
       metadata: {
         parents: {},
@@ -3584,6 +3675,7 @@ describe("StateGraph", () => {
           {
             id: expect.any(String),
             name: "wipeFields",
+            path: [PULL, "wipeFields"],
             interrupts: [],
           },
         ],
@@ -3623,6 +3715,7 @@ describe("StateGraph", () => {
           {
             id: expect.any(String),
             name: "updateTest",
+            path: [PULL, "updateTest"],
             interrupts: [],
           },
         ],
@@ -3657,6 +3750,7 @@ describe("StateGraph", () => {
           {
             id: expect.any(String),
             name: "__start__",
+            path: [PULL, "__start__"],
             interrupts: [],
           },
         ],
@@ -4262,7 +4356,14 @@ it("checkpoint events", async () => {
           parents: {},
         },
         next: ["__start__"],
-        tasks: [{ id: expect.any(String), name: "__start__", interrupts: [] }],
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "__start__",
+            path: [PULL, "__start__"],
+            interrupts: [],
+          },
+        ],
       },
     },
     {
@@ -4291,7 +4392,14 @@ it("checkpoint events", async () => {
           parents: {},
         },
         next: ["prepare"],
-        tasks: [{ id: expect.any(String), name: "prepare", interrupts: [] }],
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "prepare",
+            path: [PULL, "prepare"],
+            interrupts: [],
+          },
+        ],
       },
     },
     {
@@ -4344,7 +4452,12 @@ it("checkpoint events", async () => {
         },
         next: ["tool_two_slow"],
         tasks: [
-          { id: expect.any(String), name: "tool_two_slow", interrupts: [] },
+          {
+            id: expect.any(String),
+            name: "tool_two_slow",
+            path: [PULL, "tool_two_slow"],
+            interrupts: [],
+          },
         ],
       },
     },
@@ -4397,7 +4510,14 @@ it("checkpoint events", async () => {
           parents: {},
         },
         next: ["finish"],
-        tasks: [{ id: expect.any(String), name: "finish", interrupts: [] }],
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "finish",
+            path: [PULL, "finish"],
+            interrupts: [],
+          },
+        ],
       },
     },
     {
@@ -4547,7 +4667,14 @@ it("StateGraph start branch then end", async () => {
   expect(await toolTwoWithCheckpointer.getState(thread1)).toEqual({
     values: { my_key: "value ⛰️", market: "DE" },
     next: ["tool_two_slow"],
-    tasks: [{ id: expect.any(String), name: "tool_two_slow", interrupts: [] }],
+    tasks: [
+      {
+        id: expect.any(String),
+        name: "tool_two_slow",
+        path: [PULL, "tool_two_slow"],
+        interrupts: [],
+      },
+    ],
     config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
@@ -4598,7 +4725,14 @@ it("StateGraph start branch then end", async () => {
   expect(await toolTwoWithCheckpointer.getState(thread2)).toEqual({
     values: { my_key: "value", market: "US" },
     next: ["tool_two_fast"],
-    tasks: [{ id: expect.any(String), name: "tool_two_fast", interrupts: [] }],
+    tasks: [
+      {
+        id: expect.any(String),
+        name: "tool_two_fast",
+        path: [PULL, "tool_two_fast"],
+        interrupts: [],
+      },
+    ],
     config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
@@ -4649,7 +4783,14 @@ it("StateGraph start branch then end", async () => {
   expect(await toolTwoWithCheckpointer.getState(thread3)).toEqual({
     values: { my_key: "value", market: "US" },
     next: ["tool_two_fast"],
-    tasks: [{ id: expect.any(String), name: "tool_two_fast", interrupts: [] }],
+    tasks: [
+      {
+        id: expect.any(String),
+        name: "tool_two_fast",
+        path: [PULL, "tool_two_fast"],
+        interrupts: [],
+      },
+    ],
     config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
@@ -4666,7 +4807,14 @@ it("StateGraph start branch then end", async () => {
   expect(await toolTwoWithCheckpointer.getState(thread3)).toEqual({
     values: { my_key: "valuekey", market: "US" },
     next: ["tool_two_fast"],
-    tasks: [{ id: expect.any(String), name: "tool_two_fast", interrupts: [] }],
+    tasks: [
+      {
+        id: expect.any(String),
+        name: "tool_two_fast",
+        path: [PULL, "tool_two_fast"],
+        interrupts: [],
+      },
+    ],
     config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
       .config,
     createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
@@ -5823,7 +5971,7 @@ describe("Subgraphs", () => {
     ]);
   });
 
-  it.only("nested graph state", async () => {
+  it("nested graph state", async () => {
     const checkpointer = new MemorySaverAssertImmutable();
 
     const InnerStateAnnotation = Annotation.Root({
@@ -5875,16 +6023,15 @@ describe("Subgraphs", () => {
       config
     );
     // test state w/ nested subgraph state (right after interrupt)
-    // first get_state without subgraph state
-    const state = await app.getState(config);
-
-    expect(state).toEqual({
+    // first getState without subgraph state
+    expect(await app.getState(config)).toEqual({
       values: { myKey: "hi my value" },
       tasks: [
         {
           id: expect.any(String),
           name: "inner",
           path: [PULL, "inner"],
+          interrupts: [],
           state: {
             configurable: { thread_id: "1", checkpoint_ns: expect.any(String) },
           },
@@ -5892,7 +6039,7 @@ describe("Subgraphs", () => {
       ],
       next: ["inner"],
       config: {
-        cofigurable: {
+        configurable: {
           thread_id: "1",
           checkpoint_ns: "",
           checkpoint_id: expect.any(String),
@@ -5913,1544 +6060,1589 @@ describe("Subgraphs", () => {
         },
       },
     });
+    // now, getState with subgraphs state
+    expect(await app.getState(config, { subgraphs: true })).toEqual({
+      values: { myKey: "hi my value" },
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "inner",
+          path: [PULL, "inner"],
+          interrupts: [],
+          state: {
+            values: {
+              myKey: "hi my value here",
+              myOtherKey: "hi my value",
+            },
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "inner2",
+                path: [PULL, "inner2"],
+                interrupts: [],
+              },
+            ],
+            next: ["inner2"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringMatching(/^inner:/),
+                checkpoint_id: expect.any(String),
+                checkpoint_map: expect.objectContaining({
+                  "": expect.any(String),
+                }),
+              },
+            },
+            metadata: {
+              parents: {
+                "": expect.any(String),
+              },
+              source: "loop",
+              writes: {
+                inner1: {
+                  myKey: "hi my value here",
+                  myOtherKey: "hi my value",
+                },
+              },
+              step: 1,
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringMatching(/^inner:/),
+                checkpoint_id: expect.any(String),
+              },
+            },
+          },
+        },
+      ],
+      next: ["inner"],
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+      metadata: {
+        parents: {},
+        source: "loop",
+        writes: { outer1: { myKey: "hi my value" } },
+        step: 1,
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+    });
+
+    // getStateHistory returns outer graph checkpoints
+    const history = await gatherIterator(app.getStateHistory(config));
+    expect(history).toEqual([
+      {
+        values: { myKey: "hi my value" },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "inner",
+            path: [PULL, "inner"],
+            interrupts: [],
+            state: {
+              configurable: expect.objectContaining({
+                thread_id: "1",
+              }),
+            },
+          },
+        ],
+        next: ["inner"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: {
+          parents: {},
+          source: "loop",
+          writes: {
+            outer1: { myKey: "hi my value" },
+          },
+          step: 1,
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: { myKey: "my value" },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "outer1",
+            interrupts: [],
+            path: [PULL, "outer1"],
+          },
+        ],
+        next: ["outer1"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: { parents: {}, source: "loop", step: 0, writes: null },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: {},
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "__start__",
+            interrupts: [],
+            path: [PULL, "__start__"],
+          },
+        ],
+        next: ["__start__"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: {
+          parents: {},
+          source: "input",
+          writes: { __start__: { myKey: "my value" } },
+          step: -1,
+        },
+        createdAt: expect.any(String),
+      },
+    ]);
+    // get_state_history for a subgraph returns its checkpoints
+    const childHistory = await gatherIterator(
+      app.getStateHistory(history[0].tasks[0].state as RunnableConfig)
+    );
+    expect(childHistory).toEqual([
+      {
+        values: { myKey: "hi my value here", myOtherKey: "hi my value" },
+        next: ["inner2"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.stringMatching(/^inner:/),
+            checkpoint_id: expect.any(String),
+            checkpoint_map: expect.objectContaining({ "": expect.any(String) }),
+          },
+        },
+        metadata: {
+          source: "loop",
+          writes: {
+            inner1: {
+              myKey: "hi my value here",
+              myOtherKey: "hi my value",
+            },
+          },
+          step: 1,
+          parents: { "": expect.any(String) },
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.stringMatching(/^inner:/),
+            checkpoint_id: expect.any(String),
+          },
+        },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "inner2",
+            path: [PULL, "inner2"],
+            interrupts: [],
+          },
+        ],
+      },
+      {
+        values: { myKey: "hi my value" },
+        next: ["inner1"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.stringMatching(/^inner:/),
+            checkpoint_id: expect.any(String),
+            checkpoint_map: expect.objectContaining({ "": expect.any(String) }),
+          },
+        },
+        metadata: {
+          source: "loop",
+          writes: null,
+          step: 0,
+          parents: { "": expect.any(String) },
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.stringMatching(/^inner:/),
+            checkpoint_id: expect.any(String),
+          },
+        },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "inner1",
+            path: [PULL, "inner1"],
+            interrupts: [],
+          },
+        ],
+      },
+      {
+        values: {},
+        next: ["__start__"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.stringMatching(/^inner:/),
+            checkpoint_id: expect.any(String),
+            checkpoint_map: expect.objectContaining({ "": expect.any(String) }),
+          },
+        },
+        metadata: {
+          source: "input",
+          writes: { __start__: { myKey: "hi my value", otherParentKey: null } },
+          step: -1,
+          parents: { "": expect.any(String) },
+        },
+        createdAt: expect.any(String),
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "__start__",
+            path: [PULL, "__start__"],
+            interrupts: [],
+          },
+        ],
+      },
+    ]);
+
+    // resume
+    await app.invoke(null, config);
+    expect(await app.getState(config)).toEqual({
+      values: { myKey: "hi my value here and there and back again" },
+      tasks: [],
+      next: [],
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+      metadata: {
+        parents: {},
+        source: "loop",
+        writes: {
+          outer2: { myKey: "hi my value here and there and back again" },
+        },
+        step: 3,
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+    });
+
+    // test full history at the end
+    const actualHistory = await gatherIterator(app.getStateHistory(config));
+    const expectedHistory = [
+      {
+        values: { myKey: "hi my value here and there and back again" },
+        tasks: [],
+        next: [],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: {
+          parents: {},
+          source: "loop",
+          writes: {
+            outer2: { myKey: "hi my value here and there and back again" },
+          },
+          step: 3,
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: { myKey: "hi my value here and there" },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "outer2",
+            path: [PULL, "outer2"],
+            interrupts: [],
+          },
+        ],
+        next: ["outer2"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: {
+          parents: {},
+          source: "loop",
+          writes: { inner: { myKey: "hi my value here and there" } },
+          step: 2,
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: { myKey: "hi my value" },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "inner",
+            path: [PULL, "inner"],
+            interrupts: [],
+            state: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.any(String),
+              },
+            },
+          },
+        ],
+        next: ["inner"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: {
+          parents: {},
+          source: "loop",
+          writes: { outer1: { myKey: "hi my value" } },
+          step: 1,
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: { myKey: "my value" },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "outer1",
+            path: [PULL, "outer1"],
+            interrupts: [],
+          },
+        ],
+        next: ["outer1"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: { parents: {}, source: "loop", writes: null, step: 0 },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: {},
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "__start__",
+            path: [PULL, "__start__"],
+            interrupts: [],
+          },
+        ],
+        next: ["__start__"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: {
+          parents: {},
+          source: "input",
+          writes: { __start__: { myKey: "my value" } },
+          step: -1,
+        },
+        createdAt: expect.any(String),
+      },
+    ];
+    expect(actualHistory).toEqual(expectedHistory);
+    for (let i = 0; i < actualHistory.length; i += 1) {
+      // test looking up parent state by checkpoint ID
+      const actualSnapshot = actualHistory[i];
+      const expectedSnapshot = expectedHistory[i];
+      expect(await app.getState(actualSnapshot.config)).toEqual(
+        expectedSnapshot
+      );
+    }
   });
 
-  //     # test state w/ nested subgraph state (right after interrupt)
-  //     # first get_state without subgraph state
-  //     assert app.get_state(config) == StateSnapshot(
-  //         values={"my_key": "hi my value"},
-  //         tasks=(
-  //             PregelTask(
-  //                 AnyStr(),
-  //                 "inner",
-  //                 (PULL, "inner"),
-  //                 state={"configurable": {"thread_id": "1", "checkpoint_ns": AnyStr()}},
-  //             ),
-  //         ),
-  //         next=("inner",),
-  //         config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": "",
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //         metadata={
-  //             "parents": {},
-  //             "source": "loop",
-  //             "writes": {"outer_1": {"my_key": "hi my value"}},
-  //             "step": 1,
-  //         },
-  //         created_at=AnyStr(),
-  //         parent_config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": "",
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //     )
-  //     # now, get_state with subgraphs state
-  //     assert app.get_state(config, subgraphs=True) == StateSnapshot(
-  //         values={"my_key": "hi my value"},
-  //         tasks=(
-  //             PregelTask(
-  //                 AnyStr(),
-  //                 "inner",
-  //                 (PULL, "inner"),
-  //                 state=StateSnapshot(
-  //                     values={
-  //                         "my_key": "hi my value here",
-  //                         "my_other_key": "hi my value",
-  //                     },
-  //                     tasks=(
-  //                         PregelTask(
-  //                             AnyStr(),
-  //                             "inner_2",
-  //                             (PULL, "inner_2"),
-  //                         ),
-  //                     ),
-  //                     next=("inner_2",),
-  //                     config={
-  //                         "configurable": {
-  //                             "thread_id": "1",
-  //                             "checkpoint_ns": AnyStr("inner:"),
-  //                             "checkpoint_id": AnyStr(),
-  //                             "checkpoint_map": AnyDict(
-  //                                 {"": AnyStr(), AnyStr("child:"): AnyStr()}
-  //                             ),
-  //                         }
-  //                     },
-  //                     metadata={
-  //                         "parents": {
-  //                             "": AnyStr(),
-  //                         },
-  //                         "source": "loop",
-  //                         "writes": {
-  //                             "inner_1": {
-  //                                 "my_key": "hi my value here",
-  //                                 "my_other_key": "hi my value",
-  //                             }
-  //                         },
-  //                         "step": 1,
-  //                     },
-  //                     created_at=AnyStr(),
-  //                     parent_config={
-  //                         "configurable": {
-  //                             "thread_id": "1",
-  //                             "checkpoint_ns": AnyStr("inner:"),
-  //                             "checkpoint_id": AnyStr(),
-  //                         }
-  //                     },
-  //                 ),
-  //             ),
-  //         ),
-  //         next=("inner",),
-  //         config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": "",
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //         metadata={
-  //             "parents": {},
-  //             "source": "loop",
-  //             "writes": {"outer_1": {"my_key": "hi my value"}},
-  //             "step": 1,
-  //         },
-  //         created_at=AnyStr(),
-  //         parent_config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": "",
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //     )
-  //     # get_state_history returns outer graph checkpoints
-  //     history = list(app.get_state_history(config))
-  //     assert history == [
-  //         StateSnapshot(
-  //             values={"my_key": "hi my value"},
-  //             tasks=(
-  //                 PregelTask(
-  //                     AnyStr(),
-  //                     "inner",
-  //                     (PULL, "inner"),
-  //                     state={
-  //                         "configurable": {
-  //                             "thread_id": "1",
-  //                             "checkpoint_ns": AnyStr("inner:"),
-  //                         }
-  //                     },
-  //                 ),
-  //             ),
-  //             next=("inner",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "parents": {},
-  //                 "source": "loop",
-  //                 "writes": {"outer_1": {"my_key": "hi my value"}},
-  //                 "step": 1,
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //         ),
-  //         StateSnapshot(
-  //             values={"my_key": "my value"},
-  //             tasks=(PregelTask(AnyStr(), "outer_1", (PULL, "outer_1")),),
-  //             next=("outer_1",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={"parents": {}, "source": "loop", "writes": None, "step": 0},
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //         ),
-  //         StateSnapshot(
-  //             values={},
-  //             tasks=(PregelTask(AnyStr(), "__start__", (PULL, "__start__")),),
-  //             next=("__start__",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "parents": {},
-  //                 "source": "input",
-  //                 "writes": {"__start__": {"my_key": "my value"}},
-  //                 "step": -1,
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config=None,
-  //         ),
-  //     ]
-  //     # get_state_history for a subgraph returns its checkpoints
-  //     child_history = [*app.get_state_history(history[0].tasks[0].state)]
-  //     assert child_history == [
-  //         StateSnapshot(
-  //             values={"my_key": "hi my value here", "my_other_key": "hi my value"},
-  //             next=("inner_2",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr("inner:"),
-  //                     "checkpoint_id": AnyStr(),
-  //                     "checkpoint_map": AnyDict(
-  //                         {"": AnyStr(), AnyStr("child:"): AnyStr()}
-  //                     ),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "source": "loop",
-  //                 "writes": {
-  //                     "inner_1": {
-  //                         "my_key": "hi my value here",
-  //                         "my_other_key": "hi my value",
-  //                     }
-  //                 },
-  //                 "step": 1,
-  //                 "parents": {"": AnyStr()},
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr("inner:"),
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             tasks=(PregelTask(AnyStr(), "inner_2", (PULL, "inner_2")),),
-  //         ),
-  //         StateSnapshot(
-  //             values={"my_key": "hi my value"},
-  //             next=("inner_1",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr("inner:"),
-  //                     "checkpoint_id": AnyStr(),
-  //                     "checkpoint_map": AnyDict(
-  //                         {"": AnyStr(), AnyStr("child:"): AnyStr()}
-  //                     ),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "source": "loop",
-  //                 "writes": None,
-  //                 "step": 0,
-  //                 "parents": {"": AnyStr()},
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr("inner:"),
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             tasks=(PregelTask(AnyStr(), "inner_1", (PULL, "inner_1")),),
-  //         ),
-  //         StateSnapshot(
-  //             values={},
-  //             next=("__start__",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr("inner:"),
-  //                     "checkpoint_id": AnyStr(),
-  //                     "checkpoint_map": AnyDict(
-  //                         {"": AnyStr(), AnyStr("child:"): AnyStr()}
-  //                     ),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "source": "input",
-  //                 "writes": {"__start__": {"my_key": "hi my value"}},
-  //                 "step": -1,
-  //                 "parents": {"": AnyStr()},
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config=None,
-  //             tasks=(PregelTask(AnyStr(), "__start__", (PULL, "__start__")),),
-  //         ),
-  //     ]
+  it("doubly nested graph state", async () => {
+    const checkpointer = new MemorySaverAssertImmutable();
 
-  //     # resume
-  //     app.invoke(None, config, debug=True)
-  //     # test state w/ nested subgraph state (after resuming from interrupt)
-  //     assert app.get_state(config) == StateSnapshot(
-  //         values={"my_key": "hi my value here and there and back again"},
-  //         tasks=(),
-  //         next=(),
-  //         config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": "",
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //         metadata={
-  //             "parents": {},
-  //             "source": "loop",
-  //             "writes": {
-  //                 "outer_2": {"my_key": "hi my value here and there and back again"}
-  //             },
-  //             "step": 3,
-  //         },
-  //         created_at=AnyStr(),
-  //         parent_config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": "",
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //     )
-  //     # test full history at the end
-  //     actual_history = list(app.get_state_history(config))
-  //     expected_history = [
-  //         StateSnapshot(
-  //             values={"my_key": "hi my value here and there and back again"},
-  //             tasks=(),
-  //             next=(),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "parents": {},
-  //                 "source": "loop",
-  //                 "writes": {
-  //                     "outer_2": {"my_key": "hi my value here and there and back again"}
-  //                 },
-  //                 "step": 3,
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //         ),
-  //         StateSnapshot(
-  //             values={"my_key": "hi my value here and there"},
-  //             tasks=(PregelTask(AnyStr(), "outer_2", (PULL, "outer_2")),),
-  //             next=("outer_2",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "parents": {},
-  //                 "source": "loop",
-  //                 "writes": {"inner": {"my_key": "hi my value here and there"}},
-  //                 "step": 2,
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //         ),
-  //         StateSnapshot(
-  //             values={"my_key": "hi my value"},
-  //             tasks=(
-  //                 PregelTask(
-  //                     AnyStr(),
-  //                     "inner",
-  //                     (PULL, "inner"),
-  //                     state={
-  //                         "configurable": {"thread_id": "1", "checkpoint_ns": AnyStr()}
-  //                     },
-  //                 ),
-  //             ),
-  //             next=("inner",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "parents": {},
-  //                 "source": "loop",
-  //                 "writes": {"outer_1": {"my_key": "hi my value"}},
-  //                 "step": 1,
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //         ),
-  //         StateSnapshot(
-  //             values={"my_key": "my value"},
-  //             tasks=(PregelTask(AnyStr(), "outer_1", (PULL, "outer_1")),),
-  //             next=("outer_1",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={"parents": {}, "source": "loop", "writes": None, "step": 0},
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //         ),
-  //         StateSnapshot(
-  //             values={},
-  //             tasks=(PregelTask(AnyStr(), "__start__", (PULL, "__start__")),),
-  //             next=("__start__",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "parents": {},
-  //                 "source": "input",
-  //                 "writes": {"__start__": {"my_key": "my value"}},
-  //                 "step": -1,
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config=None,
-  //         ),
-  //     ]
-  //     assert actual_history == expected_history
-  //     # test looking up parent state by checkpoint ID
-  //     for actual_snapshot, expected_snapshot in zip(actual_history, expected_history):
-  //         assert app.get_state(actual_snapshot.config) == expected_snapshot
+    const StateAnnotation = Annotation.Root({
+      myKey: Annotation<string>,
+    });
 
-  // @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
-  // def test_doubly_nested_graph_state(
-  //     request: pytest.FixtureRequest, checkpointer_name: str
-  // ) -> None:
-  //     checkpointer = request.getfixturevalue("checkpointer_" + checkpointer_name)
+    const ChildStateAnnotation = Annotation.Root({
+      myKey: Annotation<string>,
+    });
 
-  //     class State(TypedDict):
-  //         my_key: str
+    const GrandchildStateAnnotation = Annotation.Root({
+      myKey: Annotation<string>,
+    });
 
-  //     class ChildState(TypedDict):
-  //         my_key: str
+    const grandchild1 = async (
+      state: typeof GrandchildStateAnnotation.State
+    ) => {
+      return {
+        myKey: state.myKey + " here",
+      };
+    };
+    const grandchild2 = async (
+      state: typeof GrandchildStateAnnotation.State
+    ) => {
+      return {
+        myKey: state.myKey + " and there",
+      };
+    };
 
-  //     class GrandChildState(TypedDict):
-  //         my_key: str
+    const grandchild = new StateGraph(GrandchildStateAnnotation)
+      .addNode("grandchild1", grandchild1)
+      .addNode("grandchild2", grandchild2)
+      .addEdge("__start__", "grandchild1")
+      .addEdge("grandchild1", "grandchild2");
 
-  //     def grandchild_1(state: ChildState):
-  //         return {"my_key": state["my_key"] + " here"}
+    const child = new StateGraph(ChildStateAnnotation)
+      .addNode(
+        "child1",
+        grandchild.compile({ interruptBefore: ["grandchild2"] })
+      )
+      .addEdge("__start__", "child1");
 
-  //     def grandchild_2(state: ChildState):
-  //         return {
-  //             "my_key": state["my_key"] + " and there",
-  //         }
+    const parent1 = (state: typeof StateAnnotation.State) => {
+      return { myKey: "hi " + state.myKey };
+    };
+    const parent2 = (state: typeof StateAnnotation.State) => {
+      return { myKey: state.myKey + " and back again" };
+    };
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("parent1", parent1)
+      .addNode("child", child.compile())
+      .addNode("parent2", parent2)
+      .addEdge("__start__", "parent1")
+      .addEdge("parent1", "child")
+      .addEdge("child", "parent2");
 
-  //     grandchild = StateGraph(GrandChildState)
-  //     grandchild.add_node("grandchild_1", grandchild_1)
-  //     grandchild.add_node("grandchild_2", grandchild_2)
-  //     grandchild.add_edge("grandchild_1", "grandchild_2")
-  //     grandchild.set_entry_point("grandchild_1")
-  //     grandchild.set_finish_point("grandchild_2")
+    const app = graph.compile({ checkpointer });
 
-  //     child = StateGraph(ChildState)
-  //     child.add_node(
-  //         "child_1",
-  //         grandchild.compile(interrupt_before=["grandchild_2"]),
-  //     )
-  //     child.set_entry_point("child_1")
-  //     child.set_finish_point("child_1")
+    // test invoke w/ nested interrupt
+    const config = { configurable: { thread_id: "1" } };
+    expect(
+      await gatherIterator(
+        app.stream({ myKey: "my value" }, { ...config, subgraphs: true })
+      )
+    ).toEqual([
+      [[], { parent1: { myKey: "hi my value" } }],
+      [
+        [expect.stringMatching(/^child:/), expect.stringMatching(/^child1:/)],
+        { grandchild1: { myKey: "hi my value here" } },
+      ],
+    ]);
 
-  //     def parent_1(state: State):
-  //         return {"my_key": "hi " + state["my_key"]}
+    // get state without subgraphs
+    const outerState = await app.getState(config);
+    expect(outerState).toEqual({
+      values: { myKey: "hi my value" },
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "child",
+          path: [PULL, "child"],
+          interrupts: [],
+          state: {
+            configurable: {
+              thread_id: "1",
+              checkpoint_ns: expect.stringMatching(/^child/),
+            },
+          },
+        },
+      ],
+      next: ["child"],
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+      metadata: {
+        parents: {},
+        source: "loop",
+        writes: { parent1: { myKey: "hi my value" } },
+        step: 1,
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+    });
+    const childState = await app.getState(
+      outerState.tasks[0].state as RunnableConfig
+    );
+    expect(childState.tasks[0]).toEqual({
+      id: expect.any(String),
+      name: "child1",
+      path: [PULL, "child1"],
+      interrupts: [],
+      state: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: expect.any(String),
+        },
+      },
+    });
+    const grandchildState = await app.getState(
+      childState.tasks[0].state as RunnableConfig
+    );
+    expect(grandchildState).toEqual({
+      values: { myKey: "hi my value here" },
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "grandchild2",
+          path: [PULL, "grandchild2"],
+          interrupts: [],
+        },
+      ],
+      next: ["grandchild2"],
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: expect.any(String),
+          checkpoint_id: expect.any(String),
+          checkpoint_map: expect.objectContaining({
+            "": expect.any(String),
+          }),
+        },
+      },
+      metadata: {
+        parents: expect.objectContaining({
+          "": expect.any(String),
+        }),
+        source: "loop",
+        writes: { grandchild1: { myKey: "hi my value here" } },
+        step: 1,
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: expect.any(String),
+          checkpoint_id: expect.any(String),
+        },
+      },
+    });
+    // get state with subgraphs
+    expect(await app.getState(config, { subgraphs: true })).toEqual({
+      values: { myKey: "hi my value" },
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "child",
+          path: [PULL, "child"],
+          interrupts: [],
+          state: {
+            values: { myKey: "hi my value" },
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "child1",
+                path: [PULL, "child1"],
+                interrupts: [],
+                state: {
+                  values: { myKey: "hi my value here" },
+                  tasks: [
+                    {
+                      id: expect.any(String),
+                      name: "grandchild2",
+                      path: [PULL, "grandchild2"],
+                      interrupts: [],
+                    },
+                  ],
+                  next: ["grandchild2"],
+                  config: {
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: expect.any(String),
+                      checkpoint_id: expect.any(String),
+                      checkpoint_map: expect.objectContaining({
+                        "": expect.any(String),
+                      }),
+                    },
+                  },
+                  metadata: {
+                    parents: expect.objectContaining({
+                      "": expect.any(String),
+                    }),
+                    source: "loop",
+                    writes: {
+                      grandchild1: { myKey: "hi my value here" },
+                    },
+                    step: 1,
+                  },
+                  createdAt: expect.any(String),
+                  parentConfig: {
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: expect.any(String),
+                      checkpoint_id: expect.any(String),
+                    },
+                  },
+                },
+              },
+            ],
+            next: ["child1"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringMatching(/^child:/),
+                checkpoint_id: expect.any(String),
+                checkpoint_map: expect.objectContaining({
+                  "": expect.any(String),
+                }),
+              },
+            },
+            metadata: {
+              parents: { "": expect.any(String) },
+              source: "loop",
+              writes: null,
+              step: 0,
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringMatching(/^child:/),
+                checkpoint_id: expect.any(String),
+              },
+            },
+          },
+        },
+      ],
+      next: ["child"],
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+      metadata: {
+        parents: {},
+        source: "loop",
+        writes: { parent1: { myKey: "hi my value" } },
+        step: 1,
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+    });
 
-  //     def parent_2(state: State):
-  //         return {"my_key": state["my_key"] + " and back again"}
+    // resume
+    expect(
+      await gatherIterator(app.stream(null, { ...config, subgraphs: true }))
+    ).toEqual([
+      [
+        [expect.stringMatching(/^child:/), expect.stringMatching(/^child1:/)],
+        { grandchild2: { myKey: "hi my value here and there" } },
+      ],
+      [
+        [expect.stringMatching(/^child:/)],
+        { child1: { myKey: "hi my value here and there" } },
+      ],
+      [[], { child: { myKey: "hi my value here and there" } }],
+      [[], { parent2: { myKey: "hi my value here and there and back again" } }],
+    ]);
+    // get state with and without subgraphs
+    expect(await app.getState(config)).toEqual(
+      await app.getState(config, { subgraphs: true })
+    );
+    expect(await app.getState(config)).toEqual({
+      values: { myKey: "hi my value here and there and back again" },
+      tasks: [],
+      next: [],
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+      metadata: {
+        parents: {},
+        source: "loop",
+        writes: {
+          parent2: { myKey: "hi my value here and there and back again" },
+        },
+        step: 3,
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+    });
+    // get outer graph history
+    const outerHistory = await gatherIterator(app.getStateHistory(config));
+    expect(outerHistory).toEqual([
+      {
+        values: { myKey: "hi my value here and there and back again" },
+        tasks: [],
+        next: [],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: {
+          parents: {},
+          source: "loop",
+          writes: {
+            parent2: { myKey: "hi my value here and there and back again" },
+          },
+          step: 3,
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: { myKey: "hi my value here and there" },
+        next: ["parent2"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: {
+          source: "loop",
+          writes: { child: { myKey: "hi my value here and there" } },
+          step: 2,
+          parents: {},
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "parent2",
+            path: [PULL, "parent2"],
+            interrupts: [],
+          },
+        ],
+      },
+      {
+        values: { myKey: "hi my value" },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "child",
+            path: [PULL, "child"],
+            interrupts: [],
+            state: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringContaining("child"),
+              },
+            },
+          },
+        ],
+        next: ["child"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: {
+          parents: {},
+          source: "loop",
+          writes: { parent1: { myKey: "hi my value" } },
+          step: 1,
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: { myKey: "my value" },
+        next: ["parent1"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: { source: "loop", writes: null, step: 0, parents: {} },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "parent1",
+            path: [PULL, "parent1"],
+            interrupts: [],
+          },
+        ],
+      },
+      {
+        values: {},
+        next: ["__start__"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: {
+          source: "input",
+          writes: { __start__: { myKey: "my value" } },
+          step: -1,
+          parents: {},
+        },
+        createdAt: expect.any(String),
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "__start__",
+            path: [PULL, "__start__"],
+            interrupts: [],
+          },
+        ],
+      },
+    ]);
+    // get child graph history
+    const childHistory = await gatherIterator(
+      app.getStateHistory(outerHistory[2].tasks[0].state as RunnableConfig)
+    );
+    expect(childHistory).toEqual([
+      {
+        values: { myKey: "hi my value here and there" },
+        next: [],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.stringContaining("child:"),
+            checkpoint_id: expect.any(String),
+            checkpoint_map: expect.objectContaining({ "": expect.any(String) }),
+          },
+        },
+        metadata: {
+          source: "loop",
+          writes: { child1: { myKey: "hi my value here and there" } },
+          step: 1,
+          parents: { "": expect.any(String) },
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.stringContaining("child:"),
+            checkpoint_id: expect.any(String),
+          },
+        },
+        tasks: [],
+      },
 
-  //     graph = StateGraph(State)
-  //     graph.add_node("parent_1", parent_1)
-  //     graph.add_node("child", child.compile())
-  //     graph.add_node("parent_2", parent_2)
-  //     graph.set_entry_point("parent_1")
-  //     graph.add_edge("parent_1", "child")
-  //     graph.add_edge("child", "parent_2")
-  //     graph.set_finish_point("parent_2")
+      {
+        values: { myKey: "hi my value" },
+        next: ["child1"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.stringContaining("child:"),
+            checkpoint_id: expect.any(String),
+            checkpoint_map: expect.objectContaining({ "": expect.any(String) }),
+          },
+        },
+        metadata: {
+          source: "loop",
+          writes: null,
+          step: 0,
+          parents: { "": expect.any(String) },
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.stringContaining("child:"),
+            checkpoint_id: expect.any(String),
+          },
+        },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "child1",
+            path: [PULL, "child1"],
+            interrupts: [],
+            state: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringContaining("child:"),
+              },
+            },
+          },
+        ],
+      },
+      {
+        values: {},
+        next: ["__start__"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.stringContaining("child:"),
+            checkpoint_id: expect.any(String),
+            checkpoint_map: expect.objectContaining({ "": expect.any(String) }),
+          },
+        },
+        metadata: {
+          source: "input",
+          writes: { __start__: { myKey: "hi my value" } },
+          step: -1,
+          parents: { "": expect.any(String) },
+        },
+        createdAt: expect.any(String),
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "__start__",
+            path: [PULL, "__start__"],
+            interrupts: [],
+          },
+        ],
+      },
+    ]);
+    // get grandchild graph history
+    const grandchildHistory = await gatherIterator(
+      app.getStateHistory(childHistory[1].tasks[0].state as RunnableConfig)
+    );
+    expect(grandchildHistory).toEqual([
+      {
+        values: { myKey: "hi my value here and there" },
+        next: [],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.any(String),
+            checkpoint_id: expect.any(String),
+            checkpoint_map: expect.objectContaining({
+              "": expect.any(String),
+            }),
+          },
+        },
+        metadata: {
+          source: "loop",
+          writes: { grandchild2: { myKey: "hi my value here and there" } },
+          step: 2,
+          parents: expect.objectContaining({
+            "": expect.any(String),
+          }),
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.any(String),
+            checkpoint_id: expect.any(String),
+          },
+        },
+        tasks: [],
+      },
+      {
+        values: { myKey: "hi my value here" },
+        next: ["grandchild2"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.any(String),
+            checkpoint_id: expect.any(String),
+            checkpoint_map: expect.objectContaining({
+              "": expect.any(String),
+            }),
+          },
+        },
+        metadata: {
+          source: "loop",
+          writes: { grandchild1: { myKey: "hi my value here" } },
+          step: 1,
+          parents: expect.objectContaining({
+            "": expect.any(String),
+          }),
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.any(String),
+            checkpoint_id: expect.any(String),
+          },
+        },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "grandchild2",
+            path: [PULL, "grandchild2"],
+            interrupts: [],
+          },
+        ],
+      },
+      {
+        values: { myKey: "hi my value" },
+        next: ["grandchild1"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.any(String),
+            checkpoint_id: expect.any(String),
+            checkpoint_map: expect.objectContaining({
+              "": expect.any(String),
+            }),
+          },
+        },
+        metadata: {
+          source: "loop",
+          writes: null,
+          step: 0,
+          parents: expect.objectContaining({
+            "": expect.any(String),
+          }),
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.any(String),
+            checkpoint_id: expect.any(String),
+          },
+        },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "grandchild1",
+            path: [PULL, "grandchild1"],
+            interrupts: [],
+          },
+        ],
+      },
+      {
+        values: {},
+        next: ["__start__"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: expect.any(String),
+            checkpoint_id: expect.any(String),
+            checkpoint_map: expect.objectContaining({
+              "": expect.any(String),
+            }),
+          },
+        },
+        metadata: {
+          source: "input",
+          writes: { __start__: { myKey: "hi my value" } },
+          step: -1,
+          parents: expect.objectContaining({
+            "": expect.any(String),
+          }),
+        },
+        createdAt: expect.any(String),
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "__start__",
+            path: [PULL, "__start__"],
+            interrupts: [],
+          },
+        ],
+      },
+    ]);
+    // replay grandchild checkpoint
+    const events = await gatherIterator(
+      app.stream(null, { ...grandchildHistory[2].config, subgraphs: true })
+    );
+    expect(events).toEqual([
+      [
+        [expect.stringMatching(/^child:/), expect.stringMatching(/^child1:/)],
+        { grandchild1: { myKey: "hi my value here" } },
+      ],
+    ]);
+  });
 
-  //     app = graph.compile(checkpointer=checkpointer)
+  it("send to nested graphs", async () => {
+    const checkpointer = new MemorySaverAssertImmutable();
 
-  //     # test invoke w/ nested interrupt
-  //     config = {"configurable": {"thread_id": "1"}}
-  //     assert [c for c in app.stream({"my_key": "my value"}, config, subgraphs=True)] == [
-  //         ((), {"parent_1": {"my_key": "hi my value"}}),
-  //         (
-  //             (AnyStr("child:"), AnyStr("child_1:")),
-  //             {"grandchild_1": {"my_key": "hi my value here"}},
-  //         ),
-  //     ]
-  //     # get state without subgraphs
-  //     outer_state = app.get_state(config)
-  //     assert outer_state == StateSnapshot(
-  //         values={"my_key": "hi my value"},
-  //         tasks=(
-  //             PregelTask(
-  //                 AnyStr(),
-  //                 "child",
-  //                 (PULL, "child"),
-  //                 state={
-  //                     "configurable": {
-  //                         "thread_id": "1",
-  //                         "checkpoint_ns": AnyStr("child"),
-  //                     }
-  //                 },
-  //             ),
-  //         ),
-  //         next=("child",),
-  //         config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": "",
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //         metadata={
-  //             "parents": {},
-  //             "source": "loop",
-  //             "writes": {"parent_1": {"my_key": "hi my value"}},
-  //             "step": 1,
-  //         },
-  //         created_at=AnyStr(),
-  //         parent_config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": "",
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //     )
-  //     child_state = app.get_state(outer_state.tasks[0].state)
-  //     assert (
-  //         child_state.tasks[0]
-  //         == StateSnapshot(
-  //             values={"my_key": "hi my value"},
-  //             tasks=(
-  //                 PregelTask(
-  //                     AnyStr(),
-  //                     "child_1",
-  //                     (PULL, "child_1"),
-  //                     state={
-  //                         "configurable": {
-  //                             "thread_id": "1",
-  //                             "checkpoint_ns": AnyStr(),
-  //                         }
-  //                     },
-  //                 ),
-  //             ),
-  //             next=("child_1",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr("child:"),
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "parents": {"": AnyStr()},
-  //                 "source": "loop",
-  //                 "writes": None,
-  //                 "step": 0,
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr("child:"),
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //         ).tasks[0]
-  //     )
-  //     grandchild_state = app.get_state(child_state.tasks[0].state)
-  //     assert grandchild_state == StateSnapshot(
-  //         values={"my_key": "hi my value here"},
-  //         tasks=(
-  //             PregelTask(
-  //                 AnyStr(),
-  //                 "grandchild_2",
-  //                 (PULL, "grandchild_2"),
-  //             ),
-  //         ),
-  //         next=("grandchild_2",),
-  //         config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": AnyStr(),
-  //                 "checkpoint_id": AnyStr(),
-  //                 "checkpoint_map": AnyDict(
-  //                     {
-  //                         "": AnyStr(),
-  //                         AnyStr("child:"): AnyStr(),
-  //                         AnyStr(re.compile(r"child:.+|child1:")): AnyStr(),
-  //                     }
-  //                 ),
-  //             }
-  //         },
-  //         metadata={
-  //             "parents": AnyDict(
-  //                 {
-  //                     "": AnyStr(),
-  //                     AnyStr("child:"): AnyStr(),
-  //                 }
-  //             ),
-  //             "source": "loop",
-  //             "writes": {"grandchild_1": {"my_key": "hi my value here"}},
-  //             "step": 1,
-  //         },
-  //         created_at=AnyStr(),
-  //         parent_config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": AnyStr(),
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //     )
-  //     # get state with subgraphs
-  //     assert app.get_state(config, subgraphs=True) == StateSnapshot(
-  //         values={"my_key": "hi my value"},
-  //         tasks=(
-  //             PregelTask(
-  //                 AnyStr(),
-  //                 "child",
-  //                 (PULL, "child"),
-  //                 state=StateSnapshot(
-  //                     values={"my_key": "hi my value"},
-  //                     tasks=(
-  //                         PregelTask(
-  //                             AnyStr(),
-  //                             "child_1",
-  //                             (PULL, "child_1"),
-  //                             state=StateSnapshot(
-  //                                 values={"my_key": "hi my value here"},
-  //                                 tasks=(
-  //                                     PregelTask(
-  //                                         AnyStr(),
-  //                                         "grandchild_2",
-  //                                         (PULL, "grandchild_2"),
-  //                                     ),
-  //                                 ),
-  //                                 next=("grandchild_2",),
-  //                                 config={
-  //                                     "configurable": {
-  //                                         "thread_id": "1",
-  //                                         "checkpoint_ns": AnyStr(),
-  //                                         "checkpoint_id": AnyStr(),
-  //                                         "checkpoint_map": AnyDict(
-  //                                             {
-  //                                                 "": AnyStr(),
-  //                                                 AnyStr("child:"): AnyStr(),
-  //                                                 AnyStr(
-  //                                                     re.compile(r"child:.+|child1:")
-  //                                                 ): AnyStr(),
-  //                                             }
-  //                                         ),
-  //                                     }
-  //                                 },
-  //                                 metadata={
-  //                                     "parents": AnyDict(
-  //                                         {
-  //                                             "": AnyStr(),
-  //                                             AnyStr("child:"): AnyStr(),
-  //                                         }
-  //                                     ),
-  //                                     "source": "loop",
-  //                                     "writes": {
-  //                                         "grandchild_1": {"my_key": "hi my value here"}
-  //                                     },
-  //                                     "step": 1,
-  //                                 },
-  //                                 created_at=AnyStr(),
-  //                                 parent_config={
-  //                                     "configurable": {
-  //                                         "thread_id": "1",
-  //                                         "checkpoint_ns": AnyStr(),
-  //                                         "checkpoint_id": AnyStr(),
-  //                                     }
-  //                                 },
-  //                             ),
-  //                         ),
-  //                     ),
-  //                     next=("child_1",),
-  //                     config={
-  //                         "configurable": {
-  //                             "thread_id": "1",
-  //                             "checkpoint_ns": AnyStr("child:"),
-  //                             "checkpoint_id": AnyStr(),
-  //                             "checkpoint_map": AnyDict(
-  //                                 {"": AnyStr(), AnyStr("child:"): AnyStr()}
-  //                             ),
-  //                         }
-  //                     },
-  //                     metadata={
-  //                         "parents": {"": AnyStr()},
-  //                         "source": "loop",
-  //                         "writes": None,
-  //                         "step": 0,
-  //                     },
-  //                     created_at=AnyStr(),
-  //                     parent_config={
-  //                         "configurable": {
-  //                             "thread_id": "1",
-  //                             "checkpoint_ns": AnyStr("child:"),
-  //                             "checkpoint_id": AnyStr(),
-  //                         }
-  //                     },
-  //                 ),
-  //             ),
-  //         ),
-  //         next=("child",),
-  //         config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": "",
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //         metadata={
-  //             "parents": {},
-  //             "source": "loop",
-  //             "writes": {"parent_1": {"my_key": "hi my value"}},
-  //             "step": 1,
-  //         },
-  //         created_at=AnyStr(),
-  //         parent_config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": "",
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //     )
-  //     # resume
-  //     assert [c for c in app.stream(None, config, subgraphs=True)] == [
-  //         (
-  //             (AnyStr("child:"), AnyStr("child_1:")),
-  //             {"grandchild_2": {"my_key": "hi my value here and there"}},
-  //         ),
-  //         ((AnyStr("child:"),), {"child_1": {"my_key": "hi my value here and there"}}),
-  //         ((), {"child": {"my_key": "hi my value here and there"}}),
-  //         ((), {"parent_2": {"my_key": "hi my value here and there and back again"}}),
-  //     ]
-  //     # get state with and without subgraphs
-  //     assert (
-  //         app.get_state(config)
-  //         == app.get_state(config, subgraphs=True)
-  //         == StateSnapshot(
-  //             values={"my_key": "hi my value here and there and back again"},
-  //             tasks=(),
-  //             next=(),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "parents": {},
-  //                 "source": "loop",
-  //                 "writes": {
-  //                     "parent_2": {"my_key": "hi my value here and there and back again"}
-  //                 },
-  //                 "step": 3,
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //         )
-  //     )
-  //     # get outer graph history
-  //     outer_history = list(app.get_state_history(config))
-  //     assert outer_history == [
-  //         StateSnapshot(
-  //             values={"my_key": "hi my value here and there and back again"},
-  //             tasks=(),
-  //             next=(),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "parents": {},
-  //                 "source": "loop",
-  //                 "writes": {
-  //                     "parent_2": {"my_key": "hi my value here and there and back again"}
-  //                 },
-  //                 "step": 3,
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //         ),
-  //         StateSnapshot(
-  //             values={"my_key": "hi my value here and there"},
-  //             next=("parent_2",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "source": "loop",
-  //                 "writes": {"child": {"my_key": "hi my value here and there"}},
-  //                 "step": 2,
-  //                 "parents": {},
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             tasks=(
-  //                 PregelTask(
-  //                     id=AnyStr(),
-  //                     name="parent_2",
-  //                     path=(PULL, "parent_2"),
-  //                 ),
-  //             ),
-  //         ),
-  //         StateSnapshot(
-  //             values={"my_key": "hi my value"},
-  //             tasks=(
-  //                 PregelTask(
-  //                     AnyStr(),
-  //                     "child",
-  //                     (PULL, "child"),
-  //                     state={
-  //                         "configurable": {
-  //                             "thread_id": "1",
-  //                             "checkpoint_ns": AnyStr("child"),
-  //                         }
-  //                     },
-  //                 ),
-  //             ),
-  //             next=("child",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "parents": {},
-  //                 "source": "loop",
-  //                 "writes": {"parent_1": {"my_key": "hi my value"}},
-  //                 "step": 1,
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //         ),
-  //         StateSnapshot(
-  //             values={"my_key": "my value"},
-  //             next=("parent_1",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={"source": "loop", "writes": None, "step": 0, "parents": {}},
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             tasks=(PregelTask(id=AnyStr(), name="parent_1", path=(PULL, "parent_1")),),
-  //         ),
-  //         StateSnapshot(
-  //             values={},
-  //             next=("__start__",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "source": "input",
-  //                 "writes": {"__start__": {"my_key": "my value"}},
-  //                 "step": -1,
-  //                 "parents": {},
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config=None,
-  //             tasks=(
-  //                 PregelTask(id=AnyStr(), name="__start__", path=(PULL, "__start__")),
-  //             ),
-  //         ),
-  //     ]
-  //     # get child graph history
-  //     child_history = list(app.get_state_history(outer_history[2].tasks[0].state))
-  //     assert child_history == [
-  //         StateSnapshot(
-  //             values={"my_key": "hi my value here and there"},
-  //             next=(),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr("child:"),
-  //                     "checkpoint_id": AnyStr(),
-  //                     "checkpoint_map": AnyDict(
-  //                         {"": AnyStr(), AnyStr("child:"): AnyStr()}
-  //                     ),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "source": "loop",
-  //                 "writes": {"child_1": {"my_key": "hi my value here and there"}},
-  //                 "step": 1,
-  //                 "parents": {"": AnyStr()},
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr("child:"),
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             tasks=(),
-  //         ),
-  //         StateSnapshot(
-  //             values={"my_key": "hi my value"},
-  //             next=("child_1",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr("child:"),
-  //                     "checkpoint_id": AnyStr(),
-  //                     "checkpoint_map": AnyDict(
-  //                         {"": AnyStr(), AnyStr("child:"): AnyStr()}
-  //                     ),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "source": "loop",
-  //                 "writes": None,
-  //                 "step": 0,
-  //                 "parents": {"": AnyStr()},
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr("child:"),
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             tasks=(
-  //                 PregelTask(
-  //                     id=AnyStr(),
-  //                     name="child_1",
-  //                     path=(PULL, "child_1"),
-  //                     state={
-  //                         "configurable": {
-  //                             "thread_id": "1",
-  //                             "checkpoint_ns": AnyStr("child:"),
-  //                         }
-  //                     },
-  //                 ),
-  //             ),
-  //         ),
-  //         StateSnapshot(
-  //             values={},
-  //             next=("__start__",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr("child:"),
-  //                     "checkpoint_id": AnyStr(),
-  //                     "checkpoint_map": AnyDict(
-  //                         {"": AnyStr(), AnyStr("child:"): AnyStr()}
-  //                     ),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "source": "input",
-  //                 "writes": {"__start__": {"my_key": "hi my value"}},
-  //                 "step": -1,
-  //                 "parents": {"": AnyStr()},
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config=None,
-  //             tasks=(
-  //                 PregelTask(id=AnyStr(), name="__start__", path=(PULL, "__start__")),
-  //             ),
-  //         ),
-  //     ]
-  //     # get grandchild graph history
-  //     grandchild_history = list(app.get_state_history(child_history[1].tasks[0].state))
-  //     assert grandchild_history == [
-  //         StateSnapshot(
-  //             values={"my_key": "hi my value here and there"},
-  //             next=(),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr(),
-  //                     "checkpoint_id": AnyStr(),
-  //                     "checkpoint_map": AnyDict(
-  //                         {
-  //                             "": AnyStr(),
-  //                             AnyStr("child:"): AnyStr(),
-  //                             AnyStr(re.compile(r"child:.+|child1:")): AnyStr(),
-  //                         }
-  //                     ),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "source": "loop",
-  //                 "writes": {"grandchild_2": {"my_key": "hi my value here and there"}},
-  //                 "step": 2,
-  //                 "parents": AnyDict(
-  //                     {
-  //                         "": AnyStr(),
-  //                         AnyStr("child:"): AnyStr(),
-  //                     }
-  //                 ),
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr(),
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             tasks=(),
-  //         ),
-  //         StateSnapshot(
-  //             values={"my_key": "hi my value here"},
-  //             next=("grandchild_2",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr(),
-  //                     "checkpoint_id": AnyStr(),
-  //                     "checkpoint_map": AnyDict(
-  //                         {
-  //                             "": AnyStr(),
-  //                             AnyStr("child:"): AnyStr(),
-  //                             AnyStr(re.compile(r"child:.+|child1:")): AnyStr(),
-  //                         }
-  //                     ),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "source": "loop",
-  //                 "writes": {"grandchild_1": {"my_key": "hi my value here"}},
-  //                 "step": 1,
-  //                 "parents": AnyDict(
-  //                     {
-  //                         "": AnyStr(),
-  //                         AnyStr("child:"): AnyStr(),
-  //                     }
-  //                 ),
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr(),
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             tasks=(
-  //                 PregelTask(
-  //                     id=AnyStr(), name="grandchild_2", path=(PULL, "grandchild_2")
-  //                 ),
-  //             ),
-  //         ),
-  //         StateSnapshot(
-  //             values={"my_key": "hi my value"},
-  //             next=("grandchild_1",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr(),
-  //                     "checkpoint_id": AnyStr(),
-  //                     "checkpoint_map": AnyDict(
-  //                         {
-  //                             "": AnyStr(),
-  //                             AnyStr("child:"): AnyStr(),
-  //                             AnyStr(re.compile(r"child:.+|child1:")): AnyStr(),
-  //                         }
-  //                     ),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "source": "loop",
-  //                 "writes": None,
-  //                 "step": 0,
-  //                 "parents": AnyDict(
-  //                     {
-  //                         "": AnyStr(),
-  //                         AnyStr("child:"): AnyStr(),
-  //                     }
-  //                 ),
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr(),
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             tasks=(
-  //                 PregelTask(
-  //                     id=AnyStr(), name="grandchild_1", path=(PULL, "grandchild_1")
-  //                 ),
-  //             ),
-  //         ),
-  //         StateSnapshot(
-  //             values={},
-  //             next=("__start__",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": AnyStr(),
-  //                     "checkpoint_id": AnyStr(),
-  //                     "checkpoint_map": AnyDict(
-  //                         {
-  //                             "": AnyStr(),
-  //                             AnyStr("child:"): AnyStr(),
-  //                             AnyStr(re.compile(r"child:.+|child1:")): AnyStr(),
-  //                         }
-  //                     ),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "source": "input",
-  //                 "writes": {"__start__": {"my_key": "hi my value"}},
-  //                 "step": -1,
-  //                 "parents": AnyDict(
-  //                     {
-  //                         "": AnyStr(),
-  //                         AnyStr("child:"): AnyStr(),
-  //                     }
-  //                 ),
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config=None,
-  //             tasks=(
-  //                 PregelTask(id=AnyStr(), name="__start__", path=(PULL, "__start__")),
-  //             ),
-  //         ),
-  //     ]
+    const OverallStateAnnotation = Annotation.Root({
+      subjects: Annotation<string[]>,
+      jokes: Annotation<string[]>({
+        reducer: (a, b) => a.concat(b),
+        default: () => [],
+      }),
+    });
+    const continueToJokes = async (
+      state: typeof OverallStateAnnotation.State
+    ) => {
+      return state.subjects.map(
+        (s) => new Send("generateJoke", { subject: s })
+      );
+    };
 
-  //     # replay grandchild checkpoint
-  //     assert [
-  //         c for c in app.stream(None, grandchild_history[2].config, subgraphs=True)
-  //     ] == [
-  //         (
-  //             (AnyStr("child:"), AnyStr("child_1:")),
-  //             {"grandchild_1": {"my_key": "hi my value here"}},
-  //         )
-  //     ]
+    const JokeStateAnnotation = Annotation.Root({
+      subject: Annotation<string>,
+    });
 
-  // @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
-  // def test_send_to_nested_graphs(
-  //     request: pytest.FixtureRequest, checkpointer_name: str
-  // ) -> None:
-  //     checkpointer = request.getfixturevalue("checkpointer_" + checkpointer_name)
+    const edit = async (state: typeof JokeStateAnnotation.State) => {
+      const { subject } = state;
+      return { subject: `${subject} - hohoho` };
+    };
 
-  //     class OverallState(TypedDict):
-  //         subjects: list[str]
-  //         jokes: Annotated[list[str], operator.add]
+    // subgraph
+    const subgraph = new StateGraph({
+      input: JokeStateAnnotation,
+      output: OverallStateAnnotation,
+    })
+      .addNode("edit", edit)
+      .addNode("generate", async (state) => {
+        return { jokes: [`Joke about ${state.subject}`] };
+      })
+      .addEdge("__start__", "edit")
+      .addEdge("edit", "generate");
 
-  //     def continue_to_jokes(state: OverallState):
-  //         return [Send("generate_joke", {"subject": s}) for s in state["subjects"]]
+    // parent graph
+    const builder = new StateGraph(OverallStateAnnotation)
+      .addNode(
+        "generateJoke",
+        subgraph.compile({ interruptBefore: ["generate"] })
+      )
+      .addConditionalEdges("__start__", continueToJokes);
 
-  //     class JokeState(TypedDict):
-  //         subject: str
+    const graph = builder.compile({ checkpointer });
+    const config = { configurable: { thread_id: "1" } };
+    const tracer = new FakeTracer();
 
-  //     def edit(state: JokeState):
-  //         subject = state["subject"]
-  //         return {"subject": f"{subject} - hohoho"}
+    // invoke and pause at nested interrupt
+    expect(
+      await graph.invoke(
+        {
+          subjects: ["cats", "dogs"],
+        },
+        { ...config, callbacks: [tracer] }
+      )
+    ).toEqual({
+      subjects: ["cats", "dogs"],
+      jokes: [],
+    });
+    expect(tracer.runs.length).toEqual(1);
 
-  //     # subgraph
-  //     subgraph = StateGraph(JokeState, output=OverallState)
-  //     subgraph.add_node("edit", edit)
-  //     subgraph.add_node(
-  //         "generate", lambda state: {"jokes": [f"Joke about {state['subject']}"]}
-  //     )
-  //     subgraph.set_entry_point("edit")
-  //     subgraph.add_edge("edit", "generate")
-  //     subgraph.set_finish_point("generate")
+    // check state
+    const outerState = await graph.getState(config);
+    expect(outerState).toEqual({
+      values: { subjects: ["cats", "dogs"], jokes: [] },
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "generateJoke",
+          path: [PUSH, 0],
+          interrupts: [],
+          state: {
+            configurable: {
+              thread_id: "1",
+              checkpoint_ns: expect.stringContaining("generateJoke:"),
+            },
+          },
+        },
+        {
+          id: expect.any(String),
+          name: "generateJoke",
+          path: [PUSH, 1],
+          interrupts: [],
+          state: {
+            configurable: {
+              thread_id: "1",
+              checkpoint_ns: expect.stringContaining("generateJoke:"),
+            },
+          },
+        },
+      ],
+      next: ["generateJoke", "generateJoke"],
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+      metadata: { parents: {}, source: "loop", writes: null, step: 0 },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+    });
+    // check state of each of the inner tasks
+    expect(
+      await graph.getState(outerState.tasks[0].state as RunnableConfig)
+    ).toEqual({
+      values: { subject: "cats - hohoho", jokes: [] },
+      next: ["generate"],
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: expect.stringContaining("generateJoke:"),
+          checkpoint_id: expect.any(String),
+          checkpoint_map: expect.objectContaining({
+            "": expect.any(String),
+          }),
+        },
+      },
+      metadata: {
+        step: 1,
+        source: "loop",
+        writes: {},
+        parents: { "": expect.any(String) },
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: expect.stringContaining("generateJoke:"),
+          checkpoint_id: expect.any(String),
+        },
+      },
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "generate",
+          path: [PULL, "generate"],
+          interrupts: [],
+        },
+      ],
+    });
+    expect(
+      await graph.getState(outerState.tasks[1].state as RunnableConfig)
+    ).toEqual({
+      values: { subject: "dogs - hohoho", jokes: [] },
+      next: ["generate"],
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: expect.stringContaining("generateJoke:"),
+          checkpoint_id: expect.any(String),
+          checkpoint_map: expect.objectContaining({
+            "": expect.any(String),
+          }),
+        },
+      },
+      metadata: {
+        step: 1,
+        source: "loop",
+        writes: {},
+        parents: { "": expect.any(String) },
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: expect.stringContaining("generateJoke:"),
+          checkpoint_id: expect.any(String),
+        },
+      },
+      tasks: [
+        {
+          id: expect.any(String),
+          name: "generate",
+          path: [PULL, "generate"],
+          interrupts: [],
+        },
+      ],
+    });
 
-  //     # parent graph
-  //     builder = StateGraph(OverallState)
-  //     builder.add_node(
-  //         "generate_joke",
-  //         subgraph.compile(interrupt_before=["generate"]),
-  //     )
-  //     builder.add_conditional_edges(START, continue_to_jokes)
-  //     builder.add_edge("generate_joke", END)
+    // update state of dogs joke graph
+    await graph.updateState(outerState.tasks[1].state as RunnableConfig, {
+      subject: "turtles - hohoho",
+    });
 
-  //     graph = builder.compile(checkpointer=checkpointer)
-  //     config = {"configurable": {"thread_id": "1"}}
-  //     tracer = FakeTracer()
+    // continue past interrupt
+    const results = (await gatherIterator(graph.stream(null, config))).sort();
+    expect(results[0]).toEqual({
+      generateJoke: { jokes: ["Joke about cats - hohoho"] },
+    });
+    expect(results[1]).toEqual({
+      generateJoke: { jokes: ["Joke about turtles - hohoho"] },
+    });
 
-  //     # invoke and pause at nested interrupt
-  //     assert graph.invoke(
-  //         {"subjects": ["cats", "dogs"]}, config={**config, "callbacks": [tracer]}
-  //     ) == {
-  //         "subjects": ["cats", "dogs"],
-  //         "jokes": [],
-  //     }
-  //     assert len(tracer.runs) == 1, "Should produce exactly 1 root run"
+    const actualSnapshot = await graph.getState(config);
+    const expectedSnapshot = {
+      values: {
+        subjects: ["cats", "dogs"],
+        jokes: ["Joke about cats - hohoho", "Joke about turtles - hohoho"],
+      },
+      tasks: [],
+      next: [],
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+      metadata: {
+        parents: {},
+        source: "loop",
+        writes: {
+          generateJoke: [
+            { jokes: ["Joke about cats - hohoho"] },
+            { jokes: ["Joke about turtles - hohoho"] },
+          ],
+        },
+        step: 1,
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+    };
+    expect(actualSnapshot).toEqual(expectedSnapshot);
 
-  //     # check state
-  //     outer_state = graph.get_state(config)
-  //     assert outer_state == StateSnapshot(
-  //         values={"subjects": ["cats", "dogs"], "jokes": []},
-  //         tasks=(
-  //             PregelTask(
-  //                 AnyStr(),
-  //                 "generate_joke",
-  //                 (PUSH, 0),
-  //                 state={
-  //                     "configurable": {
-  //                         "thread_id": "1",
-  //                         "checkpoint_ns": AnyStr("generate_joke:"),
-  //                     }
-  //                 },
-  //             ),
-  //             PregelTask(
-  //                 AnyStr(),
-  //                 "generate_joke",
-  //                 (PUSH, 1),
-  //                 state={
-  //                     "configurable": {
-  //                         "thread_id": "1",
-  //                         "checkpoint_ns": AnyStr("generate_joke:"),
-  //                     }
-  //                 },
-  //             ),
-  //         ),
-  //         next=("generate_joke", "generate_joke"),
-  //         config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": "",
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //         metadata={"parents": {}, "source": "loop", "writes": None, "step": 0},
-  //         created_at=AnyStr(),
-  //         parent_config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": "",
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //     )
-  //     # check state of each of the inner tasks
-  //     assert graph.get_state(outer_state.tasks[0].state) == StateSnapshot(
-  //         values={"subject": "cats - hohoho", "jokes": []},
-  //         next=("generate",),
-  //         config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": AnyStr("generate_joke:"),
-  //                 "checkpoint_id": AnyStr(),
-  //                 "checkpoint_map": AnyDict(
-  //                     {
-  //                         "": AnyStr(),
-  //                         AnyStr("generate_joke:"): AnyStr(),
-  //                     }
-  //                 ),
-  //             }
-  //         },
-  //         metadata={
-  //             "step": 1,
-  //             "source": "loop",
-  //             "writes": {"edit": None},
-  //             "parents": {"": AnyStr()},
-  //         },
-  //         created_at=AnyStr(),
-  //         parent_config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": AnyStr("generate_joke:"),
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //         tasks=(PregelTask(id=AnyStr(""), name="generate", path=(PULL, "generate")),),
-  //     )
-  //     assert graph.get_state(outer_state.tasks[1].state) == StateSnapshot(
-  //         values={"subject": "dogs - hohoho", "jokes": []},
-  //         next=("generate",),
-  //         config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": AnyStr("generate_joke:"),
-  //                 "checkpoint_id": AnyStr(),
-  //                 "checkpoint_map": AnyDict(
-  //                     {
-  //                         "": AnyStr(),
-  //                         AnyStr("generate_joke:"): AnyStr(),
-  //                     }
-  //                 ),
-  //             }
-  //         },
-  //         metadata={
-  //             "step": 1,
-  //             "source": "loop",
-  //             "writes": {"edit": None},
-  //             "parents": {"": AnyStr()},
-  //         },
-  //         created_at=AnyStr(),
-  //         parent_config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": AnyStr("generate_joke:"),
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //         tasks=(PregelTask(id=AnyStr(""), name="generate", path=(PULL, "generate")),),
-  //     )
-  //     # update state of dogs joke graph
-  //     graph.update_state(outer_state.tasks[1].state, {"subject": "turtles - hohoho"})
+    // test full history
+    const actualHistory = await gatherIterator(graph.getStateHistory(config));
 
-  //     # continue past interrupt
-  //     assert sorted(
-  //         graph.stream(None, config=config), key=lambda d: d["generate_joke"]["jokes"][0]
-  //     ) == [
-  //         {"generate_joke": {"jokes": ["Joke about cats - hohoho"]}},
-  //         {"generate_joke": {"jokes": ["Joke about turtles - hohoho"]}},
-  //     ]
-
-  //     actual_snapshot = graph.get_state(config)
-  //     expected_snapshot = StateSnapshot(
-  //         values={
-  //             "subjects": ["cats", "dogs"],
-  //             "jokes": ["Joke about cats - hohoho", "Joke about turtles - hohoho"],
-  //         },
-  //         tasks=(),
-  //         next=(),
-  //         config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": "",
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //         metadata={
-  //             "parents": {},
-  //             "source": "loop",
-  //             "writes": {
-  //                 "generate_joke": [
-  //                     {"jokes": ["Joke about cats - hohoho"]},
-  //                     {"jokes": ["Joke about turtles - hohoho"]},
-  //                 ]
-  //             },
-  //             "step": 1,
-  //         },
-  //         created_at=AnyStr(),
-  //         parent_config={
-  //             "configurable": {
-  //                 "thread_id": "1",
-  //                 "checkpoint_ns": "",
-  //                 "checkpoint_id": AnyStr(),
-  //             }
-  //         },
-  //     )
-  //     assert actual_snapshot == expected_snapshot
-
-  //     # test full history
-  //     actual_history = list(graph.get_state_history(config))
-
-  //     # get subgraph node state for expected history
-  //     expected_history = [
-  //         StateSnapshot(
-  //             values={
-  //                 "subjects": ["cats", "dogs"],
-  //                 "jokes": ["Joke about cats - hohoho", "Joke about turtles - hohoho"],
-  //             },
-  //             tasks=(),
-  //             next=(),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "parents": {},
-  //                 "source": "loop",
-  //                 "writes": {
-  //                     "generate_joke": [
-  //                         {"jokes": ["Joke about cats - hohoho"]},
-  //                         {"jokes": ["Joke about turtles - hohoho"]},
-  //                     ]
-  //                 },
-  //                 "step": 1,
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //         ),
-  //         StateSnapshot(
-  //             values={"subjects": ["cats", "dogs"], "jokes": []},
-  //             tasks=(
-  //                 PregelTask(
-  //                     AnyStr(),
-  //                     "generate_joke",
-  //                     (PUSH, 0),
-  //                     state={
-  //                         "configurable": {
-  //                             "thread_id": "1",
-  //                             "checkpoint_ns": AnyStr("generate_joke:"),
-  //                         }
-  //                     },
-  //                 ),
-  //                 PregelTask(
-  //                     AnyStr(),
-  //                     "generate_joke",
-  //                     (PUSH, 1),
-  //                     state={
-  //                         "configurable": {
-  //                             "thread_id": "1",
-  //                             "checkpoint_ns": AnyStr("generate_joke:"),
-  //                         }
-  //                     },
-  //                 ),
-  //             ),
-  //             next=("generate_joke", "generate_joke"),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={"parents": {}, "source": "loop", "writes": None, "step": 0},
-  //             created_at=AnyStr(),
-  //             parent_config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //         ),
-  //         StateSnapshot(
-  //             values={"jokes": []},
-  //             tasks=(PregelTask(AnyStr(), "__start__", (PULL, "__start__")),),
-  //             next=("__start__",),
-  //             config={
-  //                 "configurable": {
-  //                     "thread_id": "1",
-  //                     "checkpoint_ns": "",
-  //                     "checkpoint_id": AnyStr(),
-  //                 }
-  //             },
-  //             metadata={
-  //                 "parents": {},
-  //                 "source": "input",
-  //                 "writes": {"__start__": {"subjects": ["cats", "dogs"]}},
-  //                 "step": -1,
-  //             },
-  //             created_at=AnyStr(),
-  //             parent_config=None,
-  //         ),
-  //     ]
-  //     assert actual_history == expected_history
+    // get subgraph node state for expected history
+    const expectedHistory = [
+      {
+        values: {
+          subjects: ["cats", "dogs"],
+          jokes: ["Joke about cats - hohoho", "Joke about turtles - hohoho"],
+        },
+        tasks: [],
+        next: [],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: {
+          parents: {},
+          source: "loop",
+          writes: {
+            generateJoke: [
+              { jokes: ["Joke about cats - hohoho"] },
+              { jokes: ["Joke about turtles - hohoho"] },
+            ],
+          },
+          step: 1,
+        },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: { subjects: ["cats", "dogs"], jokes: [] },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "generateJoke",
+            path: [PUSH, 0],
+            interrupts: [],
+            state: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringContaining("generateJoke:"),
+              },
+            },
+          },
+          {
+            id: expect.any(String),
+            name: "generateJoke",
+            path: [PUSH, 1],
+            interrupts: [],
+            state: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringContaining("generateJoke:"),
+              },
+            },
+          },
+        ],
+        next: ["generateJoke", "generateJoke"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: { parents: {}, source: "loop", writes: null, step: 0 },
+        createdAt: expect.any(String),
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      },
+      {
+        values: { jokes: [] },
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "__start__",
+            path: [PULL, "__start__"],
+            interrupts: [],
+          },
+        ],
+        next: ["__start__"],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        metadata: {
+          parents: {},
+          source: "input",
+          writes: { __start__: { subjects: ["cats", "dogs"] } },
+          step: -1,
+        },
+        createdAt: expect.any(String),
+      },
+    ];
+    expect(actualHistory).toEqual(expectedHistory);
+  });
 });

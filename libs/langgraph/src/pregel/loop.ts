@@ -27,6 +27,10 @@ import {
   INPUT,
   INTERRUPT,
   TAG_HIDDEN,
+<<<<<<< HEAD
+=======
+  TASKS,
+>>>>>>> 7abbb4496c001b775e32acd189061f3ca32717ef
 } from "../constants.js";
 import {
   _applyWrites,
@@ -65,6 +69,10 @@ import { ManagedValueMapping, WritableManagedValue } from "../managed/base.js";
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
 const DEFAULT_LOOP_LIMIT = 25;
+const SPECIAL_CHANNELS = [ERROR, INTERRUPT];
+
+// [namespace, streamMode, payload]
+export type StreamChunk = [string[], StreamMode, unknown];
 
 // [namespace, streamMode, payload]
 export type StreamChunk = [string[], StreamMode, unknown];
@@ -100,6 +108,9 @@ type PregelLoopParams = {
   outputKeys: string | string[];
   streamKeys: string | string[];
   nodes: Record<string, PregelNode>;
+  checkpointNamespace: string[];
+  skipDoneTasks: boolean;
+  isNested: boolean;
   stream: StreamProtocol;
   store?: AsyncBatchedStore;
 };
@@ -169,6 +180,8 @@ export class PregelLoop {
 
   protected skipDoneTasks: boolean;
 
+  protected taskWritesLeft: number = 0;
+
   status:
     | "pending"
     | "done"
@@ -211,59 +224,63 @@ export class PregelLoop {
     this.step = params.step;
     this.stop = params.stop;
     this.config = params.config;
-    this.isNested = CONFIG_KEY_READ in (this.config.configurable ?? {});
+    this.checkpointConfig = params.checkpointConfig;
+    this.isNested = params.isNested;
     this.outputKeys = params.outputKeys;
     this.streamKeys = params.streamKeys;
     this.nodes = params.nodes;
-    this.skipDoneTasks = this.config.configurable?.checkpoint_id === undefined;
+    this.skipDoneTasks = params.skipDoneTasks;
     this.store = params.store;
     this.stream = params.stream;
-    if (this.config.configurable?.[CONFIG_KEY_STREAM] !== undefined) {
-      this.stream = createDuplexStream(
-        this.stream,
-        this.config.configurable[CONFIG_KEY_STREAM]
+    this.checkpointNamespace = params.checkpointNamespace;
+  }
+
+  static async initialize(params: PregelLoopInitializeParams) {
+    let { config, stream } = params;
+    if (
+      stream !== undefined &&
+      config.configurable?.[CONFIG_KEY_STREAM] !== undefined
+    ) {
+      stream = createDuplexStream(
+        stream,
+        config.configurable[CONFIG_KEY_STREAM]
       );
     }
-
+    const skipDoneTasks = config.configurable?.checkpoint_id === undefined;
+    const isNested = CONFIG_KEY_READ in (config.configurable ?? {});
     if (
-      !this.isNested &&
-      this.config.configurable?.checkpoint_ns !== undefined &&
-      this.config.configurable?.checkpoint_ns !== ""
+      !isNested &&
+      config.configurable?.checkpoint_ns !== undefined &&
+      config.configurable?.checkpoint_ns !== ""
     ) {
-      this.config = patchConfigurable(this.config, {
+      config = patchConfigurable(config, {
         checkpoint_ns: "",
         checkpoint_id: undefined,
       });
     }
-
+    let checkpointConfig = config;
     if (
-      this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] !== undefined &&
-      this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP]?.[
-        this.config.configurable?.checkpoint_ns
+      config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] !== undefined &&
+      config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP]?.[
+        config.configurable?.checkpoint_ns
       ]
     ) {
-      this.checkpointConfig = patchConfigurable(this.config, {
+      checkpointConfig = patchConfigurable(config, {
         checkpoint_id:
-          this.config.configurable[CONFIG_KEY_CHECKPOINT_MAP][
-            this.config.configurable?.checkpoint_ns
+          config.configurable[CONFIG_KEY_CHECKPOINT_MAP][
+            config.configurable?.checkpoint_ns
           ],
       });
-    } else {
-      this.checkpointConfig = params.checkpointConfig;
     }
+    const checkpointNamespace =
+      config.configurable?.checkpoint_ns?.split(
+        CHECKPOINT_NAMESPACE_SEPARATOR
+      ) ?? [];
 
-    this.checkpointNamespace = this.config.configurable?.checkpoint_ns
-      ? this.config.configurable.checkpoint_ns.split(
-          CHECKPOINT_NAMESPACE_SEPARATOR
-        )
-      : [];
-  }
-
-  static async initialize(params: PregelLoopInitializeParams) {
     const saved: CheckpointTuple = (await params.checkpointer?.getTuple(
-      params.config
+      checkpointConfig
     )) ?? {
-      config: params.config,
+      config,
       checkpoint: emptyCheckpoint(),
       metadata: {
         source: "input",
@@ -273,12 +290,12 @@ export class PregelLoop {
       },
       pendingWrites: [],
     };
-    const checkpointConfig = {
-      ...params.config,
+    checkpointConfig = {
+      ...config,
       ...saved.config,
       configurable: {
         checkpoint_ns: "",
-        ...params.config.configurable,
+        ...config.configurable,
         ...saved.config.configurable,
       },
     };
@@ -289,8 +306,7 @@ export class PregelLoop {
     const channels = emptyChannels(params.channelSpecs, checkpoint);
 
     const step = (checkpointMetadata.step ?? 0) + 1;
-    const stop =
-      step + (params.config.recursionLimit ?? DEFAULT_LOOP_LIMIT) + 1;
+    const stop = step + (config.recursionLimit ?? DEFAULT_LOOP_LIMIT) + 1;
     const checkpointPreviousVersions = { ...checkpoint.channel_versions };
 
     const store = params.store
@@ -303,13 +319,16 @@ export class PregelLoop {
 
     return new PregelLoop({
       input: params.input,
-      config: params.config,
+      config,
       checkpointer: params.checkpointer,
       checkpoint,
       checkpointMetadata,
       checkpointConfig,
+      checkpointNamespace,
       channels,
       managed: params.managed,
+      isNested,
+      skipDoneTasks,
       step,
       stop,
       checkpointPreviousVersions,
@@ -317,7 +336,7 @@ export class PregelLoop {
       outputKeys: params.outputKeys ?? [],
       streamKeys: params.streamKeys ?? [],
       nodes: params.nodes,
-      stream: params.stream,
+      stream,
       store,
     });
   }
@@ -355,6 +374,22 @@ export class PregelLoop {
    * @param writes
    */
   putWrites(taskId: string, writes: PendingWrite<string>[]) {
+    if (writes.length === 0) {
+      return;
+    }
+    // adjust taskWritesLeft
+    const firstChannel = writes[0][0];
+    const anyChannelIsSend = writes.find(([channel]) => channel === TASKS);
+    const alwaysSave =
+      anyChannelIsSend || SPECIAL_CHANNELS.includes(firstChannel);
+    if (!alwaysSave && !this.taskWritesLeft) {
+      return this._outputWrites(taskId, writes);
+    } else if (firstChannel !== INTERRUPT) {
+      // INTERRUPT makes us want to save the last task's writes
+      // so we don't decrement tasksWritesLeft in that case
+      this.taskWritesLeft -= 1;
+    }
+    // save writes
     const pendingWrites: CheckpointPendingWrite<string>[] = writes.map(
       ([key, value]) => {
         return [taskId, key, value];
@@ -514,6 +549,7 @@ export class PregelLoop {
         }
       );
       this.tasks = nextTasks;
+      this.taskWritesLeft = Object.values(this.tasks).length - 1;
 
       // Produce debug output
       if (this.checkpointer) {

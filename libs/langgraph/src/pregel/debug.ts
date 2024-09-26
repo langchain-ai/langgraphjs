@@ -227,6 +227,7 @@ export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
       return {
         id: task.id,
         name: task.name as string,
+        path: task.path,
         error,
         interrupts,
       };
@@ -234,6 +235,7 @@ export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
     return {
       id: task.id,
       name: task.name as string,
+      path: task.path,
       interrupts,
       state: states?.[task.id],
     };
