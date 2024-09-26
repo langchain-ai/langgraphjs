@@ -29,6 +29,7 @@ import {
   CheckpointMetadata,
   CheckpointTuple,
   MemorySaver,
+  MemoryStore,
   PendingWrite,
   uuid5,
   uuid6,
@@ -74,7 +75,6 @@ import {
 import { ERROR, INTERRUPT, PULL, PUSH, Send } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
-import { MemoryStore } from "../store/memory.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 
 expect.extend({

@@ -1,5 +1,4 @@
 import { RunnableConfig } from "@langchain/core/runnables";
-import { BaseStore, type Values } from "../store/base.js";
 import {
   ChannelKeyPlaceholder,
   ConfiguredManagedValue,
@@ -9,9 +8,10 @@ import {
 } from "./base.js";
 import { CONFIG_KEY_STORE } from "../constants.js";
 import { InvalidUpdateError } from "../errors.js";
+import { BaseStore, PutOperation } from "@langchain/langgraph-checkpoint";
 
-type Value = Record<string, Values>;
-type Update = Record<string, Values | null>;
+type Value = Record<string, Record<string, any>>;
+type Update = Record<string, Record<string, any> | null>;
 
 export interface SharedValueParams extends ManagedValueParams {
   scope: string;
@@ -23,7 +23,7 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
 
   store: BaseStore | null;
 
-  ns: string | null;
+  ns: ["scoped", string, string, any] | null;
 
   value: Value = {};
 
@@ -40,7 +40,7 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
         typeof scopeValue === "string"
           ? scopeValue
           : JSON.stringify(scopeValue);
-      this.ns = `scoped:${this.scope}:${params.key}:${scopedValueString}`;
+      this.ns = ["scoped", this.scope, params.key, scopedValueString];
     } else {
       throw new Error(
         `Required scope "${this.scope}" for shared state key was not passed in "config.configurable".`
@@ -74,8 +74,8 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
 
   private processUpdate(
     values: Update[]
-  ): Array<[string, string, Values | null]> {
-    const writes: Array<[string, string, Values | null]> = [];
+  ): Array<PutOperation> {
+    const writes: Array<PutOperation> = [];
 
     for (const vv of values) {
       for (const [k, v] of Object.entries(vv)) {
@@ -83,15 +83,15 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
           if (k in this.value) {
             delete this.value[k];
             if (this.ns) {
-              writes.push([this.ns, k, null]);
+              writes.push({ namespace: this.ns, id: k, value: null });
             }
           }
         } else if (typeof v !== "object" || v === null) {
           throw new InvalidUpdateError("Received a non-object value");
         } else {
-          this.value[k] = v as Values;
+          this.value[k] = v;
           if (this.ns) {
-            writes.push([this.ns, k, v as Values]);
+            writes.push({ namespace: this.ns, id: k, value: v });
           }
         }
       }
@@ -104,14 +104,17 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
     if (!this.store) {
       this.processUpdate(values);
     } else {
-      await this.store.put(this.processUpdate(values));
+      await this.store.batch(this.processUpdate(values));
     }
   }
 
   private async loadStore(): Promise<boolean> {
     if (this.store && this.ns) {
-      const saved = await this.store.list([this.ns]);
-      this.value = saved[this.ns] || {};
+      const saved = await this.store.search(this.ns);
+      this.value = saved.reduce((acc, item) => {
+        acc[item.id] = item.value;
+        return acc;
+      }, {} as Record<string, any>);
     }
     return false;
   }

@@ -10,6 +10,8 @@ import {
   CheckpointPendingWrite,
   CheckpointMetadata,
   All,
+  BaseStore,
+  AsyncBatchedStore,
 } from "@langchain/langgraph-checkpoint";
 import {
   BaseChannel,
@@ -59,8 +61,6 @@ import {
   mapDebugTaskResults,
 } from "./debug.js";
 import { PregelNode } from "./read.js";
-import { BaseStore } from "../store/base.js";
-import { AsyncBatchedStore } from "../store/batch.js";
 import { ManagedValueMapping, WritableManagedValue } from "../managed/base.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");

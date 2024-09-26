@@ -40,6 +40,14 @@ export {
   copyCheckpoint,
   emptyCheckpoint,
   BaseCheckpointSaver,
+  type Item,
+  type GetOperation,
+  type SearchOperation,
+  type PutOperation,
+  type Operation,
+  type OperationResults,
+  BaseStore,
+  AsyncBatchedStore,
+  MemoryStore,
 } from "@langchain/langgraph-checkpoint";
-export * from "./store/index.js";
 export * from "./managed/index.js";

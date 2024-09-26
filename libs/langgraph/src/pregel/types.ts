@@ -4,12 +4,12 @@ import type {
   PendingWrite,
   CheckpointMetadata,
   BaseCheckpointSaver,
+  BaseStore,
 } from "@langchain/langgraph-checkpoint";
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
 import { RetryPolicy } from "./utils/index.js";
 import { Interrupt } from "../constants.js";
-import { BaseStore } from "../store/base.js";
 import { type ManagedValueSpec } from "../managed/base.js";
 
 export type StreamMode = "values" | "updates" | "debug";

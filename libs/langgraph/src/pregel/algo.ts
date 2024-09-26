@@ -15,6 +15,7 @@ import {
   type PendingWriteValue,
   uuid5,
   maxChannelVersion,
+  BaseStore,
 } from "@langchain/langgraph-checkpoint";
 import {
   BaseChannel,
@@ -41,6 +42,7 @@ import {
   CHECKPOINT_NAMESPACE_END,
   PUSH,
   PULL,
+  CONFIG_KEY_STORE,
 } from "../constants.js";
 import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
@@ -330,6 +332,15 @@ export type NextTaskExtraFields = {
   isResuming?: boolean;
   checkpointer?: BaseCheckpointSaver;
   manager?: CallbackManagerForChainRun;
+  store?: BaseStore;
+};
+
+export type NextTaskExtraFieldsWithStore = NextTaskExtraFields & {
+  store?: BaseStore;
+};
+
+export type NextTaskExtraFieldsWithoutStore = NextTaskExtraFields & {
+  store?: never;
 };
 
 export function _prepareNextTasks<
@@ -342,7 +353,7 @@ export function _prepareNextTasks<
   managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: false,
-  extra: NextTaskExtraFields
+  extra: NextTaskExtraFieldsWithoutStore
 ): Record<string, PregelTaskDescription>;
 
 export function _prepareNextTasks<
@@ -355,7 +366,7 @@ export function _prepareNextTasks<
   managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: true,
-  extra: NextTaskExtraFields
+  extra: NextTaskExtraFieldsWithStore
 ): Record<string, PregelExecutableTask<keyof Nn, keyof Cc>>;
 
 export function _prepareNextTasks<
@@ -368,7 +379,7 @@ export function _prepareNextTasks<
   managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: boolean,
-  extra: NextTaskExtraFields
+  extra: NextTaskExtraFieldsWithStore | NextTaskExtraFieldsWithoutStore
 ):
   | Record<string, PregelTaskDescription>
   | Record<string, PregelExecutableTask<keyof Nn, keyof Cc>> {
@@ -450,7 +461,7 @@ export function _prepareSingleTask<
   managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: boolean,
-  extra: NextTaskExtraFields
+  extra: NextTaskExtraFieldsWithStore
 ): PregelTaskDescription | PregelExecutableTask<keyof Nn, keyof Cc> | undefined;
 
 export function _prepareSingleTask<
@@ -571,6 +582,7 @@ export function _prepareSingleTask<
                 [CONFIG_KEY_CHECKPOINT_MAP]: {
                   ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                   [parentNamespace]: checkpoint.id,
+                [CONFIG_KEY_STORE]: extra.store ?? configurable[CONFIG_KEY_STORE],
                 },
                 checkpoint_id: undefined,
                 checkpoint_ns: taskCheckpointNamespace,
@@ -696,6 +708,7 @@ export function _prepareSingleTask<
                   },
                   checkpoint_id: undefined,
                   checkpoint_ns: taskCheckpointNamespace,
+                  [CONFIG_KEY_STORE]: extra.store ?? configurable[CONFIG_KEY_STORE],
                 },
               }
             ),

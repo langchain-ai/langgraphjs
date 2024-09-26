@@ -1,6 +1,5 @@
 import { describe, it, expect, jest } from "@jest/globals";
-import { BaseStore, type Values } from "../store/base.js";
-import { AsyncBatchedStore } from "../store/batch.js";
+import { AsyncBatchedStore, BaseStore } from "@langchain/langgraph-checkpoint";
 
 describe("AsyncBatchedStore", () => {
   it("should batch concurrent calls", async () => {
@@ -9,7 +8,7 @@ describe("AsyncBatchedStore", () => {
     class MockStore extends BaseStore {
       async list(
         prefixes: string[]
-      ): Promise<Record<string, Record<string, Values>>> {
+      ): Promise<Record<string, Record<string, Record<string, any>>>> {
         listMock(prefixes);
         return Object.fromEntries(
           prefixes.map((prefix) => [prefix, { [prefix]: { value: 1 } }])
@@ -17,7 +16,7 @@ describe("AsyncBatchedStore", () => {
       }
 
       async put(
-        _writes: Array<[string, string, Values | null]>
+        _writes: Array<[string, string, Record<string, any> | null]>
       ): Promise<void> {
         // Not used in this test
       }

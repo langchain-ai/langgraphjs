@@ -14,6 +14,7 @@ import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   All,
   BaseCheckpointSaver,
+  BaseStore,
   CheckpointListOptions,
   CheckpointTuple,
   compareChannelVersions,
@@ -78,7 +79,6 @@ import {
 } from "./utils/index.js";
 import { PregelLoop, StreamChunk, StreamProtocol } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
-import { BaseStore } from "../store/base.js";
 import {
   ChannelKeyPlaceholder,
   isConfiguredManagedValue,
@@ -815,7 +815,8 @@ export class Pregel<
     RunnableConfig, // config without pregel keys
     All | string[], // interrupt before
     All | string[], // interrupt after
-    BaseCheckpointSaver | undefined
+    BaseCheckpointSaver | undefined,
+    BaseStore | undefined
   ] {
     const {
       debug,
@@ -869,6 +870,13 @@ export class Pregel<
       defaultCheckpointer = this.checkpointer;
     }
 
+    let defaultStore: BaseStore | undefined;
+    if (config.configurable && CONFIG_KEY_STORE in config.configurable) {
+      defaultStore = config.configurable[CONFIG_KEY_STORE];
+    } else {
+      defaultStore = this.store;
+    }
+
     return [
       defaultDebug,
       defaultStreamMode,
@@ -878,6 +886,7 @@ export class Pregel<
       defaultInterruptBefore as All | string[],
       defaultInterruptAfter as All | string[],
       defaultCheckpointer,
+      defaultStore,
     ];
   }
 
@@ -1006,6 +1015,7 @@ export class Pregel<
       interruptBefore,
       interruptAfter,
       checkpointer,
+      store,
     ] = this._defaults(inputConfig);
 
     const { channelSpecs, managed } = await this.prepareSpecs(config);
@@ -1042,7 +1052,7 @@ export class Pregel<
         managed,
         outputKeys,
         streamKeys: this.streamChannelsAsIs as string | string[],
-        store: this.store,
+        store,
         stream: new StreamProtocol(
           (chunk) => stream.push(chunk),
           new Set(streamMode)
