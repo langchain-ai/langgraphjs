@@ -55,6 +55,8 @@ import {
   StateSnapshot,
   StreamMode,
   StreamOutput,
+  ChannelsStateType,
+  AllStreamOutputTypes,
 } from "./types.js";
 import {
   GraphRecursionError,
@@ -192,16 +194,10 @@ export interface PregelOptions<
   debug?: boolean;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type PregelInputType = any;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type PregelOutputType = any;
-
 export class Pregel<Nodes extends NodesType, Channels extends ChannelsType>
   extends Runnable<
-    PregelInputType,
-    PregelOutputType,
+    any, // Partial<ChannelsStateType<Channels>>, // input type
+    any, // AllStreamOutputTypes<Nodes, Channels>, // output type
     PregelOptions<Nodes, Channels>
   >
   implements PregelInterface<Nodes, Channels>
@@ -650,13 +646,13 @@ export class Pregel<Nodes extends NodesType, Channels extends ChannelsType>
    * @param options.interruptAfter Nodes to interrupt after.
    * @param options.debug Whether to print debug information during execution.
    */
-  override async stream<Sm extends StreamMode>(
-    input: PregelInputType,
-    options?: Partial<PregelOptions<Nodes, Channels, Sm>>
-  ): Promise<
-    IterableReadableStream<StreamOutput<Sm, Nodes, Channels, PregelOutputType>>
-  > {
-    return super.stream(input, options);
+  override async stream<Mode extends StreamMode>(
+    input: Partial<ChannelsStateType<Channels>>,
+    options?: Partial<PregelOptions<Nodes, Channels, Mode>>
+  ): Promise<IterableReadableStream<StreamOutput<Mode, Nodes, Channels>>> {
+    return super.stream(input, options) as Promise<
+      IterableReadableStream<StreamOutput<Mode, Nodes, Channels>>
+    >;
   }
 
   protected async prepareSpecs(
@@ -721,10 +717,10 @@ export class Pregel<Nodes extends NodesType, Channels extends ChannelsType>
     };
   }
 
-  override async *_streamIterator(
-    input: PregelInputType,
-    options?: Partial<PregelOptions<Nodes, Channels>>
-  ): AsyncGenerator<PregelOutputType> {
+  override async *_streamIterator<Mode extends StreamMode>(
+    input: Partial<ChannelsStateType<Channels>>,
+    options?: Partial<PregelOptions<Nodes, Channels, Mode>>
+  ): AsyncGenerator<StreamOutput<Mode, Nodes, Channels>> {
     const inputConfig = ensureConfig(options);
     if (
       inputConfig.recursionLimit === undefined ||
@@ -916,17 +912,17 @@ export class Pregel<Nodes extends NodesType, Channels extends ChannelsType>
    * @param options.interruptAfter Nodes to interrupt after.
    * @param options.debug Whether to print debug information during execution.
    */
-  override async invoke(
-    input: PregelInputType,
-    options?: Partial<PregelOptions<Nodes, Channels>>
-  ): Promise<PregelOutputType> {
-    const streamMode = options?.streamMode ?? "values";
+  override async invoke<Mode extends StreamMode>(
+    input: ChannelsStateType<Channels>,
+    options?: Partial<PregelOptions<Nodes, Channels, Mode>>
+  ): Promise<StreamOutput<Mode, Nodes, Channels>> {
+    const streamMode = options?.streamMode ?? ("values" as const);
     const config = {
       ...ensureConfig(options),
       outputKeys: options?.outputKeys ?? this.outputChannels,
       streamMode,
     };
-    const chunks = [];
+    const chunks: StreamOutput<Mode, Nodes, Channels>[] = [];
     const stream = await this.stream(input, config);
     for await (const chunk of stream) {
       chunks.push(chunk);
