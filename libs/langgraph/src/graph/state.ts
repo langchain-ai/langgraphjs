@@ -27,6 +27,7 @@ import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { RunnableCallable } from "../utils.js";
 import {
   _isSend,
+  CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Send,
   TAG_HIDDEN,
@@ -40,7 +41,7 @@ import {
   StateType,
   UpdateType,
 } from "./annotation.js";
-import type { RetryPolicy } from "../pregel/utils.js";
+import type { RetryPolicy } from "../pregel/utils/index.js";
 import { BaseStore } from "../store/base.js";
 import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
 
@@ -284,10 +285,15 @@ export class StateGraph<
       );
     }
 
-    if (key.includes(CHECKPOINT_NAMESPACE_SEPARATOR)) {
-      throw new Error(
-        `"${CHECKPOINT_NAMESPACE_SEPARATOR}" is a reserved character and is not allowed in node names.`
-      );
+    for (const reservedChar of [
+      CHECKPOINT_NAMESPACE_SEPARATOR,
+      CHECKPOINT_NAMESPACE_END,
+    ]) {
+      if (key.includes(reservedChar)) {
+        throw new Error(
+          `"${reservedChar}" is a reserved character and is not allowed in node names.`
+        );
+      }
     }
     this.warnIfCompiled(
       `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
@@ -539,7 +545,7 @@ export class CompiledStateGraph<
         );
       }
     } else if (start === START) {
-      const channelName = `start:${end}`;
+      const channelName = `${START}:${end}`;
       // register channel
       (this.channels as Record<string, BaseChannel>)[channelName] =
         new EphemeralValue();

@@ -175,86 +175,94 @@ export class MemorySaver extends BaseCheckpointSaver {
     const threadIds = config.configurable?.thread_id
       ? [config.configurable?.thread_id]
       : Object.keys(this.storage);
-    const checkpointNamespace = config.configurable?.checkpoint_ns ?? "";
+    const configCheckpointNamespace = config.configurable?.checkpoint_ns;
 
     for (const threadId of threadIds) {
-      const checkpoints = this.storage[threadId]?.[checkpointNamespace] ?? {};
-      const sortedCheckpoints = Object.entries(checkpoints).sort((a, b) =>
-        b[0].localeCompare(a[0])
-      );
-
-      for (const [
-        checkpointId,
-        [checkpoint, metadataStr, parentCheckpointId],
-      ] of sortedCheckpoints) {
-        // Filter by checkpoint ID
+      for (const checkpointNamespace of Object.keys(this.storage[threadId])) {
         if (
-          before &&
-          before.configurable?.checkpoint_id &&
-          checkpointId >= before.configurable.checkpoint_id
+          configCheckpointNamespace !== undefined &&
+          checkpointNamespace !== configCheckpointNamespace
         ) {
           continue;
         }
-
-        // Parse metadata
-        const metadata = (await this.serde.loadsTyped(
-          "json",
-          metadataStr
-        )) as CheckpointMetadata;
-
-        // Limit search results
-        if (limit !== undefined) {
-          if (limit <= 0) break;
-          // eslint-disable-next-line no-param-reassign
-          limit -= 1;
-        }
-
-        const writes =
-          this.writes[
-            _generateKey(threadId, checkpointNamespace, checkpointId)
-          ] ?? [];
-        const pending_sends = await this._getPendingSends(
-          threadId,
-          checkpointNamespace,
-          parentCheckpointId
-        );
-        const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
-          writes.map(async ([taskId, channel, value]) => {
-            return [
-              taskId,
-              channel,
-              await this.serde.loadsTyped("json", value as string),
-            ];
-          })
+        const checkpoints = this.storage[threadId]?.[checkpointNamespace] ?? {};
+        const sortedCheckpoints = Object.entries(checkpoints).sort((a, b) =>
+          b[0].localeCompare(a[0])
         );
 
-        const deserializedCheckpoint = {
-          ...(await this.serde.loadsTyped("json", checkpoint)),
-          pending_sends,
-        };
+        for (const [
+          checkpointId,
+          [checkpoint, metadataStr, parentCheckpointId],
+        ] of sortedCheckpoints) {
+          // Filter by checkpoint ID
+          if (
+            before &&
+            before.configurable?.checkpoint_id &&
+            checkpointId >= before.configurable.checkpoint_id
+          ) {
+            continue;
+          }
 
-        const checkpointTuple: CheckpointTuple = {
-          config: {
-            configurable: {
-              thread_id: threadId,
-              checkpoint_ns: checkpointNamespace,
-              checkpoint_id: checkpointId,
-            },
-          },
-          checkpoint: deserializedCheckpoint,
-          metadata,
-          pendingWrites,
-        };
-        if (parentCheckpointId !== undefined) {
-          checkpointTuple.parentConfig = {
-            configurable: {
-              thread_id: threadId,
-              checkpoint_ns: checkpointNamespace,
-              checkpoint_id: parentCheckpointId,
-            },
+          // Parse metadata
+          const metadata = (await this.serde.loadsTyped(
+            "json",
+            metadataStr
+          )) as CheckpointMetadata;
+
+          // Limit search results
+          if (limit !== undefined) {
+            if (limit <= 0) break;
+            // eslint-disable-next-line no-param-reassign
+            limit -= 1;
+          }
+
+          const writes =
+            this.writes[
+              _generateKey(threadId, checkpointNamespace, checkpointId)
+            ] ?? [];
+          const pending_sends = await this._getPendingSends(
+            threadId,
+            checkpointNamespace,
+            parentCheckpointId
+          );
+          const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
+            writes.map(async ([taskId, channel, value]) => {
+              return [
+                taskId,
+                channel,
+                await this.serde.loadsTyped("json", value as string),
+              ];
+            })
+          );
+
+          const deserializedCheckpoint = {
+            ...(await this.serde.loadsTyped("json", checkpoint)),
+            pending_sends,
           };
+
+          const checkpointTuple: CheckpointTuple = {
+            config: {
+              configurable: {
+                thread_id: threadId,
+                checkpoint_ns: checkpointNamespace,
+                checkpoint_id: checkpointId,
+              },
+            },
+            checkpoint: deserializedCheckpoint,
+            metadata,
+            pendingWrites,
+          };
+          if (parentCheckpointId !== undefined) {
+            checkpointTuple.parentConfig = {
+              configurable: {
+                thread_id: threadId,
+                checkpoint_ns: checkpointNamespace,
+                checkpoint_id: parentCheckpointId,
+              },
+            };
+          }
+          yield checkpointTuple;
         }
-        yield checkpointTuple;
       }
     }
   }
