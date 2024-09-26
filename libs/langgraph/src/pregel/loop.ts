@@ -27,10 +27,7 @@ import {
   INPUT,
   INTERRUPT,
   TAG_HIDDEN,
-<<<<<<< HEAD
-=======
   TASKS,
->>>>>>> 7abbb4496c001b775e32acd189061f3ca32717ef
 } from "../constants.js";
 import {
   _applyWrites,
@@ -70,9 +67,6 @@ const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
 const DEFAULT_LOOP_LIMIT = 25;
 const SPECIAL_CHANNELS = [ERROR, INTERRUPT];
-
-// [namespace, streamMode, payload]
-export type StreamChunk = [string[], StreamMode, unknown];
 
 // [namespace, streamMode, payload]
 export type StreamChunk = [string[], StreamMode, unknown];
