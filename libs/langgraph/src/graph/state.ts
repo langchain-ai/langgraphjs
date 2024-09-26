@@ -53,10 +53,10 @@ export type ChannelReducers<Channels extends object> = {
 
 export interface StateGraphArgs<Channels extends object | unknown> {
   channels: Channels extends object
-  ? Channels extends unknown[]
-  ? ChannelReducers<{ __root__: Channels }>
-  : ChannelReducers<Channels>
-  : ChannelReducers<{ __root__: Channels }>;
+    ? Channels extends unknown[]
+      ? ChannelReducers<{ __root__: Channels }>
+      : ChannelReducers<Channels>
+    : ChannelReducers<{ __root__: Channels }>;
 }
 
 export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
@@ -158,15 +158,15 @@ export class StateGraph<
   SD extends StateDefinition | unknown,
   InputStateSchema = SD extends StateDefinition ? StateType<SD> : SD,
   OutputStateSchema = SD extends StateDefinition
-  ? UpdateType<SD>
-  : Partial<InputStateSchema>,
+    ? UpdateType<SD>
+    : Partial<InputStateSchema>,
   NodeNames extends string = typeof START,
   InputDefinition extends StateDefinition = SD extends StateDefinition
-  ? SD
-  : StateDefinition,
+    ? SD
+    : StateDefinition,
   OutputDefinition extends StateDefinition = SD extends StateDefinition
-  ? SD
-  : StateDefinition,
+    ? SD
+    : StateDefinition,
   ConfigSchema extends StateDefinition = StateDefinition
 > extends Graph<
   NodeNames,
@@ -200,11 +200,11 @@ export class StateGraph<
   constructor(
     fields: SD extends StateDefinition
       ?
-      | SD
-      | AnnotationRoot<SD>
-      | StateGraphArgs<InputStateSchema>
-      | StateGraphArgsWithStateSchema<SD, InputDefinition, OutputDefinition>
-      | StateGraphArgsWithInputOutputSchemas<SD, OutputDefinition>
+          | SD
+          | AnnotationRoot<SD>
+          | StateGraphArgs<InputStateSchema>
+          | StateGraphArgsWithStateSchema<SD, InputDefinition, OutputDefinition>
+          | StateGraphArgsWithInputOutputSchemas<SD, OutputDefinition>
       : StateGraphArgs<InputStateSchema>,
     configSchema?: AnnotationRoot<ConfigSchema>
   ) {
@@ -286,8 +286,8 @@ export class StateGraph<
       NodeInput,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       OutputStateSchema extends object
-      ? OutputStateSchema & Record<string, any>
-      : OutputStateSchema
+        ? OutputStateSchema & Record<string, any>
+        : OutputStateSchema
     >,
     options?: StateGraphAddNodeOptions
   ): StateGraph<
@@ -358,7 +358,7 @@ export class StateGraph<
     if (this.compiled) {
       console.warn(
         "Adding an edge to a graph that has already been compiled. This will " +
-        "not be reflected in the compiled graph."
+          "not be reflected in the compiled graph."
       );
     }
 
@@ -519,14 +519,14 @@ export class CompiledStateGraph<
       key === ROOT
         ? { channel: key, value: PASSTHROUGH, skipNone: true }
         : {
-          channel: key,
-          value: PASSTHROUGH,
-          mapper: new RunnableCallable({
-            func: getStateKey.bind(null, key as keyof U),
-            trace: false,
-            recurse: false,
-          }),
-        }
+            channel: key,
+            value: PASSTHROUGH,
+            mapper: new RunnableCallable({
+              func: getStateKey.bind(null, key as keyof U),
+              trace: false,
+              recurse: false,
+            }),
+          }
     );
 
     // add node and output channel
@@ -561,11 +561,11 @@ export class CompiledStateGraph<
         mapper: isSingleInput
           ? undefined
           : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (input: Record<string, any>) => {
-            return Object.fromEntries(
-              Object.entries(input).filter(([k]) => k in inputValues)
-            );
-          },
+            (input: Record<string, any>) => {
+              return Object.fromEntries(
+                Object.entries(input).filter(([k]) => k in inputValues)
+              );
+            },
         bound: node?.runnable,
         metadata: node?.metadata,
         retryPolicy: node?.retryPolicy,

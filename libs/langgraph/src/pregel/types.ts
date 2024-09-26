@@ -23,10 +23,10 @@ type ExtractChannelValueType<Channel> = Channel extends BaseChannel
   ? Channel["ValueType"]
   : Channel extends ManagedValueSpec
   ? Channel extends ConfiguredManagedValue<infer V>
-  ? V
-  : Channel extends ManagedValue<infer V>
-  ? V
-  : never
+    ? V
+    : Channel extends ManagedValue<infer V>
+    ? V
+    : never
   : never;
 
 export type ChannelsStateType<Channels extends ChannelsType> = {
@@ -37,10 +37,10 @@ type ExtractChannelUpdateType<Channel> = Channel extends BaseChannel
   ? Channel["UpdateType"]
   : Channel extends ManagedValueSpec
   ? Channel extends ConfiguredManagedValue<infer V>
-  ? V
-  : Channel extends ManagedValue<infer V>
-  ? V
-  : never
+    ? V
+    : Channel extends ManagedValue<infer V>
+    ? V
+    : never
   : never;
 
 export type ChannelsUpdateType<Channels extends ChannelsType> = {
@@ -90,15 +90,15 @@ export type StreamOutput<
   ? SingleStreamModeOutput<Mode[0], Nodes, Channels>
   : Mode extends [SingleStreamMode, SingleStreamMode]
   ? [
-    SingleStreamModeOutput<Mode[0], Nodes, Channels>,
-    SingleStreamModeOutput<Mode[1], Nodes, Channels>
-  ]
+      SingleStreamModeOutput<Mode[0], Nodes, Channels>,
+      SingleStreamModeOutput<Mode[1], Nodes, Channels>
+    ]
   : Mode extends [SingleStreamMode, SingleStreamMode, SingleStreamMode]
   ? [
-    SingleStreamModeOutput<Mode[0], Nodes, Channels>,
-    SingleStreamModeOutput<Mode[1], Nodes, Channels>,
-    SingleStreamModeOutput<Mode[2], Nodes, Channels>
-  ]
+      SingleStreamModeOutput<Mode[0], Nodes, Channels>,
+      SingleStreamModeOutput<Mode[1], Nodes, Channels>,
+      SingleStreamModeOutput<Mode[2], Nodes, Channels>
+    ]
   : never;
 
 // Gross hack to avoid recursion limits & define the narrowest type that covers all possible stream output types
