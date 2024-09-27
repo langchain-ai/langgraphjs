@@ -247,9 +247,7 @@ export class PregelNode<
         triggers: this.triggers,
         mapper: this.mapper,
         writers: this.writers,
-        bound: _coerceToRunnable<RunInput, NewRunOutput>(
-          coerceable as RunnableLike<RunInput, NewRunOutput>
-        ),
+        bound: _coerceToRunnable<RunInput, NewRunOutput>(coerceable),
         config: this.config,
         kwargs: this.kwargs,
         retryPolicy: this.retryPolicy,
