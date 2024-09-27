@@ -94,35 +94,40 @@ export class MemoryStore extends BaseStore {
   }
 
   private listNamespacesOperation(op: ListNamespacesOperation): string[][] {
-    const allNamespaces = Array.from(this.data.keys()).map((ns) => ns.split(':'));
+    const allNamespaces = Array.from(this.data.keys()).map((ns) =>
+      ns.split(":")
+    );
     let namespaces = allNamespaces;
-  
+
     if (op.matchConditions && op.matchConditions.length > 0) {
-      namespaces = namespaces.filter((ns) => 
+      namespaces = namespaces.filter((ns) =>
         op.matchConditions!.every((condition) => this.doesMatch(condition, ns))
       );
     }
-  
+
     if (op.maxDepth !== undefined) {
-      namespaces = Array.from(new Set(
-        namespaces.map(ns => ns.slice(0, op.maxDepth).join(':'))
-      )).map(ns => ns.split(':'));
+      namespaces = Array.from(
+        new Set(namespaces.map((ns) => ns.slice(0, op.maxDepth).join(":")))
+      ).map((ns) => ns.split(":"));
     }
-  
-    namespaces.sort((a, b) => a.join(':').localeCompare(b.join(':')));
-  
-    const paginatedNamespaces = namespaces.slice(op.offset, op.offset + op.limit);
-  
+
+    namespaces.sort((a, b) => a.join(":").localeCompare(b.join(":")));
+
+    const paginatedNamespaces = namespaces.slice(
+      op.offset,
+      op.offset + op.limit
+    );
+
     return paginatedNamespaces;
   }
 
   private doesMatch(matchCondition: MatchCondition, key: string[]): boolean {
     const { matchType, path } = matchCondition;
-  
+
     if (key.length < path.length) {
       return false;
     }
-  
+
     if (matchType === "prefix") {
       return path.every((pElem, index) => {
         const kElem = key[index];
@@ -134,7 +139,7 @@ export class MemoryStore extends BaseStore {
         return pElem === "*" || kElem === pElem;
       });
     }
-  
+
     throw new Error(`Unsupported match type: ${matchType}`);
   }
 }
