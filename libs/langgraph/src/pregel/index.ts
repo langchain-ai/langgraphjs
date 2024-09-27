@@ -440,7 +440,7 @@ export class Pregel<
       if (parentNamespace) {
         taskNs = `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${taskNs}`;
       }
-      if (!subgraphCheckpointer) {
+      if (subgraphCheckpointer === undefined) {
         // set config as signal that subgraph checkpoints exist
         const config: RunnableConfig = {
           configurable: {
@@ -597,7 +597,7 @@ export class Pregel<
   async updateState(
     inputConfig: RunnableConfig,
     values: Record<string, unknown> | unknown,
-    asNode?: keyof Nn
+    asNode?: keyof Nn | string
   ): Promise<RunnableConfig> {
     const checkpointer =
       inputConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;

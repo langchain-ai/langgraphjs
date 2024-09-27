@@ -12,9 +12,13 @@ import {
 } from "@langchain/core/messages";
 import { z } from "zod";
 import { RunnableLambda } from "@langchain/core/runnables";
-import { FakeToolCallingChatModel } from "./utils.js";
+import {
+  FakeToolCallingChatModel,
+  MemorySaverAssertImmutable,
+} from "./utils.js";
 import { ToolNode, createReactAgent } from "../prebuilt/index.js";
 import { Annotation, messagesStateReducer, StateGraph } from "../web.js";
+import { MessagesAnnotation } from "../graph/messages_annotation.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -390,5 +394,32 @@ describe("ToolNode", () => {
         aiMessage2,
       ],
     });
+  });
+});
+
+describe("MessagesAnnotation", () => {
+  it.only("should assign ids properly and avoid duping added messages", async () => {
+    const childGraph = new StateGraph(MessagesAnnotation)
+      .addNode("duper", ({ messages }) => ({ messages }))
+      .addNode("duper2", ({ messages }) => ({ messages }))
+      .addEdge("__start__", "duper")
+      .addEdge("duper", "duper2")
+      .compile({ interruptBefore: ["duper2"] });
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("duper", childGraph)
+      .addNode("duper2", ({ messages }) => ({ messages }))
+      .addEdge("__start__", "duper")
+      .addEdge("duper", "duper2")
+      .compile({ checkpointer: new MemorySaverAssertImmutable() });
+    const res = await graph.invoke(
+      { messages: [new HumanMessage("should be only one")] },
+      { configurable: { thread_id: "1" } }
+    );
+    console.log("-----INTERRUPTED-----");
+    // console.log(JSON.stringify(await gatherIterator(graph.getStateHistory({ configurable: { thread_id: "1" } })), null, 2))
+    const res2 = await graph.invoke(null, { configurable: { thread_id: "1" } });
+    console.log(res2);
+    expect(res.messages.length).toEqual(1);
+    expect(res2.messages.length).toEqual(1);
   });
 });

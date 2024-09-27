@@ -16,6 +16,7 @@ export {
   type SingleReducer,
   type CompiledGraph,
 } from "./graph/index.js";
+export type { StateSnapshot } from "./pregel/types.js";
 export * from "./errors.js";
 export {
   BaseChannel,
