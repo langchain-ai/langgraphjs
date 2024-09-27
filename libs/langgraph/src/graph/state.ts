@@ -156,26 +156,37 @@ export type StateGraphArgsWithInputOutputSchemas<
  */
 export class StateGraph<
   SD extends StateDefinition | unknown,
-  S = SD extends StateDefinition ? StateType<SD> : SD,
-  U = SD extends StateDefinition ? UpdateType<SD> : Partial<S>,
-  N extends string = typeof START,
-  I extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition,
-  O extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition,
-  C extends StateDefinition = StateDefinition
-> extends Graph<N, S, U, StateGraphNodeSpec<S, U>> {
+  InputStateSchema = SD extends StateDefinition ? StateType<SD> : SD,
+  OutputStateSchema = SD extends StateDefinition
+    ? UpdateType<SD>
+    : Partial<InputStateSchema>,
+  NodeNames extends string = typeof START,
+  InputDefinition extends StateDefinition = SD extends StateDefinition
+    ? SD
+    : StateDefinition,
+  OutputDefinition extends StateDefinition = SD extends StateDefinition
+    ? SD
+    : StateDefinition,
+  ConfigSchema extends StateDefinition = StateDefinition
+> extends Graph<
+  NodeNames,
+  InputStateSchema,
+  OutputStateSchema,
+  StateGraphNodeSpec<InputStateSchema, OutputStateSchema>
+> {
   channels: Record<string, BaseChannel | ManagedValueSpec> = {};
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
-  waitingEdges: Set<[N[], N]> = new Set();
+  waitingEdges: Set<[NodeNames[], NodeNames]> = new Set();
 
   /** @internal */
   _schemaDefinition: StateDefinition;
 
   /** @internal */
-  _inputDefinition: I;
+  _inputDefinition: InputDefinition;
 
   /** @internal */
-  _outputDefinition: O;
+  _outputDefinition: OutputDefinition;
 
   /**
    * Map schemas to managed values
@@ -184,35 +195,35 @@ export class StateGraph<
   _schemaDefinitions = new Map();
 
   /** @internal Used only for typing. */
-  _configSchema: C | undefined;
+  _configSchema: ConfigSchema | undefined;
 
   constructor(
     fields: SD extends StateDefinition
       ?
           | SD
           | AnnotationRoot<SD>
-          | StateGraphArgs<S>
-          | StateGraphArgsWithStateSchema<SD, I, O>
-          | StateGraphArgsWithInputOutputSchemas<SD, O>
-      : StateGraphArgs<S>,
-    configSchema?: AnnotationRoot<C>
+          | StateGraphArgs<InputStateSchema>
+          | StateGraphArgsWithStateSchema<SD, InputDefinition, OutputDefinition>
+          | StateGraphArgsWithInputOutputSchemas<SD, OutputDefinition>
+      : StateGraphArgs<InputStateSchema>,
+    configSchema?: AnnotationRoot<ConfigSchema>
   ) {
     super();
     if (
       isStateGraphArgsWithInputOutputSchemas<
         SD extends StateDefinition ? SD : never,
-        O
+        OutputDefinition
       >(fields)
     ) {
       this._schemaDefinition = fields.input.spec;
-      this._inputDefinition = fields.input.spec as unknown as I;
+      this._inputDefinition = fields.input.spec as unknown as InputDefinition;
       this._outputDefinition = fields.output.spec;
     } else if (isStateGraphArgsWithStateSchema(fields)) {
       this._schemaDefinition = fields.stateSchema.spec;
       this._inputDefinition = (fields.input?.spec ??
-        this._schemaDefinition) as I;
+        this._schemaDefinition) as InputDefinition;
       this._outputDefinition = (fields.output?.spec ??
-        this._schemaDefinition) as O;
+        this._schemaDefinition) as OutputDefinition;
     } else if (isStateDefinition(fields) || isAnnotationRoot(fields)) {
       const spec = isAnnotationRoot(fields) ? fields.spec : fields;
       this._schemaDefinition = spec;
@@ -269,15 +280,25 @@ export class StateGraph<
     }
   }
 
-  addNode<K extends string, NodeInput = S>(
+  addNode<K extends string, NodeInput = InputStateSchema>(
     key: K,
     action: RunnableLike<
       NodeInput,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      U extends object ? U & Record<string, any> : U
+      OutputStateSchema extends object
+        ? OutputStateSchema & Record<string, any>
+        : OutputStateSchema
     >,
     options?: StateGraphAddNodeOptions
-  ): StateGraph<SD, S, U, N | K, I, O, C> {
+  ): StateGraph<
+    SD,
+    InputStateSchema,
+    OutputStateSchema,
+    NodeNames | K,
+    InputDefinition,
+    OutputDefinition,
+    ConfigSchema
+  > {
     if (key in this.channels) {
       throw new Error(
         `${key} is already being used as a state attribute (a.k.a. a channel), cannot also be used as a node name.`
@@ -303,19 +324,33 @@ export class StateGraph<
     if (options?.input !== undefined) {
       this._addSchema(options.input.spec);
     }
-    const nodeSpec: StateGraphNodeSpec<S, U> = {
-      runnable: _coerceToRunnable(action) as unknown as Runnable<S, U>,
+    const nodeSpec: StateGraphNodeSpec<InputStateSchema, OutputStateSchema> = {
+      runnable: _coerceToRunnable(action) as unknown as Runnable<
+        InputStateSchema,
+        OutputStateSchema
+      >,
       retryPolicy: options?.retryPolicy,
       metadata: options?.metadata,
       input: options?.input?.spec ?? this._schemaDefinition,
     };
 
-    this.nodes[key as unknown as N] = nodeSpec;
+    this.nodes[key as unknown as NodeNames] = nodeSpec;
 
-    return this as StateGraph<SD, S, U, N | K, I, O, C>;
+    return this as StateGraph<
+      SD,
+      InputStateSchema,
+      OutputStateSchema,
+      NodeNames | K,
+      InputDefinition,
+      OutputDefinition,
+      ConfigSchema
+    >;
   }
 
-  addEdge(startKey: typeof START | N | N[], endKey: N | typeof END): this {
+  addEdge(
+    startKey: typeof START | NodeNames | NodeNames[],
+    endKey: NodeNames | typeof END
+  ): this {
     if (typeof startKey === "string") {
       return super.addEdge(startKey, endKey);
     }
@@ -355,9 +390,16 @@ export class StateGraph<
   }: {
     checkpointer?: BaseCheckpointSaver;
     store?: BaseStore;
-    interruptBefore?: N[] | All;
-    interruptAfter?: N[] | All;
-  } = {}): CompiledStateGraph<S, U, N, I, O, C> {
+    interruptBefore?: NodeNames[] | All;
+    interruptAfter?: NodeNames[] | All;
+  } = {}): CompiledStateGraph<
+    InputStateSchema,
+    OutputStateSchema,
+    NodeNames,
+    InputDefinition,
+    OutputDefinition,
+    ConfigSchema
+  > {
     // validate the graph
     this.validate([
       ...(Array.isArray(interruptBefore) ? interruptBefore : []),
@@ -376,17 +418,27 @@ export class StateGraph<
       streamKeys.length === 1 && streamKeys[0] === ROOT ? ROOT : streamKeys;
 
     // create empty compiled graph
-    const compiled = new CompiledStateGraph<S, U, N, I, O, C>({
+    const compiled = new CompiledStateGraph<
+      InputStateSchema,
+      OutputStateSchema,
+      NodeNames,
+      InputDefinition,
+      OutputDefinition,
+      ConfigSchema
+    >({
       builder: this,
       checkpointer,
       interruptAfter,
       interruptBefore,
       autoValidate: false,
-      nodes: {} as Record<N | typeof START, PregelNode<S, U>>,
+      nodes: {} as Record<
+        NodeNames | typeof START,
+        PregelNode<InputStateSchema, OutputStateSchema>
+      >,
       channels: {
         ...this.channels,
         [START]: new EphemeralValue(),
-      } as Record<N | typeof START | typeof END | string, BaseChannel>,
+      } as Record<NodeNames | typeof START | typeof END | string, BaseChannel>,
       inputChannels: START,
       outputChannels,
       streamChannels,
@@ -396,10 +448,10 @@ export class StateGraph<
 
     // attach nodes, edges and branches
     compiled.attachNode(START);
-    for (const [key, node] of Object.entries<StateGraphNodeSpec<S, U>>(
-      this.nodes
-    )) {
-      compiled.attachNode(key as N, node);
+    for (const [key, node] of Object.entries<
+      StateGraphNodeSpec<InputStateSchema, OutputStateSchema>
+    >(this.nodes)) {
+      compiled.attachNode(key as NodeNames, node);
     }
     for (const [start, end] of this.edges) {
       compiled.attachEdge(start, end);
@@ -409,7 +461,7 @@ export class StateGraph<
     }
     for (const [start, branches] of Object.entries(this.branches)) {
       for (const [name, branch] of Object.entries(branches)) {
-        compiled.attachBranch(start as N, name, branch);
+        compiled.attachBranch(start as NodeNames, name, branch);
       }
     }
 
