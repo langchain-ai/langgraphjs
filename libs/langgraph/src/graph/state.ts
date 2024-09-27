@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-use-before-define */
-import { _coerceToRunnable, Runnable } from "@langchain/core/runnables";
+import { Runnable } from "@langchain/core/runnables";
 import {
   All,
   BaseCheckpointSaver,
@@ -43,7 +43,7 @@ import {
 } from "./annotation.js";
 import type { RetryPolicy } from "../pregel/utils/index.js";
 import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
-import { RunnableLikeWithExtraInvoke } from "../pregel/runnable.js";
+import { _coerceToRunnable, RunnableLikeWithExtraInvoke } from "../pregel/runnable.js";
 
 const ROOT = "__root__";
 

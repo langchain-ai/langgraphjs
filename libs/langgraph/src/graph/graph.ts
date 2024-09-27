@@ -2,7 +2,6 @@
 import {
   Runnable,
   RunnableConfig,
-  _coerceToRunnable,
 } from "@langchain/core/runnables";
 import {
   Node as RunnableGraphNode,
@@ -25,7 +24,7 @@ import {
 } from "../constants.js";
 import { RunnableCallable } from "../utils.js";
 import { InvalidUpdateError, NodeInterrupt } from "../errors.js";
-import { type RunnableLikeWithExtraInvoke } from "../pregel/runnable.js";
+import { _coerceToRunnable, RunnableWithOptions, type RunnableLikeWithExtraInvoke } from "../pregel/runnable.js";
 
 /** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
@@ -113,7 +112,7 @@ export class Branch<IO, N extends string> {
 }
 
 export type NodeSpec<RunInput, RunOutput> = {
-  runnable: Runnable<RunInput, RunOutput>;
+  runnable: RunnableWithOptions<RunInput, RunOutput>;
   metadata?: Record<string, unknown>;
 };
 

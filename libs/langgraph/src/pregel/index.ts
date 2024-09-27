@@ -4,7 +4,6 @@ import {
   RunnableConfig,
   RunnableFunc,
   RunnableSequence,
-  _coerceToRunnable,
   getCallbackManagerForConfig,
   mergeConfigs,
   patchConfig,
@@ -88,7 +87,7 @@ import {
 } from "../managed/base.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
 import { ensureLangGraphConfig } from "./utils/config.js";
-import { RunnableLikeWithExtraInvoke } from "./runnable.js";
+import { _coerceToRunnable, RunnableLikeWithExtraInvoke } from "./runnable.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 

@@ -5231,7 +5231,7 @@ describe("StateGraph start branch then end", () => {
   });
 });
 
-describe("Managed Values (context) can be passed through state", () => {
+describe.only("Managed Values (context) can be passed through state", () => {
   let store: MemoryStore;
   let checkpointer: MemorySaver;
   let threadId = "";
@@ -5729,12 +5729,13 @@ describe("Managed Values (context) can be passed through state", () => {
     expect(currentState.next).toEqual([]);
   });
 
-  it("Can access the store inside nodes", async () => {
+  it.only("Can access the store inside nodes", async () => {
     const nodeOne = async (
       _state: typeof AgentAnnotation.State,
       _config: RunnableConfig,
       extra?: InvokeExtraFields
     ) => {
+      console.log("Config", _config.configurable)
       expect(extra?.store).toBeDefined();
     };
 

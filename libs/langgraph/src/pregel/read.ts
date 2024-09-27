@@ -3,16 +3,14 @@ import {
   RunnableBinding,
   RunnableBindingArgs,
   RunnableConfig,
-  RunnableLike,
   RunnablePassthrough,
   RunnableSequence,
-  _coerceToRunnable,
 } from "@langchain/core/runnables";
 import { CONFIG_KEY_READ } from "../constants.js";
 import { ChannelWrite } from "./write.js";
 import { RunnableCallable } from "../utils.js";
 import type { RetryPolicy } from "./utils/index.js";
-import { type RunnableLikeWithExtraInvoke } from "./runnable.js";
+import { _coerceToRunnable, type RunnableLikeWithExtraInvoke } from "./runnable.js";
 
 export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -249,7 +247,7 @@ export class PregelNode<
         mapper: this.mapper,
         writers: this.writers,
         bound: _coerceToRunnable<RunInput, NewRunOutput>(
-          coerceable as RunnableLike
+          coerceable as RunnableLikeWithExtraInvoke<RunInput, NewRunOutput>
         ),
         config: this.config,
         kwargs: this.kwargs,
