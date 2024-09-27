@@ -92,9 +92,9 @@ export interface PutOperation {
   value: Record<string, any> | null;
 }
 
-type NameSpacePath = (string | '*')[];
+type NameSpacePath = (string | "*")[];
 
-type NamespaceMatchType = 'prefix' | 'suffix';
+type NamespaceMatchType = "prefix" | "suffix";
 
 interface MatchCondition {
   matchType: NamespaceMatchType;
@@ -108,8 +108,11 @@ interface ListNamespacesOperation {
   offset: number;
 }
 
-
-export type Operation = GetOperation | SearchOperation | PutOperation | ListNamespacesOperation;
+export type Operation =
+  | GetOperation
+  | SearchOperation
+  | PutOperation
+  | ListNamespacesOperation;
 
 export type OperationResults<Tuple extends readonly Operation[]> = {
   [K in keyof Tuple]: Tuple[K] extends PutOperation
@@ -202,7 +205,7 @@ export abstract class BaseStore {
     await this.batch<[PutOperation]>([{ namespace, id, value: null }]);
   }
 
-    /**
+  /**
    * List and filter namespaces in the store.
    * @param options Options for listing namespaces.
    * @param options.prefix Filter namespaces that start with this path.
@@ -212,39 +215,33 @@ export abstract class BaseStore {
    * @param options.offset Number of namespaces to skip for pagination (default 0).
    * @returns A promise that resolves to a list of namespace arrays that match the criteria.
    */
-    async listNamespaces(options: {
-      prefix?: string[];
-      suffix?: string[];
-      maxDepth?: number;
-      limit?: number;
-      offset?: number;
-    }): Promise<string[][]> {
-      const {
-        prefix,
-        suffix,
-        maxDepth,
-        limit = 100,
-        offset = 0,
-      } = options;
-  
-      const matchConditions: MatchCondition[] = [];
-      if (prefix) {
-        matchConditions.push({ matchType: 'prefix', path: prefix });
-      }
-      if (suffix) {
-        matchConditions.push({ matchType: 'suffix', path: suffix });
-      }
-  
-      const op: ListNamespacesOperation = {
-        matchConditions: matchConditions.length > 0 ? matchConditions : undefined,
-        maxDepth,
-        limit,
-        offset,
-      };
-  
-      const batchResults = await this.batch<[ListNamespacesOperation]>([op]);
-      return batchResults[0];
+  async listNamespaces(options: {
+    prefix?: string[];
+    suffix?: string[];
+    maxDepth?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<string[][]> {
+    const { prefix, suffix, maxDepth, limit = 100, offset = 0 } = options;
+
+    const matchConditions: MatchCondition[] = [];
+    if (prefix) {
+      matchConditions.push({ matchType: "prefix", path: prefix });
     }
+    if (suffix) {
+      matchConditions.push({ matchType: "suffix", path: suffix });
+    }
+
+    const op: ListNamespacesOperation = {
+      matchConditions: matchConditions.length > 0 ? matchConditions : undefined,
+      maxDepth,
+      limit,
+      offset,
+    };
+
+    const batchResults = await this.batch<[ListNamespacesOperation]>([op]);
+    return batchResults[0];
+  }
 
   /**
    * Stop the store. No-op if not implemented.
