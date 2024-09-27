@@ -160,6 +160,13 @@ export type AllStreamInvokeOutputTypes<
 > =
   | AllStreamOutputTypes<Nodes, Channels>
   | Array<AllStreamOutputTypes<Nodes, Channels>>;
+export type InvokeOutputType<
+  Mode extends StreamMode,
+  Nodes extends NodesType,
+  Channels extends ChannelsType
+> = Mode extends "values"
+  ? StreamOutput<Mode, Nodes, Channels>
+  : Array<StreamOutput<Mode, Nodes, Channels>>;
 
 export interface PregelInterface<
   Nodes extends NodesType,
