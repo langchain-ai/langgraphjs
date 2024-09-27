@@ -138,7 +138,7 @@ export abstract class BaseStore {
   async batch<Op extends Operation[]>(
     _operations: Op
   ): Promise<OperationResults<Op>> {
-    throw new Error("Method not implemented.");
+    throw new Error("The `batch` method must be implemented by subclasses of `BaseStore`.");
   }
 
   // convenience methods
