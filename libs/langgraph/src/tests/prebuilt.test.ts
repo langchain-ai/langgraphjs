@@ -12,9 +12,16 @@ import {
 } from "@langchain/core/messages";
 import { z } from "zod";
 import { RunnableLambda } from "@langchain/core/runnables";
-import { FakeToolCallingChatModel } from "./utils.js";
+import {
+  _AnyIdAIMessage,
+  _AnyIdHumanMessage,
+  _AnyIdToolMessage,
+  FakeToolCallingChatModel,
+  MemorySaverAssertImmutable,
+} from "./utils.js";
 import { ToolNode, createReactAgent } from "../prebuilt/index.js";
 import { Annotation, messagesStateReducer, StateGraph } from "../web.js";
+import { MessagesAnnotation } from "../graph/messages_annotation.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -82,24 +89,21 @@ describe("createReactAgent", () => {
     });
 
     const expected = [
-      new HumanMessage("Hello Input!"),
-      new AIMessage({
+      new _AnyIdHumanMessage("Hello Input!"),
+      new _AnyIdAIMessage({
         content: "result1",
         tool_calls: [
           { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
         ],
       }),
-      new ToolMessage({
+      new _AnyIdToolMessage({
         name: "search_api",
         content: "result for foo",
         tool_call_id: "tool_abcd123",
         artifact: undefined,
       }),
-      new AIMessage("result2"),
-    ].map((message, i) => {
-      message.id = result.messages[i].id;
-      return message;
-    });
+      new _AnyIdAIMessage("result2"),
+    ];
     expect(result.messages).toEqual(expected);
   });
 
@@ -126,23 +130,20 @@ describe("createReactAgent", () => {
       messages: [],
     });
     const expected = [
-      new AIMessage({
+      new _AnyIdAIMessage({
         content: "result1",
         tool_calls: [
           { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
         ],
       }),
-      new ToolMessage({
+      new _AnyIdToolMessage({
         name: "search_api",
         content: "result for foo",
         tool_call_id: "tool_abcd123",
         artifact: undefined,
       }),
-      new AIMessage("result2"),
-    ].map((message, i) => {
-      message.id = result.messages[i].id;
-      return message;
-    });
+      new _AnyIdAIMessage("result2"),
+    ];
     expect(result.messages).toEqual(expected);
   });
 
@@ -206,24 +207,21 @@ describe("createReactAgent", () => {
     });
 
     const expected = [
-      new HumanMessage("Hello Input!"),
-      new AIMessage({
+      new _AnyIdHumanMessage("Hello Input!"),
+      new _AnyIdAIMessage({
         content: "result1",
         tool_calls: [
           { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
         ],
       }),
-      new ToolMessage({
+      new _AnyIdToolMessage({
         name: "search_api",
         content: "some response format",
         tool_call_id: "tool_abcd123",
         artifact: Buffer.from("123"),
       }),
-      new AIMessage("result2"),
-    ].map((message, i) => {
-      message.id = result.messages[i].id;
-      return message;
-    });
+      new _AnyIdAIMessage("result2"),
+    ];
     expect(result.messages).toEqual(expected);
   });
 
@@ -263,23 +261,20 @@ describe("createReactAgent", () => {
     });
 
     const expected = [
-      new HumanMessage("Hello Input!"),
-      new AIMessage({
+      new _AnyIdHumanMessage("Hello Input!"),
+      new _AnyIdAIMessage({
         content: "result1",
         tool_calls: [
           { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
         ],
       }),
-      new ToolMessage({
+      new _AnyIdToolMessage({
         name: "search_api",
         content: "result for foo",
         tool_call_id: "tool_abcd123",
       }),
-      new AIMessage("result2"),
-    ].map((message, i) => {
-      message.id = result.messages[i].id;
-      return message;
-    });
+      new _AnyIdAIMessage("result2"),
+    ];
     expect(result.messages).toEqual(expected);
   });
 });
@@ -390,5 +385,30 @@ describe("ToolNode", () => {
         aiMessage2,
       ],
     });
+  });
+});
+
+describe("MessagesAnnotation", () => {
+  it("should assign ids properly and avoid duping added messages", async () => {
+    const childGraph = new StateGraph(MessagesAnnotation)
+      .addNode("duper", ({ messages }) => ({ messages }))
+      .addNode("duper2", ({ messages }) => ({ messages }))
+      .addEdge("__start__", "duper")
+      .addEdge("duper", "duper2")
+      .compile({ interruptBefore: ["duper2"] });
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("duper", childGraph)
+      .addNode("duper2", ({ messages }) => ({ messages }))
+      .addEdge("__start__", "duper")
+      .addEdge("duper", "duper2")
+      .compile({ checkpointer: new MemorySaverAssertImmutable() });
+    const res = await graph.invoke(
+      { messages: [new HumanMessage("should be only one")] },
+      { configurable: { thread_id: "1" } }
+    );
+    const res2 = await graph.invoke(null, { configurable: { thread_id: "1" } });
+
+    expect(res.messages.length).toEqual(1);
+    expect(res2.messages.length).toEqual(1);
   });
 });

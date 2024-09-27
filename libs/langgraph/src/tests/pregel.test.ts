@@ -37,6 +37,9 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 import {
+  _AnyIdAIMessage,
+  _AnyIdFunctionMessage,
+  _AnyIdHumanMessage,
   createAnyStringSame,
   FakeChatModel,
   FakeTracer,
@@ -4132,38 +4135,36 @@ describe("MessageGraph", () => {
     );
 
     expect(result).toHaveLength(6);
-    expect(JSON.stringify(result)).toEqual(
-      JSON.stringify([
-        new HumanMessage("what is the weather in sf?"),
-        new AIMessage({
-          content: "",
-          additional_kwargs: {
-            function_call: {
-              name: "search_api",
-              arguments: "query",
-            },
+    expect(result).toEqual([
+      new _AnyIdHumanMessage("what is the weather in sf?"),
+      new _AnyIdAIMessage({
+        content: "",
+        additional_kwargs: {
+          function_call: {
+            name: "search_api",
+            arguments: "query",
           },
-        }),
-        new FunctionMessage({
-          content: '"result for query"',
-          name: "search_api",
-        }),
-        new AIMessage({
-          content: "",
-          additional_kwargs: {
-            function_call: {
-              name: "search_api",
-              arguments: "another",
-            },
+        },
+      }),
+      new _AnyIdFunctionMessage({
+        content: '"result for query"',
+        name: "search_api",
+      }),
+      new _AnyIdAIMessage({
+        content: "",
+        additional_kwargs: {
+          function_call: {
+            name: "search_api",
+            arguments: "another",
           },
-        }),
-        new FunctionMessage({
-          content: '"result for another"',
-          name: "search_api",
-        }),
-        new AIMessage("answer"),
-      ])
-    );
+        },
+      }),
+      new _AnyIdFunctionMessage({
+        content: '"result for another"',
+        name: "search_api",
+      }),
+      new _AnyIdAIMessage("answer"),
+    ]);
   });
 
   it("can stream a list of messages", async () => {
@@ -4283,9 +4284,7 @@ describe("MessageGraph", () => {
 
     const lastItem = streamItems[streamItems.length - 1];
     expect(Object.keys(lastItem)).toEqual(["agent"]);
-    expect(JSON.stringify(Object.values(lastItem)[0])).toEqual(
-      JSON.stringify(new AIMessage("answer"))
-    );
+    expect(Object.values(lastItem)[0]).toEqual(new _AnyIdAIMessage("answer"));
   });
 });
 

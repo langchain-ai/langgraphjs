@@ -127,6 +127,10 @@ nav:
           - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
           - Pass config to tools: "how-tos/pass-config-to-tools.ipynb"
           - Pass graph state to tools: "how-tos/pass-graph-state-to-tools.ipynb"
+      - Subgraphs:
+          - Create subgraphs: how-tos/subgraph.ipynb
+          - Manage state in subgraphs: how-tos/subgraphs-manage-state.ipynb
+          - Transform inputs and outputs of a subgraph: how-tos/subgraph-transform-state.ipynb
       - State management:
           - Have a separate input and output schema: "how-tos/input_output_schema.ipynb"
           - Pass private state between nodes inside the graph: "how-tos/pass_private_state.ipynb"
