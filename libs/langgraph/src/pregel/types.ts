@@ -23,10 +23,10 @@ type ExtractChannelValueType<Channel> = Channel extends BaseChannel
   ? Channel["ValueType"]
   : Channel extends ManagedValueSpec
   ? Channel extends ConfiguredManagedValue<infer V>
-    ? V
-    : Channel extends ManagedValue<infer V>
-    ? V
-    : never
+  ? V
+  : Channel extends ManagedValue<infer V>
+  ? V
+  : never
   : never;
 
 export type ChannelsStateType<Channels extends ChannelsType> = {
@@ -37,10 +37,10 @@ type ExtractChannelUpdateType<Channel> = Channel extends BaseChannel
   ? Channel["UpdateType"]
   : Channel extends ManagedValueSpec
   ? Channel extends ConfiguredManagedValue<infer V>
-    ? V
-    : Channel extends ManagedValue<infer V>
-    ? V
-    : never
+  ? V
+  : Channel extends ManagedValue<infer V>
+  ? V
+  : never
   : never;
 
 export type ChannelsUpdateType<Channels extends ChannelsType> = {
@@ -68,7 +68,7 @@ export type StreamMode =
   | [SingleStreamMode, SingleStreamMode]
   | [SingleStreamMode, SingleStreamMode, SingleStreamMode];
 
-type SingleStreamModeOutput<
+export type SingleStreamModeOutput<
   Mode extends SingleStreamMode,
   Nodes extends NodesType,
   Channels extends ChannelsType
@@ -80,27 +80,29 @@ type SingleStreamModeOutput<
   ? DebugOutput<Channels>
   : never;
 
+export type StreamModeOutputTuple<
+  Mode extends SingleStreamMode,
+  Nodes extends NodesType,
+  Channels extends ChannelsType
+> = [Mode, SingleStreamModeOutput<Mode, Nodes, Channels>];
+
 export type StreamOutput<
   Mode extends StreamMode,
   Nodes extends NodesType,
   Channels extends ChannelsType
 > = Mode extends SingleStreamMode
   ? SingleStreamModeOutput<Mode, Nodes, Channels>
-  : Mode extends [SingleStreamMode]
-  ? SingleStreamModeOutput<Mode[0], Nodes, Channels>
-  : Mode extends [SingleStreamMode, SingleStreamMode]
-  ? [
-      SingleStreamModeOutput<Mode[0], Nodes, Channels>,
-      SingleStreamModeOutput<Mode[1], Nodes, Channels>
-    ]
-  : Mode extends [SingleStreamMode, SingleStreamMode, SingleStreamMode]
-  ? [
-      SingleStreamModeOutput<Mode[0], Nodes, Channels>,
-      SingleStreamModeOutput<Mode[1], Nodes, Channels>,
-      SingleStreamModeOutput<Mode[2], Nodes, Channels>
-    ]
+  : Mode[number] extends SingleStreamMode
+  ? StreamModeOutputTuple<Mode[number], Nodes, Channels>
   : never;
 
+export type InvokeOutput<
+  Mode extends StreamMode,
+  Nodes extends NodesType,
+  Channels extends ChannelsType
+> = Mode extends "values"
+  ? StreamOutput<Mode, Nodes, Channels>
+  : Array<StreamOutput<Mode, Nodes, Channels>>;
 // Gross hack to avoid recursion limits & define the narrowest type that covers all possible stream output types
 // This is what gets passed to the lower abstraction layers (such as `Runnable`) and the precise output type is
 // narrowed at higher levels such as `StateGraph.stream()` to a specific one once the `StreamMode` is known
@@ -108,6 +110,10 @@ export type AllStreamOutputTypes<
   Nodes extends NodesType,
   Channels extends ChannelsType
 > =
+  | StreamOutput<"values" | "updates", Nodes, Channels>
+  | StreamOutput<"values" | "debug", Nodes, Channels>
+  | StreamOutput<"updates" | "debug", Nodes, Channels>
+  | StreamOutput<"values" | "updates" | "debug", Nodes, Channels>
   | StreamOutput<["values"], Nodes, Channels>
   | StreamOutput<["updates"], Nodes, Channels>
   | StreamOutput<["debug"], Nodes, Channels>
@@ -147,6 +153,13 @@ export type AllStreamOutputTypes<
   | StreamOutput<["debug", "debug", "updates"], Nodes, Channels>
   | StreamOutput<["debug", "debug", "values"], Nodes, Channels>
   | StreamOutput<["debug", "debug", "debug"], Nodes, Channels>;
+
+export type AllStreamInvokeOutputTypes<
+  Nodes extends NodesType,
+  Channels extends ChannelsType
+> =
+  | AllStreamOutputTypes<Nodes, Channels>
+  | Array<AllStreamOutputTypes<Nodes, Channels>>;
 
 export interface PregelInterface<
   Nodes extends NodesType,

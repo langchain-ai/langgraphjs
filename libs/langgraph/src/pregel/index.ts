@@ -56,7 +56,7 @@ import {
   StreamMode,
   StreamOutput,
   ChannelsStateType,
-  AllStreamOutputTypes,
+  AllStreamInvokeOutputTypes,
 } from "./types.js";
 import {
   GraphRecursionError,
@@ -197,7 +197,7 @@ export interface PregelOptions<
 export class Pregel<Nodes extends NodesType, Channels extends ChannelsType>
   extends Runnable<
     any, // Partial<ChannelsStateType<Channels>>, // input type
-    any, // AllStreamOutputTypes<Nodes, Channels>, // output type
+    AllStreamInvokeOutputTypes<Nodes, Channels>, // output type
     PregelOptions<Nodes, Channels>
   >
   implements PregelInterface<Nodes, Channels>
@@ -647,7 +647,7 @@ export class Pregel<Nodes extends NodesType, Channels extends ChannelsType>
    * @param options.debug Whether to print debug information during execution.
    */
   override async stream<Mode extends StreamMode>(
-    input: Partial<ChannelsStateType<Channels>>,
+    input: any, //Partial<ChannelsStateType<Channels>>,
     options?: Partial<PregelOptions<Nodes, Channels, Mode>>
   ): Promise<IterableReadableStream<StreamOutput<Mode, Nodes, Channels>>> {
     return super.stream(input, options) as Promise<
@@ -796,9 +796,9 @@ export class Pregel<Nodes extends NodesType, Channels extends ChannelsType>
           }
           if (streamMode.includes(nextItem[0])) {
             if (streamMode.length === 1) {
-              yield nextItem[1];
+              yield nextItem[1] as StreamOutput<Mode, Nodes, Channels>;
             } else {
-              yield nextItem;
+              yield nextItem as unknown as StreamOutput<Mode, Nodes, Channels>;
             }
           }
         }
@@ -839,9 +839,13 @@ export class Pregel<Nodes extends NodesType, Channels extends ChannelsType>
             }
             if (streamMode.includes(nextItem[0])) {
               if (streamMode.length === 1) {
-                yield nextItem[1];
+                yield nextItem[1] as StreamOutput<Mode, Nodes, Channels>;
               } else {
-                yield nextItem;
+                yield nextItem as unknown as StreamOutput<
+                  Mode,
+                  Nodes,
+                  Channels
+                >;
               }
             }
           }
@@ -865,9 +869,9 @@ export class Pregel<Nodes extends NodesType, Channels extends ChannelsType>
         }
         if (streamMode.includes(nextItem[0])) {
           if (streamMode.length === 1) {
-            yield nextItem[1];
+            yield nextItem[1] as StreamOutput<Mode, Nodes, Channels>;
           } else {
-            yield nextItem;
+            yield nextItem as unknown as StreamOutput<Mode, Nodes, Channels>;
           }
         }
       }
@@ -913,9 +917,12 @@ export class Pregel<Nodes extends NodesType, Channels extends ChannelsType>
    * @param options.debug Whether to print debug information during execution.
    */
   override async invoke<Mode extends StreamMode>(
-    input: ChannelsStateType<Channels>,
+    input: any, //ChannelsStateType<Channels>,
     options?: Partial<PregelOptions<Nodes, Channels, Mode>>
-  ): Promise<StreamOutput<Mode, Nodes, Channels>> {
+  ): Promise<
+    | StreamOutput<Mode, Nodes, Channels>
+    | Array<StreamOutput<Mode, Nodes, Channels>>
+  > {
     const streamMode = options?.streamMode ?? ("values" as const);
     const config = {
       ...ensureConfig(options),
