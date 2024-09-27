@@ -10,6 +10,7 @@ import {
 } from "@jest/globals";
 import { BaseStore, Operation, OperationResults, Item } from "../store/base.js";
 import { AsyncBatchedStore } from "../store/batch.js";
+import { MemoryStore } from "../store/memory.js";
 
 describe("AsyncBatchedStore", () => {
   let store: AsyncBatchedStore;
@@ -379,5 +380,96 @@ describe("BaseStore", () => {
         },
       ]);
     });
+  });
+});
+
+describe("MemoryStore", () => {
+  let store: MemoryStore;
+
+  beforeEach(() => {
+    store = new MemoryStore();
+  });
+
+  it("should implement get method", async () => {
+    await store.put(["test"], "123", { value: 1 });
+    const result = await store.get(["test"], "123");
+    expect(result).toEqual({
+      value: { value: 1 },
+      id: "123",
+      namespace: ["test"],
+      createdAt: expect.any(Date),
+      updatedAt: expect.any(Date),
+    });
+  });
+
+  it("should implement search method", async () => {
+    await store.put(["test"], "123", { value: 1 });
+    await store.put(["test"], "456", { value: 2 });
+    const result = await store.search(["test"]);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({
+      value: { value: 1 },
+      id: "123",
+      namespace: ["test"],
+    });
+    expect(result[1]).toMatchObject({
+      value: { value: 2 },
+      id: "456",
+      namespace: ["test"],
+    });
+  });
+
+  it("should implement put method", async () => {
+    await store.put(["test"], "123", { value: 1 });
+    const result = await store.get(["test"], "123");
+    expect(result).toMatchObject({
+      value: { value: 1 },
+      id: "123",
+      namespace: ["test"],
+    });
+  });
+
+  it("should implement delete method", async () => {
+    await store.put(["test"], "123", { value: 1 });
+    await store.delete(["test"], "123");
+    const result = await store.get(["test"], "123");
+    expect(result).toBeNull();
+  });
+
+  it("should implement listNamespaces method", async () => {
+    await store.put(["a", "b", "c"], "1", { value: 1 });
+    await store.put(["a", "b", "d"], "2", { value: 2 });
+    await store.put(["x", "y", "z"], "3", { value: 3 });
+
+    const result = await store.listNamespaces({});
+    expect(result).toEqual([
+      ["a", "b", "c"],
+      ["a", "b", "d"],
+      ["x", "y", "z"],
+    ]);
+  });
+
+  it("should filter namespaces by prefix", async () => {
+    await store.put(["a", "b", "c"], "1", { value: 1 });
+    await store.put(["a", "b", "d"], "2", { value: 2 });
+    await store.put(["x", "y", "z"], "3", { value: 3 });
+
+    const result = await store.listNamespaces({ prefix: ["a"] });
+    expect(result).toEqual([
+      ["a", "b", "c"],
+      ["a", "b", "d"],
+    ]);
+  });
+
+  it("should apply maxDepth to listNamespaces results", async () => {
+    await store.put(["a", "b", "c"], "1", { value: 1 });
+    await store.put(["a", "b", "d"], "2", { value: 2 });
+    await store.put(["x", "y", "z"], "3", { value: 3 });
+
+    const result = await store.listNamespaces({ maxDepth: 2 });
+    expect(result).toEqual([
+      ["a", "b"],
+      ["x", "y"],
+    ]);
   });
 });
