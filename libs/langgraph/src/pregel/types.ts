@@ -23,10 +23,10 @@ type ExtractChannelValueType<Channel> = Channel extends BaseChannel
   ? Channel["ValueType"]
   : Channel extends ManagedValueSpec
   ? Channel extends ConfiguredManagedValue<infer V>
-  ? V
-  : Channel extends ManagedValue<infer V>
-  ? V
-  : never
+    ? V
+    : Channel extends ManagedValue<infer V>
+    ? V
+    : never
   : never;
 
 export type ChannelsStateType<Channels extends ChannelsType> = {
@@ -37,10 +37,10 @@ type ExtractChannelUpdateType<Channel> = Channel extends BaseChannel
   ? Channel["UpdateType"]
   : Channel extends ManagedValueSpec
   ? Channel extends ConfiguredManagedValue<infer V>
-  ? V
-  : Channel extends ManagedValue<infer V>
-  ? V
-  : never
+    ? V
+    : Channel extends ManagedValue<infer V>
+    ? V
+    : never
   : never;
 
 export type ChannelsUpdateType<Channels extends ChannelsType> = {
@@ -73,9 +73,9 @@ export type SingleStreamModeOutput<
   Nodes extends NodesType,
   Channels extends ChannelsType
 > = Mode extends "values"
-  ? ChannelsUpdateType<Channels>
+  ? ChannelsStateType<Channels>
   : Mode extends "updates"
-  ? { [K in keyof Nodes]: ChannelsUpdateType<Channels> }
+  ? { [K in keyof Nodes]: ChannelsStateType<Channels> }
   : Mode extends "debug"
   ? DebugOutput<Channels>
   : never;
@@ -160,6 +160,7 @@ export type AllStreamInvokeOutputTypes<
 > =
   | AllStreamOutputTypes<Nodes, Channels>
   | Array<AllStreamOutputTypes<Nodes, Channels>>;
+
 export type InvokeOutputType<
   Mode extends StreamMode,
   Nodes extends NodesType,

@@ -921,8 +921,8 @@ export class Pregel<Nodes extends NodesType, Channels extends ChannelsType>
     options?: Partial<PregelOptions<Nodes, Channels, Mode>>
   ): Promise<
     Mode extends "values"
-    ? StreamOutput<Mode, Nodes, Channels>
-    : Array<StreamOutput<Mode, Nodes, Channels>>
+      ? StreamOutput<Mode, Nodes, Channels>
+      : Array<StreamOutput<Mode, Nodes, Channels>>
   > {
     const streamMode = options?.streamMode ?? ("values" as const);
     const config = {
