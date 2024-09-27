@@ -57,7 +57,6 @@ import {
   StreamOutput,
   ChannelsStateType,
   AllStreamInvokeOutputTypes,
-  InvokeOutputType,
 } from "./types.js";
 import {
   GraphRecursionError,
@@ -920,18 +919,23 @@ export class Pregel<Nodes extends NodesType, Channels extends ChannelsType>
   override async invoke<Mode extends StreamMode = "values">(
     input: any, //ChannelsStateType<Channels>,
     options?: Partial<PregelOptions<Nodes, Channels, Mode>>
-  ): Promise<InvokeOutputType<Mode, Nodes, Channels>> {
+  ): Promise<
+    Mode extends "values"
+    ? StreamOutput<Mode, Nodes, Channels>
+    : Array<StreamOutput<Mode, Nodes, Channels>>
+  > {
     const streamMode = options?.streamMode ?? ("values" as const);
     const config = {
       ...ensureConfig(options),
       outputKeys: options?.outputKeys ?? this.outputChannels,
       streamMode,
     };
-    const chunks: StreamOutput<Mode, Nodes, Channels>[] = [];
+    const chunks: Array<StreamOutput<Mode, Nodes, Channels>> = [];
     const stream = await this.stream(input, config);
     for await (const chunk of stream) {
       chunks.push(chunk as StreamOutput<Mode, Nodes, Channels>);
     }
+
     if (streamMode === "values") {
       return chunks[chunks.length - 1];
     }
