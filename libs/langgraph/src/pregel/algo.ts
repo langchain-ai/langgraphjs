@@ -42,9 +42,8 @@ import {
   CHECKPOINT_NAMESPACE_END,
   PUSH,
   PULL,
-  CONFIG_KEY_STORE,
 } from "../constants.js";
-import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
+import { LangGraphRunnableConfig, PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { getNullChannelVersion } from "./utils/index.js";
 import { ManagedValueMapping } from "../managed/base.js";
@@ -473,7 +472,7 @@ export function _prepareSingleTask<
   processes: Nn,
   channels: Cc,
   managed: ManagedValueMapping,
-  config: RunnableConfig,
+  config: LangGraphRunnableConfig,
   forExecution: boolean,
   extra: NextTaskExtraFields
 ):
@@ -541,10 +540,13 @@ export function _prepareSingleTask<
           proc: node,
           writes,
           config: patchConfig(
-            mergeConfigs(config, {
-              metadata,
-              tags: proc.tags,
-            }),
+            {
+              ... mergeConfigs(config, {
+                metadata,
+                tags: proc.tags,
+              }),
+              store: extra.store ?? config.store,
+            },
             {
               runName: packet.node,
               callbacks: manager?.getChild(`graph:step:${step}`),
@@ -582,8 +584,6 @@ export function _prepareSingleTask<
                 [CONFIG_KEY_CHECKPOINT_MAP]: {
                   ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                   [parentNamespace]: checkpoint.id,
-                  [CONFIG_KEY_STORE]:
-                    extra.store ?? configurable[CONFIG_KEY_STORE],
                 },
                 checkpoint_id: undefined,
                 checkpoint_ns: taskCheckpointNamespace,
@@ -666,7 +666,10 @@ export function _prepareSingleTask<
             proc: node,
             writes,
             config: patchConfig(
-              mergeConfigs(config, { metadata, tags: proc.tags }),
+              {
+                ...mergeConfigs(config, { metadata, tags: proc.tags }),
+                store: extra.store ?? config?.store,
+              },
               {
                 runName: name,
                 callbacks: manager?.getChild(`graph:step:${step}`),
@@ -709,8 +712,6 @@ export function _prepareSingleTask<
                   },
                   checkpoint_id: undefined,
                   checkpoint_ns: taskCheckpointNamespace,
-                  [CONFIG_KEY_STORE]:
-                    extra.store ?? configurable[CONFIG_KEY_STORE],
                 },
               }
             ),

@@ -1,3 +1,4 @@
+import { RunnableLike } from "@langchain/core/runnables";
 import { BaseChannel } from "../channels/base.js";
 import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { LastValue } from "../channels/last_value.js";
@@ -6,7 +7,6 @@ import {
   ManagedValueSpec,
   type ConfiguredManagedValue,
 } from "../managed/base.js";
-import { type RunnableLikeWithExtraInvoke } from "../pregel/runnable.js";
 
 export type SingleReducer<ValueType, UpdateType = ValueType> =
   | {
@@ -50,7 +50,7 @@ export type UpdateType<SD extends StateDefinition> = {
   [key in keyof SD]?: ExtractUpdateType<SD[key]>;
 };
 
-export type NodeType<SD extends StateDefinition> = RunnableLikeWithExtraInvoke<
+export type NodeType<SD extends StateDefinition> = RunnableLike<
   StateType<SD>,
   UpdateType<SD> | Partial<StateType<SD>>
 >;

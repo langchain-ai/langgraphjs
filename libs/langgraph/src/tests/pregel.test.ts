@@ -25,6 +25,7 @@ import {
 import { ToolCall } from "@langchain/core/messages/tool";
 import {
   BaseCheckpointSaver,
+  BaseStore,
   Checkpoint,
   CheckpointMetadata,
   CheckpointTuple,
@@ -76,7 +77,7 @@ import { ERROR, INTERRUPT, PULL, PUSH, Send } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
-import { InvokeExtraFields } from "../pregel/runnable.js";
+import { LangGraphRunnableConfig } from "../pregel/types.js";
 
 expect.extend({
   toHaveKeyStartingWith(received: object, prefix: string) {
@@ -5231,7 +5232,7 @@ describe("StateGraph start branch then end", () => {
   });
 });
 
-describe.only("Managed Values (context) can be passed through state", () => {
+describe("Managed Values (context) can be passed through state", () => {
   let store: MemoryStore;
   let checkpointer: MemorySaver;
   let threadId = "";
@@ -5729,14 +5730,14 @@ describe.only("Managed Values (context) can be passed through state", () => {
     expect(currentState.next).toEqual([]);
   });
 
-  it.only("Can access the store inside nodes", async () => {
+  it("Can access the store inside nodes", async () => {
     const nodeOne = async (
       _state: typeof AgentAnnotation.State,
-      _config: RunnableConfig,
-      extra?: InvokeExtraFields
+      config: LangGraphRunnableConfig,
     ) => {
-      console.log("Config", _config.configurable)
-      expect(extra?.store).toBeDefined();
+      console.log("config", config)
+      expect(config.store).toBeDefined();
+      expect(config.store).toBeInstanceOf(BaseStore);
     };
 
     const workflow = new StateGraph(MessagesAnnotation)

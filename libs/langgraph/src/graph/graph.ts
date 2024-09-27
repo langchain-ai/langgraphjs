@@ -1,7 +1,9 @@
 /* eslint-disable @typescript-eslint/no-use-before-define */
 import {
+  _coerceToRunnable,
   Runnable,
   RunnableConfig,
+  RunnableLike,
 } from "@langchain/core/runnables";
 import {
   Node as RunnableGraphNode,
@@ -24,7 +26,6 @@ import {
 } from "../constants.js";
 import { RunnableCallable } from "../utils.js";
 import { InvalidUpdateError, NodeInterrupt } from "../errors.js";
-import { _coerceToRunnable, RunnableWithOptions, type RunnableLikeWithExtraInvoke } from "../pregel/runnable.js";
 
 /** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
@@ -112,7 +113,7 @@ export class Branch<IO, N extends string> {
 }
 
 export type NodeSpec<RunInput, RunOutput> = {
-  runnable: RunnableWithOptions<RunInput, RunOutput>;
+  runnable: Runnable<RunInput, RunOutput>;
   metadata?: Record<string, unknown>;
 };
 
@@ -157,7 +158,7 @@ export class Graph<
 
   addNode<K extends string, NodeInput = RunInput>(
     key: K,
-    action: RunnableLikeWithExtraInvoke<NodeInput, RunOutput>,
+    action: RunnableLike<NodeInput, RunOutput>,
     options?: AddNodeOptions
   ): Graph<N | K, RunInput, RunOutput> {
     for (const reservedChar of [
@@ -184,7 +185,7 @@ export class Graph<
     this.nodes[key as unknown as N] = {
       runnable: _coerceToRunnable<RunInput, RunOutput>(
         // Account for arbitrary state due to Send API
-        action as RunnableLikeWithExtraInvoke<RunInput, RunOutput>
+        action as RunnableLike<RunInput, RunOutput>
       ),
       metadata: options?.metadata,
     } as NodeSpecType;

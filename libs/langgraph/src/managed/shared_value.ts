@@ -9,8 +9,8 @@ import {
   ManagedValueParams,
   WritableManagedValue,
 } from "./base.js";
-import { CONFIG_KEY_STORE } from "../constants.js";
 import { InvalidUpdateError } from "../errors.js";
+import { LangGraphRunnableConfig } from "../pregel/types.js";
 
 type Value = Record<string, Record<string, any>>;
 type Update = Record<string, Record<string, any> | null>;
@@ -29,10 +29,10 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
 
   value: Value = {};
 
-  constructor(config: RunnableConfig, params: SharedValueParams) {
+  constructor(config: LangGraphRunnableConfig, params: SharedValueParams) {
     super(config, params);
     this.scope = params.scope;
-    this.store = config.configurable?.[CONFIG_KEY_STORE] || null;
+    this.store = config.store || null;
 
     if (!this.store) {
       this.ns = null;

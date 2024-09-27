@@ -1,4 +1,4 @@
-import type { RunnableConfig } from "@langchain/core/runnables";
+import type { Runnable, RunnableConfig } from "@langchain/core/runnables";
 import type {
   All,
   PendingWrite,
@@ -11,7 +11,10 @@ import type { PregelNode } from "./read.js";
 import { RetryPolicy } from "./utils/index.js";
 import { Interrupt } from "../constants.js";
 import { type ManagedValueSpec } from "../managed/base.js";
-import { RunnableWithOptions } from "./runnable.js";
+
+export interface LangGraphRunnableConfig extends RunnableConfig {
+  store?: BaseStore;
+}
 
 export type StreamMode = "values" | "updates" | "debug";
 
@@ -72,7 +75,7 @@ export interface PregelInterface<
 
   retryPolicy?: RetryPolicy;
 
-  config?: RunnableConfig;
+  config?: LangGraphRunnableConfig;
 
   /**
    * Memory store to use for SharedValues.
@@ -90,7 +93,7 @@ export interface PregelTaskDescription {
   readonly name: string;
   readonly error?: unknown;
   readonly interrupts: Interrupt[];
-  readonly state?: RunnableConfig | StateSnapshot;
+  readonly state?: LangGraphRunnableConfig | StateSnapshot;
   readonly path?: [string, ...(string | number)[]];
 }
 
@@ -100,9 +103,9 @@ export interface PregelExecutableTask<
 > {
   readonly name: N;
   readonly input: unknown;
-  readonly proc: RunnableWithOptions;
+  readonly proc: Runnable;
   readonly writes: PendingWrite<C>[];
-  readonly config?: RunnableConfig;
+  readonly config?: LangGraphRunnableConfig;
   readonly triggers: Array<string>;
   readonly retry_policy?: RetryPolicy;
   readonly id: string;

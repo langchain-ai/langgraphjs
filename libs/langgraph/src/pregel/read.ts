@@ -5,12 +5,12 @@ import {
   RunnableConfig,
   RunnablePassthrough,
   RunnableSequence,
+  _coerceToRunnable, type RunnableLike
 } from "@langchain/core/runnables";
 import { CONFIG_KEY_READ } from "../constants.js";
 import { ChannelWrite } from "./write.js";
 import { RunnableCallable } from "../utils.js";
 import type { RetryPolicy } from "./utils/index.js";
-import { _coerceToRunnable, type RunnableLikeWithExtraInvoke } from "./runnable.js";
 
 export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -224,7 +224,7 @@ export class PregelNode<
   }
 
   pipe<NewRunOutput>(
-    coerceable: RunnableLikeWithExtraInvoke
+    coerceable: RunnableLike
   ): PregelNode<RunInput, Exclude<NewRunOutput, Error>> {
     if (ChannelWrite.isWriter(coerceable)) {
       return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
@@ -247,7 +247,7 @@ export class PregelNode<
         mapper: this.mapper,
         writers: this.writers,
         bound: _coerceToRunnable<RunInput, NewRunOutput>(
-          coerceable as RunnableLikeWithExtraInvoke<RunInput, NewRunOutput>
+          coerceable as RunnableLike<RunInput, NewRunOutput>
         ),
         config: this.config,
         kwargs: this.kwargs,

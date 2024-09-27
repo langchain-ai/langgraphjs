@@ -1,8 +1,7 @@
-import { Runnable, RunnableConfig } from "@langchain/core/runnables";
+import { Runnable, RunnableConfig, RunnableLike } from "@langchain/core/runnables";
 import { _isSend, CONFIG_KEY_SEND, Send, TASKS } from "../constants.js";
 import { RunnableCallable } from "../utils.js";
 import { InvalidUpdateError } from "../errors.js";
-import { RunnableLikeWithExtraInvoke } from "./runnable.js";
 
 type TYPE_SEND = (values: Array<[string, unknown]>) => void;
 
@@ -118,7 +117,7 @@ export class ChannelWrite<
     write(filtered);
   }
 
-  static isWriter(runnable: RunnableLikeWithExtraInvoke): boolean {
+  static isWriter(runnable: RunnableLike): boolean {
     return (
       // eslint-disable-next-line no-instanceof/no-instanceof
       runnable instanceof ChannelWrite ||

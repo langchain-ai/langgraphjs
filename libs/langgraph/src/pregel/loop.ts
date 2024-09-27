@@ -18,7 +18,7 @@ import {
   createCheckpoint,
   emptyChannels,
 } from "../channels/base.js";
-import { PregelExecutableTask, StreamMode } from "./types.js";
+import { LangGraphRunnableConfig, PregelExecutableTask, StreamMode } from "./types.js";
 import {
   CHECKPOINT_NAMESPACE_SEPARATOR,
   CONFIG_KEY_CHECKPOINT_MAP,
@@ -137,7 +137,7 @@ export class PregelLoop {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   output: any;
 
-  config: RunnableConfig;
+  config: LangGraphRunnableConfig;
 
   protected checkpointer?: BaseCheckpointSaver;
 

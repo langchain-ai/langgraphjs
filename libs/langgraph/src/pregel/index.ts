@@ -7,6 +7,7 @@ import {
   getCallbackManagerForConfig,
   mergeConfigs,
   patchConfig,
+  _coerceToRunnable, RunnableLike
 } from "@langchain/core/runnables";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
@@ -42,7 +43,6 @@ import {
   CONFIG_KEY_CHECKPOINTER,
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
-  CONFIG_KEY_STORE,
   ERROR,
   INTERRUPT,
   CHECKPOINT_NAMESPACE_SEPARATOR,
@@ -51,6 +51,7 @@ import {
   CONFIG_KEY_TASK_ID,
 } from "../constants.js";
 import {
+  LangGraphRunnableConfig,
   PregelExecutableTask,
   PregelInterface,
   PregelParams,
@@ -87,7 +88,6 @@ import {
 } from "../managed/base.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
 import { ensureLangGraphConfig } from "./utils/config.js";
-import { _coerceToRunnable, RunnableLikeWithExtraInvoke } from "./runnable.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -168,8 +168,7 @@ export class Channel {
           channel: key,
           value: PASSTHROUGH,
           skipNone: true,
-          // TODO: do I need to reimplement this and pass the extra field?
-          mapper: _coerceToRunnable(value as RunnableLikeWithExtraInvoke),
+          mapper: _coerceToRunnable(value as RunnableLike),
         });
       } else {
         channelWriteEntries.push({
@@ -204,6 +203,8 @@ export interface PregelOptions<
   debug?: boolean;
   /** Whether to stream subgraphs. */
   subgraphs?: boolean;
+  /** The shared value store */
+  store?: BaseStore;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -268,7 +269,7 @@ export class Pregel<
 
   retryPolicy?: RetryPolicy;
 
-  config?: RunnableConfig;
+  config?: LangGraphRunnableConfig;
 
   store?: BaseStore;
 
@@ -595,7 +596,7 @@ export class Pregel<
    * that updated the state, if not ambiguous.
    */
   async updateState(
-    inputConfig: RunnableConfig,
+    inputConfig: LangGraphRunnableConfig,
     values: Record<string, unknown> | unknown,
     asNode?: keyof Nn
   ): Promise<RunnableConfig> {
@@ -744,12 +745,13 @@ export class Pregel<
       id: uuid5(INTERRUPT, checkpoint.id),
     };
 
-    const store = config.configurable?.[CONFIG_KEY_STORE] ?? this.store;
-
     // execute task
     await task.proc.invoke(
       task.input,
-      patchConfig(config, {
+      patchConfig<LangGraphRunnableConfig>({
+        ...config,
+        store: config?.store ?? this.store,
+      }, {
         runName: config.runName ?? `${this.getName()}UpdateState`,
         configurable: {
           [CONFIG_KEY_SEND]: (items: [keyof Cc, unknown][]) =>
@@ -770,9 +772,6 @@ export class Pregel<
             ),
         },
       }),
-      {
-        store,
-      }
     );
 
     // save task writes
@@ -875,12 +874,7 @@ export class Pregel<
       defaultCheckpointer = this.checkpointer;
     }
 
-    let defaultStore: BaseStore | undefined;
-    if (config.configurable && CONFIG_KEY_STORE in config.configurable) {
-      defaultStore = config.configurable[CONFIG_KEY_STORE];
-    } else {
-      defaultStore = this.store;
-    }
+    const defaultStore: BaseStore | undefined = config.store ?? this.store;
 
     return [
       defaultDebug,
@@ -925,9 +919,10 @@ export class Pregel<
       skipManaged?: boolean;
     }
   ) {
-    const configForManaged = patchConfigurable(config, {
-      [CONFIG_KEY_STORE]: this.store,
-    });
+    const configForManaged: LangGraphRunnableConfig = {
+      ...config,
+      store: this.store,
+    };
     const channelSpecs: Record<string, BaseChannel> = {};
     const managedSpecs: Record<string, ManagedValueSpec> = {};
 
