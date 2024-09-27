@@ -5733,9 +5733,8 @@ describe("Managed Values (context) can be passed through state", () => {
   it("Can access the store inside nodes", async () => {
     const nodeOne = async (
       _state: typeof AgentAnnotation.State,
-      config: LangGraphRunnableConfig,
+      config: LangGraphRunnableConfig
     ) => {
-      console.log("config", config)
       expect(config.store).toBeDefined();
       expect(config.store).toBeInstanceOf(BaseStore);
     };

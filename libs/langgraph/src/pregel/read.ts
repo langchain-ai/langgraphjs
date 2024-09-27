@@ -5,7 +5,8 @@ import {
   RunnableConfig,
   RunnablePassthrough,
   RunnableSequence,
-  _coerceToRunnable, type RunnableLike
+  _coerceToRunnable,
+  type RunnableLike,
 } from "@langchain/core/runnables";
 import { CONFIG_KEY_READ } from "../constants.js";
 import { ChannelWrite } from "./write.js";

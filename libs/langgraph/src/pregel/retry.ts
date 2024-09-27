@@ -122,7 +122,7 @@ async function _runWithRetry(
     try {
       result = await pregelTask.proc.invoke(
         pregelTask.input,
-        pregelTask.config,
+        pregelTask.config
       );
       break;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

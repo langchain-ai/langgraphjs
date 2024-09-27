@@ -1,6 +1,6 @@
 import { RunnableConfig } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
-import { LangGraphRunnableConfig } from "../types.js";
+import { LangGraphRunnableConfig } from "../runnable_types.js";
 
 const COPIABLE_KEYS = ["tags", "metadata", "callbacks", "configurable"];
 

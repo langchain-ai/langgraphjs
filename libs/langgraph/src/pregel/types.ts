@@ -11,10 +11,7 @@ import type { PregelNode } from "./read.js";
 import { RetryPolicy } from "./utils/index.js";
 import { Interrupt } from "../constants.js";
 import { type ManagedValueSpec } from "../managed/base.js";
-
-export interface LangGraphRunnableConfig extends RunnableConfig {
-  store?: BaseStore;
-}
+import { LangGraphRunnableConfig } from "./runnable_types.js";
 
 export type StreamMode = "values" | "updates" | "debug";
 

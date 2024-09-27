@@ -18,7 +18,7 @@ import {
   createCheckpoint,
   emptyChannels,
 } from "../channels/base.js";
-import { LangGraphRunnableConfig, PregelExecutableTask, StreamMode } from "./types.js";
+import { PregelExecutableTask, StreamMode } from "./types.js";
 import {
   CHECKPOINT_NAMESPACE_SEPARATOR,
   CONFIG_KEY_CHECKPOINT_MAP,
@@ -62,6 +62,7 @@ import {
 } from "./debug.js";
 import { PregelNode } from "./read.js";
 import { ManagedValueMapping, WritableManagedValue } from "../managed/base.js";
+import { LangGraphRunnableConfig } from "./runnable_types.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");

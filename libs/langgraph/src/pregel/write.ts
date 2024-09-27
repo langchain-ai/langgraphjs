@@ -1,4 +1,8 @@
-import { Runnable, RunnableConfig, RunnableLike } from "@langchain/core/runnables";
+import {
+  Runnable,
+  RunnableConfig,
+  RunnableLike,
+} from "@langchain/core/runnables";
 import { _isSend, CONFIG_KEY_SEND, Send, TASKS } from "../constants.js";
 import { RunnableCallable } from "../utils.js";
 import { InvalidUpdateError } from "../errors.js";

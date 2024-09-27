@@ -7,7 +7,8 @@ import {
   getCallbackManagerForConfig,
   mergeConfigs,
   patchConfig,
-  _coerceToRunnable, RunnableLike
+  _coerceToRunnable,
+  RunnableLike,
 } from "@langchain/core/runnables";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
@@ -51,7 +52,6 @@ import {
   CONFIG_KEY_TASK_ID,
 } from "../constants.js";
 import {
-  LangGraphRunnableConfig,
   PregelExecutableTask,
   PregelInterface,
   PregelParams,
@@ -88,6 +88,7 @@ import {
 } from "../managed/base.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
 import { ensureLangGraphConfig } from "./utils/config.js";
+import { LangGraphRunnableConfig } from "./runnable_types.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -748,30 +749,33 @@ export class Pregel<
     // execute task
     await task.proc.invoke(
       task.input,
-      patchConfig<LangGraphRunnableConfig>({
-        ...config,
-        store: config?.store ?? this.store,
-      }, {
-        runName: config.runName ?? `${this.getName()}UpdateState`,
-        configurable: {
-          [CONFIG_KEY_SEND]: (items: [keyof Cc, unknown][]) =>
-            task.writes.push(...items),
-          [CONFIG_KEY_READ]: (
-            select_: Array<keyof Cc> | keyof Cc,
-            fresh_: boolean = false
-          ) =>
-            _localRead(
-              step,
-              checkpoint,
-              channels,
-              managed,
-              // TODO: Why does keyof StrRecord allow number and symbol?
-              task as PregelExecutableTask<string, string>,
-              select_ as string | string[],
-              fresh_
-            ),
+      patchConfig<LangGraphRunnableConfig>(
+        {
+          ...config,
+          store: config?.store ?? this.store,
         },
-      }),
+        {
+          runName: config.runName ?? `${this.getName()}UpdateState`,
+          configurable: {
+            [CONFIG_KEY_SEND]: (items: [keyof Cc, unknown][]) =>
+              task.writes.push(...items),
+            [CONFIG_KEY_READ]: (
+              select_: Array<keyof Cc> | keyof Cc,
+              fresh_: boolean = false
+            ) =>
+              _localRead(
+                step,
+                checkpoint,
+                channels,
+                managed,
+                // TODO: Why does keyof StrRecord allow number and symbol?
+                task as PregelExecutableTask<string, string>,
+                select_ as string | string[],
+                fresh_
+              ),
+          },
+        }
+      )
     );
 
     // save task writes

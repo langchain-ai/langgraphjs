@@ -43,10 +43,11 @@ import {
   PUSH,
   PULL,
 } from "../constants.js";
-import { LangGraphRunnableConfig, PregelExecutableTask, PregelTaskDescription } from "./types.js";
+import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { getNullChannelVersion } from "./utils/index.js";
 import { ManagedValueMapping } from "../managed/base.js";
+import { LangGraphRunnableConfig } from "./runnable_types.js";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -541,7 +542,7 @@ export function _prepareSingleTask<
           writes,
           config: patchConfig(
             {
-              ... mergeConfigs(config, {
+              ...mergeConfigs(config, {
                 metadata,
                 tags: proc.tags,
               }),
