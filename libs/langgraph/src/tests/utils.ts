@@ -13,6 +13,11 @@ import {
   HumanMessage,
   BaseMessageFields,
   AIMessageChunk,
+  AIMessageFields,
+  ToolMessage,
+  ToolMessageFieldsWithToolCallId,
+  FunctionMessage,
+  FunctionMessageFieldsWithName,
 } from "@langchain/core/messages";
 import { ChatResult } from "@langchain/core/outputs";
 import { RunnableConfig } from "@langchain/core/runnables";
@@ -288,8 +293,8 @@ export class _AnyIdAIMessage extends AIMessage {
     return ["langchain_core", "messages", "AIMessage"];
   }
 
-  constructor(fields: BaseMessageFields | string) {
-    let fieldsWithJestMatcher: Partial<BaseMessageFields> = {
+  constructor(fields: AIMessageFields | string) {
+    let fieldsWithJestMatcher: Partial<AIMessageFields> = {
       id: expect.any(String) as unknown as string,
     };
     if (typeof fields === "string") {
@@ -303,7 +308,35 @@ export class _AnyIdAIMessage extends AIMessage {
         ...fieldsWithJestMatcher,
       };
     }
-    super(fieldsWithJestMatcher as BaseMessageFields);
+    super(fieldsWithJestMatcher as AIMessageFields);
+  }
+}
+
+export class _AnyIdToolMessage extends ToolMessage {
+  get lc_id() {
+    return ["langchain_core", "messages", "ToolMessage"];
+  }
+
+  constructor(fields: ToolMessageFieldsWithToolCallId) {
+    const fieldsWithJestMatcher: Partial<ToolMessageFieldsWithToolCallId> = {
+      id: expect.any(String) as unknown as string,
+      ...fields,
+    };
+    super(fieldsWithJestMatcher as ToolMessageFieldsWithToolCallId);
+  }
+}
+
+export class _AnyIdFunctionMessage extends FunctionMessage {
+  get lc_id() {
+    return ["langchain_core", "messages", "FunctionMessage"];
+  }
+
+  constructor(fields: FunctionMessageFieldsWithName) {
+    const fieldsWithJestMatcher: Partial<FunctionMessageFieldsWithName> = {
+      id: expect.any(String) as unknown as string,
+      ...fields,
+    };
+    super(fieldsWithJestMatcher as FunctionMessageFieldsWithName);
   }
 }
 
@@ -312,8 +345,8 @@ export class _AnyIdAIMessageChunk extends AIMessageChunk {
     return ["langchain_core", "messages", "AIMessageChunk"];
   }
 
-  constructor(fields: BaseMessageFields | string) {
-    let fieldsWithJestMatcher: Partial<BaseMessageFields> = {
+  constructor(fields: AIMessageFields | string) {
+    let fieldsWithJestMatcher: Partial<AIMessageFields> = {
       id: expect.any(String) as unknown as string,
     };
     if (typeof fields === "string") {
@@ -327,6 +360,6 @@ export class _AnyIdAIMessageChunk extends AIMessageChunk {
         ...fieldsWithJestMatcher,
       };
     }
-    super(fieldsWithJestMatcher as BaseMessageFields);
+    super(fieldsWithJestMatcher as AIMessageFields);
   }
 }

@@ -13,6 +13,9 @@ import {
 import { z } from "zod";
 import { RunnableLambda } from "@langchain/core/runnables";
 import {
+  _AnyIdAIMessage,
+  _AnyIdHumanMessage,
+  _AnyIdToolMessage,
   FakeToolCallingChatModel,
   MemorySaverAssertImmutable,
 } from "./utils.js";
@@ -86,24 +89,21 @@ describe("createReactAgent", () => {
     });
 
     const expected = [
-      new HumanMessage("Hello Input!"),
-      new AIMessage({
+      new _AnyIdHumanMessage("Hello Input!"),
+      new _AnyIdAIMessage({
         content: "result1",
         tool_calls: [
           { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
         ],
       }),
-      new ToolMessage({
+      new _AnyIdToolMessage({
         name: "search_api",
         content: "result for foo",
         tool_call_id: "tool_abcd123",
         artifact: undefined,
       }),
-      new AIMessage("result2"),
-    ].map((message, i) => {
-      message.id = result.messages[i].id;
-      return message;
-    });
+      new _AnyIdAIMessage("result2"),
+    ];
     expect(result.messages).toEqual(expected);
   });
 
@@ -130,23 +130,20 @@ describe("createReactAgent", () => {
       messages: [],
     });
     const expected = [
-      new AIMessage({
+      new _AnyIdAIMessage({
         content: "result1",
         tool_calls: [
           { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
         ],
       }),
-      new ToolMessage({
+      new _AnyIdToolMessage({
         name: "search_api",
         content: "result for foo",
         tool_call_id: "tool_abcd123",
         artifact: undefined,
       }),
-      new AIMessage("result2"),
-    ].map((message, i) => {
-      message.id = result.messages[i].id;
-      return message;
-    });
+      new _AnyIdAIMessage("result2"),
+    ];
     expect(result.messages).toEqual(expected);
   });
 
@@ -210,24 +207,21 @@ describe("createReactAgent", () => {
     });
 
     const expected = [
-      new HumanMessage("Hello Input!"),
-      new AIMessage({
+      new _AnyIdHumanMessage("Hello Input!"),
+      new _AnyIdAIMessage({
         content: "result1",
         tool_calls: [
           { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
         ],
       }),
-      new ToolMessage({
+      new _AnyIdToolMessage({
         name: "search_api",
         content: "some response format",
         tool_call_id: "tool_abcd123",
         artifact: Buffer.from("123"),
       }),
-      new AIMessage("result2"),
-    ].map((message, i) => {
-      message.id = result.messages[i].id;
-      return message;
-    });
+      new _AnyIdAIMessage("result2"),
+    ];
     expect(result.messages).toEqual(expected);
   });
 
@@ -267,23 +261,20 @@ describe("createReactAgent", () => {
     });
 
     const expected = [
-      new HumanMessage("Hello Input!"),
-      new AIMessage({
+      new _AnyIdHumanMessage("Hello Input!"),
+      new _AnyIdAIMessage({
         content: "result1",
         tool_calls: [
           { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
         ],
       }),
-      new ToolMessage({
+      new _AnyIdToolMessage({
         name: "search_api",
         content: "result for foo",
         tool_call_id: "tool_abcd123",
       }),
-      new AIMessage("result2"),
-    ].map((message, i) => {
-      message.id = result.messages[i].id;
-      return message;
-    });
+      new _AnyIdAIMessage("result2"),
+    ];
     expect(result.messages).toEqual(expected);
   });
 });
@@ -398,7 +389,7 @@ describe("ToolNode", () => {
 });
 
 describe("MessagesAnnotation", () => {
-  it.only("should assign ids properly and avoid duping added messages", async () => {
+  it("should assign ids properly and avoid duping added messages", async () => {
     const childGraph = new StateGraph(MessagesAnnotation)
       .addNode("duper", ({ messages }) => ({ messages }))
       .addNode("duper2", ({ messages }) => ({ messages }))
@@ -415,10 +406,8 @@ describe("MessagesAnnotation", () => {
       { messages: [new HumanMessage("should be only one")] },
       { configurable: { thread_id: "1" } }
     );
-    console.log("-----INTERRUPTED-----");
-    // console.log(JSON.stringify(await gatherIterator(graph.getStateHistory({ configurable: { thread_id: "1" } })), null, 2))
     const res2 = await graph.invoke(null, { configurable: { thread_id: "1" } });
-    console.log(res2);
+
     expect(res.messages.length).toEqual(1);
     expect(res2.messages.length).toEqual(1);
   });
