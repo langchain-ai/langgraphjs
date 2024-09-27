@@ -7,6 +7,7 @@ import {
   type PutOperation,
   type GetOperation,
   type Operation,
+  OperationResults,
 } from "./base.js";
 
 export class AsyncBatchedStore extends BaseStore {
@@ -34,6 +35,16 @@ export class AsyncBatchedStore extends BaseStore {
 
   get isRunning(): boolean {
     return this.running;
+  }
+
+  async batch<Op extends Operation[]>(
+    _operations: Op
+  ): Promise<OperationResults<Op>> {
+    throw new Error(
+      "The `batch` method is not implemented on `AsyncBatchedStore`." +
+        "\n Instead, it calls the `batch` method on the wrapped store." +
+        "\n If you are seeing this error, something is wrong."
+    );
   }
 
   async get(namespace: string[], id: string): Promise<Item | null> {

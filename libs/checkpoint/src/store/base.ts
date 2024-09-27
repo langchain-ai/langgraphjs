@@ -135,13 +135,9 @@ export abstract class BaseStore {
    * @param _operations An array of operations to execute.
    * @returns A promise that resolves to the results of the operations.
    */
-  async batch<Op extends Operation[]>(
+  abstract batch<Op extends Operation[]>(
     _operations: Op
-  ): Promise<OperationResults<Op>> {
-    throw new Error(
-      "The `batch` method must be implemented by subclasses of `BaseStore`."
-    );
-  }
+  ): Promise<OperationResults<Op>>;
 
   // convenience methods
 
