@@ -37,6 +37,12 @@ export class AsyncBatchedStore extends BaseStore {
     return this.running;
   }
 
+  /**
+   * @ignore
+   * Batch is not implemented here as we're only extending `BaseStore`
+   * to allow it to be passed where `BaseStore` is expected, and implement
+   * the convenience methods (get, search, put, delete).
+   */
   async batch<Op extends Operation[]>(
     _operations: Op
   ): Promise<OperationResults<Op>> {
