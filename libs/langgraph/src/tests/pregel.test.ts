@@ -5772,7 +5772,7 @@ describe("Managed Values (context) can be passed through state", () => {
       const { store } = config;
       expect(store).toBeDefined();
       if (!store) {
-        throw new Error("No store foubd")
+        throw new Error("No store foubd");
       }
 
       expect(config.configurable?.assistant_id).toEqual("a");
@@ -5792,7 +5792,7 @@ describe("Managed Values (context) can be passed through state", () => {
       const { store } = config;
       expect(store).toBeDefined();
       if (!store) {
-        throw new Error("No store foubd")
+        throw new Error("No store foubd");
       }
 
       expect(config.configurable?.assistant_id).toEqual("a");
@@ -5818,8 +5818,14 @@ describe("Managed Values (context) can be passed through state", () => {
       store,
       checkpointer,
     });
-  
-    const config = { configurable: { thread_id: threadId, assistant_id: "a", namespace: ["rules", "style"] } };
+
+    const config = {
+      configurable: {
+        thread_id: threadId,
+        assistant_id: "a",
+        namespace: ["rules", "style"],
+      },
+    };
 
     // Invoke the first time to cause `nodeOne` to be executed.
     await app.invoke(
@@ -5832,7 +5838,7 @@ describe("Managed Values (context) can be passed through state", () => {
       },
       config
     );
-  })
+  });
 });
 
 describe("Subgraphs", () => {
