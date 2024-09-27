@@ -28,12 +28,10 @@ describe("AsyncBatchedStore", () => {
           const items: Item[] = op.namespacePrefix.flatMap((prefix) => [
             {
               value: { value: 1 },
-              scores: {},
               id: prefix,
               namespace: [prefix],
               createdAt: new Date(),
               updatedAt: new Date(),
-              lastAccessedAt: new Date(),
             },
           ]);
           results.push(items);
@@ -41,12 +39,10 @@ describe("AsyncBatchedStore", () => {
           // GetOperation
           results.push({
             value: { value: 1 },
-            scores: {},
             id: op.id,
             namespace: op.namespace,
             createdAt: new Date(),
             updatedAt: new Date(),
-            lastAccessedAt: new Date(),
           });
         } else {
           // PutOperation
@@ -82,41 +78,33 @@ describe("AsyncBatchedStore", () => {
       [
         {
           value: { value: 1 },
-          scores: {},
           id: "a",
           namespace: ["a"],
           createdAt: expect.any(Date),
           updatedAt: expect.any(Date),
-          lastAccessedAt: expect.any(Date),
         },
         {
           value: { value: 1 },
-          scores: {},
           id: "b",
           namespace: ["b"],
           createdAt: expect.any(Date),
           updatedAt: expect.any(Date),
-          lastAccessedAt: expect.any(Date),
         },
       ],
       [
         {
           value: { value: 1 },
-          scores: {},
           id: "c",
           namespace: ["c"],
           createdAt: expect.any(Date),
           updatedAt: expect.any(Date),
-          lastAccessedAt: expect.any(Date),
         },
         {
           value: { value: 1 },
-          scores: {},
           id: "d",
           namespace: ["d"],
           createdAt: expect.any(Date),
           updatedAt: expect.any(Date),
-          lastAccessedAt: expect.any(Date),
         },
       ],
     ]);
@@ -145,24 +133,20 @@ describe("BaseStore", () => {
           results.push([
             {
               value: { value: 1 },
-              scores: {},
               id: op.namespacePrefix[0],
               namespace: op.namespacePrefix,
               createdAt: new Date(),
               updatedAt: new Date(),
-              lastAccessedAt: new Date(),
             },
           ]);
         } else if ("id" in op && !("value" in op)) {
           // GetOperation
           results.push({
             value: { value: 1 },
-            scores: {},
             id: op.id,
             namespace: op.namespace,
             createdAt: new Date(),
             updatedAt: new Date(),
-            lastAccessedAt: new Date(),
           });
         } else if ("value" in op) {
           // PutOperation
@@ -184,12 +168,10 @@ describe("BaseStore", () => {
     const result = await store.get(["test"], "123");
     expect(result).toEqual({
       value: { value: 1 },
-      scores: {},
       id: "123",
       namespace: ["test"],
       createdAt: expect.any(Date),
       updatedAt: expect.any(Date),
-      lastAccessedAt: expect.any(Date),
     });
   });
 
@@ -198,12 +180,10 @@ describe("BaseStore", () => {
     expect(result).toEqual([
       {
         value: { value: 1 },
-        scores: {},
         id: "test",
         namespace: ["test"],
         createdAt: expect.any(Date),
         updatedAt: expect.any(Date),
-        lastAccessedAt: expect.any(Date),
       },
     ]);
   });
@@ -241,5 +221,157 @@ describe("BaseStore", () => {
     expect(batchSpy).toHaveBeenCalledWith([
       { namespacePrefix: ["test"], limit: 10, offset: 0 },
     ]);
+  });
+
+  describe("listNamespaces", () => {
+    class TestStoreWithListNamespaces extends TestStore {
+      async batch<Op extends Operation[]>(
+        operations: Op
+      ): Promise<OperationResults<Op>> {
+        const results: any[] = await super.batch(operations);
+  
+        for (const op of operations) {
+          if ("matchConditions" in op) {
+            // ListNamespacesOperation
+            const namespaces = [
+              ["a", "b", "c"],
+              ["a", "b", "d"],
+              ["a", "c", "e"],
+              ["x", "y", "z"],
+            ];
+  
+            let filteredNamespaces = namespaces;
+  
+            if (op.matchConditions) {
+              for (const condition of op.matchConditions) {
+                if (condition.matchType === "prefix") {
+                  filteredNamespaces = filteredNamespaces.filter(ns =>
+                    ns.slice(0, condition.path.length).every((part, i) =>
+                      condition.path[i] === "*" ? true : part === condition.path[i]
+                    )
+                  );
+                } else if (condition.matchType === "suffix") {
+                  filteredNamespaces = filteredNamespaces.filter(ns =>
+                    ns.slice(-condition.path.length).every((part, i) =>
+                      condition.path[i] === "*" ? true : part === condition.path[i]
+                    )
+                  );
+                }
+              }
+            }
+  
+            if (op.maxDepth !== undefined) {
+              filteredNamespaces = filteredNamespaces.map(ns => ns.slice(0, op.maxDepth));
+            }
+  
+            results.push(filteredNamespaces.slice(op.offset, op.offset + op.limit));
+          }
+        }
+  
+        return results as OperationResults<Op>;
+      }
+    }
+  
+    let store: TestStoreWithListNamespaces;
+  
+    beforeEach(() => {
+      store = new TestStoreWithListNamespaces();
+    });
+  
+    it("should list all namespaces with default options", async () => {
+      const result = await store.listNamespaces({});
+      expect(result).toEqual([
+        ["a", "b", "c"],
+        ["a", "b", "d"],
+        ["a", "c", "e"],
+        ["x", "y", "z"],
+      ]);
+    });
+  
+    it("should filter namespaces by prefix", async () => {
+      const result = await store.listNamespaces({ prefix: ["a"] });
+      expect(result).toEqual([
+        ["a", "b", "c"],
+        ["a", "b", "d"],
+        ["a", "c", "e"],
+      ]);
+    });
+  
+    it("should filter namespaces by suffix", async () => {
+      const result = await store.listNamespaces({ suffix: ["d"] });
+      expect(result).toEqual([
+        ["a", "b", "d"],
+      ]);
+    });
+  
+    it("should apply maxDepth to results", async () => {
+      const result = await store.listNamespaces({ maxDepth: 2 });
+      expect(result).toEqual([
+        ["a", "b"],
+        ["a", "b"],
+        ["a", "c"],
+        ["x", "y"],
+      ]);
+    });
+  
+    it("should apply limit and offset", async () => {
+      const result = await store.listNamespaces({ limit: 2, offset: 1 });
+      expect(result).toEqual([
+        ["a", "b", "d"],
+        ["a", "c", "e"],
+      ]);
+    });
+  
+    it("should combine prefix, suffix, and maxDepth filters", async () => {
+      const result = await store.listNamespaces({
+        prefix: ["a"],
+        suffix: ["c"],
+        maxDepth: 2,
+      });
+      expect(result).toEqual([
+        ["a", "b"],
+      ]);
+    });
+  
+    it("should handle wildcard in prefix", async () => {
+      const result = await store.listNamespaces({ prefix: ["a", "*", "c"] });
+      expect(result).toEqual([
+        ["a", "b", "c"],
+      ]);
+    });
+  
+    it("should handle wildcard in suffix", async () => {
+      const result = await store.listNamespaces({ suffix: ["*", "z"] });
+      expect(result).toEqual([
+        ["x", "y", "z"],
+      ]);
+    });
+  
+    it("should return an empty array when no namespaces match", async () => {
+      const result = await store.listNamespaces({ prefix: ["non", "existent"] });
+      expect(result).toEqual([]);
+    });
+  
+    it("should pass correct options to batch method", async () => {
+      const batchSpy = jest.spyOn(store, "batch");
+      await store.listNamespaces({
+        prefix: ["a"],
+        suffix: ["c"],
+        maxDepth: 2,
+        limit: 5,
+        offset: 1,
+      });
+      expect(batchSpy).toHaveBeenCalledWith([
+        {
+          matchConditions: [
+            { matchType: "prefix", path: ["a"] },
+            { matchType: "suffix", path: ["c"] },
+          ],
+          maxDepth: 2,
+          limit: 5,
+          offset: 1,
+        },
+      ]);
+    });
   });
 });

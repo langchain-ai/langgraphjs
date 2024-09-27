@@ -9,13 +9,6 @@ export interface Item {
    */
   value: Record<string, any>;
   /**
-   * Relevance scores for the item.
-   * Keys can include built-in scores like 'recency' and 'relevance',
-   * as well as any key present in the 'value' object. This allows
-   * for multi-dimensional scoring of items.
-   */
-  scores: Record<string, number>;
-  /**
    * Unique identifier within the namespace.
    */
   id: string;
@@ -33,10 +26,6 @@ export interface Item {
    * Timestamp of last update.
    */
   updatedAt: Date;
-  /**
-   * Timestamp of last access.
-   */
-  lastAccessedAt: Date;
 }
 
 /**
@@ -103,7 +92,24 @@ export interface PutOperation {
   value: Record<string, any> | null;
 }
 
-export type Operation = GetOperation | SearchOperation | PutOperation;
+type NameSpacePath = (string | '*')[];
+
+type NamespaceMatchType = 'prefix' | 'suffix';
+
+interface MatchCondition {
+  matchType: NamespaceMatchType;
+  path: NameSpacePath;
+}
+
+interface ListNamespacesOperation {
+  matchConditions?: MatchCondition[];
+  maxDepth?: number;
+  limit: number;
+  offset: number;
+}
+
+
+export type Operation = GetOperation | SearchOperation | PutOperation | ListNamespacesOperation;
 
 export type OperationResults<Tuple extends readonly Operation[]> = {
   [K in keyof Tuple]: Tuple[K] extends PutOperation
@@ -112,6 +118,8 @@ export type OperationResults<Tuple extends readonly Operation[]> = {
     ? Item[]
     : Tuple[K] extends GetOperation
     ? Item | null
+    : Tuple[K] extends ListNamespacesOperation
+    ? string[][]
     : never;
 };
 
@@ -193,6 +201,50 @@ export abstract class BaseStore {
   async delete(namespace: string[], id: string): Promise<void> {
     await this.batch<[PutOperation]>([{ namespace, id, value: null }]);
   }
+
+    /**
+   * List and filter namespaces in the store.
+   * @param options Options for listing namespaces.
+   * @param options.prefix Filter namespaces that start with this path.
+   * @param options.suffix Filter namespaces that end with this path.
+   * @param options.maxDepth Return namespaces up to this depth in the hierarchy.
+   * @param options.limit Maximum number of namespaces to return (default 100).
+   * @param options.offset Number of namespaces to skip for pagination (default 0).
+   * @returns A promise that resolves to a list of namespace arrays that match the criteria.
+   */
+    async listNamespaces(options: {
+      prefix?: string[];
+      suffix?: string[];
+      maxDepth?: number;
+      limit?: number;
+      offset?: number;
+    }): Promise<string[][]> {
+      const {
+        prefix,
+        suffix,
+        maxDepth,
+        limit = 100,
+        offset = 0,
+      } = options;
+  
+      const matchConditions: MatchCondition[] = [];
+      if (prefix) {
+        matchConditions.push({ matchType: 'prefix', path: prefix });
+      }
+      if (suffix) {
+        matchConditions.push({ matchType: 'suffix', path: suffix });
+      }
+  
+      const op: ListNamespacesOperation = {
+        matchConditions: matchConditions.length > 0 ? matchConditions : undefined,
+        maxDepth,
+        limit,
+        offset,
+      };
+  
+      const batchResults = await this.batch<[ListNamespacesOperation]>([op]);
+      return batchResults[0];
+    }
 
   /**
    * Stop the store. No-op if not implemented.

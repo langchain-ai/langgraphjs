@@ -18,9 +18,6 @@ export class MemoryStore extends BaseStore {
         // GetOperation
         const namespaceKey = op.namespace.join(":");
         const item = this.data.get(namespaceKey)?.get(op.id);
-        if (item) {
-          item.lastAccessedAt = new Date();
-        }
         results.push(item || null);
       } else if ("namespacePrefix" in op) {
         // SearchOperation
@@ -63,12 +60,10 @@ export class MemoryStore extends BaseStore {
           } else {
             namespaceMap.set(op.id, {
               value: op.value,
-              scores: {},
               id: op.id,
               namespace: op.namespace,
               createdAt: now,
               updatedAt: now,
-              lastAccessedAt: now,
             });
           }
         }
