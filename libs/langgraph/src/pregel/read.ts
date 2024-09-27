@@ -3,10 +3,10 @@ import {
   RunnableBinding,
   RunnableBindingArgs,
   RunnableConfig,
-  RunnableLike,
   RunnablePassthrough,
   RunnableSequence,
   _coerceToRunnable,
+  type RunnableLike,
 } from "@langchain/core/runnables";
 import { CONFIG_KEY_READ } from "../constants.js";
 import { ChannelWrite } from "./write.js";
@@ -247,7 +247,9 @@ export class PregelNode<
         triggers: this.triggers,
         mapper: this.mapper,
         writers: this.writers,
-        bound: _coerceToRunnable<RunInput, NewRunOutput>(coerceable),
+        bound: _coerceToRunnable<RunInput, NewRunOutput>(
+          coerceable as RunnableLike<RunInput, NewRunOutput>
+        ),
         config: this.config,
         kwargs: this.kwargs,
         retryPolicy: this.retryPolicy,

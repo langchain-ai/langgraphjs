@@ -3,7 +3,6 @@ export const ERROR = "__error__";
 export const CONFIG_KEY_SEND = "__pregel_send";
 export const CONFIG_KEY_READ = "__pregel_read";
 export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
-export const CONFIG_KEY_STORE = "__pregel_store";
 export const CONFIG_KEY_RESUMING = "__pregel_resuming";
 export const CONFIG_KEY_TASK_ID = "__pregel_task_id";
 export const CONFIG_KEY_STREAM = "__pregel_stream";

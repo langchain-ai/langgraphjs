@@ -3,17 +3,18 @@ import {
   Runnable,
   RunnableConfig,
   RunnableFunc,
-  RunnableLike,
   RunnableSequence,
-  _coerceToRunnable,
   getCallbackManagerForConfig,
   mergeConfigs,
   patchConfig,
+  _coerceToRunnable,
+  RunnableLike,
 } from "@langchain/core/runnables";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   All,
   BaseCheckpointSaver,
+  BaseStore,
   CheckpointListOptions,
   CheckpointTuple,
   compareChannelVersions,
@@ -43,7 +44,6 @@ import {
   CONFIG_KEY_CHECKPOINTER,
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
-  CONFIG_KEY_STORE,
   ERROR,
   INTERRUPT,
   CHECKPOINT_NAMESPACE_SEPARATOR,
@@ -78,7 +78,6 @@ import {
 } from "./utils/index.js";
 import { PregelLoop, StreamChunk, StreamProtocol } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
-import { BaseStore } from "../store/base.js";
 import {
   ChannelKeyPlaceholder,
   isConfiguredManagedValue,
@@ -89,6 +88,7 @@ import {
 } from "../managed/base.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
 import { ensureLangGraphConfig } from "./utils/config.js";
+import { LangGraphRunnableConfig } from "./runnable_types.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -204,6 +204,8 @@ export interface PregelOptions<
   debug?: boolean;
   /** Whether to stream subgraphs. */
   subgraphs?: boolean;
+  /** The shared value store */
+  store?: BaseStore;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -268,7 +270,7 @@ export class Pregel<
 
   retryPolicy?: RetryPolicy;
 
-  config?: RunnableConfig;
+  config?: LangGraphRunnableConfig;
 
   store?: BaseStore;
 
@@ -595,7 +597,7 @@ export class Pregel<
    * that updated the state, if not ambiguous.
    */
   async updateState(
-    inputConfig: RunnableConfig,
+    inputConfig: LangGraphRunnableConfig,
     values: Record<string, unknown> | unknown,
     asNode?: keyof Nn | string
   ): Promise<RunnableConfig> {
@@ -747,27 +749,33 @@ export class Pregel<
     // execute task
     await task.proc.invoke(
       task.input,
-      patchConfig(config, {
-        runName: config.runName ?? `${this.getName()}UpdateState`,
-        configurable: {
-          [CONFIG_KEY_SEND]: (items: [keyof Cc, unknown][]) =>
-            task.writes.push(...items),
-          [CONFIG_KEY_READ]: (
-            select_: Array<keyof Cc> | keyof Cc,
-            fresh_: boolean = false
-          ) =>
-            _localRead(
-              step,
-              checkpoint,
-              channels,
-              managed,
-              // TODO: Why does keyof StrRecord allow number and symbol?
-              task as PregelExecutableTask<string, string>,
-              select_ as string | string[],
-              fresh_
-            ),
+      patchConfig<LangGraphRunnableConfig>(
+        {
+          ...config,
+          store: config?.store ?? this.store,
         },
-      })
+        {
+          runName: config.runName ?? `${this.getName()}UpdateState`,
+          configurable: {
+            [CONFIG_KEY_SEND]: (items: [keyof Cc, unknown][]) =>
+              task.writes.push(...items),
+            [CONFIG_KEY_READ]: (
+              select_: Array<keyof Cc> | keyof Cc,
+              fresh_: boolean = false
+            ) =>
+              _localRead(
+                step,
+                checkpoint,
+                channels,
+                managed,
+                // TODO: Why does keyof StrRecord allow number and symbol?
+                task as PregelExecutableTask<string, string>,
+                select_ as string | string[],
+                fresh_
+              ),
+          },
+        }
+      )
     );
 
     // save task writes
@@ -815,7 +823,8 @@ export class Pregel<
     RunnableConfig, // config without pregel keys
     All | string[], // interrupt before
     All | string[], // interrupt after
-    BaseCheckpointSaver | undefined
+    BaseCheckpointSaver | undefined,
+    BaseStore | undefined
   ] {
     const {
       debug,
@@ -869,6 +878,8 @@ export class Pregel<
       defaultCheckpointer = this.checkpointer;
     }
 
+    const defaultStore: BaseStore | undefined = config.store ?? this.store;
+
     return [
       defaultDebug,
       defaultStreamMode,
@@ -878,6 +889,7 @@ export class Pregel<
       defaultInterruptBefore as All | string[],
       defaultInterruptAfter as All | string[],
       defaultCheckpointer,
+      defaultStore,
     ];
   }
 
@@ -911,9 +923,10 @@ export class Pregel<
       skipManaged?: boolean;
     }
   ) {
-    const configForManaged = patchConfigurable(config, {
-      [CONFIG_KEY_STORE]: this.store,
-    });
+    const configForManaged: LangGraphRunnableConfig = {
+      ...config,
+      store: this.store,
+    };
     const channelSpecs: Record<string, BaseChannel> = {};
     const managedSpecs: Record<string, ManagedValueSpec> = {};
 
@@ -1006,6 +1019,7 @@ export class Pregel<
       interruptBefore,
       interruptAfter,
       checkpointer,
+      store,
     ] = this._defaults(inputConfig);
 
     const { channelSpecs, managed } = await this.prepareSpecs(config);
@@ -1042,7 +1056,7 @@ export class Pregel<
         managed,
         outputKeys,
         streamKeys: this.streamChannelsAsIs as string | string[],
-        store: this.store,
+        store,
         stream: new StreamProtocol(
           (chunk) => stream.push(chunk),
           new Set(streamMode)
@@ -1139,7 +1153,7 @@ export class Pregel<
     } finally {
       // Call `.stop()` again incase it was not called in the loop, e.g due to an error.
       if (loop) {
-        loop.store?.stop();
+        await loop.store?.stop();
       }
       await Promise.all([
         loop?.checkpointerPromises ?? [],
