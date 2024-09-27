@@ -77,7 +77,7 @@ import { ERROR, INTERRUPT, PULL, PUSH, Send } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
-import { LangGraphRunnableConfig } from "../pregel/types.js";
+import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 
 expect.extend({
   toHaveKeyStartingWith(received: object, prefix: string) {
