@@ -10,7 +10,7 @@ import {
   WritableManagedValue,
 } from "./base.js";
 import { InvalidUpdateError } from "../errors.js";
-import { LangGraphRunnableConfig } from "../pregel/types.js";
+import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 
 type Value = Record<string, Record<string, any>>;
 type Update = Record<string, Record<string, any> | null>;
