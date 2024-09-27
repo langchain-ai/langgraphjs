@@ -78,7 +78,7 @@ def copy_notebooks():
             if "Untitled" in file:
                 continue
             dst_dir_ = dst_dir
-            if file.endswith((".ipynb", ".png")):
+            if file.endswith((".ipynb", ".png", ".jpg", ".jpeg")):
                 if file in _MAP:
                     dst_dir = os.path.join(dst_dir, _MAP[file])
                 src_path = os.path.join(root, file)
