@@ -76,6 +76,7 @@ import { ERROR, INTERRUPT, PULL, PUSH, Send } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
+import { InvokeExtraFields } from "../pregel/runnable.js";
 
 expect.extend({
   toHaveKeyStartingWith(received: object, prefix: string) {
@@ -5230,7 +5231,7 @@ describe("StateGraph start branch then end", () => {
   });
 });
 
-describe("Managed Values (context) can be passed through state", () => {
+describe.only("Managed Values (context) can be passed through state", () => {
   let store: MemoryStore;
   let checkpointer: MemorySaver;
   let threadId = "";
@@ -5299,7 +5300,7 @@ describe("Managed Values (context) can be passed through state", () => {
       expect(scopedData?.size).toEqual(1);
       const sharedValue = scopedData?.get("sharedStateValue");
 
-      expect(sharedValue).toEqual({
+      expect(sharedValue?.value).toEqual({
         value: "shared",
       });
 
@@ -5726,6 +5727,40 @@ describe("Managed Values (context) can be passed through state", () => {
     // Final state after invoking nodeTwo and nodeThree
     currentState = await app.getState(config);
     expect(currentState.next).toEqual([]);
+  });
+
+  it.only("Can access the store inside nodes", async () => {
+    const nodeOne = async (
+      _state: typeof AgentAnnotation.State,
+      _config: RunnableConfig,
+      extra?: InvokeExtraFields
+    ) => {
+      expect(extra?.store).toBeDefined();
+    };
+
+    const workflow = new StateGraph(MessagesAnnotation)
+      .addNode("nodeOne", nodeOne)
+      .addEdge(START, "nodeOne")
+      .addEdge("nodeOne", END);
+
+    const app = workflow.compile({
+      store,
+      checkpointer,
+    });
+
+    const config = { configurable: { thread_id: threadId, assistant_id: "a" } };
+
+    // Invoke the first time to cause `nodeOne` to be executed.
+    await app.invoke(
+      {
+        messages: [
+          new HumanMessage({
+            content: "what is weather in sf",
+          }),
+        ],
+      },
+      config
+    );
   });
 });
 

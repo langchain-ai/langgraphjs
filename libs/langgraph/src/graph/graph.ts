@@ -2,7 +2,6 @@
 import {
   Runnable,
   RunnableConfig,
-  RunnableLike,
   _coerceToRunnable,
 } from "@langchain/core/runnables";
 import {
@@ -26,6 +25,7 @@ import {
 } from "../constants.js";
 import { RunnableCallable } from "../utils.js";
 import { InvalidUpdateError, NodeInterrupt } from "../errors.js";
+import { type RunnableLikeWithExtraInvoke } from "../pregel/runnable.js";
 
 /** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
@@ -158,7 +158,7 @@ export class Graph<
 
   addNode<K extends string, NodeInput = RunInput>(
     key: K,
-    action: RunnableLike<NodeInput, RunOutput>,
+    action: RunnableLikeWithExtraInvoke<NodeInput, RunOutput>,
     options?: AddNodeOptions
   ): Graph<N | K, RunInput, RunOutput> {
     for (const reservedChar of [
@@ -185,7 +185,7 @@ export class Graph<
     this.nodes[key as unknown as N] = {
       runnable: _coerceToRunnable<RunInput, RunOutput>(
         // Account for arbitrary state due to Send API
-        action as RunnableLike<RunInput, RunOutput>
+        action as RunnableLikeWithExtraInvoke<RunInput, RunOutput>
       ),
       metadata: options?.metadata,
     } as NodeSpecType;

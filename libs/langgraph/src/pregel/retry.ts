@@ -1,3 +1,4 @@
+import { CONFIG_KEY_STORE } from "../constants.js";
 import { isGraphInterrupt } from "../errors.js";
 import { PregelExecutableTask } from "./types.js";
 import type { RetryPolicy } from "./utils/index.js";
@@ -120,9 +121,14 @@ async function _runWithRetry(
     }
     error = undefined;
     try {
+      const store = pregelTask.config?.configurable?.[CONFIG_KEY_STORE];
+
       result = await pregelTask.proc.invoke(
         pregelTask.input,
-        pregelTask.config
+        pregelTask.config,
+        {
+          store,
+        }
       );
       break;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

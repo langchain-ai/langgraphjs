@@ -3,7 +3,6 @@ import {
   Runnable,
   RunnableConfig,
   RunnableFunc,
-  RunnableLike,
   RunnableSequence,
   _coerceToRunnable,
   getCallbackManagerForConfig,
@@ -89,6 +88,7 @@ import {
 } from "../managed/base.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
 import { ensureLangGraphConfig } from "./utils/config.js";
+import { RunnableLikeWithExtraInvoke } from "./runnable.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -169,7 +169,8 @@ export class Channel {
           channel: key,
           value: PASSTHROUGH,
           skipNone: true,
-          mapper: _coerceToRunnable(value as RunnableLike),
+          // TODO: do I need to reimplement this and pass the extra field?
+          mapper: _coerceToRunnable(value as RunnableLikeWithExtraInvoke),
         });
       } else {
         channelWriteEntries.push({
@@ -744,6 +745,8 @@ export class Pregel<
       id: uuid5(INTERRUPT, checkpoint.id),
     };
 
+    const store = config.configurable?.[CONFIG_KEY_STORE] ?? this.store;
+
     // execute task
     await task.proc.invoke(
       task.input,
@@ -767,7 +770,10 @@ export class Pregel<
               fresh_
             ),
         },
-      })
+      }),
+      {
+        store,
+      }
     );
 
     // save task writes
@@ -1149,7 +1155,7 @@ export class Pregel<
     } finally {
       // Call `.stop()` again incase it was not called in the loop, e.g due to an error.
       if (loop) {
-        loop.store?.stop();
+        await loop.store?.stop();
       }
       await Promise.all([
         loop?.checkpointerPromises ?? [],

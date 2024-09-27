@@ -1,4 +1,4 @@
-import type { Runnable, RunnableConfig } from "@langchain/core/runnables";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import type {
   All,
   PendingWrite,
@@ -11,6 +11,7 @@ import type { PregelNode } from "./read.js";
 import { RetryPolicy } from "./utils/index.js";
 import { Interrupt } from "../constants.js";
 import { type ManagedValueSpec } from "../managed/base.js";
+import { RunnableWithOptions } from "./runnable.js";
 
 export type StreamMode = "values" | "updates" | "debug";
 
@@ -99,7 +100,7 @@ export interface PregelExecutableTask<
 > {
   readonly name: N;
   readonly input: unknown;
-  readonly proc: Runnable;
+  readonly proc: RunnableWithOptions;
   readonly writes: PendingWrite<C>[];
   readonly config?: RunnableConfig;
   readonly triggers: Array<string>;

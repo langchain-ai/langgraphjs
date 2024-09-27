@@ -1,9 +1,5 @@
 /* eslint-disable @typescript-eslint/no-use-before-define */
-import {
-  _coerceToRunnable,
-  Runnable,
-  RunnableLike,
-} from "@langchain/core/runnables";
+import { _coerceToRunnable, Runnable } from "@langchain/core/runnables";
 import {
   All,
   BaseCheckpointSaver,
@@ -47,6 +43,7 @@ import {
 } from "./annotation.js";
 import type { RetryPolicy } from "../pregel/utils/index.js";
 import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
+import { RunnableLikeWithExtraInvoke } from "../pregel/runnable.js";
 
 const ROOT = "__root__";
 
@@ -275,7 +272,7 @@ export class StateGraph<
 
   addNode<K extends string, NodeInput = S>(
     key: K,
-    action: RunnableLike<
+    action: RunnableLikeWithExtraInvoke<
       NodeInput,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       U extends object ? U & Record<string, any> : U

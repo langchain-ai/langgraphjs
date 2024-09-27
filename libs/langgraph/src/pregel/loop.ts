@@ -540,6 +540,7 @@ export class PregelLoop {
           checkpointer: this.checkpointer,
           isResuming: this.input === INPUT_RESUMING,
           manager,
+          store: this.store,
         }
       );
       this.tasks = nextTasks;

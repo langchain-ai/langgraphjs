@@ -7,14 +7,12 @@ import {
   type Operation,
 } from "./base.js";
 
-/**
- * AsyncBatchedStore extends BaseStore to provide batched operations for list and put methods.
- * It queues operations and processes them in batches for improved efficiency. This store is
- * designed to run for the full duration of the process, or until `stop()` is called.
- */
 export class AsyncBatchedStore extends BaseStore {
   private store: BaseStore;
-  private queue: Map<Promise<any>, Operation> = new Map();
+  private queue: Map<
+    symbol,
+    { operation: Operation; resolve: Function; reject: Function }
+  > = new Map();
   private running = false;
   private processingTask: Promise<void> | null = null;
 
@@ -28,11 +26,7 @@ export class AsyncBatchedStore extends BaseStore {
   }
 
   async get(namespace: string[], id: string): Promise<Item | null> {
-    const promise = new Promise<Item | null>((resolve, reject) => {
-      this.queue.set(promise, { namespace, id } as GetOperation);
-      promise.then(resolve, reject);
-    });
-    return promise;
+    return this.enqueueOperation({ namespace, id } as GetOperation);
   }
 
   async search(
@@ -44,16 +38,12 @@ export class AsyncBatchedStore extends BaseStore {
     }
   ): Promise<Item[]> {
     const { filter, limit = 10, offset = 0 } = options || {};
-    const promise = new Promise<Item[]>((resolve, reject) => {
-      this.queue.set(promise, {
-        namespacePrefix,
-        filter,
-        limit,
-        offset,
-      } as SearchOperation);
-      promise.then(resolve, reject);
-    });
-    return promise;
+    return this.enqueueOperation({
+      namespacePrefix,
+      filter,
+      limit,
+      offset,
+    } as SearchOperation);
   }
 
   async put(
@@ -61,19 +51,15 @@ export class AsyncBatchedStore extends BaseStore {
     id: string,
     value: Record<string, any>
   ): Promise<void> {
-    const promise = new Promise<void>((resolve, reject) => {
-      this.queue.set(promise, { namespace, id, value } as PutOperation);
-      promise.then(resolve, reject);
-    });
-    return promise;
+    return this.enqueueOperation({ namespace, id, value } as PutOperation);
   }
 
   async delete(namespace: string[], id: string): Promise<void> {
-    const promise = new Promise<void>((resolve, reject) => {
-      this.queue.set(promise, { namespace, id, value: null } as PutOperation);
-      promise.then(resolve, reject);
-    });
-    return promise;
+    return this.enqueueOperation({
+      namespace,
+      id,
+      value: null,
+    } as PutOperation);
   }
 
   start(): void {
@@ -90,24 +76,34 @@ export class AsyncBatchedStore extends BaseStore {
     }
   }
 
+  private enqueueOperation<T>(operation: Operation): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const key = Symbol();
+      this.queue.set(key, { operation, resolve, reject });
+    });
+  }
+
   private async processBatchQueue(): Promise<void> {
     while (this.running) {
       await new Promise((resolve) => setTimeout(resolve, 0));
       if (this.queue.size === 0) continue;
 
-      const taken = new Map(this.queue);
+      const batch = new Map(this.queue);
       this.queue.clear();
 
       try {
-        const results = await this.store.batch(Array.from(taken.values()));
-        taken.forEach((_, promise) => {
-          (promise as any).resolve(
-            results[Array.from(taken.keys()).indexOf(promise)]
-          );
+        const operations = Array.from(batch.values()).map(
+          ({ operation }) => operation
+        );
+        const results = await this.store.batch(operations);
+
+        batch.forEach(({ resolve }, key) => {
+          const index = Array.from(batch.keys()).indexOf(key);
+          resolve(results[index]);
         });
       } catch (e) {
-        taken.forEach((_, promise) => {
-          (promise as any).reject(e);
+        batch.forEach(({ reject }) => {
+          reject(e);
         });
       }
     }
