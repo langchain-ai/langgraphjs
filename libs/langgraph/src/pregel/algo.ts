@@ -541,13 +541,11 @@ export function _prepareSingleTask<
           proc: node,
           writes,
           config: patchConfig(
-            {
-              ...mergeConfigs(config, {
-                metadata,
-                tags: proc.tags,
-              }),
+            mergeConfigs(config, {
+              metadata,
+              tags: proc.tags,
               store: extra.store ?? config.store,
-            },
+            }),
             {
               runName: packet.node,
               callbacks: manager?.getChild(`graph:step:${step}`),
@@ -667,10 +665,11 @@ export function _prepareSingleTask<
             proc: node,
             writes,
             config: patchConfig(
-              {
-                ...mergeConfigs(config, { metadata, tags: proc.tags }),
+              mergeConfigs(config, {
+                metadata,
+                tags: proc.tags,
                 store: extra.store ?? config?.store,
-              },
+              }),
               {
                 runName: name,
                 callbacks: manager?.getChild(`graph:step:${step}`),
