@@ -50,6 +50,10 @@ export {
   BaseStore,
   AsyncBatchedStore,
   MemoryStore,
+  type NameSpacePath,
+  type NamespaceMatchType,
+  type MatchCondition,
+  type ListNamespacesOperation,
 } from "@langchain/langgraph-checkpoint";
 export * from "./managed/index.js";
 export { type LangGraphRunnableConfig } from "./pregel/runnable_types.js";

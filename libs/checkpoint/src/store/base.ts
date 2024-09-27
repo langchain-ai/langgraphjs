@@ -92,16 +92,16 @@ export interface PutOperation {
   value: Record<string, any> | null;
 }
 
-type NameSpacePath = (string | "*")[];
+export type NameSpacePath = (string | "*")[];
 
-type NamespaceMatchType = "prefix" | "suffix";
+export type NamespaceMatchType = "prefix" | "suffix";
 
-interface MatchCondition {
+export interface MatchCondition {
   matchType: NamespaceMatchType;
   path: NameSpacePath;
 }
 
-interface ListNamespacesOperation {
+export interface ListNamespacesOperation {
   matchConditions?: MatchCondition[];
   maxDepth?: number;
   limit: number;
