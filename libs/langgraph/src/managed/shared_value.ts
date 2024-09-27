@@ -1,4 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { RunnableConfig } from "@langchain/core/runnables";
+import { BaseStore, PutOperation } from "@langchain/langgraph-checkpoint";
 import {
   ChannelKeyPlaceholder,
   ConfiguredManagedValue,
@@ -8,7 +11,6 @@ import {
 } from "./base.js";
 import { CONFIG_KEY_STORE } from "../constants.js";
 import { InvalidUpdateError } from "../errors.js";
-import { BaseStore, PutOperation } from "@langchain/langgraph-checkpoint";
 
 type Value = Record<string, Record<string, any>>;
 type Update = Record<string, Record<string, any> | null>;
@@ -48,7 +50,6 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static async initialize<Value = any>(
     config: RunnableConfig,
     args: SharedValueParams

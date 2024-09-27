@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import {
   BaseStore,
   type Item,
@@ -9,11 +11,20 @@ import {
 
 export class AsyncBatchedStore extends BaseStore {
   private store: BaseStore;
+
   private queue: Map<
-    symbol,
-    { operation: Operation; resolve: Function; reject: Function }
+    number,
+    {
+      operation: Operation;
+      resolve: (value: any) => void;
+      reject: (reason?: any) => void;
+    }
   > = new Map();
+
+  private nextKey: number = 0;
+
   private running = false;
+
   private processingTask: Promise<void> | null = null;
 
   constructor(store: BaseStore) {
@@ -78,14 +89,17 @@ export class AsyncBatchedStore extends BaseStore {
 
   private enqueueOperation<T>(operation: Operation): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      const key = Symbol();
+      const key = this.nextKey;
+      this.nextKey += 1;
       this.queue.set(key, { operation, resolve, reject });
     });
   }
 
   private async processBatchQueue(): Promise<void> {
     while (this.running) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
       if (this.queue.size === 0) continue;
 
       const batch = new Map(this.queue);

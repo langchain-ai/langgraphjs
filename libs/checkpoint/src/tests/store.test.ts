@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { describe, it, expect, jest } from "@jest/globals";
 import { BaseStore, Operation, OperationResults, Item } from "../store/base.js";
 import { AsyncBatchedStore } from "../store/batch.js";
