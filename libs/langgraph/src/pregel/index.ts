@@ -937,8 +937,12 @@ export class Pregel<Nodes extends NodesType, Channels extends ChannelsType>
     }
 
     if (streamMode === "values") {
-      return chunks[chunks.length - 1];
+      return chunks[chunks.length - 1] as Mode extends "values"
+        ? StreamOutput<Mode, Nodes, Channels>
+        : Array<StreamOutput<Mode, Nodes, Channels>>;
     }
-    return chunks;
+    return chunks as Mode extends "values"
+      ? StreamOutput<Mode, Nodes, Channels>
+      : Array<StreamOutput<Mode, Nodes, Channels>>;
   }
 }
