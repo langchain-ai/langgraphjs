@@ -59,7 +59,7 @@ import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { ChatAnthropic } from "@langchain/anthropic";
-import { StateGraph, StateGraphArgs } from "@langchain/langgraph";
+import { StateGraph } from "@langchain/langgraph";
 import { MemorySaver, Annotation } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
