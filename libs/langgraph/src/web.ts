@@ -56,4 +56,6 @@ export {
   type ListNamespacesOperation,
 } from "@langchain/langgraph-checkpoint";
 export * from "./managed/index.js";
+
+export { MessagesAnnotation } from "./graph/messages_annotation.js";
 export { type LangGraphRunnableConfig } from "./pregel/runnable_types.js";
