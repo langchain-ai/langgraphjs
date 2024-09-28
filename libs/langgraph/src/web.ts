@@ -44,3 +44,5 @@ export {
 } from "@langchain/langgraph-checkpoint";
 export * from "./store/index.js";
 export * from "./managed/index.js";
+
+export { MessagesAnnotation } from "./graph/messages_annotation.js";
