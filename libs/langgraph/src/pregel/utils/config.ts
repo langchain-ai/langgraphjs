@@ -1,5 +1,6 @@
 import { RunnableConfig } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
+import { LangGraphRunnableConfig } from "../runnable_types.js";
 
 const COPIABLE_KEYS = ["tags", "metadata", "callbacks", "configurable"];
 
@@ -14,14 +15,15 @@ const CONFIG_KEYS = [
   "runId",
   "outputKeys",
   "streamMode",
+  "store",
 ];
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
 export function ensureLangGraphConfig(
-  ...configs: (RunnableConfig | undefined)[]
+  ...configs: (LangGraphRunnableConfig | undefined)[]
 ): RunnableConfig {
-  const empty: RunnableConfig = {
+  const empty: LangGraphRunnableConfig = {
     tags: [],
     metadata: {},
     callbacks: undefined,
@@ -58,7 +60,7 @@ export function ensureLangGraphConfig(
 
     for (const [k, v] of Object.entries(config)) {
       if (v !== undefined && CONFIG_KEYS.includes(k)) {
-        empty[k as keyof RunnableConfig] = v;
+        empty[k as keyof LangGraphRunnableConfig] = v;
       }
     }
   }

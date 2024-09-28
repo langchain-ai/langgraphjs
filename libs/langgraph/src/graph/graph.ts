@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-use-before-define */
 import {
+  _coerceToRunnable,
   Runnable,
   RunnableConfig,
   RunnableLike,
-  _coerceToRunnable,
 } from "@langchain/core/runnables";
 import {
   Node as RunnableGraphNode,

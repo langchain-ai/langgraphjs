@@ -10,6 +10,8 @@ import {
   CheckpointPendingWrite,
   CheckpointMetadata,
   All,
+  BaseStore,
+  AsyncBatchedStore,
 } from "@langchain/langgraph-checkpoint";
 import {
   BaseChannel,
@@ -59,9 +61,8 @@ import {
   mapDebugTaskResults,
 } from "./debug.js";
 import { PregelNode } from "./read.js";
-import { BaseStore } from "../store/base.js";
-import { AsyncBatchedStore } from "../store/batch.js";
 import { ManagedValueMapping, WritableManagedValue } from "../managed/base.js";
+import { LangGraphRunnableConfig } from "./runnable_types.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
@@ -137,7 +138,7 @@ export class PregelLoop {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   output: any;
 
-  config: RunnableConfig;
+  config: LangGraphRunnableConfig;
 
   protected checkpointer?: BaseCheckpointSaver;
 
@@ -540,6 +541,7 @@ export class PregelLoop {
           checkpointer: this.checkpointer,
           isResuming: this.input === INPUT_RESUMING,
           manager,
+          store: this.store,
         }
       );
       this.tasks = nextTasks;

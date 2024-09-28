@@ -15,6 +15,7 @@ import {
   type PendingWriteValue,
   uuid5,
   maxChannelVersion,
+  BaseStore,
 } from "@langchain/langgraph-checkpoint";
 import {
   BaseChannel,
@@ -46,6 +47,7 @@ import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { getNullChannelVersion } from "./utils/index.js";
 import { ManagedValueMapping } from "../managed/base.js";
+import { LangGraphRunnableConfig } from "./runnable_types.js";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -330,6 +332,15 @@ export type NextTaskExtraFields = {
   isResuming?: boolean;
   checkpointer?: BaseCheckpointSaver;
   manager?: CallbackManagerForChainRun;
+  store?: BaseStore;
+};
+
+export type NextTaskExtraFieldsWithStore = NextTaskExtraFields & {
+  store?: BaseStore;
+};
+
+export type NextTaskExtraFieldsWithoutStore = NextTaskExtraFields & {
+  store?: never;
 };
 
 export function _prepareNextTasks<
@@ -342,7 +353,7 @@ export function _prepareNextTasks<
   managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: false,
-  extra: NextTaskExtraFields
+  extra: NextTaskExtraFieldsWithoutStore
 ): Record<string, PregelTaskDescription>;
 
 export function _prepareNextTasks<
@@ -355,7 +366,7 @@ export function _prepareNextTasks<
   managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: true,
-  extra: NextTaskExtraFields
+  extra: NextTaskExtraFieldsWithStore
 ): Record<string, PregelExecutableTask<keyof Nn, keyof Cc>>;
 
 export function _prepareNextTasks<
@@ -368,7 +379,7 @@ export function _prepareNextTasks<
   managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: boolean,
-  extra: NextTaskExtraFields
+  extra: NextTaskExtraFieldsWithStore | NextTaskExtraFieldsWithoutStore
 ):
   | Record<string, PregelTaskDescription>
   | Record<string, PregelExecutableTask<keyof Nn, keyof Cc>> {
@@ -450,7 +461,7 @@ export function _prepareSingleTask<
   managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: boolean,
-  extra: NextTaskExtraFields
+  extra: NextTaskExtraFieldsWithStore
 ): PregelTaskDescription | PregelExecutableTask<keyof Nn, keyof Cc> | undefined;
 
 export function _prepareSingleTask<
@@ -462,7 +473,7 @@ export function _prepareSingleTask<
   processes: Nn,
   channels: Cc,
   managed: ManagedValueMapping,
-  config: RunnableConfig,
+  config: LangGraphRunnableConfig,
   forExecution: boolean,
   extra: NextTaskExtraFields
 ):
@@ -533,6 +544,7 @@ export function _prepareSingleTask<
             mergeConfigs(config, {
               metadata,
               tags: proc.tags,
+              store: extra.store ?? config.store,
             }),
             {
               runName: packet.node,
@@ -653,7 +665,11 @@ export function _prepareSingleTask<
             proc: node,
             writes,
             config: patchConfig(
-              mergeConfigs(config, { metadata, tags: proc.tags }),
+              mergeConfigs(config, {
+                metadata,
+                tags: proc.tags,
+                store: extra.store ?? config?.store,
+              }),
               {
                 runName: name,
                 callbacks: manager?.getChild(`graph:step:${step}`),

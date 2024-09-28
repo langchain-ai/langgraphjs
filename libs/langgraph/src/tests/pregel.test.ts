@@ -25,10 +25,12 @@ import {
 import { ToolCall } from "@langchain/core/messages/tool";
 import {
   BaseCheckpointSaver,
+  BaseStore,
   Checkpoint,
   CheckpointMetadata,
   CheckpointTuple,
   MemorySaver,
+  MemoryStore,
   PendingWrite,
   uuid5,
   uuid6,
@@ -77,8 +79,8 @@ import {
 import { ERROR, INTERRUPT, PULL, PUSH, Send } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
-import { MemoryStore } from "../store/memory.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
+import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 
 expect.extend({
   toHaveKeyStartingWith(received: object, prefix: string) {
@@ -5298,7 +5300,7 @@ describe("Managed Values (context) can be passed through state", () => {
       expect(scopedData?.size).toEqual(1);
       const sharedValue = scopedData?.get("sharedStateValue");
 
-      expect(sharedValue).toEqual({
+      expect(sharedValue?.value).toEqual({
         value: "shared",
       });
 
@@ -5725,6 +5727,116 @@ describe("Managed Values (context) can be passed through state", () => {
     // Final state after invoking nodeTwo and nodeThree
     currentState = await app.getState(config);
     expect(currentState.next).toEqual([]);
+  });
+
+  it("Can access the store inside nodes", async () => {
+    const nodeOne = async (
+      _state: typeof AgentAnnotation.State,
+      config: LangGraphRunnableConfig
+    ) => {
+      expect(config.store).toBeDefined();
+      expect(config.store).toBeInstanceOf(BaseStore);
+    };
+
+    const workflow = new StateGraph(MessagesAnnotation)
+      .addNode("nodeOne", nodeOne)
+      .addEdge(START, "nodeOne")
+      .addEdge("nodeOne", END);
+
+    const app = workflow.compile({
+      store,
+      checkpointer,
+    });
+
+    const config = { configurable: { thread_id: threadId, assistant_id: "a" } };
+
+    // Invoke the first time to cause `nodeOne` to be executed.
+    await app.invoke(
+      {
+        messages: [
+          new HumanMessage({
+            content: "what is weather in sf",
+          }),
+        ],
+      },
+      config
+    );
+  });
+
+  it("Can write and read to the store inside nodes", async () => {
+    const nodeOne = async (
+      _state: typeof AgentAnnotation.State,
+      config: LangGraphRunnableConfig
+    ) => {
+      const { store } = config;
+      expect(store).toBeDefined();
+      if (!store) {
+        throw new Error("No store foubd");
+      }
+
+      expect(config.configurable?.assistant_id).toEqual("a");
+      if (config.configurable?.assistant_id !== "a") {
+        throw new Error("assistant_id is not 'a'");
+      }
+      // Write to the store
+      const { assistant_id, namespace } = config.configurable;
+      const value = { includeHashtags: true };
+      await store.put(namespace, assistant_id, value);
+    };
+
+    const nodeTwo = async (
+      _state: typeof AgentAnnotation.State,
+      config: LangGraphRunnableConfig
+    ) => {
+      const { store } = config;
+      expect(store).toBeDefined();
+      if (!store) {
+        throw new Error("No store foubd");
+      }
+
+      expect(config.configurable?.assistant_id).toEqual("a");
+      if (config.configurable?.assistant_id !== "a") {
+        throw new Error("assistant_id is not 'a'");
+      }
+      // Write to the store
+      const { assistant_id, namespace } = config.configurable;
+
+      const data = await store.get(namespace, assistant_id);
+      expect(data).toBeDefined();
+      expect(data?.value).toEqual({ includeHashtags: true });
+    };
+
+    const workflow = new StateGraph(MessagesAnnotation)
+      .addNode("nodeOne", nodeOne)
+      .addNode("nodeTwo", nodeTwo)
+      .addEdge(START, "nodeOne")
+      .addEdge("nodeOne", "nodeTwo")
+      .addEdge("nodeTwo", END);
+
+    const app = workflow.compile({
+      store,
+      checkpointer,
+    });
+
+    const config = {
+      configurable: {
+        thread_id: threadId,
+        assistant_id: "a",
+        namespace: ["rules", "style"],
+      },
+    };
+
+    // Invoke the first time to cause `nodeOne` to be executed.
+    await app.invoke(
+      {
+        messages: [
+          new HumanMessage({
+            content: "what is weather in sf",
+          }),
+        ],
+      },
+      config
+    );
   });
 });
 

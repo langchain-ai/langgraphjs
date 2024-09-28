@@ -41,8 +41,21 @@ export {
   copyCheckpoint,
   emptyCheckpoint,
   BaseCheckpointSaver,
+  type Item,
+  type GetOperation,
+  type SearchOperation,
+  type PutOperation,
+  type Operation,
+  type OperationResults,
+  BaseStore,
+  AsyncBatchedStore,
+  MemoryStore,
+  type NameSpacePath,
+  type NamespaceMatchType,
+  type MatchCondition,
+  type ListNamespacesOperation,
 } from "@langchain/langgraph-checkpoint";
-export * from "./store/index.js";
 export * from "./managed/index.js";
 
 export { MessagesAnnotation } from "./graph/messages_annotation.js";
+export { type LangGraphRunnableConfig } from "./pregel/runnable_types.js";
