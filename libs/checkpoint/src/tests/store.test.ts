@@ -29,18 +29,18 @@ describe("AsyncBatchedStore", () => {
           const items: Item[] = op.namespacePrefix.flatMap((prefix) => [
             {
               value: { value: 1 },
-              id: prefix,
+              key: prefix,
               namespace: [prefix],
               createdAt: new Date(),
               updatedAt: new Date(),
             },
           ]);
           results.push(items);
-        } else if ("id" in op && !("value" in op)) {
+        } else if ("key" in op && !("value" in op)) {
           // GetOperation
           results.push({
             value: { value: 1 },
-            id: op.id,
+            key: op.key,
             namespace: op.namespace,
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -79,14 +79,14 @@ describe("AsyncBatchedStore", () => {
       [
         {
           value: { value: 1 },
-          id: "a",
+          key: "a",
           namespace: ["a"],
           createdAt: expect.any(Date),
           updatedAt: expect.any(Date),
         },
         {
           value: { value: 1 },
-          id: "b",
+          key: "b",
           namespace: ["b"],
           createdAt: expect.any(Date),
           updatedAt: expect.any(Date),
@@ -95,14 +95,14 @@ describe("AsyncBatchedStore", () => {
       [
         {
           value: { value: 1 },
-          id: "c",
+          key: "c",
           namespace: ["c"],
           createdAt: expect.any(Date),
           updatedAt: expect.any(Date),
         },
         {
           value: { value: 1 },
-          id: "d",
+          key: "d",
           namespace: ["d"],
           createdAt: expect.any(Date),
           updatedAt: expect.any(Date),
@@ -134,17 +134,17 @@ describe("BaseStore", () => {
           results.push([
             {
               value: { value: 1 },
-              id: op.namespacePrefix[0],
+              key: op.namespacePrefix[0],
               namespace: op.namespacePrefix,
               createdAt: new Date(),
               updatedAt: new Date(),
             },
           ]);
-        } else if ("id" in op && !("value" in op)) {
+        } else if ("key" in op && !("value" in op)) {
           // GetOperation
           results.push({
             value: { value: 1 },
-            id: op.id,
+            key: op.key,
             namespace: op.namespace,
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -169,7 +169,7 @@ describe("BaseStore", () => {
     const result = await store.get(["test"], "123");
     expect(result).toEqual({
       value: { value: 1 },
-      id: "123",
+      key: "123",
       namespace: ["test"],
       createdAt: expect.any(Date),
       updatedAt: expect.any(Date),
@@ -181,7 +181,7 @@ describe("BaseStore", () => {
     expect(result).toEqual([
       {
         value: { value: 1 },
-        id: "test",
+        key: "test",
         namespace: ["test"],
         createdAt: expect.any(Date),
         updatedAt: expect.any(Date),
@@ -395,7 +395,7 @@ describe("MemoryStore", () => {
     const result = await store.get(["test"], "123");
     expect(result).toEqual({
       value: { value: 1 },
-      id: "123",
+      key: "123",
       namespace: ["test"],
       createdAt: expect.any(Date),
       updatedAt: expect.any(Date),
@@ -409,12 +409,12 @@ describe("MemoryStore", () => {
     expect(result).toHaveLength(2);
     expect(result[0]).toMatchObject({
       value: { value: 1 },
-      id: "123",
+      key: "123",
       namespace: ["test"],
     });
     expect(result[1]).toMatchObject({
       value: { value: 2 },
-      id: "456",
+      key: "456",
       namespace: ["test"],
     });
   });
@@ -424,7 +424,7 @@ describe("MemoryStore", () => {
     const result = await store.get(["test"], "123");
     expect(result).toMatchObject({
       value: { value: 1 },
-      id: "123",
+      key: "123",
       namespace: ["test"],
     });
   });

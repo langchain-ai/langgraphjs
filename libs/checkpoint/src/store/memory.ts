@@ -19,7 +19,7 @@ export class MemoryStore extends BaseStore {
     const results = [];
 
     for (const op of operations) {
-      if ("id" in op && "namespace" in op && !("value" in op)) {
+      if ("key" in op && "namespace" in op && !("value" in op)) {
         // GetOperation
         results.push(this.getOperation(op));
       } else if ("namespacePrefix" in op) {
@@ -39,7 +39,7 @@ export class MemoryStore extends BaseStore {
 
   private getOperation(op: GetOperation): Item | null {
     const namespaceKey = op.namespace.join(":");
-    const item = this.data.get(namespaceKey)?.get(op.id);
+    const item = this.data.get(namespaceKey)?.get(op.key);
     return item || null;
   }
 
@@ -74,17 +74,17 @@ export class MemoryStore extends BaseStore {
     const namespaceMap = this.data.get(namespaceKey)!;
 
     if (op.value === null) {
-      namespaceMap.delete(op.id);
+      namespaceMap.delete(op.key);
     } else {
       const now = new Date();
-      if (namespaceMap.has(op.id)) {
-        const item = namespaceMap.get(op.id)!;
+      if (namespaceMap.has(op.key)) {
+        const item = namespaceMap.get(op.key)!;
         item.value = op.value;
         item.updatedAt = now;
       } else {
-        namespaceMap.set(op.id, {
+        namespaceMap.set(op.key, {
           value: op.value,
-          id: op.id,
+          key: op.key,
           namespace: op.namespace,
           createdAt: now,
           updatedAt: now,
