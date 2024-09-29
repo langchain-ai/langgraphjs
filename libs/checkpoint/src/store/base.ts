@@ -11,7 +11,7 @@ export interface Item {
   /**
    * Unique identifier within the namespace.
    */
-  id: string;
+  key: string;
   /**
    * Hierarchical path defining the collection in which this document resides.
    * Represented as an array of strings, allowing for nested categorization.
@@ -39,7 +39,7 @@ export interface GetOperation {
   /**
    * Unique identifier within the namespace.
    */
-  id: string;
+  key: string;
 }
 
 /**
@@ -80,7 +80,7 @@ export interface PutOperation {
    * Unique identifier for the document.
    * Should be distinct within its namespace.
    */
-  id: string;
+  key: string;
   /**
    * Data to be stored, or None to delete the item.
    * Schema:
@@ -144,11 +144,11 @@ export abstract class BaseStore {
   /**
    * Retrieve a single item.
    * @param namespace Hierarchical path for the item.
-   * @param id Unique identifier within the namespace.
+   * @param key Unique identifier within the namespace.
    * @returns A promise that resolves to the retrieved item or null if not found.
    */
-  async get(namespace: string[], id: string): Promise<Item | null> {
-    const batchResult = await this.batch<[GetOperation]>([{ namespace, id }]);
+  async get(namespace: string[], key: string): Promise<Item | null> {
+    const batchResult = await this.batch<[GetOperation]>([{ namespace, key }]);
     return batchResult[0];
   }
 
@@ -183,24 +183,24 @@ export abstract class BaseStore {
   /**
    * Store or update an item.
    * @param namespace Hierarchical path for the item.
-   * @param id Unique identifier within the namespace.
+   * @param key Unique identifier within the namespace.
    * @param value Object containing the item's data.
    */
   async put(
     namespace: string[],
-    id: string,
+    key: string,
     value: Record<string, any>
   ): Promise<void> {
-    await this.batch<[PutOperation]>([{ namespace, id, value }]);
+    await this.batch<[PutOperation]>([{ namespace, key, value }]);
   }
 
   /**
    * Delete an item.
    * @param namespace Hierarchical path for the item.
-   * @param id Unique identifier within the namespace.
+   * @param key Unique identifier within the namespace.
    */
-  async delete(namespace: string[], id: string): Promise<void> {
-    await this.batch<[PutOperation]>([{ namespace, id, value: null }]);
+  async delete(namespace: string[], key: string): Promise<void> {
+    await this.batch<[PutOperation]>([{ namespace, key, value: null }]);
   }
 
   /**
