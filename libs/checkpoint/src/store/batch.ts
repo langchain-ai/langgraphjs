@@ -53,8 +53,8 @@ export class AsyncBatchedStore extends BaseStore {
     );
   }
 
-  async get(namespace: string[], id: string): Promise<Item | null> {
-    return this.enqueueOperation({ namespace, id } as GetOperation);
+  async get(namespace: string[], key: string): Promise<Item | null> {
+    return this.enqueueOperation({ namespace, key } as GetOperation);
   }
 
   async search(
@@ -76,16 +76,16 @@ export class AsyncBatchedStore extends BaseStore {
 
   async put(
     namespace: string[],
-    id: string,
+    key: string,
     value: Record<string, any>
   ): Promise<void> {
-    return this.enqueueOperation({ namespace, id, value } as PutOperation);
+    return this.enqueueOperation({ namespace, key, value } as PutOperation);
   }
 
-  async delete(namespace: string[], id: string): Promise<void> {
+  async delete(namespace: string[], key: string): Promise<void> {
     return this.enqueueOperation({
       namespace,
-      id,
+      key,
       value: null,
     } as PutOperation);
   }

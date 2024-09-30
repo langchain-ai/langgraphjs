@@ -82,7 +82,7 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
           if (k in this.value) {
             delete this.value[k];
             if (this.ns) {
-              writes.push({ namespace: this.ns, id: k, value: null });
+              writes.push({ namespace: this.ns, key: k, value: null });
             }
           }
         } else if (typeof v !== "object" || v === null) {
@@ -90,7 +90,7 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
         } else {
           this.value[k] = v;
           if (this.ns) {
-            writes.push({ namespace: this.ns, id: k, value: v });
+            writes.push({ namespace: this.ns, key: k, value: v });
           }
         }
       }
@@ -111,7 +111,7 @@ export class SharedValue extends WritableManagedValue<Value, Update> {
     if (this.store && this.ns) {
       const saved = await this.store.search(this.ns);
       this.value = saved.reduce((acc, item) => {
-        acc[item.id] = item.value;
+        acc[item.key] = item.value;
         return acc;
       }, {} as Record<string, any>);
     }
