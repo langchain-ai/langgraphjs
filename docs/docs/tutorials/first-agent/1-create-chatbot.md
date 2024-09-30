@@ -78,24 +78,27 @@ import { app } from "./chatbot.ts";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
-const lineReader = readline.createInterface({ input, output });
+async function chatLoop() {
+    const lineReader = readline.createInterface({ input, output });
 
-console.log("Type 'exit' or 'quit' to quit");
-const messages = Array<BaseMessageLike>();
-while (true) {
-	const answer = await lineReader.question("User: ");
-	if (["exit", "quit", "q"].includes(answer.toLowerCase())) {
-		console.log("Goodbye!");
-		lineReader.close();
-		break;
-	}
-	messages.push({ content: answer, role: "user" });
+    console.log("Type 'exit' or 'quit' to quit");
+    const messages = Array<BaseMessageLike>();
+    while (true) {
+        const answer = await lineReader.question("User: ");
+        if (["exit", "quit", "q"].includes(answer.toLowerCase())) {
+            console.log("Goodbye!");
+            lineReader.close();
+            break;
+        }
+        messages.push({ content: answer, role: "user" });
 
-	// Run the chatbot, providing it the `messages` array containing the conversation
-	const output = await app.invoke({ messages });
-	messages.push(output.messages[output.messages.length - 1]);
-	console.log("Agent: ", output.messages[output.messages.length - 1].content);
+        // Run the chatbot, providing it the `messages` array containing the conversation
+        const output = await app.invoke({ messages });
+        messages.push(output.messages[output.messages.length - 1]);
+        console.log("Agent: ", output.messages[output.messages.length - 1].content);
+    }
 }
+chatLoop().catch(console.error);
 ```
 
 This chat loop uses the [`readline`](https://nodejs.org/api/readline.html) module from Node.js to read user input from the command line. It stores the message history in the `messages` array so that each message _continues_ the conversation, rather than starting a new one each time.
@@ -204,25 +207,27 @@ import { BaseMessageLike } from "@langchain/core/messages";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
-const lineReader = readline.createInterface({ input, output });
+async function chatLoop() {
+    const lineReader = readline.createInterface({ input, output });
 
-console.log("Type 'exit' or 'quit' to quit");
-const messages = Array<BaseMessageLike>();
-while (true) {
-	const answer = await lineReader.question("User: ");
-	if ( ["exit", "quit", "q"].includes( answer.toLowerCase() ) ) {
-		console.log("Goodbye!");
-		lineReader.close();
-		break;
-	}
+    console.log("Type 'exit' or 'quit' to quit");
+    const messages = Array<BaseMessageLike>();
+    while (true) {
+        const answer = await lineReader.question("User: ");
+        if ( ["exit", "quit", "q"].includes( answer.toLowerCase() ) ) {
+            console.log("Goodbye!");
+            lineReader.close();
+            break;
+        }
 
-	// Add the user's message to the conversation history
-	messages.push({ content: answer, type: "user" });
+        // Add the user's message to the conversation history
+        messages.push({ content: answer, type: "user" });
 
-	// Run the chatbot and add its response to the conversation history
-	const output = await app.invoke({ messages });
-	messages.push(output.messages[output.messages.length - 1]);
-	console.log("Agent: ", output.messages[output.messages.length - 1].content);
-}
+        // Run the chatbot and add its response to the conversation history
+        const output = await app.invoke({ messages });
+        messages.push(output.messages[output.messages.length - 1]);
+        console.log("Agent: ", output.messages[output.messages.length - 1].content);
+    }
+chatLoop().catch(console.error);
 ```
 </details>
