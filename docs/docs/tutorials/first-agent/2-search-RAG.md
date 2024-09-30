@@ -33,10 +33,7 @@ function prettyPrintJSON(json: string) {
 	console.log(JSON.stringify(JSON.parse(json), null, 2));
 }
 
-prettyPrintJSON(
-	// Run the tool
-	await searchTool.invoke("What's a 'node' in LangGraph?")
-);
+searchTool.invoke("What's a 'node' in LangGraph?").then(prettyPrintJSON);
 ```
 
 The `prettyPrintJSON` function makes the content easier to read for us humans. Your output should look something like this, but may contain different search results:
