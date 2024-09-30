@@ -1,5 +1,6 @@
 /* eslint-disable no-process-env */
 /* eslint-disable no-param-reassign */
+/* eslint-disable no-return-assign */
 import { beforeAll, describe, expect, it } from "@jest/globals";
 import { StructuredTool, tool } from "@langchain/core/tools";
 
@@ -12,6 +13,8 @@ import {
 } from "@langchain/core/messages";
 import { z } from "zod";
 import { RunnableLambda } from "@langchain/core/runnables";
+import { CallbackManager } from "@langchain/core/callbacks/manager";
+import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import {
   _AnyIdAIMessage,
   _AnyIdHumanMessage,
@@ -20,7 +23,8 @@ import {
   MemorySaverAssertImmutable,
 } from "./utils.js";
 import { ToolNode, createReactAgent } from "../prebuilt/index.js";
-import { Annotation, messagesStateReducer, StateGraph } from "../web.js";
+// Enable automatic config passing
+import { Annotation, messagesStateReducer, StateGraph } from "../index.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 
 // Tracing slows down the tests
@@ -291,6 +295,31 @@ describe("ToolNode", () => {
     expect(res[0].content).toEqual(
       `Error: Tool "badtool" not found.\n Please fix your mistakes.`
     );
+  });
+
+  it("Should work when nested with a callback manager passed", async () => {
+    const toolNode = new ToolNode([new SearchAPI()]);
+    const wrapper = RunnableLambda.from(async (_) => {
+      const res = await toolNode.invoke([
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            { name: "search_api", args: { query: "foo" }, id: "testid" },
+          ],
+        }),
+      ]);
+      return res;
+    });
+    let runnableStartCount = 0;
+    const callbackManager = new CallbackManager();
+    callbackManager.addHandler(
+      BaseCallbackHandler.fromMethods({
+        handleChainStart: () => (runnableStartCount += 1),
+        handleToolStart: () => (runnableStartCount += 1),
+      })
+    );
+    await wrapper.invoke({}, { callbacks: callbackManager });
+    expect(runnableStartCount).toEqual(3);
   });
 
   it("Should work in a state graph", async () => {

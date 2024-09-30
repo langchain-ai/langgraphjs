@@ -41,7 +41,15 @@ export function ensureLangGraphConfig(
           if (Array.isArray(v)) {
             copiedValue = [...v];
           } else if (typeof v === "object") {
-            copiedValue = { ...v };
+            if (
+              k === "callbacks" &&
+              "copy" in v &&
+              typeof v.copy === "function"
+            ) {
+              copiedValue = v.copy();
+            } else {
+              copiedValue = { ...v };
+            }
           } else {
             copiedValue = v;
           }
