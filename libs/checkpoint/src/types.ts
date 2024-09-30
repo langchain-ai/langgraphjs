@@ -29,4 +29,10 @@ export interface CheckpointMetadata {
    * Mapping from node name to writes emitted by that node.
    */
   writes: Record<string, unknown> | null;
+
+  /**
+   * The IDs of the parent checkpoints.
+   * Mapping from checkpoint namespace to checkpoint ID.
+   */
+  parents: Record<string, string>;
 }

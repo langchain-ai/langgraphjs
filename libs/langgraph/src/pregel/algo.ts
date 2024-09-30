@@ -15,6 +15,7 @@ import {
   type PendingWriteValue,
   uuid5,
   maxChannelVersion,
+  BaseStore,
 } from "@langchain/langgraph-checkpoint";
 import {
   BaseChannel,
@@ -27,21 +28,26 @@ import { readChannel, readChannels } from "./io.js";
 import {
   _isSend,
   _isSendInterface,
+  CONFIG_KEY_CHECKPOINT_MAP,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   CONFIG_KEY_CHECKPOINTER,
   CONFIG_KEY_READ,
-  CONFIG_KEY_RESUMING,
+  CONFIG_KEY_TASK_ID,
   CONFIG_KEY_SEND,
   INTERRUPT,
   RESERVED,
   Send,
   TAG_HIDDEN,
   TASKS,
+  CHECKPOINT_NAMESPACE_END,
+  PUSH,
+  PULL,
 } from "../constants.js";
 import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
-import { _getIdMetadata, getNullChannelVersion } from "./utils.js";
+import { getNullChannelVersion } from "./utils/index.js";
 import { ManagedValueMapping } from "../managed/base.js";
+import { LangGraphRunnableConfig } from "./runnable_types.js";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -326,6 +332,15 @@ export type NextTaskExtraFields = {
   isResuming?: boolean;
   checkpointer?: BaseCheckpointSaver;
   manager?: CallbackManagerForChainRun;
+  store?: BaseStore;
+};
+
+export type NextTaskExtraFieldsWithStore = NextTaskExtraFields & {
+  store?: BaseStore;
+};
+
+export type NextTaskExtraFieldsWithoutStore = NextTaskExtraFields & {
+  store?: never;
 };
 
 export function _prepareNextTasks<
@@ -338,8 +353,8 @@ export function _prepareNextTasks<
   managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: false,
-  extra: NextTaskExtraFields
-): PregelTaskDescription[];
+  extra: NextTaskExtraFieldsWithoutStore
+): Record<string, PregelTaskDescription>;
 
 export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
@@ -351,8 +366,8 @@ export function _prepareNextTasks<
   managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: true,
-  extra: NextTaskExtraFields
-): PregelExecutableTask<keyof Nn, keyof Cc>[];
+  extra: NextTaskExtraFieldsWithStore
+): Record<string, PregelExecutableTask<keyof Nn, keyof Cc>>;
 
 export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
@@ -364,62 +379,178 @@ export function _prepareNextTasks<
   managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: boolean,
-  extra: NextTaskExtraFields
-): PregelTaskDescription[] | PregelExecutableTask<keyof Nn, keyof Cc>[] {
-  const parentNamespace = config.configurable?.checkpoint_ns ?? "";
-  const tasks: Array<PregelExecutableTask<keyof Nn, keyof Cc>> = [];
-  const taskDescriptions: Array<PregelTaskDescription> = [];
-  const { step, isResuming = false, checkpointer, manager } = extra;
+  extra: NextTaskExtraFieldsWithStore | NextTaskExtraFieldsWithoutStore
+):
+  | Record<string, PregelTaskDescription>
+  | Record<string, PregelExecutableTask<keyof Nn, keyof Cc>> {
+  const tasks:
+    | Record<string, PregelExecutableTask<keyof Nn, keyof Cc>>
+    | Record<string, PregelTaskDescription> = {};
+  // Consume pending packets
+  for (let i = 0; i < checkpoint.pending_sends.length; i += 1) {
+    const task = _prepareSingleTask(
+      [PUSH, i],
+      checkpoint,
+      processes,
+      channels,
+      managed,
+      config,
+      forExecution,
+      extra
+    );
+    if (task !== undefined) {
+      tasks[task.id] = task;
+    }
+  }
+  // Check if any processes should be run in next step
+  // If so, prepare the values to be passed to them
+  for (const name of Object.keys(processes)) {
+    const task = _prepareSingleTask(
+      [PULL, name],
+      checkpoint,
+      processes,
+      channels,
+      managed,
+      config,
+      forExecution,
+      extra
+    );
+    if (task !== undefined) {
+      tasks[task.id] = task;
+    }
+  }
+  return tasks;
+}
 
-  for (const packet of checkpoint.pending_sends) {
+export function _prepareSingleTask<
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel>
+>(
+  taskPath: [string, string | number],
+  checkpoint: ReadonlyCheckpoint,
+  processes: Nn,
+  channels: Cc,
+  managed: ManagedValueMapping,
+  config: RunnableConfig,
+  forExecution: false,
+  extra: NextTaskExtraFields
+): PregelTaskDescription | undefined;
+
+export function _prepareSingleTask<
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel>
+>(
+  taskPath: [string, string | number],
+  checkpoint: ReadonlyCheckpoint,
+  processes: Nn,
+  channels: Cc,
+  managed: ManagedValueMapping,
+  config: RunnableConfig,
+  forExecution: true,
+  extra: NextTaskExtraFields
+): PregelExecutableTask<keyof Nn, keyof Cc> | undefined;
+
+export function _prepareSingleTask<
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel>
+>(
+  taskPath: [string, string | number],
+  checkpoint: ReadonlyCheckpoint,
+  processes: Nn,
+  channels: Cc,
+  managed: ManagedValueMapping,
+  config: RunnableConfig,
+  forExecution: boolean,
+  extra: NextTaskExtraFieldsWithStore
+): PregelTaskDescription | PregelExecutableTask<keyof Nn, keyof Cc> | undefined;
+
+export function _prepareSingleTask<
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel>
+>(
+  taskPath: [string, string | number],
+  checkpoint: ReadonlyCheckpoint,
+  processes: Nn,
+  channels: Cc,
+  managed: ManagedValueMapping,
+  config: LangGraphRunnableConfig,
+  forExecution: boolean,
+  extra: NextTaskExtraFields
+):
+  | PregelTaskDescription
+  | PregelExecutableTask<keyof Nn, keyof Cc>
+  | undefined {
+  const { step, checkpointer, manager } = extra;
+  const configurable = config.configurable ?? {};
+  const parentNamespace = configurable.checkpoint_ns ?? "";
+
+  if (taskPath[0] === PUSH) {
+    const index =
+      typeof taskPath[1] === "number" ? taskPath[1] : parseInt(taskPath[1], 10);
+    if (index >= checkpoint.pending_sends.length) {
+      return undefined;
+    }
+    const packet = checkpoint.pending_sends[index];
     if (!_isSendInterface(packet)) {
       console.warn(
         `Ignoring invalid packet ${JSON.stringify(packet)} in pending sends.`
       );
-      continue;
+      return undefined;
     }
     if (!(packet.node in processes)) {
       console.warn(
         `Ignoring unknown node name ${packet.node} in pending sends.`
       );
-      continue;
+      return undefined;
     }
-    const triggers = [TASKS];
-    const metadata = _getIdMetadata({
-      langgraph_step: step,
-      langgraph_node: packet.node,
-      langgraph_triggers: triggers,
-      langgraph_task_idx: forExecution ? tasks.length : taskDescriptions.length,
-    });
+    const triggers = [PUSH];
     const checkpointNamespace =
       parentNamespace === ""
         ? packet.node
         : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${packet.node}`;
     const taskId = uuid5(
-      JSON.stringify([checkpointNamespace, metadata]),
+      JSON.stringify([
+        checkpointNamespace,
+        step.toString(),
+        packet.node,
+        PUSH,
+        index.toString(),
+      ]),
       checkpoint.id
     );
-
+    const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
+    let metadata = {
+      langgraph_step: step,
+      langgraph_node: packet.node,
+      langgraph_triggers: triggers,
+      langgraph_path: taskPath,
+      langgraph_checkpoint_ns: taskCheckpointNamespace,
+    };
     if (forExecution) {
       const proc = processes[packet.node];
       const node = proc.getNode();
       if (node !== undefined) {
-        const writes: [keyof Cc, unknown][] = [];
         managed.replaceRuntimePlaceholders(step, packet.args);
-        tasks.push({
+        if (proc.metadata !== undefined) {
+          metadata = { ...metadata, ...proc.metadata };
+        }
+        const writes: [keyof Cc, unknown][] = [];
+        return {
           name: packet.node,
           input: packet.args,
           proc: node,
           writes,
-          triggers,
           config: patchConfig(
-            mergeConfigs(config, processes[packet.node].config, {
+            mergeConfigs(config, {
               metadata,
+              tags: proc.tags,
+              store: extra.store ?? config.store,
             }),
             {
               runName: packet.node,
               callbacks: manager?.getChild(`graph:step:${step}`),
               configurable: {
+                [CONFIG_KEY_TASK_ID]: taskId,
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 [CONFIG_KEY_SEND]: (writes_: [string, any][]) =>
                   _localWrite(
@@ -447,25 +578,36 @@ export function _prepareNextTasks<
                     select_,
                     fresh_
                   ),
+                [CONFIG_KEY_CHECKPOINTER]:
+                  checkpointer ?? configurable[CONFIG_KEY_CHECKPOINTER],
+                [CONFIG_KEY_CHECKPOINT_MAP]: {
+                  ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
+                  [parentNamespace]: checkpoint.id,
+                },
+                checkpoint_id: undefined,
+                checkpoint_ns: taskCheckpointNamespace,
               },
             }
           ),
-          id: taskId,
+          triggers,
           retry_policy: proc.retryPolicy,
-        });
+          id: taskId,
+          path: taskPath,
+        };
       }
     } else {
-      taskDescriptions.push({ id: taskId, name: packet.node, interrupts: [] });
+      return { id: taskId, name: packet.node, interrupts: [], path: taskPath };
     }
-  }
-
-  // Check if any processes should be run in next step
-  // If so, prepare the values to be passed to them
-  const nullVersion = getNullChannelVersion(checkpoint.channel_versions);
-  if (nullVersion === undefined) {
-    return forExecution ? tasks : taskDescriptions;
-  }
-  for (const [name, proc] of Object.entries<PregelNode>(processes)) {
+  } else if (taskPath[0] === PULL) {
+    const name = taskPath[1].toString();
+    const proc = processes[name];
+    if (proc === undefined) {
+      return undefined;
+    }
+    const nullVersion = getNullChannelVersion(checkpoint.channel_versions);
+    if (nullVersion === undefined) {
+      return undefined;
+    }
     const seen = checkpoint.versions_seen[name] ?? {};
     const triggers = proc.triggers
       .filter((chan) => {
@@ -485,49 +627,61 @@ export function _prepareNextTasks<
     if (triggers.length > 0) {
       const val = _procInput(step, proc, managed, channels, forExecution);
       if (val === undefined) {
-        continue;
+        return undefined;
       }
-
-      const metadata = _getIdMetadata({
-        langgraph_step: step,
-        langgraph_node: name,
-        langgraph_triggers: triggers,
-        langgraph_task_idx: forExecution
-          ? tasks.length
-          : taskDescriptions.length,
-      });
-
       const checkpointNamespace =
         parentNamespace === ""
           ? name
           : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${name}`;
-
       const taskId = uuid5(
-        JSON.stringify([checkpointNamespace, metadata]),
+        JSON.stringify([
+          checkpointNamespace,
+          step.toString(),
+          name,
+          PULL,
+          triggers,
+        ]),
         checkpoint.id
       );
-
+      const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
+      let metadata = {
+        langgraph_step: step,
+        langgraph_node: name,
+        langgraph_triggers: triggers,
+        langgraph_path: taskPath,
+        langgraph_checkpoint_ns: taskCheckpointNamespace,
+      };
       if (forExecution) {
         const node = proc.getNode();
         if (node !== undefined) {
+          if (proc.metadata !== undefined) {
+            metadata = { ...metadata, ...proc.metadata };
+          }
           const writes: [keyof Cc, unknown][] = [];
-          tasks.push({
+          const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
+          return {
             name,
             input: val,
             proc: node,
             writes,
-            triggers,
             config: patchConfig(
-              mergeConfigs(config, proc.config, { metadata }),
+              mergeConfigs(config, {
+                metadata,
+                tags: proc.tags,
+                store: extra.store ?? config?.store,
+              }),
               {
                 runName: name,
                 callbacks: manager?.getChild(`graph:step:${step}`),
                 configurable: {
+                  [CONFIG_KEY_TASK_ID]: taskId,
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   [CONFIG_KEY_SEND]: (writes_: [string, any][]) =>
                     _localWrite(
                       step,
-                      (items: [keyof Cc, unknown][]) => writes.push(...items),
+                      (items: [keyof Cc, unknown][]) => {
+                        writes.push(...items);
+                      },
                       processes,
                       channels,
                       managed,
@@ -550,23 +704,29 @@ export function _prepareNextTasks<
                       select_,
                       fresh_
                     ),
-                  [CONFIG_KEY_CHECKPOINTER]: checkpointer,
-                  [CONFIG_KEY_RESUMING]: isResuming,
-                  checkpoint_id: checkpoint.id,
-                  checkpoint_ns: checkpointNamespace,
+                  [CONFIG_KEY_CHECKPOINTER]:
+                    checkpointer ?? configurable[CONFIG_KEY_CHECKPOINTER],
+                  [CONFIG_KEY_CHECKPOINT_MAP]: {
+                    ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
+                    [parentNamespace]: checkpoint.id,
+                  },
+                  checkpoint_id: undefined,
+                  checkpoint_ns: taskCheckpointNamespace,
                 },
               }
             ),
-            id: taskId,
+            triggers,
             retry_policy: proc.retryPolicy,
-          });
+            id: taskId,
+            path: taskPath,
+          };
         }
       } else {
-        taskDescriptions.push({ id: taskId, name, interrupts: [] });
+        return { id: taskId, name, interrupts: [], path: taskPath };
       }
     }
   }
-  return forExecution ? tasks : taskDescriptions;
+  return undefined;
 }
 
 function _procInput(

@@ -4,13 +4,14 @@ import type {
   PendingWrite,
   CheckpointMetadata,
   BaseCheckpointSaver,
+  BaseStore,
 } from "@langchain/langgraph-checkpoint";
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
-import { RetryPolicy } from "./utils.js";
+import { RetryPolicy } from "./utils/index.js";
 import { Interrupt } from "../constants.js";
-import { BaseStore } from "../store/base.js";
 import { type ManagedValueSpec } from "../managed/base.js";
+import { LangGraphRunnableConfig } from "./runnable_types.js";
 
 export type StreamMode = "values" | "updates" | "debug";
 
@@ -71,6 +72,8 @@ export interface PregelInterface<
 
   retryPolicy?: RetryPolicy;
 
+  config?: LangGraphRunnableConfig;
+
   /**
    * Memory store to use for SharedValues.
    */
@@ -87,6 +90,8 @@ export interface PregelTaskDescription {
   readonly name: string;
   readonly error?: unknown;
   readonly interrupts: Interrupt[];
+  readonly state?: LangGraphRunnableConfig | StateSnapshot;
+  readonly path?: [string, ...(string | number)[]];
 }
 
 export interface PregelExecutableTask<
@@ -97,10 +102,11 @@ export interface PregelExecutableTask<
   readonly input: unknown;
   readonly proc: Runnable;
   readonly writes: PendingWrite<C>[];
-  readonly config?: RunnableConfig;
+  readonly config?: LangGraphRunnableConfig;
   readonly triggers: Array<string>;
   readonly retry_policy?: RetryPolicy;
   readonly id: string;
+  readonly path?: [string, ...(string | number)[]];
 }
 
 export interface StateSnapshot {

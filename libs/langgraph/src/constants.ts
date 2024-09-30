@@ -4,14 +4,22 @@ export const CONFIG_KEY_SEND = "__pregel_send";
 export const CONFIG_KEY_READ = "__pregel_read";
 export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
 export const CONFIG_KEY_RESUMING = "__pregel_resuming";
+export const CONFIG_KEY_TASK_ID = "__pregel_task_id";
+export const CONFIG_KEY_STREAM = "__pregel_stream";
+
+// this one is part of public API
+export const CONFIG_KEY_CHECKPOINT_MAP = "checkpoint_map";
+
 export const INTERRUPT = "__interrupt__";
-export const CONFIG_KEY_STORE = "__pregel_store";
 export const RUNTIME_PLACEHOLDER = "__pregel_runtime_placeholder__";
 export const RECURSION_LIMIT_DEFAULT = 25;
 
 export const TAG_HIDDEN = "langsmith:hidden";
 
 export const TASKS = "__pregel_tasks";
+export const PUSH = "__pregel_push";
+export const PULL = "__pregel_pull";
+
 export const TASK_NAMESPACE = "6ba7b831-9dad-11d1-80b4-00c04fd430c8";
 
 export const RESERVED = [
@@ -22,10 +30,14 @@ export const RESERVED = [
   CONFIG_KEY_READ,
   CONFIG_KEY_CHECKPOINTER,
   CONFIG_KEY_RESUMING,
+  CONFIG_KEY_TASK_ID,
+  CONFIG_KEY_STREAM,
+  CONFIG_KEY_CHECKPOINT_MAP,
   INPUT,
 ];
 
 export const CHECKPOINT_NAMESPACE_SEPARATOR = "|";
+export const CHECKPOINT_NAMESPACE_END = ":";
 
 export interface SendInterface {
   node: string;

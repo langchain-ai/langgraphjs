@@ -33,11 +33,13 @@ export function messagesStateReducer(
   for (const m of leftMessages) {
     if (m.id === null || m.id === undefined) {
       m.id = v4();
+      m.lc_kwargs.id = m.id;
     }
   }
   for (const m of rightMessages) {
     if (m.id === null || m.id === undefined) {
       m.id = v4();
+      m.lc_kwargs.id = m.id;
     }
   }
   // merge
