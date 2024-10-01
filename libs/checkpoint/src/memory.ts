@@ -47,8 +47,8 @@ export class MemorySaver extends BaseCheckpointSaver {
           ?.filter(([_taskId, channel]) => {
             return channel === TASKS;
           })
-          .map(([_taskId, _channel, writes]) => {
-            return this.serde.loadsTyped("json", writes as string);
+          .map(async ([_taskId, _channel, writes]) => {
+            return await this.serde.loadsTyped("json", writes as string);
           }) ?? []
       );
     }
@@ -294,8 +294,10 @@ export class MemorySaver extends BaseCheckpointSaver {
       this.storage[threadId][checkpointNamespace] = {};
     }
 
-    const [, serializedCheckpoint] = this.serde.dumpsTyped(preparedCheckpoint);
-    const [, serializedMetadata] = this.serde.dumpsTyped(metadata);
+    const [, serializedCheckpoint] = await this.serde.dumpsTyped(
+      preparedCheckpoint
+    );
+    const [, serializedMetadata] = await this.serde.dumpsTyped(metadata);
     this.storage[threadId][checkpointNamespace][checkpoint.id] = [
       serializedCheckpoint,
       serializedMetadata,
@@ -333,11 +335,11 @@ export class MemorySaver extends BaseCheckpointSaver {
     if (this.writes[key] === undefined) {
       this.writes[key] = [];
     }
-    const pendingWrites: CheckpointPendingWrite[] = writes.map(
-      ([channel, value]) => {
-        const [, serializedValue] = this.serde.dumpsTyped(value);
+    const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
+      writes.map(async ([channel, value]) => {
+        const [, serializedValue] = await this.serde.dumpsTyped(value);
         return [taskId, channel, serializedValue];
-      }
+      })
     );
     this.writes[key].push(...pendingWrites);
   }

@@ -221,8 +221,10 @@ CREATE TABLE IF NOT EXISTS writes (
   ): Promise<RunnableConfig> {
     this.setup();
 
-    const [type1, serializedCheckpoint] = this.serde.dumpsTyped(checkpoint);
-    const [type2, serializedMetadata] = this.serde.dumpsTyped(metadata);
+    const [type1, serializedCheckpoint] = await this.serde.dumpsTyped(
+      checkpoint
+    );
+    const [type2, serializedMetadata] = await this.serde.dumpsTyped(metadata);
     if (type1 !== type2) {
       throw new Error(
         "Failed to serialized checkpoint and metadata to the same type."
@@ -272,19 +274,21 @@ CREATE TABLE IF NOT EXISTS writes (
       }
     });
 
-    const rows = writes.map((write, idx) => {
-      const [type, serializedWrite] = this.serde.dumpsTyped(write[1]);
-      return [
-        config.configurable?.thread_id,
-        config.configurable?.checkpoint_ns,
-        config.configurable?.checkpoint_id,
-        taskId,
-        idx,
-        write[0],
-        type,
-        serializedWrite,
-      ];
-    });
+    const rows = await Promise.all(
+      writes.map(async (write, idx) => {
+        const [type, serializedWrite] = await this.serde.dumpsTyped(write[1]);
+        return [
+          config.configurable?.thread_id,
+          config.configurable?.checkpoint_ns,
+          config.configurable?.checkpoint_id,
+          taskId,
+          idx,
+          write[0],
+          type,
+          serializedWrite,
+        ];
+      })
+    );
 
     transaction(rows);
   }
