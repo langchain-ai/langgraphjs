@@ -131,7 +131,7 @@ In our example, the output of `getStateHistory` will look like this:
 ]
 ```
 
-![State](img/persistence/getState.jpg)
+![State](./img/persistence/get_state.jpg)
 
 ### Replay
 
@@ -152,7 +152,7 @@ await graph.invoke(inputs, config);
 
 Importantly, LangGraph knows whether a particular checkpoint has been executed previously. If it has, LangGraph simply *re-plays* that particular step in the graph and does not re-execute the step. See this [how to guide on time-travel to learn more about replaying](/langgraphjs/how-tos/time-travel).
 
-![Replay](img/persistence/re_play.jpg)
+![Replay](./img/persistence/re_play.jpg)
 
 ### Update state
 
