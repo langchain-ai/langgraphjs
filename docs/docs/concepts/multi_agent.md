@@ -33,8 +33,8 @@ A big question in multi-agent systems is how the agents communicate amongst them
 
 LangGraph provides a lot of flexibility for how to communicate within multi-agent architectures.
 
-* A node in LangGraph can have a [private input state schema](https://langchain-ai.github.io/langgraph/how-tos/pass_private_state/) that is distinct from the graph state schema. This allows passing additional information during the graph execution that is only needed for executing a particular node.
-* Subgraph node agents can have independent [input / output state schemas](https://langchain-ai.github.io/langgraph/how-tos/input_output_schema/). In this case it’s important to [add input / output transformations](https://langchain-ai.github.io/langgraph/how-tos/subgraph-transform-state/) so that the parent graph knows how to communicate with the subgraphs.
+* A node in LangGraph can have a [private input state schema](/langgraphjs/how-tos/pass_private_state/) that is distinct from the graph state schema. This allows passing additional information during the graph execution that is only needed for executing a particular node.
+* Subgraph node agents can have independent [input / output state schemas](/langgraphjs/how-tos/input_output_schema/). In this case it’s important to [add input / output transformations](/langgraphjs/how-tos/subgraph-transform-state/) so that the parent graph knows how to communicate with the subgraphs.
 * For tool-based subordinate agents, the orchestrator determines the inputs based on the tool schema. Additionally, LangGraph allows passing state to individual tools at runtime, so subordinate agents can access parent state, if needed.
 
 ### Sequence
@@ -43,33 +43,41 @@ LangGraph provides multiple methods to control agent communication sequence:
 
 * **Explicit control flow (graph edges)**: LangGraph allows you to define the control flow of your application (i.e. the sequence of how agents communicate) explicitly, via [graph edges](./low_level.md#edges).
 
-```python
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage
-from langgraph.graph import StateGraph, MessagesState, START, END
+```typescript
+import { ChatOpenAI } from "@langchain/openai";
+import { SystemMessage } from "@langchain/core/messages";
+import { StateGraph, MessagesAnnotation } from "langgraph";
 
-model = ChatOpenAI(model="gpt-4o-mini")
+const model = new ChatOpenAI({ model: "gpt-4o" });
 
-def research_agent(state: MessagesState):
-    """Call research agent"""
-    messages = [SystemMessage(content="You are a research assistant. Given a topic, provide key facts and information.")] + state["messages"]
-    response = model.invoke(messages)
-    return {"messages": [response]}
+const researchAgent = async (state: typeof MessagesAnnotation.State) => {
+  const messages = [
+    new SystemMessage("You are a research assistant. Given a topic, provide key facts and information."),
+    ...state.messages
+  ];
+  const response = await model.invoke(messages);
+  return { messages: [response] };
+};
 
-def summarize_agent(state: MessagesState):
-    """Call summarization agent"""
-    messages = [SystemMessage(content="You are a summarization expert. Condense the given information into a brief summary.")] + state["messages"]
-    response = model.invoke(messages)
-    return {"messages": [response]}
+const summarizeAgent = async (state: typeof MessagesAnnotation.State) => {
+  const messages = [
+    new SystemMessage("You are a summarization expert. Condense the given information into a brief summary."),
+    ...state.messages
+  ];
+  const response = await model.invoke(messages);
+  return { messages: [response] };
+};
 
-graph = StateGraph(MessagesState)
-graph.add_node("research", research_agent)
-graph.add_node("summarize", summarize_agent)
+const graph = new StateGraph(MessagesAnnotation)
+    .addNode("research", researchAgent)
+    .addNode("summarize", summarizeAgent)
+    // Define the flow explicitly
+    .addEdge("start", "research")
+    .addEdge("research", "summarize")
+    .addEdge("summarize", "end");
 
-# define the flow explicitly
-graph.add_edge(START, "research")
-graph.add_edge("research", "summarize")
-graph.add_edge("summarize", END)
+// Compile the graph
+const app = graph.compile();
 ```
 
 * **Dynamic control flow (conditional edges)**: LangGraph also allows you to define [conditional edges](./low_level.md#conditional-edges), where the control flow is dependent on satisfying a given condition. In such cases, you can use an LLM to decide which subordinate agent to call next.
@@ -77,30 +85,42 @@ graph.add_edge("summarize", END)
 
 * **Implicit control flow (tool calling)**: if the orchestrator agent treats subordinate agents as tools, the tool-calling LLM powering the orchestrator will make decisions about the order in which the tools (agents) are being called.
 
-```python
-from typing import Annotated
-from langchain_core.messages import SystemMessage, ToolMessage
-from langchain_openai import ChatOpenAI
-from langgraph.prebuilt import ToolNode, InjectedState, create_react_agent
+```typescript
+import { ChatOpenAI } from "@langchain/openai";
+import { SystemMessage, ToolMessage } from "@langchain/core/messages";
+import { StateGraph, MessagesAnnotation } from "langgraph";
+import { ToolNode, InjectedState, createReactAgent } from "langgraph/prebuilt";
 
-model = ChatOpenAI(model="gpt-4o-mini")
+const model = new ChatOpenAI({ model: "gpt-4o-mini" });
 
-def research_agent(state: Annotated[dict, InjectedState]):
-    """Call research agent"""
-    messages = [SystemMessage(content="You are a research assistant. Given a topic, provide key facts and information.")] + state["messages"][:-1]
-    response = model.invoke(messages)
-    tool_call = state["messages"][-1].tool_calls[0]
-    return {"messages": [ToolMessage(response.content, tool_call_id=tool_call["id"])]}
+const researchAgent = async (state: typeof MessagesAnnotation.State) => {
+  const messages = [
+    new SystemMessage("You are a research assistant. Given a topic, provide key facts and information."),
+    ...state.messages.slice(0, -1)
+  ];
+  const response = await model.invoke(messages);
+  const toolCall = state.messages[state.messages.length - 1].tool_calls[0];
+  return { messages: [new ToolMessage({ content: response.content, toolCallId: toolCall.id })] };
+};
 
-def summarize_agent(state: Annotated[dict, InjectedState]):
-    """Call summarization agent"""
-    messages = [SystemMessage(content="You are a summarization expert. Condense the given information into a brief summary.")] + state["messages"][:-1]
-    response = model.invoke(messages)
-    tool_call = state["messages"][-1].tool_calls[0]
-    return {"messages": [ToolMessage(response.content, tool_call_id=tool_call["id"])]}
+const summarizeAgent = async (state: typeof MessagesAnnotation.State) => {
+  const messages = [
+    new SystemMessage("You are a summarization expert. Condense the given information into a brief summary."),
+    ...state.messages.slice(0, -1)
+  ];
+  const response = await model.invoke(messages);
+  const toolCall = state.messages[state.messages.length - 1].tool_calls[0];
+  return { messages: [new ToolMessage({ content: response.content, toolCallId: toolCall.id })] };
+};
 
-tool_node = ToolNode([research_agent, summarize_agent])
-graph = create_react_agent(model, [research_agent, summarize_agent], state_modifier="First research and then summarize information on a given topic.")
+const tools = [researchAgent, summarizeAgent];
+const toolNode = new ToolNode(tools);
+
+const graph = createReactAgent({
+    llm: model,
+    tools,
+    messageModifier: "First research and then summarize information on a given topic."
+});
 ```
 
 ## Example architectures
@@ -117,7 +137,7 @@ Here is a visualization of how these agents are connected:
 
 ![](./img/multi_agent/collaboration.png)
 
-See full code example in this [tutorial](https://langchain-ai.github.io/langgraph/tutorials/multi_agent/multi-agent-collaboration/).
+See full code example in this [tutorial](/langgraphjs/tutorials/multi_agent/multi_agent_collaboration/).
 
 ### Agent Supervisor
 
@@ -127,7 +147,7 @@ In this case, the independent agents are a LangGraph ReAct agent (graph). This m
 
 ![](./img/multi_agent/supervisor.png)
 
-See full code example in this [tutorial](https://langchain-ai.github.io/langgraph/tutorials/multi_agent/agent_supervisor/).
+See full code example in this [tutorial](/langgraphjs/tutorials/multi_agent/agent_supervisor/).
 
 ### Hierarchical Agent Teams
 
@@ -135,4 +155,4 @@ What if the job for a single worker in agent supervisor example becomes too comp
 
 ![](./img/multi_agent/hierarchical.png)
 
-See full code example in this [tutorial](https://langchain-ai.github.io/langgraph/tutorials/multi_agent/hierarchical_agent_teams/).
+See full code example in this [tutorial](/langgraphjs/tutorials/multi_agent/hierarchical_agent_teams/).
