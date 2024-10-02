@@ -4113,8 +4113,8 @@ describe("MessageGraph", () => {
         },
       ]),
       edges: expect.arrayContaining([
-        { source: "__start__", target: "agent" },
-        { source: "action", target: "agent" },
+        { conditional: false, source: "__start__", target: "agent" },
+        { conditional: false, source: "action", target: "agent" },
         {
           source: "agent",
           target: "action",
@@ -4260,8 +4260,8 @@ describe("MessageGraph", () => {
         },
       ]),
       edges: expect.arrayContaining([
-        { source: "__start__", target: "agent" },
-        { source: "action", target: "agent" },
+        { conditional: false, source: "__start__", target: "agent" },
+        { conditional: false, source: "action", target: "agent" },
         {
           source: "agent",
           target: "action",
@@ -4946,10 +4946,10 @@ it("StateGraph branch then node", async () => {
       },
     ]),
     edges: expect.arrayContaining([
-      { source: "__start__", target: "prepare" },
-      { source: "tool_two_fast", target: "finish" },
-      { source: "tool_two_slow", target: "finish" },
-      { source: "finish", target: "__end__" },
+      { source: "__start__", target: "prepare", conditional: false },
+      { source: "tool_two_fast", target: "finish", conditional: false },
+      { source: "tool_two_slow", target: "finish", conditional: false },
+      { source: "finish", target: "__end__", conditional: false },
       { source: "prepare", target: "tool_two_slow", conditional: true },
       { source: "prepare", target: "tool_two_fast", conditional: true },
       { source: "prepare", target: "finish", conditional: true },
