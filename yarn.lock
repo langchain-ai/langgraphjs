@@ -1579,9 +1579,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:^0.3.0":
-  version: 0.3.3
-  resolution: "@langchain/core@npm:0.3.3"
+"@langchain/core@npm:^0.3.6":
+  version: 0.3.6
+  resolution: "@langchain/core@npm:0.3.6"
   dependencies:
     ansi-styles: ^5.0.0
     camelcase: 6
@@ -1594,7 +1594,7 @@ __metadata:
     uuid: ^10.0.0
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
-  checksum: 7f803d7855bd18ac8e0c67e14ef12f5f6d6023b73bee472335a936951a206ae9d80958c81dd696338aede5def407b4eb761161aefab816461a38f0685e67bc2e
+  checksum: 16666fb36e3c4ea42c26910f668161051a66cfe24b3ac4f97d9094bc0482527582790c9862be17ff4a81d5f32b9acdcfb7fc7517371189ab73fae3bd8fa1a1d2
   languageName: node
   linkType: hard
 
@@ -1730,7 +1730,7 @@ __metadata:
     "@jest/globals": ^29.5.0
     "@langchain/anthropic": ^0.3.0
     "@langchain/community": ^0.3.0
-    "@langchain/core": ^0.3.0
+    "@langchain/core": ^0.3.6
     "@langchain/langgraph-checkpoint": ~0.0.9
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
     "@langchain/openai": ^0.3.0
@@ -6240,7 +6240,7 @@ __metadata:
   dependencies:
     "@langchain/anthropic": ^0.3.0
     "@langchain/community": ^0.3.0
-    "@langchain/core": ^0.3.0
+    "@langchain/core": ^0.3.6
     "@langchain/groq": ^0.1.1
     "@langchain/langgraph": "workspace:*"
     "@langchain/mistralai": ^0.1.0
