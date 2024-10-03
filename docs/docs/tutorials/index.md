@@ -36,3 +36,7 @@ Learn from example implementations of graphs designed for specific scenarios and
 
 - [Basic Reflection](reflection/reflection.ipynb): Prompting the agent to reflect on and revise its outputs
 - [Rewoo](rewoo/rewoo.ipynb): Reducing re-planning by saving observations as variables
+
+### Evaluation
+
+- [Agent-based](chatbot-simulation-evaluation/agent-simulation-evaluation.ipynb): Evaluate chatbots via simulated user interactions
