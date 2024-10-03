@@ -89,6 +89,9 @@ nav:
           - Reflection & Critique:
               - tutorials/reflection/reflection.ipynb
               - tutorials/rewoo/rewoo.ipynb
+      - Evaluation & Analysis:
+          - Chatbot Evaluation via Simulation:
+              - Agent-based: tutorials/chatbot-simulation-evaluation/agent-simulation-evaluation.ipynb
   - "How-to Guides":
       - "how-tos/index.md"
       - Installation:
