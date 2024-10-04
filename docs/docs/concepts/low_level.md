@@ -265,99 +265,19 @@ const continueToJokes = (state: { subjects: string[] }) => {
 graph.addConditionalEdges("nodeA", continueToJokes);
 ```
 
-## Checkpointer
+## Persistence
 
-LangGraph has a built-in persistence layer, implemented through [checkpointers](/langgraphjs/reference/classes/checkpoint.BaseCheckpointSaver.html). When you use a checkpointer with a graph, you can interact with the state of that graph. When you use a checkpointer with a graph, you can interact with and manage the graph's state. The checkpointer saves a _checkpoint_ of the graph state at every super-step, enabling several powerful capabilities:
+LangGraph has a built-in persistence layer, implemented through [checkpointers](/langgraphjs/reference/classes/checkpoint.BaseCheckpointSaver.html). When you use a checkpointer with a graph, you can interact with and manage the graph's state after the execution. The checkpointer saves a _checkpoint_ (a snapshot) of the graph state at every superstep, enabling several powerful capabilities, including human-in-the-loop, memory and fault-tolerance. See this [conceptual guide](/langgraphjs/concepts/persistence) for more information.
 
-First, checkpointers facilitate [human-in-the-loop workflows](agentic_concepts.md#human-in-the-loop) workflows by allowing humans to inspect, interrupt, and approve steps. Checkpointers are needed for these workflows as the human has to be able to view the state of a graph at any point in time, and the graph has to be to resume execution after the human has made any updates to the state.
+## Graph Migrations
 
-Second, it allows for ["memory"](agentic_concepts.md#memory) between interactions. You can use checkpointers to create threads and save the state of a thread after a graph executes. In the case of repeated human interactions (like conversations) any follow up messages can be sent to that checkpoint, which will retain its memory of previous ones.
+LangGraph can easily handle migrations of graph definitions (nodes, edges, and state) even when using a checkpointer to track state.
 
-See [this guide](../how-tos/persistence.ipynb) for how to add a checkpointer to your graph.
-
-## Threads
-
-Threads enable the checkpointing of multiple different runs, making them essential for multi-tenant chat applications and other scenarios where maintaining separate states is necessary. A thread is a unique ID assigned to a series of checkpoints saved by a checkpointer. When using a checkpointer, you must specify a `thread_id` when running the graph.
-
-`thread_id` is simply the ID of a thread. This is always required
-
-You must pass these when invoking the graph as part of the configurable part of the config.
-
-```typescript
-const config = { configurable: { thread_id: "a" }};
-await graph.invoke(inputs, config);
-```
-
-See [this guide](../how-tos/persistence.ipynb) for how to use threads.
-
-## Checkpointer state
-
-When interacting with the checkpointer state, you must specify a [thread identifier](#threads). Each checkpoint saved by the checkpointer has two properties:
-
-- **values**: This is the value of the state at this point in time.
-- **next**: This is a tuple of the nodes to execute next in the graph.
-
-### Get state
-
-You can get the state of a checkpointer by calling `await graph.getState(config)`. The config should contain `thread_id`, and the state will be fetched for that thread.
-
-### Get state history
-
-You can also call `await graph.getStateHistory(config)` to get a list of the history of the graph. The config should contain `thread_id`, and the state history will be fetched for that thread.
-
-### Update state
-
-You can also interact with the state directly and update it. This takes three different components:
-
-- `config`
-- `values`
-- `asNode`
-
-**config**
-
-The config should contain `thread_id` specifying which thread to update.
-
-**values**
-
-These are the values that will be used to update the state. Note that this update is treated exactly as any update from a node is treated. This means that these values will be passed to the [reducer](#reducers) functions that are part of the state. So this does NOT automatically overwrite the state. Let's walk through an example.
-
-Let's assume you have defined the state of your graph as:
-
-```typescript
-const GraphAnnotation = Annotation.Root({
-  foo: Annotation<number>,
-  bar: Annotation<string[]>({
-    reducer: (state, update) => state.concat(update),
-    default: () => [],
-  }),
-})
-```
-
-Let's now assume the current state of the graph is
-
-```
-{ foo: 1, bar: ["a"] }
-```
-
-If you update the state as below:
-
-```typescript
-await graph.updateState(config, { foo: 2, bar: ["b"] })
-```
-
-Then the new state of the graph will be:
-
-```
-{ foo: 2, bar: ["a", "b] }
-```
-
-The `foo` key is completely changed (because there is no reducer specified for that key, so it overwrites it). However, there is a reducer specified for the `bar` key, and so it appends `"b"` to the state of `bar`.
-
-**`asNode`**
-
-The final thing you specify when calling `updateState` is `asNode`. This update will be applied as if it came from node `asNode`. If `asNode` is not provided, it will be set to the last node that updated the state, if not ambiguous.
-
-The reason this matters is that the next steps in the graph to execute depend on the last node to have given an update, so this can be used to control which node executes next.
+- For threads at the end of the graph (i.e. not interrupted) you can change the entire topology of the graph (i.e. all nodes and edges, remove, add, rename, etc)
+- For threads currently interrupted, we support all topology changes other than renaming / removing nodes (as that thread could now be about to enter a node that no longer exists) -- if this is a blocker please reach out and we can prioritize a solution.
+- For modifying state, we have full backwards and forwards compatibility for adding and removing keys
+- State keys that are renamed lose their saved state in existing threads
+- State keys whose types change in incompatible ways could currently cause issues in threads with state from before the change -- if this is a blocker please reach out and we can prioritize a solution.
 
 ## Configuration
 
@@ -407,6 +327,20 @@ await graph.invoke(null, config);
 
 See [this guide](../how-tos/breakpoints.ipynb) for a full walkthrough of how to add breakpoints.
 
+### Dynamic Breakpoints
+
+It may be helpful to **dynamically** interrupt the graph from inside a given node based on some condition. In `LangGraph` you can do so by using `NodeInterrupt` -- a special error that can be raised from inside a node.
+
+```typescript
+function myNode(state: typeof GraphAnnotation.State): typeof GraphAnnotation.State {
+  if (state.input.length > 5) {
+    throw new NodeInterrupt(`Received input that is longer than 5 characters: ${state.input}`);
+  }
+
+  return state;
+}
+```
+
 ## Visualization
 
 It's often nice to be able to visualize graphs, especially as they get more complex. LangGraph comes with a nice built-in way to render a graph as a Mermaid diagram. You can use the `getGraph()` method like this:
@@ -428,3 +362,6 @@ LangGraph is built with first class support for streaming. There are several dif
 - [`"updates`](../how-tos/stream-updates.ipynb): This streams the updates to the state after each step of the graph. If multiple updates are made in the same step (e.g. multiple nodes are run) then those updates are streamed separately.
 
 In addition, you can use the [`streamEvents`](https://api.js.langchain.com/classes/langchain_core_runnables.Runnable.html#streamEvents) method to stream back events that happen _inside_ nodes. This is useful for [streaming tokens of LLM calls](../how-tos/streaming-tokens-without-langchain.ipynb).
+
+
+LangGraph is built with first class support for streaming, including streaming updates from graph nodes during the execution, streaming tokens from LLM calls and more. See this [conceptual guide](./streaming.md) for more information.

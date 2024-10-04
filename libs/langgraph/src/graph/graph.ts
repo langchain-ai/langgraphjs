@@ -1,16 +1,19 @@
 /* eslint-disable @typescript-eslint/no-use-before-define */
 import {
+  _coerceToRunnable,
   Runnable,
   RunnableConfig,
+  RunnableInterface,
+  RunnableIOSchema,
   RunnableLike,
-  _coerceToRunnable,
 } from "@langchain/core/runnables";
 import {
-  Node as RunnableGraphNode,
-  Graph as RunnableGraph,
+  Node as DrawableGraphNode,
+  Graph as DrawableGraph,
 } from "@langchain/core/runnables/graph";
 import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { z } from "zod";
+import { validate as isUuid } from "uuid";
 import { PregelNode } from "../pregel/read.js";
 import { Channel, Pregel } from "../pregel/index.js";
 import type { PregelParams } from "../pregel/types.js";
@@ -19,12 +22,13 @@ import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { ChannelWrite, PASSTHROUGH } from "../pregel/write.js";
 import {
   _isSend,
+  CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Send,
   TAG_HIDDEN,
 } from "../constants.js";
-import { RunnableCallable } from "../utils.js";
-import { InvalidUpdateError } from "../errors.js";
+import { gatherIteratorSync, RunnableCallable } from "../utils.js";
+import { InvalidUpdateError, NodeInterrupt } from "../errors.js";
 
 /** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
@@ -65,8 +69,21 @@ export class Branch<IO, N extends string> {
   ) {
     return ChannelWrite.registerWriter(
       new RunnableCallable({
-        func: (input: IO, config: RunnableConfig) =>
-          this._route(input, config, writer, reader),
+        func: async (input: IO, config: RunnableConfig) => {
+          try {
+            return await this._route(input, config, writer, reader);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } catch (e: any) {
+            // Detect & warn if NodeInterrupt is thrown in a conditional edge
+            if (e.name === NodeInterrupt.unminifiable_name) {
+              console.warn(
+                "[WARN]: 'NodeInterrupt' thrown in conditional edge. This is likely a bug in your graph implementation.\n" +
+                  "NodeInterrupt should only be thrown inside a node, not in edge conditions."
+              );
+            }
+            throw e;
+          }
+        },
       })
     );
   }
@@ -147,10 +164,15 @@ export class Graph<
     action: RunnableLike<NodeInput, RunOutput>,
     options?: AddNodeOptions
   ): Graph<N | K, RunInput, RunOutput> {
-    if (key.includes(CHECKPOINT_NAMESPACE_SEPARATOR)) {
-      throw new Error(
-        `"${CHECKPOINT_NAMESPACE_SEPARATOR}" is a reserved character and is not allowed in node names.`
-      );
+    for (const reservedChar of [
+      CHECKPOINT_NAMESPACE_SEPARATOR,
+      CHECKPOINT_NAMESPACE_END,
+    ]) {
+      if (key.includes(reservedChar)) {
+        throw new Error(
+          `"${reservedChar}" is a reserved character and is not allowed in node names.`
+        );
+      }
     }
     this.warnIfCompiled(
       `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
@@ -464,10 +486,10 @@ export class CompiledGraph<
    */
   override getGraph(
     config?: RunnableConfig & { xray?: boolean | number }
-  ): RunnableGraph {
+  ): DrawableGraph {
     const xray = config?.xray;
-    const graph = new RunnableGraph();
-    const startNodes: Record<string, RunnableGraphNode> = {
+    const graph = new DrawableGraph();
+    const startNodes: Record<string, DrawableGraphNode> = {
       [START]: graph.addNode(
         {
           schema: z.any(),
@@ -475,69 +497,161 @@ export class CompiledGraph<
         START
       ),
     };
-    const endNodes: Record<string, RunnableGraphNode> = {
-      [END]: graph.addNode(
-        {
-          schema: z.any(),
-        },
-        END
-      ),
-    };
-    for (const [key, node] of Object.entries<NodeSpec<unknown, unknown>>(
-      this.builder.nodes
-    )) {
-      if (config?.xray) {
-        const subgraph = isCompiledGraph(node)
-          ? node.getGraph({
-              ...config,
-              xray: typeof xray === "number" && xray > 0 ? xray - 1 : xray,
-            })
-          : node.runnable.getGraph(config);
-        subgraph.trimFirstNode();
-        subgraph.trimLastNode();
-        if (Object.keys(subgraph.nodes).length > 1) {
-          const [newEndNode, newStartNode] = graph.extend(subgraph, key);
-          if (newEndNode !== undefined) {
-            endNodes[key] = newEndNode;
+    const endNodes: Record<string, DrawableGraphNode> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let subgraphs: Record<string, CompiledGraph<any>> = {};
+    if (xray) {
+      subgraphs = Object.fromEntries(
+        gatherIteratorSync(this.getSubgraphs()).filter(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (x): x is [string, CompiledGraph<any>] => isCompiledGraph(x[1])
+        )
+      );
+    }
+
+    function addEdge(
+      start: string,
+      end: string,
+      label?: string,
+      conditional = false
+    ) {
+      if (end === END && endNodes[END] === undefined) {
+        endNodes[END] = graph.addNode({ schema: z.any() }, END);
+      }
+      return graph.addEdge(
+        startNodes[start],
+        endNodes[end],
+        label !== end ? label : undefined,
+        conditional
+      );
+    }
+
+    for (const [key, nodeSpec] of Object.entries(this.builder.nodes) as [
+      N,
+      NodeSpec<RunInput, RunOutput>
+    ][]) {
+      const displayKey = _escapeMermaidKeywords(key);
+      const node = nodeSpec.runnable;
+      const metadata = nodeSpec.metadata ?? {};
+      if (
+        this.interruptBefore?.includes(key) &&
+        this.interruptAfter?.includes(key)
+      ) {
+        metadata.__interrupt = "before,after";
+      } else if (this.interruptBefore?.includes(key)) {
+        metadata.__interrupt = "before";
+      } else if (this.interruptAfter?.includes(key)) {
+        metadata.__interrupt = "after";
+      }
+      if (xray) {
+        const newXrayValue = typeof xray === "number" ? xray - 1 : xray;
+        const drawableSubgraph =
+          subgraphs[key] !== undefined
+            ? subgraphs[key].getGraph({
+                ...config,
+                xray: newXrayValue,
+              })
+            : node.getGraph(config);
+        drawableSubgraph.trimFirstNode();
+        drawableSubgraph.trimLastNode();
+        if (Object.keys(drawableSubgraph.nodes).length > 1) {
+          const [e, s] = graph.extend(drawableSubgraph, displayKey);
+          if (e === undefined) {
+            throw new Error(
+              `Could not extend subgraph "${key}" due to missing entrypoint.`
+            );
           }
-          if (newStartNode !== undefined) {
-            startNodes[key] = newStartNode;
+
+          // TODO: Remove default name once we stop supporting core 0.2.0
+          // eslint-disable-next-line no-inner-declarations
+          function _isRunnableInterface(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            thing: any
+          ): thing is RunnableInterface {
+            return thing ? thing.lc_runnable : false;
           }
+          // eslint-disable-next-line no-inner-declarations
+          function _nodeDataStr(
+            id: string | undefined,
+            data: RunnableInterface | RunnableIOSchema
+          ): string {
+            if (id !== undefined && !isUuid(id)) {
+              return id;
+            } else if (_isRunnableInterface(data)) {
+              try {
+                let dataStr = data.getName();
+                dataStr = dataStr.startsWith("Runnable")
+                  ? dataStr.slice("Runnable".length)
+                  : dataStr;
+                return dataStr;
+              } catch (error) {
+                return data.getName();
+              }
+            } else {
+              return data.name ?? "UnknownSchema";
+            }
+          }
+          // TODO: Remove casts when we stop supporting core 0.2.0
+          if (s !== undefined) {
+            startNodes[displayKey] = {
+              name: _nodeDataStr(s.id, s.data),
+              ...s,
+            } as DrawableGraphNode;
+          }
+          endNodes[displayKey] = {
+            name: _nodeDataStr(e.id, e.data),
+            ...e,
+          } as DrawableGraphNode;
         } else {
-          const newNode = graph.addNode(node.runnable, key);
-          startNodes[key] = newNode;
-          endNodes[key] = newNode;
+          // TODO: Remove when we stop supporting core 0.2.0
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore
+          const newNode = graph.addNode(node, displayKey, metadata);
+          startNodes[displayKey] = newNode;
+          endNodes[displayKey] = newNode;
         }
       } else {
-        const newNode = graph.addNode(node.runnable, key);
-        startNodes[key] = newNode;
-        endNodes[key] = newNode;
+        // TODO: Remove when we stop supporting core 0.2.0
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        const newNode = graph.addNode(node, displayKey, metadata);
+        startNodes[displayKey] = newNode;
+        endNodes[displayKey] = newNode;
       }
     }
-    for (const [start, end] of this.builder.allEdges) {
-      graph.addEdge(startNodes[start], endNodes[end]);
+    const sortedEdges = [...this.builder.allEdges].sort(([a], [b]) => {
+      if (a < b) {
+        return -1;
+      } else if (b > a) {
+        return 1;
+      } else {
+        return 0;
+      }
+    });
+    for (const [start, end] of sortedEdges) {
+      addEdge(_escapeMermaidKeywords(start), _escapeMermaidKeywords(end));
     }
     for (const [start, branches] of Object.entries(this.builder.branches)) {
       const defaultEnds: Record<string, string> = {
         ...Object.fromEntries(
           Object.keys(this.builder.nodes)
             .filter((k) => k !== start)
-            .map((k) => [k, k])
+            .map((k) => [_escapeMermaidKeywords(k), _escapeMermaidKeywords(k)])
         ),
         [END]: END,
       };
       for (const branch of Object.values(branches)) {
-        let ends: Record<string, string>;
+        let ends;
         if (branch.ends !== undefined) {
           ends = branch.ends;
         } else {
           ends = defaultEnds;
         }
         for (const [label, end] of Object.entries(ends)) {
-          graph.addEdge(
-            startNodes[start],
-            endNodes[end],
-            label !== end ? label : undefined,
+          addEdge(
+            _escapeMermaidKeywords(start),
+            _escapeMermaidKeywords(end),
+            label,
             true
           );
         }
@@ -555,4 +669,11 @@ function isCompiledGraph(x: unknown): x is CompiledGraph<any> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     typeof (x as CompiledGraph<any>).attachEdge === "function"
   );
+}
+
+function _escapeMermaidKeywords(key: string) {
+  if (key === "subgraph") {
+    return `"${key}"`;
+  }
+  return key;
 }

@@ -3,20 +3,16 @@ import {
   CheckpointMetadata,
   CheckpointPendingWrite,
   PendingWrite,
-  uuid5,
 } from "@langchain/langgraph-checkpoint";
 import { BaseChannel } from "../channels/base.js";
-import {
-  ERROR,
-  Interrupt,
-  INTERRUPT,
-  TAG_HIDDEN,
-  TASK_NAMESPACE,
-} from "../constants.js";
+import { ERROR, Interrupt, INTERRUPT, TAG_HIDDEN } from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
-import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
+import {
+  PregelExecutableTask,
+  PregelTaskDescription,
+  StateSnapshot,
+} from "./types.js";
 import { readChannels } from "./io.js";
-import { _getIdMetadata } from "./utils.js";
 
 type ConsoleColors = {
   start: string;
@@ -92,14 +88,6 @@ export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
   for (const { id, name, input, config, triggers, writes } of tasks) {
     if (config?.tags?.includes(TAG_HIDDEN)) continue;
 
-    const metadata = { ...config?.metadata };
-    const idMetadata = _getIdMetadata({
-      langgraph_step: metadata.langgraph_step,
-      langgraph_node: metadata.langgraph_node,
-      langgraph_triggers: metadata.langgraph_triggers,
-      langgraph_task_idx: metadata.langgraph_task_idx,
-    });
-
     const interrupts = writes
       .filter(([writeId, n]) => {
         return writeId === id && n === INTERRUPT;
@@ -112,7 +100,7 @@ export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
       timestamp: ts,
       step,
       payload: {
-        id: uuid5(JSON.stringify([name, step, idMetadata]), TASK_NAMESPACE),
+        id,
         name,
         input,
         triggers,
@@ -131,24 +119,23 @@ export function* mapDebugTaskResults<
   streamChannels: PropertyKey | Array<PropertyKey>
 ) {
   const ts = new Date().toISOString();
-  for (const [{ name, config }, writes] of tasks) {
+  for (const [{ id, name, config }, writes] of tasks) {
     if (config?.tags?.includes(TAG_HIDDEN)) continue;
-
-    const metadata = { ...config?.metadata };
-    const idMetadata = _getIdMetadata(metadata);
-
     yield {
       type: "task_result",
       timestamp: ts,
       step,
       payload: {
-        id: uuid5(JSON.stringify([name, step, idMetadata]), TASK_NAMESPACE),
+        id,
         name,
-        result: writes.filter(([channel]) =>
-          Array.isArray(streamChannels)
+        result: writes.filter(([channel]) => {
+          return Array.isArray(streamChannels)
             ? streamChannels.includes(channel)
-            : channel === streamChannels
-        ),
+            : channel === streamChannels;
+        }),
+        interrupts: writes.filter(([channel]) => {
+          return channel === INTERRUPT;
+        }),
       },
     };
   }
@@ -221,7 +208,8 @@ export function* mapDebugCheckpoint<
 
 export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
   tasks: PregelTaskDescription[] | readonly PregelExecutableTask<N, C>[],
-  pendingWrites: CheckpointPendingWrite[]
+  pendingWrites: CheckpointPendingWrite[],
+  states?: Record<string, RunnableConfig | StateSnapshot>
 ): PregelTaskDescription[] {
   return tasks.map((task): PregelTaskDescription => {
     const error = pendingWrites.find(
@@ -239,6 +227,7 @@ export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
       return {
         id: task.id,
         name: task.name as string,
+        path: task.path,
         error,
         interrupts,
       };
@@ -246,7 +235,9 @@ export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
     return {
       id: task.id,
       name: task.name as string,
+      path: task.path,
       interrupts,
+      state: states?.[task.id],
     };
   });
 }

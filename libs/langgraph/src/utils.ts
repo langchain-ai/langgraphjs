@@ -6,6 +6,7 @@ import {
   RunnableConfig,
 } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
+import { ensureLangGraphConfig } from "./pregel/utils/config.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface RunnableCallableArgs extends Partial<any> {
@@ -71,19 +72,20 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
   ): Promise<any> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let returnValue: any;
+    const config = ensureLangGraphConfig(options);
 
     if (this.trace) {
       returnValue = await this._callWithConfig(
         this._tracedInvoke,
         input,
-        mergeConfigs(this.config, options)
+        mergeConfigs(this.config, config)
       );
     } else {
-      returnValue = await this.func(input, mergeConfigs(this.config, options));
+      returnValue = await this.func(input, mergeConfigs(this.config, config));
     }
 
     if (Runnable.isRunnable(returnValue) && this.recurse) {
-      return await returnValue.invoke(input, options);
+      return await returnValue.invoke(input, config);
     }
 
     return returnValue;
@@ -142,4 +144,29 @@ export function gatherIteratorSync<T>(i: Iterable<T>): Array<T> {
     out.push(item);
   }
   return out;
+}
+
+export function patchConfigurable(
+  config: RunnableConfig | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  patch: Record<string, any>
+): RunnableConfig {
+  if (!config) {
+    return {
+      configurable: patch,
+    };
+  } else if (!("configurable" in config)) {
+    return {
+      ...config,
+      configurable: patch,
+    };
+  } else {
+    return {
+      ...config,
+      configurable: {
+        ...config.configurable,
+        ...patch,
+      },
+    };
+  }
 }

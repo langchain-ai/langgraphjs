@@ -89,6 +89,9 @@ nav:
           - Reflection & Critique:
               - tutorials/reflection/reflection.ipynb
               - tutorials/rewoo/rewoo.ipynb
+      - Evaluation & Analysis:
+          - Chatbot Evaluation via Simulation:
+              - Agent-based: tutorials/chatbot-simulation-evaluation/agent-simulation-evaluation.ipynb
   - "How-to Guides":
       - "how-tos/index.md"
       - Installation:
@@ -105,6 +108,7 @@ nav:
           - Manage conversation history: "how-tos/manage-conversation-history.ipynb"
           - How to delete messages: "how-tos/delete-messages.ipynb"
           - Add summary of the conversation history: "how-tos/add-summary-conversation-history.ipynb"
+          - Share state between threads: "how-tos/shared-state.ipynb"
       - Human-in-the-loop:
           - Add breakpoints: "how-tos/breakpoints.ipynb"
           - Add dynamic breakpoints: "how-tos/dynamic_breakpoints.ipynb"
@@ -126,6 +130,10 @@ nav:
           - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
           - Pass config to tools: "how-tos/pass-config-to-tools.ipynb"
           - Pass graph state to tools: "how-tos/pass-graph-state-to-tools.ipynb"
+      - Subgraphs:
+          - Create subgraphs: how-tos/subgraph.ipynb
+          - Manage state in subgraphs: how-tos/subgraphs-manage-state.ipynb
+          - Transform inputs and outputs of a subgraph: how-tos/subgraph-transform-state.ipynb
       - State management:
           - Have a separate input and output schema: "how-tos/input_output_schema.ipynb"
           - Pass private state between nodes inside the graph: "how-tos/pass_private_state.ipynb"
@@ -143,10 +151,14 @@ nav:
           - Manage agent steps: "how-tos/managing-agent-steps.ipynb"
           - Add node retry policies: "how-tos/node-retry-policies.ipynb"
   - "Conceptual Guides":
-      - "concepts/index.md"
-      - LangGraph for Agentic Applications: concepts/high_level.md
-      - Low Level LangGraph Concepts: concepts/low_level.md
+      - Why LangGraph?: concepts/high_level.md
+      - LangGraph Glossary: concepts/low_level.md
       - Common Agentic Patterns: concepts/agentic_concepts.md
+      - Human-in-the-Loop: concepts/human_in_the_loop.md
+      - Memory: concepts/memory.md
+      - Multi-Agent Systems: concepts/multi_agent.md
+      - Persistence: concepts/persistence.md
+      - Streaming: concepts/streaming.md
       - FAQ: concepts/faq.md
   - "Reference":
       - "reference/index.html"

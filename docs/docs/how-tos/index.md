@@ -64,6 +64,12 @@ These guides show how to use different streaming modes.
 - [How to pass config to tools](pass-config-to-tools.ipynb)
 - [How to pass graph state to tools](pass-graph-state-to-tools.ipynb)
 
+## Subgraphs
+
+- [How to create subgraphs](subgraph.ipynb)
+- [How to manage state in subgraphs](subgraphs-manage-state.ipynb)
+- [How to transform inputs and outputs of a subgraph](subgraph-transform-state.ipynb)
+
 ## State management
 
 - [Have a separate input and output schema](input_output_schema.ipynb)

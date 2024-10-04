@@ -10,6 +10,9 @@ shopt -s extglob
 # avoid copying build artifacts from the host
 cp -r ../package/!(node_modules|dist|dist-cjs|dist-esm|build|.next|.turbo) .
 
+# Copy hidden files, suppressing errors if no matches are found
+cp ../package/.[!.]* . 2>/dev/null || true
+
 mkdir -p ./libs/langgraph/
 mkdir -p ./libs/checkpoint/
 

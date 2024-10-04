@@ -4,8 +4,12 @@ import {
   Runnable,
   RunnableLike,
 } from "@langchain/core/runnables";
-import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
-import { BaseChannel } from "../channels/base.js";
+import {
+  All,
+  BaseCheckpointSaver,
+  BaseStore,
+} from "@langchain/langgraph-checkpoint";
+import { BaseChannel, isBaseChannel } from "../channels/base.js";
 import {
   END,
   CompiledGraph,
@@ -27,6 +31,7 @@ import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { RunnableCallable } from "../utils.js";
 import {
   _isSend,
+  CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Send,
   TAG_HIDDEN,
@@ -40,7 +45,8 @@ import {
   StateType,
   UpdateType,
 } from "./annotation.js";
-import type { RetryPolicy } from "../pregel/utils.js";
+import type { RetryPolicy } from "../pregel/utils/index.js";
+import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
 
 const ROOT = "__root__";
 
@@ -158,9 +164,10 @@ export class StateGraph<
   U = SD extends StateDefinition ? UpdateType<SD> : Partial<S>,
   N extends string = typeof START,
   I extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition,
-  O extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition
+  O extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition,
+  C extends StateDefinition = StateDefinition
 > extends Graph<N, S, U, StateGraphNodeSpec<S, U>> {
-  channels: Record<string, BaseChannel> = {};
+  channels: Record<string, BaseChannel | ManagedValueSpec> = {};
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
   waitingEdges: Set<[N[], N]> = new Set();
@@ -180,6 +187,9 @@ export class StateGraph<
    */
   _schemaDefinitions = new Map();
 
+  /** @internal Used only for typing. */
+  _configSchema: C | undefined;
+
   constructor(
     fields: SD extends StateDefinition
       ?
@@ -188,7 +198,8 @@ export class StateGraph<
           | StateGraphArgs<S>
           | StateGraphArgsWithStateSchema<SD, I, O>
           | StateGraphArgsWithInputOutputSchemas<SD, O>
-      : StateGraphArgs<S>
+      : StateGraphArgs<S>,
+    configSchema?: AnnotationRoot<C>
   ) {
     super();
     if (
@@ -220,6 +231,7 @@ export class StateGraph<
     this._addSchema(this._schemaDefinition);
     this._addSchema(this._inputDefinition);
     this._addSchema(this._outputDefinition);
+    this._configSchema = configSchema?.spec;
   }
 
   get allEdges(): Set<[string, string]> {
@@ -246,7 +258,10 @@ export class StateGraph<
       }
       if (this.channels[key] !== undefined) {
         if (this.channels[key] !== channel) {
-          if (channel.lc_graph_name !== "LastValue") {
+          if (
+            !isConfiguredManagedValue(channel) &&
+            channel.lc_graph_name !== "LastValue"
+          ) {
             throw new Error(
               `Channel "${key}" already exists with a different type.`
             );
@@ -266,17 +281,22 @@ export class StateGraph<
       U extends object ? U & Record<string, any> : U
     >,
     options?: StateGraphAddNodeOptions
-  ): StateGraph<SD, S, U, N | K, I, O> {
+  ): StateGraph<SD, S, U, N | K, I, O, C> {
     if (key in this.channels) {
       throw new Error(
         `${key} is already being used as a state attribute (a.k.a. a channel), cannot also be used as a node name.`
       );
     }
 
-    if (key.includes(CHECKPOINT_NAMESPACE_SEPARATOR)) {
-      throw new Error(
-        `"${CHECKPOINT_NAMESPACE_SEPARATOR}" is a reserved character and is not allowed in node names.`
-      );
+    for (const reservedChar of [
+      CHECKPOINT_NAMESPACE_SEPARATOR,
+      CHECKPOINT_NAMESPACE_END,
+    ]) {
+      if (key.includes(reservedChar)) {
+        throw new Error(
+          `"${reservedChar}" is a reserved character and is not allowed in node names.`
+        );
+      }
     }
     this.warnIfCompiled(
       `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
@@ -301,7 +321,7 @@ export class StateGraph<
 
     this.nodes[key as unknown as N] = nodeSpec;
 
-    return this as StateGraph<SD, S, U, N | K, I, O>;
+    return this as StateGraph<SD, S, U, N | K, I, O, C>;
   }
 
   addEdge(startKey: typeof START | N | N[], endKey: N | typeof END): this {
@@ -338,13 +358,15 @@ export class StateGraph<
 
   compile({
     checkpointer,
+    store,
     interruptBefore,
     interruptAfter,
   }: {
     checkpointer?: BaseCheckpointSaver;
+    store?: BaseStore;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
-  } = {}): CompiledStateGraph<S, U, N, I, O> {
+  } = {}): CompiledStateGraph<S, U, N, I, O, C> {
     // validate the graph
     this.validate([
       ...(Array.isArray(interruptBefore) ? interruptBefore : []),
@@ -363,7 +385,7 @@ export class StateGraph<
       streamKeys.length === 1 && streamKeys[0] === ROOT ? ROOT : streamKeys;
 
     // create empty compiled graph
-    const compiled = new CompiledStateGraph<S, U, N, I, O>({
+    const compiled = new CompiledStateGraph<S, U, N, I, O, C>({
       builder: this,
       checkpointer,
       interruptAfter,
@@ -378,6 +400,7 @@ export class StateGraph<
       outputChannels,
       streamChannels,
       streamMode: "updates",
+      store,
     });
 
     // attach nodes, edges and branches
@@ -425,9 +448,10 @@ export class CompiledStateGraph<
   U,
   N extends string = typeof START,
   I extends StateDefinition = StateDefinition,
-  O extends StateDefinition = StateDefinition
+  O extends StateDefinition = StateDefinition,
+  C extends StateDefinition = StateDefinition
 > extends CompiledGraph<N, S, U> {
-  declare builder: StateGraph<unknown, S, U, N, I, O>;
+  declare builder: StateGraph<unknown, S, U, N, I, O, C>;
 
   attachNode(key: typeof START, node?: never): void;
 
@@ -524,7 +548,7 @@ export class CompiledStateGraph<
         );
       }
     } else if (start === START) {
-      const channelName = `start:${end}`;
+      const channelName = `${START}:${end}`;
       // register channel
       (this.channels as Record<string, BaseChannel>)[channelName] =
         new EphemeralValue();
@@ -585,10 +609,6 @@ export class CompiledStateGraph<
       this.nodes[end as N].triggers.push(channelName);
     }
   }
-}
-
-function isBaseChannel(obj: unknown): obj is BaseChannel {
-  return obj != null && typeof (obj as BaseChannel).lc_graph_name === "string";
 }
 
 function isStateDefinition(obj: unknown): obj is StateDefinition {
