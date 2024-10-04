@@ -10,7 +10,7 @@ import {
 } from "@jest/globals";
 import { BaseStore, Operation, OperationResults, Item } from "../store/base.js";
 import { AsyncBatchedStore } from "../store/batch.js";
-import { MemoryStore } from "../store/memory.js";
+import { InMemoryStore } from "../store/memory.js";
 
 describe("AsyncBatchedStore", () => {
   let store: AsyncBatchedStore;
@@ -383,11 +383,11 @@ describe("BaseStore", () => {
   });
 });
 
-describe("MemoryStore", () => {
-  let store: MemoryStore;
+describe("InMemoryStore", () => {
+  let store: InMemoryStore;
 
   beforeEach(() => {
-    store = new MemoryStore();
+    store = new InMemoryStore();
   });
 
   it("should implement get method", async () => {

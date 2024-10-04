@@ -10,7 +10,7 @@ import {
   GetOperation,
 } from "./base.js";
 
-export class MemoryStore extends BaseStore {
+export class InMemoryStore extends BaseStore {
   private data: Map<string, Map<string, Item>> = new Map();
 
   async batch<Op extends Operation[]>(
@@ -143,3 +143,6 @@ export class MemoryStore extends BaseStore {
     throw new Error(`Unsupported match type: ${matchType}`);
   }
 }
+
+/** @deprecated Alias for InMemoryStore */
+export class MemoryStore extends InMemoryStore {}

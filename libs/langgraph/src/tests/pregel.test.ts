@@ -30,7 +30,7 @@ import {
   CheckpointMetadata,
   CheckpointTuple,
   MemorySaver,
-  MemoryStore,
+  InMemoryStore,
   PendingWrite,
   uuid5,
   uuid6,
@@ -5056,7 +5056,7 @@ describe("StateGraph start branch then end", () => {
     ).rejects.toThrow(/thread_id/);
 
     toolTwo = toolTwoGraph.compile({
-      store: new MemoryStore(),
+      store: new InMemoryStore(),
       interruptBefore: ["tool_two_fast", "tool_two_slow"] as any[],
     });
 
@@ -5066,7 +5066,7 @@ describe("StateGraph start branch then end", () => {
     ).rejects.toThrow(/assistant_id/);
 
     toolTwo = toolTwoGraph.compile({
-      store: new MemoryStore(),
+      store: new InMemoryStore(),
       checkpointer,
       interruptBefore: ["tool_two_fast", "tool_two_slow"] as any[],
     });
@@ -5232,7 +5232,7 @@ describe("StateGraph start branch then end", () => {
 });
 
 describe("Managed Values (context) can be passed through state", () => {
-  let store: MemoryStore;
+  let store: InMemoryStore;
   let checkpointer: MemorySaver;
   let threadId = "";
   let iter = 0;
@@ -5240,7 +5240,7 @@ describe("Managed Values (context) can be passed through state", () => {
   beforeEach(() => {
     iter += 1;
     threadId = iter.toString();
-    store = new MemoryStore();
+    store = new InMemoryStore();
     checkpointer = new MemorySaver();
   });
 
