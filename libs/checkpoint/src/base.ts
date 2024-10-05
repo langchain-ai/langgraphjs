@@ -6,7 +6,12 @@ import type {
   CheckpointPendingWrite,
   CheckpointMetadata,
 } from "./types.js";
-import type { ChannelProtocol, SendProtocol } from "./serde/types.js";
+import {
+  ERROR,
+  SCHEDULED,
+  type ChannelProtocol,
+  type SendProtocol,
+} from "./serde/types.js";
 import { JsonPlusSerializer } from "./serde/jsonplus.js";
 
 type ChannelVersion = number | string;
@@ -187,3 +192,15 @@ export function maxChannelVersion(
     return compareChannelVersions(max, version) >= 0 ? max : version;
   });
 }
+
+/**
+ * Mapping from error type to error index.
+ * Regular writes just map to their index in the list of writes being saved.
+ * Special writes (e.g. errors) map to negative indices, to avoid those writes from
+ * conflicting with regular writes.
+ * Each Checkpointer implementation should use this mapping in put_writes.
+ */
+export const WRITES_IDX_MAP: Record<string, number> = {
+  [ERROR]: -1,
+  [SCHEDULED]: -2,
+};
