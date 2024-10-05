@@ -34,8 +34,8 @@
     "pg": "^8.12.0"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.31 <0.3.0",
-    "@langchain/langgraph-checkpoint": "~0.0.4"
+    "@langchain/core": ">=0.2.31 <0.4.0",
+    "@langchain/langgraph-checkpoint": "~0.0.6"
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",
