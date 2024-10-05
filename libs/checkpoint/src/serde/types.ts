@@ -1,4 +1,6 @@
 export const TASKS = "__pregel_tasks";
+export const ERROR = "__error__";
+export const SCHEDULED = "__scheduled__";
 
 // Mirrors BaseChannel in "@langchain/langgraph"
 export interface ChannelProtocol<
