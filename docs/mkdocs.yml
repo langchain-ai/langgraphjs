@@ -103,12 +103,12 @@ nav:
           - Create branches for parallel execution: "how-tos/branching.ipynb"
           - Create map-reduce branches for parallel execution: "how-tos/map-reduce.ipynb"
       - Persistence:
-          - Add persistence ("memory") to your graph: "how-tos/persistence.ipynb"
+          - Add thread-level persistence: how-tos/persistence.ipynb
+          - Add cross-thread persistence: how-tos/cross-thread-persistence.ipynb
           - View and update past graph state: "how-tos/time-travel.ipynb"
           - Manage conversation history: "how-tos/manage-conversation-history.ipynb"
           - How to delete messages: "how-tos/delete-messages.ipynb"
           - Add summary of the conversation history: "how-tos/add-summary-conversation-history.ipynb"
-          - Share state between threads: "how-tos/shared-state.ipynb"
       - Human-in-the-loop:
           - Add breakpoints: "how-tos/breakpoints.ipynb"
           - Add dynamic breakpoints: "how-tos/dynamic_breakpoints.ipynb"

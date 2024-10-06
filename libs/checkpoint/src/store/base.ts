@@ -245,7 +245,6 @@ export abstract class BaseStore {
    * @param key Unique identifier within the namespace.
    */
   async delete(namespace: string[], key: string): Promise<void> {
-    validateNamespace(namespace);
     await this.batch<[PutOperation]>([{ namespace, key, value: null }]);
   }
 
