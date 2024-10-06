@@ -1,6 +1,50 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
+ * Error thrown when an invalid namespace is provided.
+ */
+export class InvalidNamespaceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidNamespaceError";
+  }
+}
+
+/**
+ * Validates the provided namespace.
+ * @param namespace The namespace to validate.
+ * @throws {InvalidNamespaceError} If the namespace is invalid.
+ */
+function validateNamespace(namespace: string[]): void {
+  if (namespace.length === 0) {
+    throw new InvalidNamespaceError("Namespace cannot be empty.");
+  }
+  for (const label of namespace) {
+    if (typeof label !== "string") {
+      throw new InvalidNamespaceError(
+        `Invalid namespace label '${label}' found in ${namespace}. Namespace labels ` +
+          `must be strings, but got ${typeof label}.`
+      );
+    }
+    if (label.includes(".")) {
+      throw new InvalidNamespaceError(
+        `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain periods ('.').`
+      );
+    }
+    if (label === "") {
+      throw new InvalidNamespaceError(
+        `Namespace labels cannot be empty strings. Got ${label} in ${namespace}`
+      );
+    }
+  }
+  if (namespace[0] === "langgraph") {
+    throw new InvalidNamespaceError(
+      `Root label for namespace cannot be "langgraph". Got: ${namespace}`
+    );
+  }
+}
+
+/**
  * Represents a stored item with metadata.
  */
 export interface Item {
@@ -191,6 +235,7 @@ export abstract class BaseStore {
     key: string,
     value: Record<string, any>
   ): Promise<void> {
+    validateNamespace(namespace);
     await this.batch<[PutOperation]>([{ namespace, key, value }]);
   }
 
@@ -200,6 +245,7 @@ export abstract class BaseStore {
    * @param key Unique identifier within the namespace.
    */
   async delete(namespace: string[], key: string): Promise<void> {
+    validateNamespace(namespace);
     await this.batch<[PutOperation]>([{ namespace, key, value: null }]);
   }
 
