@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 import subprocess
 from typing import Optional
 import re
@@ -52,7 +53,9 @@ def extract_code_blocks(content: str, title: Optional[str] = None):
     return res
 
 
-def extract_ts_code(file_path: str, title: str | None = None, strip_env: bool = True) -> str:
+def extract_ts_code(
+    file_path: str, title: str | None = None, strip_env: bool = True
+) -> str:
     def replace_env_vars(match):
         env_var = match.group(1)
         env_value = os.environ.get(env_var, "")
@@ -70,16 +73,25 @@ def extract_ts_code(file_path: str, title: str | None = None, strip_env: bool = 
     ts_content = "\n".join(
         [line for line in ts_content.split("\n") if not line.startswith("#")]
     )
-    
+
     if strip_env:
-        ts_content = re.sub(r'process\.env\.([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*".*?"', replace_env_vars, ts_content)
-        
+        ts_content = re.sub(
+            r'process\.env\.([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*".*?"',
+            replace_env_vars,
+            ts_content,
+        )
+
     return ts_content
 
 
 def get_tsconfig_options(tsconfig_path: str) -> list:
-    with open(tsconfig_path, "r", encoding="utf-8") as tsconfig_file:
-        tsconfig = json.load(tsconfig_file)
+    with Path(tsconfig_path).absolute().open("r", encoding="utf-8") as tsconfig_file:
+        txt = tsconfig_file.read()
+        try:
+            tsconfig = json.loads(txt.strip())
+        except Exception:
+            print(f"Failed to json load:\n\n{txt}")
+            raise
         compiler_options = tsconfig.get("compilerOptions", {})
         options = []
         for key, value in compiler_options.items():
