@@ -4,6 +4,8 @@ services:
   postgres:
     image: postgres:latest
     container_name: langgraphjs-postgres-test
+    volumes:
+      - ./tmp/integration_tests/pgvector:/var/lib/postgresql/data
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password

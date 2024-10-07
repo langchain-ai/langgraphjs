@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "@jest/globals";
+import { describe, it, expect, beforeEach, afterAll } from "@jest/globals";
 import {
   Checkpoint,
   CheckpointTuple,
@@ -17,6 +17,7 @@ const checkpoint1: Checkpoint = {
     someKey1: "someValue1",
   },
   channel_versions: {
+    someKey1: 1,
     someKey2: 1,
   },
   versions_seen: {
@@ -35,6 +36,7 @@ const checkpoint2: Checkpoint = {
     someKey1: "someValue2",
   },
   channel_versions: {
+    someKey1: 1,
     someKey2: 2,
   },
   versions_seen: {
@@ -45,25 +47,57 @@ const checkpoint2: Checkpoint = {
   pending_sends: [],
 };
 
+const postgresSavers: PostgresSaver[] = [];
+
 describe("PostgresSaver", () => {
-  let pool: pg.Pool;
   let postgresSaver: PostgresSaver;
 
-  beforeAll(async () => {
-    pool = new Pool({
-      user: "user",
-      host: "localhost",
-      database: "testdb",
-      password: "password",
-      port: 5432,
+  beforeEach(async () => {
+    const pool = new Pool({
+      connectionString: process.env.TEST_POSTGRES_URL,
     });
+    // Generate a unique database name
+    const dbName = `lg_test_db_${Date.now()}_${Math.floor(
+      Math.random() * 1000
+    )}`;
 
-    postgresSaver = new PostgresSaver(pool);
-    // await postgresSaver.setup();
+    try {
+      // Create a new database
+      await pool.query(`CREATE DATABASE ${dbName}`);
+
+      // Connect to the new database
+      const dbConnectionString = `${process.env.TEST_POSTGRES_URL?.split("/")
+        .slice(0, -1)
+        .join("/")}/${dbName}`;
+      postgresSaver = PostgresSaver.fromConnectionString(dbConnectionString);
+      postgresSavers.push(postgresSaver);
+      await postgresSaver.setup();
+    } finally {
+      await pool.end();
+    }
   });
 
   afterAll(async () => {
-    await pool.end();
+    await Promise.all(postgresSavers.map((saver) => saver.end()));
+    // Drop all test databases
+    const pool = new Pool({
+      connectionString: process.env.TEST_POSTGRES_URL,
+    });
+
+    try {
+      const result = await pool.query(`
+      SELECT datname FROM pg_database
+      WHERE datname LIKE 'lg_test_db_%'
+    `);
+
+      for (const row of result.rows) {
+        const dbName = row.datname;
+        await pool.query(`DROP DATABASE ${dbName}`);
+        console.log(`Dropped database: ${dbName}`);
+      }
+    } finally {
+      await pool.end();
+    }
   });
 
   it("should save and retrieve checkpoints correctly", async () => {
@@ -77,7 +111,8 @@ describe("PostgresSaver", () => {
     const runnableConfig = await postgresSaver.put(
       { configurable: { thread_id: "1" } },
       checkpoint1,
-      { source: "update", step: -1, writes: null }
+      { source: "update", step: -1, writes: null, parents: {} },
+      checkpoint1.channel_versions
     );
     expect(runnableConfig).toEqual({
       configurable: {
@@ -112,6 +147,12 @@ describe("PostgresSaver", () => {
       },
     });
     expect(firstCheckpointTuple?.checkpoint).toEqual(checkpoint1);
+    expect(firstCheckpointTuple?.metadata).toEqual({
+      source: "update",
+      step: -1,
+      writes: null,
+      parents: {},
+    });
     expect(firstCheckpointTuple?.parentConfig).toBeUndefined();
     expect(firstCheckpointTuple?.pendingWrites).toEqual([
       ["foo", "bar", "baz"],
@@ -126,12 +167,19 @@ describe("PostgresSaver", () => {
         },
       },
       checkpoint2,
-      { source: "update", step: -1, writes: null }
+      { source: "update", step: -1, writes: null, parents: {} },
+      checkpoint2.channel_versions
     );
 
     // verify that parentTs is set and retrieved correctly for second checkpoint
     const secondCheckpointTuple = await postgresSaver.getTuple({
       configurable: { thread_id: "1" },
+    });
+    expect(secondCheckpointTuple?.metadata).toEqual({
+      source: "update",
+      step: -1,
+      writes: null,
+      parents: {},
     });
     expect(secondCheckpointTuple?.parentConfig).toEqual({
       configurable: {

@@ -46,7 +46,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     this.isSetup = false;
   }
 
-  static fromConnString(connString: string): PostgresSaver {
+  static fromConnectionString(connString: string): PostgresSaver {
     const pool = new Pool({ connectionString: connString });
     return new PostgresSaver(pool);
   }
@@ -61,8 +61,6 @@ export class PostgresSaver extends BaseCheckpointSaver {
   async setup(): Promise<void> {
     const client = await this.pool.connect();
     try {
-      await client.query("BEGIN");
-
       let version = -1;
       try {
         const result = await client.query(
@@ -91,61 +89,61 @@ export class PostgresSaver extends BaseCheckpointSaver {
           [v]
         );
       }
-
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
     } finally {
       client.release();
     }
   }
 
-  protected _loadCheckpoint(
+  protected async _loadCheckpoint(
     checkpoint: Omit<Checkpoint, "pending_sends" | "channel_values">,
     channelValues: [Uint8Array, Uint8Array, Uint8Array][],
     pendingSends: [Uint8Array, Uint8Array][]
-  ): Checkpoint {
+  ): Promise<Checkpoint> {
     return {
       ...checkpoint,
-      pending_sends: (pendingSends || []).map(([c, b]) =>
-        this.serde.loadsTyped(c.toString(), b)
+      pending_sends: await Promise.all(
+        (pendingSends || []).map(([c, b]) =>
+          this.serde.loadsTyped(c.toString(), b)
+        )
       ),
-      channel_values: this._loadBlobs(channelValues),
+      channel_values: await this._loadBlobs(channelValues),
     };
   }
 
-  protected _loadBlobs(
+  protected async _loadBlobs(
     blobValues: [Uint8Array, Uint8Array, Uint8Array][]
-  ): Record<string, any> {
+  ): Promise<Record<string, any>> {
     if (!blobValues || blobValues.length === 0) {
       return {};
     }
-    return Object.fromEntries(
+    const entries = await Promise.all(
       blobValues
         .filter(([, t]) => new TextDecoder().decode(t) !== "empty")
-        .map(([k, t, v]) => [
+        .map(async ([k, t, v]) => [
           new TextDecoder().decode(k),
-          this.serde.loadsTyped(new TextDecoder().decode(t), v),
+          await this.serde.loadsTyped(new TextDecoder().decode(t), v),
         ])
     );
+    return Object.fromEntries(entries);
   }
 
-  protected _loadMetadata(metadata: Record<string, unknown>) {
+  protected async _loadMetadata(metadata: Record<string, unknown>) {
     const [type, dumpedValue] = this.serde.dumpsTyped(metadata);
     return this.serde.loadsTyped(type, dumpedValue);
   }
 
-  protected _loadWrites(
+  protected async _loadWrites(
     writes: [Uint8Array, Uint8Array, Uint8Array, Uint8Array][]
-  ): [string, string, any][] {
+  ): Promise<[string, string, any][]> {
     const decoder = new TextDecoder();
     return writes
-      ? writes.map(([tid, channel, t, v]) => [
-          decoder.decode(tid),
-          decoder.decode(channel),
-          this.serde.loadsTyped(decoder.decode(t), v),
-        ])
+      ? await Promise.all(
+          writes.map(async ([tid, channel, t, v]) => [
+            decoder.decode(tid),
+            decoder.decode(channel),
+            await this.serde.loadsTyped(decoder.decode(t), v),
+          ])
+        )
       : [];
   }
 
@@ -155,7 +153,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     values: Record<string, any>,
     versions: ChannelVersions
   ): [string, string, string, string, string, Uint8Array | undefined][] {
-    if (!versions) {
+    if (Object.keys(versions).length === 0) {
       return [];
     }
 
@@ -174,13 +172,22 @@ export class PostgresSaver extends BaseCheckpointSaver {
   }
 
   protected _dumpCheckpoint(checkpoint: Checkpoint) {
-    return this.serde.dumpsTyped({ ...checkpoint, pending_sends: [] });
+    const serialized: Record<string, unknown> = {
+      ...checkpoint,
+      pending_sends: [],
+    };
+    if ("channel_values" in serialized) {
+      delete serialized.channel_values;
+    }
+    return serialized;
   }
 
-  protected _dumpMetadata(metadata: CheckpointMetadata): string {
+  protected _dumpMetadata(metadata: CheckpointMetadata) {
     const [, serializedMetadata] = this.serde.dumpsTyped(metadata);
     // We need to remove null characters before writing
-    return new TextDecoder().decode(serializedMetadata).replace(/\u0000/g, "");
+    return JSON.parse(
+      new TextDecoder().decode(serializedMetadata).replace(/\u0000/g, "")
+    );
   }
 
   protected _dumpWrites(
@@ -293,7 +300,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
       return undefined;
     }
 
-    const checkpoint = this._loadCheckpoint(
+    const checkpoint = await this._loadCheckpoint(
       row.checkpoint,
       row.channel_values,
       row.pending_sends
@@ -305,7 +312,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
         checkpoint_id: row.checkpoint_id,
       },
     };
-    const metadata = this._loadMetadata(row.metadata);
+    const metadata = await this._loadMetadata(row.metadata);
     const parentConfig = row.parent_checkpoint_id
       ? {
           configurable: {
@@ -315,7 +322,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
           },
         }
       : undefined;
-    const pendingWrites = this._loadWrites(row.pending_writes);
+    const pendingWrites = await this._loadWrites(row.pending_writes);
 
     return {
       config: finalConfig,
@@ -353,12 +360,12 @@ export class PostgresSaver extends BaseCheckpointSaver {
             checkpoint_id: value.checkpoint_id,
           },
         },
-        checkpoint: this._loadCheckpoint(
+        checkpoint: await this._loadCheckpoint(
           value.checkpoint,
           value.channel_values,
           value.pending_sends
         ),
-        metadata: this._loadMetadata(value.metadata),
+        metadata: await this._loadMetadata(value.metadata),
         parentConfig: value.parent_checkpoint_id
           ? {
               configurable: {
@@ -368,7 +375,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
               },
             }
           : undefined,
-        pendingWrites: this._loadWrites(value.pending_writes),
+        pendingWrites: await this._loadWrites(value.pending_writes),
       };
     }
   }
@@ -406,7 +413,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
       },
     };
     const client = await this.pool.connect();
-    const [_, serializedCheckpoint] = this._dumpCheckpoint(checkpoint);
+    const serializedCheckpoint = this._dumpCheckpoint(checkpoint);
     try {
       await client.query("BEGIN");
       const serializedBlobs = this._dumpBlobs(
@@ -453,19 +460,19 @@ export class PostgresSaver extends BaseCheckpointSaver {
       ? UPSERT_CHECKPOINT_WRITES_SQL
       : INSERT_CHECKPOINT_WRITES_SQL;
 
+    const dumpedWrites = this._dumpWrites(
+      config.configurable?.thread_id,
+      config.configurable?.checkpoint_ns,
+      config.configurable?.checkpoint_id,
+      taskId,
+      writes
+    );
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      await client.query(
-        query,
-        this._dumpWrites(
-          config.configurable?.thread_id,
-          config.configurable?.checkpoint_ns,
-          config.configurable?.checkpoint_id,
-          taskId,
-          writes
-        )
-      );
+      for await (const dumpedWrite of dumpedWrites) {
+        await client.query(query, dumpedWrite);
+      }
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK");
@@ -473,5 +480,9 @@ export class PostgresSaver extends BaseCheckpointSaver {
     } finally {
       client.release();
     }
+  }
+
+  async end() {
+    return this.pool.end();
   }
 }
