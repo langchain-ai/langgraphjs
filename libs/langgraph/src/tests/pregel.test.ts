@@ -3787,20 +3787,14 @@ describe("StateGraph", () => {
       hello: Annotation<string>,
     });
 
-    const nodeA = (
-      _: typeof StateAnnotation.State,
-      config?: RunnableConfig
-    ) => {
+    const nodeA = (_: typeof StateAnnotation.State, config: RunnableConfig) => {
       // Unfortunately can't infer input types at runtime :(
-      expect(config?.configurable?.foo).toEqual("bar");
+      expect(config.configurable?.foo).toEqual("bar");
       return {};
     };
 
-    const nodeB = (
-      _: typeof StateAnnotation.State,
-      config?: RunnableConfig
-    ) => {
-      expect(config?.configurable?.foo).toEqual("bar");
+    const nodeB = (_: typeof StateAnnotation.State, config: RunnableConfig) => {
+      expect(config.configurable?.foo).toEqual("bar");
       return {
         hello: "again",
         now: 123,
@@ -3896,6 +3890,20 @@ describe("StateGraph", () => {
     ).toEqual({
       hello: "again",
     });
+  });
+
+  it("can be passed a conditional edge with required config arg", async () => {
+    const workflow = new StateGraph(MessagesAnnotation)
+      .addNode("nodeOne", () => ({}))
+      .addConditionalEdges("nodeOne", (_, config) => {
+        expect(config).toBeDefined();
+        if (!config) {
+          throw new Error("config must be defined.");
+        }
+        return END;
+      });
+    const app = workflow.compile();
+    await app.invoke({ messages: [] });
   });
 });
 
@@ -5252,11 +5260,8 @@ describe("Managed Values (context) can be passed through state", () => {
   it("should be passed through state but not stored in checkpointer", async () => {
     const nodeOne = async (
       data: typeof AgentAnnotation.State,
-      config?: RunnableConfig
+      config: RunnableConfig
     ): Promise<Partial<typeof AgentAnnotation.State>> => {
-      if (!config) {
-        throw new Error("config is undefined");
-      }
       expect(config.configurable?.thread_id).toEqual(threadId);
 
       expect(data.sharedStateKey).toEqual({});
@@ -5272,13 +5277,8 @@ describe("Managed Values (context) can be passed through state", () => {
     };
 
     const nodeTwo = async (
-      data: typeof AgentAnnotation.State,
-      config?: RunnableConfig
+      data: typeof AgentAnnotation.State
     ): Promise<Partial<typeof AgentAnnotation.State>> => {
-      if (!config) {
-        throw new Error("config is undefined");
-      }
-
       expect(data.sharedStateKey).toEqual({
         sharedStateValue: {
           value: "shared",
@@ -5314,13 +5314,8 @@ describe("Managed Values (context) can be passed through state", () => {
     };
 
     const nodeThree = async (
-      data: typeof AgentAnnotation.State,
-      config?: RunnableConfig
+      data: typeof AgentAnnotation.State
     ): Promise<Partial<typeof AgentAnnotation.State>> => {
-      if (!config) {
-        throw new Error("config is undefined");
-      }
-
       expect(data.sharedStateKey).toEqual({
         sharedStateValue: {
           value: "updated",
@@ -5389,11 +5384,8 @@ describe("Managed Values (context) can be passed through state", () => {
   it("can not access shared values from other 'on' keys", async () => {
     const nodeOne = async (
       data: typeof AgentAnnotation.State,
-      config?: RunnableConfig
+      config: RunnableConfig
     ): Promise<Partial<typeof AgentAnnotation.State>> => {
-      if (!config) {
-        throw new Error("config is undefined");
-      }
       expect(config.configurable?.thread_id).toBe(threadId);
       expect(config.configurable?.assistant_id).toBe("a");
 
@@ -5410,11 +5402,8 @@ describe("Managed Values (context) can be passed through state", () => {
 
     const nodeTwo = async (
       data: typeof AgentAnnotation.State,
-      config?: RunnableConfig
+      config: RunnableConfig
     ): Promise<Partial<typeof AgentAnnotation.State>> => {
-      if (!config) {
-        throw new Error("config is undefined");
-      }
       expect(config.configurable?.thread_id).toBe(threadId);
       expect(config.configurable?.assistant_id).toBe("b");
 
@@ -5431,12 +5420,8 @@ describe("Managed Values (context) can be passed through state", () => {
 
     const nodeThree = async (
       data: typeof AgentAnnotation.State,
-      config?: RunnableConfig
+      config: RunnableConfig
     ): Promise<Partial<typeof AgentAnnotation.State>> => {
-      if (!config) {
-        throw new Error("config is undefined");
-      }
-
       expect(config.configurable?.thread_id).toBe(threadId);
       expect(config.configurable?.assistant_id).toBe("a");
 
@@ -5451,12 +5436,8 @@ describe("Managed Values (context) can be passed through state", () => {
 
     const nodeFour = async (
       data: typeof AgentAnnotation.State,
-      config?: RunnableConfig
+      config: RunnableConfig
     ): Promise<Partial<typeof AgentAnnotation.State>> => {
-      if (!config) {
-        throw new Error("config is undefined");
-      }
-
       expect(config.configurable?.thread_id).toBe(threadId);
       expect(config.configurable?.assistant_id).toBe("b");
 
@@ -5611,11 +5592,8 @@ describe("Managed Values (context) can be passed through state", () => {
     // Define nodeOne that sets sharedStateKey and adds a message
     const nodeOne = async (
       data: typeof AgentAnnotation.State,
-      config?: RunnableConfig
+      config: RunnableConfig
     ): Promise<Partial<typeof AgentAnnotation.State>> => {
-      if (!config) {
-        throw new Error("config is undefined");
-      }
       expect(config.configurable?.thread_id).toEqual(threadId);
 
       expect(data.sharedStateKey).toEqual({});
@@ -5632,13 +5610,8 @@ describe("Managed Values (context) can be passed through state", () => {
 
     // Define nodeTwo that updates sharedStateKey
     const nodeTwo = async (
-      data: typeof AgentAnnotation.State,
-      config?: RunnableConfig
+      data: typeof AgentAnnotation.State
     ): Promise<Partial<typeof AgentAnnotation.State>> => {
-      if (!config) {
-        throw new Error("config is undefined");
-      }
-
       expect(data.sharedStateKey).toEqual({
         data: {
           value: "shared",
