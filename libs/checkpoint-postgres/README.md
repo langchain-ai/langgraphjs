@@ -1,11 +1,11 @@
-# @langchain/langgraph-checkpoint-sqlite
+# @langchain/langgraph-checkpoint-postgres
 
-Implementation of a [LangGraph.js](https://github.com/langchain-ai/langgraphjs) CheckpointSaver that uses a SQLite DB.
+Implementation of a [LangGraph.js](https://github.com/langchain-ai/langgraphjs) CheckpointSaver that uses a Postgres DB.
 
 ## Usage
 
 ```ts
-import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 
 const writeConfig = {
   configurable: {
@@ -19,7 +19,7 @@ const readConfig = {
   }
 };
 
-const checkpointer = SqliteSaver.fromConnString(":memory:");
+const checkpointer = PostgresSaver.fromConnString("postgresql://...");
 const checkpoint = {
   v: 1,
   ts: "2024-07-31T20:14:19.804150+00:00",
@@ -47,18 +47,29 @@ const checkpoint = {
 }
 
 // store checkpoint
-await checkpointer.put(writeConfig, checkpoint, {}, {})
+await checkpointer.put(writeConfig, checkpoint, {}, {});
 
 // load checkpoint
-await checkpointer.get(readConfig)
+await checkpointer.get(readConfig);
 
 // list checkpoints
 for await (const checkpoint of checkpointer.list(readConfig)) {
   console.log(checkpoint);
 }
 ```
+
 ## Testing
+
 Spin up testing PostgreSQL
+
 ```bash
 docker-compose up -d && docker-compose logs -f
+```
+
+Then use the following connection string to initialize your checkpointer:
+
+```ts
+const testCheckpointer = PostgresSaver.fromConnString(
+  "postgresql://user:password@localhost:5434/testdb"
+);
 ```

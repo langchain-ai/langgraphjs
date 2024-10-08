@@ -26,8 +26,7 @@ runPregelTests(
       const dbConnectionString = `${process.env.TEST_POSTGRES_URL?.split("/")
         .slice(0, -1)
         .join("/")}/${dbName}`;
-      const checkpointer =
-        PostgresSaver.fromConnectionString(dbConnectionString);
+      const checkpointer = PostgresSaver.fromConnString(dbConnectionString);
       await checkpointer.setup();
       checkpointers.push(checkpointer);
       return checkpointer;

@@ -70,7 +70,7 @@ describe("PostgresSaver", () => {
       const dbConnectionString = `${process.env.TEST_POSTGRES_URL?.split("/")
         .slice(0, -1)
         .join("/")}/${dbName}`;
-      postgresSaver = PostgresSaver.fromConnectionString(dbConnectionString);
+      postgresSaver = PostgresSaver.fromConnString(dbConnectionString);
       postgresSavers.push(postgresSaver);
       await postgresSaver.setup();
     } finally {

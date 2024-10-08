@@ -34,7 +34,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     this.isSetup = false;
   }
 
-  static fromConnectionString(connString: string): PostgresSaver {
+  static fromConnString(connString: string): PostgresSaver {
     const pool = new Pool({ connectionString: connString });
     return new PostgresSaver(pool);
   }
