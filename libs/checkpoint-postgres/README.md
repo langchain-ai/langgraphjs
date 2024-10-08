@@ -20,6 +20,10 @@ const readConfig = {
 };
 
 const checkpointer = PostgresSaver.fromConnString("postgresql://...");
+
+// You must call .setup() the first time you use the checkpointer:
+await checkpointer.setup();
+
 const checkpoint = {
   v: 1,
   ts: "2024-07-31T20:14:19.804150+00:00",
