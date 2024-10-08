@@ -1580,8 +1580,8 @@ __metadata:
   linkType: hard
 
 "@langchain/core@npm:^0.3.6":
-  version: 0.3.6
-  resolution: "@langchain/core@npm:0.3.6"
+  version: 0.3.8
+  resolution: "@langchain/core@npm:0.3.8"
   dependencies:
     ansi-styles: ^5.0.0
     camelcase: 6
@@ -1594,7 +1594,7 @@ __metadata:
     uuid: ^10.0.0
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
-  checksum: 16666fb36e3c4ea42c26910f668161051a66cfe24b3ac4f97d9094bc0482527582790c9862be17ff4a81d5f32b9acdcfb7fc7517371189ab73fae3bd8fa1a1d2
+  checksum: c34525382375aa61b3d88dab72d592c779f420b531d14ec192bec533a193c045adebc880185b28ec366fe6a552d6f182239e52eeccd033a919b09c7e903c3110
   languageName: node
   linkType: hard
 
@@ -1808,7 +1808,7 @@ __metadata:
     zod: ^3.23.8
     zod-to-json-schema: ^3.22.4
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0"
+    "@langchain/core": ">=0.2.35 <0.3.0 || >=0.3.8 < 0.4.0"
   languageName: unknown
   linkType: soft
 
