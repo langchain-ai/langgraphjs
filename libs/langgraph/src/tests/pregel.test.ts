@@ -3478,7 +3478,14 @@ export function runPregelTests(
         .addNode("c", nodeC)
         .addEdge(START, "a")
         .addEdge("a", "b")
-        .addEdge("b", "c")
+        .addConditionalEdges("b", async (state) => {
+          expect(state).toEqual({
+            bye: "world",
+            hello: "again",
+            messages: ["hello"],
+          });
+          return "c";
+        })
         .compile();
 
       expect(

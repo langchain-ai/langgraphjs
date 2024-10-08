@@ -591,7 +591,12 @@ export class CompiledStateGraph<
           return new ChannelWrite(writes, [TAG_HIDDEN]);
         },
         // reader
-        (config) => ChannelRead.doRead<S>(config, this.outputChannels, true)
+        (config) =>
+          ChannelRead.doRead<S>(
+            config,
+            this.streamChannels ?? this.outputChannels,
+            true
+          )
       )
     );
 
