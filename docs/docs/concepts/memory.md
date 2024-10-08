@@ -2,187 +2,355 @@
 
 ## What is Memory?
 
-Memory in the context of LLMs and AI applications refers to the ability to process, retain, and utilize information from past interactions or data sources. Examples include:
+Memory in AI applications refers to the ability to process, store, and effectively recall information from past interactions. With memory, your agents can learn from feedback and adapt to users' preferences. This guide is divided into two sections based on the scope of memory recall: short-term memory and long-term memory.
 
-- Managing what messages (e.g., from a long message history) are sent to a chat model to limit token usage
-- Summarizing past conversations to give a chat model context from prior interactions
-- Selecting few shot examples (e.g., from a dataset) to guide model responses
-- Maintaining persistent data (e.g., user preferences) across multiple chat sessions
-- Allowing an LLM to update its own prompt using past information (e.g., meta-prompting)
-- Retrieving information relevant to a conversation or question from a long-term storage system
+**Short-term memory**, or [thread](persistence.md#threads)-scoped memory, can be recalled at any time **from within** a single conversational thread with a user. LangGraph manages short-term memory as a part of your agent's [state](low_level.md#state). State is persisted to a database using a [checkpointer](persistence.md#checkpoints) so the thread can be resumed at any time. Short-term memory updates when the graph is invoked or a step is completed, and the State is read at the start of each step.
 
-Below, we'll discuss each of these examples in some detail. 
+**Long-term memory** is shared **across** conversational threads. It can be recalled _at any time_ and **in any thread**. Memories are scoped to any custom namespace, not just within a single thread ID. LangGraph provides [stores](persistence.md#memory-store) ([reference doc](https://langchain-ai.github.io/langgraphjs/reference/classes/checkpoint.BaseStore.html)) to let you save and recall long-term memories.
 
-## Managing Messages
+Both are important to understand and implement for your application.
+
+![](img/memory/short-vs-long.png)
+
+## Short-term memory
+
+Short-term memory lets your application remember previous interactions within a single [thread](persistence.md#threads) or conversation. A [thread](persistence.md#threads) organizes multiple interactions in a session, similar to the way email groups messages in a single conversation.
+
+LangGraph manages short-term memory as part of the agent's state, persisted via thread-scoped checkpoints. This state can normally include the conversation history along with other stateful data, such as uploaded files, retrieved documents, or generated artifacts. By storing these in the graph's state, the bot can access the full context for a given conversation while maintaining separation between different threads.
+
+Since conversation history is the most common form of representing short-term memory, in the next section, we will cover techniques for managing conversation history when the list of messages becomes **long**. If you want to stick to the high-level concepts, continue on to the [long-term memory](#long-term-memory) section.
+
+### Managing long conversation history
+
+Long conversations pose a challenge to today's LLMs. The full history may not even fit inside an LLM's context window, resulting in an irrecoverable error. Even _if_ your LLM technically supports the full context length, most LLMs still perform poorly over long contexts. They get "distracted" by stale or off-topic content, all while suffering from slower response times and higher costs.
+
+Managing short-term memory is an exercise of balancing [precision & recall](https://en.wikipedia.org/wiki/Precision_and_recall#:~:text=Precision%20can%20be%20seen%20as,irrelevant%20ones%20are%20also%20returned) with your application's other performance requirements (latency & cost). As always, it's important to think critically about how you represent information for your LLM and to look at your data. We cover a few common techniques for managing message lists below and hope to provide sufficient context for you to pick the best tradeoffs for your application:
+
+- [Editing message lists](#editing-message-lists): How to think about trimming and filtering a list of messages before passing to language model.
+- [Summarizing past conversations](#summarizing-past-conversations): A common technique to use when you don't just want to filter the list of messages.
 
 ### Editing message lists
 
-Chat models accept instructions through [messages](https://js.langchain.com/docs/concepts/#messages), which can serve as general instructions (e.g., a system message) or user-provided instructions (e.g., human messages). In chat applications, messages often alternate between human inputs and model responses, accumulating in a list over time. Because context windows are limited and token-rich message lists can be costly, many applications can benefit from approaches to actively manage messages.    
+Chat models accept context using [messages](https://js.langchain.com/docs/concepts/#messages), which include developer provided instructions (a system message) and user inputs (human messages). In chat applications, messages alternate between human inputs and model responses, resulting in a list of messages that grows longer over time. Because context windows are limited and token-rich message lists can be costly, many applications can benefit from using techniques to manually remove or forget stale information.
 
-The most directed approach is to remove specific messages from a list. This can be done using [RemoveMessage](/langgraphjs/how-tos/delete-messages/#manually-deleting-messages) based upon the message `id`, a unique identifier for each message. In the below example, we keep only the last two messages in the list using `RemoveMessage` to remove older messages based  upon their `id`.
+![](img/memory/filter.png)
 
-```typescript
-import { RemoveMessage, AIMessage, HumanMessage } from "@langchain/core/messages";
+The most direct approach is to remove old messages from a list (similar to a [least-recently used cache](https://en.wikipedia.org/wiki/Page_replacement_algorithm#Least_recently_used)).
 
-// Message list
-const messages = [new AIMessage({ content: "Hi.", name: "Bot", id: "1" })];
-messages.push(new HumanMessage({ content: "Hi.", name: "Lance", id: "2" }));
-messages.push(new AIMessage({ content: "So you said you were researching ocean mammals?", name: "Bot", id: "3" }));
-messages.push(new HumanMessage({ content: "Yes, I know about whales. But what others should I learn about?", name: "Lance", id: "4" }));
-
-// Isolate messages to delete
-const deleteMessages = messages.slice(0, -2).map((m) => new RemoveMessage({ id: m.id }));
-console.log(deleteMessages);
-// Output: [RemoveMessage { content: '', id: '1' }, RemoveMessage { content: '', id: '2' }]
-```
-
-Because the context window for chat model is denominated in tokens, it can be useful to trim message lists based upon some number of tokens that we want to retain. To do this, we can use [`trimMessages`](https://js.langchain.com/docs/how_to/trim_messages/#trimming-based-on-token-count) and specify number of token to keep from the list, as well as the `strategy` (e.g., keep the last `max_tokens`). 
+The typical technique for deleting content from a list in LangGraph is to return an update from a node telling the system to delete some portion of the list. You get to define what this update looks like, but a common approach would be to let you return an object or dictionary specifying which values to retain.
 
 ```typescript
-import { trimMessages } from "@langchain/core/messages";
+import { Annotation } from "@langchain/langgraph";
 
-trimMessages(
-    messages,
-    {
-        // Keep the last <= n_count tokens of the messages.
-        strategy: "last",
-        // Remember to adjust based on your model
-        // or else pass a custom token_encoder
-        tokenCounter: new ChatOpenAI({ model: "gpt-4o" }),
-        // Most chat models expect that chat history starts with either:
-        // (1) a HumanMessage or
-        // (2) a SystemMessage followed by a HumanMessage
-        // Remember to adjust based on the desired conversation
-        // length
-        maxTokens: 45,
-        // Most chat models expect that chat history starts with either:
-        // (1) a HumanMessage or
-        // (2) a SystemMessage followed by a HumanMessage
-        startOn: "human",
-        // Most chat models expect that chat history ends with either:
-        // (1) a HumanMessage or
-        // (2) a ToolMessage
-        endOn: ["human", "tool"],
-        // Usually, we want to keep the SystemMessage
-        // if it's present in the original history.
-        // The SystemMessage has special instructions for the model.
-        includeSystem: true,
-    }
-)
+const StateAnnotation = Annotation.Root({
+  myList: Annotation<any[]>({
+    reducer: (
+      existing: string[],
+      updates: string[] | { type: string; from: number; to: number | null }
+    ) => {
+      if (Array.isArray(updates)) {
+        // Normal case, add to the history
+        return [...existing, ...updates];
+      } else if (typeof updates === "object" && updates.type === "keep") {
+        // You get to decide what this looks like.
+        // For example, you could simplify and just accept a string "DELETE"
+        // and clear the entire list.
+        return existing.slice(updates.from, updates.to);
+      }
+      // etc. We define how to interpret updates
+      return existing;
+    },
+    default: () => [],
+  }),
+});
+
+type State = typeof StateAnnotation.State;
+
+function myNode(state: State) {
+  return {
+    // We return an update for the field "myList" saying to
+    // keep only values from index -5 to the end (deleting the rest)
+    myList: { type: "keep", from: -5, to: null },
+  };
+}
 ```
 
-### Usage with LangGraph
+LangGraph will call the "[reducer](low_level.md#reducers)" function any time an update is returned under the key "myList". Within that function, we define what types of updates to accept. Typically, messages will be added to the existing list (the conversation will grow); however, we've also added support to accept a dictionary that lets you "keep" certain parts of the state. This lets you programmatically drop old message context.
 
-When building agents in LangGraph, we commonly want to manage a list of messages in the graph state. Because this is such a common use case, [MessagesAnnotation](/langgraphjs/concepts/low_level/#messagesannotation) is a built-in LangGraph state schema that includes a `messages` key, which is a list of messages. `MessagesAnnotation` also includes an `addMessages` reducer for updating the messages list with new messages as the application runs. The `addMessages` reducer allows us to [append](/langgraphjs/concepts/low_level/#reducers) new messages to the `messages` state key as shown below. When we perform a state update with `{ messages: newMessage }` returned from `myNode`, the `addMessages` reducer appends `newMessage` to the existing list of messages.
+Another common approach is to let you return a list of "remove" objects that specify the IDs of all messages to delete. If you're using the LangChain messages and the [`messagesStateReducer`](https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph.messagesStateReducer.html) reducer (or [`MessagesAnnotation`](https://langchain-ai.github.io/langgraphjs/reference/variables/langgraph.MessagesAnnotation.html), which uses the same underlying functionality) in LangGraph, you can do this using a `RemoveMessage`.
 
 ```typescript
-const myNode = (state: typeof MessagesAnnotation.State) => {
-    // Add a new message to the state
-    const newMessage = new HumanMessage({ content: "message" });
-    return { messages: newMessage };
-};
+import { RemoveMessage, AIMessage } from "@langchain/core/messages";
+import { MessagesAnnotation } from "@langchain/langgraph";
+
+type State = typeof MessagesAnnotation.State;
+
+function myNode1(state: State) {
+  // Add an AI message to the `messages` list in the state
+  return { messages: [new AIMessage({ content: "Hi" })] };
+}
+
+function myNode2(state: State) {
+  // Delete all but the last 2 messages from the `messages` list in the state
+  const deleteMessages = state.messages
+    .slice(0, -2)
+    .map((m) => new RemoveMessage({ id: m.id }));
+  return { messages: deleteMessages };
+}
 ```
 
-The `addMessages` reducer built into `MessagesAnnotation` [also works with the `RemoveMessage` utility that we discussed above](/langgraphjs/how-tos/delete-messages/). In this case, we can perform a state update with a list of `deleteMessages` to remove specific messages from the `messages` list.
+In the example above, the `MessagesAnnotation` allows us to append new messages to the `messages` state key as shown in `myNode1`. When it sees a `RemoveMessage`, it will delete the message with that ID from the list (and the RemoveMessage will then be discarded). For more information on LangChain-specific message handling, check out [this how-to on using `RemoveMessage`](https://langchain-ai.github.io/langgraphjs/how-tos/memory/delete-messages/).
 
-```typescript
-const myNode = (state: typeof MessagesAnnotation.State) => {
-    // Delete messages from state
-    const deleteMessages = state.messages.slice(0, -2).map((m) => new RemoveMessage({ id: m.id }));
-    return { messages: deleteMessages };
-};
-```
+See this how-to [guide](https://langchain-ai.github.io/langgraphjs/how-tos/manage-conversation-history/)for example usage.
 
-See this how-to [guide](/langgraphjs/how-tos/manage-conversation-history/) and module 2 from our [LangChain Academy](https://github.com/langchain-ai/langchain-academy/tree/main/module-2) course for example usage.
+### Summarizing past conversations
 
-## Summarizing Past Conversations
+The problem with trimming or removing messages, as shown above, is that we may lose information from culling of the message queue. Because of this, some applications benefit from a more sophisticated approach of summarizing the message history using a chat model.
 
-The problem with trimming or removing messages, as shown above, is that we may loose information from culling of the message queue. Because of this, some applications benefit from a more sophisticated approach of summarizing the message history using a chat model. 
+![](img/memory/summary.png)
 
-Simple prompting and orchestration logic can be used to achieve this. As an example, in LangGraph we can extend the [MessagesAnnotation](/langgraphjs/concepts/low_level/#messagesannotation) to include a `summary` key. 
+Simple prompting and orchestration logic can be used to achieve this. As an example, in LangGraph we can extend the [`MessagesAnnotation`](https://langchain-ai.github.io/langgraphjs/reference/variables/langgraph.MessagesAnnotation.html) to include a `summary` key.
 
 ```typescript
 import { MessagesAnnotation, Annotation } from "@langchain/langgraph";
 
 const MyGraphAnnotation = Annotation.Root({
-    ...MessagesAnnotation.spec,
-    summary: Annotation<string>
-})
+  ...MessagesAnnotation.spec,
+  summary: Annotation<string>,
+});
 ```
 
-Then, we can generate a summary of the chat history, using any existing summary as context for the next summary. This `summarize_conversation` node can be called after some number of messages have accumulated in the `messages` state key.
+Then, we can generate a summary of the chat history, using any existing summary as context for the next summary. This `summarizeConversation` node can be called after some number of messages have accumulated in the `messages` state key.
 
 ```typescript
 import { ChatOpenAI } from "@langchain/openai";
+import { HumanMessage, RemoveMessage } from "@langchain/core/messages";
 
-const summarizeConversation = async (state: typeof MyGraphAnnotation.State) => {
+type State = typeof MyGraphAnnotation.State;
+
+async function summarizeConversation(state: State) {
   // First, we get any existing summary
   const summary = state.summary || "";
 
-  // Create our summarization prompt 
-  const summaryMessage = summary
-    ? `This is summary of the conversation to date: ${summary}\n\n` +
-      "Extend the summary by taking into account the new messages above:"
-    : "Create a summary of the conversation above:";
+  // Create our summarization prompt
+  let summaryMessage: string;
+  if (summary) {
+    // A summary already exists
+    summaryMessage =
+      `This is a summary of the conversation to date: ${summary}\n\n` +
+      "Extend the summary by taking into account the new messages above:";
+  } else {
+    summaryMessage = "Create a summary of the conversation above:";
+  }
 
   // Add prompt to our history
-  const messages = [...state.messages, new HumanMessage({ content: summaryMessage })];
-  
+  const messages = [
+    ...state.messages,
+    new HumanMessage({ content: summaryMessage }),
+  ];
+
   // Assuming you have a ChatOpenAI model instance
   const model = new ChatOpenAI();
   const response = await model.invoke(messages);
 
   // Delete all but the 2 most recent messages
-  const deleteMessages = state.messages.slice(0, -2).map(m => new RemoveMessage({ id: m.id }));
+  const deleteMessages = state.messages
+    .slice(0, -2)
+    .map((m) => new RemoveMessage({ id: m.id }));
 
   return {
     summary: response.content,
-    messages: deleteMessages
+    messages: deleteMessages,
   };
 }
 ```
 
-See this how-to [here](/langgraphjs/how-tos/add-summary-conversation-history/) and module 2 from our [LangChain Academy](https://github.com/langchain-ai/langchain-academy/tree/main/module-2) course for example usage.
+See this how-to [here](https://langchain-ai.github.io/langgraphjs/how-tos/memory/add-summary-conversation-history/) for example usage.
 
-## Few Shot Examples
+### Knowing **when** to remove messages
 
-Few-shot learning is a powerful technique where LLMs can be ["programmed"](https://x.com/karpathy/status/1627366413840322562) inside the prompt with input-output examples to perform diverse tasks. While various [best-practices](https://js.langchain.com/docs/concepts/#1-generating-examples) can be used to generate few-shot examples, often the challenge lies in selecting the most relevant examples based on user input. 
+Most LLMs have a maximum supported context window (denominated in tokens). A simple way to decide when to truncate messages is to count the tokens in the message history and truncate whenever it approaches that limit. Naive truncation is straightforward to implement on your own, though there are a few "gotchas". Some model APIs further restrict the sequence of message types (must start with human message, cannot have consecutive messages of the same type, etc.). If you're using LangChain, you can use the [`trimMessages`](https://js.langchain.com/docs/how_to/trim_messages/#trimming-based-on-token-count) utility and specify the number of tokens to keep from the list, as well as the `strategy` (e.g., keep the last `maxTokens`) to use for handling the boundary.
 
-LangChain [`ExampleSelectors`](https://js.langchain.com/docs/how_to/#example-selectors) can be used to customize few-shot example selection from a collection of examples using criteria such as length, semantic similarity, semantic ngram overlap, or maximal marginal relevance.
-
-If few-shot examples are stored in a [LangSmith Dataset](https://docs.smith.langchain.com/how_to_guides/datasets), then dynamic few-shot example selectors can be used out-of-the box to achieve this same goal. LangSmith will index the dataset for you and enable retrieval of few shot examples that are most relevant to the user input based upon keyword similarity ([using a BM25-like algorithm](https://docs.smith.langchain.com/how_to_guides/datasets/index_datasets_for_dynamic_few_shot_example_selection) for keyword based similarity). 
-
-See this how-to [video](https://www.youtube.com/watch?v=37VaU7e7t5o) for example usage of dynamic few-shot example selection in LangSmith. Also, see this [blog post](https://blog.langchain.dev/few-shot-prompting-to-improve-tool-calling-performance/) showcasing few-shot prompting to improve tool calling performance and this [blog post](https://blog.langchain.dev/aligning-llm-as-a-judge-with-human-preferences/) using few-shot example to align an LLMs to human preferences.
-
-## Maintaining Data Across Chat Sessions
-
-LangGraph's [persistence layer](/langgraphjs/concepts/persistence/#persistence) has checkpointers that utilize various storage systems, including an in-memory key-value store or different databases. These checkpoints capture the graph state at each execution step and accumulate in a thread, which can be accessed at a later time using a thread ID to resume a previous graph execution. We add persistence to our graph by passing a checkpointer to the `compile` method, as shown here.
+Below is an example.
 
 ```typescript
-import { MemorySaver } from "@langchain/langgraph";
+import { trimMessages } from "@langchain/core/messages";
+import { ChatOpenAI } from "@langchain/openai";
 
-// Compile the graph with a checkpointer
-const checkpointer = new MemorySaver();
-const graph = workflow.compile({ checkpointer });
-
-// Invoke the graph with a thread ID
-const config = { configurable: { thread_id: "1" } };
-await graph.invoke(inputState, config);
-
-// get the latest state snapshot at a later time
-const latestState = await graph.getState(config);
+trimMessages(messages, {
+  // Keep the last <= n_count tokens of the messages.
+  strategy: "last",
+  // Remember to adjust based on your model
+  // or else pass a custom token_encoder
+  tokenCounter: new ChatOpenAI({ modelName: "gpt-4" }),
+  // Remember to adjust based on the desired conversation
+  // length
+  maxTokens: 45,
+  // Most chat models expect that chat history starts with either:
+  // (1) a HumanMessage or
+  // (2) a SystemMessage followed by a HumanMessage
+  startOn: "human",
+  // Most chat models expect that chat history ends with either:
+  // (1) a HumanMessage or
+  // (2) a ToolMessage
+  endOn: ["human", "tool"],
+  // Usually, we want to keep the SystemMessage
+  // if it's present in the original history.
+  // The SystemMessage has special instructions for the model.
+  includeSystem: true,
+});
 ```
 
-Persistence is critical sustaining a long-running chat sessions. For example, a chat between a user and an AI assistant may have interruptions. Persistence ensures that a user can continue that particular chat session at any later point in time. However, what happens if a user initiates a new chat session with an assistant? This spawns a new thread, and the information from the previous session (thread) is not retained. This motivates the need for a memory service that can maintain data across chat sessions (threads). 
+## Long-term memory
 
-## Meta-prompting
+Long-term memory in LangGraph allows systems to retain information across different conversations or sessions. Unlike short-term memory, which is thread-scoped, long-term memory is saved within custom "namespaces."
 
-Meta-prompting uses an LLM to generate or refine its own prompts or instructions. This approach allows the system to dynamically update and improve its own behavior, potentially leading to better performance on various tasks. This is particularly useful for tasks where the instructions are challenging to specify a priori. 
+LangGraph stores long-term memories as JSON documents in a [store](persistence.md#memory-store) ([reference doc](https://langchain-ai.github.io/langgraphjs/reference/classes/checkpoint.BaseStore.html)). Each memory is organized under a custom `namespace` (similar to a folder) and a distinct `key` (like a filename). Namespaces often include user or org IDs or other labels that makes it easier to organize information. This structure enables hierarchical organization of memories. Cross-namespace searching is then supported through content filters. See the example below for an example.
 
-Meta-prompting can use past information to update the prompt. As an example, this [Tweet generator](https://www.youtube.com/watch?v=Vn8A3BxfplE) uses meta-prompting to iteratively improve the summarization prompt used to generate high quality paper summaries for Twitter. In this case, we used a LangSmith dataset to house several papers that we wanted to summarize, generated summaries using a naive summarization prompt, manually reviewed the summaries, captured feedback from human review using the LangSmith Annotation Queue, and passed this feedback to a chat model to re-generate the summarization prompt. The process was repeated in a loop until the summaries met our criteria in human review.
+```typescript
+import { InMemoryStore } from "@langchain/langgraph/store";
 
-## Retrieving relevant information from long-term storage
+// InMemoryStore saves data to an in-memory dictionary. Use a DB-backed store in production use.
+const store = new InMemoryStore();
+const userId = "my-user";
+const applicationContext = "chitchat";
+const namespace = [userId, applicationContext];
+await store.put(namespace, "a-memory", {
+  rules: [
+    "User likes short, direct language",
+    "User only speaks English & TypeScript",
+  ],
+  "my-key": "my-value",
+});
+// get the "memory" by ID
+const item = await store.get(namespace, "a-memory");
+// list "memories" within this namespace, filtering on content equivalence
+const items = await store.search(namespace, {
+  filter: { "my-key": "my-value" },
+});
+```
 
-A central challenge that spans many different memory use-case can be summarized simply: how can we retrieve *relevant information* from a long-term storage system and pass it to a chat model? As an example, assume we have a system that stores a large number of specific details about a user, but the user asks a specific question related to restaurant recommendations. It would be costly to trivially extract *all* personal user information and pass it to a chat model. Instead, we want to extract only the information that is most relevant to the user's current chat interaction (e,g,. food preferences, location, etc.) and pass it to the chat model. 
+When adding long-term memory to your agent, it's important to think about how to **write memories**, how to **store and manage memory updates**, and how to **recall & represent memories** for the LLM in your application. These questions are all interdependent: how you want to recall & format memories for the LLM dictates what you should store and how to manage it. Furthermore, each technique has tradeoffs. The right approach for you largely depends on your application's needs.
+LangGraph aims to give you the low-level primitives to directly control the long-term memory of your application, based on memory [Store](persistence.md#memory-store)'s.
 
-There is a large body of work on retrieval that aims to address this challenge. See our conceptual docs on [retrieval](https://js.langchain.com/docs/concepts/#retrieval), and our [open source repository](https://github.com/langchain-ai/rag-from-scratch) along with [videos](https://www.youtube.com/playlist?list=PLfaIDFEXuae2LXbO1_PKyVJiQ23ZztA0x) on this topic.
+Long-term memory is far from a solved problem. While it is hard to provide generic advice, we have provided a few reliable patterns below for your consideration as you implement long-term memory.
+
+**Do you want to write memories "on the hot path" or "in the background"**
+
+Memory can be updated either as part of your primary application logic (e.g. "on the hot path" of the application) or as a background task (as a separate function that generates memories based on the primary application's state). We document some tradeoffs for each approach in [the writing memories section below](#writing-memories).
+
+**Do you want to manage memories as a single profile or as a collection of documents?**
+
+We provide two main approaches to managing long-term memory: a single, continuously updated document (referred to as a "profile" or "schema") or a collection of documents. Each method offers its own benefits, depending on the type of information you need to store and how you intend to access it.
+
+Managing memories as a single, continuously updated "profile" or "schema" is useful when there is well-scoped, specific information you want to remember about a user, organization, or other entity (including the agent itself). You can define the schema of the profile ahead of time, and then use an LLM to update this based on interactions. Querying the "memory" is easy since it's a simple GET operation on a JSON document. We explain this in more detail in [remember a profile](#manage-individual-profiles). This technique can provide higher precision (on known information use cases) at the expense of lower recall (since you have to anticipate and model your domain, and updates to the doc tend to delete or rewrite away old information at a greater frequency).
+
+Managing long-term memory as a collection of documents, on the other hand, lets you store an unbounded amount of information. This technique is useful when you want to repeatedly extract & remember items over a long time horizon but can be more complicated to query and manage over time. Similar to the "profile" memory, you still define schema(s) for each memory. Rather than overwriting a single document, you instead will insert new ones (and potentially update or re-contextualize existing ones in the process). We explain this approach in more detail in ["managing a collection of memories"](#manage-a-collection-of-memories).
+
+**Do you want to present memories to your agent as updated instructions or as few-shot examples?**
+
+Memories are typically provided to the LLM as a part of the system prompt. Some common ways to "frame" memories for the LLM include providing raw information as "memories from previous interactions with user A", as system instructions or rules, or as few-shot examples.
+
+Framing memories as "learning rules or instructions" typically means dedicating a portion of the system prompt to instructions the LLM can manage itself. After each conversation, you can prompt the LLM to evaluate its performance and update the instructions to better handle this type of task in the future. We explain this approach in more detail in [this section](#update-own-instructions).
+
+Storing memories as few-shot examples lets you store and manage instructions as cause and effect. Each memory stores an input or context and expected response. Including a reasoning trajectory (a chain-of-thought) can also help provide sufficient context so that the memory is less likely to be mis-used in the future. We elaborate on this concept more in [this section](#few-shot-examples).
+
+We will expand on techniques for writing, managing, and recalling & formatting memories in the following section.
+
+### Writing memories
+
+Humans form long-term memories when we sleep, but when and how should our agents create new memories? The two most common ways we see agents write memories are "on the hot path" and "in the background".
+
+#### Writing memories in the hot path
+
+This involves creating memories while the application is running. To provide a popular production example, ChatGPT manages memories using a "save_memories" tool to upsert memories as content strings. It decides whether (and how) to use this tool every time it receives a user message and multi-tasks memory management with the rest of the user instructions.
+
+This has a few benefits. First of all, it happens "in real time". If the user starts a new thread right away that memory will be present. The user also transparently sees when memories are stored, since the bot has to explicitly decide to store information and can relate that to the user.
+
+This also has several downsides. It complicates the decisions the agent must make (what to commit to memory). This complication can degrade its tool-calling performance and reduce task completion rates. It will slow down the final response since it needs to decide what to commit to memory. It also typically leads to fewer things being saved to memory (since the assistant is multi-tasking), which will cause **lower recall** in later conversations.
+
+#### Writing memories in the background
+
+This involves updating memory as a conceptually separate task, typically as a completely separate graph or function. Since it happens in the background, it incurs no latency. It also splits up the application logic from the memory logic, making it more modular and easy to manage. It also lets you separate the timing of memory creation, letting you avoid redundant work. Your agent can focus on accomplishing its immediate task without having to consciously think about what it needs to remember.
+
+This approach is not without its downsides, however. You have to think about how often to write memories. If it doesn't run in realtime, the user's interactions on other threads won't benefit from the new context. You also have to think about when to trigger this job. We typically recommend scheduling memories after some point of time, cancelling and re-scheduling for the future if new events occur on a given thread. Other popular choices are to form memories on some cron schedule or to let the user or application logic manually trigger memory formation.
+
+### Managing memories
+
+Once you've sorted out memory scheduling, it's important to think about **how to update memory with new information**.
+
+There are two main approaches: you can either continuously update a single document (memory profile) or insert new documents each time you receive new information.
+
+We will outline some tradeoffs between these two approaches below, understanding that most people will find it most appropriate to combine approaches and to settle somewhere in the middle.
+
+#### Manage individual profiles
+
+A profile is generally just a JSON document with various key-value pairs you've selected to represent your domain. When remembering a profile, you will want to make sure that you are **updating** the profile each time. As a result, you will want to pass in the previous profile and ask the LLM to generate a new profile (or some JSON patch to apply to the old profile).
+
+The larger the document, the more error-prone this can become. If your document becomes **too** large, you may want to consider splitting up the profiles into separate sections. You will likely need to use generation with retries and/or **strict** decoding when generating documents to ensure the memory schemas remains valid.
+
+#### Manage a collection of memories
+
+Saving memories as a collection of documents simplifies some things. Each individual memory can be more narrowly scoped and easier to generate. It also means you're less likely to **lose** information over time, since it's easier for an LLM to generate _new_ objects for new information than it is for it to reconcile that new information with information in a dense profile. This tends to lead to higher recall downstream.
+
+This approach shifts some complexity to how you prompt the LLM to apply memory updates. You now have to enable the LLM to _delete_ or _update_ existing items in the list. This can be tricky to prompt the LLM to do. Some LLMs may default to over-inserting; others may default to over-updating. Tuning the behavior here is best done through evals, something you can do with a tool like [LangSmith](https://docs.smith.langchain.com/tutorials/Developers/evaluation).
+
+This also shifts complexity to memory **search** (recall). You have to think about what relevant items to use. Right now we support filtering by metadata. We will be adding semantic search shortly.
+
+Finally, this shifts some complexity to how you represent the memories for the LLM (and by extension, the schemas you use to save each memories). It's very easy to write memories that can easily be mistaken out-of-context. It's important to prompt the LLM to include all necessary contextual information in the given memory so that when you use it in later conversations it doesn't mistakenly mis-apply that information.
+
+### Representing memories
+
+Once you have saved memories, the way you then retrieve and present the memory content for the LLM can play a large role in how well your LLM incorporates that information in its responses.
+The following sections present a couple of common approaches. Note that these sections also will largely inform how you write and manage memories. Everything in memory is connected!
+
+#### Update own instructions
+
+While instructions are often static text written by the developer, many AI applications benefit from letting the users personalize the rules and instructions the agent should follow whenever it interacts with that user. This ideally can be inferred by its interactions with the user (so the user doesn't have to explicitly change settings in your app). In this sense, instructions are a form of long-form memory!
+
+One way to apply this is using "reflection" or "Meta-prompting" steps. Prompt the LLM with the current instruction set (from the system prompt) and a conversation with the user, and instruct the LLM to refine its instructions. This approach allows the system to dynamically update and improve its own behavior, potentially leading to better performance on various tasks. This is particularly useful for tasks where the instructions are challenging to specify a priori.
+
+Meta-prompting uses past information to refine prompts. For instance, a [Tweet generator](https://www.youtube.com/watch?v=Vn8A3BxfplE) employs meta-prompting to enhance its paper summarization prompt for Twitter. You could implement this using LangGraph's memory store to save updated instructions in a shared namespace. In this case, we will namespace the memories as "agent_instructions" and key the memory based on the agent.
+
+```typescript
+import { BaseStore } from "@langchain/langgraph/store";
+import { State } from "@langchain/langgraph";
+import { ChatOpenAI } from "@langchain/openai";
+
+// Node that *uses* the instructions
+const callModel = async (state: State, store: BaseStore) => {
+  const namespace = ["agent_instructions"];
+  const instructions = await store.get(namespace, "agent_a");
+  // Application logic
+  const prompt = promptTemplate.format({
+    instructions: instructions[0].value.instructions,
+  });
+  // ... rest of the logic
+};
+
+// Node that updates instructions
+const updateInstructions = async (state: State, store: BaseStore) => {
+  const namespace = ["instructions"];
+  const currentInstructions = await store.search(namespace);
+  // Memory logic
+  const prompt = promptTemplate.format({
+    instructions: currentInstructions[0].value.instructions,
+    conversation: state.messages,
+  });
+  const llm = new ChatOpenAI();
+  const output = await llm.invoke(prompt);
+  const newInstructions = output.content; // Assuming the LLM returns the new instructions
+  await store.put(["agent_instructions"], "agent_a", {
+    instructions: newInstructions,
+  });
+  // ... rest of the logic
+};
+```
+
+#### Few-shot examples
+
+Sometimes it's easier to "show" than "tell." LLMs learn well from examples. Few-shot learning lets you ["program"](https://x.com/karpathy/status/1627366413840322562) your LLM by updating the prompt with input-output examples to illustrate the intended behavior. While various [best-practices](https://js.langchain.com/docs/concepts/#1-generating-examples) can be used to generate few-shot examples, often the challenge lies in selecting the most relevant examples based on user input.
+
+Note that the memory store is just one way to store data as few-shot examples. If you want to have more developer involvement, or tie few-shots more closely to your evaluation harness, you can also use a [LangSmith Dataset](https://docs.smith.langchain.com/how_to_guides/datasets) to store your data. Then dynamic few-shot example selectors can be used out-of-the box to achieve this same goal. LangSmith will index the dataset for you and enable retrieval of few shot examples that are most relevant to the user input based upon keyword similarity ([using a BM25-like algorithm](https://docs.smith.langchain.com/how_to_guides/datasets/index_datasets_for_dynamic_few_shot_example_selection) for keyword based similarity).
+
+See this how-to [video](https://www.youtube.com/watch?v=37VaU7e7t5o) for example usage of dynamic few-shot example selection in LangSmith. Also, see this [blog post](https://blog.langchain.dev/few-shot-prompting-to-improve-tool-calling-performance/) showcasing few-shot prompting to improve tool calling performance and this [blog post](https://blog.langchain.dev/aligning-llm-as-a-judge-with-human-preferences/) using few-shot example to align an LLMs to human preferences.
