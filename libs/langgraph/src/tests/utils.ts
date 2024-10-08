@@ -26,6 +26,7 @@ import {
   MemorySaver,
   Checkpoint,
   CheckpointMetadata,
+  PendingWrite,
 } from "@langchain/langgraph-checkpoint";
 import { z } from "zod";
 import { BaseTracer, Run } from "@langchain/core/tracers/base";
@@ -182,6 +183,26 @@ export class MemorySaverAssertImmutable extends MemorySaver {
     );
 
     return super.put(config, checkpoint, metadata);
+  }
+}
+
+export class MemorySaverAssertImmutableSlow extends MemorySaverAssertImmutable {
+  async put(
+    config: RunnableConfig,
+    checkpoint: Checkpoint,
+    metadata: CheckpointMetadata
+  ): Promise<RunnableConfig> {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return super.put(config, checkpoint, metadata);
+  }
+
+  async putWrites(
+    config: RunnableConfig,
+    writes: PendingWrite[],
+    taskId: string
+  ): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return super.putWrites(config, writes, taskId);
   }
 }
 
