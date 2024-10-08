@@ -23,18 +23,6 @@ import {
 
 const { Pool } = pg;
 
-interface CheckpointRow {
-  checkpoint: Omit<Checkpoint, "pending_sends" | "channel_values">;
-  metadata: Record<string, unknown>;
-  parent_checkpoint_id?: string;
-  thread_id: string;
-  checkpoint_id: string;
-  checkpoint_ns?: string;
-  channel_values: [Uint8Array, Uint8Array, Uint8Array][];
-  pending_writes: [Uint8Array, Uint8Array, Uint8Array, Uint8Array][];
-  pending_sends: [Uint8Array, Uint8Array][];
-}
-
 export class PostgresSaver extends BaseCheckpointSaver {
   private pool: pg.Pool;
 
@@ -69,6 +57,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
         if (result.rows.length > 0) {
           version = result.rows[0].v;
         }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {
         // Assume table doesn't exist if there's an error
         if (
@@ -82,7 +71,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
         }
       }
 
-      for (let v = version + 1; v < MIGRATIONS.length; v++) {
+      for (let v = version + 1; v < MIGRATIONS.length; v += 1) {
         await client.query(MIGRATIONS[v]);
         await client.query(
           "INSERT INTO checkpoint_migrations (v) VALUES ($1)",
@@ -112,7 +101,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
 
   protected async _loadBlobs(
     blobValues: [Uint8Array, Uint8Array, Uint8Array][]
-  ): Promise<Record<string, any>> {
+  ): Promise<Record<string, unknown>> {
     if (!blobValues || blobValues.length === 0) {
       return {};
     }
@@ -134,7 +123,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
 
   protected async _loadWrites(
     writes: [Uint8Array, Uint8Array, Uint8Array, Uint8Array][]
-  ): Promise<[string, string, any][]> {
+  ): Promise<[string, string, unknown][]> {
     const decoder = new TextDecoder();
     return writes
       ? await Promise.all(
@@ -150,7 +139,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
   protected _dumpBlobs(
     threadId: string,
     checkpointNs: string,
-    values: Record<string, any>,
+    values: Record<string, unknown>,
     versions: ChannelVersions
   ): [string, string, string, string, string, Uint8Array | undefined][] {
     if (Object.keys(versions).length === 0) {
@@ -186,7 +175,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     const [, serializedMetadata] = this.serde.dumpsTyped(metadata);
     // We need to remove null characters before writing
     return JSON.parse(
-      new TextDecoder().decode(serializedMetadata).replace(/\u0000/g, "")
+      new TextDecoder().decode(serializedMetadata).replace(/\0/g, "")
     );
   }
 
@@ -195,7 +184,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     checkpointNs: string,
     checkpointId: string,
     taskId: string,
-    writes: [string, any][]
+    writes: [string, unknown][]
   ): [string, string, string, string, number, string, string, Uint8Array][] {
     return writes.map(([channel, value], idx) => {
       const [type, serializedValue] = this.serde.dumpsTyped(value);
@@ -224,42 +213,42 @@ export class PostgresSaver extends BaseCheckpointSaver {
     config?: RunnableConfig,
     filter?: Record<string, unknown>,
     before?: RunnableConfig
-  ): [string, any[]] {
+  ): [string, unknown[]] {
     const wheres: string[] = [];
-    const paramValues: any[] = [];
+    const paramValues: unknown[] = [];
 
     // construct predicate for config filter
     if (config?.configurable) {
-      wheres.push("thread_id = $" + (paramValues.length + 1));
+      wheres.push(`thread_id = $${paramValues.length + 1}`);
       paramValues.push(config.configurable.thread_id);
 
       const checkpointNs = config.configurable.checkpoint_ns;
       if (checkpointNs !== undefined) {
-        wheres.push("checkpoint_ns = $" + (paramValues.length + 1));
+        wheres.push(`checkpoint_ns = $${paramValues.length + 1}`);
         paramValues.push(checkpointNs);
       }
 
       const checkpointId = config.configurable.checkpoint_id;
       if (checkpointId !== undefined) {
-        wheres.push("checkpoint_id = $" + (paramValues.length + 1));
+        wheres.push(`checkpoint_id = $${paramValues.length + 1}`);
         paramValues.push(checkpointId);
       }
     }
 
     // construct predicate for metadata filter
     if (filter && Object.keys(filter).length > 0) {
-      wheres.push("metadata @> $" + (paramValues.length + 1));
+      wheres.push(`metadata @> $${paramValues.length + 1}`);
       paramValues.push(JSON.stringify(filter));
     }
 
     // construct predicate for `before`
     if (before?.configurable?.checkpoint_id !== undefined) {
-      wheres.push("checkpoint_id < $" + (paramValues.length + 1));
+      wheres.push(`checkpoint_id < $${paramValues.length + 1}`);
       paramValues.push(before.configurable.checkpoint_id);
     }
 
     return [
-      wheres.length > 0 ? "WHERE " + wheres.join(" AND ") : "",
+      wheres.length > 0 ? `WHERE ${wheres.join(" AND ")}` : "",
       paramValues,
     ];
   }
@@ -281,8 +270,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
       checkpoint_id,
     } = config.configurable ?? {};
 
-    let row: CheckpointRow | undefined;
-    let args: any[];
+    let args: unknown[];
     let where: string;
     if (checkpoint_id) {
       where = `WHERE thread_id = $1 AND checkpoint_ns = $2 AND checkpoint_id = $3`;
@@ -294,7 +282,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
 
     const result = await this.pool.query(SELECT_SQL + where, args);
 
-    [row] = result.rows;
+    const [row] = result.rows;
 
     if (row === undefined) {
       return undefined;
@@ -345,7 +333,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
   ): AsyncGenerator<CheckpointTuple> {
     const { filter, before, limit } = options ?? {};
     const [where, args] = this._searchWhere(config, filter, before);
-    let query = SELECT_SQL + where + " ORDER BY checkpoint_id DESC";
+    let query = `${SELECT_SQL}${where} ORDER BY checkpoint_id DESC`;
     if (limit !== undefined) {
       query += ` LIMIT ${limit}`;
     }

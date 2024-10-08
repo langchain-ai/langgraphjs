@@ -1,3 +1,4 @@
+/* eslint-disable no-process-env */
 import { describe, it, expect, beforeEach, afterAll } from "@jest/globals";
 import {
   Checkpoint,

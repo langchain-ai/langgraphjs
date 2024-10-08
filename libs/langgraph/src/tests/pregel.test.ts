@@ -7690,12 +7690,17 @@ export function runPregelTests(
 
       // continue past interrupt
       const results = (await gatherIterator(graph.stream(null, config))).sort();
-      expect(results[0]).toEqual({
-        generateJoke: { jokes: ["Joke about cats - hohoho"] },
-      });
-      expect(results[1]).toEqual({
-        generateJoke: { jokes: ["Joke about turtles - hohoho"] },
-      });
+      expect(results).toHaveLength(2);
+      expect(results).toEqual(
+        expect.arrayContaining([
+          {
+            generateJoke: { jokes: ["Joke about cats - hohoho"] },
+          },
+          {
+            generateJoke: { jokes: ["Joke about turtles - hohoho"] },
+          },
+        ])
+      );
 
       const actualSnapshot = await graph.getState(config);
       const expectedSnapshot = {
