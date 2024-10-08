@@ -4,6 +4,8 @@ import { runPregelTests } from "./pregel.test.js";
 
 const { Pool } = pg;
 
+const checkpointers: PostgresSaver[] = [];
+
 runPregelTests(
   async () => {
     const pool = new Pool({
@@ -26,13 +28,14 @@ runPregelTests(
       const checkpointer =
         PostgresSaver.fromConnectionString(dbConnectionString);
       await checkpointer.setup();
-
+      checkpointers.push(checkpointer);
       return checkpointer;
     } finally {
       await pool.end();
     }
   },
   async () => {
+    await Promise.all(checkpointers.map((checkpointer) => checkpointer.end()));
     // Drop all test databases
     const pool = new Pool({
       connectionString: process.env.TEST_POSTGRES_URL,
