@@ -1,4 +1,4 @@
-# Low Level Conceptual Guide
+# LangGraph Glossary
 
 ## Graphs
 
@@ -20,7 +20,7 @@ A super-step can be considered a single iteration over the graph nodes. Nodes th
 
 ### StateGraph
 
-The `StateGraph` class is the main graph class to uses. This is parameterized by a user defined `State` object. (defined using the `Annotation` object and passed as the first argument)
+The `StateGraph` class is the main graph class to use. This is parameterized by a user defined `State` object. (defined using the `Annotation` object and passed as the first argument)
 
 ### MessageGraph (legacy) {#messagegraph}
 
@@ -58,7 +58,7 @@ import { StateGraph, Annotation } from "@langchain/langgraph";
 const State = Annotation.Root({
   foo: Annotation<number>,
   bar: Annotation<string[]>,
-})
+});
 
 const graphBuilder = new StateGraph(State);
 ```
@@ -76,7 +76,7 @@ const State = Annotation.Root({
     reducer: (state: string[], update: string[]) => state.concat(update),
     default: () => [],
   }),
-})
+});
 
 const graphBuilder = new StateGraph(State);
 ```
@@ -123,7 +123,7 @@ import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 const StateWithDocuments = Annotation.Root({
   ...MessagesAnnotation.spec, // Spread in the messages state
   documents: Annotation<string[]>,
-})
+});
 ```
 
 ## Nodes
@@ -146,7 +146,7 @@ const myNode = (state: typeof GraphAnnotation.State, config?: RunnableConfig) =>
   console.log("In node: ", config.configurable?.user_id);
   return {
     results: `Hello, ${state.input}!`
-  }  
+  }
 }
 
 // The second argument is optional
@@ -218,7 +218,7 @@ You can optionally provide an object that maps the `routingFunction`'s output to
 ```typescript
 graph.addConditionalEdges("nodeA", routingFunction, {
   true: "nodeB",
-  false: "nodeC"
+  false: "nodeC",
 });
 ```
 
@@ -227,9 +227,9 @@ graph.addConditionalEdges("nodeA", routingFunction, {
 The entry point is the first node(s) that are run when the graph starts. You can use the [`addEdge`](/langgraphjs/reference/classes/langgraph.StateGraph.html#addEdge) method from the virtual [`START`](/langgraphjs/reference/variables/langgraph.START.html) node to the first node to execute to specify where to enter the graph.
 
 ```typescript
-import { START } from "@langchain/langgraph" 
+import { START } from "@langchain/langgraph";
 
-graph.addEdge(START, "nodeA")
+graph.addEdge(START, "nodeA");
 ```
 
 ### Conditional Entry Point
@@ -237,9 +237,9 @@ graph.addEdge(START, "nodeA")
 A conditional entry point lets you start at different nodes depending on custom logic. You can use [`addConditionalEdges`](/langgraphjs/reference/classes/langgraph.StateGraph.html#addConditionalEdges) from the virtual [`START`](/langgraphjs/reference/variables/langgraph.START.html) node to accomplish this.
 
 ```typescript
-import { START } from "@langchain/langgraph" 
+import { START } from "@langchain/langgraph";
 
-graph.addConditionalEdges(START, routingFunction)
+graph.addConditionalEdges(START, routingFunction);
 ```
 
 You can optionally provide an object that maps the `routingFunction`'s output to the name of the next node.
@@ -247,7 +247,7 @@ You can optionally provide an object that maps the `routingFunction`'s output to
 ```typescript
 graph.addConditionalEdges(START, routingFunction, {
   true: "nodeB",
-  false: "nodeC"
+  false: "nodeC",
 });
 ```
 
@@ -259,15 +259,25 @@ To support this design pattern, LangGraph supports returning [`Send`](/langgraph
 
 ```typescript
 const continueToJokes = (state: { subjects: string[] }) => {
-  return state.subjects.map((subject) => new Send("generate_joke", { subject }));
-}
+  return state.subjects.map(
+    (subject) => new Send("generate_joke", { subject })
+  );
+};
 
 graph.addConditionalEdges("nodeA", continueToJokes);
 ```
 
 ## Persistence
 
-LangGraph has a built-in persistence layer, implemented through [checkpointers](/langgraphjs/reference/classes/checkpoint.BaseCheckpointSaver.html). When you use a checkpointer with a graph, you can interact with and manage the graph's state after the execution. The checkpointer saves a _checkpoint_ (a snapshot) of the graph state at every superstep, enabling several powerful capabilities, including human-in-the-loop, memory and fault-tolerance. See this [conceptual guide](/langgraphjs/concepts/persistence) for more information.
+LangGraph provides built-in persistence for your agent's state using [checkpointers](/langgraphjs/reference/classes/checkpoint.BaseCheckpointSaver.html). Checkpointers save snapshots of the graph state at every superstep, allowing resumption at any time. This enables features like human-in-the-loop interactions, memory management, and fault-tolerance. You can even directly manipulate a graph's state after its execution using the appropriate `get` and `update` methods. For more details, see the [conceptual guide](/langgraphjs/concepts/persistence) for more information.
+
+## Threads
+
+Threads in LangGraph represent individual sessions or conversations between your graph and a user. When using checkpointing, turns in a single conversation (and even steps within a single graph execution) are organized by a unique thread ID.
+
+## Storage
+
+LangGraph provides built-in document storage through the [BaseStore](/langgraphjs/reference/classes/store.BaseStore.html) interface. Unlike checkpointers, which save state by thread ID, stores use custom namespaces for organizing data. This enables cross-thread persistence, allowing agents to maintain long-term memories, learn from past interactions, and accumulate knowledge over time. Common use cases include storing user profiles, building knowledge bases, and managing global preferences across all threads.
 
 ## Graph Migrations
 
@@ -286,7 +296,7 @@ When creating a graph, you can also mark that certain parts of the graph are con
 You can then pass this configuration into the graph using the `configurable` config field.
 
 ```typescript
-const config = { configurable: { llm: "anthropic" }};
+const config = { configurable: { llm: "anthropic" } };
 
 await graph.invoke(inputs, config);
 ```
@@ -302,7 +312,7 @@ const nodeA = (state, config) => {
   }
   ...
 };
-    
+
 ```
 
 See [this guide](../how-tos/configuration.ipynb) for a full breakdown on configuration
@@ -332,9 +342,13 @@ See [this guide](../how-tos/breakpoints.ipynb) for a full walkthrough of how to 
 It may be helpful to **dynamically** interrupt the graph from inside a given node based on some condition. In `LangGraph` you can do so by using `NodeInterrupt` -- a special error that can be raised from inside a node.
 
 ```typescript
-function myNode(state: typeof GraphAnnotation.State): typeof GraphAnnotation.State {
+function myNode(
+  state: typeof GraphAnnotation.State
+): typeof GraphAnnotation.State {
   if (state.input.length > 5) {
-    throw new NodeInterrupt(`Received input that is longer than 5 characters: ${state.input}`);
+    throw new NodeInterrupt(
+      `Received input that is longer than 5 characters: ${state.input}`
+    );
   }
 
   return state;
@@ -362,6 +376,5 @@ LangGraph is built with first class support for streaming. There are several dif
 - [`"updates`](../how-tos/stream-updates.ipynb): This streams the updates to the state after each step of the graph. If multiple updates are made in the same step (e.g. multiple nodes are run) then those updates are streamed separately.
 
 In addition, you can use the [`streamEvents`](https://api.js.langchain.com/classes/langchain_core_runnables.Runnable.html#streamEvents) method to stream back events that happen _inside_ nodes. This is useful for [streaming tokens of LLM calls](../how-tos/streaming-tokens-without-langchain.ipynb).
-
 
 LangGraph is built with first class support for streaming, including streaming updates from graph nodes during the execution, streaming tokens from LLM calls and more. See this [conceptual guide](./streaming.md) for more information.
