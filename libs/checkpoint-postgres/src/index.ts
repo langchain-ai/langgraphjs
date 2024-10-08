@@ -23,6 +23,41 @@ import {
 
 const { Pool } = pg;
 
+/**
+ * LangGraph checkpointer that uses a Postgres instance as the backing store.
+ * Uses the [node-postgres](https://node-postgres.com/) package internally
+ * to connect to a Postgres instance.
+ *
+ * @example
+ * ```
+ * import { ChatOpenAI } from "@langchain/openai";
+ * import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+ * import { createReactAgent } from "@langchain/langgraph/prebuilt";
+ *
+ * const checkpointer = PostgresSaver.fromConnString(
+ *   "postgresql://user:password@localhost:5432/db"
+ * );
+ *
+ * // NOTE: you need to call .setup() the first time you're using your checkpointer
+ * await checkpointer.setup();
+ *
+ * const graph = createReactAgent({
+ *   tools: [getWeather],
+ *   llm: new ChatOpenAI({
+ *     model: "gpt-4o-mini",
+ *   }),
+ *   checkpointSaver: checkpointer,
+ * });
+ * const config = { configurable: { thread_id: "1" } };
+ *
+ * await graph.invoke({
+ *   messages: [{
+ *     role: "user",
+ *     content: "what's the weather in sf"
+ *   }],
+ * }, config);
+ * ```
+ */
 export class PostgresSaver extends BaseCheckpointSaver {
   private pool: pg.Pool;
 
