@@ -3478,7 +3478,14 @@ export function runPregelTests(
         .addNode("c", nodeC)
         .addEdge(START, "a")
         .addEdge("a", "b")
-        .addEdge("b", "c")
+        .addConditionalEdges("b", async (state) => {
+          expect(state).toEqual({
+            bye: "world",
+            hello: "again",
+            messages: ["hello"],
+          });
+          return "c";
+        })
         .compile();
 
       expect(
@@ -7690,12 +7697,17 @@ export function runPregelTests(
 
       // continue past interrupt
       const results = (await gatherIterator(graph.stream(null, config))).sort();
-      expect(results[0]).toEqual({
-        generateJoke: { jokes: ["Joke about cats - hohoho"] },
-      });
-      expect(results[1]).toEqual({
-        generateJoke: { jokes: ["Joke about turtles - hohoho"] },
-      });
+      expect(results).toHaveLength(2);
+      expect(results).toEqual(
+        expect.arrayContaining([
+          {
+            generateJoke: { jokes: ["Joke about cats - hohoho"] },
+          },
+          {
+            generateJoke: { jokes: ["Joke about turtles - hohoho"] },
+          },
+        ])
+      );
 
       const actualSnapshot = await graph.getState(config);
       const expectedSnapshot = {

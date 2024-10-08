@@ -388,10 +388,14 @@ export class CompiledGraph<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   RunInput = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any
+  RunOutput = any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ConfigurableFieldType extends Record<string, any> = Record<string, any>
 > extends Pregel<
   Record<N | typeof START, PregelNode<RunInput, RunOutput>>,
-  Record<N | typeof START | typeof END | string, BaseChannel>
+  Record<N | typeof START | typeof END | string, BaseChannel>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ConfigurableFieldType & Record<string, any>
 > {
   declare NodeType: N;
 

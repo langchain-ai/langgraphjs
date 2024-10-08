@@ -450,7 +450,7 @@ export class CompiledStateGraph<
   I extends StateDefinition = StateDefinition,
   O extends StateDefinition = StateDefinition,
   C extends StateDefinition = StateDefinition
-> extends CompiledGraph<N, S, U> {
+> extends CompiledGraph<N, S, U, StateType<C>> {
   declare builder: StateGraph<unknown, S, U, N, I, O, C>;
 
   attachNode(key: typeof START, node?: never): void;
@@ -591,7 +591,12 @@ export class CompiledStateGraph<
           return new ChannelWrite(writes, [TAG_HIDDEN]);
         },
         // reader
-        (config) => ChannelRead.doRead<S>(config, this.outputChannels, true)
+        (config) =>
+          ChannelRead.doRead<S>(
+            config,
+            this.streamChannels ?? this.outputChannels,
+            true
+          )
       )
     );
 

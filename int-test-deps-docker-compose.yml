@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:latest
+    container_name: langgraphjs-postgres-test
+    volumes:
+      - ./tmp/integration_tests/pgvector:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: testdb
+      # Enable logging of connections and disconnections
+      POSTGRES_LOG_CONNECTIONS: "on"
+      POSTGRES_LOG_DISCONNECTIONS: "on"
+      POSTGRES_LOG_MIN_MESSAGES: "info" # Logs messages of level INFO and above
+    ports:
+      - "5434:5432"

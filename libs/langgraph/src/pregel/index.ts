@@ -189,8 +189,10 @@ export class Channel {
  */
 export interface PregelOptions<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
-> extends RunnableConfig {
+  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ConfigurableFieldType extends Record<string, any> = Record<string, any>
+> extends RunnableConfig<ConfigurableFieldType> {
   /** The stream mode for the graph run. Default is ["values"]. */
   streamMode?: StreamMode | StreamMode[];
   inputKeys?: keyof Cc | Array<keyof Cc>;
@@ -232,9 +234,15 @@ export type PregelOutputType = any;
 
 export class Pregel<
     Nn extends StrRecord<string, PregelNode>,
-    Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
+    Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>
   >
-  extends Runnable<PregelInputType, PregelOutputType, PregelOptions<Nn, Cc>>
+  extends Runnable<
+    PregelInputType,
+    PregelOutputType,
+    PregelOptions<Nn, Cc, ConfigurableFieldType>
+  >
   implements PregelInterface<Nn, Cc>
 {
   static lc_name() {
@@ -910,7 +918,7 @@ export class Pregel<
    */
   override async stream(
     input: PregelInputType,
-    options?: Partial<PregelOptions<Nn, Cc>>
+    options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
   ): Promise<IterableReadableStream<PregelOutputType>> {
     return super.stream(input, options);
   }
@@ -1179,7 +1187,7 @@ export class Pregel<
    */
   override async invoke(
     input: PregelInputType,
-    options?: Partial<PregelOptions<Nn, Cc>>
+    options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
   ): Promise<PregelOutputType> {
     const streamMode = options?.streamMode ?? "values";
     const config = {
