@@ -60,6 +60,12 @@ export class MemorySaver extends BaseCheckpointSaver {
     const checkpoint_ns = config.configurable?.checkpoint_ns ?? "";
     let checkpoint_id = config.configurable?.checkpoint_id;
 
+    if (thread_id === undefined) {
+      throw new Error(
+        `Failed to get checkpoint tuple. The passed RunnableConfig is missing a required "thread_id" field in its "configurable" property.`
+      );
+    }
+
     if (checkpoint_id) {
       const saved = this.storage[thread_id]?.[checkpoint_ns]?.[checkpoint_id];
       if (saved !== undefined) {
