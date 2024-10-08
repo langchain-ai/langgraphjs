@@ -46,7 +46,7 @@ const StateAnnotation = Annotation.Root({
   myList: Annotation<any[]>({
     reducer: (
       existing: string[],
-      updates: string[] | { type: string; from: number; to: number | null }
+      updates: string[] | { type: string; from: number; to?: number }
     ) => {
       if (Array.isArray(updates)) {
         // Normal case, add to the history
@@ -70,7 +70,7 @@ function myNode(state: State) {
   return {
     // We return an update for the field "myList" saying to
     // keep only values from index -5 to the end (deleting the rest)
-    myList: { type: "keep", from: -5, to: null },
+    myList: { type: "keep", from: -5, to: undefined },
   };
 }
 ```
