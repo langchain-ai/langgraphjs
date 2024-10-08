@@ -105,6 +105,7 @@ nav:
       - Persistence:
           - Add thread-level persistence: how-tos/persistence.ipynb
           - Add cross-thread persistence: how-tos/cross-thread-persistence.ipynb
+          - Use a Postgres checkpointer for persistence: how-tos/persistence-postgres.ipynb
           - View and update past graph state: "how-tos/time-travel.ipynb"
           - Manage conversation history: "how-tos/manage-conversation-history.ipynb"
           - How to delete messages: "how-tos/delete-messages.ipynb"

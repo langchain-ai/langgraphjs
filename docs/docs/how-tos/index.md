@@ -26,7 +26,9 @@ These how-to guides show how to achieve that controllability.
 
 LangGraph.js makes it easy to persist state across graph runs. The guides below shows how to add persistence to your graph.
 
-- [How to add persistence ("memory") to your graph](persistence.ipynb)
+- [How to add thread-level persistence to your graph](persistence.ipynb)
+- [How to add cross-thread persistence](cross-thread-persistence.ipynb)
+- [How to use a Postgres checkpointer for persistence](persistence-postgres.ipynb)
 - [How to manage conversation history](manage-conversation-history.ipynb)
 - [How to view and update past graph state](time-travel.ipynb)
 - [How to delete messages](delete-messages.ipynb)
