@@ -129,8 +129,7 @@ nav:
           - Call tools using ToolNode: "how-tos/tool-calling.ipynb"
           - Handle tool calling errors: "how-tos/tool-calling-errors.ipynb"
           - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
-          - Pass config to tools: "how-tos/pass-config-to-tools.ipynb"
-          - Pass graph state to tools: "how-tos/pass-graph-state-to-tools.ipynb"
+          - Pass runtime values to tools: "how-tos/pass-run-time-values-to-tools.ipynb"
       - Subgraphs:
           - Create subgraphs: how-tos/subgraph.ipynb
           - Manage state in subgraphs: how-tos/subgraphs-manage-state.ipynb
