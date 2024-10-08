@@ -8,7 +8,13 @@ import {
   beforeEach,
   afterEach,
 } from "@jest/globals";
-import { BaseStore, Operation, OperationResults, Item } from "../store/base.js";
+import {
+  BaseStore,
+  Operation,
+  OperationResults,
+  Item,
+  InvalidNamespaceError,
+} from "../store/base.js";
 import { AsyncBatchedStore } from "../store/batch.js";
 import { InMemoryStore } from "../store/memory.js";
 
@@ -471,5 +477,47 @@ describe("InMemoryStore", () => {
       ["a", "b"],
       ["x", "y"],
     ]);
+  });
+
+  it("Should block invalid namespaces in put", async () => {
+    const doc = { foo: "bar" };
+
+    // Test invalid namespaces
+    await expect(store.put([], "foo", doc)).rejects.toThrow(
+      InvalidNamespaceError
+    );
+    await expect(store.put(["the", "thing.about"], "foo", doc)).rejects.toThrow(
+      InvalidNamespaceError
+    );
+    await expect(store.put(["some", "fun", ""], "foo", doc)).rejects.toThrow(
+      InvalidNamespaceError
+    );
+    await expect(store.put(["langgraph", "foo"], "bar", doc)).rejects.toThrow(
+      InvalidNamespaceError
+    );
+
+    await store.put(["foo", "langgraph", "foo"], "bar", doc);
+    const result = await store.get(["foo", "langgraph", "foo"], "bar");
+    expect(result?.value).toEqual(doc);
+
+    const searchResult = await store.search(["foo", "langgraph", "foo"]);
+    expect(searchResult[0].value).toEqual(doc);
+
+    await store.delete(["foo", "langgraph", "foo"], "bar");
+    const deletedResult = await store.get(["foo", "langgraph", "foo"], "bar");
+    expect(deletedResult).toBeNull();
+
+    await store.batch([
+      { namespace: ["langgraph", "foo"], key: "bar", value: doc },
+    ]);
+    const batchResult = await store.get(["langgraph", "foo"], "bar");
+    expect(batchResult?.value).toEqual(doc);
+
+    const batchSearchResult = await store.search(["langgraph", "foo"]);
+    expect(batchSearchResult[0].value).toEqual(doc);
+
+    await store.delete(["langgraph", "foo"], "bar");
+    const batchDeletedResult = await store.get(["langgraph", "foo"], "bar");
+    expect(batchDeletedResult).toBeNull();
   });
 });
