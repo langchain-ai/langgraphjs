@@ -234,7 +234,8 @@ export class PregelLoop {
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
-    let { config, stream, checkSubgraphs = true } = params;
+    let { config, stream } = params;
+    const { checkSubgraphs = true } = params;
     if (
       stream !== undefined &&
       config.configurable?.[CONFIG_KEY_STREAM] !== undefined

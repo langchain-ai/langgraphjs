@@ -6755,7 +6755,7 @@ export function runPregelTests(
         outputChannels: "output",
       });
 
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 10; i += 1) {
         expect(await app.invoke([2, 3])).toBe(27);
       }
 
