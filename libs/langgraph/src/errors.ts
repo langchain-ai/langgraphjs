@@ -97,3 +97,29 @@ export class InvalidUpdateError extends Error {
     return "InvalidUpdateError";
   }
 }
+
+export class MultipleSubgraphsError extends Error {
+  constructor(message?: string) {
+    super(message);
+    this.name = "MultipleSubgraphError";
+  }
+
+  static get unminifiable_name() {
+    return "MultipleSubgraphError";
+  }
+}
+
+/**
+ * Used for subgraph detection.
+ */
+export const getSubgraphsSeenSet = () => {
+  if (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any)[Symbol.for("LG_CHECKPOINT_SEEN_NS_SET")] === undefined
+  ) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any)[Symbol.for("LG_CHECKPOINT_SEEN_NS_SET")] = new Set();
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (globalThis as any)[Symbol.for("LG_CHECKPOINT_SEEN_NS_SET")];
+};

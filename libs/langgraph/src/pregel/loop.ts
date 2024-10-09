@@ -50,9 +50,11 @@ import {
   readChannels,
 } from "./io.js";
 import {
+  getSubgraphsSeenSet,
   EmptyInputError,
   GraphInterrupt,
   isGraphInterrupt,
+  MultipleSubgraphsError,
 } from "../errors.js";
 import { getNewChannelVersions, patchConfigurable } from "./utils/index.js";
 import {
@@ -84,6 +86,7 @@ export type PregelLoopInitializeParams = {
   managed: ManagedValueMapping;
   stream: StreamProtocol;
   store?: BaseStore;
+  checkSubgraphs?: boolean;
 };
 
 type PregelLoopParams = {
@@ -232,6 +235,7 @@ export class PregelLoop {
 
   static async initialize(params: PregelLoopInitializeParams) {
     let { config, stream } = params;
+    const { checkSubgraphs = true } = params;
     if (
       stream !== undefined &&
       config.configurable?.[CONFIG_KEY_STREAM] !== undefined
@@ -311,7 +315,20 @@ export class PregelLoop {
       // Start the store. This is a batch store, so it will run continuously
       store.start();
     }
-
+    if (checkSubgraphs && isNested && params.checkpointer !== undefined) {
+      if (getSubgraphsSeenSet().has(config.configurable?.checkpoint_ns)) {
+        throw new MultipleSubgraphsError(
+          [
+            "Detected the same subgraph called multiple times by the same node.",
+            "This is not allowed if checkpointing is enabled.",
+            "",
+            `You can disable checkpointing for a subgraph by compiling it with ".compile({ checkpointer: false });"`,
+          ].join("\n")
+        );
+      } else {
+        getSubgraphsSeenSet().add(config.configurable?.checkpoint_ns);
+      }
+    }
     return new PregelLoop({
       input: params.input,
       config,

@@ -72,7 +72,7 @@ export function* mapInput<C extends PropertyKey>(
       }
     } else if (Array.isArray(inputChannels)) {
       throw new Error(
-        "Input chunk must be an object when inputChannels is an array"
+        `Input chunk must be an object when "inputChannels" is an array`
       );
     } else {
       yield [inputChannels, chunk];

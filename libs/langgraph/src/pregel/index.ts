@@ -274,7 +274,7 @@ export class Pregel<
 
   debug: boolean = false;
 
-  checkpointer?: BaseCheckpointSaver;
+  checkpointer?: BaseCheckpointSaver | false;
 
   retryPolicy?: RetryPolicy;
 
@@ -877,7 +877,9 @@ export class Pregel<
     }
 
     let defaultCheckpointer: BaseCheckpointSaver | undefined;
-    if (
+    if (this.checkpointer === false) {
+      defaultCheckpointer = undefined;
+    } else if (
       config !== undefined &&
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] !== undefined
     ) {
@@ -885,7 +887,6 @@ export class Pregel<
     } else {
       defaultCheckpointer = this.checkpointer;
     }
-
     const defaultStore: BaseStore | undefined = config.store ?? this.store;
 
     return [
@@ -1000,6 +1001,7 @@ export class Pregel<
     }
     if (
       this.checkpointer !== undefined &&
+      this.checkpointer !== false &&
       inputConfig.configurable === undefined
     ) {
       throw new Error(

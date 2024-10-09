@@ -68,7 +68,7 @@ export interface PregelInterface<
    */
   debug?: boolean;
 
-  checkpointer?: BaseCheckpointSaver;
+  checkpointer?: BaseCheckpointSaver | false;
 
   retryPolicy?: RetryPolicy;
 

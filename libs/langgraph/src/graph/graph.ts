@@ -282,7 +282,7 @@ export class Graph<
     interruptBefore,
     interruptAfter,
   }: {
-    checkpointer?: BaseCheckpointSaver;
+    checkpointer?: BaseCheckpointSaver | false;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
   } = {}): CompiledGraph<N> {

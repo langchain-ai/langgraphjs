@@ -199,7 +199,9 @@ describe("mapInput", () => {
         // do nothing, error will be thrown
         continue;
       }
-    }).toThrow("Input chunk must be an object when inputChannels is an array");
+    }).toThrow(
+      `Input chunk must be an object when "inputChannels" is an array`
+    );
   });
 });
 
