@@ -50,7 +50,7 @@ import {
   readChannels,
 } from "./io.js";
 import {
-  _SEEN_CHECKPOINT_NS,
+  getSubgraphsSeenSet,
   EmptyInputError,
   GraphInterrupt,
   isGraphInterrupt,
@@ -316,10 +316,12 @@ export class PregelLoop {
       store.start();
     }
     if (checkSubgraphs && isNested && params.checkpointer !== undefined) {
-      if (_SEEN_CHECKPOINT_NS.has(config.configurable?.checkpoint_ns)) {
-        throw new MultipleSubgraphsError();
+      if (getSubgraphsSeenSet().has(config.configurable?.checkpoint_ns)) {
+        throw new MultipleSubgraphsError(
+          "Detected the same subgraph called multiple times by the same node. This is not allowed if checkpointing is enabled."
+        );
       } else {
-        _SEEN_CHECKPOINT_NS.add(config.configurable?.checkpoint_ns);
+        getSubgraphsSeenSet().add(config.configurable?.checkpoint_ns);
       }
     }
     return new PregelLoop({

@@ -1,4 +1,4 @@
-import { _SEEN_CHECKPOINT_NS, isGraphInterrupt } from "../errors.js";
+import { getSubgraphsSeenSet, isGraphInterrupt } from "../errors.js";
 import { PregelExecutableTask } from "./types.js";
 import type { RetryPolicy } from "./utils/index.js";
 
@@ -170,12 +170,12 @@ async function _runWithRetry(
       // Clear checkpoint_ns seen (for subgraph detection)
       const checkpointNs = pregelTask.config?.configurable?.checkpoint_ns;
       if (checkpointNs) {
-        _SEEN_CHECKPOINT_NS.delete(checkpointNs);
+        getSubgraphsSeenSet().delete(checkpointNs);
       }
     } finally {
       const checkpointNs = pregelTask.config?.configurable?.checkpoint_ns;
       if (checkpointNs) {
-        _SEEN_CHECKPOINT_NS.delete(checkpointNs);
+        getSubgraphsSeenSet().delete(checkpointNs);
       }
     }
   }

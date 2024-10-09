@@ -111,6 +111,15 @@ export class MultipleSubgraphsError extends Error {
 
 /**
  * Used for subgraph detection.
- * TODO: Move to globalThis for bundlers
  */
-export const _SEEN_CHECKPOINT_NS = new Set();
+export const getSubgraphsSeenSet = () => {
+  if (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any)[Symbol.for("LG_CHECKPOINT_SEEN_NS_SET")] === undefined
+  ) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any)[Symbol.for("LG_CHECKPOINT_SEEN_NS_SET")] = new Set();
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (globalThis as any)[Symbol.for("LG_CHECKPOINT_SEEN_NS_SET")];
+};
