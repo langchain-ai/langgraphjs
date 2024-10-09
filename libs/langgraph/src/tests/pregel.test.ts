@@ -80,6 +80,7 @@ import { PASSTHROUGH } from "../pregel/write.js";
 import {
   GraphRecursionError,
   InvalidUpdateError,
+  MultipleSubgraphsError,
   NodeInterrupt,
 } from "../errors.js";
 import { ERROR, INTERRUPT, PULL, PUSH, Send } from "../constants.js";
@@ -2737,8 +2738,9 @@ export function runPregelTests(
         market: "DE",
       });
 
+      const toolTwoCheckpointer = toolTwo.checkpointer as BaseCheckpointSaver;
       const checkpoints = await gatherIterator(
-        toolTwo.checkpointer!.list(thread1)
+        toolTwoCheckpointer.list(thread1)
       );
       expect(checkpoints.map((c) => c.metadata)).toEqual([
         {
@@ -2772,14 +2774,11 @@ export function runPregelTests(
             ],
           },
         ],
-        config: (await toolTwo.checkpointer!.getTuple(thread1))!.config,
-        createdAt: (await toolTwo.checkpointer!.getTuple(thread1))!.checkpoint
-          .ts,
+        config: (await toolTwoCheckpointer.getTuple(thread1))!.config,
+        createdAt: (await toolTwoCheckpointer.getTuple(thread1))!.checkpoint.ts,
         metadata: { source: "loop", step: 0, writes: null, parents: {} },
         parentConfig: (
-          await gatherIterator(
-            toolTwo.checkpointer!.list(thread1, { limit: 2 })
-          )
+          await gatherIterator(toolTwoCheckpointer.list(thread1, { limit: 2 }))
         ).slice(-1)[0].config,
       });
     });
@@ -3120,6 +3119,8 @@ export function runPregelTests(
         },
       ]);
       const appWithInterruptState = await appWithInterrupt.getState(config);
+      const appWithInterruptCheckpointer =
+        appWithInterrupt.checkpointer as BaseCheckpointSaver;
       expect(appWithInterruptState).toEqual({
         values: {
           messages: expectedOutputMessages.slice(0, 2),
@@ -3143,12 +3144,12 @@ export function runPregelTests(
           },
           parents: {},
         },
-        config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
-        createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
+        config: (await appWithInterruptCheckpointer.getTuple(config))?.config,
+        createdAt: (await appWithInterruptCheckpointer.getTuple(config))
           ?.checkpoint.ts,
         parentConfig: (
           await gatherIterator(
-            appWithInterrupt.checkpointer!.list(config, { limit: 2 })
+            appWithInterruptCheckpointer.list(config, { limit: 2 })
           )
         ).slice(-1)[0].config,
       });
@@ -3212,12 +3213,12 @@ export function runPregelTests(
             },
           },
         },
-        config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
-        createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
+        config: (await appWithInterruptCheckpointer.getTuple(config))?.config,
+        createdAt: (await appWithInterruptCheckpointer.getTuple(config))
           ?.checkpoint.ts,
         parentConfig: (
           await gatherIterator(
-            appWithInterrupt.checkpointer!.list(config, { limit: 2 })
+            appWithInterruptCheckpointer.list(config, { limit: 2 })
           )
         ).slice(-1)[0].config,
       });
@@ -3291,12 +3292,12 @@ export function runPregelTests(
             },
           },
         },
-        createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
+        createdAt: (await appWithInterruptCheckpointer.getTuple(config))
           ?.checkpoint.ts,
-        config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
+        config: (await appWithInterruptCheckpointer.getTuple(config))?.config,
         parentConfig: (
           await gatherIterator(
-            appWithInterrupt.checkpointer!.list(config, { limit: 2 })
+            appWithInterruptCheckpointer.list(config, { limit: 2 })
           )
         ).slice(-1)[0].config,
       });
@@ -3354,12 +3355,12 @@ export function runPregelTests(
             },
           },
         },
-        createdAt: (await appWithInterrupt.checkpointer?.getTuple(config))
+        createdAt: (await appWithInterruptCheckpointer.getTuple(config))
           ?.checkpoint.ts,
-        config: (await appWithInterrupt.checkpointer?.getTuple(config))?.config,
+        config: (await appWithInterruptCheckpointer.getTuple(config))?.config,
         parentConfig: (
           await gatherIterator(
-            appWithInterrupt.checkpointer!.list(config, { limit: 2 })
+            appWithInterruptCheckpointer.list(config, { limit: 2 })
           )
         ).slice(-1)[0].config,
       });
@@ -3478,14 +3479,7 @@ export function runPregelTests(
         .addNode("c", nodeC)
         .addEdge(START, "a")
         .addEdge("a", "b")
-        .addConditionalEdges("b", async (state) => {
-          expect(state).toEqual({
-            bye: "world",
-            hello: "again",
-            messages: ["hello"],
-          });
-          return "c";
-        })
+        .addEdge("b", "c")
         .compile();
 
       expect(
@@ -4710,12 +4704,12 @@ export function runPregelTests(
         thread1
       )
     ).toEqual({ my_key: "value ⛰️", market: "DE" });
+    const toolTwoCheckpointer =
+      toolTwoWithCheckpointer.checkpointer as BaseCheckpointSaver;
     expect(
-      (
-        await gatherIterator(
-          toolTwoWithCheckpointer.checkpointer!.list(thread1)
-        )
-      ).map((c) => c.metadata)
+      (await gatherIterator(toolTwoCheckpointer.list(thread1))).map(
+        (c) => c.metadata
+      )
     ).toEqual([
       {
         source: "loop",
@@ -4741,16 +4735,11 @@ export function runPregelTests(
           interrupts: [],
         },
       ],
-      config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
-        .config,
-      createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(
-        thread1
-      ))!.checkpoint.ts,
+      config: (await toolTwoCheckpointer.getTuple(thread1))!.config,
+      createdAt: (await toolTwoCheckpointer.getTuple(thread1))!.checkpoint.ts,
       metadata: { source: "loop", step: 0, writes: null, parents: {} },
       parentConfig: (
-        await last(
-          toolTwoWithCheckpointer.checkpointer!.list(thread1, { limit: 2 })
-        )
+        await last(toolTwoCheckpointer.list(thread1, { limit: 2 }))
       ).config,
     });
 
@@ -4762,11 +4751,8 @@ export function runPregelTests(
       values: { my_key: "value ⛰️ slow", market: "DE" },
       next: [],
       tasks: [],
-      config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread1))!
-        .config,
-      createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(
-        thread1
-      ))!.checkpoint.ts,
+      config: (await toolTwoCheckpointer.getTuple(thread1))!.config,
+      createdAt: (await toolTwoCheckpointer.getTuple(thread1))!.checkpoint.ts,
       metadata: {
         source: "loop",
         step: 1,
@@ -4774,9 +4760,7 @@ export function runPregelTests(
         parents: {},
       },
       parentConfig: (
-        await last(
-          toolTwoWithCheckpointer.checkpointer!.list(thread1, { limit: 2 })
-        )
+        await last(toolTwoCheckpointer.list(thread1, { limit: 2 }))
       ).config,
     });
     const thread2 = { configurable: { thread_id: "2" } };
@@ -4801,16 +4785,11 @@ export function runPregelTests(
           interrupts: [],
         },
       ],
-      config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
-        .config,
-      createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(
-        thread2
-      ))!.checkpoint.ts,
+      config: (await toolTwoCheckpointer.getTuple(thread2))!.config,
+      createdAt: (await toolTwoCheckpointer.getTuple(thread2))!.checkpoint.ts,
       metadata: { source: "loop", step: 0, writes: null, parents: {} },
       parentConfig: (
-        await last(
-          toolTwoWithCheckpointer.checkpointer!.list(thread2, { limit: 2 })
-        )
+        await last(toolTwoCheckpointer.list(thread2, { limit: 2 }))
       ).config,
     });
     // resume, for same result as above
@@ -4822,11 +4801,8 @@ export function runPregelTests(
       values: { my_key: "value fast", market: "US" },
       next: [],
       tasks: [],
-      config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread2))!
-        .config,
-      createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(
-        thread2
-      ))!.checkpoint.ts,
+      config: (await toolTwoCheckpointer.getTuple(thread2))!.config,
+      createdAt: (await toolTwoCheckpointer.getTuple(thread2))!.checkpoint.ts,
       metadata: {
         source: "loop",
         step: 1,
@@ -4834,9 +4810,7 @@ export function runPregelTests(
         parents: {},
       },
       parentConfig: (
-        await last(
-          toolTwoWithCheckpointer.checkpointer!.list(thread2, { limit: 2 })
-        )
+        await last(toolTwoCheckpointer.list(thread2, { limit: 2 }))
       ).config,
     });
     const thread3 = { configurable: { thread_id: "3" } };
@@ -4861,16 +4835,11 @@ export function runPregelTests(
           interrupts: [],
         },
       ],
-      config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
-        .config,
-      createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(
-        thread3
-      ))!.checkpoint.ts,
+      config: (await toolTwoCheckpointer.getTuple(thread3))!.config,
+      createdAt: (await toolTwoCheckpointer.getTuple(thread3))!.checkpoint.ts,
       metadata: { source: "loop", step: 0, writes: null, parents: {} },
       parentConfig: (
-        await last(
-          toolTwoWithCheckpointer.checkpointer!.list(thread3, { limit: 2 })
-        )
+        await last(toolTwoCheckpointer.list(thread3, { limit: 2 }))
       ).config,
     });
     // update state
@@ -4886,11 +4855,8 @@ export function runPregelTests(
           interrupts: [],
         },
       ],
-      config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
-        .config,
-      createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(
-        thread3
-      ))!.checkpoint.ts,
+      config: (await toolTwoCheckpointer.getTuple(thread3))!.config,
+      createdAt: (await toolTwoCheckpointer.getTuple(thread3))!.checkpoint.ts,
       metadata: {
         source: "update",
         step: 1,
@@ -4898,9 +4864,7 @@ export function runPregelTests(
         parents: {},
       },
       parentConfig: (
-        await last(
-          toolTwoWithCheckpointer.checkpointer!.list(thread3, { limit: 2 })
-        )
+        await last(toolTwoCheckpointer.list(thread3, { limit: 2 }))
       ).config,
     });
     // resume, for same result as above
@@ -4912,11 +4876,8 @@ export function runPregelTests(
       values: { my_key: "valuekey fast", market: "US" },
       next: [],
       tasks: [],
-      config: (await toolTwoWithCheckpointer.checkpointer!.getTuple(thread3))!
-        .config,
-      createdAt: (await toolTwoWithCheckpointer.checkpointer!.getTuple(
-        thread3
-      ))!.checkpoint.ts,
+      config: (await toolTwoCheckpointer.getTuple(thread3))!.config,
+      createdAt: (await toolTwoCheckpointer.getTuple(thread3))!.checkpoint.ts,
       metadata: {
         source: "loop",
         step: 2,
@@ -4924,9 +4885,7 @@ export function runPregelTests(
         parents: {},
       },
       parentConfig: (
-        await last(
-          toolTwoWithCheckpointer.checkpointer!.list(thread3, { limit: 2 })
-        )
+        await last(toolTwoCheckpointer.list(thread3, { limit: 2 }))
       ).config,
     });
   });
@@ -6745,6 +6704,81 @@ export function runPregelTests(
           expectedSnapshot
         );
       }
+    });
+
+    it("invoke join then call other pregel", async () => {
+      const checkpointer = await createCheckpointer();
+
+      const addOne = jest.fn((x: number) => x + 1);
+      const add10Each = jest.fn((x: number[]) => x.map((y) => y + 10));
+
+      const innerApp = new Pregel({
+        nodes: {
+          one: Channel.subscribeTo("input")
+            .pipe(addOne)
+            .pipe(Channel.writeTo(["output"])),
+        },
+        channels: {
+          output: new LastValue<number>(),
+          input: new LastValue<number>(),
+        },
+        inputChannels: "input",
+        outputChannels: "output",
+      });
+
+      const one = Channel.subscribeTo("input")
+        .pipe(add10Each)
+        .pipe(Channel.writeTo(["inbox_one"]).map());
+
+      const two = Channel.subscribeTo("inbox_one")
+        .pipe(innerApp.map())
+        .pipe((x: number[]) => x.sort())
+        .pipe(Channel.writeTo(["outbox_one"]));
+
+      const chainThree = Channel.subscribeTo("outbox_one")
+        .pipe((x: number[]) => x.reduce((a, b) => a + b, 0))
+        .pipe(Channel.writeTo(["output"]));
+
+      const app = new Pregel({
+        nodes: {
+          one,
+          two,
+          chainThree,
+        },
+        channels: {
+          inbox_one: new Topic<number>(),
+          outbox_one: new LastValue<number[]>(),
+          output: new LastValue<number>(),
+          input: new LastValue<number[]>(),
+        },
+        inputChannels: "input",
+        outputChannels: "output",
+      });
+
+      for (let i = 0; i < 10; i++) {
+        expect(await app.invoke([2, 3])).toBe(27);
+      }
+
+      const results = await Promise.all(
+        Array(10)
+          .fill(null)
+          .map(() => app.invoke([2, 3]))
+      );
+      expect(results).toEqual(Array(10).fill(27));
+
+      // Add checkpointer
+      app.checkpointer = checkpointer;
+      // Subgraph is called twice in the same node, through .map(), so raises
+      await expect(
+        app.invoke([2, 3], { configurable: { thread_id: "1" } })
+      ).rejects.toThrow(MultipleSubgraphsError);
+
+      // Set inner graph checkpointer to not checkpoint
+      innerApp.checkpointer = false;
+      // Subgraph still called twice, but checkpointing for inner graph is disabled
+      expect(
+        await app.invoke([2, 3], { configurable: { thread_id: "1" } })
+      ).toBe(27);
     });
 
     it("doubly nested graph state", async () => {

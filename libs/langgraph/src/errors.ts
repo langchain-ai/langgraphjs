@@ -97,3 +97,20 @@ export class InvalidUpdateError extends Error {
     return "InvalidUpdateError";
   }
 }
+
+export class MultipleSubgraphsError extends Error {
+  constructor(message?: string) {
+    super(message);
+    this.name = "MultipleSubgraphError";
+  }
+
+  static get unminifiable_name() {
+    return "MultipleSubgraphError";
+  }
+}
+
+/**
+ * Used for subgraph detection.
+ * TODO: Move to globalThis for bundlers
+ */
+export const _SEEN_CHECKPOINT_NS = new Set();

@@ -50,9 +50,11 @@ import {
   readChannels,
 } from "./io.js";
 import {
+  _SEEN_CHECKPOINT_NS,
   EmptyInputError,
   GraphInterrupt,
   isGraphInterrupt,
+  MultipleSubgraphsError,
 } from "../errors.js";
 import { getNewChannelVersions, patchConfigurable } from "./utils/index.js";
 import {
@@ -84,6 +86,7 @@ export type PregelLoopInitializeParams = {
   managed: ManagedValueMapping;
   stream: StreamProtocol;
   store?: BaseStore;
+  checkSubgraphs?: boolean;
 };
 
 type PregelLoopParams = {
@@ -231,7 +234,7 @@ export class PregelLoop {
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
-    let { config, stream } = params;
+    let { config, stream, checkSubgraphs = true } = params;
     if (
       stream !== undefined &&
       config.configurable?.[CONFIG_KEY_STREAM] !== undefined
@@ -311,7 +314,13 @@ export class PregelLoop {
       // Start the store. This is a batch store, so it will run continuously
       store.start();
     }
-
+    if (checkSubgraphs && isNested && params.checkpointer !== undefined) {
+      if (_SEEN_CHECKPOINT_NS.has(config.configurable?.checkpoint_ns)) {
+        throw new MultipleSubgraphsError();
+      } else {
+        _SEEN_CHECKPOINT_NS.add(config.configurable?.checkpoint_ns);
+      }
+    }
     return new PregelLoop({
       input: params.input,
       config,
