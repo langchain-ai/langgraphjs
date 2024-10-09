@@ -318,7 +318,12 @@ export class PregelLoop {
     if (checkSubgraphs && isNested && params.checkpointer !== undefined) {
       if (getSubgraphsSeenSet().has(config.configurable?.checkpoint_ns)) {
         throw new MultipleSubgraphsError(
-          "Detected the same subgraph called multiple times by the same node. This is not allowed if checkpointing is enabled."
+          [
+            "Detected the same subgraph called multiple times by the same node.",
+            "This is not allowed if checkpointing is enabled.",
+            "",
+            `You can disable checkpointing for a subgraph by compiling it with ".compile({ checkpointer: false });"`,
+          ].join("\n")
         );
       } else {
         getSubgraphsSeenSet().add(config.configurable?.checkpoint_ns);
