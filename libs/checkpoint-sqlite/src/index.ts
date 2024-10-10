@@ -168,12 +168,30 @@ CREATE TABLE IF NOT EXISTS writes (
     const { limit, before } = options ?? {};
     this.setup();
     const thread_id = config.configurable?.thread_id;
-    let sql = `SELECT thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata FROM checkpoints WHERE thread_id = ? ${
-      before ? "AND checkpoint_id < ?" : ""
-    } ORDER BY checkpoint_id DESC`;
+
+    let sql =
+      "SELECT thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata FROM checkpoints";
+
+    const whereClause: string[] = [];
+
+    if (thread_id) {
+      whereClause.push("thread_id = ?");
+    }
+
+    if (before?.configurable?.checkpoint_id !== undefined) {
+      whereClause.push("checkpoint_id < ?");
+    }
+
+    if (whereClause.length > 0) {
+      sql += `WHERE\n  ${whereClause.join(" AND\n  ")}\n`;
+    }
+
+    sql += ` ORDER BY checkpoint_id DESC`;
+
     if (limit) {
       sql += ` LIMIT ${limit}`;
     }
+
     const args = [thread_id, before?.configurable?.checkpoint_id].filter(
       Boolean
     );
