@@ -168,12 +168,26 @@ CREATE TABLE IF NOT EXISTS writes (
     const { limit, before } = options ?? {};
     this.setup();
     const thread_id = config.configurable?.thread_id;
-    let sql = `SELECT thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata FROM checkpoints WHERE thread_id = ? ${
-      before ? "AND checkpoint_id < ?" : ""
-    } ORDER BY checkpoint_id DESC`;
-    if (limit) {
-      sql += ` LIMIT ${limit}`;
+    let sql =
+      "SELECT thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata FROM checkpoints";
+    let addedWhere = false;
+    if (thread_id) {
+      sql += ` WHERE thread_id = ?`;
+      addedWhere = true;
     }
+
+    if (before) {
+      sql += ` ${addedWhere ? "AND" : "WHERE"} checkpoint_id < ?`;
+      addedWhere = true;
+    }
+
+    sql += ` ORDER BY checkpoint_id DESC`;
+
+    if (limit) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sql += ` LIMIT ${parseInt(limit as any, 10)}`; // parseInt here (with cast to make TS happy) to sanitize input, as limit may be user-provided
+    }
+
     const args = [thread_id, before?.configurable?.checkpoint_id].filter(
       Boolean
     );
