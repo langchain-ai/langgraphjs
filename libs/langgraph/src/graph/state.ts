@@ -47,6 +47,7 @@ import {
 } from "./annotation.js";
 import type { RetryPolicy } from "../pregel/utils/index.js";
 import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
+import { LangGraphRunnableConfig } from "../web.js";
 
 const ROOT = "__root__";
 
@@ -166,7 +167,7 @@ export class StateGraph<
   I extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition,
   O extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition,
   C extends StateDefinition = StateDefinition
-> extends Graph<N, S, U, StateGraphNodeSpec<S, U>> {
+> extends Graph<N, S, U, StateGraphNodeSpec<S, U>, C> {
   channels: Record<string, BaseChannel | ManagedValueSpec> = {};
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
@@ -273,12 +274,13 @@ export class StateGraph<
     }
   }
 
-  addNode<K extends string, NodeInput = S>(
+  override addNode<K extends string, NodeInput = S>(
     key: K,
     action: RunnableLike<
       NodeInput,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      U extends object ? U & Record<string, any> : U
+      U extends object ? U & Record<string, any> : U,
+      LangGraphRunnableConfig<StateType<C>>
     >,
     options?: StateGraphAddNodeOptions
   ): StateGraph<SD, S, U, N | K, I, O, C> {
@@ -324,7 +326,10 @@ export class StateGraph<
     return this as StateGraph<SD, S, U, N | K, I, O, C>;
   }
 
-  addEdge(startKey: typeof START | N | N[], endKey: N | typeof END): this {
+  override addEdge(
+    startKey: typeof START | N | N[],
+    endKey: N | typeof END
+  ): this {
     if (typeof startKey === "string") {
       return super.addEdge(startKey, endKey);
     }
@@ -356,7 +361,7 @@ export class StateGraph<
     return this;
   }
 
-  compile({
+  override compile({
     checkpointer,
     store,
     interruptBefore,
