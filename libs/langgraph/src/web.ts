@@ -49,7 +49,7 @@ export {
   type OperationResults,
   BaseStore,
   AsyncBatchedStore,
-  MemoryStore as InMemoryStore,
+  InMemoryStore,
   type NameSpacePath,
   type NamespaceMatchType,
   type MatchCondition,
