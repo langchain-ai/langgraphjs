@@ -298,7 +298,9 @@ export class PostgresSaver extends BaseCheckpointSaver {
    * @param config The config to use for retrieving the checkpoint.
    * @returns The retrieved checkpoint tuple, or undefined.
    */
-  async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
+  async getTuple(
+    config: RunnableConfig
+  ): Promise<CheckpointTuple | undefined> {
     const {
       thread_id,
       checkpoint_ns = "",
@@ -416,8 +418,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
   async put(
     config: RunnableConfig,
     checkpoint: Checkpoint,
-    metadata: CheckpointMetadata,
-    newVersions: ChannelVersions
+    metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
     if (config.configurable === undefined) {
       throw new Error(`Missing "configurable" field in "config" param`);
@@ -443,7 +444,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
         thread_id,
         checkpoint_ns,
         checkpoint.channel_values,
-        newVersions
+        checkpoint.channel_versions
       );
       for (const serializedBlob of serializedBlobs) {
         await client.query(UPSERT_CHECKPOINT_BLOBS_SQL, serializedBlob);

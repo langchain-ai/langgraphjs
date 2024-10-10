@@ -112,8 +112,7 @@ describe("PostgresSaver", () => {
     const runnableConfig = await postgresSaver.put(
       { configurable: { thread_id: "1" } },
       checkpoint1,
-      { source: "update", step: -1, writes: null, parents: {} },
-      checkpoint1.channel_versions
+      { source: "update", step: -1, writes: null, parents: {} }
     );
     expect(runnableConfig).toEqual({
       configurable: {
@@ -168,8 +167,7 @@ describe("PostgresSaver", () => {
         },
       },
       checkpoint2,
-      { source: "update", step: -1, writes: null, parents: {} },
-      checkpoint2.channel_versions
+      { source: "update", step: -1, writes: null, parents: {} }
     );
 
     // verify that parentTs is set and retrieved correctly for second checkpoint
