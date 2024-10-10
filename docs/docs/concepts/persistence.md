@@ -98,7 +98,7 @@ In our example, the output of `getState` will look like this:
 
 ### Get state history
 
-You can get the full history of the graph execution for a given thread by calling `await graph.getStateHistory(config)`. This will return a list of `StateSnapshot` objects associated with the thread ID provided in the config. Importantly, the checkpoints will be ordered chronologically with the most recent checkpoint / `StateSnapshot` being the first in the list.
+You can get the full history of the graph execution for a given thread by calling `await graph.getStateHistory(config)`. This will return an array of `StateSnapshot` objects associated with the thread ID provided in the config. Importantly, the checkpoints will be ordered chronologically with the most recent checkpoint / `StateSnapshot` being the first in the list.
 
 ```typescript
 const config = { configurable: { thread_id: "1" } };
@@ -205,6 +205,175 @@ The `foo` key (channel) is completely changed (because there is no reducer speci
 The final argument you can optionally specify when calling `updateState` is the third positional `asNode` argument. If you provided it, the update will be applied as if it came from node `asNode`. If `asNode` is not provided, it will be set to the last node that updated the state, if not ambiguous. The reason this matters is that the next steps to execute depend on the last node to have given an update, so this can be used to control which node executes next. See this [how to guide on time-travel to learn more about forking state](/langgraphjs/how-tos/time-travel).
 
 ![Update](img/persistence/checkpoints_full_story.jpg)
+
+## Memory Store
+
+![Update](./img/persistence/shared_state.png)
+
+A [state schema](/langgraphjs/concepts/low_level#schema) specifies a set of keys that are populated as a graph is executed. As discussed above, state can be written by a checkpointer to a thread at each graph step, enabling state persistence.
+
+But, what if we want to retrain some information *across threads*? Consider the case of a chatbot where we want to retain specific information about the user across *all* chat conversations (e.g., threads) with that user!
+
+With checkpointers alone, we cannot share information across threads. This motivates the need for the `Store` interface. As an illustration, we can define an `InMemoryStore` to store information about a user across threads. We simply compile our graph with a checkpointer, as before, and with our new `inMemoryStore` variable.
+First, let's showcase this in isolation without using LangGraph.
+
+```typescript
+import { InMemoryStore } from "@langchain/langgraph";
+const inMemoryStore = new InMemoryStore();
+```
+
+Memories are namespaced by a `tuple`, which in this specific example will be `(<user_id>, "memories")`. The namespace can be any length and represent anything, does not have be user specific.
+
+```typescript 
+const userId = "1";
+const namespaceForMemory = [userId, "memories"];
+```
+
+We use the `store.put` method to save memories to our namespace in the store. When we do this, we specify the namespace, as defined above, and a key-value pair for the memory: the key is simply a unique identifier for the memory (`memoryId`) and the value (an object) is the memory itself.
+
+```typescript
+import { v4 as uuidv4 } from 'uuid';
+
+const memoryId = uuidv4();
+const memory = { food_preference: "I like pizza" };
+await inMemoryStore.put(namespaceForMemory, memoryId, memory);
+```
+
+We can read out memories in our namespace using the `store.search` method, which will return all memories for a given user as an array. The most recent memory is the last in the list.
+
+```typescript
+const memories = await inMemoryStore.search(namespaceForMemory);
+console.log(memories[memories.length - 1]);
+// Output:
+// {
+//   value: { food_preference: 'I like pizza' },
+//   key: '07e0caf4-1631-47b7-b15f-65515d4c1843',
+//   namespace: ['1', 'memories'],
+//   created_at: '2024-10-02T17:22:31.590602+00:00',
+//   updated_at: '2024-10-02T17:22:31.590605+00:00'
+// }
+```
+
+Each memory type is an object of the [`Item`](/langgraphjs/reference/interfaces/checkpoint.Item.html) interface with certain attributes.
+The attributes it has are:
+
+- `value`: The value (itself an object) of this memory
+- `key`: A unique key for this memory in this namespace
+- `namespace`: An array of strings, the namespace of this memory type
+- `created_at`: Timestamp for when this memory was created
+- `updated_at`: Timestamp for when this memory was updated
+
+With this all in place, we use the memory store in LangGraph. The memory store works hand-in-hand with the checkpointer: the checkpointer saves state to threads, as discussed above, and the memory store allows us to store arbitrary information for access *across* threads. We compile the graph with both the checkpointer and the memory store as follows. 
+
+```typescript
+import { MemorySaver } from "@langchain/langgraph";
+
+// We need this because we want to enable threads (conversations)
+const checkpointer = new MemorySaver();
+
+// ... Define the graph ...
+
+// Compile the graph with the checkpointer and store
+const graph = workflow.compile({ checkpointer, store: inMemoryStore });
+```
+
+We invoke the graph with a `thread_id`, as before, and also with a `user_id`, which we'll use to namespace our memories to this particular user as we showed above.
+
+```typescript
+// Invoke the graph
+const userId = "1";
+const config = { configurable: { thread_id: "1", user_id: userId }, streamMode: "updates" as const };
+
+// First let's just say hi to the AI
+for await (const update of await graph.stream(
+  { messages: [{ role: "user", content: "hi" }] },
+  config,
+)) {
+  console.log(update);
+}
+```
+
+We can access the `inMemoryStore` and the `user_id` in *any node* by extracting the `store` field from the second positional argument (`config: LangGraphRunnableConfig`) in our node(s). Just as we saw above, simply use the `put` method to save memories to the store.
+
+```typescript
+import { MessagesAnnotation, LangGraphRunnableConfig, BaseStore } from "@langchain/langgraph";
+
+function updateMemory(state: typeof MessagesAnnotation.State, config: LangGraphRunnableConfig) {
+  const store: BaseStore | undefined = config.store;
+  if (!store) {
+    // Stores can be undefined if not passed to the `.compile` method when compiling the graph.
+    // Note stores are always provided if using LangGraph Studio or LangGraph Cloud.
+    throw new Error("Store not found in config");
+  }
+  // Get the user id from the config
+  const userId = config.configurable?.user_id;
+  
+  // Namespace the memory
+  const namespace = [userId, "memories"];
+  
+  // ... Analyze conversation and create a new memory
+  
+  // Create a new memory ID
+  const memoryId = uuidv4();
+
+  // We create a new memory
+  await store.put(namespace, memoryId, { memory: "some memory content" });
+
+  // ...rest of the node
+}
+```
+
+As we showed above, we can also access the store in any node and use the `store.search` method to get memories. Recall the the memories are returned as an array of objects that can be converted to a dictionary.
+
+```typescript
+console.log(memories[memories.length - 1]);
+// Output:
+// {
+//   value: { food_preference: 'I like pizza' },
+//   key: '07e0caf4-1631-47b7-b15f-65515d4c1843',
+//   namespace: ['1', 'memories'],
+//   created_at: '2024-10-02T17:22:31.590602+00:00',
+//   updated_at: '2024-10-02T17:22:31.590605+00:00'
+// }
+```
+
+We can access the memories and use them in our model call.
+
+```typescript
+function callModel(state: typeof MessagesAnnotation.State, config: LangGraphRunnableConfig) {
+  const store: BaseStore | undefined = config.store;
+  if (!store) {
+    throw new Error("Store not found in config");
+  }
+
+  // Get the user id from the config
+  const userId = config.configurable?.user_id;
+  
+  // Get the memories for the user from the store
+  const memories = await store.search(["memories", userId]);
+  const info = memories.map((mem) => mem.value.memory).join("\n");
+  
+  // ... Use memories in the model call
+}
+```
+
+If we create a new thread, we can still access the same memories so long as the `user_id` is the same. 
+
+```typescript
+// Invoke the graph
+const config = { configurable: { thread_id: "2", user_id: "1" }, streamMode: "updates" as const };
+
+// Let's say hi again
+for await (const update of await graph.stream(
+  { messages: [{ role: "user", content: "hi, tell me about my memories" }] },
+  config,
+)) {
+  console.log(update);
+}
+```
+
+When we use the LangGraph API, either locally (e.g., in LangGraph Studio) or with LangGraph Cloud, the memory store is available to use by default and does not need to be specified during graph compilation.
+
 
 ## Checkpointer libraries
 
