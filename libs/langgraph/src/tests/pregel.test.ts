@@ -3914,15 +3914,16 @@ export function runPregelTests(
         hello: Annotation<string>,
       });
 
-      const ConfigAnnotation = Annotation.Root({
+      const ConfigurableAnnotation = Annotation.Root({
         shouldExist: Annotation<string>,
       });
 
       const nodeA = (
         _: typeof StateAnnotation.State,
-        config: RunnableConfig
+        config: RunnableConfig<typeof ConfigurableAnnotation.State>
       ) => {
         expect(config.configurable?.shouldExist).toEqual("I exist");
+        // @ts-expect-error Not in typing but should still be passed through
         expect(config.configurable?.shouldAlsoExist).toEqual(
           "I should also exist"
         );
@@ -3931,10 +3932,26 @@ export function runPregelTests(
         };
       };
 
+      const nodeB = () => ({});
+
+      const conditionalEdge = async (
+        _: typeof StateAnnotation.State,
+        config: RunnableConfig<typeof ConfigurableAnnotation.State>
+      ) => {
+        expect(config.configurable?.shouldExist).toEqual("I exist");
+        // @ts-expect-error Not in typing but should still be passed through
+        expect(config.configurable?.shouldAlsoExist).toEqual(
+          "I should also exist"
+        );
+        return "__end__";
+      };
+
       const checkpointer = await createCheckpointer();
-      const graph = new StateGraph(StateAnnotation, ConfigAnnotation)
+      const graph = new StateGraph(StateAnnotation, ConfigurableAnnotation)
         .addNode("a", nodeA)
+        .addNode("b", nodeB)
         .addEdge(START, "a")
+        .addConditionalEdges("a", conditionalEdge)
         .compile({ checkpointer });
 
       expect(

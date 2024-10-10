@@ -29,22 +29,32 @@ import {
 } from "../constants.js";
 import { gatherIteratorSync, RunnableCallable } from "../utils.js";
 import { InvalidUpdateError, NodeInterrupt } from "../errors.js";
+import { StateDefinition, StateType } from "./annotation.js";
+import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 
 /** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
 /** Special reserved node name denoting the end of a graph. */
 export const END = "__end__";
 
-export interface BranchOptions<IO, N extends string> {
+export interface BranchOptions<
+  IO,
+  N extends string,
+  CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
+> {
   source: N;
-  path: Branch<IO, N>["condition"];
+  path: Branch<IO, N, CallOptions>["condition"];
   pathMap?: Record<string, N | typeof END> | (N | typeof END)[];
 }
 
-export class Branch<IO, N extends string> {
+export class Branch<
+  IO,
+  N extends string,
+  CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
+> {
   condition: (
     input: IO,
-    config?: RunnableConfig
+    config: CallOptions
   ) =>
     | string
     | Send
@@ -53,7 +63,7 @@ export class Branch<IO, N extends string> {
 
   ends?: Record<string, N | typeof END>;
 
-  constructor(options: Omit<BranchOptions<IO, N>, "source">) {
+  constructor(options: Omit<BranchOptions<IO, N, CallOptions>, "source">) {
     this.condition = options.path;
     this.ends = Array.isArray(options.pathMap)
       ? options.pathMap.reduce((acc, n) => {
@@ -65,11 +75,11 @@ export class Branch<IO, N extends string> {
 
   compile(
     writer: (dests: (string | Send)[]) => Runnable | undefined,
-    reader?: (config: RunnableConfig) => IO
+    reader?: (config: CallOptions) => IO
   ) {
     return ChannelWrite.registerWriter(
       new RunnableCallable({
-        func: async (input: IO, config: RunnableConfig) => {
+        func: async (input: IO, config: CallOptions) => {
           try {
             return await this._route(input, config, writer, reader);
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -90,9 +100,9 @@ export class Branch<IO, N extends string> {
 
   async _route(
     input: IO,
-    config: RunnableConfig,
+    config: CallOptions,
     writer: (dests: (string | Send)[]) => Runnable | undefined,
-    reader?: (config: RunnableConfig) => IO
+    reader?: (config: CallOptions) => IO
   ): Promise<Runnable | undefined> {
     let result = await this.condition(reader ? reader(config) : input, config);
     if (!Array.isArray(result)) {
@@ -131,13 +141,15 @@ export class Graph<
   NodeSpecType extends NodeSpec<RunInput, RunOutput> = NodeSpec<
     RunInput,
     RunOutput
-  >
+  >,
+  C extends StateDefinition = StateDefinition
 > {
   nodes: Record<N, NodeSpecType>;
 
   edges: Set<[N | typeof START, N | typeof END]>;
 
-  branches: Record<string, Record<string, Branch<RunInput, N>>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  branches: Record<string, Record<string, Branch<RunInput, N, any>>>;
 
   entryPoint?: string;
 
@@ -161,7 +173,12 @@ export class Graph<
 
   addNode<K extends string, NodeInput = RunInput>(
     key: K,
-    action: RunnableLike<NodeInput, RunOutput>,
+    action: RunnableLike<
+      NodeInput,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      RunOutput extends object ? RunOutput & Record<string, any> : RunOutput,
+      LangGraphRunnableConfig<StateType<C>>
+    >,
     options?: AddNodeOptions
   ): Graph<N | K, RunInput, RunOutput> {
     for (const reservedChar of [
@@ -221,21 +238,44 @@ export class Graph<
     return this;
   }
 
-  addConditionalEdges(source: BranchOptions<RunInput, N>): this;
-
   addConditionalEdges(
-    source: N,
-    path: Branch<RunInput, N>["condition"],
-    pathMap?: BranchOptions<RunInput, N>["pathMap"]
+    source: BranchOptions<RunInput, N, LangGraphRunnableConfig<StateType<C>>>
   ): this;
 
   addConditionalEdges(
-    source: N | BranchOptions<RunInput, N>,
-    path?: Branch<RunInput, N>["condition"],
-    pathMap?: BranchOptions<RunInput, N>["pathMap"]
+    source: N,
+    path: Branch<
+      RunInput,
+      N,
+      LangGraphRunnableConfig<StateType<C>>
+    >["condition"],
+    pathMap?: BranchOptions<
+      RunInput,
+      N,
+      LangGraphRunnableConfig<StateType<C>>
+    >["pathMap"]
+  ): this;
+
+  addConditionalEdges(
+    source:
+      | N
+      | BranchOptions<RunInput, N, LangGraphRunnableConfig<StateType<C>>>,
+    path?: Branch<
+      RunInput,
+      N,
+      LangGraphRunnableConfig<StateType<C>>
+    >["condition"],
+    pathMap?: BranchOptions<
+      RunInput,
+      N,
+      LangGraphRunnableConfig<StateType<C>>
+    >["pathMap"]
   ): this {
-    const options: BranchOptions<RunInput, N> =
-      typeof source === "object" ? source : { source, path: path!, pathMap };
+    const options: BranchOptions<
+      RunInput,
+      N,
+      LangGraphRunnableConfig<StateType<C>>
+    > = typeof source === "object" ? source : { source, path: path!, pathMap };
     this.warnIfCompiled(
       "Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
