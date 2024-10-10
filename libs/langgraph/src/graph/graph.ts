@@ -30,7 +30,7 @@ import {
 import { gatherIteratorSync, RunnableCallable } from "../utils.js";
 import { InvalidUpdateError, NodeInterrupt } from "../errors.js";
 import { StateDefinition, StateType } from "./annotation.js";
-import { LangGraphRunnableConfig } from "../web.js";
+import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 
 /** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
@@ -148,6 +148,7 @@ export class Graph<
 
   edges: Set<[N | typeof START, N | typeof END]>;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   branches: Record<string, Record<string, Branch<RunInput, N, any>>>;
 
   entryPoint?: string;
@@ -174,6 +175,7 @@ export class Graph<
     key: K,
     action: RunnableLike<
       NodeInput,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       RunOutput extends object ? RunOutput & Record<string, any> : RunOutput,
       LangGraphRunnableConfig<StateType<C>>
     >,

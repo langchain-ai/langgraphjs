@@ -47,7 +47,7 @@ import {
 } from "./annotation.js";
 import type { RetryPolicy } from "../pregel/utils/index.js";
 import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
-import { LangGraphRunnableConfig } from "../web.js";
+import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 
 const ROOT = "__root__";
 
