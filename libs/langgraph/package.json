@@ -37,7 +37,7 @@
     "zod": "^3.23.8"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.35 <0.3.0 || >=0.3.8 < 0.4.0"
+    "@langchain/core": ">=0.2.36 <0.3.0 || >=0.3.9 < 0.4.0"
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",
