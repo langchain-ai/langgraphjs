@@ -165,42 +165,79 @@ CREATE TABLE IF NOT EXISTS writes (
     config: RunnableConfig,
     options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
-    const { limit, before } = options ?? {};
+    const { limit, before, filter } = options ?? {};
     this.setup();
     const thread_id = config.configurable?.thread_id;
     const checkpoint_ns = config.configurable?.checkpoint_ns;
 
+    const withClause =
+      filter && Object.keys(filter).length
+        ? "WITH augmented_checkpoints AS (\n" +
+          "  SELECT \n" +
+          "    ck.thread_id,\n" +
+          "    ck.checkpoint_ns,\n" +
+          "    ck.checkpoint_id,\n" +
+          "    jsonb(CAST(metadata as TEXT)) AS json_metadata\n" +
+          "  FROM checkpoints AS ck\n" +
+          ")\n"
+        : "";
+
+    const joinClause = withClause
+      ? "JOIN augmented_checkpoints ON\n" +
+        "  c.thread_id = augmented_checkpoints.thread_id AND\n" +
+        "  c.checkpoint_ns = augmented_checkpoints.checkpoint_ns AND\n" +
+        "  c.checkpoint_id = augmented_checkpoints.checkpoint_id\n"
+      : "";
+
     let sql =
-      "SELECT thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata FROM checkpoints";
+      `${withClause}SELECT\n` +
+      "  c.thread_id,\n" +
+      "  c.checkpoint_ns,\n" +
+      "  c.checkpoint_id,\n" +
+      "  c.parent_checkpoint_id,\n" +
+      "  c.type,\n" +
+      "  c.checkpoint,\n" +
+      "  c.metadata\n" +
+      "FROM checkpoints as c\n" +
+      `${joinClause}`;
 
     const whereClause: string[] = [];
 
     if (thread_id) {
-      whereClause.push("thread_id = ?");
+      whereClause.push("c.thread_id = ?");
     }
 
     if (checkpoint_ns !== undefined && checkpoint_ns !== null) {
-      whereClause.push("checkpoint_ns = ?");
+      whereClause.push("c.checkpoint_ns = ?");
     }
 
     if (before?.configurable?.checkpoint_id !== undefined) {
-      whereClause.push("checkpoint_id < ?");
+      whereClause.push("c.checkpoint_id < ?");
     }
+
+    whereClause.push(
+      ...Object.entries(filter ?? {})
+        .filter(([_, value]) => value !== undefined)
+        .map(([key]) => `json_metadata->>'$.${key}' = ?`)
+    );
 
     if (whereClause.length > 0) {
       sql += `WHERE\n  ${whereClause.join(" AND\n  ")}\n`;
     }
 
-    sql += ` ORDER BY checkpoint_id DESC`;
+    sql += "\nORDER BY c.checkpoint_id DESC";
 
     if (limit) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       sql += ` LIMIT ${parseInt(limit as any, 10)}`; // parseInt here (with cast to make TS happy) to sanitize input, as limit may be user-provided
     }
 
-    const args = [thread_id, before?.configurable?.checkpoint_id].filter(
-      Boolean
-    );
+    const args = [
+      thread_id,
+      checkpoint_ns,
+      before?.configurable?.checkpoint_id,
+      ...Object.values(filter ?? {}),
+    ].filter((value) => value !== undefined && value !== null);
 
     const rows: CheckpointRow[] = this.db
       .prepare(sql)
