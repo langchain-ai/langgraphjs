@@ -72,6 +72,7 @@ import {
 } from "./algo.js";
 import {
   _coerceToDict,
+  findSubgraphPregel,
   getNewChannelVersions,
   patchCheckpointMap,
   RetryPolicy,
@@ -211,22 +212,6 @@ export interface PregelOptions<
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function isPregel(x: Pregel<any, any> | Runnable): x is Pregel<any, any> {
-  return (
-    "inputChannels" in x &&
-    x.inputChannels !== undefined &&
-    "outputChannels" &&
-    x.outputChannels !== undefined
-  );
-}
-
-function isRunnableSequence(
-  x: RunnableSequence | Runnable
-): x is RunnableSequence {
-  return "steps" in x && Array.isArray(x.steps);
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PregelInputType = any;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -363,16 +348,7 @@ export class Pregel<
         }
       }
       // find the subgraph if any
-      let graph;
-      const candidates = [node.bound];
-      for (const candidate of candidates) {
-        if (isPregel(candidate)) {
-          graph = candidate;
-          break;
-        } else if (isRunnableSequence(candidate)) {
-          candidates.push(...candidate.steps);
-        }
-      }
+      const graph = findSubgraphPregel(node.bound);
       // if found, yield recursively
       if (graph !== undefined) {
         if (name === namespace) {

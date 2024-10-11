@@ -111,6 +111,7 @@ type PregelLoopParams = {
   isNested: boolean;
   stream: StreamProtocol;
   store?: AsyncBatchedStore;
+  prevCheckpointConfig: RunnableConfig | undefined;
 };
 
 export class StreamProtocol {
@@ -180,6 +181,8 @@ export class PregelLoop {
 
   protected taskWritesLeft: number = 0;
 
+  protected prevCheckpointConfig: RunnableConfig | undefined;
+
   status:
     | "pending"
     | "done"
@@ -231,6 +234,7 @@ export class PregelLoop {
     this.store = params.store;
     this.stream = params.stream;
     this.checkpointNamespace = params.checkpointNamespace;
+    this.prevCheckpointConfig = params.prevCheckpointConfig;
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
@@ -298,6 +302,7 @@ export class PregelLoop {
         ...saved.config.configurable,
       },
     };
+    const prevCheckpointConfig = saved.parentConfig;
     const checkpoint = copyCheckpoint(saved.checkpoint);
     const checkpointMetadata = { ...saved.metadata } as CheckpointMetadata;
     const checkpointPendingWrites = saved.pendingWrites ?? [];
@@ -336,6 +341,7 @@ export class PregelLoop {
       checkpoint,
       checkpointMetadata,
       checkpointConfig,
+      prevCheckpointConfig,
       checkpointNamespace,
       channels,
       managed: params.managed,
@@ -576,7 +582,8 @@ export class PregelLoop {
                 this.streamKeys,
                 this.checkpointMetadata,
                 Object.values(this.tasks),
-                this.checkpointPendingWrites
+                this.checkpointPendingWrites,
+                this.prevCheckpointConfig
               ),
               "debug"
             )
@@ -750,6 +757,12 @@ export class PregelLoop {
     };
     // Bail if no checkpointer
     if (this.checkpointer !== undefined) {
+      // store the previous checkpoint config for debug events
+      this.prevCheckpointConfig = this.checkpointConfig?.configurable
+        ?.checkpoint_id
+        ? this.checkpointConfig
+        : undefined;
+
       // create new checkpoint
       this.checkpointMetadata = metadata;
       // child graphs keep at most one checkpoint per parent checkpoint
