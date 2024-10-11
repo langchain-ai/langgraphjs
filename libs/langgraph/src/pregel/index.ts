@@ -348,7 +348,9 @@ export class Pregel<
         }
       }
       // find the subgraph if any
-      const graph = findSubgraphPregel(node.bound);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      type SubgraphPregelType = Pregel<any, any> | undefined;
+      const graph = findSubgraphPregel(node.bound) as SubgraphPregelType;
       // if found, yield recursively
       if (graph !== undefined) {
         if (name === namespace) {

@@ -1,5 +1,5 @@
 import { RunnableSequence, Runnable } from "@langchain/core/runnables";
-import type { Pregel } from "../index.js";
+import type { PregelInterface } from "../types.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isRunnableSequence(
@@ -7,11 +7,11 @@ function isRunnableSequence(
 ): x is RunnableSequence {
   return "steps" in x && Array.isArray(x.steps);
 }
-function isPregel(
+function isPregelLike(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  x: Pregel<any, any> | Runnable
+  x: PregelInterface<any, any> | Runnable
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): x is Pregel<any, any> {
+): x is PregelInterface<any, any> {
   return (
     "inputChannels" in x &&
     x.inputChannels !== undefined &&
@@ -23,10 +23,10 @@ function isPregel(
 export function findSubgraphPregel(
   candidate: Runnable
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Pregel<any, any> | undefined {
+): PregelInterface<any, any> | undefined {
   const candidates = [candidate];
   for (const candidate of candidates) {
-    if (isPregel(candidate)) {
+    if (isPregelLike(candidate)) {
       return candidate;
     } else if (isRunnableSequence(candidate)) {
       candidates.push(...candidate.steps);
