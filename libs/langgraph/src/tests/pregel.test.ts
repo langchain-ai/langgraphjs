@@ -77,6 +77,7 @@ import {
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
 import { MessageGraph, messagesStateReducer } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
+import { StateSnapshot } from "../pregel/types.js";
 import {
   GraphRecursionError,
   InvalidUpdateError,
@@ -4423,6 +4424,7 @@ export function runPregelTests(
               checkpoint_id: expect.any(String),
             },
           },
+          parentConfig: undefined,
           values: {},
           metadata: {
             source: "input",
@@ -4437,6 +4439,7 @@ export function runPregelTests(
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              state: undefined,
             },
           ],
         },
@@ -4447,6 +4450,16 @@ export function runPregelTests(
         step: 0,
         payload: {
           config: {
+            tags: [],
+            metadata: { thread_id: "10" },
+            recursion_limit: 25,
+            configurable: {
+              thread_id: "10",
+              checkpoint_ns: "",
+              checkpoint_id: expect.any(String),
+            },
+          },
+          parentConfig: {
             tags: [],
             metadata: { thread_id: "10" },
             recursion_limit: 25,
@@ -4473,6 +4486,7 @@ export function runPregelTests(
               name: "prepare",
               path: [PULL, "prepare"],
               interrupts: [],
+              state: undefined,
             },
           ],
         },
@@ -4515,6 +4529,16 @@ export function runPregelTests(
               checkpoint_id: expect.any(String),
             },
           },
+          parentConfig: {
+            tags: [],
+            metadata: { thread_id: "10" },
+            recursion_limit: 25,
+            configurable: {
+              thread_id: "10",
+              checkpoint_ns: "",
+              checkpoint_id: expect.any(String),
+            },
+          },
           values: {
             my_key: "value prepared",
             market: "DE",
@@ -4532,6 +4556,7 @@ export function runPregelTests(
               name: "tool_two_slow",
               path: [PULL, "tool_two_slow"],
               interrupts: [],
+              state: undefined,
             },
           ],
         },
@@ -4574,6 +4599,16 @@ export function runPregelTests(
               checkpoint_id: expect.any(String),
             },
           },
+          parentConfig: {
+            tags: [],
+            metadata: { thread_id: "10" },
+            recursion_limit: 25,
+            configurable: {
+              thread_id: "10",
+              checkpoint_ns: "",
+              checkpoint_id: expect.any(String),
+            },
+          },
           values: {
             my_key: "value prepared slow",
             market: "DE",
@@ -4591,6 +4626,7 @@ export function runPregelTests(
               name: "finish",
               path: [PULL, "finish"],
               interrupts: [],
+              state: undefined,
             },
           ],
         },
@@ -4633,6 +4669,16 @@ export function runPregelTests(
               checkpoint_id: expect.any(String),
             },
           },
+          parentConfig: {
+            tags: [],
+            metadata: { thread_id: "10" },
+            recursion_limit: 25,
+            configurable: {
+              thread_id: "10",
+              checkpoint_ns: "",
+              checkpoint_id: expect.any(String),
+            },
+          },
           values: {
             my_key: "value prepared slow finished",
             market: "DE",
@@ -4653,7 +4699,11 @@ export function runPregelTests(
     const checkpoints = await gatherIterator(checkpointer.list(config));
     expect(
       checkpoints.reverse().map((i) => {
-        return { metadata: i.metadata, config: i.config };
+        return {
+          metadata: i.metadata,
+          config: i.config,
+          parentConfig: i.parentConfig,
+        };
       })
     ).toEqual(
       actual
@@ -4661,6 +4711,9 @@ export function runPregelTests(
         .map((i) => ({
           metadata: i.payload.metadata,
           config: { configurable: i.payload.config.configurable },
+          parentConfig: i.payload.parentConfig
+            ? { configurable: i.payload.parentConfig?.configurable }
+            : undefined,
         }))
     );
   });
@@ -7911,6 +7964,214 @@ export function runPregelTests(
       ];
       expect(actualHistory).toEqual(expectedHistory);
     });
+  });
+
+  it("debug retry", async () => {
+    const state = Annotation.Root({
+      messages: Annotation<string[]>({
+        reducer: (a, b) => a.concat(b),
+        default: () => [],
+      }),
+    });
+
+    const checkpointer = await createCheckpointer();
+    const graph = new StateGraph(state)
+      .addNode("one", () => ({ messages: ["one"] }))
+      .addNode("two", () => ({ messages: ["two"] }))
+      .addEdge(START, "one")
+      .addEdge("one", "two")
+      .addEdge("two", END)
+      .compile({ checkpointer });
+
+    const config = { configurable: { thread_id: "1" } };
+    await graph.invoke({ messages: [] }, config);
+
+    // re-run step 1
+    const targetConfig = (await gatherIterator(checkpointer.list(config))).find(
+      (i) => i.metadata?.step === 1
+    )?.parentConfig;
+    expect(targetConfig).not.toBeUndefined();
+    const updateConfig = await graph.updateState(targetConfig!, null);
+
+    const events = await gatherIterator(
+      graph.stream(null, { ...updateConfig, streamMode: "debug" })
+    );
+
+    const checkpointEvents: StateSnapshot[] = events
+      .filter((item) => item.type === "checkpoint")
+      .map((i) => i.payload);
+
+    const checkpointHistoryMap = (
+      await gatherIterator(graph.getStateHistory(config))
+    ).reduce<Record<string, StateSnapshot>>((acc, item: StateSnapshot) => {
+      acc[item.config.configurable!.checkpoint_id] = item;
+      return acc;
+    }, {});
+
+    for (const stream of checkpointEvents) {
+      expect(stream.config?.configurable).not.toEqual(
+        stream.parentConfig?.configurable
+      );
+
+      const history =
+        checkpointHistoryMap[stream.config!.configurable!.checkpoint_id];
+      expect(stream.config.configurable).toEqual(history.config.configurable);
+      expect(stream.parentConfig?.configurable).toEqual(
+        history.parentConfig?.configurable
+      );
+    }
+  });
+
+  it("debug nested subgraph", async () => {
+    const state = Annotation.Root({
+      messages: Annotation<string[]>({
+        reducer: (a, b) => a.concat(b),
+        default: () => [],
+      }),
+    });
+
+    const checkpointer = await createCheckpointer();
+
+    const child = new StateGraph(state)
+      .addNode("c_one", () => ({ messages: ["c_one"] }))
+      .addNode("c_two", () => ({ messages: ["c_two"] }))
+      .addEdge(START, "c_one")
+      .addEdge("c_one", "c_two")
+      .addEdge("c_two", END);
+
+    const parent = new StateGraph(state)
+      .addNode("p_one", () => ({ messages: ["p_one"] }))
+      .addNode("p_two", child.compile())
+      .addEdge(START, "p_one")
+      .addEdge("p_one", "p_two")
+      .addEdge("p_two", END);
+
+    const graph = parent.compile({ checkpointer });
+    const config = { configurable: { thread_id: "1" } };
+
+    const checkpointEvents: StateSnapshot[] = (
+      await gatherIterator(
+        graph.stream({ messages: [] }, { ...config, streamMode: "debug" })
+      )
+    )
+      .filter((i) => i.type === "checkpoint")
+      .map((i) => i.payload);
+
+    const checkpointHistory = (
+      await gatherIterator(graph.getStateHistory(config))
+    ).reverse();
+
+    function sanitizeCheckpoints(checkpoints: StateSnapshot[]) {
+      return checkpoints.map((checkpoint) => {
+        const clone = { ...checkpoint };
+        delete clone.createdAt;
+        return clone;
+      });
+    }
+
+    expect(sanitizeCheckpoints(checkpointEvents)).toMatchObject(
+      sanitizeCheckpoints(checkpointHistory)
+    );
+  });
+
+  it("debug nested subgraph", async () => {
+    const state = Annotation.Root({
+      messages: Annotation<string[]>({
+        reducer: (a, b) => a.concat(b),
+        default: () => [],
+      }),
+    });
+
+    const child = new StateGraph(state)
+      .addNode("c_one", () => ({ messages: ["c_one"] }))
+      .addNode("c_two", () => ({ messages: ["c_two"] }))
+      .addEdge(START, "c_one")
+      .addEdge("c_one", "c_two")
+      .addEdge("c_two", END);
+
+    const parent = new StateGraph(state)
+      .addNode("p_one", () => ({ messages: ["p_one"] }))
+      .addNode("p_two", child.compile())
+      .addEdge(START, "p_one")
+      .addEdge("p_one", "p_two")
+      .addEdge("p_two", END);
+
+    const grandParent = new StateGraph(state)
+      .addNode("gp_one", () => ({ messages: ["gp_one"] }))
+      .addNode("gp_two", parent.compile())
+      .addEdge(START, "gp_one")
+      .addEdge("gp_one", "gp_two")
+      .addEdge("gp_two", END);
+
+    const checkpointer = await createCheckpointer();
+    const graph = grandParent.compile({ checkpointer });
+
+    const events = await gatherIterator(
+      graph.stream(
+        { messages: [] },
+        {
+          configurable: { thread_id: "1" },
+          streamMode: "debug",
+          subgraphs: true,
+        }
+      )
+    );
+
+    const streamCheckpointMap: Record<string, StateSnapshot[]> = {};
+    const streamNamespaces: Record<string, string[]> = {};
+
+    for (const [ns, item] of events) {
+      if (item.type === "checkpoint") {
+        streamCheckpointMap[ns.join("|")] ??= [];
+        streamCheckpointMap[ns.join("|")].push(item.payload);
+        streamNamespaces[ns.join("|")] = ns;
+      }
+    }
+
+    expect(Object.values(streamNamespaces)).toEqual([
+      [],
+      [expect.stringMatching(/^gp_two:/)],
+      [expect.stringMatching(/^gp_two:/), expect.stringMatching(/^p_two:/)],
+    ]);
+
+    const historyNs = await Promise.all(
+      Object.keys(streamCheckpointMap).map((ns) =>
+        gatherIterator(
+          graph.getStateHistory({
+            configurable: { thread_id: "1", checkpoint_ns: ns },
+          })
+        ).then((a) => a.reverse())
+      )
+    );
+
+    function sanitizeCheckpoints(checkpoints: StateSnapshot[]) {
+      return checkpoints.map((checkpoint) => {
+        const clone = { ...checkpoint };
+
+        // createdAt from streamed checkpoints is useless, as the date is being
+        // handled by the checkpointer itself at the moment.
+        delete clone.createdAt;
+
+        if (clone.config?.configurable) {
+          // TODO: figure out how to get checkpoint_map in streamed checkpoints
+          delete clone.config.configurable.checkpoint_map;
+        }
+
+        if (clone.parentConfig?.configurable) {
+          // TODO: figure out how to get checkpoint_map in streamed checkpoints
+          delete clone.parentConfig.configurable.checkpoint_map;
+        }
+
+        return clone;
+      });
+    }
+
+    expect(
+      Object.values(streamCheckpointMap).map(sanitizeCheckpoints)
+    ).toMatchObject(
+      // @ts-expect-error Not sure why toMatchObject does not accept historyNs
+      historyNs.map(sanitizeCheckpoints)
+    );
   });
 }
 

@@ -188,11 +188,6 @@ export function* mapDebugCheckpoint<
     return pyConfig;
   }
 
-  function getCurrentUTC() {
-    const now = new Date();
-    return new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
-  }
-
   const parentNs = config.configurable?.checkpoint_ns;
   const taskStates: Record<string, RunnableConfig | StateSnapshot> = {};
 
@@ -210,7 +205,7 @@ export function* mapDebugCheckpoint<
     };
   }
 
-  const ts = getCurrentUTC().toISOString();
+  const ts = new Date().toISOString();
   yield {
     type: "checkpoint",
     timestamp: ts,
@@ -221,7 +216,7 @@ export function* mapDebugCheckpoint<
       metadata,
       next: tasks.map((task) => task.name),
       tasks: tasksWithWrites(tasks, pendingWrites, taskStates),
-      parent_config: parentConfig ? formatConfig(parentConfig) : null,
+      parentConfig: parentConfig ? formatConfig(parentConfig) : undefined,
     },
   };
 }
