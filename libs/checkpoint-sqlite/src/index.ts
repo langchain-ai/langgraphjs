@@ -194,7 +194,8 @@ CREATE TABLE IF NOT EXISTS writes (
     sql += ` ORDER BY checkpoint_id DESC`;
 
     if (limit) {
-      sql += ` LIMIT ${limit}`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sql += ` LIMIT ${parseInt(limit as any, 10)}`; // parseInt here (with cast to make TS happy) to sanitize input, as limit may be user-provided
     }
 
     const args = [thread_id, before?.configurable?.checkpoint_id].filter(
