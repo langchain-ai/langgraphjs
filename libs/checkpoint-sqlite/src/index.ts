@@ -168,6 +168,7 @@ CREATE TABLE IF NOT EXISTS writes (
     const { limit, before } = options ?? {};
     this.setup();
     const thread_id = config.configurable?.thread_id;
+    const checkpoint_ns = config.configurable?.checkpoint_ns;
 
     let sql =
       "SELECT thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata FROM checkpoints";
@@ -176,6 +177,10 @@ CREATE TABLE IF NOT EXISTS writes (
 
     if (thread_id) {
       whereClause.push("thread_id = ?");
+    }
+
+    if (checkpoint_ns !== undefined && checkpoint_ns !== null) {
+      whereClause.push("checkpoint_ns = ?");
     }
 
     if (before?.configurable?.checkpoint_id !== undefined) {
