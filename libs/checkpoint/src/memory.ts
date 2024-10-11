@@ -178,7 +178,9 @@ export class MemorySaver extends BaseCheckpointSaver {
     const configCheckpointNamespace = config.configurable?.checkpoint_ns;
 
     for (const threadId of threadIds) {
-      for (const checkpointNamespace of Object.keys(this.storage[threadId])) {
+      for (const checkpointNamespace of Object.keys(
+        this.storage[threadId] ?? {}
+      )) {
         if (
           configCheckpointNamespace !== undefined &&
           checkpointNamespace !== configCheckpointNamespace
