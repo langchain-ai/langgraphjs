@@ -13,7 +13,7 @@ import {
   StateSnapshot,
 } from "./types.js";
 import { readChannels } from "./io.js";
-import { findSubgraphPregel } from "./utils/index.js";
+import { findSubgraphPregel } from "./utils/subgraph.js";
 
 type ConsoleColors = {
   start: string;

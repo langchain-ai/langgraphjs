@@ -1,14 +1,9 @@
-import {
-  Runnable,
-  RunnableConfig,
-  RunnableSequence,
-} from "@langchain/core/runnables";
+import { RunnableConfig } from "@langchain/core/runnables";
 import type {
   ChannelVersions,
   CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
 import { CONFIG_KEY_CHECKPOINT_MAP } from "../../constants.js";
-import type { Pregel } from "../index.js";
 
 export function getNullChannelVersion(currentVersions: ChannelVersions) {
   const versionValues = Object.values(currentVersions);
@@ -113,39 +108,4 @@ export function patchCheckpointMap(
   } else {
     return config;
   }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function isRunnableSequence(
-  x: RunnableSequence | Runnable
-): x is RunnableSequence {
-  return "steps" in x && Array.isArray(x.steps);
-}
-
-function isPregel(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  x: Pregel<any, any> | Runnable
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): x is Pregel<any, any> {
-  return (
-    "inputChannels" in x &&
-    x.inputChannels !== undefined &&
-    "outputChannels" &&
-    x.outputChannels !== undefined
-  );
-}
-
-export function findSubgraphPregel(
-  candidate: Runnable
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Pregel<any, any> | undefined {
-  const candidates = [candidate];
-  for (const candidate of candidates) {
-    if (isPregel(candidate)) {
-      return candidate;
-    } else if (isRunnableSequence(candidate)) {
-      candidates.push(...candidate.steps);
-    }
-  }
-  return undefined;
 }

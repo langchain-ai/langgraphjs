@@ -72,11 +72,11 @@ import {
 } from "./algo.js";
 import {
   _coerceToDict,
-  findSubgraphPregel,
   getNewChannelVersions,
   patchCheckpointMap,
   RetryPolicy,
 } from "./utils/index.js";
+import { findSubgraphPregel } from "./utils/subgraph.js";
 import { PregelLoop, StreamChunk, StreamProtocol } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
 import {
