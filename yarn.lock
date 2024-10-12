@@ -1579,22 +1579,22 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:^0.3.6":
-  version: 0.3.9
-  resolution: "@langchain/core@npm:0.3.9"
+"@langchain/core@npm:^0.3.10":
+  version: 0.3.10
+  resolution: "@langchain/core@npm:0.3.10"
   dependencies:
     ansi-styles: ^5.0.0
     camelcase: 6
     decamelize: 1.2.0
     js-tiktoken: ^1.0.12
-    langsmith: ^0.1.56
+    langsmith: ^0.1.65
     mustache: ^4.2.0
     p-queue: ^6.6.2
     p-retry: 4
     uuid: ^10.0.0
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
-  checksum: 29f5fad2276f3c18176d42688eee23abc093773a9aa08123a1056f9bb6e18588da34ee76b2fb0f48a78287b34a9f24daa5e7800b13681b828854f2dd55c15c9b
+  checksum: 7ca2bd4810de5ee55f9416e8c8850b978bf8d360346c4cdccd76488191a60a2156f3304295b67b54cf8cb9ef1980d7ec0fa07a1554ac08351694ad73b0b3e318
   languageName: node
   linkType: hard
 
@@ -1768,7 +1768,7 @@ __metadata:
     "@jest/globals": ^29.5.0
     "@langchain/anthropic": ^0.3.0
     "@langchain/community": ^0.3.0
-    "@langchain/core": ^0.3.6
+    "@langchain/core": ^0.3.10
     "@langchain/langgraph-checkpoint": ~0.0.10
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
@@ -6303,7 +6303,7 @@ __metadata:
   dependencies:
     "@langchain/anthropic": ^0.3.0
     "@langchain/community": ^0.3.0
-    "@langchain/core": ^0.3.6
+    "@langchain/core": ^0.3.10
     "@langchain/groq": ^0.1.1
     "@langchain/langgraph": "workspace:*"
     "@langchain/mistralai": ^0.1.0
@@ -8544,9 +8544,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"langsmith@npm:^0.1.56":
-  version: 0.1.61
-  resolution: "langsmith@npm:0.1.61"
+"langsmith@npm:^0.1.65":
+  version: 0.1.65
+  resolution: "langsmith@npm:0.1.65"
   dependencies:
     "@types/uuid": ^10.0.0
     commander: ^10.0.1
@@ -8559,7 +8559,7 @@ __metadata:
   peerDependenciesMeta:
     openai:
       optional: true
-  checksum: ea32c2947573983c41f41c7a28a051a1bea2004aa3bd85d1e9945d8a6f8e6fc0c3c92d2de9ec60609d7f034db07c2e796a1ec40d019ad2c722c6f6be8e107170
+  checksum: ca44f26733fbb20675b84f2586b90622b8cf1aedc82123f5574af04e88ba29348e28b2b63f410479aeb7e5c174d2fef13b4bd9eb68581d93a104950b1fafa40f
   languageName: node
   linkType: hard
 
