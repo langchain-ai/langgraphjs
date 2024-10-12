@@ -13,6 +13,7 @@ import {
   StateSnapshot,
 } from "./types.js";
 import { readChannels } from "./io.js";
+import { findSubgraphPregel } from "./utils/subgraph.js";
 
 type ConsoleColors = {
   start: string;
@@ -151,7 +152,8 @@ export function* mapDebugCheckpoint<
   streamChannels: string | string[],
   metadata: CheckpointMetadata,
   tasks: readonly PregelExecutableTask<N, C>[],
-  pendingWrites: CheckpointPendingWrite[]
+  pendingWrites: CheckpointPendingWrite[],
+  parentConfig: RunnableConfig | undefined
 ) {
   function formatConfig(config: RunnableConfig) {
     // https://stackoverflow.com/a/78298178
@@ -186,12 +188,24 @@ export function* mapDebugCheckpoint<
     return pyConfig;
   }
 
-  function getCurrentUTC() {
-    const now = new Date();
-    return new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
+  const parentNs = config.configurable?.checkpoint_ns;
+  const taskStates: Record<string, RunnableConfig | StateSnapshot> = {};
+
+  for (const task of tasks) {
+    if (!findSubgraphPregel(task.proc)) continue;
+
+    let taskNs = `${task.name as string}:${task.id}`;
+    if (parentNs) taskNs = `${parentNs}|${taskNs}`;
+
+    taskStates[task.id] = {
+      configurable: {
+        thread_id: config.configurable?.thread_id,
+        checkpoint_ns: taskNs,
+      },
+    };
   }
 
-  const ts = getCurrentUTC().toISOString();
+  const ts = new Date().toISOString();
   yield {
     type: "checkpoint",
     timestamp: ts,
@@ -201,7 +215,8 @@ export function* mapDebugCheckpoint<
       values: readChannels(channels, streamChannels),
       metadata,
       next: tasks.map((task) => task.name),
-      tasks: tasksWithWrites(tasks, pendingWrites),
+      tasks: tasksWithWrites(tasks, pendingWrites, taskStates),
+      parentConfig: parentConfig ? formatConfig(parentConfig) : undefined,
     },
   };
 }

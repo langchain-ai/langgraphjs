@@ -76,6 +76,7 @@ import {
   patchCheckpointMap,
   RetryPolicy,
 } from "./utils/index.js";
+import { findSubgraphPregel } from "./utils/subgraph.js";
 import { PregelLoop, StreamChunk, StreamProtocol } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
 import {
@@ -208,22 +209,6 @@ export interface PregelOptions<
   subgraphs?: boolean;
   /** The shared value store */
   store?: BaseStore;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function isPregel(x: Pregel<any, any> | Runnable): x is Pregel<any, any> {
-  return (
-    "inputChannels" in x &&
-    x.inputChannels !== undefined &&
-    "outputChannels" &&
-    x.outputChannels !== undefined
-  );
-}
-
-function isRunnableSequence(
-  x: RunnableSequence | Runnable
-): x is RunnableSequence {
-  return "steps" in x && Array.isArray(x.steps);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -363,16 +348,9 @@ export class Pregel<
         }
       }
       // find the subgraph if any
-      let graph;
-      const candidates = [node.bound];
-      for (const candidate of candidates) {
-        if (isPregel(candidate)) {
-          graph = candidate;
-          break;
-        } else if (isRunnableSequence(candidate)) {
-          candidates.push(...candidate.steps);
-        }
-      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      type SubgraphPregelType = Pregel<any, any> | undefined;
+      const graph = findSubgraphPregel(node.bound) as SubgraphPregelType;
       // if found, yield recursively
       if (graph !== undefined) {
         if (name === namespace) {
