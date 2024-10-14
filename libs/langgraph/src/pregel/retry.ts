@@ -167,12 +167,8 @@ async function _runWithRetry(
           2
         )} seconds (attempt ${attempts}) after ${errorName}: ${error}`
       );
-      // Clear checkpoint_ns seen (for subgraph detection)
-      const checkpointNs = pregelTask.config?.configurable?.checkpoint_ns;
-      if (checkpointNs) {
-        getSubgraphsSeenSet().delete(checkpointNs);
-      }
     } finally {
+      // Clear checkpoint_ns seen (for subgraph detection)
       const checkpointNs = pregelTask.config?.configurable?.checkpoint_ns;
       if (checkpointNs) {
         getSubgraphsSeenSet().delete(checkpointNs);
