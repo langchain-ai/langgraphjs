@@ -448,6 +448,11 @@ function _getChannels<Channels extends Record<string, unknown> | unknown>(
   return channels;
 }
 
+/**
+ * Final result from building and compiling a {@link StateGraph}.
+ * Should not be instantiated directly, only using the StateGraph `.compile()`
+ * instance method.
+ */
 export class CompiledStateGraph<
   S,
   U,

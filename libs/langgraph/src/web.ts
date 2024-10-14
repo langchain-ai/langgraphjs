@@ -4,7 +4,7 @@ export {
   type StateGraphArgs,
   START,
   StateGraph,
-  type CompiledStateGraph,
+  CompiledStateGraph,
   MessageGraph,
   messagesStateReducer,
   type Messages,

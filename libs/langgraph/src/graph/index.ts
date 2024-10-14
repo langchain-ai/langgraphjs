@@ -11,7 +11,7 @@ export { END, START, Graph, type CompiledGraph } from "./graph.js";
 export {
   type StateGraphArgs,
   StateGraph,
-  type CompiledStateGraph,
+  CompiledStateGraph,
 } from "./state.js";
 export {
   MessageGraph,
