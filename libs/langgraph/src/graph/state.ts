@@ -478,7 +478,7 @@ export class CompiledStateGraph<
         throw new InvalidUpdateError(
           `Expected node "${key.toString()}" to return an object, received ${typeofInput}`,
           {
-            code: "INVALID_GRAPH_NODE_RETURN_VALUE",
+            lc_error_code: "INVALID_GRAPH_NODE_RETURN_VALUE",
           }
         );
       } else {

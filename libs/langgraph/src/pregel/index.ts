@@ -1132,7 +1132,7 @@ export class Pregel<
             `limit by setting the "recursionLimit" config key.`,
           ].join(" "),
           {
-            code: "GRAPH_RECURSION_LIMIT",
+            lc_error_code: "GRAPH_RECURSION_LIMIT",
           }
         );
       }

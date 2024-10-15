@@ -330,7 +330,7 @@ export class PregelLoop {
             `You can disable checkpointing for a subgraph by compiling it with ".compile({ checkpointer: false });"`,
           ].join("\n"),
           {
-            code: "MULTIPLE_SUBGRAPHS",
+            lc_error_code: "MULTIPLE_SUBGRAPHS",
           }
         );
       } else {

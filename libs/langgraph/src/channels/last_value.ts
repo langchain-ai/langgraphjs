@@ -31,7 +31,7 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
       throw new InvalidUpdateError(
         "LastValue can only receive one value per step.",
         {
-          code: "INVALID_CONCURRENT_GRAPH_UPDATE",
+          lc_error_code: "INVALID_CONCURRENT_GRAPH_UPDATE",
         }
       );
     }

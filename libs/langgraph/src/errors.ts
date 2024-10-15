@@ -1,19 +1,19 @@
 import { Interrupt } from "./constants.js";
 
 export type BaseLangGraphErrorFields = {
-  code?: string;
+  lc_error_code?: string;
 };
 
 export class BaseLangGraphError extends Error {
-  code?: string;
+  lc_error_code?: string;
 
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
     let finalMessage = message ?? "";
-    if (fields?.code) {
-      finalMessage = `${finalMessage}\n\nTroubleshooting URL: https://js.langchain.com/troubleshooting/errors/${fields.code}/\n`;
+    if (fields?.lc_error_code) {
+      finalMessage = `${finalMessage}\n\nTroubleshooting URL: https://js.langchain.com/troubleshooting/errors/${fields.lc_error_code}/\n`;
     }
     super(finalMessage);
-    this.code = fields?.code;
+    this.lc_error_code = fields?.lc_error_code;
   }
 }
 
