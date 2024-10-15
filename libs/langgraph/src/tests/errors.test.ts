@@ -32,7 +32,7 @@ it("StateGraph concurrent state value update fails", async () => {
     error = e as InvalidUpdateError;
   }
   expect(error).toBeInstanceOf(InvalidUpdateError);
-  expect(error?.code).toEqual("INVALID_CONCURRENT_GRAPH_UPDATE");
+  expect(error?.lc_error_code).toEqual("INVALID_CONCURRENT_GRAPH_UPDATE");
 });
 
 it("StateGraph bad return type", async () => {
@@ -55,7 +55,7 @@ it("StateGraph bad return type", async () => {
     error = e as InvalidUpdateError;
   }
   expect(error).toBeInstanceOf(InvalidUpdateError);
-  expect(error?.code).toEqual("INVALID_GRAPH_NODE_RETURN_VALUE");
+  expect(error?.lc_error_code).toEqual("INVALID_GRAPH_NODE_RETURN_VALUE");
 });
 
 it("MultipleSubgraph error", async () => {
@@ -110,7 +110,13 @@ it("MultipleSubgraph error", async () => {
 
   const app = graph.compile({ checkpointer });
 
-  await expect(async () =>
-    app.invoke({}, { configurable: { thread_id: "foo" } })
-  ).rejects.toThrowError(MultipleSubgraphsError);
+  let error: MultipleSubgraphsError | undefined;
+  try {
+    const config = { configurable: { thread_id: "1" } };
+    await app.invoke({}, config);
+  } catch (e) {
+    error = e as MultipleSubgraphsError;
+  }
+  expect(error).toBeInstanceOf(MultipleSubgraphsError);
+  expect(error?.lc_error_code).toEqual("MULTIPLE_SUBGRAPHS");
 });
