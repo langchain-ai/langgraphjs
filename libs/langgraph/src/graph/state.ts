@@ -479,7 +479,6 @@ export class CompiledStateGraph<
           `Expected node "${key.toString()}" to return an object, received ${typeofInput}`,
           {
             code: "INVALID_GRAPH_NODE_RETURN_VALUE",
-            url: "https://js.langchain.com/troubleshooting/errors/INVALID_GRAPH_NODE_RETURN_VALUE",
           }
         );
       } else {

@@ -1,7 +1,6 @@
 import { Interrupt } from "./constants.js";
 
 export type BaseLangGraphErrorFields = {
-  url?: string;
   code?: string;
 };
 
@@ -10,8 +9,8 @@ export class BaseLangGraphError extends Error {
 
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
     let finalMessage = message ?? "";
-    if (fields?.url) {
-      finalMessage = `${finalMessage}\n\nTroubleshooting URL: ${fields.url}\n`;
+    if (fields?.code) {
+      finalMessage = `${finalMessage}\n\nTroubleshooting URL: https://js.langchain.com/troubleshooting/errors/${fields.code}/\n`;
     }
     super(finalMessage);
     this.code = fields?.code;
@@ -43,10 +42,10 @@ export class GraphValueError extends BaseLangGraphError {
 export class GraphInterrupt extends BaseLangGraphError {
   interrupts: Interrupt[];
 
-  constructor(interrupts: Interrupt[] = [], fields?: BaseLangGraphErrorFields) {
+  constructor(interrupts?: Interrupt[], fields?: BaseLangGraphErrorFields) {
     super(JSON.stringify(interrupts, null, 2), fields);
     this.name = "GraphInterrupt";
-    this.interrupts = interrupts;
+    this.interrupts = interrupts ?? [];
   }
 
   static get unminifiable_name() {

@@ -1133,7 +1133,6 @@ export class Pregel<
           ].join(" "),
           {
             code: "GRAPH_RECURSION_LIMIT",
-            url: "https://js.langchain.com/troubleshooting/errors/GRAPH_RECURSION_LIMIT",
           }
         );
       }

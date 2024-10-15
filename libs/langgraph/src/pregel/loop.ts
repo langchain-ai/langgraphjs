@@ -328,7 +328,10 @@ export class PregelLoop {
             "This is not allowed if checkpointing is enabled.",
             "",
             `You can disable checkpointing for a subgraph by compiling it with ".compile({ checkpointer: false });"`,
-          ].join("\n")
+          ].join("\n"),
+          {
+            code: "MULTIPLE_SUBGRAPHS",
+          }
         );
       } else {
         getSubgraphsSeenSet().add(config.configurable?.checkpoint_ns);

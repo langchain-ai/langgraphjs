@@ -32,7 +32,6 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
         "LastValue can only receive one value per step.",
         {
           code: "INVALID_CONCURRENT_GRAPH_UPDATE",
-          url: "https://js.langchain.com/troubleshooting/errors/INVALID_CONCURRENT_GRAPH_UPDATE",
         }
       );
     }

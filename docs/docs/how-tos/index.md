@@ -97,3 +97,12 @@ These guides show how to use different streaming modes.
 - [How to have agent respond in structured format](respond-in-format.ipynb)
 - [How to manage agent steps](managing-agent-steps.ipynb)
 - [How to add node retry policies](node-retry-policies.ipynb)
+
+## Troubleshooting
+
+### Errors
+
+- [GRAPH_RECURSION_LIMIT](troubleshooting/errors/GRAPH_RECURSION_LIMIT.ipynb)
+- [INVALID_CONCURRENT_GRAPH_UPDATE](troubleshooting/errors/INVALID_CONCURRENT_GRAPH_UPDATE.ipynb)
+- [INVALID_GRAPH_NODE_RETURN_VALUE](troubleshooting/errors/INVALID_GRAPH_NODE_RETURN_VALUE.ipynb)
+- [MULTIPLE_SUBGRAPHS](troubleshooting/errors/MULTIPLE_SUBGRAPHS.ipynb)
