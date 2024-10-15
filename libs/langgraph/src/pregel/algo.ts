@@ -296,7 +296,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
               vals
             )}: ${e.message}`
           );
-          wrappedError.code = e.code;
+          wrappedError.lc_error_code = e.lc_error_code;
           throw wrappedError;
         } else {
           throw e;
