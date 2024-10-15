@@ -46,6 +46,74 @@ The first thing you do when you define a graph is define the `State` of the grap
 
 The way to specify the schema of a graph is by defining a root [`Annotation`](/langgraphjs/reference/modules/langgraph.Annotation.html) object, where each key is an item in the state.
 
+#### Multiple schemas
+
+Typically, all graph nodes communicate with a single state annotation. This means that they will read and write to the same state channels. But, there are cases where we want more control over this:
+
+- Internal nodes can pass information that is not required in the graph's input / output.
+- We may also want to use different input / output schemas for the graph. The output might, for example, only contain a single relevant output key.
+
+It is possible to have nodes write to private state channels inside the graph for internal node communication. We can simply define a private annotation, `PrivateState`. See [this notebook](../how-tos/pass_private_state.ipynb) for more detail.
+
+It is also possible to define explicit input and output schemas for a graph. In these cases, we define an "internal" schema that contains _all_ keys relevant to graph operations. But, we also define `input` and `output` schemas that are sub-sets of the "internal" schema to constrain the input and output of the graph. See [this guide](../how-tos/input_output_schema.ipynb) for more detail.
+
+Let's look at an example:
+
+```ts
+import { Annotation, StateGraph } from "@langchain/langgraph";
+
+const InputStateAnnotation = Annotation.Root({
+  user_input: Annotation<string>,
+});
+
+const OutputStateAnnotation = Annotation.Root({
+  graph_output: Annotation<string>,
+});
+
+const OverallStateAnnotation = Annotation.Root({
+  foo: Annotation<string>,
+  bar: Annotation<string>,
+  user_input: Annotation<string>,
+  graph_output: Annotation<string>,
+});
+
+const node1 = async (state: typeof InputStateAnnotation.State) => {
+  // Write to OverallStateAnnotation
+  return { foo: (state.user_input ?? "") + " name" };
+};
+
+const node2 = async (state: typeof OverallStateAnnotation.State) => {
+  // Read from OverallStateAnnotation, write to OverallStateAnnotation
+  return { bar: state.foo + " is" };
+};
+
+const node3 = async (state: typeof OverallStateAnnotation.State) => {
+  // Read from OverallStateAnnotation, write to OutputStateAnnotation
+  return { graph_output: state.bar + " Lance" };
+};
+
+const graph = new StateGraph({
+  input: InputStateAnnotation,
+  output: OutputStateAnnotation,
+  stateSchema: OverallStateAnnotation,
+})
+  .addNode("node1", node1)
+  .addNode("node2", node2)
+  .addNode("node3", node3)
+  .addEdge("__start__", "node1")
+  .addEdge("node1", "node2")
+  .addEdge("node2", "node3")
+  .compile();
+
+await graph.invoke({ user_input: "My" });
+```
+
+```
+{ graph_output: "My name is Lance" }
+```
+
+Note that we pass `state: typeof InputStateAnnotation.State` as the input schema to `node1`. But, we write out to `foo`, a channel in `OverallStateAnnotation`. How can we write out to a state channel that is not included in the input schema? This is because a node _can write to any state channel in the graph state._ The graph state is the union of of the state channels defined at initialization, which includes `OverallStateAnnotation` and the filters `InputStateAnnotation` and `OutputStateAnnotation`.
+
 ### Reducers
 
 Reducers are key to understanding how updates from nodes are applied to the `State`. Each key in the `State` has its own independent reducer function. If no reducer function is explicitly specified then it is assumed that all updates to that key should override it. Let's take a look at a few examples to understand them better.
@@ -83,9 +151,50 @@ const graphBuilder = new StateGraph(State);
 
 In this example, we've updated our `bar` field to be an object containing a `reducer` function. This function will always accept two positional arguments: `state` and `update`, with `state` representing the current state value, and `update` representing the update returned from a `Node`. Note that the first key remains unchanged. Let's assume the input to the graph is `{ foo: 1, bar: ["hi"] }`. Let's then assume the first `Node` returns `{ foo: 2 }`. This is treated as an update to the state. Notice that the `Node` does not need to return the whole `State` schema - just an update. After applying this update, the `State` would then be `{ foo: 2, bar: ["hi"] }`. If the second node returns`{ bar: ["bye"] }` then the `State` would then be `{ foo: 2, bar: ["hi", "bye"] }`. Notice here that the `bar` key is updated by concatenating the two arrays together.
 
-### MessagesAnnotation
+### Working with Messages in Graph State
 
-`MessagesAnnotation` is one of the few opinionated components in LangGraph. `MessagesAnnotation` is a special state annotation designed to make it easy to use an array of messages as a key in your state. Specifically, importing and using the prebuilt `MessagesAnnotation` like this:
+#### Why use messages?
+
+Most modern LLM providers have a chat model interface that accepts a list of messages as input. LangChain's [`ChatModel`](https://js.langchain.com/docs/concepts/#chat-models) in particular accepts a list of `Message` objects as inputs. These messages come in a variety of forms such as `HumanMessage` (user input) or `AIMessage` (LLM response). To read more about what message objects are, please refer to [this](https://js.langchain.com/docs/concepts/#message-types) conceptual guide.
+
+#### Using Messages in your Graph
+
+In many cases, it is helpful to store prior conversation history as a list of messages in your graph state. To do so, we can add a key (channel) to the graph state that stores a list of `Message` objects and annotate it with a reducer function (see `messages` key in the example below). The reducer function is vital to telling the graph how to update the list of `Message` objects in the state with each state update (for example, when a node sends an update). If you don't specify a reducer, every state update will overwrite the list of messages with the most recently provided value.
+
+However, you might also want to manually update messages in your graph state (e.g. human-in-the-loop). If you were to use something like `(a, b) => a.concat(b)` as a reducer, the manual state updates you send to the graph would be appended to the existing list of messages, instead of updating existing messages. To avoid that, you need a reducer that can keep track of message IDs and overwrite existing messages, if updated. To achieve this, you can use the prebuilt `messagesStateReducer` function. For brand new messages, it will simply append to existing list, but it will also handle the updates for existing messages correctly.
+
+#### Serialization
+
+In addition to keeping track of message IDs, the `messagesStateReducer` function will also try to deserialize messages into LangChain `Message` objects whenever a state update is received on the `messages` channel. This allows sending graph inputs / state updates in the following format:
+
+```ts
+// this is supported
+{
+  messages: [new HumanMessage({ content: "message" })];
+}
+
+// and this is also supported
+{
+  messages: [{ role: "user", content: "message" }];
+}
+```
+
+Below is an example of a graph state annotation that uses `messagesStateReducer` as it's reducer function.
+
+```ts
+import type { BaseMessage } from "@langchain/core/messages";
+import { Annotation, type Messages } from "@langchain/langgraph";
+
+const StateAnnotation = Annotation.Root({
+  messages: Annotation<BaseMessage[], Messages>({
+    reducer: messagesStateReducer,
+  }),
+});
+```
+
+#### MessagesAnnotation
+
+Since having a list of messages in your state is so common, there exists a prebuilt annotation called `MessagesAnnotation` which makes it easy to use messages as graph state. `MessagesAnnotation` is defined with a single `messages` key which is a list of `BaseMessage` objects and uses the `messagesStateReducer` reducer.
 
 ```typescript
 import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
@@ -355,6 +464,120 @@ function myNode(
 }
 ```
 
+## Subgraphs
+
+A subgraph is a [graph](#graphs) that is used as a [node](#nodes) in another graph. This is nothing more than the age-old concept of encapsulation, applied to LangGraph. Some reasons for using subgraphs are:
+
+- building [multi-agent systems](./multi_agent.md)
+- when you want to reuse a set of nodes in multiple graphs, which maybe share some state, you can define them once in a subgraph and then use them in multiple parent graphs
+- when you want different teams to work on different parts of the graph independently, you can define each part as a subgraph, and as long as the subgraph interface (the input and output schemas) is respected, the parent graph can be built without knowing any details of the subgraph
+
+There are two ways to add subgraphs to a parent graph:
+
+- add a node with the compiled subgraph: this is useful when the parent graph and the subgraph share state keys and you don't need to transform state on the way in or out
+
+```ts
+.addNode("subgraph", subgraphBuilder.compile());
+```
+
+- add a node with a function that invokes the subgraph: this is useful when the parent graph and the subgraph have different state schemas and you need to transform state before or after calling the subgraph
+
+```ts
+const subgraph = subgraphBuilder.compile();
+
+const callSubgraph = async (state: typeof StateAnnotation.State) => {
+  return subgraph.invoke({ subgraph_key: state.parent_key });
+};
+
+builder.addNode("subgraph", callSubgraph);
+```
+
+Let's take a look at examples for each.
+
+### As a compiled graph
+
+The simplest way to create subgraph nodes is by using a [compiled subgraph](#compiling-your-graph) directly. When doing so, it is **important** that the parent graph and the subgraph [state schemas](#state) share at least one key which they can use to communicate. If your graph and subgraph do not share any keys, you should use write a function [invoking the subgraph](#as-a-function) instead.
+
+!!! Note
+
+If you pass extra keys to the subgraph node (i.e., in addition to the shared keys), they will be ignored by the subgraph node. Similarly, if you return extra keys from the subgraph, they will be ignored by the parent graph.
+
+```ts
+import { StateGraph, Annotation } from "@langchain/langgraph";
+
+const StateAnnotation = Annotation.Root({
+  foo: Annotation<string>,
+});
+
+const SubgraphStateAnnotation = Annotation.Root({
+  foo: Annotation<string>, // note that this key is shared with the parent graph state
+  bar: Annotation<string>,
+});
+
+// Define subgraph
+const subgraphNode = async (state: typeof SubgraphStateAnnotation.State) => {
+  // note that this subgraph node can communicate with
+  // the parent graph via the shared "foo" key
+  return { foo: state.foo + "bar" };
+};
+
+const subgraph = new StateGraph(SubgraphStateAnnotation)
+  .addNode("subgraph", subgraphNode);
+  ...
+  .compile();
+
+// Define parent graph
+const parentGraph = new StateGraph(StateAnnotation)
+  .addNode("subgraph", subgraph)
+  ...
+  .compile();
+```
+
+### As a function
+
+You might want to define a subgraph with a completely different schema. In this case, you can create a node function that invokes the subgraph. This function will need to [transform](../how-tos/subgraph-transform-state.ipynb) the input (parent) state to the subgraph state before invoking the subgraph, and transform the results back to the parent state before returning the state update from the node.
+
+```ts
+import { StateGraph, Annotation } from "@langchain/langgraph";
+
+const StateAnnotation = Annotation.Root({
+  foo: Annotation<string>,
+});
+
+const SubgraphStateAnnotation = Annotation.Root({
+  // note that none of these keys are shared with the parent graph state
+  bar: Annotation<string>,
+  baz: Annotation<string>,
+});
+
+// Define subgraph
+const subgraphNode = async (state: typeof SubgraphStateAnnotation.State) => {
+  return { bar: state.bar + "baz" };
+};
+
+const subgraph = new StateGraph(SubgraphStateAnnotation)
+  .addNode("subgraph", subgraphNode);
+  ...
+  .compile();
+
+// Define parent graph
+const subgraphWrapperNode = async (state: typeof StateAnnotation.State) => {
+  // transform the state to the subgraph state
+  const response = await subgraph.invoke({
+    bar: state.foo,
+  });
+  // transform response back to the parent state
+  return {
+    foo: response.bar,
+  };
+}
+
+const parentGraph = new StateGraph(StateAnnotation)
+  .addNode("subgraph", subgraphWrapperNode)
+  ...
+  .compile();
+```
+
 ## Visualization
 
 It's often nice to be able to visualize graphs, especially as they get more complex. LangGraph comes with a nice built-in way to render a graph as a Mermaid diagram. You can use the `getGraph()` method like this:
@@ -377,4 +600,4 @@ LangGraph is built with first class support for streaming. There are several dif
 
 In addition, you can use the [`streamEvents`](https://api.js.langchain.com/classes/langchain_core_runnables.Runnable.html#streamEvents) method to stream back events that happen _inside_ nodes. This is useful for [streaming tokens of LLM calls](../how-tos/streaming-tokens-without-langchain.ipynb).
 
-LangGraph is built with first class support for streaming, including streaming updates from graph nodes during the execution, streaming tokens from LLM calls and more. See this [conceptual guide](./streaming.md) for more information.
+LangGraph is built with first class support for streaming, including streaming updates from graph nodes during execution, streaming tokens from LLM calls and more. See this [conceptual guide](./streaming.md) for more information.
