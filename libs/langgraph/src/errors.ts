@@ -1,8 +1,26 @@
 import { Interrupt } from "./constants.js";
 
-export class GraphRecursionError extends Error {
-  constructor(message?: string) {
-    super(message);
+export type BaseLangGraphErrorFields = {
+  url?: string;
+  code?: string;
+};
+
+export class BaseLangGraphError extends Error {
+  code?: string;
+
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    let finalMessage = message ?? "";
+    if (fields?.url) {
+      finalMessage = `${finalMessage}\n\nTroubleshooting URL: ${fields.url}\n`;
+    }
+    super(finalMessage);
+    this.code = fields?.code;
+  }
+}
+
+export class GraphRecursionError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
     this.name = "GraphRecursionError";
   }
 
@@ -11,9 +29,9 @@ export class GraphRecursionError extends Error {
   }
 }
 
-export class GraphValueError extends Error {
-  constructor(message?: string) {
-    super(message);
+export class GraphValueError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
     this.name = "GraphValueError";
   }
 
@@ -22,11 +40,11 @@ export class GraphValueError extends Error {
   }
 }
 
-export class GraphInterrupt extends Error {
+export class GraphInterrupt extends BaseLangGraphError {
   interrupts: Interrupt[];
 
-  constructor(interrupts: Interrupt[] = []) {
-    super(JSON.stringify(interrupts, null, 2));
+  constructor(interrupts: Interrupt[] = [], fields?: BaseLangGraphErrorFields) {
+    super(JSON.stringify(interrupts, null, 2), fields);
     this.name = "GraphInterrupt";
     this.interrupts = interrupts;
   }
@@ -38,13 +56,16 @@ export class GraphInterrupt extends Error {
 
 /** Raised by a node to interrupt execution. */
 export class NodeInterrupt extends GraphInterrupt {
-  constructor(message: string) {
-    super([
-      {
-        value: message,
-        when: "during",
-      },
-    ]);
+  constructor(message: string, fields?: BaseLangGraphErrorFields) {
+    super(
+      [
+        {
+          value: message,
+          when: "during",
+        },
+      ],
+      fields
+    );
     this.name = "NodeInterrupt";
   }
 
@@ -65,9 +86,9 @@ export function isGraphInterrupt(
   );
 }
 
-export class EmptyInputError extends Error {
-  constructor(message?: string) {
-    super(message);
+export class EmptyInputError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
     this.name = "EmptyInputError";
   }
 
@@ -76,9 +97,9 @@ export class EmptyInputError extends Error {
   }
 }
 
-export class EmptyChannelError extends Error {
-  constructor(message?: string) {
-    super(message);
+export class EmptyChannelError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
     this.name = "EmptyChannelError";
   }
 
@@ -87,9 +108,9 @@ export class EmptyChannelError extends Error {
   }
 }
 
-export class InvalidUpdateError extends Error {
-  constructor(message?: string) {
-    super(message);
+export class InvalidUpdateError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
     this.name = "InvalidUpdateError";
   }
 
@@ -98,9 +119,9 @@ export class InvalidUpdateError extends Error {
   }
 }
 
-export class MultipleSubgraphsError extends Error {
-  constructor(message?: string) {
-    super(message);
+export class MultipleSubgraphsError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
     this.name = "MultipleSubgraphError";
   }
 

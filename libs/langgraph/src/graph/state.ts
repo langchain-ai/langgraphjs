@@ -346,14 +346,14 @@ export class StateGraph<
         throw new Error("END cannot be a start node");
       }
       if (!Object.keys(this.nodes).some((node) => node === start)) {
-        throw new Error(`Need to addNode ${start} first`);
+        throw new Error(`Need to add a node named "${start}" first`);
       }
     }
     if (endKey === END) {
       throw new Error("END cannot be an end node");
     }
     if (!Object.keys(this.nodes).some((node) => node === endKey)) {
-      throw new Error(`Need to addNode ${endKey} first`);
+      throw new Error(`Need to add a node named "${endKey}" first`);
     }
 
     this.waitingEdges.add([startKey, endKey]);
@@ -475,7 +475,13 @@ export class CompiledStateGraph<
         return SKIP_WRITE;
       } else if (typeof input !== "object" || Array.isArray(input)) {
         const typeofInput = Array.isArray(input) ? "array" : typeof input;
-        throw new InvalidUpdateError(`Expected object, got ${typeofInput}`);
+        throw new InvalidUpdateError(
+          `Expected node "${key.toString()}" to return an object, received ${typeofInput}`,
+          {
+            code: "INVALID_GRAPH_NODE_RETURN_VALUE",
+            url: "https://js.langchain.com/troubleshooting/errors/INVALID_GRAPH_NODE_RETURN_VALUE",
+          }
+        );
       } else {
         return key in input ? input[key] : SKIP_WRITE;
       }
