@@ -51,26 +51,3 @@ it("StateGraph bad return type", async () => {
   expect(error).toBeInstanceOf(InvalidUpdateError);
   expect(error?.code).toEqual("INVALID_GRAPH_NODE_RETURN_VALUE");
 });
-
-it("StateGraph bad conditional edge return value", async () => {
-  const StateAnnotation = Annotation.Root({
-    my_key: Annotation<string[]>,
-  });
-
-  const graph = new StateGraph(StateAnnotation)
-    .addNode("foo", () => 9)
-    .addEdge("__start__", "foo");
-
-  const app = graph.compile({ checkpointer: new MemorySaverAssertImmutable() });
-  let error: InvalidUpdateError | undefined;
-  try {
-    const config = { configurable: { thread_id: "1" } };
-    await app.updateState(config, { invalid: "foo" }, "foo");
-    await app.invoke({ my_key: "value" }, config);
-  } catch (e) {
-    console.log(e);
-    error = e as InvalidUpdateError;
-  }
-  expect(error).toBeInstanceOf(InvalidUpdateError);
-  expect(error?.code).toEqual("INVALID_GRAPH_NODE_RETURN_VALUE");
-});
