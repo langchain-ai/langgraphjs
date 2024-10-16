@@ -27,6 +27,7 @@ These how-to guides show how to achieve that controllability.
 LangGraph.js makes it easy to persist state across graph runs. The guides below shows how to add persistence to your graph.
 
 - [How to add thread-level persistence to your graph](persistence.ipynb)
+- [How to add thread-level persistence to subgraphs](subgraph-persistence.ipynb)
 - [How to add cross-thread persistence](cross-thread-persistence.ipynb)
 - [How to use a Postgres checkpointer for persistence](persistence-postgres.ipynb)
 - [How to manage conversation history](manage-conversation-history.ipynb)
@@ -67,8 +68,8 @@ These guides show how to use different streaming modes.
 
 ## Subgraphs
 
-- [How to create subgraphs](subgraph.ipynb)
-- [How to manage state in subgraphs](subgraphs-manage-state.ipynb)
+- [How to add and use subgraphs](subgraph.ipynb)
+- [How to view and update state in subgraphs](subgraphs-manage-state.ipynb)
 - [How to transform inputs and outputs of a subgraph](subgraph-transform-state.ipynb)
 
 ## State management

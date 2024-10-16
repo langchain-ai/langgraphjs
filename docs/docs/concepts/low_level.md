@@ -79,7 +79,7 @@ const OverallStateAnnotation = Annotation.Root({
 
 const node1 = async (state: typeof InputStateAnnotation.State) => {
   // Write to OverallStateAnnotation
-  return { foo: (state.user_input ?? "") + " name" };
+  return { foo: state.user_input + " name" };
 };
 
 const node2 = async (state: typeof OverallStateAnnotation.State) => {
