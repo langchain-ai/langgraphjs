@@ -498,9 +498,12 @@ Let's take a look at examples for each.
 
 The simplest way to create subgraph nodes is by using a [compiled subgraph](#compiling-your-graph) directly. When doing so, it is **important** that the parent graph and the subgraph [state schemas](#state) share at least one key which they can use to communicate. If your graph and subgraph do not share any keys, you should use write a function [invoking the subgraph](#as-a-function) instead.
 
-!!! Note
-
-If you pass extra keys to the subgraph node (i.e., in addition to the shared keys), they will be ignored by the subgraph node. Similarly, if you return extra keys from the subgraph, they will be ignored by the parent graph.
+<div class="admonition note">
+    <p class="admonition-title">Note</p>
+    <p>
+      If you pass extra keys to the subgraph node (i.e., in addition to the shared keys), they will be ignored by the subgraph node. Similarly, if you return extra keys from the subgraph, they will be ignored by the parent graph.
+    </p>
+</div>
 
 ```ts
 import { StateGraph, Annotation } from "@langchain/langgraph";
