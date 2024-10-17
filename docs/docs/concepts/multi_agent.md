@@ -1,158 +1,159 @@
 # Multi-agent Systems
 
-A multi-agent system is a system with multiple independent actors powered by LLMs that are connected in a specific way. These actors can be as simple as a prompt and an LLM call, or as complex as a [ReAct](./agentic_concepts.md#react-implementation) agent.
+An [agent](./agentic_concepts.md#agent-architectures) is _a system that uses an LLM to decide the control flow of an application_. As you develop these systems, they might grow more complex over time, making them harder to manage and scale. For example, you might run into the following problems:
 
-The primary benefits of this architecture are:
+- agent has too many tools at its disposal and makes poor decisions about which tool to call next
+- context grows too complex for a single agent to keep track of
+- there is a need for multiple specialization areas in the system (e.g. planner, researcher, math expert, etc.)
 
-* **Modularity**: Separate agents facilitate easier development, testing, and maintenance of agentic systems.
-* **Specialization**: You can create expert agents focused on specific domains, and compose them into more complex applications
-* **Control**: You can explicitly control how agents communicate (as opposed to relying on function calling)
+To tackle these, you might consider breaking your application into multiple smaller, independent agents and composing them into a **multi-agent system**. These independent agents can be as simple as a prompt and an LLM call, or as complex as a [ReAct](./agentic_concepts.md#react-implementation) agent (and more!).
 
-## Multi-agent systems in LangGraph
+The primary benefits of using multi-agent systems are:
 
-### Agents as nodes
+- **Modularity**: Separate agents make it easier to develop, test, and maintain agentic systems.
+- **Specialization**: You can create expert agents focused on specific domains, which helps with the overall system performance.
+- **Control**: You can explicitly control how agents communicate (as opposed to relying on function calling).
 
-Agents can be defined as nodes in LangGraph. As any other node in the LangGraph, these agent nodes receive the graph state as an input and return an update to the state as their output.
+## Multi-agent architectures
 
-* Simple **LLM nodes**: single LLMs with custom prompts
-* **Subgraph nodes**: complex graphs called inside the orchestrator graph node
+![](./img/multi_agent/architectures.png)
 
-![](./img/multi_agent/subgraph.png)
+There are several ways to connect agents in a multi-agent system:
 
-### Agents as tools
+- **Network**: each agent can communicate with every other agent. Any agent can decide which other agent to call next.
+- **Supervisor**: each agent communicates with a single [supervisor](https://langchain-ai.github.io/langgraphjs/tutorials/multi_agent/agent_supervisor/) agent. Supervisor agent makes decisions on which agent should be called next.
+- **Hierarchical**: you can define a multi-agent system with a supervisor of supervisors. This is a generalization of the supervisor architecture and allows for more complex control flows.
+- **Custom multi-agent workflow**: each agent communicates with only a subset of agents. Parts of the flow are deterministic, and only some agents can decide which other agents to call next.
 
-Agents can also be defined as tools. In this case, the orchestrator agent (e.g. ReAct agent) would use a tool-calling LLM to decide which of the agent tools to call, as well as the arguments to pass to those agents.
+### Network
 
-You could also take a "mega-graph" approach – incorporating subordinate agents' nodes directly into the parent, orchestrator graph. However, this is not recommended for complex subordinate agents, as it would make the overall system harder to scale, maintain and debug – you should use subgraphs or tools in those cases.
+In this architecture, agents are defined as graph nodes. Each agent can communicate with every other agent (many-to-many connections) and can decide which agent to call next. While very flexible, this architecture doesn't scale well as the number of agents grows:
 
-## Communication in multi-agent systems
+- hard to enforce which agent should be called next
+- hard to determine how much [information](#shared-message-list) should be passed between the agents
 
-A big question in multi-agent systems is how the agents communicate amongst themselves and with the orchestrator agent. This involves both the schema of how they communicate, as well as the sequence in which they communicate. LangGraph is perfect for orchestrating these types of systems and allows you to define both.
+We recommend avoiding this architecture in production and using one of the below architectures instead.
 
-### Schema
+### Supervisor
 
-LangGraph provides a lot of flexibility for how to communicate within multi-agent architectures.
+In this architecture, we define agents as nodes and add a supervisor node (LLM) that decides which agent nodes should be called next. We use [conditional edges](./low_level.md#conditional-edges) to route execution to the appropriate agent node based on supervisor's decision. This architecture also lends itself well to running multiple agents in parallel or using [map-reduce](../how-tos/map-reduce.ipynb) pattern.
 
-* A node in LangGraph can have a [private input state schema](/langgraphjs/how-tos/pass_private_state/) that is distinct from the graph state schema. This allows passing additional information during the graph execution that is only needed for executing a particular node.
-* Subgraph node agents can have independent [input / output state schemas](/langgraphjs/how-tos/input_output_schema/). In this case it’s important to [add input / output transformations](/langgraphjs/how-tos/subgraph-transform-state/) so that the parent graph knows how to communicate with the subgraphs.
-* For tool-based subordinate agents, the orchestrator determines the inputs based on the tool schema. Additionally, LangGraph allows passing state to individual tools at runtime, so subordinate agents can access parent state, if needed.
-
-### Sequence
-
-LangGraph provides multiple methods to control agent communication sequence:
-
-* **Explicit control flow (graph edges)**: LangGraph allows you to define the control flow of your application (i.e. the sequence of how agents communicate) explicitly, via [graph edges](./low_level.md#edges).
-
-```typescript
+```ts
+import {
+  StateGraph,
+  Annotation,
+  MessagesAnnotation,
+} from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
-import { SystemMessage } from "@langchain/core/messages";
-import { StateGraph, MessagesAnnotation } from "langgraph";
 
-const model = new ChatOpenAI({ model: "gpt-4o" });
+const model = new ChatOpenAI({
+  model: "gpt-4o-mini",
+});
 
-const researchAgent = async (state: typeof MessagesAnnotation.State) => {
-  const messages = [
-    new SystemMessage("You are a research assistant. Given a topic, provide key facts and information."),
-    ...state.messages
-  ];
-  const response = await model.invoke(messages);
+const StateAnnotation = Annotation.Root({
+  ...MessagesAnnotation.spec,
+  next: Annotation<"agent1" | "agent2">,
+});
+
+const supervisor = async (state: typeof StateAnnotation.State) => {
+  const response = await model.withStructuredOutput(...).invoke(...);
+  return { next: response.next_agent };
+};
+
+const agent1 = async (state: typeof StateAnnotation.State) => {
+  const response = await model.invoke(...);
   return { messages: [response] };
 };
 
-const summarizeAgent = async (state: typeof MessagesAnnotation.State) => {
-  const messages = [
-    new SystemMessage("You are a summarization expert. Condense the given information into a brief summary."),
-    ...state.messages
-  ];
-  const response = await model.invoke(messages);
+const agent2 = async (state: typeof StateAnnotation.State) => {
+  const response = await model.invoke(...);
+  return { messages: [response] };
+};
+
+const graph = new StateGraph(StateAnnotation)
+  .addNode("supervisor", supervisor)
+  .addNode("agent1", agent1)
+  .addNode("agent2", agent2)
+  .addEdge("__start__", "supervisor")
+  // route to one of the agents or exit based on the supervisor's decisiion
+  .addConditionalEdges("supervisor", async (state) => state.next)
+  .addEdge("agent1", "supervisor")
+  .addEdge("agent2", "supervisor")
+  .compile();
+```
+
+Check out this [tutorial](https://langchain-ai.github.io/langgraphjs/tutorials/multi_agent/agent_supervisor/) for an example of supervisor multi-agent architecture.
+
+### Custom multi-agent workflow
+
+In this architecture we add individual agents as graph nodes and define the order in which agents are called ahead of time, in a custom workflow. In LangGraph the workflow can be defined in two ways:
+
+- **Explicit control flow (normal edges)**: LangGraph allows you to explicitly define the control flow of your application (i.e. the sequence of how agents communicate) explicitly, via [normal graph edges](./low_level.md#normal-edges). This is the most deterministic variant of this architecture above — we always know which agent will be called next ahead of time.
+
+- **Dynamic control flow (conditional edges)**: in LangGraph you can allow LLMs to decide parts of your application control flow. This can be achieved by using [conditional edges](./low_level.md#conditional-edges).
+
+```ts
+import {
+  StateGraph,
+  MessagesAnnotation,
+} from "@langchain/langgraph";
+import { ChatOpenAI } from "@langchain/openai";
+
+const model = new ChatOpenAI({
+  model: "gpt-4o-mini",
+});
+
+const agent1 = async (state: typeof MessagesAnnotation.State) => {
+  const response = await model.invoke(...);
+  return { messages: [response] };
+};
+
+const agent2 = async (state: typeof MessagesAnnotation.State) => {
+  const response = await model.invoke(...);
   return { messages: [response] };
 };
 
 const graph = new StateGraph(MessagesAnnotation)
-    .addNode("research", researchAgent)
-    .addNode("summarize", summarizeAgent)
-    // Define the flow explicitly
-    .addEdge("start", "research")
-    .addEdge("research", "summarize")
-    .addEdge("summarize", "end");
-
-// Compile the graph
-const app = graph.compile();
+  .addNode("agent1", agent1)
+  .addNode("agent2", agent2)
+  // define the flow explicitly
+  .addEdge("__start__", "agent1")
+  .addEdge("agent1", "agent2")
+  .compile();
 ```
 
-* **Dynamic control flow (conditional edges)**: LangGraph also allows you to define [conditional edges](./low_level.md#conditional-edges), where the control flow is dependent on satisfying a given condition. In such cases, you can use an LLM to decide which subordinate agent to call next.
+## Communication between agents
 
+The most important thing when building multi-agent systems is figuring out how the agents communicate. There are few different considerations:
 
-* **Implicit control flow (tool calling)**: if the orchestrator agent treats subordinate agents as tools, the tool-calling LLM powering the orchestrator will make decisions about the order in which the tools (agents) are being called.
+- What if two agents have [**different state schemas**](#different-state-schemas)?
+- How to communicate over a [**shared message list**](#shared-message-list)?
 
-```typescript
-import { ChatOpenAI } from "@langchain/openai";
-import { SystemMessage, ToolMessage } from "@langchain/core/messages";
-import { StateGraph, MessagesAnnotation } from "langgraph";
-import { ToolNode, InjectedState, createReactAgent } from "langgraph/prebuilt";
+#### Graph state
 
-const model = new ChatOpenAI({ model: "gpt-4o-mini" });
+To communicate via graph state, individual agents need to be defined as [graph nodes](./low_level.md#nodes). These can be added as functions or as entire [subgraphs](./low_level.md#subgraphs). At each step of the graph execution, agent node receives the current state of the graph, executes the agent code and then passes the updated state to the next nodes.
 
-const researchAgent = async (state: typeof MessagesAnnotation.State) => {
-  const messages = [
-    new SystemMessage("You are a research assistant. Given a topic, provide key facts and information."),
-    ...state.messages.slice(0, -1)
-  ];
-  const response = await model.invoke(messages);
-  const toolCall = state.messages[state.messages.length - 1].tool_calls[0];
-  return { messages: [new ToolMessage({ content: response.content, toolCallId: toolCall.id })] };
-};
+Typically agent nodes share a single [state schema](./low_level.md#schema). However, you might want to design agent nodes with [different state schemas](#different-state-schemas).
 
-const summarizeAgent = async (state: typeof MessagesAnnotation.State) => {
-  const messages = [
-    new SystemMessage("You are a summarization expert. Condense the given information into a brief summary."),
-    ...state.messages.slice(0, -1)
-  ];
-  const response = await model.invoke(messages);
-  const toolCall = state.messages[state.messages.length - 1].tool_calls[0];
-  return { messages: [new ToolMessage({ content: response.content, toolCallId: toolCall.id })] };
-};
+### Different state schemas
 
-const tools = [researchAgent, summarizeAgent];
-const toolNode = new ToolNode(tools);
+An agent might need to have a different state schema from the rest of the agents. For example, a search agent might only need to keep track of queries and retrieved documents. There are two ways to achieve this in LangGraph:
 
-const graph = createReactAgent({
-    llm: model,
-    tools,
-    messageModifier: "First research and then summarize information on a given topic."
-});
-```
+- Define [subgraph](./low_level.md#subgraphs) agents with a separate state schema. If there are no shared state keys (channels) between the subgraph and the parent graph, it’s important to [add input / output transformations](https://langchain-ai.github.io/langgraphjs/how-tos/subgraph-transform-state/) so that the parent graph knows how to communicate with the subgraphs.
+- Define agent node functions with a [private input state schema](https://langchain-ai.github.io/langgraphjs/how-tos/pass_private_state/) that is distinct from the overall graph state schema. This allows passing information that is only needed for executing that particular agent.
 
-## Example architectures
+### Shared message list
 
-Below are several examples of complex multi-agent architectures that can be implemented in LangGraph.
+The most common way for the agents to communicate is via a shared state channel, typically a list of messages. This assumes that there is always at least a single channel (key) in the state that is shared by the agents. When communicating via a shared message list there is an additional consideration: should the agents [share the full history](#share-full-history) of their thought process or only [the final result](#share-final-result)?
 
-### Multi-Agent Collaboration
+![](./img/multi_agent/response.png)
 
-In this example, different agents collaborate on a **shared** scratchpad of messages (i.e. shared graph state). This means that all the work any of them do is visible to the other ones. The benefit is that the other agents can see all the individual steps done. The downside is that sometimes is it overly verbose and unnecessary to pass ALL this information along, and sometimes only the final answer from an agent is needed. We call this **collaboration** because of the shared nature the scratchpad.
+#### Share full history
 
-In this case, the independent agents are actually just a single LLM call with a custom system message.
+Agents can **share the full history** of their thought process (i.e. "scratchpad") with all other agents. This "scratchpad" would typically look like a [list of messages](./low_level.md#why-use-messages). The benefit of sharing full thought process is that it might help other agents make better decisions and improve reasoning ability for the system as a whole. The downside is that as the number of agents and their complexity grows, the "scratchpad" will grow quickly and might require additional strategies for [memory management](./memory.md#managing-long-conversation-history).
 
-Here is a visualization of how these agents are connected:
+#### Share final result
 
-![](./img/multi_agent/collaboration.png)
+Agents can have their own private "scratchpad" and only **share the final result** with the rest of the agents. This approach might work better for systems with many agents or agents that are more complex. In this case, you would need to define agents with [different state schemas](#different-state-schemas)
 
-See full code example in this [tutorial](/langgraphjs/tutorials/multi_agent/multi_agent_collaboration/).
-
-### Agent Supervisor
-
-In this example, multiple agents are connected, but compared to above they do NOT share a shared scratchpad. Rather, they have their own independent scratchpads (i.e. their own state), and then their final responses are appended to a global scratchpad.
-
-In this case, the independent agents are a LangGraph ReAct agent (graph). This means they have their own individual prompt, LLM, and tools. When called, it's not just a single LLM call, but rather an invocation of the graph powering the ReAct agent.
-
-![](./img/multi_agent/supervisor.png)
-
-See full code example in this [tutorial](/langgraphjs/tutorials/multi_agent/agent_supervisor/).
-
-### Hierarchical Agent Teams
-
-What if the job for a single worker in agent supervisor example becomes too complex? What if the number of workers becomes too large? For some applications, the system may be more effective if work is distributed hierarchically. You can do this by creating additional level of subgraphs and creating a top-level supervisor, along with mid-level supervisors:
-
-![](./img/multi_agent/hierarchical.png)
-
-See full code example in this [tutorial](/langgraphjs/tutorials/multi_agent/hierarchical_agent_teams/).
+For agents called as tools, the supervisor determines the inputs based on the tool schema. Additionally, LangGraph allows [passing state](https://langchain-ai.github.io/langgraphjs/how-tos/pass-run-time-values-to-tools/) to individual tools at runtime, so subordinate agents can access parent state, if needed.

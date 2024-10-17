@@ -1,14 +1,14 @@
 # Agent architectures
 
-Many LLM applications implement a particular control flow of steps before and / or after LLM calls. As an example, [RAG](https://github.com/langchain-ai/rag-from-scratch) performs retrieval of relevant documents to a question, and passes those documents to an LLM in order to ground the model's response. 
+Many LLM applications implement a particular control flow of steps before and / or after LLM calls. As an example, [RAG](https://github.com/langchain-ai/rag-from-scratch) performs retrieval of relevant documents to a question, and passes those documents to an LLM in order to ground the model's response.
 
-Instead of hard-coding a fixed control flow, we sometimes want LLM systems that can pick its own control flow to solve more complex problems! This is one definition of an [agent](https://blog.langchain.dev/what-is-an-agent/): *an agent is a system that uses an LLM to decide the control flow of an application.* There are many ways that an LLM can control application:
+Instead of hard-coding a fixed control flow, we sometimes want LLM systems that can pick its own control flow to solve more complex problems! This is one definition of an [agent](https://blog.langchain.dev/what-is-an-agent/): _an agent is a system that uses an LLM to decide the control flow of an application._ There are many ways that an LLM can control application:
 
 - An LLM can route between two potential paths
 - An LLM can decide which of many tools to call
 - An LLM can decide whether the generated answer is sufficient or more work is needed
 
-As a result, there are many different types of [agent architectures](https://blog.langchain.dev/what-is-a-cognitive-architecture/), which given an LLM varying levels of control. 
+As a result, there are many different types of [agent architectures](https://blog.langchain.dev/what-is-a-cognitive-architecture/), which given an LLM varying levels of control.
 
 ![Agent Types](img/agent_types.png)
 
@@ -33,7 +33,7 @@ While a router allows an LLM to make a single decision, more complex agent archi
 1. Multi-step decision making: The LLM can control a sequence of decisions rather than just one.
 2. Tool access: The LLM can choose from and use a variety of tools to accomplish tasks.
 
-[ReAct](https://arxiv.org/abs/2210.03629) is a popular general purpose agent architecture that combines these expansions, integrating three core concepts. 
+[ReAct](https://arxiv.org/abs/2210.03629) is a popular general purpose agent architecture that combines these expansions, integrating three core concepts.
 
 1. `Tool calling`: Allowing the LLM to select and use various tools as needed.
 2. `Memory`: Enabling the agent to retain and use information from previous steps.
@@ -43,7 +43,7 @@ This architecture allows for more complex and flexible agent behaviors, going be
 
 ### Tool calling
 
-Tools are useful whenever you want an agent to interact with external systems. External systems (e.g., APIs) often require a particular input schema or payload, rather than natural language. When we bind an API, for example, as a tool we given the model awareness of the required input schema. The model will choose to call a tool based upon the natural language input from the user and  it will return an output that adheres to the tool's schema. 
+Tools are useful whenever you want an agent to interact with external systems. External systems (e.g., APIs) often require a particular input schema or payload, rather than natural language. When we bind an API, for example, as a tool we given the model awareness of the required input schema. The model will choose to call a tool based upon the natural language input from the user and it will return an output that adheres to the tool's schema.
 
 [Many LLM providers support tool calling](https://js.langchain.com/docs/integrations/chat/) and [tool calling interface](https://blog.langchain.dev/improving-core-tool-interfaces-and-docs-in-langchain/) in LangChain is simple: you can define a tool schema, and pass it into `ChatModel.bindTools([tool])`.
 
@@ -69,7 +69,7 @@ Effective memory management enhances an agent's ability to maintain context, lea
 
 In the ReAct architecture, an LLM is called repeatedly in a while-loop. At each step the agent decides which tools to call, and what the inputs to those tools should be. Those tools are then executed, and the outputs are fed back into the LLM as observations. The while-loop terminates when the agent decides it is not worth calling any more tools.
 
-### ReAct implementation 
+### ReAct implementation
 
 There are several differences between this paper and the pre-built [`createReactAgent`](/langgraphjs/reference/functions/langgraph_prebuilt.createReactAgent.html) implementation:
 
@@ -93,7 +93,7 @@ Human involvement can significantly enhance agent reliability, especially for se
 
 Human-in-the-loop patterns are crucial when full automation isn't feasible or desirable. Learn more in our [human-in-the-loop guide](./human_in_the_loop.md).
 
-### Parallelization 
+### Parallelization
 
 Parallel processing is vital for efficient multi-agent systems and complex tasks. LangGraph supports parallelization through its [Send](./low_level.md#send) API, enabling:
 
@@ -103,15 +103,15 @@ Parallel processing is vital for efficient multi-agent systems and complex tasks
 
 For practical implementation, see our [map-reduce tutorial](/langgraphjs/how-tos/map-reduce/).
 
-### Sub-graphs
+### Subgraphs
 
-Sub-graphs are essential for managing complex agent architectures, particularly in multi-agent systems. They allow:
+[Subgraphs](./low_level.md#subgraphs) are essential for managing complex agent architectures, particularly in [multi-agent systems](./multi_agent.md). They allow:
 
 - Isolated state management for individual agents
 - Hierarchical organization of agent teams
 - Controlled communication between agents and the main system
 
-Sub-graphs communicate with the parent graph through overlapping keys in the state schema. This enables flexible, modular agent design. For implementation details, refer to our [sub-graph tutorial](/langgraphjs/how-tos/subgraph/).
+Subgraphs communicate with the parent graph through overlapping keys in the state schema. This enables flexible, modular agent design. For implementation details, refer to our [subgraph how-to guide](../how-tos/subgraph.ipynb).
 
 ### Reflection
 
