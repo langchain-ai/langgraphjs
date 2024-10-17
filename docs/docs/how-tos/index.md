@@ -103,7 +103,4 @@ These guides show how to use different streaming modes.
 
 ### Errors
 
-- [GRAPH_RECURSION_LIMIT](troubleshooting/errors/GRAPH_RECURSION_LIMIT.ipynb)
-- [INVALID_CONCURRENT_GRAPH_UPDATE](troubleshooting/errors/INVALID_CONCURRENT_GRAPH_UPDATE.ipynb)
-- [INVALID_GRAPH_NODE_RETURN_VALUE](troubleshooting/errors/INVALID_GRAPH_NODE_RETURN_VALUE.ipynb)
-- [MULTIPLE_SUBGRAPHS](troubleshooting/errors/MULTIPLE_SUBGRAPHS.ipynb)
+- [Error reference](../troubleshooting/errors/index.md)
