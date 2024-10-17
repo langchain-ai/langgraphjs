@@ -11,7 +11,7 @@ export class BaseLangGraphError extends Error {
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
     let finalMessage = message ?? "";
     if (fields?.lc_error_code) {
-      finalMessage = `${finalMessage}\n\nTroubleshooting URL: https://js.langchain.com/troubleshooting/errors/${fields.lc_error_code}/\n`;
+      finalMessage = `${finalMessage}\n\nTroubleshooting URL: https://js.langchain.com/docs/troubleshooting/errors/${fields.lc_error_code}/\n`;
     }
     super(finalMessage);
     this.lc_error_code = fields?.lc_error_code;
