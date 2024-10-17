@@ -33,8 +33,6 @@ export { type AnnotationRoot as _INTERNAL_ANNOTATION_ROOT } from "./graph/index.
 export { type RetryPolicy } from "./pregel/utils/index.js";
 export { Send } from "./constants.js";
 
-export { RunnableCallable, type RunnableCallableArgs } from "./utils.js";
-
 export {
   MemorySaver,
   type Checkpoint,
