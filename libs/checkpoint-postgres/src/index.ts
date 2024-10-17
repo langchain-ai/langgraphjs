@@ -253,21 +253,23 @@ export class PostgresSaver extends BaseCheckpointSaver {
     const paramValues: unknown[] = [];
 
     // construct predicate for config filter
-    if (config?.configurable) {
+    if (config?.configurable?.thread_id) {
       wheres.push(`thread_id = $${paramValues.length + 1}`);
       paramValues.push(config.configurable.thread_id);
+    }
 
-      const checkpointNs = config.configurable.checkpoint_ns;
-      if (checkpointNs !== undefined) {
-        wheres.push(`checkpoint_ns = $${paramValues.length + 1}`);
-        paramValues.push(checkpointNs);
-      }
+    // strict checks for undefined/null because empty strings are falsy
+    if (
+      config?.configurable?.checkpoint_ns !== undefined &&
+      config?.configurable?.checkpoint_ns !== null
+    ) {
+      wheres.push(`checkpoint_ns = $${paramValues.length + 1}`);
+      paramValues.push(config.configurable.checkpoint_ns);
+    }
 
-      const checkpointId = config.configurable.checkpoint_id;
-      if (checkpointId !== undefined) {
-        wheres.push(`checkpoint_id = $${paramValues.length + 1}`);
-        paramValues.push(checkpointId);
-      }
+    if (config?.configurable?.checkpoint_id) {
+      wheres.push(`checkpoint_id = $${paramValues.length + 1}`);
+      paramValues.push(config.configurable.checkpoint_id);
     }
 
     // construct predicate for metadata filter
@@ -370,7 +372,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
     const [where, args] = this._searchWhere(config, filter, before);
     let query = `${SELECT_SQL}${where} ORDER BY checkpoint_id DESC`;
     if (limit !== undefined) {
-      query += ` LIMIT ${limit}`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      query += ` LIMIT ${parseInt(limit as any, 10)}`; // sanitize via parseInt, as limit could be an externally provided value
     }
 
     const result = await this.pool.query(query, args);
