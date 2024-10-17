@@ -1,8 +1,26 @@
 import { Interrupt } from "./constants.js";
 
-export class GraphRecursionError extends Error {
-  constructor(message?: string) {
-    super(message);
+export type BaseLangGraphErrorFields = {
+  lc_error_code?: string;
+};
+
+// TODO: Merge with base LangChain error class when we drop support for core@0.2.0
+export class BaseLangGraphError extends Error {
+  lc_error_code?: string;
+
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    let finalMessage = message ?? "";
+    if (fields?.lc_error_code) {
+      finalMessage = `${finalMessage}\n\nTroubleshooting URL: https://js.langchain.com/troubleshooting/errors/${fields.lc_error_code}/\n`;
+    }
+    super(finalMessage);
+    this.lc_error_code = fields?.lc_error_code;
+  }
+}
+
+export class GraphRecursionError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
     this.name = "GraphRecursionError";
   }
 
@@ -11,9 +29,9 @@ export class GraphRecursionError extends Error {
   }
 }
 
-export class GraphValueError extends Error {
-  constructor(message?: string) {
-    super(message);
+export class GraphValueError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
     this.name = "GraphValueError";
   }
 
@@ -22,13 +40,13 @@ export class GraphValueError extends Error {
   }
 }
 
-export class GraphInterrupt extends Error {
+export class GraphInterrupt extends BaseLangGraphError {
   interrupts: Interrupt[];
 
-  constructor(interrupts: Interrupt[] = []) {
-    super(JSON.stringify(interrupts, null, 2));
+  constructor(interrupts?: Interrupt[], fields?: BaseLangGraphErrorFields) {
+    super(JSON.stringify(interrupts, null, 2), fields);
     this.name = "GraphInterrupt";
-    this.interrupts = interrupts;
+    this.interrupts = interrupts ?? [];
   }
 
   static get unminifiable_name() {
@@ -38,13 +56,16 @@ export class GraphInterrupt extends Error {
 
 /** Raised by a node to interrupt execution. */
 export class NodeInterrupt extends GraphInterrupt {
-  constructor(message: string) {
-    super([
-      {
-        value: message,
-        when: "during",
-      },
-    ]);
+  constructor(message: string, fields?: BaseLangGraphErrorFields) {
+    super(
+      [
+        {
+          value: message,
+          when: "during",
+        },
+      ],
+      fields
+    );
     this.name = "NodeInterrupt";
   }
 
@@ -65,9 +86,9 @@ export function isGraphInterrupt(
   );
 }
 
-export class EmptyInputError extends Error {
-  constructor(message?: string) {
-    super(message);
+export class EmptyInputError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
     this.name = "EmptyInputError";
   }
 
@@ -76,9 +97,9 @@ export class EmptyInputError extends Error {
   }
 }
 
-export class EmptyChannelError extends Error {
-  constructor(message?: string) {
-    super(message);
+export class EmptyChannelError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
     this.name = "EmptyChannelError";
   }
 
@@ -87,9 +108,9 @@ export class EmptyChannelError extends Error {
   }
 }
 
-export class InvalidUpdateError extends Error {
-  constructor(message?: string) {
-    super(message);
+export class InvalidUpdateError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
     this.name = "InvalidUpdateError";
   }
 
@@ -98,9 +119,9 @@ export class InvalidUpdateError extends Error {
   }
 }
 
-export class MultipleSubgraphsError extends Error {
-  constructor(message?: string) {
-    super(message);
+export class MultipleSubgraphsError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
     this.name = "MultipleSubgraphError";
   }
 

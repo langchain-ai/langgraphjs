@@ -1130,7 +1130,10 @@ export class Pregel<
             `Recursion limit of ${config.recursionLimit} reached`,
             "without hitting a stop condition. You can increase the",
             `limit by setting the "recursionLimit" config key.`,
-          ].join(" ")
+          ].join(" "),
+          {
+            lc_error_code: "GRAPH_RECURSION_LIMIT",
+          }
         );
       }
       await Promise.all(loop?.checkpointerPromises ?? []);

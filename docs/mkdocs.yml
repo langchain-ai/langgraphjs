@@ -151,6 +151,11 @@ nav:
           - Have agent respond in structured format: "how-tos/respond-in-format.ipynb"
           - Manage agent steps: "how-tos/managing-agent-steps.ipynb"
           - Add node retry policies: "how-tos/node-retry-policies.ipynb"
+          - Troubleshooting:
+              - GRAPH_RECURSION_LIMIT: "how-tos/troubleshooting/errors/GRAPH_RECURSION_LIMIT.ipynb"
+              - INVALID_CONCURRENT_GRAPH_UPDATE: "how-tos/troubleshooting/errors/INVALID_CONCURRENT_GRAPH_UPDATE.ipynb"
+              - INVALID_GRAPH_NODE_RETURN_VALUE: "how-tos/troubleshooting/errors/INVALID_GRAPH_NODE_RETURN_VALUE.ipynb"
+              - MULTIPLE_SUBGRAPHS: "how-tos/troubleshooting/errors/MULTIPLE_SUBGRAPHS.ipynb"
   - "Conceptual Guides":
       - Why LangGraph?: concepts/high_level.md
       - LangGraph Glossary: concepts/low_level.md

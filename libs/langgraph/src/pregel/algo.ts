@@ -177,7 +177,7 @@ export function _localWrite(
       }
       if (!(value.node in processes)) {
         throw new InvalidUpdateError(
-          `Invalid node name ${value.node} in packet`
+          `Invalid node name "${value.node}" in Send packet`
         );
       }
       // replace any runtime values with placeholders
@@ -291,11 +291,13 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (e: any) {
         if (e.name === InvalidUpdateError.unminifiable_name) {
-          throw new InvalidUpdateError(
-            `Invalid update for channel ${chan} with values ${JSON.stringify(
+          const wrappedError = new InvalidUpdateError(
+            `Invalid update for channel "${chan}" with values ${JSON.stringify(
               vals
             )}: ${e.message}`
           );
+          wrappedError.lc_error_code = e.lc_error_code;
+          throw wrappedError;
         } else {
           throw e;
         }
