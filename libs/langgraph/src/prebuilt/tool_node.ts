@@ -150,7 +150,7 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async run(input: any, config: RunnableConfig): Promise<T> {
+  protected async run(input: any, config: RunnableConfig): Promise<T> {
     const message = Array.isArray(input)
       ? input[input.length - 1]
       : input.messages[input.messages.length - 1];
