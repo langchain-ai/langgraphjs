@@ -136,13 +136,17 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
     const { limit, before, filter } = options ?? {};
-    let query: Record<string, unknown> = {};
+    const query: Record<string, unknown> = {};
 
-    if (config?.configurable) {
-      query = {
-        thread_id: config.configurable.thread_id,
-        checkpoint_ns: config.configurable.checkpoint_ns ?? "",
-      };
+    if (config?.configurable?.thread_id) {
+      query.thread_id = config.configurable.thread_id;
+    }
+
+    if (
+      config?.configurable?.checkpoint_ns !== undefined &&
+      config?.configurable?.checkpoint_ns !== null
+    ) {
+      query.checkpoint_ns = config.configurable.checkpoint_ns;
     }
 
     if (filter) {
