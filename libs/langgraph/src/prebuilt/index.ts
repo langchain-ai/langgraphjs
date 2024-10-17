@@ -13,4 +13,4 @@ export {
   type ToolInvocationInterface,
   ToolExecutor,
 } from "./tool_executor.js";
-export { ToolNode, toolsCondition } from "./tool_node.js";
+export { ToolNode, toolsCondition, type ToolNodeOptions } from "./tool_node.js";
