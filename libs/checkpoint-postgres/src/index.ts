@@ -259,7 +259,10 @@ export class PostgresSaver extends BaseCheckpointSaver {
     }
 
     // strict checks for undefined/null because empty strings are falsy
-    if (config?.configurable?.checkpoint_ns !== undefined && config?.configurable?.checkpoint_ns !== null) {
+    if (
+      config?.configurable?.checkpoint_ns !== undefined &&
+      config?.configurable?.checkpoint_ns !== null
+    ) {
       wheres.push(`checkpoint_ns = $${paramValues.length + 1}`);
       paramValues.push(config.configurable.checkpoint_ns);
     }
