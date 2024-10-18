@@ -239,7 +239,13 @@ export function getTupleTests<T extends BaseCheckpointSaver>(
         it("should return undefined if the checkpoint_id is not found", async () => {
           const configWithInvalidCheckpointId = mergeConfigs(
             initializerConfig,
-            { configurable: { checkpoint_ns, checkpoint_id: uuid6(-3) } }
+            {
+              configurable: {
+                thread_id: uuid6(-3),
+                checkpoint_ns,
+                checkpoint_id: uuid6(-3),
+              },
+            }
           );
           const checkpointTuple = await saver.getTuple(
             configWithInvalidCheckpointId
