@@ -3,6 +3,7 @@ index.js
 index.d.ts
 node_modules
 dist
+coverage/
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
