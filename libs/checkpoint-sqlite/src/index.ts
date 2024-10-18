@@ -31,6 +31,33 @@ interface WritesRow {
   value?: string;
 }
 
+// In the `SqliteSaver.list` method, we need to sanitize the `options.filter` argument to ensure it only contains keys
+// that are part of the `CheckpointMetadata` type. The lines below ensure that we get compile-time errors if the list
+// of keys that we use is out of sync with the `CheckpointMetadata` type.
+const checkpointMetadataKeys = ["source", "step", "writes", "parents"] as const;
+
+type CheckKeys<T, K extends readonly (keyof T)[]> = [K[number]] extends [
+  keyof T
+]
+  ? [keyof T] extends [K[number]]
+    ? K
+    : never
+  : never;
+
+function validateKeys<T, K extends readonly (keyof T)[]>(
+  keys: CheckKeys<T, K>
+): K {
+  return keys;
+}
+
+// If this line fails to compile, the list of keys that we use in the `SqliteSaver.list` method is out of sync with the
+// `CheckpointMetadata` type. In that case, just update `checkpointMetadataKeys` to contain all the keys in
+// `CheckpointMetadata`
+const validCheckpointMetadataKeys = validateKeys<
+  CheckpointMetadata,
+  typeof checkpointMetadataKeys
+>(checkpointMetadataKeys);
+
 export class SqliteSaver extends BaseCheckpointSaver {
   db: DatabaseType;
 
@@ -165,18 +192,67 @@ CREATE TABLE IF NOT EXISTS writes (
     config: RunnableConfig,
     options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
-    const { limit, before } = options ?? {};
+    const { limit, before, filter } = options ?? {};
     this.setup();
     const thread_id = config.configurable?.thread_id;
-    let sql = `SELECT thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata FROM checkpoints WHERE thread_id = ? ${
-      before ? "AND checkpoint_id < ?" : ""
-    } ORDER BY checkpoint_id DESC`;
-    if (limit) {
-      sql += ` LIMIT ${limit}`;
+    const checkpoint_ns = config.configurable?.checkpoint_ns;
+
+    let sql =
+      `SELECT\n` +
+      "  thread_id,\n" +
+      "  checkpoint_ns,\n" +
+      "  checkpoint_id,\n" +
+      "  parent_checkpoint_id,\n" +
+      "  type,\n" +
+      "  checkpoint,\n" +
+      "  metadata\n" +
+      "FROM checkpoints\n";
+
+    const whereClause: string[] = [];
+
+    if (thread_id) {
+      whereClause.push("thread_id = ?");
     }
-    const args = [thread_id, before?.configurable?.checkpoint_id].filter(
-      Boolean
+
+    if (checkpoint_ns !== undefined && checkpoint_ns !== null) {
+      whereClause.push("checkpoint_ns = ?");
+    }
+
+    if (before?.configurable?.checkpoint_id !== undefined) {
+      whereClause.push("checkpoint_id < ?");
+    }
+
+    const sanitizedFilter = Object.fromEntries(
+      Object.entries(filter ?? {}).filter(
+        ([key, value]) =>
+          value !== undefined &&
+          validCheckpointMetadataKeys.includes(key as keyof CheckpointMetadata)
+      )
     );
+
+    whereClause.push(
+      ...Object.entries(sanitizedFilter).map(
+        ([key]) => `jsonb(CAST(metadata AS TEXT))->'$.${key}' = ?`
+      )
+    );
+
+    if (whereClause.length > 0) {
+      sql += `WHERE\n  ${whereClause.join(" AND\n  ")}\n`;
+    }
+
+    sql += "\nORDER BY checkpoint_id DESC";
+
+    if (limit) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sql += ` LIMIT ${parseInt(limit as any, 10)}`; // parseInt here (with cast to make TS happy) to sanitize input, as limit may be user-provided
+    }
+
+    const args = [
+      thread_id,
+      checkpoint_ns,
+      before?.configurable?.checkpoint_id,
+      ...Object.values(sanitizedFilter).map((value) => JSON.stringify(value)),
+    ].filter((value) => value !== undefined && value !== null);
 
     const rows: CheckpointRow[] = this.db
       .prepare(sql)
