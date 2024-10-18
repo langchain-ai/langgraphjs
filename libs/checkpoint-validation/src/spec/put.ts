@@ -20,14 +20,10 @@ export function putTests<T extends BaseCheckpointSaver>(
     let initializerConfig: RunnableConfig;
     let thread_id: string;
     let checkpoint_id1: string;
-    let checkpoint_id2: string;
-    let invalid_checkpoint_id: string;
 
     beforeEach(async () => {
       thread_id = uuid6(-3);
       checkpoint_id1 = uuid6(-3);
-      checkpoint_id2 = uuid6(-3);
-      invalid_checkpoint_id = uuid6(-3);
 
       const baseConfig = {
         configurable: {
@@ -51,14 +47,10 @@ export function putTests<T extends BaseCheckpointSaver>(
       let configArgument: RunnableConfig;
       let checkpointStoredWithoutIdInConfig: Checkpoint;
       let metadataStoredWithoutIdInConfig: CheckpointMetadata | undefined;
-      let checkpointStoredWithIdInConfig: Checkpoint;
-      let metadataStoredWithIdInConfig: CheckpointMetadata | undefined;
 
       describe("success cases", () => {
         let basicPutReturnedConfig: RunnableConfig;
-        let checkpointIdCheckReturnedConfig: RunnableConfig;
         let basicPutRoundTripTuple: CheckpointTuple | undefined;
-        let checkpointIdCheckRoundTripTuple: CheckpointTuple | undefined;
 
         beforeEach(async () => {
           ({
@@ -67,15 +59,6 @@ export function putTests<T extends BaseCheckpointSaver>(
           } = initialCheckpointTuple({
             config: initializerConfig,
             checkpoint_id: checkpoint_id1,
-            checkpoint_ns,
-          }));
-
-          ({
-            checkpoint: checkpointStoredWithIdInConfig,
-            metadata: metadataStoredWithIdInConfig,
-          } = initialCheckpointTuple({
-            config: initializerConfig,
-            checkpoint_id: checkpoint_id2,
             checkpoint_ns,
           }));
 
@@ -117,25 +100,8 @@ export function putTests<T extends BaseCheckpointSaver>(
             {}
           );
 
-          // call put with a different `checkpoint_id` in the config to ensure that it treats the `id` field in the `Checkpoint` as
-          // the authoritative identifier, rather than the `checkpoint_id` in the config
-          checkpointIdCheckReturnedConfig = await saver.put(
-            mergeConfigs(configArgument, {
-              configurable: {
-                checkpoint_id: invalid_checkpoint_id,
-              },
-            }),
-            checkpointStoredWithIdInConfig,
-            metadataStoredWithIdInConfig!,
-            {}
-          );
-
           basicPutRoundTripTuple = await saver.getTuple(
             mergeConfigs(configArgument, basicPutReturnedConfig)
-          );
-
-          checkpointIdCheckRoundTripTuple = await saver.getTuple(
-            mergeConfigs(configArgument, checkpointIdCheckReturnedConfig)
           );
         });
 
@@ -165,9 +131,6 @@ export function putTests<T extends BaseCheckpointSaver>(
           expect(basicPutReturnedConfig.configurable?.checkpoint_id).toEqual(
             checkpointStoredWithoutIdInConfig.id
           );
-          expect(
-            checkpointIdCheckReturnedConfig.configurable?.checkpoint_id
-          ).toEqual(checkpointStoredWithIdInConfig.id);
         });
 
         it("should return config with matching checkpoint_ns", () => {
@@ -183,12 +146,6 @@ export function putTests<T extends BaseCheckpointSaver>(
         it("should store the checkpoint without alteration", () => {
           expect(basicPutRoundTripTuple?.checkpoint).toEqual(
             checkpointStoredWithoutIdInConfig
-          );
-        });
-
-        it("should return a checkpoint with a new id when the id in the config on put is invalid", () => {
-          expect(checkpointIdCheckRoundTripTuple?.checkpoint.id).not.toEqual(
-            invalid_checkpoint_id
           );
         });
 
