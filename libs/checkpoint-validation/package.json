@@ -55,6 +55,7 @@
     "@testcontainers/mongodb": "^10.13.2",
     "@testcontainers/postgresql": "^10.13.2",
     "@tsconfig/recommended": "^1.0.3",
+    "@types/jest": "^29.5.13",
     "@types/uuid": "^10",
     "@typescript-eslint/eslint-plugin": "^6.12.0",
     "@typescript-eslint/parser": "^6.12.0",

@@ -1,5 +1,3 @@
-import { it } from "@jest/globals";
-
 // to make the type signature of the skipOnModules function a bit more readable
 export type SaverName = string;
 export type WhySkipped = string;
@@ -21,7 +19,7 @@ export function it_skipForSomeModules(
   if (skipReason) {
     const skip = (
       name: string,
-      test: () => void | Promise<void>,
+      test: jest.ProvidesCallback | undefined,
       timeout?: number
     ) => {
       it.skip(`[because ${skipReason}] ${name}`, test, timeout);
@@ -40,7 +38,7 @@ export function it_skipIfNot(
   if (!savers.includes(saverName)) {
     const skip = (
       name: string,
-      test: () => void | Promise<void>,
+      test: jest.ProvidesCallback | undefined,
       timeout?: number
     ) => {
       it.skip(
