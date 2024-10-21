@@ -9,13 +9,21 @@ import {
   type PendingWrite,
   type CheckpointMetadata,
   CheckpointPendingWrite,
+  validCheckpointMetadataKeys,
 } from "@langchain/langgraph-checkpoint";
+import { applyMigrations, needsMigration } from "./migrations/index.js";
+
+export * from "./migrations/index.js";
+
+// increment this whenever the structure of the database changes in a way that would require a migration
+const CURRENT_SCHEMA_VERSION = 1;
 
 export type MongoDBSaverParams = {
   client: MongoClient;
   dbName?: string;
   checkpointCollectionName?: string;
   checkpointWritesCollectionName?: string;
+  schemaVersionCollectionName?: string;
 };
 
 /**
@@ -26,9 +34,13 @@ export class MongoDBSaver extends BaseCheckpointSaver {
 
   protected db: MongoDatabase;
 
+  private setupPromise: Promise<void> | undefined;
+
   checkpointCollectionName = "checkpoints";
 
   checkpointWritesCollectionName = "checkpoint_writes";
+
+  schemaVersionCollectionName = "schema_version";
 
   constructor(
     {
@@ -36,6 +48,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       dbName,
       checkpointCollectionName,
       checkpointWritesCollectionName,
+      schemaVersionCollectionName,
     }: MongoDBSaverParams,
     serde?: SerializerProtocol
   ) {
@@ -46,6 +59,118 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpointCollectionName ?? this.checkpointCollectionName;
     this.checkpointWritesCollectionName =
       checkpointWritesCollectionName ?? this.checkpointWritesCollectionName;
+    this.schemaVersionCollectionName =
+      schemaVersionCollectionName ?? this.schemaVersionCollectionName;
+  }
+
+  /**
+   * Runs async setup tasks if they haven't been run yet.
+   */
+  async setup(): Promise<void> {
+    if (this.setupPromise) {
+      return this.setupPromise;
+    }
+    this.setupPromise = this.initializeSchemaVersion();
+    return this.setupPromise;
+  }
+
+  private async isDatabaseEmpty(): Promise<boolean> {
+    const results = await Promise.all(
+      [this.checkpointCollectionName, this.checkpointWritesCollectionName].map(
+        async (collectionName) => {
+          const collection = this.db.collection(collectionName);
+          // set a limit of 1 to stop scanning if any documents are found
+          const count = await collection.countDocuments({}, { limit: 1 });
+          return count === 0;
+        }
+      )
+    );
+
+    return results.every((result) => result);
+  }
+
+  private async initializeSchemaVersion(): Promise<void> {
+    const schemaVersionCollection = this.db.collection(
+      this.schemaVersionCollectionName
+    );
+
+    // empty database, no migrations needed - just set the schema version and move on
+    if (await this.isDatabaseEmpty()) {
+      const schemaVersionCollection = this.db.collection(
+        this.schemaVersionCollectionName
+      );
+
+      const versionDoc = await schemaVersionCollection.findOne({});
+      if (!versionDoc) {
+        await schemaVersionCollection.insertOne({
+          version: CURRENT_SCHEMA_VERSION,
+        });
+      }
+    } else {
+      // non-empty database, check if migrations are needed
+      const dbNeedsMigration = await needsMigration({
+        client: this.client,
+        dbName: this.db.databaseName,
+        checkpointCollectionName: this.checkpointCollectionName,
+        checkpointWritesCollectionName: this.checkpointWritesCollectionName,
+        schemaVersionCollectionName: this.schemaVersionCollectionName,
+        serializer: this.serde,
+        currentSchemaVersion: CURRENT_SCHEMA_VERSION,
+      });
+
+      if (dbNeedsMigration) {
+        throw new Error(
+          `Database needs migration. Call the migrate() method to migrate the database.`
+        );
+      }
+
+      // always defined if dbNeedsMigration is false
+      const versionDoc = (await schemaVersionCollection.findOne({}))!;
+
+      if (versionDoc.version == null) {
+        throw new Error(
+          `BUG: Database schema version is corrupt. Manual intervention required.`
+        );
+      }
+
+      if (versionDoc.version > CURRENT_SCHEMA_VERSION) {
+        throw new Error(
+          `Database created with newer version of checkpoint-mongodb. This version supports schema version ` +
+            `${CURRENT_SCHEMA_VERSION} but the database was created with schema version ${versionDoc.version}.`
+        );
+      }
+
+      if (versionDoc.version < CURRENT_SCHEMA_VERSION) {
+        throw new Error(
+          `BUG: Schema version ${versionDoc.version} is outdated (should be >= ${CURRENT_SCHEMA_VERSION}), but no ` +
+            `migration wants to execute.`
+        );
+      }
+    }
+  }
+
+  async migrate() {
+    if (
+      await needsMigration({
+        client: this.client,
+        dbName: this.db.databaseName,
+        checkpointCollectionName: this.checkpointCollectionName,
+        checkpointWritesCollectionName: this.checkpointWritesCollectionName,
+        schemaVersionCollectionName: this.schemaVersionCollectionName,
+        serializer: this.serde,
+        currentSchemaVersion: CURRENT_SCHEMA_VERSION,
+      })
+    ) {
+      await applyMigrations({
+        client: this.client,
+        dbName: this.db.databaseName,
+        checkpointCollectionName: this.checkpointCollectionName,
+        checkpointWritesCollectionName: this.checkpointWritesCollectionName,
+        schemaVersionCollectionName: this.schemaVersionCollectionName,
+        serializer: this.serde,
+        currentSchemaVersion: CURRENT_SCHEMA_VERSION,
+      });
+    }
   }
 
   /**
@@ -55,6 +180,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
    * for the given thread ID is retrieved.
    */
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
+    await this.setup();
+
     const {
       thread_id,
       checkpoint_ns = "",
@@ -109,10 +236,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       config: { configurable: configurableValues },
       checkpoint,
       pendingWrites,
-      metadata: (await this.serde.loadsTyped(
-        doc.type,
-        doc.metadata.value()
-      )) as CheckpointMetadata,
+      metadata: doc.metadata as CheckpointMetadata,
       parentConfig:
         doc.parent_checkpoint_id != null
           ? {
@@ -135,6 +259,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     config: RunnableConfig,
     options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
+    await this.setup();
+
     const { limit, before, filter } = options ?? {};
     const query: Record<string, unknown> = {};
 
@@ -150,9 +276,16 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     }
 
     if (filter) {
-      Object.entries(filter).forEach(([key, value]) => {
-        query[`metadata.${key}`] = value;
-      });
+      Object.entries(filter)
+        .filter(
+          ([key, value]) =>
+            validCheckpointMetadataKeys.includes(
+              key as keyof CheckpointMetadata
+            ) && value !== undefined
+        )
+        .forEach(([key, value]) => {
+          query[`metadata.${key}`] = value;
+        });
     }
 
     if (before) {
@@ -173,10 +306,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         doc.type,
         doc.checkpoint.value()
       )) as Checkpoint;
-      const metadata = (await this.serde.loadsTyped(
-        doc.type,
-        doc.metadata.value()
-      )) as CheckpointMetadata;
+      const metadata = doc.metadata as CheckpointMetadata;
 
       yield {
         config: {
@@ -210,6 +340,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
+    await this.setup();
+
     const thread_id = config.configurable?.thread_id;
     const checkpoint_ns = config.configurable?.checkpoint_ns ?? "";
     const checkpoint_id = checkpoint.id;
@@ -220,15 +352,11 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     }
     const [checkpointType, serializedCheckpoint] =
       this.serde.dumpsTyped(checkpoint);
-    const [metadataType, serializedMetadata] = this.serde.dumpsTyped(metadata);
-    if (checkpointType !== metadataType) {
-      throw new Error("Mismatched checkpoint and metadata types.");
-    }
     const doc = {
       parent_checkpoint_id: config.configurable?.checkpoint_id,
       type: checkpointType,
       checkpoint: serializedCheckpoint,
-      metadata: serializedMetadata,
+      metadata,
     };
     const upsertQuery = {
       thread_id,
@@ -259,6 +387,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     writes: PendingWrite[],
     taskId: string
   ): Promise<void> {
+    await this.setup();
+
     const thread_id = config.configurable?.thread_id;
     const checkpoint_ns = config.configurable?.checkpoint_ns;
     const checkpoint_id = config.configurable?.checkpoint_id;

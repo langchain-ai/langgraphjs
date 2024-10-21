@@ -10,6 +10,7 @@ import {
   type CheckpointMetadata,
   TASKS,
   copyCheckpoint,
+  validCheckpointMetadataKeys,
 } from "@langchain/langgraph-checkpoint";
 
 interface CheckpointRow {
@@ -35,33 +36,6 @@ interface PendingSendColumn {
   type: string;
   value: string;
 }
-
-// In the `SqliteSaver.list` method, we need to sanitize the `options.filter` argument to ensure it only contains keys
-// that are part of the `CheckpointMetadata` type. The lines below ensure that we get compile-time errors if the list
-// of keys that we use is out of sync with the `CheckpointMetadata` type.
-const checkpointMetadataKeys = ["source", "step", "writes", "parents"] as const;
-
-type CheckKeys<T, K extends readonly (keyof T)[]> = [K[number]] extends [
-  keyof T
-]
-  ? [keyof T] extends [K[number]]
-    ? K
-    : never
-  : never;
-
-function validateKeys<T, K extends readonly (keyof T)[]>(
-  keys: CheckKeys<T, K>
-): K {
-  return keys;
-}
-
-// If this line fails to compile, the list of keys that we use in the `SqliteSaver.list` method is out of sync with the
-// `CheckpointMetadata` type. In that case, just update `checkpointMetadataKeys` to contain all the keys in
-// `CheckpointMetadata`
-const validCheckpointMetadataKeys = validateKeys<
-  CheckpointMetadata,
-  typeof checkpointMetadataKeys
->(checkpointMetadataKeys);
 
 export class SqliteSaver extends BaseCheckpointSaver {
   db: DatabaseType;

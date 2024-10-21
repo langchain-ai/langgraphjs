@@ -165,13 +165,7 @@ export function listTests<T extends BaseCheckpointSaver>(
         parentTupleInDefaultNamespace.config,
         childTupleInDefaultNamespace.config,
       ],
-      filter:
-        // TODO: MongoDBSaver support for filter is broken and can't be fixed without a breaking change
-        // see: https://github.com/langchain-ai/langgraphjs/issues/581
-        initializer.checkpointerName ===
-        "@langchain/langgraph-checkpoint-mongodb"
-          ? [undefined]
-          : [undefined, {}, { source: "input" }, { source: "loop" }],
+      filter: [undefined, {}, { source: "input" }, { source: "loop" }],
     };
   }
 

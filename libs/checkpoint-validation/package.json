@@ -39,8 +39,7 @@
     "jest-environment-node": "^29.6.4",
     "ts-jest": "^29.1.0",
     "uuid": "^10.0.0",
-    "yargs": "^17.7.2",
-    "zod": "^3.23.8"
+    "yargs": "^17.7.2"
   },
   "peerDependencies": {
     "@langchain/core": ">=0.2.31 <0.4.0",
