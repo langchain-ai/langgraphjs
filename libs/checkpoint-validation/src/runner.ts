@@ -2,19 +2,17 @@
 // Jest test file because unfortunately there's no good way to just pass Jest a test definition function and tell it to
 // run it.
 import { specTest } from "./spec/index.js";
-import type { GlobalThis } from "./types.js";
+import { ParsedArgs, filtersSymbol, initializerSymbol } from "./parse_args.js";
 
 // passing via global is ugly, but there's no good alternative for handling the dynamic import here
-const initializer = (globalThis as GlobalThis)
-  .__langgraph_checkpoint_validation_initializer;
+const initializer = (globalThis as typeof globalThis & ParsedArgs)[
+  initializerSymbol
+];
 
 if (!initializer) {
-  throw new Error(
-    "expected global '__langgraph_checkpoint_validation_initializer' is not set"
-  );
+  throw new Error("Test configuration error: initializer is not set.");
 }
 
-const filters = (globalThis as GlobalThis)
-  .__langgraph_checkpoint_validation_filters;
+const filters = (globalThis as typeof globalThis & ParsedArgs)[filtersSymbol];
 
 specTest(initializer, filters);

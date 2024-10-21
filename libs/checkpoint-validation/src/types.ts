@@ -70,9 +70,21 @@ export const checkpointerTestInitializerSchema = z.object({
     .optional(),
 });
 
-export type TestTypeFilter = "getTuple" | "list" | "put" | "putWrites";
+export const testTypeFilters = [
+  "getTuple",
+  "list",
+  "put",
+  "putWrites",
+] as const;
 
-export type GlobalThis = typeof globalThis & {
-  __langgraph_checkpoint_validation_initializer?: CheckpointerTestInitializer<BaseCheckpointSaver>;
-  __langgraph_checkpoint_validation_filters?: TestTypeFilter[];
-};
+export type TestTypeFilter = (typeof testTypeFilters)[number];
+
+export function isTestTypeFilter(value: string): value is TestTypeFilter {
+  return testTypeFilters.includes(value as TestTypeFilter);
+}
+
+export function isTestTypeFilterArray(
+  value: string[]
+): value is TestTypeFilter[] {
+  return value.every(isTestTypeFilter);
+}
