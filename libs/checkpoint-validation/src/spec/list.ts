@@ -4,10 +4,14 @@ import {
   uuid6,
   type BaseCheckpointSaver,
 } from "@langchain/langgraph-checkpoint";
-import { mergeConfigs, RunnableConfig } from "@langchain/core/runnables";
-import { CheckpointSaverTestInitializer } from "../types.js";
-import { generateTuplePairs } from "./data.js";
-import { putTuples, toArray, toMap } from "./util.js";
+import { RunnableConfig } from "@langchain/core/runnables";
+import { CheckpointerTestInitializer } from "../types.js";
+import {
+  generateTuplePairs,
+  putTuples,
+  toArray,
+  toMap,
+} from "../test_utils.js";
 
 interface ListTestCase {
   description: string;
@@ -20,15 +24,15 @@ interface ListTestCase {
 }
 
 /**
- * Exercises the `list` method of the CheckpointSaver.
+ * Exercises the `list` method of the checkpointer.
  *
- * IMPORTANT NOTE: This test relies on the `getTuple` method of the saver functioning properly. If you have failures in
- * `getTuple`, you should fix them before addressing the failures in this test.
+ * IMPORTANT NOTE: This test relies on the `getTuple` method of the checkpointer functioning properly. If you have
+ * failures in `getTuple`, you should fix them before addressing the failures in this test.
  *
- * @param initializer the initializer for the CheckpointSaver
+ * @param initializer the initializer for the checkpointer
  */
 export function listTests<T extends BaseCheckpointSaver>(
-  initializer: CheckpointSaverTestInitializer<T>
+  initializer: CheckpointerTestInitializer<T>
 ) {
   const invalidThreadId = uuid6(-3);
 
@@ -38,7 +42,7 @@ export function listTests<T extends BaseCheckpointSaver>(
     tuple: CheckpointTuple;
     writes: { writes: PendingWrite[]; taskId: string }[];
     newVersions: Record<string, number | string>;
-  }[] = Array.from(generateTuplePairs({ configurable: {} }, 2, namespaces));
+  }[] = Array.from(generateTuplePairs(2, namespaces));
 
   const argumentRanges = setupArgumentRanges(
     generatedTuples.map(({ tuple }) => tuple),
@@ -52,34 +56,21 @@ export function listTests<T extends BaseCheckpointSaver>(
     )
   );
 
-  describe(`${initializer.saverName}#list`, () => {
-    let saver: T;
-    let initializerConfig: RunnableConfig;
-
+  describe(`${initializer.checkpointerName}#list`, () => {
+    let checkpointer: T;
     const storedTuples: Map<string, CheckpointTuple> = new Map();
 
     beforeAll(async () => {
-      const baseConfig = {
-        configurable: {},
-      };
-      initializerConfig = mergeConfigs(
-        baseConfig,
-        await initializer.configure?.(baseConfig)
-      );
-      saver = await initializer.createSaver(initializerConfig);
+      checkpointer = await initializer.createCheckpointer();
 
       // put all the tuples
-      for await (const tuple of putTuples(
-        saver,
-        generatedTuples,
-        initializerConfig
-      )) {
+      for await (const tuple of putTuples(checkpointer, generatedTuples)) {
         storedTuples.set(tuple.checkpoint.id, tuple);
       }
     });
 
     afterAll(async () => {
-      await initializer.destroySaver?.(saver, initializerConfig);
+      await initializer.destroyCheckpointer?.(checkpointer);
     });
 
     // can't reference argumentCombinations directly here because it isn't built at the time this is evaluated.
@@ -95,7 +86,7 @@ export function listTests<T extends BaseCheckpointSaver>(
         expectedCheckpointIds,
       }: ListTestCase) => {
         const actualTuplesArray = await toArray(
-          saver.list(
+          checkpointer.list(
             { configurable: { thread_id, checkpoint_ns } },
             { limit, before, filter }
           )
@@ -128,14 +119,14 @@ export function listTests<T extends BaseCheckpointSaver>(
             // TODO: MongoDBSaver and SQLiteSaver don't return pendingWrites on list, so we need to special case them
             // see: https://github.com/langchain-ai/langgraphjs/issues/589
             // see: https://github.com/langchain-ai/langgraphjs/issues/590
-            const saverIncludesPendingWritesOnList =
-              initializer.saverName !==
+            const checkpointerIncludesPendingWritesOnList =
+              initializer.checkpointerName !==
                 "@langchain/langgraph-checkpoint-mongodb" &&
-              initializer.saverName !==
+              initializer.checkpointerName !==
                 "@langchain/langgraph-checkpoint-sqlite";
 
             const expectedTuple = expectedTuplesMap.get(key);
-            if (!saverIncludesPendingWritesOnList) {
+            if (!checkpointerIncludesPendingWritesOnList) {
               delete expectedTuple?.pendingWrites;
             }
 
@@ -180,7 +171,8 @@ export function listTests<T extends BaseCheckpointSaver>(
       filter:
         // TODO: MongoDBSaver support for filter is broken and can't be fixed without a breaking change
         // see: https://github.com/langchain-ai/langgraphjs/issues/581
-        initializer.saverName === "@langchain/langgraph-checkpoint-mongodb"
+        initializer.checkpointerName ===
+        "@langchain/langgraph-checkpoint-mongodb"
           ? [undefined]
           : [undefined, {}, { source: "input" }, { source: "loop" }],
     };

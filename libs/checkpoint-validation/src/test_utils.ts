@@ -1,5 +1,5 @@
-import { mergeConfigs, RunnableConfig } from "@langchain/core/runnables";
 import {
+  BaseCheckpointSaver,
   ChannelVersions,
   CheckpointPendingWrite,
   PendingWrite,
@@ -9,24 +9,74 @@ import {
   type CheckpointTuple,
 } from "@langchain/langgraph-checkpoint";
 
+// to make the type signature of the skipOnModules function a bit more readable
+export type CheckpointerName = string;
+export type WhySkipped = string;
+
+/**
+ * Conditionally skips a test for a specific checkpointer implementation. When the test is skipped, the reason for
+ * skipping is provided.
+ *
+ * @param checkpointerName - The name of the current module being tested (as passed via the `name` argument in the top-level suite entrypoint).
+ * @param skippedCheckpointers - A list of modules for which the test should be skipped.
+ * @returns A function that can be used in place of the Jest @see it function and conditionally skips the test for the provided module.
+ */
+export function it_skipForSomeModules(
+  checkpointerName: string,
+  skippedCheckpointers: Record<CheckpointerName, WhySkipped>
+): typeof it | typeof it.skip {
+  const skipReason = skippedCheckpointers[checkpointerName];
+
+  if (skipReason) {
+    const skip = (
+      name: string,
+      test: jest.ProvidesCallback | undefined,
+      timeout?: number
+    ) => {
+      it.skip(`[because ${skipReason}] ${name}`, test, timeout);
+    };
+    skip.prototype = it.skip.prototype;
+    return skip as typeof it.skip;
+  }
+
+  return it;
+}
+
+export function it_skipIfNot(
+  checkpointerName: string,
+  ...checkpointers: CheckpointerName[]
+): typeof it | typeof it.skip {
+  if (!checkpointers.includes(checkpointerName)) {
+    const skip = (
+      name: string,
+      test: jest.ProvidesCallback | undefined,
+      timeout?: number
+    ) => {
+      it.skip(
+        `[only passes for "${checkpointers.join('", "')}"] ${name}`,
+        test,
+        timeout
+      );
+    };
+    skip.prototype = it.skip.prototype;
+    return skip as typeof it.skip;
+  }
+
+  return it;
+}
 export interface InitialCheckpointTupleConfig {
-  config: RunnableConfig;
+  thread_id: string;
   checkpoint_id: string;
-  checkpoint_ns?: string;
+  checkpoint_ns: string;
   channel_values?: Record<string, unknown>;
   channel_versions?: ChannelVersions;
 }
 export function initialCheckpointTuple({
-  config,
+  thread_id,
   checkpoint_id,
   checkpoint_ns,
   channel_values = {},
 }: InitialCheckpointTupleConfig): CheckpointTuple {
-  if (checkpoint_ns === undefined) {
-    // eslint-disable-next-line no-param-reassign
-    checkpoint_ns = config.configurable?.checkpoint_ns;
-  }
-
   if (checkpoint_ns === undefined) {
     throw new Error("checkpoint_ns is required");
   }
@@ -35,13 +85,16 @@ export function initialCheckpointTuple({
     Object.keys(channel_values).map((key) => [key, 1])
   );
 
+  const config = {
+    configurable: {
+      thread_id,
+      checkpoint_id,
+      checkpoint_ns,
+    },
+  };
+
   return {
-    config: mergeConfigs(config, {
-      configurable: {
-        checkpoint_id,
-        checkpoint_ns,
-      },
-    }),
+    config,
     checkpoint: {
       v: 1,
       ts: new Date().toISOString(),
@@ -49,7 +102,7 @@ export function initialCheckpointTuple({
       channel_values,
       channel_versions,
       versions_seen: {
-        // I think this is meant to be opaque to checkpoint savers, so I'm just stuffing the data in here to make sure it's stored and retrieved
+        // this is meant to be opaque to checkpointers, so we just stuff dummy data in here to make sure it's stored and retrieved
         "": {
           someChannel: 1,
         },
@@ -67,17 +120,17 @@ export function initialCheckpointTuple({
 }
 
 export interface ParentAndChildCheckpointTuplesWithWritesConfig {
-  config: RunnableConfig;
+  thread_id: string;
   parentCheckpointId: string;
   childCheckpointId: string;
-  checkpoint_ns?: string;
+  checkpoint_ns: string;
   initialChannelValues?: Record<string, unknown>;
   writesToParent?: { taskId: string; writes: PendingWrite[] }[];
   writesToChild?: { taskId: string; writes: PendingWrite[] }[];
 }
 
 export function parentAndChildCheckpointTuplesWithWrites({
-  config,
+  thread_id,
   parentCheckpointId,
   childCheckpointId,
   checkpoint_ns,
@@ -88,11 +141,6 @@ export function parentAndChildCheckpointTuplesWithWrites({
   parent: CheckpointTuple;
   child: CheckpointTuple;
 } {
-  if (checkpoint_ns === undefined) {
-    // eslint-disable-next-line no-param-reassign
-    checkpoint_ns = config.configurable?.checkpoint_ns;
-  }
-
   if (checkpoint_ns === undefined) {
     throw new Error("checkpoint_ns is required");
   }
@@ -159,7 +207,7 @@ export function parentAndChildCheckpointTuplesWithWrites({
         channel_values: initialChannelValues,
         channel_versions: parentChannelVersions,
         versions_seen: {
-          // I think this is meant to be opaque to checkpoint savers, so I'm just stuffing the data in here to make sure it's stored and retrieved
+          // this is meant to be opaque to checkpointers, so we just stuff dummy data in here to make sure it's stored and retrieved
           "": {
             someChannel: 1,
           },
@@ -172,12 +220,13 @@ export function parentAndChildCheckpointTuplesWithWrites({
         writes: null,
         parents: {},
       },
-      config: mergeConfigs(config, {
+      config: {
         configurable: {
+          thread_id,
           checkpoint_ns,
           checkpoint_id: parentCheckpointId,
         },
-      }),
+      },
       parentConfig: undefined,
       pendingWrites: parentPendingWrites,
     },
@@ -189,7 +238,7 @@ export function parentAndChildCheckpointTuplesWithWrites({
         channel_values: childChannelValues,
         channel_versions: childChannelVersions,
         versions_seen: {
-          // I think this is meant to be opaque to checkpoint savers, so I'm just stuffing the data in here to make sure it's stored and retrieved
+          // this is meant to be opaque to checkpointers, so we just stuff dummy data in here to make sure it's stored and retrieved
           "": {
             someChannel: 1,
           },
@@ -200,34 +249,32 @@ export function parentAndChildCheckpointTuplesWithWrites({
         source: "loop",
         step: 0,
         writes: {
-          // I think this is meant to be opaque to checkpoint savers, so I'm just stuffing the data in here to make sure it's stored and retrieved
           someNode: parentPendingWrites,
         },
         parents: {
-          // I think this is meant to be opaque to checkpoint savers, so I'm just stuffing the data in here to make sure it's stored and retrieved
-          // I think this is roughly what it'd look like if it were generated by the pregel loop, though
-          checkpoint_ns: parentCheckpointId,
+          [checkpoint_ns]: parentCheckpointId,
         },
       },
-      config: mergeConfigs(config, {
+      config: {
         configurable: {
+          thread_id,
           checkpoint_ns,
           checkpoint_id: childCheckpointId,
         },
-      }),
-      parentConfig: mergeConfigs(config, {
+      },
+      parentConfig: {
         configurable: {
+          thread_id,
           checkpoint_ns,
           checkpoint_id: parentCheckpointId,
         },
-      }),
+      },
       pendingWrites: childPendingWrites,
     },
   };
 }
 
 export function* generateTuplePairs(
-  config: RunnableConfig,
   countPerNamespace: number,
   namespaces: string[]
 ): Generator<{
@@ -258,12 +305,8 @@ export function* generateTuplePairs(
       };
 
       const { parent, child } = parentAndChildCheckpointTuplesWithWrites({
-        config: mergeConfigs(config, {
-          configurable: {
-            thread_id,
-            checkpoint_ns,
-          },
-        }),
+        thread_id,
+        checkpoint_ns,
         parentCheckpointId,
         childCheckpointId,
         initialChannelValues,
@@ -287,4 +330,71 @@ export function* generateTuplePairs(
       };
     }
   }
+}
+
+export async function* putTuples(
+  checkpointer: BaseCheckpointSaver,
+  generatedTuples: {
+    tuple: CheckpointTuple;
+    writes: { writes: PendingWrite[]; taskId: string }[];
+    newVersions: Record<string, number | string>;
+  }[]
+): AsyncGenerator<CheckpointTuple> {
+  for (const generated of generatedTuples) {
+    const { thread_id, checkpoint_ns } = generated.tuple.config
+      .configurable as { thread_id: string; checkpoint_ns: string };
+
+    const checkpoint_id = generated.tuple.parentConfig?.configurable
+      ?.checkpoint_id as string | undefined;
+
+    const config = {
+      configurable: {
+        thread_id,
+        checkpoint_ns,
+        checkpoint_id,
+      },
+    };
+
+    const existingTuple = await checkpointer.getTuple(generated.tuple.config);
+
+    expect(existingTuple).toBeUndefined();
+
+    const newConfig = await checkpointer.put(
+      config,
+      generated.tuple.checkpoint,
+      generated.tuple.metadata!,
+      generated.newVersions
+    );
+
+    for (const write of generated.writes) {
+      await checkpointer.putWrites(newConfig, write.writes, write.taskId);
+    }
+
+    const expectedTuple = await checkpointer.getTuple(newConfig);
+
+    expect(expectedTuple).not.toBeUndefined();
+
+    if (expectedTuple) {
+      yield expectedTuple;
+    }
+  }
+}
+
+export async function toArray(
+  generator: AsyncGenerator<CheckpointTuple>
+): Promise<CheckpointTuple[]> {
+  const result = [];
+  for await (const item of generator) {
+    result.push(item);
+  }
+  return result;
+}
+
+export function toMap(tuples: CheckpointTuple[]): Map<string, CheckpointTuple> {
+  const result = new Map<string, CheckpointTuple>();
+  for (const item of tuples) {
+    const key = item.checkpoint.id;
+    result.set(key, item);
+  }
+  return result;
 }

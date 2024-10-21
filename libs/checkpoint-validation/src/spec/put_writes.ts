@@ -5,16 +5,15 @@ import {
   uuid6,
   type BaseCheckpointSaver,
 } from "@langchain/langgraph-checkpoint";
-import { mergeConfigs, RunnableConfig } from "@langchain/core/runnables";
-import { CheckpointSaverTestInitializer } from "../types.js";
-import { initialCheckpointTuple } from "./data.js";
+import { RunnableConfig } from "@langchain/core/runnables";
+import { CheckpointerTestInitializer } from "../types.js";
+import { initialCheckpointTuple } from "../test_utils.js";
 
 export function putWritesTests<T extends BaseCheckpointSaver>(
-  initializer: CheckpointSaverTestInitializer<T>
+  initializer: CheckpointerTestInitializer<T>
 ) {
-  describe(`${initializer.saverName}#putWrites`, () => {
-    let saver: T;
-    let initializerConfig: RunnableConfig;
+  describe(`${initializer.checkpointerName}#putWrites`, () => {
+    let checkpointer: T;
     let thread_id: string;
     let checkpoint_id: string;
 
@@ -22,25 +21,15 @@ export function putWritesTests<T extends BaseCheckpointSaver>(
       thread_id = uuid6(-3);
       checkpoint_id = uuid6(-3);
 
-      const baseConfig = {
-        configurable: {
-          thread_id,
-        },
-      };
-      initializerConfig = mergeConfigs(
-        baseConfig,
-        await initializer.configure?.(baseConfig)
-      );
-      saver = await initializer.createSaver(initializerConfig);
+      checkpointer = await initializer.createCheckpointer();
     });
 
     afterEach(async () => {
-      await initializer.destroySaver?.(saver, initializerConfig);
+      await initializer.destroyCheckpointer?.(checkpointer);
     });
 
     describe.each(["root", "child"])("namespace: %s", (namespace) => {
       const checkpoint_ns = namespace === "root" ? "" : namespace;
-      let configArgument: RunnableConfig;
       let checkpoint: Checkpoint;
       let metadata: CheckpointMetadata | undefined;
 
@@ -50,52 +39,52 @@ export function putWritesTests<T extends BaseCheckpointSaver>(
 
         beforeEach(async () => {
           ({ checkpoint, metadata } = initialCheckpointTuple({
-            config: initializerConfig,
-            checkpoint_id,
+            thread_id,
             checkpoint_ns,
+            checkpoint_id,
           }));
 
-          configArgument = mergeConfigs(initializerConfig, {
-            configurable: { checkpoint_ns },
-          });
-
           // ensure the test checkpoint does not already exist
-          const existingCheckpoint = await saver.get(
-            mergeConfigs(configArgument, {
-              configurable: {
-                checkpoint_id,
-              },
-            })
-          );
+          const existingCheckpoint = await checkpointer.get({
+            configurable: {
+              thread_id,
+              checkpoint_ns,
+              checkpoint_id,
+            },
+          });
           expect(existingCheckpoint).toBeUndefined(); // our test checkpoint should not exist yet
 
-          returnedConfig = await saver.put(
-            configArgument,
+          returnedConfig = await checkpointer.put(
+            {
+              configurable: {
+                thread_id,
+                checkpoint_ns,
+              },
+            },
             checkpoint,
             metadata!,
             {} /* not sure what to do about newVersions, as it's unused */
           );
 
-          await saver.putWrites(
-            mergeConfigs(configArgument, returnedConfig),
+          await checkpointer.putWrites(
+            returnedConfig,
             [["animals", "dog"]],
             "pet_task"
           );
 
-          savedCheckpointTuple = await saver.getTuple(
-            mergeConfigs(configArgument, returnedConfig)
-          );
+          savedCheckpointTuple = await checkpointer.getTuple(returnedConfig);
 
           // fail here if `put` or `getTuple` is broken so we don't get a bunch of noise from the actual test cases below
           expect(savedCheckpointTuple).not.toBeUndefined();
           expect(savedCheckpointTuple?.checkpoint).toEqual(checkpoint);
           expect(savedCheckpointTuple?.metadata).toEqual(metadata);
-          expect(savedCheckpointTuple?.config).toEqual(
-            expect.objectContaining(
-              // allow the saver to add additional fields to the config
-              mergeConfigs(configArgument, { configurable: { checkpoint_id } })
-            )
-          );
+          expect(savedCheckpointTuple?.config).toEqual({
+            configurable: {
+              thread_id,
+              checkpoint_ns,
+              checkpoint_id,
+            },
+          });
         });
 
         it("should store writes to the checkpoint", async () => {
@@ -107,18 +96,16 @@ export function putWritesTests<T extends BaseCheckpointSaver>(
 
       describe("failure cases", () => {
         it("should fail if the thread_id is missing", async () => {
-          const missingThreadIdConfig: RunnableConfig = {
-            ...configArgument,
-            configurable: Object.fromEntries(
-              Object.entries(configArgument.configurable ?? {}).filter(
-                ([key]) => key !== "thread_id"
-              )
-            ),
+          const missingThreadIdConfig = {
+            configurable: {
+              checkpoint_ns,
+              checkpoint_id,
+            },
           };
 
           await expect(
             async () =>
-              await saver.putWrites(
+              await checkpointer.putWrites(
                 missingThreadIdConfig,
                 [["animals", "dog"]],
                 "pet_task"
@@ -128,17 +115,15 @@ export function putWritesTests<T extends BaseCheckpointSaver>(
 
         it("should fail if the checkpoint_id is missing", async () => {
           const missingCheckpointIdConfig: RunnableConfig = {
-            ...configArgument,
-            configurable: Object.fromEntries(
-              Object.entries(configArgument.configurable ?? {}).filter(
-                ([key]) => key !== "checkpoint_id"
-              )
-            ),
+            configurable: {
+              thread_id,
+              checkpoint_ns,
+            },
           };
 
           await expect(
             async () =>
-              await saver.putWrites(
+              await checkpointer.putWrites(
                 missingCheckpointIdConfig,
                 [["animals", "dog"]],
                 "pet_task"

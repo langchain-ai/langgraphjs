@@ -5,45 +5,34 @@ import {
   uuid6,
   type BaseCheckpointSaver,
 } from "@langchain/langgraph-checkpoint";
-import { mergeConfigs, RunnableConfig } from "@langchain/core/runnables";
-import { CheckpointSaverTestInitializer } from "../types.js";
-import { initialCheckpointTuple } from "./data.js";
-import { putTuples } from "./util.js";
-import { it_skipForSomeModules } from "../testUtils.js";
+import { RunnableConfig } from "@langchain/core/runnables";
+import { CheckpointerTestInitializer } from "../types.js";
+import {
+  initialCheckpointTuple,
+  it_skipForSomeModules,
+  putTuples,
+} from "../test_utils.js";
 
 export function putTests<T extends BaseCheckpointSaver>(
-  initializer: CheckpointSaverTestInitializer<T>
+  initializer: CheckpointerTestInitializer<T>
 ) {
-  describe(`${initializer.saverName}#put`, () => {
-    let saver: T;
-    let initializerConfig: RunnableConfig;
+  describe(`${initializer.checkpointerName}#put`, () => {
+    let checkpointer: T;
     let thread_id: string;
     let checkpoint_id1: string;
 
     beforeEach(async () => {
       thread_id = uuid6(-3);
       checkpoint_id1 = uuid6(-3);
-
-      const baseConfig = {
-        configurable: {
-          thread_id,
-        },
-      };
-
-      initializerConfig = mergeConfigs(
-        baseConfig,
-        await initializer.configure?.(baseConfig)
-      );
-      saver = await initializer.createSaver(initializerConfig);
+      checkpointer = await initializer.createCheckpointer();
     });
 
     afterEach(async () => {
-      await initializer.destroySaver?.(saver, initializerConfig);
+      await initializer.destroyCheckpointer?.(checkpointer);
     });
 
     describe.each(["root", "child"])("namespace: %s", (namespace) => {
       const checkpoint_ns = namespace === "root" ? "" : namespace;
-      let configArgument: RunnableConfig;
       let checkpointStoredWithoutIdInConfig: Checkpoint;
       let metadataStoredWithoutIdInConfig: CheckpointMetadata | undefined;
 
@@ -56,51 +45,49 @@ export function putTests<T extends BaseCheckpointSaver>(
             checkpoint: checkpointStoredWithoutIdInConfig,
             metadata: metadataStoredWithoutIdInConfig,
           } = initialCheckpointTuple({
-            config: initializerConfig,
+            thread_id,
             checkpoint_id: checkpoint_id1,
             checkpoint_ns,
           }));
 
-          configArgument = mergeConfigs(initializerConfig, {
-            configurable: { checkpoint_ns },
+          // validate assumptions - the test checkpoints must not already exist
+          const existingCheckpoint1 = await checkpointer.get({
+            configurable: {
+              thread_id,
+              checkpoint_ns,
+              checkpoint_id: checkpoint_id1,
+            },
           });
 
-          // validate assumptions - the test checkpoints must not already exist
-          const existingCheckpoint1 = await saver.get(
-            mergeConfigs(configArgument, {
-              configurable: {
-                checkpoint_id: checkpoint_id1,
-              },
-            })
-          );
-
-          const existingCheckpoint2 = await saver.get(
-            mergeConfigs(configArgument, {
-              configurable: {
-                checkpoint_id: checkpoint_id1,
-              },
-            })
-          );
+          const existingCheckpoint2 = await checkpointer.get({
+            configurable: {
+              thread_id,
+              checkpoint_ns,
+              checkpoint_id: checkpoint_id1,
+            },
+          });
 
           expect(existingCheckpoint1).toBeUndefined();
           expect(existingCheckpoint2).toBeUndefined();
 
           // set up
           // call put without the `checkpoint_id` in the config
-          basicPutReturnedConfig = await saver.put(
-            mergeConfigs(configArgument, {
+          basicPutReturnedConfig = await checkpointer.put(
+            {
               configurable: {
+                thread_id,
+                checkpoint_ns,
                 // adding this to ensure that additional fields are not stored in the checkpoint tuple
                 canary: "tweet",
               },
-            }),
+            },
             checkpointStoredWithoutIdInConfig,
             metadataStoredWithoutIdInConfig!,
             {}
           );
 
-          basicPutRoundTripTuple = await saver.getTuple(
-            mergeConfigs(configArgument, basicPutReturnedConfig)
+          basicPutRoundTripTuple = await checkpointer.getTuple(
+            basicPutReturnedConfig
           );
         });
 
@@ -157,14 +144,11 @@ export function putTests<T extends BaseCheckpointSaver>(
 
       describe("failure cases", () => {
         it("should fail if config.configurable is missing", async () => {
-          const missingConfigurableConfig: RunnableConfig = {
-            ...configArgument,
-            configurable: undefined,
-          };
+          const missingConfigurableConfig: RunnableConfig = {};
 
           await expect(
             async () =>
-              await saver.put(
+              await checkpointer.put(
                 missingConfigurableConfig,
                 checkpointStoredWithoutIdInConfig,
                 metadataStoredWithoutIdInConfig!,
@@ -175,17 +159,14 @@ export function putTests<T extends BaseCheckpointSaver>(
 
         it("should fail if the thread_id is missing", async () => {
           const missingThreadIdConfig: RunnableConfig = {
-            ...configArgument,
-            configurable: Object.fromEntries(
-              Object.entries(configArgument.configurable ?? {}).filter(
-                ([key]) => key !== "thread_id"
-              )
-            ),
+            configurable: {
+              checkpoint_ns,
+            },
           };
 
           await expect(
             async () =>
-              await saver.put(
+              await checkpointer.put(
                 missingThreadIdConfig,
                 checkpointStoredWithoutIdInConfig,
                 metadataStoredWithoutIdInConfig!,
@@ -196,7 +177,7 @@ export function putTests<T extends BaseCheckpointSaver>(
       });
     });
 
-    it_skipForSomeModules(initializer.saverName, {
+    it_skipForSomeModules(initializer.checkpointerName, {
       // TODO: MemorySaver throws instead of defaulting to empty namespace
       // see: https://github.com/langchain-ai/langgraphjs/issues/591
       MemorySaver: "TODO: throws instead of defaulting to empty namespace",
@@ -208,21 +189,16 @@ export function putTests<T extends BaseCheckpointSaver>(
       "should default to empty namespace if the checkpoint namespace is missing from config.configurable",
       async () => {
         const missingNamespaceConfig: RunnableConfig = {
-          ...initializerConfig,
-          configurable: Object.fromEntries(
-            Object.entries(initializerConfig.configurable ?? {}).filter(
-              ([key]) => key !== "checkpoint_ns"
-            )
-          ),
+          configurable: { thread_id },
         };
 
         const { checkpoint, metadata } = initialCheckpointTuple({
-          config: missingNamespaceConfig,
+          thread_id,
           checkpoint_id: checkpoint_id1,
           checkpoint_ns: "",
         });
 
-        const returnedConfig = await saver.put(
+        const returnedConfig = await checkpointer.put(
           missingNamespaceConfig,
           checkpoint,
           metadata!,
@@ -236,8 +212,8 @@ export function putTests<T extends BaseCheckpointSaver>(
       }
     );
 
-    it_skipForSomeModules(initializer.saverName, {
-      // TODO: all of the savers below store full channel_values on every put, rather than storing deltas
+    it_skipForSomeModules(initializer.checkpointerName, {
+      // TODO: all of the checkpointers below store full channel_values on every put, rather than storing deltas
       // see: https://github.com/langchain-ai/langgraphjs/issues/593
       // see: https://github.com/langchain-ai/langgraphjs/issues/594
       // see: https://github.com/langchain-ai/langgraphjs/issues/595
@@ -256,7 +232,7 @@ export function putTests<T extends BaseCheckpointSaver>(
 
         const generatedPuts = newVersions.map((newVersions) => ({
           tuple: initialCheckpointTuple({
-            config: initializerConfig,
+            thread_id,
             checkpoint_id: uuid6(-3),
             checkpoint_ns: "",
             channel_values: {
@@ -269,11 +245,7 @@ export function putTests<T extends BaseCheckpointSaver>(
         }));
 
         const storedTuples: CheckpointTuple[] = [];
-        for await (const tuple of putTuples(
-          saver,
-          generatedPuts,
-          initializerConfig
-        )) {
+        for await (const tuple of putTuples(checkpointer, generatedPuts)) {
           storedTuples.push(tuple);
         }
 

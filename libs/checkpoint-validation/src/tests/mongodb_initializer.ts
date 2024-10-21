@@ -8,7 +8,7 @@ import {
 
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { MongoClient } from "mongodb";
-import type { CheckpointSaverTestInitializer } from "../types.js";
+import type { CheckpointerTestInitializer } from "../types.js";
 
 const dbName = "test_db";
 
@@ -17,8 +17,8 @@ const container = new MongoDBContainer("mongo:6.0.1");
 let startedContainer: StartedMongoDBContainer;
 let client: MongoClient | undefined;
 
-export const initializer: CheckpointSaverTestInitializer<MongoDBSaver> = {
-  saverName: "@langchain/langgraph-checkpoint-mongodb",
+export const initializer: CheckpointerTestInitializer<MongoDBSaver> = {
+  checkpointerName: "@langchain/langgraph-checkpoint-mongodb",
 
   async beforeAll() {
     startedContainer = await container.start();
@@ -30,7 +30,7 @@ export const initializer: CheckpointSaverTestInitializer<MongoDBSaver> = {
 
   beforeAllTimeout: 300_000, // five minutes, to pull docker container
 
-  async createSaver() {
+  async createCheckpointer() {
     // ensure fresh database for each test
     const db = await client!.db(dbName);
     await db.dropDatabase();

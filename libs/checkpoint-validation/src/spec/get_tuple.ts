@@ -5,30 +5,23 @@ import {
   uuid6,
   type BaseCheckpointSaver,
 } from "@langchain/langgraph-checkpoint";
-import { mergeConfigs, RunnableConfig } from "@langchain/core/runnables";
-import { CheckpointSaverTestInitializer } from "../types.js";
-import { parentAndChildCheckpointTuplesWithWrites } from "./data.js";
-import { putTuples } from "./util.js";
+import { CheckpointerTestInitializer } from "../types.js";
+import {
+  parentAndChildCheckpointTuplesWithWrites,
+  putTuples,
+} from "../test_utils.js";
 
 export function getTupleTests<T extends BaseCheckpointSaver>(
-  initializer: CheckpointSaverTestInitializer<T>
+  initializer: CheckpointerTestInitializer<T>
 ) {
-  describe(`${initializer.saverName}#getTuple`, () => {
-    let saver: T;
-    let initializerConfig: RunnableConfig;
+  describe(`${initializer.checkpointerName}#getTuple`, () => {
+    let checkpointer: T;
     beforeAll(async () => {
-      const baseConfig = {
-        configurable: {},
-      };
-      initializerConfig = mergeConfigs(
-        baseConfig,
-        await initializer.configure?.(baseConfig)
-      );
-      saver = await initializer.createSaver(initializerConfig);
+      checkpointer = await initializer.createCheckpointer();
     });
 
     afterAll(async () => {
-      await initializer.destroySaver?.(saver, initializerConfig);
+      await initializer.destroyCheckpointer?.(checkpointer);
     });
 
     describe.each(["root", "child"])("namespace: %s", (namespace) => {
@@ -50,10 +43,6 @@ export function getTupleTests<T extends BaseCheckpointSaver>(
         parentCheckpointId = uuid6(-3);
         childCheckpointId = uuid6(-3);
 
-        const config = mergeConfigs(initializerConfig, {
-          configurable: { thread_id, checkpoint_ns },
-        });
-
         const writesToParent = [
           {
             taskId: "pending_sends_task",
@@ -70,7 +59,7 @@ export function getTupleTests<T extends BaseCheckpointSaver>(
 
         ({ parent: generatedParentTuple, child: generatedChildTuple } =
           parentAndChildCheckpointTuplesWithWrites({
-            config,
+            thread_id,
             parentCheckpointId,
             childCheckpointId,
             checkpoint_ns,
@@ -81,31 +70,25 @@ export function getTupleTests<T extends BaseCheckpointSaver>(
             writesToChild,
           }));
 
-        const storedTuples = putTuples(
-          saver,
-          [
-            {
-              tuple: generatedParentTuple,
-              writes: writesToParent,
-              newVersions: { animals: 1 },
-            },
-            {
-              tuple: generatedChildTuple,
-              writes: writesToChild,
-              newVersions: { animals: 2 },
-            },
-          ],
-          config
-        );
+        const storedTuples = putTuples(checkpointer, [
+          {
+            tuple: generatedParentTuple,
+            writes: writesToParent,
+            newVersions: { animals: 1 },
+          },
+          {
+            tuple: generatedChildTuple,
+            writes: writesToChild,
+            newVersions: { animals: 2 },
+          },
+        ]);
 
         parentTuple = (await storedTuples.next()).value;
         childTuple = (await storedTuples.next()).value;
 
-        latestTuple = await saver.getTuple(
-          mergeConfigs(config, {
-            configurable: { checkpoint_ns, checkpoint_id: undefined },
-          })
-        );
+        latestTuple = await checkpointer.getTuple({
+          configurable: { thread_id, checkpoint_ns },
+        });
       });
 
       describe("success cases", () => {
@@ -236,33 +219,29 @@ export function getTupleTests<T extends BaseCheckpointSaver>(
 
       describe("failure cases", () => {
         it("should return undefined if the checkpoint_id is not found", async () => {
-          const configWithInvalidCheckpointId = mergeConfigs(
-            initializerConfig,
-            {
-              configurable: {
-                thread_id: uuid6(-3),
-                checkpoint_ns,
-                checkpoint_id: uuid6(-3),
-              },
-            }
-          );
-          const checkpointTuple = await saver.getTuple(
+          const configWithInvalidCheckpointId = {
+            configurable: {
+              thread_id: uuid6(-3),
+              checkpoint_ns,
+              checkpoint_id: uuid6(-3),
+            },
+          };
+          const checkpointTuple = await checkpointer.getTuple(
             configWithInvalidCheckpointId
           );
           expect(checkpointTuple).toBeUndefined();
         });
 
         it("should return undefined if the thread_id is undefined", async () => {
-          const missingThreadIdConfig: RunnableConfig = {
-            ...initializerConfig,
-            configurable: Object.fromEntries(
-              Object.entries(initializerConfig.configurable ?? {}).filter(
-                ([key]) => key !== "thread_id"
-              )
-            ),
+          const missingThreadIdConfig = {
+            configurable: {
+              checkpoint_ns,
+            },
           };
 
-          expect(await saver.getTuple(missingThreadIdConfig)).toBeUndefined();
+          expect(
+            await checkpointer.getTuple(missingThreadIdConfig)
+          ).toBeUndefined();
         });
       });
     });

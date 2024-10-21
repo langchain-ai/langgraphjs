@@ -95,7 +95,7 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "validate-saver": "./bin/cli.js"
+    "validate-checkpointer": "./bin/cli.js"
   },
   "files": [
     "dist/",

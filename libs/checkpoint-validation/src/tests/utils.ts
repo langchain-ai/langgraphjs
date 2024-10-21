@@ -8,7 +8,7 @@ function isWindows() {
   return platform() === "win32";
 }
 
-export function isCI() {
+function isCI() {
   // eslint-disable-next-line no-process-env
   return (process.env.CI ?? "").toLowerCase() === "true";
 }
@@ -28,6 +28,6 @@ export function isCI() {
  *
  *
  */
-export function osHasSupportedContainerRuntime() {
-  return !isWindows() && !isMSeriesMac();
+export function isSkippedCIEnvironment() {
+  return isCI() && (isWindows() || isMSeriesMac());
 }

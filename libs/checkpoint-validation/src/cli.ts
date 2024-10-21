@@ -4,12 +4,12 @@ import { runCLI } from "@jest/core";
 import yargs, { ArgumentsCamelCase } from "yargs";
 import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import {
-  CheckpointSaverTestInitializer,
-  checkpointSaverTestInitializerSchema,
+  CheckpointerTestInitializer,
+  checkpointerTestInitializerSchema,
   GlobalThis,
   TestTypeFilter,
 } from "./types.js";
-import { dynamicImport, resolveImportPath } from "./importUtils.js";
+import { dynamicImport, resolveImportPath } from "./import_utils.js";
 
 // make it so we can import/require .ts files
 import "@swc-node/register/esm-register";
@@ -21,14 +21,14 @@ export async function main() {
   await builder
     .command(
       "* <initializer-import-path> [filters..]",
-      "Validate a checkpoint saver",
+      "Validate a checkpointer",
       {
         builder: (args) => {
           return args
             .positional("initializerImportPath", {
               type: "string",
               describe:
-                "The import path of the CheckpointSaverTestInitializer for the checkpoint saver (passed to 'import()'). " +
+                "The import path of the CheckpointSaverTestInitializer for the checkpointer (passed to 'import()'). " +
                 "Must be the default export.",
               demandOption: true,
             })
@@ -70,9 +70,9 @@ export async function main() {
             process.exit(1);
           }
 
-          let initializer: CheckpointSaverTestInitializer<BaseCheckpointSaver>;
+          let initializer: CheckpointerTestInitializer<BaseCheckpointSaver>;
           try {
-            initializer = checkpointSaverTestInitializerSchema.parse(
+            initializer = checkpointerTestInitializerSchema.parse(
               (initializerExport as { default?: unknown }).default ??
                 initializerExport
             );

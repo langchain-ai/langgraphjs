@@ -1,6 +1,6 @@
-// This file is used by the CLI to dynamically execute tests against the user-provided checkpoint saver. It's written
-// as a Jest test file because unfortunately there's no good way to just pass Jest a test definition function and tell
-// it to run it.
+// This file is used by the CLI to dynamically execute tests against the user-provided checkpointer. It's written as a
+// Jest test file because unfortunately there's no good way to just pass Jest a test definition function and tell it to
+// run it.
 import { specTest } from "./spec/index.js";
 import type { GlobalThis } from "./types.js";
 

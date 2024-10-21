@@ -1,9 +1,9 @@
 import { specTest } from "../spec/index.js";
-import { initializer } from "./mongoInitializer.js";
-import { isCI, osHasSupportedContainerRuntime } from "./utils.js";
+import { initializer } from "./mongodb_initializer.js";
+import { isSkippedCIEnvironment } from "./utils.js";
 
-if (osHasSupportedContainerRuntime() || !isCI()) {
-  specTest(initializer);
+if (isSkippedCIEnvironment()) {
+  it.skip(`${initializer.checkpointerName} skipped in CI because no container runtime is available`, () => {});
 } else {
-  it.skip(`${initializer.saverName} skipped in CI because no container runtime is available`, () => {});
+  specTest(initializer);
 }

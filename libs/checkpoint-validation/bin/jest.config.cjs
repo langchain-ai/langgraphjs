@@ -2,6 +2,7 @@
 // For the Jest config for the tests in this project, see the `jest.config.cjs` in the root of the package workspace.
 const path = require("path");
 
+/** @type {import('ts-jest').JestConfigWithTsJest} */
 const config = {
   preset: "ts-jest/presets/default-esm",
   rootDir: path.resolve(__dirname, "..", "dist"),

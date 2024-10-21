@@ -10,7 +10,7 @@ import {
 // eslint-disable-next-line import/no-extraneous-dependencies
 import pg from "pg";
 
-import type { CheckpointSaverTestInitializer } from "../types.js";
+import type { CheckpointerTestInitializer } from "../types.js";
 
 const dbName = "test_db";
 
@@ -22,8 +22,8 @@ const container = new PostgreSqlContainer("postgres:16.2")
 let startedContainer: StartedPostgreSqlContainer;
 let client: pg.Pool | undefined;
 
-export const initializer: CheckpointSaverTestInitializer<PostgresSaver> = {
-  saverName: "@langchain/langgraph-checkpoint-postgres",
+export const initializer: CheckpointerTestInitializer<PostgresSaver> = {
+  checkpointerName: "@langchain/langgraph-checkpoint-postgres",
 
   async beforeAll() {
     startedContainer = await container.start();
@@ -35,7 +35,7 @@ export const initializer: CheckpointSaverTestInitializer<PostgresSaver> = {
     await startedContainer.stop();
   },
 
-  async createSaver() {
+  async createCheckpointer() {
     client = new pg.Pool({
       connectionString: startedContainer.getConnectionUri(),
     });
@@ -49,13 +49,13 @@ export const initializer: CheckpointSaverTestInitializer<PostgresSaver> = {
     url.username = startedContainer.getUsername();
     url.password = startedContainer.getPassword();
 
-    const saver = PostgresSaver.fromConnString(url.toString());
-    await saver.setup();
-    return saver;
+    const checkpointer = PostgresSaver.fromConnString(url.toString());
+    await checkpointer.setup();
+    return checkpointer;
   },
 
-  async destroySaver(saver) {
-    await saver.end();
+  async destroyCheckpointer(checkpointer: PostgresSaver) {
+    await checkpointer.end();
     await client?.query(`DROP DATABASE ${dbName}`);
     await client?.end();
   },
