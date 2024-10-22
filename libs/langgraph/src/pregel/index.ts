@@ -350,29 +350,36 @@ export class Pregel<
       // find the subgraph if any
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       type SubgraphPregelType = Pregel<any, any> | undefined;
-      const graph = findSubgraphPregel(node.bound) as SubgraphPregelType;
-      // if found, yield recursively
-      if (graph !== undefined) {
-        if (name === namespace) {
-          yield [name, graph];
-          return;
-        }
-        if (namespace === undefined) {
-          yield [name, graph];
-        }
-        if (recurse) {
-          let newNamespace = namespace;
-          if (namespace !== undefined) {
-            newNamespace = namespace.slice(name.length + 1);
+
+      const candidates = node.subgraphs?.length ? node.subgraphs : [node.bound];
+
+      for (const candidate of candidates) {
+        const graph = findSubgraphPregel(candidate) as SubgraphPregelType;
+
+        if (graph !== undefined) {
+          if (name === namespace) {
+            yield [name, graph];
+            return;
           }
-          for (const [subgraphName, subgraph] of graph.getSubgraphs(
-            newNamespace,
-            recurse
-          )) {
-            yield [
-              `${name}${CHECKPOINT_NAMESPACE_SEPARATOR}${subgraphName}`,
-              subgraph,
-            ];
+
+          if (namespace === undefined) {
+            yield [name, graph];
+          }
+
+          if (recurse) {
+            let newNamespace = namespace;
+            if (namespace !== undefined) {
+              newNamespace = namespace.slice(name.length + 1);
+            }
+            for (const [subgraphName, subgraph] of graph.getSubgraphs(
+              newNamespace,
+              recurse
+            )) {
+              yield [
+                `${name}${CHECKPOINT_NAMESPACE_SEPARATOR}${subgraphName}`,
+                subgraph,
+              ];
+            }
           }
         }
       }

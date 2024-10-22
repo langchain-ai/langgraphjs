@@ -48,6 +48,7 @@ import {
 import type { RetryPolicy } from "../pregel/utils/index.js";
 import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import { isPregelLike } from "../pregel/utils/subgraph.js";
 
 const ROOT = "__root__";
 
@@ -314,11 +315,17 @@ export class StateGraph<
     if (options?.input !== undefined) {
       this._addSchema(options.input.spec);
     }
+
+    const runnable = _coerceToRunnable(action) as unknown as Runnable<S, U>;
     const nodeSpec: StateGraphNodeSpec<S, U> = {
-      runnable: _coerceToRunnable(action) as unknown as Runnable<S, U>,
+      runnable,
       retryPolicy: options?.retryPolicy,
       metadata: options?.metadata,
       input: options?.input?.spec ?? this._schemaDefinition,
+      subgraphs: isPregelLike(runnable)
+        ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          [runnable as any]
+        : options?.subgraphs,
     };
 
     this.nodes[key as unknown as N] = nodeSpec;
@@ -541,6 +548,7 @@ export class CompiledStateGraph<
         bound: node?.runnable,
         metadata: node?.metadata,
         retryPolicy: node?.retryPolicy,
+        subgraphs: node?.subgraphs,
       });
     }
   }

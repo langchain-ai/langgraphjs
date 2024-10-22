@@ -83,6 +83,7 @@ interface PregelNodeArgs<RunInput, RunOutput>
   config?: RunnableConfig;
   metadata?: Record<string, unknown>;
   retryPolicy?: RetryPolicy;
+  subgraphs?: Runnable[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -117,6 +118,8 @@ export class PregelNode<
 
   retryPolicy?: RetryPolicy;
 
+  subgraphs?: Runnable[];
+
   constructor(fields: PregelNodeArgs<RunInput, RunOutput>) {
     const {
       channels,
@@ -128,6 +131,7 @@ export class PregelNode<
       metadata,
       retryPolicy,
       tags,
+      subgraphs,
     } = fields;
     const mergedTags = [
       ...(fields.config?.tags ? fields.config.tags : []),
@@ -154,6 +158,7 @@ export class PregelNode<
     this.metadata = metadata ?? this.metadata;
     this.tags = mergedTags;
     this.retryPolicy = retryPolicy;
+    this.subgraphs = subgraphs;
   }
 
   getWriters(): Array<Runnable> {
