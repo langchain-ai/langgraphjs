@@ -1,4 +1,8 @@
-import { RunnableSequence, Runnable } from "@langchain/core/runnables";
+import {
+  RunnableSequence,
+  Runnable,
+  RunnableLike,
+} from "@langchain/core/runnables";
 import type { PregelInterface } from "../types.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -7,9 +11,10 @@ function isRunnableSequence(
 ): x is RunnableSequence {
   return "steps" in x && Array.isArray(x.steps);
 }
-function isPregelLike(
+
+export function isPregelLike(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  x: PregelInterface<any, any> | Runnable
+  x: PregelInterface<any, any> | RunnableLike<any, any, any>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): x is PregelInterface<any, any> {
   return (

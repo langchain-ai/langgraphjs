@@ -192,7 +192,8 @@ export function* mapDebugCheckpoint<
   const taskStates: Record<string, RunnableConfig | StateSnapshot> = {};
 
   for (const task of tasks) {
-    if (!findSubgraphPregel(task.proc)) continue;
+    const candidates = task.subgraphs?.length ? task.subgraphs : [task.proc];
+    if (!candidates.find(findSubgraphPregel)) continue;
 
     let taskNs = `${task.name as string}:${task.id}`;
     if (parentNs) taskNs = `${parentNs}|${taskNs}`;

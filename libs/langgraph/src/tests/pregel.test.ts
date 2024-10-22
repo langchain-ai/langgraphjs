@@ -10,6 +10,7 @@ import {
   jest,
   describe,
   beforeEach,
+  test,
   afterAll,
 } from "@jest/globals";
 import {
@@ -5946,58 +5947,94 @@ export function runPregelTests(
   });
 
   describe("Subgraphs", () => {
-    it("nested graph interrupts parallel", async () => {
-      const InnerStateAnnotation = Annotation.Root({
-        myKey: Annotation<string>({
-          reducer: (a, b) => a + b,
-          default: () => "",
-        }),
-        myOtherKey: Annotation<string>,
-      });
+    test.each([
+      [
+        "nested graph interrupts parallel",
+        (() => {
+          const inner = new StateGraph(
+            Annotation.Root({
+              myKey: Annotation<string>({
+                reducer: (a, b) => a + b,
+                default: () => "",
+              }),
+              myOtherKey: Annotation<string>,
+            })
+          )
+            .addNode("inner1", async (state) => {
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              return { myKey: "got here", myOtherKey: state.myKey };
+            })
+            .addNode("inner2", (state) => ({
+              myKey: " and there",
+              myOtherKey: state.myKey,
+            }))
+            .addEdge("inner1", "inner2")
+            .addEdge("__start__", "inner1")
+            .compile({ interruptBefore: ["inner2"] });
 
-      const inner1 = async (state: typeof InnerStateAnnotation.State) => {
-        await new Promise((resolve) => {
-          setTimeout(resolve, 100);
-        });
-        return { myKey: "got here", myOtherKey: state.myKey };
-      };
+          const graph = new StateGraph(
+            Annotation.Root({
+              myKey: Annotation<string>({
+                reducer: (a, b) => a + b,
+                default: () => "",
+              }),
+            })
+          )
+            .addNode("inner", inner)
+            .addNode("outer1", () => ({ myKey: " and parallel" }))
+            .addNode("outer2", () => ({ myKey: " and back again" }))
+            .addEdge(START, "inner")
+            .addEdge(START, "outer1")
+            .addEdge(["inner", "outer1"], "outer2");
 
-      const inner2 = (state: typeof InnerStateAnnotation.State) => {
-        return {
-          myKey: " and there",
-          myOtherKey: state.myKey,
-        };
-      };
+          return graph;
+        })(),
+      ],
+      [
+        "nested graph interrupts parallel: subgraph in lambda",
+        (() => {
+          const inner = new StateGraph(
+            Annotation.Root({
+              myKey: Annotation<string>({
+                reducer: (a, b) => a + b,
+                default: () => "",
+              }),
+              myOtherKey: Annotation<string>,
+            })
+          )
+            .addNode("inner1", async (state) => {
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              return { myKey: "got here", myOtherKey: state.myKey };
+            })
+            .addNode("inner2", (state) => ({
+              myKey: " and there",
+              myOtherKey: state.myKey,
+            }))
+            .addEdge("inner1", "inner2")
+            .addEdge("__start__", "inner1")
+            .compile({ interruptBefore: ["inner2"] });
 
-      const inner = new StateGraph(InnerStateAnnotation)
-        .addNode("inner1", inner1)
-        .addNode("inner2", inner2)
-        .addEdge("inner1", "inner2")
-        .addEdge("__start__", "inner1");
+          const graph = new StateGraph(
+            Annotation.Root({
+              myKey: Annotation<string>({
+                reducer: (a, b) => a + b,
+                default: () => "",
+              }),
+            })
+          )
+            .addNode("inner", (state, config) => inner.invoke(state, config), {
+              subgraphs: [inner],
+            })
+            .addNode("outer1", () => ({ myKey: " and parallel" }))
+            .addNode("outer2", () => ({ myKey: " and back again" }))
+            .addEdge(START, "inner")
+            .addEdge(START, "outer1")
+            .addEdge(["inner", "outer1"], "outer2");
 
-      const StateAnnotation = Annotation.Root({
-        myKey: Annotation<string>({
-          reducer: (a, b) => a + b,
-          default: () => "",
-        }),
-      });
-
-      const outer1 = (_state: typeof StateAnnotation.State) => {
-        return { myKey: " and parallel" };
-      };
-
-      const outer2 = (_state: typeof StateAnnotation.State) => {
-        return { myKey: " and back again" };
-      };
-
-      const graph = new StateGraph(StateAnnotation)
-        .addNode("inner", inner.compile({ interruptBefore: ["inner2"] }))
-        .addNode("outer1", outer1)
-        .addNode("outer2", outer2)
-        .addEdge(START, "inner")
-        .addEdge(START, "outer1")
-        .addEdge(["inner", "outer1"], "outer2");
-
+          return graph;
+        })(),
+      ],
+    ])("%s", async (_name, graph) => {
       const checkpointer = await createCheckpointer();
 
       const app = graph.compile({ checkpointer });
@@ -8074,35 +8111,82 @@ export function runPregelTests(
     );
   });
 
-  it("debug nested subgraph", async () => {
-    const state = Annotation.Root({
-      messages: Annotation<string[]>({
-        reducer: (a, b) => a.concat(b),
-        default: () => [],
-      }),
-    });
+  test.each([
+    [
+      "debug nested subgraph: default graph",
+      (() => {
+        const state = Annotation.Root({
+          messages: Annotation<string[]>({
+            reducer: (a, b) => a.concat(b),
+            default: () => [],
+          }),
+        });
 
-    const child = new StateGraph(state)
-      .addNode("c_one", () => ({ messages: ["c_one"] }))
-      .addNode("c_two", () => ({ messages: ["c_two"] }))
-      .addEdge(START, "c_one")
-      .addEdge("c_one", "c_two")
-      .addEdge("c_two", END);
+        const child = new StateGraph(state)
+          .addNode("c_one", () => ({ messages: ["c_one"] }))
+          .addNode("c_two", () => ({ messages: ["c_two"] }))
+          .addEdge(START, "c_one")
+          .addEdge("c_one", "c_two")
+          .addEdge("c_two", END);
 
-    const parent = new StateGraph(state)
-      .addNode("p_one", () => ({ messages: ["p_one"] }))
-      .addNode("p_two", child.compile())
-      .addEdge(START, "p_one")
-      .addEdge("p_one", "p_two")
-      .addEdge("p_two", END);
+        const parent = new StateGraph(state)
+          .addNode("p_one", () => ({ messages: ["p_one"] }))
+          .addNode("p_two", child.compile())
+          .addEdge(START, "p_one")
+          .addEdge("p_one", "p_two")
+          .addEdge("p_two", END);
 
-    const grandParent = new StateGraph(state)
-      .addNode("gp_one", () => ({ messages: ["gp_one"] }))
-      .addNode("gp_two", parent.compile())
-      .addEdge(START, "gp_one")
-      .addEdge("gp_one", "gp_two")
-      .addEdge("gp_two", END);
+        const grandParent = new StateGraph(state)
+          .addNode("gp_one", () => ({ messages: ["gp_one"] }))
+          .addNode("gp_two", parent.compile())
+          .addEdge(START, "gp_one")
+          .addEdge("gp_one", "gp_two")
+          .addEdge("gp_two", END);
 
+        return grandParent;
+      })(),
+    ],
+    [
+      "debug nested subgraph: subgraph as third argument",
+      (() => {
+        const state = Annotation.Root({
+          messages: Annotation<string[]>({
+            reducer: (a, b) => a.concat(b),
+            default: () => [],
+          }),
+        });
+
+        const child = new StateGraph(state)
+          .addNode("c_one", () => ({ messages: ["c_one"] }))
+          .addNode("c_two", () => ({ messages: ["c_two"] }))
+          .addEdge(START, "c_one")
+          .addEdge("c_one", "c_two")
+          .addEdge("c_two", END)
+          .compile();
+
+        const parent = new StateGraph(state)
+          .addNode("p_one", () => ({ messages: ["p_one"] }))
+          .addNode("p_two", (state, config) => child.invoke(state, config), {
+            subgraphs: [child],
+          })
+          .addEdge(START, "p_one")
+          .addEdge("p_one", "p_two")
+          .addEdge("p_two", END)
+          .compile();
+
+        const grandParent = new StateGraph(state)
+          .addNode("gp_one", () => ({ messages: ["gp_one"] }))
+          .addNode("gp_two", (state, config) => parent.invoke(state, config), {
+            subgraphs: [parent],
+          })
+          .addEdge(START, "gp_one")
+          .addEdge("gp_one", "gp_two")
+          .addEdge("gp_two", END);
+
+        return grandParent;
+      })(),
+    ],
+  ])("%s", async (_title, grandParent) => {
     const checkpointer = await createCheckpointer();
     const graph = grandParent.compile({ checkpointer });
 

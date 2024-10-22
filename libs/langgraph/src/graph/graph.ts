@@ -31,6 +31,7 @@ import { gatherIteratorSync, RunnableCallable } from "../utils.js";
 import { InvalidUpdateError, NodeInterrupt } from "../errors.js";
 import { StateDefinition, StateType } from "./annotation.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import { isPregelLike } from "../pregel/utils/subgraph.js";
 
 /** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
@@ -128,9 +129,15 @@ export class Branch<
 export type NodeSpec<RunInput, RunOutput> = {
   runnable: Runnable<RunInput, RunOutput>;
   metadata?: Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  subgraphs?: Pregel<any, any>[];
 };
 
-export type AddNodeOptions = { metadata?: Record<string, unknown> };
+export type AddNodeOptions = {
+  metadata?: Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  subgraphs?: Pregel<any, any>[];
+};
 
 export class Graph<
   N extends string = typeof END,
@@ -202,12 +209,15 @@ export class Graph<
       throw new Error(`Node \`${key}\` is reserved.`);
     }
 
+    const runnable = _coerceToRunnable<RunInput, RunOutput>(
+      // Account for arbitrary state due to Send API
+      action as RunnableLike<RunInput, RunOutput>
+    );
+
     this.nodes[key as unknown as N] = {
-      runnable: _coerceToRunnable<RunInput, RunOutput>(
-        // Account for arbitrary state due to Send API
-        action as RunnableLike<RunInput, RunOutput>
-      ),
+      runnable,
       metadata: options?.metadata,
+      subgraphs: isPregelLike(runnable) ? [runnable] : options?.subgraphs,
     } as NodeSpecType;
 
     return this as Graph<N | K, RunInput, RunOutput, NodeSpecType>;
@@ -462,6 +472,7 @@ export class CompiledGraph<
       channels: [],
       triggers: [],
       metadata: node.metadata,
+      subgraphs: node.subgraphs,
     })
       .pipe(node.runnable)
       .pipe(

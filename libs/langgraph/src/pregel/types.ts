@@ -107,6 +107,7 @@ export interface PregelExecutableTask<
   readonly retry_policy?: RetryPolicy;
   readonly id: string;
   readonly path?: [string, ...(string | number)[]];
+  readonly subgraphs?: Runnable[];
 }
 
 export interface StateSnapshot {
