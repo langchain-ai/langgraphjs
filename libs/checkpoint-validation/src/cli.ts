@@ -2,8 +2,6 @@ import { dirname, resolve as pathResolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCLI } from "@jest/core";
 
-// make it so we can import/require .ts files
-import "@swc-node/register/esm-register";
 import { parseArgs } from "./parse_args.js";
 
 export async function main() {
@@ -18,6 +16,6 @@ export async function main() {
       $0: "",
       runInBand: true,
     },
-    [pathResolve(moduleDirname, "..", "bin", "jest.config.js")]
+    [pathResolve(moduleDirname, "runtime_jest_config.js")]
   );
 }
