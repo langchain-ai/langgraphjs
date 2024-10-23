@@ -109,9 +109,10 @@ export class ChannelWrite<
     return [...writes, ...values];
   }
 
-  async _write(input: unknown, config: RunnableConfig): Promise<void> {
+  async _write(input: unknown, config: RunnableConfig): Promise<unknown> {
     const values = await this._getWriteValues(input, config);
     ChannelWrite.doWrite(config, values);
+    return input;
   }
 
   // TODO: Support requireAtLeastOneOf
