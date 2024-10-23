@@ -1768,6 +1768,43 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@langchain/langgraph-checkpoint-supabase@workspace:*, @langchain/langgraph-checkpoint-supabase@workspace:libs/checkpoint-supabase":
+  version: 0.0.0-use.local
+  resolution: "@langchain/langgraph-checkpoint-supabase@workspace:libs/checkpoint-supabase"
+  dependencies:
+    "@jest/globals": ^29.5.0
+    "@langchain/langgraph-checkpoint": "workspace:*"
+    "@langchain/scripts": ">=0.1.3 <0.2.0"
+    "@supabase/supabase-js": ^2.45.6
+    "@swc/core": ^1.3.90
+    "@swc/jest": ^0.2.29
+    "@tsconfig/recommended": ^1.0.3
+    "@types/uuid": ^10
+    "@typescript-eslint/eslint-plugin": ^6.12.0
+    "@typescript-eslint/parser": ^6.12.0
+    dotenv: ^16.3.1
+    dpdm: ^3.12.0
+    eslint: ^8.33.0
+    eslint-config-airbnb-base: ^15.0.0
+    eslint-config-prettier: ^8.6.0
+    eslint-plugin-import: ^2.29.1
+    eslint-plugin-jest: ^28.8.0
+    eslint-plugin-no-instanceof: ^1.0.1
+    eslint-plugin-prettier: ^4.2.1
+    jest: ^29.5.0
+    jest-environment-node: ^29.6.4
+    prettier: ^2.8.3
+    release-it: ^17.6.0
+    rollup: ^4.23.0
+    ts-jest: ^29.1.0
+    tsx: ^4.7.0
+    typescript: ^4.9.5 || ^5.4.5
+  peerDependencies:
+    "@langchain/core": ">=0.2.31 <0.4.0"
+    "@langchain/langgraph-checkpoint": ~0.0.6
+  languageName: unknown
+  linkType: soft
+
 "@langchain/langgraph-checkpoint-validation@workspace:libs/checkpoint-validation":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-checkpoint-validation@workspace:libs/checkpoint-validation"
@@ -1778,6 +1815,7 @@ __metadata:
     "@langchain/langgraph-checkpoint-mongodb": "workspace:*"
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
+    "@langchain/langgraph-checkpoint-supabase": "workspace:*"
     "@langchain/scripts": ">=0.1.3 <0.2.0"
     "@swc-node/register": ^1.10.9
     "@swc/core": ^1.3.90
@@ -2821,6 +2859,77 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@supabase/auth-js@npm:2.65.1":
+  version: 2.65.1
+  resolution: "@supabase/auth-js@npm:2.65.1"
+  dependencies:
+    "@supabase/node-fetch": ^2.6.14
+  checksum: 5e4a9c4d94b5d8d3e4c6ea113eb4adf84d5bf0b187c775e4577693d18bfba4ffa6fdf9ef236e1f7a2cebf1696948cba1ec8cafd705a6493b63ecb7807cee86ac
+  languageName: node
+  linkType: hard
+
+"@supabase/functions-js@npm:2.4.3":
+  version: 2.4.3
+  resolution: "@supabase/functions-js@npm:2.4.3"
+  dependencies:
+    "@supabase/node-fetch": ^2.6.14
+  checksum: 1c2d58b498c19bd0c8984407f1d4c207ac6816df5e38c52f0d009a9ae55cfd80cc3b74b66414b386c3dc5c972b7db99452aeed545f9f5d6472ebb631274261a8
+  languageName: node
+  linkType: hard
+
+"@supabase/node-fetch@npm:2.6.15, @supabase/node-fetch@npm:^2.6.14":
+  version: 2.6.15
+  resolution: "@supabase/node-fetch@npm:2.6.15"
+  dependencies:
+    whatwg-url: ^5.0.0
+  checksum: 9673b49236a56df49eb7ea5cb789cf4e8b1393069b84b4964ac052995e318a34872f428726d128f232139e17c3375a531e45e99edd3e96a25cce60d914b53879
+  languageName: node
+  linkType: hard
+
+"@supabase/postgrest-js@npm:1.16.3":
+  version: 1.16.3
+  resolution: "@supabase/postgrest-js@npm:1.16.3"
+  dependencies:
+    "@supabase/node-fetch": ^2.6.14
+  checksum: e89f3d75b8d7253de19356c9f57ca1674cd09a62a5229bf80705450bebf0cbe0ca667333a5e349c13eb10a74dfcbb316d574399b734591d96389d5e2ff2f0801
+  languageName: node
+  linkType: hard
+
+"@supabase/realtime-js@npm:2.10.7":
+  version: 2.10.7
+  resolution: "@supabase/realtime-js@npm:2.10.7"
+  dependencies:
+    "@supabase/node-fetch": ^2.6.14
+    "@types/phoenix": ^1.5.4
+    "@types/ws": ^8.5.10
+    ws: ^8.14.2
+  checksum: fd0a39a096c691782732eac5a08f5b150c7fbb0b8d73e91c0d7a4df9accd5835a760d3ed984c4640e3c7a72e4e8ece31ce1bbeedd47e4aacb3476c5a53e95791
+  languageName: node
+  linkType: hard
+
+"@supabase/storage-js@npm:2.7.1":
+  version: 2.7.1
+  resolution: "@supabase/storage-js@npm:2.7.1"
+  dependencies:
+    "@supabase/node-fetch": ^2.6.14
+  checksum: ed8f3a3178856c331b36588f4fff5cbb7f2f89977fff9716ab20b1977d13816bda5a887a316638f2a05ac35fdef46e18eab8a543d6113de76d3a06b15bf9ae8e
+  languageName: node
+  linkType: hard
+
+"@supabase/supabase-js@npm:^2.45.6":
+  version: 2.45.6
+  resolution: "@supabase/supabase-js@npm:2.45.6"
+  dependencies:
+    "@supabase/auth-js": 2.65.1
+    "@supabase/functions-js": 2.4.3
+    "@supabase/node-fetch": 2.6.15
+    "@supabase/postgrest-js": 1.16.3
+    "@supabase/realtime-js": 2.10.7
+    "@supabase/storage-js": 2.7.1
+  checksum: d97c18180a7e4725615e6d22ab322eb6f68de0fe8b5bb9cdd921544c16274917b5d7594ff46fb4401d175329e768e82a9ad8dd3c362a6c5ab2231afb021481b9
+  languageName: node
+  linkType: hard
+
 "@swc-node/core@npm:^1.13.3":
   version: 1.13.3
   resolution: "@swc-node/core@npm:1.13.3"
@@ -3594,6 +3703,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/phoenix@npm:^1.5.4":
+  version: 1.6.5
+  resolution: "@types/phoenix@npm:1.6.5"
+  checksum: b87416393159f0ba2812875fc2721914a3284cde8b1f263dfcd46f4149dae7f4efc2bfa062d558c8bbfb7ae2a9d802487b0dd4744ff08799386cbc49c19368f0
+  languageName: node
+  linkType: hard
+
 "@types/qs@npm:^6.9.15":
   version: 6.9.15
   resolution: "@types/qs@npm:6.9.15"
@@ -3686,6 +3802,15 @@ __metadata:
   dependencies:
     "@types/webidl-conversions": "*"
   checksum: 23a0c45aff51817807b473a6adb181d6e3bb0d27dde54e84883d5d5bc93358e95204d2188e7ff7fdc2cdaf157e97e1188ef0a22ec79228da300fc30d4a05b56a
+  languageName: node
+  linkType: hard
+
+"@types/ws@npm:^8.5.10":
+  version: 8.5.12
+  resolution: "@types/ws@npm:8.5.12"
+  dependencies:
+    "@types/node": "*"
+  checksum: ddefb6ad1671f70ce73b38a5f47f471d4d493864fca7c51f002a86e5993d031294201c5dced6d5018fb8905ad46888d65c7f20dd54fc165910b69f42fba9a6d0
   languageName: node
   linkType: hard
 
@@ -13010,6 +13135,21 @@ __metadata:
     imurmurhash: ^0.1.4
     signal-exit: ^3.0.7
   checksum: 5da60bd4eeeb935eec97ead3df6e28e5917a6bd317478e4a85a5285e8480b8ed96032bbcc6ecd07b236142a24f3ca871c924ec4a6575e623ec1b11bf8c1c253c
+  languageName: node
+  linkType: hard
+
+"ws@npm:^8.14.2":
+  version: 8.18.0
+  resolution: "ws@npm:8.18.0"
+  peerDependencies:
+    bufferutil: ^4.0.1
+    utf-8-validate: ">=5.0.2"
+  peerDependenciesMeta:
+    bufferutil:
+      optional: true
+    utf-8-validate:
+      optional: true
+  checksum: 91d4d35bc99ff6df483bdf029b9ea4bfd7af1f16fc91231a96777a63d263e1eabf486e13a2353970efc534f9faa43bdbf9ee76525af22f4752cbc5ebda333975
   languageName: node
   linkType: hard
 
