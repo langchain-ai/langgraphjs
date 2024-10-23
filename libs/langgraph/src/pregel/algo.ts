@@ -541,6 +541,7 @@ export function _prepareSingleTask<
           name: packet.node,
           input: packet.args,
           proc: node,
+          subgraphs: proc.subgraphs,
           writes,
           config: patchConfig(
             mergeConfigs(config, {
@@ -665,6 +666,7 @@ export function _prepareSingleTask<
             name,
             input: val,
             proc: node,
+            subgraphs: proc.subgraphs,
             writes,
             config: patchConfig(
               mergeConfigs(config, {

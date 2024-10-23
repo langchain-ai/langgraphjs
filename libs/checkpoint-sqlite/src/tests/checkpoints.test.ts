@@ -103,7 +103,12 @@ describe("SqliteSaver", () => {
         },
       },
       checkpoint2,
-      { source: "update", step: -1, writes: null, parents: {} }
+      {
+        source: "update",
+        step: -1,
+        writes: null,
+        parents: { "": checkpoint1.id },
+      }
     );
 
     // verify that parentTs is set and retrieved correctly for second checkpoint
@@ -119,18 +124,25 @@ describe("SqliteSaver", () => {
     });
 
     // list checkpoints
-    const checkpointTupleGenerator = await sqliteSaver.list({
-      configurable: { thread_id: "1" },
-    });
+    const checkpointTupleGenerator = await sqliteSaver.list(
+      {
+        configurable: { thread_id: "1" },
+      },
+      {
+        filter: {
+          source: "update",
+          step: -1,
+          parents: { "": checkpoint1.id },
+        },
+      }
+    );
     const checkpointTuples: CheckpointTuple[] = [];
     for await (const checkpoint of checkpointTupleGenerator) {
       checkpointTuples.push(checkpoint);
     }
-    expect(checkpointTuples.length).toBe(2);
+    expect(checkpointTuples.length).toBe(1);
 
     const checkpointTuple1 = checkpointTuples[0];
-    const checkpointTuple2 = checkpointTuples[1];
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
-    expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
   });
 });
