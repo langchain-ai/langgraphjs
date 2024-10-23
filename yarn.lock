@@ -449,34 +449,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@emnapi/core@npm:^1.1.0":
-  version: 1.3.1
-  resolution: "@emnapi/core@npm:1.3.1"
-  dependencies:
-    "@emnapi/wasi-threads": 1.0.1
-    tslib: ^2.4.0
-  checksum: 9b4e4bc37e09d901f5d95ca998c4936432a7a2207f33e98e15ae8c9bb34803baa444cef66b8acc80fd701f6634c2718f43709e82432052ea2aa7a71a58cb9164
-  languageName: node
-  linkType: hard
-
-"@emnapi/runtime@npm:^1.1.0":
-  version: 1.3.1
-  resolution: "@emnapi/runtime@npm:1.3.1"
-  dependencies:
-    tslib: ^2.4.0
-  checksum: 9a16ae7905a9c0e8956cf1854ef74e5087fbf36739abdba7aa6b308485aafdc993da07c19d7af104cd5f8e425121120852851bb3a0f78e2160e420a36d47f42f
-  languageName: node
-  linkType: hard
-
-"@emnapi/wasi-threads@npm:1.0.1":
-  version: 1.0.1
-  resolution: "@emnapi/wasi-threads@npm:1.0.1"
-  dependencies:
-    tslib: ^2.4.0
-  checksum: e154880440ff9bfe67b417f30134f0ff6fee28913dbf4a22de2e67dda5bf5b51055647c5d1565281df17ef5dfcc89256546bdf9b8ccfd07e07566617e7ce1498
-  languageName: node
-  linkType: hard
-
 "@esbuild/aix-ppc64@npm:0.19.12":
   version: 0.19.12
   resolution: "@esbuild/aix-ppc64@npm:0.19.12"
@@ -1779,7 +1751,6 @@ __metadata:
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
     "@langchain/scripts": ">=0.1.3 <0.2.0"
-    "@swc-node/register": ^1.10.9
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
     "@testcontainers/mongodb": ^10.13.2
@@ -1807,7 +1778,6 @@ __metadata:
     release-it: ^17.6.0
     rollup: ^4.22.4
     ts-jest: ^29.1.0
-    tsx: ^4.7.0
     typescript: ^4.9.5 || ^5.4.5
     uuid: ^10.0.0
     yargs: ^17.7.2
@@ -1995,17 +1965,6 @@ __metadata:
   dependencies:
     sparse-bitfield: ^3.0.3
   checksum: 259fda7ec913b5e63f102ae18840ef0d811c4a50919bbc437bd0452980806d640cd06c36076ed1655f1581ef24cd7316be0671f4b7429e7c97c7066524d2dbee
-  languageName: node
-  linkType: hard
-
-"@napi-rs/wasm-runtime@npm:^0.2.4":
-  version: 0.2.5
-  resolution: "@napi-rs/wasm-runtime@npm:0.2.5"
-  dependencies:
-    "@emnapi/core": ^1.1.0
-    "@emnapi/runtime": ^1.1.0
-    "@tybys/wasm-util": ^0.9.0
-  checksum: eefece41cfd4990660e06fff69f22ebaac15f5bea5b0f2ef936ee0ee69ff229618f05054472669676079eb1d4d404c8358a6b6c832fd9ae62658add4eefa1531
   languageName: node
   linkType: hard
 
@@ -2296,85 +2255,6 @@ __metadata:
   dependencies:
     "@octokit/openapi-types": ^22.2.0
   checksum: 6e8b2bd27a92b407025867e50b28acc698d19f11d71d54da07ca028d0b56fb95c5831e6091ed29a16160d7148f825d54aaae78e46b83c91d364ceccc372cb9a0
-  languageName: node
-  linkType: hard
-
-"@oxc-resolver/binding-darwin-arm64@npm:1.12.0":
-  version: 1.12.0
-  resolution: "@oxc-resolver/binding-darwin-arm64@npm:1.12.0"
-  conditions: os=darwin & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"@oxc-resolver/binding-darwin-x64@npm:1.12.0":
-  version: 1.12.0
-  resolution: "@oxc-resolver/binding-darwin-x64@npm:1.12.0"
-  conditions: os=darwin & cpu=x64
-  languageName: node
-  linkType: hard
-
-"@oxc-resolver/binding-freebsd-x64@npm:1.12.0":
-  version: 1.12.0
-  resolution: "@oxc-resolver/binding-freebsd-x64@npm:1.12.0"
-  conditions: os=freebsd & cpu=x64
-  languageName: node
-  linkType: hard
-
-"@oxc-resolver/binding-linux-arm-gnueabihf@npm:1.12.0":
-  version: 1.12.0
-  resolution: "@oxc-resolver/binding-linux-arm-gnueabihf@npm:1.12.0"
-  conditions: os=linux & cpu=arm
-  languageName: node
-  linkType: hard
-
-"@oxc-resolver/binding-linux-arm64-gnu@npm:1.12.0":
-  version: 1.12.0
-  resolution: "@oxc-resolver/binding-linux-arm64-gnu@npm:1.12.0"
-  conditions: os=linux & cpu=arm64 & libc=glibc
-  languageName: node
-  linkType: hard
-
-"@oxc-resolver/binding-linux-arm64-musl@npm:1.12.0":
-  version: 1.12.0
-  resolution: "@oxc-resolver/binding-linux-arm64-musl@npm:1.12.0"
-  conditions: os=linux & cpu=arm64 & libc=musl
-  languageName: node
-  linkType: hard
-
-"@oxc-resolver/binding-linux-x64-gnu@npm:1.12.0":
-  version: 1.12.0
-  resolution: "@oxc-resolver/binding-linux-x64-gnu@npm:1.12.0"
-  conditions: os=linux & cpu=x64 & libc=glibc
-  languageName: node
-  linkType: hard
-
-"@oxc-resolver/binding-linux-x64-musl@npm:1.12.0":
-  version: 1.12.0
-  resolution: "@oxc-resolver/binding-linux-x64-musl@npm:1.12.0"
-  conditions: os=linux & cpu=x64 & libc=musl
-  languageName: node
-  linkType: hard
-
-"@oxc-resolver/binding-wasm32-wasi@npm:1.12.0":
-  version: 1.12.0
-  resolution: "@oxc-resolver/binding-wasm32-wasi@npm:1.12.0"
-  dependencies:
-    "@napi-rs/wasm-runtime": ^0.2.4
-  conditions: cpu=wasm32
-  languageName: node
-  linkType: hard
-
-"@oxc-resolver/binding-win32-arm64-msvc@npm:1.12.0":
-  version: 1.12.0
-  resolution: "@oxc-resolver/binding-win32-arm64-msvc@npm:1.12.0"
-  conditions: os=win32 & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"@oxc-resolver/binding-win32-x64-msvc@npm:1.12.0":
-  version: 1.12.0
-  resolution: "@oxc-resolver/binding-win32-x64-msvc@npm:1.12.0"
-  conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
 
@@ -2821,44 +2701,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@swc-node/core@npm:^1.13.3":
-  version: 1.13.3
-  resolution: "@swc-node/core@npm:1.13.3"
-  peerDependencies:
-    "@swc/core": ">= 1.4.13"
-    "@swc/types": ">= 0.1"
-  checksum: 9bad56479b2e980af8cfbcc1f040b95a928e38ead40ee3f980cd5718814cdaa6dc93d3a1d4a584e9fb1105af9a8f06ee2d5d82c6465ac364e6febe637f6139d7
-  languageName: node
-  linkType: hard
-
-"@swc-node/register@npm:^1.10.9":
-  version: 1.10.9
-  resolution: "@swc-node/register@npm:1.10.9"
-  dependencies:
-    "@swc-node/core": ^1.13.3
-    "@swc-node/sourcemap-support": ^0.5.1
-    colorette: ^2.0.20
-    debug: ^4.3.5
-    oxc-resolver: ^1.10.2
-    pirates: ^4.0.6
-    tslib: ^2.6.3
-  peerDependencies:
-    "@swc/core": ">= 1.4.13"
-    typescript: ">= 4.3"
-  checksum: 147998eaca7b12dbaf17f937d849f615b8f541bada136a6619b79610ec2fc509599ac48fe61f04cfbe6f459cf9773b87119845b77b30c5d31ebe450a527c6566
-  languageName: node
-  linkType: hard
-
-"@swc-node/sourcemap-support@npm:^0.5.1":
-  version: 0.5.1
-  resolution: "@swc-node/sourcemap-support@npm:0.5.1"
-  dependencies:
-    source-map-support: ^0.5.21
-    tslib: ^2.6.3
-  checksum: 307be2a52c10f3899871dc316190584e7a6e48375de5b84638cd0ca96681c4ce89891b9f7e86dedb93aac106dea7eff42ac2192f443ac1a1242a206ec93d0caf
-  languageName: node
-  linkType: hard
-
 "@swc/core-darwin-arm64@npm:1.4.16":
   version: 1.4.16
   resolution: "@swc/core-darwin-arm64@npm:1.4.16"
@@ -3064,15 +2906,6 @@ __metadata:
     tsc: bin/tsc
     tsserver: bin/tsserver
   checksum: 52c73ff6656f7ab773f53dce01c0c490a91208722a42cbb04f4220f8e7bb54e79ba6a711d0fb688a27d7e9243345230c86f8e92b0c18732857e74552b2e38fee
-  languageName: node
-  linkType: hard
-
-"@tybys/wasm-util@npm:^0.9.0":
-  version: 0.9.0
-  resolution: "@tybys/wasm-util@npm:0.9.0"
-  dependencies:
-    tslib: ^2.4.0
-  checksum: 8d44c64e64e39c746e45b5dff7b534716f20e1f6e8fc206f8e4c8ac454ec0eb35b65646e446dd80745bc898db37a4eca549a936766d447c2158c9c43d44e7708
   languageName: node
   linkType: hard
 
@@ -4977,13 +4810,6 @@ __metadata:
     color-convert: ^2.0.1
     color-string: ^1.9.0
   checksum: 0579629c02c631b426780038da929cca8e8d80a40158b09811a0112a107c62e10e4aad719843b791b1e658ab4e800558f2e87ca4522c8b32349d497ecb6adeb4
-  languageName: node
-  linkType: hard
-
-"colorette@npm:^2.0.20":
-  version: 2.0.20
-  resolution: "colorette@npm:2.0.20"
-  checksum: 0c016fea2b91b733eb9f4bcdb580018f52c0bc0979443dad930e5037a968237ac53d9beb98e218d2e9235834f8eebce7f8e080422d6194e957454255bde71d3d
   languageName: node
   linkType: hard
 
@@ -10153,48 +9979,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"oxc-resolver@npm:^1.10.2":
-  version: 1.12.0
-  resolution: "oxc-resolver@npm:1.12.0"
-  dependencies:
-    "@oxc-resolver/binding-darwin-arm64": 1.12.0
-    "@oxc-resolver/binding-darwin-x64": 1.12.0
-    "@oxc-resolver/binding-freebsd-x64": 1.12.0
-    "@oxc-resolver/binding-linux-arm-gnueabihf": 1.12.0
-    "@oxc-resolver/binding-linux-arm64-gnu": 1.12.0
-    "@oxc-resolver/binding-linux-arm64-musl": 1.12.0
-    "@oxc-resolver/binding-linux-x64-gnu": 1.12.0
-    "@oxc-resolver/binding-linux-x64-musl": 1.12.0
-    "@oxc-resolver/binding-wasm32-wasi": 1.12.0
-    "@oxc-resolver/binding-win32-arm64-msvc": 1.12.0
-    "@oxc-resolver/binding-win32-x64-msvc": 1.12.0
-  dependenciesMeta:
-    "@oxc-resolver/binding-darwin-arm64":
-      optional: true
-    "@oxc-resolver/binding-darwin-x64":
-      optional: true
-    "@oxc-resolver/binding-freebsd-x64":
-      optional: true
-    "@oxc-resolver/binding-linux-arm-gnueabihf":
-      optional: true
-    "@oxc-resolver/binding-linux-arm64-gnu":
-      optional: true
-    "@oxc-resolver/binding-linux-arm64-musl":
-      optional: true
-    "@oxc-resolver/binding-linux-x64-gnu":
-      optional: true
-    "@oxc-resolver/binding-linux-x64-musl":
-      optional: true
-    "@oxc-resolver/binding-wasm32-wasi":
-      optional: true
-    "@oxc-resolver/binding-win32-arm64-msvc":
-      optional: true
-    "@oxc-resolver/binding-win32-x64-msvc":
-      optional: true
-  checksum: 32ae094673c8abb4ee74e518b01581b8a59cf66ee59c59c428f7d88cdbb46a81e9df04e310b51aff986d32e760ae31ff9ebba2b576d562d06513dddae74453c7
-  languageName: node
-  linkType: hard
-
 "p-cancelable@npm:^3.0.0":
   version: 3.0.0
   resolution: "p-cancelable@npm:3.0.0"
@@ -10631,7 +10415,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"pirates@npm:^4.0.4, pirates@npm:^4.0.6":
+"pirates@npm:^4.0.4":
   version: 4.0.6
   resolution: "pirates@npm:4.0.6"
   checksum: 46a65fefaf19c6f57460388a5af9ab81e3d7fd0e7bc44ca59d753cb5c4d0df97c6c6e583674869762101836d68675f027d60f841c105d72734df9dfca97cbcc6
@@ -11738,16 +11522,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"source-map-support@npm:^0.5.21":
-  version: 0.5.21
-  resolution: "source-map-support@npm:0.5.21"
-  dependencies:
-    buffer-from: ^1.0.0
-    source-map: ^0.6.0
-  checksum: 43e98d700d79af1d36f859bdb7318e601dfc918c7ba2e98456118ebc4c4872b327773e5a1df09b0524e9e5063bb18f0934538eace60cca2710d1fa687645d137
-  languageName: node
-  linkType: hard
-
 "source-map@npm:^0.6.0, source-map@npm:^0.6.1, source-map@npm:~0.6.1":
   version: 0.6.1
   resolution: "source-map@npm:0.6.1"
@@ -12352,13 +12126,6 @@ __metadata:
   version: 2.6.2
   resolution: "tslib@npm:2.6.2"
   checksum: 329ea56123005922f39642318e3d1f0f8265d1e7fcb92c633e0809521da75eeaca28d2cf96d7248229deb40e5c19adf408259f4b9640afd20d13aecc1430f3ad
-  languageName: node
-  linkType: hard
-
-"tslib@npm:^2.4.0, tslib@npm:^2.6.3":
-  version: 2.7.0
-  resolution: "tslib@npm:2.7.0"
-  checksum: 1606d5c89f88d466889def78653f3aab0f88692e80bb2066d090ca6112ae250ec1cfa9dbfaab0d17b60da15a4186e8ec4d893801c67896b277c17374e36e1d28
   languageName: node
   linkType: hard
 

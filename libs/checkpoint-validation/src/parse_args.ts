@@ -5,24 +5,9 @@ import {
   checkpointerTestInitializerSchema,
   isTestTypeFilter,
   isTestTypeFilterArray,
-  TestTypeFilter,
   testTypeFilters,
 } from "./types.js";
 import { dynamicImport, resolveImportPath } from "./import_utils.js";
-
-// We have to Symbol.for here instead of unique symbols because jest gives each test file a unique module cache, so
-// these symbols get created once when the jest config is evaluated, and again when runner.ts executes, making it
-// impossible for runner.ts to use them as global keys.
-const symbolPrefix = "langgraph-checkpoint-validation";
-export const initializerSymbol = Symbol.for(`${symbolPrefix}-initializer`);
-export const filtersSymbol = Symbol.for(`${symbolPrefix}-filters`);
-
-export type ParsedArgs<
-  CheckpointerT extends BaseCheckpointSaver = BaseCheckpointSaver
-> = {
-  [initializerSymbol]: CheckpointerTestInitializer<CheckpointerT>;
-  [filtersSymbol]: TestTypeFilter[];
-};
 
 const builder = yargs()
   .command("* <initializer-import-path> [filters..]", "Validate a checkpointer")
@@ -48,19 +33,10 @@ const builder = yargs()
 
 export async function parseArgs<CheckpointerT extends BaseCheckpointSaver>(
   argv: string[]
-): Promise<ParsedArgs<CheckpointerT>> {
+) {
   const { initializerImportPath, filters } = await builder.parse(argv);
 
-  let resolvedImportPath;
-
-  try {
-    resolvedImportPath = resolveImportPath(initializerImportPath);
-  } catch (e) {
-    console.error(
-      `Failed to resolve import path '${initializerImportPath}': ${e}`
-    );
-    process.exit(1);
-  }
+  const resolvedImportPath = resolveImportPath(initializerImportPath);
 
   let initializerExport: unknown;
   try {
@@ -97,7 +73,31 @@ export async function parseArgs<CheckpointerT extends BaseCheckpointSaver>(
   }
 
   return {
-    [initializerSymbol]: initializer,
-    [filtersSymbol]: filters,
+    initializer,
+    filters,
   };
+}
+
+export async function validateArgs(argv: string[]): Promise<void> {
+  const { initializerImportPath, filters } = await builder.parse(argv);
+
+  try {
+    resolveImportPath(initializerImportPath);
+  } catch (e) {
+    console.error(
+      `Failed to resolve import path '${initializerImportPath}': ${e}`
+    );
+    process.exit(1);
+  }
+
+  if (!isTestTypeFilterArray(filters)) {
+    console.error(
+      `Invalid filters: '${filters
+        .filter((f) => !isTestTypeFilter(f))
+        .join("', '")}'. Expected only values from '${testTypeFilters.join(
+        "', '"
+      )}'`
+    );
+    process.exit(1);
+  }
 }
