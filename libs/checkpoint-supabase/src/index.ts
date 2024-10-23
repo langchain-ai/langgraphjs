@@ -5,10 +5,10 @@ import {
   BaseCheckpointSaver,
   type Checkpoint,
   type CheckpointListOptions,
-  type CheckpointTuple,
-  type SerializerProtocol,
-  type PendingWrite,
   type CheckpointMetadata,
+  type CheckpointTuple,
+  type PendingWrite,
+  type SerializerProtocol,
 } from "@langchain/langgraph-checkpoint";
 
 interface CheckpointRow {
@@ -178,29 +178,21 @@ export class SupaSaver extends BaseCheckpointSaver {
     const thread_id = config.configurable?.thread_id;
     const checkpoint_ns = config.configurable?.checkpoint_ns;
 
-    let sql =
-      `SELECT\n` +
-      "  thread_id,\n" +
-      "  checkpoint_ns,\n" +
-      "  checkpoint_id,\n" +
-      "  parent_checkpoint_id,\n" +
-      "  type,\n" +
-      "  checkpoint,\n" +
-      "  metadata\n" +
-      "FROM checkpoints\n";
-
-    const whereClause: string[] = [];
+    let query = this.client
+      .from("chat_session_checkpoints")
+      .select("*")
+      .eq("session_id", "6b3cffb2-e521-46e3-9509-266f5380245d");
 
     if (thread_id) {
-      whereClause.push("thread_id = ?");
+      query = query.eq("thread_id", thread_id);
     }
 
     if (checkpoint_ns !== undefined && checkpoint_ns !== null) {
-      whereClause.push("checkpoint_ns = ?");
+      query = query.eq("checkpoint_ns", checkpoint_ns);
     }
 
     if (before?.configurable?.checkpoint_id !== undefined) {
-      whereClause.push("checkpoint_id < ?");
+      query = query.lt("checkpoint_id", before.configurable.checkpoint_id);
     }
 
     const sanitizedFilter = Object.fromEntries(
@@ -211,33 +203,21 @@ export class SupaSaver extends BaseCheckpointSaver {
       )
     );
 
-    whereClause.push(
-      ...Object.entries(sanitizedFilter).map(
-        ([key]) => `jsonb(CAST(metadata AS TEXT))->'$.${key}' = ?`
-      )
-    );
-
-    if (whereClause.length > 0) {
-      sql += `WHERE\n  ${whereClause.join(" AND\n  ")}\n`;
+    for (const [key, value] of Object.entries(sanitizedFilter)) {
+      query = query.eq(`metadata->${key}`, JSON.stringify(value));
     }
 
-    sql += "\nORDER BY checkpoint_id DESC";
+    query = query.order("checkpoint_id", { ascending: false });
 
     if (limit) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      sql += ` LIMIT ${parseInt(limit as any, 10)}`; // parseInt here (with cast to make TS happy) to sanitize input, as limit may be user-provided
+      query = query.limit(parseInt(limit as any, 10));
     }
 
-    const args = [
-      thread_id,
-      checkpoint_ns,
-      before?.configurable?.checkpoint_id,
-      ...Object.values(sanitizedFilter).map((value) => JSON.stringify(value)),
-    ].filter((value) => value !== undefined && value !== null);
+    const { data: rows, error } = await query;
 
-    const rows: CheckpointRow[] = this.db
-      .prepare(sql)
-      .all(...args) as CheckpointRow[];
+    if (error) {
+      throw error;
+    }
 
     if (rows) {
       for (const row of rows) {
