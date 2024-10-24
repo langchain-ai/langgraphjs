@@ -136,12 +136,14 @@ export class SupaSaver extends BaseCheckpointSaver {
         },
       };
     }
+
     if (
       finalConfig.configurable?.thread_id === undefined ||
       finalConfig.configurable?.checkpoint_id === undefined
     ) {
       throw new Error("Missing thread_id or checkpoint_id");
     }
+
     // find any pending writes
     // const pendingWritesRows = this.db
     //   .prepare(
@@ -152,6 +154,7 @@ export class SupaSaver extends BaseCheckpointSaver {
     //     checkpoint_ns,
     //     finalConfig.configurable.checkpoint_id.toString()
     //   ) as WritesRow[];
+
     const pendingWritesRes = await this.client
       .from("langgraph_writes")
       .select("*")
@@ -160,7 +163,7 @@ export class SupaSaver extends BaseCheckpointSaver {
       .eq("checkpoint_id", finalConfig.configurable.checkpoint_id.toString())
       .throwOnError();
 
-    const pendingWritesRows = pendingWritesRes.data ?? [];
+    const pendingWritesRows = (pendingWritesRes.data ?? []) as WritesRow[];
     const pendingWrites = await Promise.all(
       pendingWritesRows.map(async (row: WritesRow) => {
         return [
@@ -284,14 +287,16 @@ export class SupaSaver extends BaseCheckpointSaver {
     const serializedMetadata = this._dumpMetadata(metadata);
     const { thread_id, checkpoint_ns, checkpoint_id } = config.configurable!;
 
-    await this.client.from("langgraph_checkpoints").insert({
+    await this.client.from("langgraph_checkpoints").upsert({
       checkpoint_id: checkpoint.id,
-      thread_id: thread_id,
+      thread_id: thread_id.toString(),
       checkpoint_ns: checkpoint_ns,
       parent_checkpoint_id: checkpoint_id,
       type: 'json',
       checkpoint: serializedCheckpoint,
       metadata: serializedMetadata,
+    }, {
+      onConflict: "thread_id,checkpoint_ns,checkpoint_id",
     }).throwOnError();
 
     //
@@ -337,22 +342,12 @@ export class SupaSaver extends BaseCheckpointSaver {
     //   }
     // });
 
-    const thread_id = config.configurable!.thread_id;
-    const checkpoint_id = config.configurable!.checkpoint_id;
-    const checkpoint_ns = config.configurable!.checkpoint_ns;
-
-    if (
-      thread_id === undefined ||
-      checkpoint_id === undefined ||
-      checkpoint_ns === undefined
-    ) {
-      throw new Error("checkpoint_id, sessionId or checkpoint_ns is undefined");
-    }
+    const {thread_id, checkpoint_id, checkpoint_ns} = config.configurable!;
 
     await Promise.all(
       writes.map(async (write, idx) => {
         const [, serializedWrite] = this.serde.dumpsTyped(write[1]);
-        ;
+
         await this.client.from("langgraph_writes").upsert({
           thread_id: thread_id,
           checkpoint_ns: checkpoint_ns,

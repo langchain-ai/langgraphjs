@@ -222,6 +222,8 @@ export function putTests<T extends BaseCheckpointSaver>(
         "TODO: MongoDBSaver doesn't store channel deltas",
       "@langchain/langgraph-checkpoint-sqlite":
         "TODO: SQLiteSaver doesn't store channel deltas",
+      "@langchain/langgraph-checkpoint-supabase":
+        "TODO: SupabaseSaver doesn't store channel deltas",
     })(
       "should only store channel_values that have changed (based on newVersions)",
       async () => {

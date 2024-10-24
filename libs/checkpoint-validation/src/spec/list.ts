@@ -132,10 +132,6 @@ export function listTests<T extends BaseCheckpointSaver>(
               delete expectedTuple?.pendingWrites;
             }
 
-            if(expectedTuple === undefined) {
-              console.log("Blammo!", value, expectedTuple);
-            }
-
             expect(value).toEqual(expectedTuple);
           }
         }
