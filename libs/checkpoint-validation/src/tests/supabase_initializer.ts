@@ -17,13 +17,11 @@ export const initializer: CheckpointerTestInitializer<SupaSaver> = {
   async afterAll() {
     const client = createClient(SUPABASE_URL, SUPABASE_KEY);
     await client
-      .from("chat_session_checkpoints")
+      .from("langgraph_checkpoints")
       .delete()
-      .eq("session_id", "6b3cffb2-e521-46e3-9509-266f5380245d");
     await client
-      .from("chat_session_writes")
+      .from("langgraph_writes")
       .delete()
-      .neq("session_id", "6b3cffb2-e521-46e3-9509-266f5380245d");
   },
 };
 
