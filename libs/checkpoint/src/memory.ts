@@ -287,15 +287,10 @@ export class MemorySaver extends BaseCheckpointSaver {
     const preparedCheckpoint: Partial<Checkpoint> = copyCheckpoint(checkpoint);
     delete preparedCheckpoint.pending_sends;
     const threadId = config.configurable?.thread_id;
-    const checkpointNamespace = config.configurable?.checkpoint_ns;
+    const checkpointNamespace = config.configurable?.checkpoint_ns ?? "";
     if (threadId === undefined) {
       throw new Error(
         `Failed to put checkpoint. The passed RunnableConfig is missing a required "thread_id" field in its "configurable" property.`
-      );
-    }
-    if (checkpointNamespace === undefined) {
-      throw new Error(
-        `Failed to put checkpoint. The passed RunnableConfig is missing a required "checkpoint_ns" field in its "configurable" property.`
       );
     }
 
