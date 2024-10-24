@@ -31,6 +31,7 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { ToolCall } from "@langchain/core/messages/tool";
+import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
 import {
   BaseCheckpointSaver,
   BaseStore,
@@ -2351,13 +2352,14 @@ export function runPregelTests(
           callbacks: [
             {
               handleChainEnd(outputs) {
+                // The final time this is called should be the final output from graph
                 callbackOutputs = outputs;
               },
             },
           ],
         }
       );
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await awaitAllCallbacks();
       expect(result).toEqual({
         input: "what is the weather in sf?",
         agentOutcome: {
@@ -4174,8 +4176,8 @@ export function runPregelTests(
             id: "action",
             type: "runnable",
             data: {
-              id: ["langchain_core", "runnables", "RunnableLambda"],
-              name: "RunnableLambda",
+              id: ["langgraph", "RunnableCallable"],
+              name: "action",
             },
           },
           {
@@ -4330,8 +4332,8 @@ export function runPregelTests(
             id: "action",
             type: "runnable",
             data: {
-              id: ["langchain_core", "runnables", "RunnableLambda"],
-              name: "RunnableLambda",
+              id: ["langgraph", "RunnableCallable"],
+              name: "action",
             },
           },
         ]),
@@ -5013,39 +5015,39 @@ export function runPregelTests(
     expect(tool.getGraph().toJSON()).toMatchObject({
       nodes: expect.arrayContaining([
         expect.objectContaining({ id: "__start__", type: "schema" }),
-        expect.objectContaining({ id: "__end__", type: "schema" }),
         {
           id: "prepare",
           type: "runnable",
           data: {
-            id: ["langchain_core", "runnables", "RunnableLambda"],
-            name: "RunnableLambda",
+            id: ["langgraph", "RunnableCallable"],
+            name: "prepare",
           },
         },
         {
           id: "tool_two_slow",
           type: "runnable",
           data: {
-            id: ["langchain_core", "runnables", "RunnableLambda"],
-            name: "RunnableLambda",
+            id: ["langgraph", "RunnableCallable"],
+            name: "tool_two_slow",
           },
         },
         {
           id: "tool_two_fast",
           type: "runnable",
           data: {
-            id: ["langchain_core", "runnables", "RunnableLambda"],
-            name: "RunnableLambda",
+            id: ["langgraph", "RunnableCallable"],
+            name: "tool_two_fast",
           },
         },
         {
           id: "finish",
           type: "runnable",
           data: {
-            id: ["langchain_core", "runnables", "RunnableLambda"],
-            name: "RunnableLambda",
+            id: ["langgraph", "RunnableCallable"],
+            name: "finish",
           },
         },
+        expect.objectContaining({ id: "__end__", type: "schema" }),
       ]),
       edges: expect.arrayContaining([
         { source: "__start__", target: "prepare", conditional: false },

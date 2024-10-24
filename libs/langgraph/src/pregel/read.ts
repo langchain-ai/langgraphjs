@@ -194,12 +194,14 @@ export class PregelNode<
         first: writers[0],
         middle: writers.slice(1, writers.length - 1),
         last: writers[writers.length - 1],
+        omitSequenceTags: true,
       });
     } else if (writers.length > 0) {
       return new RunnableSequence({
         first: this.bound,
         middle: writers.slice(0, writers.length - 1),
         last: writers[writers.length - 1],
+        omitSequenceTags: true,
       });
     } else {
       return this.bound;
@@ -237,7 +239,7 @@ export class PregelNode<
         channels: this.channels,
         triggers: this.triggers,
         mapper: this.mapper,
-        writers: [...this.writers, coerceable as ChannelWrite],
+        writers: [...this.writers, coerceable],
         bound: this.bound as unknown as PregelNode<
           RunInput,
           Exclude<NewRunOutput, Error>

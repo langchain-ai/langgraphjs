@@ -139,6 +139,8 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
 
   handleToolErrors = true;
 
+  trace = false;
+
   constructor(
     tools: (StructuredToolInterface | RunnableToolLike)[],
     options?: ToolNodeOptions
