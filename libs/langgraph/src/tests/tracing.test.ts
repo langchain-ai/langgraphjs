@@ -72,7 +72,7 @@ it("stream events for a multi-node graph", async () => {
     {
       event: "on_chain_end",
       data: {
-        output: { output: undefined },
+        output: { messages: [] },
         input: {
           messages: [],
         },
@@ -174,7 +174,7 @@ it("stream events for a multi-node graph", async () => {
     {
       event: "on_chain_end",
       data: {
-        output: { output: undefined },
+        output: { messages: [new _AnyIdAIMessage("hey!")] },
         input: {
           messages: [new _AnyIdAIMessage("hey!")],
         },
@@ -413,7 +413,7 @@ it("Should respect .withConfig", async () => {
     {
       event: "on_chain_end",
       data: {
-        output: { output: undefined },
+        output: { messages: [] },
         input: {
           messages: [],
         },
@@ -515,7 +515,7 @@ it("Should respect .withConfig", async () => {
     {
       event: "on_chain_end",
       data: {
-        output: { output: undefined },
+        output: { messages: [new _AnyIdAIMessage("hey!")] },
         input: {
           messages: [new _AnyIdAIMessage("hey!")],
         },
