@@ -199,8 +199,7 @@ export class SupaSaver extends BaseCheckpointSaver {
     options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
     const { limit, before, filter } = options ?? {};
-    const thread_id = config.configurable?.thread_id;
-    const checkpoint_ns = config.configurable?.checkpoint_ns;
+    const {thread_id, checkpoint_ns} = config.configurable ?? {};
 
     let query = this.client
       .from("langgraph_checkpoints")
@@ -227,7 +226,9 @@ export class SupaSaver extends BaseCheckpointSaver {
     );
 
     for (const [key, value] of Object.entries(sanitizedFilter)) {
-      query = query.eq(`metadata@>${key}`, JSON.stringify(value));
+      let searchObject = {} as any;
+      searchObject[key] = value
+      query = query.contains(`metadata`, JSON.stringify(searchObject));
     }
 
     query = query.order("checkpoint_id", { ascending: false });

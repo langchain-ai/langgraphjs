@@ -116,7 +116,7 @@ export function listTests<T extends BaseCheckpointSaver>(
         } else {
           expect(actualTuplesMap.size).toEqual(expectedTuplesMap.size);
           for (const [key, value] of actualTuplesMap.entries()) {
-            // TODO: MongoDBSaver and SQLiteSaver don't return pendingWrites on list, so we need to special case them
+            // TODO: MongoDBSaver, SQLiteSaver And SupabaseSaver don't return pendingWrites on list, so we need to special case them
             // see: https://github.com/langchain-ai/langgraphjs/issues/589
             // see: https://github.com/langchain-ai/langgraphjs/issues/590
             const checkpointerIncludesPendingWritesOnList =
@@ -130,6 +130,10 @@ export function listTests<T extends BaseCheckpointSaver>(
             const expectedTuple = expectedTuplesMap.get(key);
             if (!checkpointerIncludesPendingWritesOnList) {
               delete expectedTuple?.pendingWrites;
+            }
+
+            if(expectedTuple === undefined) {
+              console.log("Blammo!", value, expectedTuple);
             }
 
             expect(value).toEqual(expectedTuple);
