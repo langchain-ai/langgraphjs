@@ -178,9 +178,6 @@ export function putTests<T extends BaseCheckpointSaver>(
     });
 
     it_skipForSomeModules(initializer.checkpointerName, {
-      // TODO: MemorySaver throws instead of defaulting to empty namespace
-      // see: https://github.com/langchain-ai/langgraphjs/issues/591
-      MemorySaver: "TODO: throws instead of defaulting to empty namespace",
       // TODO: SqliteSaver stores with undefined namespace instead of empty namespace
       // see: https://github.com/langchain-ai/langgraphjs/issues/592
       "@langchain/langgraph-checkpoint-sqlite":
