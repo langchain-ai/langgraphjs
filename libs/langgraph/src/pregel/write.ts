@@ -122,7 +122,7 @@ export class ChannelWrite<
     write(filtered);
   }
 
-  static isWriter(runnable: RunnableLike): boolean {
+  static isWriter(runnable: RunnableLike): runnable is ChannelWrite {
     return (
       // eslint-disable-next-line no-instanceof/no-instanceof
       runnable instanceof ChannelWrite ||
