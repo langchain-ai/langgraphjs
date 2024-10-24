@@ -28,6 +28,12 @@ export function resolveImportPath(path: string) {
   // relative path
   if (/^\.\.?(\/|\\)/.test(path)) {
     return pathResolve(path);
+  } else {
+    const resolvedPath = pathResolve(process.cwd(), path);
+    // try it as a relative path, anyway
+    if (existsSync(resolvedPath)) {
+      return resolvedPath;
+    }
   }
 
   // module name

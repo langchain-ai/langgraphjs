@@ -1,7 +1,4 @@
-#!/usr/bin/env node
-import { register } from "node:module";
+#!/usr/bin/env -S node --experimental-vm-modules
 import { main } from "../dist/cli.js";
-
-register("@swc-node/register/esm", import.meta.url);
 
 await main();
