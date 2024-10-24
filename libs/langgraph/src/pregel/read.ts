@@ -8,7 +8,7 @@ import {
   _coerceToRunnable,
   type RunnableLike,
 } from "@langchain/core/runnables";
-import { CONFIG_KEY_READ } from "../constants.js";
+import { CONFIG_KEY_READ, TAG_HIDDEN } from "../constants.js";
 import { ChannelWrite } from "./write.js";
 import { RunnableCallable } from "../utils.js";
 import type { RetryPolicy } from "./utils/index.js";
@@ -180,7 +180,9 @@ export class PregelNode<
       );
       newWriters.pop();
     }
-    return newWriters;
+    return newWriters.map((writer) =>
+      writer.withConfig({ tags: [TAG_HIDDEN] })
+    );
   }
 
   getNode(): Runnable<RunInput, RunOutput> | undefined {
