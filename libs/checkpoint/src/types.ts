@@ -36,3 +36,26 @@ export interface CheckpointMetadata {
    */
   parents: Record<string, string>;
 }
+
+const checkpointMetadataKeys = ["source", "step", "writes", "parents"] as const;
+
+type CheckKeys<T, K extends readonly (keyof T)[]> = [K[number]] extends [
+  keyof T
+]
+  ? [keyof T] extends [K[number]]
+    ? K
+    : never
+  : never;
+
+function validateKeys<T, K extends readonly (keyof T)[]>(
+  keys: CheckKeys<T, K>
+): K {
+  return keys;
+}
+
+// Used by checkpoint list methods to sanitize the `options.filter` argument. If this line fails to compile, update
+// `checkpointMetadataKeys` to contain all the keys in `CheckpointMetadata`.
+export const validCheckpointMetadataKeys = validateKeys<
+  CheckpointMetadata,
+  typeof checkpointMetadataKeys
+>(checkpointMetadataKeys);

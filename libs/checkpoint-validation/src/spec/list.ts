@@ -116,14 +116,11 @@ export function listTests<T extends BaseCheckpointSaver>(
         } else {
           expect(actualTuplesMap.size).toEqual(expectedTuplesMap.size);
           for (const [key, value] of actualTuplesMap.entries()) {
-            // TODO: MongoDBSaver and SQLiteSaver don't return pendingWrites on list, so we need to special case them
-            // see: https://github.com/langchain-ai/langgraphjs/issues/589
+            // TODO: SQLiteSaver doesn't return pendingWrites on list, so we need to special case it
             // see: https://github.com/langchain-ai/langgraphjs/issues/590
             const checkpointerIncludesPendingWritesOnList =
               initializer.checkpointerName !==
-                "@langchain/langgraph-checkpoint-mongodb" &&
-              initializer.checkpointerName !==
-                "@langchain/langgraph-checkpoint-sqlite";
+              "@langchain/langgraph-checkpoint-sqlite";
 
             const expectedTuple = expectedTuplesMap.get(key);
             if (!checkpointerIncludesPendingWritesOnList) {
@@ -168,13 +165,7 @@ export function listTests<T extends BaseCheckpointSaver>(
         parentTupleInDefaultNamespace.config,
         childTupleInDefaultNamespace.config,
       ],
-      filter:
-        // TODO: MongoDBSaver support for filter is broken and can't be fixed without a breaking change
-        // see: https://github.com/langchain-ai/langgraphjs/issues/581
-        initializer.checkpointerName ===
-        "@langchain/langgraph-checkpoint-mongodb"
-          ? [undefined]
-          : [undefined, {}, { source: "input" }, { source: "loop" }],
+      filter: [undefined, {}, { source: "input" }, { source: "loop" }],
     };
   }
 
