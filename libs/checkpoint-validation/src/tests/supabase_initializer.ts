@@ -15,14 +15,32 @@ export const initializer: CheckpointerTestInitializer<SupaSaver> = {
   },
 
   async afterAll() {
+    // const client = createClient(SUPABASE_URL, SUPABASE_KEY);
+    // await client
+    //   .from("langgraph_checkpoints")
+    //   .delete()
+    //   .neq("thread_id", "filter-needs-a-value")
+    //   .throwOnError()
+    // await client
+    //   .from("langgraph_writes")
+    //   .delete()
+    //   .neq("thread_id", "filter-needs-a-value")
+    //   .throwOnError()
+  },
+
+  async beforeAll() {
     const client = createClient(SUPABASE_URL, SUPABASE_KEY);
     await client
       .from("langgraph_checkpoints")
       .delete()
+      .neq("thread_id", "filter-needs-a-value")
+      .throwOnError()
     await client
       .from("langgraph_writes")
       .delete()
-  },
+      .neq("thread_id", "filter-needs-a-value")
+      .throwOnError()
+  }
 };
 
 export default initializer;
