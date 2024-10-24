@@ -8,7 +8,7 @@ import {
   _coerceToRunnable,
   type RunnableLike,
 } from "@langchain/core/runnables";
-import { CONFIG_KEY_READ, TAG_HIDDEN } from "../constants.js";
+import { CONFIG_KEY_READ } from "../constants.js";
 import { ChannelWrite } from "./write.js";
 import { RunnableCallable } from "../utils.js";
 import type { RetryPolicy } from "./utils/index.js";
@@ -180,9 +180,7 @@ export class PregelNode<
       );
       newWriters.pop();
     }
-    return newWriters.map((writer) =>
-      writer.withConfig({ tags: [TAG_HIDDEN] })
-    );
+    return newWriters;
   }
 
   getNode(): Runnable<RunInput, RunOutput> | undefined {
@@ -196,12 +194,14 @@ export class PregelNode<
         first: writers[0],
         middle: writers.slice(1, writers.length - 1),
         last: writers[writers.length - 1],
+        omitSequenceTags: true,
       });
     } else if (writers.length > 0) {
       return new RunnableSequence({
         first: this.bound,
         middle: writers.slice(0, writers.length - 1),
         last: writers[writers.length - 1],
+        omitSequenceTags: true,
       });
     } else {
       return this.bound;
@@ -239,7 +239,7 @@ export class PregelNode<
         channels: this.channels,
         triggers: this.triggers,
         mapper: this.mapper,
-        writers: [...this.writers, coerceable as ChannelWrite],
+        writers: [...this.writers, coerceable],
         bound: this.bound as unknown as PregelNode<
           RunInput,
           Exclude<NewRunOutput, Error>

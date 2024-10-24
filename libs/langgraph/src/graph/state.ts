@@ -322,6 +322,7 @@ export class StateGraph<
     } else if (typeof action === "function") {
       runnable = new RunnableCallable({
         func: action,
+        name: key,
         trace: false,
       });
     } else {

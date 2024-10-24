@@ -733,7 +733,9 @@ export class Pregel<
       input: values,
       proc:
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        writers.length > 1 ? RunnableSequence.from(writers as any) : writers[0],
+        writers.length > 1
+          ? RunnableSequence.from(writers as any, { omitSequenceTags: true })
+          : writers[0],
       writes: [],
       triggers: [INTERRUPT],
       id: uuid5(INTERRUPT, checkpoint.id),
