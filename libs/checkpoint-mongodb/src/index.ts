@@ -1,4 +1,9 @@
-import { type MongoClient, type Db as MongoDatabase } from "mongodb";
+import {
+  Binary,
+  WithId,
+  type MongoClient,
+  type Db as MongoDatabase,
+} from "mongodb";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import {
   BaseCheckpointSaver,
@@ -10,6 +15,10 @@ import {
   type CheckpointMetadata,
   CheckpointPendingWrite,
   validCheckpointMetadataKeys,
+  ChannelVersions,
+  copyCheckpoint,
+  TASKS,
+  SendProtocol,
 } from "@langchain/langgraph-checkpoint";
 import { applyMigrations, needsMigration } from "./migrations/index.js";
 
@@ -23,8 +32,44 @@ export type MongoDBSaverParams = {
   dbName?: string;
   checkpointCollectionName?: string;
   checkpointWritesCollectionName?: string;
+  channelVersionsCollectionName?: string;
   schemaVersionCollectionName?: string;
 };
+
+interface CheckpointDoc {
+  thread_id: string;
+  checkpoint_ns: string;
+  checkpoint_id: string;
+  parent_checkpoint_id: string | null;
+  type: string;
+  checkpoint: Binary;
+  metadata: CheckpointMetadata;
+}
+
+interface CheckpointWriteDoc {
+  thread_id: string;
+  checkpoint_ns: string;
+  checkpoint_id: string;
+  task_id: string;
+  idx: number;
+  channel: string;
+  type: string;
+  value: Binary;
+}
+
+interface ChannelVersionDoc {
+  thread_id: string;
+  checkpoint_ns: string;
+  checkpoint_id: string;
+  channel: string;
+  version: string | number;
+  type: string;
+  value: Binary;
+}
+
+interface SchemaVersionDoc {
+  version: number;
+}
 
 /**
  * A LangGraph checkpoint saver backed by a MongoDB database.
@@ -40,6 +85,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
 
   checkpointWritesCollectionName = "checkpoint_writes";
 
+  channelVersionsCollectionName = "channel_versions";
+
   schemaVersionCollectionName = "schema_version";
 
   constructor(
@@ -48,6 +95,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       dbName,
       checkpointCollectionName,
       checkpointWritesCollectionName,
+      channelVersionsCollectionName,
       schemaVersionCollectionName,
     }: MongoDBSaverParams,
     serde?: SerializerProtocol
@@ -61,6 +109,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpointWritesCollectionName ?? this.checkpointWritesCollectionName;
     this.schemaVersionCollectionName =
       schemaVersionCollectionName ?? this.schemaVersionCollectionName;
+    this.channelVersionsCollectionName =
+      channelVersionsCollectionName ?? this.channelVersionsCollectionName;
   }
 
   /**
@@ -90,16 +140,12 @@ export class MongoDBSaver extends BaseCheckpointSaver {
   }
 
   private async initializeSchemaVersion(): Promise<void> {
-    const schemaVersionCollection = this.db.collection(
+    const schemaVersionCollection = this.db.collection<SchemaVersionDoc>(
       this.schemaVersionCollectionName
     );
 
     // empty database, no migrations needed - just set the schema version and move on
     if (await this.isDatabaseEmpty()) {
-      const schemaVersionCollection = this.db.collection(
-        this.schemaVersionCollectionName
-      );
-
       const versionDoc = await schemaVersionCollection.findOne({});
       if (!versionDoc) {
         await schemaVersionCollection.insertOne({
@@ -173,6 +219,136 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     }
   }
 
+  private async getChannelValues(
+    thread_id: string,
+    checkpoint_ns: string,
+    checkpoint_id: string,
+    channel_versions: ChannelVersions
+  ): Promise<Record<string, unknown>> {
+    return Object.fromEntries(
+      await Promise.all(
+        Object.entries(channel_versions).map(async ([channel, version]) => {
+          const doc = await this.db
+            .collection<ChannelVersionDoc>(this.channelVersionsCollectionName)
+            .findOne({
+              thread_id,
+              checkpoint_ns,
+              checkpoint_id,
+              channel,
+              version,
+            });
+          if (!doc) {
+            return [];
+          }
+          return [
+            channel,
+            await this.serde.loadsTyped(doc.type, doc.value.value()),
+          ];
+        })
+      )
+    );
+  }
+
+  private async getPendingSends(
+    thread_id: string,
+    checkpoint_ns: string,
+    parent_checkpoint_id: string
+  ): Promise<SendProtocol[]> {
+    return Promise.all(
+      (
+        await this.db
+          .collection<CheckpointWriteDoc>(this.checkpointWritesCollectionName)
+          .find({
+            thread_id,
+            checkpoint_ns,
+            checkpoint_id: parent_checkpoint_id,
+            channel: TASKS,
+          })
+          .toArray()
+      ).map((write) => {
+        return this.serde.loadsTyped(
+          write.type,
+          write.value.value()
+        ) as SendProtocol;
+      })
+    );
+  }
+
+  private async constructCheckpointTuple(
+    thread_id: string,
+    checkpoint_ns: string,
+    doc: CheckpointDoc
+  ): Promise<CheckpointTuple> {
+    const configurableValues = {
+      thread_id,
+      checkpoint_ns,
+      checkpoint_id: doc.checkpoint_id,
+    };
+    const checkpoint = (await this.serde.loadsTyped(
+      doc.type,
+      doc.checkpoint.value()
+    )) as Checkpoint;
+
+    checkpoint.pending_sends = doc.parent_checkpoint_id
+      ? await this.getPendingSends(
+          thread_id,
+          checkpoint_ns,
+          doc.parent_checkpoint_id
+        )
+      : [];
+
+    checkpoint.channel_values = checkpoint.channel_values ?? {};
+    checkpoint.channel_versions = checkpoint.channel_versions ?? {};
+
+    // fetch channel values if they weren't stored with the rest of the checkpoint data
+    if (
+      Object.keys(checkpoint.channel_versions).length !==
+      Object.keys(checkpoint.channel_values).length
+    ) {
+      checkpoint.channel_values =
+        (await this.getChannelValues(
+          thread_id,
+          checkpoint_ns,
+          doc.checkpoint_id,
+          checkpoint.channel_versions
+        )) ?? {};
+    }
+
+    const serializedWrites = await this.db
+      .collection<CheckpointWriteDoc>(this.checkpointWritesCollectionName)
+      .find(configurableValues)
+      .toArray();
+
+    const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
+      serializedWrites.map(async (serializedWrite) => {
+        return [
+          serializedWrite.task_id,
+          serializedWrite.channel,
+          await this.serde.loadsTyped(
+            serializedWrite.type,
+            serializedWrite.value.value()
+          ),
+        ] as CheckpointPendingWrite;
+      })
+    );
+    return {
+      config: { configurable: configurableValues },
+      checkpoint,
+      pendingWrites,
+      metadata: doc.metadata,
+      parentConfig:
+        doc.parent_checkpoint_id != null
+          ? {
+              configurable: {
+                thread_id,
+                checkpoint_ns,
+                checkpoint_id: doc.parent_checkpoint_id,
+              },
+            }
+          : undefined,
+    };
+  }
+
   /**
    * Retrieves a checkpoint from the MongoDB database based on the
    * provided config. If the config contains a "checkpoint_id" key, the checkpoint with
@@ -198,7 +374,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       query = { thread_id, checkpoint_ns };
     }
     const result = await this.db
-      .collection(this.checkpointCollectionName)
+      .collection<CheckpointDoc>(this.checkpointCollectionName)
       .find(query)
       .sort("checkpoint_id", -1)
       .limit(1)
@@ -207,47 +383,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       return undefined;
     }
     const doc = result[0];
-    const configurableValues = {
-      thread_id,
-      checkpoint_ns,
-      checkpoint_id: doc.checkpoint_id,
-    };
-    const checkpoint = (await this.serde.loadsTyped(
-      doc.type,
-      doc.checkpoint.value()
-    )) as Checkpoint;
-    const serializedWrites = await this.db
-      .collection(this.checkpointWritesCollectionName)
-      .find(configurableValues)
-      .toArray();
-    const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
-      serializedWrites.map(async (serializedWrite) => {
-        return [
-          serializedWrite.task_id,
-          serializedWrite.channel,
-          await this.serde.loadsTyped(
-            serializedWrite.type,
-            serializedWrite.value.value()
-          ),
-        ] as CheckpointPendingWrite;
-      })
-    );
-    return {
-      config: { configurable: configurableValues },
-      checkpoint,
-      pendingWrites,
-      metadata: doc.metadata as CheckpointMetadata,
-      parentConfig:
-        doc.parent_checkpoint_id != null
-          ? {
-              configurable: {
-                thread_id,
-                checkpoint_ns,
-                checkpoint_id: doc.parent_checkpoint_id,
-              },
-            }
-          : undefined,
-    };
+    return this.constructCheckpointTuple(thread_id, checkpoint_ns, doc);
   }
 
   /**
@@ -302,33 +438,48 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     }
 
     for await (const doc of result) {
-      const checkpoint = (await this.serde.loadsTyped(
-        doc.type,
-        doc.checkpoint.value()
-      )) as Checkpoint;
-      const metadata = doc.metadata as CheckpointMetadata;
-
-      yield {
-        config: {
-          configurable: {
-            thread_id: doc.thread_id,
-            checkpoint_ns: doc.checkpoint_ns,
-            checkpoint_id: doc.checkpoint_id,
-          },
-        },
-        checkpoint,
-        metadata,
-        parentConfig: doc.parent_checkpoint_id
-          ? {
-              configurable: {
-                thread_id: doc.thread_id,
-                checkpoint_ns: doc.checkpoint_ns,
-                checkpoint_id: doc.parent_checkpoint_id,
-              },
-            }
-          : undefined,
-      };
+      yield this.constructCheckpointTuple(
+        doc.thread_id,
+        doc.checkpoint_ns,
+        doc as WithId<CheckpointDoc>
+      );
     }
+  }
+
+  private async putChannelData(
+    thread_id: string,
+    checkpoint_ns: string,
+    checkpoint_id: string,
+    channel_values: Record<string, unknown>,
+    newVersions: ChannelVersions
+  ) {
+    await Promise.all(
+      Object.entries(newVersions).map(async ([channel, version]) => {
+        const [type, value] = this.serde.dumpsTyped(channel_values[channel]);
+
+        const doc: ChannelVersionDoc = {
+          thread_id,
+          checkpoint_ns,
+          checkpoint_id,
+          channel,
+          version,
+          type,
+          value: new Binary(value),
+        };
+
+        const upsertQuery = {
+          thread_id,
+          checkpoint_ns,
+          checkpoint_id,
+          channel,
+          version,
+        };
+
+        await this.db
+          .collection(this.channelVersionsCollectionName)
+          .updateOne(upsertQuery, { $set: doc }, { upsert: true });
+      })
+    );
   }
 
   /**
@@ -338,7 +489,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
   async put(
     config: RunnableConfig,
     checkpoint: Checkpoint,
-    metadata: CheckpointMetadata
+    metadata: CheckpointMetadata,
+    newVersions: ChannelVersions
   ): Promise<RunnableConfig> {
     await this.setup();
 
@@ -350,12 +502,28 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         `The provided config must contain a configurable field with a "thread_id" field.`
       );
     }
+
+    const preparedCheckpoint: Partial<Checkpoint> = copyCheckpoint(checkpoint);
+    delete preparedCheckpoint.pending_sends;
+    delete preparedCheckpoint.channel_values;
+
+    await this.putChannelData(
+      thread_id,
+      checkpoint_ns,
+      checkpoint_id,
+      checkpoint.channel_values,
+      newVersions
+    );
+
     const [checkpointType, serializedCheckpoint] =
-      this.serde.dumpsTyped(checkpoint);
-    const doc = {
+      this.serde.dumpsTyped(preparedCheckpoint);
+    const doc: CheckpointDoc = {
+      thread_id,
+      checkpoint_ns,
+      checkpoint_id,
       parent_checkpoint_id: config.configurable?.checkpoint_id,
       type: checkpointType,
-      checkpoint: serializedCheckpoint,
+      checkpoint: new Binary(serializedCheckpoint),
       metadata,
     };
     const upsertQuery = {
@@ -363,13 +531,15 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpoint_ns,
       checkpoint_id,
     };
-    await this.db.collection(this.checkpointCollectionName).updateOne(
-      upsertQuery,
-      {
-        $set: doc,
-      },
-      { upsert: true }
-    );
+    await this.db
+      .collection<CheckpointDoc>(this.checkpointCollectionName)
+      .updateOne(
+        upsertQuery,
+        {
+          $set: doc,
+        },
+        { upsert: true }
+      );
     return {
       configurable: {
         thread_id,

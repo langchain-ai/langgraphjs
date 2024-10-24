@@ -116,17 +116,7 @@ export function listTests<T extends BaseCheckpointSaver>(
         } else {
           expect(actualTuplesMap.size).toEqual(expectedTuplesMap.size);
           for (const [key, value] of actualTuplesMap.entries()) {
-            // TODO: MongoDBSaver doesn't return pendingWrites on list, so we need to special case them
-            // see: https://github.com/langchain-ai/langgraphjs/issues/589
-            const checkpointerIncludesPendingWritesOnList =
-              initializer.checkpointerName !==
-              "@langchain/langgraph-checkpoint-mongodb";
-
             const expectedTuple = expectedTuplesMap.get(key);
-            if (!checkpointerIncludesPendingWritesOnList) {
-              delete expectedTuple?.pendingWrites;
-            }
-
             expect(value).toEqual(expectedTuple);
           }
         }
