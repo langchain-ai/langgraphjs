@@ -31,6 +31,7 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { ToolCall } from "@langchain/core/messages/tool";
+import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
 import {
   BaseCheckpointSaver,
   BaseStore,
@@ -90,7 +91,6 @@ import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
-import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
 
 expect.extend({
   toHaveKeyStartingWith(received: object, prefix: string) {

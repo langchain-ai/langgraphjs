@@ -732,9 +732,9 @@ export class Pregel<
       name: asNode,
       input: values,
       proc:
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         writers.length > 1
-          ? RunnableSequence.from(writers as any, { omitSequenceTags: true })
+          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            RunnableSequence.from(writers as any, { omitSequenceTags: true })
           : writers[0],
       writes: [],
       triggers: [INTERRUPT],
