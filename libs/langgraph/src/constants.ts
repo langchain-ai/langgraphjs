@@ -15,6 +15,7 @@ export const RUNTIME_PLACEHOLDER = "__pregel_runtime_placeholder__";
 export const RECURSION_LIMIT_DEFAULT = 25;
 
 export const TAG_HIDDEN = "langsmith:hidden";
+export const TAG_NOSTREAM = "langsmith:nostream";
 
 export const TASKS = "__pregel_tasks";
 export const PUSH = "__pregel_push";

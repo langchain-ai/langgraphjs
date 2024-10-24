@@ -5,6 +5,7 @@ import { expect } from "@jest/globals";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import {
   BaseChatModel,
+  BaseChatModelCallOptions,
   BaseChatModelParams,
 } from "@langchain/core/language_models/chat_models";
 import {
@@ -30,6 +31,7 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { z } from "zod";
 import { BaseTracer, Run } from "@langchain/core/tracers/base";
+import { BaseLanguageModelInput } from "@langchain/core/language_models/base";
 
 export interface FakeChatModelArgs extends BaseChatModelParams {
   responses: BaseMessage[];
@@ -81,6 +83,21 @@ export class FakeChatModel extends BaseChatModel {
       ],
       llmOutput: {},
     };
+  }
+
+  async *_streamIterator(
+    _input: BaseLanguageModelInput,
+    _options?: BaseChatModelCallOptions | undefined,
+    runManager?: CallbackManagerForLLMRun
+  ): AsyncGenerator<AIMessageChunk> {
+    const response = this.responses[this.callCount % this.responses.length];
+    for (const text of response.content) {
+      yield new AIMessageChunk({
+        content: text as string,
+      });
+      await runManager?.handleLLMNewToken(text as string);
+    }
+    this.callCount += 1;
   }
 }
 

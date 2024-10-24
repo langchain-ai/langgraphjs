@@ -90,6 +90,7 @@ import {
 import { gatherIterator, patchConfigurable } from "../utils.js";
 import { ensureLangGraphConfig } from "./utils/config.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
+import { StreamMessagesHandler } from "./messages.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -993,31 +994,6 @@ export class Pregel<
         `Checkpointer requires one or more of the following "configurable" keys: "thread_id", "checkpoint_ns", "checkpoint_id"`
       );
     }
-    const callbackManager = await getCallbackManagerForConfig(inputConfig);
-    const runManager = await callbackManager?.handleChainStart(
-      this.toJSON(),
-      _coerceToDict(input, "input"),
-      inputConfig.runId,
-      undefined,
-      undefined,
-      undefined,
-      inputConfig?.runName ?? this.getName()
-    );
-    delete inputConfig.runId;
-    // assign defaults
-    const [
-      debug,
-      streamMode,
-      ,
-      outputKeys,
-      config,
-      interruptBefore,
-      interruptAfter,
-      checkpointer,
-      store,
-    ] = this._defaults(inputConfig);
-
-    const { channelSpecs, managed } = await this.prepareSpecs(config);
 
     let loop: PregelLoop | undefined;
     const stream = new Deque<StreamChunk>();
@@ -1041,6 +1017,50 @@ export class Pregel<
         }
       }
     }
+
+    const { runId, ...restConfig } = inputConfig;
+    // assign defaults
+    const [
+      debug,
+      streamMode,
+      ,
+      outputKeys,
+      config,
+      interruptBefore,
+      interruptAfter,
+      checkpointer,
+      store,
+    ] = this._defaults(restConfig);
+
+    // set up messages stream mode
+    if (streamMode.includes("messages")) {
+      const messageStreamer = new StreamMessagesHandler((chunk) =>
+        stream.push(chunk)
+      );
+      const callbacks = restConfig.callbacks;
+      if (callbacks === undefined) {
+        restConfig.callbacks = [messageStreamer];
+      } else if (Array.isArray(callbacks)) {
+        restConfig.callbacks = callbacks.concat(messageStreamer);
+      } else {
+        const copiedCallbacks = callbacks.copy();
+        copiedCallbacks.addHandler(messageStreamer, true);
+        restConfig.callbacks = copiedCallbacks;
+      }
+    }
+
+    const callbackManager = await getCallbackManagerForConfig(restConfig);
+    const runManager = await callbackManager?.handleChainStart(
+      this.toJSON(),
+      _coerceToDict(input, "input"),
+      runId,
+      undefined,
+      undefined,
+      undefined,
+      restConfig?.runName ?? this.getName()
+    );
+
+    const { channelSpecs, managed } = await this.prepareSpecs(config);
     try {
       loop = await PregelLoop.initialize({
         input,

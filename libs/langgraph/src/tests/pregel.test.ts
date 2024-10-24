@@ -8003,6 +8003,55 @@ export function runPregelTests(
     });
   });
 
+  it.only("should work with streamMode messages from within a subgraph", async () => {
+    const checkpointer = await createCheckpointer();
+
+    const child = new StateGraph(MessagesAnnotation)
+      .addNode("c_one", () => ({
+        messages: [new HumanMessage("foo"), new AIMessage("bar")],
+      }))
+      .addNode("c_two", async (_, config) => {
+        const model = new FakeChatModel({
+          responses: [new AIMessage("foobar"), new AIMessage("baz")],
+        });
+        await model.invoke("hey", config);
+        return { messages: [await model.invoke("hey", config)] };
+      })
+      .addEdge(START, "c_one")
+      .addEdge("c_one", "c_two")
+      .addEdge("c_two", END);
+
+    const parent = new StateGraph(MessagesAnnotation)
+      .addNode("p_one", async (_, config) => {
+        const toolExecutor = RunnableLambda.from(async () => {
+          return [new ToolMessage({ content: "qux", tool_call_id: "test" })];
+        });
+        return {
+          messages: await toolExecutor.invoke({}, config),
+        };
+      })
+      .addNode("p_two", child.compile())
+      .addNode("p_three", async (_, config) => {
+        const model = new FakeChatModel({
+          responses: [new AIMessage("parent")],
+        });
+        await model.invoke("hey", config);
+        return { messages: [] };
+      })
+      .addEdge(START, "p_one")
+      .addEdge("p_one", "p_two")
+      .addEdge("p_two", "p_three")
+      .addEdge("p_three", END);
+
+    const graph = parent.compile({ checkpointer });
+    const config = { configurable: { thread_id: "1" } };
+
+    const checkpointEvents: StateSnapshot[] = await gatherIterator(
+      graph.stream({ messages: [] }, { ...config, streamMode: "messages" })
+    );
+    console.log(checkpointEvents);
+  });
+
   it("debug retry", async () => {
     const state = Annotation.Root({
       messages: Annotation<string[]>({

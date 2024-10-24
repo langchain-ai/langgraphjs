@@ -13,7 +13,7 @@ import { Interrupt } from "../constants.js";
 import { type ManagedValueSpec } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 
-export type StreamMode = "values" | "updates" | "debug";
+export type StreamMode = "values" | "updates" | "debug" | "messages" | "custom";
 
 /**
  * Construct a type with a set of properties K of type T
