@@ -297,6 +297,18 @@ CREATE TABLE IF NOT EXISTS writes (
   ): Promise<RunnableConfig> {
     this.setup();
 
+    const thread_id = config.configurable?.thread_id;
+    const checkpoint_ns = config.configurable?.checkpoint_ns ?? "";
+    const parent_checkpoint_id = config.configurable?.checkpoint_id;
+
+    if (!config.configurable) {
+      throw new Error("Empty configuration supplied.");
+    }
+
+    if (!thread_id) {
+      throw new Error("Missing thread_id field in config.configurable.");
+    }
+
     const [type1, serializedCheckpoint] = this.serde.dumpsTyped(checkpoint);
     const [type2, serializedMetadata] = this.serde.dumpsTyped(metadata);
     if (type1 !== type2) {
@@ -305,10 +317,10 @@ CREATE TABLE IF NOT EXISTS writes (
       );
     }
     const row = [
-      config.configurable?.thread_id?.toString(),
-      config.configurable?.checkpoint_ns,
+      thread_id,
+      checkpoint_ns,
       checkpoint.id,
-      config.configurable?.checkpoint_id,
+      parent_checkpoint_id,
       type1,
       serializedCheckpoint,
       serializedMetadata,
@@ -322,8 +334,8 @@ CREATE TABLE IF NOT EXISTS writes (
 
     return {
       configurable: {
-        thread_id: config.configurable?.thread_id,
-        checkpoint_ns: config.configurable?.checkpoint_ns,
+        thread_id,
+        checkpoint_ns,
         checkpoint_id: checkpoint.id,
       },
     };

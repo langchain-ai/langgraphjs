@@ -177,37 +177,29 @@ export function putTests<T extends BaseCheckpointSaver>(
       });
     });
 
-    it_skipForSomeModules(initializer.checkpointerName, {
-      // TODO: SqliteSaver stores with undefined namespace instead of empty namespace
-      // see: https://github.com/langchain-ai/langgraphjs/issues/592
-      "@langchain/langgraph-checkpoint-sqlite":
-        "TODO: SqliteSaver stores config with no checkpoint_ns instead of default namespace",
-    })(
-      "should default to empty namespace if the checkpoint namespace is missing from config.configurable",
-      async () => {
-        const missingNamespaceConfig: RunnableConfig = {
-          configurable: { thread_id },
-        };
+    it("should default to empty namespace if the checkpoint namespace is missing from config.configurable", async () => {
+      const missingNamespaceConfig: RunnableConfig = {
+        configurable: { thread_id },
+      };
 
-        const { checkpoint, metadata } = initialCheckpointTuple({
-          thread_id,
-          checkpoint_id: checkpoint_id1,
-          checkpoint_ns: "",
-        });
+      const { checkpoint, metadata } = initialCheckpointTuple({
+        thread_id,
+        checkpoint_id: checkpoint_id1,
+        checkpoint_ns: "",
+      });
 
-        const returnedConfig = await checkpointer.put(
-          missingNamespaceConfig,
-          checkpoint,
-          metadata!,
-          {}
-        );
+      const returnedConfig = await checkpointer.put(
+        missingNamespaceConfig,
+        checkpoint,
+        metadata!,
+        {}
+      );
 
-        expect(returnedConfig).not.toBeUndefined();
-        expect(returnedConfig?.configurable).not.toBeUndefined();
-        expect(returnedConfig?.configurable?.checkpoint_ns).not.toBeUndefined();
-        expect(returnedConfig?.configurable?.checkpoint_ns).toEqual("");
-      }
-    );
+      expect(returnedConfig).not.toBeUndefined();
+      expect(returnedConfig?.configurable).not.toBeUndefined();
+      expect(returnedConfig?.configurable?.checkpoint_ns).not.toBeUndefined();
+      expect(returnedConfig?.configurable?.checkpoint_ns).toEqual("");
+    });
 
     it_skipForSomeModules(initializer.checkpointerName, {
       // TODO: all of the checkpointers below store full channel_values on every put, rather than storing deltas
