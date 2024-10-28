@@ -1,17 +1,15 @@
-# @langchain/langgraph-checkpoint-mongodb
+# @langchain/langgraph-checkpoint-vercel-kv
 
-Implementation of a [LangGraph.js](https://github.com/langchain-ai/langgraphjs) CheckpointSaver that uses a MongoDB instance.
+Implementation of a [LangGraph.js](https://github.com/langchain-ai/langgraphjs) CheckpointSaver that uses a Vercel KV instance.
 
 ## Usage
 
 ```ts
-import { MongoClient } from "mongodb";
-import { MongoDBSaver } from "@langchain/langgraph-checkpoint-mongodb";
+import { VercelKVSaver } from "@langchain/langgraph-checkpoint-vercel-kv";
 
 const writeConfig = {
   configurable: {
     thread_id: "1",
-    checkpoint_ns: ""
   }
 };
 const readConfig = {
@@ -20,10 +18,11 @@ const readConfig = {
   }
 };
 
+const checkpointer = new VercelKVSaver({
+  url: process.env.VERCEL_KV_URL!,
+  token: process.env.VERCEL_KV_TOKEN!,
+});
 
-const client = new MongoClient(process.env.MONGODB_URL);
-
-const checkpointer = new MongoDBSaver({ client });
 const checkpoint = {
   v: 1,
   ts: "2024-07-31T20:14:19.804150+00:00",
@@ -60,6 +59,4 @@ await checkpointer.get(readConfig);
 for await (const checkpoint of checkpointer.list(readConfig)) {
   console.log(checkpoint);
 }
-
-await client.close();
 ```
