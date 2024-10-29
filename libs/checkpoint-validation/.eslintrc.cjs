@@ -39,7 +39,7 @@ module.exports = {
     "import/extensions": [2, "ignorePackages"],
     "import/no-extraneous-dependencies": [
       "error",
-      { devDependencies: ["**/*.test.ts"] },
+      { devDependencies: ["src/tests/**/*.ts"] },
     ],
     "import/no-unresolved": 0,
     "import/prefer-default-export": 0,
