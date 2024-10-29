@@ -4,8 +4,13 @@ import {
   Node as DrawableNode,
   Edge as DrawableEdge,
 } from "@langchain/core/runnables/graph";
-import { mergeConfigs, RunnableConfig } from "@langchain/core/runnables";
 import {
+  mergeConfigs,
+  Runnable,
+  RunnableConfig,
+} from "@langchain/core/runnables";
+import {
+  All,
   CheckpointListOptions,
   CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
@@ -16,39 +21,77 @@ import {
   ManagedValueSpec,
 } from "../web.js";
 import { StrRecord } from "./algo.js";
-import {
-  Pregel,
-  PregelInputType,
-  PregelOptions,
-  PregelOutputType,
-} from "./index.js";
+import { PregelInputType, PregelOptions, PregelOutputType } from "./index.js";
 import { PregelNode } from "./read.js";
-import { PregelParams, PregelTaskDescription, StateSnapshot } from "./types.js";
+import {
+  PregelParams,
+  PregelInterface,
+  PregelTaskDescription,
+  StateSnapshot,
+} from "./types.js";
 import { Interrupt } from "../constants.js";
 
-export type RemoteGraphParams<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
-> = PregelParams<Nn, Cc> & {
+export type RemoteGraphParams = Omit<
+  PregelParams<
+    StrRecord<string, PregelNode>,
+    StrRecord<string, BaseChannel | ManagedValueSpec>
+  >,
+  "channels" | "nodes" | "inputChannels" | "outputChannels"
+> & {
   graphId: string;
   client: Client;
 };
 
 export class RemoteGraph<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>
-> extends Pregel<Nn, Cc, ConfigurableFieldType> {
+    Nn extends StrRecord<string, PregelNode> = StrRecord<string, PregelNode>,
+    Cc extends StrRecord<string, BaseChannel | ManagedValueSpec> = StrRecord<
+      string,
+      BaseChannel | ManagedValueSpec
+    >,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>
+  >
+  extends Runnable<
+    PregelInputType,
+    PregelOutputType,
+    PregelOptions<Nn, Cc, ConfigurableFieldType>
+  >
+  implements PregelInterface<Nn, Cc, ConfigurableFieldType>
+{
+  static lc_name() {
+    return "RemoteGraph";
+  }
+
+  lc_namespace = ["langgraph", "pregel"];
+
+  lg_is_pregel = true;
+
+  config?: RunnableConfig;
+
   protected graphId: string;
 
-  client: Client;
+  protected client: Client;
 
-  constructor(params: RemoteGraphParams<Nn, Cc>) {
+  protected interruptBefore?: Array<keyof Nn> | All;
+
+  protected interruptAfter?: Array<keyof Nn> | All;
+
+  constructor(params: RemoteGraphParams) {
     super(params);
 
     this.graphId = params.graphId;
     this.client = params.client;
+    this.config = params.config;
+    this.interruptBefore = params.interruptBefore;
+    this.interruptAfter = params.interruptAfter;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore Remove ignore when we remove support for 0.2 versions of core
+  override withConfig(config: RunnableConfig): typeof this {
+    const mergedConfig = mergeConfigs(this.config, config);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return new (this.constructor as any)({ ...this, config: mergedConfig });
   }
 
   protected _sanitizeConfig(config: RunnableConfig) {
@@ -217,7 +260,7 @@ export class RemoteGraph<
     );
   }
 
-  override async updateState(
+  async updateState(
     inputConfig: LangGraphRunnableConfig,
     values: Record<string, unknown>,
     asNode?: string
@@ -230,7 +273,7 @@ export class RemoteGraph<
     return this._getConfig((response as any).checkpoint);
   }
 
-  override async *getStateHistory(
+  async *getStateHistory(
     config: RunnableConfig,
     options?: CheckpointListOptions
   ): AsyncIterableIterator<StateSnapshot> {
@@ -270,7 +313,7 @@ export class RemoteGraph<
     return nodesMap;
   }
 
-  override async getState(
+  async getState(
     config: RunnableConfig,
     options?: { subgraphs?: boolean }
   ): Promise<StateSnapshot> {
@@ -298,9 +341,7 @@ export class RemoteGraph<
   /**
    * Returns a drawable representation of the computation graph.
    */
-  override async getGraphAsync(
-    config?: RunnableConfig & { xray?: boolean | number }
-  ) {
+  async getGraphAsync(config?: RunnableConfig & { xray?: boolean | number }) {
     const graph = await this.client.assistants.getGraph(this.graphId, {
       xray: config?.xray,
     });
@@ -311,16 +352,18 @@ export class RemoteGraph<
   }
 
   /** @deprecated Use getSubgraphsAsync instead. The async method will become the default in the next minor release. */
-  override getSubgraphs(): Generator<[string, Pregel<any, any>]> {
+  getSubgraphs(): Generator<
+    [string, PregelInterface<Nn, Cc, ConfigurableFieldType>]
+  > {
     throw new Error(
       `The synchronous "getSubgraphs" method is not supported for this graph. Call "getSubgraphsAsync" instead.`
     );
   }
 
-  override async *getSubgraphsAsync(
+  async *getSubgraphsAsync(
     namespace?: string,
     recurse = false
-  ): AsyncGenerator<[string, RemoteGraph<Nn, Cc, ConfigurableFieldType>]> {
+  ): AsyncGenerator<[string, PregelInterface<Nn, Cc, ConfigurableFieldType>]> {
     const subgraphs = await this.client.assistants.getSubgraphs(this.graphId, {
       namespace,
       recurse,

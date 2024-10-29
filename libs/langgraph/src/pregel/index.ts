@@ -57,6 +57,9 @@ import {
   PregelParams,
   StateSnapshot,
   StreamMode,
+  PregelInputType,
+  PregelOutputType,
+  PregelOptions,
 } from "./types.js";
 import {
   GraphRecursionError,
@@ -185,37 +188,7 @@ export class Channel {
   }
 }
 
-/**
- * Config for executing the graph.
- */
-export interface PregelOptions<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType extends Record<string, any> = Record<string, any>
-> extends RunnableConfig<ConfigurableFieldType> {
-  /** The stream mode for the graph run. Default is ["values"]. */
-  streamMode?: StreamMode | StreamMode[];
-  inputKeys?: keyof Cc | Array<keyof Cc>;
-  /** The output keys to retrieve from the graph run. */
-  outputKeys?: keyof Cc | Array<keyof Cc>;
-  /** The nodes to interrupt the graph run before. */
-  interruptBefore?: All | Array<keyof Nn>;
-  /** The nodes to interrupt the graph run after. */
-  interruptAfter?: All | Array<keyof Nn>;
-  /** Enable debug mode for the graph run. */
-  debug?: boolean;
-  /** Whether to stream subgraphs. */
-  subgraphs?: boolean;
-  /** The shared value store */
-  store?: BaseStore;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type PregelInputType = any;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type PregelOutputType = any;
+export type { PregelInputType, PregelOutputType, PregelOptions };
 
 export class Pregel<
     Nn extends StrRecord<string, PregelNode>,
@@ -228,7 +201,9 @@ export class Pregel<
     PregelOutputType,
     PregelOptions<Nn, Cc, ConfigurableFieldType>
   >
-  implements PregelInterface<Nn, Cc>
+  implements
+    PregelInterface<Nn, Cc, ConfigurableFieldType>,
+    PregelParams<Nn, Cc>
 {
   static lc_name() {
     return "LangGraph";
@@ -236,6 +211,8 @@ export class Pregel<
 
   // Because Pregel extends `Runnable`.
   lc_namespace = ["langgraph", "pregel"];
+
+  lg_is_pregel = true;
 
   nodes: Nn;
 
@@ -299,8 +276,9 @@ export class Pregel<
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore Remove ignore when we remove support for 0.2 versions of core
   override withConfig(config: RunnableConfig): typeof this {
+    const mergedConfig = mergeConfigs(this.config, config);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return new (this.constructor as any)({ ...this, config });
+    return new (this.constructor as any)({ ...this, config: mergedConfig });
   }
 
   validate(): this {
