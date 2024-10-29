@@ -5,10 +5,10 @@ import {
   BaseCheckpointSaver,
   type Checkpoint,
   type CheckpointListOptions,
-  type CheckpointTuple,
-  type SerializerProtocol,
-  type PendingWrite,
   type CheckpointMetadata,
+  type CheckpointTuple,
+  type PendingWrite,
+  type SerializerProtocol,
 } from "@langchain/langgraph-checkpoint";
 
 interface CheckpointRow {
@@ -41,8 +41,8 @@ type CheckKeys<T, K extends readonly (keyof T)[]> = [K[number]] extends [
   keyof T
 ]
   ? [keyof T] extends [K[number]]
-  ? K
-  : never
+    ? K
+    : never
   : never;
 
 function validateKeys<T, K extends readonly (keyof T)[]>(
@@ -63,16 +63,6 @@ export class SupaSaver extends BaseCheckpointSaver {
   constructor(private client: SupabaseClient, serde?: SerializerProtocol) {
     super(serde);
   }
-  protected _dumpCheckpoint(checkpoint: Checkpoint) {
-    const serialized: Record<string, unknown> = {
-      ...checkpoint,
-      pending_sends: [],
-    };
-    if ("channel_values" in serialized) {
-      delete serialized.channel_values;
-    }
-    return serialized;
-  }
 
   protected _dumpMetadata(metadata: CheckpointMetadata) {
     const [, serializedMetadata] = this.serde.dumpsTyped(metadata);
@@ -91,38 +81,27 @@ export class SupaSaver extends BaseCheckpointSaver {
     let res;
 
     if (checkpoint_id) {
-      // data = this.db
-      //   .prepare(
-      //     `SELECT thread_id, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata FROM checkpoints WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ?`
-      //   )
-      //   .get(thread_id, checkpoint_ns, checkpoint_id) as CheckpointRow;
       res = await this.client
         .from("langgraph_checkpoints")
-        .select("*")
+        .select()
         .eq("checkpoint_id", checkpoint_id)
         .eq("thread_id", thread_id)
         .eq("checkpoint_ns", checkpoint_ns)
-        .maybeSingle()
         .throwOnError();
     } else {
-      // row = this.db
-      //   .prepare(
-      //     `SELECT thread_id, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata FROM checkpoints WHERE thread_id = ? AND checkpoint_ns = ? ORDER BY checkpoint_id DESC LIMIT 1`
-      //   )
-      //   .get(thread_id, checkpoint_ns) as CheckpointRow;
       res = await this.client
         .from("langgraph_checkpoints")
-        .select("*")
+        .select()
         .eq("thread_id", thread_id)
         .eq("checkpoint_ns", checkpoint_ns)
         .order("checkpoint_id", { ascending: false })
-        .maybeSingle()
         .throwOnError();
     }
 
-    const row = res?.data as CheckpointRow;
+    const rows = res.data as CheckpointRow[];
 
-    if (row === null) {
+    const row = rows[0];
+    if (row == null) {
       return undefined;
     }
 
@@ -157,7 +136,7 @@ export class SupaSaver extends BaseCheckpointSaver {
 
     const pendingWritesRes = await this.client
       .from("langgraph_writes")
-      .select("*")
+      .select()
       .eq("thread_id", finalConfig.configurable.thread_id.toString())
       .eq("checkpoint_ns", checkpoint_ns)
       .eq("checkpoint_id", finalConfig.configurable.checkpoint_id.toString())
@@ -169,7 +148,10 @@ export class SupaSaver extends BaseCheckpointSaver {
         return [
           row.task_id,
           row.channel,
-          await this.serde.loadsTyped(row.type ?? "json", JSON.stringify(row.value) ?? ""),
+          await this.serde.loadsTyped(
+            row.type ?? "json",
+            JSON.stringify(row.value) ?? ""
+          ),
         ] as [string, string, unknown];
       })
     );
@@ -186,12 +168,12 @@ export class SupaSaver extends BaseCheckpointSaver {
       )) as CheckpointMetadata,
       parentConfig: row.parent_checkpoint_id
         ? {
-          configurable: {
-            thread_id: row.thread_id,
-            checkpoint_ns,
-            checkpoint_id: row.parent_checkpoint_id,
-          },
-        }
+            configurable: {
+              thread_id: row.thread_id,
+              checkpoint_ns,
+              checkpoint_id: row.parent_checkpoint_id,
+            },
+          }
         : undefined,
       pendingWrites,
     };
@@ -202,13 +184,12 @@ export class SupaSaver extends BaseCheckpointSaver {
     options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
     const { limit, before, filter } = options ?? {};
-    const {thread_id, checkpoint_ns} = config.configurable ?? {};
+    const thread_id = config.configurable?.thread_id;
+    const checkpoint_ns = config.configurable?.checkpoint_ns;
 
-    let query = this.client
-      .from("langgraph_checkpoints")
-      .select("*")
+    let query = this.client.from("langgraph_checkpoints").select("*");
 
-    if (thread_id) {
+    if (thread_id !== undefined && thread_id !== null) {
       query = query.eq("thread_id", thread_id);
     }
 
@@ -230,8 +211,8 @@ export class SupaSaver extends BaseCheckpointSaver {
 
     for (const [key, value] of Object.entries(sanitizedFilter)) {
       let searchObject = {} as any;
-      searchObject[key] = value
-      query = query.contains(`metadata`, JSON.stringify(searchObject));
+      searchObject[key] = value;
+      query = query.eq(`metadata->>${key}`, value);
     }
 
     query = query.order("checkpoint_id", { ascending: false });
@@ -240,10 +221,10 @@ export class SupaSaver extends BaseCheckpointSaver {
       query = query.limit(parseInt(limit as any, 10));
     }
 
-    const { data: rows, error } = await query.throwOnError();
+    const { data: rows } = await query.throwOnError();
 
-    if (error) {
-      throw error;
+    if (rows === null) {
+      throw new Error("Unexpected error listing checkpoints");
     }
 
     if (rows) {
@@ -266,12 +247,12 @@ export class SupaSaver extends BaseCheckpointSaver {
           )) as CheckpointMetadata,
           parentConfig: row.parent_checkpoint_id
             ? {
-              configurable: {
-                thread_id: row.thread_id,
-                checkpoint_ns: row.checkpoint_ns,
-                checkpoint_id: row.parent_checkpoint_id,
-              },
-            }
+                configurable: {
+                  thread_id: row.thread_id,
+                  checkpoint_ns: row.checkpoint_ns,
+                  checkpoint_id: row.parent_checkpoint_id,
+                },
+              }
             : undefined,
         };
       }
@@ -283,43 +264,25 @@ export class SupaSaver extends BaseCheckpointSaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
-    const serializedCheckpoint = this._dumpCheckpoint(checkpoint);
-    const serializedMetadata = this._dumpMetadata(metadata);
-    const { thread_id, checkpoint_ns, checkpoint_id } = config.configurable!;
-
-    await this.client.from("langgraph_checkpoints").upsert({
-      checkpoint_id: checkpoint.id,
-      thread_id: thread_id.toString(),
-      checkpoint_ns: checkpoint_ns,
-      parent_checkpoint_id: checkpoint_id,
-      type: 'json',
-      checkpoint: serializedCheckpoint,
-      metadata: serializedMetadata,
-    }, {
-      onConflict: "thread_id,checkpoint_ns,checkpoint_id",
-    }).throwOnError();
-
-    //
-    // const row = [
-    //   config.configurable?.thread_id?.toString(),
-    //   config.configurable?.checkpoint_ns,
-    //   checkpoint.id,
-    //   config.configurable?.checkpoint_id,
-    //   type1,
-    //   serializedCheckpoint,
-    //   serializedMetadata,
-    // ];
-    //
-    // this.db
-    //   .prepare(
-    //     `INSERT OR REPLACE INTO checkpoints (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)`
-    //   )
-    //   .run(...row);
+    await this.client
+      .from("langgraph_checkpoints")
+      .upsert(
+        {
+          thread_id: config.configurable?.thread_id,
+          checkpoint_ns: config.configurable?.checkpoint_ns,
+          checkpoint_id: checkpoint.id,
+          parent_checkpoint_id: config.configurable?.checkpoint_id,
+          type: "json",
+          checkpoint: checkpoint,
+          metadata: metadata,
+        }
+      )
+      .throwOnError();
 
     return {
       configurable: {
         thread_id: config.configurable?.thread_id,
-        checkpoint_ns: config.configurable?.checkpoint_ns,
+        checkpoint_ns: config.configurable?.checkpoint_ns ?? "",
         checkpoint_id: checkpoint.id,
       },
     };
@@ -330,39 +293,33 @@ export class SupaSaver extends BaseCheckpointSaver {
     writes: PendingWrite[],
     taskId: string
   ): Promise<void> {
-    // const stmt = this.db.prepare(`
-    //   INSERT OR REPLACE INTO writes
-    //   (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, value)
-    //   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    // `);
-    //
-    // const transaction = this.db.transaction((rows) => {
-    //   for (const row of rows) {
-    //     stmt.run(...row);
-    //   }
-    // });
+    const thread_id = config.configurable?.thread_id;
+    const checkpoint_id = config.configurable?.checkpoint_id;
+    const checkpoint_ns = config.configurable?.checkpoint_ns;
 
-    const {thread_id, checkpoint_id, checkpoint_ns} = config.configurable!;
+    // Process writes sequentially
+    for (const [idx, write] of writes.entries()) {
+      const [, serializedWrite] = this.serde.dumpsTyped(write[1]);
 
-    await Promise.all(
-      writes.map(async (write, idx) => {
-        const [, serializedWrite] = this.serde.dumpsTyped(write[1]);
-
-        await this.client.from("langgraph_writes").upsert({
-          thread_id: thread_id,
-          checkpoint_ns: checkpoint_ns,
-          checkpoint_id: checkpoint_id,
-          task_id: taskId,
-          idx,
-          channel: write[0],
-          type: "json",
-          value: JSON.parse(
-            new TextDecoder().decode(serializedWrite).replace(/\0/g, "")
-          ),
-        }, {
-          onConfict: "thread_id,checkpoint_ns,checkpoint_id,task_id,idx",
-        }).throwOnError();
-      })
-    );
+      await this.client
+        .from("langgraph_writes")
+        .upsert(
+          [
+            {
+              thread_id,
+              checkpoint_ns,
+              checkpoint_id,
+              task_id: taskId,
+              idx,
+              channel: write[0],
+              type: "json",
+              value: JSON.parse(
+                new TextDecoder().decode(serializedWrite).replace(/\0/g, "")
+              ),
+            },
+          ]
+        )
+        .throwOnError();
+    }
   }
 }
