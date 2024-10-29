@@ -14,6 +14,8 @@ import {
   CheckpointListOptions,
   CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
+import { StreamEvent } from "@langchain/core/tracers/log_stream";
+import { IterableReadableStream } from "@langchain/core/utils/stream";
 
 import {
   BaseChannel,
@@ -28,6 +30,7 @@ import {
   PregelInterface,
   PregelTaskDescription,
   StateSnapshot,
+  StreamMode,
 } from "./types.js";
 import { Interrupt } from "../constants.js";
 
@@ -68,7 +71,7 @@ export class RemoteGraph<
 
   config?: RunnableConfig;
 
-  protected graphId: string;
+  graphId: string;
 
   protected client: Client;
 
@@ -223,7 +226,7 @@ export class RemoteGraph<
     const interruptBefore = this.interruptBefore ?? options?.interruptBefore;
     const interruptAfter = this.interruptAfter ?? options?.interruptAfter;
 
-    return this.client.runs.wait(
+    return await this.client.runs.wait(
       sanitizedConfig.configurable?.thread_id,
       this.graphId,
       {
@@ -233,6 +236,69 @@ export class RemoteGraph<
         interruptAfter: interruptAfter as string[],
       }
     );
+  }
+
+  override streamEvents(
+    input: PregelInputType,
+    options: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>> & {
+      version: "v1" | "v2";
+    }
+  ): IterableReadableStream<StreamEvent>;
+  override streamEvents(
+    input: PregelInputType,
+    options: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>> & {
+      version: "v1" | "v2";
+      encoding: never;
+    }
+  ): IterableReadableStream<never>;
+  override streamEvents(
+    input: PregelInputType,
+    options: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>> & {
+      version: "v1" | "v2";
+      encoding?: never;
+    }
+  ): IterableReadableStream<StreamEvent> {
+    const mergedConfig = mergeConfigs(this.config, options);
+    const sanitizedConfig = this._sanitizeConfig(mergedConfig);
+
+    const interruptBefore = this.interruptBefore ?? options?.interruptBefore;
+    const interruptAfter = this.interruptAfter ?? options?.interruptAfter;
+
+    let streamMode: string[] =
+      typeof options.streamMode === "string"
+        ? [options.streamMode]
+        : options.streamMode ?? [];
+
+    // manually add 'events' to stream modes list
+    if (!streamMode.includes("events")) {
+      streamMode = [...streamMode, "events"];
+    }
+
+    const outerThis = this;
+    const generator = (async function* () {
+      for await (const chunk of outerThis.client.runs.stream(
+        sanitizedConfig.configurable.thread_id,
+        outerThis.graphId,
+        {
+          input,
+          config: sanitizedConfig,
+          streamMode: streamMode as StreamMode[],
+          interruptBefore: interruptBefore as string[],
+          interruptAfter: interruptAfter as string[],
+          streamSubgraphs: options.subgraphs,
+        }
+      )) {
+        yield {
+          run_id: "",
+          name: outerThis.getName(),
+          event: chunk.event,
+          data: chunk.data,
+          metadata: {},
+        };
+      }
+    })();
+
+    return IterableReadableStream.fromAsyncGenerator(generator);
   }
 
   override async *_streamIterator(
