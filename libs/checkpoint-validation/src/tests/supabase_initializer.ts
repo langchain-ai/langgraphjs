@@ -28,7 +28,7 @@ export const initializer: CheckpointerTestInitializer<SupaSaver> = {
     //   .throwOnError()
   },
 
-  async beforeAll() {
+  async destroyCheckpointer() {
     const client = createClient(SUPABASE_URL, SUPABASE_KEY);
     await client
       .from("langgraph_checkpoints")
