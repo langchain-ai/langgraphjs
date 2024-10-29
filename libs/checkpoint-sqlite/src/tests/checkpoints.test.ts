@@ -60,6 +60,7 @@ describe("SqliteSaver", () => {
     expect(runnableConfig).toEqual({
       configurable: {
         thread_id: "1",
+        checkpoint_ns: "",
         checkpoint_id: checkpoint1.id,
       },
     });

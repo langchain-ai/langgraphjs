@@ -401,8 +401,14 @@ CREATE TABLE IF NOT EXISTS writes (
       throw new Error("Empty configuration supplied.");
     }
 
-    if (!config.configurable?.thread_id) {
-      throw new Error("Missing thread_id field in config.configurable.");
+    const thread_id = config.configurable?.thread_id;
+    const checkpoint_ns = config.configurable?.checkpoint_ns ?? "";
+    const parent_checkpoint_id = config.configurable?.checkpoint_id;
+
+    if (!thread_id) {
+      throw new Error(
+        `Missing "thread_id" field in passed "config.configurable".`
+      );
     }
 
     const preparedCheckpoint: Partial<Checkpoint> = copyCheckpoint(checkpoint);
@@ -417,10 +423,10 @@ CREATE TABLE IF NOT EXISTS writes (
       );
     }
     const row = [
-      config.configurable?.thread_id?.toString(),
-      config.configurable?.checkpoint_ns,
+      thread_id,
+      checkpoint_ns,
       checkpoint.id,
-      config.configurable?.checkpoint_id,
+      parent_checkpoint_id,
       type1,
       serializedCheckpoint,
       serializedMetadata,
@@ -434,8 +440,8 @@ CREATE TABLE IF NOT EXISTS writes (
 
     return {
       configurable: {
-        thread_id: config.configurable?.thread_id,
-        checkpoint_ns: config.configurable?.checkpoint_ns,
+        thread_id,
+        checkpoint_ns,
         checkpoint_id: checkpoint.id,
       },
     };
