@@ -1,3 +1,4 @@
+import { get } from "@vercel/edge-config";
 import { type VercelKV, createClient } from "@vercel/kv";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import {
@@ -15,8 +16,8 @@ import {
 interface KVRow {
   parent_checkpoint_id: string;
   type: string;
-  checkpoint: Uint8Array;
-  metadata: Uint8Array;
+  checkpoint: string;
+  metadata: string;
 }
 
 interface KVConfig {
@@ -28,7 +29,7 @@ interface KVPendingWrite {
   type: string;
   channel: string;
   task_id: string;
-  value: Uint8Array;
+  value: string;
 }
 
 /**
@@ -80,7 +81,7 @@ export class VercelKVSaver extends BaseCheckpointSaver {
     const {
       thread_id,
       checkpoint_ns = "",
-      checkpoint_id,
+      checkpoint_id = "",
     } = config.configurable ?? {};
 
     if (!thread_id) {
@@ -97,33 +98,66 @@ export class VercelKVSaver extends BaseCheckpointSaver {
       return undefined;
     }
 
-    const checkpointP = this.serde.loadsTyped(row.type, row.checkpoint);
-    const metadataP = this.serde.loadsTyped(row.type, row.metadata);
+    const [cType, cDumpedValue] = this.serde.dumpsTyped(row.checkpoint);
+    const checkpointPromise = this.serde.loadsTyped(cType, cDumpedValue);
+
+    const [mType, mDumpedValue] = this.serde.dumpsTyped(row.metadata);
+    const metadataPromise = this.serde.loadsTyped(mType, mDumpedValue);
 
     const [checkpoint, metadata] = await Promise.all([
-      checkpointP as Checkpoint,
-      metadataP as CheckpointMetadata,
+      checkpointPromise as Checkpoint,
+      metadataPromise as CheckpointMetadata,
     ]);
 
     // PENDING WRITES
-    const serializedWrites: KVPendingWrite[] = await this.kv.mget(
-      `PENDING_WRITES:${thread_id}:${checkpoint_ns}:${checkpoint_id}`
+    let pendingWrites: CheckpointPendingWrite[] = [];
+
+    const pendingWPrefix = `PENDING_WRITES:${thread_id}:${checkpoint_ns}:${checkpoint_id}`;
+
+    const pendingWLua = `
+      local prefix = ARGV[1]
+      local cursor = '0'
+      local result = {}
+      repeat
+        local scanResult = redis.call('SCAN', cursor, 'MATCH', prefix .. '*', 'COUNT', 1000)
+        cursor = scanResult[1]
+        local keys = scanResult[2]
+        for _, key in ipairs(keys) do
+          table.insert(result, key)
+        end
+      until cursor == '0'
+      return result
+    `;
+
+    const pendingWriteKeys: string[] = await this.kv.eval(
+      pendingWLua,
+      [],
+      [pendingWPrefix]
     );
 
-    const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
-      serializedWrites.map(async (serializedWrite) => {
-        const unserializedValue = await this.serde.loadsTyped(
-          serializedWrite.type,
-          serializedWrite.value
-        );
-        return [
-          serializedWrite.task_id,
-          serializedWrite.channel,
-          unserializedValue,
-        ] as CheckpointPendingWrite;
-      })
-    );
-
+    if (pendingWriteKeys.length) {
+      const serializedWrites: (KVPendingWrite | null)[] = await this.kv.mget(
+        ...pendingWriteKeys
+      );
+      pendingWrites = await Promise.all(
+        serializedWrites
+          .filter((write): write is KVPendingWrite => write !== null)
+          .map(async (serializedWrite) => {
+            const [sType, sDumpedValue] = this.serde.dumpsTyped(
+              serializedWrite.value
+            );
+            const unserializedValue = await this.serde.loadsTyped(
+              sType,
+              sDumpedValue
+            );
+            return [
+              serializedWrite.task_id,
+              serializedWrite.channel,
+              unserializedValue,
+            ] as CheckpointPendingWrite;
+          })
+      );
+    }
     return {
       checkpoint,
       metadata,
@@ -139,6 +173,7 @@ export class VercelKVSaver extends BaseCheckpointSaver {
         ? {
             configurable: {
               thread_id,
+              checkpoint_ns,
               checkpoint_id: row.parent_checkpoint_id,
             },
           }
@@ -177,8 +212,7 @@ export class VercelKVSaver extends BaseCheckpointSaver {
 
     // Filter keys based on the before parameter
     const filteredKeys = keys.filter((key: string) => {
-      const [, checkpoint_id] = key.split(":");
-
+      const [, , checkpoint_id] = key.split(":");
       return !before || checkpoint_id < before?.configurable?.checkpoint_id;
     });
 
@@ -192,18 +226,24 @@ export class VercelKVSaver extends BaseCheckpointSaver {
 
     for (const row of rows) {
       if (row) {
-        const checkpointP = this.serde.loadsTyped(row.type, row.checkpoint);
-        const metadataP = this.serde.loadsTyped(row.type, row.metadata);
+        const [cType, cDumpedValue] = this.serde.dumpsTyped(row.checkpoint);
+        const checkpointPromise = this.serde.loadsTyped(cType, cDumpedValue);
+
+        const [mType, mDumpedValue] = this.serde.dumpsTyped(row.metadata);
+        const metadataPromise = this.serde.loadsTyped(mType, mDumpedValue);
 
         const [checkpoint, metadata] = await Promise.all([
-          checkpointP as Checkpoint,
-          metadataP as CheckpointMetadata,
+          checkpointPromise as Checkpoint,
+          metadataPromise as CheckpointMetadata,
         ]);
 
         // filter by metadata
         if (filter && Object.keys(filter).length > 0) {
-          const serializedFilter = this.serde.dumpsTyped(filter);
-          if (serializedFilter[1] !== row.metadata) {
+          const matches = Object.keys(filter).every(
+            // @ts-ignore-next-line
+            (key) => filter[key] === metadata[key]
+          );
+          if (!matches) {
             continue;
           }
         }
@@ -212,6 +252,7 @@ export class VercelKVSaver extends BaseCheckpointSaver {
           config: {
             configurable: {
               thread_id,
+              checkpoint_ns,
               checkpoint_id: checkpoint.id,
             },
           },
@@ -221,6 +262,7 @@ export class VercelKVSaver extends BaseCheckpointSaver {
             ? {
                 configurable: {
                   thread_id,
+                  checkpoint_ns: checkpoint_ns,
                   checkpoint_id: row.parent_checkpoint_id,
                 },
               }
@@ -249,7 +291,7 @@ export class VercelKVSaver extends BaseCheckpointSaver {
     const {
       thread_id,
       checkpoint_ns = "",
-      checkpoint_id,
+      checkpoint_id = "",
     } = config.configurable;
 
     if (!thread_id || !checkpoint.id) {
@@ -265,8 +307,12 @@ export class VercelKVSaver extends BaseCheckpointSaver {
 
     const row: KVRow = {
       type: checkpointType,
-      checkpoint: checkpointValue,
-      metadata: metadataValue,
+      checkpoint: JSON.parse(
+        new TextDecoder().decode(checkpointValue).replace(/\0/g, "")
+      ),
+      metadata: JSON.parse(
+        new TextDecoder().decode(metadataValue).replace(/\0/g, "")
+      ),
       parent_checkpoint_id: checkpoint_id,
     };
 
@@ -314,11 +360,11 @@ export class VercelKVSaver extends BaseCheckpointSaver {
       );
     }
 
-    const prefix = `${thread_id}:${checkpoint_ns}:${checkpoint_id}`;
+    const prefix = `PENDING_WRITES:${thread_id}:${checkpoint_ns}:${checkpoint_id}`;
 
     const values: Record<string, KVPendingWrite> = writes.reduce(
       (acc, [channel, value], idx) => {
-        const key = `PENDING_WRITES:${prefix}:${taskId}:${idx}`;
+        const key = `${prefix}:${taskId}:${idx}`;
         const [type, serializedValue] = this.serde.dumpsTyped(value);
         return {
           ...acc,
@@ -326,12 +372,18 @@ export class VercelKVSaver extends BaseCheckpointSaver {
             type,
             channel,
             task_id: taskId,
-            value: serializedValue,
+            value: JSON.parse(
+              new TextDecoder().decode(serializedValue).replace(/\0/g, "")
+            ),
           },
         };
       },
       {}
     );
     await this.kv.mset(values);
+  }
+
+  async flush(): Promise<void> {
+    await this.kv.flushall();
   }
 }

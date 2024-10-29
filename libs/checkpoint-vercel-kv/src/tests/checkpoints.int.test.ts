@@ -46,11 +46,13 @@ const checkpoint2: Checkpoint = {
 
 describe("VercelKVSaver", () => {
   const vercelSaver = new VercelKVSaver({
-    url: getEnvironmentVariable("VERCEL_KV_API_URL")!,
-    token: getEnvironmentVariable("VERCEL_KV_API_TOKEN")!,
+    url: getEnvironmentVariable("KV_REST_API_URL")!,
+    token: getEnvironmentVariable("KV_REST_API_TOKEN")!,
   });
 
   test("should save and retrieve checkpoints correctly", async () => {
+    await vercelSaver.flush();
+
     // get undefined checkpoint
     const undefinedCheckpoint = await vercelSaver.getTuple({
       configurable: { thread_id: "1" },
@@ -83,7 +85,6 @@ describe("VercelKVSaver", () => {
       [["bar", "baz"]],
       "foo"
     );
-
     // get first checkpoint tuple
     const firstCheckpointTuple = await vercelSaver.getTuple({
       configurable: { thread_id: "1" },
