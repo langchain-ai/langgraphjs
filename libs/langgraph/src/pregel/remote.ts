@@ -286,13 +286,21 @@ export class RemoteGraph<
     return this._createStateSnapshot(state);
   }
 
+  /** @deprecated Use getGraphAsync instead. The async method will become the default in the next minor release. */
+  override getGraph(
+    _?: RunnableConfig & { xray?: boolean | number }
+  ): DrawableGraph {
+    throw new Error(
+      `The synchronous "getGraph" is not supported for this graph. Call "getGraphAsync" instead.`
+    );
+  }
+
   /**
    * Returns a drawable representation of the computation graph.
    */
-  // @ts-expect-error Fix in core 0.4
-  override async getGraph(
+  override async getGraphAsync(
     config?: RunnableConfig & { xray?: boolean | number }
-  ): Promise<DrawableGraph> {
+  ) {
     const graph = await this.client.assistants.getGraph(this.graphId, {
       xray: config?.xray,
     });
@@ -302,13 +310,17 @@ export class RemoteGraph<
     });
   }
 
-  // @ts-expect-error Fix in next minor release
-  override async *getSubgraphs(
+  /** @deprecated Use getSubgraphsAsync instead. The async method will become the default in the next minor release. */
+  override getSubgraphs(): Generator<[string, Pregel<any, any>]> {
+    throw new Error(
+      `The synchronous "getSubgraphs" method is not supported for this graph. Call "getSubgraphsAsync" instead.`
+    );
+  }
+
+  override async *getSubgraphsAsync(
     namespace?: string,
     recurse = false
-  ): AsyncIterableIterator<
-    [string, RemoteGraph<Nn, Cc, ConfigurableFieldType>]
-  > {
+  ): AsyncGenerator<[string, RemoteGraph<Nn, Cc, ConfigurableFieldType>]> {
     const subgraphs = await this.client.assistants.getSubgraphs(this.graphId, {
       namespace,
       recurse,

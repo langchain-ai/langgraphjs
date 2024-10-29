@@ -335,6 +335,11 @@ export class Pregel<
     }
   }
 
+  async getGraphAsync(config: RunnableConfig) {
+    return this.getGraph(config);
+  }
+
+  /** @deprecated Use getSubgraphsAsync instead. The async method will become the default in the next minor release. */
   *getSubgraphs(
     namespace?: string,
     recurse?: boolean
@@ -386,6 +391,14 @@ export class Pregel<
     }
   }
 
+  async *getSubgraphsAsync(
+    namespace?: string,
+    recurse?: boolean
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): AsyncGenerator<[string, Pregel<any, any>]> {
+    yield* this.getSubgraphs(namespace, recurse);
+  }
+
   protected async _prepareStateSnapshot({
     config,
     saved,
@@ -422,7 +435,7 @@ export class Pregel<
         { step: (saved.metadata?.step ?? -1) + 1 }
       )
     );
-    const subgraphs = await gatherIterator(this.getSubgraphs());
+    const subgraphs = await gatherIterator(this.getSubgraphsAsync());
     const parentNamespace = saved.config.configurable?.checkpoint_ns ?? "";
     const taskStates: Record<string, RunnableConfig | StateSnapshot> = {};
     for (const task of nextTasks) {
@@ -497,7 +510,7 @@ export class Pregel<
         .split(CHECKPOINT_NAMESPACE_SEPARATOR)
         .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
         .join(CHECKPOINT_NAMESPACE_SEPARATOR);
-      for (const [name, subgraph] of this.getSubgraphs(
+      for await (const [name, subgraph] of this.getSubgraphsAsync(
         recastCheckpointNamespace,
         true
       )) {
@@ -550,7 +563,7 @@ export class Pregel<
         .join(CHECKPOINT_NAMESPACE_SEPARATOR);
 
       // find the subgraph with the matching name
-      for (const [name, pregel] of this.getSubgraphs(
+      for await (const [name, pregel] of this.getSubgraphsAsync(
         recastCheckpointNamespace,
         true
       )) {
@@ -615,7 +628,7 @@ export class Pregel<
         .join(CHECKPOINT_NAMESPACE_SEPARATOR);
       // find the subgraph with the matching name
       // eslint-disable-next-line no-unreachable-loop
-      for (const [, pregel] of this.getSubgraphs(
+      for await (const [, pregel] of this.getSubgraphsAsync(
         recastCheckpointNamespace,
         true
       )) {
