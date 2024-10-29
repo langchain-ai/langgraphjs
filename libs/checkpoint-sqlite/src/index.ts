@@ -405,8 +405,10 @@ CREATE TABLE IF NOT EXISTS writes (
     const checkpoint_ns = config.configurable?.checkpoint_ns ?? "";
     const parent_checkpoint_id = config.configurable?.checkpoint_id;
 
-    if (!config.configurable?.thread_id) {
-      throw new Error("Missing thread_id field in config.configurable.");
+    if (!thread_id) {
+      throw new Error(
+        `Missing "thread_id" field in passed "config.configurable".`
+      );
     }
 
     const preparedCheckpoint: Partial<Checkpoint> = copyCheckpoint(checkpoint);
