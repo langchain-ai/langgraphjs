@@ -1,4 +1,3 @@
-// eslint-disable-next-line import/no-extraneous-dependencies
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 import { CheckpointerTestInitializer } from "../types.js";
 
