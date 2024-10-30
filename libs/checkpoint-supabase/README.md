@@ -7,7 +7,7 @@ Implementation of a [LangGraph.js](https://github.com/langchain-ai/langgraphjs) 
 Create the following tables in your Supabase database, you can change the table names if required when also setting the `checkPointTable` and `writeTable` options of the `SupabaseSaver` class.
 
 > [!CAUTION]
-> ⚠️ Make sure to enable RLS policies on the tables!
+> Make sure to enable RLS policies on the tables!
 
 ```sql
 create table
@@ -42,6 +42,10 @@ create table
       idx
     )
   ) tablespace pg_default;
+
+--- Important to disable public access to the tables!
+alter table "langgraph_checkpoints" enable row level security;
+alter table "langgraph_writes" enable row level security;
 ```
 
 ## Usage
