@@ -131,6 +131,20 @@ export class MultipleSubgraphsError extends BaseLangGraphError {
 }
 
 /**
+ * Exception raised when an error occurs in the remote graph.
+ */
+export class RemoteException extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
+    this.name = "RemoteException";
+  }
+
+  static get unminifiable_name() {
+    return "RemoteException";
+  }
+}
+
+/**
  * Used for subgraph detection.
  */
 export const getSubgraphsSeenSet = () => {

@@ -1824,15 +1824,15 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph-sdk@npm:^0.0.18":
-  version: 0.0.18
-  resolution: "@langchain/langgraph-sdk@npm:0.0.18"
+"@langchain/langgraph-sdk@npm:~0.0.20":
+  version: 0.0.20
+  resolution: "@langchain/langgraph-sdk@npm:0.0.20"
   dependencies:
     "@types/json-schema": ^7.0.15
     p-queue: ^6.6.2
     p-retry: 4
     uuid: ^9.0.0
-  checksum: ac9b0e0aa05170965ea632cc46ea54219180e1e0b65ca140578ba72ea9e65cbeee85f2ae33e2a4660a657859c174ee5f745c521348191126bafbfda0dcc70877
+  checksum: 0d3f1f887719bdaa3c75adb1409b734b0d3e240e92284ba90bfcf34443d2826f732ab7aab3db10f11b3e809d070566cc53d6cf1fa9660eacb2c2744da5b57cf3
   languageName: node
   linkType: hard
 
@@ -1847,7 +1847,7 @@ __metadata:
     "@langchain/langgraph-checkpoint": ~0.0.10
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
-    "@langchain/langgraph-sdk": ^0.0.18
+    "@langchain/langgraph-sdk": ~0.0.20
     "@langchain/openai": ^0.3.11
     "@langchain/scripts": ">=0.1.3 <0.2.0"
     "@swc/core": ^1.3.90
@@ -1885,10 +1885,6 @@ __metadata:
     zod-to-json-schema: ^3.22.4
   peerDependencies:
     "@langchain/core": ">=0.2.36 <0.3.0 || >=0.3.9 < 0.4.0"
-    "@langchain/langgraph-sdk": "*"
-  peerDependenciesMeta:
-    "@langchain/langgraph-sdk":
-      optional: true
   languageName: unknown
   linkType: soft
 

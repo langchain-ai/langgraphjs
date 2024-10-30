@@ -19,8 +19,10 @@ import { IterableReadableStream } from "@langchain/core/utils/stream";
 
 import {
   BaseChannel,
+  GraphInterrupt,
   LangGraphRunnableConfig,
   ManagedValueSpec,
+  RemoteException,
 } from "../web.js";
 import { StrRecord } from "./algo.js";
 import { PregelInputType, PregelOptions, PregelOutputType } from "./index.js";
@@ -32,7 +34,13 @@ import {
   StateSnapshot,
   StreamMode,
 } from "./types.js";
-import { Interrupt } from "../constants.js";
+import {
+  CHECKPOINT_NAMESPACE_SEPARATOR,
+  CONFIG_KEY_STREAM,
+  INTERRUPT,
+  Interrupt,
+} from "../constants.js";
+import { isBaseMessage } from "@langchain/core/messages";
 
 export type RemoteGraphParams = Omit<
   PregelParams<
@@ -45,6 +53,84 @@ export type RemoteGraphParams = Omit<
   client: Client;
 };
 
+const _serializeInputs = (obj: any): any => {
+  if (obj === null || typeof obj !== "object") {
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(_serializeInputs);
+  }
+
+  // Handle BaseMessage instances by converting them to a serializable format
+  if (isBaseMessage(obj)) {
+    const dict = obj.toDict();
+    return {
+      ...dict.data,
+      role: obj.getType(),
+    };
+  }
+
+  return Object.fromEntries(
+    Object.entries(obj).map(([key, value]) => [key, _serializeInputs(value)])
+  );
+};
+
+/**
+ *
+ * Return a tuple of the final list of stream modes sent to the
+ * remote graph and a boolean flag indicating if only one stream mode was
+ * originally requested and whether stream mode 'updates'
+ * was present in the original list of stream modes.
+ *
+ * 'updates' mode is always added to the list of stream modes so that interrupts
+ * can be detected in the remote graph.
+ */
+const getStreamModes = (
+  streamMode?: StreamMode | StreamMode[],
+  defaultStreamMode: StreamMode = "updates"
+) => {
+  const updatedStreamModes: StreamMode[] = [];
+  let reqUpdates = false;
+  let reqSingle = true;
+
+  if (
+    streamMode !== undefined &&
+    (typeof streamMode === "string" ||
+      (Array.isArray(streamMode) && streamMode.length > 0))
+  ) {
+    if (typeof streamMode === "string") {
+      updatedStreamModes.push(streamMode);
+    } else {
+      reqSingle = false;
+      updatedStreamModes.push(...streamMode);
+    }
+  } else {
+    updatedStreamModes.push(defaultStreamMode);
+  }
+  // TODO: Map messages to messages-tuple
+  if (updatedStreamModes.includes("updates")) {
+    reqUpdates = true;
+  } else {
+    updatedStreamModes.push("updates");
+  }
+  return {
+    updatedStreamModes,
+    reqUpdates,
+    reqSingle,
+  };
+};
+
+/**
+ * The `RemoteGraph` class is a client implementation for calling remote
+ * APIs that implement the LangGraph Server API specification.
+ *
+ * For example, the `RemoteGraph` class can be used to call APIs from deployments
+ * on LangGraph Cloud.
+ *
+ * `RemoteGraph` behaves the same way as a `Graph` and can be used directly as
+ * a node in another `Graph`.
+ */
 export class RemoteGraph<
     Nn extends StrRecord<string, PregelNode> = StrRecord<string, PregelNode>,
     Cc extends StrRecord<string, BaseChannel | ManagedValueSpec> = StrRecord<
@@ -136,7 +222,11 @@ export class RemoteGraph<
       )
     );
 
-    return { configurable: newConfigurable };
+    return {
+      tags: config.tags ?? [],
+      metadata: config.metadata ?? {},
+      configurable: newConfigurable,
+    };
   }
 
   protected _getConfig(checkpoint: Record<string, unknown>): RunnableConfig {
@@ -220,22 +310,15 @@ export class RemoteGraph<
     input: PregelInputType,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
   ): Promise<PregelOutputType> {
-    const mergedConfig = mergeConfigs(this.config, options);
-    const sanitizedConfig = this._sanitizeConfig(mergedConfig);
-
-    const interruptBefore = this.interruptBefore ?? options?.interruptBefore;
-    const interruptAfter = this.interruptAfter ?? options?.interruptAfter;
-
-    return await this.client.runs.wait(
-      sanitizedConfig.configurable?.thread_id,
-      this.graphId,
-      {
-        input,
-        config: sanitizedConfig,
-        interruptBefore: interruptBefore as string[],
-        interruptAfter: interruptAfter as string[],
-      }
-    );
+    let lastValue;
+    const stream = await this.stream(input, {
+      ...options,
+      streamMode: "values",
+    });
+    for await (const chunk of stream) {
+      lastValue = chunk;
+    }
+    return lastValue?.data;
   }
 
   override streamEvents(
@@ -252,53 +335,13 @@ export class RemoteGraph<
     }
   ): IterableReadableStream<never>;
   override streamEvents(
-    input: PregelInputType,
-    options: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>> & {
+    _input: PregelInputType,
+    _options: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>> & {
       version: "v1" | "v2";
       encoding?: never;
     }
   ): IterableReadableStream<StreamEvent> {
-    const mergedConfig = mergeConfigs(this.config, options);
-    const sanitizedConfig = this._sanitizeConfig(mergedConfig);
-
-    const interruptBefore = this.interruptBefore ?? options?.interruptBefore;
-    const interruptAfter = this.interruptAfter ?? options?.interruptAfter;
-
-    let streamMode: string[] =
-      typeof options.streamMode === "string"
-        ? [options.streamMode]
-        : options.streamMode ?? [];
-
-    // manually add 'events' to stream modes list
-    if (!streamMode.includes("events")) {
-      streamMode = [...streamMode, "events"];
-    }
-
-    const outerThis = this;
-    const generator = (async function* () {
-      for await (const chunk of outerThis.client.runs.stream(
-        sanitizedConfig.configurable.thread_id,
-        outerThis.graphId,
-        {
-          input,
-          config: sanitizedConfig,
-          streamMode: streamMode as StreamMode[],
-          interruptBefore: interruptBefore as string[],
-          interruptAfter: interruptAfter as string[],
-          streamSubgraphs: options.subgraphs,
-        }
-      )) {
-        yield {
-          run_id: "",
-          name: outerThis.getName(),
-          event: chunk.event,
-          data: chunk.data,
-          metadata: {},
-        };
-      }
-    })();
-
-    return IterableReadableStream.fromAsyncGenerator(generator);
+    throw new Error("Not implemented.");
   }
 
   override async *_streamIterator(
@@ -308,22 +351,96 @@ export class RemoteGraph<
     const mergedConfig = mergeConfigs(this.config, options);
     const sanitizedConfig = this._sanitizeConfig(mergedConfig);
 
+    const streamProtocolInstance = options?.configurable?.[CONFIG_KEY_STREAM];
+
+    const streamSubgraphs =
+      options?.subgraphs ?? streamProtocolInstance !== undefined;
+
     const interruptBefore = this.interruptBefore ?? options?.interruptBefore;
     const interruptAfter = this.interruptAfter ?? options?.interruptAfter;
 
-    yield* this.client.runs.stream(
+    const { updatedStreamModes, reqSingle, reqUpdates } = getStreamModes(
+      options?.streamMode
+    );
+
+    const extendedStreamModes = [
+      ...new Set([
+        ...updatedStreamModes,
+        ...(streamProtocolInstance?.modes ?? new Set()),
+      ]),
+    ];
+
+    for await (const chunk of this.client.runs.stream(
       sanitizedConfig.configurable.thread_id,
       this.graphId,
       {
-        input,
+        input: _serializeInputs(input),
         config: sanitizedConfig,
-        streamMode:
-          options?.streamMode !== undefined ? options.streamMode : "values",
+        streamMode: extendedStreamModes,
         interruptBefore: interruptBefore as string[],
         interruptAfter: interruptAfter as string[],
-        streamSubgraphs: options?.subgraphs,
+        streamSubgraphs,
+        ifNotExists: "create",
       }
-    );
+    )) {
+      let mode;
+      let namespace: string[];
+      if (chunk.event.includes(CHECKPOINT_NAMESPACE_SEPARATOR)) {
+        const eventComponents = chunk.event.split(
+          CHECKPOINT_NAMESPACE_SEPARATOR
+        );
+        mode = eventComponents[0];
+        namespace = eventComponents.slice(1);
+      } else {
+        mode = chunk.event;
+        namespace = [];
+      }
+      const callerNamespace = options?.configurable?.checkpoint_ns;
+      if (callerNamespace !== undefined) {
+        namespace = [callerNamespace].concat(namespace);
+      }
+      if (
+        streamProtocolInstance !== undefined &&
+        streamProtocolInstance.modes?.has(chunk.event)
+      ) {
+        streamProtocolInstance.push([namespace, mode, chunk.data]);
+      }
+      if (chunk.event.startsWith("updates")) {
+        if (
+          typeof chunk.data === "object" &&
+          chunk.data?.[INTERRUPT] !== undefined
+        ) {
+          throw new GraphInterrupt(chunk.data[INTERRUPT]);
+        }
+        if (!reqUpdates) {
+          continue;
+        }
+      } else if (chunk.event?.startsWith("error")) {
+        throw new RemoteException(
+          typeof chunk.data === "string"
+            ? chunk.data
+            : JSON.stringify(chunk.data)
+        );
+      }
+      if (
+        !updatedStreamModes.includes(
+          chunk.event.split(CHECKPOINT_NAMESPACE_SEPARATOR)[0] as StreamMode
+        )
+      ) {
+        continue;
+      }
+      if (options?.subgraphs) {
+        if (reqSingle) {
+          yield [namespace, chunk.data];
+        } else {
+          yield [namespace, mode, chunk.data];
+        }
+      } else if (reqSingle) {
+        yield chunk.data;
+      } else {
+        yield [mode, chunk.data];
+      }
+    }
   }
 
   async updateState(

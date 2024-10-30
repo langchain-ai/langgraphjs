@@ -2,6 +2,8 @@ import { jest } from "@jest/globals";
 import { Client } from "@langchain/langgraph-sdk";
 import { RemoteGraph } from "../pregel/remote.js";
 import { gatherIterator } from "../utils.js";
+import { INTERRUPT } from "../constants.js";
+import { GraphInterrupt } from "../errors.js";
 
 describe("RemoteGraph", () => {
   test("withConfig", () => {
@@ -250,9 +252,11 @@ describe("RemoteGraph", () => {
       .spyOn((client as any).runs, "stream")
       .mockImplementation(async function* () {
         const chunks = [
-          { chunk: "data1" },
-          { chunk: "data2" },
-          { chunk: "data3" },
+          { event: "values", data: { chunk: "data1" } },
+          { event: "values", data: { chunk: "data2" } },
+          { event: "values", data: { chunk: "data3" } },
+          { event: "updates", data: { chunk: "data4" } },
+          { event: "updates", data: { [INTERRUPT]: [] } },
         ];
         for (const chunk of chunks) {
           yield chunk;
@@ -266,21 +270,190 @@ describe("RemoteGraph", () => {
 
     const config = { configurable: { thread_id: "thread_1" } };
 
-    const result = await gatherIterator(
-      remotePregel.stream({ input: "data" }, config)
-    );
-    expect(result).toEqual([
+    let parts = [];
+    let error;
+    try {
+      const stream = await remotePregel.stream(
+        { input: "data" },
+        { ...config, streamMode: "values" }
+      );
+      for await (const chunk of stream) {
+        parts.push(chunk);
+      }
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error).toBeInstanceOf(GraphInterrupt);
+    expect(parts).toEqual([
       { chunk: "data1" },
       { chunk: "data2" },
       { chunk: "data3" },
+    ]);
+
+    jest
+      .spyOn((client as any).runs, "stream")
+      .mockImplementation(async function* () {
+        const chunks = [
+          { event: "updates", data: { chunk: "data3" } },
+          { event: "updates", data: { chunk: "data4" } },
+          { event: "updates", data: { [INTERRUPT]: [] } },
+        ];
+        for (const chunk of chunks) {
+          yield chunk;
+        }
+      });
+
+    // default stream_mode is updates
+    error = undefined;
+    parts = [];
+    try {
+      const stream = await remotePregel.stream(
+        { input: "data" },
+        { ...config }
+      );
+      for await (const chunk of stream) {
+        parts.push(chunk);
+      }
+    } catch (e) {
+      error = e;
+    }
+
+    expect(parts).toEqual([{ chunk: "data3" }, { chunk: "data4" }]);
+    expect(error).toBeInstanceOf(GraphInterrupt);
+
+    // list streamMode includes mode names
+    parts = [];
+    error = undefined;
+    try {
+      const stream = await remotePregel.stream(
+        { input: "data" },
+        { ...config, streamMode: ["updates"] }
+      );
+      for await (const chunk of stream) {
+        parts.push(chunk);
+      }
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error).toBeInstanceOf(GraphInterrupt);
+    expect(parts).toEqual([
+      ["updates", { chunk: "data3" }],
+      ["updates", { chunk: "data4" }],
+    ]);
+
+    // subgraphs + list modes
+    parts = [];
+    error = undefined;
+    try {
+      const stream = await remotePregel.stream(
+        { input: "data" },
+        { ...config, streamMode: ["updates"], subgraphs: true }
+      );
+      for await (const chunk of stream) {
+        parts.push(chunk);
+      }
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error).toBeInstanceOf(GraphInterrupt);
+    expect(parts).toEqual([
+      [[], "updates", { chunk: "data3" }],
+      [[], "updates", { chunk: "data4" }],
+    ]);
+
+    // subgraphs + single mode
+    parts = [];
+    error = undefined;
+    try {
+      const stream = await remotePregel.stream(
+        { input: "data" },
+        { ...config, subgraphs: true }
+      );
+      for await (const chunk of stream) {
+        parts.push(chunk);
+      }
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error).toBeInstanceOf(GraphInterrupt);
+    expect(parts).toEqual([
+      [[], { chunk: "data3" }],
+      [[], { chunk: "data4" }],
+    ]);
+
+    jest
+      .spyOn((client as any).runs, "stream")
+      .mockImplementation(async function* () {
+        const chunks = [
+          { event: "updates|my|subgraph", data: { chunk: "data3" } },
+          { event: "updates|hello|subgraph", data: { chunk: "data4" } },
+          { event: "updates|bye|subgraph", data: { [INTERRUPT]: [] } },
+        ];
+        for (const chunk of chunks) {
+          yield chunk;
+        }
+      });
+
+    // subgraphs + list modes
+    parts = [];
+    error = undefined;
+    try {
+      const stream = await remotePregel.stream(
+        { input: "data" },
+        { ...config, subgraphs: true, streamMode: ["updates"] }
+      );
+      for await (const chunk of stream) {
+        parts.push(chunk);
+      }
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error).toBeInstanceOf(GraphInterrupt);
+    expect(parts).toEqual([
+      [["my", "subgraph"], "updates", { chunk: "data3" }],
+      [["hello", "subgraph"], "updates", { chunk: "data4" }],
+    ]);
+
+    // subgraphs + single mode
+    parts = [];
+    error = undefined;
+    try {
+      const stream = await remotePregel.stream(
+        { input: "data" },
+        { ...config, subgraphs: true }
+      );
+      for await (const chunk of stream) {
+        parts.push(chunk);
+      }
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(GraphInterrupt);
+    expect(parts).toEqual([
+      [["my", "subgraph"], { chunk: "data3" }],
+      [["hello", "subgraph"], { chunk: "data4" }],
     ]);
   });
 
   test("invoke", async () => {
     const client = new Client({});
-    jest.spyOn((client as any).runs, "wait").mockResolvedValue({
-      values: { messages: [{ type: "human", content: "world" }] },
-    });
+    jest
+      .spyOn((client as any).runs, "stream")
+      .mockImplementation(async function* () {
+        const chunks = [
+          { chunk: "data1" },
+          { chunk: "data2" },
+          { chunk: "data3" },
+        ];
+        for (const chunk of chunks) {
+          yield chunk;
+        }
+      });
 
     const remotePregel = new RemoteGraph({
       client,
