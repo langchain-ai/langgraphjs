@@ -14,20 +14,7 @@ export const initializer: CheckpointerTestInitializer<SupabaseSaver> = {
     return new SupabaseSaver(client);
   },
 
-  async afterAll() {
-    // const client = createClient(SUPABASE_URL, SUPABASE_KEY);
-    // await client
-    //   .from("langgraph_checkpoints")
-    //   .delete()
-    //   .neq("thread_id", "filter-needs-a-value")
-    //   .throwOnError()
-    // await client
-    //   .from("langgraph_writes")
-    //   .delete()
-    //   .neq("thread_id", "filter-needs-a-value")
-    //   .throwOnError()
-  },
-
+  // Reset the tables between groups of tests
   async destroyCheckpointer() {
     const client = createClient(SUPABASE_URL, SUPABASE_KEY);
     await client
