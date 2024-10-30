@@ -377,7 +377,7 @@ export class RemoteGraph<
     ];
 
     for await (const chunk of this.client.runs.stream(
-      sanitizedConfig.configurable.thread_id,
+      sanitizedConfig.configurable.thread_id as string,
       this.graphId,
       {
         input: _serializeInputs(input),
