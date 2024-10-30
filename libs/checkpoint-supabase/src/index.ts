@@ -32,9 +32,7 @@ interface WritesRow {
   value?: string;
 }
 
-// In the `SqliteSaver.list` method, we need to sanitize the `options.filter` argument to ensure it only contains keys
-// that are part of the `CheckpointMetadata` type. The lines below ensure that we get compile-time errors if the list
-// of keys that we use is out of sync with the `CheckpointMetadata` type.
+const DEFAULT_TYPE = 'json' as const;
 const checkpointMetadataKeys = ["source", "step", "writes", "parents"] as const;
 
 type CheckKeys<T, K extends readonly (keyof T)[]> = [K[number]] extends [
@@ -51,132 +49,129 @@ function validateKeys<T, K extends readonly (keyof T)[]>(
   return keys;
 }
 
-// If this line fails to compile, the list of keys that we use in the `SqliteSaver.list` method is out of sync with the
-// `CheckpointMetadata` type. In that case, just update `checkpointMetadataKeys` to contain all the keys in
-// `CheckpointMetadata`
 const validCheckpointMetadataKeys = validateKeys<
   CheckpointMetadata,
   typeof checkpointMetadataKeys
 >(checkpointMetadataKeys);
 
-export class SupaSaver extends BaseCheckpointSaver {
-  constructor(private client: SupabaseClient, serde?: SerializerProtocol) {
+export class SupabaseSaver extends BaseCheckpointSaver {
+
+  private options: {
+    checkPointTable: string;
+    writeTable: string;
+  } = {
+    checkPointTable: "langgraph_checkpoints",
+    writeTable: "langgraph_writes",
+  };
+
+  constructor(private client: SupabaseClient, config?: {
+    checkPointTable?: string;
+    writeTable?: string;
+  },serde?: SerializerProtocol) {
     super(serde);
-  }
-
-  protected _dumpMetadata(metadata: CheckpointMetadata) {
-    const [, serializedMetadata] = this.serde.dumpsTyped(metadata);
-    // We need to remove null characters before writing
-    return JSON.parse(
-      new TextDecoder().decode(serializedMetadata).replace(/\0/g, "")
-    );
-  }
-  async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
-    const {
-      thread_id,
-      checkpoint_ns = "",
-      checkpoint_id,
-    } = config.configurable ?? {};
-
-    let res;
-
-    if (checkpoint_id) {
-      res = await this.client
-        .from("langgraph_checkpoints")
-        .select()
-        .eq("checkpoint_id", checkpoint_id)
-        .eq("thread_id", thread_id)
-        .eq("checkpoint_ns", checkpoint_ns)
-        .throwOnError();
-    } else {
-      res = await this.client
-        .from("langgraph_checkpoints")
-        .select()
-        .eq("thread_id", thread_id)
-        .eq("checkpoint_ns", checkpoint_ns)
-        .order("checkpoint_id", { ascending: false })
-        .throwOnError();
-    }
-
-    const rows = res.data as CheckpointRow[];
-
-    const row = rows[0];
-    if (row == null) {
-      return undefined;
-    }
-
-    let finalConfig = config;
-    if (!checkpoint_id) {
-      finalConfig = {
-        configurable: {
-          thread_id: row.thread_id,
-          checkpoint_ns,
-          checkpoint_id: row.checkpoint_id,
-        },
+    
+    // Apply config
+    if (config) {
+      this.options = {
+        ...this.options,
+        ...config,
       };
     }
+  }
 
-    if (
-      finalConfig.configurable?.thread_id === undefined ||
-      finalConfig.configurable?.checkpoint_id === undefined
-    ) {
-      throw new Error("Missing thread_id or checkpoint_id");
+  protected _dumpMetadata(metadata: CheckpointMetadata): unknown {
+    const [, serializedMetadata] = this.serde.dumpsTyped(metadata);
+    return this.parseAndCleanJson(serializedMetadata);
+  }
+
+  private parseAndCleanJson(data: Uint8Array): unknown {
+    return JSON.parse(
+      new TextDecoder().decode(data).replace(/\0/g, "")
+    );
+  }
+
+  private validateConfig(config: RunnableConfig): asserts config is Required<RunnableConfig> {
+    if (!config.configurable?.thread_id || !config.configurable?.checkpoint_id) {
+      throw new Error("Missing required config: thread_id or checkpoint_id");
     }
+  }
 
-    // find any pending writes
-    // const pendingWritesRows = this.db
-    //   .prepare(
-    //     `SELECT task_id, channel, type, value FROM writes WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ?`
-    //   )
-    //   .all(
-    //     finalConfig.configurable.thread_id.toString(),
-    //     checkpoint_ns,
-    //     finalConfig.configurable.checkpoint_id.toString()
-    //   ) as WritesRow[];
-
-    const pendingWritesRes = await this.client
-      .from("langgraph_writes")
+  async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
+    const { thread_id, checkpoint_ns = "", checkpoint_id } = config.configurable ?? {};
+    
+    const query = this.client
+      .from(this.options.checkPointTable)
       .select()
-      .eq("thread_id", finalConfig.configurable.thread_id.toString())
-      .eq("checkpoint_ns", checkpoint_ns)
-      .eq("checkpoint_id", finalConfig.configurable.checkpoint_id.toString())
-      .throwOnError();
+      .eq("thread_id", thread_id)
+      .eq("checkpoint_ns", checkpoint_ns);
 
-    const pendingWritesRows = (pendingWritesRes.data ?? []) as WritesRow[];
-    const pendingWrites = await Promise.all(
-      pendingWritesRows.map(async (row: WritesRow) => {
-        return [
-          row.task_id,
-          row.channel,
-          await this.serde.loadsTyped(
-            row.type ?? "json",
-            JSON.stringify(row.value) ?? ""
-          ),
-        ] as [string, string, unknown];
-      })
+    const res = await (checkpoint_id 
+      ? query.eq("checkpoint_id", checkpoint_id)
+      : query.order("checkpoint_id", { ascending: false })
+    ).throwOnError();
+
+    const [row] = res.data as CheckpointRow[];
+    if (!row) return undefined;
+
+    const finalConfig = !checkpoint_id ? {
+      configurable: {
+        thread_id: row.thread_id,
+        checkpoint_ns,
+        checkpoint_id: row.checkpoint_id,
+      },
+    } : config;
+
+    this.validateConfig(finalConfig);
+
+    const pendingWrites = await this.fetchPendingWrites(
+      finalConfig.configurable.thread_id,
+      checkpoint_ns,
+      finalConfig.configurable.checkpoint_id
     );
 
     return {
       config: finalConfig,
-      checkpoint: (await this.serde.loadsTyped(
-        row.type ?? "json",
-        JSON.stringify(row.checkpoint)
-      )) as Checkpoint,
-      metadata: (await this.serde.loadsTyped(
-        row.type ?? "json",
-        JSON.stringify(row.metadata)
-      )) as CheckpointMetadata,
-      parentConfig: row.parent_checkpoint_id
-        ? {
-            configurable: {
-              thread_id: row.thread_id,
-              checkpoint_ns,
-              checkpoint_id: row.parent_checkpoint_id,
-            },
-          }
-        : undefined,
+      checkpoint: await this.deserializeField(row.type, row.checkpoint) as Checkpoint,
+      metadata: await this.deserializeField(row.type, row.metadata) as CheckpointMetadata,
+      parentConfig: row.parent_checkpoint_id ? {
+        configurable: {
+          thread_id: row.thread_id,
+          checkpoint_ns,
+          checkpoint_id: row.parent_checkpoint_id,
+        },
+      } : undefined,
       pendingWrites,
     };
+  }
+
+  private async deserializeField(type: string | undefined, value: string): Promise<unknown> {
+    return this.serde.loadsTyped(
+      type ?? DEFAULT_TYPE,
+      JSON.stringify(value)
+    );
+  }
+
+  private async fetchPendingWrites(
+    threadId: string,
+    checkpointNs: string,
+    checkpointId: string
+  ): Promise<[string, string, unknown][]> {
+    const { data } = await this.client
+      .from(this.options.writeTable)
+      .select()
+      .eq("thread_id", threadId)
+      .eq("checkpoint_ns", checkpointNs)
+      .eq("checkpoint_id", checkpointId)
+      .throwOnError();
+
+    const rows = data as WritesRow[];
+    return Promise.all(
+      rows.map(async (row) => [
+        row.task_id,
+        row.channel,
+        await this.deserializeField(row.type, row.value ?? ""),
+      ])
+    );
   }
 
   async *list(
@@ -187,7 +182,7 @@ export class SupaSaver extends BaseCheckpointSaver {
     const thread_id = config.configurable?.thread_id;
     const checkpoint_ns = config.configurable?.checkpoint_ns;
 
-    let query = this.client.from("langgraph_checkpoints").select("*");
+    let query = this.client.from(this.options.checkPointTable).select("*");
 
     if (thread_id !== undefined && thread_id !== null) {
       query = query.eq("thread_id", thread_id);
@@ -265,7 +260,7 @@ export class SupaSaver extends BaseCheckpointSaver {
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
     await this.client
-      .from("langgraph_checkpoints")
+      .from(this.options.checkPointTable)
       .upsert(
         {
           thread_id: config.configurable?.thread_id,
@@ -302,7 +297,7 @@ export class SupaSaver extends BaseCheckpointSaver {
       const [, serializedWrite] = this.serde.dumpsTyped(write[1]);
 
       await this.client
-        .from("langgraph_writes")
+        .from(this.options.writeTable)
         .upsert(
           [
             {

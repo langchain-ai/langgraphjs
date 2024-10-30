@@ -1817,6 +1817,7 @@ __metadata:
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
     "@langchain/langgraph-checkpoint-supabase": "workspace:*"
     "@langchain/scripts": ">=0.1.3 <0.2.0"
+    "@supabase/supabase-js": ^2.46.1
     "@swc-node/register": ^1.10.9
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
@@ -2927,6 +2928,20 @@ __metadata:
     "@supabase/realtime-js": 2.10.7
     "@supabase/storage-js": 2.7.1
   checksum: d97c18180a7e4725615e6d22ab322eb6f68de0fe8b5bb9cdd921544c16274917b5d7594ff46fb4401d175329e768e82a9ad8dd3c362a6c5ab2231afb021481b9
+  languageName: node
+  linkType: hard
+
+"@supabase/supabase-js@npm:^2.46.1":
+  version: 2.46.1
+  resolution: "@supabase/supabase-js@npm:2.46.1"
+  dependencies:
+    "@supabase/auth-js": 2.65.1
+    "@supabase/functions-js": 2.4.3
+    "@supabase/node-fetch": 2.6.15
+    "@supabase/postgrest-js": 1.16.3
+    "@supabase/realtime-js": 2.10.7
+    "@supabase/storage-js": 2.7.1
+  checksum: 5f8c143124adab36a145c78a1c9799e0fd80598d64904e99e907efa3c6ae1a6f3c95c97b2c9a493690d6761169d9fe138f885c7f3885e376a5928676c616c5fc
   languageName: node
   linkType: hard
 

@@ -53,6 +53,7 @@
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*",
     "@langchain/langgraph-checkpoint-supabase": "workspace:*",
     "@langchain/scripts": ">=0.1.3 <0.2.0",
+    "@supabase/supabase-js": "^2.46.1",
     "@testcontainers/mongodb": "^10.13.2",
     "@testcontainers/postgresql": "^10.13.2",
     "@tsconfig/recommended": "^1.0.3",

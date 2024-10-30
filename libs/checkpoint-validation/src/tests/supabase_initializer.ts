@@ -1,17 +1,17 @@
 // eslint-disable-next-line import/no-extraneous-dependencies
-import { SupaSaver } from "@langchain/langgraph-checkpoint-supabase";
-import { CheckpointerTestInitializer } from "../types.js";
+import { SupabaseSaver } from "@langchain/langgraph-checkpoint-supabase";
 import { createClient } from "@supabase/supabase-js";
+import { CheckpointerTestInitializer } from "../types.js";
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_KEY!;
 
-export const initializer: CheckpointerTestInitializer<SupaSaver> = {
+export const initializer: CheckpointerTestInitializer<SupabaseSaver> = {
   checkpointerName: "@langchain/langgraph-checkpoint-supabase",
 
   async createCheckpointer() {
     const client = createClient(SUPABASE_URL, SUPABASE_KEY);
-    return new SupaSaver(client);
+    return new SupabaseSaver(client);
   },
 
   async afterAll() {
