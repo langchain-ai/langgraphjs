@@ -1,3 +1,4 @@
+/* eslint-disable no-process-env */
 import { Client } from "@langchain/langgraph-sdk";
 import { v4 } from "uuid";
 import { RemoteGraph } from "../pregel/remote.js";
@@ -53,7 +54,7 @@ describe("RemoteGraph", () => {
     }
   });
 
-  test.only("get and update state", async () => {
+  test("get and update state", async () => {
     const checkpointer = new MemorySaver();
     const app = builder.compile({ checkpointer });
 

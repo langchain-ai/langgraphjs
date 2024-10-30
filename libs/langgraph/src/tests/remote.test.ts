@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { jest } from "@jest/globals";
 import { Client } from "@langchain/langgraph-sdk";
 import { RemoteGraph } from "../pregel/remote.js";

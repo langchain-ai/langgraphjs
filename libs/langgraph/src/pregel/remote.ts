@@ -16,6 +16,7 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { StreamEvent } from "@langchain/core/tracers/log_stream";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
+import { isBaseMessage } from "@langchain/core/messages";
 
 import {
   BaseChannel,
@@ -40,7 +41,6 @@ import {
   INTERRUPT,
   Interrupt,
 } from "../constants.js";
-import { isBaseMessage } from "@langchain/core/messages";
 
 export type RemoteGraphParams = Omit<
   PregelParams<
@@ -53,6 +53,7 @@ export type RemoteGraphParams = Omit<
   client: Client;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const _serializeInputs = (obj: any): any => {
   if (obj === null || typeof obj !== "object") {
     return obj;
@@ -191,6 +192,7 @@ export class RemoteGraph<
       "checkpoint_ns",
     ]);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sanitizeObj = (obj: any): any => {
       // Remove non-JSON serializable fields from the given object
       if (obj && typeof obj === "object") {
@@ -212,19 +214,19 @@ export class RemoteGraph<
     };
 
     // Remove non-JSON serializable fields from the config
-    config = sanitizeObj(config);
+    const sanitizedConfig = sanitizeObj(config);
 
     // Only include configurable keys that are not reserved and
     // not starting with "__pregel_" prefix
     const newConfigurable = Object.fromEntries(
-      Object.entries(config.configurable ?? {}).filter(
+      Object.entries(sanitizedConfig.configurable ?? {}).filter(
         ([k]) => !reservedConfigurableKeys.has(k) && !k.startsWith("__pregel_")
       )
     );
 
     return {
-      tags: config.tags ?? [],
-      metadata: config.metadata ?? {},
+      tags: sanitizedConfig.tags ?? [],
+      metadata: sanitizedConfig.metadata ?? {},
       configurable: newConfigurable,
     };
   }
@@ -268,11 +270,13 @@ export class RemoteGraph<
         name: task.name,
         error: task.error ? { message: task.error } : undefined,
         interrupts: task.interrupts as Interrupt[],
+        // eslint-disable-next-line no-nested-ternary
         state: task.state
           ? this._createStateSnapshot(task.state)
           : task.checkpoint
           ? { configurable: task.checkpoint }
           : undefined,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         result: (task as any).result,
       };
     });
@@ -327,6 +331,7 @@ export class RemoteGraph<
       version: "v1" | "v2";
     }
   ): IterableReadableStream<StreamEvent>;
+
   override streamEvents(
     input: PregelInputType,
     options: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>> & {
@@ -334,6 +339,7 @@ export class RemoteGraph<
       encoding: never;
     }
   ): IterableReadableStream<never>;
+
   override streamEvents(
     _input: PregelInputType,
     _options: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>> & {
@@ -389,6 +395,7 @@ export class RemoteGraph<
         const eventComponents = chunk.event.split(
           CHECKPOINT_NAMESPACE_SEPARATOR
         );
+        // eslint-disable-next-line prefer-destructuring
         mode = eventComponents[0];
         namespace = eventComponents.slice(1);
       } else {
@@ -453,6 +460,8 @@ export class RemoteGraph<
       mergedConfig.configurable?.thread_id,
       { values, asNode, checkpoint: this._getCheckpoint(mergedConfig) }
     );
+    // TODO: Fix SDK typing
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return this._getConfig((response as any).checkpoint);
   }
 
@@ -465,6 +474,8 @@ export class RemoteGraph<
       mergedConfig.configurable?.thread_id,
       {
         limit: options?.limit ?? 10,
+        // TODO: Fix type
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         before: this._getCheckpoint(options?.before) as any,
         metadata: options?.filter,
         checkpoint: this._getCheckpoint(mergedConfig),
@@ -479,7 +490,8 @@ export class RemoteGraph<
     nodes: Array<{
       id: string | number;
       name?: string;
-      data?: Record<string, unknown>;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data?: Record<string, any> | string;
       metadata?: unknown;
     }>
   ): Record<string, DrawableNode> {
@@ -488,9 +500,10 @@ export class RemoteGraph<
       const nodeId = node.id;
       nodesMap[nodeId] = {
         id: nodeId.toString(),
-        name: node.name ?? "",
+        name: typeof node.data === "string" ? node.data : node.data?.name ?? "",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         data: (node.data as any) ?? {},
-        metadata: node.metadata as any,
+        metadata: (typeof node.data !== "string" && node.data?.metadata) ?? {},
       };
     }
     return nodesMap;
@@ -504,10 +517,8 @@ export class RemoteGraph<
 
     const state = await this.client.threads.getState(
       mergedConfig.configurable?.thread_id,
-      {
-        checkpoint: this._getCheckpoint(mergedConfig),
-        subgraphs: options?.subgraphs,
-      } as any
+      this._getCheckpoint(mergedConfig),
+      options
     );
     return this._createStateSnapshot(state);
   }
@@ -529,6 +540,7 @@ export class RemoteGraph<
       xray: config?.xray,
     });
     return new DrawableGraph({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       nodes: this._getDrawableNodes(graph.nodes as any),
       edges: graph.edges as unknown as DrawableEdge[],
     });
@@ -553,6 +565,7 @@ export class RemoteGraph<
     });
 
     for (const [ns, graphSchema] of Object.entries(subgraphs)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const remoteSubgraph = new (this.constructor as any)({
         ...this,
         graphId: graphSchema.graph_id,

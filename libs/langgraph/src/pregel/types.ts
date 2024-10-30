@@ -8,13 +8,13 @@ import type {
   CheckpointListOptions,
 } from "@langchain/langgraph-checkpoint";
 import { Graph as DrawableGraph } from "@langchain/core/runnables/graph";
+import { IterableReadableStream } from "@langchain/core/utils/stream";
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
 import { RetryPolicy } from "./utils/index.js";
 import { Interrupt } from "../constants.js";
 import { type ManagedValueSpec } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
-import { IterableReadableStream } from "@langchain/core/utils/stream";
 
 export type StreamMode = "values" | "updates" | "debug";
 
