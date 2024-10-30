@@ -80,6 +80,7 @@ export class Branch<
   ) {
     return ChannelWrite.registerWriter(
       new RunnableCallable({
+        trace: false,
         func: async (input: IO, config: CallOptions) => {
           try {
             return await this._route(input, config, writer, reader);

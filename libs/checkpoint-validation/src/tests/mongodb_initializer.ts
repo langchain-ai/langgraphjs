@@ -1,12 +1,9 @@
-// eslint-disable-next-line import/no-extraneous-dependencies
 import { MongoDBSaver } from "@langchain/langgraph-checkpoint-mongodb";
-// eslint-disable-next-line import/no-extraneous-dependencies
 import {
   MongoDBContainer,
   type StartedMongoDBContainer,
 } from "@testcontainers/mongodb";
 
-// eslint-disable-next-line import/no-extraneous-dependencies
 import { MongoClient } from "mongodb";
 import type { CheckpointerTestInitializer } from "../types.js";
 

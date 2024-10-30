@@ -163,10 +163,7 @@ export function createReactAgent(
   const workflow = new StateGraph<AgentState>({
     channels: schema,
   })
-    .addNode(
-      "agent",
-      RunnableLambda.from(callModel).withConfig({ runName: "agent" })
-    )
+    .addNode("agent", callModel)
     .addNode("tools", new ToolNode<AgentState>(toolClasses))
     .addEdge(START, "agent")
     .addConditionalEdges("agent", shouldContinue, {

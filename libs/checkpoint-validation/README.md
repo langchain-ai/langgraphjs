@@ -85,12 +85,13 @@ npm install -g @langchain/langgraph-checkpoint-validation
 validate-checkpointer ./src/my_initializer.ts
 ```
 
-## Usage in existing Jest test suite
+## Usage in existing Jest-like test suite
 
-If you wish to integrate this tooling into your existing Jest test suite, you import it as a library, as shown below.
+This package exports a test definition function that may be used in any Jest-compatible test framework (including Vitest). If you wish to integrate this tooling into your existing test suite, you can simply import and invoke it from within a test file, as shown below.
 
 ```ts
 import { validate } from "@langchain/langgraph-validation";
 
 validate(MyCheckpointerInitializer);
 ```
+

@@ -319,7 +319,7 @@ describe("ToolNode", () => {
       })
     );
     await wrapper.invoke({}, { callbacks: callbackManager });
-    expect(runnableStartCount).toEqual(3);
+    expect(runnableStartCount).toEqual(2);
   });
 
   it("Should work in a state graph", async () => {

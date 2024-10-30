@@ -1,13 +1,10 @@
-// eslint-disable-next-line import/no-extraneous-dependencies
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 
-// eslint-disable-next-line import/no-extraneous-dependencies
 import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
 
-// eslint-disable-next-line import/no-extraneous-dependencies
 import pg from "pg";
 
 import type { CheckpointerTestInitializer } from "../types.js";

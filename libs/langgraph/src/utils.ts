@@ -73,19 +73,26 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let returnValue: any;
     const config = ensureLangGraphConfig(options);
+    const mergedConfig = mergeConfigs(this.config, config);
 
     if (this.trace) {
       returnValue = await this._callWithConfig(
         this._tracedInvoke,
         input,
-        mergeConfigs(this.config, config)
+        mergedConfig
       );
     } else {
-      returnValue = await this.func(input, mergeConfigs(this.config, config));
+      returnValue = await AsyncLocalStorageProviderSingleton.runWithConfig(
+        mergedConfig,
+        async () => this.func(input, mergedConfig)
+      );
     }
 
     if (Runnable.isRunnable(returnValue) && this.recurse) {
-      return await returnValue.invoke(input, config);
+      return await AsyncLocalStorageProviderSingleton.runWithConfig(
+        mergedConfig,
+        async () => returnValue.invoke(input, mergedConfig)
+      );
     }
 
     return returnValue;

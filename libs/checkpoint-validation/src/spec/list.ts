@@ -118,7 +118,6 @@ export function listTests<T extends BaseCheckpointSaver>(
           for (const [key, value] of actualTuplesMap.entries()) {
             // TODO: MongoDBSaver, SQLiteSaver And SupabaseSaver don't return pendingWrites on list, so we need to special case them
             // see: https://github.com/langchain-ai/langgraphjs/issues/589
-            // see: https://github.com/langchain-ai/langgraphjs/issues/590
             const checkpointerIncludesPendingWritesOnList =
               initializer.checkpointerName !==
               "@langchain/langgraph-checkpoint-mongodb" &&

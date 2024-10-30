@@ -316,9 +316,20 @@ export class StateGraph<
       this._addSchema(options.input.spec);
     }
 
-    const runnable = _coerceToRunnable(action) as unknown as Runnable<S, U>;
+    let runnable;
+    if (Runnable.isRunnable(action)) {
+      runnable = action;
+    } else if (typeof action === "function") {
+      runnable = new RunnableCallable({
+        func: action,
+        name: key,
+        trace: false,
+      });
+    } else {
+      runnable = _coerceToRunnable(action);
+    }
     const nodeSpec: StateGraphNodeSpec<S, U> = {
-      runnable,
+      runnable: runnable as unknown as Runnable<S, U>,
       retryPolicy: options?.retryPolicy,
       metadata: options?.metadata,
       input: options?.input?.spec ?? this._schemaDefinition,
