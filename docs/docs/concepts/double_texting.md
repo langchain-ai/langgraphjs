@@ -1,6 +1,7 @@
 # Double Texting
 
-!!! info "Prerequisites" - [LangGraph Server](./langgraph_server.md)
+!!! info "Prerequisites"
+    - [LangGraph Server](./langgraph_server.md)
 
 Many times users might interact with your graph in unintended ways.
 For instance, a user may send one message and before the graph has finished running send a second message.
