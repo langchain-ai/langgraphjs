@@ -143,7 +143,7 @@ const getStreamModes = (
  * import { RemoteGraph } from "@langchain/langgraph/remote";
  *
  * // Can also pass a LangGraph SDK client instance directly
- * const remotePregel = new RemoteGraph({
+ * const remoteGraph = new RemoteGraph({
  *   graphId: process.env.LANGGRAPH_REMOTE_GRAPH_ID!,
  *   apiKey: process.env.LANGGRAPH_REMOTE_GRAPH_API_KEY,
  *   url: process.env.LANGGRAPH_REMOTE_GRAPH_API_URL,
@@ -162,7 +162,7 @@ const getStreamModes = (
  *   configurable: { thread_id: "threadId1" },
  * };
  *
- * await remotePregel.invoke(input, config);
+ * await remoteGraph.invoke(input, config);
  * ```
  */
 export class RemoteGraph<
@@ -442,8 +442,10 @@ export class RemoteGraph<
         namespace = [];
       }
       const callerNamespace = options?.configurable?.checkpoint_ns;
-      if (callerNamespace !== undefined) {
-        namespace = [callerNamespace].concat(namespace);
+      if (typeof callerNamespace === "string") {
+        namespace = callerNamespace
+          .split(CHECKPOINT_NAMESPACE_SEPARATOR)
+          .concat(namespace);
       }
       if (
         streamProtocolInstance !== undefined &&
