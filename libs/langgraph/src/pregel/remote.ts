@@ -142,6 +142,7 @@ const getStreamModes = (
  * ```ts
  * import { RemoteGraph } from "@langchain/langgraph/remote";
  *
+ * // Can also pass a LangGraph SDK client instance directly
  * const remotePregel = new RemoteGraph({
  *   graphId: process.env.LANGGRAPH_REMOTE_GRAPH_ID!,
  *   apiKey: process.env.LANGGRAPH_REMOTE_GRAPH_API_KEY,
