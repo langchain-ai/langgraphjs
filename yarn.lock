@@ -1824,6 +1824,18 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@langchain/langgraph-sdk@npm:~0.0.20":
+  version: 0.0.20
+  resolution: "@langchain/langgraph-sdk@npm:0.0.20"
+  dependencies:
+    "@types/json-schema": ^7.0.15
+    p-queue: ^6.6.2
+    p-retry: 4
+    uuid: ^9.0.0
+  checksum: 0d3f1f887719bdaa3c75adb1409b734b0d3e240e92284ba90bfcf34443d2826f732ab7aab3db10f11b3e809d070566cc53d6cf1fa9660eacb2c2744da5b57cf3
+  languageName: node
+  linkType: hard
+
 "@langchain/langgraph@workspace:*, @langchain/langgraph@workspace:libs/langgraph":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph@workspace:libs/langgraph"
@@ -1835,6 +1847,7 @@ __metadata:
     "@langchain/langgraph-checkpoint": ~0.0.10
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
+    "@langchain/langgraph-sdk": ~0.0.20
     "@langchain/openai": ^0.3.11
     "@langchain/scripts": ">=0.1.3 <0.2.0"
     "@swc/core": ^1.3.90
@@ -3351,7 +3364,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/json-schema@npm:^7.0.12":
+"@types/json-schema@npm:^7.0.12, @types/json-schema@npm:^7.0.15":
   version: 7.0.15
   resolution: "@types/json-schema@npm:7.0.15"
   checksum: 97ed0cb44d4070aecea772b7b2e2ed971e10c81ec87dd4ecc160322ffa55ff330dace1793489540e3e318d90942064bb697cc0f8989391797792d919737b3b98
@@ -12511,6 +12524,15 @@ __metadata:
   bin:
     uuid: dist/bin/uuid
   checksum: 4b81611ade2885d2313ddd8dc865d93d8dccc13ddf901745edca8f86d99bc46d7a330d678e7532e7ebf93ce616679fb19b2e3568873ac0c14c999032acb25869
+  languageName: node
+  linkType: hard
+
+"uuid@npm:^9.0.0":
+  version: 9.0.1
+  resolution: "uuid@npm:9.0.1"
+  bin:
+    uuid: dist/bin/uuid
+  checksum: 39931f6da74e307f51c0fb463dc2462807531dc80760a9bff1e35af4316131b4fc3203d16da60ae33f07fdca5b56f3f1dd662da0c99fea9aaeab2004780cc5f4
   languageName: node
   linkType: hard
 
