@@ -133,7 +133,7 @@ The most important thing when building multi-agent systems is figuring out how t
 
 To communicate via graph state, individual agents need to be defined as [graph nodes](./low_level.md#nodes). These can be added as functions or as entire [subgraphs](./low_level.md#subgraphs). At each step of the graph execution, agent node receives the current state of the graph, executes the agent code and then passes the updated state to the next nodes.
 
-Typically agent nodes share a single [state schema](./low_level.md#schema). However, you might want to design agent nodes with [different state schemas](#different-state-schemas).
+Typically agent nodes share a single [state schema](./low_level.md#state). However, you might want to design agent nodes with [different state schemas](#different-state-schemas).
 
 ### Different state schemas
 
