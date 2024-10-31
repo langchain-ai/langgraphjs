@@ -1,17 +1,13 @@
 /* eslint-disable no-process-env */
-import { Client } from "@langchain/langgraph-sdk";
 import { v4 } from "uuid";
 import { RemoteGraph } from "../pregel/remote.js";
 import { MemorySaver, MessagesAnnotation, StateGraph } from "../web.js";
 
 describe("RemoteGraph", () => {
-  const client = new Client({
-    apiKey: process.env.LANGGRAPH_REMOTE_GRAPH_API_KEY,
-    apiUrl: process.env.LANGGRAPH_REMOTE_GRAPH_API_URL,
-  });
   const remotePregel = new RemoteGraph({
     graphId: process.env.LANGGRAPH_REMOTE_GRAPH_ID!,
-    client,
+    apiKey: process.env.LANGGRAPH_REMOTE_GRAPH_API_KEY,
+    url: process.env.LANGGRAPH_REMOTE_GRAPH_API_URL,
   });
 
   const builder = new StateGraph(MessagesAnnotation)
@@ -84,7 +80,8 @@ describe("RemoteGraph", () => {
     // test get graph
     const remotePregel2 = new RemoteGraph({
       graphId: "fe096781-5601-53d2-b2f6-0d3403f7e9ca",
-      client,
+      apiKey: process.env.LANGGRAPH_REMOTE_GRAPH_API_KEY,
+      url: process.env.LANGGRAPH_REMOTE_GRAPH_API_URL,
     });
 
     const graph = await remotePregel2.getGraphAsync({ xray: true });

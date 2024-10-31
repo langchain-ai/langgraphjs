@@ -1,4 +1,8 @@
-import type { Client, Checkpoint, ThreadState } from "@langchain/langgraph-sdk";
+import {
+  Client,
+  type Checkpoint,
+  type ThreadState,
+} from "@langchain/langgraph-sdk";
 import {
   Graph as DrawableGraph,
   Node as DrawableNode,
@@ -50,7 +54,10 @@ export type RemoteGraphParams = Omit<
   "channels" | "nodes" | "inputChannels" | "outputChannels"
 > & {
   graphId: string;
-  client: Client;
+  client?: Client;
+  url?: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -78,7 +85,6 @@ const _serializeInputs = (obj: any): any => {
 };
 
 /**
- *
  * Return a tuple of the final list of stream modes sent to the
  * remote graph and a boolean flag indicating if only one stream mode was
  * originally requested and whether stream mode 'updates'
@@ -129,8 +135,34 @@ const getStreamModes = (
  * For example, the `RemoteGraph` class can be used to call APIs from deployments
  * on LangGraph Cloud.
  *
- * `RemoteGraph` behaves the same way as a `Graph` and can be used directly as
- * a node in another `Graph`.
+ * `RemoteGraph` behaves the same way as a `StateGraph` and can be used directly as
+ * a node in another `StateGraph`.
+ *
+ * @example
+ * ```ts
+ * import { RemoteGraph } from "@langchain/langgraph/remote";
+ *
+ * const remotePregel = new RemoteGraph({
+ *   graphId: process.env.LANGGRAPH_REMOTE_GRAPH_ID!,
+ *   apiKey: process.env.LANGGRAPH_REMOTE_GRAPH_API_KEY,
+ *   url: process.env.LANGGRAPH_REMOTE_GRAPH_API_URL,
+ * });
+ *
+ * const input = {
+ *   messages: [
+ *     {
+ *       role: "human",
+ *       content: "Hello world!",
+ *     },
+ *   ],
+ * };
+ *
+ * const config = {
+ *   configurable: { thread_id: "threadId1" },
+ * };
+ *
+ * await remotePregel.invoke(input, config);
+ * ```
  */
 export class RemoteGraph<
     Nn extends StrRecord<string, PregelNode> = StrRecord<string, PregelNode>,
@@ -170,7 +202,13 @@ export class RemoteGraph<
     super(params);
 
     this.graphId = params.graphId;
-    this.client = params.client;
+    this.client =
+      params.client ??
+      new Client({
+        apiUrl: params.url,
+        apiKey: params.apiKey,
+        defaultHeaders: params.headers,
+      });
     this.config = params.config;
     this.interruptBefore = params.interruptBefore;
     this.interruptAfter = params.interruptAfter;
