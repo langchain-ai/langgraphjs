@@ -4,34 +4,56 @@
 
     - [LangGraph Platform](./langgraph_platform.md)
     - [LangGraph Server](./langgraph_server.md)
+    - [LangGraph Platform Plans](./plans.md)
 
 ## Overview
 
-There are 3 main options for deploying with the LangGraph Platform:
+There are 4 main options for deploying with the LangGraph Platform:
 
-1. **[Self-Hosted](#self-hosted)**: Available for **a free trial** and **Enterprise** plan.
+1. **[Self-Hosted Lite](#self-hosted-lite)**: Available for all plans.
 
-2. **[Cloud SaaS](#cloud-saas)**: Available for **Plus** and **Enterprise** plans.
+2. **[Self-Hosted Enterprise](#self-hosted-enterprise)**: Available for the **Enterprise** plan.
 
-3. **[Bring Your Own Cloud](#bring-your-own-cloud)**: Available only for **Enterprise** plans and **only on AWS**.
+3. **[Cloud SaaS](#cloud-saas)**: Available for **Plus** and **Enterprise** plans.
 
-Please see the [LangGraph Platform Pricing](https://www.langchain.com/langgraph-platform-pricing) for more information on the different plans.
+4. **[Bring Your Own Cloud](#bring-your-own-cloud)**: Available only for **Enterprise** plans and **only on AWS**.
+
+Please see the [LangGraph Platform Plans](./plans.md) for more information on the different plans.
 
 The guide below will explain the differences between the deployment options.
 
-## Self-Hosted
+## Self-Hosted Enterprise
 
 !!! important
 
-    The Self-Hosted version is only available for **a free trial** and **Enterprise** plan.
+    The Self-Hosted Enterprise version is only available for the **Enterprise** plan.
 
-With a Self-Hosted deployment, you are responsible for managing the infrastructure, including setting up and maintaining required databases and Redis instances.
+With a Self-Hosted Enterprise deployment, you are responsible for managing the infrastructure, including setting up and maintaining required databases and Redis instances.
 
 You’ll build a Docker image using the [LangGraph CLI](./langgraph_cli.md), which can then be deployed on your own infrastructure.
 
 For more information, please see:
 
-- [Self-Hosted Deployment how-to guide](https://langchain-ai.github.io/langgraph/how-tos/deploy-self-hosted/)
+* [Self-Hosted conceptual guide](./self_hosted.md)
+* [Self-Hosted Deployment how-to guide](../how-tos/deploy-self-hosted.md)
+
+## Self-Hosted Lite
+
+!!! important
+
+    The Self-Hosted Lite version is available for all plans.
+
+The Self-Hosted Lite deployment option is a free (up to 1 million nodes executed), limited version of LangGraph Platform that you can run locally or in a self-hosted manner.
+
+With a Self-Hosted Lite deployment, you are responsible for managing the infrastructure, including setting up and maintaining required databases and Redis instances.
+
+You’ll build a Docker image using the [LangGraph CLI](./langgraph_cli.md), which can then be deployed on your own infrastructure.
+
+
+For more information, please see:
+
+* [Self-Hosted conceptual guide](./self_hosted.md)
+* [Self-Hosted Deployment how-to guide](https://langchain-ai.github.io/langgraph/how-tos/deploy-self-hosted/)
 
 ## Cloud SaaS
 
@@ -47,8 +69,8 @@ This deployment option provides an integration with GitHub, allowing you to depl
 
 For more information, please see:
 
-- [Cloud SaaS Conceptual Guide](./langgraph_cloud.md)
-- [How to deploy to Cloud SaaS](https://langchain-ai.github.io/langgraph/cloud/deployment/cloud.md)
+* [Cloud SaaS Conceptual Guide](./langgraph_cloud.md)
+* [How to deploy to Cloud SaaS](https://langchain-ai.github.io/langgraph/cloud/deployment/cloud.md)
 
 ## Bring Your Own Cloud
 
@@ -60,11 +82,12 @@ This combines the best of both worlds for Cloud and Self-Hosted. We manage the i
 
 For more information please see:
 
-- [Bring Your Own Cloud Conceptual Guide](./bring_your_own_cloud.md)
+* [Bring Your Own Cloud Conceptual Guide](./bring_your_own_cloud.md)
 
 ## Related
 
 For more information please see:
 
-- [LangGraph Platform Pricing](https://www.langchain.com/langgraph-platform-pricing)
-- [Deployment how-to guides](../how-tos/index.md#deployment)
+* [LangGraph Platform Plans](./plans.md)
+* [LangGraph Platform Pricing](https://www.langchain.com/langgraph-platform-pricing)
+* [Deployment how-to guides](../how-tos/index.md#deployment)

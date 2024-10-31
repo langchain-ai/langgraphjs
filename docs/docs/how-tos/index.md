@@ -129,7 +129,7 @@ Learn how to set up your app for deployment to LangGraph Platform:
 LangGraph applications can be deployed using LangGraph Cloud, which provides a range of services to help you deploy, manage, and scale your applications.
 
 - [How to deploy to LangGraph cloud](https://langchain-ai.github.io/langgraph/cloud/deployment/cloud)
-- [How to deploy to a self-hosted environment](https://langchain-ai.github.io/langgraph/how-tos/deploy-self-hosted/)
+- [How to deploy to a self-hosted environment](./deploy-self-hosted.md)
 - [How to interact with the deployment using RemoteGraph](./use-remote-graph.md)
 
 ### Assistants
