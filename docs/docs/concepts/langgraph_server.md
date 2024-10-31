@@ -18,9 +18,9 @@ The LangGraph Platform incorporates best practices for agent deployment, so you 
 * **Task queue**: We've added a task queue to make sure we don't drop any requests if they arrive in a bursty nature.
 * **Horizontally scalable infrastructure**: LangGraph Server is designed to be horizontally scalable, allowing you to scale up and down your usage as needed.
 * **Double texting support**: Many times users might interact with your graph in unintended ways. For instance, a user may send one message and before the graph has finished running send a second message. We call this ["double texting"](double_texting.md) and have added four different ways to handle this.
-* **Optimized checkpointer**: LangGraph Platform comes with a built-in [checkpointer](persistence.md#checkpoints) optimized for LangGraph applications.
+* **Optimized checkpointer**: LangGraph Platform comes with a built-in [checkpointer](./persistence.md#checkpoints) optimized for LangGraph applications.
 * **Human-in-the-loop endpoints**: We've exposed all endpoints needed to support [human-in-the-loop](human_in_the_loop.md) features.
-* **Memory**: In addition to thread-level persistence (covered above by [checkpointers](persistence.md#checkpoints)), LangGraph Platform also comes with a built-in [memory store](persistence.md#memory-store).
+* **Memory**: In addition to thread-level persistence (covered above by [checkpointers]l(./persistence.md#checkpoints)), LangGraph Platform also comes with a built-in [memory store](persistence.md#memory-store).
 * **Cron jobs**: Built-in support for scheduling tasks, enabling you to automate regular actions like data clean-up or batch processing within your applications.
 * **Webhooks**: Allows your application to send real-time notifications and data updates to external systems, making it easy to integrate with third-party services and trigger actions based on specific events.
 * **Monitoring**: LangGraph Server integrates seamlessly with the [LangSmith](https://docs.smith.langchain.com/) monitoring platform, providing real-time insights into your application's performance and health.
@@ -63,9 +63,9 @@ Read the [application structure](./application_structure.md) guide to learn how 
 
 ## LangGraph Server API
 
-The LangGraph Server API allows you to crate and manage [assistants](assistants.md), [threads](#threads), [runs](#runs), [cron jobs](#cron-jobs), and more.
+The LangGraph Server API allows you to create and manage [assistants](assistants.md), [threads](#threads), [runs](#runs), [cron jobs](#cron-jobs), and more.
 
-The [LangGraph Cloud API Reference](../cloud/reference/api/api_ref.html) provides detailed information on the API endpoints and data models.
+The [LangGraph Cloud API Reference](https://langchain-ai.github.io/langgraph/cloud/reference/api/api_ref.html) provides detailed information on the API endpoints and data models.
 
 ### Assistants
 
@@ -81,17 +81,17 @@ A thread contains the accumulated state of a sequence of [runs](#runs). If a run
 
 A thread's current and historical state can be retrieved. To persist state, a thread must be created prior to executing a run.
 
-The state of a thread at a particular point in time is called a [checkpoint](persistence#checkpoints). Checkpoints can be used to restore the state of a thread at a later time.
+The state of a thread at a particular point in time is called a [checkpoint](persistence.md#checkpoints). Checkpoints can be used to restore the state of a thread at a later time.
 
 For more on threads and checkpoints, see this section of the [LangGraph conceptual guide](low_level.md#persistence).
 
-The LangGraph Cloud API provides several endpoints for creating and managing threads and thread state. See the [API reference](../reference/api/api_ref.html#tag/threadscreate) for more details.
+The LangGraph Cloud API provides several endpoints for creating and managing threads and thread state. See the [API reference](https://langchain-ai.github.io/langgraph/cloud/reference/api/api_ref.html#tag/threadscreate) for more details.
 
 ### Runs
 
 A run is an invocation of an [assistant](#assistants). Each run may have its own input, configuration, and metadata, which may affect execution and output of the underlying graph. A run can optionally be executed on a [thread](#threads).
 
-The LangGraph Cloud API provides several endpoints for creating and managing runs. See the [API reference](../reference/api/api_ref.html#tag/runscreate) for more details.
+The LangGraph Cloud API provides several endpoints for creating and managing runs. See the [API reference](https://langchain-ai.github.io/langgraph/cloud/reference/api/api_ref.html#tag/runsmanage) for more details.
 
 ### Store
 
@@ -111,9 +111,9 @@ LangGraph Cloud supports cron jobs, which run on a user-defined schedule. The us
 - Create a new thread with the specified assistant
 - Send the specified input to that thread
 
-Note that this sends the same input to the thread every time. See the [how-to guide](../cloud/how-tos/cron_jobs.md) for creating cron jobs.
+Note that this sends the same input to the thread every time. See the [how-to guide](https://langchain-ai.github.io/langgraph/cloud/how-tos/cron_jobs.md) for creating cron jobs.
 
-The LangGraph Cloud API provides several endpoints for creating and managing cron jobs. See the [API reference](../reference/api/api_ref.html#tag/runscreate/POST/threads/{thread_id}/runs/crons) for more details.
+The LangGraph Cloud API provides several endpoints for creating and managing cron jobs. See the [API reference](https://langchain-ai.github.io/langgraph/cloud/reference/api/api_ref.html#tag/crons-enterprise-only) for more details.
 
 ### Webhooks
 
@@ -121,10 +121,10 @@ Webhooks enable event-driven communication from your LangGraph Cloud application
 
 Many LangGraph Cloud endpoints accept a `webhook` parameter. If this parameter is specified by a an endpoint that can accept POST requests, LangGraph Cloud will send a request at the completion of a run.
 
-See the corresponding [how-to guide](../cloud/how-tos/webhooks.md) for more detail.
+See the corresponding [how-to guide](https://langchain-ai.github.io/langgraph/cloud/how-tos/webhooks.md) for more detail.
 
 ## Related
 
 * LangGraph [Application Structure](./application_structure.md) guide explains how to structure your LangGraph application for deployment.
 * [How-to guides for the LangGraph Platform](../how-tos/index.md).
-* The [LangGraph Cloud API Reference](../cloud/reference/api/api_ref.html) provides detailed information on the API endpoints and data models.
+* The [LangGraph Cloud API Reference](https://langchain-ai.github.io/langgraph/cloud/reference/api/api_ref.html) provides detailed information on the API endpoints and data models.

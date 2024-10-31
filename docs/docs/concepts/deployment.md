@@ -12,22 +12,25 @@ In this guide, we go over a few of the considerations you will want to take into
 
 ## Simple deployment
 
-If your application is simple, then it is quite easy to deploy LangGraph agents - you can deploy them as you would any other Python application. For example, you could [FastAPI](https://fastapi.tiangolo.com/) (or an equivalent framework) to deploy your LangGraph application.
+If your application is simple, then it is quite easy to deploy LangGraph agents - you can deploy them as you would any other JavaScript application. For example, you could [Hono](https://hono.dev/) (or an equivalent framework) to deploy your LangGraph application.
 
-```python
-# main.py
+```ts
+// index.ts
 
-from fastapi import FastAPI
-from your_agent_package import graph
+import { Hono } from "hono";
+import { StateGraph } from "@langchain/langgraph";
 
-app = FastAPI()
+const graph = new StateGraph(...)
 
-@app.get("/foo")
-async def root():
-    return await graph.ainvoke({...})
+const app = new Hono();
+
+app.get("/foo", (c) => {
+  const res = await graph.invoke(...);
+  return c.json(res);
+});
 ```
 
-For simple applications, this is sufficient and is not that different from deploying Python applications in general, and so we will not go into this in too much detail here.
+For simple applications, this is sufficient and is not that different from deploying JavaScript applications in general, and so we will not go into this in too much detail here.
 
 For more complicated agent deployments (whether using LangGraph or not), you will run into some issues. The rest of this guide will discuss those issues.
 

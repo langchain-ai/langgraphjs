@@ -10,9 +10,11 @@ The LangGraph Platform consists of several components that work together to supp
 - [LangGraph Studio](./langgraph_studio.md): LangGraph Studio is a specialized IDE that can connect to a LangGraph Server to enable visualization, interaction, and debugging of the application locally.
 - [LangGraph CLI](./langgraph_cli.md): LangGraph CLI is a command-line interface that helps to interact with a local LangGraph
 - [Python/JS SDK](./sdk.md): The Python/JS SDK provides a programmatic way to interact with deployed LangGraph Applications.
-- [Remote Graph](../cloud/how-tos/remote_graph.md): A RemoteGraph allows you to interact with any deployed LangGraph application as though it were running locally.
+- [Remote Graph](../how-tos/use-remote-graph.md): A RemoteGraph allows you to interact with any deployed LangGraph application as though it were running locally.
 
-The LangGraph Platform offers several deployment options. These include Lite Self-Hosted, Cloud SaaS, Enterprise Bring Your Own Cloud (BYOC), Enterprise Self-hosted, and Enterprise Cloud. You can explore these options in detail in the [deployment options guide](./deployment_options.md).
+![](img/lg_platform.png)
+
+The LangGraph Platform offers a few different deployment options described in the [deployment options guide](./deployment_options.md).
 
 ## Why Use LangGraph Platform?
 
@@ -22,17 +24,22 @@ For simpler applications, deploying a LangGraph agent can be as straightforward 
 
 ### Option 1: Deploying with Custom Server Logic
 
-For basic LangGraph applications, you may choose to handle deployment using your custom server infrastructure. Setting up endpoints with frameworks like [FastAPI](https://fastapi.tiangolo.com/) allows you to quickly deploy and run LangGraph as you would any other Python application:
+For basic LangGraph applications, you may choose to handle deployment using your custom server infrastructure. Setting up endpoints with frameworks like [Hono](https://hono.dev/) allows you to quickly deploy and run LangGraph as you would any other JavaScript application:
 
-```python
-from fastapi import FastAPI
-from your_agent_package import graph
+```ts
+// index.ts
 
-app = FastAPI()
+import { Hono } from "hono";
+import { StateGraph } from "@langchain/langgraph";
 
-@app.get("/foo")
-async def foo(...):
-    return await graph.ainvoke({...})
+const graph = new StateGraph(...)
+
+const app = new Hono();
+
+app.get("/foo", (c) => {
+  const res = await graph.invoke(...);
+  return c.json(res);
+});
 ```
 
 This approach works well for simple applications with straightforward needs and provides you with full control over the deployment setup. For example, you might use this for a single-assistant application that doesn’t require long-running sessions or persistent memory.
@@ -46,7 +53,7 @@ Here are some common issues that arise in complex deployments, which LangGraph P
 - **[Streaming Support](streaming.md)**: As agents grow more sophisticated, they often benefit from streaming both token outputs and intermediate states back to the user. Without this, users are left waiting for potentially long operations with no feedback. LangGraph Server provides [multiple streaming modes](streaming.md) optimized for various application needs.
 
 - **Background Runs**: For agents that take longer to process (e.g., hours), maintaining an open connection can be impractical. The LangGraph Server supports launching agent runs in the background and provides both polling endpoints and webhooks to monitor run status effectively.
- 
+
 - **Support for long runs**: Vanilla server setups often encounter timeouts or disruptions when handling requests that take a long time to complete. LangGraph Server’s API provides robust support for these tasks by sending regular heartbeat signals, preventing unexpected connection closures during prolonged processes.
 
 - **Handling Burstiness**: Certain applications, especially those with real-time user interaction, may experience "bursty" request loads where numerous requests hit the server simultaneously. LangGraph Server includes a task queue, ensuring requests are handled consistently without loss, even under heavy loads.

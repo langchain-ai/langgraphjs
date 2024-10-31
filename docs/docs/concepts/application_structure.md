@@ -24,6 +24,21 @@ To deploy using the LangGraph Platform, the following information should be prov
 
 Below are examples of directory structures for Python and JavaScript applications:
 
+=== "JS (package.json)"
+
+    ```plaintext
+    my-app/
+    ├── src # all project code lies within here
+    │   ├── utils # optional utilities for your graph
+    │   │   ├── tools.ts # tools for your graph
+    │   │   ├── nodes.ts # node functions for you graph
+    │   │   └── state.ts # state definition of your graph
+    │   └── agent.ts # code for constructing your graph
+    ├── package.json # package dependencies
+    ├── .env # environment variables
+    └── langgraph.json # configuration file for LangGraph
+    ```
+
 === "Python (requirements.txt)"
 
     ```plaintext
@@ -40,6 +55,7 @@ Below are examples of directory structures for Python and JavaScript application
     ├── .env # environment variables
     └── langgraph.json # configuration file for LangGraph
     ```
+
 === "Python (pyproject.toml)"
 
     ```plaintext
@@ -57,25 +73,9 @@ Below are examples of directory structures for Python and JavaScript application
     └── pyproject.toml # dependencies for your project
     ```
 
-=== "JS (package.json)"
-
-    ```plaintext
-    my-app/
-    ├── src # all project code lies within here
-    │   ├── utils # optional utilities for your graph
-    │   │   ├── tools.ts # tools for your graph
-    │   │   ├── nodes.ts # node functions for you graph
-    │   │   └── state.ts # state definition of your graph
-    │   └── agent.ts # code for constructing your graph
-    ├── package.json # package dependencies
-    ├── .env # environment variables
-    └── langgraph.json # configuration file for LangGraph
-    ```
-
 !!! note
 
     The directory structure of a LangGraph application can vary depending on the programming language and the package manager used.
-
 
 ## Configuration File
 
@@ -83,21 +83,39 @@ The `langgraph.json` file is a JSON file that specifies the dependencies, graphs
 
 The file supports specification of the following information:
 
-
 | Key                | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `dependencies`     | **Required**. Array of dependencies for LangGraph API server. Dependencies can be one of the following: (1) `"."`, which will look for local Python packages, (2) `pyproject.toml`, `setup.py` or `requirements.txt` in the app directory `"./local_package"`, or (3) a package name.                                                                                                                                                                                                                                                        |
 | `graphs`           | **Required**. Mapping from graph ID to path where the compiled graph or a function that makes a graph is defined. Example: <ul><li>`./your_package/your_file.py:variable`, where `variable` is an instance of `langgraph.graph.state.CompiledStateGraph`</li><li>`./your_package/your_file.py:make_graph`, where `make_graph` is a function that takes a config dictionary (`langchain_core.runnables.RunnableConfig`) and creates an instance of `langgraph.graph.state.StateGraph` / `langgraph.graph.state.CompiledStateGraph`.</li></ul> |
 | `env`              | Path to `.env` file or a mapping from environment variable to its value.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `python_version`   | `3.11` or `3.12`. Defaults to `3.11`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `pip_config_file`  | Path to `pip` config file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `node_version`     | Defaults to `20`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `dockerfile_lines` | Array of additional lines to add to Dockerfile following the import from parent image.                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+
 !!! tip
 
     The LangGraph CLI defaults to using the configuration file **langgraph.json** in the current directory.
 
-
 ### Examples
+
+=== "JavaScript"
+
+    * The dependencies will be loaded from a dependency file in the local directory (e.g., `package.json`).
+    * A single graph will be loaded from the file `./your_package/your_file.js` with the function `agent`.
+    * The environment variable `OPENAI_API_KEY` is set inline.
+
+    ```json
+    {
+        "dependencies": [
+          "."
+        ],
+        "graphs": {
+          "my_agent": "./your_package/your_file.js:agent"
+        },
+        "env": {
+          "OPENAI_API_KEY": "secret-key"
+        }
+    }
+    ```
 
 === "Python"
 
@@ -115,26 +133,6 @@ The file supports specification of the following information:
             "my_agent": "./your_package/your_file.py:agent"
         },
         "env": "./.env"
-    }
-    ```
-
-=== "JavaScript"
-
-    * The dependencies will be loaded from a dependency file in the local directory (e.g., `package.json`).
-    * A single graph will be loaded from the file `./your_package/your_file.js` with the function `agent`.
-    * The environment variable `OPENAI_API_KEY` is set inline.
-
-    ```json
-    {
-        "dependencies": [
-            "."
-        ],
-        "graphs": {
-            "my_agent": "./your_package/your_file.js:agent"
-        },
-        "env": {
-            "OPENAI_API_KEY": "secret-key"
-        }
     }
     ```
 
@@ -164,4 +162,4 @@ For a production deployment, you will typically want to configure the environmen
 
 Please see the following resources for more information:
 
-- How-to guides for [Application Structure](../../how-tos/#application-structure).
+- How-to guides for [Application Structure](../how-tos/index.md#application-structure).

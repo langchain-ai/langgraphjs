@@ -8,7 +8,7 @@ LangGraph has a built-in persistence layer, implemented through checkpointers. W
 
 A thread is a unique ID or [thread identifier](#threads) assigned to each checkpoint saved by a checkpointer. When invoking graph with a checkpointer, you **must** specify a `thread_id` as part of the `configurable` portion of the config:
 
-```typescript
+```ts
 {"configurable": {"thread_id": "1"}}
 ```
 
@@ -206,12 +206,196 @@ The final argument you can optionally specify when calling `updateState` is the 
 
 ![Update](img/persistence/checkpoints_full_story.jpg)
 
+## Memory Store
+
+![Update](img/persistence/shared_state.png)
+
+A [state schema](low_level.md#state) specifies a set of keys that are populated as a graph is executed. As discussed above, state can be written by a checkpointer to a thread at each graph step, enabling state persistence.
+
+But, what if we want to retrain some information *across threads*? Consider the case of a chatbot where we want to retain specific information about the user across *all* chat conversations (e.g., threads) with that user!
+
+With checkpointers alone, we cannot share information across threads. This motivates the need for the `Store` interface. As an illustration, we can define an `InMemoryStore` to store information about a user across threads.
+First, let's showcase this in isolation without using LangGraph.
+
+```ts
+import { InMemoryStore } from "@langchain/langgraph";
+
+const inMemoryStore = new InMemoryStore();
+```
+
+Memories are namespaced by a `tuple`, which in this specific example will be `[<user_id>, "memories"]`. The namespace can be any length and represent anything, does not have be user specific.
+
+```ts
+const userId = "1";
+const namespaceForMemory = [userId, "memories"];
+```
+
+We use the `store.put` method to save memories to our namespace in the store. When we do this, we specify the namespace, as defined above, and a key-value pair for the memory: the key is simply a unique identifier for the memory (`memoryId`) and the value (an object) is the memory itself.
+
+```ts
+import { v4 as uuid4 } from 'uuid';
+
+const memoryId = uuid4();
+const memory = { food_preference : "I like pizza" };
+await inMemoryStore.put(namespaceForMemory, memoryId, memory);
+```
+
+We can read out memories in our namespace using `store.search`, which will return all memories for a given user as a list. The most recent memory is the last in the list.
+
+```ts
+const memories = inMemoryStore.search(namespaceForMemory);
+console.log(memories.at(-1));
+
+/*
+  {
+    'value': {'food_preference': 'I like pizza'},
+    'key': '07e0caf4-1631-47b7-b15f-65515d4c1843',
+    'namespace': ['1', 'memories'],
+    'created_at': '2024-10-02T17:22:31.590602+00:00',
+    'updated_at': '2024-10-02T17:22:31.590605+00:00'
+  }
+*/
+```
+
+The attributes a retrieved memory has are:
+
+- `value`: The value (itself a dictionary) of this memory
+- `key`: The UUID for this memory in this namespace
+- `namespace`: A list of strings, the namespace of this memory type
+- `created_at`: Timestamp for when this memory was created
+- `updated_at`: Timestamp for when this memory was updated
+
+With this all in place, we use the `inMemoryStore` in LangGraph. The `inMemoryStore` works hand-in-hand with the checkpointer: the checkpointer saves state to threads, as discussed above, and the the `inMemoryStore` allows us to store arbitrary information for access *across* threads. We compile the graph with both the checkpointer and the `inMemoryStore` as follows. 
+
+```ts
+import { MemorySaver } from "@langchain/langgraph";
+
+// We need this because we want to enable threads (conversations)
+const checkpointer = new MemorySaver();
+
+// ... Define the graph ...
+
+// Compile the graph with the checkpointer and store
+const graph = builder.compile({
+  checkpointer,
+  store: inMemoryStore
+});
+```
+
+We invoke the graph with a `thread_id`, as before, and also with a `user_id`, which we'll use to namespace our memories to this particular user as we showed above.
+
+```ts
+// Invoke the graph
+const user_id = "1";
+const config = { configurable: { thread_id: "1", user_id } };
+
+// First let's just say hi to the AI
+const stream = await graph.stream(
+  { messages: [{ role: "user", content: "hi" }] },
+  { ...config, streamMode: "updates" },
+);
+
+for await (const update of stream) {
+  console.log(update);
+}
+```
+
+We can access the `inMemoryStore` and the `user_id` in *any node* by passing `config: LangGraphRunnableConfig` as a node argument. Then, just as we saw above, simply use the `put` method to save memories to the store.
+
+```ts
+import {
+  type LangGraphRunnableConfig,
+  MessagesAnnotation,
+} from "@langchain/langgraph";
+
+const updateMemory = async (
+  state: typeof MessagesAnnotation.State,
+  config: LangGraphRunnableConfig
+) => {
+  // Get the store instance from the config
+  const store = config.store;
+
+  // Get the user id from the config
+  const userId = config.configurable.user_id;
+
+  // Namespace the memory
+  const namespace = [userId, "memories"];
+  
+  // ... Analyze conversation and create a new memory
+  
+  // Create a new memory ID
+  const memoryId = uuid4();
+
+  // We create a new memory
+  await store.put(namespace, memoryId, { memory });
+};
+```
+
+As we showed above, we can also access the store in any node and use `search` to get memories. Recall the the memories are returned as a list of objects that can be converted to a dictionary.
+
+```ts
+const memories = inMemoryStore.search(namespaceForMemory);
+console.log(memories.at(-1));
+
+/*
+  {
+    'value': {'food_preference': 'I like pizza'},
+    'key': '07e0caf4-1631-47b7-b15f-65515d4c1843',
+    'namespace': ['1', 'memories'],
+    'created_at': '2024-10-02T17:22:31.590602+00:00',
+    'updated_at': '2024-10-02T17:22:31.590605+00:00'
+  }
+*/
+```
+
+We can access the memories and use them in our model call.
+
+```ts
+const callModel = async (
+  state: typeof StateAnnotation.State,
+  config: LangGraphRunnableConfig
+) => {
+  const store = config.store;
+
+  // Get the user id from the config
+  const userId = config.configurable.user_id;
+
+  // Get the memories for the user from the store
+  const memories = await store.search([userId, "memories"]);
+  const info = memories.map((memory) => {
+    return JSON.stringify(memory.value);
+  }).join("\n");
+
+  // ... Use memories in the model call
+}
+```
+
+If we create a new thread, we can still access the same memories so long as the `user_id` is the same. 
+
+```ts
+// Invoke the graph
+const config = { configurable: { thread_id: "2", user_id: "1" } };
+
+// Let's say hi again
+const stream = await graph.stream(
+  { messages: [{ role: "user", content: "hi, tell me about my memories" }] },
+  { ...config, streamMode: "updates" },
+);
+
+for await (const update of stream) {
+  console.log(update);
+}
+```
+
+When we use the LangGraph API, either locally (e.g., in LangGraph Studio) or with LangGraph Cloud, the memory store is available to use by default and does not need to be specified during graph compilation.
+
 ## Checkpointer libraries
 
 Under the hood, checkpointing is powered by checkpointer objects that conform to [BaseCheckpointSaver](/langgraphjs/reference/classes/checkpoint.BaseCheckpointSaver.html) interface. LangGraph provides several checkpointer implementations, all implemented via standalone, installable libraries:
 
 * `@langchain/langgraph-checkpoint`: The base interface for checkpointer savers ([BaseCheckpointSaver](/langgraphjs/reference/classes/checkpoint.BaseCheckpointSaver.html)) and serialization/deserialization interface ([SerializerProtocol](/langgraphjs/reference/interfaces/checkpoint.SerializerProtocol.html)). Includes in-memory checkpointer implementation ([MemorySaver](/langgraphjs/reference/classes/checkpoint.MemorySaver.html)) for experimentation. LangGraph comes with `@langchain/langgraph-checkpoint` included.
 * `@langchain/langgraph-checkpoint-sqlite`: An implementation of LangGraph checkpointer that uses SQLite database ([SqliteSaver](/langgraphjs/reference/classes/checkpoint_sqlite.SqliteSaver.html)). Ideal for experimentation and local workflows. Needs to be installed separately.
+* `@langchain/langgraph-checkpoint-postgres`: An advanced checkpointer that uses a Postgres database ([PostgresSaver](/langgraphjs/reference/classes/checkpoint_postgres.PostgresSaver.html)), used in LangGraph Cloud. Ideal for using in production. Needs to be installed separately.
 
 ### Checkpointer interface
 
@@ -221,6 +405,11 @@ Each checkpointer conforms to [BaseCheckpointSaver](/langgraphjs/reference/class
 * `.putWrites` - Store intermediate writes linked to a checkpoint (i.e. [pending writes](#pending-writes)).  
 * `.getTuple` - Fetch a checkpoint tuple using for a given configuration (`thread_id` and `checkpoint_id`). This is used to populate `StateSnapshot` in `graph.getState()`.  
 * `.list` - List checkpoints that match a given configuration and filter criteria. This is used to populate state history in `graph.getStateHistory()`
+
+### Serializer
+
+When checkpointers save the graph state, they need to serialize the channel values in the state. This is done using serializer objects. 
+`@langchain/langgraph-checkpoint` defines a [protocol](/langgraphjs/reference/interfaces/checkpoint.SerializerProtocol.html) for implementing serializers and a default implementation that handles a wide variety of types, including LangChain and LangGraph primitives, datetimes, enums and more.
 
 ## Capabilities
 

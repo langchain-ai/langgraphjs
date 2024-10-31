@@ -40,4 +40,4 @@ The `langgraph dockerfile` command generates a [Dockerfile](https://docs.docker.
 
 ## Related
 
-- [LangGraph CLI API Reference](../../cloud/reference/cli/)
+- [LangGraph CLI API Reference](https://langchain-ai.github.io/langgraph/cloud/reference/cli.md)

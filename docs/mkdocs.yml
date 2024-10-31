@@ -2,7 +2,6 @@ site_name: ""
 site_description: Build language agents as graphs
 site_url: https://langchain-ai.github.io/langgraphjs/
 repo_url: https://github.com/langchain-ai/langgraphjs
-edit_uri: edit/main/docs/docs/
 theme:
   name: material
   custom_dir: overrides
@@ -66,111 +65,14 @@ plugins:
       title_link: "/" # optional, default: '/'
 
 nav:
-  - Home:
-      - "index.md"
-      - Quick Start: tutorials/quickstart.ipynb
-  - Tutorials:
-      - "tutorials/index.md"
-      - "tutorials/quickstart.ipynb"
-      - Chatbots:
-          - Customer support with a small model: tutorials/chatbots/customer_support_small_model.ipynb
-      - RAG:
-          - tutorials/rag/langgraph_agentic_rag.ipynb
-          - tutorials/rag/langgraph_crag.ipynb
-          - tutorials/rag/langgraph_self_rag.ipynb
-          - tutorials/rag/langgraph_adaptive_rag_local.ipynb
-      - Agent architectures:
-          - Multi-Agent Systems:
-              - tutorials/multi_agent/agent_supervisor.ipynb
-              - tutorials/multi_agent/hierarchical_agent_teams.ipynb
-              - tutorials/multi_agent/multi_agent_collaboration.ipynb
-          - Planning Agents:
-              - tutorials/plan-and-execute/plan-and-execute.ipynb
-          - Reflection & Critique:
-              - tutorials/reflection/reflection.ipynb
-              - tutorials/rewoo/rewoo.ipynb
-      - Evaluation & Analysis:
-          - Chatbot Evaluation via Simulation:
-              - Agent-based: tutorials/chatbot-simulation-evaluation/agent-simulation-evaluation.ipynb
-  - "How-to Guides":
-      - "how-tos/index.md"
-      - Installation:
-          - Install and manage dependencies: "how-tos/manage-ecosystem-dependencies.ipynb"
-          - Use LangGraph.js in web environments: "how-tos/use-in-web-environments.ipynb"
-      - Controllability:
-          - Define graph state: "how-tos/define-state.ipynb"
-          - Create subgraphs: "how-tos/subgraph.ipynb"
-          - Create branches for parallel execution: "how-tos/branching.ipynb"
-          - Create map-reduce branches for parallel execution: "how-tos/map-reduce.ipynb"
-      - Persistence:
-          - Add thread-level persistence: how-tos/persistence.ipynb
-          - Add thread-level persistence to subgraphs: how-tos/subgraph-persistence.ipynb
-          - Add cross-thread persistence: how-tos/cross-thread-persistence.ipynb
-          - Use a Postgres checkpointer for persistence: how-tos/persistence-postgres.ipynb
-          - View and update past graph state: "how-tos/time-travel.ipynb"
-          - Manage conversation history: "how-tos/manage-conversation-history.ipynb"
-          - How to delete messages: "how-tos/delete-messages.ipynb"
-          - Add summary of the conversation history: "how-tos/add-summary-conversation-history.ipynb"
-      - Human-in-the-loop:
-          - Add breakpoints: "how-tos/breakpoints.ipynb"
-          - Add dynamic breakpoints: "how-tos/dynamic_breakpoints.ipynb"
-          - Wait for user input: "how-tos/wait-user-input.ipynb"
-          - View and update past graph state: "how-tos/time-travel.ipynb"
-          - Edit graph state: "how-tos/edit-graph-state.ipynb"
-          - Review tool calls: "how-tos/review-tool-calls.ipynb"
-      - Streaming:
-          - Stream full state: "how-tos/stream-values.ipynb"
-          - Stream state updates: "how-tos/stream-updates.ipynb"
-          - Configure multiple streaming modes: "how-tos/stream-multiple.ipynb"
-          - Stream LLM tokens: "how-tos/stream-tokens.ipynb"
-          - Stream LLM tokens without LangChain models: "how-tos/streaming-tokens-without-langchain.ipynb"
-          - Stream events from within a tool: "how-tos/streaming-events-from-within-tools.ipynb"
-          - Stream from the final node: "how-tos/streaming-from-final-node.ipynb"
-      - Tool calling:
-          - Call tools using ToolNode: "how-tos/tool-calling.ipynb"
-          - Handle tool calling errors: "how-tos/tool-calling-errors.ipynb"
-          - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
-          - Pass runtime values to tools: "how-tos/pass-run-time-values-to-tools.ipynb"
-      - Subgraphs:
-          - Add and use subgraphs: how-tos/subgraph.ipynb
-          - View and update state in subgraphs: how-tos/subgraphs-manage-state.ipynb
-          - Transform inputs and outputs of a subgraph: how-tos/subgraph-transform-state.ipynb
-      - State management:
-          - Have a separate input and output schema: "how-tos/input_output_schema.ipynb"
-          - Pass private state between nodes inside the graph: "how-tos/pass_private_state.ipynb"
-      - Prebuilt ReAct Agent:
-          - Create a ReAct agent: "how-tos/create-react-agent.ipynb"
-          - Add memory to a ReAct agent: "how-tos/react-memory.ipynb"
-          - Add a system prompt to a ReAct agent: "how-tos/react-system-prompt.ipynb"
-          - Add Human-in-the-loop to a ReAct agent: "how-tos/react-human-in-the-loop.ipynb"
-      - Other:
-          - Add runtime configuration: "how-tos/configuration.ipynb"
-          - Force an agent to call a tool: "how-tos/force-calling-a-tool-first.ipynb"
-          - Let agent return tool results directly: "how-tos/dynamically-returning-directly.ipynb"
-          - Handle tool calling errors: "how-tos/tool-calling-errors.ipynb"
-          - Have agent respond in structured format: "how-tos/respond-in-format.ipynb"
-          - Manage agent steps: "how-tos/managing-agent-steps.ipynb"
-          - Add node retry policies: "how-tos/node-retry-policies.ipynb"
-          - Error reference:
-              - "troubleshooting/errors/index.md"
-              - GRAPH_RECURSION_LIMIT: "troubleshooting/errors/GRAPH_RECURSION_LIMIT.ipynb"
-              - INVALID_CONCURRENT_GRAPH_UPDATE: "troubleshooting/errors/INVALID_CONCURRENT_GRAPH_UPDATE.ipynb"
-              - INVALID_GRAPH_NODE_RETURN_VALUE: "troubleshooting/errors/INVALID_GRAPH_NODE_RETURN_VALUE.ipynb"
-              - MULTIPLE_SUBGRAPHS: "troubleshooting/errors/MULTIPLE_SUBGRAPHS.ipynb"
-  - "Conceptual Guides":
-      - Why LangGraph?: concepts/high_level.md
-      - LangGraph Glossary: concepts/low_level.md
-      - Common Agentic Patterns: concepts/agentic_concepts.md
-      - Human-in-the-Loop: concepts/human_in_the_loop.md
-      - Memory: concepts/memory.md
-      - Multi-Agent Systems: concepts/multi_agent.md
-      - Persistence: concepts/persistence.md
-      - Streaming: concepts/streaming.md
-      - FAQ: concepts/faq.md
+  # Setting the names of the nav items explicitly due to mkdocs
+  # how-reload being a bit buggy with the names of the tabs.
+  - Home: "index.md"
+  - Tutorials: "tutorials/index.md"
+  - Concepts: "concepts/index.md"
+  - "How-to Guides": "how-tos/index.md"
   - "Reference":
       - "reference/index.html"
-  - "Cloud (beta)":
-      - "https://langchain-ai.github.io/langgraph/cloud/"
   - "Versions":
       - "versions/index.md"
 
@@ -236,7 +138,15 @@ extra:
       link: https://twitter.com/LangChainAI
 
 validation:
-  omitted_files: warn
+  # https://www.mkdocs.org/user-guide/configuration/
+  # We're `ignoring` nav.omitted_files because we are going to rely
+  # on files being properly links to from the index pages of:
+  # - tutorials
+  # - concepts
+  # - how-tos
+  # - reference
+  omitted_files: ignore
+  # absolute_links: warn
   unrecognized_links: warn
   nav:
     not_found: warn

@@ -1,6 +1,12 @@
+---
+hide:
+  - navigation
+title: Tutorials
+---
+
 # Tutorials
 
-Welcome to the LangGraph Tutorials! These notebooks introduce LangGraph through building various language agents and applications.
+Welcome to the LangGraph.js Tutorials! These notebooks introduce LangGraph through building various language agents and applications.
 
 ## Quick Start
 

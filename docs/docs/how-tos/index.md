@@ -1,11 +1,13 @@
 ---
 hide:
-  - toc
+  - navigation
+title: How-to Guides
+description: How to accomplish common tasks in LangGraph.js
 ---
 
 # How-to guides
 
-Here you’ll find answers to “How do I...?” types of questions. These guides are **goal-oriented** and concrete; they're meant to help you complete a specific task. For conceptual explanations see the [Conceptual guide](../concepts). For end-to-end walk-throughs see [Tutorials](../tutorials). For comprehensive descriptions of every class and function see the [API Reference](../reference).
+Here you’ll find answers to “How do I...?” types of questions. These guides are **goal-oriented** and concrete; they're meant to help you complete a specific task. For conceptual explanations see the [Conceptual guide](../concepts/index.md). For end-to-end walk-throughs see [Tutorials](../tutorials/index.md). For comprehensive descriptions of every class and function see the [API Reference](https://langchain-ai.github.io/langgraphjs/reference/).
 
 ## Installation
 
@@ -116,89 +118,91 @@ LangGraph Platform is a commercial solution for deploying agentic applications i
 
 Learn how to set up your app for deployment to LangGraph Platform:
 
-- [How to set up app for deployment (requirements.txt)](../cloud/deployment/setup.md)
-- [How to set up app for deployment (pyproject.toml)](../cloud/deployment/setup_pyproject.md)
-- [How to set up app for deployment (JavaScript)](../cloud/deployment/setup_javascript.md)
-- [How to customize Dockerfile](../cloud/deployment/custom_docker.md)
-- [How to test locally](../cloud/deployment/test_locally.md)
+- [How to set up app for deployment (requirements.txt)](https://langchain-ai.github.io/langgraph/cloud/deployment/setup)
+- [How to set up app for deployment (pyproject.toml)](https://langchain-ai.github.io/langgraph/cloud/deployment/setup_pyproject)
+- [How to set up app for deployment (JavaScript)](https://langchain-ai.github.io/langgraph/cloud/deployment/setup_javascript)
+- [How to customize Dockerfile](https://langchain-ai.github.io/langgraph/cloud/deployment/custom_docker)
+- [How to test locally](https://langchain-ai.github.io/langgraph/cloud/deployment/test_locally)
 
 ### Deployment
 
 LangGraph applications can be deployed using LangGraph Cloud, which provides a range of services to help you deploy, manage, and scale your applications.
 
-- [How to deploy to LangGraph cloud](../cloud/deployment/cloud.md)
-- [How to deploy to a self-hosted environment](./deployment/self_hosted.md)
-- [How to interact with the deployment using RemoteGraph](../cloud/how-tos/remote_graph.md)
+- [How to deploy to LangGraph cloud](https://langchain-ai.github.io/langgraph/cloud/deployment/cloud)
+- [How to deploy to a self-hosted environment](https://langchain-ai.github.io/langgraph/how-tos/deploy-self-hosted/)
+- [How to interact with the deployment using RemoteGraph](./use-remote-graph.md)
 
 ### Assistants
 
-[Assistants](../concepts/assistants.md) is a configured instance of a template.
+[Assistants](../concepts/assistants.md) are a configured instance of a template.
 
-- [How to configure agents](../cloud/how-tos/configuration_cloud.md)
-- [How to version assistants](../cloud/how-tos/assistant_versioning.md)
+- [How to configure agents](https://langchain-ai.github.io/langgraph/cloud/how-tos/configuration_cloud)
+- [How to version assistants](https://langchain-ai.github.io/langgraph/cloud/how-tos/assistant_versioning)
 
 ### Threads
 
-- [How to copy threads](../cloud/how-tos/copy_threads.md)
-- [How to check status of your threads](../cloud/how-tos/check_thread_status.md)
+- [How to copy threads](https://langchain-ai.github.io/langgraph/cloud/how-tos/copy_threads)
+- [How to check status of your threads](https://langchain-ai.github.io/langgraph/cloud/how-tos/check_thread_status)
 
 ### Runs
 
 LangGraph Cloud supports multiple types of runs besides streaming runs.
 
-- [How to run an agent in the background](../cloud/how-tos/background_run.md)
-- [How to run multiple agents in the same thread](../cloud/how-tos/same-thread.md)
-- [How to create cron jobs](../cloud/how-tos/cron_jobs.md)
-- [How to create stateless runs](../cloud/how-tos/stateless_runs.md)
+- [How to run an agent in the background](https://langchain-ai.github.io/langgraph/cloud/how-tos/background_run)
+- [How to run multiple agents in the same thread](https://langchain-ai.github.io/langgraph/cloud/how-tos/same-thread)
+- [How to create cron jobs](https://langchain-ai.github.io/langgraph/cloud/how-tos/cron_jobs)
+- [How to create stateless runs](https://langchain-ai.github.io/langgraph/cloud/how-tos/stateless_runs)
 
 ### Streaming
 
 Streaming the results of your LLM application is vital for ensuring a good user experience, especially when your graph may call multiple models and take a long time to fully complete a run. Read about how to stream values from your graph in these how to guides:
 
-- [How to stream values](../cloud/how-tos/stream_values.md)
-- [How to stream updates](../cloud/how-tos/stream_updates.md)
-- [How to stream messages](../cloud/how-tos/stream_messages.md)
-- [How to stream events](../cloud/how-tos/stream_events.md)
-- [How to stream in debug mode](../cloud/how-tos/stream_debug.md)
-- [How to stream multiple modes](../cloud/how-tos/stream_multiple.md)
+- [How to stream values](https://langchain-ai.github.io/langgraph/cloud/how-tos/stream_values)
+- [How to stream updates](https://langchain-ai.github.io/langgraph/cloud/how-tos/stream_updates)
+- [How to stream messages](https://langchain-ai.github.io/langgraph/cloud/how-tos/stream_messages)
+- [How to stream events](https://langchain-ai.github.io/langgraph/cloud/how-tos/stream_events)
+- [How to stream in debug mode](https://langchain-ai.github.io/langgraph/cloud/how-tos/stream_debug)
+- [How to stream multiple modes](https://langchain-ai.github.io/langgraph/cloud/how-tos/stream_multiple)
 
 ### Human-in-the-loop
 
 When creating complex graphs, leaving every decision up to the LLM can be dangerous, especially when the decisions involve invoking certain tools or accessing specific documents. To remedy this, LangGraph allows you to insert human-in-the-loop behavior to ensure your graph does not have undesired outcomes. Read more about the different ways you can add human-in-the-loop capabilities to your LangGraph Cloud projects in these how-to guides:
 
-- [How to add a breakpoint](../cloud/how-tos/human_in_the_loop_breakpoint.md)
-- [How to wait for user input](../cloud/how-tos/human_in_the_loop_user_input.md)
-- [How to edit graph state](../cloud/how-tos/human_in_the_loop_edit_state.md)
-- [How to replay and branch from prior states](../cloud/how-tos/human_in_the_loop_time_travel.md)
-- [How to review tool calls](../cloud/how-tos/human_in_the_loop_review_tool_calls.md)
+- [How to add a breakpoint](https://langchain-ai.github.io/langgraph/cloud/how-tos/human_in_the_loop_breakpoint)
+- [How to wait for user input](https://langchain-ai.github.io/langgraph/cloud/how-tos/human_in_the_loop_user_input)
+- [How to edit graph state](https://langchain-ai.github.io/langgraph/cloud/how-tos/human_in_the_loop_edit_state)
+- [How to replay and branch from prior states](https://langchain-ai.github.io/langgraph/cloud/how-tos/human_in_the_loop_time_travel)
+- [How to review tool calls](https://langchain-ai.github.io/langgraph/cloud/how-tos/human_in_the_loop_review_tool_calls)
 
 ### Double-texting
 
 Graph execution can take a while, and sometimes users may change their mind about the input they wanted to send before their original input has finished running. For example, a user might notice a typo in their original request and will edit the prompt and resend it. Deciding what to do in these cases is important for ensuring a smooth user experience and preventing your graphs from behaving in unexpected ways. The following how-to guides provide information on the various options LangGraph Cloud gives you for dealing with double-texting:
 
-- [How to use the interrupt option](../cloud/how-tos/interrupt_concurrent.md)
-- [How to use the rollback option](../cloud/how-tos/rollback_concurrent.md)
-- [How to use the reject option](../cloud/how-tos/reject_concurrent.md)
-- [How to use the enqueue option](../cloud/how-tos/enqueue_concurrent.md)
+- [How to use the interrupt option](https://langchain-ai.github.io/langgraph/cloud/how-tos/interrupt_concurrent)
+- [How to use the rollback option](https://langchain-ai.github.io/langgraph/cloud/how-tos/rollback_concurrent)
+- [How to use the reject option](https://langchain-ai.github.io/langgraph/cloud/how-tos/reject_concurrent)
+- [How to use the enqueue option](https://langchain-ai.github.io/langgraph/cloud/how-tos/enqueue_concurrent)
 
 ### Webhooks
 
-- [How to integrate webhooks](../cloud/how-tos/webhooks.md)
+- [How to integrate webhooks](https://langchain-ai.github.io/langgraph/cloud/how-tos/webhooks)
 
 ### Cron Jobs
 
-- [How to create cron jobs](../cloud/how-tos/cron_jobs.md)
+- [How to create cron jobs](https://langchain-ai.github.io/langgraph/cloud/how-tos/cron_jobs)
 
 ### LangGraph Studio
 
 LangGraph Studio is a built-in UI for visualizing, testing, and debugging your agents.
 
-- [How to connect to a LangGraph Cloud deployment](../cloud/how-tos/test_deployment.md)
-- [How to connect to a local deployment](../cloud/how-tos/test_local_deployment.md)
-- [How to test your graph in LangGraph Studio](../cloud/how-tos/invoke_studio.md)
-- [How to interact with threads in LangGraph Studio](../cloud/how-tos/threads_studio.md)
+- [How to connect to a LangGraph Cloud deployment](https://langchain-ai.github.io/langgraph/cloud/how-tos/test_deployment)
+- [How to connect to a local deployment](https://langchain-ai.github.io/langgraph/cloud/how-tos/test_local_deployment)
+- [How to test your graph in LangGraph Studio](https://langchain-ai.github.io/langgraph/cloud/how-tos/invoke_studio)
+- [How to interact with threads in LangGraph Studio](https://langchain-ai.github.io/langgraph/cloud/how-tos/threads_studio)
 
 ## Troubleshooting
+
+The [Error Reference](../troubleshooting/errors/index.md) page contains guides around resolving common errors you may find while building with LangGraph. Errors referenced below will have an `lc_error_code` property corresponding to one of the below codes when they are thrown in code.
 
 ### Errors
 

@@ -91,7 +91,7 @@ The first way to solve this is to add path maps to your conditional edges. A pat
 === "Javascript"
 
     ```ts
-    graph.addConditionalEdges("node_a", routingFunction, { true: "node_b", false: "node_c" });
+    graph.addConditionalEdges("node_a", routingFunction, { foo: "node_b", bar: "node_c" });
     ```
 
 In this case, the routing function returns either True or False, which map to `node_b` and `node_c` respectively.
@@ -113,4 +113,4 @@ def routing_function(state: GraphState) -> Literal["node_b","node_c"]:
 
 For more information please see the following:
 
-*  [LangGraph Studio how-to guides](../../how-tos/#langgraph-studio)
+*  [LangGraph Studio how-to guides](../how-tos/index.md#langgraph-studio)
