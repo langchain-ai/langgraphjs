@@ -64,21 +64,24 @@ describe("RemoteGraph", () => {
     expect(drawableGraph.nodes).toEqual({
       __start__: {
         id: "__start__",
-        name: "",
+        name: "__start__",
         data: "__start__",
+        metadata: {},
       },
       __end__: {
         id: "__end__",
-        name: "",
+        name: "__end__",
         data: "__end__",
+        metadata: {},
       },
       agent: {
         id: "agent",
-        name: "",
+        name: "agent",
         data: {
           id: ["langgraph", "utils", "RunnableCallable"],
           name: "agent",
         },
+        metadata: {},
       },
     });
     expect(drawableGraph.edges).toEqual([
@@ -447,9 +450,12 @@ describe("RemoteGraph", () => {
       .spyOn((client as any).runs, "stream")
       .mockImplementation(async function* () {
         const chunks = [
-          { chunk: "data1" },
-          { chunk: "data2" },
-          { chunk: "data3" },
+          { event: "values", data: { chunk: "data1" } },
+          { event: "values", data: { chunk: "data2" } },
+          {
+            event: "values",
+            data: { messages: [{ type: "human", content: "world" }] },
+          },
         ];
         for (const chunk of chunks) {
           yield chunk;
@@ -463,11 +469,9 @@ describe("RemoteGraph", () => {
 
     const config = { configurable: { thread_id: "thread_1" } };
     const result = await remotePregel.invoke(
-      { input: { messages: [{ type: "human", content: "hello" }] } },
+      { messages: [{ type: "human", content: "hello" }] },
       config
     );
-    expect(result).toEqual({
-      values: { messages: [{ type: "human", content: "world" }] },
-    });
+    expect(result).toEqual({ messages: [{ type: "human", content: "world" }] });
   });
 });

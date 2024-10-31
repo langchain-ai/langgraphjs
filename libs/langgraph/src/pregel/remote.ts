@@ -322,7 +322,7 @@ export class RemoteGraph<
     for await (const chunk of stream) {
       lastValue = chunk;
     }
-    return lastValue?.data;
+    return lastValue;
   }
 
   override streamEvents(
@@ -503,7 +503,8 @@ export class RemoteGraph<
         name: typeof node.data === "string" ? node.data : node.data?.name ?? "",
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         data: (node.data as any) ?? {},
-        metadata: (typeof node.data !== "string" && node.data?.metadata) ?? {},
+        metadata:
+          typeof node.data !== "string" ? node.data?.metadata ?? {} : {},
       };
     }
     return nodesMap;
