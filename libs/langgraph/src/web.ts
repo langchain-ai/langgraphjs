@@ -32,7 +32,6 @@ export {
 export { type AnnotationRoot as _INTERNAL_ANNOTATION_ROOT } from "./graph/index.js";
 export { type RetryPolicy } from "./pregel/utils/index.js";
 export { Send } from "./constants.js";
-export { RemoteGraph, type RemoteGraphParams } from "./pregel/remote.js";
 
 export {
   MemorySaver,

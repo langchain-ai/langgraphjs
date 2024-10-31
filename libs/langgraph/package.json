@@ -121,6 +121,15 @@
       "import": "./prebuilt.js",
       "require": "./prebuilt.cjs"
     },
+    "./remote": {
+      "types": {
+        "import": "./remote.d.ts",
+        "require": "./remote.d.cts",
+        "default": "./remote.d.ts"
+      },
+      "import": "./remote.js",
+      "require": "./remote.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -140,6 +149,10 @@
     "prebuilt.cjs",
     "prebuilt.js",
     "prebuilt.d.ts",
-    "prebuilt.d.cts"
+    "prebuilt.d.cts",
+    "remote.cjs",
+    "remote.js",
+    "remote.d.ts",
+    "remote.d.cts"
   ]
 }
