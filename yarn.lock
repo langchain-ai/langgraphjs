@@ -1611,6 +1611,25 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@langchain/core@npm:^0.3.16":
+  version: 0.3.16
+  resolution: "@langchain/core@npm:0.3.16"
+  dependencies:
+    ansi-styles: ^5.0.0
+    camelcase: 6
+    decamelize: 1.2.0
+    js-tiktoken: ^1.0.12
+    langsmith: ^0.2.0
+    mustache: ^4.2.0
+    p-queue: ^6.6.2
+    p-retry: 4
+    uuid: ^10.0.0
+    zod: ^3.22.4
+    zod-to-json-schema: ^3.22.3
+  checksum: 2ecfb2cd7375e8d152043c35732b55a99d9ee091007dfd1a2677516f26de531695eb08ec3e6864c3240bb790c913aca4870b42850da9a4ec927f7dbc5efdf110
+  languageName: node
+  linkType: hard
+
 "@langchain/groq@npm:^0.1.2":
   version: 0.1.2
   resolution: "@langchain/groq@npm:0.1.2"
@@ -1843,7 +1862,7 @@ __metadata:
     "@jest/globals": ^29.5.0
     "@langchain/anthropic": ^0.3.5
     "@langchain/community": ^0.3.9
-    "@langchain/core": ^0.3.15
+    "@langchain/core": ^0.3.16
     "@langchain/langgraph-checkpoint": ~0.0.10
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
@@ -8894,8 +8913,8 @@ __metadata:
   linkType: soft
 
 "langsmith@npm:^0.2.0":
-  version: 0.2.1
-  resolution: "langsmith@npm:0.2.1"
+  version: 0.2.3
+  resolution: "langsmith@npm:0.2.3"
   dependencies:
     "@types/uuid": ^10.0.0
     commander: ^10.0.1
@@ -8908,7 +8927,7 @@ __metadata:
   peerDependenciesMeta:
     openai:
       optional: true
-  checksum: 7d91ff53950f8629c0f671bfd7fcfc2ebff177e760e017a471592e95565e07f256ea1d52b8bd11510924e47511f65542b9a13c62907ea5901f623672870af236
+  checksum: 1e569d212539b37023621ecc53ed28d8a54025ba89098d1d234835eda58c58626f55a0b1505c1b35960f34efce138da6ba6fdfb8e17af65e447dec68bb8a84f7
   languageName: node
   linkType: hard
 
