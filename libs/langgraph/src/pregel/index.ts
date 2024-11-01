@@ -1133,10 +1133,15 @@ export class Pregel<
           loopError = loopError ?? e;
         }
         if (loopError) {
-          // Will throw an error outside of this method
+          // "Causes any future interactions with the associated stream to error".
+          // Wraps ReadableStreamDefaultController#error:
+          // https://developer.mozilla.org/en-US/docs/Web/API/ReadableStreamDefaultController/error
           stream.error(loopError);
         } else {
-          // Will end the iterator outside of this method
+          // Will end the iterator outside of this method,
+          // keeping previously enqueued chunks.
+          // Wraps ReadableStreamDefaultController#close:
+          // https://developer.mozilla.org/en-US/docs/Web/API/ReadableStreamDefaultController/close
           stream.close();
         }
       }

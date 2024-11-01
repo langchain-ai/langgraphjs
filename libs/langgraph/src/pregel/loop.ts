@@ -130,7 +130,7 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
     let streamControllerPromiseResolver: (
       controller: ReadableStreamDefaultController
     ) => void;
-    let streamControllerPromise: Promise<ReadableStreamDefaultController> =
+    const streamControllerPromise: Promise<ReadableStreamDefaultController> =
       new Promise<ReadableStreamDefaultController>((resolve) => {
         streamControllerPromiseResolver = resolve;
       });
@@ -143,7 +143,7 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
 
     // .start() will always be called before the stream can be interacted
     // with anyway
-    streamControllerPromise.then((controller) => {
+    void streamControllerPromise.then((controller) => {
       this.controller = controller;
     });
 
