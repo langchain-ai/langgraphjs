@@ -1592,25 +1592,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:^0.3.15":
-  version: 0.3.15
-  resolution: "@langchain/core@npm:0.3.15"
-  dependencies:
-    ansi-styles: ^5.0.0
-    camelcase: 6
-    decamelize: 1.2.0
-    js-tiktoken: ^1.0.12
-    langsmith: ^0.2.0
-    mustache: ^4.2.0
-    p-queue: ^6.6.2
-    p-retry: 4
-    uuid: ^10.0.0
-    zod: ^3.22.4
-    zod-to-json-schema: ^3.22.3
-  checksum: b307a8e8ac4789f80fa0ef8fe737b47b3cc9d15a186eb1f770cf00fa64d5238d08855f0e1f920ac7ce9148a336fb8377988ba5577cc621aedecf068d6ce64939
-  languageName: node
-  linkType: hard
-
 "@langchain/core@npm:^0.3.16":
   version: 0.3.16
   resolution: "@langchain/core@npm:0.3.16"
@@ -6660,7 +6641,7 @@ __metadata:
   dependencies:
     "@langchain/anthropic": ^0.3.5
     "@langchain/community": ^0.3.9
-    "@langchain/core": ^0.3.15
+    "@langchain/core": ^0.3.16
     "@langchain/groq": ^0.1.2
     "@langchain/langgraph": "workspace:*"
     "@langchain/mistralai": ^0.1.1
