@@ -23,7 +23,6 @@ import {
   PendingWrite,
   uuid5,
 } from "@langchain/langgraph-checkpoint";
-import Deque from "double-ended-queue";
 import {
   BaseChannel,
   createCheckpoint,
@@ -80,7 +79,7 @@ import {
   RetryPolicy,
 } from "./utils/index.js";
 import { findSubgraphPregel } from "./utils/subgraph.js";
-import { PregelLoop, StreamChunk, StreamProtocol } from "./loop.js";
+import { PregelLoop, IterableReadableWritableStream } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
 import {
   ChannelKeyPlaceholder,
@@ -1013,144 +1012,148 @@ export class Pregel<
     const { channelSpecs, managed } = await this.prepareSpecs(config);
 
     let loop: PregelLoop | undefined;
-    const stream = new Deque<StreamChunk>();
-    function* emitCurrentLoopOutputs() {
-      while (loop !== undefined && stream.length > 0) {
-        const nextItem = stream.shift();
-        if (nextItem === undefined) {
-          throw new Error("Data structure error.");
+    const stream = new IterableReadableWritableStream({
+      modes: new Set(streamMode),
+    });
+    const runLoop = async () => {
+      try {
+        loop = await PregelLoop.initialize({
+          input,
+          config,
+          checkpointer,
+          nodes: this.nodes,
+          channelSpecs,
+          managed,
+          outputKeys,
+          streamKeys: this.streamChannelsAsIs as string | string[],
+          store,
+          stream,
+        });
+        if (options?.subgraphs) {
+          loop.config.configurable = {
+            ...loop.config.configurable,
+            [CONFIG_KEY_STREAM]: loop.stream,
+          };
         }
-        const [namespace, mode, payload] = nextItem;
-        if (streamMode.includes(mode)) {
-          if (streamSubgraphs && streamMode.length > 1) {
-            yield [namespace, mode, payload];
-          } else if (streamMode.length > 1) {
-            yield [mode, payload];
-          } else if (streamSubgraphs) {
-            yield [namespace, payload];
-          } else {
-            yield payload;
+        while (
+          await loop.tick({
+            inputKeys: this.inputChannels as string | string[],
+            interruptAfter,
+            interruptBefore,
+            manager: runManager,
+          })
+        ) {
+          if (debug) {
+            printStepCheckpoint(
+              loop.checkpointMetadata.step,
+              loop.channels,
+              this.streamChannelsList as string[]
+            );
           }
-        }
-      }
-    }
-    try {
-      loop = await PregelLoop.initialize({
-        input,
-        config,
-        checkpointer,
-        nodes: this.nodes,
-        channelSpecs,
-        managed,
-        outputKeys,
-        streamKeys: this.streamChannelsAsIs as string | string[],
-        store,
-        stream: new StreamProtocol(
-          (chunk) => stream.push(chunk),
-          new Set(streamMode)
-        ),
-      });
-      if (options?.subgraphs) {
-        loop.config.configurable = {
-          ...loop.config.configurable,
-          [CONFIG_KEY_STREAM]: loop.stream,
-        };
-      }
-      while (
-        await loop.tick({
-          inputKeys: this.inputChannels as string | string[],
-          interruptAfter,
-          interruptBefore,
-          manager: runManager,
-        })
-      ) {
-        if (debug) {
-          printStepCheckpoint(
-            loop.checkpointMetadata.step,
-            loop.channels,
-            this.streamChannelsList as string[]
+          if (debug) {
+            printStepTasks(loop.step, Object.values(loop.tasks));
+          }
+          // execute tasks, and wait for one to fail or all to finish.
+          // each task is independent from all other concurrent tasks
+          // yield updates/debug output as each task finishes
+          const taskStream = executeTasksWithRetry(
+            Object.values(loop.tasks).filter(
+              (task) => task.writes.length === 0
+            ),
+            {
+              stepTimeout: this.stepTimeout,
+              signal: config.signal,
+              retryPolicy: this.retryPolicy,
+            }
           );
-        }
-        yield* emitCurrentLoopOutputs();
-        if (debug) {
-          printStepTasks(loop.step, Object.values(loop.tasks));
-        }
-        // execute tasks, and wait for one to fail or all to finish.
-        // each task is independent from all other concurrent tasks
-        // yield updates/debug output as each task finishes
-        const taskStream = executeTasksWithRetry(
-          Object.values(loop.tasks).filter((task) => task.writes.length === 0),
-          {
-            stepTimeout: this.stepTimeout,
-            signal: config.signal,
-            retryPolicy: this.retryPolicy,
-          }
-        );
-        // Timeouts will be thrown
-        for await (const { task, error } of taskStream) {
-          if (error !== undefined) {
-            if (isGraphInterrupt(error)) {
-              if (loop.isNested) {
-                throw error;
-              }
-              if (error.interrupts.length) {
-                loop.putWrites(
-                  task.id,
-                  error.interrupts.map((interrupt) => [INTERRUPT, interrupt])
-                );
+          // Timeouts will be thrown
+          for await (const { task, error } of taskStream) {
+            if (error !== undefined) {
+              if (isGraphInterrupt(error)) {
+                if (loop.isNested) {
+                  throw error;
+                }
+                if (error.interrupts.length) {
+                  loop.putWrites(
+                    task.id,
+                    error.interrupts.map((interrupt) => [INTERRUPT, interrupt])
+                  );
+                }
+              } else {
+                loop.putWrites(task.id, [
+                  [ERROR, { message: error.message, name: error.name }],
+                ]);
               }
             } else {
-              loop.putWrites(task.id, [
-                [ERROR, { message: error.message, name: error.name }],
-              ]);
+              loop.putWrites(task.id, task.writes);
             }
-          } else {
-            loop.putWrites(task.id, task.writes);
+            if (error !== undefined && !isGraphInterrupt(error)) {
+              throw error;
+            }
           }
-          yield* emitCurrentLoopOutputs();
-          if (error !== undefined && !isGraphInterrupt(error)) {
-            throw error;
+
+          if (debug) {
+            printStepWrites(
+              loop.step,
+              Object.values(loop.tasks)
+                .map((task) => task.writes)
+                .flat(),
+              this.streamChannelsList as string[]
+            );
           }
         }
-
-        if (debug) {
-          printStepWrites(
-            loop.step,
-            Object.values(loop.tasks)
-              .map((task) => task.writes)
-              .flat(),
-            this.streamChannelsList as string[]
+        if (loop.status === "out_of_steps") {
+          throw new GraphRecursionError(
+            [
+              `Recursion limit of ${config.recursionLimit} reached`,
+              "without hitting a stop condition. You can increase the",
+              `limit by setting the "recursionLimit" config key.`,
+            ].join(" "),
+            {
+              lc_error_code: "GRAPH_RECURSION_LIMIT",
+            }
           );
         }
-      }
-      yield* emitCurrentLoopOutputs();
-      if (loop.status === "out_of_steps") {
-        throw new GraphRecursionError(
-          [
-            `Recursion limit of ${config.recursionLimit} reached`,
-            "without hitting a stop condition. You can increase the",
-            `limit by setting the "recursionLimit" config key.`,
-          ].join(" "),
-          {
-            lc_error_code: "GRAPH_RECURSION_LIMIT",
+        await Promise.all(loop?.checkpointerPromises ?? []);
+        await runManager?.handleChainEnd(loop.output);
+      } catch (e) {
+        await runManager?.handleChainError(e);
+        stream.error(e);
+      } finally {
+        try {
+          // Call `.stop()` again incase it was not called in the loop, e.g due to an error.
+          if (loop) {
+            await loop.store?.stop();
           }
-        );
+          await Promise.all([
+            ...(loop?.checkpointerPromises ?? []),
+            ...Array.from(managed.values()).map((mv) => mv.promises()),
+          ]);
+        } catch (e) {
+          stream.error(e);
+        }
+        stream.close();
       }
-      await Promise.all(loop?.checkpointerPromises ?? []);
-      await runManager?.handleChainEnd(loop.output);
-    } catch (e) {
-      await runManager?.handleChainError(e);
-      throw e;
-    } finally {
-      // Call `.stop()` again incase it was not called in the loop, e.g due to an error.
-      if (loop) {
-        await loop.store?.stop();
+    };
+    const runLoopPromise = runLoop();
+    for await (const chunk of stream) {
+      if (chunk === undefined) {
+        throw new Error("Data structure error.");
       }
-      await Promise.all([
-        ...(loop?.checkpointerPromises ?? []),
-        ...Array.from(managed.values()).map((mv) => mv.promises()),
-      ]);
+      const [namespace, mode, payload] = chunk;
+      if (streamMode.includes(mode)) {
+        if (streamSubgraphs && streamMode.length > 1) {
+          yield [namespace, mode, payload];
+        } else if (streamMode.length > 1) {
+          yield [mode, payload];
+        } else if (streamSubgraphs) {
+          yield [namespace, payload];
+        } else {
+          yield payload;
+        }
+      }
     }
+    await runLoopPromise;
   }
 
   /**

@@ -8003,6 +8003,49 @@ export function runPregelTests(
       ];
       expect(actualHistory).toEqual(expectedHistory);
     });
+
+    it("streams updates as soon as they are available", async () => {
+      const StateAnnotation = Annotation.Root({
+        foo: Annotation<string>({
+          reducer: (a, b) => a + b,
+          default: () => "",
+        }),
+      });
+
+      const subgraph = new StateGraph(StateAnnotation)
+        .addNode("fast", async () => {
+          return { foo: "b" };
+        })
+        .addNode("slow", async () => {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          return { foo: "a" };
+        })
+        .addEdge("__start__", "fast")
+        .addEdge("fast", "slow")
+        .compile();
+
+      const graph = new StateGraph(StateAnnotation)
+        .addNode("subgraph", subgraph)
+        .addNode("after", async () => {
+          return { foo: "r" };
+        })
+        .addEdge("__start__", "subgraph")
+        .addEdge("subgraph", "after")
+        .compile();
+
+      // First chunk from subgraph (buffered on initial await) should be streamed immediately
+      const stream = await Promise.race([
+        graph.stream({}, { subgraphs: true }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Timed out.")), 100)
+        ),
+      ]);
+      const chunks = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+      }
+      expect(chunks.length).toEqual(4);
+    });
   });
 
   it("debug retry", async () => {
