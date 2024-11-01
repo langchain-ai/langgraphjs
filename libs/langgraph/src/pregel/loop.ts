@@ -127,13 +127,24 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
     passthroughFn?: (chunk: StreamChunk) => void;
     modes: Set<StreamMode>;
   }) {
-    let streamController: ReadableStreamDefaultController;
+    let streamControllerPromiseResolver;
+    let streamControllerPromise: Promise<ReadableStreamDefaultController> =
+      new Promise((resolve) => {
+        streamControllerPromiseResolver = resolve;
+      });
+
     super({
       start: (controller) => {
-        streamController = controller;
+        streamControllerPromiseResolver!(controller);
       },
     });
-    this.controller = streamController!;
+
+    // .start() will always be called before the stream can be interacted
+    // with anyway
+    streamControllerPromise.then((controller) => {
+      this.controller = controller;
+    });
+
     this.passthroughFn = params.passthroughFn;
     this.modes = params.modes;
   }
