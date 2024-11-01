@@ -165,7 +165,7 @@ async function _runWithRetry(
       console.log(
         `Retrying task "${pregelTask.name}" after ${interval.toFixed(
           2
-        )} seconds (attempt ${attempts}) after ${errorName}: ${error}`
+        )}ms (attempt ${attempts}) after ${errorName}: ${error}`
       );
     } finally {
       // Clear checkpoint_ns seen (for subgraph detection)
