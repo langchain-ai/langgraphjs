@@ -810,7 +810,8 @@ export class Pregel<
     All | string[], // interrupt before
     All | string[], // interrupt after
     BaseCheckpointSaver | undefined,
-    BaseStore | undefined
+    BaseStore | undefined,
+    boolean
   ] {
     const {
       debug,
@@ -821,6 +822,7 @@ export class Pregel<
       interruptBefore,
       ...rest
     } = config;
+    let streamModeSingle = true;
     const defaultDebug = debug !== undefined ? debug : this.debug;
 
     let defaultOutputKeys = outputKeys;
@@ -845,8 +847,10 @@ export class Pregel<
     let defaultStreamMode: StreamMode[];
     if (streamMode !== undefined) {
       defaultStreamMode = Array.isArray(streamMode) ? streamMode : [streamMode];
+      streamModeSingle = typeof streamMode === "string";
     } else {
       defaultStreamMode = this.streamMode;
+      streamModeSingle = true;
     }
 
     // if being called as a node in another graph, always use values mode
@@ -877,6 +881,7 @@ export class Pregel<
       defaultInterruptAfter as All | string[],
       defaultCheckpointer,
       defaultStore,
+      streamModeSingle,
     ];
   }
 
@@ -999,6 +1004,7 @@ export class Pregel<
       interruptAfter,
       checkpointer,
       store,
+      streamModeSingle,
     ] = this._defaults(restConfig);
 
     const stream = new IterableReadableWritableStream({
@@ -1174,9 +1180,9 @@ export class Pregel<
         }
         const [namespace, mode, payload] = chunk;
         if (streamMode.includes(mode)) {
-          if (streamSubgraphs && streamMode.length > 1) {
+          if (streamSubgraphs && !streamModeSingle) {
             yield [namespace, mode, payload];
-          } else if (streamMode.length > 1) {
+          } else if (!streamModeSingle) {
             yield [mode, payload];
           } else if (streamSubgraphs) {
             yield [namespace, payload];
