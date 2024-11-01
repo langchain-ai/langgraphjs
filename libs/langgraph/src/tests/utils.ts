@@ -149,7 +149,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
 }
 
 export class MemorySaverAssertImmutable extends MemorySaver {
-  storageForCopies: Record<string, Record<string, string>> = {};
+  storageForCopies: Record<string, Record<string, Uint8Array>> = {};
 
   constructor() {
     super();
@@ -170,17 +170,19 @@ export class MemorySaverAssertImmutable extends MemorySaver {
     if (saved) {
       const savedId = saved.id;
       if (this.storageForCopies[thread_id][savedId]) {
+        const loaded = await this.serde.loadsTyped(
+          "json",
+          this.storageForCopies[thread_id][savedId]
+        );
         assert(
-          JSON.stringify(saved) === this.storageForCopies[thread_id][savedId],
+          JSON.stringify(saved) === JSON.stringify(loaded),
           "Checkpoint has been modified since last written"
         );
       }
     }
     const [, serializedCheckpoint] = this.serde.dumpsTyped(checkpoint);
     // save a copy of the checkpoint
-    this.storageForCopies[thread_id][checkpoint.id] = new TextDecoder().decode(
-      serializedCheckpoint
-    );
+    this.storageForCopies[thread_id][checkpoint.id] = serializedCheckpoint;
 
     return super.put(config, checkpoint, metadata);
   }
