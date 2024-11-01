@@ -432,6 +432,8 @@ export function runPregelTests(
           ["one"], // interrupt before
           ["one"], // interrupt after
           checkpointer,
+          undefined,
+          true,
         ];
 
         const expectedDefaults2 = [
@@ -443,6 +445,8 @@ export function runPregelTests(
           "*", // interrupt before
           ["one"], // interrupt after
           checkpointer,
+          undefined,
+          true,
         ];
 
         expect(pregel._defaults(config1)).toEqual(expectedDefaults1);
@@ -3385,9 +3389,18 @@ export function runPregelTests(
 
       const graph = builder.compile();
 
+      // Default is updates
+      expect(await gatherIterator(graph.stream({ value: 1 }))).toEqual([
+        { add_one: { value: 1 } },
+        { add_one: { value: 1 } },
+        { add_one: { value: 1 } },
+        { add_one: { value: 1 } },
+        { add_one: { value: 1 } },
+      ]);
+
       expect(
         await gatherIterator(
-          graph.stream({ value: 1 }, { streamMode: ["values"] })
+          graph.stream({ value: 1 }, { streamMode: "values" })
         )
       ).toEqual([
         { value: 1 },
@@ -3400,14 +3413,27 @@ export function runPregelTests(
 
       expect(
         await gatherIterator(
+          graph.stream({ value: 1 }, { streamMode: ["values"] })
+        )
+      ).toEqual([
+        ["values", { value: 1 }],
+        ["values", { value: 2 }],
+        ["values", { value: 3 }],
+        ["values", { value: 4 }],
+        ["values", { value: 5 }],
+        ["values", { value: 6 }],
+      ]);
+
+      expect(
+        await gatherIterator(
           graph.stream({ value: 1 }, { streamMode: ["updates"] })
         )
       ).toEqual([
-        { add_one: { value: 1 } },
-        { add_one: { value: 1 } },
-        { add_one: { value: 1 } },
-        { add_one: { value: 1 } },
-        { add_one: { value: 1 } },
+        ["updates", { add_one: { value: 1 } }],
+        ["updates", { add_one: { value: 1 } }],
+        ["updates", { add_one: { value: 1 } }],
+        ["updates", { add_one: { value: 1 } }],
+        ["updates", { add_one: { value: 1 } }],
       ]);
 
       expect(
