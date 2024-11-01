@@ -49,6 +49,7 @@ import type { RetryPolicy } from "../pregel/utils/index.js";
 import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
+import { MessagesAnnotation } from "./messages_annotation.js";
 
 const ROOT = "__root__";
 

@@ -450,7 +450,9 @@ export class CompiledGraph<
   Record<N | typeof START, PregelNode<RunInput, RunOutput>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType & Record<string, any>
+  ConfigurableFieldType & Record<string, any>,
+  RunInput,
+  RunOutput
 > {
   declare NodeType: N;
 
