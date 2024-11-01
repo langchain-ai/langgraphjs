@@ -127,9 +127,11 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
     passthroughFn?: (chunk: StreamChunk) => void;
     modes: Set<StreamMode>;
   }) {
-    let streamControllerPromiseResolver;
+    let streamControllerPromiseResolver: (
+      controller: ReadableStreamDefaultController
+    ) => void;
     let streamControllerPromise: Promise<ReadableStreamDefaultController> =
-      new Promise((resolve) => {
+      new Promise<ReadableStreamDefaultController>((resolve) => {
         streamControllerPromiseResolver = resolve;
       });
 
