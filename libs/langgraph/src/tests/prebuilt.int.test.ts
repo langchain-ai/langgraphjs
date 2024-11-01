@@ -66,7 +66,7 @@ describe("createReactAgent", () => {
     expect(lastMessage.content.toLowerCase()).toContain("not too cold");
   });
 
-  it.only("can stream a tool call with a checkpointer", async () => {
+  it("can stream a tool call with a checkpointer", async () => {
     const model = new ChatOpenAI({
       model: "gpt-4o",
     });

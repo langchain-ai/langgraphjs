@@ -1,5 +1,6 @@
 import type { RunnableConfig } from "@langchain/core/runnables";
 import type { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
+import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   BaseCheckpointSaver,
   Checkpoint,
@@ -66,7 +67,6 @@ import {
 import { PregelNode } from "./read.js";
 import { ManagedValueMapping, WritableManagedValue } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
-import { IterableReadableStream } from "@langchain/core/utils/stream";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
@@ -151,6 +151,7 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error(e: any) {
     this.controller.error(e);
   }
