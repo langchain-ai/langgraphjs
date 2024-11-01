@@ -201,7 +201,7 @@ export class Pregel<
     OutputType = PregelOutputType
   >
   extends Runnable<
-    InputType,
+    InputType | null,
     OutputType,
     PregelOptions<Nn, Cc, ConfigurableFieldType>
   >
@@ -920,7 +920,7 @@ export class Pregel<
    * @param options.debug Whether to print debug information during execution.
    */
   override async stream(
-    input: InputType | Command,
+    input: InputType | null | Command,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
   ): Promise<IterableReadableStream<OutputType>> {
     // The ensureConfig method called internally defaults recursionLimit to 25 if not
@@ -1247,7 +1247,7 @@ export class Pregel<
    * @param options.debug Whether to print debug information during execution.
    */
   override async invoke(
-    input: InputType | Command,
+    input: InputType | null | Command,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
   ): Promise<OutputType> {
     const streamMode = options?.streamMode ?? "values";
