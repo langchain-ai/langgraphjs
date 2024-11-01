@@ -1011,11 +1011,12 @@ export class Pregel<
 
     const { channelSpecs, managed } = await this.prepareSpecs(config);
 
-    let loop: PregelLoop | undefined;
     const stream = new IterableReadableWritableStream({
       modes: new Set(streamMode),
     });
     const runLoop = async () => {
+      let loop: PregelLoop | undefined;
+      let loopError;
       try {
         loop = await PregelLoop.initialize({
           input,
@@ -1118,7 +1119,7 @@ export class Pregel<
         await runManager?.handleChainEnd(loop.output);
       } catch (e) {
         await runManager?.handleChainError(e);
-        stream.error(e);
+        loopError = e;
       } finally {
         try {
           // Call `.stop()` again incase it was not called in the loop, e.g due to an error.
@@ -1130,7 +1131,10 @@ export class Pregel<
             ...Array.from(managed.values()).map((mv) => mv.promises()),
           ]);
         } catch (e) {
-          stream.error(e);
+          stream.error(loopError ?? e);
+        }
+        if (loopError) {
+          stream.error(loopError);
         }
         stream.close();
       }
