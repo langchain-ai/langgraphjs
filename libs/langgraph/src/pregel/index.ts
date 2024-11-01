@@ -1014,9 +1014,11 @@ export class Pregel<
     const stream = new IterableReadableWritableStream({
       modes: new Set(streamMode),
     });
+
+    let loop: PregelLoop | undefined;
+    let loopError: unknown;
+
     const runLoop = async () => {
-      let loop: PregelLoop | undefined;
-      let loopError;
       try {
         loop = await PregelLoop.initialize({
           input,
@@ -1115,10 +1117,7 @@ export class Pregel<
             }
           );
         }
-        await Promise.all(loop?.checkpointerPromises ?? []);
-        await runManager?.handleChainEnd(loop.output);
       } catch (e) {
-        await runManager?.handleChainError(e);
         loopError = e;
       } finally {
         try {
@@ -1131,33 +1130,43 @@ export class Pregel<
             ...Array.from(managed.values()).map((mv) => mv.promises()),
           ]);
         } catch (e) {
-          stream.error(loopError ?? e);
+          loopError = loopError ?? e;
         }
         if (loopError) {
+          // Will throw an error outside of this method
           stream.error(loopError);
+        } else {
+          // Will end the iterator outside of this method
+          stream.close();
         }
-        stream.close();
       }
     };
     const runLoopPromise = runLoop();
-    for await (const chunk of stream) {
-      if (chunk === undefined) {
-        throw new Error("Data structure error.");
-      }
-      const [namespace, mode, payload] = chunk;
-      if (streamMode.includes(mode)) {
-        if (streamSubgraphs && streamMode.length > 1) {
-          yield [namespace, mode, payload];
-        } else if (streamMode.length > 1) {
-          yield [mode, payload];
-        } else if (streamSubgraphs) {
-          yield [namespace, payload];
-        } else {
-          yield payload;
+    try {
+      for await (const chunk of stream) {
+        if (chunk === undefined) {
+          throw new Error("Data structure error.");
+        }
+        const [namespace, mode, payload] = chunk;
+        if (streamMode.includes(mode)) {
+          if (streamSubgraphs && streamMode.length > 1) {
+            yield [namespace, mode, payload];
+          } else if (streamMode.length > 1) {
+            yield [mode, payload];
+          } else if (streamSubgraphs) {
+            yield [namespace, payload];
+          } else {
+            yield payload;
+          }
         }
       }
+    } catch (e) {
+      await runManager?.handleChainError(loopError);
+      throw e;
+    } finally {
+      await runLoopPromise;
     }
-    await runLoopPromise;
+    await runManager?.handleChainEnd(loop?.output ?? {});
   }
 
   /**
