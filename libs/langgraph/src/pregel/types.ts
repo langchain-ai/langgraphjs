@@ -16,7 +16,7 @@ import { Interrupt } from "../constants.js";
 import { type ManagedValueSpec } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 
-export type StreamMode = "values" | "updates" | "debug";
+export type StreamMode = "values" | "updates" | "debug" | "messages" | "custom";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PregelInputType = any;
