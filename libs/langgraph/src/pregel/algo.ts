@@ -672,7 +672,7 @@ export function _prepareSingleTask<
               mergeConfigs(config, {
                 metadata,
                 tags: proc.tags,
-                store: extra.store ?? config?.store,
+                store: extra.store ?? config.store,
               }),
               {
                 runName: name,

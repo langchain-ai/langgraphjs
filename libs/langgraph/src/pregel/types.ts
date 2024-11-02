@@ -182,7 +182,7 @@ export interface PregelExecutableTask<
 > {
   readonly name: N;
   readonly input: unknown;
-  readonly proc: Runnable;
+  readonly proc: Runnable<any, any, LangGraphRunnableConfig>;
   readonly writes: PendingWrite<C>[];
   readonly config?: LangGraphRunnableConfig;
   readonly triggers: Array<string>;
