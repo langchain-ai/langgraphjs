@@ -182,6 +182,7 @@ export interface PregelExecutableTask<
 > {
   readonly name: N;
   readonly input: unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly proc: Runnable<any, any, LangGraphRunnableConfig>;
   readonly writes: PendingWrite<C>[];
   readonly config?: LangGraphRunnableConfig;
