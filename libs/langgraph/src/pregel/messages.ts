@@ -74,7 +74,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     _extraParams?: Record<string, unknown>,
     tags?: string[],
     metadata?: Record<string, unknown>,
-    runName?: string
+    name?: string
   ) {
     if (
       metadata &&
@@ -83,7 +83,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     ) {
       this.metadatas[runId] = [
         (metadata.langgraph_checkpoint_ns as string).split("NS_SEP"),
-        { tags, runName, ...metadata },
+        { tags, name, ...metadata },
       ];
     }
   }
@@ -135,16 +135,16 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     tags?: string[],
     metadata?: Record<string, unknown>,
     _runType?: string,
-    runName?: string
+    name?: string
   ) {
     if (
       metadata !== undefined &&
-      runName === metadata.langgraph_node &&
+      name === metadata.langgraph_node &&
       (tags === undefined || !tags.includes(TAG_HIDDEN))
     ) {
       this.metadatas[runId] = [
         (metadata.langgraph_checkpoint_ns as string).split("NS_SEP"),
-        { tags, runName, ...metadata },
+        { tags, name, ...metadata },
       ];
     }
   }

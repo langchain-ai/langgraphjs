@@ -806,7 +806,7 @@ export class Pregel<
     StreamMode[], // stream mode
     string | string[], // input keys
     string | string[], // output keys
-    RunnableConfig, // config without pregel keys
+    LangGraphRunnableConfig, // config without pregel keys
     All | string[], // interrupt before
     All | string[], // interrupt after
     BaseCheckpointSaver | undefined,
@@ -1016,19 +1016,24 @@ export class Pregel<
       const messageStreamer = new StreamMessagesHandler((chunk) =>
         stream.push(chunk)
       );
-      const { callbacks } = restConfig;
+      const { callbacks } = config;
       if (callbacks === undefined) {
-        restConfig.callbacks = [messageStreamer];
+        config.callbacks = [messageStreamer];
       } else if (Array.isArray(callbacks)) {
-        restConfig.callbacks = callbacks.concat(messageStreamer);
+        config.callbacks = callbacks.concat(messageStreamer);
       } else {
         const copiedCallbacks = callbacks.copy();
         copiedCallbacks.addHandler(messageStreamer, true);
-        restConfig.callbacks = copiedCallbacks;
+        config.callbacks = copiedCallbacks;
       }
     }
 
-    const callbackManager = await getCallbackManagerForConfig(restConfig);
+    // setup custom stream mode
+    if (streamMode.includes("custom")) {
+      config.writer = (chunk: unknown) => stream.push([[], "custom", chunk]);
+    }
+
+    const callbackManager = await getCallbackManagerForConfig(config);
     const runManager = await callbackManager?.handleChainStart(
       this.toJSON(),
       _coerceToDict(input, "input"),
@@ -1036,7 +1041,7 @@ export class Pregel<
       undefined,
       undefined,
       undefined,
-      restConfig?.runName ?? this.getName()
+      config?.runName ?? this.getName()
     );
 
     const { channelSpecs, managed } = await this.prepareSpecs(config);

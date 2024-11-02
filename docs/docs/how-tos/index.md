@@ -60,6 +60,7 @@ These guides show how to use different streaming modes.
 - [How to configure multiple streaming modes](stream-multiple.ipynb)
 - [How to stream LLM tokens](stream-tokens.ipynb)
 - [How to stream LLM tokens without LangChain models](streaming-tokens-without-langchain.ipynb)
+- [How to stream custom data](streaming-content.ipynb)
 - [How to stream events from within a tool](streaming-events-from-within-tools.ipynb)
 - [How to stream from the final node](streaming-from-final-node.ipynb)
 
