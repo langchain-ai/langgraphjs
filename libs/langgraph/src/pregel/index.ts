@@ -922,7 +922,7 @@ export class Pregel<
   override async stream(
     input: InputType | null | Command,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
-  ): Promise<IterableReadableStream<OutputType>> {
+  ): Promise<IterableReadableStream<PregelOutputType>> {
     // The ensureConfig method called internally defaults recursionLimit to 25 if not
     // passed directly in `options`.
     // There is currently no way in _streamIterator to determine whether this was
