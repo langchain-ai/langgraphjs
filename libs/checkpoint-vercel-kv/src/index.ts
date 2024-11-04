@@ -240,8 +240,7 @@ export class VercelKVSaver extends BaseCheckpointSaver {
         // filter by metadata
         if (filter && Object.keys(filter).length > 0) {
           const matches = Object.keys(filter).every(
-            // @ts-ignore-next-line
-            (key) => filter[key] === metadata[key]
+            (key) => filter[key] === metadata[key as keyof CheckpointMetadata]
           );
           if (!matches) {
             continue;
@@ -316,7 +315,7 @@ export class VercelKVSaver extends BaseCheckpointSaver {
       parent_checkpoint_id: checkpoint_id,
     };
 
-    // LUA script to set checkpoint data atomically"
+    // LUA script to set checkpoint data atomically
     const luaScript = `
       local prefix = ARGV[1]
       local checkpoint_id = ARGV[2]
