@@ -6,7 +6,6 @@ import {
 import {
   Graph as DrawableGraph,
   Node as DrawableNode,
-  Edge as DrawableEdge,
 } from "@langchain/core/runnables/graph";
 import {
   mergeConfigs,
@@ -43,7 +42,6 @@ import {
   CHECKPOINT_NAMESPACE_SEPARATOR,
   CONFIG_KEY_STREAM,
   INTERRUPT,
-  Interrupt,
 } from "../constants.js";
 
 export type RemoteGraphParams = Omit<
@@ -308,7 +306,7 @@ export class RemoteGraph<
         id: task.id,
         name: task.name,
         error: task.error ? { message: task.error } : undefined,
-        interrupts: task.interrupts as Interrupt[],
+        interrupts: task.interrupts,
         // eslint-disable-next-line no-nested-ternary
         state: task.state
           ? this._createStateSnapshot(task.state)
@@ -332,7 +330,7 @@ export class RemoteGraph<
         },
       },
       metadata: state.metadata
-        ? (state.metadata as unknown as CheckpointMetadata)
+        ? (state.metadata as CheckpointMetadata)
         : undefined,
       createdAt: state.created_at ?? undefined,
       parentConfig: state.parent_checkpoint
@@ -582,9 +580,8 @@ export class RemoteGraph<
       xray: config?.xray,
     });
     return new DrawableGraph({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      nodes: this._getDrawableNodes(graph.nodes as any),
-      edges: graph.edges as unknown as DrawableEdge[],
+      nodes: this._getDrawableNodes(graph.nodes),
+      edges: graph.edges,
     });
   }
 
