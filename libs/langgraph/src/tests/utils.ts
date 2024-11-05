@@ -19,7 +19,7 @@ import {
   FunctionMessage,
   FunctionMessageFieldsWithName,
 } from "@langchain/core/messages";
-import { ChatResult } from "@langchain/core/outputs";
+import { ChatGenerationChunk, ChatResult } from "@langchain/core/outputs";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
 import {
@@ -30,6 +30,10 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { z } from "zod";
 import { BaseTracer, Run } from "@langchain/core/tracers/base";
+import {
+  BaseLanguageModelCallOptions,
+  BaseLanguageModelInput,
+} from "@langchain/core/language_models/base";
 
 export interface FakeChatModelArgs extends BaseChatModelParams {
   responses: BaseMessage[];
@@ -55,8 +59,7 @@ export class FakeChatModel extends BaseChatModel {
 
   async _generate(
     messages: BaseMessage[],
-    options?: this["ParsedCallOptions"],
-    runManager?: CallbackManagerForLLMRun
+    options?: this["ParsedCallOptions"]
   ): Promise<ChatResult> {
     if (options?.stop?.length) {
       return {
@@ -71,7 +74,6 @@ export class FakeChatModel extends BaseChatModel {
     const response = this.responses[this.callCount % this.responses.length];
     const text = messages.map((m) => m.content).join("\n");
     this.callCount += 1;
-    await runManager?.handleLLMNewToken(text);
     return {
       generations: [
         {
@@ -81,6 +83,24 @@ export class FakeChatModel extends BaseChatModel {
       ],
       llmOutput: {},
     };
+  }
+
+  async *_streamResponseChunks(
+    _input: BaseLanguageModelInput,
+    _options?: BaseLanguageModelCallOptions,
+    runManager?: CallbackManagerForLLMRun
+  ) {
+    const response = this.responses[this.callCount % this.responses.length];
+    for (const text of (response.content as string).split("")) {
+      yield new ChatGenerationChunk({
+        message: new AIMessageChunk({
+          content: text as string,
+        }),
+        text,
+      });
+      await runManager?.handleLLMNewToken(text as string);
+    }
+    this.callCount += 1;
   }
 }
 
@@ -149,7 +169,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
 }
 
 export class MemorySaverAssertImmutable extends MemorySaver {
-  storageForCopies: Record<string, Record<string, string>> = {};
+  storageForCopies: Record<string, Record<string, Uint8Array>> = {};
 
   constructor() {
     super();
@@ -170,17 +190,19 @@ export class MemorySaverAssertImmutable extends MemorySaver {
     if (saved) {
       const savedId = saved.id;
       if (this.storageForCopies[thread_id][savedId]) {
+        const loaded = await this.serde.loadsTyped(
+          "json",
+          this.storageForCopies[thread_id][savedId]
+        );
         assert(
-          JSON.stringify(saved) === this.storageForCopies[thread_id][savedId],
+          JSON.stringify(saved) === JSON.stringify(loaded),
           "Checkpoint has been modified since last written"
         );
       }
     }
     const [, serializedCheckpoint] = this.serde.dumpsTyped(checkpoint);
     // save a copy of the checkpoint
-    this.storageForCopies[thread_id][checkpoint.id] = new TextDecoder().decode(
-      serializedCheckpoint
-    );
+    this.storageForCopies[thread_id][checkpoint.id] = serializedCheckpoint;
 
     return super.put(config, checkpoint, metadata);
   }

@@ -46,8 +46,10 @@ import {
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 import {
   _AnyIdAIMessage,
+  _AnyIdAIMessageChunk,
   _AnyIdFunctionMessage,
   _AnyIdHumanMessage,
+  _AnyIdToolMessage,
   createAnyStringSame,
   FakeChatModel,
   FakeTracer,
@@ -430,6 +432,8 @@ export function runPregelTests(
           ["one"], // interrupt before
           ["one"], // interrupt after
           checkpointer,
+          undefined,
+          true,
         ];
 
         const expectedDefaults2 = [
@@ -441,6 +445,8 @@ export function runPregelTests(
           "*", // interrupt before
           ["one"], // interrupt after
           checkpointer,
+          undefined,
+          true,
         ];
 
         expect(pregel._defaults(config1)).toEqual(expectedDefaults1);
@@ -3383,9 +3389,18 @@ export function runPregelTests(
 
       const graph = builder.compile();
 
+      // Default is updates
+      expect(await gatherIterator(graph.stream({ value: 1 }))).toEqual([
+        { add_one: { value: 1 } },
+        { add_one: { value: 1 } },
+        { add_one: { value: 1 } },
+        { add_one: { value: 1 } },
+        { add_one: { value: 1 } },
+      ]);
+
       expect(
         await gatherIterator(
-          graph.stream({ value: 1 }, { streamMode: ["values"] })
+          graph.stream({ value: 1 }, { streamMode: "values" })
         )
       ).toEqual([
         { value: 1 },
@@ -3398,14 +3413,27 @@ export function runPregelTests(
 
       expect(
         await gatherIterator(
+          graph.stream({ value: 1 }, { streamMode: ["values"] })
+        )
+      ).toEqual([
+        ["values", { value: 1 }],
+        ["values", { value: 2 }],
+        ["values", { value: 3 }],
+        ["values", { value: 4 }],
+        ["values", { value: 5 }],
+        ["values", { value: 6 }],
+      ]);
+
+      expect(
+        await gatherIterator(
           graph.stream({ value: 1 }, { streamMode: ["updates"] })
         )
       ).toEqual([
-        { add_one: { value: 1 } },
-        { add_one: { value: 1 } },
-        { add_one: { value: 1 } },
-        { add_one: { value: 1 } },
-        { add_one: { value: 1 } },
+        ["updates", { add_one: { value: 1 } }],
+        ["updates", { add_one: { value: 1 } }],
+        ["updates", { add_one: { value: 1 } }],
+        ["updates", { add_one: { value: 1 } }],
+        ["updates", { add_one: { value: 1 } }],
       ]);
 
       expect(
@@ -8003,6 +8031,477 @@ export function runPregelTests(
       ];
       expect(actualHistory).toEqual(expectedHistory);
     });
+
+    it("streams updates as soon as they are available", async () => {
+      const StateAnnotation = Annotation.Root({
+        foo: Annotation<string>({
+          reducer: (a, b) => a + b,
+          default: () => "",
+        }),
+      });
+
+      const subgraph = new StateGraph(StateAnnotation)
+        .addNode("fast", async () => {
+          return { foo: "b" };
+        })
+        .addNode("slow", async () => {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          return { foo: "a" };
+        })
+        .addEdge("__start__", "fast")
+        .addEdge("fast", "slow")
+        .compile();
+
+      const graph = new StateGraph(StateAnnotation)
+        .addNode("subgraph", subgraph)
+        .addNode("after", async () => {
+          return { foo: "r" };
+        })
+        .addEdge("__start__", "subgraph")
+        .addEdge("subgraph", "after")
+        .compile();
+
+      // First chunk from subgraph (buffered on initial await) should be streamed immediately
+      const stream = await Promise.race([
+        graph.stream({}, { subgraphs: true }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Timed out.")), 100)
+        ),
+      ]);
+      const chunks = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+      }
+      expect(chunks.length).toEqual(4);
+    });
+  });
+
+  it("should work with streamMode messages and custom from within a subgraph", async () => {
+    const child = new StateGraph(MessagesAnnotation)
+      .addNode("c_one", () => ({
+        messages: [new HumanMessage("foo"), new AIMessage("bar")],
+      }))
+      .addNode("c_two", async (_, config) => {
+        const model = new FakeChatModel({
+          responses: [new AIMessage("123"), new AIMessage("baz")],
+        }).withConfig({ tags: ["c_two_chat_model"] });
+        const stream = await model.stream("yo", {
+          ...config,
+          runName: "c_two_chat_model_stream",
+        });
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        for await (const chunk of stream) {
+          config.writer?.({
+            content: chunk.content,
+            from: "subgraph",
+          });
+        }
+        return { messages: [await model.invoke("hey", config)] };
+      })
+      .addEdge(START, "c_one")
+      .addEdge("c_one", "c_two")
+      .addEdge("c_two", END);
+
+    const parent = new StateGraph(MessagesAnnotation)
+      .addNode("p_one", async (_, config) => {
+        const toolExecutor = RunnableLambda.from(async () => {
+          return [new ToolMessage({ content: "qux", tool_call_id: "test" })];
+        });
+        config.writer?.({
+          from: "parent",
+        });
+        return {
+          messages: await toolExecutor.invoke({}, config),
+        };
+      })
+      .addNode("p_two", child.compile())
+      .addNode("p_three", async (_, config) => {
+        const model = new FakeChatModel({
+          responses: [new AIMessage("parent")],
+        });
+        await model.invoke("hey", config);
+        return { messages: [] };
+      })
+      .addEdge(START, "p_one")
+      .addEdge("p_one", "p_two")
+      .addEdge("p_two", "p_three")
+      .addEdge("p_three", END);
+
+    const graph = parent.compile({});
+    const config = {};
+
+    const streamedEvents: StateSnapshot[] = await gatherIterator(
+      graph.stream({ messages: [] }, { ...config, streamMode: "messages" })
+    );
+
+    expect(streamedEvents).toEqual([
+      [
+        new _AnyIdToolMessage({
+          tool_call_id: "test",
+          content: "qux",
+        }),
+        {
+          langgraph_step: 1,
+          langgraph_node: "p_one",
+          langgraph_triggers: ["__start__:p_one"],
+          langgraph_path: [PULL, "p_one"],
+          langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
+          __pregel_resuming: false,
+          __pregel_task_id: expect.any(String),
+          checkpoint_ns: expect.stringMatching(/^p_one:/),
+          name: "p_one",
+          tags: ["graph:step:1"],
+        },
+      ],
+      [
+        new _AnyIdHumanMessage({
+          content: "foo",
+        }),
+        {
+          langgraph_step: 1,
+          langgraph_node: "c_one",
+          langgraph_triggers: ["__start__:c_one"],
+          langgraph_path: [PULL, "c_one"],
+          langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
+          __pregel_resuming: false,
+          __pregel_task_id: expect.any(String),
+          checkpoint_ns: expect.stringMatching(/^p_two:/),
+          name: "c_one",
+          tags: ["graph:step:1"],
+        },
+      ],
+      [
+        new _AnyIdAIMessage({
+          content: "bar",
+        }),
+        {
+          langgraph_step: 1,
+          langgraph_node: "c_one",
+          langgraph_triggers: ["__start__:c_one"],
+          langgraph_path: [PULL, "c_one"],
+          langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
+          __pregel_resuming: false,
+          __pregel_task_id: expect.any(String),
+          checkpoint_ns: expect.stringMatching(/^p_two:/),
+          name: "c_one",
+          tags: ["graph:step:1"],
+        },
+      ],
+      [
+        new _AnyIdAIMessageChunk({
+          content: "1",
+        }),
+        {
+          langgraph_step: 2,
+          langgraph_node: "c_two",
+          langgraph_triggers: ["c_one"],
+          langgraph_path: [PULL, "c_two"],
+          langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
+          __pregel_resuming: false,
+          __pregel_task_id: expect.any(String),
+          checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_model_type: "chat",
+          ls_provider: "FakeChatModel",
+          ls_stop: undefined,
+          tags: ["c_two_chat_model"],
+          name: "c_two_chat_model_stream",
+        },
+      ],
+      [
+        new _AnyIdAIMessageChunk({
+          content: "2",
+        }),
+        {
+          langgraph_step: 2,
+          langgraph_node: "c_two",
+          langgraph_triggers: ["c_one"],
+          langgraph_path: [PULL, "c_two"],
+          langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
+          __pregel_resuming: false,
+          __pregel_task_id: expect.any(String),
+          checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_model_type: "chat",
+          ls_provider: "FakeChatModel",
+          ls_stop: undefined,
+          tags: ["c_two_chat_model"],
+          name: "c_two_chat_model_stream",
+        },
+      ],
+      [
+        new _AnyIdAIMessageChunk({
+          content: "3",
+        }),
+        {
+          langgraph_step: 2,
+          langgraph_node: "c_two",
+          langgraph_triggers: ["c_one"],
+          langgraph_path: [PULL, "c_two"],
+          langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
+          __pregel_resuming: false,
+          __pregel_task_id: expect.any(String),
+          checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_model_type: "chat",
+          ls_provider: "FakeChatModel",
+          ls_stop: undefined,
+          tags: ["c_two_chat_model"],
+          name: "c_two_chat_model_stream",
+        },
+      ],
+      [
+        new _AnyIdAIMessage({
+          content: "baz",
+        }),
+        {
+          langgraph_step: 2,
+          langgraph_node: "c_two",
+          langgraph_triggers: ["c_one"],
+          langgraph_path: [PULL, "c_two"],
+          langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
+          __pregel_resuming: false,
+          __pregel_task_id: expect.any(String),
+          checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_model_type: "chat",
+          ls_provider: "FakeChatModel",
+          ls_stop: undefined,
+          tags: ["c_two_chat_model"],
+        },
+      ],
+      [
+        new _AnyIdAIMessage({
+          content: "parent",
+        }),
+        {
+          langgraph_step: 3,
+          langgraph_node: "p_three",
+          langgraph_triggers: ["p_two"],
+          langgraph_path: [PULL, "p_three"],
+          langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
+          __pregel_resuming: false,
+          __pregel_task_id: expect.any(String),
+          checkpoint_ns: expect.stringMatching(/^p_three/),
+          ls_model_type: "chat",
+          ls_provider: "FakeChatModel",
+          ls_stop: undefined,
+          tags: [],
+        },
+      ],
+    ]);
+
+    const streamedCustomEvents: StateSnapshot[] = await gatherIterator(
+      graph.stream({ messages: [] }, { ...config, streamMode: "custom" })
+    );
+
+    expect(streamedCustomEvents).toEqual([
+      {
+        from: "parent",
+      },
+      {
+        content: "1",
+        from: "subgraph",
+      },
+      {
+        content: "2",
+        from: "subgraph",
+      },
+      {
+        content: "3",
+        from: "subgraph",
+      },
+    ]);
+
+    const streamedCombinedEvents: StateSnapshot[] = await gatherIterator(
+      graph.stream(
+        { messages: [] },
+        { ...config, streamMode: ["custom", "messages"] }
+      )
+    );
+
+    expect(streamedCombinedEvents).toEqual([
+      ["custom", { from: "parent" }],
+      [
+        "messages",
+        [
+          new _AnyIdToolMessage({
+            tool_call_id: "test",
+            content: "qux",
+          }),
+          {
+            langgraph_step: 1,
+            langgraph_node: "p_one",
+            langgraph_triggers: ["__start__:p_one"],
+            langgraph_path: [PULL, "p_one"],
+            langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
+            __pregel_resuming: false,
+            __pregel_task_id: expect.any(String),
+            checkpoint_ns: expect.stringMatching(/^p_one:/),
+            name: "p_one",
+            tags: ["graph:step:1"],
+          },
+        ],
+      ],
+      [
+        "messages",
+        [
+          new _AnyIdHumanMessage({
+            content: "foo",
+          }),
+          {
+            langgraph_step: 1,
+            langgraph_node: "c_one",
+            langgraph_triggers: ["__start__:c_one"],
+            langgraph_path: [PULL, "c_one"],
+            langgraph_checkpoint_ns:
+              expect.stringMatching(/^p_two:.*\|c_one:.*/),
+            __pregel_resuming: false,
+            __pregel_task_id: expect.any(String),
+            checkpoint_ns: expect.stringMatching(/^p_two:/),
+            name: "c_one",
+            tags: ["graph:step:1"],
+          },
+        ],
+      ],
+      [
+        "messages",
+        [
+          new _AnyIdAIMessage({
+            content: "bar",
+          }),
+          {
+            langgraph_step: 1,
+            langgraph_node: "c_one",
+            langgraph_triggers: ["__start__:c_one"],
+            langgraph_path: [PULL, "c_one"],
+            langgraph_checkpoint_ns:
+              expect.stringMatching(/^p_two:.*\|c_one:.*/),
+            __pregel_resuming: false,
+            __pregel_task_id: expect.any(String),
+            checkpoint_ns: expect.stringMatching(/^p_two:/),
+            name: "c_one",
+            tags: ["graph:step:1"],
+          },
+        ],
+      ],
+      [
+        "messages",
+        [
+          new _AnyIdAIMessageChunk({
+            content: "1",
+          }),
+          {
+            langgraph_step: 2,
+            langgraph_node: "c_two",
+            langgraph_triggers: ["c_one"],
+            langgraph_path: [PULL, "c_two"],
+            langgraph_checkpoint_ns:
+              expect.stringMatching(/^p_two:.*\|c_two:.*/),
+            __pregel_resuming: false,
+            __pregel_task_id: expect.any(String),
+            checkpoint_ns: expect.stringMatching(/^p_two:/),
+            ls_model_type: "chat",
+            ls_provider: "FakeChatModel",
+            ls_stop: undefined,
+            tags: ["c_two_chat_model"],
+            name: "c_two_chat_model_stream",
+          },
+        ],
+      ],
+      ["custom", { from: "subgraph", content: "1" }],
+      [
+        "messages",
+        [
+          new _AnyIdAIMessageChunk({
+            content: "2",
+          }),
+          {
+            langgraph_step: 2,
+            langgraph_node: "c_two",
+            langgraph_triggers: ["c_one"],
+            langgraph_path: [PULL, "c_two"],
+            langgraph_checkpoint_ns:
+              expect.stringMatching(/^p_two:.*\|c_two:.*/),
+            __pregel_resuming: false,
+            __pregel_task_id: expect.any(String),
+            checkpoint_ns: expect.stringMatching(/^p_two:/),
+            ls_model_type: "chat",
+            ls_provider: "FakeChatModel",
+            ls_stop: undefined,
+            tags: ["c_two_chat_model"],
+            name: "c_two_chat_model_stream",
+          },
+        ],
+      ],
+      ["custom", { from: "subgraph", content: "2" }],
+      [
+        "messages",
+        [
+          new _AnyIdAIMessageChunk({
+            content: "3",
+          }),
+          {
+            langgraph_step: 2,
+            langgraph_node: "c_two",
+            langgraph_triggers: ["c_one"],
+            langgraph_path: [PULL, "c_two"],
+            langgraph_checkpoint_ns:
+              expect.stringMatching(/^p_two:.*\|c_two:.*/),
+            __pregel_resuming: false,
+            __pregel_task_id: expect.any(String),
+            checkpoint_ns: expect.stringMatching(/^p_two:/),
+            ls_model_type: "chat",
+            ls_provider: "FakeChatModel",
+            ls_stop: undefined,
+            tags: ["c_two_chat_model"],
+            name: "c_two_chat_model_stream",
+          },
+        ],
+      ],
+      ["custom", { from: "subgraph", content: "3" }],
+      [
+        "messages",
+        [
+          new _AnyIdAIMessage({
+            content: "baz",
+          }),
+          {
+            langgraph_step: 2,
+            langgraph_node: "c_two",
+            langgraph_triggers: ["c_one"],
+            langgraph_path: [PULL, "c_two"],
+            langgraph_checkpoint_ns:
+              expect.stringMatching(/^p_two:.*\|c_two:.*/),
+            __pregel_resuming: false,
+            __pregel_task_id: expect.any(String),
+            checkpoint_ns: expect.stringMatching(/^p_two:/),
+            ls_model_type: "chat",
+            ls_provider: "FakeChatModel",
+            ls_stop: undefined,
+            tags: ["c_two_chat_model"],
+          },
+        ],
+      ],
+      [
+        "messages",
+        [
+          new _AnyIdAIMessage({
+            content: "parent",
+          }),
+          {
+            langgraph_step: 3,
+            langgraph_node: "p_three",
+            langgraph_triggers: ["p_two"],
+            langgraph_path: [PULL, "p_three"],
+            langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
+            __pregel_resuming: false,
+            __pregel_task_id: expect.any(String),
+            checkpoint_ns: expect.stringMatching(/^p_three/),
+            ls_model_type: "chat",
+            ls_provider: "FakeChatModel",
+            ls_stop: undefined,
+            tags: [],
+          },
+        ],
+      ],
+    ]);
   });
 
   it("debug retry", async () => {

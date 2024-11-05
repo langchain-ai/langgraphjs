@@ -17,12 +17,7 @@ export function isPregelLike(
   x: PregelInterface<any, any> | RunnableLike<any, any, any>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): x is PregelInterface<any, any> {
-  return (
-    "inputChannels" in x &&
-    x.inputChannels !== undefined &&
-    "outputChannels" &&
-    x.outputChannels !== undefined
-  );
+  return "lg_is_pregel" in x && x.lg_is_pregel === true;
 }
 
 export function findSubgraphPregel(

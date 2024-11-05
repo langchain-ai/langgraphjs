@@ -1592,9 +1592,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:^0.3.15":
-  version: 0.3.15
-  resolution: "@langchain/core@npm:0.3.15"
+"@langchain/core@npm:^0.3.16":
+  version: 0.3.16
+  resolution: "@langchain/core@npm:0.3.16"
   dependencies:
     ansi-styles: ^5.0.0
     camelcase: 6
@@ -1607,7 +1607,7 @@ __metadata:
     uuid: ^10.0.0
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
-  checksum: b307a8e8ac4789f80fa0ef8fe737b47b3cc9d15a186eb1f770cf00fa64d5238d08855f0e1f920ac7ce9148a336fb8377988ba5577cc621aedecf068d6ce64939
+  checksum: 2ecfb2cd7375e8d152043c35732b55a99d9ee091007dfd1a2677516f26de531695eb08ec3e6864c3240bb790c913aca4870b42850da9a4ec927f7dbc5efdf110
   languageName: node
   linkType: hard
 
@@ -1862,6 +1862,18 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@langchain/langgraph-sdk@npm:~0.0.21":
+  version: 0.0.21
+  resolution: "@langchain/langgraph-sdk@npm:0.0.21"
+  dependencies:
+    "@types/json-schema": ^7.0.15
+    p-queue: ^6.6.2
+    p-retry: 4
+    uuid: ^9.0.0
+  checksum: 5dabe873b6cf3fbaa66b445c7032f1188d0c3eb7872457d0a8131521992a1e999e73514eeb9a344c10ee2315992e7130739de32257e2b3107a6dfe5f4027d6a2
+  languageName: node
+  linkType: hard
+
 "@langchain/langgraph@workspace:*, @langchain/langgraph@workspace:libs/langgraph":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph@workspace:libs/langgraph"
@@ -1869,16 +1881,16 @@ __metadata:
     "@jest/globals": ^29.5.0
     "@langchain/anthropic": ^0.3.5
     "@langchain/community": ^0.3.9
-    "@langchain/core": ^0.3.15
+    "@langchain/core": ^0.3.16
     "@langchain/langgraph-checkpoint": ~0.0.10
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
+    "@langchain/langgraph-sdk": ~0.0.21
     "@langchain/openai": ^0.3.11
     "@langchain/scripts": ">=0.1.3 <0.2.0"
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
     "@tsconfig/recommended": ^1.0.3
-    "@types/double-ended-queue": ^2
     "@types/pg": ^8
     "@types/uuid": ^10
     "@typescript-eslint/eslint-plugin": ^6.12.0
@@ -1886,7 +1898,6 @@ __metadata:
     "@xenova/transformers": ^2.17.2
     cheerio: 1.0.0-rc.12
     dotenv: ^16.3.1
-    double-ended-queue: ^2.1.0-0
     dpdm: ^3.12.0
     eslint: ^8.33.0
     eslint-config-airbnb-base: ^15.0.0
@@ -3303,13 +3314,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/double-ended-queue@npm:^2":
-  version: 2.1.7
-  resolution: "@types/double-ended-queue@npm:2.1.7"
-  checksum: 6a4a6e339c90048013cf762f07b284492e7e0fe3caf9d8e1d716ca6335d29a23993c21110f869b667a54d605280c072f84030eb18f37f47c1b36884030721d36
-  languageName: node
-  linkType: hard
-
 "@types/estree@npm:*, @types/estree@npm:1.0.5":
   version: 1.0.5
   resolution: "@types/estree@npm:1.0.5"
@@ -3389,7 +3393,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/json-schema@npm:^7.0.12":
+"@types/json-schema@npm:^7.0.12, @types/json-schema@npm:^7.0.15":
   version: 7.0.15
   resolution: "@types/json-schema@npm:7.0.15"
   checksum: 97ed0cb44d4070aecea772b7b2e2ed971e10c81ec87dd4ecc160322ffa55ff330dace1793489540e3e318d90942064bb697cc0f8989391797792d919737b3b98
@@ -5776,13 +5780,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"double-ended-queue@npm:^2.1.0-0":
-  version: 2.1.0-0
-  resolution: "double-ended-queue@npm:2.1.0-0"
-  checksum: 3030cf9dcf6f8e7d8cb6ae5b7304890445d7c32233a614e400ba7b378086ad76f5822d0e501afd5ffe0af1de4bcb842fa23d4c79174d54f6566399435fafc271
-  languageName: node
-  linkType: hard
-
 "dpdm@npm:^3.12.0":
   version: 3.14.0
   resolution: "dpdm@npm:3.14.0"
@@ -6707,7 +6704,7 @@ __metadata:
   dependencies:
     "@langchain/anthropic": ^0.3.5
     "@langchain/community": ^0.3.9
-    "@langchain/core": ^0.3.15
+    "@langchain/core": ^0.3.16
     "@langchain/groq": ^0.1.2
     "@langchain/langgraph": "workspace:*"
     "@langchain/mistralai": ^0.1.1
@@ -8960,8 +8957,8 @@ __metadata:
   linkType: soft
 
 "langsmith@npm:^0.2.0":
-  version: 0.2.1
-  resolution: "langsmith@npm:0.2.1"
+  version: 0.2.3
+  resolution: "langsmith@npm:0.2.3"
   dependencies:
     "@types/uuid": ^10.0.0
     commander: ^10.0.1
@@ -8974,7 +8971,7 @@ __metadata:
   peerDependenciesMeta:
     openai:
       optional: true
-  checksum: 7d91ff53950f8629c0f671bfd7fcfc2ebff177e760e017a471592e95565e07f256ea1d52b8bd11510924e47511f65542b9a13c62907ea5901f623672870af236
+  checksum: 1e569d212539b37023621ecc53ed28d8a54025ba89098d1d234835eda58c58626f55a0b1505c1b35960f34efce138da6ba6fdfb8e17af65e447dec68bb8a84f7
   languageName: node
   linkType: hard
 
@@ -12574,6 +12571,15 @@ __metadata:
   bin:
     uuid: dist/bin/uuid
   checksum: 4b81611ade2885d2313ddd8dc865d93d8dccc13ddf901745edca8f86d99bc46d7a330d678e7532e7ebf93ce616679fb19b2e3568873ac0c14c999032acb25869
+  languageName: node
+  linkType: hard
+
+"uuid@npm:^9.0.0":
+  version: 9.0.1
+  resolution: "uuid@npm:9.0.1"
+  bin:
+    uuid: dist/bin/uuid
+  checksum: 39931f6da74e307f51c0fb463dc2462807531dc80760a9bff1e35af4316131b4fc3203d16da60ae33f07fdca5b56f3f1dd662da0c99fea9aaeab2004780cc5f4
   languageName: node
   linkType: hard
 

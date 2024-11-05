@@ -5,7 +5,10 @@ import type {
   CheckpointMetadata,
   BaseCheckpointSaver,
   BaseStore,
+  CheckpointListOptions,
 } from "@langchain/langgraph-checkpoint";
+import { Graph as DrawableGraph } from "@langchain/core/runnables/graph";
+import { IterableReadableStream } from "@langchain/core/utils/stream";
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
 import { RetryPolicy } from "./utils/index.js";
@@ -13,7 +16,39 @@ import { Interrupt } from "../constants.js";
 import { type ManagedValueSpec } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 
-export type StreamMode = "values" | "updates" | "debug";
+export type StreamMode = "values" | "updates" | "debug" | "messages" | "custom";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type PregelInputType = any;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type PregelOutputType = any;
+
+/**
+ * Config for executing the graph.
+ */
+export interface PregelOptions<
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ConfigurableFieldType extends Record<string, any> = Record<string, any>
+> extends RunnableConfig<ConfigurableFieldType> {
+  /** The stream mode for the graph run. Default is ["values"]. */
+  streamMode?: StreamMode | StreamMode[];
+  inputKeys?: keyof Cc | Array<keyof Cc>;
+  /** The output keys to retrieve from the graph run. */
+  outputKeys?: keyof Cc | Array<keyof Cc>;
+  /** The nodes to interrupt the graph run before. */
+  interruptBefore?: All | Array<keyof Nn>;
+  /** The nodes to interrupt the graph run after. */
+  interruptAfter?: All | Array<keyof Nn>;
+  /** Enable debug mode for the graph run. */
+  debug?: boolean;
+  /** Whether to stream subgraphs. */
+  subgraphs?: boolean;
+  /** The shared value store */
+  store?: BaseStore;
+}
 
 /**
  * Construct a type with a set of properties K of type T
@@ -24,8 +59,62 @@ type StrRecord<K extends string, T> = {
 
 export interface PregelInterface<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
+  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>
 > {
+  lg_is_pregel: boolean;
+
+  withConfig(config: RunnableConfig): PregelInterface<Nn, Cc>;
+
+  getGraphAsync(
+    config: RunnableConfig & { xray?: boolean | number }
+  ): Promise<DrawableGraph>;
+
+  /** @deprecated Use getSubgraphsAsync instead. The async method will become the default in the next minor release. */
+  getSubgraphs(
+    namespace?: string,
+    recurse?: boolean
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Generator<[string, PregelInterface<any, any>]>;
+
+  getSubgraphsAsync(
+    namespace?: string,
+    recurse?: boolean
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): AsyncGenerator<[string, PregelInterface<any, any>]>;
+
+  getState(
+    config: RunnableConfig,
+    options?: { subgraphs?: boolean }
+  ): Promise<StateSnapshot>;
+
+  getStateHistory(
+    config: RunnableConfig,
+    options?: CheckpointListOptions
+  ): AsyncIterableIterator<StateSnapshot>;
+
+  updateState(
+    inputConfig: LangGraphRunnableConfig,
+    values: Record<string, unknown> | unknown,
+    asNode?: keyof Nn | string
+  ): Promise<RunnableConfig>;
+
+  stream(
+    input: PregelInputType,
+    options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
+  ): Promise<IterableReadableStream<PregelOutputType>>;
+
+  invoke(
+    input: PregelInputType,
+    options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
+  ): Promise<PregelOutputType>;
+}
+
+export type PregelParams<
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
+> = {
   nodes: Nn;
 
   channels: Cc;
@@ -56,8 +145,6 @@ export interface PregelInterface<
 
   streamChannels?: keyof Cc | Array<keyof Cc>;
 
-  get streamChannelsAsIs(): keyof Cc | Array<keyof Cc>;
-
   /**
    * @default undefined
    */
@@ -78,12 +165,7 @@ export interface PregelInterface<
    * Memory store to use for SharedValues.
    */
   store?: BaseStore;
-}
-
-export type PregelParams<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
-> = Omit<PregelInterface<Nn, Cc>, "streamChannelsAsIs">;
+};
 
 export interface PregelTaskDescription {
   readonly id: string;
@@ -100,7 +182,8 @@ export interface PregelExecutableTask<
 > {
   readonly name: N;
   readonly input: unknown;
-  readonly proc: Runnable;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly proc: Runnable<any, any, LangGraphRunnableConfig>;
   readonly writes: PendingWrite<C>[];
   readonly config?: LangGraphRunnableConfig;
   readonly triggers: Array<string>;

@@ -1,5 +1,6 @@
 import type { RunnableConfig } from "@langchain/core/runnables";
 import type { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
+import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   BaseCheckpointSaver,
   Checkpoint,
@@ -13,6 +14,7 @@ import {
   BaseStore,
   AsyncBatchedStore,
 } from "@langchain/langgraph-checkpoint";
+
 import {
   BaseChannel,
   createCheckpoint,
@@ -84,7 +86,7 @@ export type PregelLoopInitializeParams = {
   nodes: Record<string, PregelNode>;
   channelSpecs: Record<string, BaseChannel>;
   managed: ManagedValueMapping;
-  stream: StreamProtocol;
+  stream: IterableReadableWritableStream;
   store?: BaseStore;
   checkSubgraphs?: boolean;
 };
@@ -109,30 +111,76 @@ type PregelLoopParams = {
   checkpointNamespace: string[];
   skipDoneTasks: boolean;
   isNested: boolean;
-  stream: StreamProtocol;
+  stream: IterableReadableWritableStream;
   store?: AsyncBatchedStore;
   prevCheckpointConfig: RunnableConfig | undefined;
 };
 
-export class StreamProtocol {
-  push: (chunk: StreamChunk) => void;
-
+export class IterableReadableWritableStream extends IterableReadableStream<StreamChunk> {
   modes: Set<StreamMode>;
 
-  constructor(pushFn: (chunk: StreamChunk) => void, modes: Set<StreamMode>) {
-    this.push = pushFn;
-    this.modes = modes;
+  private controller: ReadableStreamDefaultController;
+
+  private passthroughFn?: (chunk: StreamChunk) => void;
+
+  constructor(params: {
+    passthroughFn?: (chunk: StreamChunk) => void;
+    modes: Set<StreamMode>;
+  }) {
+    let streamControllerPromiseResolver: (
+      controller: ReadableStreamDefaultController
+    ) => void;
+    const streamControllerPromise: Promise<ReadableStreamDefaultController> =
+      new Promise<ReadableStreamDefaultController>((resolve) => {
+        streamControllerPromiseResolver = resolve;
+      });
+
+    super({
+      start: (controller) => {
+        streamControllerPromiseResolver!(controller);
+      },
+    });
+
+    // .start() will always be called before the stream can be interacted
+    // with anyway
+    void streamControllerPromise.then((controller) => {
+      this.controller = controller;
+    });
+
+    this.passthroughFn = params.passthroughFn;
+    this.modes = params.modes;
+  }
+
+  push(chunk: StreamChunk) {
+    this.passthroughFn?.(chunk);
+    this.controller.enqueue(chunk);
+  }
+
+  close() {
+    try {
+      this.controller.close();
+    } catch (e) {
+      // pass
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  error(e: any) {
+    this.controller.error(e);
   }
 }
 
-function createDuplexStream(...streams: StreamProtocol[]) {
-  return new StreamProtocol((value: StreamChunk) => {
-    for (const stream of streams) {
-      if (stream.modes.has(value[1])) {
-        stream.push(value);
+function createDuplexStream(...streams: IterableReadableWritableStream[]) {
+  return new IterableReadableWritableStream({
+    passthroughFn: (value: StreamChunk) => {
+      for (const stream of streams) {
+        if (stream.modes.has(value[1])) {
+          stream.push(value);
+        }
       }
-    }
-  }, new Set(streams.flatMap((s) => Array.from(s.modes))));
+    },
+    modes: new Set(streams.flatMap((s) => Array.from(s.modes))),
+  });
 }
 
 export class PregelLoop {
@@ -194,7 +242,7 @@ export class PregelLoop {
   tasks: Record<string, PregelExecutableTask<any, any>> = {};
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stream: StreamProtocol;
+  stream: IterableReadableWritableStream;
 
   checkpointerPromises: Promise<unknown>[] = [];
 

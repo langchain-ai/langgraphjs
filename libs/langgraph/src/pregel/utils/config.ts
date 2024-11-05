@@ -16,6 +16,7 @@ const CONFIG_KEYS = [
   "outputKeys",
   "streamMode",
   "store",
+  "writer",
 ];
 
 const DEFAULT_RECURSION_LIMIT = 25;
