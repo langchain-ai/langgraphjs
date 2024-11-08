@@ -87,7 +87,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     };
     const checkpoint = (await this.serde.loadsTyped(
       doc.type,
-      doc.checkpoint.value()
+      doc.checkpoint.value("utf8")
     )) as Checkpoint;
     const serializedWrites = await this.db
       .collection(this.checkpointWritesCollectionName)
@@ -100,7 +100,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
           serializedWrite.channel,
           await this.serde.loadsTyped(
             serializedWrite.type,
-            serializedWrite.value.value()
+            serializedWrite.value.value("utf8")
           ),
         ] as CheckpointPendingWrite;
       })
@@ -111,7 +111,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       pendingWrites,
       metadata: (await this.serde.loadsTyped(
         doc.type,
-        doc.metadata.value()
+        doc.metadata.value("utf8")
       )) as CheckpointMetadata,
       parentConfig:
         doc.parent_checkpoint_id != null
@@ -171,11 +171,11 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     for await (const doc of result) {
       const checkpoint = (await this.serde.loadsTyped(
         doc.type,
-        doc.checkpoint.value()
+        doc.checkpoint.value("utf8")
       )) as Checkpoint;
       const metadata = (await this.serde.loadsTyped(
         doc.type,
-        doc.metadata.value()
+        doc.metadata.value("utf8")
       )) as CheckpointMetadata;
 
       yield {
