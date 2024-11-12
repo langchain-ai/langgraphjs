@@ -8,3 +8,4 @@ mkdocs-material[imaging]
 mkdocs-typedoc
 markdown-include
 markdown-callouts
+git+ssh://git@github.com/langchain-ai/mkdocs-material-insiders.git

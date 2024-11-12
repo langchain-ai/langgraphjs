@@ -99,6 +99,10 @@ nav:
 
   - How-to Guides:
       - how-tos/index.md
+      - Installation:
+          - Installation: how-tos#installation
+          - how-tos/manage-ecosystem-dependencies.ipynb
+          - how-tos/use-in-web-environments.ipynb
       - LangGraph:
           - LangGraph: how-tos#langgraph
           - Controllability:
