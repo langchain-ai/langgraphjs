@@ -1634,6 +1634,7 @@ __metadata:
     "@langchain/scripts": ">=0.1.3 <0.2.0"
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
+    "@testcontainers/mongodb": ^10.13.2
     "@tsconfig/recommended": ^1.0.3
     "@types/better-sqlite3": ^7.6.9
     "@types/uuid": ^10
@@ -1654,6 +1655,7 @@ __metadata:
     prettier: ^2.8.3
     release-it: ^17.6.0
     rollup: ^4.23.0
+    testcontainers: ^10.13.2
     ts-jest: ^29.1.0
     tsx: ^4.7.0
     typescript: ^4.9.5 || ^5.4.5
@@ -1780,7 +1782,6 @@ __metadata:
     typescript: ^4.9.5 || ^5.4.5
     uuid: ^10.0.0
     yargs: ^17.7.2
-    zod: ^3.23.8
   peerDependencies:
     "@langchain/core": ">=0.2.31 <0.4.0"
     "@langchain/langgraph-checkpoint": ~0.0.6
@@ -9479,11 +9480,11 @@ __metadata:
   linkType: hard
 
 "nan@npm:^2.19.0, nan@npm:^2.20.0":
-  version: 2.20.0
-  resolution: "nan@npm:2.20.0"
+  version: 2.22.0
+  resolution: "nan@npm:2.22.0"
   dependencies:
     node-gyp: latest
-  checksum: eb09286e6c238a3582db4d88c875db73e9b5ab35f60306090acd2f3acae21696c9b653368b4a0e32abcef64ee304a923d6223acaddd16169e5eaaf5c508fb533
+  checksum: 222e3a090e326c72f6782d948f44ee9b81cfb2161d5fe53216f04426a273fd094deee9dcc6813096dd2397689a2b10c1a92d3885d2e73fd2488a51547beb2929
   languageName: node
   linkType: hard
 
@@ -12798,11 +12799,11 @@ __metadata:
   linkType: hard
 
 "yaml@npm:^2.2.2":
-  version: 2.5.1
-  resolution: "yaml@npm:2.5.1"
+  version: 2.6.0
+  resolution: "yaml@npm:2.6.0"
   bin:
     yaml: bin.mjs
-  checksum: 31275223863fbd0b47ba9d2b248fbdf085db8d899e4ca43fff8a3a009497c5741084da6871d11f40e555d61360951c4c910b98216c1325d2c94753c0036d8172
+  checksum: e5e74fd75e01bde2c09333d529af9fbb5928c5f7f01bfdefdcb2bf753d4ef489a45cab4deac01c9448f55ca27e691612b81fe3c3a59bb8cb5b0069da0f92cf0b
   languageName: node
   linkType: hard
 
