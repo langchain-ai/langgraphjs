@@ -1223,7 +1223,6 @@ export function runPregelTests(
 
     expect(await app.invoke({ input: 2 })).toEqual({ output: 3 });
   });
-
   it("should invoke two processes and get correct output", async () => {
     const addOne = jest.fn((x: number): number => x + 1);
 
@@ -7733,6 +7732,7 @@ export function runPregelTests(
         subjects: ["cats", "dogs"],
         jokes: [],
       });
+      await awaitAllCallbacks();
       expect(tracer.runs.length).toEqual(1);
 
       // check state
@@ -8756,6 +8756,33 @@ export function runPregelTests(
     ).toMatchObject(
       // @ts-expect-error Not sure why toMatchObject does not accept historyNs
       historyNs.map(sanitizeCheckpoints)
+    );
+  });
+
+  it("should pass recursion limit set via .withConfig", async () => {
+    const StateAnnotation = Annotation.Root({
+      prop: Annotation<string>,
+    });
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("first", async () => {
+        return {
+          prop: "foo",
+        };
+      })
+      .addNode("second", async () => {
+        return {};
+      })
+      .addEdge("__start__", "first")
+      .addEdge("first", "second")
+      .compile();
+    expect(await graph.invoke({})).toEqual({
+      prop: "foo",
+    });
+    const graphWithConfig = graph.withConfig({
+      recursionLimit: 1,
+    });
+    await expect(graphWithConfig.invoke({})).rejects.toThrow(
+      GraphRecursionError
     );
   });
 }

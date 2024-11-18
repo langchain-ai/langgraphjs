@@ -904,7 +904,16 @@ export class Pregel<
     input: PregelInputType,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
   ): Promise<IterableReadableStream<PregelOutputType>> {
-    return super.stream(input, options);
+    // The ensureConfig method called internally defaults recursionLimit to 25 if not
+    // passed directly in `options`.
+    // There is currently no way in _streamIterator to determine whether this was
+    // set by by ensureConfig or manually by the user, so we specify the bound value here
+    // and override if it is passed as an explicit param in `options`.
+    const config = {
+      recursionLimit: this.config?.recursionLimit,
+      ...options,
+    };
+    return super.stream(input, config);
   }
 
   protected async prepareSpecs(
