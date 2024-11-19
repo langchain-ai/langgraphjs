@@ -15,8 +15,9 @@ export interface CheckpointMetadata {
    * - "input": The checkpoint was created from an input to invoke/stream/batch.
    * - "loop": The checkpoint was created from inside the pregel loop.
    * - "update": The checkpoint was created from a manual state update.
+   * - "fork": The checkpoint was created as a copy of another checkpoint.
    */
-  source: "input" | "loop" | "update";
+  source: "input" | "loop" | "update" | "fork";
   /**
    * The step number of the checkpoint.
    * -1 for the first "input" checkpoint.

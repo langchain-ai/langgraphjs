@@ -585,7 +585,7 @@ export class Pregel<
     values: Record<string, unknown> | unknown,
     asNode?: keyof Nn | string
   ): Promise<RunnableConfig> {
-    const checkpointer =
+    const checkpointer: BaseCheckpointSaver | undefined =
       inputConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
     if (!checkpointer) {
       throw new GraphValueError("No checkpointer set");
@@ -637,7 +637,7 @@ export class Pregel<
     let checkpointConfig = patchConfigurable(config, {
       checkpoint_ns: config.configurable?.checkpoint_ns ?? "",
     });
-    if (saved) {
+    if (saved?.config.configurable) {
       checkpointConfig = patchConfigurable(config, saved.config.configurable);
     }
 
@@ -648,7 +648,21 @@ export class Pregel<
         createCheckpoint(checkpoint, undefined, step),
         {
           source: "update",
-          step,
+          step: step + 1,
+          writes: {},
+          parents: saved?.metadata?.parents ?? {},
+        },
+        {}
+      );
+      return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
+    }
+    if (values == null && asNode === "__copy__") {
+      const nextConfig = await checkpointer.put(
+        saved?.parentConfig ?? checkpointConfig,
+        createCheckpoint(checkpoint, undefined, step),
+        {
+          source: "fork",
+          step: step + 1,
           writes: {},
           parents: saved?.metadata?.parents ?? {},
         },
