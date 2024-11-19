@@ -107,7 +107,6 @@ nav:
           - LangGraph: how-tos#langgraph
           - Controllability:
               - Controllability: how-tos#controllability
-              - how-tos/define-state.ipynb
               - how-tos/map-reduce.ipynb
               - how-tos/branching.ipynb
           - Persistence:

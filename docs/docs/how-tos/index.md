@@ -21,7 +21,6 @@ Here you’ll find answers to “How do I...?” types of questions. These guide
 LangGraph.js is known for being a highly controllable agent framework.
 These how-to guides show how to achieve that controllability.
 
-- [How to define graph state](define-state.ipynb)
 - [How to create branches for parallel execution](branching.ipynb)
 - [How to create map-reduce branches for parallel execution](map-reduce.ipynb)
 
@@ -203,8 +202,9 @@ LangGraph Studio is a built-in UI for visualizing, testing, and debugging your a
 
 ## Troubleshooting
 
-The [Error Reference](../troubleshooting/errors/index.md) page contains guides around resolving common errors you may find while building with LangGraph. Errors referenced below will have an `lc_error_code` property corresponding to one of the below codes when they are thrown in code.
+These are the guides for resolving common errors you may find while building with LangGraph. Errors referenced below will have an `lc_error_code` property corresponding to one of the below codes when they are thrown in code.
 
-### Errors
-
-- [Error reference](../troubleshooting/errors/index.md)
+- [GRAPH_RECURSION_LIMIT](../troubleshooting/errors/GRAPH_RECURSION_LIMIT.ipynb)
+- [INVALID_CONCURRENT_GRAPH_UPDATE](../troubleshooting/errors/INVALID_CONCURRENT_GRAPH_UPDATE.ipynb)
+- [INVALID_GRAPH_NODE_RETURN_VALUE](../troubleshooting/errors/INVALID_GRAPH_NODE_RETURN_VALUE.ipynb)
+- [MULTIPLE_SUBGRAPHS](../troubleshooting/errors/MULTIPLE_SUBGRAPHS.ipynb)
