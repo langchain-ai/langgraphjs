@@ -1,7 +1,3 @@
-import { RunnableConfig } from "@langchain/core/runnables";
-import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
-import { GraphInterrupt } from "./errors.js";
-
 export const MISSING = Symbol.for("__missing__");
 
 export const INPUT = "__input__";
@@ -137,18 +133,4 @@ export class Command<R = unknown> {
 
 export function _isCommand(x: unknown): x is Command {
   return typeof x === "object" && !!x && (x as Command).lg_name === "Command";
-}
-
-export function interrupt<I = unknown, R = unknown>(value: I): R {
-  const config: RunnableConfig | undefined =
-    AsyncLocalStorageProviderSingleton.getRunnableConfig();
-  if (!config) {
-    throw new Error("Called interrupt() outside the context of a graph.");
-  }
-  const resume = config.configurable?.[CONFIG_KEY_RESUME_VALUE];
-  if (resume !== MISSING) {
-    return resume as R;
-  } else {
-    throw new GraphInterrupt([{ value, when: "during" }]);
-  }
 }

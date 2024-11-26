@@ -88,20 +88,13 @@ import {
   MultipleSubgraphsError,
   NodeInterrupt,
 } from "../errors.js";
-import {
-  Command,
-  ERROR,
-  interrupt,
-  INTERRUPT,
-  PULL,
-  PUSH,
-  Send,
-} from "../constants.js";
+import { Command, ERROR, INTERRUPT, PULL, PUSH, Send } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { interrupt } from "../interrupt.js";
 
 expect.extend({
   toHaveKeyStartingWith(received: object, prefix: string) {
