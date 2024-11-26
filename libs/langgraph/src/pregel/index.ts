@@ -49,6 +49,7 @@ import {
   CHECKPOINT_NAMESPACE_END,
   CONFIG_KEY_STREAM,
   CONFIG_KEY_TASK_ID,
+  Command,
 } from "../constants.js";
 import {
   PregelExecutableTask,
@@ -64,6 +65,7 @@ import {
   GraphRecursionError,
   GraphValueError,
   InvalidUpdateError,
+  isGraphBubbleUp,
   isGraphInterrupt,
 } from "../errors.js";
 import {
@@ -405,6 +407,7 @@ export class Pregel<
     const nextTasks = Object.values(
       _prepareNextTasks(
         saved.checkpoint,
+        saved.pendingWrites,
         this.nodes,
         channels,
         managed,
@@ -915,7 +918,7 @@ export class Pregel<
    * @param options.debug Whether to print debug information during execution.
    */
   override async stream(
-    input: PregelInputType,
+    input: PregelInputType | Command,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
   ): Promise<IterableReadableStream<PregelOutputType>> {
     // The ensureConfig method called internally defaults recursionLimit to 25 if not
@@ -994,7 +997,7 @@ export class Pregel<
   }
 
   override async *_streamIterator(
-    input: PregelInputType,
+    input: PregelInputType | Command,
     options?: Partial<PregelOptions<Nn, Cc>>
   ): AsyncGenerator<PregelOutputType> {
     const streamSubgraphs = options?.subgraphs;
@@ -1126,11 +1129,11 @@ export class Pregel<
           // Timeouts will be thrown
           for await (const { task, error } of taskStream) {
             if (error !== undefined) {
-              if (isGraphInterrupt(error)) {
+              if (isGraphBubbleUp(error)) {
                 if (loop.isNested) {
                   throw error;
                 }
-                if (error.interrupts.length) {
+                if (isGraphInterrupt(error) && error.interrupts.length) {
                   loop.putWrites(
                     task.id,
                     error.interrupts.map((interrupt) => [INTERRUPT, interrupt])
@@ -1140,12 +1143,10 @@ export class Pregel<
                 loop.putWrites(task.id, [
                   [ERROR, { message: error.message, name: error.name }],
                 ]);
+                throw error;
               }
             } else {
               loop.putWrites(task.id, task.writes);
-            }
-            if (error !== undefined && !isGraphInterrupt(error)) {
-              throw error;
             }
           }
 
@@ -1244,7 +1245,7 @@ export class Pregel<
    * @param options.debug Whether to print debug information during execution.
    */
   override async invoke(
-    input: PregelInputType,
+    input: PregelInputType | Command,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
   ): Promise<PregelOutputType> {
     const streamMode = options?.streamMode ?? "values";
