@@ -88,11 +88,13 @@ import {
   MultipleSubgraphsError,
   NodeInterrupt,
 } from "../errors.js";
-import { ERROR, INTERRUPT, PULL, PUSH, Send } from "../constants.js";
+import { Command, ERROR, INTERRUPT, PULL, PUSH, Send } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { interrupt } from "../interrupt.js";
 
 expect.extend({
   toHaveKeyStartingWith(received: object, prefix: string) {
@@ -119,6 +121,11 @@ export function runPregelTests(
   if (teardown !== undefined) {
     afterAll(teardown);
   }
+
+  beforeAll(() => {
+    // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
+    initializeAsyncLocalStorageSingleton();
+  });
 
   describe("Channel", () => {
     describe("writeTo", () => {
@@ -860,6 +867,7 @@ export function runPregelTests(
       const taskDescriptions = Object.values(
         _prepareNextTasks(
           checkpoint,
+          [],
           processes,
           channels,
           managed,
@@ -988,6 +996,7 @@ export function runPregelTests(
       const tasks = Object.values(
         _prepareNextTasks(
           checkpoint,
+          [],
           processes,
           channels,
           managed,
@@ -2699,10 +2708,9 @@ export function runPregelTests(
         s: typeof StateAnnotation.State
       ): Partial<typeof StateAnnotation.State> => {
         toolTwoNodeCount += 1;
-        if (s.market === "DE") {
-          throw new NodeInterrupt("Just because...");
-        }
-        return { my_key: " all good" };
+        const answer: string =
+          s.market === "DE" ? interrupt("Just because...") : " all good";
+        return { my_key: answer };
       };
 
       const toolTwoGraph = new StateGraph(StateAnnotation)
@@ -2790,6 +2798,21 @@ export function runPregelTests(
           await gatherIterator(toolTwoCheckpointer.list(thread1, { limit: 2 }))
         ).slice(-1)[0].config,
       });
+
+      // resume execution
+      expect(
+        await gatherIterator(
+          toolTwo.stream(new Command({ resume: " this is great" }), {
+            configurable: { thread_id: "1" },
+          })
+        )
+      ).toEqual([
+        {
+          tool_two: {
+            my_key: " this is great",
+          },
+        },
+      ]);
     });
 
     it("should not cancel node on other node interrupted", async () => {

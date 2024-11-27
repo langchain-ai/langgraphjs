@@ -22,7 +22,9 @@ import {
 } from "../channels/base.js";
 import { PregelExecutableTask, StreamMode } from "./types.js";
 import {
+  _isCommand,
   CHECKPOINT_NAMESPACE_SEPARATOR,
+  Command,
   CONFIG_KEY_CHECKPOINT_MAP,
   CONFIG_KEY_READ,
   CONFIG_KEY_RESUMING,
@@ -30,8 +32,8 @@ import {
   ERROR,
   INPUT,
   INTERRUPT,
+  RESUME,
   TAG_HIDDEN,
-  TASKS,
 } from "../constants.js";
 import {
   _applyWrites,
@@ -46,6 +48,7 @@ import {
   prefixGenerator,
 } from "../utils.js";
 import {
+  mapCommand,
   mapInput,
   mapOutputUpdates,
   mapOutputValues,
@@ -71,14 +74,13 @@ import { LangGraphRunnableConfig } from "./runnable_types.js";
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
 const DEFAULT_LOOP_LIMIT = 25;
-const SPECIAL_CHANNELS = [ERROR, INTERRUPT];
 
 // [namespace, streamMode, payload]
 export type StreamChunk = [string[], StreamMode, unknown];
 
 export type PregelLoopInitializeParams = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  input?: any;
+  input?: any | Command;
   config: RunnableConfig;
   checkpointer?: BaseCheckpointSaver;
   outputKeys: string | string[];
@@ -93,7 +95,7 @@ export type PregelLoopInitializeParams = {
 
 type PregelLoopParams = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  input?: any;
+  input?: any | Command;
   config: RunnableConfig;
   checkpointer?: BaseCheckpointSaver;
   checkpoint: Checkpoint;
@@ -185,7 +187,7 @@ function createDuplexStream(...streams: IterableReadableWritableStream[]) {
 
 export class PregelLoop {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  protected input?: any;
+  protected input?: any | Command;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   output: any;
@@ -226,8 +228,6 @@ export class PregelLoop {
   protected nodes: Record<string, PregelNode>;
 
   protected skipDoneTasks: boolean;
-
-  protected taskWritesLeft: number = 0;
 
   protected prevCheckpointConfig: RunnableConfig | undefined;
 
@@ -297,7 +297,9 @@ export class PregelLoop {
         config.configurable[CONFIG_KEY_STREAM]
       );
     }
-    const skipDoneTasks = config.configurable?.checkpoint_id === undefined;
+    const skipDoneTasks = config.configurable
+      ? !("checkpoint_id" in config.configurable)
+      : true;
     const isNested = CONFIG_KEY_READ in (config.configurable ?? {});
     if (
       !isNested &&
@@ -446,18 +448,6 @@ export class PregelLoop {
     if (writes.length === 0) {
       return;
     }
-    // adjust taskWritesLeft
-    const firstChannel = writes[0][0];
-    const anyChannelIsSend = writes.find(([channel]) => channel === TASKS);
-    const alwaysSave =
-      anyChannelIsSend || SPECIAL_CHANNELS.includes(firstChannel);
-    if (!alwaysSave && !this.taskWritesLeft) {
-      return this._outputWrites(taskId, writes);
-    } else if (firstChannel !== INTERRUPT) {
-      // INTERRUPT makes us want to save the last task's writes
-      // so we don't decrement tasksWritesLeft in that case
-      this.taskWritesLeft -= 1;
-    }
     // save writes
     const pendingWrites: CheckpointPendingWrite<string>[] = writes.map(
       ([key, value]) => {
@@ -480,7 +470,9 @@ export class PregelLoop {
     if (putWritePromise !== undefined) {
       this.checkpointerPromises.push(putWritePromise);
     }
-    this._outputWrites(taskId, writes);
+    if (this.tasks) {
+      this._outputWrites(taskId, writes);
+    }
   }
 
   _outputWrites(taskId: string, writes: [string, unknown][], cached = false) {
@@ -605,6 +597,7 @@ export class PregelLoop {
 
       const nextTasks = _prepareNextTasks(
         this.checkpoint,
+        this.checkpointPendingWrites,
         this.nodes,
         this.channels,
         this.managed,
@@ -619,7 +612,6 @@ export class PregelLoop {
         }
       );
       this.tasks = nextTasks;
-      this.taskWritesLeft = Object.values(this.tasks).length - 1;
 
       // Produce debug output
       if (this.checkpointer) {
@@ -649,7 +641,7 @@ export class PregelLoop {
       // if there are pending writes from a previous loop, apply them
       if (this.skipDoneTasks && this.checkpointPendingWrites.length > 0) {
         for (const [tid, k, v] of this.checkpointPendingWrites) {
-          if (k === ERROR || k === INTERRUPT) {
+          if (k === ERROR || k === INTERRUPT || k === RESUME) {
             continue;
           }
           const task = Object.values(this.tasks).find((t) => t.id === tid);
@@ -745,8 +737,24 @@ export class PregelLoop {
         )
       );
       this._emit(valuesOutput);
-      // map inputs to channel updates
+    } else if (_isCommand(this.input)) {
+      const writes: { [key: string]: PendingWrite[] } = {};
+      // group writes by task id
+      for (const [tid, key, value] of mapCommand(this.input)) {
+        if (writes[tid] === undefined) {
+          writes[tid] = [];
+        }
+        writes[tid].push([key, value]);
+      }
+      if (Object.keys(writes).length === 0) {
+        throw new EmptyInputError("Received empty Command input");
+      }
+      // save writes
+      for (const [tid, ws] of Object.entries(writes)) {
+        this.putWrites(tid, ws);
+      }
     } else {
+      // map inputs to channel updates
       const inputWrites = await gatherIterator(mapInput(inputKeys, this.input));
       if (inputWrites.length === 0) {
         throw new EmptyInputError(
@@ -755,6 +763,7 @@ export class PregelLoop {
       }
       const discardTasks = _prepareNextTasks(
         this.checkpoint,
+        this.checkpointPendingWrites,
         this.nodes,
         this.channels,
         this.managed,

@@ -18,6 +18,12 @@ export class BaseLangGraphError extends Error {
   }
 }
 
+export class GraphBubbleUp extends BaseLangGraphError {
+  get is_bubble_up() {
+    return true;
+  }
+}
+
 export class GraphRecursionError extends BaseLangGraphError {
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
     super(message, fields);
@@ -40,7 +46,7 @@ export class GraphValueError extends BaseLangGraphError {
   }
 }
 
-export class GraphInterrupt extends BaseLangGraphError {
+export class GraphInterrupt extends GraphBubbleUp {
   interrupts: Interrupt[];
 
   constructor(interrupts?: Interrupt[], fields?: BaseLangGraphErrorFields) {
@@ -72,6 +78,10 @@ export class NodeInterrupt extends GraphInterrupt {
   static get unminifiable_name() {
     return "NodeInterrupt";
   }
+}
+
+export function isGraphBubbleUp(e?: Error): e is GraphBubbleUp {
+  return e !== undefined && (e as GraphBubbleUp).is_bubble_up === true;
 }
 
 export function isGraphInterrupt(
