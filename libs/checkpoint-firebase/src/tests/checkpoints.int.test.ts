@@ -1,86 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from "@jest/globals";
+import { describe, it, expect, afterAll } from "@jest/globals";
 import { Checkpoint, CheckpointTuple, uuid6 } from "@langchain/langgraph-checkpoint";
 import { FirebaseSaver } from "../index.js";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, remove, Database } from "firebase/database";
-import { GenericContainer, StartedTestContainer } from "testcontainers";
-
-const FIREBASE_PORT = 9000;
-
-// Example: Replace this URL with your database URL
-const databaseURL = "https://your-database-name.firebaseio.com";
-
-// Initialize Firebase App with only the databaseURL
-const app = initializeApp({
-  databaseURL: databaseURL,
-});
-
-// Get the database instance
-const database = getDatabase(app);
-
-console.log("Database initialized with URL:", databaseURL);
-
-// class FirebaseTestContainer {
-//   container?: StartedTestContainer;
-
-//   async start() {
-//     this.container = await new GenericContainer("firebase/firebase-tools")
-//       .withExposedPorts(FIREBASE_PORT)
-//       .withCmd([
-//         "emulators:start",
-//         "--only",
-//         "database",
-//         "--project",
-//         "test-project",
-//       ])
-//       .start();
-
-//     return this.getDatabaseUrl();
-//   }
-
-//   async stop() {
-//     if (this.container) {
-//       await this.container.stop();
-//     }
-//   }
-
-//   getDatabaseUrl() {
-//     if (!this.container) {
-//       throw new Error("Firebase container has not been started.");
-//     }
-
-//     const port = this.container.getMappedPort(FIREBASE_PORT);
-//     return `http://localhost:${port}`;
-//   }
-// }
-
-// const testContainer = new FirebaseTestContainer();
-
-// export const initializer: any = {
-//   checkpointerName: "@langchain/langgraph-checkpoint-firebase",
-
-//   async beforeAll() {
-//     const databaseUrl = await testContainer.start();
-
-//     // Initialize Firebase Client SDK pointing to the emulator
-//     initializeApp({
-//       databaseURL: databaseUrl,
-//     });
-
-//     console.log(`Firebase Emulator running at ${databaseUrl}`);
-//   },
-
-//   beforeAllTimeout: 300_000, // five minutes to set up Firebase emulator
-
-//   async createCheckpointer() {
-//     const database = getDatabase();
-//     return new FirebaseSaver(database);
-//   },
-
-//   async afterAll() {
-//     await testContainer.stop();
-//   },
-// };
 
 // Define test checkpoints
 const checkpoint1: Checkpoint = {
@@ -109,19 +31,16 @@ async function clearCollection(database: Database, path: string): Promise<void> 
   await remove(collectionRef);
 }
 
-let saver: FirebaseSaver;
-let database: Database;
+const app = initializeApp({
+  databaseURL: process.env.FIREBASE_URL
+});
 
-beforeAll(async () => {
-  await initializer.beforeAll();
-  saver = await initializer.createCheckpointer();
-  database = getDatabase(); // Access database for cleanup
-}, initializer.beforeAllTimeout);
+const database = getDatabase(app);
+let saver = new FirebaseSaver(database);
 
 afterAll(async () => {
   await clearCollection(database, "checkpoints");
   await clearCollection(database, "checkpoint-writes");
-  await initializer.afterAll();
 });
 
 describe("FirebaseSaver", () => {

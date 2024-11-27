@@ -1,78 +1,41 @@
 import { FirebaseSaver } from "@langchain/langgraph-checkpoint-firebase";
-import { initializeApp} from "firebase/app";
+import { initializeApp } from "firebase/app";
+import { getDatabase, Database } from "firebase/database";
 import type { CheckpointerTestInitializer } from "../types.js";
 
-import { GenericContainer, StartedTestContainer } from "testcontainers";
-import { getDatabase} from "firebase/database";
-
-const FIREBASE_PORT = 9000;
-
-class FirebaseTestContainer {
-  container?: StartedTestContainer;
-
-  async start() {
-    this.container = await new GenericContainer("firebase/firebase-tools")
-      .withExposedPorts(FIREBASE_PORT)
-      .withCmd([
-        "emulators:start",
-        "--only",
-        "database",
-        "--project",
-        "test-project",
-      ])
-      .start();
-
-    return this.getDatabaseUrl();
-  }
-
-  async stop() {
-    if (this.container) {
-      await this.container.stop();
-    }
-  }
-
-  getDatabaseUrl() {
-    if (!this.container) {
-      throw new Error("Firebase container has not been started.");
-    }
-
-    const port = this.container.getMappedPort(FIREBASE_PORT);
-    return `http://localhost:${port}`;
-  }
-}
-
-
-
-const testContainer = new FirebaseTestContainer();
+let database: Database;
 
 export const initializer: CheckpointerTestInitializer<FirebaseSaver> = {
   checkpointerName: "@langchain/langgraph-checkpoint-firebase",
 
   async beforeAll() {
-    const databaseUrl = await testContainer.start();
-    databaseUrl.getMappedPort()
-
-
-    // Initialize Firebase SDK pointing to the emulator
-    initializeApp({
-      apiKey: "fake-api-key", // Firebase requires a fake API key for emulator use
+    // Ensure the Firebase Emulator is running locally
+    const firebaseConfig = {
+      apiKey: "test-api-key",
       authDomain: "localhost",
-      projectId: "test-project", // Match the emulator's projectId
-      databaseURL: ,
-    });
+      projectId: "test-project",
+      databaseURL: process.env.FIREBASEURL || "http://localhost:9000", // Use emulator URL
+    };
+    process.env.FIREBASE_URL = process.env.FIREBASEURL || "http://localhost:9000"
+    // Initialize Firebase app
+    const app = initializeApp(firebaseConfig);
 
-    console.log(`Firebase Emulator running at ${databaseUrl}`);
+    // Initialize Firebase Realtime Database
+    database = getDatabase(app);
+
+    console.log("Connected to Firebase Realtime Database Emulator");
   },
 
-  beforeAllTimeout: 300_000, // five minutes to set up Firebase emulator
+  beforeAllTimeout: 300_000, // Allow up to 5 minutes for emulator setup
 
   async createCheckpointer() {
-    const database = getDatabase();
+    // Create a new instance of FirebaseSaver with the initialized database
     return new FirebaseSaver(database);
   },
 
   async afterAll() {
-    await testContainer.stop();
+    console.log("Cleaning up Firebase Realtime Database Emulator");
+    // Optionally, you can implement cleanup logic here if necessary
   },
 };
 

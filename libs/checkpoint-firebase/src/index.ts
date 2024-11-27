@@ -228,21 +228,6 @@ export class FirebaseSaver extends BaseCheckpointSaver {
                 "Failed to serialized checkpoint and metadata to the same type."
             );
         }
-
-        /* We want to store the following (taken from MongoDB implementation)
-            - checkpoint ID
-            - checkpoint type
-            - checkpoint (serialized)
-            - metadata (serialized)*/
-
-        /* SQLite implementation also stores the following
-            - parent checkpoint ID
-            - thread ID,
-            - checkpoint_ns, */
-
-        /* I believe the excess values are stored for debugging purposes (hunch)
-            I am going to store the excess values as well here */
-
         const data = {
             thread_id: thread_id,
             checkpoint_ns: checkpoint_ns,
@@ -253,15 +238,11 @@ export class FirebaseSaver extends BaseCheckpointSaver {
             metadata: serializedMetadata
             };
 
-        /* "thread_id", "checkpoint_ns", and "checkpoint_id" 
-            form the "primary key" for this database */
         const docKey = `${thread_id}_${checkpoint_ns}_${checkpoint.id}`;
 
-        /* Get a reference to the location in the database 
-           where you want to store the data */
+
         const dataRef = ref(this.db, `${this.checkpointCollectionName}/${docKey}`);
 
-        /* Use set to write the data to this reference */
         await set(dataRef, data);
 
         return {
@@ -273,7 +254,6 @@ export class FirebaseSaver extends BaseCheckpointSaver {
         };
     }
 
-    /* Saves intermediate writes associated with a checkpoint to the Firestore database. */
     async putWrites(
         config: RunnableConfig,
         writes: PendingWrite[],
@@ -302,8 +282,7 @@ export class FirebaseSaver extends BaseCheckpointSaver {
                 const [channel, value] = write;
                 const [type, serializedValue] = this.serde.dumpsTyped(value);
     
-                /* "thread_id", "checkpoint_ns", "checkpoint_id", "taskId" and "idx"
-                    form the "primary key" for each checkpoint write */
+
                 const writeKey = `${thread_id}_${checkpoint_ns}_${checkpoint_id}_${taskId}_${idx}`;
                 
                 currentData[writeKey] = {
