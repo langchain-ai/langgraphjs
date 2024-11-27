@@ -297,7 +297,9 @@ export class PregelLoop {
         config.configurable[CONFIG_KEY_STREAM]
       );
     }
-    const skipDoneTasks = config.configurable?.checkpoint_id === undefined;
+    const skipDoneTasks = config.configurable
+      ? !("checkpoint_id" in config.configurable)
+      : true;
     const isNested = CONFIG_KEY_READ in (config.configurable ?? {});
     if (
       !isNested &&
@@ -610,6 +612,11 @@ export class PregelLoop {
         }
       );
       this.tasks = nextTasks;
+      console.log(
+        this.checkpointNamespace,
+        Object.values(this.tasks).map((t) => t.name),
+        this.skipDoneTasks
+      );
 
       // Produce debug output
       if (this.checkpointer) {
@@ -655,6 +662,11 @@ export class PregelLoop {
       }
       // if all tasks have finished, re-tick
       if (Object.values(this.tasks).every((task) => task.writes.length > 0)) {
+        console.log(
+          this.checkpointNamespace,
+          "re-ticking",
+          Object.values(this.tasks).map((t) => t.writes)
+        );
         return this.tick({
           inputKeys,
           interruptAfter,
