@@ -42,6 +42,10 @@ import {
   CHECKPOINT_NAMESPACE_END,
   PUSH,
   PULL,
+  RESUME,
+  CONFIG_KEY_RESUME_VALUE,
+  NULL_TASK_ID,
+  MISSING,
 } from "../constants.js";
 import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
@@ -189,6 +193,8 @@ export function _localWrite(
   commit(writes);
 }
 
+const IGNORE = new Set<string | number | symbol>([PUSH, RESUME, INTERRUPT]);
+
 export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   checkpoint: Checkpoint,
   channels: Cc,
@@ -196,6 +202,10 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getNextVersion?: (version: any, channel: BaseChannel) => any
 ): Record<string, PendingWriteValue[]> {
+  // if no task has triggers this is applying writes from the null task only
+  // so we don't do anything other than update the channels written to
+  const bumpStep = tasks.some((task) => task.triggers.length > 0);
+
   // Filter out non instances of BaseChannel
   const onlyChannels = Object.fromEntries(
     Object.entries(channels).filter(([_, value]) => isBaseChannel(value))
@@ -240,7 +250,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // Clear pending sends
-  if (checkpoint.pending_sends) {
+  if (checkpoint.pending_sends?.length && bumpStep) {
     checkpoint.pending_sends = [];
   }
 
@@ -252,7 +262,9 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   const pendingWritesByManaged = {} as Record<keyof Cc, PendingWriteValue[]>;
   for (const task of tasks) {
     for (const [chan, val] of task.writes) {
-      if (chan === TASKS) {
+      if (IGNORE.has(chan)) {
+        // do nothing
+      } else if (chan === TASKS) {
         checkpoint.pending_sends.push({
           node: (val as Send).node,
           args: (val as Send).args,
@@ -313,14 +325,16 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // Channels that weren't updated in this step are notified of a new step
-  for (const chan of Object.keys(onlyChannels)) {
-    if (!updatedChannels.has(chan)) {
-      const updated = onlyChannels[chan].update([]);
-      if (updated && getNextVersion !== undefined) {
-        checkpoint.channel_versions[chan] = getNextVersion(
-          maxVersion,
-          onlyChannels[chan]
-        );
+  if (bumpStep) {
+    for (const chan of Object.keys(onlyChannels)) {
+      if (!updatedChannels.has(chan)) {
+        const updated = onlyChannels[chan].update([]);
+        if (updated && getNextVersion !== undefined) {
+          checkpoint.channel_versions[chan] = getNextVersion(
+            maxVersion,
+            onlyChannels[chan]
+          );
+        }
       }
     }
   }
@@ -350,6 +364,7 @@ export function _prepareNextTasks<
   Cc extends StrRecord<string, BaseChannel>
 >(
   checkpoint: ReadonlyCheckpoint,
+  pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
   channels: Cc,
   managed: ManagedValueMapping,
@@ -363,6 +378,7 @@ export function _prepareNextTasks<
   Cc extends StrRecord<string, BaseChannel>
 >(
   checkpoint: ReadonlyCheckpoint,
+  pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
   channels: Cc,
   managed: ManagedValueMapping,
@@ -376,6 +392,7 @@ export function _prepareNextTasks<
   Cc extends StrRecord<string, BaseChannel>
 >(
   checkpoint: ReadonlyCheckpoint,
+  pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
   channels: Cc,
   managed: ManagedValueMapping,
@@ -393,6 +410,7 @@ export function _prepareNextTasks<
     const task = _prepareSingleTask(
       [PUSH, i],
       checkpoint,
+      pendingWrites,
       processes,
       channels,
       managed,
@@ -410,6 +428,7 @@ export function _prepareNextTasks<
     const task = _prepareSingleTask(
       [PULL, name],
       checkpoint,
+      pendingWrites,
       processes,
       channels,
       managed,
@@ -430,6 +449,7 @@ export function _prepareSingleTask<
 >(
   taskPath: [string, string | number],
   checkpoint: ReadonlyCheckpoint,
+  pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
   channels: Cc,
   managed: ManagedValueMapping,
@@ -444,6 +464,7 @@ export function _prepareSingleTask<
 >(
   taskPath: [string, string | number],
   checkpoint: ReadonlyCheckpoint,
+  pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
   channels: Cc,
   managed: ManagedValueMapping,
@@ -458,6 +479,7 @@ export function _prepareSingleTask<
 >(
   taskPath: [string, string | number],
   checkpoint: ReadonlyCheckpoint,
+  pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
   channels: Cc,
   managed: ManagedValueMapping,
@@ -472,6 +494,7 @@ export function _prepareSingleTask<
 >(
   taskPath: [string, string | number],
   checkpoint: ReadonlyCheckpoint,
+  pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
   channels: Cc,
   managed: ManagedValueMapping,
@@ -537,6 +560,9 @@ export function _prepareSingleTask<
           metadata = { ...metadata, ...proc.metadata };
         }
         const writes: [keyof Cc, unknown][] = [];
+        const resume = pendingWrites?.find(
+          (w) => [taskId, NULL_TASK_ID].includes(w[0]) && w[1] === RESUME
+        );
         return {
           name: packet.node,
           input: packet.args,
@@ -587,6 +613,7 @@ export function _prepareSingleTask<
                   ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                   [parentNamespace]: checkpoint.id,
                 },
+                [CONFIG_KEY_RESUME_VALUE]: resume ? resume[2] : MISSING,
                 checkpoint_id: undefined,
                 checkpoint_ns: taskCheckpointNamespace,
               },
@@ -661,6 +688,9 @@ export function _prepareSingleTask<
             metadata = { ...metadata, ...proc.metadata };
           }
           const writes: [keyof Cc, unknown][] = [];
+          const resume = pendingWrites?.find(
+            (w) => [taskId, NULL_TASK_ID].includes(w[0]) && w[1] === RESUME
+          );
           const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
           return {
             name,
@@ -714,6 +744,7 @@ export function _prepareSingleTask<
                     ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                     [parentNamespace]: checkpoint.id,
                   },
+                  [CONFIG_KEY_RESUME_VALUE]: resume ? resume[2] : MISSING,
                   checkpoint_id: undefined,
                   checkpoint_ns: taskCheckpointNamespace,
                 },

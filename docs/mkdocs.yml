@@ -22,6 +22,7 @@ theme:
     - navigation.instant
     - navigation.instant.prefetch
     - navigation.instant.progress
+    - navigation.path
     - navigation.prune
     - navigation.tabs
     - navigation.top
@@ -65,12 +66,153 @@ plugins:
       title_link: "/" # optional, default: '/'
 
 nav:
-  # Setting the names of the nav items explicitly due to mkdocs
-  # how-reload being a bit buggy with the names of the tabs.
-  - Home: "index.md"
-  - Tutorials: "tutorials/index.md"
-  - Concepts: "concepts/index.md"
-  - "How-to Guides": "how-tos/index.md"
+  - Home: index.md
+  - Tutorials:
+      - tutorials/index.md
+      - Quick Start:
+          - Quick Start: tutorials#quick-start
+          - tutorials/quickstart.ipynb
+      - Chatbots:
+          - Chatbots: tutorials/chatbots/customer_support_small_model.ipynb
+      - RAG:
+          - RAG: tutorials#rag
+          - tutorials/rag/langgraph_agentic_rag.ipynb
+          - tutorials/rag/langgraph_crag.ipynb
+          - tutorials/rag/langgraph_self_rag.ipynb
+      - Agent Architectures:
+          - Agent Architectures: tutorials#agent-architectures
+          - Multi-Agent Systems:
+              - Multi-Agent Systems: tutorials#multi-agent-systems
+              - tutorials/multi_agent/multi_agent_collaboration.ipynb
+              - tutorials/multi_agent/agent_supervisor.ipynb
+              - tutorials/multi_agent/hierarchical_agent_teams.ipynb
+          - Planning Agents:
+              - Planning Agents: tutorials#planning-agents
+              - tutorials/plan-and-execute/plan-and-execute.ipynb
+          - Reflection & Critique:
+              - Reflection & Critique: tutorials#reflection-critique
+              - tutorials/reflection/reflection.ipynb
+              - tutorials/rewoo/rewoo.ipynb
+      - Evaluation & Analysis:
+          - Evaluation & Analysis: tutorials#evaluation
+          - tutorials/chatbot-simulation-evaluation/agent-simulation-evaluation.ipynb
+
+  - How-to Guides:
+      - how-tos/index.md
+      - Installation:
+          - Installation: how-tos#installation
+          - how-tos/manage-ecosystem-dependencies.ipynb
+          - how-tos/use-in-web-environments.ipynb
+      - LangGraph:
+          - LangGraph: how-tos#langgraph
+          - Controllability:
+              - Controllability: how-tos#controllability
+              - how-tos/map-reduce.ipynb
+              - how-tos/branching.ipynb
+          - Persistence:
+              - Persistence: how-tos#persistence
+              - how-tos/persistence.ipynb
+              - how-tos/subgraph-persistence.ipynb
+              - how-tos/cross-thread-persistence.ipynb
+              - how-tos/persistence-postgres.ipynb
+          - Memory:
+              - Memory: how-tos#memory
+              - how-tos/manage-conversation-history.ipynb
+              - how-tos/delete-messages.ipynb
+              - how-tos/add-summary-conversation-history.ipynb
+          - Human-in-the-loop:
+              - Human-in-the-loop: how-tos#human-in-the-loop
+              - how-tos/breakpoints.ipynb
+              - how-tos/dynamic_breakpoints.ipynb
+              - how-tos/edit-graph-state.ipynb
+              - how-tos/wait-user-input.ipynb
+              - how-tos/time-travel.ipynb
+              - how-tos/review-tool-calls.ipynb
+          - Streaming:
+              - Streaming: how-tos#streaming
+              - how-tos/stream-values.ipynb
+              - how-tos/stream-updates.ipynb
+              - how-tos/stream-tokens.ipynb
+              - how-tos/streaming-tokens-without-langchain.ipynb
+              - how-tos/streaming-content.ipynb
+              - how-tos/stream-multiple.ipynb
+              - how-tos/streaming-events-from-within-tools.ipynb
+              - how-tos/streaming-from-final-node.ipynb
+          - Tool calling:
+              - Tool calling: how-tos#tool-calling
+              - how-tos/tool-calling.ipynb
+              - how-tos/force-calling-a-tool-first.ipynb
+              - how-tos/tool-calling-errors.ipynb
+              - how-tos/pass-run-time-values-to-tools.ipynb
+          - Subgraphs:
+              - Subgraphs: how-tos#subgraphs
+              - how-tos/subgraph.ipynb
+              - how-tos/subgraphs-manage-state.ipynb
+              - how-tos/subgraph-transform-state.ipynb
+          - State Management:
+              - State Management: how-tos#state-management
+              - how-tos/define-state.ipynb
+              - how-tos/input_output_schema.ipynb
+              - how-tos/pass_private_state.ipynb
+          - Other:
+              - Other: how-tos#other
+              - how-tos/configuration.ipynb
+              - how-tos/node-retry-policies.ipynb
+              - how-tos/dynamically-returning-directly.ipynb
+              - how-tos/respond-in-format.ipynb
+              - how-tos/managing-agent-steps.ipynb
+          - Prebuilt ReAct Agent:
+              - Prebuilt ReAct Agent: how-tos#prebuilt-react-agent
+              - how-tos/create-react-agent.ipynb
+              - how-tos/react-memory.ipynb
+              - how-tos/react-system-prompt.ipynb
+              - how-tos/react-human-in-the-loop.ipynb
+      - Troubleshooting:
+          - Troubleshooting: how-tos#troubleshooting
+          - troubleshooting/errors/index.md
+          - troubleshooting/errors/GRAPH_RECURSION_LIMIT.ipynb
+          - troubleshooting/errors/INVALID_CONCURRENT_GRAPH_UPDATE.ipynb
+          - troubleshooting/errors/INVALID_GRAPH_NODE_RETURN_VALUE.ipynb
+          - troubleshooting/errors/MULTIPLE_SUBGRAPHS.ipynb
+
+  - Conceptual Guides:
+      - concepts/index.md
+      - LangGraph:
+          - LangGraph: concepts#langgraph
+          - concepts/high_level.md
+          - concepts/low_level.md
+          - concepts/agentic_concepts.md
+          - concepts/multi_agent.md
+          - concepts/human_in_the_loop.md
+          - concepts/persistence.md
+          - concepts/memory.md
+          - concepts/streaming.md
+          - concepts/faq.md
+      - LangGraph Platform:
+          - LangGraph Platform: concepts#langgraph-platform
+          - High Level:
+              - High Level: concepts#high-level
+              - concepts/langgraph_platform.md
+              - concepts/deployment_options.md
+              - concepts/plans.md
+              - concepts/template_applications.md
+          - Components:
+              - Components: concepts#components
+              - concepts/langgraph_server.md
+              - concepts/langgraph_studio.md
+              - concepts/langgraph_cli.md
+              - concepts/sdk.md
+              - how-tos/use-remote-graph.md
+          - LangGraph Server:
+              - LangGraph Server: concepts#langgraph-server
+              - concepts/application_structure.md
+              - concepts/assistants.md
+              - concepts/double_texting.md
+          - Deployment Options:
+              - Deployment Options: concepts#deployment-options
+              - concepts/self_hosted.md
+              - concepts/langgraph_cloud.md
+              - concepts/bring_your_own_cloud.md
   - "Reference":
       - "reference/index.html"
   - "Versions":
@@ -148,7 +290,6 @@ validation:
   omitted_files: ignore
   # absolute_links: warn
   unrecognized_links: warn
-  nav:
-    not_found: warn
-  links:
-    not_found: warn
+  anchors: info
+  # this is needed to handle headers with anchors for nav
+  not_found: info

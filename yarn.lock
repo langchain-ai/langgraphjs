@@ -1653,7 +1653,7 @@ __metadata:
     mongodb: ^6.8.0
     prettier: ^2.8.3
     release-it: ^17.6.0
-    rollup: ^4.23.0
+    rollup: ^4.22.4
     ts-jest: ^29.1.0
     tsx: ^4.7.0
     typescript: ^4.9.5 || ^5.4.5
@@ -1691,7 +1691,7 @@ __metadata:
     pg: ^8.12.0
     prettier: ^2.8.3
     release-it: ^17.6.0
-    rollup: ^4.5.2
+    rollup: ^4.22.4
     ts-jest: ^29.1.0
     tsx: ^4.7.0
     typescript: ^4.9.5 || ^5.4.5
@@ -1729,7 +1729,7 @@ __metadata:
     jest-environment-node: ^29.6.4
     prettier: ^2.8.3
     release-it: ^17.6.0
-    rollup: ^4.23.0
+    rollup: ^4.22.4
     ts-jest: ^29.1.0
     tsx: ^4.7.0
     typescript: ^4.9.5 || ^5.4.5
@@ -1789,7 +1789,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint, @langchain/langgraph-checkpoint@~0.0.10":
+"@langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint, @langchain/langgraph-checkpoint@~0.0.12":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-checkpoint@workspace:libs/checkpoint"
   dependencies:
@@ -1814,7 +1814,7 @@ __metadata:
     jest-environment-node: ^29.6.4
     prettier: ^2.8.3
     release-it: ^17.6.0
-    rollup: ^4.23.0
+    rollup: ^4.22.4
     ts-jest: ^29.1.0
     tsx: ^4.7.0
     typescript: ^4.9.5 || ^5.4.5
@@ -1844,7 +1844,7 @@ __metadata:
     "@langchain/anthropic": ^0.3.5
     "@langchain/community": ^0.3.9
     "@langchain/core": ^0.3.16
-    "@langchain/langgraph-checkpoint": ~0.0.10
+    "@langchain/langgraph-checkpoint": ~0.0.12
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
     "@langchain/langgraph-sdk": ~0.0.21
@@ -1874,7 +1874,7 @@ __metadata:
     pg: ^8.13.0
     prettier: ^2.8.3
     release-it: ^17.6.0
-    rollup: ^4.23.0
+    rollup: ^4.22.4
     ts-jest: ^29.1.0
     tsx: ^4.7.0
     typescript: ^4.9.5 || ^5.4.5

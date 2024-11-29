@@ -1,7 +1,9 @@
 import type { PendingWrite } from "@langchain/langgraph-checkpoint";
+import { validate } from "uuid";
+
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelExecutableTask } from "./types.js";
-import { TAG_HIDDEN } from "../constants.js";
+import { Command, NULL_TASK_ID, RESUME, TAG_HIDDEN } from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
 
 export function readChannel<C extends PropertyKey>(
@@ -47,6 +49,25 @@ export function readChannels<C extends PropertyKey>(
     return values;
   } else {
     return readChannel(channels, select);
+  }
+}
+
+export function* mapCommand(
+  cmd: Command
+): Generator<[string, string, unknown]> {
+  if (cmd.resume) {
+    if (
+      typeof cmd.resume === "object" &&
+      !!cmd.resume &&
+      Object.keys(cmd.resume).length &&
+      Object.keys(cmd.resume).every(validate)
+    ) {
+      for (const [tid, resume] of Object.entries(cmd.resume)) {
+        yield [tid, RESUME, resume];
+      }
+    } else {
+      yield [NULL_TASK_ID, RESUME, cmd.resume];
+    }
   }
 }
 
