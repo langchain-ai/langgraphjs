@@ -21,11 +21,13 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.MKDOCS_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -36,6 +38,7 @@ jobs:
           pip install uv
           uv venv
           uv pip install -r docs/docs-requirements.txt
+          uv pip install "git+https://${GITHUB_TOKEN}@github.com/langchain-ai/mkdocs-material-insiders.git"
 
       - name: Use Node.js 18.x
         uses: actions/setup-node@v3

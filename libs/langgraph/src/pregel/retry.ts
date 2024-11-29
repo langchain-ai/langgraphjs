@@ -1,4 +1,4 @@
-import { getSubgraphsSeenSet, isGraphInterrupt } from "../errors.js";
+import { getSubgraphsSeenSet, isGraphBubbleUp } from "../errors.js";
 import { PregelExecutableTask } from "./types.js";
 import type { RetryPolicy } from "./utils/index.js";
 
@@ -129,7 +129,7 @@ async function _runWithRetry(
     } catch (e: any) {
       error = e;
       error.pregelTaskId = pregelTask.id;
-      if (isGraphInterrupt(error)) {
+      if (isGraphBubbleUp(error)) {
         break;
       }
       if (resolvedRetryPolicy === undefined) {

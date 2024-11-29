@@ -185,7 +185,7 @@ Is there anything else you'd like to know about the weather in New York or any o
     <summary>Initialize the model and tools.</summary>
 
     - We use `ChatAnthropic` as our LLM. **NOTE:** We need make sure the model knows that it has these tools available to call. We can do this by converting the LangChain tools into the format for Anthropic tool calling using the `.bindTools()` method.
-    - We define the tools we want to use -- a weather tool in our case. See the documentation [here](https://js.langchain.com/docs/modules/agents/tools/dynamic) on how to create your own tools.
+    - We define the tools we want to use -- a weather tool in our case. See the documentation [here](https://js.langchain.com/docs/how_to/custom_tools/) on how to create your own tools.
    </details>
 
 2. <details>
