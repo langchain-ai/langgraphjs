@@ -7,7 +7,6 @@ import {
 import { RunnableConfig, RunnableToolLike } from "@langchain/core/runnables";
 import { StructuredToolInterface } from "@langchain/core/tools";
 import { RunnableCallable } from "../utils.js";
-import { END } from "../graph/graph.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 
 export type ToolNodeOptions = {
@@ -202,7 +201,7 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
 
 export function toolsCondition(
   state: BaseMessage[] | typeof MessagesAnnotation.State
-): "tools" | typeof END {
+): "tools" | "__end__" {
   const message = Array.isArray(state)
     ? state[state.length - 1]
     : state.messages[state.messages.length - 1];
@@ -212,7 +211,6 @@ export function toolsCondition(
     ((message as AIMessage).tool_calls?.length ?? 0) > 0
   ) {
     return "tools";
-  } else {
-    return END;
   }
+  return "__end__";
 }
