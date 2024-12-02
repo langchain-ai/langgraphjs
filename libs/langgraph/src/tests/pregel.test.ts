@@ -8808,6 +8808,64 @@ export function runPregelTests(
       GraphRecursionError
     );
   });
+
+  it.only("should interrupt and resume with Command inside a subgraph", async () => {
+    const subgraph = new StateGraph(MessagesAnnotation)
+      .addNode("one", (_) => {
+        const interruptValue = interrupt("<INTERRUPTED>");
+        if (interruptValue !== "<RESUMED>") {
+          throw new Error("Expected interrupt to return <RESUMED>");
+        }
+        return {
+          messages: [{
+            role: "user",
+            content: "success"
+          }]
+        };
+      })
+      .addEdge(START, "one")
+      .compile();
+
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", () => {
+        // No-op
+        return {};
+      })
+      .addNode("subgraph", subgraph)
+      .addNode("two", (state) => {
+        if (state.messages.length !== 1) {
+          throw new Error(`Expected 1 message, got ${state.messages.length}`);
+        }
+        return {}
+      })
+      .addEdge(START, "one")
+      .addEdge("one", "subgraph")
+      .addEdge("subgraph", "two")
+      .addEdge("two", END)
+      .compile({ checkpointer: await createCheckpointer() });
+
+    const config = { configurable: { thread_id: "test_subgraph_interrupt_resume" } };
+
+    await graph.invoke({
+      messages: [],
+    }, config)
+
+    const currTasks = (await graph.getState(config)).tasks;
+    console.log("currTasks")
+    console.log(currTasks);
+    expect(currTasks[0].interrupts).toHaveLength(1);
+
+    // Resume with `Command`
+    const result = await graph.invoke(new Command({
+      resume: "<RESUMED>",
+    }), config);
+
+    const currTasksAfterCmd = (await graph.getState(config)).tasks;
+    expect(currTasksAfterCmd[0].interrupts).toHaveLength(0);
+
+    expect(result.messages).toBeDefined();
+    expect(result.messages).toHaveLength(1);
+  })
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
