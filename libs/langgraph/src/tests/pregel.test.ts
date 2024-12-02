@@ -8817,10 +8817,12 @@ export function runPregelTests(
           throw new Error("Expected interrupt to return <RESUMED>");
         }
         return {
-          messages: [{
-            role: "user",
-            content: "success"
-          }]
+          messages: [
+            {
+              role: "user",
+              content: "success",
+            },
+          ],
         };
       })
       .addEdge(START, "one")
@@ -8836,7 +8838,7 @@ export function runPregelTests(
         if (state.messages.length !== 1) {
           throw new Error(`Expected 1 message, got ${state.messages.length}`);
         }
-        return {}
+        return {};
       })
       .addEdge(START, "one")
       .addEdge("one", "subgraph")
@@ -8844,28 +8846,36 @@ export function runPregelTests(
       .addEdge("two", END)
       .compile({ checkpointer: await createCheckpointer() });
 
-    const config = { configurable: { thread_id: "test_subgraph_interrupt_resume" } };
+    const config = {
+      configurable: { thread_id: "test_subgraph_interrupt_resume" },
+    };
 
-    await graph.invoke({
-      messages: [],
-    }, config)
+    await graph.invoke(
+      {
+        messages: [],
+      },
+      config
+    );
 
     const currTasks = (await graph.getState(config)).tasks;
-    console.log("currTasks")
+    console.log("currTasks");
     console.log(currTasks);
     expect(currTasks[0].interrupts).toHaveLength(1);
 
     // Resume with `Command`
-    const result = await graph.invoke(new Command({
-      resume: "<RESUMED>",
-    }), config);
+    const result = await graph.invoke(
+      new Command({
+        resume: "<RESUMED>",
+      }),
+      config
+    );
 
     const currTasksAfterCmd = (await graph.getState(config)).tasks;
     expect(currTasksAfterCmd[0].interrupts).toHaveLength(0);
 
     expect(result.messages).toBeDefined();
     expect(result.messages).toHaveLength(1);
-  })
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
