@@ -8809,7 +8809,7 @@ export function runPregelTests(
     );
   });
 
-  it.only("should interrupt and resume with Command inside a subgraph", async () => {
+  it("should interrupt and resume with Command inside a subgraph", async () => {
     const subgraph = new StateGraph(MessagesAnnotation)
       .addNode("one", (_) => {
         const interruptValue = interrupt("<INTERRUPTED>");
@@ -8858,8 +8858,6 @@ export function runPregelTests(
     );
 
     const currTasks = (await graph.getState(config)).tasks;
-    console.log("currTasks");
-    console.log(currTasks);
     expect(currTasks[0].interrupts).toHaveLength(1);
 
     // Resume with `Command`
@@ -8871,7 +8869,7 @@ export function runPregelTests(
     );
 
     const currTasksAfterCmd = (await graph.getState(config)).tasks;
-    expect(currTasksAfterCmd[0].interrupts).toHaveLength(0);
+    expect(currTasksAfterCmd).toHaveLength(0);
 
     expect(result.messages).toBeDefined();
     expect(result.messages).toHaveLength(1);
