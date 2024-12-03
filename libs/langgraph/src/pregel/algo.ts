@@ -613,7 +613,9 @@ export function _prepareSingleTask<
                   ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                   [parentNamespace]: checkpoint.id,
                 },
-                [CONFIG_KEY_RESUME_VALUE]: resume ? resume[2] : MISSING,
+                [CONFIG_KEY_RESUME_VALUE]: resume
+                  ? resume[2]
+                  : configurable[CONFIG_KEY_RESUME_VALUE] ?? MISSING,
                 checkpoint_id: undefined,
                 checkpoint_ns: taskCheckpointNamespace,
               },
@@ -744,7 +746,9 @@ export function _prepareSingleTask<
                     ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                     [parentNamespace]: checkpoint.id,
                   },
-                  [CONFIG_KEY_RESUME_VALUE]: resume ? resume[2] : MISSING,
+                  [CONFIG_KEY_RESUME_VALUE]: resume
+                    ? resume[2]
+                    : configurable[CONFIG_KEY_RESUME_VALUE] ?? MISSING,
                   checkpoint_id: undefined,
                   checkpoint_ns: taskCheckpointNamespace,
                 },
