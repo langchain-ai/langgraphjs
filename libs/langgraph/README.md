@@ -60,16 +60,18 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { StateGraph } from "@langchain/langgraph";
-import { MemorySaver, Annotation } from "@langchain/langgraph";
+import { MemorySaver, Annotation, messagesStateReducer } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
 // Define the graph state
 // See here for more info: https://langchain-ai.github.io/langgraphjs/how-tos/define-state/
 const StateAnnotation = Annotation.Root({
   messages: Annotation<BaseMessage[]>({
-    reducer: (x, y) => x.concat(y),
-  })
-})
+    // `messagesStateReducer` function defines how `messages` state key should be updated
+    // (in this case it appends new messages to the list and overwrites messages with the same ID)
+    reducer: messagesStateReducer,
+  }),
+});
 
 // Define the tools for the agent to use
 const weatherTool = tool(async ({ query }) => {

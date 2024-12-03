@@ -98,9 +98,6 @@ export interface GetOperation {
    * @example
    * // Get a user profile
    * namespace: ["users", "profiles"]
-   *
-   * // Get a cached embedding
-   * namespace: ["cache", "embeddings"]
    */
   namespace: string[];
 
@@ -203,7 +200,7 @@ export interface PutOperation {
    * namespace: ["documents", "user123"]
    *
    * // Nested cache structure
-   * namespace: ["cache", "embeddings", "v1"]
+   * namespace: ["cache", "docs", "v1"]
    */
   namespace: string[];
 
