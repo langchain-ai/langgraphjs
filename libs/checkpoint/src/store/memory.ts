@@ -61,7 +61,7 @@ export class InMemoryStore extends BaseStore {
     if (options?.index) {
       this._indexConfig = {
         ...options.index,
-        __tokenizedFields: (options.index.fields ?? ["$"]).map((p) => [
+        __tokenizedFields: (options.index.fields || ["$"]).map((p) => [
           p,
           p === "$" ? [p] : tokenizePath(p),
         ]),
@@ -126,15 +126,15 @@ export class InMemoryStore extends BaseStore {
             const scoredResults = this.scoreResults(
               candidates,
               queryVector,
-              op.offset ?? 0,
-              op.limit ?? 10
+              op.offset || 0,
+              op.limit || 10
             );
             results[i] = scoredResults;
           } else {
             results[i] = this.paginateResults(
               candidates.map((item) => ({ ...item, score: undefined })),
-              op.offset ?? 0,
-              op.limit ?? 10
+              op.offset || 0,
+              op.limit || 10
             );
           }
         }
@@ -143,8 +143,8 @@ export class InMemoryStore extends BaseStore {
         for (const [i, [op, candidates]] of searchOps.entries()) {
           results[i] = this.paginateResults(
             candidates.map((item) => ({ ...item, score: undefined })),
-            op.offset ?? 0,
-            op.limit ?? 10
+            op.offset || 0,
+            op.limit || 10
           );
         }
       }
@@ -172,7 +172,7 @@ export class InMemoryStore extends BaseStore {
   private getOperation(op: GetOperation): Item | null {
     const namespaceKey = op.namespace.join(":");
     const item = this.data.get(namespaceKey)?.get(op.key);
-    return item ?? null;
+    return item || null;
   }
 
   private putOperation(op: PutOperation): void {
@@ -223,8 +223,8 @@ export class InMemoryStore extends BaseStore {
     namespaces.sort((a, b) => a.join(":").localeCompare(b.join(":")));
 
     return namespaces.slice(
-      op.offset ?? 0,
-      (op.offset ?? 0) + (op.limit ?? namespaces.length)
+      op.offset || 0,
+      (op.offset || 0) + (op.limit || namespaces.length)
     );
   }
 
@@ -235,13 +235,13 @@ export class InMemoryStore extends BaseStore {
       if (path.length > key.length) return false;
       return path.every((pElem, index) => {
         const kElem = key[index];
-        return pElem === "*" ?? kElem === pElem;
+        return pElem === "*" || kElem === pElem;
       });
     } else if (matchType === "suffix") {
       if (path.length > key.length) return false;
       return path.every((pElem, index) => {
         const kElem = key[key.length - path.length + index];
-        return pElem === "*" ?? kElem === pElem;
+        return pElem === "*" || kElem === pElem;
       });
     }
 
@@ -339,7 +339,7 @@ export class InMemoryStore extends BaseStore {
   private extractTexts(ops: PutOperation[]): {
     [text: string]: [string[], string, string][];
   } {
-    if (!ops.length ?? !this._indexConfig) {
+    if (!ops.length || !this._indexConfig) {
       return {};
     }
 
@@ -348,7 +348,7 @@ export class InMemoryStore extends BaseStore {
     for (const op of ops) {
       if (op.value !== null && op.index !== false) {
         const paths =
-          op.index === null ?? op.index === undefined
+          op.index === null || op.index === undefined
             ? this._indexConfig.__tokenizedFields ?? []
             : op.index.map(
                 (ix) => [ix, tokenizePath(ix)] as [string, string[]]
