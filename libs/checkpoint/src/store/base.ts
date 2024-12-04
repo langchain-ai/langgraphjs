@@ -402,7 +402,7 @@ export abstract class BaseStore {
    * @returns Promise resolving to the item or null if not found
    */
   async get(namespace: string[], key: string): Promise<Item | null> {
-    return (await this.batch([{ namespace, key } as GetOperation]))[0];
+    return (await this.batch<[GetOperation]>([{ namespace, key }]))[0];
   }
 
   /**
@@ -438,14 +438,14 @@ export abstract class BaseStore {
   ): Promise<SearchItem[]> {
     const { filter, limit = 10, offset = 0, query } = options;
     return (
-      await this.batch([
+      await this.batch<[SearchOperation]>([
         {
           namespacePrefix,
           filter,
           limit,
           offset,
           query,
-        } as SearchOperation,
+        },
       ])
     )[0];
   }
@@ -480,7 +480,7 @@ export abstract class BaseStore {
     index?: false | string[]
   ): Promise<void> {
     validateNamespace(namespace);
-    await this.batch([{ namespace, key, value, index } as PutOperation]);
+    await this.batch<[PutOperation]>([{ namespace, key, value, index }]);
   }
 
   /**
@@ -490,7 +490,7 @@ export abstract class BaseStore {
    * @param key Unique identifier within the namespace
    */
   async delete(namespace: string[], key: string): Promise<void> {
-    await this.batch([{ namespace, key, value: null } as PutOperation]);
+    await this.batch<[PutOperation]>([{ namespace, key, value: null }]);
   }
 
   /**
@@ -533,13 +533,13 @@ export abstract class BaseStore {
     }
 
     return (
-      await this.batch([
+      await this.batch<[ListNamespacesOperation]>([
         {
           matchConditions: matchConditions.length ? matchConditions : undefined,
           maxDepth,
           limit,
           offset,
-        } as ListNamespacesOperation,
+        },
       ])
     )[0];
   }
