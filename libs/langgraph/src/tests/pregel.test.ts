@@ -8874,6 +8874,30 @@ export function runPregelTests(
     expect(result.messages).toBeDefined();
     expect(result.messages).toHaveLength(1);
   });
+
+  it("should be able to invoke a single node on a graph", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", () => {
+        return {
+          messages: [
+            {
+              role: "user",
+              content: "success",
+            },
+          ],
+        };
+      })
+      .addNode("two", () => {
+        throw new Error("Should not be called");
+      })
+      .addEdge(START, "one")
+      .addEdge("one", "two")
+      .addEdge("two", END)
+      .compile();
+    const result = await graph.nodes.one.invoke({ messages: [] });
+    expect(result.messages).toBeDefined();
+    expect(result.messages).toHaveLength(1);
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
