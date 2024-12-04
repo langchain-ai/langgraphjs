@@ -134,9 +134,7 @@ export function* mapDebugTaskResults<
             ? streamChannels.includes(channel)
             : channel === streamChannels;
         }),
-        interrupts: writes.filter(([channel]) => {
-          return channel === INTERRUPT;
-        }),
+        interrupts: writes.filter((w) => w[0] === INTERRUPT).map((w) => w[1]),
       },
     };
   }
