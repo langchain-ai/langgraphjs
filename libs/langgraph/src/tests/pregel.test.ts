@@ -8875,11 +8875,15 @@ export function runPregelTests(
     expect(result.messages).toHaveLength(1);
   });
 
-  it("should be able to invoke a single node on a graph", async () => {
+  it.only("should be able to invoke a single node on a graph", async () => {
     const graph = new StateGraph(MessagesAnnotation)
-      .addNode("one", () => {
+      .addNode("one", (state) => {
+        if (!state.messages.length) {
+          throw new Error("State not found");
+        }
         return {
           messages: [
+            ...state.messages,
             {
               role: "user",
               content: "success",
@@ -8894,9 +8898,11 @@ export function runPregelTests(
       .addEdge("one", "two")
       .addEdge("two", END)
       .compile();
-    const result = await graph.nodes.one.invoke({ messages: [] });
+    const result = await graph.nodes.one.invoke({
+      messages: [new HumanMessage("start")],
+    });
     expect(result.messages).toBeDefined();
-    expect(result.messages).toHaveLength(1);
+    expect(result.messages).toHaveLength(2);
   });
 }
 
