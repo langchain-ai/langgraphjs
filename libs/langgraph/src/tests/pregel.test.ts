@@ -8875,7 +8875,7 @@ export function runPregelTests(
     expect(result.messages).toHaveLength(1);
   });
 
-  it.only("should be able to invoke a single node on a graph", async () => {
+  it("should be able to invoke a single node on a graph", async () => {
     const graph = new StateGraph(MessagesAnnotation)
       .addNode("one", (state) => {
         if (!state.messages.length) {
