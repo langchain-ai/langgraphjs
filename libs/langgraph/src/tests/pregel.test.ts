@@ -8911,7 +8911,7 @@ export function runPregelTests(
     expect(result.messages).toHaveLength(2);
   });
 
-  it.only("Can have three graphs with different keys", async () => {
+  it("Can have three graphs with different keys", async () => {
     const annotationOne = Annotation.Root({
       inputOne: Annotation<string>,
     });
