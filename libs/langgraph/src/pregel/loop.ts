@@ -287,17 +287,6 @@ export class PregelLoop {
 
   static async initialize(params: PregelLoopInitializeParams) {
     let { config, stream } = params;
-    // Prevent non RunnableConfig keys from being passed through to subgraphs
-    config = {
-      configurable: config.configurable,
-      recursionLimit: config.recursionLimit,
-      callbacks: config.callbacks,
-      tags: config.tags,
-      metadata: config.metadata,
-      maxConcurrency: config.maxConcurrency,
-      timeout: config.timeout,
-      signal: config.signal,
-    };
     const { checkSubgraphs = true } = params;
     if (
       stream !== undefined &&
