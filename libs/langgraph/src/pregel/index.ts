@@ -1252,7 +1252,6 @@ export class Pregel<
     input: InputType | Command | null,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
   ): Promise<OutputType> {
-    console.log("Starting graph.invoke", input, options);
     const streamMode = options?.streamMode ?? "values";
     const config = {
       ...options,

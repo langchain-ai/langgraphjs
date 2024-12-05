@@ -35,7 +35,6 @@ export function ensureLangGraphConfig(
   const implicitConfig: RunnableConfig = mergeLangGraphConfigs(
     AsyncLocalStorageProviderSingleton.getRunnableConfig()
   );
-  console.log("implicitConfig", implicitConfig);
   if (implicitConfig !== undefined) {
     for (const [k, v] of Object.entries(implicitConfig)) {
       if (v !== undefined) {
@@ -95,7 +94,7 @@ export function ensureLangGraphConfig(
 export function mergeLangGraphConfigs<CallOptions extends RunnableConfig>(
   ...configs: (CallOptions | RunnableConfig | undefined | null)[]
 ): Partial<CallOptions> {
-  const mergedConfig = mergeConfigs(configs[0] ?? {}, configs[1] ?? {});
+  const mergedConfig = mergeConfigs(...configs);
   return {
     configurable: mergedConfig.configurable,
     recursionLimit: mergedConfig.recursionLimit,

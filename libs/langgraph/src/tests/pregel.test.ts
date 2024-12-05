@@ -8945,7 +8945,7 @@ export function runPregelTests(
       .addEdge("callGraphTwo", END)
       .compile();
 
-    await graphOne.invoke({ inputOne: "one" });
+    await expect(graphOne.invoke({ inputOne: "one" })).resolves.toBeDefined();
   });
 }
 

@@ -84,7 +84,6 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
         mergedConfig
       );
     } else {
-      console.log("mergedConfig", mergedConfig);
       returnValue = await AsyncLocalStorageProviderSingleton.runWithConfig(
         mergedConfig,
         async () => this.func(input, mergedConfig)
