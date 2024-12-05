@@ -91,7 +91,10 @@ import {
   type ManagedValueSpec,
 } from "../managed/base.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
-import { ensureLangGraphConfig, mergeLangGraphConfigs } from "./utils/config.js";
+import {
+  ensureLangGraphConfig,
+  mergeLangGraphConfigs,
+} from "./utils/config.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { StreamMessagesHandler } from "./messages.js";
 

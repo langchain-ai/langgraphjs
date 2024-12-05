@@ -7,10 +7,7 @@ import {
   Graph as DrawableGraph,
   Node as DrawableNode,
 } from "@langchain/core/runnables/graph";
-import {
-  Runnable,
-  RunnableConfig,
-} from "@langchain/core/runnables";
+import { Runnable, RunnableConfig } from "@langchain/core/runnables";
 import {
   All,
   CheckpointListOptions,

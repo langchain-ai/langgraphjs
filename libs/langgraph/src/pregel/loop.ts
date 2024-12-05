@@ -297,7 +297,7 @@ export class PregelLoop {
       maxConcurrency: config.maxConcurrency,
       timeout: config.timeout,
       signal: config.signal,
-    }
+    };
     const { checkSubgraphs = true } = params;
     if (
       stream !== undefined &&
@@ -606,7 +606,11 @@ export class PregelLoop {
         return false;
       }
 
-      console.log('preparing next tasks', this.checkpointNamespace, this.config);
+      console.log(
+        "preparing next tasks",
+        this.checkpointNamespace,
+        this.config
+      );
       const nextTasks = _prepareNextTasks(
         this.checkpoint,
         this.checkpointPendingWrites,
@@ -623,8 +627,8 @@ export class PregelLoop {
           store: this.store,
         }
       );
-      console.log('this.tasks');
-      console.dir(this.tasks, { depth: 5 })
+      console.log("this.tasks");
+      console.dir(this.tasks, { depth: 5 });
       this.tasks = nextTasks;
 
       // Produce debug output

@@ -5,7 +5,10 @@ import {
   RunnableConfig,
 } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
-import { ensureLangGraphConfig, mergeLangGraphConfigs } from "./pregel/utils/config.js";
+import {
+  ensureLangGraphConfig,
+  mergeLangGraphConfigs,
+} from "./pregel/utils/config.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface RunnableCallableArgs extends Partial<any> {
@@ -81,7 +84,7 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
         mergedConfig
       );
     } else {
-      console.log("mergedConfig", mergedConfig)
+      console.log("mergedConfig", mergedConfig);
       returnValue = await AsyncLocalStorageProviderSingleton.runWithConfig(
         mergedConfig,
         async () => this.func(input, mergedConfig)
