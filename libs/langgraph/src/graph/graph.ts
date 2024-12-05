@@ -456,7 +456,6 @@ export class CompiledGraph<
 > {
   declare NodeType: N;
 
-  // TODO: deprecate these values after updating the API
   declare RunInput: State;
 
   declare RunOutput: Update;
