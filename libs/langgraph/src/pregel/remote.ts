@@ -8,7 +8,6 @@ import {
   Node as DrawableNode,
 } from "@langchain/core/runnables/graph";
 import {
-  mergeConfigs,
   Runnable,
   RunnableConfig,
 } from "@langchain/core/runnables";
@@ -43,6 +42,7 @@ import {
   CONFIG_KEY_STREAM,
   INTERRUPT,
 } from "../constants.js";
+import { mergeLangGraphConfigs } from "./utils/config.js";
 
 export type RemoteGraphParams = Omit<
   PregelParams<
@@ -216,7 +216,7 @@ export class RemoteGraph<
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore Remove ignore when we remove support for 0.2 versions of core
   override withConfig(config: RunnableConfig): typeof this {
-    const mergedConfig = mergeConfigs(this.config, config);
+    const mergedConfig = mergeLangGraphConfigs(this.config, config);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return new (this.constructor as any)({ ...this, config: mergedConfig });
   }
@@ -391,7 +391,7 @@ export class RemoteGraph<
     input: PregelInputType,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
   ): AsyncGenerator<PregelOutputType> {
-    const mergedConfig = mergeConfigs(this.config, options);
+    const mergedConfig = mergeLangGraphConfigs(this.config, options);
     const sanitizedConfig = this._sanitizeConfig(mergedConfig);
 
     const streamProtocolInstance = options?.configurable?.[CONFIG_KEY_STREAM];
@@ -494,7 +494,7 @@ export class RemoteGraph<
     values: Record<string, unknown>,
     asNode?: string
   ): Promise<RunnableConfig> {
-    const mergedConfig = mergeConfigs(this.config, inputConfig);
+    const mergedConfig = mergeLangGraphConfigs(this.config, inputConfig);
     const response = await this.client.threads.updateState(
       mergedConfig.configurable?.thread_id,
       { values, asNode, checkpoint: this._getCheckpoint(mergedConfig) }
@@ -508,7 +508,7 @@ export class RemoteGraph<
     config: RunnableConfig,
     options?: CheckpointListOptions
   ): AsyncIterableIterator<StateSnapshot> {
-    const mergedConfig = mergeConfigs(this.config, config);
+    const mergedConfig = mergeLangGraphConfigs(this.config, config);
     const states = await this.client.threads.getHistory(
       mergedConfig.configurable?.thread_id,
       {
@@ -553,7 +553,7 @@ export class RemoteGraph<
     config: RunnableConfig,
     options?: { subgraphs?: boolean }
   ): Promise<StateSnapshot> {
-    const mergedConfig = mergeConfigs(this.config, config);
+    const mergedConfig = mergeLangGraphConfigs(this.config, config);
 
     const state = await this.client.threads.getState(
       mergedConfig.configurable?.thread_id,

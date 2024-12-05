@@ -5,7 +5,6 @@ import {
   RunnableFunc,
   RunnableSequence,
   getCallbackManagerForConfig,
-  mergeConfigs,
   patchConfig,
   _coerceToRunnable,
   RunnableLike,
@@ -92,7 +91,7 @@ import {
   type ManagedValueSpec,
 } from "../managed/base.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
-import { ensureLangGraphConfig } from "./utils/config.js";
+import { ensureLangGraphConfig, mergeLangGraphConfigs } from "./utils/config.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { StreamMessagesHandler } from "./messages.js";
 
@@ -280,7 +279,7 @@ export class Pregel<
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore Remove ignore when we remove support for 0.2 versions of core
   override withConfig(config: RunnableConfig): typeof this {
-    const mergedConfig = mergeConfigs(this.config, config);
+    const mergedConfig = mergeLangGraphConfigs(this.config, config);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return new (this.constructor as any)({ ...this, config: mergedConfig });
   }
@@ -511,7 +510,7 @@ export class Pregel<
       );
     }
 
-    const mergedConfig = mergeConfigs(this.config, config);
+    const mergedConfig = mergeLangGraphConfigs(this.config, config);
     const saved = await checkpointer.getTuple(config);
     const snapshot = await this._prepareStateSnapshot({
       config: mergedConfig,
@@ -565,7 +564,7 @@ export class Pregel<
       );
     }
 
-    const mergedConfig = mergeConfigs(this.config, config, {
+    const mergedConfig = mergeLangGraphConfigs(this.config, config, {
       configurable: { checkpoint_ns: checkpointNamespace },
     });
 
@@ -627,7 +626,7 @@ export class Pregel<
     }
     // get last checkpoint
     const config = this.config
-      ? mergeConfigs(this.config, inputConfig)
+      ? mergeLangGraphConfigs(this.config, inputConfig)
       : inputConfig;
     const saved = await checkpointer.getTuple(config);
     const checkpoint =
@@ -1250,6 +1249,7 @@ export class Pregel<
     input: InputType | Command | null,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
   ): Promise<OutputType> {
+    console.log("Starting graph.invoke", input, options);
     const streamMode = options?.streamMode ?? "values";
     const config = {
       ...options,

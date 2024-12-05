@@ -8910,6 +8910,43 @@ export function runPregelTests(
     expect(result.messages).toBeDefined();
     expect(result.messages).toHaveLength(2);
   });
+
+  it.only("Can have three graphs with different keys", async () => {
+    const annotationOne = Annotation.Root({
+      inputOne: Annotation<string>,
+    });
+    const annotationTwo = Annotation.Root({
+      inputOne: Annotation<string>,
+      inputTwo: Annotation<string>,
+    });
+    const annotationThree = Annotation.Root({
+      inputTwo: Annotation<string>,
+      inputThree: Annotation<string>,
+    });
+
+    const graphThree = new StateGraph(annotationThree)
+      .addNode("returns", () => ({ inputThree: "one" }))
+      .addEdge(START, "returns")
+      .compile();
+
+    const graphTwo = new StateGraph(annotationTwo)
+      .addNode("one", () => ({ inputTwo: "one" }))
+      .addNode("callGraphThree", graphThree, { input: annotationThree })
+      .addEdge(START, "one")
+      .addEdge("one", "callGraphThree")
+      .addEdge("callGraphThree", END)
+      .compile();
+
+    const graphOne = new StateGraph(annotationOne)
+      .addNode("one", () => ({ inputOne: "one" }))
+      .addNode("callGraphTwo", graphTwo, { input: annotationTwo })
+      .addEdge(START, "one")
+      .addEdge("one", "callGraphTwo")
+      .addEdge("callGraphTwo", END)
+      .compile();
+
+    await graphOne.invoke({ inputOne: "one" });
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
