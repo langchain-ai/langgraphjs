@@ -1592,25 +1592,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@file:/Users/bracesproul/code/lang-chain-ai/langchainjs/langchain-core::locator=%40langchain%2Flanggraph%40workspace%3Alibs%2Flanggraph":
-  version: 0.3.19
-  resolution: "@langchain/core@file:/Users/bracesproul/code/lang-chain-ai/langchainjs/langchain-core#/Users/bracesproul/code/lang-chain-ai/langchainjs/langchain-core::hash=22ccb2&locator=%40langchain%2Flanggraph%40workspace%3Alibs%2Flanggraph"
-  dependencies:
-    ansi-styles: ^5.0.0
-    camelcase: 6
-    decamelize: 1.2.0
-    js-tiktoken: ^1.0.12
-    langsmith: ^0.2.0
-    mustache: ^4.2.0
-    p-queue: ^6.6.2
-    p-retry: 4
-    uuid: ^10.0.0
-    zod: ^3.22.4
-    zod-to-json-schema: ^3.22.3
-  checksum: 75d55487fff6c07ee35d84f42410acbc721c9d7b4123e46c87b6baba07656376a730a41ce1365b717c0dda4a91865ae279b41512cda6f21b1335eec6ecd8540d
-  languageName: node
-  linkType: hard
-
 "@langchain/core@npm:^0.3.16":
   version: 0.3.16
   resolution: "@langchain/core@npm:0.3.16"
@@ -1862,7 +1843,7 @@ __metadata:
     "@jest/globals": ^29.5.0
     "@langchain/anthropic": ^0.3.5
     "@langchain/community": ^0.3.9
-    "@langchain/core": "file:/Users/bracesproul/code/lang-chain-ai/langchainjs/langchain-core"
+    "@langchain/core": ^0.3.16
     "@langchain/langgraph-checkpoint": ~0.0.12
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
