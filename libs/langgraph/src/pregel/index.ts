@@ -5,10 +5,10 @@ import {
   RunnableFunc,
   RunnableSequence,
   getCallbackManagerForConfig,
+  mergeConfigs,
   patchConfig,
   _coerceToRunnable,
   RunnableLike,
-  mergeConfigs,
 } from "@langchain/core/runnables";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {

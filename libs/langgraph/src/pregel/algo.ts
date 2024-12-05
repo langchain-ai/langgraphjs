@@ -1,8 +1,8 @@
 /* eslint-disable no-param-reassign */
 import {
+  mergeConfigs,
   patchConfig,
   RunnableConfig,
-  mergeConfigs,
 } from "@langchain/core/runnables";
 import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import {
