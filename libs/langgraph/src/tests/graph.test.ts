@@ -23,9 +23,13 @@ describe("State", () => {
   it("should allow reducers with different argument types", async () => {
     const StateAnnotation = Annotation.Root({
       val: Annotation<number>,
-      testval: Annotation<string[], string>({
-        reducer: (left, right) =>
-          right ? left.concat([right.toString()]) : left,
+      testval: Annotation<string[], string | string[]>({
+        reducer: (left, right) => {
+          if (typeof right === "string") {
+            return right ? left.concat([right.toString()]) : left;
+          }
+          return right.length ? left.concat(right) : left;
+        },
       }),
     });
     const stateGraph = new StateGraph(StateAnnotation);
@@ -41,6 +45,7 @@ describe("State", () => {
       .addEdge(START, "testnode")
       .addEdge("testnode", END)
       .compile();
+
     expect(await graph.invoke({ testval: ["hello"] })).toEqual({
       testval: ["hello", "hi!"],
       val: 3,
@@ -51,12 +56,16 @@ describe("State", () => {
     const stateGraph = new StateGraph<
       unknown,
       { testval: string[] },
-      { testval: string }
+      { testval: string | string[] }
     >({
       channels: {
         testval: {
-          reducer: (left: string[], right?: string) =>
-            right ? left.concat([right.toString()]) : left,
+          reducer: (left, right) => {
+            if (typeof right === "string") {
+              return right ? left.concat([right.toString()]) : left;
+            }
+            return right.length ? left.concat(right) : left;
+          },
         },
       },
     });

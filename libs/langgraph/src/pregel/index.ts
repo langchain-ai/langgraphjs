@@ -196,11 +196,13 @@ export class Pregel<
     Nn extends StrRecord<string, PregelNode>,
     Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>
+    ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
+    InputType = PregelInputType,
+    OutputType = PregelOutputType
   >
   extends Runnable<
-    PregelInputType,
-    PregelOutputType,
+    InputType | Command | null,
+    OutputType,
     PregelOptions<Nn, Cc, ConfigurableFieldType>
   >
   implements
@@ -918,7 +920,7 @@ export class Pregel<
    * @param options.debug Whether to print debug information during execution.
    */
   override async stream(
-    input: PregelInputType | Command,
+    input: InputType | Command | null,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
   ): Promise<IterableReadableStream<PregelOutputType>> {
     // The ensureConfig method called internally defaults recursionLimit to 25 if not
@@ -1245,9 +1247,9 @@ export class Pregel<
    * @param options.debug Whether to print debug information during execution.
    */
   override async invoke(
-    input: PregelInputType | Command,
+    input: InputType | Command | null,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
-  ): Promise<PregelOutputType> {
+  ): Promise<OutputType> {
     const streamMode = options?.streamMode ?? "values";
     const config = {
       ...options,
@@ -1262,6 +1264,6 @@ export class Pregel<
     if (streamMode === "values") {
       return chunks[chunks.length - 1];
     }
-    return chunks;
+    return chunks as OutputType;
   }
 }

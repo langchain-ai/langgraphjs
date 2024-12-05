@@ -20,14 +20,9 @@ import {
 } from "@langchain/core/language_models/base";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
-import {
-  END,
-  messagesStateReducer,
-  START,
-  StateGraph,
-} from "../graph/index.js";
+import { END, START, StateGraph } from "../graph/index.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
-import { CompiledStateGraph, StateGraphArgs } from "../graph/state.js";
+import { CompiledStateGraph } from "../graph/state.js";
 import { ToolNode } from "./tool_node.js";
 
 export interface AgentState {
@@ -107,11 +102,12 @@ export type CreateReactAgentParams = {
  * // Returns the messages in the state at each step of execution
  * ```
  */
+
 export function createReactAgent(
   params: CreateReactAgentParams
 ): CompiledStateGraph<
-  AgentState,
-  Partial<AgentState>,
+  (typeof MessagesAnnotation)["State"],
+  (typeof MessagesAnnotation)["Update"],
   typeof START | "agent" | "tools"
 > {
   const {
@@ -122,12 +118,6 @@ export function createReactAgent(
     interruptBefore,
     interruptAfter,
   } = params;
-  const schema: StateGraphArgs<AgentState>["channels"] = {
-    messages: {
-      value: messagesStateReducer,
-      default: () => [],
-    },
-  };
 
   let toolClasses: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
   if (!Array.isArray(tools)) {
@@ -160,9 +150,7 @@ export function createReactAgent(
     return { messages: [await modelRunnable.invoke(messages, config)] };
   };
 
-  const workflow = new StateGraph<AgentState>({
-    channels: schema,
-  })
+  const workflow = new StateGraph(MessagesAnnotation)
     .addNode("agent", callModel)
     .addNode("tools", new ToolNode<AgentState>(toolClasses))
     .addEdge(START, "agent")
