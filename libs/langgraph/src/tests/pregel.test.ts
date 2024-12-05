@@ -1990,6 +1990,100 @@ export function runPregelTests(
     expect(res).toEqual({ items: ["0", "1", "2", "2", "3"] });
   });
 
+  it.skip("concurrent emit sends", async () => {
+    const State = Annotation.Root({
+      items: Annotation<string[]>({ reducer: (a, b) => a.concat(b) }),
+    });
+
+    const Node =
+      (name: string) => (state: (typeof State)["State"] | number) => ({
+        items: typeof state === "object" ? [name] : [`${name}|${state}`],
+      });
+
+    const sendForFun = () => [new Send("2", 1), new Send("2", 2), "3.1"];
+    const sendForProfit = () => [new Send("2", 3), new Send("2", 4)];
+    const routeToThree = () => "3";
+
+    const graph = new StateGraph(State)
+      .addNode("1", Node("1"))
+      .addNode("1.1", Node("1.1"))
+      .addNode("2", Node("2"))
+      .addNode("3", Node("3"))
+      .addNode("3.1", Node("3.1"))
+      .addEdge(START, "1")
+      .addEdge(START, "1.1")
+      .addConditionalEdges("1", sendForFun)
+      .addConditionalEdges("1.1", sendForProfit)
+      .addConditionalEdges("2", routeToThree)
+      .compile();
+
+    // TODO: implement send V2
+    expect(await graph.invoke({ items: ["0"] })).toEqual({
+      items: ["0", "1", "1.1", "2|1", "2|2", "2|3", "2|4", "3", "3.1"],
+    });
+  });
+
+  it.only("send sequences", async () => {
+    const State = Annotation.Root({
+      items: Annotation<string[]>({ reducer: (a, b) => a.concat(b) }),
+    });
+
+    type StateType = (typeof State)["State"];
+
+    const isStateType = (state: unknown): state is StateType =>
+      typeof state === "object" &&
+      state != null &&
+      "items" in state &&
+      Array.isArray(state.items);
+
+    const Node = (name: string) => (state: StateType | Command | number) => {
+      const update = isStateType(state)
+        ? [name]
+        : [[name, JSON.stringify(state)].join("|")];
+
+      if (state instanceof Command) {
+        // TODO: there isn't a clear way how to clone a Command?
+        return new Command({ goto: state.goto, resume: state.resume, update });
+      }
+      return { items: update };
+    };
+
+    const sendForFun = () => [
+      new Send("2", new Command({ goto: new Send("2", 3) })),
+      new Send("2", new Command({ goto: new Send("2", 4) })),
+      "3.1",
+    ];
+
+    const routeToThree = () => "3";
+
+    const graph = new StateGraph(State)
+      .addNode("1", Node("1"))
+      .addNode("2", Node("2"))
+      .addNode("3", Node("3"))
+      .addNode("3.1", Node("3.1"))
+      .addEdge(START, "1")
+      .addEdge("1", "2")
+      .addConditionalEdges("1", sendForFun)
+      .addConditionalEdges("2", routeToThree)
+      .compile();
+
+    const expected = await graph.invoke({ items: ["0"] });
+    
+    // TODO: implement send V2?
+    expect(expected).toEqual({
+      items: [
+        "0",
+        "1",
+        `2|${JSON.stringify(new Command({ goto: new Send("2", 3) }))}`,
+        `2|${JSON.stringify(new Command({ goto: new Send("2", 4) }))}`,
+        "2|3",
+        "2|4",
+        "3.1",
+        "3",
+      ],
+    });
+  });
+
   it("should handle checkpoints correctly", async () => {
     const inputPlusTotal = jest.fn(
       (x: { total: number; input: number }): number => x.total + x.input
