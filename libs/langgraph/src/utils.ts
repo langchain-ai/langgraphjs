@@ -1,5 +1,6 @@
 import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import {
+  mergeConfigs,
   patchConfig,
   Runnable,
   RunnableConfig,
@@ -7,7 +8,6 @@ import {
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import {
   ensureLangGraphConfig,
-  mergeLangGraphConfigs,
 } from "./pregel/utils/config.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,7 +75,9 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let returnValue: any;
     const config = ensureLangGraphConfig(options);
-    const mergedConfig = mergeLangGraphConfigs(this.config, config);
+    console.log("ensured config", config);
+    const mergedConfig = mergeConfigs(this.config, config);
+    console.log("merged config", mergedConfig);
 
     if (this.trace) {
       returnValue = await this._callWithConfig(

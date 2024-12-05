@@ -32,9 +32,7 @@ export function ensureLangGraphConfig(
     configurable: {},
   };
 
-  const implicitConfig: RunnableConfig = mergeLangGraphConfigs(
-    AsyncLocalStorageProviderSingleton.getRunnableConfig()
-  );
+  const implicitConfig: RunnableConfig = AsyncLocalStorageProviderSingleton.getRunnableConfig()
   if (implicitConfig !== undefined) {
     for (const [k, v] of Object.entries(implicitConfig)) {
       if (v !== undefined) {
