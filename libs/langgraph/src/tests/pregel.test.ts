@@ -2783,8 +2783,11 @@ export function runPregelTests(
             id: expect.any(String),
             name: "tool_two",
             path: [PULL, "tool_two"],
+            state: undefined,
             interrupts: [
               {
+                ns: [expect.stringMatching(/^tool_two:/)],
+                resumable: true,
                 value: "Just because...",
                 when: "during",
               },
@@ -3563,6 +3566,7 @@ export function runPregelTests(
           hello: "there",
           bye: "world",
           messages: ["hello"],
+          // @ts-expect-error This should emit a TS error
           now: 345, // ignored because not in input schema
         })
       ).toEqual({
@@ -3575,6 +3579,7 @@ export function runPregelTests(
             hello: "there",
             bye: "world",
             messages: ["hello"],
+            // @ts-expect-error This should emit a TS error
             now: 345, // ignored because not in input schema
           })
         )
@@ -3734,6 +3739,7 @@ export function runPregelTests(
       };
       const res = await app.invoke(
         {
+          // @ts-expect-error Messages is not in schema
           messages: ["initial input"],
         },
         config
@@ -8873,6 +8879,36 @@ export function runPregelTests(
 
     expect(result.messages).toBeDefined();
     expect(result.messages).toHaveLength(1);
+  });
+
+  it("should be able to invoke a single node on a graph", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", (state) => {
+        if (!state.messages.length) {
+          throw new Error("State not found");
+        }
+        return {
+          messages: [
+            ...state.messages,
+            {
+              role: "user",
+              content: "success",
+            },
+          ],
+        };
+      })
+      .addNode("two", () => {
+        throw new Error("Should not be called");
+      })
+      .addEdge(START, "one")
+      .addEdge("one", "two")
+      .addEdge("two", END)
+      .compile();
+    const result = await graph.nodes.one.invoke({
+      messages: [new HumanMessage("start")],
+    });
+    expect(result.messages).toBeDefined();
+    expect(result.messages).toHaveLength(2);
   });
 }
 
