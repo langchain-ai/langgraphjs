@@ -2783,8 +2783,11 @@ export function runPregelTests(
             id: expect.any(String),
             name: "tool_two",
             path: [PULL, "tool_two"],
+            state: undefined,
             interrupts: [
               {
+                ns: [expect.stringMatching(/^tool_two:/)],
+                resumable: true,
                 value: "Just because...",
                 when: "during",
               },
