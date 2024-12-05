@@ -1,4 +1,4 @@
-import { mergeConfigs, pickRunnableConfigKeys, RunnableConfig } from "@langchain/core/runnables";
+import { RunnableConfig } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { LangGraphRunnableConfig } from "../runnable_types.js";
 
@@ -32,7 +32,8 @@ export function ensureLangGraphConfig(
     configurable: {},
   };
 
-  const implicitConfig: RunnableConfig = AsyncLocalStorageProviderSingleton.getRunnableConfig()
+  const implicitConfig: RunnableConfig =
+    AsyncLocalStorageProviderSingleton.getRunnableConfig();
   if (implicitConfig !== undefined) {
     for (const [k, v] of Object.entries(implicitConfig)) {
       if (v !== undefined) {
@@ -87,11 +88,4 @@ export function ensureLangGraphConfig(
   }
 
   return empty;
-}
-
-export function mergeLangGraphConfigs<CallOptions extends RunnableConfig>(
-  ...configs: (CallOptions | RunnableConfig | undefined | null)[]
-): Partial<CallOptions> {
-  const mergedConfig = mergeConfigs(...configs);
-  return pickRunnableConfigKeys(mergedConfig) as Partial<CallOptions>;
 }

@@ -479,6 +479,11 @@ export class CompiledStateGraph<
   O extends StateDefinition = StateDefinition,
   C extends StateDefinition = StateDefinition
 > extends CompiledGraph<N, S, U, StateType<C>> {
+  /**
+   * The underlying {@link StateGraph} that this CompiledStateGraph was built
+   * from. This is provided for introspection purposes, but should not be
+   * modified directly.
+   */
   declare builder: StateGraph<unknown, S, U, N, I, O, C>;
 
   attachNode(key: typeof START, node?: never): void;

@@ -1,5 +1,9 @@
 /* eslint-disable no-param-reassign */
-import { patchConfig, RunnableConfig } from "@langchain/core/runnables";
+import {
+  patchConfig,
+  RunnableConfig,
+  mergeConfigs,
+} from "@langchain/core/runnables";
 import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import {
   All,
@@ -48,7 +52,6 @@ import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { getNullChannelVersion } from "./utils/index.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
-import { mergeLangGraphConfigs } from "./utils/config.js";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -567,7 +570,7 @@ export function _prepareSingleTask<
           subgraphs: proc.subgraphs,
           writes,
           config: patchConfig(
-            mergeLangGraphConfigs(config, {
+            mergeConfigs(config, {
               metadata,
               tags: proc.tags,
               store: extra.store ?? config.store,
@@ -698,7 +701,7 @@ export function _prepareSingleTask<
             subgraphs: proc.subgraphs,
             writes,
             config: patchConfig(
-              mergeLangGraphConfigs(config, {
+              mergeConfigs(config, {
                 metadata,
                 tags: proc.tags,
                 store: extra.store ?? config.store,

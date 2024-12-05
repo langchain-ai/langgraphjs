@@ -8,6 +8,7 @@ import {
   patchConfig,
   _coerceToRunnable,
   RunnableLike,
+  mergeConfigs,
 } from "@langchain/core/runnables";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
@@ -91,10 +92,7 @@ import {
   type ManagedValueSpec,
 } from "../managed/base.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
-import {
-  ensureLangGraphConfig,
-  mergeLangGraphConfigs,
-} from "./utils/config.js";
+import { ensureLangGraphConfig } from "./utils/config.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { StreamMessagesHandler } from "./messages.js";
 
@@ -282,7 +280,7 @@ export class Pregel<
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore Remove ignore when we remove support for 0.2 versions of core
   override withConfig(config: RunnableConfig): typeof this {
-    const mergedConfig = mergeLangGraphConfigs(this.config, config);
+    const mergedConfig = mergeConfigs(this.config, config);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return new (this.constructor as any)({ ...this, config: mergedConfig });
   }
@@ -513,7 +511,7 @@ export class Pregel<
       );
     }
 
-    const mergedConfig = mergeLangGraphConfigs(this.config, config);
+    const mergedConfig = mergeConfigs(this.config, config);
     const saved = await checkpointer.getTuple(config);
     const snapshot = await this._prepareStateSnapshot({
       config: mergedConfig,
@@ -567,7 +565,7 @@ export class Pregel<
       );
     }
 
-    const mergedConfig = mergeLangGraphConfigs(this.config, config, {
+    const mergedConfig = mergeConfigs(this.config, config, {
       configurable: { checkpoint_ns: checkpointNamespace },
     });
 
@@ -629,7 +627,7 @@ export class Pregel<
     }
     // get last checkpoint
     const config = this.config
-      ? mergeLangGraphConfigs(this.config, inputConfig)
+      ? mergeConfigs(this.config, inputConfig)
       : inputConfig;
     const saved = await checkpointer.getTuple(config);
     const checkpoint =

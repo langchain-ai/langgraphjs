@@ -8948,22 +8948,17 @@ export function runPregelTests(
     await expect(graphOne.invoke({ inputOne: "one" })).resolves.toBeDefined();
   });
 
-  it.only("Can not access store inside a lambda inside a node", async () => {
+  it("Can access store inside a node", async () => {
     const graph = new StateGraph(MessagesAnnotation)
-      .addNode("one", async (_, config) => {
-        expect(config.store).toBeDefined();
-        const subLambda = RunnableLambda.from((_, config) => {
-          expect("store" in config).toBeFalsy();
-          return {};
-        })
-        await subLambda.invoke({});
+      .addNode("one", async (_, configTop) => {
+        expect(configTop.store).toBeDefined();
         return {};
       })
       .addEdge(START, "one")
       .compile({ store: new InMemoryStore() });
 
-    await graph.invoke({ messages: [] })
-  })
+    await graph.invoke({ messages: [] });
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
