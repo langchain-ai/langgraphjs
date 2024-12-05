@@ -1990,7 +1990,7 @@ export function runPregelTests(
     expect(res).toEqual({ items: ["0", "1", "2", "2", "3"] });
   });
 
-  it.skip("concurrent emit sends", async () => {
+  it("concurrent emit sends", async () => {
     const State = Annotation.Root({
       items: Annotation<string[]>({ reducer: (a, b) => a.concat(b) }),
     });
@@ -2019,11 +2019,11 @@ export function runPregelTests(
 
     // TODO: implement send V2
     expect(await graph.invoke({ items: ["0"] })).toEqual({
-      items: ["0", "1", "1.1", "2|1", "2|2", "2|3", "2|4", "3", "3.1"],
+      items: ["0", "1", "1.1", "2|1", "2|2", "2|3", "2|4", "3.1", "3"],
     });
   });
 
-  it.only("send sequences", async () => {
+  it("send sequences", async () => {
     const State = Annotation.Root({
       items: Annotation<string[]>({ reducer: (a, b) => a.concat(b) }),
     });
@@ -2068,7 +2068,7 @@ export function runPregelTests(
       .compile();
 
     const expected = await graph.invoke({ items: ["0"] });
-    
+
     // TODO: implement send V2?
     expect(expected).toEqual({
       items: [
