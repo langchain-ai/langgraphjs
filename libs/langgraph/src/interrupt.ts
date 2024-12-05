@@ -13,6 +13,13 @@ export function interrupt<I = unknown, R = unknown>(value: I): R {
   if (resume !== MISSING) {
     return resume as R;
   } else {
-    throw new GraphInterrupt([{ value, when: "during" }]);
+    throw new GraphInterrupt([
+      {
+        value,
+        when: "during",
+        resumable: true,
+        ns: config.configurable?.checkpoint_ns?.split("|"),
+      },
+    ]);
   }
 }
