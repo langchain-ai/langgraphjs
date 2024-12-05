@@ -1,4 +1,4 @@
-import { mergeConfigs, RunnableConfig } from "@langchain/core/runnables";
+import { mergeConfigs, pickRunnableConfigKeys, RunnableConfig } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { LangGraphRunnableConfig } from "../runnable_types.js";
 
@@ -95,14 +95,5 @@ export function mergeLangGraphConfigs<CallOptions extends RunnableConfig>(
   ...configs: (CallOptions | RunnableConfig | undefined | null)[]
 ): Partial<CallOptions> {
   const mergedConfig = mergeConfigs(...configs);
-  return {
-    configurable: mergedConfig.configurable,
-    recursionLimit: mergedConfig.recursionLimit,
-    callbacks: mergedConfig.callbacks,
-    tags: mergedConfig.tags,
-    metadata: mergedConfig.metadata,
-    maxConcurrency: mergedConfig.maxConcurrency,
-    timeout: mergedConfig.timeout,
-    signal: mergedConfig.signal,
-  } as Partial<CallOptions>;
+  return pickRunnableConfigKeys(mergedConfig) as Partial<CallOptions>;
 }

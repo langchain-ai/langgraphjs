@@ -1611,6 +1611,25 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@langchain/core@npm:^0.3.22":
+  version: 0.3.22
+  resolution: "@langchain/core@npm:0.3.22"
+  dependencies:
+    ansi-styles: ^5.0.0
+    camelcase: 6
+    decamelize: 1.2.0
+    js-tiktoken: ^1.0.12
+    langsmith: ^0.2.8
+    mustache: ^4.2.0
+    p-queue: ^6.6.2
+    p-retry: 4
+    uuid: ^10.0.0
+    zod: ^3.22.4
+    zod-to-json-schema: ^3.22.3
+  checksum: e629a7b5b794e378ce29366b7aa6989fd16e2e97ea18a2f4dcc26cb52e71f8b572ec7397922d10626602a72b9530ac02624b5a15fe962161810d1a7cf7db62b9
+  languageName: node
+  linkType: hard
+
 "@langchain/groq@npm:^0.1.2":
   version: 0.1.2
   resolution: "@langchain/groq@npm:0.1.2"
@@ -1843,7 +1862,7 @@ __metadata:
     "@jest/globals": ^29.5.0
     "@langchain/anthropic": ^0.3.5
     "@langchain/community": ^0.3.9
-    "@langchain/core": ^0.3.16
+    "@langchain/core": ^0.3.22
     "@langchain/langgraph-checkpoint": ~0.0.12
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
@@ -1882,7 +1901,7 @@ __metadata:
     zod: ^3.23.8
     zod-to-json-schema: ^3.22.4
   peerDependencies:
-    "@langchain/core": ">=0.2.36 <0.3.0 || >=0.3.9 < 0.4.0"
+    "@langchain/core": <0.3.22 || >=0.3.9 < 0.4.0
   languageName: unknown
   linkType: soft
 
@@ -8909,6 +8928,25 @@ __metadata:
     openai:
       optional: true
   checksum: 1e569d212539b37023621ecc53ed28d8a54025ba89098d1d234835eda58c58626f55a0b1505c1b35960f34efce138da6ba6fdfb8e17af65e447dec68bb8a84f7
+  languageName: node
+  linkType: hard
+
+"langsmith@npm:^0.2.8":
+  version: 0.2.9
+  resolution: "langsmith@npm:0.2.9"
+  dependencies:
+    "@types/uuid": ^10.0.0
+    commander: ^10.0.1
+    p-queue: ^6.6.2
+    p-retry: 4
+    semver: ^7.6.3
+    uuid: ^10.0.0
+  peerDependencies:
+    openai: "*"
+  peerDependenciesMeta:
+    openai:
+      optional: true
+  checksum: 16f42b7d36509bc0754110cb93b2b6f466d339fb4684d6d1b49fea749ee595329d433c35a8f83b55f2fdf53f9d038444773e4b61815aec340bff28e57b8428b4
   languageName: node
   linkType: hard
 
