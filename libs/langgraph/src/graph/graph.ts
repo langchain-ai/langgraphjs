@@ -78,7 +78,7 @@ export class Branch<
       : options.pathMap;
   }
 
-  compile(
+  run(
     writer: (dests: (string | Send)[]) => Runnable | undefined,
     reader?: (config: CallOptions) => IO
   ) {
@@ -512,7 +512,7 @@ export class CompiledGraph<
 
     // attach branch writer
     this.nodes[start].pipe(
-      branch.compile((dests) => {
+      branch.run((dests) => {
         const writes = dests.map((dest) => {
           if (_isSend(dest)) {
             return dest;

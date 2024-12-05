@@ -2,6 +2,7 @@
 import {
   _coerceToRunnable,
   Runnable,
+  RunnableConfig,
   RunnableLike,
 } from "@langchain/core/runnables";
 import {
@@ -30,13 +31,16 @@ import { NamedBarrierValue } from "../channels/named_barrier_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { RunnableCallable } from "../utils.js";
 import {
+  _isCommand,
   _isSend,
   CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
+  Command,
+  SELF,
   Send,
   TAG_HIDDEN,
 } from "../constants.js";
-import { InvalidUpdateError } from "../errors.js";
+import { InvalidUpdateError, ParentCommand } from "../errors.js";
 import {
   AnnotationRoot,
   getChannel,
@@ -433,6 +437,18 @@ export class StateGraph<
     )) {
       compiled.attachNode(key as N, node);
     }
+    for (const [key, _] of Object.entries<StateGraphNodeSpec<S, U>>(
+      this.nodes
+    )) {
+      compiled.attachBranch(
+        key as N,
+        SELF,
+        _getControlBranch() as Branch<S, N>,
+        {
+          withReader: false,
+        }
+      );
+    }
     for (const [start, end] of this.edges) {
       compiled.attachEdge(start, end);
     }
@@ -488,13 +504,31 @@ export class CompiledStateGraph<
   attachNode(key: N | typeof START, node?: StateGraphNodeSpec<S, U>): void {
     const stateKeys = Object.keys(this.builder.channels);
 
+    function _getRoot(input: unknown): unknown {
+      if (_isCommand(input)) {
+        if (input.graph === Command.PARENT) {
+          return SKIP_WRITE;
+        }
+        return input.update;
+      }
+      return input;
+    }
+
+    // to avoid name collision below
+    const nodeKey = key;
+
     function getStateKey(key: keyof U, input: U) {
       if (!input) {
         return SKIP_WRITE;
+      } else if (_isCommand(input)) {
+        if (input.graph === Command.PARENT) {
+          return SKIP_WRITE;
+        }
+        return getStateKey(key, input.update as U);
       } else if (typeof input !== "object" || Array.isArray(input)) {
         const typeofInput = Array.isArray(input) ? "array" : typeof input;
         throw new InvalidUpdateError(
-          `Expected node "${key.toString()}" to return an object, received ${typeofInput}`,
+          `Expected node "${nodeKey.toString()}" to return an object, received ${typeofInput}`,
           {
             lc_error_code: "INVALID_GRAPH_NODE_RETURN_VALUE",
           }
@@ -507,7 +541,16 @@ export class CompiledStateGraph<
     // state updaters
     const stateWriteEntries: ChannelWriteEntry[] = stateKeys.map((key) =>
       key === ROOT
-        ? { channel: key, value: PASSTHROUGH, skipNone: true }
+        ? {
+            channel: key,
+            value: PASSTHROUGH,
+            skipNone: true,
+            mapper: new RunnableCallable({
+              func: _getRoot,
+              trace: false,
+              recurse: false,
+            }),
+          }
         : {
             channel: key,
             value: PASSTHROUGH,
@@ -600,11 +643,44 @@ export class CompiledStateGraph<
   attachBranch(
     start: N | typeof START,
     name: string,
-    branch: Branch<S, N>
+    branch: Branch<S, N>,
+    options: { withReader?: boolean } = { withReader: true }
   ): void {
+    const branchWriter = (
+      packets: (string | Send)[],
+      config: LangGraphRunnableConfig
+    ) => {
+      const filteredPackets = packets.filter((p) => p !== END);
+      if (!filteredPackets.length) {
+        return;
+      }
+      const writes: (ChannelWriteEntry | Send)[] = filteredPackets.map((p) => {
+        if (_isSend(p)) {
+          return p;
+        }
+        return {
+          channel: `branch:${start}:${name}:${p}`,
+          value: start,
+        };
+      });
+      if (branch.then && branch.then !== END) {
+        writes.push(
+          ""
+          // ChannelWriteEntry(
+          //   f"branch:{start}:{name}::then",
+          //   WaitForNames(
+          //       {p.node if isinstance(p, Send) else p for p in filtered}
+          //   ),
+        );
+      }
+      ChannelWrite.doWrite(
+        { ...config, tags: (config.tags ?? []).concat([TAG_HIDDEN]) },
+        writes
+      );
+    };
     // attach branch publisher
     this.nodes[start].writers.push(
-      branch.compile(
+      branch.run(
         // writer
         (dests) => {
           const filteredDests = dests.filter((dest) => dest !== END);
@@ -625,28 +701,30 @@ export class CompiledStateGraph<
           return new ChannelWrite(writes, [TAG_HIDDEN]);
         },
         // reader
-        (config) =>
-          ChannelRead.doRead<S>(
-            config,
-            this.streamChannels ?? this.outputChannels,
-            true
-          )
+        options.withReader
+          ? (config) =>
+              ChannelRead.doRead<S>(
+                config,
+                this.streamChannels ?? this.outputChannels,
+                true
+              )
+          : undefined
       )
     );
 
-    // attach branch subscribers
-    const ends = branch.ends
-      ? Object.values(branch.ends)
-      : Object.keys(this.builder.nodes);
-    for (const end of ends) {
-      if (end === END) {
-        continue;
-      }
-      const channelName = `branch:${start}:${name}:${end}`;
-      (this.channels as Record<string, BaseChannel>)[channelName] =
-        new EphemeralValue(false);
-      this.nodes[end as N].triggers.push(channelName);
-    }
+    // // attach branch subscribers
+    // const ends = branch.ends
+    //   ? Object.values(branch.ends)
+    //   : Object.keys(this.builder.nodes);
+    // for (const end of ends) {
+    //   if (end === END) {
+    //     continue;
+    //   }
+    //   const channelName = `branch:${start}:${name}:${end}`;
+    //   (this.channels as Record<string, BaseChannel>)[channelName] =
+    //     new EphemeralValue(false);
+    //   this.nodes[end as N].triggers.push(channelName);
+    // }
   }
 }
 
@@ -709,4 +787,31 @@ function isStateGraphArgsWithInputOutputSchemas<
     (obj as StateGraphArgsWithInputOutputSchemas<SD, O>).input !== undefined &&
     (obj as StateGraphArgsWithInputOutputSchemas<SD, O>).output !== undefined
   );
+}
+
+function _controlBranch(value: unknown): (string | Send)[] {
+  if (_isSend(value)) {
+    return [value];
+  }
+  if (!_isCommand(value)) {
+    return [];
+  }
+  if (value.graph === Command.PARENT) {
+    throw new ParentCommand(value);
+  }
+  return Array.isArray(value.goto) ? value.goto : [value.goto];
+}
+
+// const CONTROL_BRANCH_PATH = new RunnableCallable({
+//   func: _controlBranch,
+//   tags: [TAG_HIDDEN],
+//   trace: false,
+//   recurse: false,
+// });
+
+function _getControlBranch() {
+  return new Branch({
+    path: _controlBranch,
+    pathMap: {},
+  });
 }

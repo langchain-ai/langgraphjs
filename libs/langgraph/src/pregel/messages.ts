@@ -137,6 +137,16 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     _runType?: string,
     name?: string
   ) {
+    console.log(
+      "CHAIN IS STARTING",
+      runId,
+      _inputs,
+      metadata !== undefined,
+      name === metadata?.langgraph_node,
+      name,
+      metadata?.langgraph_node,
+      tags === undefined || !tags.includes(TAG_HIDDEN)
+    );
     if (
       metadata !== undefined &&
       name === metadata.langgraph_node &&
@@ -151,6 +161,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
 
   handleChainEnd(outputs: ChainValues, runId: string) {
     const metadata = this.metadatas[runId];
+    console.log("CHAIN IS ENDING", outputs, metadata, runId);
     delete this.metadatas[runId];
     if (metadata !== undefined) {
       if (isBaseMessage(outputs)) {

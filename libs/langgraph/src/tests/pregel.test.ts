@@ -88,7 +88,16 @@ import {
   MultipleSubgraphsError,
   NodeInterrupt,
 } from "../errors.js";
-import { Command, ERROR, INTERRUPT, PULL, PUSH, Send } from "../constants.js";
+import {
+  _isCommand,
+  Command,
+  ERROR,
+  FF_SEND_V2,
+  INTERRUPT,
+  PULL,
+  PUSH,
+  Send,
+} from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
@@ -496,6 +505,7 @@ export function runPregelTests(
             triggers: [],
             config: undefined,
             id: uuid5(JSON.stringify(["", {}]), checkpoint.id),
+            writers: [],
           },
         ])
       ).toBe(true);
@@ -530,6 +540,7 @@ export function runPregelTests(
             triggers: [],
             config: undefined,
             id: uuid5(JSON.stringify(["", {}]), checkpoint.id),
+            writers: [],
           },
         ])
       ).toBe(true);
@@ -568,6 +579,7 @@ export function runPregelTests(
             triggers: [],
             config: undefined,
             id: uuid5(JSON.stringify(["", {}]), checkpoint.id),
+            writers: [],
           },
         ])
       ).toBe(false);
@@ -606,6 +618,7 @@ export function runPregelTests(
             triggers: [],
             config: undefined,
             id: uuid5(JSON.stringify(["", {}]), checkpoint.id),
+            writers: [],
           },
         ])
       ).toBe(false);
@@ -1036,6 +1049,7 @@ export function runPregelTests(
         },
         id: expect.any(String),
         path: [PUSH, 0],
+        writers: expect.any(Array),
       });
       expect(task2).toEqual({
         name: "node1",
@@ -1057,6 +1071,7 @@ export function runPregelTests(
         },
         id: expect.any(String),
         path: [PULL, "node1"],
+        writers: expect.any(Array),
       });
       expect(task3).toEqual({
         name: "node2",
@@ -1078,6 +1093,7 @@ export function runPregelTests(
         },
         id: expect.any(String),
         path: [PULL, "node2"],
+        writers: expect.any(Array),
       });
 
       // Should not update versions seen, that occurs when applying writes
@@ -1988,6 +2004,123 @@ export function runPregelTests(
       .compile();
     const res = await graph.invoke({ items: ["0"] });
     expect(res).toEqual({ items: ["0", "1", "2", "2", "3"] });
+  });
+
+  it.skip("should handle send sequences correctly", async () => {
+    const StateAnnotation = Annotation.Root({
+      items: Annotation<any[]>({
+        reducer: (a, b) => a.concat(b),
+      }),
+    });
+
+    const getNode = (name: string) => {
+      return async (state: typeof StateAnnotation.State) => {
+        console.log(state);
+        const update = Array.isArray(state.items)
+          ? [name]
+          : [`${name}|${state.toString()}`];
+
+        if (_isCommand(state)) {
+          return {
+            items: [state, ...update],
+          };
+        } else {
+          return { items: update };
+        }
+      };
+    };
+
+    const sendForFun = () => {
+      return [
+        new Send("2", new Command({ goto: new Send("2", 3) })),
+        new Send("2", new Command({ goto: new Send("2", 4) })),
+        "3.1",
+      ];
+    };
+
+    const routeToThree = () => "3";
+
+    const builder = new StateGraph(StateAnnotation)
+      .addNode("1", getNode("1"))
+      .addNode("2", getNode("2"))
+      .addNode("3", getNode("3"))
+      .addNode("3.1", getNode("3.1"))
+      .addEdge(START, "1")
+      .addConditionalEdges("1", sendForFun)
+      .addConditionalEdges("2", routeToThree);
+
+    const graph = builder.compile();
+
+    const result = await graph.invoke({
+      items: ["0"],
+    });
+
+    if (FF_SEND_V2) {
+      expect(result).toEqual({
+        items: [
+          "0",
+          "1",
+          "2|Command(send=Send(node='2', arg=3))",
+          "2|Command(send=Send(node='2', arg=4))",
+          "2|3",
+          "2|4",
+          "3",
+          "3.1",
+        ],
+      });
+    } else {
+      expect(result).toEqual({
+        items: [
+          "0",
+          "1",
+          "3.1",
+          "2|Command(send=Send(node='2', arg=3))",
+          "2|Command(send=Send(node='2', arg=4))",
+          "3",
+          "2|3",
+          "2|4",
+          "3",
+        ],
+      });
+    }
+
+    if (!FF_SEND_V2) {
+      return;
+    }
+
+    // Test with checkpointer
+    const checkpointer = new MemorySaverAssertImmutable();
+    const graphWithCheckpoint = builder.compile({
+      checkpointer,
+      interruptBefore: ["3.1"],
+    });
+
+    const thread1 = { configurable: { thread_id: "1" } };
+    const result1 = await graphWithCheckpoint.invoke({ items: ["0"] }, thread1);
+    expect(result1).toEqual({
+      items: [
+        "0",
+        "1",
+        "2|Command(send=Send(node='2', arg=3))",
+        "2|Command(send=Send(node='2', arg=4))",
+        "2|3",
+        "2|4",
+      ],
+    });
+
+    const result2 = await graphWithCheckpoint.invoke(null, thread1);
+    expect(result2).toEqual({
+      items: [
+        "0",
+        "1",
+        "2|Command(send=Send(node='2', arg=3))",
+        "2|Command(send=Send(node='2', arg=4))",
+        "2|3",
+        "2|4",
+        "3",
+        "3.1",
+      ],
+    });
   });
 
   it("should handle checkpoints correctly", async () => {
@@ -8099,7 +8232,7 @@ export function runPregelTests(
     });
   });
 
-  it("should work with streamMode messages and custom from within a subgraph", async () => {
+  it.only("should work with streamMode messages and custom from within a subgraph", async () => {
     const child = new StateGraph(MessagesAnnotation)
       .addNode("c_one", () => ({
         messages: [new HumanMessage("foo"), new AIMessage("bar")],

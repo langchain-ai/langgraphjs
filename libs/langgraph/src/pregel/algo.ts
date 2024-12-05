@@ -625,6 +625,7 @@ export function _prepareSingleTask<
           retry_policy: proc.retryPolicy,
           id: taskId,
           path: taskPath,
+          writers: proc.getWriters(),
         };
       }
     } else {
@@ -758,6 +759,7 @@ export function _prepareSingleTask<
             retry_policy: proc.retryPolicy,
             id: taskId,
             path: taskPath,
+            writers: proc.getWriters(),
           };
         }
       } else {

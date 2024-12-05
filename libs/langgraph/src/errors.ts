@@ -1,4 +1,4 @@
-import { Interrupt } from "./constants.js";
+import { Command, Interrupt } from "./constants.js";
 
 export type BaseLangGraphErrorFields = {
   lc_error_code?: string;
@@ -78,6 +78,27 @@ export class NodeInterrupt extends GraphInterrupt {
   static get unminifiable_name() {
     return "NodeInterrupt";
   }
+}
+
+export class ParentCommand extends GraphBubbleUp {
+  command: Command;
+
+  constructor(command: Command) {
+    super();
+    this.name = "ParentCommand";
+    this.command = command;
+  }
+
+  static get unminifiable_name() {
+    return "ParentCommand";
+  }
+}
+
+export function isParentCommand(e?: Error): e is ParentCommand {
+  return (
+    e !== undefined &&
+    (e as ParentCommand).name === ParentCommand.unminifiable_name
+  );
 }
 
 export function isGraphBubbleUp(e?: Error): e is GraphBubbleUp {
