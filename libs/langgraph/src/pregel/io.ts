@@ -3,7 +3,14 @@ import { validate } from "uuid";
 
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelExecutableTask } from "./types.js";
-import { Command, NULL_TASK_ID, RESUME, TAG_HIDDEN } from "../constants.js";
+import {
+  _isSend,
+  Command,
+  NULL_TASK_ID,
+  PUSH,
+  RESUME,
+  TAG_HIDDEN,
+} from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
 
 export function readChannel<C extends PropertyKey>(
@@ -55,6 +62,24 @@ export function readChannels<C extends PropertyKey>(
 export function* mapCommand(
   cmd: Command
 ): Generator<[string, string, unknown]> {
+  if (cmd.graph === "__parent__") {
+    throw new Error("There is not parent graph");
+  }
+
+  if (cmd.goto) {
+    const sends = Array.isArray(cmd.goto) ? cmd.goto : [cmd.goto];
+
+    for (const send of sends) {
+      if (!_isSend(send)) {
+        throw new Error(`Expected Send, got ${typeof send}`);
+      }
+      // TODO: add support for Send V2
+      yield [NULL_TASK_ID, PUSH, send];
+    }
+
+    // TODO: handle goto str for state graph
+  }
+
   if (cmd.resume) {
     if (
       typeof cmd.resume === "object" &&
@@ -67,6 +92,18 @@ export function* mapCommand(
       }
     } else {
       yield [NULL_TASK_ID, RESUME, cmd.resume];
+    }
+  }
+
+  if (cmd.update) {
+    if (typeof cmd.update !== "object" || cmd.update === null) {
+      throw new Error(
+        `Expected cmd.update to be an object, got ${typeof cmd.update}`
+      );
+    }
+
+    for (const [k, v] of Object.entries(cmd.update)) {
+      yield [NULL_TASK_ID, k, v];
     }
   }
 }

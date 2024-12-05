@@ -123,13 +123,33 @@ export type Interrupt = {
   ns?: string[];
 };
 
-export class Command<R = unknown> {
+export class Command<R = unknown, U = Record<string, unknown>> {
   lg_name = "Command";
 
-  resume: R;
+  graph?: "__parent__" | undefined;
 
-  constructor(args: { resume: R }) {
+  resume?: R;
+
+  update?: U;
+
+  goto?: string | string[] | Send | Send[];
+
+  constructor(args: {
+    /** Graph to send command to */
+    graph?: "__parent__" | undefined;
+
+    /** Value tp resume execution with. To be used together with `interrupt()` */
+    resume?: R;
+
+    /** Update to apply to the graph's state */
+    update?: U;
+
+    /** Node(s) to navigate to next or node(s) to be executed with a provided input. */
+    goto?: string | string[] | Send | Send[];
+  }) {
     this.resume = args.resume;
+    this.update = args.update;
+    this.goto = args.goto;
   }
 }
 
