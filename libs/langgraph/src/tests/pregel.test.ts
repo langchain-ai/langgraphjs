@@ -8959,6 +8959,61 @@ export function runPregelTests(
 
     await graph.invoke({ messages: [] });
   });
+
+  it.only("can throw a node interrupt multiple times in a single node", async () => {
+    const GraphAnnotation = Annotation.Root({
+      myKey: Annotation<string>({
+        reducer: (a, b) => a.concat(b),
+      })
+    });
+
+    const nodeOne = (_: typeof GraphAnnotation.State) => {
+      const answer = interrupt({ value: 1 });
+      const answer2 = interrupt({ value: 2 });
+      return { myKey: answer + " " + answer2 };
+    }
+
+    const graph = new StateGraph(GraphAnnotation)
+      .addNode("one", nodeOne)
+      .addEdge(START, "one")
+      .compile({ checkpointer: await createCheckpointer() });
+
+    const config = {
+      configurable: { thread_id: "test_multi_interrupt" },
+    }
+    const firstResult = await graph.invoke({
+      myKey: "DE",
+    }, config);
+    expect(firstResult).toBeDefined();
+    const firstState = await graph.getState(config);
+    expect(firstState.tasks).toHaveLength(1);
+    expect(firstState.tasks[0].interrupts).toHaveLength(1);
+    expect(firstState.tasks[0].interrupts[0].value).toEqual({
+      value: 1
+    })
+
+    const secondResult = await graph.invoke(new Command({
+      resume: "answer 1",
+    }), config);
+    expect(secondResult).toBeDefined();
+    const secondState = await graph.getState(config);
+    expect(secondState.tasks).toHaveLength(1);
+    expect(secondState.tasks[0].interrupts).toHaveLength(1);
+    expect(secondState.tasks[0].interrupts[0].value).toEqual({
+      value: 2
+    })
+
+    const thirdResult = await graph.invoke(new Command({
+      resume: "answer 2",
+    }), config);
+    expect(thirdResult.myKey).toEqual("DE answer 1 answer 2");
+    const thirdState = await graph.getState(config);
+    console.log("thirdState", thirdState);
+    expect(thirdState.tasks).toHaveLength(0);
+
+
+    console.log("secondResult", secondResult);
+  })
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
