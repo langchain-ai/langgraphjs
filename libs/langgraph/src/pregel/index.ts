@@ -461,7 +461,12 @@ export class Pregel<
         this.streamChannelsAsIs as string | string[]
       ),
       next: nextTasks.map((task) => task.name),
-      tasks: tasksWithWrites(nextTasks, saved?.pendingWrites ?? [], taskStates),
+      tasks: tasksWithWrites(
+        nextTasks,
+        saved?.pendingWrites ?? [],
+        taskStates,
+        this.streamChannelsAsIs as string | string[]
+      ),
       metadata: saved.metadata,
       config: patchCheckpointMap(saved.config, saved.metadata),
       createdAt: saved.checkpoint.ts,

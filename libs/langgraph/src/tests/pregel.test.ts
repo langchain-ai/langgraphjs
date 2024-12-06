@@ -1904,6 +1904,7 @@ export function runPregelTests(
         name: "one",
         interrupts: [],
         path: [PULL, "one"],
+        result: { value: 2 },
       },
       {
         id: expect.any(String),

@@ -173,6 +173,7 @@ export interface PregelTaskDescription {
   readonly error?: unknown;
   readonly interrupts: Interrupt[];
   readonly state?: LangGraphRunnableConfig | StateSnapshot;
+  readonly result?: Record<string, unknown> | unknown;
   readonly path?: [string, ...(string | number)[]];
 }
 
