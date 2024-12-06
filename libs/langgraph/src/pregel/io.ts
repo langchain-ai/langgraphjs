@@ -53,7 +53,8 @@ export function readChannels<C extends PropertyKey>(
 }
 
 export function* mapCommand(
-  cmd: Command
+  cmd: Command,
+  pendingWrites: PendingWrite<string>[],
 ): Generator<[string, string, unknown]> {
   if (cmd.resume) {
     if (
@@ -63,7 +64,16 @@ export function* mapCommand(
       Object.keys(cmd.resume).every(validate)
     ) {
       for (const [tid, resume] of Object.entries(cmd.resume)) {
-        yield [tid, RESUME, resume];
+        // Find existing resume values for this task ID
+        const existing = (pendingWrites.find(
+          ([id, type]) => id === tid && type === RESUME
+        )?.[1] ?? []) as unknown[];
+        
+        // Create a new array if existing is not an array
+        const existingArray = Array.isArray(existing) ? existing : [];
+        existingArray.push(resume);
+        
+        yield [tid, RESUME, existingArray];
       }
     } else {
       yield [NULL_TASK_ID, RESUME, cmd.resume];
