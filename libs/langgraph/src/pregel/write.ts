@@ -3,7 +3,14 @@ import {
   RunnableConfig,
   RunnableLike,
 } from "@langchain/core/runnables";
-import { _isSend, CONFIG_KEY_SEND, Send, TASKS } from "../constants.js";
+import {
+  _isSend,
+  CONFIG_KEY_SEND,
+  FF_SEND_V2,
+  PUSH,
+  Send,
+  TASKS,
+} from "../constants.js";
 import { RunnableCallable } from "../utils.js";
 import { InvalidUpdateError } from "../errors.js";
 
@@ -61,37 +68,54 @@ export class ChannelWrite<
     this.writes = writes;
   }
 
-  async _getWriteValues(
-    input: unknown,
-    config: RunnableConfig
-  ): Promise<[string, unknown][]> {
-    const writes: [string, Send][] = this.writes
-      .filter(_isSend)
-      .map((packet) => {
-        return [TASKS, packet];
-      });
-    const entries = this.writes.filter((write): write is ChannelWriteEntry => {
+  // async _getWriteValues(
+  //   input: unknown,
+  //   config: RunnableConfig
+  // ): Promise<(string | Send)[]> {
+
+  // }
+
+  async _write(input: unknown, config: RunnableConfig): Promise<unknown> {
+    const writes = this.writes.map((write) => {
+      if (_isChannelWriteEntry(write) && write.value === PASSTHROUGH) {
+        return {
+          channel: write.channel,
+          value: input,
+          skipNone: write.skipNone,
+          mapper: write.mapper,
+        };
+      } else {
+        return write;
+      }
+    });
+    ChannelWrite.doWrite(config, writes);
+    return input;
+  }
+
+  // TODO: Support requireAtLeastOneOf
+  static async doWrite(
+    config: RunnableConfig,
+    writes: (ChannelWriteEntry | Send)[]
+  ): Promise<void> {
+    const sends: [string, Send][] = writes.filter(_isSend).map((packet) => {
+      return [FF_SEND_V2 ? PUSH : TASKS, packet];
+    });
+    const entries = writes.filter((write): write is ChannelWriteEntry => {
       return !_isSend(write);
     });
     const invalidEntry = entries.find((write) => {
-      return write.channel === TASKS;
+      return write.channel === TASKS || write.channel === PUSH;
     });
     if (invalidEntry) {
       throw new InvalidUpdateError(
-        `Cannot write to the reserved channel ${TASKS}`
+        `Cannot write to the reserved channels ${TASKS} or ${PUSH}`
       );
     }
     const values: [string, unknown][] = await Promise.all(
       entries.map(async (write: ChannelWriteEntry) => {
-        let value;
-        if (_isPassthrough(write.value)) {
-          value = input;
-        } else {
-          value = write.value;
-        }
         const mappedValue = write.mapper
-          ? await write.mapper.invoke(value, config)
-          : value;
+          ? await write.mapper.invoke(write.value, config)
+          : write.value;
         return {
           ...write,
           value: mappedValue,
@@ -106,20 +130,9 @@ export class ChannelWrite<
           return [write.channel, write.value];
         });
     });
-    return [...writes, ...values];
-  }
-
-  async _write(input: unknown, config: RunnableConfig): Promise<unknown> {
-    const values = await this._getWriteValues(input, config);
-    ChannelWrite.doWrite(config, values);
-    return input;
-  }
-
-  // TODO: Support requireAtLeastOneOf
-  static doWrite(config: RunnableConfig, values: [string, unknown][]): void {
     const write: TYPE_SEND = config.configurable?.[CONFIG_KEY_SEND];
     const filtered = values.filter(([_, value]) => !_isSkipWrite(value));
-    write(filtered);
+    write([...sends, ...filtered]);
   }
 
   static isWriter(runnable: RunnableLike): runnable is ChannelWrite {
@@ -140,4 +153,10 @@ export interface ChannelWriteEntry {
   value: unknown;
   skipNone?: boolean;
   mapper?: Runnable;
+}
+
+function _isChannelWriteEntry(x: unknown): x is ChannelWriteEntry {
+  return (
+    x !== undefined && typeof (x as ChannelWriteEntry).channel === "string"
+  );
 }

@@ -191,6 +191,7 @@ export interface PregelExecutableTask<
   readonly id: string;
   readonly path?: [string, ...(string | number)[]];
   readonly subgraphs?: Runnable[];
+  readonly writers: Runnable[];
 }
 
 export interface StateSnapshot {

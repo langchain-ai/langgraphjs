@@ -3,8 +3,17 @@ import { validate } from "uuid";
 
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelExecutableTask } from "./types.js";
-import { Command, NULL_TASK_ID, RESUME, TAG_HIDDEN } from "../constants.js";
-import { EmptyChannelError } from "../errors.js";
+import {
+  _isSend,
+  Command,
+  FF_SEND_V2,
+  NULL_TASK_ID,
+  PUSH,
+  RESUME,
+  TAG_HIDDEN,
+  TASKS,
+} from "../constants.js";
+import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 
 export function readChannel<C extends PropertyKey>(
   channels: Record<C, BaseChannel>,
@@ -52,9 +61,24 @@ export function readChannels<C extends PropertyKey>(
   }
 }
 
+/**
+ * Map input chunk to a sequence of pending writes in the form (channel, value).
+ */
 export function* mapCommand(
   cmd: Command
 ): Generator<[string, string, unknown]> {
+  if (cmd.graph == Command.PARENT) {
+    throw new InvalidUpdateError("There is no parent graph.");
+  }
+  if (cmd.goto) {
+    for (const send of cmd.goto) {
+      if (!_isSend(send)) {
+        throw new Error(`In Command.send, expected Send, got ${typeof send}`);
+      }
+      yield [NULL_TASK_ID, FF_SEND_V2 ? PUSH : TASKS, send];
+    }
+    // TODO: handle goto str for state graph
+  }
   if (cmd.resume) {
     if (
       typeof cmd.resume === "object" &&
@@ -67,6 +91,16 @@ export function* mapCommand(
       }
     } else {
       yield [NULL_TASK_ID, RESUME, cmd.resume];
+    }
+  }
+  if (cmd.update) {
+    if (typeof cmd.update !== "object" || !cmd.update) {
+      throw new Error(
+        "Expected cmd.update to be a dict mapping channel names to update values"
+      );
+    }
+    for (const [k, v] of Object.entries(cmd.update)) {
+      yield [NULL_TASK_ID, k, v];
     }
   }
 }

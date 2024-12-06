@@ -823,6 +823,7 @@ export class Pregel<
       writes: [],
       triggers: [INTERRUPT],
       id: uuid5(INTERRUPT, checkpoint.id),
+      writers: [],
     };
 
     // execute task
