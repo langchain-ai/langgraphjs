@@ -650,8 +650,9 @@ export class Pregel<
     if (saved?.config.configurable) {
       checkpointConfig = patchConfigurable(config, saved.config.configurable);
       checkpointMetadata = {
-        ...saved.metadata, ...checkpointMetadata
-      }
+        ...saved.metadata,
+        ...checkpointMetadata,
+      };
     }
 
     // Find last node that updated the state, if not provided
@@ -695,22 +696,20 @@ export class Pregel<
             checkpointer: this.checkpointer || undefined,
             store: this.store,
           }
-        )
+        );
 
         // apply null writes
         const nullWrites = (saved.pendingWrites || [])
-          .filter(w => w[0] === NULL_TASK_ID)
-          .flatMap(w => w.slice(1)) as PendingWrite<string>[];
+          .filter((w) => w[0] === NULL_TASK_ID)
+          .flatMap((w) => w.slice(1)) as PendingWrite<string>[];
         if (nullWrites.length > 0) {
-          _applyWrites(
-            saved.checkpoint,
-            channels,
-            [{
-                name: INPUT,
-                writes: nullWrites,
-                triggers: [],
-            }],
-          );
+          _applyWrites(saved.checkpoint, channels, [
+            {
+              name: INPUT,
+              writes: nullWrites,
+              triggers: [],
+            },
+          ]);
         }
         // apply writes from tasks that already ran
         for (const [taskId, k, v] of saved.pendingWrites || []) {
@@ -723,7 +722,11 @@ export class Pregel<
           nextTasks[taskId].writes.push([k, v]);
         }
         // clear all current tasks
-        _applyWrites(checkpoint, channels, Object.values(nextTasks) as WritesProtocol<string>[])
+        _applyWrites(
+          checkpoint,
+          channels,
+          Object.values(nextTasks) as WritesProtocol<string>[]
+        );
       }
       // save checkpoint
       const nextConfig = await checkpointer.put(
@@ -737,7 +740,7 @@ export class Pregel<
           parents: saved?.metadata?.parents ?? {},
         },
         {}
-      )
+      );
       return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
     }
     if (values == null && asNode === "__copy__") {
@@ -801,14 +804,6 @@ export class Pregel<
         `Node "${asNode.toString()}" does not exist`
       );
     }
-    // // update channels
-    // const channels = emptyChannels(
-    //   this.channels as Record<string, BaseChannel>,
-    //   checkpoint
-    // );
-
-    // // Pass `skipManaged: true` as managed values are not used/relevant in update state calls.
-    // const { managed } = await this.prepareSpecs(config, { skipManaged: true });
 
     // run all writers of the chosen node
     const writers = this.nodes[asNode].getWriters();
