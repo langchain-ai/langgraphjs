@@ -8959,6 +8959,28 @@ export function runPregelTests(
 
     await graph.invoke({ messages: [] });
   });
+
+  it.only("can interrupt then update state with asNode of __end__", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", () => {
+        console.log("Before interrupt");
+        throw new NodeInterrupt("<INTERRUPTED>");
+      })
+      .addEdge(START, "one")
+      .compile({ checkpointer: await createCheckpointer() });
+
+    const config = {
+      configurable: { thread_id: "test_update_state_as_node_end" },
+    }
+    await expect(graph.invoke({ messages: [] })).resolves.toBeDefined();
+    
+    const updateStateResult = await graph.updateState(config, {
+      values: null,
+      asNode: END
+    })
+    console.log(updateStateResult)
+    expect(updateStateResult).toBeDefined();
+  })
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
