@@ -62,6 +62,7 @@ export class GraphInterrupt extends GraphBubbleUp {
 
 /** Raised by a node to interrupt execution. */
 export class NodeInterrupt extends GraphInterrupt {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(message: any, fields?: BaseLangGraphErrorFields) {
     super(
       [
