@@ -43,7 +43,6 @@ import {
   uuid5,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
-import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 import {
   _AnyIdAIMessage,
   _AnyIdAIMessageChunk,
@@ -4455,7 +4454,7 @@ export function runPregelTests(
       market: "US",
     });
 
-    const checkpointer = SqliteSaver.fromConnString(":memory:");
+    const checkpointer = await createCheckpointer();
     graph = builder.compile({ checkpointer });
 
     const config = { configurable: { thread_id: "10" } };
@@ -4809,7 +4808,7 @@ export function runPregelTests(
     });
 
     const toolTwoWithCheckpointer = toolTwoBuilder.compile({
-      checkpointer: SqliteSaver.fromConnString(":memory:"),
+      checkpointer: await createCheckpointer(),
       interruptBefore: ["tool_two_fast", "tool_two_slow"],
     });
 
