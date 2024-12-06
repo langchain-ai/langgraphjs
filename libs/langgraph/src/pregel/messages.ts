@@ -82,7 +82,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       (!tags || !(tags.includes(TAG_NOSTREAM) && tags.includes("nostream")))
     ) {
       this.metadatas[runId] = [
-        (metadata.langgraph_checkpoint_ns as string).split("NS_SEP"),
+        (metadata.langgraph_checkpoint_ns as string).split("|"),
         { tags, name, ...metadata },
       ];
     }
@@ -153,7 +153,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       (tags === undefined || !tags.includes(TAG_HIDDEN))
     ) {
       this.metadatas[runId] = [
-        (metadata.langgraph_checkpoint_ns as string).split("NS_SEP"),
+        (metadata.langgraph_checkpoint_ns as string).split("|"),
         { tags, name, ...metadata },
       ];
     }

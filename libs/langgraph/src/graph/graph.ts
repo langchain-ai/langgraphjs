@@ -441,37 +441,39 @@ export class Graph<
 export class CompiledGraph<
   N extends string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any,
+  State = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any,
+  Update = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ConfigurableFieldType extends Record<string, any> = Record<string, any>
 > extends Pregel<
-  Record<N | typeof START, PregelNode<RunInput, RunOutput>>,
+  Record<N | typeof START, PregelNode<State, Update>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType & Record<string, any>
+  ConfigurableFieldType & Record<string, any>,
+  Update,
+  State
 > {
   declare NodeType: N;
 
-  declare RunInput: RunInput;
+  declare RunInput: State;
 
-  declare RunOutput: RunOutput;
+  declare RunOutput: Update;
 
-  builder: Graph<N, RunInput, RunOutput>;
+  builder: Graph<N, State, Update>;
 
   constructor({
     builder,
     ...rest
-  }: { builder: Graph<N, RunInput, RunOutput> } & PregelParams<
-    Record<N | typeof START, PregelNode<RunInput, RunOutput>>,
+  }: { builder: Graph<N, State, Update> } & PregelParams<
+    Record<N | typeof START, PregelNode<State, Update>>,
     Record<N | typeof START | typeof END | string, BaseChannel>
   >) {
     super(rest);
     this.builder = builder;
   }
 
-  attachNode(key: N, node: NodeSpec<RunInput, RunOutput>): void {
+  attachNode(key: N, node: NodeSpec<State, Update>): void {
     this.channels[key] = new EphemeralValue();
     this.nodes[key] = new PregelNode({
       channels: [],
@@ -503,7 +505,7 @@ export class CompiledGraph<
   attachBranch(
     start: N | typeof START,
     name: string,
-    branch: Branch<RunInput, N>
+    branch: Branch<State, N>
   ) {
     // add hidden start node
     if (start === START && this.nodes[START]) {
@@ -588,7 +590,7 @@ export class CompiledGraph<
 
     for (const [key, nodeSpec] of Object.entries(this.builder.nodes) as [
       N,
-      NodeSpec<RunInput, RunOutput>
+      NodeSpec<State, Update>
     ][]) {
       const displayKey = _escapeMermaidKeywords(key);
       const node = nodeSpec.runnable;
@@ -769,7 +771,7 @@ export class CompiledGraph<
 
     for (const [key, nodeSpec] of Object.entries(this.builder.nodes) as [
       N,
-      NodeSpec<RunInput, RunOutput>
+      NodeSpec<State, Update>
     ][]) {
       const displayKey = _escapeMermaidKeywords(key);
       const node = nodeSpec.runnable;

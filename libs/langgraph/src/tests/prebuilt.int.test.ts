@@ -63,7 +63,9 @@ describe("createReactAgent", () => {
     expect(response.messages.length > 1).toBe(true);
     const lastMessage = response.messages[response.messages.length - 1];
     expect(lastMessage._getType()).toBe("ai");
-    expect(lastMessage.content.toLowerCase()).toContain("not too cold");
+    expect((lastMessage.content as string).toLowerCase()).toContain(
+      "not too cold"
+    );
   });
 
   it("can stream a tool call with a checkpointer", async () => {

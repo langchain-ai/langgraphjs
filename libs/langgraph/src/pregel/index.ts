@@ -21,6 +21,7 @@ import {
   copyCheckpoint,
   emptyCheckpoint,
   PendingWrite,
+  SCHEDULED,
   uuid5,
 } from "@langchain/langgraph-checkpoint";
 import {
@@ -50,6 +51,8 @@ import {
   CONFIG_KEY_STREAM,
   CONFIG_KEY_TASK_ID,
   Command,
+  NULL_TASK_ID,
+  INPUT,
 } from "../constants.js";
 import {
   PregelExecutableTask,
@@ -73,6 +76,7 @@ import {
   _localRead,
   _applyWrites,
   StrRecord,
+  WritesProtocol,
 } from "./algo.js";
 import {
   _coerceToDict,
@@ -196,11 +200,13 @@ export class Pregel<
     Nn extends StrRecord<string, PregelNode>,
     Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>
+    ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
+    InputType = PregelInputType,
+    OutputType = PregelOutputType
   >
   extends Runnable<
-    PregelInputType,
-    PregelOutputType,
+    InputType | Command | null,
+    OutputType,
     PregelOptions<Nn, Cc, ConfigurableFieldType>
   >
   implements
@@ -640,8 +646,13 @@ export class Pregel<
     let checkpointConfig = patchConfigurable(config, {
       checkpoint_ns: config.configurable?.checkpoint_ns ?? "",
     });
+    let checkpointMetadata = config.metadata ?? {};
     if (saved?.config.configurable) {
       checkpointConfig = patchConfigurable(config, saved.config.configurable);
+      checkpointMetadata = {
+        ...saved.metadata,
+        ...checkpointMetadata,
+      };
     }
 
     // Find last node that updated the state, if not provided
@@ -650,6 +661,79 @@ export class Pregel<
         checkpointConfig,
         createCheckpoint(checkpoint, undefined, step),
         {
+          source: "update",
+          step: step + 1,
+          writes: {},
+          parents: saved?.metadata?.parents ?? {},
+        },
+        {}
+      );
+      return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
+    }
+
+    // update channels
+    const channels = emptyChannels(
+      this.channels as Record<string, BaseChannel>,
+      checkpoint
+    );
+
+    // Pass `skipManaged: true` as managed values are not used/relevant in update state calls.
+    const { managed } = await this.prepareSpecs(config, { skipManaged: true });
+
+    if (values === null && asNode === "__end__") {
+      if (saved) {
+        // tasks for this checkpoint
+        const nextTasks = _prepareNextTasks(
+          checkpoint,
+          saved.pendingWrites || [],
+          this.nodes,
+          channels,
+          managed,
+          saved.config,
+          true,
+          {
+            step: (saved.metadata?.step ?? -1) + 1,
+            checkpointer: this.checkpointer || undefined,
+            store: this.store,
+          }
+        );
+
+        // apply null writes
+        const nullWrites = (saved.pendingWrites || [])
+          .filter((w) => w[0] === NULL_TASK_ID)
+          .flatMap((w) => w.slice(1)) as PendingWrite<string>[];
+        if (nullWrites.length > 0) {
+          _applyWrites(saved.checkpoint, channels, [
+            {
+              name: INPUT,
+              writes: nullWrites,
+              triggers: [],
+            },
+          ]);
+        }
+        // apply writes from tasks that already ran
+        for (const [taskId, k, v] of saved.pendingWrites || []) {
+          if ([ERROR, INTERRUPT, SCHEDULED].includes(k)) {
+            continue;
+          }
+          if (!(taskId in nextTasks)) {
+            continue;
+          }
+          nextTasks[taskId].writes.push([k, v]);
+        }
+        // clear all current tasks
+        _applyWrites(
+          checkpoint,
+          channels,
+          Object.values(nextTasks) as WritesProtocol<string>[]
+        );
+      }
+      // save checkpoint
+      const nextConfig = await checkpointer.put(
+        checkpointConfig,
+        createCheckpoint(checkpoint, undefined, step),
+        {
+          ...checkpointMetadata,
           source: "update",
           step: step + 1,
           writes: {},
@@ -720,14 +804,6 @@ export class Pregel<
         `Node "${asNode.toString()}" does not exist`
       );
     }
-    // update channels
-    const channels = emptyChannels(
-      this.channels as Record<string, BaseChannel>,
-      checkpoint
-    );
-
-    // Pass `skipManaged: true` as managed values are not used/relevant in update state calls.
-    const { managed } = await this.prepareSpecs(config, { skipManaged: true });
 
     // run all writers of the chosen node
     const writers = this.nodes[asNode].getWriters();
@@ -919,7 +995,7 @@ export class Pregel<
    * @param options.debug Whether to print debug information during execution.
    */
   override async stream(
-    input: PregelInputType | Command,
+    input: InputType | Command | null,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
   ): Promise<IterableReadableStream<PregelOutputType>> {
     // The ensureConfig method called internally defaults recursionLimit to 25 if not
@@ -1246,9 +1322,9 @@ export class Pregel<
    * @param options.debug Whether to print debug information during execution.
    */
   override async invoke(
-    input: PregelInputType | Command,
+    input: InputType | Command | null,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
-  ): Promise<PregelOutputType> {
+  ): Promise<OutputType> {
     const streamMode = options?.streamMode ?? "values";
     const config = {
       ...options,
@@ -1263,6 +1339,6 @@ export class Pregel<
     if (streamMode === "values") {
       return chunks[chunks.length - 1];
     }
-    return chunks;
+    return chunks as OutputType;
   }
 }

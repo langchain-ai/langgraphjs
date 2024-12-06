@@ -125,6 +125,8 @@ export type Interrupt = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   value: any;
   when: "during";
+  resumable?: boolean;
+  ns?: string[];
 };
 
 export type CommandParams<R> = {

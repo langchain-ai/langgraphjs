@@ -470,10 +470,16 @@ Only add steps to the plan that still NEED to be done. Do not return previously 
     state: PlanExecuteState
   ): Promise<Partial<PlanExecuteState>> {
     const task = state.input;
-    const agentResponse = await agentExecutor.invoke({ input: task });
-    return {
-      pastSteps: [task, agentResponse.agentOutcome.returnValues.output],
-    };
+    const agentResponse = await agentExecutor.invoke({
+      input: task ?? undefined,
+    });
+
+    const outcome = agentResponse.agentOutcome;
+    if (!outcome || !("returnValues" in outcome)) {
+      throw new Error("Agent did not return a valid outcome.");
+    }
+
+    return { pastSteps: [task, outcome.returnValues.output] };
   }
 
   async function planStep(
