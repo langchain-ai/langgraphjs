@@ -43,7 +43,6 @@ import {
   uuid5,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
-import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 import {
   _AnyIdAIMessage,
   _AnyIdAIMessageChunk,
@@ -4455,7 +4454,7 @@ export function runPregelTests(
       market: "US",
     });
 
-    const checkpointer = SqliteSaver.fromConnString(":memory:");
+    const checkpointer = await createCheckpointer();
     graph = builder.compile({ checkpointer });
 
     const config = { configurable: { thread_id: "10" } };
@@ -4809,7 +4808,7 @@ export function runPregelTests(
     });
 
     const toolTwoWithCheckpointer = toolTwoBuilder.compile({
-      checkpointer: SqliteSaver.fromConnString(":memory:"),
+      checkpointer: await createCheckpointer(),
       interruptBefore: ["tool_two_fast", "tool_two_slow"],
     });
 
@@ -8909,6 +8908,78 @@ export function runPregelTests(
     });
     expect(result.messages).toBeDefined();
     expect(result.messages).toHaveLength(2);
+  });
+
+  it("Can have three graphs with different keys", async () => {
+    const annotationOne = Annotation.Root({
+      inputOne: Annotation<string>,
+    });
+    const annotationTwo = Annotation.Root({
+      inputOne: Annotation<string>,
+      inputTwo: Annotation<string>,
+    });
+    const annotationThree = Annotation.Root({
+      inputTwo: Annotation<string>,
+      inputThree: Annotation<string>,
+    });
+
+    const graphThree = new StateGraph(annotationThree)
+      .addNode("returns", () => ({ inputThree: "one" }))
+      .addEdge(START, "returns")
+      .compile();
+
+    const graphTwo = new StateGraph(annotationTwo)
+      .addNode("one", () => ({ inputTwo: "one" }))
+      .addNode("callGraphThree", graphThree, { input: annotationThree })
+      .addEdge(START, "one")
+      .addEdge("one", "callGraphThree")
+      .addEdge("callGraphThree", END)
+      .compile();
+
+    const graphOne = new StateGraph(annotationOne)
+      .addNode("one", () => ({ inputOne: "one" }))
+      .addNode("callGraphTwo", graphTwo, { input: annotationTwo })
+      .addEdge(START, "one")
+      .addEdge("one", "callGraphTwo")
+      .addEdge("callGraphTwo", END)
+      .compile();
+
+    await expect(graphOne.invoke({ inputOne: "one" })).resolves.toBeDefined();
+  });
+
+  it("Can access store inside a node", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", async (_, configTop) => {
+        expect(configTop.store).toBeDefined();
+        return {};
+      })
+      .addEdge(START, "one")
+      .compile({ store: new InMemoryStore() });
+
+    await graph.invoke({ messages: [] });
+  });
+
+  it("can interrupt then update state with asNode of __end__", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", () => {
+        console.log("Before interrupt");
+        throw new NodeInterrupt("<INTERRUPTED>");
+      })
+      .addEdge(START, "one")
+      .compile({ checkpointer: await createCheckpointer() });
+
+    const config = {
+      configurable: { thread_id: "test_update_state_as_node_end" },
+    };
+    await expect(graph.invoke({ messages: [] }, config)).resolves.toBeDefined();
+
+    const stateAfterInterrupt = await graph.getState(config);
+    expect(stateAfterInterrupt.next).toEqual(["one"]);
+
+    const updateStateResult = await graph.updateState(config, null, END);
+    expect(updateStateResult).toBeDefined();
+    const stateAfterUpdate = await graph.getState(config);
+    expect(stateAfterUpdate.next).toEqual([]);
   });
 }
 

@@ -120,6 +120,7 @@ nav:
               - how-tos/manage-conversation-history.ipynb
               - how-tos/delete-messages.ipynb
               - how-tos/add-summary-conversation-history.ipynb
+              - how-tos/semantic-search.ipynb
           - Human-in-the-loop:
               - Human-in-the-loop: how-tos#human-in-the-loop
               - how-tos/breakpoints.ipynb
