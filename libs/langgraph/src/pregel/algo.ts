@@ -612,8 +612,8 @@ export function _prepareSingleTask<
                 },
                 [CONFIG_KEY_WRITES]: [
                   ...(pendingWrites || []),
-                  ...(configurable[CONFIG_KEY_WRITES] || [])
-                ].filter(w => w[0] === NULL_TASK_ID || w[0] === taskId),
+                  ...(configurable[CONFIG_KEY_WRITES] || []),
+                ].filter((w) => w[0] === NULL_TASK_ID || w[0] === taskId),
                 [CONFIG_KEY_SCRATCHPAD]: {},
                 checkpoint_id: undefined,
                 checkpoint_ns: taskCheckpointNamespace,
@@ -744,8 +744,8 @@ export function _prepareSingleTask<
                   },
                   [CONFIG_KEY_WRITES]: [
                     ...(pendingWrites || []),
-                    ...(configurable[CONFIG_KEY_WRITES] || [])
-                  ].filter(w => w[0] === NULL_TASK_ID || w[0] === taskId),
+                    ...(configurable[CONFIG_KEY_WRITES] || []),
+                  ].filter((w) => w[0] === NULL_TASK_ID || w[0] === taskId),
                   [CONFIG_KEY_SCRATCHPAD]: {},
                   checkpoint_id: undefined,
                   checkpoint_ns: taskCheckpointNamespace,

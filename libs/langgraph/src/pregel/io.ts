@@ -1,4 +1,7 @@
-import type { PendingWrite } from "@langchain/langgraph-checkpoint";
+import type {
+  CheckpointPendingWrite,
+  PendingWrite,
+} from "@langchain/langgraph-checkpoint";
 import { validate } from "uuid";
 
 import type { BaseChannel } from "../channels/base.js";
@@ -54,7 +57,7 @@ export function readChannels<C extends PropertyKey>(
 
 export function* mapCommand(
   cmd: Command,
-  pendingWrites: PendingWrite<string>[],
+  pendingWrites: CheckpointPendingWrite<string>[]
 ): Generator<[string, string, unknown]> {
   if (cmd.resume) {
     if (
@@ -67,13 +70,12 @@ export function* mapCommand(
         // Find existing resume values for this task ID
         const existing = (pendingWrites.find(
           ([id, type]) => id === tid && type === RESUME
-        )?.[1] ?? []) as unknown[];
-        
-        // Create a new array if existing is not an array
-        const existingArray = Array.isArray(existing) ? existing : [];
-        existingArray.push(resume);
-        
-        yield [tid, RESUME, existingArray];
+        )?.[2] ?? []) as unknown[];
+
+        // Ensure we have an array and append the resume value
+        existing.push(resume);
+
+        yield [tid, RESUME, existing];
       }
     } else {
       yield [NULL_TASK_ID, RESUME, cmd.resume];

@@ -13,6 +13,7 @@ import {
   All,
   BaseStore,
   AsyncBatchedStore,
+  WRITES_IDX_MAP,
 } from "@langchain/langgraph-checkpoint";
 
 import {
@@ -448,13 +449,25 @@ export class PregelLoop {
     if (writes.length === 0) {
       return;
     }
+
+    // deduplicate writes to special channels, last write wins
+    if (writes.every(([key]) => key in WRITES_IDX_MAP)) {
+      writes = Array.from(new Map(writes.map((w) => [w[0], w])).values());
+    }
     // save writes
-    const pendingWrites: CheckpointPendingWrite<string>[] = writes.map(
-      ([key, value]) => {
-        return [taskId, key, value];
-      }
-    );
-    this.checkpointPendingWrites.push(...pendingWrites);
+    for (const [c, v] of writes) {
+      if (c in WRITES_IDX_MAP) {
+        const idx = this.checkpointPendingWrites.findIndex(
+          (w) => w[0] === taskId && w[1] === c
+        );
+        if (idx !== -1) {
+          this.checkpointPendingWrites[idx] = [taskId, c, v];
+        } else {
+          this.checkpointPendingWrites.push([taskId, c, v]);
+        }
+    }
+    }
+
     const putWritePromise = this.checkpointer?.putWrites(
       {
         ...this.checkpointConfig,
@@ -470,6 +483,7 @@ export class PregelLoop {
     if (putWritePromise !== undefined) {
       this.checkpointerPromises.push(putWritePromise);
     }
+
     if (this.tasks) {
       this._outputWrites(taskId, writes);
     }
@@ -740,7 +754,10 @@ export class PregelLoop {
     } else if (_isCommand(this.input)) {
       const writes: { [key: string]: PendingWrite[] } = {};
       // group writes by task id
-      for (const [tid, key, value] of mapCommand(this.input)) {
+      for (const [tid, key, value] of mapCommand(
+        this.input,
+        this.checkpointPendingWrites
+      )) {
         if (writes[tid] === undefined) {
           writes[tid] = [];
         }
