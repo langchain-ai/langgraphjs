@@ -9,6 +9,7 @@ import { StructuredToolInterface } from "@langchain/core/tools";
 import { RunnableCallable } from "../utils.js";
 import { END } from "../graph/graph.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
+import { NodeInterrupt } from "../errors.js";
 
 export type ToolNodeOptions = {
   name?: string;
@@ -185,6 +186,12 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (e: any) {
           if (!this.handleToolErrors) {
+            throw e;
+          }
+          if (e.name === NodeInterrupt.unminifiable_name) {
+            // `NodeInterrupt` errors are a breakpoint to bring a human into the loop.
+            // As such, they are not recoverable by the agent and shouldn't be fed
+            // back.  Instead, re-throw these errors even when `handleToolErrors = true`.
             throw e;
           }
           return new ToolMessage({
