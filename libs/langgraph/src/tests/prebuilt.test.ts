@@ -66,7 +66,7 @@ class SearchAPIWithArtifact extends StructuredTool {
   }
 }
 
-describe("createReactAgent", () => {
+describe("createReactAgent with stateModifier", () => {
   const tools = [new SearchAPI()];
 
   it("Can use string message modifier", async () => {
@@ -75,7 +75,266 @@ describe("createReactAgent", () => {
         new AIMessage({
           content: "result1",
           tool_calls: [
-            { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+            {
+              name: "search_api",
+              id: "tool_abcd123",
+              args: { query: "foo" },
+            },
+          ],
+        }),
+        new AIMessage("result2"),
+      ],
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools,
+      stateModifier: "You are a helpful assistant",
+    });
+
+    const result = await agent.invoke({
+      messages: [new HumanMessage("Hello Input!")],
+    });
+
+    const expected = [
+      new _AnyIdHumanMessage("Hello Input!"),
+      new _AnyIdAIMessage({
+        content: "result1",
+        tool_calls: [
+          { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+        ],
+      }),
+      new _AnyIdToolMessage({
+        name: "search_api",
+        content: "result for foo",
+        tool_call_id: "tool_abcd123",
+        artifact: undefined,
+      }),
+      new _AnyIdAIMessage("result2"),
+    ];
+    expect(result.messages).toEqual(expected);
+  });
+
+  it("Can use SystemMessage message modifier", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "result1",
+          tool_calls: [
+            {
+              name: "search_api",
+              id: "tool_abcd123",
+              args: { query: "foo" },
+            },
+          ],
+        }),
+        new AIMessage("result2"),
+      ],
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools,
+      stateModifier: new SystemMessage("You are a helpful assistant"),
+    });
+
+    const result = await agent.invoke({
+      messages: [],
+    });
+    const expected = [
+      new _AnyIdAIMessage({
+        content: "result1",
+        tool_calls: [
+          { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+        ],
+      }),
+      new _AnyIdToolMessage({
+        name: "search_api",
+        content: "result for foo",
+        tool_call_id: "tool_abcd123",
+        artifact: undefined,
+      }),
+      new _AnyIdAIMessage("result2"),
+    ];
+    expect(result.messages).toEqual(expected);
+  });
+
+  it("Can use a function as a message modifier", async () => {
+    const llm = new FakeToolCallingChatModel({});
+
+    const agent = createReactAgent({
+      llm,
+      tools,
+      stateModifier: (state) => {
+        return [new AIMessage("foobar")].concat(state.messages);
+      },
+    });
+
+    const result = await agent.invoke({
+      messages: [],
+    });
+    const expected = [new _AnyIdAIMessage("foobar")];
+    expect(result.messages).toEqual(expected);
+  });
+
+  it("Should respect a passed signal", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "result1",
+          tool_calls: [
+            {
+              name: "search_api",
+              id: "tool_abcd123",
+              args: { query: "foo" },
+            },
+          ],
+        }),
+        new AIMessage("result2"),
+      ],
+      sleep: 500,
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools: [new SearchAPIWithArtifact()],
+      stateModifier: "You are a helpful assistant",
+    });
+
+    const controller = new AbortController();
+
+    setTimeout(() => controller.abort(), 100);
+
+    await expect(async () => {
+      await agent.invoke(
+        {
+          messages: [new HumanMessage("Hello Input!")],
+        },
+        {
+          signal: controller.signal,
+        }
+      );
+    }).rejects.toThrowError();
+  });
+
+  it("Works with tools that return content_and_artifact response format", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "result1",
+          tool_calls: [
+            {
+              name: "search_api",
+              id: "tool_abcd123",
+              args: { query: "foo" },
+            },
+          ],
+        }),
+        new AIMessage("result2"),
+      ],
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools: [new SearchAPIWithArtifact()],
+      stateModifier: "You are a helpful assistant",
+    });
+
+    const result = await agent.invoke({
+      messages: [new HumanMessage("Hello Input!")],
+    });
+
+    const expected = [
+      new _AnyIdHumanMessage("Hello Input!"),
+      new _AnyIdAIMessage({
+        content: "result1",
+        tool_calls: [
+          { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+        ],
+      }),
+      new _AnyIdToolMessage({
+        name: "search_api",
+        content: "some response format",
+        tool_call_id: "tool_abcd123",
+        artifact: Buffer.from("123"),
+      }),
+      new _AnyIdAIMessage("result2"),
+    ];
+    expect(result.messages).toEqual(expected);
+  });
+
+  it("Can accept RunnableToolLike", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "result1",
+          tool_calls: [
+            {
+              name: "search_api",
+              id: "tool_abcd123",
+              args: { query: "foo" },
+            },
+          ],
+        }),
+        new AIMessage("result2"),
+      ],
+    });
+
+    // Instead of re-implementing the tool, wrap it in a RunnableLambda and
+    // call `asTool` to create a RunnableToolLike.
+    const searchApiTool = new SearchAPI();
+    const runnableToolLikeTool = RunnableLambda.from<
+      z.infer<typeof searchApiTool.schema>,
+      ToolMessage
+    >(async (input, config) => searchApiTool.invoke(input, config)).asTool({
+      name: searchApiTool.name,
+      description: searchApiTool.description,
+      schema: searchApiTool.schema,
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools: [runnableToolLikeTool],
+      stateModifier: "You are a helpful assistant",
+    });
+
+    const result = await agent.invoke({
+      messages: [new HumanMessage("Hello Input!")],
+    });
+
+    const expected = [
+      new _AnyIdHumanMessage("Hello Input!"),
+      new _AnyIdAIMessage({
+        content: "result1",
+        tool_calls: [
+          { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+        ],
+      }),
+      new _AnyIdToolMessage({
+        name: "search_api",
+        content: "result for foo",
+        tool_call_id: "tool_abcd123",
+      }),
+      new _AnyIdAIMessage("result2"),
+    ];
+    expect(result.messages).toEqual(expected);
+  });
+});
+
+describe("createReactAgent with legacy messageModifier", () => {
+  const tools = [new SearchAPI()];
+
+  it("Can use string message modifier", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "result1",
+          tool_calls: [
+            {
+              name: "search_api",
+              id: "tool_abcd123",
+              args: { query: "foo" },
+            },
           ],
         }),
         new AIMessage("result2"),
@@ -117,7 +376,11 @@ describe("createReactAgent", () => {
         new AIMessage({
           content: "result1",
           tool_calls: [
-            { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+            {
+              name: "search_api",
+              id: "tool_abcd123",
+              args: { query: "foo" },
+            },
           ],
         }),
         new AIMessage("result2"),
@@ -151,13 +414,35 @@ describe("createReactAgent", () => {
     expect(result.messages).toEqual(expected);
   });
 
+  it("Can use a function as a message modifier", async () => {
+    const llm = new FakeToolCallingChatModel({});
+
+    const agent = createReactAgent({
+      llm,
+      tools,
+      messageModifier: (messages) => {
+        return [new AIMessage("foobar")].concat(messages);
+      },
+    });
+
+    const result = await agent.invoke({
+      messages: [],
+    });
+    const expected = [new _AnyIdAIMessage("foobar")];
+    expect(result.messages).toEqual(expected);
+  });
+
   it("Should respect a passed signal", async () => {
     const llm = new FakeToolCallingChatModel({
       responses: [
         new AIMessage({
           content: "result1",
           tool_calls: [
-            { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+            {
+              name: "search_api",
+              id: "tool_abcd123",
+              args: { query: "foo" },
+            },
           ],
         }),
         new AIMessage("result2"),
@@ -193,7 +478,11 @@ describe("createReactAgent", () => {
         new AIMessage({
           content: "result1",
           tool_calls: [
-            { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+            {
+              name: "search_api",
+              id: "tool_abcd123",
+              args: { query: "foo" },
+            },
           ],
         }),
         new AIMessage("result2"),
@@ -235,7 +524,11 @@ describe("createReactAgent", () => {
         new AIMessage({
           content: "result1",
           tool_calls: [
-            { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+            {
+              name: "search_api",
+              id: "tool_abcd123",
+              args: { query: "foo" },
+            },
           ],
         }),
         new AIMessage("result2"),
@@ -435,7 +728,9 @@ describe("MessagesAnnotation", () => {
       { messages: [new HumanMessage("should be only one")] },
       { configurable: { thread_id: "1" } }
     );
-    const res2 = await graph.invoke(null, { configurable: { thread_id: "1" } });
+    const res2 = await graph.invoke(null, {
+      configurable: { thread_id: "1" },
+    });
 
     expect(res.messages.length).toEqual(1);
     expect(res2.messages.length).toEqual(1);
