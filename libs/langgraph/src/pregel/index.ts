@@ -690,7 +690,7 @@ export class Pregel<
           channels,
           managed,
           saved.config,
-          true, // Should I pass forExecution=true here?
+          true,
           {
             step: (saved.metadata?.step ?? -1) + 1,
             checkpointer: this.checkpointer || undefined,
