@@ -165,7 +165,6 @@ export function _localWrite(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   commit: (writes: [string, any][]) => any,
   processes: Record<string, PregelNode>,
-  channels: Record<string, BaseChannel>,
   managed: ManagedValueMapping,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   writes: [string, any][]
@@ -186,8 +185,6 @@ export function _localWrite(
       }
       // replace any runtime values with placeholders
       managed.replaceRuntimeValues(step, value.args);
-    } else if (!(chan in channels) && !managed.get(chan)) {
-      console.warn(`Skipping write for channel '${chan}' which has no readers`);
     }
   }
   commit(writes);
@@ -583,7 +580,6 @@ export function _prepareSingleTask<
                     step,
                     (items: [keyof Cc, unknown][]) => writes.push(...items),
                     processes,
-                    channels,
                     managed,
                     writes_
                   ),
@@ -715,7 +711,6 @@ export function _prepareSingleTask<
                         writes.push(...items);
                       },
                       processes,
-                      channels,
                       managed,
                       writes_
                     ),

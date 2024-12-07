@@ -9004,41 +9004,50 @@ export function runPregelTests(
     const config = {
       configurable: { thread_id: "test_multi_interrupt" },
     };
-    const firstResult = await graph.invoke(
-      {
-        myKey: "DE",
-      },
-      config
+    const firstResult = await gatherIterator(
+      graph.stream(
+        {
+          myKey: "DE",
+        },
+        config
+      )
     );
     expect(firstResult).toBeDefined();
     const firstState = await graph.getState(config);
+    console.log("firstState", firstState.tasks[0].interrupts[0]);
     expect(firstState.tasks).toHaveLength(1);
     expect(firstState.tasks[0].interrupts).toHaveLength(1);
     expect(firstState.tasks[0].interrupts[0].value).toEqual({
       value: 1,
     });
 
-    const secondResult = await graph.invoke(
-      new Command({
-        resume: "answer 1",
-      }),
-      config
+    const secondResult = await gatherIterator(
+      graph.stream(
+        new Command({
+          resume: "answer 1",
+        }),
+        config
+      )
     );
     expect(secondResult).toBeDefined();
+
     const secondState = await graph.getState(config);
+    console.log("secondState", secondState.tasks[0].interrupts[0]);
     expect(secondState.tasks).toHaveLength(1);
     expect(secondState.tasks[0].interrupts).toHaveLength(1);
     expect(secondState.tasks[0].interrupts[0].value).toEqual({
       value: 2,
     });
 
-    const thirdResult = await graph.invoke(
-      new Command({
-        resume: "answer 2",
-      }),
-      config
+    const thirdResult = await gatherIterator(
+      graph.stream(
+        new Command({
+          resume: "answer 2",
+        }),
+        config
+      )
     );
-    expect(thirdResult.myKey).toEqual("DE answer 1 answer 2");
+    expect(thirdResult[0].one.myKey).toEqual("DE answer 1 answer 2");
     const thirdState = await graph.getState(config);
     console.log("thirdState", thirdState);
     expect(thirdState.tasks).toHaveLength(0);

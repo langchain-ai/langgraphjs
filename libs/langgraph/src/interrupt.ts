@@ -1,4 +1,6 @@
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
+import { CheckpointPendingWrite } from "@langchain/langgraph-checkpoint";
+import { RunnableConfig } from "@langchain/core/runnables";
 import { GraphInterrupt } from "./errors.js";
 import {
   CONFIG_KEY_CHECKPOINT_NS,
@@ -11,8 +13,6 @@ import {
   RESUME,
 } from "./constants.js";
 import { PregelScratchpad } from "./pregel/types.js";
-import { CheckpointPendingWrite } from "@langchain/langgraph-checkpoint";
-import { RunnableConfig } from "@langchain/core/runnables";
 
 export function interrupt<I = unknown, R = unknown>(value: I): R {
   const config: RunnableConfig | undefined =
@@ -27,7 +27,7 @@ export function interrupt<I = unknown, R = unknown>(value: I): R {
   if (scratchpad.interruptCounter === undefined) {
     scratchpad.interruptCounter = 0;
   } else {
-    scratchpad.interruptCounter++;
+    scratchpad.interruptCounter += 1;
   }
   const idx = scratchpad.interruptCounter;
 
