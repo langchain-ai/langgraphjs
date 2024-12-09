@@ -9154,6 +9154,39 @@ export function runPregelTests(
     const stateAfterUpdate = await graph.getState(config);
     expect(stateAfterUpdate.next).toEqual([]);
   });
+
+  it("test_command_with_static_breakpoints", async () => {
+    const StateAnnotation = Annotation.Root({
+      foo: Annotation<string>,
+    });
+    const checkpointer = await createCheckpointer();
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("node1", async (state: typeof StateAnnotation.State) => {
+        return {
+          foo: state.foo + "|node-1",
+        };
+      })
+      .addNode("node2", async (state: typeof StateAnnotation.State) => {
+        return {
+          foo: state.foo + "|node-2",
+        };
+      })
+      .addEdge("__start__", "node1")
+      .addEdge("node1", "node2")
+      .compile({ checkpointer, interruptBefore: ["node1"] });
+
+    const config = {
+      configurable: {
+        thread_id: "1",
+      },
+    };
+
+    await graph.invoke({ foo: "abc" }, config);
+    const result = await graph.invoke(new Command({ resume: "node1" }), config);
+    expect(result).toEqual({
+      foo: "abc|node-1|node-2",
+    });
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
