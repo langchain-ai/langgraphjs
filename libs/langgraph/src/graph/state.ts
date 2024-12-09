@@ -514,8 +514,7 @@ export class CompiledStateGraph<
     // to avoid name collision below
     const nodeKey = key;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    function getStateKey(key: keyof U, input: U): any {
+    function getStateKey(key: keyof U, input: U): unknown {
       if (!input) {
         return SKIP_WRITE;
       } else if (_isCommand(input)) {
