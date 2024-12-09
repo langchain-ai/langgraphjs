@@ -67,7 +67,7 @@ export function readChannels<C extends PropertyKey>(
 export function* mapCommand(
   cmd: Command
 ): Generator<[string, string, unknown]> {
-  if (cmd.graph == Command.PARENT) {
+  if (cmd.graph === Command.PARENT) {
     throw new InvalidUpdateError("There is no parent graph.");
   }
   if (cmd.goto) {

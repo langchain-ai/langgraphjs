@@ -4,6 +4,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable import/no-extraneous-dependencies */
 /* eslint-disable prefer-template */
+/* eslint-disable no-param-reassign */
 import {
   it,
   expect,
@@ -2005,26 +2006,28 @@ export function runPregelTests(
     expect(res).toEqual({ items: ["0", "1", "2", "2", "3"] });
   });
 
-  it.skip("should handle send sequences correctly", async () => {
+  it("should handle send sequences correctly", async () => {
     const StateAnnotation = Annotation.Root({
       items: Annotation<any[]>({
         reducer: (a, b) => a.concat(b),
       }),
     });
 
-    const getNode = (name: string) => {
+    const getNode = (
+      name: string
+    ): ((
+      state: typeof StateAnnotation.State
+    ) => Promise<typeof StateAnnotation.State>) => {
       return async (state: typeof StateAnnotation.State) => {
-        console.log(state);
         const update = Array.isArray(state.items)
-          ? [name]
-          : [`${name}|${state.toString()}`];
+          ? { items: [name] }
+          : { items: [`${name}|${JSON.stringify(state)}`] };
 
         if (_isCommand(state)) {
-          return {
-            items: [state, ...update],
-          };
+          state.update = update;
+          return state;
         } else {
-          return { items: update };
+          return update;
         }
       };
     };
@@ -2073,8 +2076,8 @@ export function runPregelTests(
           "0",
           "1",
           "3.1",
-          "2|Command(send=Send(node='2', arg=3))",
-          "2|Command(send=Send(node='2', arg=4))",
+          `2|${JSON.stringify(new Command({ goto: new Send("2", 3) }))}`,
+          `2|${JSON.stringify(new Command({ goto: new Send("2", 4) }))}`,
           "3",
           "2|3",
           "2|4",
@@ -8237,7 +8240,7 @@ export function runPregelTests(
     });
   });
 
-  it.only("should work with streamMode messages and custom from within a subgraph", async () => {
+  it("should work with streamMode messages and custom from within a subgraph", async () => {
     const child = new StateGraph(MessagesAnnotation)
       .addNode("c_one", () => ({
         messages: [new HumanMessage("foo"), new AIMessage("bar")],

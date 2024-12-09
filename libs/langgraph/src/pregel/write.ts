@@ -68,16 +68,9 @@ export class ChannelWrite<
     this.writes = writes;
   }
 
-  // async _getWriteValues(
-  //   input: unknown,
-  //   config: RunnableConfig
-  // ): Promise<(string | Send)[]> {
-
-  // }
-
   async _write(input: unknown, config: RunnableConfig): Promise<unknown> {
     const writes = this.writes.map((write) => {
-      if (_isChannelWriteEntry(write) && write.value === PASSTHROUGH) {
+      if (_isChannelWriteEntry(write) && _isPassthrough(write.value)) {
         return {
           channel: write.channel,
           value: input,
@@ -88,7 +81,7 @@ export class ChannelWrite<
         return write;
       }
     });
-    ChannelWrite.doWrite(config, writes);
+    await ChannelWrite.doWrite(config, writes);
     return input;
   }
 

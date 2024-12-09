@@ -2,7 +2,6 @@
 import {
   _coerceToRunnable,
   Runnable,
-  RunnableConfig,
   RunnableLike,
 } from "@langchain/core/runnables";
 import {
@@ -437,9 +436,7 @@ export class StateGraph<
     )) {
       compiled.attachNode(key as N, node);
     }
-    for (const [key, _] of Object.entries<StateGraphNodeSpec<S, U>>(
-      this.nodes
-    )) {
+    for (const [key] of Object.entries<StateGraphNodeSpec<S, U>>(this.nodes)) {
       compiled.attachBranch(
         key as N,
         SELF,
@@ -646,7 +643,7 @@ export class CompiledStateGraph<
     branch: Branch<S, N>,
     options: { withReader?: boolean } = { withReader: true }
   ): void {
-    const branchWriter = (
+    const branchWriter = async (
       packets: (string | Send)[],
       config: LangGraphRunnableConfig
     ) => {
@@ -663,17 +660,7 @@ export class CompiledStateGraph<
           value: start,
         };
       });
-      if (branch.then && branch.then !== END) {
-        writes.push(
-          ""
-          // ChannelWriteEntry(
-          //   f"branch:{start}:{name}::then",
-          //   WaitForNames(
-          //       {p.node if isinstance(p, Send) else p for p in filtered}
-          //   ),
-        );
-      }
-      ChannelWrite.doWrite(
+      await ChannelWrite.doWrite(
         { ...config, tags: (config.tags ?? []).concat([TAG_HIDDEN]) },
         writes
       );
@@ -681,25 +668,7 @@ export class CompiledStateGraph<
     // attach branch publisher
     this.nodes[start].writers.push(
       branch.run(
-        // writer
-        (dests) => {
-          const filteredDests = dests.filter((dest) => dest !== END);
-          if (!filteredDests.length) {
-            return;
-          }
-          const writes: (ChannelWriteEntry | Send)[] = filteredDests.map(
-            (dest) => {
-              if (_isSend(dest)) {
-                return dest;
-              }
-              return {
-                channel: `branch:${start}:${name}:${dest}`,
-                value: start,
-              };
-            }
-          );
-          return new ChannelWrite(writes, [TAG_HIDDEN]);
-        },
+        branchWriter,
         // reader
         options.withReader
           ? (config) =>
@@ -712,19 +681,19 @@ export class CompiledStateGraph<
       )
     );
 
-    // // attach branch subscribers
-    // const ends = branch.ends
-    //   ? Object.values(branch.ends)
-    //   : Object.keys(this.builder.nodes);
-    // for (const end of ends) {
-    //   if (end === END) {
-    //     continue;
-    //   }
-    //   const channelName = `branch:${start}:${name}:${end}`;
-    //   (this.channels as Record<string, BaseChannel>)[channelName] =
-    //     new EphemeralValue(false);
-    //   this.nodes[end as N].triggers.push(channelName);
-    // }
+    // attach branch subscribers
+    const ends = branch.ends
+      ? Object.values(branch.ends)
+      : Object.keys(this.builder.nodes);
+    for (const end of ends) {
+      if (end === END) {
+        continue;
+      }
+      const channelName = `branch:${start}:${name}:${end}`;
+      (this.channels as Record<string, BaseChannel>)[channelName] =
+        new EphemeralValue(false);
+      this.nodes[end as N].triggers.push(channelName);
+    }
   }
 }
 
@@ -789,7 +758,8 @@ function isStateGraphArgsWithInputOutputSchemas<
   );
 }
 
-function _controlBranch(value: unknown): (string | Send)[] {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function _controlBranch(value: any): (string | Send)[] {
   if (_isSend(value)) {
     return [value];
   }
@@ -802,16 +772,16 @@ function _controlBranch(value: unknown): (string | Send)[] {
   return Array.isArray(value.goto) ? value.goto : [value.goto];
 }
 
-// const CONTROL_BRANCH_PATH = new RunnableCallable({
-//   func: _controlBranch,
-//   tags: [TAG_HIDDEN],
-//   trace: false,
-//   recurse: false,
-// });
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CONTROL_BRANCH_PATH = new RunnableCallable<any, (string | Send)[]>({
+  func: _controlBranch,
+  tags: [TAG_HIDDEN],
+  trace: false,
+  recurse: false,
+});
 
 function _getControlBranch() {
   return new Branch({
-    path: _controlBranch,
-    pathMap: {},
+    path: CONTROL_BRANCH_PATH,
   });
 }

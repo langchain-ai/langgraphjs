@@ -132,6 +132,7 @@ export type Interrupt = {
 export type CommandParams<R> = {
   resume?: R;
   graph?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   update?: Record<string, any>;
   goto?: string | Send | (string | Send)[];
 };
@@ -143,6 +144,7 @@ export class Command<R = unknown> {
 
   graph?: string;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   update?: Record<string, any>;
 
   goto: (string | Send)[] = [];
@@ -156,15 +158,6 @@ export class Command<R = unknown> {
     if (args.goto) {
       this.goto = Array.isArray(args.goto) ? args.goto : [args.goto];
     }
-  }
-
-  toString() {
-    // Get all non-null/undefined values
-    const contents = Object.entries(this)
-      .filter(([_, value]) => value !== undefined && value !== null)
-      .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
-      .join(", ");
-    return `Command(${contents})`;
   }
 }
 

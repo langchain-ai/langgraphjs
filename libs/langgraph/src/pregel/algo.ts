@@ -64,6 +64,7 @@ export type WritesProtocol<C = string> = {
   name: string;
   writes: PendingWrite<C>[];
   triggers: string[];
+  path?: [string, ...(string | number | (string | number[]))[]];
 };
 
 export const increment = (current?: number) => {
@@ -202,6 +203,22 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getNextVersion?: (version: any, channel: BaseChannel) => any
 ): Record<string, PendingWriteValue[]> {
+  // Sort tasks by first 3 path elements for deterministic order
+  // Later path parts (like task IDs) are ignored for sorting
+  tasks.sort((a, b) => {
+    const aPath = a.path?.slice(0, 3) || [];
+    const bPath = b.path?.slice(0, 3) || [];
+
+    // Compare each path element
+    for (let i = 0; i < Math.min(aPath.length, bPath.length); i += 1) {
+      if (aPath[i] < bPath[i]) return -1;
+      if (aPath[i] > bPath[i]) return 1;
+    }
+
+    // If one path is shorter, it comes first
+    return aPath.length - bPath.length;
+  });
+
   // if no task has triggers this is applying writes from the null task only
   // so we don't do anything other than update the channels written to
   const bumpStep = tasks.some((task) => task.triggers.length > 0);
@@ -440,6 +457,74 @@ export function _prepareNextTasks<
       tasks[task.id] = task;
     }
   }
+  // Consume pending Sends from this step (new version of Send)
+  if (pendingWrites?.some(([_, c]) => c === PUSH)) {
+    // Group writes by task ID
+    const groupedByTask = new Map<string, string[]>();
+    pendingWrites.forEach(([tid, c]) => {
+      if (!groupedByTask.has(tid)) {
+        groupedByTask.set(tid, []);
+      }
+      groupedByTask.get(tid)?.push(c);
+    });
+
+    // Prepare send tasks from grouped writes
+    // 1. Start from sends originating from existing tasks
+    const taskArray = Object.values(tasks);
+    let tidx = 0;
+    while (tidx < taskArray.length) {
+      const task = taskArray[tidx];
+      const twrites = groupedByTask.get(task.id);
+      if (twrites) {
+        groupedByTask.delete(task.id);
+        twrites.forEach((c, idx) => {
+          if (c !== PUSH) {
+            return;
+          }
+          const nextTask = _prepareSingleTask(
+            [PUSH, [...task.path, idx, task.id]],
+            checkpoint,
+            pendingWrites,
+            processes,
+            channels,
+            managed,
+            config,
+            forExecution,
+            extra
+          );
+          if (nextTask) {
+            tasks[nextTask.id] = nextTask;
+          }
+        });
+      }
+      tidx += 1;
+    }
+
+    // 2. Create new tasks for remaining sends (e.g., from update_state)
+    groupedByTask.forEach((writes, tid) => {
+      const task = tasks[tid];
+      writes.forEach((c, idx) => {
+        if (c !== PUSH) {
+          return;
+        }
+        const nextTask = _prepareSingleTask(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          [PUSH, task ? task.path : ([] as any), idx, tid],
+          checkpoint,
+          pendingWrites,
+          processes,
+          channels,
+          managed,
+          config,
+          forExecution,
+          extra
+        );
+        if (nextTask) {
+          tasks[nextTask.id] = nextTask;
+        }
+      });
+    });
+  }
   return tasks;
 }
 
@@ -462,7 +547,7 @@ export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
 >(
-  taskPath: [string, string | number],
+  taskPath: [string, ...(string | number | (string | number[]))[]],
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
@@ -477,7 +562,7 @@ export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
 >(
-  taskPath: [string, string | number],
+  taskPath: [string, ...(string | number | (string | number[]))[]],
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
@@ -492,7 +577,7 @@ export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
 >(
-  taskPath: [string, string | number],
+  taskPath: [string, ...(string | number | (string | number[]))[]],
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
@@ -510,39 +595,99 @@ export function _prepareSingleTask<
   const parentNamespace = configurable.checkpoint_ns ?? "";
 
   if (taskPath[0] === PUSH) {
-    const index =
-      typeof taskPath[1] === "number" ? taskPath[1] : parseInt(taskPath[1], 10);
-    if (index >= checkpoint.pending_sends.length) {
-      return undefined;
-    }
-    const packet = checkpoint.pending_sends[index];
-    if (!_isSendInterface(packet)) {
-      console.warn(
-        `Ignoring invalid packet ${JSON.stringify(packet)} in pending sends.`
+    let triggers;
+    let taskId;
+    let checkpointNamespace;
+    let packet;
+    if (taskPath.length === 2) {
+      // legacy SEND tasks, executed in superstep n+1
+      // (PUSH, idx of pending send)
+      const index =
+        typeof taskPath[1] === "number"
+          ? taskPath[1]
+          : parseInt(taskPath[1] as string, 10);
+      if (index >= checkpoint.pending_sends.length) {
+        return undefined;
+      }
+      packet = checkpoint.pending_sends[index];
+      if (!_isSendInterface(packet)) {
+        console.warn(
+          `Ignoring invalid packet ${JSON.stringify(packet)} in pending sends.`
+        );
+        return undefined;
+      }
+      if (!(packet.node in processes)) {
+        console.warn(
+          `Ignoring unknown node name ${packet.node} in pending sends.`
+        );
+        return undefined;
+      }
+      triggers = [PUSH];
+      checkpointNamespace =
+        parentNamespace === ""
+          ? packet.node
+          : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${packet.node}`;
+      taskId = uuid5(
+        JSON.stringify([
+          checkpointNamespace,
+          step.toString(),
+          packet.node,
+          PUSH,
+          index.toString(),
+        ]),
+        checkpoint.id
       );
-      return undefined;
-    }
-    if (!(packet.node in processes)) {
-      console.warn(
-        `Ignoring unknown node name ${packet.node} in pending sends.`
+    } else if (taskPath.length === 4) {
+      // new PUSH tasks, executed in superstep n
+      // (PUSH, parent task path, idx of PUSH write, id of parent task)
+      const writesForPath =
+        pendingWrites?.filter((w) => w[0] === taskPath[3]) ?? [];
+
+      const writeIndex = taskPath[2] as number;
+      if (writeIndex >= writesForPath.length) {
+        console.warn(
+          `Ignoring invalid write index ${taskPath[2]} in pending writes`
+        );
+        return undefined;
+      }
+
+      // eslint-disable-next-line prefer-destructuring
+      packet = writesForPath[writeIndex][2];
+      if (!_isSendInterface(packet)) {
+        console.warn(
+          `Ignoring invalid packet type ${typeof packet} in pending writes`
+        );
+        return undefined;
+      }
+
+      if (!(packet.node in processes)) {
+        console.warn(
+          `Ignoring unknown node name ${packet.node} in pending writes`
+        );
+        return undefined;
+      }
+
+      // create task id
+      triggers = [PUSH];
+      checkpointNamespace = parentNamespace
+        ? `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${packet.node}`
+        : packet.node;
+
+      taskId = uuid5(
+        JSON.stringify([
+          checkpointNamespace,
+          step.toString(),
+          packet.node,
+          PUSH,
+          JSON.stringify(taskPath[1]),
+          taskPath[2].toString(),
+        ]),
+        checkpoint.id
       );
-      return undefined;
+    } else {
+      console.warn(`Ignoring invalid PUSH task path ${taskPath}`);
+      return;
     }
-    const triggers = [PUSH];
-    const checkpointNamespace =
-      parentNamespace === ""
-        ? packet.node
-        : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${packet.node}`;
-    const taskId = uuid5(
-      JSON.stringify([
-        checkpointNamespace,
-        step.toString(),
-        packet.node,
-        PUSH,
-        index.toString(),
-      ]),
-      checkpoint.id
-    );
     const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
     let metadata = {
       langgraph_step: step,
@@ -603,6 +748,7 @@ export function _prepareSingleTask<
                       name: packet.node,
                       writes: writes as Array<[string, unknown]>,
                       triggers,
+                      path: taskPath,
                     },
                     select_,
                     fresh_
@@ -737,6 +883,7 @@ export function _prepareSingleTask<
                         name,
                         writes: writes as Array<[string, unknown]>,
                         triggers,
+                        path: taskPath,
                       },
                       select_,
                       fresh_
