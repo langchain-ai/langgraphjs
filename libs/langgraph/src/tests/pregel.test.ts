@@ -8986,13 +8986,19 @@ export function runPregelTests(
   it.only("can throw a node interrupt multiple times in a single node", async () => {
     const GraphAnnotation = Annotation.Root({
       myKey: Annotation<string>({
-        reducer: (a, b) => a.concat(b),
+        reducer: (a, b) => {
+          console.log("state", a, "update", b)
+          return a + b
+        },
       }),
     });
 
     const nodeOne = (_: typeof GraphAnnotation.State) => {
+      console.log("before interrupt 1", _.myKey);
       const answer = interrupt({ value: 1 });
+      console.log("before interrupt 2");
       const answer2 = interrupt({ value: 2 });
+      console.log("before return", answer, answer2);
       return { myKey: answer + " " + answer2 };
     };
 
@@ -9003,6 +9009,7 @@ export function runPregelTests(
 
     const config = {
       configurable: { thread_id: "test_multi_interrupt" },
+      streamMode: "values" as const,
     };
     const firstResult = await gatherIterator(
       graph.stream(
@@ -9014,7 +9021,6 @@ export function runPregelTests(
     );
     expect(firstResult).toBeDefined();
     const firstState = await graph.getState(config);
-    console.log("firstState", firstState.tasks[0].interrupts[0]);
     expect(firstState.tasks).toHaveLength(1);
     expect(firstState.tasks[0].interrupts).toHaveLength(1);
     expect(firstState.tasks[0].interrupts[0].value).toEqual({
@@ -9032,7 +9038,6 @@ export function runPregelTests(
     expect(secondResult).toBeDefined();
 
     const secondState = await graph.getState(config);
-    console.log("secondState", secondState.tasks[0].interrupts[0]);
     expect(secondState.tasks).toHaveLength(1);
     expect(secondState.tasks[0].interrupts).toHaveLength(1);
     expect(secondState.tasks[0].interrupts[0].value).toEqual({
@@ -9047,12 +9052,9 @@ export function runPregelTests(
         config
       )
     );
-    expect(thirdResult[0].one.myKey).toEqual("DE answer 1 answer 2");
+    expect(thirdResult[0].myKey).toEqual("DEanswer 1 answer 2");
     const thirdState = await graph.getState(config);
-    console.log("thirdState", thirdState);
     expect(thirdState.tasks).toHaveLength(0);
-
-    console.log("secondResult", secondResult);
   });
 }
 
