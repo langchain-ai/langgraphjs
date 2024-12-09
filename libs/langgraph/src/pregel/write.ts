@@ -3,7 +3,7 @@ import {
   RunnableConfig,
   RunnableLike,
 } from "@langchain/core/runnables";
-import { _isSend, CONFIG_KEY_SEND, PUSH, Send, TASKS } from "../constants.js";
+import { _isSend, CONFIG_KEY_SEND, Send, TASKS } from "../constants.js";
 import { RunnableCallable } from "../utils.js";
 import { InvalidUpdateError } from "../errors.js";
 
@@ -90,11 +90,11 @@ export class ChannelWrite<
       return !_isSend(write);
     });
     const invalidEntry = entries.find((write) => {
-      return write.channel === TASKS || write.channel === PUSH;
+      return write.channel === TASKS;
     });
     if (invalidEntry) {
       throw new InvalidUpdateError(
-        `Cannot write to the reserved channels ${TASKS} or ${PUSH}`
+        `Cannot write to the reserved channel ${TASKS}`
       );
     }
     const values: [string, unknown][] = await Promise.all(

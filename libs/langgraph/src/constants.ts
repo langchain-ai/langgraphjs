@@ -2,8 +2,6 @@ export const MISSING = Symbol.for("__missing__");
 
 export const INPUT = "__input__";
 export const ERROR = "__error__";
-// for errors raised by nodes
-export const NO_WRITES = "__no_writes__";
 export const CONFIG_KEY_SEND = "__pregel_send";
 export const CONFIG_KEY_READ = "__pregel_read";
 export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
