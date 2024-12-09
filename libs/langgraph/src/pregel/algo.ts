@@ -611,100 +611,41 @@ export function _prepareSingleTask<
   const parentNamespace = configurable.checkpoint_ns ?? "";
 
   if (taskPath[0] === PUSH) {
-    let triggers: string[];
-    let taskId: string;
-    let checkpointNamespace: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let packet: any;
-    if (taskPath.length === 2) {
-      // legacy SEND tasks, executed in superstep n+1
-      // (PUSH, idx of pending send)
-      const index =
-        typeof taskPath[1] === "number"
-          ? taskPath[1]
-          : parseInt(taskPath[1] as string, 10);
-      if (index >= checkpoint.pending_sends.length) {
-        return undefined;
-      }
-      packet = checkpoint.pending_sends[index];
-      if (!_isSendInterface(packet)) {
-        console.warn(
-          `Ignoring invalid packet ${JSON.stringify(packet)} in pending sends.`
-        );
-        return undefined;
-      }
-      if (!(packet.node in processes)) {
-        console.warn(
-          `Ignoring unknown node name ${packet.node} in pending sends.`
-        );
-        return undefined;
-      }
-      triggers = [PUSH];
-      checkpointNamespace =
-        parentNamespace === ""
-          ? packet.node
-          : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${packet.node}`;
-      taskId = uuid5(
-        JSON.stringify([
-          checkpointNamespace,
-          step.toString(),
-          packet.node,
-          PUSH,
-          index.toString(),
-        ]),
-        checkpoint.id
-      );
-    } else if (taskPath.length === 4) {
-      // new PUSH tasks, executed in superstep n
-      // (PUSH, parent task path, idx of PUSH write, id of parent task)
-      const writesForPath =
-        pendingWrites?.filter((w) => w[0] === taskPath[3]) ?? [];
-
-      const writeIndex = taskPath[2] as number;
-      if (writeIndex >= writesForPath.length) {
-        console.warn(
-          `Ignoring invalid write index ${taskPath[2]} in pending writes`
-        );
-        return undefined;
-      }
-
-      // eslint-disable-next-line prefer-destructuring
-      packet = writesForPath[writeIndex][2];
-      if (!_isSendInterface(packet)) {
-        console.warn(
-          `Ignoring invalid packet type ${typeof packet} in pending writes`
-        );
-        return undefined;
-      }
-
-      if (!(packet.node in processes)) {
-        console.warn(
-          `Ignoring unknown node name ${packet.node} in pending writes`
-        );
-        return undefined;
-      }
-
-      // create task id
-      triggers = [PUSH];
-      checkpointNamespace = parentNamespace
-        ? `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${packet.node}`
-        : packet.node;
-
-      taskId = uuid5(
-        JSON.stringify([
-          checkpointNamespace,
-          step.toString(),
-          packet.node,
-          PUSH,
-          JSON.stringify(taskPath[1]),
-          taskPath[2].toString(),
-        ]),
-        checkpoint.id
-      );
-    } else {
-      console.warn(`Ignoring invalid PUSH task path ${taskPath}`);
-      return;
+    const index =
+      typeof taskPath[1] === "number"
+        ? taskPath[1]
+        : parseInt(taskPath[1] as string, 10);
+    if (index >= checkpoint.pending_sends.length) {
+      return undefined;
     }
+    const packet = checkpoint.pending_sends[index];
+    if (!_isSendInterface(packet)) {
+      console.warn(
+        `Ignoring invalid packet ${JSON.stringify(packet)} in pending sends.`
+      );
+      return undefined;
+    }
+    if (!(packet.node in processes)) {
+      console.warn(
+        `Ignoring unknown node name ${packet.node} in pending sends.`
+      );
+      return undefined;
+    }
+    const triggers = [PUSH];
+    const checkpointNamespace =
+      parentNamespace === ""
+        ? packet.node
+        : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${packet.node}`;
+    const taskId = uuid5(
+      JSON.stringify([
+        checkpointNamespace,
+        step.toString(),
+        packet.node,
+        PUSH,
+        index.toString(),
+      ]),
+      checkpoint.id
+    );
     const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
     let metadata = {
       langgraph_step: step,

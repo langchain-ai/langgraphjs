@@ -1,5 +1,3 @@
-import { getEnvironmentVariable } from "@langchain/core/utils/env";
-
 export const MISSING = Symbol.for("__missing__");
 
 export const INPUT = "__input__";
