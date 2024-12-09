@@ -37,8 +37,9 @@ export function interrupt<I = unknown, R = unknown>(value: I): R {
     config.configurable?.[CONFIG_KEY_WRITES] ?? [];
 
   if (!scratchpad.resume) {
-    const newResume = (writes.find((w) => w[0] === taskId && w[1] === RESUME)?.[2] ||
-      []) as R | R[];
+    const newResume = (writes.find(
+      (w) => w[0] === taskId && w[1] === RESUME
+    )?.[2] || []) as R | R[];
     scratchpad.resume = Array.isArray(newResume) ? newResume : [newResume];
   }
 

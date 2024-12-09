@@ -8983,12 +8983,12 @@ export function runPregelTests(
     expect(stateAfterUpdate.next).toEqual([]);
   });
 
-  it.only("can throw a node interrupt multiple times in a single node", async () => {
+  it("can throw a node interrupt multiple times in a single node", async () => {
     const GraphAnnotation = Annotation.Root({
       myKey: Annotation<string>({
         reducer: (a, b) => {
-          console.log("state", a, "update", b)
-          return a + b
+          console.log("state", a, "update", b);
+          return a + b;
         },
       }),
     });
