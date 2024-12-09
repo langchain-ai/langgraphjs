@@ -173,7 +173,7 @@ export interface PregelTaskDescription {
   readonly error?: unknown;
   readonly interrupts: Interrupt[];
   readonly state?: LangGraphRunnableConfig | StateSnapshot;
-  readonly path?: [string, ...(string | number)[]];
+  readonly path?: [string, ...(string | number | (string | number[]))[]];
 }
 
 export interface PregelExecutableTask<
@@ -189,8 +189,9 @@ export interface PregelExecutableTask<
   readonly triggers: Array<string>;
   readonly retry_policy?: RetryPolicy;
   readonly id: string;
-  readonly path?: [string, ...(string | number)[]];
+  readonly path?: [string, ...(string | number | (string | number[]))[]];
   readonly subgraphs?: Runnable[];
+  readonly writers: Runnable[];
 }
 
 export interface StateSnapshot {

@@ -317,6 +317,7 @@ describe("mapOutputUpdates", () => {
         writes: [["someOutputChannelName", 1]],
         triggers: [],
         config: undefined,
+        writers: [],
       },
       {
         id: uuid6(-1),
@@ -328,6 +329,7 @@ describe("mapOutputUpdates", () => {
         config: {
           tags: ["langsmith:hidden"], // this task should be filtered out
         },
+        writers: [],
       },
       {
         name: "task3",
@@ -377,6 +379,7 @@ describe("mapOutputUpdates", () => {
         ],
         triggers: [],
         config: undefined,
+        writers: [],
       },
       {
         id: uuid6(-1),
@@ -389,6 +392,7 @@ describe("mapOutputUpdates", () => {
         ],
         triggers: [],
         config: undefined,
+        writers: [],
       },
     ];
 

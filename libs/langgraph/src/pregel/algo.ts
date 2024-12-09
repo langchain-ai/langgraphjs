@@ -46,6 +46,7 @@ import {
   CONFIG_KEY_RESUME_VALUE,
   NULL_TASK_ID,
   MISSING,
+  NO_WRITES,
 } from "../constants.js";
 import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
@@ -64,6 +65,7 @@ export type WritesProtocol<C = string> = {
   name: string;
   writes: PendingWrite<C>[];
   triggers: string[];
+  path?: [string, ...(string | number | (string | number[]))[]];
 };
 
 export const increment = (current?: number) => {
@@ -171,7 +173,7 @@ export function _localWrite(
   writes: [string, any][]
 ) {
   for (const [chan, value] of writes) {
-    if (chan === TASKS) {
+    if ([TASKS, PUSH].includes(chan)) {
       if (!_isSend(value)) {
         throw new InvalidUpdateError(
           `Invalid packet type, expected SendProtocol, got ${JSON.stringify(
@@ -193,7 +195,12 @@ export function _localWrite(
   commit(writes);
 }
 
-const IGNORE = new Set<string | number | symbol>([PUSH, RESUME, INTERRUPT]);
+const IGNORE = new Set<string | number | symbol>([
+  NO_WRITES,
+  PUSH,
+  RESUME,
+  INTERRUPT,
+]);
 
 export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   checkpoint: Checkpoint,
@@ -202,6 +209,22 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getNextVersion?: (version: any, channel: BaseChannel) => any
 ): Record<string, PendingWriteValue[]> {
+  // Sort tasks by first 3 path elements for deterministic order
+  // Later path parts (like task IDs) are ignored for sorting
+  tasks.sort((a, b) => {
+    const aPath = a.path?.slice(0, 3) || [];
+    const bPath = b.path?.slice(0, 3) || [];
+
+    // Compare each path element
+    for (let i = 0; i < Math.min(aPath.length, bPath.length); i += 1) {
+      if (aPath[i] < bPath[i]) return -1;
+      if (aPath[i] > bPath[i]) return 1;
+    }
+
+    // If one path is shorter, it comes first
+    return aPath.length - bPath.length;
+  });
+
   // if no task has triggers this is applying writes from the null task only
   // so we don't do anything other than update the channels written to
   const bumpStep = tasks.some((task) => task.triggers.length > 0);
@@ -265,6 +288,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       if (IGNORE.has(chan)) {
         // do nothing
       } else if (chan === TASKS) {
+        // TODO: remove branch in 1.0
         checkpoint.pending_sends.push({
           node: (val as Send).node,
           args: (val as Send).args,
@@ -387,6 +411,11 @@ export function _prepareNextTasks<
   extra: NextTaskExtraFieldsWithStore
 ): Record<string, PregelExecutableTask<keyof Nn, keyof Cc>>;
 
+/**
+ * Prepare the set of tasks that will make up the next Pregel step.
+ * This is the union of all PUSH tasks (Sends) and PULL tasks (nodes triggered
+ * by edges).
+ */
 export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
@@ -440,6 +469,74 @@ export function _prepareNextTasks<
       tasks[task.id] = task;
     }
   }
+  // Consume pending Sends from this step (new version of Send)
+  if (pendingWrites?.some(([_, c]) => c === PUSH)) {
+    // Group writes by task ID
+    const groupedByTask = new Map<string, string[]>();
+    pendingWrites.forEach(([tid, c]) => {
+      if (!groupedByTask.has(tid)) {
+        groupedByTask.set(tid, []);
+      }
+      groupedByTask.get(tid)?.push(c);
+    });
+
+    // Prepare send tasks from grouped writes
+    // 1. Start from sends originating from existing tasks
+    const taskArray = Object.values(tasks);
+    let tidx = 0;
+    while (tidx < taskArray.length) {
+      const task = taskArray[tidx];
+      const twrites = groupedByTask.get(task.id);
+      if (twrites) {
+        groupedByTask.delete(task.id);
+        twrites.forEach((c, idx) => {
+          if (c !== PUSH) {
+            return;
+          }
+          const nextTask = _prepareSingleTask(
+            [PUSH, [...task.path, idx, task.id]],
+            checkpoint,
+            pendingWrites,
+            processes,
+            channels,
+            managed,
+            config,
+            forExecution,
+            extra
+          );
+          if (nextTask) {
+            tasks[nextTask.id] = nextTask;
+          }
+        });
+      }
+      tidx += 1;
+    }
+
+    // 2. Create new tasks for remaining sends (e.g., from update_state)
+    groupedByTask.forEach((writes, tid) => {
+      const task = tasks[tid];
+      writes.forEach((c, idx) => {
+        if (c !== PUSH) {
+          return;
+        }
+        const nextTask = _prepareSingleTask(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          [PUSH, task ? task.path : ([] as any), idx, tid],
+          checkpoint,
+          pendingWrites,
+          processes,
+          channels,
+          managed,
+          config,
+          forExecution,
+          extra
+        );
+        if (nextTask) {
+          tasks[nextTask.id] = nextTask;
+        }
+      });
+    });
+  }
   return tasks;
 }
 
@@ -462,7 +559,7 @@ export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
 >(
-  taskPath: [string, string | number],
+  taskPath: [string, ...(string | number | (string | number[]))[]],
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
@@ -477,7 +574,7 @@ export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
 >(
-  taskPath: [string, string | number],
+  taskPath: [string, ...(string | number | (string | number[]))[]],
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
@@ -488,11 +585,15 @@ export function _prepareSingleTask<
   extra: NextTaskExtraFieldsWithStore
 ): PregelTaskDescription | PregelExecutableTask<keyof Nn, keyof Cc> | undefined;
 
+/**
+ * Prepares a single task for the next Pregel step, given a task path, which
+ * uniquely identifies a PUSH or PULL task within the graph.
+ */
 export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
 >(
-  taskPath: [string, string | number],
+  taskPath: [string, ...(string | number | (string | number[]))[]],
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
@@ -511,7 +612,9 @@ export function _prepareSingleTask<
 
   if (taskPath[0] === PUSH) {
     const index =
-      typeof taskPath[1] === "number" ? taskPath[1] : parseInt(taskPath[1], 10);
+      typeof taskPath[1] === "number"
+        ? taskPath[1]
+        : parseInt(taskPath[1] as string, 10);
     if (index >= checkpoint.pending_sends.length) {
       return undefined;
     }
@@ -603,6 +706,7 @@ export function _prepareSingleTask<
                       name: packet.node,
                       writes: writes as Array<[string, unknown]>,
                       triggers,
+                      path: taskPath,
                     },
                     select_,
                     fresh_
@@ -625,6 +729,7 @@ export function _prepareSingleTask<
           retry_policy: proc.retryPolicy,
           id: taskId,
           path: taskPath,
+          writers: proc.getWriters(),
         };
       }
     } else {
@@ -736,6 +841,7 @@ export function _prepareSingleTask<
                         name,
                         writes: writes as Array<[string, unknown]>,
                         triggers,
+                        path: taskPath,
                       },
                       select_,
                       fresh_
@@ -758,6 +864,7 @@ export function _prepareSingleTask<
             retry_policy: proc.retryPolicy,
             id: taskId,
             path: taskPath,
+            writers: proc.getWriters(),
           };
         }
       } else {

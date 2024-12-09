@@ -53,6 +53,7 @@ import {
   Command,
   NULL_TASK_ID,
   INPUT,
+  PUSH,
 } from "../constants.js";
 import {
   PregelExecutableTask,
@@ -823,6 +824,7 @@ export class Pregel<
       writes: [],
       triggers: [INTERRUPT],
       id: uuid5(INTERRUPT, checkpoint.id),
+      writers: [],
     };
 
     // execute task
@@ -858,10 +860,17 @@ export class Pregel<
     );
 
     // save task writes
-    if (saved !== undefined) {
+    // channel writes are saved to current checkpoint
+    // push writes are saved to next checkpoint
+    const [channelWrites, pushWrites] = [
+      task.writes.filter((w) => w[0] !== PUSH),
+      task.writes.filter((w) => w[0] === PUSH),
+    ];
+    // save task writes
+    if (saved !== undefined && channelWrites.length > 0) {
       await checkpointer.putWrites(
         checkpointConfig,
-        task.writes as PendingWrite[],
+        channelWrites as PendingWrite[],
         task.id
       );
     }
@@ -890,6 +899,14 @@ export class Pregel<
       },
       newVersions
     );
+
+    if (pushWrites.length > 0) {
+      await checkpointer.putWrites(
+        nextConfig,
+        pushWrites as PendingWrite[],
+        task.id
+      );
+    }
 
     return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
   }
