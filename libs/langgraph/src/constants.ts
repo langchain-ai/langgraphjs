@@ -4,6 +4,8 @@ export const MISSING = Symbol.for("__missing__");
 
 export const INPUT = "__input__";
 export const ERROR = "__error__";
+// for errors raised by nodes
+export const NO_WRITES = "__no_writes__";
 export const CONFIG_KEY_SEND = "__pregel_send";
 export const CONFIG_KEY_READ = "__pregel_read";
 export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
@@ -29,12 +31,6 @@ export const PUSH = "__pregel_push";
 export const PULL = "__pregel_pull";
 
 export const TASK_NAMESPACE = "6ba7b831-9dad-11d1-80b4-00c04fd430c8";
-// temporary flag to enable new Send semantics
-export const USE_SEND_V2 = () => {
-  return (
-    getEnvironmentVariable("LANGGRAPH_FF_SEND_V2")?.toLowerCase() === "true"
-  );
-};
 export const NULL_TASK_ID = "00000000-0000-0000-0000-000000000000";
 
 export const RESERVED = [

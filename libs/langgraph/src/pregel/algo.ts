@@ -46,6 +46,7 @@ import {
   CONFIG_KEY_RESUME_VALUE,
   NULL_TASK_ID,
   MISSING,
+  NO_WRITES,
 } from "../constants.js";
 import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
@@ -172,7 +173,7 @@ export function _localWrite(
   writes: [string, any][]
 ) {
   for (const [chan, value] of writes) {
-    if (chan === TASKS) {
+    if ([TASKS, PUSH].includes(chan)) {
       if (!_isSend(value)) {
         throw new InvalidUpdateError(
           `Invalid packet type, expected SendProtocol, got ${JSON.stringify(
@@ -194,7 +195,12 @@ export function _localWrite(
   commit(writes);
 }
 
-const IGNORE = new Set<string | number | symbol>([PUSH, RESUME, INTERRUPT]);
+const IGNORE = new Set<string | number | symbol>([
+  NO_WRITES,
+  PUSH,
+  RESUME,
+  INTERRUPT,
+]);
 
 export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   checkpoint: Checkpoint,
@@ -282,6 +288,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       if (IGNORE.has(chan)) {
         // do nothing
       } else if (chan === TASKS) {
+        // TODO: remove branch in 1.0
         checkpoint.pending_sends.push({
           node: (val as Send).node,
           args: (val as Send).args,
@@ -404,6 +411,11 @@ export function _prepareNextTasks<
   extra: NextTaskExtraFieldsWithStore
 ): Record<string, PregelExecutableTask<keyof Nn, keyof Cc>>;
 
+/**
+ * Prepare the set of tasks that will make up the next Pregel step.
+ * This is the union of all PUSH tasks (Sends) and PULL tasks (nodes triggered
+ * by edges).
+ */
 export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
@@ -573,6 +585,10 @@ export function _prepareSingleTask<
   extra: NextTaskExtraFieldsWithStore
 ): PregelTaskDescription | PregelExecutableTask<keyof Nn, keyof Cc> | undefined;
 
+/**
+ * Prepares a single task for the next Pregel step, given a task path, which
+ * uniquely identifies a PUSH or PULL task within the graph.
+ */
 export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>

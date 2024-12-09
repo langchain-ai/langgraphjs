@@ -92,7 +92,6 @@ import {
   _isCommand,
   Command,
   ERROR,
-  USE_SEND_V2,
   INTERRUPT,
   PULL,
   PUSH,
@@ -2057,70 +2056,17 @@ export function runPregelTests(
       items: ["0"],
     });
 
-    if (USE_SEND_V2()) {
-      expect(result).toEqual({
-        items: [
-          "0",
-          "1",
-          "2|Command(send=Send(node='2', arg=3))",
-          "2|Command(send=Send(node='2', arg=4))",
-          "2|3",
-          "2|4",
-          "3",
-          "3.1",
-        ],
-      });
-    } else {
-      expect(result).toEqual({
-        items: [
-          "0",
-          "1",
-          "3.1",
-          `2|${JSON.stringify(new Command({ goto: new Send("2", 3) }))}`,
-          `2|${JSON.stringify(new Command({ goto: new Send("2", 4) }))}`,
-          "3",
-          "2|3",
-          "2|4",
-          "3",
-        ],
-      });
-    }
-
-    if (!USE_SEND_V2()) {
-      return;
-    }
-
-    // Test with checkpointer
-    const checkpointer = new MemorySaverAssertImmutable();
-    const graphWithCheckpoint = builder.compile({
-      checkpointer,
-      interruptBefore: ["3.1"],
-    });
-
-    const thread1 = { configurable: { thread_id: "1" } };
-    const result1 = await graphWithCheckpoint.invoke({ items: ["0"] }, thread1);
-    expect(result1).toEqual({
+    expect(result).toEqual({
       items: [
         "0",
         "1",
-        "2|Command(send=Send(node='2', arg=3))",
-        "2|Command(send=Send(node='2', arg=4))",
-        "2|3",
-        "2|4",
-      ],
-    });
-
-    const result2 = await graphWithCheckpoint.invoke(null, thread1);
-    expect(result2).toEqual({
-      items: [
-        "0",
-        "1",
-        "2|Command(send=Send(node='2', arg=3))",
-        "2|Command(send=Send(node='2', arg=4))",
+        "3.1",
+        `2|${JSON.stringify(new Command({ goto: new Send("2", 3) }))}`,
+        `2|${JSON.stringify(new Command({ goto: new Send("2", 4) }))}`,
+        "3",
         "2|3",
         "2|4",
         "3",
-        "3.1",
       ],
     });
   });
@@ -8923,6 +8869,99 @@ export function runPregelTests(
     );
   });
 
+  it("test_parent_command", async () => {
+    const getUserName = tool(
+      async () => {
+        return new Command({
+          update: { user_name: "Meow" },
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "get_user_name",
+        schema: z.object({}),
+      }
+    );
+    const subgraph = new StateGraph(MessagesAnnotation)
+      .addNode("tool", getUserName)
+      .addEdge("__start__", "tool")
+      .compile();
+
+    const CustomParentStateAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      user_name: Annotation<string>,
+    });
+
+    const checkpointer = await createCheckpointer();
+
+    const graph = new StateGraph(CustomParentStateAnnotation)
+      .addNode("alice", subgraph)
+      .addEdge("__start__", "alice")
+      .compile({ checkpointer });
+
+    const config = {
+      configurable: {
+        thread_id: "1",
+      },
+    };
+
+    const res = await graph.invoke(
+      {
+        messages: [{ role: "user", content: "get user name" }],
+      },
+      config
+    );
+    console.log(res);
+
+    expect(res).toEqual({
+      messages: [
+        new _AnyIdHumanMessage({
+          content: "get user name",
+        }),
+      ],
+      user_name: "Meow",
+    });
+
+    const state = await graph.getState(config);
+    expect(state).toEqual({
+      values: {
+        messages: [
+          new _AnyIdHumanMessage({
+            content: "get user name",
+          }),
+        ],
+        user_name: "Meow",
+      },
+      next: [],
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+      metadata: {
+        source: "loop",
+        writes: {
+          alice: {
+            user_name: "Meow",
+          },
+        },
+        step: 1,
+        parents: {},
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+      tasks: [],
+    });
+  });
+
   it("should pass recursion limit set via .withConfig", async () => {
     const StateAnnotation = Annotation.Root({
       prop: Annotation<string>,
@@ -9098,7 +9137,6 @@ export function runPregelTests(
   it("can interrupt then update state with asNode of __end__", async () => {
     const graph = new StateGraph(MessagesAnnotation)
       .addNode("one", () => {
-        console.log("Before interrupt");
         throw new NodeInterrupt("<INTERRUPTED>");
       })
       .addEdge(START, "one")

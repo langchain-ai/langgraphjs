@@ -3,14 +3,7 @@ import {
   RunnableConfig,
   RunnableLike,
 } from "@langchain/core/runnables";
-import {
-  _isSend,
-  CONFIG_KEY_SEND,
-  USE_SEND_V2,
-  PUSH,
-  Send,
-  TASKS,
-} from "../constants.js";
+import { _isSend, CONFIG_KEY_SEND, PUSH, Send, TASKS } from "../constants.js";
 import { RunnableCallable } from "../utils.js";
 import { InvalidUpdateError } from "../errors.js";
 
@@ -91,7 +84,7 @@ export class ChannelWrite<
     writes: (ChannelWriteEntry | Send)[]
   ): Promise<void> {
     const sends: [string, Send][] = writes.filter(_isSend).map((packet) => {
-      return [USE_SEND_V2() ? PUSH : TASKS, packet];
+      return [TASKS, packet];
     });
     const entries = writes.filter((write): write is ChannelWriteEntry => {
       return !_isSend(write);
