@@ -7,7 +7,6 @@ import {
   _isSend,
   Command,
   NULL_TASK_ID,
-  PUSH,
   RESUME,
   TAG_HIDDEN,
   TASKS,
