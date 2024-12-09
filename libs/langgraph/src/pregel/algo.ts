@@ -172,7 +172,7 @@ export function _localWrite(
   writes: [string, any][]
 ) {
   for (const [chan, value] of writes) {
-    if (TASKS === chan) {
+    if (chan === TASKS) {
       if (!_isSend(value)) {
         throw new InvalidUpdateError(
           `Invalid packet type, expected SendProtocol, got ${JSON.stringify(
