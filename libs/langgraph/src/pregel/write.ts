@@ -6,7 +6,7 @@ import {
 import {
   _isSend,
   CONFIG_KEY_SEND,
-  FF_SEND_V2,
+  USE_SEND_V2,
   PUSH,
   Send,
   TASKS,
@@ -91,7 +91,7 @@ export class ChannelWrite<
     writes: (ChannelWriteEntry | Send)[]
   ): Promise<void> {
     const sends: [string, Send][] = writes.filter(_isSend).map((packet) => {
-      return [FF_SEND_V2 ? PUSH : TASKS, packet];
+      return [USE_SEND_V2() ? PUSH : TASKS, packet];
     });
     const entries = writes.filter((write): write is ChannelWriteEntry => {
       return !_isSend(write);

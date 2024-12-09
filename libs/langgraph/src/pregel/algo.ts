@@ -595,10 +595,11 @@ export function _prepareSingleTask<
   const parentNamespace = configurable.checkpoint_ns ?? "";
 
   if (taskPath[0] === PUSH) {
-    let triggers;
-    let taskId;
-    let checkpointNamespace;
-    let packet;
+    let triggers: string[];
+    let taskId: string;
+    let checkpointNamespace: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let packet: any;
     if (taskPath.length === 2) {
       // legacy SEND tasks, executed in superstep n+1
       // (PUSH, idx of pending send)

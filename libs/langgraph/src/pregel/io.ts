@@ -6,7 +6,7 @@ import type { PregelExecutableTask } from "./types.js";
 import {
   _isSend,
   Command,
-  FF_SEND_V2,
+  USE_SEND_V2,
   NULL_TASK_ID,
   PUSH,
   RESUME,
@@ -75,7 +75,7 @@ export function* mapCommand(
       if (!_isSend(send)) {
         throw new Error(`In Command.send, expected Send, got ${typeof send}`);
       }
-      yield [NULL_TASK_ID, FF_SEND_V2 ? PUSH : TASKS, send];
+      yield [NULL_TASK_ID, USE_SEND_V2() ? PUSH : TASKS, send];
     }
     // TODO: handle goto str for state graph
   }

@@ -92,7 +92,7 @@ import {
   _isCommand,
   Command,
   ERROR,
-  FF_SEND_V2,
+  USE_SEND_V2,
   INTERRUPT,
   PULL,
   PUSH,
@@ -2057,7 +2057,7 @@ export function runPregelTests(
       items: ["0"],
     });
 
-    if (FF_SEND_V2) {
+    if (USE_SEND_V2()) {
       expect(result).toEqual({
         items: [
           "0",
@@ -2086,7 +2086,7 @@ export function runPregelTests(
       });
     }
 
-    if (!FF_SEND_V2) {
+    if (!USE_SEND_V2()) {
       return;
     }
 

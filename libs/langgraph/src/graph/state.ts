@@ -514,7 +514,8 @@ export class CompiledStateGraph<
     // to avoid name collision below
     const nodeKey = key;
 
-    function getStateKey(key: keyof U, input: U) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function getStateKey(key: keyof U, input: U): any {
       if (!input) {
         return SKIP_WRITE;
       } else if (_isCommand(input)) {
@@ -772,15 +773,14 @@ function _controlBranch(value: any): (string | Send)[] {
   return Array.isArray(value.goto) ? value.goto : [value.goto];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const CONTROL_BRANCH_PATH = new RunnableCallable<any, (string | Send)[]>({
-  func: _controlBranch,
-  tags: [TAG_HIDDEN],
-  trace: false,
-  recurse: false,
-});
-
 function _getControlBranch() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const CONTROL_BRANCH_PATH = new RunnableCallable<any, (string | Send)[]>({
+    func: _controlBranch,
+    tags: [TAG_HIDDEN],
+    trace: false,
+    recurse: false,
+  });
   return new Branch({
     path: CONTROL_BRANCH_PATH,
   });
