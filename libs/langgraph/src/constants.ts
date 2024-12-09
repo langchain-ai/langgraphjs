@@ -142,7 +142,7 @@ export class Command<R = unknown> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   update?: Record<string, any>;
 
-  goto: (string | Send)[] = [];
+  goto: string | Send | (string | Send)[] = [];
 
   static PARENT = "__parent__";
 

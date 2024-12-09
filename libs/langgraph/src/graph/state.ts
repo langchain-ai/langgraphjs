@@ -436,6 +436,9 @@ export class StateGraph<
     )) {
       compiled.attachNode(key as N, node);
     }
+    compiled.attachBranch(START, SELF, _getControlBranch() as Branch<S, N>, {
+      withReader: false,
+    });
     for (const [key] of Object.entries<StateGraphNodeSpec<S, U>>(this.nodes)) {
       compiled.attachBranch(
         key as N,

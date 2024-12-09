@@ -8911,7 +8911,6 @@ export function runPregelTests(
       },
       config
     );
-    console.log(res);
 
     expect(res).toEqual({
       messages: [

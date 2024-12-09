@@ -8,6 +8,7 @@ import {
   Command,
   NULL_TASK_ID,
   RESUME,
+  SELF,
   TAG_HIDDEN,
   TASKS,
 } from "../constants.js";
@@ -69,11 +70,22 @@ export function* mapCommand(
     throw new InvalidUpdateError("There is no parent graph.");
   }
   if (cmd.goto) {
-    for (const send of cmd.goto) {
-      if (!_isSend(send)) {
-        throw new Error(`In Command.send, expected Send, got ${typeof send}`);
+    let sends;
+    if (Array.isArray(cmd.goto)) {
+      sends = cmd.goto;
+    } else {
+      sends = [cmd.goto];
+    }
+    for (const send of sends) {
+      if (_isSend(send)) {
+        yield [NULL_TASK_ID, TASKS, send];
+      } else if (typeof send === "string") {
+        yield [NULL_TASK_ID, `branch:__start__:${SELF}:${send}`, "__start__"];
+      } else {
+        throw new Error(
+          `In Command.send, expected Send or string, got ${typeof send}`
+        );
       }
-      yield [NULL_TASK_ID, TASKS, send];
     }
     // TODO: handle goto str for state graph
   }
