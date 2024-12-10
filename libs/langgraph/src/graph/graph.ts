@@ -156,12 +156,14 @@ export type NodeSpec<RunInput, RunOutput> = {
   metadata?: Record<string, unknown>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subgraphs?: Pregel<any, any>[];
+  ends?: string[];
 };
 
 export type AddNodeOptions = {
   metadata?: Record<string, unknown>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subgraphs?: Pregel<any, any>[];
+  ends?: string[];
 };
 
 export class Graph<
@@ -243,6 +245,7 @@ export class Graph<
       runnable,
       metadata: options?.metadata,
       subgraphs: isPregelLike(runnable) ? [runnable] : options?.subgraphs,
+      ends: options?.ends,
     } as NodeSpecType;
 
     return this as Graph<N | K, RunInput, RunOutput, NodeSpecType>;
@@ -452,6 +455,11 @@ export class Graph<
         }
       }
     }
+    for (const node of Object.values<NodeSpecType>(this.nodes)) {
+        for (const target of node.ends ?? []) {
+          allTargets.add(target);
+        }
+    }
     // validate targets
     for (const node of Object.keys(this.nodes)) {
       if (!allTargets.has(node)) {
@@ -519,6 +527,7 @@ export class CompiledGraph<
       triggers: [],
       metadata: node.metadata,
       subgraphs: node.subgraphs,
+      ends: node.ends,
     })
       .pipe(node.runnable)
       .pipe(
@@ -755,6 +764,13 @@ export class CompiledGraph<
             label,
             true
           );
+        }
+      }
+    }
+    for (const [key, node] of Object.entries(this.builder.nodes) as [N, NodeSpec<State, Update>][]) {
+      if (node.ends !== undefined) {
+        for (const end of node.ends) {
+          addEdge(_escapeMermaidKeywords(key), _escapeMermaidKeywords(end), undefined, true);
         }
       }
     }

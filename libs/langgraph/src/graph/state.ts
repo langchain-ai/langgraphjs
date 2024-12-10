@@ -340,6 +340,7 @@ export class StateGraph<
         ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
           [runnable as any]
         : options?.subgraphs,
+      ends: options?.ends,
     };
 
     this.nodes[key as unknown as N] = nodeSpec;
@@ -439,7 +440,9 @@ export class StateGraph<
     compiled.attachBranch(START, SELF, _getControlBranch() as Branch<S, N>, {
       withReader: false,
     });
-    for (const [key] of Object.entries<StateGraphNodeSpec<S, U>>(this.nodes)) {
+    for (const [key] of Object.entries<StateGraphNodeSpec<S, U>>(
+      this.nodes
+    )) {
       compiled.attachBranch(
         key as N,
         SELF,
@@ -603,6 +606,7 @@ export class CompiledStateGraph<
         metadata: node?.metadata,
         retryPolicy: node?.retryPolicy,
         subgraphs: node?.subgraphs,
+        ends: node?.ends,
       });
     }
   }
