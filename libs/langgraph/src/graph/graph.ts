@@ -456,9 +456,9 @@ export class Graph<
       }
     }
     for (const node of Object.values<NodeSpecType>(this.nodes)) {
-        for (const target of node.ends ?? []) {
-          allTargets.add(target);
-        }
+      for (const target of node.ends ?? []) {
+        allTargets.add(target);
+      }
     }
     // validate targets
     for (const node of Object.keys(this.nodes)) {
@@ -767,10 +767,18 @@ export class CompiledGraph<
         }
       }
     }
-    for (const [key, node] of Object.entries(this.builder.nodes) as [N, NodeSpec<State, Update>][]) {
+    for (const [key, node] of Object.entries(this.builder.nodes) as [
+      N,
+      NodeSpec<State, Update>
+    ][]) {
       if (node.ends !== undefined) {
         for (const end of node.ends) {
-          addEdge(_escapeMermaidKeywords(key), _escapeMermaidKeywords(end), undefined, true);
+          addEdge(
+            _escapeMermaidKeywords(key),
+            _escapeMermaidKeywords(end),
+            undefined,
+            true
+          );
         }
       }
     }
