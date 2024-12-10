@@ -226,3 +226,9 @@ export interface StateSnapshot {
    */
   readonly tasks: PregelTaskDescription[];
 }
+
+export type PregelScratchpad<Resume> = {
+  interruptCounter: number;
+  usedNullResume: boolean;
+  resume: Resume[];
+};
