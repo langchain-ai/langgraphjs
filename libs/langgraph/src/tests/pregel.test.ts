@@ -8994,11 +8994,8 @@ export function runPregelTests(
     });
 
     const nodeOne = (_: typeof GraphAnnotation.State) => {
-      console.log("before interrupt 1", _.myKey);
       const answer = interrupt({ value: 1 });
-      console.log("before interrupt 2");
       const answer2 = interrupt({ value: 2 });
-      console.log("before return", answer, answer2);
       return { myKey: answer + " " + answer2 };
     };
 
