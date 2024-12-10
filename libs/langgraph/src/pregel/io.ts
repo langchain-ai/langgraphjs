@@ -6,8 +6,16 @@ import { validate } from "uuid";
 
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelExecutableTask } from "./types.js";
-import { Command, NULL_TASK_ID, RESUME, TAG_HIDDEN } from "../constants.js";
-import { EmptyChannelError } from "../errors.js";
+import {
+  _isSend,
+  Command,
+  NULL_TASK_ID,
+  RESUME,
+  SELF,
+  TAG_HIDDEN,
+  TASKS,
+} from "../constants.js";
+import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 
 export function readChannel<C extends PropertyKey>(
   channels: Record<C, BaseChannel>,
@@ -55,10 +63,36 @@ export function readChannels<C extends PropertyKey>(
   }
 }
 
+/**
+ * Map input chunk to a sequence of pending writes in the form (channel, value).
+ */
 export function* mapCommand(
   cmd: Command,
   pendingWrites: CheckpointPendingWrite<string>[]
 ): Generator<[string, string, unknown]> {
+  if (cmd.graph === Command.PARENT) {
+    throw new InvalidUpdateError("There is no parent graph.");
+  }
+  if (cmd.goto) {
+    let sends;
+    if (Array.isArray(cmd.goto)) {
+      sends = cmd.goto;
+    } else {
+      sends = [cmd.goto];
+    }
+    for (const send of sends) {
+      if (_isSend(send)) {
+        yield [NULL_TASK_ID, TASKS, send];
+      } else if (typeof send === "string") {
+        yield [NULL_TASK_ID, `branch:__start__:${SELF}:${send}`, "__start__"];
+      } else {
+        throw new Error(
+          `In Command.send, expected Send or string, got ${typeof send}`
+        );
+      }
+    }
+    // TODO: handle goto str for state graph
+  }
   if (cmd.resume) {
     if (
       typeof cmd.resume === "object" &&
@@ -79,6 +113,16 @@ export function* mapCommand(
       }
     } else {
       yield [NULL_TASK_ID, RESUME, cmd.resume];
+    }
+  }
+  if (cmd.update) {
+    if (typeof cmd.update !== "object" || !cmd.update) {
+      throw new Error(
+        "Expected cmd.update to be a dict mapping channel names to update values"
+      );
+    }
+    for (const [k, v] of Object.entries(cmd.update)) {
+      yield [NULL_TASK_ID, k, v];
     }
   }
 }

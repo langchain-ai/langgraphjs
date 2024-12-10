@@ -738,7 +738,25 @@ export class PregelLoop {
     const isResuming =
       Object.keys(this.checkpoint.channel_versions).length !== 0 &&
       (this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined ||
-        this.input === null);
+        this.input === null ||
+        _isCommand(this.input));
+    if (_isCommand(this.input)) {
+      const writes: { [key: string]: PendingWrite[] } = {};
+      // group writes by task id
+      for (const [tid, key, value] of mapCommand(this.input)) {
+        if (writes[tid] === undefined) {
+          writes[tid] = [];
+        }
+        writes[tid].push([key, value]);
+      }
+      if (Object.keys(writes).length === 0) {
+        throw new EmptyInputError("Received empty Command input");
+      }
+      // save writes
+      for (const [tid, ws] of Object.entries(writes)) {
+        this.putWrites(tid, ws);
+      }
+    }
     if (isResuming) {
       for (const channelName of Object.keys(this.channels)) {
         if (this.checkpoint.channel_versions[channelName] !== undefined) {
@@ -757,25 +775,6 @@ export class PregelLoop {
         )
       );
       this._emit(valuesOutput);
-    } else if (_isCommand(this.input)) {
-      const writes: { [key: string]: PendingWrite[] } = {};
-      // group writes by task id
-      for (const [tid, key, value] of mapCommand(
-        this.input,
-        this.checkpointPendingWrites
-      )) {
-        if (writes[tid] === undefined) {
-          writes[tid] = [];
-        }
-        writes[tid].push([key, value]);
-      }
-      if (Object.keys(writes).length === 0) {
-        throw new EmptyInputError("Received empty Command input");
-      }
-      // save writes
-      for (const [tid, ws] of Object.entries(writes)) {
-        this.putWrites(tid, ws);
-      }
     } else {
       // map inputs to channel updates
       const inputWrites = await gatherIterator(mapInput(inputKeys, this.input));

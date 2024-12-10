@@ -23,6 +23,7 @@ export const RECURSION_LIMIT_DEFAULT = 25;
 
 export const TAG_HIDDEN = "langsmith:hidden";
 export const TAG_NOSTREAM = "langsmith:nostream";
+export const SELF = "__self__";
 
 export const TASKS = "__pregel_tasks";
 export const PUSH = "__pregel_push";
@@ -115,7 +116,7 @@ export class Send implements SendInterface {
 
 export function _isSend(x: unknown): x is Send {
   const operation = x as Send;
-  return operation.lg_name === "Send";
+  return operation !== undefined && operation.lg_name === "Send";
 }
 
 export type Interrupt = {
@@ -126,13 +127,35 @@ export type Interrupt = {
   ns?: string[];
 };
 
+export type CommandParams<R> = {
+  resume?: R;
+  graph?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  update?: Record<string, any>;
+  goto?: string | Send | (string | Send)[];
+};
+
 export class Command<R = unknown> {
   lg_name = "Command";
 
-  resume: R;
+  resume?: R;
 
-  constructor(args: { resume: R }) {
+  graph?: string;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  update?: Record<string, any>;
+
+  goto: string | Send | (string | Send)[] = [];
+
+  static PARENT = "__parent__";
+
+  constructor(args: CommandParams<R>) {
     this.resume = args.resume;
+    this.graph = args.graph;
+    this.update = args.update;
+    if (args.goto) {
+      this.goto = Array.isArray(args.goto) ? args.goto : [args.goto];
+    }
   }
 }
 
