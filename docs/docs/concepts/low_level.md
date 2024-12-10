@@ -424,7 +424,7 @@ const myNode = async (state: typeof StateAnnotation.State) => {
 
 !!! important
 
-    When returning `Command` in your node functions, you must also add an `ends` parameter with the list of node names the node is routing to, e.g. `.addNode("myNode", myNode, { ends: ["nodeA", "nodeB"] })`. This is necessary for graph compilation and validation, and indicates that `myNode` can navigate to `nodeA` and `nodeB`.
+    When returning `Command` in your node functions, you must also add an `ends` parameter with the list of node names the node is routing to, e.g. `.addNode("myNode", myNode, { ends: ["myOtherNode"] })`. This is necessary for graph compilation and validation, and indicates that `myNode` can navigate to `myOtherNode`.
 
 Check out this [how-to guide](../how-tos/command.ipynb) for an end-to-end example of how to use `Command`.
 

@@ -27,22 +27,14 @@ There are several ways to connect agents in a multi-agent system:
 
 ### Network
 
-In this architecture, agents are defined as graph nodes. Each agent can communicate with every other agent (many-to-many connections) and can decide which agent to call next. While very flexible, this architecture doesn't scale well as the number of agents grows:
-
-- hard to enforce which agent should be called next
-- hard to determine how much [information](#shared-message-list) should be passed between the agents
-
-We recommend avoiding this architecture in production and using one of the below architectures instead.
-
-### Supervisor
-
-In this architecture, we define agents as nodes and add a supervisor node (LLM) that decides which agent nodes should be called next. We use [conditional edges](./low_level.md#conditional-edges) to route execution to the appropriate agent node based on supervisor's decision. This architecture also lends itself well to running multiple agents in parallel or using [map-reduce](../how-tos/map-reduce.ipynb) pattern.
+In this architecture, agents are defined as graph nodes. Each agent can communicate with every other agent (many-to-many connections) and can decide which agent to call next. This architecture is good for problems that do not have a clear hierarchy of agents or a specific sequence in which agents should be called.
 
 ```ts
 import {
   StateGraph,
   Annotation,
   MessagesAnnotation,
+  Command
 } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 
@@ -50,35 +42,114 @@ const model = new ChatOpenAI({
   model: "gpt-4o-mini",
 });
 
-const StateAnnotation = Annotation.Root({
-  ...MessagesAnnotation.spec,
-  next: Annotation<"agent1" | "agent2">,
+const agent1 = async (state: typeof MessagesAnnotation.State) => {
+  // you can pass relevant parts of the state to the LLM (e.g., state.messages)
+  // to determine which agent to call next. a common pattern is to call the model
+  // with a structured output (e.g. force it to return an output with a "next_agent" field)
+  const response = await model.withStructuredOutput(...).invoke(...);
+  return new Command({
+    update: {
+      messages: [response.content],
+    },
+    goto: response.next_agent,
+  });
+};
+
+const agent2 = async (state: typeof MessagesAnnotation.State) => {
+  const response = await model.withStructuredOutput(...).invoke(...);
+  return new Command({
+    update: {
+      messages: [response.content],
+    },
+    goto: response.next_agent,
+  });
+};
+
+const agent3 = async (state: typeof MessagesAnnotation.State) => {
+  ...
+  return new Command({
+    update: {
+      messages: [response.content],
+    },
+    goto: response.next_agent,
+  });
+};
+
+const graph = new StateGraph(MessagesAnnotation)
+  .addNode("agent1", agent1, {
+    ends: ["agent2", "agent3" "__end__"],
+  })
+  .addNode("agent2", agent2, {
+    ends: ["agent1", "agent3", "__end__"],
+  })
+  .addNode("agent3", agent3, {
+    ends: ["agent1", "agent2", "__end__"],
+  })
+  .addEdge("__start__", "agent1")
+  .compile();
+```
+
+### Supervisor
+
+In this architecture, we define agents as nodes and add a supervisor node (LLM) that decides which agent nodes should be called next. We use [`Command`](./low_level.md#command) to route execution to the appropriate agent node based on supervisor's decision. This architecture also lends itself well to running multiple agents in parallel or using [map-reduce](../how-tos/map-reduce.ipynb) pattern.
+
+```ts
+import {
+  StateGraph,
+  MessagesAnnotation,
+  Command,
+} from "@langchain/langgraph";
+import { ChatOpenAI } from "@langchain/openai";
+
+const model = new ChatOpenAI({
+  model: "gpt-4o-mini",
 });
 
-const supervisor = async (state: typeof StateAnnotation.State) => {
+const supervisor = async (state: typeof MessagesAnnotation.State) => {
+  // you can pass relevant parts of the state to the LLM (e.g., state.messages)
+  // to determine which agent to call next. a common pattern is to call the model
+  // with a structured output (e.g. force it to return an output with a "next_agent" field)
   const response = await model.withStructuredOutput(...).invoke(...);
-  return { next: response.next_agent };
+  // route to one of the agents or exit based on the supervisor's decision
+  // if the supervisor returns "__end__", the graph will finish execution
+  return new Command({
+    goto: response.next_agent,
+  });
 };
 
-const agent1 = async (state: typeof StateAnnotation.State) => {
+const agent1 = async (state: typeof MessagesAnnotation.State) => {
+  // you can pass relevant parts of the state to the LLM (e.g., state.messages)
+  // and add any additional logic (different models, custom prompts, structured output, etc.)
   const response = await model.invoke(...);
-  return { messages: [response] };
+  return new Command({
+    goto: "supervisor",
+    update: {
+      messages: [response],
+    },
+  });
 };
 
-const agent2 = async (state: typeof StateAnnotation.State) => {
+const agent2 = async (state: typeof MessagesAnnotation.State) => {
   const response = await model.invoke(...);
-  return { messages: [response] };
+  return new Command({
+    goto: "supervisor",
+    update: {
+      messages: [response],
+    },
+  });
 };
 
-const graph = new StateGraph(StateAnnotation)
-  .addNode("supervisor", supervisor)
-  .addNode("agent1", agent1)
-  .addNode("agent2", agent2)
+const graph = new StateGraph(MessagesAnnotation)
+  .addNode("supervisor", supervisor, {
+    ends: ["agent1", "agent2", "__end__"],
+  })
+  .addNode("agent1", agent1, {
+    ends: ["supervisor"],
+  })
+  .addNode("agent2", agent2, {
+    ends: ["supervisor"],
+  })
   .addEdge("__start__", "supervisor")
-  // route to one of the agents or exit based on the supervisor's decisiion
-  .addConditionalEdges("supervisor", async (state) => state.next)
-  .addEdge("agent1", "supervisor")
-  .addEdge("agent2", "supervisor")
   .compile();
 ```
 
@@ -90,7 +161,7 @@ In this architecture we add individual agents as graph nodes and define the orde
 
 - **Explicit control flow (normal edges)**: LangGraph allows you to explicitly define the control flow of your application (i.e. the sequence of how agents communicate) explicitly, via [normal graph edges](./low_level.md#normal-edges). This is the most deterministic variant of this architecture above — we always know which agent will be called next ahead of time.
 
-- **Dynamic control flow (conditional edges)**: in LangGraph you can allow LLMs to decide parts of your application control flow. This can be achieved by using [conditional edges](./low_level.md#conditional-edges).
+- **Dynamic control flow (conditional edges)**: in LangGraph you can allow LLMs to decide parts of your application control flow. This can be achieved by using [`Command`](./low_level.md#command).
 
 ```ts
 import {
