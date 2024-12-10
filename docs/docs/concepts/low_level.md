@@ -428,6 +428,12 @@ const myNode = async (state: typeof StateAnnotation.State) => {
 
 Check out this [how-to guide](../how-tos/command.ipynb) for an end-to-end example of how to use `Command`.
 
+### When should I use Command instead of conditional edges?
+
+Use `Command` when you need to **both** update the graph state **and** route to a different node. For example, when implementing [multi-agent handoffs](./multi_agent.md#handoffs) where it's important to route to a different agent and pass some information to that agent.
+
+Use [conditional edges](#conditional-edges) to route between nodes conditionally without updating the state.
+
 ## Persistence
 
 LangGraph provides built-in persistence for your agent's state using [checkpointers](/langgraphjs/reference/classes/checkpoint.BaseCheckpointSaver.html). Checkpointers save snapshots of the graph state at every superstep, allowing resumption at any time. This enables features like human-in-the-loop interactions, memory management, and fault-tolerance. You can even directly manipulate a graph's state after its execution using the appropriate `get` and `update` methods. For more details, see the [conceptual guide](/langgraphjs/concepts/persistence) for more information.
