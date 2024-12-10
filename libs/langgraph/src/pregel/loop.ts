@@ -743,7 +743,10 @@ export class PregelLoop {
     if (_isCommand(this.input)) {
       const writes: { [key: string]: PendingWrite[] } = {};
       // group writes by task id
-      for (const [tid, key, value] of mapCommand(this.input)) {
+      for (const [tid, key, value] of mapCommand(
+        this.input,
+        this.checkpointPendingWrites
+      )) {
         if (writes[tid] === undefined) {
           writes[tid] = [];
         }
