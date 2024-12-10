@@ -48,28 +48,37 @@ export interface BranchOptions<
   CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
 > {
   source: N;
-  path: Branch<IO, N, CallOptions>["condition"];
+  path: RunnableLike<IO, BranchPathReturnValue, CallOptions>;
   pathMap?: Record<string, N | typeof END> | (N | typeof END)[];
 }
+
+export type BranchPathReturnValue =
+  | string
+  | Send
+  | (string | Send)[]
+  | Promise<string | Send | (string | Send)[]>;
 
 export class Branch<
   IO,
   N extends string,
   CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
 > {
-  condition: (
-    input: IO,
-    config: CallOptions
-  ) =>
-    | string
-    | Send
-    | (string | Send)[]
-    | Promise<string | Send | (string | Send)[]>;
+  condition: Runnable<IO, BranchPathReturnValue, CallOptions>;
 
   ends?: Record<string, N | typeof END>;
 
   constructor(options: Omit<BranchOptions<IO, N, CallOptions>, "source">) {
-    this.condition = options.path;
+    if (Runnable.isRunnable(options.path)) {
+      this.condition = options.path as Runnable<
+        IO,
+        BranchPathReturnValue,
+        CallOptions
+      >;
+    } else {
+      this.condition = _coerceToRunnable(options.path).withConfig({
+        runName: `Branch`,
+      });
+    }
     this.ends = Array.isArray(options.pathMap)
       ? options.pathMap.reduce((acc, n) => {
           acc[n] = n;
@@ -78,8 +87,11 @@ export class Branch<
       : options.pathMap;
   }
 
-  compile(
-    writer: (dests: (string | Send)[]) => Runnable | undefined,
+  run(
+    writer: (
+      dests: (string | Send)[],
+      config: LangGraphRunnableConfig
+    ) => Runnable | void | Promise<void>,
     reader?: (config: CallOptions) => IO
   ) {
     return ChannelWrite.registerWriter(
@@ -107,10 +119,17 @@ export class Branch<
   async _route(
     input: IO,
     config: CallOptions,
-    writer: (dests: (string | Send)[]) => Runnable | undefined,
+    writer: (
+      dests: (string | Send)[],
+      config: LangGraphRunnableConfig
+    ) => Runnable | void | Promise<void>,
     reader?: (config: CallOptions) => IO
-  ): Promise<Runnable | undefined> {
-    let result = await this.condition(reader ? reader(config) : input, config);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<Runnable | any> {
+    let result = await this.condition.invoke(
+      reader ? reader(config) : input,
+      config
+    );
     if (!Array.isArray(result)) {
       result = [result];
     }
@@ -127,7 +146,8 @@ export class Branch<
     if (destinations.filter(_isSend).some((packet) => packet.node === END)) {
       throw new InvalidUpdateError("Cannot send a packet to the END node");
     }
-    return writer(destinations);
+    const writeResult = await writer(destinations, config);
+    return writeResult ?? input;
   }
 }
 
@@ -259,11 +279,11 @@ export class Graph<
 
   addConditionalEdges(
     source: N,
-    path: Branch<
+    path: RunnableLike<
       RunInput,
-      N,
+      BranchPathReturnValue,
       LangGraphRunnableConfig<StateType<C>>
-    >["condition"],
+    >,
     pathMap?: BranchOptions<
       RunInput,
       N,
@@ -275,11 +295,11 @@ export class Graph<
     source:
       | N
       | BranchOptions<RunInput, N, LangGraphRunnableConfig<StateType<C>>>,
-    path?: Branch<
+    path?: RunnableLike<
       RunInput,
-      N,
+      BranchPathReturnValue,
       LangGraphRunnableConfig<StateType<C>>
-    >["condition"],
+    >,
     pathMap?: BranchOptions<
       RunInput,
       N,
@@ -290,12 +310,31 @@ export class Graph<
       RunInput,
       N,
       LangGraphRunnableConfig<StateType<C>>
-    > = typeof source === "object" ? source : { source, path: path!, pathMap };
+    > = typeof source === "object"
+      ? source
+      : {
+          source,
+          path: path!,
+          pathMap,
+        };
     this.warnIfCompiled(
       "Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
+    if (!Runnable.isRunnable(options.path)) {
+      const pathDisplayValues = Array.isArray(options.pathMap)
+        ? options.pathMap.join(",")
+        : Object.keys(options.pathMap ?? {}).join(",");
+      options.path = _coerceToRunnable(options.path).withConfig({
+        runName: `Branch<${options.source}${
+          pathDisplayValues !== "" ? `,${pathDisplayValues}` : ""
+        }>`.slice(0, 63),
+      });
+    }
     // find a name for condition
-    const name = options.path.name || "condition";
+    const name =
+      options.path.getName() === "RunnableLambda"
+        ? "condition"
+        : options.path.getName();
     // validate condition
     if (this.branches[options.source] && this.branches[options.source][name]) {
       throw new Error(
@@ -514,7 +553,7 @@ export class CompiledGraph<
 
     // attach branch writer
     this.nodes[start].pipe(
-      branch.compile((dests) => {
+      branch.run((dests) => {
         const writes = dests.map((dest) => {
           if (_isSend(dest)) {
             return dest;
