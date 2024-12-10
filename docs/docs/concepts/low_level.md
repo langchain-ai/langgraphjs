@@ -248,20 +248,20 @@ import { StateGraph, Annotation } from "@langchain/langgraph";
 const GraphAnnotation = Annotation.Root({
   input: Annotation<string>,
   results: Annotation<string>,
-})
+});
 
 // The state type can be extracted using `typeof <annotation variable name>.State`
 const myNode = (state: typeof GraphAnnotation.State, config?: RunnableConfig) => {
   console.log("In node: ", config.configurable?.user_id);
   return {
     results: `Hello, ${state.input}!`
-  }
-}
+  };
+};
 
 // The second argument is optional
 const myOtherNode = (state: typeof GraphAnnotation.State) => {
-  return state
-}
+  return state;
+};
 
 const builder = new StateGraph(GraphAnnotation)
   .addNode("myNode", myNode)
@@ -331,6 +331,9 @@ graph.addConditionalEdges("nodeA", routingFunction, {
 });
 ```
 
+!!! tip
+    Use [`Command`](#command) instead of conditional edges if you want to combine state updates and routing in a single function.
+
 ### Entry Point
 
 The entry point is the first node(s) that are run when the graph starts. You can use the [`addEdge`](/langgraphjs/reference/classes/langgraph.StateGraph.html#addEdge) method from the virtual [`START`](/langgraphjs/reference/variables/langgraph.START.html) node to the first node to execute to specify where to enter the graph.
@@ -375,6 +378,108 @@ const continueToJokes = (state: { subjects: string[] }) => {
 
 graph.addConditionalEdges("nodeA", continueToJokes);
 ```
+
+## `Command`
+
+!!! tip Compatibility
+    This functionality requires `@langchain/langgraph>=0.2.29`.
+
+It can be convenient to combine control flow (edges) and state updates (nodes). For example, you might want to BOTH perform state updates AND decide which node to go to next in the SAME node rather than use a conditional edge. LangGraph provides a way to do so by returning a [`Command`](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.Command.html) object from node functions:
+
+```ts
+import { StateGraph, Annotation, Command } from "@langchain/langgraph";
+
+const StateAnnotation = Annotation.Root({
+  foo: Annotation<string>,
+});
+
+
+const myNode = (state: typeof StateAnnotation.State) => {
+  return new Command({
+    // state update
+    update: {
+      foo: "bar",
+    },
+    // control flow
+    goto: "myOtherNode",
+  });
+};
+```
+
+A `Command` has the following properties:
+
+| Property | Description |
+| --- | --- |
+| `graph` | Graph to send the command to. Supported values:<br>- `None`: the current graph (default)<br>- `Command.PARENT`: closest parent graph |
+| `update` | Update to apply to the graph's state. |
+| `resume` | Value to resume execution with. To be used together with [`interrupt()`](https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph.interrupt-1.html). |
+| `goto` | Can be one of the following:<br>- name of the node to navigate to next (any node that belongs to the specified `graph`)<br>- sequence of node names to navigate to next<br>- [`Send`](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.Send.html) object (to execute a node with the input provided)<br>- sequence of `Send` objects<br>If `goto` is not specified and there are no other tasks left in the graph, the graph will halt after executing the current superstep. |
+
+Here's a complete example:
+
+```ts
+import { StateGraph, Annotation, Command } from "@langchain/langgraph";
+
+const StateAnnotation = Annotation.Root({
+  foo: Annotation<string>,
+});
+
+const myNode = async (state: typeof StateAnnotation.State) => {
+  return new Command({
+    // state update
+    update: {
+      foo: "bar",
+    },
+    // control flow
+    goto: "myOtherNode",
+  });
+};
+
+const myOtherNode = async (state: typeof StateAnnotation.State) => {
+  return {
+    foo: state.foo + "baz"
+  };
+};
+
+const graph = new StateGraph(StateAnnotation)
+  .addNode("myNode", myNode, {
+    // For compiling and validating the graph
+    ends: ["myOtherNode"],
+  })
+  .addNode("myOtherNode", myOtherNode)
+  .addEdge("__start__", "myNode")
+  .compile();
+
+await graph.invoke({
+  foo: "",
+});
+```
+
+```ts
+{ foo: "barbaz" }
+```
+
+With `Command` you can also achieve dynamic control flow behavior (identical to [conditional edges](#conditional-edges)):
+
+```ts
+const myNode = async (state: typeof StateAnnotation.State) => {
+  if (state.foo === "bar") {
+    return new Command({
+      update: {
+        foo: "baz",
+      },
+      goto: "myOtherNode",
+    });
+  }
+  // ...
+};
+```
+
+!!! important
+
+    When returning `Command` in your node functions, you must also add an `ends` parameter with the list of node names the node is routing to, e.g. `.addNode("myNode", myNode, { ends: ["nodeA", "nodeB"] })`. This is necessary for graph compilation and validation, and indicates that `myNode` can navigate to `nodeA` and `nodeB`.
+
+Check out this [how-to guide](../how-tos/command.ipynb) for an end-to-end example of how to use `Command`.
 
 ## Persistence
 
