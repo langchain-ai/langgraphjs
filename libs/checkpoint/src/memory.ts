@@ -238,7 +238,7 @@ export class MemorySaver extends BaseCheckpointSaver {
           }
 
           const key = _generateKey(threadId, checkpointNamespace, checkpointId);
-          const writes = Object.values(this.writes[key]) ?? [];
+          const writes = Object.values(this.writes[key] ?? []);
           const pending_sends = await this._getPendingSends(
             threadId,
             checkpointNamespace,
