@@ -1,4 +1,9 @@
-import { getSubgraphsSeenSet, isGraphBubbleUp } from "../errors.js";
+import { CHECKPOINT_NAMESPACE_SEPARATOR, Command } from "../constants.js";
+import {
+  getSubgraphsSeenSet,
+  isGraphBubbleUp,
+  isParentCommand,
+} from "../errors.js";
 import { PregelExecutableTask } from "./types.js";
 import type { RetryPolicy } from "./utils/index.js";
 
@@ -129,6 +134,27 @@ async function _runWithRetry(
     } catch (e: any) {
       error = e;
       error.pregelTaskId = pregelTask.id;
+      if (isParentCommand(error)) {
+        const ns: string = pregelTask.config?.configurable?.checkpoint_ns;
+        const cmd = error.command;
+        if (cmd.graph === ns) {
+          // this command is for the current graph, handle it
+          for (const writer of pregelTask.writers) {
+            await writer.invoke(cmd, pregelTask.config);
+          }
+          break;
+        } else if (cmd.graph === Command.PARENT) {
+          // this command is for the parent graph, assign it to the parent
+          const parent_ns = ns
+            .split(CHECKPOINT_NAMESPACE_SEPARATOR)
+            .slice(0, -1)
+            .join(CHECKPOINT_NAMESPACE_SEPARATOR);
+          error.command = new Command({
+            ...error.command,
+            graph: parent_ns,
+          });
+        }
+      }
       if (isGraphBubbleUp(error)) {
         break;
       }
