@@ -6,7 +6,11 @@ export {
   type FunctionCallingExecutorState,
   createFunctionCallingExecutor,
 } from "./chat_agent_executor.js";
-export { type AgentState, createReactAgent } from "./react_agent_executor.js";
+export {
+  type AgentState,
+  type CreateReactAgentParams,
+  createReactAgent,
+} from "./react_agent_executor.js";
 
 export {
   type ToolExecutorArgs,
