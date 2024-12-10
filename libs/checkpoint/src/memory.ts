@@ -44,10 +44,9 @@ export class MemorySaver extends BaseCheckpointSaver {
   ) {
     let pendingSends: SendProtocol[] = [];
     if (parentCheckpointId !== undefined) {
+      const key = _generateKey(threadId, checkpointNs, parentCheckpointId);
       pendingSends = await Promise.all(
-        Object.values(
-          this.writes[_generateKey(threadId, checkpointNs, parentCheckpointId)]
-        )
+        Object.values(this.writes[key] || {})
           ?.filter(([_taskId, channel]) => {
             return channel === TASKS;
           })
@@ -68,9 +67,7 @@ export class MemorySaver extends BaseCheckpointSaver {
       const saved = this.storage[thread_id]?.[checkpoint_ns]?.[checkpoint_id];
       if (saved !== undefined) {
         const [checkpoint, metadata, parentCheckpointId] = saved;
-        const writes =
-          this.writes[_generateKey(thread_id, checkpoint_ns, checkpoint_id)] ??
-          [];
+        const key = _generateKey(thread_id, checkpoint_ns, checkpoint_id);
         const pending_sends = await this._getPendingSends(
           thread_id,
           checkpoint_ns,
@@ -81,7 +78,7 @@ export class MemorySaver extends BaseCheckpointSaver {
           pending_sends,
         };
         const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
-          Object.values(writes).map(async ([taskId, channel, value]) => {
+          Object.values(this.writes[key] || {}).map(async ([taskId, channel, value]) => {
             return [
               taskId,
               channel,
@@ -118,9 +115,7 @@ export class MemorySaver extends BaseCheckpointSaver {
         )[0];
         const saved = checkpoints[checkpoint_id];
         const [checkpoint, metadata, parentCheckpointId] = saved;
-        const writes =
-          this.writes[_generateKey(thread_id, checkpoint_ns, checkpoint_id)] ??
-          [];
+        const key = _generateKey(thread_id, checkpoint_ns, checkpoint_id);
         const pending_sends = await this._getPendingSends(
           thread_id,
           checkpoint_ns,
@@ -131,7 +126,7 @@ export class MemorySaver extends BaseCheckpointSaver {
           pending_sends,
         };
         const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
-          Object.values(writes).map(async ([taskId, channel, value]) => {
+          Object.values(this.writes[key] || {}).map(async ([taskId, channel, value]) => {
             return [
               taskId,
               channel,
@@ -238,7 +233,7 @@ export class MemorySaver extends BaseCheckpointSaver {
           }
 
           const key = _generateKey(threadId, checkpointNamespace, checkpointId);
-          const writes = Object.values(this.writes[key] ?? []);
+          const writes = Object.values(this.writes[key] || {});
           const pending_sends = await this._getPendingSends(
             threadId,
             checkpointNamespace,
