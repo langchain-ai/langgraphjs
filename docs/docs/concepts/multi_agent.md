@@ -25,6 +25,44 @@ There are several ways to connect agents in a multi-agent system:
 - **Hierarchical**: you can define a multi-agent system with a supervisor of supervisors. This is a generalization of the supervisor architecture and allows for more complex control flows.
 - **Custom multi-agent workflow**: each agent communicates with only a subset of agents. Parts of the flow are deterministic, and only some agents can decide which other agents to call next.
 
+### Handoffs
+
+In multi-agent architectures, agents can be represented as graph nodes. Each agent node executes its step(s) and decides whether to finish execution or route to another agent, including potentially routing to itself (e.g., running in a loop). A common pattern in multi-agent interactions is handoffs, where one agent hands off control to another. Handoffs allow you to specify:
+
+- __destination__: target agent to navigate to (e.g., name of the node to go to)
+- __payload__: [information to pass to that agent](#communication-between-agents) (e.g., state update)
+
+To implement handoffs in LangGraph, agent nodes can return [`Command`](./low_level.md#command) object that allows you to combine both control flow and state updates:
+
+```ts
+const agent = (state: typeof StateAnnotation.State) => {
+  const goto = getNextAgent(...)  // 'agent' / 'another_agent'
+  return new Command({
+    // Specify which agent to call next
+    goto: goto,
+    // Update the graph state
+    update: {
+      foo: "bar",
+    }
+  });
+};
+```
+
+In a more complex scenario where each agent node is itself a graph (i.e., a [subgraph](./low_level.md#subgraphs)), a node in one of the agent subgraphs might want to navigate to a different agent. For example, if you have two agents, `alice` and `bob` (subgraph nodes in a parent graph), and `alice` needs to navigate to `bob`, you can set `graph=Command.PARENT` in the `Command` object:
+
+```ts
+const some_node_inside_alice = (state) => {
+    return new Command({
+      goto: "bob",
+      update: {
+          foo: "bar",
+      },
+      // specify which graph to navigate to (defaults to the current graph)
+      graph: Command.PARENT,
+    })
+}
+```
+
 ### Network
 
 In this architecture, agents are defined as graph nodes. Each agent can communicate with every other agent (many-to-many connections) and can decide which agent to call next. This architecture is good for problems that do not have a clear hierarchy of agents or a specific sequence in which agents should be called.
