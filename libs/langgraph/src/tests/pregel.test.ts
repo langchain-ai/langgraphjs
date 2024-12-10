@@ -8986,10 +8986,7 @@ export function runPregelTests(
   it("can throw a node interrupt multiple times in a single node", async () => {
     const GraphAnnotation = Annotation.Root({
       myKey: Annotation<string>({
-        reducer: (a, b) => {
-          console.log("state", a, "update", b);
-          return a + b;
-        },
+        reducer: (a, b) => a + b,
       }),
     });
 
