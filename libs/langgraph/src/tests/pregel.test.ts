@@ -9188,7 +9188,7 @@ export function runPregelTests(
     });
   });
 
-  it.only("can throw a node interrupt multiple times in a single node", async () => {
+  it("can throw a node interrupt multiple times in a single node", async () => {
     const GraphAnnotation = Annotation.Root({
       myKey: Annotation<string>({
         reducer: (a, b) => a + b,
@@ -9251,7 +9251,9 @@ export function runPregelTests(
         config
       )
     );
-    expect(thirdResult[thirdResult.length - 1].myKey).toEqual("DEanswer 1 answer 2");
+    expect(thirdResult[thirdResult.length - 1].myKey).toEqual(
+      "DEanswer 1 answer 2"
+    );
     const thirdState = await graph.getState(config);
     expect(thirdState.tasks).toHaveLength(0);
   });

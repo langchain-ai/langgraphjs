@@ -78,13 +78,15 @@ export class MemorySaver extends BaseCheckpointSaver {
           pending_sends,
         };
         const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
-          Object.values(this.writes[key] || {}).map(async ([taskId, channel, value]) => {
-            return [
-              taskId,
-              channel,
-              await this.serde.loadsTyped("json", value),
-            ];
-          })
+          Object.values(this.writes[key] || {}).map(
+            async ([taskId, channel, value]) => {
+              return [
+                taskId,
+                channel,
+                await this.serde.loadsTyped("json", value),
+              ];
+            }
+          )
         );
         const checkpointTuple: CheckpointTuple = {
           config,
@@ -126,13 +128,15 @@ export class MemorySaver extends BaseCheckpointSaver {
           pending_sends,
         };
         const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
-          Object.values(this.writes[key] || {}).map(async ([taskId, channel, value]) => {
-            return [
-              taskId,
-              channel,
-              await this.serde.loadsTyped("json", value),
-            ];
-          })
+          Object.values(this.writes[key] || {}).map(
+            async ([taskId, channel, value]) => {
+              return [
+                taskId,
+                channel,
+                await this.serde.loadsTyped("json", value),
+              ];
+            }
+          )
         );
         const checkpointTuple: CheckpointTuple = {
           config: {
