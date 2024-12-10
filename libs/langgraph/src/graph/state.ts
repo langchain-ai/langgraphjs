@@ -340,6 +340,7 @@ export class StateGraph<
         ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
           [runnable as any]
         : options?.subgraphs,
+      ends: options?.ends,
     };
 
     this.nodes[key as unknown as N] = nodeSpec;
@@ -603,6 +604,7 @@ export class CompiledStateGraph<
         metadata: node?.metadata,
         retryPolicy: node?.retryPolicy,
         subgraphs: node?.subgraphs,
+        ends: node?.ends,
       });
     }
   }

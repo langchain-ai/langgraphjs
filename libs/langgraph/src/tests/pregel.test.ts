@@ -2005,6 +2005,65 @@ export function runPregelTests(
     expect(res).toEqual({ items: ["0", "1", "2", "2", "3"] });
   });
 
+  it("should support a simple edgeless graph", async () => {
+    const StateAnnotation = Annotation.Root({
+      foo: Annotation<string>,
+    });
+
+    const nodeA = async (state: typeof StateAnnotation.State) => {
+      console.log("Called A");
+      const goto = state.foo === "foo" ? "nodeB" : "nodeC";
+      return new Command({
+        update: {
+          foo: "a",
+        },
+        goto,
+      });
+    };
+
+    const nodeB = async (state: typeof StateAnnotation.State) => {
+      console.log("Called B");
+      return {
+        foo: state.foo + "|b",
+      };
+    };
+
+    const nodeC = async (state: typeof StateAnnotation.State) => {
+      console.log("Called C");
+      return {
+        foo: state.foo + "|c",
+      };
+    };
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("nodeA", nodeA, {
+        ends: ["nodeB", "nodeC"],
+      })
+      .addNode("nodeB", nodeB)
+      .addNode("nodeC", nodeC)
+      .addEdge("__start__", "nodeA")
+      .compile();
+
+    const drawableGraph = await graph.getGraphAsync();
+    const mermaid = drawableGraph.drawMermaid();
+    // console.log(mermaid);
+    expect(mermaid).toEqual(`%%{init: {'flowchart': {'curve': 'linear'}}}%%
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	nodeA(nodeA)
+	nodeB(nodeB)
+	nodeC(nodeC)
+	__start__ --> nodeA;
+	nodeA -.-> nodeB;
+	nodeA -.-> nodeC;
+	classDef default fill:#f2f0ff,line-height:1.2;
+	classDef first fill-opacity:0;
+	classDef last fill:#bfb6fc;
+`);
+    expect(await graph.invoke({ foo: "foo" })).toEqual({ foo: "a|b" });
+    expect(await graph.invoke({ foo: "" })).toEqual({ foo: "a|c" });
+  });
+
   it("should handle send sequences correctly", async () => {
     const StateAnnotation = Annotation.Root({
       items: Annotation<any[]>({

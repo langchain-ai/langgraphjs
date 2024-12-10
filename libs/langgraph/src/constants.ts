@@ -125,13 +125,34 @@ export type Interrupt = {
 };
 
 export type CommandParams<R> = {
+  /**
+   * Value to resume execution with. To be used together with {@link interrupt}.
+   */
   resume?: R;
+  /**
+   * Graph to send the command to. Supported values are:
+   *   - None: the current graph (default)
+   *   - GraphCommand.PARENT: closest parent graph
+   */
   graph?: string;
+  /**
+   * Update to apply to the graph's state.
+   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   update?: Record<string, any>;
+  /**
+   * Can be one of the following:
+   *   - name of the node to navigate to next (any node that belongs to the specified `graph`)
+   *   - sequence of node names to navigate to next
+   *   - `Send` object (to execute a node with the input provided)
+   *   - sequence of `Send` objects
+   */
   goto?: string | Send | (string | Send)[];
 };
 
+/**
+ * One or more commands to update the graph's state and send messages to nodes.
+ */
 export class Command<R = unknown> {
   lg_name = "Command";
 
