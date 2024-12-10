@@ -53,6 +53,7 @@ import {
   Command,
   NULL_TASK_ID,
   INPUT,
+  RESUME,
   PUSH,
 } from "../constants.js";
 import {
@@ -1227,10 +1228,13 @@ export class Pregel<
                   throw error;
                 }
                 if (isGraphInterrupt(error) && error.interrupts.length) {
-                  loop.putWrites(
-                    task.id,
-                    error.interrupts.map((interrupt) => [INTERRUPT, interrupt])
-                  );
+                  const interrupts: PendingWrite<string>[] =
+                    error.interrupts.map((interrupt) => [INTERRUPT, interrupt]);
+                  const resumes = task.writes.filter((w) => w[0] === RESUME);
+                  if (resumes.length) {
+                    interrupts.push(...resumes);
+                  }
+                  loop.putWrites(task.id, interrupts);
                 }
               } else {
                 loop.putWrites(task.id, [

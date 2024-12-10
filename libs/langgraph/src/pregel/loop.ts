@@ -13,6 +13,7 @@ import {
   All,
   BaseStore,
   AsyncBatchedStore,
+  WRITES_IDX_MAP,
 } from "@langchain/langgraph-checkpoint";
 
 import {
@@ -445,16 +446,31 @@ export class PregelLoop {
    * @param writes
    */
   putWrites(taskId: string, writes: PendingWrite<string>[]) {
-    if (writes.length === 0) {
+    let writesCopy = writes;
+    if (writesCopy.length === 0) {
       return;
     }
+
+    // deduplicate writes to special channels, last write wins
+    if (writesCopy.every(([key]) => key in WRITES_IDX_MAP)) {
+      writesCopy = Array.from(
+        new Map(writesCopy.map((w) => [w[0], w])).values()
+      );
+    }
     // save writes
-    const pendingWrites: CheckpointPendingWrite<string>[] = writes.map(
-      ([key, value]) => {
-        return [taskId, key, value];
+    for (const [c, v] of writesCopy) {
+      if (c in WRITES_IDX_MAP) {
+        const idx = this.checkpointPendingWrites.findIndex(
+          (w) => w[0] === taskId && w[1] === c
+        );
+        if (idx !== -1) {
+          this.checkpointPendingWrites[idx] = [taskId, c, v];
+        } else {
+          this.checkpointPendingWrites.push([taskId, c, v]);
+        }
       }
-    );
-    this.checkpointPendingWrites.push(...pendingWrites);
+    }
+
     const putWritePromise = this.checkpointer?.putWrites(
       {
         ...this.checkpointConfig,
@@ -464,14 +480,15 @@ export class PregelLoop {
           checkpoint_id: this.checkpoint.id,
         },
       },
-      writes,
+      writesCopy,
       taskId
     );
     if (putWritePromise !== undefined) {
       this.checkpointerPromises.push(putWritePromise);
     }
+
     if (this.tasks) {
-      this._outputWrites(taskId, writes);
+      this._outputWrites(taskId, writesCopy);
     }
   }
 
@@ -541,7 +558,10 @@ export class PregelLoop {
       if (![INPUT_DONE, INPUT_RESUMING].includes(this.input)) {
         await this._first(inputKeys);
       } else if (
-        Object.values(this.tasks).every((task) => task.writes.length > 0)
+        Object.values(this.tasks).every(
+          (task) =>
+            task.writes.filter(([c]) => !(c in WRITES_IDX_MAP)).length > 0
+        )
       ) {
         const writes = Object.values(this.tasks).flatMap((t) => t.writes);
         // All tasks have finished
@@ -723,7 +743,10 @@ export class PregelLoop {
     if (_isCommand(this.input)) {
       const writes: { [key: string]: PendingWrite[] } = {};
       // group writes by task id
-      for (const [tid, key, value] of mapCommand(this.input)) {
+      for (const [tid, key, value] of mapCommand(
+        this.input,
+        this.checkpointPendingWrites
+      )) {
         if (writes[tid] === undefined) {
           writes[tid] = [];
         }

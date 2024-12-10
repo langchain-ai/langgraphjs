@@ -1,4 +1,7 @@
-import type { PendingWrite } from "@langchain/langgraph-checkpoint";
+import type {
+  CheckpointPendingWrite,
+  PendingWrite,
+} from "@langchain/langgraph-checkpoint";
 import { validate } from "uuid";
 
 import type { BaseChannel } from "../channels/base.js";
@@ -64,7 +67,8 @@ export function readChannels<C extends PropertyKey>(
  * Map input chunk to a sequence of pending writes in the form (channel, value).
  */
 export function* mapCommand(
-  cmd: Command
+  cmd: Command,
+  pendingWrites: CheckpointPendingWrite<string>[]
 ): Generator<[string, string, unknown]> {
   if (cmd.graph === Command.PARENT) {
     throw new InvalidUpdateError("There is no parent graph.");
@@ -97,7 +101,15 @@ export function* mapCommand(
       Object.keys(cmd.resume).every(validate)
     ) {
       for (const [tid, resume] of Object.entries(cmd.resume)) {
-        yield [tid, RESUME, resume];
+        // Find existing resume values for this task ID
+        const existing = (pendingWrites.find(
+          ([id, type]) => id === tid && type === RESUME
+        )?.[2] ?? []) as unknown[];
+
+        // Ensure we have an array and append the resume value
+        existing.push(resume);
+
+        yield [tid, RESUME, existing];
       }
     } else {
       yield [NULL_TASK_ID, RESUME, cmd.resume];
