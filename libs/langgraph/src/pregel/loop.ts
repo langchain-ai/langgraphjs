@@ -33,6 +33,7 @@ import {
   ERROR,
   INPUT,
   INTERRUPT,
+  NULL_TASK_ID,
   RESUME,
   TAG_HIDDEN,
 } from "../constants.js";
@@ -459,15 +460,13 @@ export class PregelLoop {
     }
     // save writes
     for (const [c, v] of writesCopy) {
-      if (c in WRITES_IDX_MAP) {
-        const idx = this.checkpointPendingWrites.findIndex(
-          (w) => w[0] === taskId && w[1] === c
-        );
-        if (idx !== -1) {
-          this.checkpointPendingWrites[idx] = [taskId, c, v];
-        } else {
-          this.checkpointPendingWrites.push([taskId, c, v]);
-        }
+      const idx = this.checkpointPendingWrites.findIndex(
+        (w) => w[0] === taskId && w[1] === c
+      );
+      if (c in WRITES_IDX_MAP && idx !== -1) {
+        this.checkpointPendingWrites[idx] = [taskId, c, v];
+      } else {
+        this.checkpointPendingWrites.push([taskId, c, v]);
       }
     }
 
@@ -732,7 +731,7 @@ export class PregelLoop {
   /**
    * Resuming from previous checkpoint requires
    * - finding a previous checkpoint
-   * - receiving None input (outer graph) or RESUMING flag (subgraph)
+   * - receiving null input (outer graph) or RESUMING flag (subgraph)
    */
   protected async _first(inputKeys: string | string[]) {
     const isResuming =
@@ -759,6 +758,24 @@ export class PregelLoop {
       for (const [tid, ws] of Object.entries(writes)) {
         this.putWrites(tid, ws);
       }
+    }
+    // apply null writes
+    const nullWrites = (this.checkpointPendingWrites ?? [])
+      .filter((w) => w[0] === NULL_TASK_ID)
+      .map((w) => w.slice(1)) as PendingWrite<string>[];
+    if (nullWrites.length > 0) {
+      _applyWrites(
+        this.checkpoint,
+        this.channels,
+        [
+          {
+            name: INPUT,
+            writes: nullWrites,
+            triggers: [],
+          },
+        ],
+        this.checkpointerGetNextVersion
+      );
     }
     if (isResuming) {
       for (const channelName of Object.keys(this.channels)) {

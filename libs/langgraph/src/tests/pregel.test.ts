@@ -2011,7 +2011,6 @@ export function runPregelTests(
     });
 
     const nodeA = async (state: typeof StateAnnotation.State) => {
-      console.log("Called A");
       const goto = state.foo === "foo" ? "nodeB" : "nodeC";
       return new Command({
         update: {
@@ -2022,14 +2021,12 @@ export function runPregelTests(
     };
 
     const nodeB = async (state: typeof StateAnnotation.State) => {
-      console.log("Called B");
       return {
         foo: state.foo + "|b",
       };
     };
 
     const nodeC = async (state: typeof StateAnnotation.State) => {
-      console.log("Called C");
       return {
         foo: state.foo + "|c",
       };
@@ -9240,10 +9237,13 @@ graph TD;
       },
     };
 
-    await graph.invoke({ foo: "abc" }, config);
-    const result = await graph.invoke(new Command({ resume: "node1" }), config);
+    expect(await graph.invoke({ foo: "abc" }, config)).toEqual({ foo: "abc" });
+    const result = await graph.invoke(
+      new Command({ update: { foo: "def" } }),
+      config
+    );
     expect(result).toEqual({
-      foo: "abc|node-1|node-2",
+      foo: "def|node-1|node-2",
     });
   });
 
@@ -9297,8 +9297,8 @@ graph TD;
 
     const secondState = await graph.getState(config);
     expect(secondState.tasks).toHaveLength(1);
-    expect(secondState.tasks[0].interrupts).toHaveLength(1);
-    expect(secondState.tasks[0].interrupts[0].value).toEqual({
+    expect(secondState.tasks[0].interrupts).toHaveLength(2);
+    expect(secondState.tasks[0].interrupts[1].value).toEqual({
       value: 2,
     });
 

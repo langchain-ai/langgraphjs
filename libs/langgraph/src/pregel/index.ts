@@ -460,6 +460,19 @@ export class Pregel<
         });
       }
     }
+    // apply pending writes
+    const nullWrites = (saved.pendingWrites ?? [])
+      .filter((w) => w[0] === NULL_TASK_ID)
+      .map((w) => w.slice(1)) as PendingWrite<string>[];
+    if (nullWrites.length > 0) {
+      _applyWrites(saved.checkpoint, channels, [
+        {
+          name: INPUT,
+          writes: nullWrites,
+          triggers: [],
+        },
+      ]);
+    }
     // assemble the state snapshot
     return {
       values: readChannels(
@@ -703,7 +716,7 @@ export class Pregel<
         // apply null writes
         const nullWrites = (saved.pendingWrites || [])
           .filter((w) => w[0] === NULL_TASK_ID)
-          .flatMap((w) => w.slice(1)) as PendingWrite<string>[];
+          .map((w) => w.slice(1)) as PendingWrite<string>[];
         if (nullWrites.length > 0) {
           _applyWrites(saved.checkpoint, channels, [
             {
@@ -758,6 +771,58 @@ export class Pregel<
         {}
       );
       return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
+    }
+    // apply pending writes, if not on specific checkpoint
+    if (
+      config.configurable?.checkpoint_id === undefined &&
+      saved?.pendingWrites !== undefined &&
+      saved.pendingWrites.length > 0
+    ) {
+      // tasks for this checkpoint
+      const nextTasks = _prepareNextTasks(
+        checkpoint,
+        saved.pendingWrites,
+        this.nodes,
+        channels,
+        managed,
+        saved.config,
+        true,
+        {
+          store: this.store,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          checkpointer: this.checkpointer as any,
+          step: (saved.metadata?.step ?? -1) + 1,
+        }
+      );
+      // apply null writes
+      const nullWrites = (saved.pendingWrites ?? [])
+        .filter((w) => w[0] === NULL_TASK_ID)
+        .map((w) => w.slice(1)) as PendingWrite<string>[];
+      if (nullWrites.length > 0) {
+        _applyWrites(saved.checkpoint, channels, [
+          {
+            name: INPUT,
+            writes: nullWrites,
+            triggers: [],
+          },
+        ]);
+      }
+      // apply writes
+      for (const [tid, k, v] of saved.pendingWrites) {
+        if (
+          [ERROR, INTERRUPT, SCHEDULED].includes(k) ||
+          nextTasks[tid] === undefined
+        ) {
+          continue;
+        }
+        nextTasks[tid].writes.push([k, v]);
+      }
+      const tasks = Object.values(nextTasks).filter((task) => {
+        return task.writes.length > 0;
+      });
+      if (tasks.length > 0) {
+        _applyWrites(checkpoint, channels, tasks as WritesProtocol[]);
+      }
     }
     const nonNullVersion = Object.values(checkpoint.versions_seen)
       .map((seenVersions) => {

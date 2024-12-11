@@ -68,7 +68,7 @@ export function readChannels<C extends PropertyKey>(
  */
 export function* mapCommand(
   cmd: Command,
-  pendingWrites: CheckpointPendingWrite<string>[]
+  pendingWrites: CheckpointPendingWrite[]
 ): Generator<[string, string, unknown]> {
   if (cmd.graph === Command.PARENT) {
     throw new InvalidUpdateError("There is no parent graph.");
@@ -91,24 +91,20 @@ export function* mapCommand(
         );
       }
     }
-    // TODO: handle goto str for state graph
   }
   if (cmd.resume) {
     if (
       typeof cmd.resume === "object" &&
-      !!cmd.resume &&
       Object.keys(cmd.resume).length &&
       Object.keys(cmd.resume).every(validate)
     ) {
       for (const [tid, resume] of Object.entries(cmd.resume)) {
-        // Find existing resume values for this task ID
-        const existing = (pendingWrites.find(
-          ([id, type]) => id === tid && type === RESUME
-        )?.[2] ?? []) as unknown[];
-
-        // Ensure we have an array and append the resume value
+        const existing =
+          pendingWrites
+            .filter((w) => w[0] === tid && w[1] === RESUME)
+            .map((w) => w[2])
+            .slice(0, 1) ?? [];
         existing.push(resume);
-
         yield [tid, RESUME, existing];
       }
     } else {
