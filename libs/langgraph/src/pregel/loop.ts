@@ -468,6 +468,8 @@ export class PregelLoop {
         } else {
           this.checkpointPendingWrites.push([taskId, c, v]);
         }
+      } else {
+        this.checkpointPendingWrites.push([taskId, c, v]);
       }
     }
 
