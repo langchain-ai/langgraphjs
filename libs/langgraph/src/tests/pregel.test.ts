@@ -9247,8 +9247,7 @@ graph TD;
     });
   });
 
-  // TODO: Fix
-  it.skip("can throw a node interrupt multiple times in a single node", async () => {
+  it("can throw a node interrupt multiple times in a single node", async () => {
     const GraphAnnotation = Annotation.Root({
       myKey: Annotation<string>({
         reducer: (a, b) => a + b,
@@ -9298,8 +9297,8 @@ graph TD;
 
     const secondState = await graph.getState(config);
     expect(secondState.tasks).toHaveLength(1);
-    expect(secondState.tasks[0].interrupts).toHaveLength(2);
-    expect(secondState.tasks[0].interrupts[1].value).toEqual({
+    expect(secondState.tasks[0].interrupts).toHaveLength(1);
+    expect(secondState.tasks[0].interrupts[0].value).toEqual({
       value: 2,
     });
 
