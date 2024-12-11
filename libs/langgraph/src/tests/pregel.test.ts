@@ -3629,6 +3629,7 @@ graph TD;
 
       const OutputAnnotation = Annotation.Root({
         messages: Annotation<string[]>,
+        extraOutput: Annotation<string>,
       });
 
       const nodeA = (state: { hello: string; messages: string[] }) => {
@@ -3676,13 +3677,18 @@ graph TD;
         .addEdge("b", "c")
         .compile();
 
-      expect(
-        await graph.invoke({
-          hello: "there",
-          bye: "world",
-          messages: ["hello"],
-        })
-      ).toEqual({
+      const res = await graph.invoke({
+        hello: "there",
+        bye: "world",
+        messages: ["hello"],
+        // @ts-expect-error Output schema properties should not be part of input types
+        extraOutput: "bar",
+      });
+
+      // State graph should respect output typing
+      void res.extraOutput;
+
+      expect(res).toEqual({
         messages: ["hello"],
       });
 
@@ -3717,6 +3723,67 @@ graph TD;
             bye: "world",
             messages: ["hello"],
             // @ts-expect-error This should emit a TS error
+            now: 345, // ignored because not in input schema
+          })
+        )
+      ).toEqual([{}, { b: { hello: "again" } }, {}]);
+
+      const res2 = await graph.invoke({
+        hello: "there",
+        bye: "world",
+        messages: ["hello"],
+        // @ts-expect-error Output schema properties should not be part of input types
+        extraOutput: "bar",
+      });
+
+      // State graph should respect output typing
+      void res2.extraOutput;
+      // @ts-expect-error Output type should not have a field not in the output schema, even if in other state
+      void res2.hello;
+      // @ts-expect-error Output type should not have a field not in the output schema, even if in other state
+      void res2.random;
+
+      expect(res2).toEqual({
+        messages: ["hello"],
+      });
+
+      const InputStateAnnotation = Annotation.Root({
+        specialInputField: Annotation<string>,
+      });
+
+      const graphWithAllSchemas = new StateGraph({
+        input: InputStateAnnotation,
+        output: OutputAnnotation,
+        stateSchema: StateAnnotation,
+      })
+        .addNode("a", nodeA)
+        .addNode("b", nodeB)
+        .addNode("c", nodeC)
+        .addEdge(START, "a")
+        .addEdge("a", "b")
+        .addEdge("b", "c")
+        .compile();
+
+      const res3 = await graphWithAllSchemas.invoke({
+        // @ts-expect-error Input type should contain fields outside input schema, even if in other states
+        hello: "there",
+        specialInputField: "foo",
+      });
+      expect(res3).toEqual({
+        messages: ["hello"],
+      });
+
+      // Extra output fields should be respected
+      void res3.extraOutput;
+      // @ts-expect-error Output type should not have a field not in the output schema, even if in other state
+      void res3.hello;
+      // @ts-expect-error Output type should not have a field not in the output schema, even if in other state
+      void res3.random;
+
+      expect(
+        await gatherIterator(
+          graphWithAllSchemas.stream({
+            // @ts-expect-error Input typing should not have a field not in any schema
             now: 345, // ignored because not in input schema
           })
         )
@@ -3876,7 +3943,6 @@ graph TD;
       };
       const res = await app.invoke(
         {
-          // @ts-expect-error Messages is not in schema
           messages: ["initial input"],
         },
         config

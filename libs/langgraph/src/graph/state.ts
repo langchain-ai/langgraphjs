@@ -495,7 +495,7 @@ export class CompiledStateGraph<
   I extends StateDefinition = StateDefinition,
   O extends StateDefinition = StateDefinition,
   C extends StateDefinition = StateDefinition
-> extends CompiledGraph<N, S, U, StateType<C>> {
+> extends CompiledGraph<N, S, U, StateType<C>, UpdateType<I>, StateType<O>> {
   declare builder: StateGraph<unknown, S, U, N, I, O, C>;
 
   attachNode(key: typeof START, node?: never): void;
