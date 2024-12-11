@@ -3690,6 +3690,8 @@ graph TD;
 
       expect(res).toEqual({
         messages: ["hello"],
+        // Will still be added to state despite typing
+        extraOutput: "bar",
       });
 
       const graphWithInput = new StateGraph({
@@ -3745,6 +3747,8 @@ graph TD;
 
       expect(res2).toEqual({
         messages: ["hello"],
+        // Will still be added to state despite typing
+        extraOutput: "bar",
       });
 
       const InputStateAnnotation = Annotation.Root({
@@ -3756,16 +3760,24 @@ graph TD;
         output: OutputAnnotation,
         stateSchema: StateAnnotation,
       })
+        .addNode("preA", async () => {
+          return {
+            bye: "world",
+            hello: "there",
+            messages: ["hello"],
+          };
+        })
         .addNode("a", nodeA)
         .addNode("b", nodeB)
         .addNode("c", nodeC)
-        .addEdge(START, "a")
+        .addEdge(START, "preA")
+        .addEdge("preA", "a")
         .addEdge("a", "b")
         .addEdge("b", "c")
         .compile();
 
       const res3 = await graphWithAllSchemas.invoke({
-        // @ts-expect-error Input type should contain fields outside input schema, even if in other states
+        // @ts-expect-error Input type should not contain fields outside input schema, even if in other states
         hello: "there",
         specialInputField: "foo",
       });
