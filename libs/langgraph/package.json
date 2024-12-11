@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph",
-  "version": "0.2.30",
+  "version": "0.2.31",
   "description": "LangGraph",
   "type": "module",
   "engines": {
@@ -31,7 +31,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/langgraph-checkpoint": "~0.0.12",
+    "@langchain/langgraph-checkpoint": "~0.0.13",
     "@langchain/langgraph-sdk": "~0.0.21",
     "uuid": "^10.0.0",
     "zod": "^3.23.8"
