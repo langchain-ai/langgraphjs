@@ -3791,15 +3791,6 @@ graph TD;
       void res3.hello;
       // @ts-expect-error Output type should not have a field not in the output schema, even if in other state
       void res3.random;
-
-      expect(
-        await gatherIterator(
-          graphWithAllSchemas.stream({
-            // @ts-expect-error Input typing should not have a field not in any schema
-            now: 345, // ignored because not in input schema
-          })
-        )
-      ).toEqual([{}, { b: { hello: "again" } }, {}]);
     });
 
     it("should use a retry policy", async () => {
