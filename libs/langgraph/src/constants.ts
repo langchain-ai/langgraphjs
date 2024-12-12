@@ -159,12 +159,14 @@ export type CommandParams<R> = {
 export class Command<R = unknown> {
   lg_name = "Command";
 
-  resume?: R;
+  lc_direct_tool_output = true;
 
   graph?: string;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  update?: Record<string, any>;
+  update?: Record<string, any> | [string, any][] = [];
+
+  resume?: R;
 
   goto: string | Send | (string | Send)[] = [];
 
@@ -178,8 +180,28 @@ export class Command<R = unknown> {
       this.goto = Array.isArray(args.goto) ? args.goto : [args.goto];
     }
   }
+
+  _updateAsTuples(): [string, unknown][] {
+    if (
+      this.update &&
+      typeof this.update === "object" &&
+      !Array.isArray(this.update)
+    ) {
+      return Object.entries(this.update);
+    } else if (
+      Array.isArray(this.update) &&
+      this.update.every(
+        (t): t is [string, unknown] =>
+          Array.isArray(t) && t.length === 2 && typeof t[0] === "string"
+      )
+    ) {
+      return this.update;
+    } else {
+      return [["__root__", this.update]];
+    }
+  }
 }
 
-export function _isCommand(x: unknown): x is Command {
+export function isCommand(x: unknown): x is Command {
   return typeof x === "object" && !!x && (x as Command).lg_name === "Command";
 }

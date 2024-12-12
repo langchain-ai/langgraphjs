@@ -20,7 +20,13 @@ import {
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
 
-import { END, START, StateGraph, CompiledStateGraph } from "../graph/index.js";
+import {
+  END,
+  START,
+  StateGraph,
+  CompiledStateGraph,
+  AnnotationRoot,
+} from "../graph/index.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { ToolNode } from "./tool_node.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
@@ -147,13 +153,14 @@ export type MessageModifier =
   | ((messages: BaseMessage[]) => Promise<BaseMessage[]>)
   | Runnable;
 
-export type CreateReactAgentParams = {
+export type CreateReactAgentParams<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  A extends AnnotationRoot<any> = AnnotationRoot<any>
+> = {
   /** The chat model that can utilize OpenAI-style tool calling. */
   llm: BaseChatModel;
   /** A list of tools or a ToolNode. */
-  tools:
-    | ToolNode<typeof MessagesAnnotation.State>
-    | (StructuredToolInterface | RunnableToolLike)[];
+  tools: ToolNode | (StructuredToolInterface | RunnableToolLike)[];
   /**
    * @deprecated
    * Use stateModifier instead. stateModifier works the same as
@@ -208,6 +215,7 @@ export type CreateReactAgentParams = {
    * - Runnable: This runnable should take in full graph state and the output is then passed to the language model.
    */
   stateModifier?: StateModifier;
+  stateSchema?: A;
   /** An optional checkpoint saver to persist the agent's state. */
   checkpointSaver?: BaseCheckpointSaver;
   /** An optional list of node names to interrupt before running. */
@@ -260,18 +268,24 @@ export type CreateReactAgentParams = {
  * ```
  */
 
-export function createReactAgent(
-  params: CreateReactAgentParams
+export function createReactAgent<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  A extends AnnotationRoot<any> = AnnotationRoot<any>
+>(
+  params: CreateReactAgentParams<A>
 ): CompiledStateGraph<
   (typeof MessagesAnnotation)["State"],
   (typeof MessagesAnnotation)["Update"],
-  typeof START | "agent" | "tools"
+  typeof START | "agent" | "tools",
+  typeof MessagesAnnotation.spec & A["spec"],
+  typeof MessagesAnnotation.spec & A["spec"]
 > {
   const {
     llm,
     tools,
     messageModifier,
     stateModifier,
+    stateSchema,
     checkpointSaver,
     interruptBefore,
     interruptAfter,
@@ -314,9 +328,9 @@ export function createReactAgent(
     return { messages: [await modelRunnable.invoke(state, config)] };
   };
 
-  const workflow = new StateGraph(MessagesAnnotation)
+  const workflow = new StateGraph(stateSchema ?? MessagesAnnotation)
     .addNode("agent", callModel)
-    .addNode("tools", new ToolNode<AgentState>(toolClasses))
+    .addNode("tools", new ToolNode(toolClasses))
     .addEdge(START, "agent")
     .addConditionalEdges("agent", shouldContinue, {
       continue: "tools",

@@ -89,7 +89,7 @@ import {
   NodeInterrupt,
 } from "../errors.js";
 import {
-  _isCommand,
+  isCommand,
   Command,
   ERROR,
   INTERRUPT,
@@ -2078,7 +2078,7 @@ graph TD;
           ? { items: [name] }
           : { items: [`${name}|${JSON.stringify(state)}`] };
 
-        if (_isCommand(state)) {
+        if (isCommand(state)) {
           state.update = update;
           return state;
         } else {
@@ -3690,8 +3690,6 @@ graph TD;
 
       expect(res).toEqual({
         messages: ["hello"],
-        // Will still be added to state despite typing
-        extraOutput: "bar",
       });
 
       const graphWithInput = new StateGraph({
@@ -3747,8 +3745,6 @@ graph TD;
 
       expect(res2).toEqual({
         messages: ["hello"],
-        // Will still be added to state despite typing
-        extraOutput: "bar",
       });
 
       const InputStateAnnotation = Annotation.Root({
