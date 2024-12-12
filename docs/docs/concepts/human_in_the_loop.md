@@ -164,7 +164,7 @@ await graph.invoke(
 );
 ```
 
-See [How to wait for user input using interrupt](/langgraphjs/how-tos/human_in_the_loop/wait-user-input.ipynb) for a more detailed example.
+See [How to wait for user input using interrupt](/langgraphjs/how-tos/human_in_the_loop/wait-user-input) for a more detailed example.
 
 ### Review Tool Calls
 
@@ -307,7 +307,7 @@ This design pattern is useful in an LLM application consisting of [multiple agen
     }
     ```
 
-See [how to implement multi-turn conversations](/langgraphjs/how-tos/multi-agent-multi-turn-convo.ipynb) for a more detailed example.
+See [how to implement multi-turn conversations](/langgraphjs/how-tos/multi-agent-multi-turn-convo) for a more detailed example.
 
 ### Validating human input
 
@@ -417,10 +417,6 @@ await graph.invoke(new Command({ resume: { age: "25" } }), threadConfig);
 
 ## How does resuming from an interrupt work?
 
-!!! warning
-
-    Resuming from an `interrupt` is **different** from JavaScript's `prompt()` function, where execution resumes from the exact point where the `prompt()` function was called.
-
 A critical aspect of using `interrupt` is understanding how resuming works. When you resume execution after an `interrupt`, graph execution starts from the **beginning** of the **graph node** where the last `interrupt` was triggered.
 
 **All** code from the beginning of the node to the `interrupt` will be re-executed.
@@ -463,10 +459,9 @@ Place code with side effects, such as API calls, **after** the `interrupt` to av
     This can be problematic if the API call is not idempotent or is just expensive.
 
     ```typescript
-    import { type State } from "./types";
     import { interrupt } from "@langchain/langgraph";
 
-    function humanNode(state: State) {
+    function humanNode(state: typeof GraphAnnotation.State) {
       /**
        * Human node with validation.
        */
@@ -479,10 +474,9 @@ Place code with side effects, such as API calls, **after** the `interrupt` to av
 === "Side effects after interrupt (OK)"
 
     ```typescript
-    import { type State } from "./types";
     import { interrupt } from "@langchain/langgraph";
 
-    function humanNode(state: State) {
+    function humanNode(state: typeof GraphAnnotation.State) {
       /**
        * Human node with validation.
        */
@@ -496,10 +490,9 @@ Place code with side effects, such as API calls, **after** the `interrupt` to av
 === "Side effects in a separate node (OK)"
 
     ```typescript
-    import { type State } from "./types";
     import { interrupt } from "@langchain/langgraph";
 
-    function humanNode(state: State) {
+    function humanNode(state: typeof GraphAnnotation.State) {
       /**
        * Human node with validation.
        */
@@ -511,7 +504,7 @@ Place code with side effects, such as API calls, **after** the `interrupt` to av
       };
     }
 
-    function apiCallNode(state: State) {
+    function apiCallNode(state: typeof GraphAnnotation.State) {
       apiCall(); // OK as it's in a separate node
     }
     ```
@@ -665,17 +658,21 @@ To avoid issues, refrain from dynamically changing the node's structure between 
 
     ```typescript
     import { v4 as uuidv4 } from "uuid";
-    import { StateGraph } from "@langchain/langgraph";
-    import { START } from "@langchain/langgraph/constants";
-    import { interrupt, Command } from "@langchain/langgraph";
-    import { MemorySaver } from "@langchain/langgraph/checkpoint";
+    import {
+      StateGraph,
+      MemorySaver,
+      START,
+      interrupt,
+      Command,
+      Annotation
+    } from "@langchain/langgraph";
 
-    interface State {
-      age?: string;
-      name?: string;
-    }
+    const GraphAnnotation = Annotation.Root({
+      name: Annotation<string>(),
+      age: Annotation<string>()
+    });
 
-    function humanNode(state: State) {
+    function humanNode(state: typeof GraphAnnotation.State) {
       let name;
       if (!state.name) {
         name = interrupt("what is your name?");
@@ -698,10 +695,9 @@ To avoid issues, refrain from dynamically changing the node's structure between 
       };
     }
 
-    const builder = new StateGraph<State>();
-
-    builder.addNode("human_node", humanNode);
-    builder.addEdge(START, "human_node");
+    const builder = new StateGraph<GraphAnnotation>()
+      .addNode("human_node", humanNode);
+      .addEdge(START, "human_node");
 
     // A checkpointer must be enabled for interrupts to work!
     const checkpointer = new MemorySaver();
@@ -714,13 +710,13 @@ To avoid issues, refrain from dynamically changing the node's structure between 
       }
     };
 
-    for await (const chunk of graph.stream({ age: undefined, name: undefined }, { config })) {
+    for await (const chunk of await graph.stream({ age: undefined, name: undefined }, config)) {
       console.log(chunk);
     }
 
-    for await (const chunk of graph.stream(
-      Command.resume("John").update({ name: "foo" }), 
-      { config }
+    for await (const chunk of await graph.stream(
+      Command({ resume: "John", update: { name: "foo" } }), 
+      config
     )) {
       console.log(chunk);
     }
@@ -741,6 +737,6 @@ To avoid issues, refrain from dynamically changing the node's structure between 
 
 - [**Conceptual Guide: Persistence**](persistence.md#replay): Read the persistence guide for more context on replaying.
 
-- [**How to Guides: Human-in-the-loop**](../how-tos/index.md#human-in-the-loop): Learn how to implement human-in-the-loop workflows in LangGraph.
+- [**How to Guides: Human-in-the-loop**](/langgraphjs/how-tos/index#human-in-the-loop): Learn how to implement human-in-the-loop workflows in LangGraph.
 
-- [**How to implement multi-turn conversations**](../how-tos/multi-agent-multi-turn-convo.ipynb): Learn how to implement multi-turn conversations in LangGraph.
+- [**How to implement multi-turn conversations**](/langgraphjs/how-tos/multi-agent-multi-turn-convo): Learn how to implement multi-turn conversations in LangGraph.
