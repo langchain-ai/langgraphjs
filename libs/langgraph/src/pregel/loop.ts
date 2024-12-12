@@ -23,7 +23,7 @@ import {
 } from "../channels/base.js";
 import { PregelExecutableTask, StreamMode } from "./types.js";
 import {
-  _isCommand,
+  isCommand,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Command,
   CONFIG_KEY_CHECKPOINT_MAP,
@@ -738,8 +738,8 @@ export class PregelLoop {
       Object.keys(this.checkpoint.channel_versions).length !== 0 &&
       (this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined ||
         this.input === null ||
-        _isCommand(this.input));
-    if (_isCommand(this.input)) {
+        isCommand(this.input));
+    if (isCommand(this.input)) {
       const writes: { [key: string]: PendingWrite[] } = {};
       // group writes by task id
       for (const [tid, key, value] of mapCommand(

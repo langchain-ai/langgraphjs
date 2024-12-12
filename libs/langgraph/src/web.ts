@@ -35,6 +35,7 @@ export {
   Send,
   Command,
   type CommandParams,
+  isCommand,
   type Interrupt,
 } from "./constants.js";
 export { interrupt } from "./interrupt.js";

@@ -10,6 +10,7 @@ import { RunnableCallable } from "../utils.js";
 import { END } from "../graph/graph.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { isGraphInterrupt } from "../errors.js";
+import { isCommand } from "../constants.js";
 
 export type ToolNodeOptions = {
   name?: string;
@@ -173,7 +174,10 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
             { ...call, type: "tool_call" },
             config
           );
-          if (isBaseMessage(output) && output._getType() === "tool") {
+          if (
+            (isBaseMessage(output) && output._getType() === "tool") ||
+            isCommand(output)
+          ) {
             return output;
           } else {
             return new ToolMessage({
@@ -203,7 +207,19 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
       }) ?? []
     );
 
-    return (Array.isArray(input) ? outputs : { messages: outputs }) as T;
+    // Preserve existing behavior for non-command tool outputs for backwards compatibility
+    if (!outputs.some(isCommand)) {
+      return (Array.isArray(input) ? outputs : { messages: outputs }) as T;
+    }
+
+    // Handle mixed Command and non-Command outputs
+    const combinedOutputs = outputs.map((output) => {
+      if (isCommand(output)) {
+        return output;
+      }
+      return Array.isArray(input) ? [output] : { messages: [output] };
+    });
+    return combinedOutputs as T;
   }
 }
 

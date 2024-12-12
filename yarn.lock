@@ -449,6 +449,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@cfworker/json-schema@npm:^4.0.2":
+  version: 4.0.3
+  resolution: "@cfworker/json-schema@npm:4.0.3"
+  checksum: e99d82b740a44442be64e2ab06e2e39a11cca2093ea89eda438c4d47140f4845104c725949cea065aa9e834ba2379f02b6dfe62e30b6ecdbfc94e5e6e73abb70
+  languageName: node
+  linkType: hard
+
 "@esbuild/aix-ppc64@npm:0.19.12":
   version: 0.19.12
   resolution: "@esbuild/aix-ppc64@npm:0.19.12"
@@ -1592,10 +1599,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:^0.3.22":
-  version: 0.3.22
-  resolution: "@langchain/core@npm:0.3.22"
+"@langchain/core@npm:^0.3.23":
+  version: 0.3.23
+  resolution: "@langchain/core@npm:0.3.23"
   dependencies:
+    "@cfworker/json-schema": ^4.0.2
     ansi-styles: ^5.0.0
     camelcase: 6
     decamelize: 1.2.0
@@ -1607,7 +1615,7 @@ __metadata:
     uuid: ^10.0.0
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
-  checksum: e629a7b5b794e378ce29366b7aa6989fd16e2e97ea18a2f4dcc26cb52e71f8b572ec7397922d10626602a72b9530ac02624b5a15fe962161810d1a7cf7db62b9
+  checksum: b8cb67c2201fb44feb6136ee0ab097217a760e918d6f33e8cb0152095c960ed9102605a23227b014127f57eadaa0a8aaf62b238557c18b4ef111feb8faf360cf
   languageName: node
   linkType: hard
 
@@ -1843,7 +1851,7 @@ __metadata:
     "@jest/globals": ^29.5.0
     "@langchain/anthropic": ^0.3.5
     "@langchain/community": ^0.3.9
-    "@langchain/core": ^0.3.22
+    "@langchain/core": ^0.3.23
     "@langchain/langgraph-checkpoint": ~0.0.13
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
@@ -6641,7 +6649,7 @@ __metadata:
   dependencies:
     "@langchain/anthropic": ^0.3.5
     "@langchain/community": ^0.3.9
-    "@langchain/core": ^0.3.22
+    "@langchain/core": ^0.3.23
     "@langchain/groq": ^0.1.2
     "@langchain/langgraph": "workspace:*"
     "@langchain/mistralai": ^0.1.1
