@@ -18,30 +18,30 @@ Key use cases for **human-in-the-loop** workflows in LLM-based applications incl
 
 3. **💡 Providing context**: Enable the LLM to explicitly request human input for clarification or additional details or to support multi-turn conversations.
 
+
 ## `interrupt`
 
 The [`interrupt` function](/langgraphjs/reference/functions/langgraph.interrupt-1.html) in LangGraph enables human-in-the-loop workflows by pausing the graph at a specific node, presenting information to a human, and resuming the graph with their input. This function is useful for tasks like approvals, edits, or collecting additional input. The [`interrupt` function](/langgraphjs/reference/functions/langgraph.interrupt-1.html) is used in conjunction with the [`Command`](/langgraphjs/reference/classes/langgraph.Command.html) object to resume the graph with a value provided by the human.
 
 ```typescript
-import { interrupt, Annotation } from "@langchain/langgraph";
-
-const GraphAnnotation = Annotation.Root({
-  // ...state schema here
-})
+import { interrupt } from "@langchain/langgraph";
 
 function humanNode(state: typeof GraphAnnotation.State) {
-  const value = interrupt(
-    // Any JSON serializable value to surface to the human.
-    // For example, a question or a piece of text or a set of keys in the state
-    someData
-  );
-
-  // Update the state with the human's input or route the graph based on the input.
-  // ...
+    const value = interrupt(
+        // Any JSON serializable value to surface to the human.
+        // For example, a question or a piece of text or a set of keys in the state
+       {
+          text_to_revise: state.some_text
+       }
+    );
+    // Update the state with the human's input or route the graph based on the input
+    return {
+        some_text: value
+    };
 }
 
-const graph = graphBuilder.compile({
-  checkpointer // Required for `interrupt` to work
+const graph = workflow.compile({
+    checkpointer // Required for `interrupt` to work
 });
 
 // Run the graph until the interrupt
@@ -51,6 +51,85 @@ await graph.invoke(someInput, threadConfig);
 // Resume the graph with the human's input
 await graph.invoke(new Command({ resume: valueFromHuman }), threadConfig);
 ```
+
+```typescript
+{ some_text: 'Edited text' }
+```
+
+!!! warning
+      Interrupts are both powerful and ergonomic. However, while they may resemble JavaScript's prompt() function in terms of developer experience, it's important to note that they do not automatically resume execution from the interruption point. Instead, they rerun the entire node where the interrupt was used.
+      For this reason, interrupts are typically best placed at the start of a node or in a dedicated node. Please read the [resuming from an interrupt](#how-does-resuming-from-an-interrupt-work) section for more details. 
+
+??? "Full Code"
+
+      Here's a full example of how to use `interrupt` in a graph, if you'd like
+      to see the code in action.
+
+      ```typescript
+      import { MemorySaver, Annotation, interrupt, Command, StateGraph } from "@langchain/langgraph";
+
+      // Define the graph state
+      const StateAnnotation = Annotation.Root({
+        some_text: Annotation<string>()
+      });
+
+      function humanNode(state: typeof StateAnnotation.State) {
+         const value = interrupt(
+            // Any JSON serializable value to surface to the human.
+            // For example, a question or a piece of text or a set of keys in the state
+            {
+               text_to_revise: state.some_text
+            }
+         );
+         return {
+            // Update the state with the human's input
+            some_text: value
+         };
+      }
+
+      // Build the graph
+      const workflow = new StateGraph(StateAnnotation)
+      // Add the human-node to the graph
+        .addNode("human_node", humanNode)
+        .addEdge("__start__", "human_node")
+
+      // A checkpointer is required for `interrupt` to work.
+      const checkpointer = new MemorySaver();
+      const graph = workflow.compile({
+         checkpointer
+      });
+
+      // Using stream() to directly surface the `__interrupt__` information.
+      for await (const chunk of await graph.stream(
+         { some_text: "Original text" }, 
+         threadConfig
+      )) {
+         console.log(chunk);
+      }
+
+      // Resume using Command
+      for await (const chunk of await graph.stream(
+         new Command({ resume: "Edited text" }), 
+         threadConfig
+      )) {
+         console.log(chunk);
+      }
+      ```
+
+      ```typescript
+      {
+         __interrupt__: [
+            {
+               value: { question: 'Please revise the text', some_text: 'Original text' },
+               resumable: true,
+               ns: ['human_node:10fe492f-3688-c8c6-0d0a-ec61a43fecd6'],
+               when: 'during'
+            }
+         ]
+      }
+      { human_node: { some_text: 'Edited text' } }
+      ```
+
 
 ## Requirements
 
