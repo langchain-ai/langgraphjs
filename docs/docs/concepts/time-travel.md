@@ -25,7 +25,7 @@ To replay from the current state, simply pass `null` as the input along with a `
 ```typescript
 const threadConfig = { configurable: { thread_id: "1" }, streamMode: "values" };
 
-for await (const event of graph.stream(null, threadConfig)) {
+for await (const event of await graph.stream(null, threadConfig)) {
     console.log(event);
 }
 ```
@@ -45,7 +45,7 @@ Each checkpoint has a unique ID. After identifying the desired checkpoint, for i
 ```typescript
 const threadConfig = { configurable: { thread_id: '1', checkpoint_id: 'xyz' }, streamMode: "values" };
 
-for await (const event of graph.stream(null, threadConfig)) {
+for await (const event of await graph.stream(null, threadConfig)) {
     console.log(event);
 }
 ```
@@ -71,7 +71,7 @@ This creates a new forked checkpoint, xyz-fork, from which you can continue runn
 ```typescript
 const threadConfig = { configurable: { thread_id: '1', checkpoint_id: 'xyz-fork' }, streamMode: "values" };
 
-for await (const event of graph.stream(null, threadConfig)) {
+for await (const event of await graph.stream(null, threadConfig)) {
     console.log(event);
 }
 ```
