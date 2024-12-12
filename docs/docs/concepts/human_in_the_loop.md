@@ -512,18 +512,140 @@ Place code with side effects, such as API calls, **after** the `interrupt` to av
 
 ### Subgraphs called as functions
 
-**Subgraphs**: If you're invoking a subgraph [as a function](low_level.md#as-a-function), the **parent** graph will be re-run from the **beginning of the node** where the subgraph was invoked.
+When invoking a subgraph [as a function](low_level.md#as-a-function), the **parent graph** will resume execution from the **beginning of the node** where the subgraph was invoked (and where an `interrupt` was triggered). Similarly, the **subgraph**, will resume from the **beginning of the node** where the `interrupt()` function was called.
+
+For example,
 
 ```typescript
-function someNode(state: State) {
-  someCode(); // <-- This code will be re-executed when the subgraph is resumed.
-
-  // Using a subgraph as a function.
-  // The subgraph has an `interrupt` call
-  const subgraphResult = await subgraph.invoke(someInput);
-  // ...
+async function nodeInParentGraph(state: typeof GraphAnnotation.State) {
+    someCode();  // <-- This will re-execute when the subgraph is resumed.
+    // Invoke a subgraph as a function.
+    // The subgraph contains an `interrupt` call.
+    const subgraphResult = await subgraph.invoke(someInput);
+    ...
 }
 ```
+
+??? "**Example: Parent and Subgraph Execution Flow**"
+
+      Say we have a parent graph with 3 nodes:
+
+      **Parent Graph**: `node_1` → `node_2` (subgraph call) → `node_3`
+
+      And the subgraph has 3 nodes, where the second node contains an `interrupt`:
+
+      **Subgraph**: `sub_node_1` → `sub_node_2` (`interrupt`) → `sub_node_3`
+
+      When resuming the graph, the execution will proceed as follows:
+
+      1. **Skip `node_1`** in the parent graph (already executed, graph state was saved in snapshot).
+      2. **Re-execute `node_2`** in the parent graph from the start.
+      3. **Skip `sub_node_1`** in the subgraph (already executed, graph state was saved in snapshot).
+      4. **Re-execute `sub_node_2`** in the subgraph from the beginning.
+      5. Continue with `sub_node_3` and subsequent nodes.
+
+      Here is abbreviated example code that you can use to understand how subgraphs work with interrupts.
+      It counts the number of times each node is entered and prints the count.
+
+      ```typescript
+      import {
+        StateGraph,
+        START,
+        interrupt,
+        Command,
+        MemorySaver,
+        Annotation
+      } from "@langchain/langgraph";
+
+      const GraphAnnotation = Annotation.Root({
+        stateCounter: Annotation<number>({
+          reducer: (a, b) => a + b,
+          default: () => 0
+        })
+      })
+
+      let counterNodeInSubgraph = 0;
+
+      function nodeInSubgraph(state: typeof GraphAnnotation.State) {
+        counterNodeInSubgraph += 1;  // This code will **NOT** run again!
+        console.log(`Entered 'nodeInSubgraph' a total of ${counterNodeInSubgraph} times`);
+        return {};
+      }
+
+      let counterHumanNode = 0;
+
+      async function humanNode(state: typeof GraphAnnotation.State) {
+        counterHumanNode += 1; // This code will run again!
+        console.log(`Entered humanNode in sub-graph a total of ${counterHumanNode} times`);
+        const answer = await interrupt("what is your name?");
+        console.log(`Got an answer of ${answer}`);
+        return {};
+      }
+
+      const checkpointer = new MemorySaver();
+
+      const subgraphBuilder = new StateGraph<GraphAnnotation>()
+        .addNode("some_node", nodeInSubgraph)
+        .addNode("human_node", humanNode)
+        .addEdge(START, "some_node")
+        .addEdge("some_node", "human_node")
+      const subgraph = subgraphBuilder.compile({ checkpointer });
+
+      let counterParentNode = 0;
+
+      async function parentNode(state: typeof GraphAnnotation.State) {
+        counterParentNode += 1; // This code will run again on resuming!
+        console.log(`Entered 'parentNode' a total of ${counterParentNode} times`);
+  
+        // Please note that we're intentionally incrementing the state counter
+        // in the graph state as well to demonstrate that the subgraph update
+        // of the same key will not conflict with the parent graph (until
+        const subgraphState = await subgraph.invoke(state);
+        return subgraphState;
+      }
+
+      const builder = new StateGraph<GraphAnnotation>()
+        .addNode("parent_node", parentNode)
+        .addEdge(START, "parent_node")
+
+      // A checkpointer must be enabled for interrupts to work!
+      const graph = builder.compile({ checkpointer });
+
+      const config = {
+        configurable: {
+          thread_id: crypto.randomUUID(),
+        }
+      };
+
+      for await (const chunk of await graph.stream({ stateCounter: 1 }, config)) {
+        console.log(chunk);
+      }
+
+      console.log('--- Resuming ---');
+
+      for await (const chunk of await graph.stream(new Command({ resume: "35" }), config)) {
+        console.log(chunk);
+      }
+      ```
+
+      This will print out
+
+      ```typescript
+      --- First invocation ---
+      In parent node: { foo: 'bar' }
+      Entered 'parentNode' a total of 1 times
+      Entered 'nodeInSubgraph' a total of 1 times
+      Entered humanNode in sub-graph a total of 1 times
+      { __interrupt__: [{ value: 'what is your name?', resumable: true, ns: ['parent_node:0b23d72f-aaba-0329-1a59-ca4f3c8bad3b', 'human_node:25df717c-cb80-57b0-7410-44e20aac8f3c'], when: 'during' }] }
+
+      --- Resuming ---
+      In parent node: { foo: 'bar' }
+      Entered 'parentNode' a total of 2 times
+      Entered humanNode in sub-graph a total of 2 times
+      Got an answer of 35
+      { parent_node: null }
+      ```
+
 
 ### Using multiple interrupts
 
