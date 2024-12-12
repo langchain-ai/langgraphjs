@@ -382,7 +382,7 @@ graph.addConditionalEdges("nodeA", continueToJokes);
 ## `Command`
 
 !!! tip Compatibility
-    This functionality requires `@langchain/langgraph>=0.2.29`.
+    This functionality requires `@langchain/langgraph>=0.2.31`.
 
 It can be convenient to combine control flow (edges) and state updates (nodes). For example, you might want to BOTH perform state updates AND decide which node to go to next in the SAME node rather than use a conditional edge. LangGraph provides a way to do so by returning a [`Command`](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.Command.html) object from node functions:
 
