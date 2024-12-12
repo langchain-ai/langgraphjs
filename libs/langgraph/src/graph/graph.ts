@@ -492,14 +492,18 @@ export class CompiledGraph<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   Update = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType extends Record<string, any> = Record<string, any>
+  ConfigurableFieldType extends Record<string, any> = Record<string, any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  InputType = any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  OutputType = any
 > extends Pregel<
   Record<N | typeof START, PregelNode<State, Update>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ConfigurableFieldType & Record<string, any>,
-  Update,
-  State
+  InputType,
+  OutputType
 > {
   declare NodeType: N;
 
