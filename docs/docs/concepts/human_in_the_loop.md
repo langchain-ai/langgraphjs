@@ -2,7 +2,7 @@
 
 !!! tip "This guide uses the new `interrupt` function."
 
-    As of LangGraph 0.2.31, the recommended way to set breakpoints is using the [`interrupt` function][langgraph.types.interrupt] as it simplifies **human-in-the-loop** patterns.
+    As of LangGraph 0.2.31, the recommended way to set breakpoints is using the [`interrupt` function](/langgraphjs/reference/functions/langgraph.interrupt-1.html) as it simplifies **human-in-the-loop** patterns.
 
     If you're looking for the previous version of this conceptual guide, which relied on static breakpoints and `NodeInterrupt` exception, it is available [here](v0-human-in-the-loop.md). 
 
@@ -20,13 +20,16 @@ Key use cases for **human-in-the-loop** workflows in LLM-based applications incl
 
 ## `interrupt`
 
-The [`interrupt` function][langgraph.types.interrupt] in LangGraph enables human-in-the-loop workflows by pausing the graph at a specific node, presenting information to a human, and resuming the graph with their input. This function is useful for tasks like approvals, edits, or collecting additional input. The [`interrupt` function][langgraph.types.interrupt] is used in conjunction with the [`Command`](../reference/types.md#langgraph.types.Command) object to resume the graph with a value provided by the human.
+The [`interrupt` function](/langgraphjs/reference/functions/langgraph.interrupt-1.html) in LangGraph enables human-in-the-loop workflows by pausing the graph at a specific node, presenting information to a human, and resuming the graph with their input. This function is useful for tasks like approvals, edits, or collecting additional input. The [`interrupt` function](/langgraphjs/reference/functions/langgraph.interrupt-1.html) is used in conjunction with the [`Command`](/langgraphjs/reference/classes/langgraph.Command.html) object to resume the graph with a value provided by the human.
 
 ```typescript
-import { interrupt } from "@langchain/langgraph";
-import { type State } from "./types";
+import { interrupt, Annotation } from "@langchain/langgraph";
 
-function humanNode(state: State) {
+const GraphAnnotation = Annotation.Root({
+  // ...state schema here
+})
+
+function humanNode(state: typeof GraphAnnotation.State) {
   const value = interrupt(
     // Any JSON serializable value to surface to the human.
     // For example, a question or a piece of text or a set of keys in the state
@@ -43,10 +46,10 @@ const graph = graphBuilder.compile({
 
 // Run the graph until the interrupt
 const threadConfig = { configurable: { thread_id: "some_id" } };
-await graph.invoke(someInput, { config: threadConfig });
+await graph.invoke(someInput, threadConfig);
     
 // Resume the graph with the human's input
-await graph.invoke(Command.resume(valueFromHuman), { config: threadConfig });
+await graph.invoke(new Command({ resume: valueFromHuman }), threadConfig);
 ```
 
 ## Requirements
@@ -86,10 +89,9 @@ Below we show different design patterns that can be implemented using these **ac
 Pause the graph before a critical step, such as an API call, to review and approve the action. If the action is rejected, you can prevent the graph from executing the step, and potentially take an alternative action.
 
 ```typescript
-import { type State } from "./types";
 import { interrupt, Command } from "@langchain/langgraph";
 
-function humanApproval(state: State): Command<"some_node" | "another_node"> {
+function humanApproval(state: typeof GraphAnnotation.State): Command {
   const isApproved = interrupt({
     question: "Is this correct?",
     // Surface the output that should be
@@ -98,9 +100,9 @@ function humanApproval(state: State): Command<"some_node" | "another_node"> {
   });
 
   if (isApproved) {
-    return Command.goto("some_node");
+    return new Command({ goto: "some_node" });
   } else {
-    return Command.goto("another_node");
+    return new Command({ goto: "another_node" });
   }
 }
 
@@ -113,7 +115,7 @@ const graph = graphBuilder.compile({ checkpointer });
 // After running the graph and hitting the interrupt, the graph will pause.
 // Resume it with either an approval or rejection.
 const threadConfig = { configurable: { thread_id: "some_id" } };
-await graph.invoke(Command.resume(true), { config: threadConfig });
+await graph.invoke(new Command({ resume: true }), threadConfig);
 ```
 
 See [how to review tool calls](../how-tos/human_in_the_loop/review-tool-calls.ipynb) for a more detailed example.
@@ -131,10 +133,9 @@ See [how to review tool calls](../how-tos/human_in_the_loop/review-tool-calls.ip
 </figure>
 
 ```typescript
-import { type State } from "./types";
 import { interrupt } from "@langchain/langgraph";
 
-function humanEditing(state: State) {
+function humanEditing(state: typeof GraphAnnotation.State): Command {
   const result = interrupt({
     // Interrupt information to surface to the client.
     // Can be any JSON serializable value.
@@ -158,12 +159,12 @@ const graph = graphBuilder.compile({ checkpointer });
 // Resume it with the edited text.
 const threadConfig = { configurable: { thread_id: "some_id" } };
 await graph.invoke(
-  Command.resume({ edited_text: "The edited text" }), 
-  { config: threadConfig }
+  new Command({ resume: { edited_text: "The edited text" } }), 
+  threadConfig
 );
 ```
 
-See [How to wait for user input using interrupt](../how-tos/human_in_the_loop/wait-user-input.ipynb) for a more detailed example.
+See [How to wait for user input using interrupt](/langgraphjs/how-tos/human_in_the_loop/wait-user-input.ipynb) for a more detailed example.
 
 ### Review Tool Calls
 
@@ -179,10 +180,9 @@ critical in applications where the tool calls requested by the LLM may be sensit
 </figure>
 
 ```typescript
-import { type State } from "./types";
 import { interrupt, Command } from "@langchain/langgraph";
 
-function humanReviewNode(state: State): Command<"call_llm" | "run_tool"> {
+function humanReviewNode(state: typeof GraphAnnotation.State): Command {
   // This is the value we'll be providing via Command.resume(<human_review>)
   const humanReview = interrupt({
     question: "Is this correct?",
@@ -194,19 +194,25 @@ function humanReviewNode(state: State): Command<"call_llm" | "run_tool"> {
 
   // Approve the tool call and continue
   if (reviewAction === "continue") {
-    return Command.goto("run_tool");
+    return new Command({ goto: "run_tool" });
   }
   // Modify the tool call manually and then continue
   else if (reviewAction === "update") {
     const updatedMsg = getUpdatedMsg(reviewData);
     // Remember that to modify an existing message you will need
     // to pass the message with a matching ID.
-    return Command.goto("run_tool").update({ messages: [updatedMessage] });
+    return new Command({
+      goto: "run_tool",
+      update: { messages: [updatedMsg] }
+    });
   }
   // Give natural language feedback, and then pass that back to the agent
   else if (reviewAction === "feedback") {
     const feedbackMsg = getFeedbackMsg(reviewData);
-    return Command.goto("call_llm").update({ messages: [feedbackMsg] });
+    return new Command({
+      goto: "call_llm",
+      update: { messages: [feedbackMsg] }
+    });
   }
 }
 ```
@@ -237,10 +243,9 @@ This design pattern is useful in an LLM application consisting of [multiple agen
     using subgraphs where a subgraph contains a human node and an agent node.
 
     ```typescript
-    import { type State } from "./types";
     import { interrupt } from "@langchain/langgraph";
 
-    function humanInput(state: State) {
+    function humanInput(state: typeof GraphAnnotation.State) {
       const humanMessage = interrupt("human_input");
 
       return {
@@ -253,7 +258,7 @@ This design pattern is useful in an LLM application consisting of [multiple agen
       };
     }
 
-    function agent(state: State) {
+    function agent(state: typeof GraphAnnotation.State) {
       // Agent logic
       // ...
     }
@@ -266,8 +271,8 @@ This design pattern is useful in an LLM application consisting of [multiple agen
     // After running the graph and hitting the interrupt, the graph will pause.
     // Resume it with the human's input.
     await graph.invoke(
-      Command.resume("hello!"),
-      { config: threadConfig }
+      new Command({ resume: "hello!" }),
+      threadConfig
     );
     ```
 
@@ -276,10 +281,9 @@ This design pattern is useful in an LLM application consisting of [multiple agen
     In this pattern, a single human node is used to collect user input for multiple agents. The active agent is determined from the state, so after human input is collected, the graph can route to the correct agent.
 
     ```typescript
-    import { type MessagesState } from "./types";
-    import { interrupt, Command } from "@langchain/langgraph";
+    import { interrupt, Command, MessagesAnnotation } from "@langchain/langgraph";
 
-    function humanNode(state: MessagesState): Command<"agent_1" | "agent_2"> {
+    function humanNode(state: typeof MessagesAnnotation.State): Command {
       /**
        * A node for collecting user input.
        */
@@ -291,26 +295,28 @@ This design pattern is useful in an LLM application consisting of [multiple agen
       // or fill in `name` attribute of AI messages generated by the agents.
       const activeAgent = ...; 
 
-      return Command.goto(activeAgent).update({
-        messages: [{
-          role: "human",
-          content: userInput,
-        }]
+      return new Command({
+        goto: activeAgent,
+        update: {
+          messages: [{
+            role: "human",
+            content: userInput,
+          }]
+        }
       });
     }
     ```
 
-See [how to implement multi-turn conversations](../how-tos/multi-agent-multi-turn-convo.ipynb) for a more detailed example.
+See [how to implement multi-turn conversations](/langgraphjs/how-tos/multi-agent-multi-turn-convo.ipynb) for a more detailed example.
 
 ### Validating human input
 
 If you need to validate the input provided by the human within the graph itself (rather than on the client side), you can achieve this by using multiple interrupt calls within a single node.
 
 ```typescript
-import { type State } from "./types";
 import { interrupt } from "@langchain/langgraph";
 
-function humanNode(state: State) {
+function humanNode(state: typeof GraphAnnotation.State) {
   /**
    * Human node with validation.
    */
@@ -341,25 +347,25 @@ function humanNode(state: State) {
 
 When using the `interrupt` function, the graph will pause at the interrupt and wait for user input.
 
-Graph execution can be resumed using the [Command](../reference/types.md#langgraph.types.Command) primitive which can be passed through the `invoke` or `stream` methods.
+Graph execution can be resumed using the [Command](/langgraphjs/reference/classes/langgraph.Command.html) primitive which can be passed through the `invoke` or `stream` methods.
 
 The `Command` primitive provides several options to control and modify the graph's state during resumption:
 
-1. **Pass a value to the `interrupt`**: Provide data, such as a user's response, to the graph using `Command.resume(value)`. Execution resumes from the beginning of the node where the `interrupt` was used, however, this time the `interrupt(...)` call will return the value passed in the `Command.resume(value)` instead of pausing the graph.
+1. **Pass a value to the `interrupt`**: Provide data, such as a user's response, to the graph using `new Command({ resume: value })`. Execution resumes from the beginning of the node where the `interrupt` was used, however, this time the `interrupt(...)` call will return the value passed in the `new Command({ resume: value })` instead of pausing the graph.
 
        ```typescript
        // Resume graph execution with the user's input.
-       await graph.invoke(Command.resume({ age: "25" }), { config: threadConfig });
+       await graph.invoke(new Command({ resume: { age: "25" } }), threadConfig);
        ```
 
-2. **Update the graph state**: Modify the graph state using `Command.goto(...).update(update)`. Note that resumption starts from the beginning of the node where the `interrupt` was used. Execution resumes from the beginning of the node where the `interrupt` was used, but with the updated state.
+2. **Update the graph state**: Modify the graph state using `Command({ goto: ..., update: ... })`. Note that resumption starts from the beginning of the node where the `interrupt` was used. Execution resumes from the beginning of the node where the `interrupt` was used, but with the updated state.
 
       ```typescript
       // Update the graph state and resume.
       // You must provide a `resume` value if using an `interrupt`.
       await graph.invoke(
-        Command.resume("Let's go!!!").update({ foo: "bar" }), 
-        { config: threadConfig }
+        new Command({ resume: "Let's go!!!", update: { foo: "bar" } }),
+        threadConfig
       );
       ```
 
@@ -369,14 +375,14 @@ By leveraging `Command`, you can resume graph execution, handle user inputs, and
 
 When you use `stream` to run the graph, you will receive an `Interrupt` event that let you know the `interrupt` was triggered. 
 
-`invoke` does not return the interrupt information. To access this information, you must use the [getState](../reference/graphs.md#langgraph.graph.graph.CompiledGraph.get_state) method to retrieve the graph state after calling `invoke`.
+`invoke` does not return the interrupt information. To access this information, you must use the [getState](/langgraphjs/reference/classes/langgraph.CompiledStateGraph.html#getState) method to retrieve the graph state after calling `invoke`.
 
 ```typescript
 // Run the graph up to the interrupt 
-const result = await graph.invoke(inputs, { config: threadConfig });
+const result = await graph.invoke(inputs, threadConfig);
 
 // Get the graph state to get interrupt information.
-const state = await graph.getState({ config: threadConfig });
+const state = await graph.getState(threadConfig);
 
 // Print the state values
 console.log(state.values);
@@ -385,7 +391,7 @@ console.log(state.values);
 console.log(state.tasks);
 
 // Resume the graph with the user's input.
-await graph.invoke(Command.resume({ age: "25" }), { config: threadConfig });
+await graph.invoke(new Command({ resume: { age: "25" } }), threadConfig);
 ```
 
 ```typescript
