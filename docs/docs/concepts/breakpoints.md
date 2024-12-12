@@ -98,7 +98,7 @@ We recommend that you [**use the `interrupt` function instead**](#the-interrupt-
     The developer can define some *condition* that must be met for a breakpoint to be triggered. This concept of [dynamic breakpoints](./low_level.md#dynamic-breakpoints) is useful when the developer wants to halt the graph under *a particular condition*. This uses a `NodeInterrupt`, which is a special type of error that can be thrown from within a node based upon some condition. As an example, we can define a dynamic breakpoint that triggers when the `input` is longer than 5 characters.
 
     ```typescript
-    function myNode(state: State): State {
+    function myNode(state: typeof GraphAnnotation.State) {
         if (state.input.length > 5) {
             throw new NodeInterrupt(`Received input that is longer than 5 characters: ${state.input}`);
         }
@@ -110,7 +110,7 @@ We recommend that you [**use the `interrupt` function instead**](#the-interrupt-
 
     ```typescript
     // Attempt to continue the graph execution with no change to state after we hit the dynamic breakpoint 
-    for await (const event of graph.stream(null, threadConfig)) {
+    for await (const event of await graph.stream(null, threadConfig)) {
         console.log(event);
     }
     ```
@@ -121,7 +121,7 @@ We recommend that you [**use the `interrupt` function instead**](#the-interrupt-
     // Update the state to pass the dynamic breakpoint
     await graph.updateState({ input: "foo" }, threadConfig);
 
-    for await (const event of graph.stream(null, threadConfig)) {
+    for await (const event of await graph.stream(null, threadConfig)) {
         console.log(event);
     }
     ```
@@ -132,7 +132,7 @@ We recommend that you [**use the `interrupt` function instead**](#the-interrupt-
     // This update will skip the node `myNode` altogether
     await graph.updateState(null, threadConfig, "myNode");
 
-    for await (const event of graph.stream(null, threadConfig)) {
+    for await (const event of await graph.stream(null, threadConfig)) {
         console.log(event);
     }
     ```
