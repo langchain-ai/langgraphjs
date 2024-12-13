@@ -178,6 +178,7 @@ nav:
           - troubleshooting/errors/INVALID_CONCURRENT_GRAPH_UPDATE.ipynb
           - troubleshooting/errors/INVALID_GRAPH_NODE_RETURN_VALUE.ipynb
           - troubleshooting/errors/MULTIPLE_SUBGRAPHS.ipynb
+          - troubleshooting/errors/UNREACHABLE_NODE.ipynb
 
   - Conceptual Guides:
       - concepts/index.md
