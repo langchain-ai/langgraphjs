@@ -51,11 +51,6 @@ plugins:
   - search:
       separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
   - autorefs
-  - mkdocs-jupyter:
-      ignore_h1_titles: true
-      execute: false
-      include_source: True
-      include_requirejs: true
   - typedoc:
       # One level of globbing is intentional
       source: "../libs/*/*.d.ts"
