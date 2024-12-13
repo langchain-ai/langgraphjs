@@ -382,7 +382,7 @@ graph.addConditionalEdges("nodeA", continueToJokes);
 ## `Command`
 
 !!! tip Compatibility
-    This functionality requires `@langchain/langgraph>=0.2.29`.
+    This functionality requires `@langchain/langgraph>=0.2.31`.
 
 It can be convenient to combine control flow (edges) and state updates (nodes). For example, you might want to BOTH perform state updates AND decide which node to go to next in the SAME node rather than use a conditional edge. LangGraph provides a way to do so by returning a [`Command`](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.Command.html) object from node functions:
 
@@ -433,6 +433,10 @@ Check out this [how-to guide](../how-tos/command.ipynb) for an end-to-end exampl
 Use `Command` when you need to **both** update the graph state **and** route to a different node. For example, when implementing [multi-agent handoffs](./multi_agent.md#handoffs) where it's important to route to a different agent and pass some information to that agent.
 
 Use [conditional edges](#conditional-edges) to route between nodes conditionally without updating the state.
+
+### Human-in-the-loop
+
+`Command` is an important part of human-in-the-loop workflows: when using `interrupt()` to collect user input, `Command` is then used to supply the input and resume execution via `new Command({ resume: "User input" })`. Check out [this conceptual guide](/langgraphjs/concepts/human_in_the_loop) for more information.
 
 ## Persistence
 

@@ -25,11 +25,9 @@ Checkpoint is a snapshot of the graph state saved at each super-step and is repr
 Let's see what checkpoints are saved when a simple graph is invoked as follows:
 
 ```typescript
-import { StateGraph, START, END } from "langgraph";
-import { MemorySaver } from "langgraph/checkpoint";
-import { Annotation } from "@langchain/core/utils/types";
+import { StateGraph, START, END, MemorySaver, Annotation } from "@langchain/langgraph";
 
-const GraphAnnotation = Annotation.Object({
+const GraphAnnotation = Annotation.Root({
   foo: Annotation<string>
   bar: Annotation<string[]>({
     reducer: (a, b) => [...a, ...b],
@@ -46,11 +44,11 @@ function nodeB(state: typeof GraphAnnotation.State) {
 }
 
 const workflow = new StateGraph(GraphAnnotation);
-workflow.addNode("nodeA", nodeA);
-workflow.addNode("nodeB", nodeB);
-workflow.addEdge(START, "nodeA");
-workflow.addEdge("nodeA", "nodeB");
-workflow.addEdge("nodeB", END);
+  .addNode("nodeA", nodeA)
+  .addNode("nodeB", nodeB)
+  .addEdge(START, "nodeA")
+  .addEdge("nodeA", "nodeB")
+  .addEdge("nodeB", END);
 
 const checkpointer = new MemorySaver();
 const graph = workflow.compile({ checkpointer });
@@ -169,9 +167,9 @@ These are the values that will be used to update the state. Note that this updat
 Let's assume you have defined the state of your graph with the following schema (see full example above):
 
 ```typescript
-import { Annotation } from "@langchain/core/utils/types";
+import { Annotation } from "@langchain/langgraph";
 
-const GraphAnnotation = Annotation.Object({
+const GraphAnnotation = Annotation.Root({
   foo: Annotation<string>
   bar: Annotation<string[]>({
     reducer: (a, b) => [...a, ...b],
@@ -236,14 +234,14 @@ We use the `store.put` method to save memories to our namespace in the store. Wh
 import { v4 as uuid4 } from 'uuid';
 
 const memoryId = uuid4();
-const memory = { food_preference : "I like pizza" };
+const memory = { food_preference: "I like pizza" };
 await inMemoryStore.put(namespaceForMemory, memoryId, memory);
 ```
 
 We can read out memories in our namespace using `store.search`, which will return all memories for a given user as a list. The most recent memory is the last in the list.
 
 ```ts
-const memories = inMemoryStore.search(namespaceForMemory);
+const memories = await inMemoryStore.search(namespaceForMemory);
 console.log(memories.at(-1));
 
 /*
