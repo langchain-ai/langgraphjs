@@ -274,7 +274,8 @@ markdown_extensions:
   - github-callouts
 extra_css:
   - css/mkdocstrings.css
-
+hooks:
+  - _scripts/notebook_hooks.py
 extra:
   social:
     - icon: fontawesome/brands/python

@@ -436,7 +436,7 @@ Use [conditional edges](#conditional-edges) to route between nodes conditionally
 
 ### Human-in-the-loop
 
-`Command` is an important part of human-in-the-loop workflows: when using `interrupt()` to collect user input, `Command` is then used to supply the input and resume execution via `new Command({ resume: "User input" })`. Check out [this conceptual guide](/langgraphjs/concepts/human_in_the_loop.md) for more information.
+`Command` is an important part of human-in-the-loop workflows: when using `interrupt()` to collect user input, `Command` is then used to supply the input and resume execution via `new Command({ resume: "User input" })`. Check out [this conceptual guide](/langgraphjs/concepts/human_in_the_loop) for more information.
 
 ## Persistence
 

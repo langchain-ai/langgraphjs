@@ -56,10 +56,6 @@ await graph.invoke(new Command({ resume: valueFromHuman }), threadConfig);
 { some_text: 'Edited text' }
 ```
 
-!!! warning
-      Interrupts are both powerful and ergonomic. However, while they may resemble JavaScript's prompt() function in terms of developer experience, it's important to note that they do not automatically resume execution from the interruption point. Instead, they rerun the entire node where the interrupt was used.
-      For this reason, interrupts are typically best placed at the start of a node or in a dedicated node. Please read the [resuming from an interrupt](#how-does-resuming-from-an-interrupt-work) section for more details. 
-
 ??? "Full Code"
 
       Here's a full example of how to use `interrupt` in a graph, if you'd like
@@ -197,7 +193,7 @@ const threadConfig = { configurable: { thread_id: "some_id" } };
 await graph.invoke(new Command({ resume: true }), threadConfig);
 ```
 
-See [how to review tool calls](../how-tos/human_in_the_loop/review-tool-calls.ipynb) for a more detailed example.
+See [how to review tool calls](/langgraphjs/how-tos/review-tool-calls) for a more detailed example.
 
 ### Review & Edit State
 
@@ -243,7 +239,7 @@ await graph.invoke(
 );
 ```
 
-See [How to wait for user input using interrupt](/langgraphjs/how-tos/human_in_the_loop/wait-user-input) for a more detailed example.
+See [How to wait for user input using interrupt](/langgraphjs/how-tos/wait-user-input) for a more detailed example.
 
 ### Review Tool Calls
 
@@ -296,7 +292,7 @@ function humanReviewNode(state: typeof GraphAnnotation.State): Command {
 }
 ```
 
-See [how to review tool calls](../how-tos/human_in_the_loop/review-tool-calls.ipynb) for a more detailed example.
+See [how to review tool calls](/langgraphjs/how-tos/review-tool-calls) for a more detailed example.
 
 ### Multi-turn conversation
 
@@ -816,6 +812,6 @@ To avoid issues, refrain from dynamically changing the node's structure between 
 
 - [**Conceptual Guide: Persistence**](persistence.md#replay): Read the persistence guide for more context on replaying.
 
-- [**How to Guides: Human-in-the-loop**](/langgraphjs/how-tos/index#human-in-the-loop): Learn how to implement human-in-the-loop workflows in LangGraph.
+- [**How to Guides: Human-in-the-loop**](/langgraphjs/how-tos/#human-in-the-loop): Learn how to implement human-in-the-loop workflows in LangGraph.
 
 - [**How to implement multi-turn conversations**](/langgraphjs/how-tos/multi-agent-multi-turn-convo): Learn how to implement multi-turn conversations in LangGraph.
