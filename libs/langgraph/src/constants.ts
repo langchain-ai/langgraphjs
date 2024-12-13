@@ -155,16 +155,77 @@ export type CommandParams<R> = {
 
 /**
  * One or more commands to update the graph's state and send messages to nodes.
+ * Can be used to combine routing logic with state updates in lieu of conditional edges
+ *
+ * @example
+ * ```ts
+ * import { Annotation, Command } from "@langchain/langgraph";
+ *
+ * // Define graph state
+ * const StateAnnotation = Annotation.Root({
+ *   foo: Annotation<string>,
+ * });
+ *
+ * // Define the nodes
+ * const nodeA = async (_state: typeof StateAnnotation.State) => {
+ *   console.log("Called A");
+ *   // this is a replacement for a real conditional edge function
+ *   const goto = Math.random() > .5 ? "nodeB" : "nodeC";
+ *   // note how Command allows you to BOTH update the graph state AND route to the next node
+ *   return new Command({
+ *     // this is the state update
+ *     update: {
+ *       foo: "a",
+ *     },
+ *     // this is a replacement for an edge
+ *     goto,
+ *   });
+ * };
+ *
+ * // Nodes B and C are unchanged
+ * const nodeB = async (state: typeof StateAnnotation.State) => {
+ *   console.log("Called B");
+ *   return {
+ *     foo: state.foo + "|b",
+ *   };
+ * }
+ *
+ * const nodeC = async (state: typeof StateAnnotation.State) => {
+ *   console.log("Called C");
+ *   return {
+ *     foo: state.foo + "|c",
+ *   };
+ * }
+ * 
+ * import { StateGraph } from "@langchain/langgraph";
+
+ * // NOTE: there are no edges between nodes A, B and C!
+ * const graph = new StateGraph(StateAnnotation)
+ *   .addNode("nodeA", nodeA, {
+ *     ends: ["nodeB", "nodeC"],
+ *   })
+ *   .addNode("nodeB", nodeB)
+ *   .addNode("nodeC", nodeC)
+ *   .addEdge("__start__", "nodeA")
+ *   .compile();
+ * 
+ * await graph.invoke({ foo: "" });
+ *
+ * // Randomly oscillates between
+ * // { foo: 'a|c' } and { foo: 'a|b' }
+ * ```
  */
 export class Command<R = unknown> {
   lg_name = "Command";
 
-  resume?: R;
+  lc_direct_tool_output = true;
 
   graph?: string;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  update?: Record<string, any>;
+  update?: Record<string, any> | [string, any][] = [];
+
+  resume?: R;
 
   goto: string | Send | (string | Send)[] = [];
 
@@ -178,8 +239,28 @@ export class Command<R = unknown> {
       this.goto = Array.isArray(args.goto) ? args.goto : [args.goto];
     }
   }
+
+  _updateAsTuples(): [string, unknown][] {
+    if (
+      this.update &&
+      typeof this.update === "object" &&
+      !Array.isArray(this.update)
+    ) {
+      return Object.entries(this.update);
+    } else if (
+      Array.isArray(this.update) &&
+      this.update.every(
+        (t): t is [string, unknown] =>
+          Array.isArray(t) && t.length === 2 && typeof t[0] === "string"
+      )
+    ) {
+      return this.update;
+    } else {
+      return [["__root__", this.update]];
+    }
+  }
 }
 
-export function _isCommand(x: unknown): x is Command {
+export function isCommand(x: unknown): x is Command {
   return typeof x === "object" && !!x && (x as Command).lg_name === "Command";
 }

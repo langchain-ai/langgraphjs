@@ -217,3 +217,4 @@ These are the guides for resolving common errors you may find while building wit
 - [INVALID_CONCURRENT_GRAPH_UPDATE](../troubleshooting/errors/INVALID_CONCURRENT_GRAPH_UPDATE.ipynb)
 - [INVALID_GRAPH_NODE_RETURN_VALUE](../troubleshooting/errors/INVALID_GRAPH_NODE_RETURN_VALUE.ipynb)
 - [MULTIPLE_SUBGRAPHS](../troubleshooting/errors/MULTIPLE_SUBGRAPHS.ipynb)
+- [UNREACHABLE_NODE](../troubleshooting/errors/UNREACHABLE_NODE.ipynb)

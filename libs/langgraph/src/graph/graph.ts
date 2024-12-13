@@ -32,7 +32,11 @@ import {
   gatherIteratorSync,
   RunnableCallable,
 } from "../utils.js";
-import { InvalidUpdateError, NodeInterrupt } from "../errors.js";
+import {
+  InvalidUpdateError,
+  NodeInterrupt,
+  UnreachableNodeError,
+} from "../errors.js";
 import { StateDefinition, StateType } from "./annotation.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
@@ -463,7 +467,18 @@ export class Graph<
     // validate targets
     for (const node of Object.keys(this.nodes)) {
       if (!allTargets.has(node)) {
-        throw new Error(`Node \`${node}\` is not reachable`);
+        throw new UnreachableNodeError(
+          [
+            `Node \`${node}\` is not reachable.`,
+            "",
+            "If you are returning Command objects from your node,",
+            'make sure you are passing names of potential destination nodes as an "ends" array',
+            'into ".addNode(..., { ends: ["node1", "node2"] })".',
+          ].join("\n"),
+          {
+            lc_error_code: "UNREACHABLE_NODE",
+          }
+        );
       }
     }
     for (const target of allTargets) {
@@ -492,14 +507,18 @@ export class CompiledGraph<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   Update = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType extends Record<string, any> = Record<string, any>
+  ConfigurableFieldType extends Record<string, any> = Record<string, any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  InputType = any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  OutputType = any
 > extends Pregel<
   Record<N | typeof START, PregelNode<State, Update>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ConfigurableFieldType & Record<string, any>,
-  Update,
-  State
+  InputType,
+  OutputType
 > {
   declare NodeType: N;
 

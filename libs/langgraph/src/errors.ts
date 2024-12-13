@@ -162,6 +162,17 @@ export class MultipleSubgraphsError extends BaseLangGraphError {
   }
 }
 
+export class UnreachableNodeError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
+    this.name = "UnreachableNodeError";
+  }
+
+  static get unminifiable_name() {
+    return "UnreachableNodeError";
+  }
+}
+
 /**
  * Exception raised when an error occurs in the remote graph.
  */

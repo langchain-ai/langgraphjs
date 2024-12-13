@@ -24,7 +24,12 @@ import {
 } from "./utils.js";
 import { ToolNode, createReactAgent } from "../prebuilt/index.js";
 // Enable automatic config passing
-import { Annotation, messagesStateReducer, StateGraph } from "../index.js";
+import {
+  Annotation,
+  Command,
+  messagesStateReducer,
+  StateGraph,
+} from "../index.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 
 // Tracing slows down the tests
@@ -175,6 +180,56 @@ describe("createReactAgent with stateModifier", () => {
     });
     const expected = [new _AnyIdAIMessage("foobar")];
     expect(result.messages).toEqual(expected);
+  });
+
+  it("Allows custom state schema that extends MessagesAnnotation", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "result1",
+          tool_calls: [{ id: "test1234", args: {}, name: "test" }],
+        }),
+        new AIMessage("result2"),
+      ],
+    });
+
+    const StateAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      foo: Annotation<string>,
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools: [
+        tool(
+          async () =>
+            new Command({
+              update: {
+                foo: "baz",
+              },
+            }),
+          {
+            name: "test",
+            schema: z.object({}),
+          }
+        ),
+      ],
+      stateSchema: StateAnnotation,
+    });
+
+    const result = await agent.invoke({
+      messages: [],
+      foo: "bar",
+    });
+    const expected = [
+      new _AnyIdAIMessage({
+        content: "result1",
+        tool_calls: [{ id: "test1234", args: {}, name: "test" }],
+      }),
+      new _AnyIdAIMessage("result2"),
+    ];
+    expect(result.messages).toEqual(expected);
+    expect(result.foo).toEqual("baz");
   });
 
   it("Should respect a passed signal", async () => {
