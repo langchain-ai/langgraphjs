@@ -662,7 +662,7 @@ async function nodeInParentGraph(state: typeof GraphAnnotation.State) {
 
       const checkpointer = new MemorySaver();
 
-      const subgraphBuilder = new StateGraph<GraphAnnotation>()
+      const subgraphBuilder = new StateGraph(GraphAnnotation)
         .addNode("some_node", nodeInSubgraph)
         .addNode("human_node", humanNode)
         .addEdge(START, "some_node")
@@ -682,7 +682,7 @@ async function nodeInParentGraph(state: typeof GraphAnnotation.State) {
         return subgraphState;
       }
 
-      const builder = new StateGraph<GraphAnnotation>()
+      const builder = new StateGraph(GraphAnnotation)
         .addNode("parent_node", parentNode)
         .addEdge(START, "parent_node")
 
@@ -774,7 +774,7 @@ To avoid issues, refrain from dynamically changing the node's structure between 
       };
     }
 
-    const builder = new StateGraph<GraphAnnotation>()
+    const builder = new StateGraph(GraphAnnotation)
       .addNode("human_node", humanNode);
       .addEdge(START, "human_node");
 
