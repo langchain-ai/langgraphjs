@@ -88,6 +88,7 @@ These guides show how to use different streaming modes.
 ### Multi-agent
 
 - [How to build a multi-agent network](multi-agent-network.ipynb)
+- [How to add multi-turn conversation in a multi-agent application](multi-agent-multi-turn-convo.ipynb)
 
 See the [multi-agent tutorials](../tutorials/index.md#multi-agent-systems) for implementations of other multi-agent architectures.
 
