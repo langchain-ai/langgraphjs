@@ -3087,6 +3087,44 @@ graph TD;
       });
     });
 
+    it("Supports automatic streaming with streamMode messages", async () => {
+      const llm = new FakeChatModel({
+        responses: [
+          new AIMessage({
+            id: "ai1",
+            content: "foobar",
+          }),
+        ],
+      });
+
+      const StateAnnotation = Annotation.Root({
+        question: Annotation<string>,
+        answer: Annotation<string>,
+      });
+
+      const generate = async (state: typeof StateAnnotation.State) => {
+        const response = await llm.invoke(state.question);
+        return { answer: response.content };
+      };
+
+      // Compile application and test
+      const graph = new StateGraph(StateAnnotation)
+        .addNode("generate", generate)
+        .addEdge("__start__", "generate")
+        .addEdge("generate", "__end__")
+        .compile();
+
+      const inputs = { question: "How are you?" };
+
+      const stream = await graph.stream(inputs, { streamMode: "messages" });
+
+      const aiMessageChunks = [];
+      for await (const [message] of stream) {
+        aiMessageChunks.push(message);
+      }
+      expect(aiMessageChunks.length).toBeGreaterThan(1);
+    });
+
     it("State graph packets", async () => {
       const AgentState = Annotation.Root({
         messages: Annotation({
