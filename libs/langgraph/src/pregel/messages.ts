@@ -31,6 +31,8 @@ function isChatGenerationChunk(x: unknown): x is ChatGenerationChunk {
  * A callback handler that implements stream_mode=messages.
  * Collects messages from (1) chat model stream events and (2) node outputs.
  */
+// TODO: Make this import and explicitly implement the
+// CallbackHandlerPrefersStreaming interface once we drop support for core 0.2
 export class StreamMessagesHandler extends BaseCallbackHandler {
   name = "StreamMessagesHandler";
 
@@ -41,6 +43,8 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
   seen: Record<string, BaseMessage> = {};
 
   emittedChatModelRunIds: Record<string, boolean> = {};
+
+  lc_prefer_streaming = true;
 
   constructor(streamFn: (streamChunk: StreamChunk) => void) {
     super();
