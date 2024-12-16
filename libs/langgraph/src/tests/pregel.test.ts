@@ -3087,6 +3087,44 @@ graph TD;
       });
     });
 
+    it("Supports automatic streaming with streamMode messages", async () => {
+      const llm = new FakeChatModel({
+        responses: [
+          new AIMessage({
+            id: "ai1",
+            content: "foobar",
+          }),
+        ],
+      });
+
+      const StateAnnotation = Annotation.Root({
+        question: Annotation<string>,
+        answer: Annotation<string>,
+      });
+
+      const generate = async (state: typeof StateAnnotation.State) => {
+        const response = await llm.invoke(state.question);
+        return { answer: response.content };
+      };
+
+      // Compile application and test
+      const graph = new StateGraph(StateAnnotation)
+        .addNode("generate", generate)
+        .addEdge("__start__", "generate")
+        .addEdge("generate", "__end__")
+        .compile();
+
+      const inputs = { question: "How are you?" };
+
+      const stream = await graph.stream(inputs, { streamMode: "messages" });
+
+      const aiMessageChunks = [];
+      for await (const [message] of stream) {
+        aiMessageChunks.push(message);
+      }
+      expect(aiMessageChunks.length).toBeGreaterThan(1);
+    });
+
     it("State graph packets", async () => {
       const AgentState = Annotation.Root({
         messages: Annotation({
@@ -8310,11 +8348,11 @@ graph TD;
   it("should work with streamMode messages and custom from within a subgraph", async () => {
     const child = new StateGraph(MessagesAnnotation)
       .addNode("c_one", () => ({
-        messages: [new HumanMessage("foo"), new AIMessage("bar")],
+        messages: [new HumanMessage("f"), new AIMessage("b")],
       }))
       .addNode("c_two", async (_, config) => {
         const model = new FakeChatModel({
-          responses: [new AIMessage("123"), new AIMessage("baz")],
+          responses: [new AIMessage("1"), new AIMessage("2")],
         }).withConfig({ tags: ["c_two_chat_model"] });
         const stream = await model.stream("yo", {
           ...config,
@@ -8336,7 +8374,7 @@ graph TD;
     const parent = new StateGraph(MessagesAnnotation)
       .addNode("p_one", async (_, config) => {
         const toolExecutor = RunnableLambda.from(async () => {
-          return [new ToolMessage({ content: "qux", tool_call_id: "test" })];
+          return [new ToolMessage({ content: "q", tool_call_id: "test" })];
         });
         config.writer?.({
           from: "parent",
@@ -8348,7 +8386,7 @@ graph TD;
       .addNode("p_two", child.compile())
       .addNode("p_three", async (_, config) => {
         const model = new FakeChatModel({
-          responses: [new AIMessage("parent")],
+          responses: [new AIMessage("x")],
         });
         await model.invoke("hey", config);
         return { messages: [] };
@@ -8369,7 +8407,7 @@ graph TD;
       [
         new _AnyIdToolMessage({
           tool_call_id: "test",
-          content: "qux",
+          content: "q",
         }),
         {
           langgraph_step: 1,
@@ -8386,7 +8424,7 @@ graph TD;
       ],
       [
         new _AnyIdHumanMessage({
-          content: "foo",
+          content: "f",
         }),
         {
           langgraph_step: 1,
@@ -8403,7 +8441,7 @@ graph TD;
       ],
       [
         new _AnyIdAIMessage({
-          content: "bar",
+          content: "b",
         }),
         {
           langgraph_step: 1,
@@ -8455,12 +8493,11 @@ graph TD;
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
           tags: ["c_two_chat_model"],
-          name: "c_two_chat_model_stream",
         },
       ],
       [
         new _AnyIdAIMessageChunk({
-          content: "3",
+          content: "2",
         }),
         {
           langgraph_step: 2,
@@ -8471,35 +8508,14 @@ graph TD;
           __pregel_resuming: false,
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
-          ls_model_type: "chat",
-          ls_provider: "FakeChatModel",
+          name: "c_two",
+          tags: ["graph:step:2"],
           ls_stop: undefined,
-          tags: ["c_two_chat_model"],
-          name: "c_two_chat_model_stream",
         },
       ],
       [
-        new _AnyIdAIMessage({
-          content: "baz",
-        }),
-        {
-          langgraph_step: 2,
-          langgraph_node: "c_two",
-          langgraph_triggers: ["c_one"],
-          langgraph_path: [PULL, "c_two"],
-          langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
-          __pregel_resuming: false,
-          __pregel_task_id: expect.any(String),
-          checkpoint_ns: expect.stringMatching(/^p_two:/),
-          ls_model_type: "chat",
-          ls_provider: "FakeChatModel",
-          ls_stop: undefined,
-          tags: ["c_two_chat_model"],
-        },
-      ],
-      [
-        new _AnyIdAIMessage({
-          content: "parent",
+        new _AnyIdAIMessageChunk({
+          content: "x",
         }),
         {
           langgraph_step: 3,
@@ -8530,14 +8546,6 @@ graph TD;
         content: "1",
         from: "subgraph",
       },
-      {
-        content: "2",
-        from: "subgraph",
-      },
-      {
-        content: "3",
-        from: "subgraph",
-      },
     ]);
 
     const streamedCombinedEvents: StateSnapshot[] = await gatherIterator(
@@ -8554,7 +8562,7 @@ graph TD;
         [
           new _AnyIdToolMessage({
             tool_call_id: "test",
-            content: "qux",
+            content: "q",
           }),
           {
             langgraph_step: 1,
@@ -8574,7 +8582,7 @@ graph TD;
         "messages",
         [
           new _AnyIdHumanMessage({
-            content: "foo",
+            content: "f",
           }),
           {
             langgraph_step: 1,
@@ -8595,7 +8603,7 @@ graph TD;
         "messages",
         [
           new _AnyIdAIMessage({
-            content: "bar",
+            content: "b",
           }),
           {
             langgraph_step: 1,
@@ -8657,16 +8665,14 @@ graph TD;
             ls_provider: "FakeChatModel",
             ls_stop: undefined,
             tags: ["c_two_chat_model"],
-            name: "c_two_chat_model_stream",
           },
         ],
       ],
-      ["custom", { from: "subgraph", content: "2" }],
       [
         "messages",
         [
           new _AnyIdAIMessageChunk({
-            content: "3",
+            content: "2",
           }),
           {
             langgraph_step: 2,
@@ -8678,43 +8684,16 @@ graph TD;
             __pregel_resuming: false,
             __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
-            ls_model_type: "chat",
-            ls_provider: "FakeChatModel",
-            ls_stop: undefined,
-            tags: ["c_two_chat_model"],
-            name: "c_two_chat_model_stream",
-          },
-        ],
-      ],
-      ["custom", { from: "subgraph", content: "3" }],
-      [
-        "messages",
-        [
-          new _AnyIdAIMessage({
-            content: "baz",
-          }),
-          {
-            langgraph_step: 2,
-            langgraph_node: "c_two",
-            langgraph_triggers: ["c_one"],
-            langgraph_path: [PULL, "c_two"],
-            langgraph_checkpoint_ns:
-              expect.stringMatching(/^p_two:.*\|c_two:.*/),
-            __pregel_resuming: false,
-            __pregel_task_id: expect.any(String),
-            checkpoint_ns: expect.stringMatching(/^p_two:/),
-            ls_model_type: "chat",
-            ls_provider: "FakeChatModel",
-            ls_stop: undefined,
-            tags: ["c_two_chat_model"],
+            tags: ["graph:step:2"],
+            name: "c_two",
           },
         ],
       ],
       [
         "messages",
         [
-          new _AnyIdAIMessage({
-            content: "parent",
+          new _AnyIdAIMessageChunk({
+            content: "x",
           }),
           {
             langgraph_step: 3,

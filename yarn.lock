@@ -1599,9 +1599,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:^0.3.23":
-  version: 0.3.23
-  resolution: "@langchain/core@npm:0.3.23"
+"@langchain/core@npm:^0.3.24":
+  version: 0.3.24
+  resolution: "@langchain/core@npm:0.3.24"
   dependencies:
     "@cfworker/json-schema": ^4.0.2
     ansi-styles: ^5.0.0
@@ -1615,7 +1615,7 @@ __metadata:
     uuid: ^10.0.0
     zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
-  checksum: b8cb67c2201fb44feb6136ee0ab097217a760e918d6f33e8cb0152095c960ed9102605a23227b014127f57eadaa0a8aaf62b238557c18b4ef111feb8faf360cf
+  checksum: c2986e7ed8b7b869e27d633a14cd00d6a4777004ea59f4f70e99fc6b9db4d7e87d687aa8ad84e03684ea5053ea5f4b454c44716092401dc5cf8fd1b8d5cfe9d1
   languageName: node
   linkType: hard
 
@@ -1851,7 +1851,7 @@ __metadata:
     "@jest/globals": ^29.5.0
     "@langchain/anthropic": ^0.3.5
     "@langchain/community": ^0.3.9
-    "@langchain/core": ^0.3.23
+    "@langchain/core": ^0.3.24
     "@langchain/langgraph-checkpoint": ~0.0.13
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
@@ -6649,7 +6649,7 @@ __metadata:
   dependencies:
     "@langchain/anthropic": ^0.3.5
     "@langchain/community": ^0.3.9
-    "@langchain/core": ^0.3.23
+    "@langchain/core": ^0.3.24
     "@langchain/groq": ^0.1.2
     "@langchain/langgraph": "workspace:*"
     "@langchain/mistralai": ^0.1.1
