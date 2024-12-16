@@ -46,15 +46,27 @@ LangGraph makes it easy to manage conversation [memory](../concepts/memory.md) i
 
 ### Human-in-the-loop
 
-One of LangGraph.js's main benefits is that it makes human-in-the-loop workflows easy.
-These guides cover common examples of that.
+[Human-in-the-loop](/langgraphjs/concepts/human_in_the_loop) functionality allows
+you to involve humans in the decision-making process of your graph. These how-to guides show how to implement human-in-the-loop workflows in your graph.
 
-- [How to add breakpoints](breakpoints.ipynb)
-- [How to add dynamic breakpoints](dynamic_breakpoints.ipynb)
-- [How to edit graph state](edit-graph-state.ipynb)
-- [How to wait for user input](wait-user-input.ipynb)
+
+Key workflows:
+
+- [How to wait for user input](wait-user-input.ipynb): A basic example that shows how to implement a human-in-the-loop workflow in your graph using the `interrupt` function.
+- [How to review tool calls](review-tool-calls.ipynb): Incorporate human-in-the-loop for reviewing/editing/accepting tool call requests before they executed using the `interrupt` function.
+ 
+
+Other methods:
+
+- [How to add static breakpoints](breakpoints.ipynb): Use for debugging purposes. For [**human-in-the-loop**](/langgraphjs/concepts/human_in_the_loop) workflows, we recommend the [`interrupt` function][/langgraphjs/reference/functions/langgraph.interrupt-1.html] instead.
+- [How to edit graph state](edit-graph-state.ipynb): Edit graph state using `graph.update_state` method. Use this if implementing a **human-in-the-loop** workflow via **static breakpoints**.
+- [How to add dynamic breakpoints with `NodeInterrupt`](dynamic_breakpoints.ipynb): **Not recommended**: Use the [`interrupt` function](/langgraphjs/concepts/human_in_the_loop) instead.
+
+### Time Travel
+
+[Time travel](../concepts/time-travel.md) allows you to replay past actions in your LangGraph application to explore alternative paths and debug issues. These how-to guides show how to use time travel in your graph.
+
 - [How to view and update past graph state](time-travel.ipynb)
-- [How to review tool calls](review-tool-calls.ipynb)
 
 ### Streaming
 
