@@ -208,3 +208,9 @@ export const WRITES_IDX_MAP: Record<string, number> = {
   [INTERRUPT]: -3,
   [RESUME]: -4,
 };
+
+export function getCheckpointId(config: RunnableConfig): string {
+  return (
+    config.configurable?.checkpoint_id || config.configurable?.thread_ts || ""
+  );
+}

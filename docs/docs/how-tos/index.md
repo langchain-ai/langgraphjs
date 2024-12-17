@@ -23,6 +23,7 @@ These how-to guides show how to achieve that controllability.
 
 - [How to create branches for parallel execution](branching.ipynb)
 - [How to create map-reduce branches for parallel execution](map-reduce.ipynb)
+- [How to combine control flow and state updates with Command](command.ipynb)
 
 ### Persistence
 
@@ -40,6 +41,8 @@ LangGraph makes it easy to manage conversation [memory](../concepts/memory.md) i
 - [How to manage conversation history](manage-conversation-history.ipynb)
 - [How to delete messages](delete-messages.ipynb)
 - [How to add summary of the conversation history](add-summary-conversation-history.ipynb)
+- [How to add long-term memory (cross-thread)](cross-thread-persistence.ipynb)
+- [How to use semantic search for long-term memory](semantic-search.ipynb)
 
 ### Human-in-the-loop
 
@@ -81,6 +84,13 @@ These guides show how to use different streaming modes.
 - [How to add and use subgraphs](subgraph.ipynb)
 - [How to view and update state in subgraphs](subgraphs-manage-state.ipynb)
 - [How to transform inputs and outputs of a subgraph](subgraph-transform-state.ipynb)
+
+### Multi-agent
+
+- [How to build a multi-agent network](multi-agent-network.ipynb)
+- [How to add multi-turn conversation in a multi-agent application](multi-agent-multi-turn-convo.ipynb)
+
+See the [multi-agent tutorials](../tutorials/index.md#multi-agent-systems) for implementations of other multi-agent architectures.
 
 ### State management
 
@@ -208,3 +218,4 @@ These are the guides for resolving common errors you may find while building wit
 - [INVALID_CONCURRENT_GRAPH_UPDATE](../troubleshooting/errors/INVALID_CONCURRENT_GRAPH_UPDATE.ipynb)
 - [INVALID_GRAPH_NODE_RETURN_VALUE](../troubleshooting/errors/INVALID_GRAPH_NODE_RETURN_VALUE.ipynb)
 - [MULTIPLE_SUBGRAPHS](../troubleshooting/errors/MULTIPLE_SUBGRAPHS.ipynb)
+- [UNREACHABLE_NODE](../troubleshooting/errors/UNREACHABLE_NODE.ipynb)

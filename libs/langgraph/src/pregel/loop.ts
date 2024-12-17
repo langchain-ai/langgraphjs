@@ -13,6 +13,7 @@ import {
   All,
   BaseStore,
   AsyncBatchedStore,
+  WRITES_IDX_MAP,
 } from "@langchain/langgraph-checkpoint";
 
 import {
@@ -22,7 +23,7 @@ import {
 } from "../channels/base.js";
 import { PregelExecutableTask, StreamMode } from "./types.js";
 import {
-  _isCommand,
+  isCommand,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Command,
   CONFIG_KEY_CHECKPOINT_MAP,
@@ -32,6 +33,7 @@ import {
   ERROR,
   INPUT,
   INTERRUPT,
+  NULL_TASK_ID,
   RESUME,
   TAG_HIDDEN,
 } from "../constants.js";
@@ -445,16 +447,29 @@ export class PregelLoop {
    * @param writes
    */
   putWrites(taskId: string, writes: PendingWrite<string>[]) {
-    if (writes.length === 0) {
+    let writesCopy = writes;
+    if (writesCopy.length === 0) {
       return;
     }
+
+    // deduplicate writes to special channels, last write wins
+    if (writesCopy.every(([key]) => key in WRITES_IDX_MAP)) {
+      writesCopy = Array.from(
+        new Map(writesCopy.map((w) => [w[0], w])).values()
+      );
+    }
     // save writes
-    const pendingWrites: CheckpointPendingWrite<string>[] = writes.map(
-      ([key, value]) => {
-        return [taskId, key, value];
+    for (const [c, v] of writesCopy) {
+      const idx = this.checkpointPendingWrites.findIndex(
+        (w) => w[0] === taskId && w[1] === c
+      );
+      if (c in WRITES_IDX_MAP && idx !== -1) {
+        this.checkpointPendingWrites[idx] = [taskId, c, v];
+      } else {
+        this.checkpointPendingWrites.push([taskId, c, v]);
       }
-    );
-    this.checkpointPendingWrites.push(...pendingWrites);
+    }
+
     const putWritePromise = this.checkpointer?.putWrites(
       {
         ...this.checkpointConfig,
@@ -464,14 +479,15 @@ export class PregelLoop {
           checkpoint_id: this.checkpoint.id,
         },
       },
-      writes,
+      writesCopy,
       taskId
     );
     if (putWritePromise !== undefined) {
       this.checkpointerPromises.push(putWritePromise);
     }
+
     if (this.tasks) {
-      this._outputWrites(taskId, writes);
+      this._outputWrites(taskId, writesCopy);
     }
   }
 
@@ -541,7 +557,10 @@ export class PregelLoop {
       if (![INPUT_DONE, INPUT_RESUMING].includes(this.input)) {
         await this._first(inputKeys);
       } else if (
-        Object.values(this.tasks).every((task) => task.writes.length > 0)
+        Object.values(this.tasks).every(
+          (task) =>
+            task.writes.filter(([c]) => !(c in WRITES_IDX_MAP)).length > 0
+        )
       ) {
         const writes = Object.values(this.tasks).flatMap((t) => t.writes);
         // All tasks have finished
@@ -713,13 +732,52 @@ export class PregelLoop {
   /**
    * Resuming from previous checkpoint requires
    * - finding a previous checkpoint
-   * - receiving None input (outer graph) or RESUMING flag (subgraph)
+   * - receiving null input (outer graph) or RESUMING flag (subgraph)
    */
   protected async _first(inputKeys: string | string[]) {
     const isResuming =
       Object.keys(this.checkpoint.channel_versions).length !== 0 &&
       (this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined ||
-        this.input === null);
+        this.input === null ||
+        isCommand(this.input));
+    if (isCommand(this.input)) {
+      const writes: { [key: string]: PendingWrite[] } = {};
+      // group writes by task id
+      for (const [tid, key, value] of mapCommand(
+        this.input,
+        this.checkpointPendingWrites
+      )) {
+        if (writes[tid] === undefined) {
+          writes[tid] = [];
+        }
+        writes[tid].push([key, value]);
+      }
+      if (Object.keys(writes).length === 0) {
+        throw new EmptyInputError("Received empty Command input");
+      }
+      // save writes
+      for (const [tid, ws] of Object.entries(writes)) {
+        this.putWrites(tid, ws);
+      }
+    }
+    // apply null writes
+    const nullWrites = (this.checkpointPendingWrites ?? [])
+      .filter((w) => w[0] === NULL_TASK_ID)
+      .map((w) => w.slice(1)) as PendingWrite<string>[];
+    if (nullWrites.length > 0) {
+      _applyWrites(
+        this.checkpoint,
+        this.channels,
+        [
+          {
+            name: INPUT,
+            writes: nullWrites,
+            triggers: [],
+          },
+        ],
+        this.checkpointerGetNextVersion
+      );
+    }
     if (isResuming) {
       for (const channelName of Object.keys(this.channels)) {
         if (this.checkpoint.channel_versions[channelName] !== undefined) {
@@ -738,22 +796,6 @@ export class PregelLoop {
         )
       );
       this._emit(valuesOutput);
-    } else if (_isCommand(this.input)) {
-      const writes: { [key: string]: PendingWrite[] } = {};
-      // group writes by task id
-      for (const [tid, key, value] of mapCommand(this.input)) {
-        if (writes[tid] === undefined) {
-          writes[tid] = [];
-        }
-        writes[tid].push([key, value]);
-      }
-      if (Object.keys(writes).length === 0) {
-        throw new EmptyInputError("Received empty Command input");
-      }
-      // save writes
-      for (const [tid, ws] of Object.entries(writes)) {
-        this.putWrites(tid, ws);
-      }
     } else {
       // map inputs to channel updates
       const inputWrites = await gatherIterator(mapInput(inputKeys, this.input));

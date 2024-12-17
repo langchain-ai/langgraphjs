@@ -32,7 +32,11 @@ import {
   gatherIteratorSync,
   RunnableCallable,
 } from "../utils.js";
-import { InvalidUpdateError, NodeInterrupt } from "../errors.js";
+import {
+  InvalidUpdateError,
+  NodeInterrupt,
+  UnreachableNodeError,
+} from "../errors.js";
 import { StateDefinition, StateType } from "./annotation.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
@@ -48,28 +52,37 @@ export interface BranchOptions<
   CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
 > {
   source: N;
-  path: Branch<IO, N, CallOptions>["condition"];
+  path: RunnableLike<IO, BranchPathReturnValue, CallOptions>;
   pathMap?: Record<string, N | typeof END> | (N | typeof END)[];
 }
+
+export type BranchPathReturnValue =
+  | string
+  | Send
+  | (string | Send)[]
+  | Promise<string | Send | (string | Send)[]>;
 
 export class Branch<
   IO,
   N extends string,
   CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
 > {
-  condition: (
-    input: IO,
-    config: CallOptions
-  ) =>
-    | string
-    | Send
-    | (string | Send)[]
-    | Promise<string | Send | (string | Send)[]>;
+  condition: Runnable<IO, BranchPathReturnValue, CallOptions>;
 
   ends?: Record<string, N | typeof END>;
 
   constructor(options: Omit<BranchOptions<IO, N, CallOptions>, "source">) {
-    this.condition = options.path;
+    if (Runnable.isRunnable(options.path)) {
+      this.condition = options.path as Runnable<
+        IO,
+        BranchPathReturnValue,
+        CallOptions
+      >;
+    } else {
+      this.condition = _coerceToRunnable(options.path).withConfig({
+        runName: `Branch`,
+      });
+    }
     this.ends = Array.isArray(options.pathMap)
       ? options.pathMap.reduce((acc, n) => {
           acc[n] = n;
@@ -78,8 +91,11 @@ export class Branch<
       : options.pathMap;
   }
 
-  compile(
-    writer: (dests: (string | Send)[]) => Runnable | undefined,
+  run(
+    writer: (
+      dests: (string | Send)[],
+      config: LangGraphRunnableConfig
+    ) => Runnable | void | Promise<void>,
     reader?: (config: CallOptions) => IO
   ) {
     return ChannelWrite.registerWriter(
@@ -107,10 +123,17 @@ export class Branch<
   async _route(
     input: IO,
     config: CallOptions,
-    writer: (dests: (string | Send)[]) => Runnable | undefined,
+    writer: (
+      dests: (string | Send)[],
+      config: LangGraphRunnableConfig
+    ) => Runnable | void | Promise<void>,
     reader?: (config: CallOptions) => IO
-  ): Promise<Runnable | undefined> {
-    let result = await this.condition(reader ? reader(config) : input, config);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<Runnable | any> {
+    let result = await this.condition.invoke(
+      reader ? reader(config) : input,
+      config
+    );
     if (!Array.isArray(result)) {
       result = [result];
     }
@@ -127,7 +150,8 @@ export class Branch<
     if (destinations.filter(_isSend).some((packet) => packet.node === END)) {
       throw new InvalidUpdateError("Cannot send a packet to the END node");
     }
-    return writer(destinations);
+    const writeResult = await writer(destinations, config);
+    return writeResult ?? input;
   }
 }
 
@@ -136,12 +160,14 @@ export type NodeSpec<RunInput, RunOutput> = {
   metadata?: Record<string, unknown>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subgraphs?: Pregel<any, any>[];
+  ends?: string[];
 };
 
 export type AddNodeOptions = {
   metadata?: Record<string, unknown>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subgraphs?: Pregel<any, any>[];
+  ends?: string[];
 };
 
 export class Graph<
@@ -223,6 +249,7 @@ export class Graph<
       runnable,
       metadata: options?.metadata,
       subgraphs: isPregelLike(runnable) ? [runnable] : options?.subgraphs,
+      ends: options?.ends,
     } as NodeSpecType;
 
     return this as Graph<N | K, RunInput, RunOutput, NodeSpecType>;
@@ -259,11 +286,11 @@ export class Graph<
 
   addConditionalEdges(
     source: N,
-    path: Branch<
+    path: RunnableLike<
       RunInput,
-      N,
+      BranchPathReturnValue,
       LangGraphRunnableConfig<StateType<C>>
-    >["condition"],
+    >,
     pathMap?: BranchOptions<
       RunInput,
       N,
@@ -275,11 +302,11 @@ export class Graph<
     source:
       | N
       | BranchOptions<RunInput, N, LangGraphRunnableConfig<StateType<C>>>,
-    path?: Branch<
+    path?: RunnableLike<
       RunInput,
-      N,
+      BranchPathReturnValue,
       LangGraphRunnableConfig<StateType<C>>
-    >["condition"],
+    >,
     pathMap?: BranchOptions<
       RunInput,
       N,
@@ -290,12 +317,31 @@ export class Graph<
       RunInput,
       N,
       LangGraphRunnableConfig<StateType<C>>
-    > = typeof source === "object" ? source : { source, path: path!, pathMap };
+    > = typeof source === "object"
+      ? source
+      : {
+          source,
+          path: path!,
+          pathMap,
+        };
     this.warnIfCompiled(
       "Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
+    if (!Runnable.isRunnable(options.path)) {
+      const pathDisplayValues = Array.isArray(options.pathMap)
+        ? options.pathMap.join(",")
+        : Object.keys(options.pathMap ?? {}).join(",");
+      options.path = _coerceToRunnable(options.path).withConfig({
+        runName: `Branch<${options.source}${
+          pathDisplayValues !== "" ? `,${pathDisplayValues}` : ""
+        }>`.slice(0, 63),
+      });
+    }
     // find a name for condition
-    const name = options.path.name || "condition";
+    const name =
+      options.path.getName() === "RunnableLambda"
+        ? "condition"
+        : options.path.getName();
     // validate condition
     if (this.branches[options.source] && this.branches[options.source][name]) {
       throw new Error(
@@ -413,10 +459,26 @@ export class Graph<
         }
       }
     }
+    for (const node of Object.values<NodeSpecType>(this.nodes)) {
+      for (const target of node.ends ?? []) {
+        allTargets.add(target);
+      }
+    }
     // validate targets
     for (const node of Object.keys(this.nodes)) {
       if (!allTargets.has(node)) {
-        throw new Error(`Node \`${node}\` is not reachable`);
+        throw new UnreachableNodeError(
+          [
+            `Node \`${node}\` is not reachable.`,
+            "",
+            "If you are returning Command objects from your node,",
+            'make sure you are passing names of potential destination nodes as an "ends" array',
+            'into ".addNode(..., { ends: ["node1", "node2"] })".',
+          ].join("\n"),
+          {
+            lc_error_code: "UNREACHABLE_NODE",
+          }
+        );
       }
     }
     for (const target of allTargets) {
@@ -445,14 +507,18 @@ export class CompiledGraph<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   Update = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType extends Record<string, any> = Record<string, any>
+  ConfigurableFieldType extends Record<string, any> = Record<string, any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  InputType = any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  OutputType = any
 > extends Pregel<
   Record<N | typeof START, PregelNode<State, Update>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ConfigurableFieldType & Record<string, any>,
-  Update,
-  State
+  InputType,
+  OutputType
 > {
   declare NodeType: N;
 
@@ -480,6 +546,7 @@ export class CompiledGraph<
       triggers: [],
       metadata: node.metadata,
       subgraphs: node.subgraphs,
+      ends: node.ends,
     })
       .pipe(node.runnable)
       .pipe(
@@ -514,7 +581,7 @@ export class CompiledGraph<
 
     // attach branch writer
     this.nodes[start].pipe(
-      branch.compile((dests) => {
+      branch.run((dests) => {
         const writes = dests.map((dest) => {
           if (_isSend(dest)) {
             return dest;
@@ -714,6 +781,21 @@ export class CompiledGraph<
             _escapeMermaidKeywords(start),
             _escapeMermaidKeywords(end),
             label,
+            true
+          );
+        }
+      }
+    }
+    for (const [key, node] of Object.entries(this.builder.nodes) as [
+      N,
+      NodeSpec<State, Update>
+    ][]) {
+      if (node.ends !== undefined) {
+        for (const end of node.ends) {
+          addEdge(
+            _escapeMermaidKeywords(key),
+            _escapeMermaidKeywords(end),
+            undefined,
             true
           );
         }

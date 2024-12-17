@@ -20,3 +20,4 @@ coverage/
 dist-cjs
 **/dist-cjs
 tmp/
+__pycache__

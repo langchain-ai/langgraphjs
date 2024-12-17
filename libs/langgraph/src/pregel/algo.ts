@@ -43,9 +43,9 @@ import {
   PUSH,
   PULL,
   RESUME,
-  CONFIG_KEY_RESUME_VALUE,
   NULL_TASK_ID,
-  MISSING,
+  CONFIG_KEY_SCRATCHPAD,
+  CONFIG_KEY_WRITES,
 } from "../constants.js";
 import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
@@ -64,6 +64,7 @@ export type WritesProtocol<C = string> = {
   name: string;
   writes: PendingWrite<C>[];
   triggers: string[];
+  path?: [string, ...(string | number)[]];
 };
 
 export const increment = (current?: number) => {
@@ -165,7 +166,6 @@ export function _localWrite(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   commit: (writes: [string, any][]) => any,
   processes: Record<string, PregelNode>,
-  channels: Record<string, BaseChannel>,
   managed: ManagedValueMapping,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   writes: [string, any][]
@@ -186,8 +186,6 @@ export function _localWrite(
       }
       // replace any runtime values with placeholders
       managed.replaceRuntimeValues(step, value.args);
-    } else if (!(chan in channels) && !managed.get(chan)) {
-      console.warn(`Skipping write for channel '${chan}' which has no readers`);
     }
   }
   commit(writes);
@@ -202,6 +200,22 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getNextVersion?: (version: any, channel: BaseChannel) => any
 ): Record<string, PendingWriteValue[]> {
+  // Sort tasks by first 3 path elements for deterministic order
+  // Later path parts (like task IDs) are ignored for sorting
+  tasks.sort((a, b) => {
+    const aPath = a.path?.slice(0, 3) || [];
+    const bPath = b.path?.slice(0, 3) || [];
+
+    // Compare each path element
+    for (let i = 0; i < Math.min(aPath.length, bPath.length); i += 1) {
+      if (aPath[i] < bPath[i]) return -1;
+      if (aPath[i] > bPath[i]) return 1;
+    }
+
+    // If one path is shorter, it comes first
+    return aPath.length - bPath.length;
+  });
+
   // if no task has triggers this is applying writes from the null task only
   // so we don't do anything other than update the channels written to
   const bumpStep = tasks.some((task) => task.triggers.length > 0);
@@ -265,6 +279,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       if (IGNORE.has(chan)) {
         // do nothing
       } else if (chan === TASKS) {
+        // TODO: remove branch in 1.0
         checkpoint.pending_sends.push({
           node: (val as Send).node,
           args: (val as Send).args,
@@ -387,6 +402,11 @@ export function _prepareNextTasks<
   extra: NextTaskExtraFieldsWithStore
 ): Record<string, PregelExecutableTask<keyof Nn, keyof Cc>>;
 
+/**
+ * Prepare the set of tasks that will make up the next Pregel step.
+ * This is the union of all PUSH tasks (Sends) and PULL tasks (nodes triggered
+ * by edges).
+ */
 export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
@@ -462,7 +482,7 @@ export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
 >(
-  taskPath: [string, string | number],
+  taskPath: [string, ...(string | number)[]],
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
@@ -477,7 +497,7 @@ export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
 >(
-  taskPath: [string, string | number],
+  taskPath: [string, ...(string | number)[]],
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
@@ -488,11 +508,15 @@ export function _prepareSingleTask<
   extra: NextTaskExtraFieldsWithStore
 ): PregelTaskDescription | PregelExecutableTask<keyof Nn, keyof Cc> | undefined;
 
+/**
+ * Prepares a single task for the next Pregel step, given a task path, which
+ * uniquely identifies a PUSH or PULL task within the graph.
+ */
 export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>
 >(
-  taskPath: [string, string | number],
+  taskPath: [string, ...(string | number)[]],
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
@@ -511,7 +535,9 @@ export function _prepareSingleTask<
 
   if (taskPath[0] === PUSH) {
     const index =
-      typeof taskPath[1] === "number" ? taskPath[1] : parseInt(taskPath[1], 10);
+      typeof taskPath[1] === "number"
+        ? taskPath[1]
+        : parseInt(taskPath[1] as string, 10);
     if (index >= checkpoint.pending_sends.length) {
       return undefined;
     }
@@ -560,9 +586,6 @@ export function _prepareSingleTask<
           metadata = { ...metadata, ...proc.metadata };
         }
         const writes: [keyof Cc, unknown][] = [];
-        const resume = pendingWrites?.find(
-          (w) => [taskId, NULL_TASK_ID].includes(w[0]) && w[1] === RESUME
-        );
         return {
           name: packet.node,
           input: packet.args,
@@ -586,7 +609,6 @@ export function _prepareSingleTask<
                     step,
                     (items: [keyof Cc, unknown][]) => writes.push(...items),
                     processes,
-                    channels,
                     managed,
                     writes_
                   ),
@@ -603,6 +625,7 @@ export function _prepareSingleTask<
                       name: packet.node,
                       writes: writes as Array<[string, unknown]>,
                       triggers,
+                      path: taskPath,
                     },
                     select_,
                     fresh_
@@ -613,9 +636,11 @@ export function _prepareSingleTask<
                   ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                   [parentNamespace]: checkpoint.id,
                 },
-                [CONFIG_KEY_RESUME_VALUE]: resume
-                  ? resume[2]
-                  : configurable[CONFIG_KEY_RESUME_VALUE] ?? MISSING,
+                [CONFIG_KEY_WRITES]: [
+                  ...(pendingWrites || []),
+                  ...(configurable[CONFIG_KEY_WRITES] || []),
+                ].filter((w) => w[0] === NULL_TASK_ID || w[0] === taskId),
+                [CONFIG_KEY_SCRATCHPAD]: {},
                 checkpoint_id: undefined,
                 checkpoint_ns: taskCheckpointNamespace,
               },
@@ -625,6 +650,7 @@ export function _prepareSingleTask<
           retry_policy: proc.retryPolicy,
           id: taskId,
           path: taskPath,
+          writers: proc.getWriters(),
         };
       }
     } else {
@@ -690,9 +716,6 @@ export function _prepareSingleTask<
             metadata = { ...metadata, ...proc.metadata };
           }
           const writes: [keyof Cc, unknown][] = [];
-          const resume = pendingWrites?.find(
-            (w) => [taskId, NULL_TASK_ID].includes(w[0]) && w[1] === RESUME
-          );
           const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
           return {
             name,
@@ -719,7 +742,6 @@ export function _prepareSingleTask<
                         writes.push(...items);
                       },
                       processes,
-                      channels,
                       managed,
                       writes_
                     ),
@@ -736,6 +758,7 @@ export function _prepareSingleTask<
                         name,
                         writes: writes as Array<[string, unknown]>,
                         triggers,
+                        path: taskPath,
                       },
                       select_,
                       fresh_
@@ -746,9 +769,11 @@ export function _prepareSingleTask<
                     ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                     [parentNamespace]: checkpoint.id,
                   },
-                  [CONFIG_KEY_RESUME_VALUE]: resume
-                    ? resume[2]
-                    : configurable[CONFIG_KEY_RESUME_VALUE] ?? MISSING,
+                  [CONFIG_KEY_WRITES]: [
+                    ...(pendingWrites || []),
+                    ...(configurable[CONFIG_KEY_WRITES] || []),
+                  ].filter((w) => w[0] === NULL_TASK_ID || w[0] === taskId),
+                  [CONFIG_KEY_SCRATCHPAD]: {},
                   checkpoint_id: undefined,
                   checkpoint_ns: taskCheckpointNamespace,
                 },
@@ -758,6 +783,7 @@ export function _prepareSingleTask<
             retry_policy: proc.retryPolicy,
             id: taskId,
             path: taskPath,
+            writers: proc.getWriters(),
           };
         }
       } else {

@@ -51,11 +51,6 @@ plugins:
   - search:
       separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
   - autorefs
-  - mkdocs-jupyter:
-      ignore_h1_titles: true
-      execute: false
-      include_source: True
-      include_requirejs: true
   - typedoc:
       # One level of globbing is intentional
       source: "../libs/*/*.d.ts"
@@ -109,6 +104,7 @@ nav:
               - Controllability: how-tos#controllability
               - how-tos/map-reduce.ipynb
               - how-tos/branching.ipynb
+              - how-tos/command.ipynb
           - Persistence:
               - Persistence: how-tos#persistence
               - how-tos/persistence.ipynb
@@ -120,6 +116,7 @@ nav:
               - how-tos/manage-conversation-history.ipynb
               - how-tos/delete-messages.ipynb
               - how-tos/add-summary-conversation-history.ipynb
+              - how-tos/semantic-search.ipynb
           - Human-in-the-loop:
               - Human-in-the-loop: how-tos#human-in-the-loop
               - how-tos/breakpoints.ipynb
@@ -149,6 +146,8 @@ nav:
               - how-tos/subgraph.ipynb
               - how-tos/subgraphs-manage-state.ipynb
               - how-tos/subgraph-transform-state.ipynb
+          - Multi-agent:
+              - how-tos/multi-agent-network.ipynb
           - State Management:
               - State Management: how-tos#state-management
               - how-tos/define-state.ipynb
@@ -174,6 +173,7 @@ nav:
           - troubleshooting/errors/INVALID_CONCURRENT_GRAPH_UPDATE.ipynb
           - troubleshooting/errors/INVALID_GRAPH_NODE_RETURN_VALUE.ipynb
           - troubleshooting/errors/MULTIPLE_SUBGRAPHS.ipynb
+          - troubleshooting/errors/UNREACHABLE_NODE.ipynb
 
   - Conceptual Guides:
       - concepts/index.md
@@ -269,7 +269,8 @@ markdown_extensions:
   - github-callouts
 extra_css:
   - css/mkdocstrings.css
-
+hooks:
+  - _scripts/notebook_hooks.py
 extra:
   social:
     - icon: fontawesome/brands/python

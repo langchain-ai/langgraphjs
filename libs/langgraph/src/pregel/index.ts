@@ -21,6 +21,7 @@ import {
   copyCheckpoint,
   emptyCheckpoint,
   PendingWrite,
+  SCHEDULED,
   uuid5,
 } from "@langchain/langgraph-checkpoint";
 import {
@@ -50,6 +51,10 @@ import {
   CONFIG_KEY_STREAM,
   CONFIG_KEY_TASK_ID,
   Command,
+  NULL_TASK_ID,
+  INPUT,
+  RESUME,
+  PUSH,
 } from "../constants.js";
 import {
   PregelExecutableTask,
@@ -73,6 +78,7 @@ import {
   _localRead,
   _applyWrites,
   StrRecord,
+  WritesProtocol,
 } from "./algo.js";
 import {
   _coerceToDict,
@@ -454,6 +460,19 @@ export class Pregel<
         });
       }
     }
+    // apply pending writes
+    const nullWrites = (saved.pendingWrites ?? [])
+      .filter((w) => w[0] === NULL_TASK_ID)
+      .map((w) => w.slice(1)) as PendingWrite<string>[];
+    if (nullWrites.length > 0) {
+      _applyWrites(saved.checkpoint, channels, [
+        {
+          name: INPUT,
+          writes: nullWrites,
+          triggers: [],
+        },
+      ]);
+    }
     // assemble the state snapshot
     return {
       values: readChannels(
@@ -647,8 +666,13 @@ export class Pregel<
     let checkpointConfig = patchConfigurable(config, {
       checkpoint_ns: config.configurable?.checkpoint_ns ?? "",
     });
+    let checkpointMetadata = config.metadata ?? {};
     if (saved?.config.configurable) {
       checkpointConfig = patchConfigurable(config, saved.config.configurable);
+      checkpointMetadata = {
+        ...saved.metadata,
+        ...checkpointMetadata,
+      };
     }
 
     // Find last node that updated the state, if not provided
@@ -657,6 +681,79 @@ export class Pregel<
         checkpointConfig,
         createCheckpoint(checkpoint, undefined, step),
         {
+          source: "update",
+          step: step + 1,
+          writes: {},
+          parents: saved?.metadata?.parents ?? {},
+        },
+        {}
+      );
+      return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
+    }
+
+    // update channels
+    const channels = emptyChannels(
+      this.channels as Record<string, BaseChannel>,
+      checkpoint
+    );
+
+    // Pass `skipManaged: true` as managed values are not used/relevant in update state calls.
+    const { managed } = await this.prepareSpecs(config, { skipManaged: true });
+
+    if (values === null && asNode === "__end__") {
+      if (saved) {
+        // tasks for this checkpoint
+        const nextTasks = _prepareNextTasks(
+          checkpoint,
+          saved.pendingWrites || [],
+          this.nodes,
+          channels,
+          managed,
+          saved.config,
+          true,
+          {
+            step: (saved.metadata?.step ?? -1) + 1,
+            checkpointer: this.checkpointer || undefined,
+            store: this.store,
+          }
+        );
+
+        // apply null writes
+        const nullWrites = (saved.pendingWrites || [])
+          .filter((w) => w[0] === NULL_TASK_ID)
+          .map((w) => w.slice(1)) as PendingWrite<string>[];
+        if (nullWrites.length > 0) {
+          _applyWrites(saved.checkpoint, channels, [
+            {
+              name: INPUT,
+              writes: nullWrites,
+              triggers: [],
+            },
+          ]);
+        }
+        // apply writes from tasks that already ran
+        for (const [taskId, k, v] of saved.pendingWrites || []) {
+          if ([ERROR, INTERRUPT, SCHEDULED].includes(k)) {
+            continue;
+          }
+          if (!(taskId in nextTasks)) {
+            continue;
+          }
+          nextTasks[taskId].writes.push([k, v]);
+        }
+        // clear all current tasks
+        _applyWrites(
+          checkpoint,
+          channels,
+          Object.values(nextTasks) as WritesProtocol<string>[]
+        );
+      }
+      // save checkpoint
+      const nextConfig = await checkpointer.put(
+        checkpointConfig,
+        createCheckpoint(checkpoint, undefined, step),
+        {
+          ...checkpointMetadata,
           source: "update",
           step: step + 1,
           writes: {},
@@ -679,6 +776,58 @@ export class Pregel<
         {}
       );
       return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
+    }
+    // apply pending writes, if not on specific checkpoint
+    if (
+      config.configurable?.checkpoint_id === undefined &&
+      saved?.pendingWrites !== undefined &&
+      saved.pendingWrites.length > 0
+    ) {
+      // tasks for this checkpoint
+      const nextTasks = _prepareNextTasks(
+        checkpoint,
+        saved.pendingWrites,
+        this.nodes,
+        channels,
+        managed,
+        saved.config,
+        true,
+        {
+          store: this.store,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          checkpointer: this.checkpointer as any,
+          step: (saved.metadata?.step ?? -1) + 1,
+        }
+      );
+      // apply null writes
+      const nullWrites = (saved.pendingWrites ?? [])
+        .filter((w) => w[0] === NULL_TASK_ID)
+        .map((w) => w.slice(1)) as PendingWrite<string>[];
+      if (nullWrites.length > 0) {
+        _applyWrites(saved.checkpoint, channels, [
+          {
+            name: INPUT,
+            writes: nullWrites,
+            triggers: [],
+          },
+        ]);
+      }
+      // apply writes
+      for (const [tid, k, v] of saved.pendingWrites) {
+        if (
+          [ERROR, INTERRUPT, SCHEDULED].includes(k) ||
+          nextTasks[tid] === undefined
+        ) {
+          continue;
+        }
+        nextTasks[tid].writes.push([k, v]);
+      }
+      const tasks = Object.values(nextTasks).filter((task) => {
+        return task.writes.length > 0;
+      });
+      if (tasks.length > 0) {
+        _applyWrites(checkpoint, channels, tasks as WritesProtocol[]);
+      }
     }
     const nonNullVersion = Object.values(checkpoint.versions_seen)
       .map((seenVersions) => {
@@ -727,14 +876,6 @@ export class Pregel<
         `Node "${asNode.toString()}" does not exist`
       );
     }
-    // update channels
-    const channels = emptyChannels(
-      this.channels as Record<string, BaseChannel>,
-      checkpoint
-    );
-
-    // Pass `skipManaged: true` as managed values are not used/relevant in update state calls.
-    const { managed } = await this.prepareSpecs(config, { skipManaged: true });
 
     // run all writers of the chosen node
     const writers = this.nodes[asNode].getWriters();
@@ -754,6 +895,7 @@ export class Pregel<
       writes: [],
       triggers: [INTERRUPT],
       id: uuid5(INTERRUPT, checkpoint.id),
+      writers: [],
     };
 
     // execute task
@@ -789,10 +931,17 @@ export class Pregel<
     );
 
     // save task writes
-    if (saved !== undefined) {
+    // channel writes are saved to current checkpoint
+    // push writes are saved to next checkpoint
+    const [channelWrites, pushWrites] = [
+      task.writes.filter((w) => w[0] !== PUSH),
+      task.writes.filter((w) => w[0] === PUSH),
+    ];
+    // save task writes
+    if (saved !== undefined && channelWrites.length > 0) {
       await checkpointer.putWrites(
         checkpointConfig,
-        task.writes as PendingWrite[],
+        channelWrites as PendingWrite[],
         task.id
       );
     }
@@ -821,6 +970,14 @@ export class Pregel<
       },
       newVersions
     );
+
+    if (pushWrites.length > 0) {
+      await checkpointer.putWrites(
+        nextConfig,
+        pushWrites as PendingWrite[],
+        task.id
+      );
+    }
 
     return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
   }
@@ -1141,10 +1298,13 @@ export class Pregel<
                   throw error;
                 }
                 if (isGraphInterrupt(error) && error.interrupts.length) {
-                  loop.putWrites(
-                    task.id,
-                    error.interrupts.map((interrupt) => [INTERRUPT, interrupt])
-                  );
+                  const interrupts: PendingWrite<string>[] =
+                    error.interrupts.map((interrupt) => [INTERRUPT, interrupt]);
+                  const resumes = task.writes.filter((w) => w[0] === RESUME);
+                  if (resumes.length) {
+                    interrupts.push(...resumes);
+                  }
+                  loop.putWrites(task.id, interrupts);
                 }
               } else {
                 loop.putWrites(task.id, [

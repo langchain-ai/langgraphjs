@@ -1,4 +1,4 @@
-import { Interrupt } from "./constants.js";
+import { Command, Interrupt } from "./constants.js";
 
 export type BaseLangGraphErrorFields = {
   lc_error_code?: string;
@@ -62,7 +62,8 @@ export class GraphInterrupt extends GraphBubbleUp {
 
 /** Raised by a node to interrupt execution. */
 export class NodeInterrupt extends GraphInterrupt {
-  constructor(message: string, fields?: BaseLangGraphErrorFields) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(message: any, fields?: BaseLangGraphErrorFields) {
     super(
       [
         {
@@ -78,6 +79,27 @@ export class NodeInterrupt extends GraphInterrupt {
   static get unminifiable_name() {
     return "NodeInterrupt";
   }
+}
+
+export class ParentCommand extends GraphBubbleUp {
+  command: Command;
+
+  constructor(command: Command) {
+    super();
+    this.name = "ParentCommand";
+    this.command = command;
+  }
+
+  static get unminifiable_name() {
+    return "ParentCommand";
+  }
+}
+
+export function isParentCommand(e?: Error): e is ParentCommand {
+  return (
+    e !== undefined &&
+    (e as ParentCommand).name === ParentCommand.unminifiable_name
+  );
 }
 
 export function isGraphBubbleUp(e?: Error): e is GraphBubbleUp {
@@ -137,6 +159,17 @@ export class MultipleSubgraphsError extends BaseLangGraphError {
 
   static get unminifiable_name() {
     return "MultipleSubgraphError";
+  }
+}
+
+export class UnreachableNodeError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
+    this.name = "UnreachableNodeError";
+  }
+
+  static get unminifiable_name() {
+    return "UnreachableNodeError";
   }
 }
 
