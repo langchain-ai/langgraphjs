@@ -141,6 +141,7 @@ nav:
               - how-tos/force-calling-a-tool-first.ipynb
               - how-tos/tool-calling-errors.ipynb
               - how-tos/pass-run-time-values-to-tools.ipynb
+              - how-tos/update-state-from-tools.ipynb
           - Subgraphs:
               - Subgraphs: how-tos#subgraphs
               - how-tos/subgraph.ipynb
