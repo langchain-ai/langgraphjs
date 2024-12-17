@@ -76,6 +76,7 @@ These guides show how to use different streaming modes.
 - [How to force an agent to call a tool](force-calling-a-tool-first.ipynb)
 - [How to handle tool calling errors](tool-calling-errors.ipynb)
 - [How to pass runtime values to tools](pass-run-time-values-to-tools.ipynb)
+- [How to update graph state from tools](update-state-from-tools.ipynb)
 
 ### Subgraphs
 
