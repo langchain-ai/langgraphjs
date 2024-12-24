@@ -582,7 +582,7 @@ export class CompiledStateGraph<
       } else {
         const typeofInput = Array.isArray(input) ? "array" : typeof input;
         throw new InvalidUpdateError(
-          `Expected node "${nodeKey.toString()}" to return an object, received ${typeofInput}`,
+          `Expected node "${nodeKey.toString()}" to return an object or an array containing at least one Command object, received ${typeofInput}`,
           {
             lc_error_code: "INVALID_GRAPH_NODE_RETURN_VALUE",
           }
@@ -809,13 +809,26 @@ function _controlBranch(value: any): (string | Send)[] {
   if (_isSend(value)) {
     return [value];
   }
-  if (!isCommand(value)) {
+  const commands = [];
+  if (isCommand(value)) {
+    commands.push(value);
+  } else if (Array.isArray(value) && value.every(isCommand)) {
+    commands.push(...value);
+  } else {
     return [];
   }
-  if (value.graph === Command.PARENT) {
-    throw new ParentCommand(value);
+  const destinations: (string | Send)[] = [];
+  for (const command of commands) {
+    if (command.graph === Command.PARENT) {
+      throw new ParentCommand(command);
+    }
+    if (_isSend(command.goto) || typeof command.goto === "string") {
+      destinations.push(command.goto);
+    } else {
+      destinations.push(...command.goto);
+    }
   }
-  return Array.isArray(value.goto) ? value.goto : [value.goto];
+  return destinations;
 }
 
 function _getControlBranch() {

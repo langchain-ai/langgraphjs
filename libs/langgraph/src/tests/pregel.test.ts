@@ -2061,6 +2061,59 @@ graph TD;
     expect(await graph.invoke({ foo: "" })).toEqual({ foo: "a|c" });
   });
 
+  it("should support a simple edgeless graph", async () => {
+    const StateAnnotation = Annotation.Root({
+      foo: Annotation<string>,
+      bar: Annotation<string>,
+    });
+
+    const nodeA = async (state: typeof StateAnnotation.State) => {
+      const goto = state.foo === "foo" ? "nodeB" : "nodeC";
+      return [
+        new Command({
+          update: {
+            foo: "a",
+          },
+          goto,
+        }),
+      ];
+    };
+
+    const nodeB = async (state: typeof StateAnnotation.State) => {
+      return [
+        {
+          foo: state.foo + "|b",
+        },
+        new Command({
+          update: {
+            bar: "test",
+          },
+        }),
+      ];
+    };
+
+    const nodeC = async (state: typeof StateAnnotation.State) => {
+      return {
+        foo: state.foo + "|c",
+      };
+    };
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("nodeA", nodeA, {
+        ends: ["nodeB", "nodeC"],
+      })
+      .addNode("nodeB", nodeB)
+      .addNode("nodeC", nodeC)
+      .addEdge("__start__", "nodeA")
+      .compile();
+
+    expect(await graph.invoke({ foo: "foo" })).toEqual({
+      foo: "a|b",
+      bar: "test",
+    });
+    expect(await graph.invoke({ foo: "" })).toEqual({ foo: "a|c" });
+  });
+
   it("should handle send sequences correctly", async () => {
     const StateAnnotation = Annotation.Root({
       items: Annotation<any[]>({
