@@ -151,7 +151,8 @@ export function* mapDebugCheckpoint<
   metadata: CheckpointMetadata,
   tasks: readonly PregelExecutableTask<N, C>[],
   pendingWrites: CheckpointPendingWrite[],
-  parentConfig: RunnableConfig | undefined
+  parentConfig: RunnableConfig | undefined,
+  outputKeys: string | string[]
 ) {
   function formatConfig(config: RunnableConfig) {
     // https://stackoverflow.com/a/78298178
@@ -214,7 +215,7 @@ export function* mapDebugCheckpoint<
       values: readChannels(channels, streamChannels),
       metadata,
       next: tasks.map((task) => task.name),
-      tasks: tasksWithWrites(tasks, pendingWrites, taskStates),
+      tasks: tasksWithWrites(tasks, pendingWrites, taskStates, outputKeys),
       parentConfig: parentConfig ? formatConfig(parentConfig) : undefined,
     },
   };
@@ -223,7 +224,8 @@ export function* mapDebugCheckpoint<
 export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
   tasks: PregelTaskDescription[] | readonly PregelExecutableTask<N, C>[],
   pendingWrites: CheckpointPendingWrite[],
-  states?: Record<string, RunnableConfig | StateSnapshot>
+  states: Record<string, RunnableConfig | StateSnapshot> | undefined,
+  outputKeys: string | string[]
 ): PregelTaskDescription[] {
   return tasks.map((task): PregelTaskDescription => {
     const error = pendingWrites.find(
@@ -246,12 +248,33 @@ export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
         interrupts,
       };
     }
+
+    let result: Record<string, unknown> | unknown | undefined;
+    if (
+      pendingWrites.some(
+        ([id, n]) => id === task.id && n !== ERROR && n !== INTERRUPT
+      )
+    ) {
+      if (typeof outputKeys === "string") {
+        result = pendingWrites.find(
+          ([id, chan]) => id === task.id && chan === outputKeys
+        )?.[2];
+      } else {
+        result = Object.fromEntries(
+          pendingWrites
+            .filter(([id, chan]) => id === task.id && outputKeys.includes(chan))
+            .map(([chan, , val]) => [chan, val])
+        );
+      }
+    }
+
     return {
       id: task.id,
       name: task.name as string,
       path: task.path,
       interrupts,
       state: states?.[task.id],
+      result,
     };
   });
 }
