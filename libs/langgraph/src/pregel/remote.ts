@@ -422,7 +422,7 @@ export class RemoteGraph<
           ? // TODO: Fix when SDK type fix gets merged
             (input.toJSON() as Record<string, unknown>)
           : undefined,
-        input: _serializeInputs(input),
+        input: isCommand(input) ? undefined : _serializeInputs(input),
         config: sanitizedConfig,
         streamMode: extendedStreamModes,
         interruptBefore: interruptBefore as string[],
