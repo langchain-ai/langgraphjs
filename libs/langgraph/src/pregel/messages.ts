@@ -83,7 +83,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     if (
       metadata &&
       // Include legacy LangGraph SDK tag
-      (!tags || !(tags.includes(TAG_NOSTREAM) && tags.includes("nostream")))
+      (!tags || (!tags.includes(TAG_NOSTREAM) && !tags.includes("nostream")))
     ) {
       this.metadatas[runId] = [
         (metadata.langgraph_checkpoint_ns as string).split("|"),
@@ -102,15 +102,17 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
   ) {
     const chunk = fields?.chunk;
     this.emittedChatModelRunIds[runId] = true;
-    if (isChatGenerationChunk(chunk) && this.metadatas[runId] !== undefined) {
-      this._emit(this.metadatas[runId], chunk.message);
-    } else {
-      this._emit(
-        this.metadatas[runId],
-        new AIMessageChunk({
-          content: token,
-        })
-      );
+    if (this.metadatas[runId] !== undefined) {
+      if (isChatGenerationChunk(chunk)) {
+        this._emit(this.metadatas[runId], chunk.message);
+      } else {
+        this._emit(
+          this.metadatas[runId],
+          new AIMessageChunk({
+            content: token,
+          })
+        );
+      }
     }
   }
 
