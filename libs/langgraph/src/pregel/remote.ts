@@ -414,15 +414,21 @@ export class RemoteGraph<
       ]),
     ];
 
+    let command, serializedInput;
+    if (isCommand(input)) {
+      // TODO: Remove cast when SDK type fix gets merged
+      command = input.toJSON() as Record<string, unknown>;
+      serializedInput = undefined;
+    } else {
+      serializedInput = _serializeInputs(input);
+    }
+
     for await (const chunk of this.client.runs.stream(
       sanitizedConfig.configurable.thread_id as string,
       this.graphId,
       {
-        command: isCommand(input)
-          ? // TODO: Fix when SDK type fix gets merged
-            (input.toJSON() as Record<string, unknown>)
-          : undefined,
-        input: isCommand(input) ? undefined : _serializeInputs(input),
+        command,
+        input: serializedInput,
         config: sanitizedConfig,
         streamMode: extendedStreamModes,
         interruptBefore: interruptBefore as string[],

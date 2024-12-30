@@ -475,7 +475,7 @@ describe("RemoteGraph", () => {
     expect(result).toEqual({ messages: [{ type: "human", content: "world" }] });
   });
 
-  test.only("invoke with a Command serializes properly", async () => {
+  test("invoke with a Command serializes properly", async () => {
     const client = new Client({});
     let streamArgs;
     jest
