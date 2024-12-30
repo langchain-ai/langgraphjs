@@ -1832,15 +1832,15 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph-sdk@npm:~0.0.21":
-  version: 0.0.21
-  resolution: "@langchain/langgraph-sdk@npm:0.0.21"
+"@langchain/langgraph-sdk@npm:~0.0.32":
+  version: 0.0.32
+  resolution: "@langchain/langgraph-sdk@npm:0.0.32"
   dependencies:
     "@types/json-schema": ^7.0.15
     p-queue: ^6.6.2
     p-retry: 4
     uuid: ^9.0.0
-  checksum: 5dabe873b6cf3fbaa66b445c7032f1188d0c3eb7872457d0a8131521992a1e999e73514eeb9a344c10ee2315992e7130739de32257e2b3107a6dfe5f4027d6a2
+  checksum: dd0e3fd1f3880e1ddff65108f338e75365bdff60f8ca5dc4e1b1e1be79fa216f1e599fa5d7f62ab9b44778787426f20b82db4e97463d6f3f4eda43f81666bfe9
   languageName: node
   linkType: hard
 
@@ -1855,7 +1855,7 @@ __metadata:
     "@langchain/langgraph-checkpoint": ~0.0.13
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
-    "@langchain/langgraph-sdk": ~0.0.21
+    "@langchain/langgraph-sdk": ~0.0.32
     "@langchain/openai": ^0.3.11
     "@langchain/scripts": ">=0.1.3 <0.2.0"
     "@swc/core": ^1.3.90

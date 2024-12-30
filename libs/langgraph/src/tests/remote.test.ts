@@ -3,7 +3,7 @@ import { jest } from "@jest/globals";
 import { Client } from "@langchain/langgraph-sdk";
 import { RemoteGraph } from "../pregel/remote.js";
 import { gatherIterator } from "../utils.js";
-import { INTERRUPT } from "../constants.js";
+import { Command, INTERRUPT, Send } from "../constants.js";
 import { GraphInterrupt } from "../errors.js";
 
 describe("RemoteGraph", () => {
@@ -473,5 +473,60 @@ describe("RemoteGraph", () => {
       config
     );
     expect(result).toEqual({ messages: [{ type: "human", content: "world" }] });
+  });
+
+  test("invoke with a Command serializes properly", async () => {
+    const client = new Client({});
+    let streamArgs;
+    jest
+      .spyOn((client as any).runs, "stream")
+      .mockImplementation(async function* (...args) {
+        streamArgs = args;
+        const chunks = [
+          { event: "values", data: { chunk: "data1" } },
+          { event: "values", data: { chunk: "data2" } },
+          {
+            event: "values",
+            data: { messages: [{ type: "human", content: "world" }] },
+          },
+        ];
+        for (const chunk of chunks) {
+          yield chunk;
+        }
+      });
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    const config = { configurable: { thread_id: "thread_1" } };
+    const result = await remotePregel.invoke(
+      new Command({
+        goto: ["one", new Send("foo", { baz: "qux" })],
+        resume: "bar",
+        update: { foo: "bar" },
+      }),
+      config
+    );
+    expect(result).toEqual({ messages: [{ type: "human", content: "world" }] });
+    expect(streamArgs).toEqual([
+      "thread_1",
+      "test_graph_id",
+      {
+        command: {
+          update: { foo: "bar" },
+          resume: "bar",
+          goto: ["one", { node: "foo", args: { baz: "qux" } }],
+        },
+        input: undefined,
+        config: expect.anything(),
+        streamMode: ["values", "updates"],
+        interruptBefore: undefined,
+        interruptAfter: undefined,
+        streamSubgraphs: false,
+        ifNotExists: "create",
+      },
+    ]);
   });
 });

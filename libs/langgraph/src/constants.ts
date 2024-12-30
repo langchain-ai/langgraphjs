@@ -112,6 +112,13 @@ export class Send implements SendInterface {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(public node: string, public args: any) {}
+
+  toJSON() {
+    return {
+      node: this.node,
+      args: this.args,
+    };
+  }
 }
 
 export function _isSend(x: unknown): x is Send {
@@ -138,11 +145,12 @@ export type CommandParams<R> = {
    *   - GraphCommand.PARENT: closest parent graph
    */
   graph?: string;
+
   /**
    * Update to apply to the graph's state.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  update?: Record<string, any>;
+  update?: Record<string, unknown> | [string, unknown][];
+
   /**
    * Can be one of the following:
    *   - name of the node to navigate to next (any node that belongs to the specified `graph`)
@@ -222,8 +230,7 @@ export class Command<R = unknown> {
 
   graph?: string;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  update?: Record<string, any> | [string, any][] = [];
+  update?: Record<string, unknown> | [string, unknown][];
 
   resume?: R;
 
@@ -258,6 +265,28 @@ export class Command<R = unknown> {
     } else {
       return [["__root__", this.update]];
     }
+  }
+
+  toJSON() {
+    let serializedGoto;
+    if (typeof this.goto === "string") {
+      serializedGoto = this.goto;
+    } else if (_isSend(this.goto)) {
+      serializedGoto = this.goto.toJSON();
+    } else {
+      serializedGoto = this.goto.map((innerGoto) => {
+        if (typeof innerGoto === "string") {
+          return innerGoto;
+        } else {
+          return innerGoto.toJSON();
+        }
+      });
+    }
+    return {
+      update: this.update,
+      resume: this.resume,
+      goto: serializedGoto,
+    };
   }
 }
 

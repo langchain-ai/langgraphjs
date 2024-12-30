@@ -42,6 +42,7 @@ import {
   CHECKPOINT_NAMESPACE_SEPARATOR,
   CONFIG_KEY_STREAM,
   INTERRUPT,
+  isCommand,
 } from "../constants.js";
 
 export type RemoteGraphParams = Omit<
@@ -399,8 +400,8 @@ export class RemoteGraph<
     const streamSubgraphs =
       options?.subgraphs ?? streamProtocolInstance !== undefined;
 
-    const interruptBefore = this.interruptBefore ?? options?.interruptBefore;
-    const interruptAfter = this.interruptAfter ?? options?.interruptAfter;
+    const interruptBefore = options?.interruptBefore ?? this.interruptBefore;
+    const interruptAfter = options?.interruptAfter ?? this.interruptAfter;
 
     const { updatedStreamModes, reqSingle, reqUpdates } = getStreamModes(
       options?.streamMode
@@ -413,11 +414,22 @@ export class RemoteGraph<
       ]),
     ];
 
+    let command;
+    let serializedInput;
+    if (isCommand(input)) {
+      // TODO: Remove cast when SDK type fix gets merged
+      command = input.toJSON() as Record<string, unknown>;
+      serializedInput = undefined;
+    } else {
+      serializedInput = _serializeInputs(input);
+    }
+
     for await (const chunk of this.client.runs.stream(
       sanitizedConfig.configurable.thread_id as string,
       this.graphId,
       {
-        input: _serializeInputs(input),
+        command,
+        input: serializedInput,
         config: sanitizedConfig,
         streamMode: extendedStreamModes,
         interruptBefore: interruptBefore as string[],
