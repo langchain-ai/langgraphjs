@@ -96,6 +96,7 @@ import {
   PULL,
   PUSH,
   Send,
+  TAG_NOSTREAM,
 } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
@@ -3157,14 +3158,20 @@ graph TD;
 
       const generate = async (state: typeof StateAnnotation.State) => {
         const response = await llm.invoke(state.question);
-        return { answer: response.content };
+        return { answer: response.content as string };
       };
 
       // Compile application and test
       const graph = new StateGraph(StateAnnotation)
         .addNode("generate", generate)
+        .addNode(
+          "nostream_generate",
+          RunnableLambda.from(generate).withConfig({
+            tags: [TAG_NOSTREAM],
+          })
+        )
         .addEdge("__start__", "generate")
-        .addEdge("generate", "__end__")
+        .addEdge("generate", "nostream_generate")
         .compile();
 
       const inputs = { question: "How are you?" };
@@ -3176,6 +3183,9 @@ graph TD;
         aiMessageChunks.push(message);
       }
       expect(aiMessageChunks.length).toBeGreaterThan(1);
+      expect(aiMessageChunks.map((chunk) => chunk.content).join("")).toEqual(
+        "foobar"
+      );
     });
 
     it("State graph packets", async () => {
