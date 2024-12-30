@@ -414,7 +414,8 @@ export class RemoteGraph<
       ]),
     ];
 
-    let command, serializedInput;
+    let command;
+    let serializedInput;
     if (isCommand(input)) {
       // TODO: Remove cast when SDK type fix gets merged
       command = input.toJSON() as Record<string, unknown>;
