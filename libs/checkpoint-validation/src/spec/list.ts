@@ -116,11 +116,15 @@ export function listTests<T extends BaseCheckpointSaver>(
         } else {
           expect(actualTuplesMap.size).toEqual(expectedTuplesMap.size);
           for (const [key, value] of actualTuplesMap.entries()) {
-            // TODO: MongoDBSaver doesn't return pendingWrites on list, so we need to special case them
+            // TODO: MongoDBSaver, SQLiteSaver And SupabaseSaver don't return pendingWrites on list, so we need to special case them
             // see: https://github.com/langchain-ai/langgraphjs/issues/589
             const checkpointerIncludesPendingWritesOnList =
               initializer.checkpointerName !==
-              "@langchain/langgraph-checkpoint-mongodb";
+              "@langchain/langgraph-checkpoint-mongodb" &&
+              initializer.checkpointerName !==
+              "@langchain/langgraph-checkpoint-sqlite" &&
+              initializer.checkpointerName !==
+              "@langchain/langgraph-checkpoint-supabase";
 
             const expectedTuple = expectedTuplesMap.get(key);
             if (!checkpointerIncludesPendingWritesOnList) {
@@ -169,7 +173,7 @@ export function listTests<T extends BaseCheckpointSaver>(
         // TODO: MongoDBSaver support for filter is broken and can't be fixed without a breaking change
         // see: https://github.com/langchain-ai/langgraphjs/issues/581
         initializer.checkpointerName ===
-        "@langchain/langgraph-checkpoint-mongodb"
+          "@langchain/langgraph-checkpoint-mongodb"
           ? [undefined]
           : [undefined, {}, { source: "input" }, { source: "loop" }],
     };
@@ -191,17 +195,17 @@ export function listTests<T extends BaseCheckpointSaver>(
                       tuple.config.configurable?.thread_id === thread_id) &&
                     (checkpoint_ns === undefined ||
                       tuple.config.configurable?.checkpoint_ns ===
-                        checkpoint_ns) &&
+                      checkpoint_ns) &&
                     (before === undefined ||
                       tuple.checkpoint.id <
-                        before.configurable?.checkpoint_id) &&
+                      before.configurable?.checkpoint_id) &&
                     (filter === undefined ||
                       Object.entries(filter).every(
                         ([key, value]) =>
                           (
                             tuple.metadata as
-                              | Record<string, unknown>
-                              | undefined
+                            | Record<string, unknown>
+                            | undefined
                           )?.[key] === value
                       ))
                 )
@@ -319,9 +323,8 @@ export function listTests<T extends BaseCheckpointSaver>(
 
     const descriptionWhen =
       descriptionWhenParts.length > 1
-        ? `${descriptionWhenParts.slice(0, -1).join(", ")}, and ${
-            descriptionWhenParts[descriptionWhenParts.length - 1]
-          }`
+        ? `${descriptionWhenParts.slice(0, -1).join(", ")}, and ${descriptionWhenParts[descriptionWhenParts.length - 1]
+        }`
         : descriptionWhenParts[0];
 
     return `should return ${descriptionTupleCount} when ${descriptionWhen}`;
