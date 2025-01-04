@@ -58,7 +58,7 @@
     "jest-environment-node": "^29.6.4",
     "prettier": "^2.8.3",
     "release-it": "^17.6.0",
-    "rollup": "^4.24.1",
+    "rollup": "^4.29.0",
     "ts-jest": "^29.1.0",
     "tsx": "^4.7.0",
     "typescript": "^4.9.5 || ^5.4.5"
