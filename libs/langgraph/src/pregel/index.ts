@@ -101,6 +101,7 @@ import { gatherIterator, patchConfigurable } from "../utils.js";
 import { ensureLangGraphConfig } from "./utils/config.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { StreamMessagesHandler } from "./messages.js";
+import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -1155,6 +1156,115 @@ export class Pregel<
     };
   }
 
+  async _runLoop(params: {
+    loop: PregelLoop;
+    interruptAfter: string[] | "*";
+    interruptBefore: string[] | "*";
+    runManager?: CallbackManagerForChainRun;
+    debug: boolean;
+    config: LangGraphRunnableConfig;
+  }) {
+    const { loop, interruptAfter, interruptBefore, runManager, debug, config } =
+      params;
+    let tickError;
+    try {
+      while (
+        await loop.tick({
+          inputKeys: this.inputChannels as string | string[],
+          interruptAfter,
+          interruptBefore,
+          manager: runManager,
+        })
+      ) {
+        if (debug) {
+          printStepCheckpoint(
+            loop.checkpointMetadata.step,
+            loop.channels,
+            this.streamChannelsList as string[]
+          );
+        }
+        if (debug) {
+          printStepTasks(loop.step, Object.values(loop.tasks));
+        }
+        // execute tasks, and wait for one to fail or all to finish.
+        // each task is independent from all other concurrent tasks
+        // yield updates/debug output as each task finishes
+        const taskStream = executeTasksWithRetry(
+          Object.values(loop.tasks).filter((task) => task.writes.length === 0),
+          {
+            stepTimeout: this.stepTimeout,
+            signal: config.signal,
+            retryPolicy: this.retryPolicy,
+          }
+        );
+        let graphInterrupt;
+        for await (const { task, error } of taskStream) {
+          if (error !== undefined) {
+            if (isGraphBubbleUp(error)) {
+              if (loop.isNested) {
+                throw error;
+              }
+              if (isGraphInterrupt(error)) {
+                graphInterrupt = error;
+                if (error.interrupts.length) {
+                  const interrupts: PendingWrite<string>[] =
+                    error.interrupts.map((interrupt) => [INTERRUPT, interrupt]);
+                  const resumes = task.writes.filter((w) => w[0] === RESUME);
+                  if (resumes.length) {
+                    interrupts.push(...resumes);
+                  }
+                  loop.putWrites(task.id, interrupts);
+                }
+              }
+            } else {
+              loop.putWrites(task.id, [
+                [ERROR, { message: error.message, name: error.name }],
+              ]);
+              throw error;
+            }
+          } else {
+            loop.putWrites(task.id, task.writes);
+          }
+        }
+
+        if (debug) {
+          printStepWrites(
+            loop.step,
+            Object.values(loop.tasks)
+              .map((task) => task.writes)
+              .flat(),
+            this.streamChannelsList as string[]
+          );
+        }
+        if (graphInterrupt !== undefined) {
+          throw graphInterrupt;
+        }
+      }
+      if (loop.status === "out_of_steps") {
+        throw new GraphRecursionError(
+          [
+            `Recursion limit of ${config.recursionLimit} reached`,
+            "without hitting a stop condition. You can increase the",
+            `limit by setting the "recursionLimit" config key.`,
+          ].join(" "),
+          {
+            lc_error_code: "GRAPH_RECURSION_LIMIT",
+          }
+        );
+      }
+    } catch (e) {
+      tickError = e as Error;
+      const suppress = await loop.finishAndHandleError(tickError);
+      if (!suppress) {
+        throw e;
+      }
+    } finally {
+      if (tickError === undefined) {
+        await loop.finishAndHandleError();
+      }
+    }
+  }
+
   override async *_streamIterator(
     input: PregelInputType | Command,
     options?: Partial<PregelOptions<Nn, Cc>>
@@ -1234,7 +1344,15 @@ export class Pregel<
     let loop: PregelLoop | undefined;
     let loopError: unknown;
 
-    const runLoop = async () => {
+    /**
+     * The PregelLoop will yield events from concurrent tasks as soon as they are
+     * generated. Each task can push multiple events onto the stream in any order.
+     *
+     * We use a separate background method and stream here in order to yield events
+     * from the loop to the main stream and therefore back to the user as soon as
+     * they are available.
+     */
+    const createAndRunLoop = async () => {
       try {
         loop = await PregelLoop.initialize({
           input,
@@ -1254,86 +1372,14 @@ export class Pregel<
             [CONFIG_KEY_STREAM]: loop.stream,
           };
         }
-        while (
-          await loop.tick({
-            inputKeys: this.inputChannels as string | string[],
-            interruptAfter,
-            interruptBefore,
-            manager: runManager,
-          })
-        ) {
-          if (debug) {
-            printStepCheckpoint(
-              loop.checkpointMetadata.step,
-              loop.channels,
-              this.streamChannelsList as string[]
-            );
-          }
-          if (debug) {
-            printStepTasks(loop.step, Object.values(loop.tasks));
-          }
-          // execute tasks, and wait for one to fail or all to finish.
-          // each task is independent from all other concurrent tasks
-          // yield updates/debug output as each task finishes
-          const taskStream = executeTasksWithRetry(
-            Object.values(loop.tasks).filter(
-              (task) => task.writes.length === 0
-            ),
-            {
-              stepTimeout: this.stepTimeout,
-              signal: config.signal,
-              retryPolicy: this.retryPolicy,
-            }
-          );
-          // Timeouts will be thrown
-          for await (const { task, error } of taskStream) {
-            if (error !== undefined) {
-              if (isGraphBubbleUp(error)) {
-                if (loop.isNested) {
-                  throw error;
-                }
-                if (isGraphInterrupt(error) && error.interrupts.length) {
-                  const interrupts: PendingWrite<string>[] =
-                    error.interrupts.map((interrupt) => [INTERRUPT, interrupt]);
-                  const resumes = task.writes.filter((w) => w[0] === RESUME);
-                  if (resumes.length) {
-                    interrupts.push(...resumes);
-                  }
-                  loop.putWrites(task.id, interrupts);
-                }
-              } else {
-                loop.putWrites(task.id, [
-                  [ERROR, { message: error.message, name: error.name }],
-                ]);
-                throw error;
-              }
-            } else {
-              loop.putWrites(task.id, task.writes);
-            }
-          }
-
-          if (debug) {
-            printStepWrites(
-              loop.step,
-              Object.values(loop.tasks)
-                .map((task) => task.writes)
-                .flat(),
-              this.streamChannelsList as string[]
-            );
-          }
-        }
-        if (loop.status === "out_of_steps") {
-          throw new GraphRecursionError(
-            [
-              `Recursion limit of ${config.recursionLimit} reached`,
-              "without hitting a stop condition. You can increase the",
-              `limit by setting the "recursionLimit" config key.`,
-            ].join(" "),
-            {
-              lc_error_code: "GRAPH_RECURSION_LIMIT",
-            }
-          );
-        }
+        await this._runLoop({
+          loop,
+          interruptAfter,
+          interruptBefore,
+          runManager,
+          debug,
+          config,
+        });
       } catch (e) {
         loopError = e;
       } finally {
@@ -1363,7 +1409,7 @@ export class Pregel<
         }
       }
     };
-    const runLoopPromise = runLoop();
+    const runLoopPromise = createAndRunLoop();
     try {
       for await (const chunk of stream) {
         if (chunk === undefined) {

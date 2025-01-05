@@ -9,6 +9,8 @@ import type { PregelExecutableTask } from "./types.js";
 import {
   _isSend,
   Command,
+  ERROR,
+  INTERRUPT,
   NULL_TASK_ID,
   RESUME,
   SELF,
@@ -189,8 +191,12 @@ export function* mapOutputUpdates<N extends PropertyKey, C extends PropertyKey>(
   cached?: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Generator<Record<N, Record<string, any> | any>> {
-  const outputTasks = tasks.filter(([task]) => {
-    return task.config === undefined || !task.config.tags?.includes(TAG_HIDDEN);
+  const outputTasks = tasks.filter(([task, ww]) => {
+    return (
+      (task.config === undefined || !task.config.tags?.includes(TAG_HIDDEN)) &&
+      ww[0][0] !== ERROR &&
+      ww[0][0] !== INTERRUPT
+    );
   });
   if (!outputTasks.length) {
     return;
