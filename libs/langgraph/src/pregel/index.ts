@@ -11,6 +11,7 @@ import {
   RunnableLike,
 } from "@langchain/core/runnables";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
+import type { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import {
   All,
   BaseCheckpointSaver,
@@ -101,7 +102,6 @@ import { gatherIterator, patchConfigurable } from "../utils.js";
 import { ensureLangGraphConfig } from "./utils/config.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { StreamMessagesHandler } from "./messages.js";
-import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
