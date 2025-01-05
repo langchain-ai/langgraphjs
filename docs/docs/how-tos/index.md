@@ -44,15 +44,15 @@ LangGraph makes it easy to manage conversation [memory](../concepts/memory.md) i
 - [How to add long-term memory (cross-thread)](cross-thread-persistence.ipynb)
 - [How to use semantic search for long-term memory](semantic-search.ipynb)
 
+### Human-in-the-loop
+
 [Human-in-the-loop](/langgraphjs/concepts/human_in_the_loop) functionality allows
 you to involve humans in the decision-making process of your graph. These how-to guides show how to implement human-in-the-loop workflows in your graph.
-
 
 Key workflows:
 
 - [How to wait for user input](wait-user-input.ipynb): A basic example that shows how to implement a human-in-the-loop workflow in your graph using the `interrupt` function.
 - [How to review tool calls](review-tool-calls.ipynb): Incorporate human-in-the-loop for reviewing/editing/accepting tool call requests before they executed using the `interrupt` function.
-
 
 Other methods:
 

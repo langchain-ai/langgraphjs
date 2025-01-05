@@ -1740,7 +1740,7 @@ export function runPregelTests(
       await gatherIterator(
         app.stream(null, { ...history[2].config, streamMode: "updates" })
       )
-    ).toEqual([{ one: { inbox: 4 } }]);
+    ).toEqual([{ one: { inbox: 4 } }, { [INTERRUPT]: [] }]);
   });
 
   it("should batch many processes with input and output", async () => {
@@ -3045,7 +3045,7 @@ graph TD;
 
       // Return state at interrupt time
       expect(await graph.invoke({ hello: "world" }, thread)).toEqual({
-        hello: "world",
+        hello: "again",
       });
 
       expect(awhileReturns).toBe(1);
@@ -3053,7 +3053,7 @@ graph TD;
 
       // Invoking a graph with no more tasks should return the final value
       expect(await graph.invoke(null, thread)).toEqual({
-        hello: "world",
+        hello: "again",
       });
 
       expect(awhileReturns).toBe(1);
@@ -3390,6 +3390,7 @@ graph TD;
             messages: expectedOutputMessages[1],
           },
         },
+        { [INTERRUPT]: [] },
       ]);
       const appWithInterruptState = await appWithInterrupt.getState(config);
       const appWithInterruptCheckpointer =
@@ -3513,6 +3514,7 @@ graph TD;
             messages: expectedOutputMessages[3],
           },
         },
+        { [INTERRUPT]: [] },
       ]);
 
       expect(await appWithInterrupt.getState(config)).toEqual({
@@ -6403,7 +6405,7 @@ graph TD;
       // test invoke w/ nested interrupt
       const config1 = { configurable: { thread_id: "1" } };
       expect(await app.invoke({ myKey: "" }, config1)).toEqual({
-        myKey: "",
+        myKey: " and parallel",
       });
 
       expect(await app.invoke(null, config1)).toEqual({
@@ -6427,6 +6429,7 @@ graph TD;
           [expect.stringContaining("inner:")],
           { inner1: { myKey: "got here", myOtherKey: "" } },
         ],
+        [[], { __interrupt__: [] }],
       ]);
       expect(await gatherIterator(app.stream(null, config2))).toEqual([
         {
@@ -6444,7 +6447,7 @@ graph TD;
       };
       expect(
         await gatherIterator(await app.stream({ myKey: "" }, config3))
-      ).toEqual([{ myKey: "" }]);
+      ).toEqual([{ myKey: "" }, { myKey: " and parallel" }]);
       expect(await gatherIterator(await app.stream(null, config3))).toEqual([
         { myKey: "" },
         { myKey: "got here and there and parallel" },
@@ -6466,6 +6469,7 @@ graph TD;
       // while we're waiting for the node w/ interrupt inside to finish
       expect(await gatherIterator(appBefore.stream(null, config4))).toEqual([
         { myKey: "" },
+        { myKey: " and parallel" },
       ]);
       expect(await gatherIterator(appBefore.stream(null, config4))).toEqual([
         { myKey: "" },
@@ -6484,7 +6488,7 @@ graph TD;
       };
       expect(
         await gatherIterator(appAfter.stream({ myKey: "" }, config5))
-      ).toEqual([{ myKey: "" }]);
+      ).toEqual([{ myKey: "" }, { myKey: " and parallel" }]);
       expect(await gatherIterator(appAfter.stream(null, config5))).toEqual([
         { myKey: "" },
         { myKey: "got here and there and parallel" },
@@ -6567,7 +6571,7 @@ graph TD;
       const config2 = { configurable: { thread_id: "2" } };
       expect(
         await gatherIterator(app.stream({ myKey: "my value" }, config2))
-      ).toEqual([{ parent1: { myKey: "hi my value" } }]);
+      ).toEqual([{ parent1: { myKey: "hi my value" } }, { [INTERRUPT]: [] }]);
       expect(await gatherIterator(app.stream(null, config2))).toEqual([
         { child: { myKey: "hi my value here and there" } },
         { parent2: { myKey: "hi my value here and there and back again" } },
@@ -7320,6 +7324,7 @@ graph TD;
           [expect.stringMatching(/^child:/), expect.stringMatching(/^child1:/)],
           { grandchild1: { myKey: "hi my value here" } },
         ],
+        [[], { [INTERRUPT]: [] }],
       ]);
 
       // get state without subgraphs
@@ -7998,6 +8003,7 @@ graph TD;
           [expect.stringMatching(/^child:/), expect.stringMatching(/^child1:/)],
           { grandchild1: { myKey: "hi my value here" } },
         ],
+        [[""], { [INTERRUPT]: [] }],
       ]);
     });
 
