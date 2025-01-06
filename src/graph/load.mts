@@ -65,7 +65,7 @@ export async function registerFromEnv() {
 export function getGraph(
   graphId: string,
   options?: {
-    checkpointer?: BaseCheckpointSaver;
+    checkpointer?: BaseCheckpointSaver | null;
     store?: BaseStore;
   }
 ) {
@@ -73,7 +73,13 @@ export function getGraph(
     throw new HTTPException(404, { message: `Graph "${graphId}" not found` });
 
   const compiled = GRAPHS[graphId];
-  compiled.checkpointer = options?.checkpointer ?? new MemorySaver();
+
+  if (typeof options?.checkpointer === "undefined") {
+    compiled.checkpointer = options?.checkpointer;
+  } else {
+    compiled.checkpointer = new MemorySaver();
+  }
+
   compiled.store = options?.store ?? new InMemoryStore();
 
   return compiled;

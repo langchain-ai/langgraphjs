@@ -508,7 +508,7 @@ describe("runs", () => {
     expect(runs.length).toBe(1);
   });
 
-  it.only.concurrent("stream values", async () => {
+  it.concurrent("stream values", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input = {

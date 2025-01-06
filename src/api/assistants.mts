@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 
 import { v4 as uuid } from "uuid";
-import { LangGraphRunnableConfig } from "../storage/ops.mjs";
+import { RunnableConfig } from "../storage/ops.mjs";
 import { z } from "zod";
 
 import { getGraph, getGraphSchema } from "../graph/load.mjs";
@@ -20,7 +20,7 @@ api.post(
     // Create Assistant
     const payload = c.req.valid("json");
     const assistant = await Assistants.put(payload.assistant_id ?? uuid(), {
-      config: payload.config as LangGraphRunnableConfig,
+      config: payload.config ?? {},
       graph_id: payload.graph_id,
       metadata: payload.metadata ?? {},
       if_exists: payload.if_exists ?? "raise",

@@ -1,79 +1,85 @@
-import { LangGraphRunnableConfig, StreamMode } from "./storage/ops.mjs";
+import { Run, RunCommand, RunSend } from "./storage/ops.mjs";
 import { getGraph } from "./graph/load.mjs";
-import { CompiledGraph } from "@langchain/langgraph";
+import { Command, Send } from "@langchain/langgraph";
 
-type Event<Type, Value> = { type: Type; value: Value };
+// TODO: these types are not exported from @langchain/langgraph/pregel
+type LangGraphStreamMode =
+  | "values"
+  | "messages"
+  | "updates"
+  | "debug"
+  | "custom";
 
-type ApiStreamEvent =
-  | Event<"metadata", { run_id: string }>
-  | Event<
-      "events",
-      // TODO: extract the type from @langchain/core
-      {
-        event: string;
-        name: string;
-        run_id: string;
-        tags?: string[];
-        metadata: Record<string, any>;
-        data: { input?: any; output?: any; chunk?: any };
-      }
-    >;
+const getLangGraphCommand = (command: RunCommand) => {
+  let goto =
+    command.goto != null && !Array.isArray(command.goto)
+      ? [command.goto]
+      : command.goto;
 
-interface Run {
-  runId: string;
-  kwargs: {
-    input: unknown;
-    streamMode?: Array<StreamMode>;
+  return new Command({
+    goto: goto?.map((item: string | RunSend) => {
+      if (typeof item !== "string") return new Send(item.node, item.input);
+      return item;
+    }),
+    update: command.update,
+    resume: command.resume,
+  });
+};
 
-    // TODO: implement webhook
-    webhook?: unknown;
-    // TODO: implement feedback_keys
-    feedbackKeys?: string | string[] | undefined;
-
-    interruptBefore?: string | string[] | undefined;
-    interruptAfter?: string | string[] | undefined;
-    temporary: boolean;
-
-    config: LangGraphRunnableConfig;
-
-    [key: string]: unknown;
-  };
-}
 export async function* streamState(
   run: Run,
-  options?: {
-    onGraph?: (graph: CompiledGraph<string>) => void;
-  }
-): AsyncGenerator<ApiStreamEvent> {
-  const graphId = run.kwargs.config.configurable?.graph_id;
+  attempt: number = 1
+): AsyncGenerator<unknown> {
+  const kwargs = run.kwargs;
+  const graphId = kwargs.config.configurable?.graph_id;
+
   if (!graphId || typeof graphId !== "string") {
     throw new Error("Invalid or missing graph_id");
   }
 
-  const runId = run.runId;
-  const graph = getGraph(graphId);
-  const streamMode: StreamMode[] = run.kwargs.streamMode ?? ["updates"];
-
-  options?.onGraph?.(graph);
-
-  yield { type: "metadata", value: { run_id: run.runId } };
-
-  // TODO: implement other stream modes
-  const events = graph.streamEvents(run.kwargs.input, {
-    version: "v2",
-
-    tags: run.kwargs.config.tags,
-    configurable: run.kwargs.config.configurable,
-    recursionLimit: run.kwargs.config.recursion_limit,
-
-    runId,
-    // @ts-expect-error TODO: allow multiple stream modes
-    streamMode: streamMode[0],
+  const graph = getGraph(graphId, {
+    checkpointer: kwargs.temporary ? null : undefined,
   });
 
-  for await (const event of events) {
-    if (streamMode.includes("events")) yield { type: "events", value: event };
-    if (streamMode.includes("messages")) {
+  const libStreamMode: Set<LangGraphStreamMode> = new Set(
+    kwargs.stream_mode?.filter((mode) => mode !== "events") ?? []
+  );
+
+  if (!libStreamMode.has("debug")) libStreamMode.add("debug");
+
+  yield { type: "metadata", value: { run_id: run.run_id, attempt } };
+
+  const metadata = {
+    ...kwargs.config?.metadata,
+    run_attempt: attempt,
+    // TODO: get langgraph version from NPM / load.hooks.mjs
+    langgraph_version: "0.2.35",
+    langgraph_plan: "developer",
+    langgraph_host: "self-hosted",
+  };
+
+  const events = graph.streamEvents(
+    kwargs.command != null ? getLangGraphCommand(kwargs.command) : kwargs.input,
+    {
+      version: "v2",
+
+      interruptAfter: kwargs.interrupt_after,
+      interruptBefore: kwargs.interrupt_before,
+
+      tags: kwargs.config.tags,
+      configurable: kwargs.config.configurable,
+      recursionLimit: kwargs.config.recursion_limit,
+      subgraphs: kwargs.subgraphs,
+      metadata,
+
+      runId: run.run_id,
+      streamMode: [...libStreamMode],
     }
+  );
+
+  for await (const event of events) {
+    if (event.tags?.includes("langsmith:hidden")) continue;
+    // TODO: handle if we need to filter events?
+    yield event;
   }
 }

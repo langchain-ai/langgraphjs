@@ -1,9 +1,7 @@
-import { RunnableConfig } from "@langchain/core/runnables";
-import {
-  MemorySaver,
-  StateSnapshot,
-  type CheckpointMetadata,
-  type CompiledGraph,
+import type {
+  StateSnapshot as LangGraphStateSnapshot,
+  CheckpointMetadata as LangGraphCheckpointMetadata,
+  LangGraphRunnableConfig,
 } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
 import { v4 as uuid } from "uuid";
@@ -31,7 +29,7 @@ export type OnConflictBehavior = "raise" | "do_nothing";
 
 export type IfNotExists = "create" | "reject";
 
-export interface LangGraphRunnableConfig {
+export interface RunnableConfig {
   tags?: string[];
 
   recursion_limit?: number;
@@ -41,6 +39,8 @@ export interface LangGraphRunnableConfig {
     thread_ts?: string;
     [key: string]: unknown;
   };
+
+  metadata?: LangGraphRunnableConfig["metadata"];
 }
 
 interface Assistant {
@@ -63,7 +63,41 @@ interface AssistantVersion {
   created_at: Date;
 }
 
-interface Run {
+export interface RunSend {
+  node: string;
+  input?: Record<string, any>;
+}
+
+export interface RunCommand {
+  goto?: string | RunSend | Array<RunSend | string>;
+  update?: Record<string, unknown> | [string, unknown][];
+  resume?: unknown;
+}
+
+export interface RunKwargs {
+  input?: unknown;
+  command?: RunCommand;
+
+  stream_mode?: Array<StreamMode>;
+
+  interrupt_before?: "*" | string[] | undefined;
+  interrupt_after?: "*" | string[] | undefined;
+
+  config: RunnableConfig;
+
+  subgraphs?: boolean;
+  temporary?: boolean;
+
+  // TODO: implement webhook
+  webhook?: unknown;
+
+  // TODO: implement feedback_keys
+  feedback_keys?: string | string[] | undefined;
+
+  [key: string]: unknown;
+}
+
+export interface Run {
   run_id: string;
   thread_id: string;
   assistant_id: string;
@@ -71,7 +105,7 @@ interface Run {
   updated_at: Date;
   status: RunStatus;
   metadata: Metadata;
-  kwargs: Record<string, unknown>;
+  kwargs: RunKwargs;
   multitask_strategy: MultitaskStrategy;
 }
 
@@ -382,7 +416,7 @@ interface CheckpointTask {
 
 interface CheckpointPayload {
   config?: RunnableConfig;
-  metadata: CheckpointMetadata;
+  metadata: LangGraphCheckpointMetadata;
   values: Record<string, unknown>;
   next: string[];
   parent_config?: RunnableConfig;
@@ -656,7 +690,7 @@ export class Threads {
       options: {
         subgraphs?: boolean;
       }
-    ): Promise<StateSnapshot> {
+    ): Promise<LangGraphStateSnapshot> {
       const subgraphs = options.subgraphs ?? false;
       const threadId = config.configurable?.thread_id;
       const thread = threadId ? await Threads.get(threadId) : undefined;
@@ -749,28 +783,28 @@ export class Threads {
     }
 
     static async list(
-      threadId: string,
+      config: RunnableConfig,
       options?: {
         limit?: number;
         before?: string | RunnableConfig;
         metadata?: Metadata;
       }
     ) {
+      const threadId = config.configurable?.thread_id;
+      if (!threadId) return [];
+
       const thread = await Threads.get(threadId);
       const graphId = thread.metadata?.graph_id as string | undefined | null;
       if (graphId == null) return [];
 
-      const threadConfig = thread.config ?? {};
-
       const graph = await getGraph(graphId, { checkpointer, store });
-
       const before: RunnableConfig | undefined =
         typeof options?.before === "string"
           ? { configurable: { checkpoint_id: options.before } }
           : options?.before;
 
-      const states: StateSnapshot[] = [];
-      for await (const state of graph.getStateHistory(threadConfig, {
+      const states: LangGraphStateSnapshot[] = [];
+      for await (const state of graph.getStateHistory(config, {
         limit: options?.limit ?? 10,
         before,
         filter: options?.metadata,
