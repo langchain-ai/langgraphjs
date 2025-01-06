@@ -1,4 +1,4 @@
-import { Config, StreamMode } from "./storage/base.mjs";
+import { Config, StreamMode } from "./storage/ops.mjs";
 import { getGraph } from "./graph/load.mjs";
 import { CompiledGraph } from "@langchain/langgraph";
 

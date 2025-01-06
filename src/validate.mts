@@ -13,6 +13,7 @@ export const AssistantConfig = z
     recursion_limit: z.number().int().optional(),
     configurable: AssistantConfigurable.optional(),
   })
+  .catchall(z.unknown())
   .describe("The configuration of an assistant.");
 
 export const Assistant = z.object({
@@ -35,12 +36,13 @@ export const AssistantCreate = z
     config: AssistantConfig.optional(),
     metadata: z
       .object({})
-      .catchall(z.any())
+      .catchall(z.unknown())
       .describe("Metadata for the assistant.")
       .optional(),
     if_exists: z
       .union([z.literal("raise"), z.literal("do_nothing")])
       .optional(),
+    name: z.string().optional(),
   })
   .describe("Payload for creating an assistant.");
 
@@ -74,6 +76,7 @@ export const Cron = z.object({
 
 export const CronCreate = z
   .object({
+    thread_id: z.string().uuid(),
     assistant_id: z.string().uuid(),
     checkpoint_id: z.string().optional(),
     input: z
@@ -265,6 +268,10 @@ export const ThreadSearchRequest = z
       .enum(["idle", "busy", "interrupted"])
       .describe("Filter by thread status.")
       .optional(),
+    values: z
+      .record(z.unknown())
+      .describe("Filter by thread values.")
+      .optional(),
     limit: z
       .number()
       .int()
@@ -365,3 +372,38 @@ export const ThreadStateUpdate = z
     as_node: z.string().optional(),
   })
   .describe("Payload for adding state to a thread.");
+
+export const AssistantLatestVersion = z.object({
+  version: z.number(),
+});
+
+export const BatchRunsRequest = z.object({
+  assistant_id: z.string().uuid(),
+  values: z.array(z.unknown()),
+});
+
+export const StoreListNamespaces = z.object({
+  prefix: z.array(z.string()).optional(),
+  suffix: z.array(z.string()).optional(),
+  max_depth: z.number().optional(),
+  limit: z.number().optional(),
+  offset: z.number().optional(),
+});
+
+export const StoreSearchItems = z.object({
+  namespace_prefix: z.array(z.string()),
+  filter: z.record(z.unknown()).optional(),
+  limit: z.number().optional(),
+  offset: z.number().optional(),
+});
+
+export const StorePutItem = z.object({
+  namespace: z.array(z.string()),
+  key: z.string(),
+  value: z.record(z.unknown()),
+});
+
+export const StoreDeleteItem = z.object({
+  namespace: z.array(z.string()),
+  key: z.string(),
+});

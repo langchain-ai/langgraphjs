@@ -1,0 +1,9 @@
+{
+  "node_version": "20",
+  "graphs": {
+    "agent": "./agent.mts:graph",
+    "subgraph": "./subgraph.mts:graph",
+    "nested": "./nested.mts:graph",
+    "delay": "./delay.mts:graph"
+  }
+}
