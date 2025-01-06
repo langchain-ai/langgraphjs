@@ -1,4 +1,4 @@
-import { Config, StreamMode } from "./storage/ops.mjs";
+import { LangGraphRunnableConfig, StreamMode } from "./storage/ops.mjs";
 import { getGraph } from "./graph/load.mjs";
 import { CompiledGraph } from "@langchain/langgraph";
 
@@ -34,7 +34,7 @@ interface Run {
     interruptAfter?: string | string[] | undefined;
     temporary: boolean;
 
-    config: Config;
+    config: LangGraphRunnableConfig;
 
     [key: string]: unknown;
   };

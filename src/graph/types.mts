@@ -2016,7 +2016,7 @@ async function extractGraphSchema(userPath: string, exportName: string) {
   const filePath = path.resolve(process.cwd(), userPath);
   const parentPath = path.dirname(filePath);
 
-  const typePath = path.resolve(parentPath, `__$0${exportName}.mts`);
+  const typePath = path.resolve(parentPath, `__$0${exportName}.mjs`);
   const importPath = path.relative(parentPath, filePath);
 
   try {
@@ -2084,4 +2084,4 @@ async function extractGraphSchema(userPath: string, exportName: string) {
 }
 
 // TODO: check if the file actually exists
-extractGraphSchema("./test/graphs/agent.mts", "graph");
+extractGraphSchema("./test/graphs/agent.mjs", "graph");

@@ -83,7 +83,7 @@ export async function runGraphSchemaWorker(spec: GraphSpec) {
 
   return await new Promise<Record<string, GraphSchema>>((resolve, reject) => {
     const worker = new Worker(
-      new URL("../parser/parser.worker.mjs", import.meta.url).pathname
+      new URL("./parser/parser.worker.mjs", import.meta.url).pathname
     );
 
     // Set a timeout to reject if the worker takes too long

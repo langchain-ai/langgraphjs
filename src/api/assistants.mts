@@ -2,33 +2,37 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 
 import { v4 as uuid } from "uuid";
-import { Config } from "../storage/ops.mts";
+import { LangGraphRunnableConfig } from "../storage/ops.mjs";
 import { z } from "zod";
 
 import { getGraph, getGraphSchema } from "../graph/load.mjs";
-import { validateUuid } from "../utils/uuid.mts";
+import { validateUuid } from "../utils/uuid.mjs";
 
 import { Assistants } from "../storage/ops.mjs";
-import * as schemas from "../validate.mts";
+import * as schemas from "../schemas.mjs";
 
-export const assistants = new Hono();
+const api = new Hono();
 
-assistants.post("/", zValidator("json", schemas.AssistantCreate), async (c) => {
-  // Create Assistant
-  const payload = c.req.valid("json");
-  const assistant = await Assistants.put(payload.assistant_id ?? uuid(), {
-    config: payload.config as Config,
-    graph_id: payload.graph_id,
-    metadata: payload.metadata ?? {},
-    if_exists: payload.if_exists ?? "raise",
-    name: payload.name ?? "Untitled",
-  });
+api.post(
+  "/assistants",
+  zValidator("json", schemas.AssistantCreate),
+  async (c) => {
+    // Create Assistant
+    const payload = c.req.valid("json");
+    const assistant = await Assistants.put(payload.assistant_id ?? uuid(), {
+      config: payload.config as LangGraphRunnableConfig,
+      graph_id: payload.graph_id,
+      metadata: payload.metadata ?? {},
+      if_exists: payload.if_exists ?? "raise",
+      name: payload.name ?? "Untitled",
+    });
 
-  return c.json(assistant);
-});
+    return c.json(assistant);
+  }
+);
 
-assistants.post(
-  "/search",
+api.post(
+  "/assistants/search",
   zValidator("json", schemas.AssistantSearchRequest),
   async (c) => {
     // Search Assistants
@@ -48,20 +52,20 @@ assistants.post(
   }
 );
 
-assistants.get("/:assistant_id", async (c) => {
+api.get("/assistants/:assistant_id", async (c) => {
   // Get Assistant
   const assistantId = validateUuid(c.req.param("assistant_id"));
   return c.json(await Assistants.get(assistantId));
 });
 
-assistants.delete("/:assistant_id", async (c) => {
+api.delete("/assistants/:assistant_id", async (c) => {
   // Delete Assistant
   const assistantId = validateUuid(c.req.param("assistant_id"));
   return c.json(await Assistants.delete(assistantId));
 });
 
-assistants.patch(
-  "/:assistant_id",
+api.patch(
+  "/assistants/:assistant_id",
   zValidator("json", schemas.AssistantPatch),
   async (c) => {
     // Patch Assistant
@@ -97,7 +101,7 @@ const getRunnableConfig = (
   };
 };
 
-assistants.get("/:assistant_id/graph", async (c) => {
+api.get("/assistants/:assistant_id/graph", async (c) => {
   // Get Assistant Graph
   const assistantId = validateUuid(c.req.param("assistant_id"));
   const assistant = await Assistants.get(assistantId);
@@ -110,7 +114,7 @@ assistants.get("/:assistant_id/graph", async (c) => {
   );
 });
 
-assistants.get("/:assistant_id/schemas", async (c) => {
+api.get("/assistants/:assistant_id/schemas", async (c) => {
   // Get Assistant Schemas
   const assistantId = validateUuid(c.req.param("assistant_id"));
   const assistant = await Assistants.get(assistantId);
@@ -133,7 +137,7 @@ assistants.get("/:assistant_id/schemas", async (c) => {
   });
 });
 
-assistants.get("/:assistant_id/subgraphs", async (c) => {
+api.get("/assistants/:assistant_id/subgraphs", async (c) => {
   // Get Assistant Subgraphs
   const assistantId = validateUuid(c.req.param("assistant_id"));
   const assistant = await Assistants.get(assistantId);
@@ -148,7 +152,7 @@ assistants.get("/:assistant_id/subgraphs", async (c) => {
   });
 });
 
-assistants.get("/:assistant_id/versions", async (c) => {
+api.get("/assistants/:assistant_id/versions", async (c) => {
   // Get Assistant Versions
   const assistantId = validateUuid(c.req.param("assistant_id"));
 
@@ -158,8 +162,8 @@ assistants.get("/:assistant_id/versions", async (c) => {
   });
 });
 
-assistants.post(
-  "/:assistant_id/latest",
+api.post(
+  "/assistants/:assistant_id/latest",
   zValidator("json", schemas.AssistantLatestVersion),
   async (c) => {
     // Set Latest Assistant Version
@@ -172,3 +176,5 @@ assistants.post(
     });
   }
 );
+
+export default api;

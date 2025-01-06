@@ -7,7 +7,7 @@ const OVERRIDE_RESOLVE = [
 ];
 
 export const resolve = async (specifier, context, nextResolve) => {
-  const parentURL = new URL("./graph.mts", import.meta.url).toString();
+  const parentURL = new URL("./load.mts", import.meta.url).toString();
 
   if (OVERRIDE_RESOLVE.includes(specifier)) {
     return nextResolve(specifier, { ...context, parentURL });

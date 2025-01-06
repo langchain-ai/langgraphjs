@@ -7,9 +7,9 @@ import {
 } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
 import { v4 as uuid } from "uuid";
-import { getGraph } from "../graph/load.mts";
-import { checkpointer } from "./checkpoint.mts";
-import { store } from "./store.mts";
+import { getGraph } from "../graph/load.mjs";
+import { checkpointer } from "./checkpoint.mjs";
+import { store } from "./store.mjs";
 
 export type Metadata = Record<string, unknown>;
 
@@ -31,7 +31,7 @@ export type OnConflictBehavior = "raise" | "do_nothing";
 
 export type IfNotExists = "create" | "reject";
 
-export interface Config {
+export interface LangGraphRunnableConfig {
   tags?: string[];
 
   recursion_limit?: number;
@@ -50,7 +50,7 @@ interface Assistant {
   created_at: Date;
   updated_at: Date;
   version: number;
-  config: Config;
+  config: RunnableConfig;
   metadata: Metadata;
 }
 
@@ -58,7 +58,7 @@ interface AssistantVersion {
   assistant_id: string;
   version: number;
   graph_id: string;
-  config: Config;
+  config: RunnableConfig;
   metadata: Metadata;
   created_at: Date;
 }
@@ -87,7 +87,7 @@ const STORE: {
   assistant_versions: [],
 };
 
-export const clear = (flags: {
+export const truncate = (flags: {
   runs?: boolean;
   threads?: boolean;
   assistants?: boolean;
@@ -181,7 +181,7 @@ export class Assistants {
   static async put(
     assistantId: string,
     options: {
-      config: Config;
+      config: RunnableConfig;
       graph_id: string;
       metadata?: Metadata;
       if_exists: OnConflictBehavior;
@@ -223,7 +223,7 @@ export class Assistants {
   static async patch(
     assistantId: string,
     options?: {
-      config?: Config;
+      config?: RunnableConfig;
       graph_id?: string;
       metadata?: Metadata;
       name?: string;
@@ -366,7 +366,7 @@ interface Thread {
   created_at: Date;
   updated_at: Date;
   metadata?: Metadata;
-  config?: Config;
+  config?: RunnableConfig;
   status: ThreadStatus;
   values?: Record<string, unknown>;
   interrupts?: Record<string, unknown>;
@@ -403,13 +403,14 @@ interface ThreadTask {
   interrupts: Record<string, unknown>[];
   checkpoint: Checkpoint | null;
   state?: ThreadState;
+  result?: Record<string, unknown>;
 }
 
 export interface ThreadState {
   values: Record<string, unknown>;
   next: string[];
-  checkpoint: Checkpoint;
-  metadata: Record<string, unknown>;
+  checkpoint: Checkpoint | null;
+  metadata: Record<string, unknown> | undefined;
   created_at: Date | null;
   parent_checkpoint: Checkpoint | null;
   tasks: ThreadTask[];
@@ -578,7 +579,7 @@ export class Threads {
 
   static async copy(threadId: string): Promise<Thread> {
     const thread = STORE.threads[threadId];
-    if (!thread) throw new HTTPException(404, { message: "Thread not found" });
+    if (!thread) throw new HTTPException(409, { message: "Thread not found" });
 
     const newThreadId = uuid();
 
@@ -593,7 +594,7 @@ export class Threads {
     };
 
     // copy stroage over
-    const newThreadCheckpoints = {};
+    const newThreadCheckpoints: (typeof checkpointer.storage)[string] = {};
     for (const oldNs of Object.keys(checkpointer.storage[threadId])) {
       const newNs = oldNs.replace(threadId, newThreadId);
 
@@ -651,7 +652,7 @@ export class Threads {
 
   static State = class {
     static async get(
-      config: Config,
+      config: RunnableConfig,
       options: {
         subgraphs?: boolean;
       }
@@ -704,7 +705,7 @@ export class Threads {
     }
 
     static async post(
-      config: Config,
+      config: RunnableConfig,
       values?: Record<string, unknown>[] | Record<string, unknown> | undefined,
       asNode?: string | undefined
     ) {
@@ -751,7 +752,7 @@ export class Threads {
       threadId: string,
       options?: {
         limit?: number;
-        before?: string | Config;
+        before?: string | RunnableConfig;
         metadata?: Metadata;
       }
     ) {

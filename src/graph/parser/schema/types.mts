@@ -2118,7 +2118,10 @@ export async function extractGraphSchema(
       try {
         return schema?.getSchemaForSymbol(symbol) ?? undefined;
       } catch (e) {
-        console.error(`Failed to obtain symbol "${symbol}":`, e?.message);
+        console.error(
+          `Failed to obtain symbol "${symbol}":`,
+          (e as Error)?.message
+        );
       }
       return undefined;
     };

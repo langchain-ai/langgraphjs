@@ -386,15 +386,16 @@ export const StoreListNamespaces = z.object({
   prefix: z.array(z.string()).optional(),
   suffix: z.array(z.string()).optional(),
   max_depth: z.number().optional(),
-  limit: z.number().optional(),
-  offset: z.number().optional(),
+  limit: z.number().default(100).optional(),
+  offset: z.number().default(0).optional(),
 });
 
 export const StoreSearchItems = z.object({
   namespace_prefix: z.array(z.string()),
   filter: z.record(z.unknown()).optional(),
-  limit: z.number().optional(),
-  offset: z.number().optional(),
+  limit: z.number().default(10).optional(),
+  offset: z.number().default(0).optional(),
+  query: z.string().optional(),
 });
 
 export const StorePutItem = z.object({
@@ -404,6 +405,14 @@ export const StorePutItem = z.object({
 });
 
 export const StoreDeleteItem = z.object({
-  namespace: z.array(z.string()),
+  namespace: z.array(z.string()).optional(),
+  key: z.string(),
+});
+
+export const StoreGetItem = z.object({
+  namespace: z
+    .string()
+    .optional()
+    .transform((value) => value?.split(".") ?? []),
   key: z.string(),
 });

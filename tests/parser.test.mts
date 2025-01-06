@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { SubgraphExtractor } from "../src/parser/parser.mjs";
+import { SubgraphExtractor } from "../src/graph/parser/parser.mjs";
 import dedent from "dedent";
 
 describe.concurrent("graph factories", () => {

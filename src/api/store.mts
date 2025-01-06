@@ -1,74 +1,97 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import * as schemas from "../validate.mts";
+import * as schemas from "../schemas.mjs";
+import { HTTPException } from "hono/http-exception";
+import { store as storageStore } from "../storage/store.mjs";
 
-export const store = new Hono();
+const api = new Hono();
 
-// Existing endpoints...
+const validateNamespace = (namespace: string[]) => {
+  if (!namespace || namespace.length === 0) {
+    throw new HTTPException(400, { message: "Namespace is required" });
+  }
 
-store.post(
-  "/namespaces",
+  for (const label of namespace) {
+    if (!label || label.includes(".")) {
+      throw new HTTPException(422, {
+        message:
+          "Namespace labels cannot be empty or contain periods. Received: " +
+          namespace.join("."),
+      });
+    }
+  }
+};
+
+api.post(
+  "/store/namespaces",
   zValidator("json", schemas.StoreListNamespaces),
   async (c) => {
     // List Namespaces
     const payload = c.req.valid("json");
+    if (payload.prefix) validateNamespace(payload.prefix);
+    if (payload.suffix) validateNamespace(payload.suffix);
 
-    // TODO: implement namespace listing
     return c.json({
-      namespaces: [],
+      namespaces: await storageStore.listNamespaces({
+        limit: payload.limit ?? 100,
+        offset: payload.offset ?? 0,
+        prefix: payload.prefix,
+        suffix: payload.suffix,
+        maxDepth: payload.max_depth,
+      }),
     });
   }
 );
 
-store.post(
-  "/items/search",
+api.post(
+  "/store/items/search",
   zValidator("json", schemas.StoreSearchItems),
   async (c) => {
     // Search Items
     const payload = c.req.valid("json");
+    if (payload.namespace_prefix) validateNamespace(payload.namespace_prefix);
 
-    // TODO: implement item search
     return c.json({
-      items: [],
+      items: await storageStore.search(payload.namespace_prefix, {
+        filter: payload.filter,
+        limit: payload.limit ?? 10,
+        offset: payload.offset ?? 0,
+        query: payload.query,
+      }),
     });
   }
 );
 
-store.put("/items", zValidator("json", schemas.StorePutItem), async (c) => {
+api.put("/store/items", zValidator("json", schemas.StorePutItem), async (c) => {
   // Put Item
   const payload = c.req.valid("json");
-
-  // TODO: implement item creation/update
-  return c.json({});
+  if (payload.namespace) validateNamespace(payload.namespace);
+  await storageStore.put(payload.namespace, payload.key, payload.value);
+  return c.body(null, 204);
 });
 
-store.delete(
-  "/items",
+api.delete(
+  "/store/items",
   zValidator("json", schemas.StoreDeleteItem),
   async (c) => {
     // Delete Item
     const payload = c.req.valid("json");
-
-    // TODO: implement item deletion
-    return c.json({});
+    if (payload.namespace) validateNamespace(payload.namespace);
+    await storageStore.delete(payload.namespace ?? [], payload.key);
+    return c.body(null, 204);
   }
 );
 
-store.get("/items", async (c) => {
-  // Get Item
-  const key = c.req.query("key");
-  const namespace = c.req.query("namespace")?.split(",");
-
-  if (!key) {
-    return c.text("Missing key parameter", 400);
+api.get(
+  "/store/items",
+  zValidator("query", schemas.StoreGetItem),
+  async (c) => {
+    // Get Item
+    const payload = c.req.valid("query");
+    const key = payload.key;
+    const namespace = payload.namespace;
+    return c.json(await storageStore.get(namespace, key));
   }
+);
 
-  // TODO: implement item retrieval
-  return c.json({
-    namespace: namespace || [],
-    key: key,
-    value: {},
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  });
-});
+export default api;

@@ -2,7 +2,7 @@ import * as ts from "typescript";
 import * as vfs from "@typescript/vfs";
 import * as path from "node:path";
 import dedent from "dedent";
-import { buildGenerator } from "../schema/types.mts";
+import { buildGenerator } from "./schema/types.mjs";
 
 const __dirname = new URL(".", import.meta.url).pathname;
 
@@ -326,6 +326,7 @@ export class SubgraphExtractor {
     let acc = initial;
     function it(node: ts.Node) {
       acc = fn(acc, node);
+      // @ts-expect-error
       ts.forEachChild(node, it.bind(this));
     }
 
@@ -357,7 +358,7 @@ export class SubgraphExtractor {
 
     const inferTemplatePath = path.resolve(
       __dirname,
-      "../schema/types.template.mts"
+      "./schema/types.template.mts"
     );
 
     if (typeof target !== "string") {
@@ -423,7 +424,10 @@ export class SubgraphExtractor {
       try {
         return schema?.getSchemaForSymbol(symbol) ?? undefined;
       } catch (e) {
-        console.warn(`Failed to obtain symbol "${symbol}":`, e?.message);
+        console.warn(
+          `Failed to obtain symbol "${symbol}":`,
+          (e as Error)?.message
+        );
       }
       return undefined;
     };

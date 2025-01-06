@@ -1,21 +1,21 @@
 import { zValidator } from "@hono/zod-validator";
 
 import { Hono } from "hono";
-import { v4 as uuid, validate } from "uuid";
-import { HTTPException } from "hono/http-exception";
+import { v4 as uuid4 } from "uuid";
 
-import * as schemas from "../validate.mts";
-import { Checkpoint, Threads, ThreadState } from "../storage/ops.mts";
+import * as schemas from "../schemas.mjs";
+import {
+  Checkpoint,
+  LangGraphRunnableConfig,
+  Threads,
+  ThreadState,
+} from "../storage/ops.mjs";
 import { StateSnapshot } from "@langchain/langgraph";
 import { RunnableConfig } from "@langchain/core/runnables";
+import { validateUuid } from "../utils/uuid.mjs";
+import { serializeError } from "../utils/serde.mjs";
 
-export const threads = new Hono();
-
-const validateUuid = (value: string, message: string) => {
-  if (!validate(value)) {
-    throw new HTTPException(400, { message });
-  }
-};
+const api = new Hono();
 
 const runnableConfigToCheckpoint = (
   config: RunnableConfig | null | undefined
@@ -39,24 +39,28 @@ const stateSnapshotToThreadState = (state: StateSnapshot): ThreadState => {
     tasks: state.tasks.map((task) => ({
       id: task.id,
       name: task.name,
-      error: task.error,
+      error: serializeError(task.error).message,
       interrupts: task.interrupts,
-      checkpoint: task.state?.configurable,
-      state: task.state,
-      result: task.result,
+      // TODO: too many type assertions, check if this is actually correct
+      checkpoint:
+        task.state != null && "configurable" in task.state
+          ? ((task.state.configurable as Checkpoint) ?? null)
+          : null,
+      state: task.state as ThreadState | undefined,
+      // result: task.result,
     })),
-    metadata: state.metadata,
-    created_at: state.createdAt,
+    metadata: state.metadata as Record<string, unknown> | undefined,
+    created_at: state.createdAt ? new Date(state.createdAt) : null,
     checkpoint: runnableConfigToCheckpoint(state.config),
     parent_checkpoint: runnableConfigToCheckpoint(state.parentConfig),
   };
 };
 
 // Threads Routes
-threads.post("/", zValidator("json", schemas.ThreadCreate), async (c) => {
+api.post("/threads", zValidator("json", schemas.ThreadCreate), async (c) => {
   // Create Thread
   const payload = c.req.valid("json");
-  const thread = await Threads.put(payload.thread_id || uuid(), {
+  const thread = await Threads.put(payload.thread_id || uuid4(), {
     metadata: payload.metadata,
     if_exists: payload.if_exists ?? "raise",
   });
@@ -64,8 +68,8 @@ threads.post("/", zValidator("json", schemas.ThreadCreate), async (c) => {
   return c.json(thread);
 });
 
-threads.post(
-  "/search",
+api.post(
+  "/threads/search",
   zValidator("json", schemas.ThreadSearchRequest),
   async (c) => {
     // Search Threads
@@ -90,7 +94,7 @@ threads.post(
   }
 );
 
-threads.get("/:thread_id/state", async (c) => {
+api.get("/threads/:thread_id/state", async (c) => {
   // Get Latest Thread State
   const threadId = c.req.param("thread_id");
   validateUuid(threadId, "Invalid thread ID: must be a UUID");
@@ -105,27 +109,24 @@ threads.get("/:thread_id/state", async (c) => {
   return c.json(state);
 });
 
-threads.post("/:thread_id/state", async (c) => {
+api.post("/threads/:thread_id/state", async (c) => {
   // Update Thread State
   const threadId = c.req.param("thread_id");
   validateUuid(threadId, "Invalid thread ID: must be a UUID");
 
   const payload = await c.req.json();
-  const config = { configurable: { thread_id: threadId } };
+  const config: LangGraphRunnableConfig = {
+    configurable: { thread_id: threadId },
+  };
 
   if (payload.checkpoint_id) {
+    config.configurable ??= {};
     config.configurable.checkpoint_id = payload.checkpoint_id;
   }
   if (payload.checkpoint) {
+    config.configurable ??= {};
     Object.assign(config.configurable, payload.checkpoint);
   }
-
-  try {
-    const userId = c.get("user")?.displayName;
-    if (userId) {
-      config.configurable.user_id = userId;
-    }
-  } catch {}
 
   const inserted = await Threads.State.post(
     config,
@@ -136,7 +137,7 @@ threads.post("/:thread_id/state", async (c) => {
   return c.json(inserted);
 });
 
-threads.get("/:thread_id/state/:checkpoint_id", async (c) => {
+api.get("/threads/:thread_id/state/:checkpoint_id", async (c) => {
   // Get Thread State At Checkpoint
   const threadId = c.req.param("thread_id");
   validateUuid(threadId, "Invalid thread ID: must be a UUID");
@@ -157,7 +158,7 @@ threads.get("/:thread_id/state/:checkpoint_id", async (c) => {
   return c.json(state);
 });
 
-threads.post("/:thread_id/state/checkpoint", async (c) => {
+api.post("/threads/:thread_id/state/checkpoint", async (c) => {
   // Get Thread State At Checkpoint Post
   const threadId = c.req.param("thread_id");
   validateUuid(threadId, "Invalid thread ID: must be a UUID");
@@ -178,7 +179,7 @@ threads.post("/:thread_id/state/checkpoint", async (c) => {
   return c.json(state);
 });
 
-threads.get("/:thread_id/history", async (c) => {
+api.get("/threads/:thread_id/history", async (c) => {
   // Get Thread History
   const threadId = c.req.param("thread_id");
   validateUuid(threadId, "Invalid thread ID: must be a UUID");
@@ -194,7 +195,7 @@ threads.get("/:thread_id/history", async (c) => {
   return c.json(states.map(stateSnapshotToThreadState));
 });
 
-threads.post("/:thread_id/history", async (c) => {
+api.post("/threads/:thread_id/history", async (c) => {
   // Get Thread History Post
   const threadId = c.req.param("thread_id");
   validateUuid(threadId, "Invalid thread ID: must be a UUID");
@@ -214,7 +215,7 @@ threads.post("/:thread_id/history", async (c) => {
   return c.json(states.map(stateSnapshotToThreadState));
 });
 
-threads.get("/:thread_id", async (c) => {
+api.get("/threads/:thread_id", async (c) => {
   // Get Thread
   const threadId = c.req.param("thread_id");
   validateUuid(threadId, "Invalid thread ID: must be a UUID");
@@ -223,7 +224,7 @@ threads.get("/:thread_id", async (c) => {
   return c.json(thread);
 });
 
-threads.delete("/:thread_id", async (c) => {
+api.delete("/threads/:thread_id", async (c) => {
   // Delete Thread
   const threadId = c.req.param("thread_id");
   validateUuid(threadId, "Invalid thread ID: must be a UUID");
@@ -232,7 +233,7 @@ threads.delete("/:thread_id", async (c) => {
   return new Response(null, { status: 204 });
 });
 
-threads.patch("/:thread_id", async (c) => {
+api.patch("/threads/:thread_id", async (c) => {
   // Patch Thread
   const threadId = c.req.param("thread_id");
   validateUuid(threadId, "Invalid thread ID: must be a UUID");
@@ -245,64 +246,11 @@ threads.patch("/:thread_id", async (c) => {
   return c.json(thread);
 });
 
-threads.post("/:thread_id/copy", async (c) => {
+api.post("/threads/:thread_id/copy", async (c) => {
   // Copy Thread
   const threadId = c.req.param("thread_id");
   const thread = await Threads.copy(threadId);
   return c.json(thread);
 });
 
-threads.get("/:thread_id/runs", async (c) => {
-  // List Runs Http
-  throw new HTTPException(500, { message: "Not implemented: List Runs Http" });
-});
-
-threads.post("/:thread_id/runs", async (c) => {
-  // Create Run
-  throw new HTTPException(500, { message: "Not implemented: Create Run" });
-});
-
-threads.post("/:thread_id/runs/crons", async (c) => {
-  // Create Thread Cron
-  throw new HTTPException(500, {
-    message: "Not implemented: Create Thread Cron",
-  });
-});
-
-threads.post(
-  "/:thread_id/runs/stream",
-  zValidator("json", schemas.RunStream),
-  async (c) => {
-    // Stream Run
-    const threadId = c.req.param("thread_id");
-    validateUuid(threadId, "Invalid thread ID: must be a UUID");
-    const payload = c.req.valid("json");
-
-    throw new HTTPException(500, { message: "Not implemented: Stream Run" });
-  }
-);
-
-threads.post("/:thread_id/runs/wait", async (c) => {
-  // Wait Run
-  throw new HTTPException(500, { message: "Not implemented: Wait Run" });
-});
-
-threads.get("/:thread_id/runs/:run_id", async (c) => {
-  // Get Run Http
-  throw new HTTPException(500, { message: "Not implemented: Get Run Http" });
-});
-
-threads.delete("/:thread_id/runs/:run_id", async (c) => {
-  // Delete Run
-  throw new HTTPException(500, { message: "Not implemented: Delete Run" });
-});
-
-threads.get("/:thread_id/runs/:run_id/join", async (c) => {
-  // Join Run Http
-  throw new HTTPException(500, { message: "Not implemented: Join Run Http" });
-});
-
-threads.post("/:thread_id/runs/:run_id/cancel", async (c) => {
-  // Cancel Run Http
-  throw new HTTPException(500, { message: "Not implemented: Cancel Run Http" });
-});
+export default api;
