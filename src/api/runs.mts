@@ -7,6 +7,10 @@ import * as schemas from "../schemas.mjs";
 import { v5 as uuidv5 } from "uuid";
 import { v4 as uuid } from "uuid";
 import { validateUuid } from "../utils/uuid.mjs";
+import { z } from "zod";
+import { Run, RunKwargs, Runs, StreamMode } from "../storage/ops.mjs";
+import { streamState } from "../stream.mjs";
+import { serialiseAsDict } from "../utils/serde.mjs";
 
 const api = new Hono();
 
@@ -36,16 +40,20 @@ api.post(
   }
 );
 
-api.post("/runs/stream", zValidator("json", schemas.RunStream), async (c) => {
-  // Stream Run
-  const payload = c.req.valid("json");
-  const assistantId =
-    payload.assistant_id in GRAPHS
-      ? uuidv5(NAMESPACE_GRAPH, payload.assistant_id)
-      : payload.assistant_id;
+api.post(
+  "/runs/stream",
+  zValidator("json", schemas.RunCreateStateful),
+  async (c) => {
+    // Stream Run
+    const payload = c.req.valid("json");
+    const assistantId =
+      payload.assistant_id in GRAPHS
+        ? uuidv5(NAMESPACE_GRAPH, payload.assistant_id)
+        : payload.assistant_id;
 
-  const graph = GRAPHS[assistantId];
-});
+    const graph = GRAPHS[assistantId];
+  }
+);
 
 api.post("/runs/wait", async (c) => {
   // Wait Run
@@ -95,23 +103,91 @@ api.post("/threads/:thread_id/runs/crons", async (c) => {
   });
 });
 
+const createValidRun = async (
+  threadId: string | undefined,
+  payload: z.infer<typeof schemas.RunCreateStateful>,
+  options?: {
+    afterSeconds: number | undefined;
+    ifNotExists: "reject" | "create" | undefined;
+  }
+): Promise<Run> => {
+  const { assistant_id: assistantId, ...kwargs } = payload;
+
+  const streamMode = Array.isArray(payload.stream_mode)
+    ? payload.stream_mode
+    : payload.stream_mode != null
+      ? [payload.stream_mode]
+      : [];
+  if (streamMode.length === 0) streamMode.push("values");
+
+  const multitaskStrategy = payload.multitask_strategy ?? "reject";
+  const preventInsertInInflight = multitaskStrategy === "reject";
+
+  const config: RunKwargs["config"] = { ...kwargs.config };
+
+  if (kwargs.checkpoint_id) {
+    config.configurable ??= {};
+    config.configurable.checkpoint_id = kwargs.checkpoint_id;
+  }
+
+  if (kwargs.checkpoint) {
+    config.configurable ??= {};
+    Object.assign(config.configurable, kwargs.checkpoint);
+  }
+
+  const [run] = await Runs.put(
+    assistantId,
+    { ...kwargs, config, stream_mode: streamMode },
+    {
+      threadId,
+      metadata: kwargs.metadata,
+      status: "pending",
+      multitaskStrategy,
+      preventInsertInInflight,
+      afterSeconds: options?.afterSeconds,
+      ifNotExists: options?.ifNotExists,
+    }
+  );
+
+  return run;
+};
+
 api.post(
   "/threads/:thread_id/runs/stream",
-  zValidator("json", schemas.RunStream),
+  zValidator("param", z.object({ thread_id: z.string().uuid() })),
+  zValidator("json", schemas.RunCreateStateful),
   async (c) => {
     // Stream Run
-    const threadId = c.req.param("thread_id");
-    validateUuid(threadId, "Invalid thread ID: must be a UUID");
+    const { thread_id } = c.req.valid("param");
     const payload = c.req.valid("json");
 
-    throw new HTTPException(500, { message: "Not implemented: Stream Run" });
+    // TODO: reimplement queue / use worker threads to avoid clogging the asyncio event loop
+    const run = await createValidRun(thread_id, payload);
+    return streamSSE(c, async (stream) => {
+      try {
+        for await (const { event, data } of streamState(run)) {
+          await stream.writeSSE({ data: serialiseAsDict(data), event });
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    });
   }
 );
 
-api.post("/threads/:thread_id/runs/wait", async (c) => {
-  // Wait Run
-  throw new HTTPException(500, { message: "Not implemented: Wait Run" });
-});
+api.post(
+  "/threads/:thread_id/runs/wait",
+  zValidator("param", z.object({ thread_id: z.string().uuid() })),
+  zValidator("json", schemas.RunCreateStateful),
+  async (c) => {
+    // Wait Run
+    const { thread_id } = c.req.valid("param");
+    const payload = c.req.valid("json");
+
+    // TODO: reimplement queue / use worker threads to avoid clogging the asyncio event loop
+    throw new HTTPException(500, { message: "Not implemented: Wait Run" });
+  }
+);
 
 api.get("/threads/:thread_id/runs/:run_id", async (c) => {
   // Get Run Http

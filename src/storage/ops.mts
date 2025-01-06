@@ -65,7 +65,7 @@ interface AssistantVersion {
 
 export interface RunSend {
   node: string;
-  input?: Record<string, any>;
+  input?: unknown;
 }
 
 export interface RunCommand {
@@ -83,7 +83,7 @@ export interface RunKwargs {
   interrupt_before?: "*" | string[] | undefined;
   interrupt_after?: "*" | string[] | undefined;
 
-  config: RunnableConfig;
+  config?: RunnableConfig;
 
   subgraphs?: boolean;
   temporary?: boolean;
@@ -848,7 +848,7 @@ export class Runs {
 
   static async put(
     assistantId: string,
-    kwargs: Record<string, unknown>,
+    kwargs: RunKwargs,
     options?: {
       threadId?: string;
       userId?: string;
@@ -872,7 +872,7 @@ export class Runs {
     let threadId = options?.threadId;
     let runId = options?.runId;
     const metadata = options?.metadata ?? {};
-    const config: RunnableConfig = metadata.config ?? {};
+    const config: RunnableConfig = kwargs.config ?? {};
 
     const existingThread = Object.values(STORE.threads).find(
       (thread) => thread.thread_id === threadId

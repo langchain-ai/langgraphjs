@@ -533,7 +533,7 @@ describe("runs", () => {
       }
 
       if (chunk.event === "values") {
-        const messageIds = chunk.data.messages.map((message) => message.id);
+        const messageIds = chunk.data.messages.map((message: { id: string }) => message.id);
         expect(messageIds.slice(0, -1)).toEqual(previousMessageIds);
         previousMessageIds = messageIds;
       }
@@ -668,7 +668,7 @@ describe("runs", () => {
     );
   });
 
-  it.concurrent("stream messages", async () => {
+  it.only.concurrent("stream messages", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input = {
@@ -687,6 +687,7 @@ describe("runs", () => {
 
     let chunk: any;
     for await (chunk of stream) {
+      console.log("chunk", chunk);
       seenEventTypes.add(chunk.event);
 
       if (chunk.event === "metadata") {

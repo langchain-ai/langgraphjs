@@ -74,6 +74,12 @@ export const Cron = z.object({
   payload: z.object({}).catchall(z.any()),
 });
 
+export const CheckpointSchema = z.object({
+  checkpoint_id: z.string(),
+  checkpoint_ns: z.string().optional(),
+  checkpoint_map: z.record(z.unknown()).optional(),
+});
+
 export const CronCreate = z
   .object({
     thread_id: z.string().uuid(),
@@ -91,7 +97,7 @@ export const CronCreate = z
       .describe("Metadata for the run.")
       .optional(),
     config: AssistantConfig.optional(),
-    webhook: z.string().url().min(1).max(65536).optional(),
+    webhook: z.string().url().optional(),
     interrupt_before: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
     interrupt_after: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
     multitask_strategy: z
@@ -164,7 +170,7 @@ export const RunCreate = z
       .describe("Metadata for the run.")
       .optional(),
     config: AssistantConfig.optional(),
-    webhook: z.string().url().min(1).max(65536).optional(),
+    webhook: z.string().url().optional(),
     interrupt_before: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
     interrupt_after: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
     multitask_strategy: z
@@ -178,10 +184,11 @@ export const RunBatchCreate = z
   .min(1)
   .describe("Payload for creating a batch of runs.");
 
-export const RunStream = z
+export const RunCreateStateful = z
   .object({
     assistant_id: z.union([z.string().uuid(), z.string()]),
     checkpoint_id: z.string().optional(),
+    checkpoint: CheckpointSchema.optional(),
     input: z
       .union([
         z.array(z.object({}).catchall(z.any())),
@@ -189,13 +196,33 @@ export const RunStream = z
         z.null(),
       ])
       .optional(),
+    command: z
+      .object({
+        goto: z
+          .union([
+            z.union([
+              z.string(),
+              z.object({ node: z.string(), input: z.unknown().optional() }),
+            ]),
+            z.array(
+              z.union([
+                z.string(),
+                z.object({ node: z.string(), input: z.unknown().optional() }),
+              ])
+            ),
+          ])
+          .optional(),
+        update: z.record(z.unknown()).optional(),
+        resume: z.unknown().optional(),
+      })
+      .optional(),
     metadata: z
       .object({})
       .catchall(z.any())
       .describe("Metadata for the run.")
       .optional(),
     config: AssistantConfig.optional(),
-    webhook: z.string().url().min(1).max(65536).optional(),
+    webhook: z.string().url().optional(),
     interrupt_before: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
     interrupt_after: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
     multitask_strategy: z
@@ -209,7 +236,7 @@ export const RunStream = z
       .optional(),
     feedback_keys: z.array(z.string()).optional(),
   })
-  .describe("Payload for creating a streaming run.");
+  .describe("Payload for creating a stateful run.");
 
 export const SearchResult = z
   .object({
