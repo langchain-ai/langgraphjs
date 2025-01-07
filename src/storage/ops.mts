@@ -121,6 +121,51 @@ const STORE: {
   assistant_versions: [],
 };
 
+class TimeoutError extends Error {}
+
+interface Message {
+  topic: string;
+  data: unknown;
+}
+
+class Queue {
+  private buffer: Message[] = [];
+  private listeners: (() => void)[] = [];
+
+  push(item: Message) {
+    this.buffer.push(item);
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
+  async get(timeout: number) {
+    if (this.buffer.length > 0) {
+      return this.buffer.shift()!;
+    }
+
+    return await new Promise<void>((resolve, reject) => {
+      let listener: (() => void) | undefined = undefined;
+
+      const timer = setTimeout(() => {
+        this.listeners = this.listeners.filter((l) => l !== listener);
+        reject(new TimeoutError());
+      }, timeout);
+
+      listener = () => {
+        this.listeners = this.listeners.filter((l) => l !== listener);
+        clearTimeout(timer);
+        resolve();
+      };
+
+      this.listeners.push(listener);
+    }).then(() => this.buffer.shift()!);
+  }
+}
+
+const QUEUES: Record<string, Queue> = {};
+const LOCKS: Set<string> = new Set();
+
 export const truncate = (flags: {
   runs?: boolean;
   threads?: boolean;
@@ -627,9 +672,9 @@ export class Threads {
       status: "idle",
     };
 
-    // copy stroage over
+    // copy storage over
     const newThreadCheckpoints: (typeof checkpointer.storage)[string] = {};
-    for (const oldNs of Object.keys(checkpointer.storage[threadId])) {
+    for (const oldNs of Object.keys(checkpointer.storage[threadId] ?? {})) {
       const newNs = oldNs.replace(threadId, newThreadId);
 
       for (const oldId of Object.keys(checkpointer.storage[threadId][oldNs])) {
@@ -818,21 +863,23 @@ export class Threads {
 }
 
 export class Runs {
-  static async *next(): AsyncGenerator<[Run, number] | null> {
+  static async *next(): AsyncGenerator<[Run, number]> {
     const now = new Date();
     const pendingRuns = Object.values(STORE.runs)
-      .filter((run) => run.status === "pending" && run.created_at < now)
+      .filter(
+        (run) =>
+          run.status === "pending" &&
+          run.created_at < now &&
+          !LOCKS.has(run.thread_id)
+      )
       .sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
 
     if (!pendingRuns.length) {
-      yield null;
       return;
     }
 
     for (const run of pendingRuns) {
-      const runId = run.run_id;
       const threadId = run.thread_id;
-
       const thread = STORE.threads[threadId];
 
       if (!thread) {
@@ -842,7 +889,12 @@ export class Runs {
         continue;
       }
 
-      yield [run, 1];
+      try {
+        LOCKS.add(threadId);
+        yield [run, 1];
+      } finally {
+        LOCKS.delete(threadId);
+      }
     }
   }
 
@@ -989,33 +1041,21 @@ export class Runs {
     return [newRun];
   }
 
-  static async get(options: {
-    run_id: string;
-    thread_id: string;
-  }): Promise<Run | null> {
-    const run = STORE.runs[options.run_id];
-    if (
-      !run ||
-      run.run_id !== options.run_id ||
-      run.thread_id !== options.thread_id
-    )
-      return null;
+  static async get(runId: string, threadId: string): Promise<Run | null> {
+    const run = STORE.runs[runId];
+    if (!run || run.run_id !== runId || run.thread_id !== threadId) return null;
     return run;
   }
 
-  static async delete(options: {
-    run_id: string;
-    thread_id: string;
-  }): Promise<string | null> {
-    const run = STORE.runs[options.run_id];
-    if (!run || run.thread_id !== options.thread_id)
-      throw new Error("Run not found");
+  static async delete(runId: string, threadId: string): Promise<string | null> {
+    const run = STORE.runs[runId];
+    if (!run || run.thread_id !== threadId) throw new Error("Run not found");
 
-    delete STORE.runs[options.run_id];
+    delete STORE.runs[runId];
     return run.run_id;
   }
 
-  static async join(options: { run_id: string; thread_id: string }) {}
+  static async join(runId: string, threadId: string) {}
   static async cancel(
     runIds: string[],
     options: {
@@ -1031,23 +1071,55 @@ export class Runs {
       metadata?: Metadata;
     }
   ) {}
-  static async setStatus(runId: string, status: RunStatus) {}
+  static async setStatus(runId: string, status: RunStatus) {
+    const run = STORE.runs[runId];
+    if (!run) throw new Error(`Run ${runId} not found`);
+    run.status = status;
+    run.updated_at = new Date();
+  }
 
   static Stream = class {
-    static subscribe(runId: string) {
-      // const queue = new asyncio.Queue();
-      // STORE.streams[runId] = queue;
-      // return queue;
+    static async subscribe(runId: string) {
+      QUEUES[runId] ??= new Queue();
+      return QUEUES[runId];
     }
 
-    static join(runId: string) {
-      // const queue = this.subscribe(runId);
-      // return queue.get();
+    static async *join(
+      runId: string,
+      threadId: string,
+      options?: { ignore404?: boolean }
+    ): AsyncGenerator<{ event: string; data: unknown }> {
+      const queue = await Runs.Stream.subscribe(runId);
+      if (queue == null) throw new Error(`Queue not found for run ${runId}`);
+      while (true) {
+        try {
+          const message = await queue.get(500);
+          if (message.topic === `run:${runId}:control`) {
+            if (message.data === "done") break;
+          } else {
+            const streamTopic = message.topic.substring(
+              `run:${runId}:stream:`.length
+            );
+
+            yield { event: streamTopic, data: message.data };
+          }
+        } catch (error) {
+          const run = await Runs.get(runId, threadId);
+
+          if (run == null) {
+            if (!options?.ignore404)
+              yield { event: "error", data: "Run not found" };
+            break;
+          } else if (run.status !== "pending") {
+            break;
+          }
+        }
+      }
     }
 
-    static publish(runId: string, event: string, message: string) {
-      // const queue = this.subscribe(runId);
-      // queue.put(message);
+    static async publish(runId: string, topic: string, data: unknown) {
+      const queue = await Runs.Stream.subscribe(runId);
+      queue.push({ topic: `run:${runId}:stream:${topic}`, data });
     }
   };
 }

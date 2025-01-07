@@ -5,7 +5,7 @@ import { v4 as uuid } from "uuid";
 import { RunnableConfig } from "../storage/ops.mjs";
 import { z } from "zod";
 
-import { getGraph, getGraphSchema } from "../graph/load.mjs";
+import { getAssistantId, getGraph, getGraphSchema } from "../graph/load.mjs";
 import { validateUuid } from "../utils/uuid.mjs";
 
 import { Assistants } from "../storage/ops.mjs";
@@ -54,13 +54,13 @@ api.post(
 
 api.get("/assistants/:assistant_id", async (c) => {
   // Get Assistant
-  const assistantId = validateUuid(c.req.param("assistant_id"));
+  const assistantId = getAssistantId(c.req.param("assistant_id"));
   return c.json(await Assistants.get(assistantId));
 });
 
 api.delete("/assistants/:assistant_id", async (c) => {
   // Delete Assistant
-  const assistantId = validateUuid(c.req.param("assistant_id"));
+  const assistantId = getAssistantId(c.req.param("assistant_id"));
   return c.json(await Assistants.delete(assistantId));
 });
 
@@ -69,7 +69,7 @@ api.patch(
   zValidator("json", schemas.AssistantPatch),
   async (c) => {
     // Patch Assistant
-    const assistantId = validateUuid(c.req.param("assistant_id"));
+    const assistantId = getAssistantId(c.req.param("assistant_id"));
     const payload = c.req.valid("json");
 
     return c.json(await Assistants.patch(assistantId, payload));
@@ -101,22 +101,26 @@ const getRunnableConfig = (
   };
 };
 
-api.get("/assistants/:assistant_id/graph", async (c) => {
-  // Get Assistant Graph
-  const assistantId = validateUuid(c.req.param("assistant_id"));
-  const assistant = await Assistants.get(assistantId);
+api.get(
+  "/assistants/:assistant_id/graph",
+  zValidator("query", z.object({ xray: z.string().optional() })),
+  async (c) => {
+    // Get Assistant Graph
+    const assistantId = getAssistantId(c.req.param("assistant_id"));
+    const assistant = await Assistants.get(assistantId);
 
-  const xray = c.req.query("xray") === "true";
+    const xray = c.req.query("xray") === "true";
 
-  const graph = getGraph(assistant.graph_id);
-  return c.json(
-    graph.getGraph({ ...getRunnableConfig(assistant.config), xray }).toJSON()
-  );
-});
+    const graph = getGraph(assistant.graph_id);
+    return c.json(
+      graph.getGraph({ ...getRunnableConfig(assistant.config), xray }).toJSON()
+    );
+  }
+);
 
 api.get("/assistants/:assistant_id/schemas", async (c) => {
   // Get Assistant Schemas
-  const assistantId = validateUuid(c.req.param("assistant_id"));
+  const assistantId = getAssistantId(c.req.param("assistant_id"));
   const assistant = await Assistants.get(assistantId);
   const graph = getGraph(assistant.graph_id);
 
@@ -139,7 +143,7 @@ api.get("/assistants/:assistant_id/schemas", async (c) => {
 
 api.get("/assistants/:assistant_id/subgraphs", async (c) => {
   // Get Assistant Subgraphs
-  const assistantId = validateUuid(c.req.param("assistant_id"));
+  const assistantId = getAssistantId(c.req.param("assistant_id"));
   const assistant = await Assistants.get(assistantId);
   const graph = getGraph(assistant.graph_id);
 
@@ -154,7 +158,7 @@ api.get("/assistants/:assistant_id/subgraphs", async (c) => {
 
 api.get("/assistants/:assistant_id/versions", async (c) => {
   // Get Assistant Versions
-  const assistantId = validateUuid(c.req.param("assistant_id"));
+  const assistantId = getAssistantId(c.req.param("assistant_id"));
 
   // TODO: implement version retrieval
   return c.json({
@@ -167,7 +171,7 @@ api.post(
   zValidator("json", schemas.AssistantLatestVersion),
   async (c) => {
     // Set Latest Assistant Version
-    const assistantId = validateUuid(c.req.param("assistant_id"));
+    const assistantId = getAssistantId(c.req.param("assistant_id"));
     const payload = c.req.valid("json");
 
     // TODO: implement version update

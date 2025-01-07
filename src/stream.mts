@@ -90,8 +90,8 @@ function preprocessDebugCheckpointTask(
   return cloneTask;
 }
 
-type StreamCheckpoint = ReturnType<typeof preprocessDebugCheckpoint>;
-type StreamTaskResult = ReturnType<typeof preprocessDebugCheckpointTask>;
+export type StreamCheckpoint = ReturnType<typeof preprocessDebugCheckpoint>;
+export type StreamTaskResult = ReturnType<typeof preprocessDebugCheckpointTask>;
 
 function preprocessDebugCheckpoint(payload: DebugCheckpoint) {
   return {
@@ -185,7 +185,6 @@ export async function* streamState(
       }
 
       // TODO: implement messages-tuple
-
       if (mode !== "custom" && kwargs.stream_mode?.includes(mode)) {
         if (kwargs.subgraphs && ns?.length) {
           yield { event: `${mode}|${ns.join("|")}`, data: chunk };

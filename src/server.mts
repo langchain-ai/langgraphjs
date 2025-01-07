@@ -11,6 +11,7 @@ import store from "./api/store.mjs";
 import { truncate } from "./storage/ops.mjs";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
+import { queue } from "./queue.mjs";
 
 const app = new Hono();
 
@@ -41,8 +42,14 @@ app.post(
   }
 );
 
+const N_WORKERS = 10;
+
 async function lifecycle() {
   await registerFromEnv();
+
+  console.info(`Starting ${N_WORKERS} workers`);
+  for (let i = 0; i < N_WORKERS; i++) queue();
+
   serve(
     {
       fetch: app.fetch,

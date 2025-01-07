@@ -246,11 +246,13 @@ api.post(
       limit: z.number().optional().default(10),
       before: z.string().optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
-      checkpoint: z.object({
-        checkpoint_id: z.string().uuid(),
-        checkpoint_ns: z.string().optional(),
-        checkpoint_map: z.record(z.string(), z.unknown()).optional(),
-      }),
+      checkpoint: z
+        .object({
+          checkpoint_id: z.string().uuid(),
+          checkpoint_ns: z.string().optional(),
+          checkpoint_map: z.record(z.string(), z.unknown()).optional(),
+        })
+        .optional(),
     })
   ),
   async (c) => {

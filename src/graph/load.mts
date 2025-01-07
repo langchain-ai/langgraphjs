@@ -15,6 +15,8 @@ import {
   resolveGraph,
   runGraphSchemaWorker,
 } from "./load.utils.mjs";
+import { checkpointer } from "../storage/checkpoint.mjs";
+import { store } from "../storage/store.mjs";
 
 export const GRAPHS: Record<string, CompiledGraph<string>> = {};
 export const GRAPH_SPEC: Record<string, GraphSpec> = {};
@@ -26,6 +28,11 @@ export const NAMESPACE_GRAPH = uuid.parse(
 
 const SpecSchema = z.record(z.string());
 const ConfigSchema = z.record(z.unknown());
+
+export const getAssistantId = (graphId: string) => {
+  if (graphId in GRAPHS) return uuid.v5(graphId, NAMESPACE_GRAPH);
+  return graphId;
+};
 
 declare global {
   namespace NodeJS {
@@ -74,13 +81,13 @@ export function getGraph(
 
   const compiled = GRAPHS[graphId];
 
-  if (typeof options?.checkpointer === "undefined") {
-    compiled.checkpointer = options?.checkpointer;
+  if (typeof options?.checkpointer !== "undefined") {
+    compiled.checkpointer = options?.checkpointer ?? undefined;
   } else {
-    compiled.checkpointer = new MemorySaver();
+    compiled.checkpointer = checkpointer;
   }
 
-  compiled.store = options?.store ?? new InMemoryStore();
+  compiled.store = options?.store ?? store;
 
   return compiled;
 }

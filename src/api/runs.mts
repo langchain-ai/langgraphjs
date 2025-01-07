@@ -1,17 +1,17 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { streamSSE } from "hono/streaming";
-import { GRAPHS, NAMESPACE_GRAPH } from "../graph/load.mjs";
+import { streamSSE, stream } from "hono/streaming";
+import { getAssistantId, GRAPHS, NAMESPACE_GRAPH } from "../graph/load.mjs";
 import { zValidator } from "@hono/zod-validator";
 import * as schemas from "../schemas.mjs";
 import { v5 as uuidv5 } from "uuid";
 import { v4 as uuid } from "uuid";
 import { validateUuid } from "../utils/uuid.mjs";
 import { z } from "zod";
-import { Run, RunKwargs, Runs, StreamMode } from "../storage/ops.mjs";
-import { streamState } from "../stream.mjs";
+import { Run, RunKwargs, Runs, Threads } from "../storage/ops.mjs";
 import { serialiseAsDict } from "../utils/serde.mjs";
 
+export const logger = console;
 const api = new Hono();
 
 // Runs Routes
@@ -111,7 +111,7 @@ const createValidRun = async (
     ifNotExists: "reject" | "create" | undefined;
   }
 ): Promise<Run> => {
-  const { assistant_id: assistantId, ...kwargs } = payload;
+  const { assistant_id: assistantId, ...run } = payload;
 
   const streamMode = Array.isArray(payload.stream_mode)
     ? payload.stream_mode
@@ -123,24 +123,25 @@ const createValidRun = async (
   const multitaskStrategy = payload.multitask_strategy ?? "reject";
   const preventInsertInInflight = multitaskStrategy === "reject";
 
-  const config: RunKwargs["config"] = { ...kwargs.config };
+  const config: RunKwargs["config"] = { ...run.config };
 
-  if (kwargs.checkpoint_id) {
+  if (run.checkpoint_id) {
     config.configurable ??= {};
-    config.configurable.checkpoint_id = kwargs.checkpoint_id;
+    config.configurable.checkpoint_id = run.checkpoint_id;
   }
 
-  if (kwargs.checkpoint) {
+  if (run.checkpoint) {
     config.configurable ??= {};
-    Object.assign(config.configurable, kwargs.checkpoint);
+    Object.assign(config.configurable, run.checkpoint);
   }
 
-  const [run] = await Runs.put(
-    assistantId,
-    { ...kwargs, config, stream_mode: streamMode },
+  // TODO: returning an array is very silly here
+  const [created] = await Runs.put(
+    getAssistantId(assistantId),
+    { ...run, config, stream_mode: streamMode },
     {
       threadId,
-      metadata: kwargs.metadata,
+      metadata: run.metadata,
       status: "pending",
       multitaskStrategy,
       preventInsertInInflight,
@@ -149,7 +150,7 @@ const createValidRun = async (
     }
   );
 
-  return run;
+  return created;
 };
 
 api.post(
@@ -161,11 +162,13 @@ api.post(
     const { thread_id } = c.req.valid("param");
     const payload = c.req.valid("json");
 
-    // TODO: reimplement queue / use worker threads to avoid clogging the asyncio event loop
     const run = await createValidRun(thread_id, payload);
     return streamSSE(c, async (stream) => {
       try {
-        for await (const { event, data } of streamState(run)) {
+        for await (const { event, data } of Runs.Stream.join(
+          run.run_id,
+          thread_id
+        )) {
           await stream.writeSSE({ data: serialiseAsDict(data), event });
         }
       } catch (error) {
@@ -184,15 +187,60 @@ api.post(
     const { thread_id } = c.req.valid("param");
     const payload = c.req.valid("json");
 
-    // TODO: reimplement queue / use worker threads to avoid clogging the asyncio event loop
-    throw new HTTPException(500, { message: "Not implemented: Wait Run" });
+    const run = await createValidRun(thread_id, payload);
+    const runStream = Runs.Stream.join(run.run_id, thread_id);
+
+    const lastChunk = new Promise(async (resolve, reject) => {
+      try {
+        let lastChunk: unknown = null;
+        for await (const { event, data } of runStream) {
+          if (event === "values") {
+            lastChunk = data;
+          } else if (event === "error") {
+            // TODO: this doesn't seem to be right?
+            lastChunk = { __error__: data };
+          }
+        }
+
+        resolve(lastChunk);
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    return stream(c, async (stream) => {
+      // keep sending newlines until we resolved the chunk
+      let keepAlive: Promise<any> = Promise.resolve();
+
+      const timer = setInterval(() => {
+        keepAlive = keepAlive.then(() => stream.write("\n"));
+      }, 1000);
+
+      const result = await lastChunk;
+      clearInterval(timer);
+
+      await keepAlive;
+      await stream.write(serialiseAsDict(result));
+    });
   }
 );
 
-api.get("/threads/:thread_id/runs/:run_id", async (c) => {
-  // Get Run Http
-  throw new HTTPException(500, { message: "Not implemented: Get Run Http" });
-});
+api.get(
+  "/threads/:thread_id/runs/:run_id",
+  zValidator(
+    "param",
+    z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() })
+  ),
+  async (c) => {
+    const { thread_id, run_id } = c.req.valid("param");
+    const [run] = await Promise.all([
+      Runs.get(run_id, thread_id),
+      Threads.get(thread_id),
+    ]);
+
+    return c.json(run);
+  }
+);
 
 api.delete("/threads/:thread_id/runs/:run_id", async (c) => {
   // Delete Run
