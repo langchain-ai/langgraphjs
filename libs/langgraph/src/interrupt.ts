@@ -126,7 +126,6 @@ export function interrupt<I = unknown, R = unknown>(value: I): R {
 }
 
 /**
- * @beta
  * Configuration interface that defines what actions are allowed for a human interrupt.
  * This controls the available interaction options when the graph is paused for human input.
  *
@@ -143,7 +142,6 @@ export interface HumanInterruptConfig {
 }
 
 /**
- * @beta
  * Represents a request for human action within the graph execution.
  * Contains the action type and any associated arguments needed for the action.
  *
@@ -157,7 +155,6 @@ export interface ActionRequest {
 }
 
 /**
- * @beta
  * Represents an interrupt triggered by the graph that requires human intervention.
  * This is passed to the `interrupt` function when execution is paused for human input.
  *
@@ -172,7 +169,6 @@ export interface HumanInterrupt {
 }
 
 /**
- * @beta
  * The response provided by a human to an interrupt, which is returned when graph execution resumes.
  *
  * @property {("accept"|"ignore"|"response"|"edit")} type - The type of response:
