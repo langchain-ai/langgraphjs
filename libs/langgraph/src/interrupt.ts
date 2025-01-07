@@ -152,6 +152,7 @@ export interface HumanInterruptConfig {
  */
 export interface ActionRequest {
   action: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   args: Record<string, any>;
 }
 
