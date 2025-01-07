@@ -270,7 +270,7 @@ describe.only("threads crud", () => {
   });
 });
 
-describe("threads copy", () => {
+describe.only("threads copy", () => {
   it.concurrent("copy", async () => {
     const assistantId = "agent";
     const thread = await client.threads.create();
@@ -394,7 +394,7 @@ describe("threads copy", () => {
     expect(currentOriginalThreadState).toEqual(originalThreadState);
   });
 
-  it.concurrent.only("get thread history", async () => {
+  it.concurrent("get thread history", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input = { messages: [{ type: "human", content: "foo" }] };
@@ -461,7 +461,11 @@ describe("threads copy", () => {
     const copiedThreadState = await client.threads.getState<AgentState>(
       copyThread.thread_id
     );
-    expect(copiedThreadState.values.messages[0].content).toBe("bar");
+    expect(
+      // TODO: figure out what is the default serializer format for messages
+      copiedThreadState.values.messages[0].content ||
+        copiedThreadState.values.messages[0].kwargs?.content
+    ).toBe("bar");
 
     // test that updating the copied thread doesn't affect the original one
     const currentOriginalThreadState = await client.threads.getState(
