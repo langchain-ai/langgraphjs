@@ -866,12 +866,7 @@ export class Runs {
   static async *next(): AsyncGenerator<[Run, number]> {
     const now = new Date();
     const pendingRuns = Object.values(STORE.runs)
-      .filter(
-        (run) =>
-          run.status === "pending" &&
-          run.created_at < now &&
-          !LOCKS.has(run.thread_id)
-      )
+      .filter((run) => run.status === "pending" && run.created_at < now)
       .sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
 
     if (!pendingRuns.length) {
@@ -879,6 +874,7 @@ export class Runs {
     }
 
     for (const run of pendingRuns) {
+      const runId = run.run_id;
       const threadId = run.thread_id;
       const thread = STORE.threads[threadId];
 
@@ -889,11 +885,12 @@ export class Runs {
         continue;
       }
 
+      if (LOCKS.has(runId)) continue;
       try {
-        LOCKS.add(threadId);
+        LOCKS.add(runId);
         yield [run, 1];
       } finally {
-        LOCKS.delete(threadId);
+        LOCKS.delete(runId);
       }
     }
   }
