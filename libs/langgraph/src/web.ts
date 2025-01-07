@@ -38,7 +38,13 @@ export {
   isCommand,
   type Interrupt,
 } from "./constants.js";
-export { interrupt } from "./interrupt.js";
+export {
+  interrupt,
+  type HumanInterruptConfig,
+  type HumanInterrupt,
+  type HumanResponse,
+  type ActionRequest,
+} from "./interrupt.js";
 
 export {
   MemorySaver,
