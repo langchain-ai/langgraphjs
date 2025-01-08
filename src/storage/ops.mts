@@ -1048,26 +1048,63 @@ export class Runs {
     const run = STORE.runs[runId];
     if (!run || run.thread_id !== threadId) throw new Error("Run not found");
 
+    // TODO: delete checkpoints for run
+
     delete STORE.runs[runId];
     return run.run_id;
   }
 
-  static async join(runId: string, threadId: string) {}
+  static async join(runId: string, threadId: string) {
+    // check if thread exists
+    await Threads.get(threadId);
+
+    let lastChunk: Record<string, unknown> | null = null;
+    for await (const chunk of Runs.Stream.join(runId, threadId)) {
+      if (chunk.event === "values") {
+        // TODO: do we need this assertion at all?
+        lastChunk = chunk.data as Record<string, unknown>;
+      }
+    }
+
+    if (lastChunk != null) return lastChunk;
+    const thread = await Threads.get(threadId);
+    return thread.values;
+  }
+
   static async cancel(
+    threadId: string,
     runIds: string[],
     options: {
       action?: "interrupt" | "rollback";
-      thread_id: string;
     }
-  ) {}
+  ) {
+    // Send cancellation message through stream manager
+    // Update status for pending runs
+  }
+
   static async search(
     threadId: string,
     options?: {
-      limit?: number;
-      offset?: number;
-      metadata?: Metadata;
+      limit?: number | null;
+      offset?: number | null;
+      status?: string | null;
+      metadata?: Metadata | null;
     }
-  ) {}
+  ) {
+    const runs = Object.values(STORE.runs).filter((run) => {
+      if (run.thread_id !== threadId) return false;
+      if (options?.status != null && run.status !== options.status)
+        return false;
+      if (
+        options?.metadata != null &&
+        !isJsonbContained(run.metadata, options.metadata)
+      )
+        return false;
+      return true;
+    });
+
+    return runs.slice(options?.offset ?? 0, options?.limit ?? 10);
+  }
   static async setStatus(runId: string, status: RunStatus) {
     const run = STORE.runs[runId];
     if (!run) throw new Error(`Run ${runId} not found`);

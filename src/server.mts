@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 
 import { registerFromEnv } from "./graph/load.mjs";
 
@@ -15,7 +16,9 @@ import { logger, requestLogger } from "./logging.mjs";
 
 const app = new Hono();
 
+app.use(cors());
 app.use(requestLogger);
+
 app.route("/", assistants);
 app.route("/", runs);
 app.route("/", threads);
@@ -45,6 +48,7 @@ app.post(
 const N_WORKERS = 10;
 
 async function lifecycle() {
+  logger.info("Registering graphs");
   await registerFromEnv();
 
   logger.info(`Starting ${N_WORKERS} workers`);

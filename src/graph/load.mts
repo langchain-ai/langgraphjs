@@ -1,12 +1,10 @@
 import { z } from "zod";
 import * as uuid from "uuid";
 import { Assistants } from "../storage/ops.mjs";
-import {
-  type BaseCheckpointSaver,
-  type BaseStore,
-  type CompiledGraph,
-  InMemoryStore,
-  MemorySaver,
+import type {
+  BaseCheckpointSaver,
+  BaseStore,
+  CompiledGraph,
 } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
 import {
@@ -17,6 +15,7 @@ import {
 } from "./load.utils.mjs";
 import { checkpointer } from "../storage/checkpoint.mjs";
 import { store } from "../storage/store.mjs";
+import { logger } from "../logging.mjs";
 
 export const GRAPHS: Record<string, CompiledGraph<string>> = {};
 export const GRAPH_SPEC: Record<string, GraphSpec> = {};
@@ -34,16 +33,6 @@ export const getAssistantId = (graphId: string) => {
   return graphId;
 };
 
-declare global {
-  namespace NodeJS {
-    interface ProcessEnv {
-      LANGSERVE_GRAPHS: string;
-      LANGGRAPH_CONFIG: string | undefined;
-      PORT: string;
-    }
-  }
-}
-
 export async function registerFromEnv() {
   const specs = SpecSchema.parse(JSON.parse(process.env.LANGSERVE_GRAPHS));
   const envConfig = process.env.LANGGRAPH_CONFIG
@@ -52,6 +41,10 @@ export async function registerFromEnv() {
 
   await Promise.all(
     Object.entries(specs).map(async ([graphId, rawSpec]) => {
+      logger.info(`Registering graph with id '${graphId}'`, {
+        graph_id: graphId,
+      });
+
       const config = envConfig?.[graphId];
       const { resolved, ...spec } = await resolveGraph(rawSpec);
 
@@ -79,8 +72,9 @@ export function getGraph(
   if (!GRAPHS[graphId])
     throw new HTTPException(404, { message: `Graph "${graphId}" not found` });
 
-  const compiled = GRAPHS[graphId];
+  // TODO: have a check for the type of graph
 
+  const compiled = GRAPHS[graphId];
   if (typeof options?.checkpointer !== "undefined") {
     compiled.checkpointer = options?.checkpointer ?? undefined;
   } else {

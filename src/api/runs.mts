@@ -85,15 +85,50 @@ api.delete("/runs/crons/:cron_id", async (c) => {
   return c.json({});
 });
 
-api.get("/threads/:thread_id/runs", async (c) => {
-  // List Runs Http
-  throw new HTTPException(500, { message: "Not implemented: List Runs Http" });
-});
+api.get(
+  "/threads/:thread_id/runs",
+  zValidator("param", z.object({ thread_id: z.string().uuid() })),
+  zValidator(
+    "query",
+    z.object({
+      limit: z.coerce.number().nullish(),
+      offset: z.coerce.number().nullish(),
+      status: z.string().nullish(),
+      metadata: z.record(z.string(), z.unknown()).nullish(),
+    })
+  ),
+  async (c) => {
+    // List Runs Http
+    const { thread_id } = c.req.valid("param");
+    const { limit, offset, status, metadata } = c.req.valid("query");
 
-api.post("/threads/:thread_id/runs", async (c) => {
-  // Create Run
-  throw new HTTPException(500, { message: "Not implemented: Create Run" });
-});
+    const [runs] = await Promise.all([
+      Runs.search(thread_id, {
+        limit,
+        offset,
+        status,
+        metadata,
+      }),
+      Threads.get(thread_id),
+    ]);
+
+    return c.json(runs);
+  }
+);
+
+api.post(
+  "/threads/:thread_id/runs",
+  zValidator("param", z.object({ thread_id: z.string().uuid() })),
+  zValidator("json", schemas.RunCreateStateful),
+  async (c) => {
+    // Create Run
+    const { thread_id } = c.req.valid("param");
+    const payload = c.req.valid("json");
+
+    const run = await createValidRun(thread_id, payload);
+    return c.json(run);
+  }
+);
 
 api.post("/threads/:thread_id/runs/crons", async (c) => {
   // Create Thread Cron
@@ -241,19 +276,55 @@ api.get(
   }
 );
 
-api.delete("/threads/:thread_id/runs/:run_id", async (c) => {
-  // Delete Run
-  throw new HTTPException(500, { message: "Not implemented: Delete Run" });
-});
+api.delete(
+  "/threads/:thread_id/runs/:run_id",
+  zValidator(
+    "param",
+    z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() })
+  ),
+  async (c) => {
+    // Delete Run
+    const { thread_id, run_id } = c.req.valid("param");
+    await Runs.delete(run_id, thread_id);
+    return c.body(null, 204);
+  }
+);
 
-api.get("/threads/:thread_id/runs/:run_id/join", async (c) => {
-  // Join Run Http
-  throw new HTTPException(500, { message: "Not implemented: Join Run Http" });
-});
+api.get(
+  "/threads/:thread_id/runs/:run_id/join",
+  zValidator(
+    "param",
+    z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() })
+  ),
+  async (c) => {
+    // Join Run Http
+    const { thread_id, run_id } = c.req.valid("param");
+    return c.json(await Runs.join(run_id, thread_id));
+  }
+);
 
-api.post("/threads/:thread_id/runs/:run_id/cancel", async (c) => {
-  // Cancel Run Http
-  throw new HTTPException(500, { message: "Not implemented: Cancel Run Http" });
-});
+api.post(
+  "/threads/:thread_id/runs/:run_id/cancel",
+  zValidator(
+    "param",
+    z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() })
+  ),
+  zValidator(
+    "query",
+    z.object({
+      wait: z.coerce.boolean().optional().default(false),
+      action: z.enum(["interrupt", "rollback"]).optional().default("interrupt"),
+    })
+  ),
+  async (c) => {
+    // Cancel Run Http
+    const { thread_id, run_id } = c.req.valid("param");
+    const { wait, action } = c.req.valid("query");
+
+    await Runs.cancel(thread_id, [run_id], { action });
+    if (wait) await Runs.join(run_id, thread_id);
+    return c.body(null, wait ? 204 : 202);
+  }
+);
 
 export default api;

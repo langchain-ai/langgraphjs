@@ -79,7 +79,7 @@ describe.only("assistants", () => {
     expect(res).toMatchObject({ graph_id: graphId, config, metadata });
 
     await client.assistants.delete(res.assistant_id);
-    expect(() => client.assistants.get(res.assistant_id)).rejects.toThrow(
+    await expect(() => client.assistants.get(res.assistant_id)).rejects.toThrow(
       "HTTP 404: Assistant not found"
     );
   });
@@ -475,7 +475,7 @@ describe.only("threads copy", () => {
   });
 });
 
-describe("runs", () => {
+describe.only("runs", () => {
   beforeAll(async () => truncate({ store: true, threads: true }));
 
   it.concurrent("list runs", async () => {
@@ -597,7 +597,7 @@ describe("runs", () => {
     expect(threadUpdated.status).toBe("idle");
   });
 
-  it.only.concurrent("stream updates", async () => {
+  it.concurrent("stream updates", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input = {
@@ -688,7 +688,6 @@ describe("runs", () => {
 
     let chunk: any;
     for await (chunk of stream) {
-      console.log("chunk", chunk);
       seenEventTypes.add(chunk.event);
 
       if (chunk.event === "metadata") {

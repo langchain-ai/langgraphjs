@@ -4,42 +4,11 @@ import { Hono } from "hono";
 import { v4 as uuid4 } from "uuid";
 
 import * as schemas from "../schemas.mjs";
-import {
-  Checkpoint,
-  RunnableConfig,
-  Threads,
-  ThreadState,
-} from "../storage/ops.mjs";
-import { StateSnapshot } from "@langchain/langgraph";
-import { serializeError } from "../utils/serde.mjs";
-import { runnableConfigToCheckpoint } from "../utils/config.mjs";
+import { RunnableConfig, Threads } from "../storage/ops.mjs";
 import { z } from "zod";
+import { stateSnapshotToThreadState } from "../state.mjs";
 
 const api = new Hono();
-
-const stateSnapshotToThreadState = (state: StateSnapshot): ThreadState => {
-  return {
-    values: state.values,
-    next: state.next,
-    tasks: state.tasks.map((task) => ({
-      id: task.id,
-      name: task.name,
-      error: serializeError(task.error).message,
-      interrupts: task.interrupts,
-      // TODO: too many type assertions, check if this is actually correct
-      checkpoint:
-        task.state != null && "configurable" in task.state
-          ? ((task.state.configurable as Checkpoint) ?? null)
-          : null,
-      state: task.state as ThreadState | undefined,
-      // result: task.result,
-    })),
-    metadata: state.metadata as Record<string, unknown> | undefined,
-    created_at: state.createdAt ? new Date(state.createdAt) : null,
-    checkpoint: runnableConfigToCheckpoint(state.config),
-    parent_checkpoint: runnableConfigToCheckpoint(state.parentConfig),
-  };
-};
 
 // Threads Routes
 api.post("/threads", zValidator("json", schemas.ThreadCreate), async (c) => {

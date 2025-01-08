@@ -11,23 +11,6 @@ export const logger = createLogger({
     format.errors({ stack: true }),
     format.timestamp(),
     format.json(),
-    format.printf((info) => {
-      const { timestamp, level, message, ...rest } = info;
-
-      let event;
-      if (typeof message === "string") {
-        event = message;
-      } else {
-        event = JSON.stringify(message);
-      }
-
-      if (rest.stack) {
-        rest.message = event;
-        event = rest.stack;
-      }
-
-      return JSON.stringify({ timestamp, level, event, ...rest });
-    }),
     ...(!LOG_JSON
       ? [
           format.colorize({ all: true }),
@@ -44,7 +27,25 @@ export const logger = createLogger({
             },
           }),
         ]
-      : [])
+      : [
+          format.printf((info) => {
+            const { timestamp, level, message, ...rest } = info;
+
+            let event;
+            if (typeof message === "string") {
+              event = message;
+            } else {
+              event = JSON.stringify(message);
+            }
+
+            if (rest.stack) {
+              rest.message = event;
+              event = rest.stack;
+            }
+
+            return JSON.stringify({ timestamp, level, event, ...rest });
+          }),
+        ])
   ),
   transports: [
     new transports.Console({
