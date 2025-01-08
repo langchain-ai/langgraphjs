@@ -11,7 +11,6 @@ import { z } from "zod";
 import { Run, RunKwargs, Runs, Threads } from "../storage/ops.mjs";
 import { serialiseAsDict } from "../utils/serde.mjs";
 
-export const logger = console;
 const api = new Hono();
 
 // Runs Routes

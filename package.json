@@ -5,8 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "esbuild src/server.mts --bundle --platform=node --outfile=dist/index.js",
-    "dev": "tsx watch src/server.mts",
-    "dev:test": "LANGGRAPH_CONFIG='{\"agent\": {\"configurable\": {\"model_name\": \"openai\"}}}' LANGSERVE_GRAPHS='{\"agent\":\"./tests/graphs/agent.mts:graph\"}' tsx watch src/server.mts",
+    "dev": "tsx watch --env-file=./tests/.env.test src/server.mts",
     "test": "vitest"
   },
   "dependencies": {
@@ -25,7 +24,8 @@
     "typescript": "^5.5.4",
     "undici": "^6.19.7",
     "uuid": "^10.0.0",
-    "winston": "^3.15.0",
+    "winston": "^3.17.0",
+    "winston-console-format": "^1.0.8",
     "zod": "^3.23.8"
   },
   "devDependencies": {

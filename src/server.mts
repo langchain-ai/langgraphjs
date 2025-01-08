@@ -1,7 +1,6 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 
-import { logger } from "hono/logger";
 import { registerFromEnv } from "./graph/load.mjs";
 
 import runs from "./api/runs.mjs";
@@ -12,10 +11,11 @@ import { truncate } from "./storage/ops.mjs";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { queue } from "./queue.mjs";
+import { logger, requestLogger } from "./logging.mjs";
 
 const app = new Hono();
 
-app.use(logger());
+app.use(requestLogger);
 app.route("/", assistants);
 app.route("/", runs);
 app.route("/", threads);
@@ -47,7 +47,7 @@ const N_WORKERS = 10;
 async function lifecycle() {
   await registerFromEnv();
 
-  console.info(`Starting ${N_WORKERS} workers`);
+  logger.info(`Starting ${N_WORKERS} workers`);
   for (let i = 0; i < N_WORKERS; i++) queue();
 
   serve(
@@ -55,7 +55,7 @@ async function lifecycle() {
       fetch: app.fetch,
       port: process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 9123,
     },
-    (c) => console.info(`Listening to ${c.address}:${c.port}`)
+    (c) => logger.info(`Listening to ${c.address}:${c.port}`)
   );
 }
 

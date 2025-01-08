@@ -1,6 +1,6 @@
 import { Run, Runs, Threads } from "./storage/ops.mjs";
 import { StreamCheckpoint, StreamTaskResult, streamState } from "./stream.mjs";
-import { logger } from "./api/runs.mjs";
+import { logger } from "./logging.mjs";
 
 const MAX_RETRY_ATTEMPTS = 3;
 
