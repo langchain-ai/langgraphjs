@@ -6,6 +6,7 @@
   "scripts": {
     "build": "esbuild src/server.mts --bundle --platform=node --outfile=dist/index.js",
     "dev": "tsx watch --env-file=./tests/.env.test src/server.mts",
+    "dev:inspect": "tsx watch --inspect-brk --env-file=./tests/.env.test src/server.mts",
     "test": "vitest"
   },
   "dependencies": {
