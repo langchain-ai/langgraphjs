@@ -181,7 +181,12 @@ export const RunCreate = z
             ),
           ])
           .optional(),
-        update: z.record(z.unknown()).optional(),
+        update: z
+          .union([
+            z.record(z.unknown()),
+            z.array(z.tuple([z.string(), z.unknown()])),
+          ])
+          .optional(),
         resume: z.unknown().optional(),
       })
       .optional(),

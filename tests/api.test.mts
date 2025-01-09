@@ -1743,11 +1743,17 @@ describe("long running tasks", () => {
   );
 });
 
-// Not implemented in JS yet
-describe("command update state", () => {
+// TODO: upgrade to latest LangGraph after
+// https://github.com/langchain-ai/langgraphjs/pull/776 has landed
+describe.skip("command update state", () => {
   it("updates state via commands", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
+
+    interface StateSchema {
+      keyOne: string;
+      keyTwo: string;
+    }
 
     const input = { messages: [{ role: "human", content: "foo" }] };
 
@@ -1756,6 +1762,7 @@ describe("command update state", () => {
       input,
       config: globalConfig,
     });
+
     let stream = await gatherIterator(
       client.runs.stream(thread.thread_id, assistant.assistant_id, {
         command: { update: { keyOne: "value3", keyTwo: "value4" } },
@@ -1764,15 +1771,8 @@ describe("command update state", () => {
     );
     expect(stream.filter((chunk) => chunk.event === "error")).toEqual([]);
 
-    let state = await client.threads.getState<{
-      keyOne: string;
-      keyTwo: string;
-    }>(thread.thread_id);
-
-    expect(state.values).toMatchObject({
-      keyOne: "value3",
-      keyTwo: "value4",
-    });
+    let state = await client.threads.getState<StateSchema>(thread.thread_id);
+    expect(state.values).toMatchObject({ keyOne: "value3", keyTwo: "value4" });
 
     // list-based updates
     await client.runs.wait(thread.thread_id, assistant.assistant_id, {
@@ -1790,17 +1790,9 @@ describe("command update state", () => {
         config: globalConfig,
       })
     );
-
     expect(stream.filter((chunk) => chunk.event === "error")).toEqual([]);
 
-    state = await client.threads.getState<{
-      keyOne: string;
-      keyTwo: string;
-    }>(thread.thread_id);
-
-    expect(state.values).toMatchObject({
-      keyOne: "value1",
-      keyTwo: "value2",
-    });
+    state = await client.threads.getState<StateSchema>(thread.thread_id);
+    expect(state.values).toMatchObject({ keyOne: "value1", keyTwo: "value2" });
   });
 });
