@@ -5,7 +5,7 @@ import type {
 } from "@langchain/langgraph";
 
 import { HTTPException } from "hono/http-exception";
-import { v4 as uuid } from "uuid";
+import { v4 as uuid4 } from "uuid";
 import { getGraph } from "../graph/load.mjs";
 import { checkpointer } from "./checkpoint.mjs";
 import { store } from "./store.mjs";
@@ -728,8 +728,7 @@ export class Threads {
     const thread = STORE.threads[threadId];
     if (!thread) throw new HTTPException(409, { message: "Thread not found" });
 
-    const newThreadId = uuid();
-
+    const newThreadId = uuid4();
     const now = new Date();
     STORE.threads[newThreadId] = {
       thread_id: newThreadId,
@@ -991,7 +990,7 @@ export class Runs {
     const now = new Date();
 
     if (!existingThread && (threadId == null || ifNotExists === "create")) {
-      threadId ??= uuid();
+      threadId ??= uuid4();
       const thread: Thread = {
         thread_id: threadId,
         status: "busy",
@@ -1036,7 +1035,6 @@ export class Runs {
     }
 
     // check for inflight runs if needed
-
     if (options?.preventInsertInInflight) {
       const inflightRuns = Object.values(STORE.runs).filter(
         (run) => run.thread_id === threadId && run.status === "pending"
@@ -1048,7 +1046,7 @@ export class Runs {
     }
 
     // create new run
-    runId ??= uuid();
+    runId ??= uuid4();
 
     const configurable = Object.assign(
       {},

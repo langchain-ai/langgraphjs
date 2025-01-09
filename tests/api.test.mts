@@ -545,6 +545,7 @@ describe("runs", () => {
     expect(run.status).toBe("success");
 
     if (IS_MEMORY) {
+      // TODO: implement missing test
     } else {
       const sql = postgres(
         process.env.POSTGRES_URI ??
@@ -1681,7 +1682,7 @@ describe("errors", () => {
     expect(runState.status).toEqual("error");
   });
 
-  it.only.concurrent("create + stream join", async () => {
+  it.concurrent("create + stream join", async () => {
     const assistant = await client.assistants.create({ graphId: "error" });
     const thread = await client.threads.create();
 
@@ -1708,7 +1709,7 @@ describe("errors", () => {
   });
 });
 
-describe.skip("long running tasks", () => {
+describe("long running tasks", () => {
   it.concurrent.for([1000, 8000, 12000])(
     "long running task with %dms delay",
     { timeout: 15_000 },

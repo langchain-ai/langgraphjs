@@ -1,6 +1,7 @@
 import { Run, Runs, Threads } from "./storage/ops.mjs";
 import { StreamCheckpoint, StreamTaskResult, streamState } from "./stream.mjs";
 import { logger } from "./logging.mjs";
+import { serializeError } from "./utils/serde.mjs";
 
 const MAX_RETRY_ATTEMPTS = 3;
 
@@ -59,7 +60,7 @@ const worker = async (run: Run, attempt: number, abortSignal: AbortSignal) => {
         await Runs.Stream.publish(run.run_id, event, data);
       }
     } catch (error) {
-      await Runs.Stream.publish(run.run_id, "error", error);
+      await Runs.Stream.publish(run.run_id, "error", serializeError(error));
       throw error;
     }
 

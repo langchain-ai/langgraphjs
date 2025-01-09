@@ -1,6 +1,6 @@
-import { Context, Hono } from "hono";
+import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { SSEStreamingApi, streamSSE } from "hono/streaming";
+import { streamSSE } from "hono/streaming";
 import { getAssistantId } from "../graph/load.mjs";
 import { zValidator } from "@hono/zod-validator";
 import * as schemas from "../schemas.mjs";
@@ -14,7 +14,7 @@ import {
   waitKeepAlive,
 } from "../utils/hono.mjs";
 import { logger } from "../logging.mjs";
-import { StreamingApi } from "hono/utils/stream";
+import { v4 as uuid4 } from "uuid";
 
 const api = new Hono();
 
@@ -27,6 +27,7 @@ const createValidRun = async (
   }
 ): Promise<Run> => {
   const { assistant_id: assistantId, ...run } = payload;
+  const runId = uuid4();
 
   const streamMode = Array.isArray(payload.stream_mode)
     ? payload.stream_mode
@@ -50,10 +51,11 @@ const createValidRun = async (
     Object.assign(config.configurable, run.checkpoint);
   }
 
-  const [created] = await Runs.put(
+  const runs = await Runs.put(
     getAssistantId(assistantId),
     { ...run, config, stream_mode: streamMode },
     {
+      runId,
       threadId,
       metadata: run.metadata,
       status: "pending",
@@ -64,7 +66,37 @@ const createValidRun = async (
     }
   );
 
-  return created;
+  const [first, ...inflight] = runs;
+
+  if (first.run_id === runId) {
+    logger.info("Created run", { run_id: runId, thread_id: threadId });
+
+    if (multitaskStrategy === "interrupt" || multitaskStrategy === "rollback") {
+      try {
+        await Runs.cancel(
+          threadId,
+          inflight.map((run) => run.run_id),
+          { action: multitaskStrategy }
+        );
+      } catch (error) {
+        logger.warn(
+          "Failed to cancel inflight runs, might be already cancelled",
+          {
+            error,
+            run_ids: inflight.map((run) => run.run_id),
+            thread_id: threadId,
+          }
+        );
+      }
+    } else if (multitaskStrategy === "reject") {
+      throw new HTTPException(409, {
+        message:
+          "Thread is already running a task. Wait for it to finish or choose a different multitask strategy.",
+      });
+    }
+  }
+
+  return first;
 };
 
 // Runs Routes
