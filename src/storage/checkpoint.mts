@@ -22,7 +22,7 @@ class InMemorySaver extends MemorySaver {
     return super.put(config, checkpoint, {
       ...Object.fromEntries(
         Object.entries(config.configurable ?? {}).filter(
-          ([key]) => !EXCLUDED_KEYS.includes(key)
+          ([key]) => !key.startsWith("__") && !EXCLUDED_KEYS.includes(key)
         )
       ),
       ...config.metadata,
