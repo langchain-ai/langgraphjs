@@ -2,14 +2,13 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 
 import { v4 as uuid } from "uuid";
-import { RunnableConfig } from "../storage/ops.mjs";
 import { z } from "zod";
 
 import { getAssistantId, getGraph, getGraphSchema } from "../graph/load.mjs";
-import { validateUuid } from "../utils/uuid.mjs";
 
 import { Assistants } from "../storage/ops.mjs";
 import * as schemas from "../schemas.mjs";
+import { HTTPException } from "hono/http-exception";
 
 const api = new Hono();
 
@@ -121,9 +120,6 @@ api.get("/assistants/:assistant_id/schemas", async (c) => {
   // Get Assistant Schemas
   const assistantId = getAssistantId(c.req.param("assistant_id"));
   const assistant = await Assistants.get(assistantId);
-  const graph = getGraph(assistant.graph_id);
-
-  // TODO: add support for input/output/state/config schema
 
   const graphSchema = await getGraphSchema(assistant.graph_id);
   const rootGraphId = Object.keys(graphSchema).find((i) => !i.includes("|"));
@@ -141,26 +137,36 @@ api.get("/assistants/:assistant_id/schemas", async (c) => {
 });
 
 api.get(
-  "/assistants/:assistant_id/subgraphs",
+  "/assistants/:assistant_id/subgraphs/:namespace?",
   zValidator(
-    "query",
-    z.object({
-      subgraphs: schemas.coercedBoolean,
-      namespace: z.string().optional(),
-    })
+    "param",
+    z.object({ assistant_id: z.string(), namespace: z.string().optional() })
   ),
+  zValidator("query", z.object({ recurse: schemas.coercedBoolean.optional() })),
   async (c) => {
     // Get Assistant Subgraphs
-    const assistantId = getAssistantId(c.req.param("assistant_id"));
+    const { assistant_id, namespace } = c.req.valid("param");
+    const { recurse } = c.req.valid("query");
+
+    const assistantId = getAssistantId(assistant_id);
     const assistant = await Assistants.get(assistantId);
     const graph = getGraph(assistant.graph_id);
 
-    // TODO: implement subgraphs retrieval
-    const { subgraphs, namespace } = c.req.valid("query");
+    const graphSchema = await getGraphSchema(assistant.graph_id);
+    const rootGraphId = Object.keys(graphSchema).find((i) => !i.includes("|"));
+    if (!rootGraphId) {
+      throw new HTTPException(404, { message: "Failed to find root graph" });
+    }
 
-    return c.json({
-      subgraphs: {}, // TODO: implement
-    });
+    const result: Array<[name: string, schema: Record<string, any>]> = [];
+    for await (const [ns] of graph.getSubgraphsAsync(namespace, recurse)) {
+      result.push([
+        ns,
+        graphSchema[`${rootGraphId}|${ns}`] || graphSchema[rootGraphId],
+      ]);
+    }
+
+    return c.json(Object.fromEntries(result));
   }
 );
 

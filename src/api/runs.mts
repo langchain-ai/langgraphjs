@@ -4,7 +4,6 @@ import { streamSSE } from "hono/streaming";
 import { getAssistantId } from "../graph/load.mjs";
 import { zValidator } from "@hono/zod-validator";
 import * as schemas from "../schemas.mjs";
-import { validateUuid } from "../utils/uuid.mjs";
 import { z } from "zod";
 import { Run, RunKwargs, Runs, Threads } from "../storage/ops.mjs";
 import { serialiseAsDict } from "../utils/serde.mjs";
@@ -183,7 +182,7 @@ api.delete(
   zValidator("param", z.object({ cron_id: z.string().uuid() })),
   async (c) => {
     // Delete Cron
-    const cronId = validateUuid(c.req.param("cron_id"));
+    const cronId = c.req.valid("param").cron_id;
 
     throw new HTTPException(500, {
       message: "Not implemented: Delete Cron",
