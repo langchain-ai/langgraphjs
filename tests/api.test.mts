@@ -1744,7 +1744,7 @@ describe("long running tasks", () => {
 });
 
 // Not implemented in JS yet
-describe.skip("command update state", () => {
+describe("command update state", () => {
   it("updates state via commands", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
