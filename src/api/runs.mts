@@ -51,11 +51,11 @@ const createValidRun = async (
     Object.assign(config.configurable, run.checkpoint);
   }
 
-  const runs = await Runs.put(
+  const [first, ...inflight] = await Runs.put(
+    runId,
     getAssistantId(assistantId),
     { ...run, config, stream_mode: streamMode },
     {
-      runId,
       threadId,
       metadata: run.metadata,
       status: "pending",
@@ -66,39 +66,41 @@ const createValidRun = async (
     }
   );
 
-  const [first, ...inflight] = runs;
+  if (first?.run_id === runId) {
+    logger.info("Created run", { run_id: runId, thread_id: threadId });
+    if (
+      (multitaskStrategy === "interrupt" || multitaskStrategy === "rollback") &&
+      inflight.length > 0
+    ) {
+      try {
+        await Runs.cancel(
+          threadId,
+          inflight.map((run) => run.run_id),
+          { action: multitaskStrategy }
+        );
+      } catch (error) {
+        logger.warn(
+          "Failed to cancel inflight runs, might be already cancelled",
+          {
+            error,
+            run_ids: inflight.map((run) => run.run_id),
+            thread_id: threadId,
+          }
+        );
+      }
+    }
 
-  console.log(first, inflight);
+    return first;
+  } else if (multitaskStrategy === "reject") {
+    throw new HTTPException(409, {
+      message:
+        "Thread is already running a task. Wait for it to finish or choose a different multitask strategy.",
+    });
+  }
 
-  // if (first.run_id === runId) {
-  //   logger.info("Created run", { run_id: runId, thread_id: threadId });
-
-  //   if (multitaskStrategy === "interrupt" || multitaskStrategy === "rollback") {
-  //     try {
-  //       await Runs.cancel(
-  //         threadId,
-  //         inflight.map((run) => run.run_id),
-  //         { action: multitaskStrategy }
-  //       );
-  //     } catch (error) {
-  //       logger.warn(
-  //         "Failed to cancel inflight runs, might be already cancelled",
-  //         {
-  //           error,
-  //           run_ids: inflight.map((run) => run.run_id),
-  //           thread_id: threadId,
-  //         }
-  //       );
-  //     }
-  //   } else if (multitaskStrategy === "reject") {
-  //     throw new HTTPException(409, {
-  //       message:
-  //         "Thread is already running a task. Wait for it to finish or choose a different multitask strategy.",
-  //     });
-  //   }
-  // }
-
-  return first;
+  throw new HTTPException(500, {
+    message: "Unreachable state when creating run",
+  });
 };
 
 // Runs Routes

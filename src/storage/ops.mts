@@ -956,12 +956,12 @@ export class Runs {
   }
 
   static async put(
+    runId: string,
     assistantId: string,
     kwargs: RunKwargs,
     options?: {
       threadId?: string;
       userId?: string;
-      runId?: string;
       status?: RunStatus;
       metadata?: Metadata;
       preventInsertInInflight?: boolean;
@@ -979,7 +979,6 @@ export class Runs {
     const status = options?.status ?? "pending";
 
     let threadId = options?.threadId;
-    let runId = options?.runId;
     const metadata = options?.metadata ?? {};
     const config: RunnableConfig = kwargs.config ?? {};
 
@@ -994,12 +993,12 @@ export class Runs {
       const thread: Thread = {
         thread_id: threadId,
         status: "busy",
-        metadata: { graph_id: assistant.graph_id },
+        metadata: { graph_id: assistant.graph_id, assistant_id: assistantId },
         config: Object.assign({}, assistant.config, config, {
           configurable: Object.assign(
             {},
-            assistant.config.configurable,
-            config.configurable
+            assistant.config?.configurable,
+            config?.configurable
           ),
         }),
         created_at: now,
@@ -1011,6 +1010,7 @@ export class Runs {
         existingThread.status = "busy";
         existingThread.metadata = Object.assign({}, existingThread.metadata, {
           graph_id: assistant.graph_id,
+          assistant_id: assistantId,
         });
 
         existingThread.config = Object.assign(
@@ -1034,25 +1034,22 @@ export class Runs {
       return [];
     }
 
-    // check for inflight runs if needed
-    if (options?.preventInsertInInflight) {
-      const inflightRuns = Object.values(STORE.runs).filter(
-        (run) => run.thread_id === threadId && run.status === "pending"
-      );
+    // if multitask_mode = reject, check for inflight runs
+    // and if there are any, return them to reject putting a new run
+    const inflightRuns = Object.values(STORE.runs).filter(
+      (run) => run.thread_id === threadId && run.status === "pending"
+    );
 
-      if (inflightRuns.length > 0) {
-        return inflightRuns;
-      }
+    if (options?.preventInsertInInflight) {
+      if (inflightRuns.length > 0) return inflightRuns;
     }
 
     // create new run
-    runId ??= uuid4();
-
     const configurable = Object.assign(
       {},
-      assistant.config.configurable,
+      assistant.config?.configurable,
       existingThread?.config?.configurable,
-      config.configurable,
+      config?.configurable,
       {
         run_id: runId,
         thread_id: threadId,
@@ -1094,7 +1091,7 @@ export class Runs {
     };
 
     STORE.runs[runId] = newRun;
-    return [newRun];
+    return [newRun, ...inflightRuns];
   }
 
   static async get(
