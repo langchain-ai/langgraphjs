@@ -7,6 +7,7 @@ import * as schemas from "../schemas.mjs";
 import { RunnableConfig, Threads } from "../storage/ops.mjs";
 import { z } from "zod";
 import { stateSnapshotToThreadState } from "../state.mjs";
+import { jsonExtra } from "../utils/hono.mjs";
 
 const api = new Hono();
 
@@ -19,7 +20,7 @@ api.post("/threads", zValidator("json", schemas.ThreadCreate), async (c) => {
     if_exists: payload.if_exists ?? "raise",
   });
 
-  return c.json(thread);
+  return jsonExtra(c, thread);
 });
 
 api.post(
@@ -44,7 +45,7 @@ api.post(
       });
     }
 
-    return c.json(result);
+    return jsonExtra(c, result);
   }
 );
 
@@ -53,13 +54,7 @@ api.get(
   zValidator("param", z.object({ thread_id: z.string().uuid() })),
   zValidator(
     "query",
-    z.object({
-      subgraphs: z
-        .union([z.literal("true"), z.literal("false")])
-        .optional()
-        .default("false")
-        .transform((value) => value === "true"),
-    })
+    z.object({ subgraphs: schemas.coercedBoolean.optional() })
   ),
   async (c) => {
     // Get Latest Thread State
@@ -70,7 +65,7 @@ api.get(
       await Threads.State.get({ configurable: { thread_id } }, { subgraphs })
     );
 
-    return c.json(state);
+    return jsonExtra(c, state);
   }
 );
 
@@ -110,7 +105,7 @@ api.post(
       payload.as_node
     );
 
-    return c.json(inserted);
+    return jsonExtra(c, inserted);
   }
 );
 
@@ -122,13 +117,7 @@ api.get(
   ),
   zValidator(
     "query",
-    z.object({
-      subgraphs: z
-        .union([z.literal("true"), z.literal("false")])
-        .optional()
-        .default("false")
-        .transform((value) => value === "true"),
-    })
+    z.object({ subgraphs: schemas.coercedBoolean.optional() })
   ),
   async (c) => {
     // Get Thread State At Checkpoint
@@ -141,7 +130,7 @@ api.get(
       )
     );
 
-    return c.json(state);
+    return jsonExtra(c, state);
   }
 );
 
@@ -151,11 +140,7 @@ api.post(
   zValidator(
     "json",
     z.object({
-      subgraphs: z
-        .union([z.literal("true"), z.literal("false")])
-        .optional()
-        .default("false")
-        .transform((value) => value === "true"),
+      subgraphs: schemas.coercedBoolean.optional(),
       checkpoint: z.object({
         checkpoint_id: z.string().uuid(),
         checkpoint_ns: z.string().optional(),
@@ -175,7 +160,7 @@ api.post(
       )
     );
 
-    return c.json(state);
+    return jsonExtra(c, state);
   }
 );
 
@@ -202,7 +187,7 @@ api.get(
       { configurable: { thread_id, checkpoint_ns: "" } },
       { limit, before }
     );
-    return c.json(states.map(stateSnapshotToThreadState));
+    return jsonExtra(c, states.map(stateSnapshotToThreadState));
   }
 );
 
@@ -234,7 +219,7 @@ api.post(
       { limit, before, metadata }
     );
 
-    return c.json(states.map(stateSnapshotToThreadState));
+    return jsonExtra(c, states.map(stateSnapshotToThreadState));
   }
 );
 
@@ -244,7 +229,7 @@ api.get(
   async (c) => {
     // Get Thread
     const { thread_id } = c.req.valid("param");
-    return c.json(await Threads.get(thread_id));
+    return jsonExtra(c, await Threads.get(thread_id));
   }
 );
 
@@ -267,7 +252,7 @@ api.patch(
     // Patch Thread
     const { thread_id } = c.req.valid("param");
     const { metadata } = c.req.valid("json");
-    return c.json(await Threads.patch(thread_id, { metadata }));
+    return jsonExtra(c, await Threads.patch(thread_id, { metadata }));
   }
 );
 
@@ -277,7 +262,7 @@ api.post(
   async (c) => {
     // Copy Thread
     const { thread_id } = c.req.valid("param");
-    return c.json(await Threads.copy(thread_id));
+    return jsonExtra(c, await Threads.copy(thread_id));
   }
 );
 

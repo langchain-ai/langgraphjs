@@ -10,7 +10,9 @@ import {
   interrupt,
 } from "@langchain/langgraph";
 import { FakeListChatModel } from "@langchain/core/utils/testing";
-
+import { ChatGenerationChunk } from "@langchain/core/outputs";
+import { v4 as uuidv4 } from "uuid";
+import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 const GraphAnnotationOutput = Annotation.Root({
   messages: Annotation<BaseMessage[]>({
     reducer: messagesStateReducer,
@@ -28,13 +30,58 @@ const GraphAnnotationInput = Annotation.Root({
   sharedStateFromStoreConfig: Annotation<Record<string, any> | null>,
 });
 
+class StableFakeListChatModel extends FakeListChatModel {
+  streamMessageId: string = uuidv4();
+
+  async *_streamResponseChunks(
+    _messages: BaseMessage[],
+    options: this["ParsedCallOptions"],
+    runManager?: CallbackManagerForLLMRun
+  ): AsyncGenerator<ChatGenerationChunk> {
+    const response = this._currentResponse();
+    this._incrementResponse();
+    this.streamMessageId = uuidv4();
+
+    if (this.emitCustomEvent) {
+      await runManager?.handleCustomEvent("some_test_event", {
+        someval: true,
+      });
+    }
+
+    for await (const text of response) {
+      await this._sleepIfRequested();
+      if (options?.thrownErrorString) {
+        throw new Error(options.thrownErrorString);
+      }
+      const chunk = this._createResponseChunk(text);
+
+      // ensure stable ID
+      chunk.message.id = this.streamMessageId;
+      chunk.message.lc_kwargs.id = this.streamMessageId;
+
+      yield chunk;
+
+      void runManager?.handleLLMNewToken(
+        text,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { chunk }
+      );
+    }
+  }
+}
+
 // For shared state
 const namespace = ["sharedState", "data"];
 const key = "user_id";
 
 const modelMap: Record<string, FakeListChatModel> = {};
 const getModel = (threadId: string) => {
-  modelMap[threadId] ??= new FakeListChatModel({ responses: ["begin", "end"] });
+  modelMap[threadId] ??= new StableFakeListChatModel({
+    responses: ["begin", "end"],
+  });
   return modelMap[threadId];
 };
 

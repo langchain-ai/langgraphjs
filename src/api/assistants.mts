@@ -103,13 +103,12 @@ const getRunnableConfig = (
 
 api.get(
   "/assistants/:assistant_id/graph",
-  zValidator("query", z.object({ xray: z.string().optional() })),
+  zValidator("query", z.object({ xray: schemas.coercedBoolean.optional() })),
   async (c) => {
     // Get Assistant Graph
     const assistantId = getAssistantId(c.req.param("assistant_id"));
     const assistant = await Assistants.get(assistantId);
-
-    const xray = c.req.query("xray") === "true";
+    const { xray } = c.req.valid("query");
 
     const graph = getGraph(assistant.graph_id);
     return c.json(
@@ -141,20 +140,29 @@ api.get("/assistants/:assistant_id/schemas", async (c) => {
   });
 });
 
-api.get("/assistants/:assistant_id/subgraphs", async (c) => {
-  // Get Assistant Subgraphs
-  const assistantId = getAssistantId(c.req.param("assistant_id"));
-  const assistant = await Assistants.get(assistantId);
-  const graph = getGraph(assistant.graph_id);
+api.get(
+  "/assistants/:assistant_id/subgraphs",
+  zValidator(
+    "query",
+    z.object({
+      subgraphs: schemas.coercedBoolean,
+      namespace: z.string().optional(),
+    })
+  ),
+  async (c) => {
+    // Get Assistant Subgraphs
+    const assistantId = getAssistantId(c.req.param("assistant_id"));
+    const assistant = await Assistants.get(assistantId);
+    const graph = getGraph(assistant.graph_id);
 
-  // TODO: implement subgraphs retrieval
-  const recurse = c.req.query("recurse") === "true";
-  const namespace = c.req.query("namespace");
+    // TODO: implement subgraphs retrieval
+    const { subgraphs, namespace } = c.req.valid("query");
 
-  return c.json({
-    subgraphs: {}, // TODO: implement
-  });
-});
+    return c.json({
+      subgraphs: {}, // TODO: implement
+    });
+  }
+);
 
 api.get("/assistants/:assistant_id/versions", async (c) => {
   // Get Assistant Versions

@@ -3,11 +3,14 @@ import type {
   CheckpointMetadata as LangGraphCheckpointMetadata,
   LangGraphRunnableConfig,
 } from "@langchain/langgraph";
+
 import { HTTPException } from "hono/http-exception";
 import { v4 as uuid } from "uuid";
 import { getGraph } from "../graph/load.mjs";
 import { checkpointer } from "./checkpoint.mjs";
 import { store } from "./store.mjs";
+import { logger } from "../logging.mjs";
+import { serializeError } from "../utils/serde.mjs";
 
 export type Metadata = Record<string, unknown>;
 
@@ -21,7 +24,13 @@ export type RunStatus =
   | "timeout"
   | "interrupted";
 
-export type StreamMode = "values" | "messages" | "updates" | "events" | "debug";
+export type StreamMode =
+  | "values"
+  | "messages"
+  | "messages-tuple"
+  | "updates"
+  | "events"
+  | "debug";
 
 export type MultitaskStrategy = "reject" | "rollback" | "interrupt" | "enqueue";
 
@@ -114,17 +123,20 @@ const STORE: {
   threads: Record<string, Thread>;
   assistants: Record<string, Assistant>;
   assistant_versions: AssistantVersion[];
+  retry_counter: Record<string, number>;
 } = {
   runs: {},
   threads: {},
   assistants: {},
   assistant_versions: [],
+  retry_counter: {},
 };
 
 class TimeoutError extends Error {}
+class AbortError extends Error {}
 
 interface Message {
-  topic: string;
+  topic: `run:${string}:stream:${string}`;
   data: unknown;
 }
 
@@ -139,7 +151,7 @@ class Queue {
     }
   }
 
-  async get(timeout: number) {
+  async get(options: { timeout: number; signal?: AbortSignal }) {
     if (this.buffer.length > 0) {
       return this.buffer.shift()!;
     }
@@ -150,7 +162,7 @@ class Queue {
       const timer = setTimeout(() => {
         this.listeners = this.listeners.filter((l) => l !== listener);
         reject(new TimeoutError());
-      }, timeout);
+      }, options.timeout);
 
       listener = () => {
         this.listeners = this.listeners.filter((l) => l !== listener);
@@ -158,13 +170,69 @@ class Queue {
         resolve();
       };
 
+      // TODO: make sure we're not leaking callback here
+      if (options.signal != null) {
+        options.signal.addEventListener("abort", () => {
+          this.listeners = this.listeners.filter((l) => l !== listener);
+          clearTimeout(timer);
+          reject(new TimeoutError());
+        });
+      }
+
       this.listeners.push(listener);
     }).then(() => this.buffer.shift()!);
   }
 }
 
-const QUEUES: Record<string, Queue> = {};
-const LOCKS: Set<string> = new Set();
+class CancellationAbortController extends AbortController {
+  abort(reason: "rollback" | "interrupt") {
+    super.abort(reason);
+  }
+}
+
+class StreamManagerImpl {
+  readers: Record<string, Queue> = {};
+  control: Record<string, CancellationAbortController> = {};
+
+  getQueue(runId: string, options: { ifNotFound: "create" }): Queue;
+
+  getQueue(runId: string, options: { ifNotFound: "ignore" }): Queue | undefined;
+
+  getQueue(runId: string, options: { ifNotFound: "create" | "ignore" }) {
+    if (this.readers[runId] == null) {
+      if (options?.ifNotFound === "create") {
+        this.readers[runId] = new Queue();
+      } else {
+        return undefined;
+      }
+    }
+
+    return this.readers[runId];
+  }
+
+  getControl(runId: string) {
+    if (this.control[runId] == null) return undefined;
+    return this.control[runId];
+  }
+
+  isLocked(runId: string): boolean {
+    return this.control[runId] != null;
+  }
+
+  lock(runId: string): AbortSignal {
+    if (this.control[runId] != null) {
+      logger.warn("Run already locked", { run_id: runId });
+    }
+    this.control[runId] = new CancellationAbortController();
+    return this.control[runId].signal;
+  }
+
+  unlock(runId: string) {
+    delete this.control[runId];
+  }
+}
+
+export const StreamManager = new StreamManagerImpl();
 
 export const truncate = (flags: {
   runs?: boolean;
@@ -478,7 +546,7 @@ export interface Checkpoint {
 interface ThreadTask {
   id: string;
   name: string;
-  error?: string;
+  error: string | null;
   interrupts: Record<string, unknown>[];
   checkpoint: Checkpoint | null;
   state?: ThreadState;
@@ -740,7 +808,10 @@ export class Threads {
       const threadId = config.configurable?.thread_id;
       const thread = threadId ? await Threads.get(threadId) : undefined;
 
-      if (!thread) {
+      const metadata = thread?.metadata ?? {};
+      const graphId = metadata?.graph_id as string | undefined | null;
+
+      if (!thread || graphId == null) {
         return {
           values: {},
           next: [],
@@ -752,35 +823,17 @@ export class Threads {
         };
       }
 
-      const metadata = thread.metadata ?? {};
-      // TODO: use the copied thread loader
+      const graph = await getGraph(graphId, { checkpointer, store });
+      const result = await graph.getState(config, { subgraphs });
 
-      const graphId = metadata.graph_id as string | undefined | null;
-
-      if (graphId != null) {
-        const graph = await getGraph(graphId, { checkpointer, store });
-        const result = await graph.getState(config, { subgraphs });
-
-        if (
-          result.metadata != null &&
-          "checkpoint_ns" in result.metadata &&
-          result.metadata["checkpoint_ns"] === ""
-        ) {
-          delete result.metadata["checkpoint_ns"];
-        }
-
-        return result;
-      } else {
-        return {
-          values: {},
-          next: [],
-          config: {},
-          metadata: undefined,
-          createdAt: undefined,
-          parentConfig: undefined,
-          tasks: [],
-        };
+      if (
+        result.metadata != null &&
+        "checkpoint_ns" in result.metadata &&
+        result.metadata["checkpoint_ns"] === ""
+      ) {
+        delete result.metadata["checkpoint_ns"];
       }
+      return result;
     }
 
     static async post(
@@ -863,7 +916,11 @@ export class Threads {
 }
 
 export class Runs {
-  static async *next(): AsyncGenerator<[Run, number]> {
+  static async *next(): AsyncGenerator<{
+    run: Run;
+    attempt: number;
+    signal: AbortSignal;
+  }> {
     const now = new Date();
     const pendingRuns = Object.values(STORE.runs)
       .filter((run) => run.status === "pending" && run.created_at < now)
@@ -885,12 +942,16 @@ export class Runs {
         continue;
       }
 
-      if (LOCKS.has(runId)) continue;
+      if (StreamManager.isLocked(runId)) continue;
       try {
-        LOCKS.add(runId);
-        yield [run, 1];
+        const signal = StreamManager.lock(runId);
+
+        STORE.retry_counter[runId] ??= 0;
+        STORE.retry_counter[runId] += 1;
+
+        yield { run, attempt: STORE.retry_counter[runId], signal };
       } finally {
-        LOCKS.delete(runId);
+        StreamManager.unlock(runId);
       }
     }
   }
@@ -1038,15 +1099,27 @@ export class Runs {
     return [newRun];
   }
 
-  static async get(runId: string, threadId: string): Promise<Run | null> {
+  static async get(
+    runId: string,
+    threadId: string | undefined
+  ): Promise<Run | null> {
     const run = STORE.runs[runId];
-    if (!run || run.run_id !== runId || run.thread_id !== threadId) return null;
+    if (
+      !run ||
+      run.run_id !== runId ||
+      (threadId != null && run.thread_id !== threadId)
+    )
+      return null;
     return run;
   }
 
-  static async delete(runId: string, threadId: string): Promise<string | null> {
+  static async delete(
+    runId: string,
+    threadId: string | undefined
+  ): Promise<string | null> {
     const run = STORE.runs[runId];
-    if (!run || run.thread_id !== threadId) throw new Error("Run not found");
+    if (!run || (threadId != null && run.thread_id !== threadId))
+      throw new Error("Run not found");
 
     // TODO: delete checkpoints for run
 
@@ -1054,32 +1127,92 @@ export class Runs {
     return run.run_id;
   }
 
+  static async wait(runId: string, threadId: string | undefined) {
+    const runStream = Runs.Stream.join(runId, threadId);
+
+    const lastChunk = new Promise(async (resolve, reject) => {
+      try {
+        let lastChunk: unknown = null;
+        for await (const { event, data } of runStream) {
+          if (event === "values") {
+            lastChunk = data as Record<string, unknown>;
+          } else if (event === "error") {
+            lastChunk = { __error__: serializeError(data) };
+          }
+        }
+
+        resolve(lastChunk);
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    return lastChunk;
+  }
+
   static async join(runId: string, threadId: string) {
     // check if thread exists
     await Threads.get(threadId);
 
-    let lastChunk: Record<string, unknown> | null = null;
-    for await (const chunk of Runs.Stream.join(runId, threadId)) {
-      if (chunk.event === "values") {
-        // TODO: do we need this assertion at all?
-        lastChunk = chunk.data as Record<string, unknown>;
-      }
-    }
-
+    const lastChunk = await Runs.wait(runId, threadId);
     if (lastChunk != null) return lastChunk;
+
     const thread = await Threads.get(threadId);
     return thread.values;
   }
 
   static async cancel(
-    threadId: string,
+    threadId: string | undefined,
     runIds: string[],
     options: {
       action?: "interrupt" | "rollback";
     }
   ) {
-    // Send cancellation message through stream manager
-    // Update status for pending runs
+    const action = options.action ?? "interrupt";
+    const promises: Promise<unknown>[] = [];
+
+    let foundRunsCount = 0;
+
+    for (const runId of runIds) {
+      const run = STORE.runs[runId];
+      if (!run || (threadId != null && run.thread_id !== threadId)) continue;
+      foundRunsCount += 1;
+
+      // send cancellation message
+      const control = StreamManager.getControl(runId);
+      control?.abort(options.action ?? "interrupt");
+
+      if (run.status === "pending") {
+        if (control || action !== "rollback") {
+          run.status = "interrupted";
+          run.updated_at = new Date();
+        } else {
+          logger.info("Eagerly deleting unscheduled run with rollback action", {
+            run_id: runId,
+            thread_id: threadId,
+          });
+
+          promises.push(Runs.delete(runId, threadId));
+        }
+      } else {
+        logger.warn("Attempted to cancel non-pending run.", {
+          run_id: runId,
+          status: run.status,
+        });
+      }
+    }
+
+    await Promise.all(promises);
+
+    if (foundRunsCount === runIds.length) {
+      logger.info("Cancelled runs", {
+        run_ids: runIds,
+        thread_id: threadId,
+        action,
+      });
+    } else {
+      throw new HTTPException(404, { message: "Run not found" });
+    }
   }
 
   static async search(
@@ -1113,21 +1246,21 @@ export class Runs {
   }
 
   static Stream = class {
-    static async subscribe(runId: string) {
-      QUEUES[runId] ??= new Queue();
-      return QUEUES[runId];
-    }
-
     static async *join(
       runId: string,
-      threadId: string,
-      options?: { ignore404?: boolean }
+      threadId: string | undefined,
+      options?: {
+        ignore404?: boolean;
+        cancelOnDisconnect?: AbortSignal;
+      }
     ): AsyncGenerator<{ event: string; data: unknown }> {
-      const queue = await Runs.Stream.subscribe(runId);
-      if (queue == null) throw new Error(`Queue not found for run ${runId}`);
-      while (true) {
+      // TODO: what if we're joining an already completed run? Should we check before?
+      const signal = options?.cancelOnDisconnect;
+      const queue = StreamManager.getQueue(runId, { ifNotFound: "create" });
+
+      while (!signal?.aborted) {
         try {
-          const message = await queue.get(500);
+          const message = await queue.get({ timeout: 500, signal });
           if (message.topic === `run:${runId}:control`) {
             if (message.data === "done") break;
           } else {
@@ -1138,8 +1271,9 @@ export class Runs {
             yield { event: streamTopic, data: message.data };
           }
         } catch (error) {
-          const run = await Runs.get(runId, threadId);
+          if (error instanceof AbortError) break;
 
+          const run = await Runs.get(runId, threadId);
           if (run == null) {
             if (!options?.ignore404)
               yield { event: "error", data: "Run not found" };
@@ -1149,10 +1283,14 @@ export class Runs {
           }
         }
       }
+
+      if (signal?.aborted && threadId != null) {
+        await Runs.cancel(threadId, [runId], { action: "interrupt" });
+      }
     }
 
     static async publish(runId: string, topic: string, data: unknown) {
-      const queue = await Runs.Stream.subscribe(runId);
+      const queue = StreamManager.getQueue(runId, { ifNotFound: "create" });
       queue.push({ topic: `run:${runId}:stream:${topic}`, data });
     }
   };

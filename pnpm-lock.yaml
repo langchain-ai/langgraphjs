@@ -18,10 +18,10 @@ importers:
         specifier: ^0.2.2
         version: 0.2.2(hono@4.6.16)(zod@3.24.1)
       '@langchain/core':
-        specifier: ^0.3.22
+        specifier: ^0.3.27
         version: 0.3.27
       '@langchain/langgraph':
-        specifier: ^0.2.35
+        specifier: ^0.2.39
         version: 0.2.39(@langchain/core@0.3.27)
       '@types/json-schema':
         specifier: ^7.0.15

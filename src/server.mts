@@ -17,7 +17,7 @@ import { logger, requestLogger } from "./logging.mjs";
 const app = new Hono();
 
 app.use(cors());
-app.use(requestLogger);
+app.use(requestLogger());
 
 app.route("/", assistants);
 app.route("/", runs);

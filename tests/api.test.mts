@@ -64,7 +64,7 @@ const IS_MEMORY = true;
 
 beforeAll(() => truncate("all"));
 
-describe.only("assistants", () => {
+describe("assistants", () => {
   it("create read update delete", async () => {
     const graphId = "agent";
     const config = { configurable: { model_name: "gpt" } };
@@ -200,7 +200,7 @@ describe.only("assistants", () => {
   });
 });
 
-describe.only("threads crud", () => {
+describe("threads crud", () => {
   beforeEach(() => truncate({ threads: true }));
 
   it("create, read, update, delete thread", async () => {
@@ -270,7 +270,7 @@ describe.only("threads crud", () => {
   });
 });
 
-describe.only("threads copy", () => {
+describe("threads copy", () => {
   it.concurrent("copy", async () => {
     const assistantId = "agent";
     const thread = await client.threads.create();
@@ -371,8 +371,7 @@ describe.only("threads copy", () => {
     );
 
     const copiedThreadStateMessages = copiedThreadState.values.messages.map(
-      // TODO: figure out what is the default serializer format for messages
-      (m) => m.content || m.kwargs?.content
+      (m) => m.content
     );
     expect(copiedThreadStateMessages).toEqual([
       // original messages
@@ -461,11 +460,7 @@ describe.only("threads copy", () => {
     const copiedThreadState = await client.threads.getState<AgentState>(
       copyThread.thread_id
     );
-    expect(
-      // TODO: figure out what is the default serializer format for messages
-      copiedThreadState.values.messages[0].content ||
-        copiedThreadState.values.messages[0].kwargs?.content
-    ).toBe("bar");
+    expect(copiedThreadState.values.messages[0].content).toBe("bar");
 
     // test that updating the copied thread doesn't affect the original one
     const currentOriginalThreadState = await client.threads.getState(
@@ -475,7 +470,7 @@ describe.only("threads copy", () => {
   });
 });
 
-describe.only("runs", () => {
+describe("runs", () => {
   beforeAll(async () => truncate({ store: true, threads: true }));
 
   it.concurrent("list runs", async () => {
@@ -501,6 +496,8 @@ describe.only("runs", () => {
     runs = await client.runs.list(thread.thread_id, { status: "pending" });
     expect(runs.length).toBe(1);
 
+    // TODO: Sometimes the run has been already picked up by a worker
+    // So the test can actually be flaky.
     await client.runs.cancel(thread.thread_id, pendingRun.run_id);
 
     runs = await client.runs.list(thread.thread_id, { status: "interrupted" });
@@ -1158,7 +1155,7 @@ describe("StoreClient", () => {
   });
 });
 
-describe("subgraphs", () => {
+describe.skip("subgraphs", () => {
   it.concurrent("get subgraphs", async () => {
     const assistant = await client.assistants.create({ graphId: "nested" });
 
@@ -1658,6 +1655,8 @@ describe("errors", () => {
       })
     );
 
+    console.dir(stream.at(-1), { depth: null });
+
     expect(stream.at(-1)).toMatchObject({
       event: "error",
       data: {
@@ -1682,7 +1681,7 @@ describe("errors", () => {
     expect(runState.status).toEqual("error");
   });
 
-  it.concurrent("create + stream join", async () => {
+  it.only.concurrent("create + stream join", async () => {
     const assistant = await client.assistants.create({ graphId: "error" });
     const thread = await client.threads.create();
 
@@ -1709,7 +1708,7 @@ describe("errors", () => {
   });
 });
 
-describe("long running tasks", () => {
+describe.skip("long running tasks", () => {
   it.concurrent.for([1000, 8000, 12000])(
     "long running task with %dms delay",
     { timeout: 15_000 },

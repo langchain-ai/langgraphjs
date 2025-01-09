@@ -12,7 +12,7 @@ export const stateSnapshotToThreadState = (
     tasks: state.tasks.map((task) => ({
       id: task.id,
       name: task.name,
-      error: serializeError(task.error).message,
+      error: task.error != null ? serializeError(task.error).message : null,
       interrupts: task.interrupts,
       // TODO: too many type assertions, check if this is actually correct
       checkpoint:

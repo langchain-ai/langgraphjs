@@ -8,15 +8,12 @@ import {
   Send,
   StateSnapshot,
 } from "@langchain/langgraph";
+import type { Pregel } from "@langchain/langgraph/pregel";
 import { runnableConfigToCheckpoint } from "./utils/config.mjs";
+import { BaseMessageChunk, isBaseMessage } from "@langchain/core/messages";
+import { logger } from "./logging.mjs";
 
-// TODO: these types are not exported from @langchain/langgraph/pregel
-type LangGraphStreamMode =
-  | "values"
-  | "messages"
-  | "updates"
-  | "debug"
-  | "custom";
+type LangGraphStreamMode = Pregel<any, any>["streamMode"][number];
 
 interface DebugTask {
   id: string;
@@ -108,6 +105,7 @@ export async function* streamState(
   options?: {
     onCheckpoint?: (checkpoint: StreamCheckpoint) => void;
     onTaskResult?: (taskResult: StreamTaskResult) => void;
+    signal?: AbortSignal;
   }
 ): AsyncGenerator<{ event: string; data: unknown }> {
   const kwargs = run.kwargs;
@@ -121,9 +119,21 @@ export async function* streamState(
     checkpointer: kwargs.temporary ? null : undefined,
   });
 
+  const userStreamMode = kwargs.stream_mode ?? [];
+
   const libStreamMode: Set<LangGraphStreamMode> = new Set(
-    kwargs.stream_mode?.filter((mode) => mode !== "events") ?? []
+    userStreamMode.filter(
+      (mode) => mode !== "events" && mode !== "messages-tuple"
+    ) ?? []
   );
+
+  if (userStreamMode.includes("messages-tuple")) {
+    libStreamMode.add("messages");
+  }
+
+  if (userStreamMode.includes("messages")) {
+    libStreamMode.add("values");
+  }
 
   if (!libStreamMode.has("debug")) libStreamMode.add("debug");
 
@@ -141,26 +151,28 @@ export async function* streamState(
     langgraph_host: "self-hosted",
   };
 
-  const params = {
-    version: "v2" as const,
-
-    interruptAfter: kwargs.interrupt_after,
-    interruptBefore: kwargs.interrupt_before,
-
-    tags: kwargs.config?.tags,
-    configurable: kwargs.config?.configurable,
-    recursionLimit: kwargs.config?.recursion_limit,
-    subgraphs: kwargs.subgraphs,
-    metadata,
-
-    runId: run.run_id,
-    streamMode: [...libStreamMode],
-  };
-
   const events = graph.streamEvents(
     kwargs.command != null ? getLangGraphCommand(kwargs.command) : kwargs.input,
-    params
+    {
+      version: "v2" as const,
+
+      interruptAfter: kwargs.interrupt_after,
+      interruptBefore: kwargs.interrupt_before,
+
+      tags: kwargs.config?.tags,
+      configurable: kwargs.config?.configurable,
+      recursionLimit: kwargs.config?.recursion_limit,
+      subgraphs: kwargs.subgraphs,
+      metadata,
+
+      runId: run.run_id,
+      streamMode: [...libStreamMode],
+      signal: options?.signal,
+    }
   );
+
+  const messages: Record<string, BaseMessageChunk> = {};
+  const completedIds = new Set<string>();
 
   for await (const event of events) {
     if (event.tags?.includes("langsmith:hidden")) continue;
@@ -182,18 +194,78 @@ export async function* streamState(
             preprocessDebugCheckpointTask(debugChunk.payload)
           );
         }
-      }
-
-      // TODO: implement messages-tuple
-      if (mode !== "custom" && kwargs.stream_mode?.includes(mode)) {
+      } else if (mode === "messages") {
+        if (userStreamMode.includes("messages-tuple")) {
+          yield { event: "messages", data: chunk };
+        }
+      } else if (mode === "custom") {
+        logger.warn("unhandled custom mode", { mode, chunk });
+      } else if (userStreamMode.includes(mode)) {
         if (kwargs.subgraphs && ns?.length) {
           yield { event: `${mode}|${ns.join("|")}`, data: chunk };
         } else {
           yield { event: mode, data: chunk };
         }
       }
-    } else if (kwargs.stream_mode?.includes("events")) {
+    } else if (userStreamMode.includes("events")) {
       yield { event: "events", data: event };
+    }
+
+    // TODO: we still rely on old messages mode based of streamMode=values
+    // In order to fully switch to library messages mode, we need to do ensure that
+    // `StreamMessagesHandler` sends the final message, which requires the following:
+    // - handleLLMEnd does not send the final message b/c handleLLMNewToken sets the this.emittedChatModelRunIds[runId] flag. Python does not do that
+    // - handleLLMEnd receives the final message as BaseMessageChunk rather than BaseMessage, which from the outside will become indistinguishable.
+    // - handleLLMEnd should not dedupe the message
+    // - Don't think there's an utility that would convert a BaseMessageChunk to a BaseMessage?
+    if (userStreamMode.includes("messages")) {
+      if (event.event === "on_chain_stream" && event.run_id === run.run_id) {
+        const newMessages: Array<BaseMessageChunk> = [];
+        const [_, chunk]: [string, any] = event.data.chunk;
+
+        let chunkMessages: Array<BaseMessageChunk> = [];
+        if (
+          typeof chunk === "object" &&
+          chunk != null &&
+          "messages" in chunk &&
+          !isBaseMessage(chunk)
+        ) {
+          chunkMessages = chunk?.messages;
+        }
+
+        if (!Array.isArray(chunkMessages)) {
+          chunkMessages = [chunkMessages];
+        }
+
+        for (const message of chunkMessages) {
+          if (!message.id || completedIds.has(message.id)) continue;
+          completedIds.add(message.id);
+          newMessages.push(message);
+        }
+
+        if (newMessages.length > 0) {
+          yield { event: "messages/complete", data: newMessages };
+        }
+      } else if (
+        event.event === "on_chat_model_stream" &&
+        !event.tags?.includes("nostream")
+      ) {
+        const message: BaseMessageChunk = event.data.chunk;
+
+        if (!message.id) continue;
+
+        if (messages[message.id] == null) {
+          messages[message.id] = message;
+          yield {
+            event: "messages/metadata",
+            data: { [message.id]: { metadata: event.metadata } },
+          };
+        } else {
+          messages[message.id] = messages[message.id].concat(message);
+        }
+
+        yield { event: "messages/partial", data: [messages[message.id]] };
+      }
     }
   }
 }

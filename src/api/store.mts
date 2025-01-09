@@ -3,6 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import * as schemas from "../schemas.mjs";
 import { HTTPException } from "hono/http-exception";
 import { store as storageStore } from "../storage/store.mjs";
+import type { Item } from "@langchain/langgraph";
 
 const api = new Hono();
 
@@ -20,6 +21,19 @@ const validateNamespace = (namespace: string[]) => {
       });
     }
   }
+};
+
+const mapItemsToApi = (item: Item | null) => {
+  if (item == null) return null;
+
+  const clonedItem: Record<string, unknown> = { ...item };
+  delete clonedItem.createdAt;
+  delete clonedItem.updatedAt;
+
+  clonedItem.created_at = item.createdAt;
+  clonedItem.updated_at = item.updatedAt;
+
+  return clonedItem;
 };
 
 api.post(
@@ -51,14 +65,14 @@ api.post(
     const payload = c.req.valid("json");
     if (payload.namespace_prefix) validateNamespace(payload.namespace_prefix);
 
-    return c.json({
-      items: await storageStore.search(payload.namespace_prefix, {
-        filter: payload.filter,
-        limit: payload.limit ?? 10,
-        offset: payload.offset ?? 0,
-        query: payload.query,
-      }),
+    const items = await storageStore.search(payload.namespace_prefix, {
+      filter: payload.filter,
+      limit: payload.limit ?? 10,
+      offset: payload.offset ?? 0,
+      query: payload.query,
     });
+
+    return c.json({ items: items.map(mapItemsToApi) });
   }
 );
 
@@ -90,7 +104,7 @@ api.get(
     const payload = c.req.valid("query");
     const key = payload.key;
     const namespace = payload.namespace;
-    return c.json(await storageStore.get(namespace, key));
+    return c.json(mapItemsToApi(await storageStore.get(namespace, key)));
   }
 );
 

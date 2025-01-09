@@ -157,37 +157,6 @@ export const RunCreate = z
   .object({
     assistant_id: z.union([z.string().uuid(), z.string()]),
     checkpoint_id: z.string().optional(),
-    input: z
-      .union([
-        z.array(z.object({}).catchall(z.any())),
-        z.object({}).catchall(z.any()),
-        z.null(),
-      ])
-      .optional(),
-    metadata: z
-      .object({})
-      .catchall(z.any())
-      .describe("Metadata for the run.")
-      .optional(),
-    config: AssistantConfig.optional(),
-    webhook: z.string().url().optional(),
-    interrupt_before: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
-    interrupt_after: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
-    multitask_strategy: z
-      .enum(["reject", "rollback", "interrupt", "enqueue"])
-      .optional(),
-  })
-  .describe("Payload for creating a run.");
-
-export const RunBatchCreate = z
-  .array(RunCreate)
-  .min(1)
-  .describe("Payload for creating a batch of runs.");
-
-export const RunCreateStateful = z
-  .object({
-    assistant_id: z.union([z.string().uuid(), z.string()]),
-    checkpoint_id: z.string().optional(),
     checkpoint: CheckpointSchema.optional(),
     input: z
       .union([
@@ -225,6 +194,11 @@ export const RunCreateStateful = z
     webhook: z.string().url().optional(),
     interrupt_before: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
     interrupt_after: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
+    // TODO: probably not applicable to creating / scheduling runs
+    on_disconnect: z
+      .enum(["cancel", "continue"])
+      .optional()
+      .default("continue"),
     multitask_strategy: z
       .enum(["reject", "rollback", "interrupt", "enqueue"])
       .optional(),
@@ -237,6 +211,11 @@ export const RunCreateStateful = z
     feedback_keys: z.array(z.string()).optional(),
   })
   .describe("Payload for creating a stateful run.");
+
+export const RunBatchCreate = z
+  .array(RunCreate)
+  .min(1)
+  .describe("Payload for creating a batch of runs.");
 
 export const SearchResult = z
   .object({
@@ -404,11 +383,6 @@ export const AssistantLatestVersion = z.object({
   version: z.number(),
 });
 
-export const BatchRunsRequest = z.object({
-  assistant_id: z.string().uuid(),
-  values: z.array(z.unknown()),
-});
-
 export const StoreListNamespaces = z.object({
   prefix: z.array(z.string()).optional(),
   suffix: z.array(z.string()).optional(),
@@ -442,4 +416,9 @@ export const StoreGetItem = z.object({
     .optional()
     .transform((value) => value?.split(".") ?? []),
   key: z.string(),
+});
+
+export const coercedBoolean = z.string().transform((val) => {
+  const lower = val.toLowerCase();
+  return lower === "true" || lower === "1" || lower === "yes";
 });

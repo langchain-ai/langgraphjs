@@ -7,8 +7,8 @@ const MAX_RETRY_ATTEMPTS = 3;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export const queue = async () => {
   while (true) {
-    for await (const [run, attempt] of Runs.next()) {
-      await worker(run, attempt);
+    for await (const { run, attempt, signal } of Runs.next()) {
+      await worker(run, attempt, signal);
     }
 
     // TODO: this is very suboptimal, we should implement subscription to the run
@@ -16,7 +16,7 @@ export const queue = async () => {
   }
 };
 
-const worker = async (run: Run, attempt: number) => {
+const worker = async (run: Run, attempt: number, abortSignal: AbortSignal) => {
   const startedAt = new Date();
   let checkpoint: StreamCheckpoint | undefined = undefined;
   let exception: Error | undefined = undefined;
@@ -50,11 +50,10 @@ const worker = async (run: Run, attempt: number) => {
     }
 
     try {
-      const stream = streamState(
-        run,
-        attempt,
-        !temporary ? { onCheckpoint, onTaskResult } : undefined
-      );
+      const stream = streamState(run, attempt, {
+        signal: abortSignal,
+        ...(!temporary ? { onCheckpoint, onTaskResult } : undefined),
+      });
 
       for await (const { event, data } of stream) {
         await Runs.Stream.publish(run.run_id, event, data);
@@ -76,6 +75,8 @@ const worker = async (run: Run, attempt: number) => {
     await Runs.setStatus(run.run_id, "success");
   } catch (error) {
     const endedAt = new Date();
+    if (error instanceof Error) exception = error;
+
     logger.info("Background run failed", {
       exc_info: error,
       run_id: run.run_id,

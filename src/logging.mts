@@ -1,6 +1,7 @@
 import { createLogger, format, transports } from "winston";
 import { logger as honoLogger } from "hono/logger";
 import { consoleFormat } from "winston-console-format";
+import { MiddlewareHandler } from "hono";
 
 const LOG_JSON = process.env.LOG_JSON === "true";
 const LOG_LEVEL = process.env.LOG_LEVEL || "debug";
@@ -55,6 +56,7 @@ export const logger = createLogger({
   ],
 });
 
-export const requestLogger = honoLogger((message, ...rest) => {
-  logger.info(message, ...rest);
-});
+export const requestLogger = (): MiddlewareHandler =>
+  honoLogger((message, ...rest) => {
+    logger.info(message, ...rest);
+  });

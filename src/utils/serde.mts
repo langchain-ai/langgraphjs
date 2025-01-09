@@ -1,3 +1,5 @@
+import { MiddlewareHandler } from "hono";
+
 export const serialiseAsDict = (obj: unknown) => {
   return JSON.stringify(
     obj,
@@ -26,3 +28,5 @@ export const serializeError = (error: unknown) => {
   }
   return { error: "Error", message: JSON.stringify(error) };
 };
+
+
