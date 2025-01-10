@@ -27,8 +27,16 @@ import {
   Send,
   TAG_HIDDEN,
 } from "../constants.js";
-import { gatherIteratorSync, RunnableCallable } from "../utils.js";
-import { InvalidUpdateError, NodeInterrupt } from "../errors.js";
+import {
+  gatherIterator,
+  gatherIteratorSync,
+  RunnableCallable,
+} from "../utils.js";
+import {
+  InvalidUpdateError,
+  NodeInterrupt,
+  UnreachableNodeError,
+} from "../errors.js";
 import { StateDefinition, StateType } from "./annotation.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
@@ -44,28 +52,37 @@ export interface BranchOptions<
   CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
 > {
   source: N;
-  path: Branch<IO, N, CallOptions>["condition"];
+  path: RunnableLike<IO, BranchPathReturnValue, CallOptions>;
   pathMap?: Record<string, N | typeof END> | (N | typeof END)[];
 }
+
+export type BranchPathReturnValue =
+  | string
+  | Send
+  | (string | Send)[]
+  | Promise<string | Send | (string | Send)[]>;
 
 export class Branch<
   IO,
   N extends string,
   CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
 > {
-  condition: (
-    input: IO,
-    config: CallOptions
-  ) =>
-    | string
-    | Send
-    | (string | Send)[]
-    | Promise<string | Send | (string | Send)[]>;
+  condition: Runnable<IO, BranchPathReturnValue, CallOptions>;
 
   ends?: Record<string, N | typeof END>;
 
   constructor(options: Omit<BranchOptions<IO, N, CallOptions>, "source">) {
-    this.condition = options.path;
+    if (Runnable.isRunnable(options.path)) {
+      this.condition = options.path as Runnable<
+        IO,
+        BranchPathReturnValue,
+        CallOptions
+      >;
+    } else {
+      this.condition = _coerceToRunnable(options.path).withConfig({
+        runName: `Branch`,
+      });
+    }
     this.ends = Array.isArray(options.pathMap)
       ? options.pathMap.reduce((acc, n) => {
           acc[n] = n;
@@ -74,8 +91,11 @@ export class Branch<
       : options.pathMap;
   }
 
-  compile(
-    writer: (dests: (string | Send)[]) => Runnable | undefined,
+  run(
+    writer: (
+      dests: (string | Send)[],
+      config: LangGraphRunnableConfig
+    ) => Runnable | void | Promise<void>,
     reader?: (config: CallOptions) => IO
   ) {
     return ChannelWrite.registerWriter(
@@ -103,10 +123,17 @@ export class Branch<
   async _route(
     input: IO,
     config: CallOptions,
-    writer: (dests: (string | Send)[]) => Runnable | undefined,
+    writer: (
+      dests: (string | Send)[],
+      config: LangGraphRunnableConfig
+    ) => Runnable | void | Promise<void>,
     reader?: (config: CallOptions) => IO
-  ): Promise<Runnable | undefined> {
-    let result = await this.condition(reader ? reader(config) : input, config);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<Runnable | any> {
+    let result = await this.condition.invoke(
+      reader ? reader(config) : input,
+      config
+    );
     if (!Array.isArray(result)) {
       result = [result];
     }
@@ -123,7 +150,8 @@ export class Branch<
     if (destinations.filter(_isSend).some((packet) => packet.node === END)) {
       throw new InvalidUpdateError("Cannot send a packet to the END node");
     }
-    return writer(destinations);
+    const writeResult = await writer(destinations, config);
+    return writeResult ?? input;
   }
 }
 
@@ -132,12 +160,14 @@ export type NodeSpec<RunInput, RunOutput> = {
   metadata?: Record<string, unknown>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subgraphs?: Pregel<any, any>[];
+  ends?: string[];
 };
 
 export type AddNodeOptions = {
   metadata?: Record<string, unknown>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subgraphs?: Pregel<any, any>[];
+  ends?: string[];
 };
 
 export class Graph<
@@ -219,6 +249,7 @@ export class Graph<
       runnable,
       metadata: options?.metadata,
       subgraphs: isPregelLike(runnable) ? [runnable] : options?.subgraphs,
+      ends: options?.ends,
     } as NodeSpecType;
 
     return this as Graph<N | K, RunInput, RunOutput, NodeSpecType>;
@@ -255,11 +286,11 @@ export class Graph<
 
   addConditionalEdges(
     source: N,
-    path: Branch<
+    path: RunnableLike<
       RunInput,
-      N,
+      BranchPathReturnValue,
       LangGraphRunnableConfig<StateType<C>>
-    >["condition"],
+    >,
     pathMap?: BranchOptions<
       RunInput,
       N,
@@ -271,11 +302,11 @@ export class Graph<
     source:
       | N
       | BranchOptions<RunInput, N, LangGraphRunnableConfig<StateType<C>>>,
-    path?: Branch<
+    path?: RunnableLike<
       RunInput,
-      N,
+      BranchPathReturnValue,
       LangGraphRunnableConfig<StateType<C>>
-    >["condition"],
+    >,
     pathMap?: BranchOptions<
       RunInput,
       N,
@@ -286,12 +317,31 @@ export class Graph<
       RunInput,
       N,
       LangGraphRunnableConfig<StateType<C>>
-    > = typeof source === "object" ? source : { source, path: path!, pathMap };
+    > = typeof source === "object"
+      ? source
+      : {
+          source,
+          path: path!,
+          pathMap,
+        };
     this.warnIfCompiled(
       "Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
+    if (!Runnable.isRunnable(options.path)) {
+      const pathDisplayValues = Array.isArray(options.pathMap)
+        ? options.pathMap.join(",")
+        : Object.keys(options.pathMap ?? {}).join(",");
+      options.path = _coerceToRunnable(options.path).withConfig({
+        runName: `Branch<${options.source}${
+          pathDisplayValues !== "" ? `,${pathDisplayValues}` : ""
+        }>`.slice(0, 63),
+      });
+    }
     // find a name for condition
-    const name = options.path.name || "condition";
+    const name =
+      options.path.getName() === "RunnableLambda"
+        ? "condition"
+        : options.path.getName();
     // validate condition
     if (this.branches[options.source] && this.branches[options.source][name]) {
       throw new Error(
@@ -409,10 +459,26 @@ export class Graph<
         }
       }
     }
+    for (const node of Object.values<NodeSpecType>(this.nodes)) {
+      for (const target of node.ends ?? []) {
+        allTargets.add(target);
+      }
+    }
     // validate targets
     for (const node of Object.keys(this.nodes)) {
       if (!allTargets.has(node)) {
-        throw new Error(`Node \`${node}\` is not reachable`);
+        throw new UnreachableNodeError(
+          [
+            `Node \`${node}\` is not reachable.`,
+            "",
+            "If you are returning Command objects from your node,",
+            'make sure you are passing names of potential destination nodes as an "ends" array',
+            'into ".addNode(..., { ends: ["node1", "node2"] })".',
+          ].join("\n"),
+          {
+            lc_error_code: "UNREACHABLE_NODE",
+          }
+        );
       }
     }
     for (const target of allTargets) {
@@ -437,43 +503,50 @@ export class Graph<
 export class CompiledGraph<
   N extends string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any,
+  State = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunOutput = any,
+  Update = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType extends Record<string, any> = Record<string, any>
+  ConfigurableFieldType extends Record<string, any> = Record<string, any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  InputType = any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  OutputType = any
 > extends Pregel<
-  Record<N | typeof START, PregelNode<RunInput, RunOutput>>,
+  Record<N | typeof START, PregelNode<State, Update>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType & Record<string, any>
+  ConfigurableFieldType & Record<string, any>,
+  InputType,
+  OutputType
 > {
   declare NodeType: N;
 
-  declare RunInput: RunInput;
+  declare RunInput: State;
 
-  declare RunOutput: RunOutput;
+  declare RunOutput: Update;
 
-  builder: Graph<N, RunInput, RunOutput>;
+  builder: Graph<N, State, Update>;
 
   constructor({
     builder,
     ...rest
-  }: { builder: Graph<N, RunInput, RunOutput> } & PregelParams<
-    Record<N | typeof START, PregelNode<RunInput, RunOutput>>,
+  }: { builder: Graph<N, State, Update> } & PregelParams<
+    Record<N | typeof START, PregelNode<State, Update>>,
     Record<N | typeof START | typeof END | string, BaseChannel>
   >) {
     super(rest);
     this.builder = builder;
   }
 
-  attachNode(key: N, node: NodeSpec<RunInput, RunOutput>): void {
+  attachNode(key: N, node: NodeSpec<State, Update>): void {
     this.channels[key] = new EphemeralValue();
     this.nodes[key] = new PregelNode({
       channels: [],
       triggers: [],
       metadata: node.metadata,
       subgraphs: node.subgraphs,
+      ends: node.ends,
     })
       .pipe(node.runnable)
       .pipe(
@@ -499,7 +572,7 @@ export class CompiledGraph<
   attachBranch(
     start: N | typeof START,
     name: string,
-    branch: Branch<RunInput, N>
+    branch: Branch<State, N>
   ) {
     // add hidden start node
     if (start === START && this.nodes[START]) {
@@ -508,7 +581,7 @@ export class CompiledGraph<
 
     // attach branch writer
     this.nodes[start].pipe(
-      branch.compile((dests) => {
+      branch.run((dests) => {
         const writes = dests.map((dest) => {
           if (_isSend(dest)) {
             return dest;
@@ -539,6 +612,202 @@ export class CompiledGraph<
 
   /**
    * Returns a drawable representation of the computation graph.
+   */
+  override async getGraphAsync(
+    config?: RunnableConfig & { xray?: boolean | number }
+  ): Promise<DrawableGraph> {
+    const xray = config?.xray;
+    const graph = new DrawableGraph();
+    const startNodes: Record<string, DrawableGraphNode> = {
+      [START]: graph.addNode(
+        {
+          schema: z.any(),
+        },
+        START
+      ),
+    };
+    const endNodes: Record<string, DrawableGraphNode> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let subgraphs: Record<string, CompiledGraph<any>> = {};
+    if (xray) {
+      subgraphs = Object.fromEntries(
+        (await gatherIterator(this.getSubgraphsAsync())).filter(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (x): x is [string, CompiledGraph<any>] => isCompiledGraph(x[1])
+        )
+      );
+    }
+
+    function addEdge(
+      start: string,
+      end: string,
+      label?: string,
+      conditional = false
+    ) {
+      if (end === END && endNodes[END] === undefined) {
+        endNodes[END] = graph.addNode({ schema: z.any() }, END);
+      }
+      return graph.addEdge(
+        startNodes[start],
+        endNodes[end],
+        label !== end ? label : undefined,
+        conditional
+      );
+    }
+
+    for (const [key, nodeSpec] of Object.entries(this.builder.nodes) as [
+      N,
+      NodeSpec<State, Update>
+    ][]) {
+      const displayKey = _escapeMermaidKeywords(key);
+      const node = nodeSpec.runnable;
+      const metadata = nodeSpec.metadata ?? {};
+      if (
+        this.interruptBefore?.includes(key) &&
+        this.interruptAfter?.includes(key)
+      ) {
+        metadata.__interrupt = "before,after";
+      } else if (this.interruptBefore?.includes(key)) {
+        metadata.__interrupt = "before";
+      } else if (this.interruptAfter?.includes(key)) {
+        metadata.__interrupt = "after";
+      }
+      if (xray) {
+        const newXrayValue = typeof xray === "number" ? xray - 1 : xray;
+        const drawableSubgraph =
+          subgraphs[key] !== undefined
+            ? await subgraphs[key].getGraphAsync({
+                ...config,
+                xray: newXrayValue,
+              })
+            : node.getGraph(config);
+        drawableSubgraph.trimFirstNode();
+        drawableSubgraph.trimLastNode();
+        if (Object.keys(drawableSubgraph.nodes).length > 1) {
+          const [e, s] = graph.extend(drawableSubgraph, displayKey);
+          if (e === undefined) {
+            throw new Error(
+              `Could not extend subgraph "${key}" due to missing entrypoint.`
+            );
+          }
+
+          // TODO: Remove default name once we stop supporting core 0.2.0
+          // eslint-disable-next-line no-inner-declarations
+          function _isRunnableInterface(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            thing: any
+          ): thing is RunnableInterface {
+            return thing ? thing.lc_runnable : false;
+          }
+          // eslint-disable-next-line no-inner-declarations
+          function _nodeDataStr(
+            id: string | undefined,
+            data: RunnableInterface | RunnableIOSchema
+          ): string {
+            if (id !== undefined && !isUuid(id)) {
+              return id;
+            } else if (_isRunnableInterface(data)) {
+              try {
+                let dataStr = data.getName();
+                dataStr = dataStr.startsWith("Runnable")
+                  ? dataStr.slice("Runnable".length)
+                  : dataStr;
+                return dataStr;
+              } catch (error) {
+                return data.getName();
+              }
+            } else {
+              return data.name ?? "UnknownSchema";
+            }
+          }
+          // TODO: Remove casts when we stop supporting core 0.2.0
+          if (s !== undefined) {
+            startNodes[displayKey] = {
+              name: _nodeDataStr(s.id, s.data),
+              ...s,
+            } as DrawableGraphNode;
+          }
+          endNodes[displayKey] = {
+            name: _nodeDataStr(e.id, e.data),
+            ...e,
+          } as DrawableGraphNode;
+        } else {
+          // TODO: Remove when we stop supporting core 0.2.0
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore
+          const newNode = graph.addNode(node, displayKey, metadata);
+          startNodes[displayKey] = newNode;
+          endNodes[displayKey] = newNode;
+        }
+      } else {
+        // TODO: Remove when we stop supporting core 0.2.0
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        const newNode = graph.addNode(node, displayKey, metadata);
+        startNodes[displayKey] = newNode;
+        endNodes[displayKey] = newNode;
+      }
+    }
+    const sortedEdges = [...this.builder.allEdges].sort(([a], [b]) => {
+      if (a < b) {
+        return -1;
+      } else if (b > a) {
+        return 1;
+      } else {
+        return 0;
+      }
+    });
+    for (const [start, end] of sortedEdges) {
+      addEdge(_escapeMermaidKeywords(start), _escapeMermaidKeywords(end));
+    }
+    for (const [start, branches] of Object.entries(this.builder.branches)) {
+      const defaultEnds: Record<string, string> = {
+        ...Object.fromEntries(
+          Object.keys(this.builder.nodes)
+            .filter((k) => k !== start)
+            .map((k) => [_escapeMermaidKeywords(k), _escapeMermaidKeywords(k)])
+        ),
+        [END]: END,
+      };
+      for (const branch of Object.values(branches)) {
+        let ends;
+        if (branch.ends !== undefined) {
+          ends = branch.ends;
+        } else {
+          ends = defaultEnds;
+        }
+        for (const [label, end] of Object.entries(ends)) {
+          addEdge(
+            _escapeMermaidKeywords(start),
+            _escapeMermaidKeywords(end),
+            label,
+            true
+          );
+        }
+      }
+    }
+    for (const [key, node] of Object.entries(this.builder.nodes) as [
+      N,
+      NodeSpec<State, Update>
+    ][]) {
+      if (node.ends !== undefined) {
+        for (const end of node.ends) {
+          addEdge(
+            _escapeMermaidKeywords(key),
+            _escapeMermaidKeywords(end),
+            undefined,
+            true
+          );
+        }
+      }
+    }
+    return graph;
+  }
+
+  /**
+   * Returns a drawable representation of the computation graph.
+   *
+   * @deprecated Use getGraphAsync instead. The async method will be the default in the next minor core release.
    */
   override getGraph(
     config?: RunnableConfig & { xray?: boolean | number }
@@ -584,7 +853,7 @@ export class CompiledGraph<
 
     for (const [key, nodeSpec] of Object.entries(this.builder.nodes) as [
       N,
-      NodeSpec<RunInput, RunOutput>
+      NodeSpec<State, Update>
     ][]) {
       const displayKey = _escapeMermaidKeywords(key);
       const node = nodeSpec.runnable;

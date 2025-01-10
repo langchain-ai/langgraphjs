@@ -1,5 +1,6 @@
 import type { RunnableConfig } from "@langchain/core/runnables";
 import type { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
+import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   BaseCheckpointSaver,
   Checkpoint,
@@ -12,7 +13,9 @@ import {
   All,
   BaseStore,
   AsyncBatchedStore,
+  WRITES_IDX_MAP,
 } from "@langchain/langgraph-checkpoint";
+
 import {
   BaseChannel,
   createCheckpoint,
@@ -20,7 +23,9 @@ import {
 } from "../channels/base.js";
 import { PregelExecutableTask, StreamMode } from "./types.js";
 import {
+  isCommand,
   CHECKPOINT_NAMESPACE_SEPARATOR,
+  Command,
   CONFIG_KEY_CHECKPOINT_MAP,
   CONFIG_KEY_READ,
   CONFIG_KEY_RESUMING,
@@ -28,8 +33,9 @@ import {
   ERROR,
   INPUT,
   INTERRUPT,
+  NULL_TASK_ID,
+  RESUME,
   TAG_HIDDEN,
-  TASKS,
 } from "../constants.js";
 import {
   _applyWrites,
@@ -44,6 +50,7 @@ import {
   prefixGenerator,
 } from "../utils.js";
 import {
+  mapCommand,
   mapInput,
   mapOutputUpdates,
   mapOutputValues,
@@ -69,14 +76,13 @@ import { LangGraphRunnableConfig } from "./runnable_types.js";
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
 const DEFAULT_LOOP_LIMIT = 25;
-const SPECIAL_CHANNELS = [ERROR, INTERRUPT];
 
 // [namespace, streamMode, payload]
 export type StreamChunk = [string[], StreamMode, unknown];
 
 export type PregelLoopInitializeParams = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  input?: any;
+  input?: any | Command;
   config: RunnableConfig;
   checkpointer?: BaseCheckpointSaver;
   outputKeys: string | string[];
@@ -84,14 +90,14 @@ export type PregelLoopInitializeParams = {
   nodes: Record<string, PregelNode>;
   channelSpecs: Record<string, BaseChannel>;
   managed: ManagedValueMapping;
-  stream: StreamProtocol;
+  stream: IterableReadableWritableStream;
   store?: BaseStore;
   checkSubgraphs?: boolean;
 };
 
 type PregelLoopParams = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  input?: any;
+  input?: any | Command;
   config: RunnableConfig;
   checkpointer?: BaseCheckpointSaver;
   checkpoint: Checkpoint;
@@ -109,35 +115,81 @@ type PregelLoopParams = {
   checkpointNamespace: string[];
   skipDoneTasks: boolean;
   isNested: boolean;
-  stream: StreamProtocol;
+  stream: IterableReadableWritableStream;
   store?: AsyncBatchedStore;
   prevCheckpointConfig: RunnableConfig | undefined;
 };
 
-export class StreamProtocol {
-  push: (chunk: StreamChunk) => void;
-
+export class IterableReadableWritableStream extends IterableReadableStream<StreamChunk> {
   modes: Set<StreamMode>;
 
-  constructor(pushFn: (chunk: StreamChunk) => void, modes: Set<StreamMode>) {
-    this.push = pushFn;
-    this.modes = modes;
+  private controller: ReadableStreamDefaultController;
+
+  private passthroughFn?: (chunk: StreamChunk) => void;
+
+  constructor(params: {
+    passthroughFn?: (chunk: StreamChunk) => void;
+    modes: Set<StreamMode>;
+  }) {
+    let streamControllerPromiseResolver: (
+      controller: ReadableStreamDefaultController
+    ) => void;
+    const streamControllerPromise: Promise<ReadableStreamDefaultController> =
+      new Promise<ReadableStreamDefaultController>((resolve) => {
+        streamControllerPromiseResolver = resolve;
+      });
+
+    super({
+      start: (controller) => {
+        streamControllerPromiseResolver!(controller);
+      },
+    });
+
+    // .start() will always be called before the stream can be interacted
+    // with anyway
+    void streamControllerPromise.then((controller) => {
+      this.controller = controller;
+    });
+
+    this.passthroughFn = params.passthroughFn;
+    this.modes = params.modes;
+  }
+
+  push(chunk: StreamChunk) {
+    this.passthroughFn?.(chunk);
+    this.controller.enqueue(chunk);
+  }
+
+  close() {
+    try {
+      this.controller.close();
+    } catch (e) {
+      // pass
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  error(e: any) {
+    this.controller.error(e);
   }
 }
 
-function createDuplexStream(...streams: StreamProtocol[]) {
-  return new StreamProtocol((value: StreamChunk) => {
-    for (const stream of streams) {
-      if (stream.modes.has(value[1])) {
-        stream.push(value);
+function createDuplexStream(...streams: IterableReadableWritableStream[]) {
+  return new IterableReadableWritableStream({
+    passthroughFn: (value: StreamChunk) => {
+      for (const stream of streams) {
+        if (stream.modes.has(value[1])) {
+          stream.push(value);
+        }
       }
-    }
-  }, new Set(streams.flatMap((s) => Array.from(s.modes))));
+    },
+    modes: new Set(streams.flatMap((s) => Array.from(s.modes))),
+  });
 }
 
 export class PregelLoop {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  protected input?: any;
+  protected input?: any | Command;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   output: any;
@@ -179,8 +231,6 @@ export class PregelLoop {
 
   protected skipDoneTasks: boolean;
 
-  protected taskWritesLeft: number = 0;
-
   protected prevCheckpointConfig: RunnableConfig | undefined;
 
   status:
@@ -194,7 +244,7 @@ export class PregelLoop {
   tasks: Record<string, PregelExecutableTask<any, any>> = {};
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stream: StreamProtocol;
+  stream: IterableReadableWritableStream;
 
   checkpointerPromises: Promise<unknown>[] = [];
 
@@ -249,7 +299,9 @@ export class PregelLoop {
         config.configurable[CONFIG_KEY_STREAM]
       );
     }
-    const skipDoneTasks = config.configurable?.checkpoint_id === undefined;
+    const skipDoneTasks = config.configurable
+      ? !("checkpoint_id" in config.configurable)
+      : true;
     const isNested = CONFIG_KEY_READ in (config.configurable ?? {});
     if (
       !isNested &&
@@ -395,28 +447,29 @@ export class PregelLoop {
    * @param writes
    */
   putWrites(taskId: string, writes: PendingWrite<string>[]) {
-    if (writes.length === 0) {
+    let writesCopy = writes;
+    if (writesCopy.length === 0) {
       return;
     }
-    // adjust taskWritesLeft
-    const firstChannel = writes[0][0];
-    const anyChannelIsSend = writes.find(([channel]) => channel === TASKS);
-    const alwaysSave =
-      anyChannelIsSend || SPECIAL_CHANNELS.includes(firstChannel);
-    if (!alwaysSave && !this.taskWritesLeft) {
-      return this._outputWrites(taskId, writes);
-    } else if (firstChannel !== INTERRUPT) {
-      // INTERRUPT makes us want to save the last task's writes
-      // so we don't decrement tasksWritesLeft in that case
-      this.taskWritesLeft -= 1;
+
+    // deduplicate writes to special channels, last write wins
+    if (writesCopy.every(([key]) => key in WRITES_IDX_MAP)) {
+      writesCopy = Array.from(
+        new Map(writesCopy.map((w) => [w[0], w])).values()
+      );
     }
     // save writes
-    const pendingWrites: CheckpointPendingWrite<string>[] = writes.map(
-      ([key, value]) => {
-        return [taskId, key, value];
+    for (const [c, v] of writesCopy) {
+      const idx = this.checkpointPendingWrites.findIndex(
+        (w) => w[0] === taskId && w[1] === c
+      );
+      if (c in WRITES_IDX_MAP && idx !== -1) {
+        this.checkpointPendingWrites[idx] = [taskId, c, v];
+      } else {
+        this.checkpointPendingWrites.push([taskId, c, v]);
       }
-    );
-    this.checkpointPendingWrites.push(...pendingWrites);
+    }
+
     const putWritePromise = this.checkpointer?.putWrites(
       {
         ...this.checkpointConfig,
@@ -426,13 +479,16 @@ export class PregelLoop {
           checkpoint_id: this.checkpoint.id,
         },
       },
-      writes,
+      writesCopy,
       taskId
     );
     if (putWritePromise !== undefined) {
       this.checkpointerPromises.push(putWritePromise);
     }
-    this._outputWrites(taskId, writes);
+
+    if (this.tasks) {
+      this._outputWrites(taskId, writesCopy);
+    }
   }
 
   _outputWrites(taskId: string, writes: [string, unknown][], cached = false) {
@@ -482,29 +538,180 @@ export class PregelLoop {
     interruptBefore: string[] | All;
     manager?: CallbackManagerForChainRun;
   }): Promise<boolean> {
-    let tickError: Error | undefined;
-    try {
-      if (this.store && !this.store.isRunning) {
-        this.store?.start();
+    if (this.store && !this.store.isRunning) {
+      this.store?.start();
+    }
+    const {
+      inputKeys = [],
+      interruptAfter = [],
+      interruptBefore = [],
+      manager,
+    } = params;
+    if (this.status !== "pending") {
+      throw new Error(
+        `Cannot tick when status is no longer "pending". Current status: "${this.status}"`
+      );
+    }
+    if (![INPUT_DONE, INPUT_RESUMING].includes(this.input)) {
+      await this._first(inputKeys);
+    } else if (
+      Object.values(this.tasks).every(
+        (task) => task.writes.filter(([c]) => !(c in WRITES_IDX_MAP)).length > 0
+      )
+    ) {
+      const writes = Object.values(this.tasks).flatMap((t) => t.writes);
+      // All tasks have finished
+      const managedValueWrites = _applyWrites(
+        this.checkpoint,
+        this.channels,
+        Object.values(this.tasks),
+        this.checkpointerGetNextVersion
+      );
+      for (const [key, values] of Object.entries(managedValueWrites)) {
+        await this.updateManagedValues(key, values);
       }
-      const {
-        inputKeys = [],
-        interruptAfter = [],
-        interruptBefore = [],
-        manager,
-      } = params;
-      if (this.status !== "pending") {
-        throw new Error(
-          `Cannot tick when status is no longer "pending". Current status: "${this.status}"`
-        );
-      }
-      if (![INPUT_DONE, INPUT_RESUMING].includes(this.input)) {
-        await this._first(inputKeys);
-      } else if (
-        Object.values(this.tasks).every((task) => task.writes.length > 0)
+      // produce values output
+      const valuesOutput = await gatherIterator(
+        prefixGenerator(
+          mapOutputValues(this.outputKeys, writes, this.channels),
+          "values"
+        )
+      );
+      this._emit(valuesOutput);
+      // clear pending writes
+      this.checkpointPendingWrites = [];
+      await this._putCheckpoint({
+        source: "loop",
+        writes:
+          mapOutputUpdates(
+            this.outputKeys,
+            Object.values(this.tasks).map((task) => [task, task.writes])
+          ).next().value ?? null,
+      });
+      // after execution, check if we should interrupt
+      if (
+        shouldInterrupt(
+          this.checkpoint,
+          interruptAfter,
+          Object.values(this.tasks)
+        )
       ) {
-        const writes = Object.values(this.tasks).flatMap((t) => t.writes);
-        // All tasks have finished
+        this.status = "interrupt_after";
+        throw new GraphInterrupt();
+      }
+    } else {
+      return false;
+    }
+    if (this.step > this.stop) {
+      this.status = "out_of_steps";
+      return false;
+    }
+
+    const nextTasks = _prepareNextTasks(
+      this.checkpoint,
+      this.checkpointPendingWrites,
+      this.nodes,
+      this.channels,
+      this.managed,
+      this.config,
+      true,
+      {
+        step: this.step,
+        checkpointer: this.checkpointer,
+        isResuming: this.input === INPUT_RESUMING,
+        manager,
+        store: this.store,
+      }
+    );
+    this.tasks = nextTasks;
+
+    // Produce debug output
+    if (this.checkpointer) {
+      this._emit(
+        await gatherIterator(
+          prefixGenerator(
+            mapDebugCheckpoint(
+              this.step - 1, // printing checkpoint for previous step
+              this.checkpointConfig,
+              this.channels,
+              this.streamKeys,
+              this.checkpointMetadata,
+              Object.values(this.tasks),
+              this.checkpointPendingWrites,
+              this.prevCheckpointConfig
+            ),
+            "debug"
+          )
+        )
+      );
+    }
+
+    if (Object.values(this.tasks).length === 0) {
+      this.status = "done";
+      return false;
+    }
+    // if there are pending writes from a previous loop, apply them
+    if (this.skipDoneTasks && this.checkpointPendingWrites.length > 0) {
+      for (const [tid, k, v] of this.checkpointPendingWrites) {
+        if (k === ERROR || k === INTERRUPT || k === RESUME) {
+          continue;
+        }
+        const task = Object.values(this.tasks).find((t) => t.id === tid);
+        if (task) {
+          task.writes.push([k, v]);
+        }
+      }
+      for (const task of Object.values(this.tasks)) {
+        if (task.writes.length > 0) {
+          this._outputWrites(task.id, task.writes, true);
+        }
+      }
+    }
+    // if all tasks have finished, re-tick
+    if (Object.values(this.tasks).every((task) => task.writes.length > 0)) {
+      return this.tick({
+        inputKeys,
+        interruptAfter,
+        interruptBefore,
+        manager,
+      });
+    }
+
+    // Before execution, check if we should interrupt
+    if (
+      shouldInterrupt(
+        this.checkpoint,
+        interruptBefore,
+        Object.values(this.tasks)
+      )
+    ) {
+      this.status = "interrupt_before";
+      throw new GraphInterrupt();
+    }
+    // Produce debug output
+    const debugOutput = await gatherIterator(
+      prefixGenerator(
+        mapDebugTasks(this.step, Object.values(this.tasks)),
+        "debug"
+      )
+    );
+    this._emit(debugOutput);
+
+    return true;
+  }
+
+  async finishAndHandleError(error?: Error) {
+    const suppress = this._suppressInterrupt(error);
+    if (suppress || error === undefined) {
+      this.output = readChannels(this.channels, this.outputKeys);
+    }
+    if (suppress) {
+      // emit one last "values" event, with pending writes applied
+      if (
+        this.tasks !== undefined &&
+        this.checkpointPendingWrites.length > 0 &&
+        Object.values(this.tasks).some((task) => task.writes.length > 0)
+      ) {
         const managedValueWrites = _applyWrites(
           this.checkpoint,
           this.channels,
@@ -514,155 +721,31 @@ export class PregelLoop {
         for (const [key, values] of Object.entries(managedValueWrites)) {
           await this.updateManagedValues(key, values);
         }
-        // produce values output
-        const valuesOutput = await gatherIterator(
-          prefixGenerator(
-            mapOutputValues(this.outputKeys, writes, this.channels),
-            "values"
-          )
-        );
-        this._emit(valuesOutput);
-        // clear pending writes
-        this.checkpointPendingWrites = [];
-        await this._putCheckpoint({
-          source: "loop",
-          writes:
-            mapOutputUpdates(
-              this.outputKeys,
-              Object.values(this.tasks).map((task) => [task, task.writes])
-            ).next().value ?? null,
-        });
-        // after execution, check if we should interrupt
-        if (
-          shouldInterrupt(
-            this.checkpoint,
-            interruptAfter,
-            Object.values(this.tasks)
-          )
-        ) {
-          this.status = "interrupt_after";
-          if (this.isNested) {
-            throw new GraphInterrupt();
-          } else {
-            return false;
-          }
-        }
-      } else {
-        return false;
-      }
-      if (this.step > this.stop) {
-        this.status = "out_of_steps";
-        return false;
-      }
-
-      const nextTasks = _prepareNextTasks(
-        this.checkpoint,
-        this.nodes,
-        this.channels,
-        this.managed,
-        this.config,
-        true,
-        {
-          step: this.step,
-          checkpointer: this.checkpointer,
-          isResuming: this.input === INPUT_RESUMING,
-          manager,
-          store: this.store,
-        }
-      );
-      this.tasks = nextTasks;
-      this.taskWritesLeft = Object.values(this.tasks).length - 1;
-
-      // Produce debug output
-      if (this.checkpointer) {
         this._emit(
-          await gatherIterator(
+          gatherIteratorSync(
             prefixGenerator(
-              mapDebugCheckpoint(
-                this.step - 1, // printing checkpoint for previous step
-                this.checkpointConfig,
-                this.channels,
-                this.streamKeys,
-                this.checkpointMetadata,
-                Object.values(this.tasks),
-                this.checkpointPendingWrites,
-                this.prevCheckpointConfig
+              mapOutputValues(
+                this.outputKeys,
+                Object.values(this.tasks).flatMap((t) => t.writes),
+                this.channels
               ),
-              "debug"
+              "values"
             )
           )
         );
       }
 
-      if (Object.values(this.tasks).length === 0) {
-        this.status = "done";
-        return false;
-      }
-      // if there are pending writes from a previous loop, apply them
-      if (this.skipDoneTasks && this.checkpointPendingWrites.length > 0) {
-        for (const [tid, k, v] of this.checkpointPendingWrites) {
-          if (k === ERROR || k === INTERRUPT) {
-            continue;
-          }
-          const task = Object.values(this.tasks).find((t) => t.id === tid);
-          if (task) {
-            task.writes.push([k, v]);
-          }
-        }
-        for (const task of Object.values(this.tasks)) {
-          if (task.writes.length > 0) {
-            this._outputWrites(task.id, task.writes, true);
-          }
-        }
-      }
-      // if all tasks have finished, re-tick
-      if (Object.values(this.tasks).every((task) => task.writes.length > 0)) {
-        return this.tick({
-          inputKeys,
-          interruptAfter,
-          interruptBefore,
-          manager,
-        });
-      }
-
-      // Before execution, check if we should interrupt
-      if (
-        shouldInterrupt(
-          this.checkpoint,
-          interruptBefore,
-          Object.values(this.tasks)
-        )
-      ) {
-        this.status = "interrupt_before";
-        if (this.isNested) {
-          throw new GraphInterrupt();
-        } else {
-          return false;
-        }
-      }
-      // Produce debug output
-      const debugOutput = await gatherIterator(
-        prefixGenerator(
-          mapDebugTasks(this.step, Object.values(this.tasks)),
-          "debug"
-        )
-      );
-      this._emit(debugOutput);
-
-      return true;
-    } catch (e) {
-      tickError = e as Error;
-      if (!this._suppressInterrupt(tickError)) {
-        throw tickError;
-      } else {
-        this.output = readChannels(this.channels, this.outputKeys);
-      }
-      return false;
-    } finally {
-      if (tickError === undefined) {
-        this.output = readChannels(this.channels, this.outputKeys);
-      }
+      // Emit INTERRUPT event
+      this._emit([
+        [
+          "updates",
+          {
+            [INTERRUPT]: (error as GraphInterrupt).interrupts,
+          },
+        ],
+      ]);
     }
+    return suppress;
   }
 
   protected _suppressInterrupt(e?: Error): boolean {
@@ -672,13 +755,52 @@ export class PregelLoop {
   /**
    * Resuming from previous checkpoint requires
    * - finding a previous checkpoint
-   * - receiving None input (outer graph) or RESUMING flag (subgraph)
+   * - receiving null input (outer graph) or RESUMING flag (subgraph)
    */
   protected async _first(inputKeys: string | string[]) {
     const isResuming =
       Object.keys(this.checkpoint.channel_versions).length !== 0 &&
       (this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined ||
-        this.input === null);
+        this.input === null ||
+        isCommand(this.input));
+    if (isCommand(this.input)) {
+      const writes: { [key: string]: PendingWrite[] } = {};
+      // group writes by task id
+      for (const [tid, key, value] of mapCommand(
+        this.input,
+        this.checkpointPendingWrites
+      )) {
+        if (writes[tid] === undefined) {
+          writes[tid] = [];
+        }
+        writes[tid].push([key, value]);
+      }
+      if (Object.keys(writes).length === 0) {
+        throw new EmptyInputError("Received empty Command input");
+      }
+      // save writes
+      for (const [tid, ws] of Object.entries(writes)) {
+        this.putWrites(tid, ws);
+      }
+    }
+    // apply null writes
+    const nullWrites = (this.checkpointPendingWrites ?? [])
+      .filter((w) => w[0] === NULL_TASK_ID)
+      .map((w) => w.slice(1)) as PendingWrite<string>[];
+    if (nullWrites.length > 0) {
+      _applyWrites(
+        this.checkpoint,
+        this.channels,
+        [
+          {
+            name: INPUT,
+            writes: nullWrites,
+            triggers: [],
+          },
+        ],
+        this.checkpointerGetNextVersion
+      );
+    }
     if (isResuming) {
       for (const channelName of Object.keys(this.channels)) {
         if (this.checkpoint.channel_versions[channelName] !== undefined) {
@@ -697,8 +819,8 @@ export class PregelLoop {
         )
       );
       this._emit(valuesOutput);
-      // map inputs to channel updates
     } else {
+      // map inputs to channel updates
       const inputWrites = await gatherIterator(mapInput(inputKeys, this.input));
       if (inputWrites.length === 0) {
         throw new EmptyInputError(
@@ -707,6 +829,7 @@ export class PregelLoop {
       }
       const discardTasks = _prepareNextTasks(
         this.checkpoint,
+        this.checkpointPendingWrites,
         this.nodes,
         this.channels,
         this.managed,

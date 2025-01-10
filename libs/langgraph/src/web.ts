@@ -31,7 +31,14 @@ export {
 } from "./channels/index.js";
 export { type AnnotationRoot as _INTERNAL_ANNOTATION_ROOT } from "./graph/index.js";
 export { type RetryPolicy } from "./pregel/utils/index.js";
-export { Send } from "./constants.js";
+export {
+  Send,
+  Command,
+  type CommandParams,
+  isCommand,
+  type Interrupt,
+} from "./constants.js";
+export { interrupt } from "./interrupt.js";
 
 export {
   MemorySaver,

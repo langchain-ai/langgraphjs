@@ -4,5 +4,7 @@
     "checkpointer",
     "Checkpointers",
     "Pregel"
-  ]
+  ],
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "python.languageServer": "None"
 }

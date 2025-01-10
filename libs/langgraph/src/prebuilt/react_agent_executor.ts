@@ -1,8 +1,9 @@
 import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import {
   BaseMessage,
-  BaseMessageChunk,
+  BaseMessageLike,
   isAIMessage,
+  isBaseMessage,
   SystemMessage,
 } from "@langchain/core/messages";
 import {
@@ -13,22 +14,22 @@ import {
   RunnableToolLike,
 } from "@langchain/core/runnables";
 import { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
+import {
+  All,
+  BaseCheckpointSaver,
+  BaseStore,
+} from "@langchain/langgraph-checkpoint";
 
 import {
-  BaseLanguageModelCallOptions,
-  BaseLanguageModelInput,
-} from "@langchain/core/language_models/base";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
-import {
   END,
-  messagesStateReducer,
   START,
   StateGraph,
+  CompiledStateGraph,
+  AnnotationRoot,
 } from "../graph/index.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
-import { CompiledStateGraph, StateGraphArgs } from "../graph/state.js";
 import { ToolNode } from "./tool_node.js";
+import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 
 export interface AgentState {
   messages: BaseMessage[];
@@ -41,32 +42,191 @@ export interface AgentState {
 
 export type N = typeof START | "agent" | "tools";
 
-export type CreateReactAgentParams = {
+function _convertMessageModifierToStateModifier(
+  messageModifier: MessageModifier
+): StateModifier {
+  // Handle string or SystemMessage
+  if (
+    typeof messageModifier === "string" ||
+    (isBaseMessage(messageModifier) && messageModifier._getType() === "system")
+  ) {
+    return messageModifier;
+  }
+
+  // Handle callable function
+  if (typeof messageModifier === "function") {
+    return async (state: typeof MessagesAnnotation.State) =>
+      messageModifier(state.messages);
+  }
+
+  // Handle Runnable
+  if (Runnable.isRunnable(messageModifier)) {
+    return RunnableLambda.from(
+      (state: typeof MessagesAnnotation.State) => state.messages
+    ).pipe(messageModifier);
+  }
+
+  throw new Error(
+    `Unexpected type for messageModifier: ${typeof messageModifier}`
+  );
+}
+
+function _getStateModifierRunnable(
+  stateModifier: StateModifier | undefined
+): RunnableInterface {
+  let stateModifierRunnable: RunnableInterface;
+
+  if (stateModifier == null) {
+    stateModifierRunnable = RunnableLambda.from(
+      (state: typeof MessagesAnnotation.State) => state.messages
+    ).withConfig({ runName: "state_modifier" });
+  } else if (typeof stateModifier === "string") {
+    const systemMessage = new SystemMessage(stateModifier);
+    stateModifierRunnable = RunnableLambda.from(
+      (state: typeof MessagesAnnotation.State) => {
+        return [systemMessage, ...(state.messages ?? [])];
+      }
+    ).withConfig({ runName: "state_modifier" });
+  } else if (
+    isBaseMessage(stateModifier) &&
+    stateModifier._getType() === "system"
+  ) {
+    stateModifierRunnable = RunnableLambda.from(
+      (state: typeof MessagesAnnotation.State) => [
+        stateModifier,
+        ...state.messages,
+      ]
+    ).withConfig({ runName: "state_modifier" });
+  } else if (typeof stateModifier === "function") {
+    stateModifierRunnable = RunnableLambda.from(stateModifier).withConfig({
+      runName: "state_modifier",
+    });
+  } else if (Runnable.isRunnable(stateModifier)) {
+    stateModifierRunnable = stateModifier;
+  } else {
+    throw new Error(
+      `Got unexpected type for 'stateModifier': ${typeof stateModifier}`
+    );
+  }
+
+  return stateModifierRunnable;
+}
+
+function _getModelPreprocessingRunnable(
+  stateModifier: CreateReactAgentParams["stateModifier"],
+  messageModifier: CreateReactAgentParams["messageModifier"]
+) {
+  // Check if both modifiers exist
+  if (stateModifier != null && messageModifier != null) {
+    throw new Error(
+      "Expected value for either stateModifier or messageModifier, got values for both"
+    );
+  }
+
+  // Convert message modifier to state modifier if necessary
+  if (stateModifier == null && messageModifier != null) {
+    // eslint-disable-next-line no-param-reassign
+    stateModifier = _convertMessageModifierToStateModifier(messageModifier);
+  }
+
+  return _getStateModifierRunnable(stateModifier);
+}
+
+export type StateModifier =
+  | SystemMessage
+  | string
+  | ((
+      state: typeof MessagesAnnotation.State,
+      config: LangGraphRunnableConfig
+    ) => BaseMessageLike[])
+  | ((
+      state: typeof MessagesAnnotation.State,
+      config: LangGraphRunnableConfig
+    ) => Promise<BaseMessageLike[]>)
+  | Runnable;
+
+/** @deprecated Use StateModifier instead. */
+export type MessageModifier =
+  | SystemMessage
+  | string
+  | ((messages: BaseMessage[]) => BaseMessage[])
+  | ((messages: BaseMessage[]) => Promise<BaseMessage[]>)
+  | Runnable;
+
+export type CreateReactAgentParams<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  A extends AnnotationRoot<any> = AnnotationRoot<any>
+> = {
+  /** The chat model that can utilize OpenAI-style tool calling. */
   llm: BaseChatModel;
-  tools:
-    | ToolNode<typeof MessagesAnnotation.State>
-    | (StructuredToolInterface | RunnableToolLike)[];
-  messageModifier?:
-    | SystemMessage
-    | string
-    | ((messages: BaseMessage[]) => BaseMessage[])
-    | ((messages: BaseMessage[]) => Promise<BaseMessage[]>)
-    | Runnable;
+  /** A list of tools or a ToolNode. */
+  tools: ToolNode | (StructuredToolInterface | RunnableToolLike)[];
+  /**
+   * @deprecated
+   * Use stateModifier instead. stateModifier works the same as
+   * messageModifier in that it runs right before calling the chat model,
+   * but if passed as a function, it takes the full graph state as
+   * input whenever a tool is called rather than a list of messages.
+   *
+   * If a function is passed, it should return a list of messages to
+   * pass directly to the chat model.
+   *
+   * @example
+   * ```ts
+   * import { ChatOpenAI } from "@langchain/openai";
+   * import { MessagesAnnotation } from "@langchain/langgraph";
+   * import { createReactAgent } from "@langchain/langgraph/prebuilt";
+   * import { type BaseMessage, SystemMessage } from "@langchain/core/messages";
+   *
+   * const model = new ChatOpenAI({
+   *   model: "gpt-4o-mini",
+   * });
+   *
+   * const tools = [...];
+   *
+   * // Deprecated style with messageModifier
+   * const deprecated = createReactAgent({
+   *   llm,
+   *   tools,
+   *   messageModifier: async (messages: BaseMessage[]) => {
+   *     return [new SystemMessage("You are a pirate")].concat(messages);
+   *   }
+   * });
+   *
+   * // New style with stateModifier
+   * const agent = createReactAgent({
+   *   llm,
+   *   tools,
+   *   stateModifier: async (state: typeof MessagesAnnotation.State) => {
+   *     return [new SystemMessage("You are a pirate.")].concat(messages);
+   *   }
+   * });
+   * ```
+   */
+  messageModifier?: MessageModifier;
+  /**
+   * An optional state modifier. This takes full graph state BEFORE the LLM is called and prepares the input to LLM.
+   *
+   * Can take a few different forms:
+   *
+   * - SystemMessage: this is added to the beginning of the list of messages in state["messages"].
+   * - str: This is converted to a SystemMessage and added to the beginning of the list of messages in state["messages"].
+   * - Function: This function should take in full graph state and the output is then passed to the language model.
+   * - Runnable: This runnable should take in full graph state and the output is then passed to the language model.
+   */
+  stateModifier?: StateModifier;
+  stateSchema?: A;
+  /** An optional checkpoint saver to persist the agent's state. */
   checkpointSaver?: BaseCheckpointSaver;
+  /** An optional list of node names to interrupt before running. */
   interruptBefore?: N[] | All;
+  /** An optional list of node names to interrupt after running. */
   interruptAfter?: N[] | All;
+  store?: BaseStore;
 };
 
 /**
  * Creates a StateGraph agent that relies on a chat model utilizing tool calling.
- * @param params.llm The chat model that can utilize OpenAI-style tool calling.
- * @param params.tools A list of tools or a ToolNode.
- * @param params.messageModifier An optional message modifier to apply to messages before being passed to the LLM.
- * Can be a SystemMessage, string, function that takes and returns a list of messages, or a Runnable.
- * @param params.checkpointer An optional checkpoint saver to persist the agent's state.
- * @param params.interruptBefore An optional list of node names to interrupt before running.
- * @param params.interruptAfter An optional list of node names to interrupt after running.
- * @returns A prebuilt compiled graph.
  *
  * @example
  * ```ts
@@ -107,27 +267,30 @@ export type CreateReactAgentParams = {
  * // Returns the messages in the state at each step of execution
  * ```
  */
-export function createReactAgent(
-  params: CreateReactAgentParams
+
+export function createReactAgent<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  A extends AnnotationRoot<any> = AnnotationRoot<any>
+>(
+  params: CreateReactAgentParams<A>
 ): CompiledStateGraph<
-  AgentState,
-  Partial<AgentState>,
-  typeof START | "agent" | "tools"
+  (typeof MessagesAnnotation)["State"],
+  (typeof MessagesAnnotation)["Update"],
+  typeof START | "agent" | "tools",
+  typeof MessagesAnnotation.spec & A["spec"],
+  typeof MessagesAnnotation.spec & A["spec"]
 > {
   const {
     llm,
     tools,
     messageModifier,
+    stateModifier,
+    stateSchema,
     checkpointSaver,
     interruptBefore,
     interruptAfter,
+    store,
   } = params;
-  const schema: StateGraphArgs<AgentState>["channels"] = {
-    messages: {
-      value: messagesStateReducer,
-      default: () => [],
-    },
-  };
 
   let toolClasses: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
   if (!Array.isArray(tools)) {
@@ -139,7 +302,13 @@ export function createReactAgent(
     throw new Error(`llm ${llm} must define bindTools method.`);
   }
   const modelWithTools = llm.bindTools(toolClasses);
-  const modelRunnable = _createModelWrapper(modelWithTools, messageModifier);
+
+  // we're passing store here for validation
+  const preprocessor = _getModelPreprocessingRunnable(
+    stateModifier,
+    messageModifier
+  );
+  const modelRunnable = (preprocessor as Runnable).pipe(modelWithTools);
 
   const shouldContinue = (state: AgentState) => {
     const { messages } = state;
@@ -155,16 +324,13 @@ export function createReactAgent(
   };
 
   const callModel = async (state: AgentState, config?: RunnableConfig) => {
-    const { messages } = state;
     // TODO: Auto-promote streaming.
-    return { messages: [await modelRunnable.invoke(messages, config)] };
+    return { messages: [await modelRunnable.invoke(state, config)] };
   };
 
-  const workflow = new StateGraph<AgentState>({
-    channels: schema,
-  })
+  const workflow = new StateGraph(stateSchema ?? MessagesAnnotation)
     .addNode("agent", callModel)
-    .addNode("tools", new ToolNode<AgentState>(toolClasses))
+    .addNode("tools", new ToolNode(toolClasses))
     .addEdge(START, "agent")
     .addConditionalEdges("agent", shouldContinue, {
       continue: "tools",
@@ -176,53 +342,6 @@ export function createReactAgent(
     checkpointer: checkpointSaver,
     interruptBefore,
     interruptAfter,
+    store,
   });
-}
-
-function _createModelWrapper(
-  modelWithTools: RunnableInterface<
-    BaseLanguageModelInput,
-    BaseMessageChunk,
-    BaseLanguageModelCallOptions
-  >,
-  messageModifier?:
-    | SystemMessage
-    | string
-    | ((messages: BaseMessage[]) => BaseMessage[])
-    | ((messages: BaseMessage[]) => Promise<BaseMessage[]>)
-    | Runnable
-) {
-  if (!messageModifier) {
-    return modelWithTools;
-  }
-  const endict = RunnableLambda.from((messages: BaseMessage[]) => ({
-    messages,
-  }));
-  if (typeof messageModifier === "string") {
-    const systemMessage = new SystemMessage(messageModifier);
-    const prompt = ChatPromptTemplate.fromMessages([
-      systemMessage,
-      ["placeholder", "{messages}"],
-    ]);
-    return endict.pipe(prompt).pipe(modelWithTools);
-  }
-  if (typeof messageModifier === "function") {
-    const lambda = RunnableLambda.from(messageModifier).withConfig({
-      runName: "message_modifier",
-    });
-    return lambda.pipe(modelWithTools);
-  }
-  if (Runnable.isRunnable(messageModifier)) {
-    return messageModifier.pipe(modelWithTools);
-  }
-  if (messageModifier._getType() === "system") {
-    const prompt = ChatPromptTemplate.fromMessages([
-      messageModifier,
-      ["placeholder", "{messages}"],
-    ]);
-    return endict.pipe(prompt).pipe(modelWithTools);
-  }
-  throw new Error(
-    `Unsupported message modifier type: ${typeof messageModifier}`
-  );
 }

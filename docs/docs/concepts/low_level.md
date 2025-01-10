@@ -30,7 +30,7 @@ The `MessageGraph` class is a special type of graph. The `State` of a `MessageGr
 
 To build your graph, you first define the [state](#state), you then add [nodes](#nodes) and [edges](#edges), and then you compile it. What exactly is compiling your graph and why is it needed?
 
-Compiling is a pretty simple step. It provides a few basic checks on the structure of your graph (no orphaned nodes, etc). It is also where you can specify runtime args like [checkpointers](#checkpointer) and [breakpoints](#breakpoints). You compile your graph by just calling the `.compile` method:
+Compiling is a pretty simple step. It provides a few basic checks on the structure of your graph (no orphaned nodes, etc). It is also where you can specify runtime args like checkpointers and [breakpoints](#breakpoints). You compile your graph by just calling the `.compile` method:
 
 ```typescript
 const graph = graphBuilder.compile(...);
@@ -248,20 +248,20 @@ import { StateGraph, Annotation } from "@langchain/langgraph";
 const GraphAnnotation = Annotation.Root({
   input: Annotation<string>,
   results: Annotation<string>,
-})
+});
 
 // The state type can be extracted using `typeof <annotation variable name>.State`
 const myNode = (state: typeof GraphAnnotation.State, config?: RunnableConfig) => {
   console.log("In node: ", config.configurable?.user_id);
   return {
     results: `Hello, ${state.input}!`
-  }
-}
+  };
+};
 
 // The second argument is optional
 const myOtherNode = (state: typeof GraphAnnotation.State) => {
-  return state
-}
+  return state;
+};
 
 const builder = new StateGraph(GraphAnnotation)
   .addNode("myNode", myNode)
@@ -331,6 +331,9 @@ graph.addConditionalEdges("nodeA", routingFunction, {
 });
 ```
 
+!!! tip
+    Use [`Command`](#command) instead of conditional edges if you want to combine state updates and routing in a single function.
+
 ### Entry Point
 
 The entry point is the first node(s) that are run when the graph starts. You can use the [`addEdge`](/langgraphjs/reference/classes/langgraph.StateGraph.html#addEdge) method from the virtual [`START`](/langgraphjs/reference/variables/langgraph.START.html) node to the first node to execute to specify where to enter the graph.
@@ -375,6 +378,65 @@ const continueToJokes = (state: { subjects: string[] }) => {
 
 graph.addConditionalEdges("nodeA", continueToJokes);
 ```
+
+## `Command`
+
+!!! tip Compatibility
+    This functionality requires `@langchain/langgraph>=0.2.31`.
+
+It can be convenient to combine control flow (edges) and state updates (nodes). For example, you might want to BOTH perform state updates AND decide which node to go to next in the SAME node rather than use a conditional edge. LangGraph provides a way to do so by returning a [`Command`](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.Command.html) object from node functions:
+
+```ts
+import { StateGraph, Annotation, Command } from "@langchain/langgraph";
+
+const StateAnnotation = Annotation.Root({
+  foo: Annotation<string>,
+});
+
+
+const myNode = (state: typeof StateAnnotation.State) => {
+  return new Command({
+    // state update
+    update: {
+      foo: "bar",
+    },
+    // control flow
+    goto: "myOtherNode",
+  });
+};
+```
+
+With `Command` you can also achieve dynamic control flow behavior (identical to [conditional edges](#conditional-edges)):
+
+```ts
+const myNode = async (state: typeof StateAnnotation.State) => {
+  if (state.foo === "bar") {
+    return new Command({
+      update: {
+        foo: "baz",
+      },
+      goto: "myOtherNode",
+    });
+  }
+  // ...
+};
+```
+
+!!! important
+
+    When returning `Command` in your node functions, you must also add an `ends` parameter with the list of node names the node is routing to, e.g. `.addNode("myNode", myNode, { ends: ["myOtherNode"] })`. This is necessary for graph compilation and validation, and indicates that `myNode` can navigate to `myOtherNode`.
+
+Check out this [how-to guide](../how-tos/command.ipynb) for an end-to-end example of how to use `Command`.
+
+### When should I use Command instead of conditional edges?
+
+Use `Command` when you need to **both** update the graph state **and** route to a different node. For example, when implementing [multi-agent handoffs](./multi_agent.md#handoffs) where it's important to route to a different agent and pass some information to that agent.
+
+Use [conditional edges](#conditional-edges) to route between nodes conditionally without updating the state.
+
+### Human-in-the-loop
+
+`Command` is an important part of human-in-the-loop workflows: when using `interrupt()` to collect user input, `Command` is then used to supply the input and resume execution via `new Command({ resume: "User input" })`. Check out [this conceptual guide](/langgraphjs/concepts/human_in_the_loop) for more information.
 
 ## Persistence
 
@@ -430,7 +492,7 @@ See [this guide](../how-tos/configuration.ipynb) for a full breakdown on configu
 
 It can often be useful to set breakpoints before or after certain nodes execute. This can be used to wait for human approval before continuing. These can be set when you ["compile" a graph](#compiling-your-graph), or thrown dynamically using a special error called a [`NodeInterrupt`](../how-tos/dynamic_breakpoints.ipynb). You can set breakpoints either _before_ a node executes (using `interruptBefore`) or after a node executes (using `interruptAfter`).
 
-You **MUST** use a [checkpoiner](#checkpointer) when using breakpoints. This is because your graph needs to be able to resume execution.
+You **MUST** use a checkpointer when using breakpoints. This is because your graph needs to be able to resume execution after interrupting.
 
 In order to resume execution, you can just invoke your graph with `null` as the input and the same `thread_id`.
 

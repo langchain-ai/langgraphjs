@@ -11,6 +11,7 @@ import {
   RunnableLike,
 } from "@langchain/core/runnables";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
+import type { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
 import {
   All,
   BaseCheckpointSaver,
@@ -21,9 +22,9 @@ import {
   copyCheckpoint,
   emptyCheckpoint,
   PendingWrite,
+  SCHEDULED,
   uuid5,
 } from "@langchain/langgraph-checkpoint";
-import Deque from "double-ended-queue";
 import {
   BaseChannel,
   createCheckpoint,
@@ -50,6 +51,11 @@ import {
   CHECKPOINT_NAMESPACE_END,
   CONFIG_KEY_STREAM,
   CONFIG_KEY_TASK_ID,
+  Command,
+  NULL_TASK_ID,
+  INPUT,
+  RESUME,
+  PUSH,
 } from "../constants.js";
 import {
   PregelExecutableTask,
@@ -57,11 +63,15 @@ import {
   PregelParams,
   StateSnapshot,
   StreamMode,
+  PregelInputType,
+  PregelOutputType,
+  PregelOptions,
 } from "./types.js";
 import {
   GraphRecursionError,
   GraphValueError,
   InvalidUpdateError,
+  isGraphBubbleUp,
   isGraphInterrupt,
 } from "../errors.js";
 import {
@@ -69,6 +79,7 @@ import {
   _localRead,
   _applyWrites,
   StrRecord,
+  WritesProtocol,
 } from "./algo.js";
 import {
   _coerceToDict,
@@ -77,7 +88,7 @@ import {
   RetryPolicy,
 } from "./utils/index.js";
 import { findSubgraphPregel } from "./utils/subgraph.js";
-import { PregelLoop, StreamChunk, StreamProtocol } from "./loop.js";
+import { PregelLoop, IterableReadableWritableStream } from "./loop.js";
 import { executeTasksWithRetry } from "./retry.js";
 import {
   ChannelKeyPlaceholder,
@@ -90,6 +101,7 @@ import {
 import { gatherIterator, patchConfigurable } from "../utils.js";
 import { ensureLangGraphConfig } from "./utils/config.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
+import { StreamMessagesHandler } from "./messages.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -185,50 +197,24 @@ export class Channel {
   }
 }
 
-/**
- * Config for executing the graph.
- */
-export interface PregelOptions<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType extends Record<string, any> = Record<string, any>
-> extends RunnableConfig<ConfigurableFieldType> {
-  /** The stream mode for the graph run. Default is ["values"]. */
-  streamMode?: StreamMode | StreamMode[];
-  inputKeys?: keyof Cc | Array<keyof Cc>;
-  /** The output keys to retrieve from the graph run. */
-  outputKeys?: keyof Cc | Array<keyof Cc>;
-  /** The nodes to interrupt the graph run before. */
-  interruptBefore?: All | Array<keyof Nn>;
-  /** The nodes to interrupt the graph run after. */
-  interruptAfter?: All | Array<keyof Nn>;
-  /** Enable debug mode for the graph run. */
-  debug?: boolean;
-  /** Whether to stream subgraphs. */
-  subgraphs?: boolean;
-  /** The shared value store */
-  store?: BaseStore;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type PregelInputType = any;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type PregelOutputType = any;
+export type { PregelInputType, PregelOutputType, PregelOptions };
 
 export class Pregel<
     Nn extends StrRecord<string, PregelNode>,
     Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>
+    ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
+    InputType = PregelInputType,
+    OutputType = PregelOutputType
   >
   extends Runnable<
-    PregelInputType,
-    PregelOutputType,
+    InputType | Command | null,
+    OutputType,
     PregelOptions<Nn, Cc, ConfigurableFieldType>
   >
-  implements PregelInterface<Nn, Cc>
+  implements
+    PregelInterface<Nn, Cc, ConfigurableFieldType>,
+    PregelParams<Nn, Cc>
 {
   static lc_name() {
     return "LangGraph";
@@ -236,6 +222,8 @@ export class Pregel<
 
   // Because Pregel extends `Runnable`.
   lc_namespace = ["langgraph", "pregel"];
+
+  lg_is_pregel = true;
 
   nodes: Nn;
 
@@ -299,8 +287,9 @@ export class Pregel<
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore Remove ignore when we remove support for 0.2 versions of core
   override withConfig(config: RunnableConfig): typeof this {
+    const mergedConfig = mergeConfigs(this.config, config);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return new (this.constructor as any)({ ...this, config });
+    return new (this.constructor as any)({ ...this, config: mergedConfig });
   }
 
   validate(): this {
@@ -335,6 +324,11 @@ export class Pregel<
     }
   }
 
+  async getGraphAsync(config: RunnableConfig) {
+    return this.getGraph(config);
+  }
+
+  /** @deprecated Use getSubgraphsAsync instead. The async method will become the default in the next minor release. */
   *getSubgraphs(
     namespace?: string,
     recurse?: boolean
@@ -386,6 +380,14 @@ export class Pregel<
     }
   }
 
+  async *getSubgraphsAsync(
+    namespace?: string,
+    recurse?: boolean
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): AsyncGenerator<[string, Pregel<any, any>]> {
+    yield* this.getSubgraphs(namespace, recurse);
+  }
+
   protected async _prepareStateSnapshot({
     config,
     saved,
@@ -414,6 +416,7 @@ export class Pregel<
     const nextTasks = Object.values(
       _prepareNextTasks(
         saved.checkpoint,
+        saved.pendingWrites,
         this.nodes,
         channels,
         managed,
@@ -422,7 +425,7 @@ export class Pregel<
         { step: (saved.metadata?.step ?? -1) + 1 }
       )
     );
-    const subgraphs = await gatherIterator(this.getSubgraphs());
+    const subgraphs = await gatherIterator(this.getSubgraphsAsync());
     const parentNamespace = saved.config.configurable?.checkpoint_ns ?? "";
     const taskStates: Record<string, RunnableConfig | StateSnapshot> = {};
     for (const task of nextTasks) {
@@ -457,6 +460,19 @@ export class Pregel<
           subgraphs: true,
         });
       }
+    }
+    // apply pending writes
+    const nullWrites = (saved.pendingWrites ?? [])
+      .filter((w) => w[0] === NULL_TASK_ID)
+      .map((w) => w.slice(1)) as PendingWrite<string>[];
+    if (nullWrites.length > 0) {
+      _applyWrites(saved.checkpoint, channels, [
+        {
+          name: INPUT,
+          writes: nullWrites,
+          triggers: [],
+        },
+      ]);
     }
     // assemble the state snapshot
     return {
@@ -497,7 +513,7 @@ export class Pregel<
         .split(CHECKPOINT_NAMESPACE_SEPARATOR)
         .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
         .join(CHECKPOINT_NAMESPACE_SEPARATOR);
-      for (const [name, subgraph] of this.getSubgraphs(
+      for await (const [name, subgraph] of this.getSubgraphsAsync(
         recastCheckpointNamespace,
         true
       )) {
@@ -550,7 +566,7 @@ export class Pregel<
         .join(CHECKPOINT_NAMESPACE_SEPARATOR);
 
       // find the subgraph with the matching name
-      for (const [name, pregel] of this.getSubgraphs(
+      for await (const [name, pregel] of this.getSubgraphsAsync(
         recastCheckpointNamespace,
         true
       )) {
@@ -594,7 +610,7 @@ export class Pregel<
     values: Record<string, unknown> | unknown,
     asNode?: keyof Nn | string
   ): Promise<RunnableConfig> {
-    const checkpointer =
+    const checkpointer: BaseCheckpointSaver | undefined =
       inputConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
     if (!checkpointer) {
       throw new GraphValueError("No checkpointer set");
@@ -615,7 +631,7 @@ export class Pregel<
         .join(CHECKPOINT_NAMESPACE_SEPARATOR);
       // find the subgraph with the matching name
       // eslint-disable-next-line no-unreachable-loop
-      for (const [, pregel] of this.getSubgraphs(
+      for await (const [, pregel] of this.getSubgraphsAsync(
         recastCheckpointNamespace,
         true
       )) {
@@ -646,8 +662,13 @@ export class Pregel<
     let checkpointConfig = patchConfigurable(config, {
       checkpoint_ns: config.configurable?.checkpoint_ns ?? "",
     });
-    if (saved) {
+    let checkpointMetadata = config.metadata ?? {};
+    if (saved?.config.configurable) {
       checkpointConfig = patchConfigurable(config, saved.config.configurable);
+      checkpointMetadata = {
+        ...saved.metadata,
+        ...checkpointMetadata,
+      };
     }
 
     // Find last node that updated the state, if not provided
@@ -657,13 +678,152 @@ export class Pregel<
         createCheckpoint(checkpoint, undefined, step),
         {
           source: "update",
-          step,
+          step: step + 1,
           writes: {},
           parents: saved?.metadata?.parents ?? {},
         },
         {}
       );
       return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
+    }
+
+    // update channels
+    const channels = emptyChannels(
+      this.channels as Record<string, BaseChannel>,
+      checkpoint
+    );
+
+    // Pass `skipManaged: true` as managed values are not used/relevant in update state calls.
+    const { managed } = await this.prepareSpecs(config, { skipManaged: true });
+
+    if (values === null && asNode === "__end__") {
+      if (saved) {
+        // tasks for this checkpoint
+        const nextTasks = _prepareNextTasks(
+          checkpoint,
+          saved.pendingWrites || [],
+          this.nodes,
+          channels,
+          managed,
+          saved.config,
+          true,
+          {
+            step: (saved.metadata?.step ?? -1) + 1,
+            checkpointer: this.checkpointer || undefined,
+            store: this.store,
+          }
+        );
+
+        // apply null writes
+        const nullWrites = (saved.pendingWrites || [])
+          .filter((w) => w[0] === NULL_TASK_ID)
+          .map((w) => w.slice(1)) as PendingWrite<string>[];
+        if (nullWrites.length > 0) {
+          _applyWrites(saved.checkpoint, channels, [
+            {
+              name: INPUT,
+              writes: nullWrites,
+              triggers: [],
+            },
+          ]);
+        }
+        // apply writes from tasks that already ran
+        for (const [taskId, k, v] of saved.pendingWrites || []) {
+          if ([ERROR, INTERRUPT, SCHEDULED].includes(k)) {
+            continue;
+          }
+          if (!(taskId in nextTasks)) {
+            continue;
+          }
+          nextTasks[taskId].writes.push([k, v]);
+        }
+        // clear all current tasks
+        _applyWrites(
+          checkpoint,
+          channels,
+          Object.values(nextTasks) as WritesProtocol<string>[]
+        );
+      }
+      // save checkpoint
+      const nextConfig = await checkpointer.put(
+        checkpointConfig,
+        createCheckpoint(checkpoint, undefined, step),
+        {
+          ...checkpointMetadata,
+          source: "update",
+          step: step + 1,
+          writes: {},
+          parents: saved?.metadata?.parents ?? {},
+        },
+        {}
+      );
+      return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
+    }
+    if (values == null && asNode === "__copy__") {
+      const nextConfig = await checkpointer.put(
+        saved?.parentConfig ?? checkpointConfig,
+        createCheckpoint(checkpoint, undefined, step),
+        {
+          source: "fork",
+          step: step + 1,
+          writes: {},
+          parents: saved?.metadata?.parents ?? {},
+        },
+        {}
+      );
+      return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
+    }
+    // apply pending writes, if not on specific checkpoint
+    if (
+      config.configurable?.checkpoint_id === undefined &&
+      saved?.pendingWrites !== undefined &&
+      saved.pendingWrites.length > 0
+    ) {
+      // tasks for this checkpoint
+      const nextTasks = _prepareNextTasks(
+        checkpoint,
+        saved.pendingWrites,
+        this.nodes,
+        channels,
+        managed,
+        saved.config,
+        true,
+        {
+          store: this.store,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          checkpointer: this.checkpointer as any,
+          step: (saved.metadata?.step ?? -1) + 1,
+        }
+      );
+      // apply null writes
+      const nullWrites = (saved.pendingWrites ?? [])
+        .filter((w) => w[0] === NULL_TASK_ID)
+        .map((w) => w.slice(1)) as PendingWrite<string>[];
+      if (nullWrites.length > 0) {
+        _applyWrites(saved.checkpoint, channels, [
+          {
+            name: INPUT,
+            writes: nullWrites,
+            triggers: [],
+          },
+        ]);
+      }
+      // apply writes
+      for (const [tid, k, v] of saved.pendingWrites) {
+        if (
+          [ERROR, INTERRUPT, SCHEDULED].includes(k) ||
+          nextTasks[tid] === undefined
+        ) {
+          continue;
+        }
+        nextTasks[tid].writes.push([k, v]);
+      }
+      const tasks = Object.values(nextTasks).filter((task) => {
+        return task.writes.length > 0;
+      });
+      if (tasks.length > 0) {
+        _applyWrites(checkpoint, channels, tasks as WritesProtocol[]);
+      }
     }
     const nonNullVersion = Object.values(checkpoint.versions_seen)
       .map((seenVersions) => {
@@ -712,14 +872,6 @@ export class Pregel<
         `Node "${asNode.toString()}" does not exist`
       );
     }
-    // update channels
-    const channels = emptyChannels(
-      this.channels as Record<string, BaseChannel>,
-      checkpoint
-    );
-
-    // Pass `skipManaged: true` as managed values are not used/relevant in update state calls.
-    const { managed } = await this.prepareSpecs(config, { skipManaged: true });
 
     // run all writers of the chosen node
     const writers = this.nodes[asNode].getWriters();
@@ -739,6 +891,7 @@ export class Pregel<
       writes: [],
       triggers: [INTERRUPT],
       id: uuid5(INTERRUPT, checkpoint.id),
+      writers: [],
     };
 
     // execute task
@@ -774,10 +927,17 @@ export class Pregel<
     );
 
     // save task writes
-    if (saved !== undefined) {
+    // channel writes are saved to current checkpoint
+    // push writes are saved to next checkpoint
+    const [channelWrites, pushWrites] = [
+      task.writes.filter((w) => w[0] !== PUSH),
+      task.writes.filter((w) => w[0] === PUSH),
+    ];
+    // save task writes
+    if (saved !== undefined && channelWrites.length > 0) {
       await checkpointer.putWrites(
         checkpointConfig,
-        task.writes as PendingWrite[],
+        channelWrites as PendingWrite[],
         task.id
       );
     }
@@ -807,6 +967,14 @@ export class Pregel<
       newVersions
     );
 
+    if (pushWrites.length > 0) {
+      await checkpointer.putWrites(
+        nextConfig,
+        pushWrites as PendingWrite[],
+        task.id
+      );
+    }
+
     return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
   }
 
@@ -815,11 +983,12 @@ export class Pregel<
     StreamMode[], // stream mode
     string | string[], // input keys
     string | string[], // output keys
-    RunnableConfig, // config without pregel keys
+    LangGraphRunnableConfig, // config without pregel keys
     All | string[], // interrupt before
     All | string[], // interrupt after
     BaseCheckpointSaver | undefined,
-    BaseStore | undefined
+    BaseStore | undefined,
+    boolean
   ] {
     const {
       debug,
@@ -830,6 +999,7 @@ export class Pregel<
       interruptBefore,
       ...rest
     } = config;
+    let streamModeSingle = true;
     const defaultDebug = debug !== undefined ? debug : this.debug;
 
     let defaultOutputKeys = outputKeys;
@@ -854,8 +1024,10 @@ export class Pregel<
     let defaultStreamMode: StreamMode[];
     if (streamMode !== undefined) {
       defaultStreamMode = Array.isArray(streamMode) ? streamMode : [streamMode];
+      streamModeSingle = typeof streamMode === "string";
     } else {
       defaultStreamMode = this.streamMode;
+      streamModeSingle = true;
     }
 
     // if being called as a node in another graph, always use values mode
@@ -886,6 +1058,7 @@ export class Pregel<
       defaultInterruptAfter as All | string[],
       defaultCheckpointer,
       defaultStore,
+      streamModeSingle,
     ];
   }
 
@@ -905,10 +1078,19 @@ export class Pregel<
    * @param options.debug Whether to print debug information during execution.
    */
   override async stream(
-    input: PregelInputType,
+    input: InputType | Command | null,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
   ): Promise<IterableReadableStream<PregelOutputType>> {
-    return super.stream(input, options);
+    // The ensureConfig method called internally defaults recursionLimit to 25 if not
+    // passed directly in `options`.
+    // There is currently no way in _streamIterator to determine whether this was
+    // set by by ensureConfig or manually by the user, so we specify the bound value here
+    // and override if it is passed as an explicit param in `options`.
+    const config = {
+      recursionLimit: this.config?.recursionLimit,
+      ...options,
+    };
+    return super.stream(input, config);
   }
 
   protected async prepareSpecs(
@@ -974,8 +1156,117 @@ export class Pregel<
     };
   }
 
+  async _runLoop(params: {
+    loop: PregelLoop;
+    interruptAfter: string[] | "*";
+    interruptBefore: string[] | "*";
+    runManager?: CallbackManagerForChainRun;
+    debug: boolean;
+    config: LangGraphRunnableConfig;
+  }) {
+    const { loop, interruptAfter, interruptBefore, runManager, debug, config } =
+      params;
+    let tickError;
+    try {
+      while (
+        await loop.tick({
+          inputKeys: this.inputChannels as string | string[],
+          interruptAfter,
+          interruptBefore,
+          manager: runManager,
+        })
+      ) {
+        if (debug) {
+          printStepCheckpoint(
+            loop.checkpointMetadata.step,
+            loop.channels,
+            this.streamChannelsList as string[]
+          );
+        }
+        if (debug) {
+          printStepTasks(loop.step, Object.values(loop.tasks));
+        }
+        // execute tasks, and wait for one to fail or all to finish.
+        // each task is independent from all other concurrent tasks
+        // yield updates/debug output as each task finishes
+        const taskStream = executeTasksWithRetry(
+          Object.values(loop.tasks).filter((task) => task.writes.length === 0),
+          {
+            stepTimeout: this.stepTimeout,
+            signal: config.signal,
+            retryPolicy: this.retryPolicy,
+          }
+        );
+        let graphInterrupt;
+        for await (const { task, error } of taskStream) {
+          if (error !== undefined) {
+            if (isGraphBubbleUp(error)) {
+              if (loop.isNested) {
+                throw error;
+              }
+              if (isGraphInterrupt(error)) {
+                graphInterrupt = error;
+                if (error.interrupts.length) {
+                  const interrupts: PendingWrite<string>[] =
+                    error.interrupts.map((interrupt) => [INTERRUPT, interrupt]);
+                  const resumes = task.writes.filter((w) => w[0] === RESUME);
+                  if (resumes.length) {
+                    interrupts.push(...resumes);
+                  }
+                  loop.putWrites(task.id, interrupts);
+                }
+              }
+            } else {
+              loop.putWrites(task.id, [
+                [ERROR, { message: error.message, name: error.name }],
+              ]);
+              throw error;
+            }
+          } else {
+            loop.putWrites(task.id, task.writes);
+          }
+        }
+
+        if (debug) {
+          printStepWrites(
+            loop.step,
+            Object.values(loop.tasks)
+              .map((task) => task.writes)
+              .flat(),
+            this.streamChannelsList as string[]
+          );
+        }
+        if (graphInterrupt !== undefined) {
+          throw graphInterrupt;
+        }
+      }
+      if (loop.status === "out_of_steps") {
+        throw new GraphRecursionError(
+          [
+            `Recursion limit of ${config.recursionLimit} reached`,
+            "without hitting a stop condition. You can increase the",
+            `limit by setting the "recursionLimit" config key.`,
+          ].join(" "),
+          {
+            lc_error_code: "GRAPH_RECURSION_LIMIT",
+          }
+        );
+      }
+    } catch (e) {
+      tickError = e as Error;
+      const suppress = await loop.finishAndHandleError(tickError);
+      if (!suppress) {
+        throw e;
+      }
+    } finally {
+      if (tickError === undefined) {
+        await loop.finishAndHandleError();
+      }
+    }
+  }
+
   override async *_streamIterator(
-    input: PregelInputType,
+    input: PregelInputType | Command,
     options?: Partial<PregelOptions<Nn, Cc>>
   ): AsyncGenerator<PregelOutputType> {
     const streamSubgraphs = options?.subgraphs;
@@ -995,17 +1286,8 @@ export class Pregel<
         `Checkpointer requires one or more of the following "configurable" keys: "thread_id", "checkpoint_ns", "checkpoint_id"`
       );
     }
-    const callbackManager = await getCallbackManagerForConfig(inputConfig);
-    const runManager = await callbackManager?.handleChainStart(
-      this.toJSON(),
-      _coerceToDict(input, "input"),
-      inputConfig.runId,
-      undefined,
-      undefined,
-      undefined,
-      inputConfig?.runName ?? this.getName()
-    );
-    delete inputConfig.runId;
+
+    const { runId, ...restConfig } = inputConfig;
     // assign defaults
     const [
       debug,
@@ -1017,23 +1299,127 @@ export class Pregel<
       interruptAfter,
       checkpointer,
       store,
-    ] = this._defaults(inputConfig);
+      streamModeSingle,
+    ] = this._defaults(restConfig);
+
+    const stream = new IterableReadableWritableStream({
+      modes: new Set(streamMode),
+    });
+
+    // set up messages stream mode
+    if (streamMode.includes("messages")) {
+      const messageStreamer = new StreamMessagesHandler((chunk) =>
+        stream.push(chunk)
+      );
+      const { callbacks } = config;
+      if (callbacks === undefined) {
+        config.callbacks = [messageStreamer];
+      } else if (Array.isArray(callbacks)) {
+        config.callbacks = callbacks.concat(messageStreamer);
+      } else {
+        const copiedCallbacks = callbacks.copy();
+        copiedCallbacks.addHandler(messageStreamer, true);
+        config.callbacks = copiedCallbacks;
+      }
+    }
+
+    // setup custom stream mode
+    if (streamMode.includes("custom")) {
+      config.writer = (chunk: unknown) => stream.push([[], "custom", chunk]);
+    }
+
+    const callbackManager = await getCallbackManagerForConfig(config);
+    const runManager = await callbackManager?.handleChainStart(
+      this.toJSON(),
+      _coerceToDict(input, "input"),
+      runId,
+      undefined,
+      undefined,
+      undefined,
+      config?.runName ?? this.getName()
+    );
 
     const { channelSpecs, managed } = await this.prepareSpecs(config);
 
     let loop: PregelLoop | undefined;
-    const stream = new Deque<StreamChunk>();
-    function* emitCurrentLoopOutputs() {
-      while (loop !== undefined && stream.length > 0) {
-        const nextItem = stream.shift();
-        if (nextItem === undefined) {
+    let loopError: unknown;
+
+    /**
+     * The PregelLoop will yield events from concurrent tasks as soon as they are
+     * generated. Each task can push multiple events onto the stream in any order.
+     *
+     * We use a separate background method and stream here in order to yield events
+     * from the loop to the main stream and therefore back to the user as soon as
+     * they are available.
+     */
+    const createAndRunLoop = async () => {
+      try {
+        loop = await PregelLoop.initialize({
+          input,
+          config,
+          checkpointer,
+          nodes: this.nodes,
+          channelSpecs,
+          managed,
+          outputKeys,
+          streamKeys: this.streamChannelsAsIs as string | string[],
+          store,
+          stream,
+        });
+        if (options?.subgraphs) {
+          loop.config.configurable = {
+            ...loop.config.configurable,
+            [CONFIG_KEY_STREAM]: loop.stream,
+          };
+        }
+        await this._runLoop({
+          loop,
+          interruptAfter,
+          interruptBefore,
+          runManager,
+          debug,
+          config,
+        });
+      } catch (e) {
+        loopError = e;
+      } finally {
+        try {
+          // Call `.stop()` again incase it was not called in the loop, e.g due to an error.
+          if (loop) {
+            await loop.store?.stop();
+          }
+          await Promise.all([
+            ...(loop?.checkpointerPromises ?? []),
+            ...Array.from(managed.values()).map((mv) => mv.promises()),
+          ]);
+        } catch (e) {
+          loopError = loopError ?? e;
+        }
+        if (loopError) {
+          // "Causes any future interactions with the associated stream to error".
+          // Wraps ReadableStreamDefaultController#error:
+          // https://developer.mozilla.org/en-US/docs/Web/API/ReadableStreamDefaultController/error
+          stream.error(loopError);
+        } else {
+          // Will end the iterator outside of this method,
+          // keeping previously enqueued chunks.
+          // Wraps ReadableStreamDefaultController#close:
+          // https://developer.mozilla.org/en-US/docs/Web/API/ReadableStreamDefaultController/close
+          stream.close();
+        }
+      }
+    };
+    const runLoopPromise = createAndRunLoop();
+    try {
+      for await (const chunk of stream) {
+        if (chunk === undefined) {
           throw new Error("Data structure error.");
         }
-        const [namespace, mode, payload] = nextItem;
+        const [namespace, mode, payload] = chunk;
         if (streamMode.includes(mode)) {
-          if (streamSubgraphs && streamMode.length > 1) {
+          if (streamSubgraphs && !streamModeSingle) {
             yield [namespace, mode, payload];
-          } else if (streamMode.length > 1) {
+          } else if (!streamModeSingle) {
             yield [mode, payload];
           } else if (streamSubgraphs) {
             yield [namespace, payload];
@@ -1042,124 +1428,13 @@ export class Pregel<
           }
         }
       }
-    }
-    try {
-      loop = await PregelLoop.initialize({
-        input,
-        config,
-        checkpointer,
-        nodes: this.nodes,
-        channelSpecs,
-        managed,
-        outputKeys,
-        streamKeys: this.streamChannelsAsIs as string | string[],
-        store,
-        stream: new StreamProtocol(
-          (chunk) => stream.push(chunk),
-          new Set(streamMode)
-        ),
-      });
-      if (options?.subgraphs) {
-        loop.config.configurable = {
-          ...loop.config.configurable,
-          [CONFIG_KEY_STREAM]: loop.stream,
-        };
-      }
-      while (
-        await loop.tick({
-          inputKeys: this.inputChannels as string | string[],
-          interruptAfter,
-          interruptBefore,
-          manager: runManager,
-        })
-      ) {
-        if (debug) {
-          printStepCheckpoint(
-            loop.checkpointMetadata.step,
-            loop.channels,
-            this.streamChannelsList as string[]
-          );
-        }
-        yield* emitCurrentLoopOutputs();
-        if (debug) {
-          printStepTasks(loop.step, Object.values(loop.tasks));
-        }
-        // execute tasks, and wait for one to fail or all to finish.
-        // each task is independent from all other concurrent tasks
-        // yield updates/debug output as each task finishes
-        const taskStream = executeTasksWithRetry(
-          Object.values(loop.tasks).filter((task) => task.writes.length === 0),
-          {
-            stepTimeout: this.stepTimeout,
-            signal: config.signal,
-            retryPolicy: this.retryPolicy,
-          }
-        );
-        // Timeouts will be thrown
-        for await (const { task, error } of taskStream) {
-          if (error !== undefined) {
-            if (isGraphInterrupt(error)) {
-              if (loop.isNested) {
-                throw error;
-              }
-              if (error.interrupts.length) {
-                loop.putWrites(
-                  task.id,
-                  error.interrupts.map((interrupt) => [INTERRUPT, interrupt])
-                );
-              }
-            } else {
-              loop.putWrites(task.id, [
-                [ERROR, { message: error.message, name: error.name }],
-              ]);
-            }
-          } else {
-            loop.putWrites(task.id, task.writes);
-          }
-          yield* emitCurrentLoopOutputs();
-          if (error !== undefined && !isGraphInterrupt(error)) {
-            throw error;
-          }
-        }
-
-        if (debug) {
-          printStepWrites(
-            loop.step,
-            Object.values(loop.tasks)
-              .map((task) => task.writes)
-              .flat(),
-            this.streamChannelsList as string[]
-          );
-        }
-      }
-      yield* emitCurrentLoopOutputs();
-      if (loop.status === "out_of_steps") {
-        throw new GraphRecursionError(
-          [
-            `Recursion limit of ${config.recursionLimit} reached`,
-            "without hitting a stop condition. You can increase the",
-            `limit by setting the "recursionLimit" config key.`,
-          ].join(" "),
-          {
-            lc_error_code: "GRAPH_RECURSION_LIMIT",
-          }
-        );
-      }
-      await Promise.all(loop?.checkpointerPromises ?? []);
-      await runManager?.handleChainEnd(loop.output);
     } catch (e) {
-      await runManager?.handleChainError(e);
+      await runManager?.handleChainError(loopError);
       throw e;
     } finally {
-      // Call `.stop()` again incase it was not called in the loop, e.g due to an error.
-      if (loop) {
-        await loop.store?.stop();
-      }
-      await Promise.all([
-        ...(loop?.checkpointerPromises ?? []),
-        ...Array.from(managed.values()).map((mv) => mv.promises()),
-      ]);
+      await runLoopPromise;
     }
+    await runManager?.handleChainEnd(loop?.output ?? {});
   }
 
   /**
@@ -1178,9 +1453,9 @@ export class Pregel<
    * @param options.debug Whether to print debug information during execution.
    */
   override async invoke(
-    input: PregelInputType,
+    input: InputType | Command | null,
     options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
-  ): Promise<PregelOutputType> {
+  ): Promise<OutputType> {
     const streamMode = options?.streamMode ?? "values";
     const config = {
       ...options,
@@ -1195,6 +1470,6 @@ export class Pregel<
     if (streamMode === "values") {
       return chunks[chunks.length - 1];
     }
-    return chunks;
+    return chunks as OutputType;
   }
 }
