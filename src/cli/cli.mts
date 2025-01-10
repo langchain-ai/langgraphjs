@@ -1,11 +1,13 @@
-import { Command } from "commander";
-import { startServer } from "../server.mjs";
+import "../preload.mjs";
+
 import open from "open";
+import { Command } from "commander";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { ConfigSchema } from "../utils/config.mjs";
-import { logger } from "../logging.mjs";
 import * as dotenv from "dotenv";
+
+import { logger } from "../logging.mjs";
+import { ConfigSchema } from "../utils/config.mjs";
 
 const program = new Command();
 
@@ -43,6 +45,9 @@ program
           dotenv.populate(process.env, env);
         }
       }
+
+      // dynamically import the server to kick the preload script
+      const { startServer } = await import("../server.mjs");
 
       // Start the server
       const serverUrl = await startServer({

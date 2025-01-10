@@ -23,6 +23,9 @@ importers:
       '@langchain/langgraph':
         specifier: ^0.2.39
         version: 0.2.39(@langchain/core@0.3.27)
+      '@langchain/langgraph-checkpoint':
+        specifier: ^0.0.13
+        version: 0.0.13(@langchain/core@0.3.27)
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15
@@ -41,6 +44,9 @@ importers:
       hono:
         specifier: ^4.5.4
         version: 4.6.16
+      langsmith:
+        specifier: ^0.2.15
+        version: 0.2.15
       open:
         specifier: ^10.1.0
         version: 10.1.0
@@ -55,7 +61,7 @@ importers:
         version: 2.4.2
       tsx:
         specifier: ^4.19.1
-        version: 4.19.2
+        version: 4.19.1
       typescript:
         specifier: ^5.5.4
         version: 5.7.2
@@ -774,8 +780,8 @@ packages:
   kuler@2.0.0:
     resolution: {integrity: sha512-Xq9nH7KlWZmXAtodXDDRE7vs6DU1gTU8zYDHDiWLSip45Egwq3plLHzPn27NgvzL2r1LMPC1vdqh98sQxtqj4A==}
 
-  langsmith@0.2.14:
-    resolution: {integrity: sha512-ClAuAgSf3m9miMYotLEaZKQyKdaWlfjhebCuYco8bc6g72dU2VwTg31Bv4YINBq7EH2i1cMwbOiJxbOXPqjGig==}
+  langsmith@0.2.15:
+    resolution: {integrity: sha512-homtJU41iitqIZVuuLW7iarCzD4f39KcfP9RTBWav9jifhrsDa1Ez89Ejr+4qi72iuBu8Y5xykchsGVgiEZ93w==}
     peerDependencies:
       openai: '*'
     peerDependenciesMeta:
@@ -951,8 +957,8 @@ packages:
     resolution: {integrity: sha512-aZbgViZrg1QNcG+LULa7nhZpJTZSLm/mXnHXnbAbjmN5aSa0y7V+wvv6+4WaBtpISJzThKy+PIPxc1Nq1EJ9mg==}
     engines: {node: '>= 14.0.0'}
 
-  tsx@4.19.2:
-    resolution: {integrity: sha512-pOUl6Vo2LUq/bSa8S5q7b91cgNSjctn9ugq/+Mvow99qW6x/UZYwzxy/3NmqoT66eHYfCVvFvACC58UBPFf28g==}
+  tsx@4.19.1:
+    resolution: {integrity: sha512-0flMz1lh74BR4wOvBjuh9olbnwqCPc35OOlfyzHba0Dc+QNUeWX/Gq2YTbnwcWPO3BMd8fkzRVrHcsR+a7z7rA==}
     engines: {node: '>=18.0.0'}
     hasBin: true
 
@@ -1252,7 +1258,7 @@ snapshots:
       camelcase: 6.3.0
       decamelize: 1.2.0
       js-tiktoken: 1.0.16
-      langsmith: 0.2.14
+      langsmith: 0.2.15
       mustache: 4.2.0
       p-queue: 6.6.2
       p-retry: 4.6.2
@@ -1584,7 +1590,7 @@ snapshots:
 
   kuler@2.0.0: {}
 
-  langsmith@0.2.14:
+  langsmith@0.2.15:
     dependencies:
       '@types/uuid': 10.0.0
       commander: 10.0.1
@@ -1756,7 +1762,7 @@ snapshots:
 
   triple-beam@1.4.1: {}
 
-  tsx@4.19.2:
+  tsx@4.19.1:
     dependencies:
       esbuild: 0.23.1
       get-tsconfig: 4.8.1

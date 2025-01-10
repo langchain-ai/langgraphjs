@@ -1,4 +1,3 @@
-import { register } from "node:module";
 import { z } from "zod";
 
 import * as uuid from "uuid";
@@ -18,9 +17,6 @@ import {
 import { checkpointer } from "../storage/checkpoint.mjs";
 import { store } from "../storage/store.mjs";
 import { logger } from "../logging.mjs";
-
-// enforce API @langchain/langgraph precedence
-register("./load.hooks.mjs", import.meta.url);
 
 export const GRAPHS: Record<string, CompiledGraph<string>> = {};
 export const GRAPH_SPEC: Record<string, GraphSpec> = {};
@@ -45,7 +41,7 @@ export async function registerFromEnv(
     ? ConfigSchema.parse(JSON.parse(process.env.LANGGRAPH_CONFIG))
     : undefined;
 
-  await Promise.all(
+  return await Promise.all(
     Object.entries(specs).map(async ([graphId, rawSpec]) => {
       logger.info(`Registering graph with id '${graphId}'`, {
         graph_id: graphId,
@@ -66,6 +62,8 @@ export async function registerFromEnv(
         config: config ?? {},
         if_exists: "do_nothing",
       });
+
+      return resolved;
     })
   );
 }

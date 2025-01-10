@@ -56,7 +56,6 @@ export async function startServer(options: {
   config?: z.infer<typeof ConfigSchema>;
   cwd?: string;
 }): Promise<string> {
-  logger.info("Registering graphs");
   const specs =
     options.config != null
       ? options.config.graphs

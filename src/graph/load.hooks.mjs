@@ -6,12 +6,14 @@ const OVERRIDE_RESOLVE = [
   "@langchain/langgraph-checkpoint",
 ];
 
-export const resolve = async (specifier, context, nextResolve) => {
-  const parentURL = new URL("./load.mts", import.meta.url).toString();
-
+export async function resolve(specifier, context, nextResolve) {
   if (OVERRIDE_RESOLVE.includes(specifier)) {
-    return nextResolve(specifier, { ...context, parentURL });
+    const parentURL = new URL("./load.mts", import.meta.url).toString();
+    return await nextResolve(specifier, {
+      ...context,
+      parentURL,
+    });
   }
 
   return nextResolve(specifier, context);
-};
+}
