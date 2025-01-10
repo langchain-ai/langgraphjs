@@ -1,4 +1,6 @@
+import { register } from "node:module";
 import { z } from "zod";
+
 import * as uuid from "uuid";
 import { Assistants } from "../storage/ops.mjs";
 import type {
@@ -17,6 +19,9 @@ import { checkpointer } from "../storage/checkpoint.mjs";
 import { store } from "../storage/store.mjs";
 import { logger } from "../logging.mjs";
 
+// enforce API @langchain/langgraph precedence
+register("./load.hooks.mjs", import.meta.url);
+
 export const GRAPHS: Record<string, CompiledGraph<string>> = {};
 export const GRAPH_SPEC: Record<string, GraphSpec> = {};
 export const GRAPH_SCHEMA: Record<string, Record<string, GraphSchema>> = {};
@@ -25,7 +30,6 @@ export const NAMESPACE_GRAPH = uuid.parse(
   "6ba7b821-9dad-11d1-80b4-00c04fd430c8"
 );
 
-const SpecSchema = z.record(z.string());
 const ConfigSchema = z.record(z.unknown());
 
 export const getAssistantId = (graphId: string) => {
@@ -33,8 +37,10 @@ export const getAssistantId = (graphId: string) => {
   return graphId;
 };
 
-export async function registerFromEnv() {
-  const specs = SpecSchema.parse(JSON.parse(process.env.LANGSERVE_GRAPHS));
+export async function registerFromEnv(
+  specs: Record<string, string>,
+  options: { cwd: string }
+) {
   const envConfig = process.env.LANGGRAPH_CONFIG
     ? ConfigSchema.parse(JSON.parse(process.env.LANGGRAPH_CONFIG))
     : undefined;
@@ -46,7 +52,9 @@ export async function registerFromEnv() {
       });
 
       const config = envConfig?.[graphId];
-      const { resolved, ...spec } = await resolveGraph(rawSpec);
+      const { resolved, ...spec } = await resolveGraph(rawSpec, {
+        cwd: options.cwd,
+      });
 
       // registering the graph runtime
       GRAPHS[graphId] = resolved;

@@ -1,6 +1,6 @@
 import { LangGraphRunnableConfig, StateSnapshot } from "@langchain/langgraph";
 import { ThreadState, Checkpoint } from "./storage/ops.mjs";
-import { runnableConfigToCheckpoint } from "./utils/config.mjs";
+import { runnableConfigToCheckpoint } from "./utils/runnableConfig.mjs";
 import { serializeError } from "./utils/serde.mjs";
 
 const isStateSnapshot = (

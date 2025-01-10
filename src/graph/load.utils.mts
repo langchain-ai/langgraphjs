@@ -24,7 +24,7 @@ export interface GraphSpec {
 
 export async function resolveGraph(
   spec: string,
-  options?: { onlyFilePresence?: false }
+  options: { cwd: string; onlyFilePresence?: false }
 ): Promise<{
   sourceFile: string;
   exportSymbol: string;
@@ -33,22 +33,22 @@ export async function resolveGraph(
 
 export async function resolveGraph(
   spec: string,
-  options: { onlyFilePresence: true }
+  options: { cwd: string; onlyFilePresence: true }
 ): Promise<{ sourceFile: string; exportSymbol: string; resolved: undefined }>;
 
 export async function resolveGraph(
   spec: string,
-  options?: { onlyFilePresence?: boolean }
+  options: { cwd: string; onlyFilePresence?: boolean }
 ) {
   const [userFile, exportSymbol] = spec.split(":", 2);
+  const sourceFile = path.resolve(options.cwd, userFile);
 
   // validate file exists
-  await fs.stat(userFile);
+  await fs.stat(sourceFile);
   if (options?.onlyFilePresence) {
     return { sourceFile: userFile, exportSymbol, resolved: undefined };
   }
 
-  const sourceFile = path.resolve(process.cwd(), userFile);
   type GraphLike = CompiledGraph<string> | Graph<string>;
 
   type GraphUnknown =

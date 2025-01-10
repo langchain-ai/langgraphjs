@@ -13,6 +13,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { queue } from "./queue.mjs";
 import { logger, requestLogger } from "./logging.mjs";
+import { ConfigSchema } from "./utils/config.mjs";
 
 const app = new Hono();
 
@@ -47,20 +48,35 @@ app.post(
 
 const N_WORKERS = 10;
 
-async function lifecycle() {
+export async function startServer(options: {
+  port?: number;
+  nWorkers?: number;
+  host?: string;
+  config?: z.infer<typeof ConfigSchema>;
+  cwd?: string;
+}): Promise<string> {
   logger.info("Registering graphs");
-  await registerFromEnv();
+  const specs =
+    options.config != null
+      ? options.config.graphs
+      : z.record(z.string()).parse(JSON.parse(process.env.LANGSERVE_GRAPHS));
 
-  logger.info(`Starting ${N_WORKERS} workers`);
-  for (let i = 0; i < N_WORKERS; i++) queue();
+  const port =
+    options.port ??
+    (process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 9123);
 
-  serve(
-    {
-      fetch: app.fetch,
-      port: process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 9123,
-    },
-    (c) => logger.info(`Listening to ${c.address}:${c.port}`)
-  );
+  const hostname = options.host ?? "0.0.0.0";
+  const projectDir = options.cwd ?? process.cwd();
+
+  logger.info(`Registering graphs from ${projectDir}`);
+  await registerFromEnv(specs, { cwd: projectDir });
+
+  logger.info(`Starting ${options.nWorkers ?? N_WORKERS} workers`);
+  for (let i = 0; i < (options.nWorkers ?? N_WORKERS); i++) queue();
+
+  return new Promise((resolve) => {
+    serve({ fetch: app.fetch, port, hostname }, (c) => {
+      resolve(`${c.address}:${c.port}`);
+    });
+  });
 }
-
-lifecycle();

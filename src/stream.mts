@@ -9,7 +9,7 @@ import {
   StateSnapshot,
 } from "@langchain/langgraph";
 import type { Pregel } from "@langchain/langgraph/pregel";
-import { runnableConfigToCheckpoint } from "./utils/config.mjs";
+import { runnableConfigToCheckpoint } from "./utils/runnableConfig.mjs";
 import { BaseMessageChunk, isBaseMessage } from "@langchain/core/messages";
 import { logger } from "./logging.mjs";
 
