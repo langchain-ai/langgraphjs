@@ -24,6 +24,7 @@ app.route("/", assistants);
 app.route("/", runs);
 app.route("/", threads);
 app.route("/", store);
+app.get("/info", (c) => c.json({ flags: { assistants: true, crons: false } }));
 
 app.post(
   "/internal/truncate",
