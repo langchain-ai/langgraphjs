@@ -199,7 +199,6 @@ export const RunCreate = z
     webhook: z.string().url().optional(),
     interrupt_before: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
     interrupt_after: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
-    // TODO: probably not applicable to creating / scheduling runs
     on_disconnect: z
       .enum(["cancel", "continue"])
       .optional()
@@ -213,6 +212,10 @@ export const RunCreate = z
         z.enum(["values", "messages", "updates", "events", "debug"]),
       ])
       .optional(),
+    stream_subgraphs: z.boolean().optional(),
+    after_seconds: z.number().optional(),
+    if_not_exists: z.enum(["reject", "create"]).optional(),
+    on_completion: z.enum(["delete", "keep"]).optional(),
     feedback_keys: z.array(z.string()).optional(),
   })
   .describe("Payload for creating a stateful run.");

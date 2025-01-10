@@ -170,28 +170,38 @@ api.get(
   }
 );
 
-api.get("/assistants/:assistant_id/versions", async (c) => {
-  // Get Assistant Versions
-  const assistantId = getAssistantId(c.req.param("assistant_id"));
-
-  // TODO: implement version retrieval
-  return c.json({
-    versions: [],
-  });
-});
-
 api.post(
   "/assistants/:assistant_id/latest",
   zValidator("json", schemas.AssistantLatestVersion),
   async (c) => {
     // Set Latest Assistant Version
     const assistantId = getAssistantId(c.req.param("assistant_id"));
-    const payload = c.req.valid("json");
+    const { version } = c.req.valid("json");
+    return c.json(await Assistants.setLatest(assistantId, version));
+  }
+);
 
-    // TODO: implement version update
-    return c.json({
-      // Return updated assistant
-    });
+api.get(
+  "/assistants/:assistant_id/versions",
+  zValidator(
+    "query",
+    z.object({
+      limit: z.number().min(1).max(1000).optional().default(10),
+      offset: z.number().min(0).optional().default(0),
+      metadata: z.record(z.unknown()).optional(),
+    })
+  ),
+  async (c) => {
+    // Get Assistant Versions
+    const assistantId = getAssistantId(c.req.param("assistant_id"));
+    const { limit, offset, metadata } = c.req.valid("query");
+    return c.json(
+      await Assistants.getVersions(assistantId, {
+        limit,
+        offset,
+        metadata,
+      })
+    );
   }
 );
 

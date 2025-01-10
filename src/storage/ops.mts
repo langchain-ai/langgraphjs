@@ -101,7 +101,7 @@ export interface RunKwargs {
   webhook?: unknown;
 
   // TODO: implement feedback_keys
-  feedback_keys?: string | string[] | undefined;
+  feedback_keys?: string[] | undefined;
 
   [key: string]: unknown;
 }
@@ -175,7 +175,7 @@ class Queue {
         options.signal.addEventListener("abort", () => {
           this.listeners = this.listeners.filter((l) => l !== listener);
           clearTimeout(timer);
-          reject(new TimeoutError());
+          reject(new AbortError());
         });
       }
 
@@ -476,7 +476,7 @@ export class Assistants {
     return STORE.assistants[assistantId];
   }
 
-  static async *getVersions(
+  static async getVersions(
     assistantId: string,
     options: {
       limit: number;
@@ -499,12 +499,7 @@ export class Assistants {
       })
       .sort((a, b) => b["version"] - a["version"]);
 
-    for (const version of versions.slice(
-      options.offset,
-      options.offset + options.limit
-    )) {
-      yield version;
-    }
+    return versions.slice(options.offset, options.offset + options.limit);
   }
 }
 
@@ -549,8 +544,8 @@ interface ThreadTask {
   error: string | null;
   interrupts: Record<string, unknown>[];
   checkpoint: Checkpoint | null;
-  state?: ThreadState;
-  result?: Record<string, unknown>;
+  state: ThreadState | null;
+  result: Record<string, unknown> | null;
 }
 
 export interface ThreadState {
@@ -720,6 +715,7 @@ export class Threads {
         delete STORE.runs[run["run_id"]];
       }
     }
+    checkpointer.delete(threadId, null);
 
     return [thread.thread_id];
   }
@@ -734,65 +730,12 @@ export class Threads {
       thread_id: newThreadId,
       created_at: now,
       updated_at: now,
-      metadata: { ...thread.metadata },
+      metadata: { ...thread.metadata, thread_id: newThreadId },
       config: {},
       status: "idle",
     };
 
-    // copy storage over
-    const newThreadCheckpoints: (typeof checkpointer.storage)[string] = {};
-    for (const oldNs of Object.keys(checkpointer.storage[threadId] ?? {})) {
-      const newNs = oldNs.replace(threadId, newThreadId);
-
-      for (const oldId of Object.keys(checkpointer.storage[threadId][oldNs])) {
-        const newId = oldId.replace(threadId, newThreadId);
-
-        const [checkpoint, metadata, oldParentId] =
-          checkpointer.storage[threadId][oldNs][oldId];
-
-        const newParentId = oldParentId?.replace(threadId, newThreadId);
-
-        newThreadCheckpoints[newNs] ??= {};
-        newThreadCheckpoints[newNs][newId] = [
-          checkpoint,
-          metadata,
-          newParentId,
-        ];
-      }
-    }
-    checkpointer.storage[newThreadId] = newThreadCheckpoints;
-
-    // copy writes over (if any)
-    type WriteKey = [
-      threadId: string,
-      checkpointNamespace: string,
-      checkpointId: string,
-    ];
-
-    const deserializeKey = (key: string): WriteKey => {
-      const [threadId, checkpointNamespace, checkpointId] = JSON.parse(key);
-      return [threadId, checkpointNamespace, checkpointId];
-    };
-
-    const serializeKey = (key: WriteKey): string => {
-      return JSON.stringify(key);
-    };
-
-    const outerKeys: string[] = [];
-    for (const keyJson of Object.keys(checkpointer.writes)) {
-      const key = deserializeKey(keyJson);
-      if (key[0] === threadId) outerKeys.push(keyJson);
-    }
-
-    for (const keyJson of outerKeys) {
-      const [_threadId, checkpointNamespace, checkpointId] =
-        deserializeKey(keyJson);
-
-      checkpointer.writes[
-        serializeKey([newThreadId, checkpointNamespace, checkpointId])
-      ] = structuredClone(checkpointer.writes[keyJson]);
-    }
-
+    checkpointer.copy(threadId, newThreadId);
     return STORE.threads[newThreadId];
   }
 
@@ -1116,8 +1059,7 @@ export class Runs {
     if (!run || (threadId != null && run.thread_id !== threadId))
       throw new Error("Run not found");
 
-    // TODO: delete checkpoints for run
-
+    if (threadId != null) checkpointer.delete(threadId, runId);
     delete STORE.runs[runId];
     return run.run_id;
   }

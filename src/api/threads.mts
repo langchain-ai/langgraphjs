@@ -142,7 +142,7 @@ api.post(
     z.object({
       subgraphs: schemas.coercedBoolean.optional(),
       checkpoint: z.object({
-        checkpoint_id: z.string().uuid(),
+        checkpoint_id: z.string().uuid().optional(),
         checkpoint_ns: z.string().optional(),
         checkpoint_map: z.record(z.string(), z.unknown()).optional(),
       }),
@@ -202,7 +202,7 @@ api.post(
       metadata: z.record(z.string(), z.unknown()).optional(),
       checkpoint: z
         .object({
-          checkpoint_id: z.string().uuid(),
+          checkpoint_id: z.string().uuid().optional(),
           checkpoint_ns: z.string().optional(),
           checkpoint_map: z.record(z.string(), z.unknown()).optional(),
         })

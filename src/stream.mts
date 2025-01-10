@@ -1,6 +1,6 @@
 import { Run, RunCommand, RunnableConfig, RunSend } from "./storage/ops.mjs";
 import { getGraph } from "./graph/load.mjs";
-
+import { Client as LangSmithClient } from "langsmith";
 import {
   CheckpointMetadata,
   Command,
@@ -267,5 +267,22 @@ export async function* streamState(
         yield { event: "messages/partial", data: [messages[message.id]] };
       }
     }
+  }
+
+  if (kwargs.feedback_keys) {
+    const client = new LangSmithClient();
+    const data = Object.fromEntries(
+      await Promise.all(
+        kwargs.feedback_keys.map(async (feedback) => {
+          const { url } = await client.createPresignedFeedbackToken(
+            run.run_id,
+            feedback
+          );
+          return [feedback, url];
+        })
+      )
+    );
+
+    yield { event: "feedback", data };
   }
 }

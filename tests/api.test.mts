@@ -84,7 +84,7 @@ describe("assistants", () => {
     );
   });
 
-  it.skip("schemas", async () => {
+  it("schemas", async () => {
     const graphId = "agent";
     const config = { configurable: { model: "openai" } };
 
@@ -157,7 +157,7 @@ describe("assistants", () => {
     });
 
     await client.assistants.delete(res.assistant_id);
-    expect(() => client.assistants.get(res.assistant_id)).rejects.toThrow(
+    await expect(() => client.assistants.get(res.assistant_id)).rejects.toThrow(
       "HTTP 404: Assistant not found"
     );
   });
@@ -290,6 +290,10 @@ describe("threads copy", () => {
     // check copied thread state matches expected output
     const expectedThreadState = {
       ...threadState,
+      metadata: {
+        ...threadState.metadata,
+        thread_id: copiedThread.thread_id,
+      },
       checkpoint: {
         ...threadState.checkpoint,
         thread_id: copiedThread.thread_id,
@@ -299,10 +303,39 @@ describe("threads copy", () => {
         thread_id: copiedThread.thread_id,
       },
     };
+
     expect(copiedThreadState).toEqual(expectedThreadState);
 
     if (IS_MEMORY) {
-      // TODO: implement missing test
+      // For in-memory connections, check the thread history
+      const originalHistory = await client.threads.getHistory(thread.thread_id);
+      const copiedHistory = await client.threads.getHistory(
+        copiedThread.thread_id
+      );
+
+      expect(originalHistory.length).toBe(copiedHistory.length);
+      for (let i = 0; i < originalHistory.length; i++) {
+        const original = originalHistory[i];
+        const copied = copiedHistory[i];
+
+        expect(copied).toEqual({
+          ...original,
+          metadata: {
+            ...original.metadata,
+            thread_id: copiedThread.thread_id,
+          },
+          checkpoint: {
+            ...original.checkpoint,
+            thread_id: copiedThread.thread_id,
+          },
+          parent_checkpoint: original.parent_checkpoint
+            ? {
+                ...original.parent_checkpoint,
+                thread_id: copiedThread.thread_id,
+              }
+            : null,
+        });
+      }
     } else {
       const sql = postgres(
         process.env.POSTGRES_URI ??
@@ -487,6 +520,7 @@ describe("runs", () => {
       {
         input: { messages: [{ type: "human", content: "bar" }] },
         config: globalConfig,
+        afterSeconds: 10,
       }
     );
 
@@ -496,8 +530,6 @@ describe("runs", () => {
     runs = await client.runs.list(thread.thread_id, { status: "pending" });
     expect(runs.length).toBe(1);
 
-    // TODO: Sometimes the run has been already picked up by a worker
-    // So the test can actually be flaky.
     await client.runs.cancel(thread.thread_id, pendingRun.run_id);
 
     runs = await client.runs.list(thread.thread_id, { status: "interrupted" });
@@ -545,7 +577,8 @@ describe("runs", () => {
     expect(run.status).toBe("success");
 
     if (IS_MEMORY) {
-      // TODO: implement missing test
+      const runCheckpoints = await client.threads.getHistory(thread.thread_id);
+      expect(runCheckpoints.length).toBeGreaterThan(1);
     } else {
       const sql = postgres(
         process.env.POSTGRES_URI ??
@@ -1156,7 +1189,7 @@ describe("StoreClient", () => {
   });
 });
 
-describe.skip("subgraphs", () => {
+describe("subgraphs", () => {
   it.concurrent("get subgraphs", async () => {
     const assistant = await client.assistants.create({ graphId: "nested" });
 
@@ -1201,17 +1234,15 @@ describe.skip("subgraphs", () => {
   // (1) interrupt and then continue running, no modification
   it.concurrent("human in the loop - no modification", async () => {
     const assistant = await client.assistants.create({ graphId: "weather" });
-
     const thread = await client.threads.create();
-    const input = {
-      messages: [{ role: "human", content: "SF", id: "initial-message" }],
-    };
 
     // run until the interrupt
     let lastMessageBeforeInterrupt: { content?: string } | null = null;
     let chunks = await gatherIterator(
       client.runs.stream(thread.thread_id, assistant.assistant_id, {
-        input,
+        input: {
+          messages: [{ role: "human", content: "SF", id: "initial-message" }],
+        },
         interruptBefore: ["tool"],
       })
     );
@@ -1229,10 +1260,7 @@ describe.skip("subgraphs", () => {
 
     expect(lastMessageBeforeInterrupt?.content).toBe("SF");
     expect(chunks).toEqual([
-      {
-        event: "metadata",
-        data: { run_id: expect.any(String), attempt: 1 },
-      },
+      { event: "metadata", data: { run_id: expect.any(String), attempt: 1 } },
       {
         event: "values",
         data: {
@@ -1328,8 +1356,9 @@ describe.skip("subgraphs", () => {
           created_at: expect.any(String),
           checkpoint: expect.any(Object),
           parent_checkpoint: expect.any(Object),
-          checkpoint_id: expect.any(String),
-          parent_checkpoint_id: expect.any(String),
+          // TODO: Deprecated, double-check if not used in Studio
+          // checkpoint_id: expect.any(String),
+          // parent_checkpoint_id: expect.any(String),
         },
       },
     ]);
@@ -1655,8 +1684,6 @@ describe("errors", () => {
         streamMode: ["debug", "events"],
       })
     );
-
-    console.dir(stream.at(-1), { depth: null });
 
     expect(stream.at(-1)).toMatchObject({
       event: "error",

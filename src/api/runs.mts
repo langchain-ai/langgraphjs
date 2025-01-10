@@ -5,7 +5,7 @@ import { getAssistantId } from "../graph/load.mjs";
 import { zValidator } from "@hono/zod-validator";
 import * as schemas from "../schemas.mjs";
 import { z } from "zod";
-import { Run, RunKwargs, Runs, Threads } from "../storage/ops.mjs";
+import { Crons, Run, RunKwargs, Runs, Threads } from "../storage/ops.mjs";
 import { serialiseAsDict } from "../utils/serde.mjs";
 import {
   getDisconnectAbortSignal,
@@ -19,11 +19,7 @@ const api = new Hono();
 
 const createValidRun = async (
   threadId: string | undefined,
-  payload: z.infer<typeof schemas.RunCreate>,
-  options?: {
-    afterSeconds: number | undefined;
-    ifNotExists: "reject" | "create" | undefined;
-  }
+  payload: z.infer<typeof schemas.RunCreate>
 ): Promise<Run> => {
   const { assistant_id: assistantId, ...run } = payload;
   const runId = uuid4();
@@ -50,18 +46,38 @@ const createValidRun = async (
     Object.assign(config.configurable, run.checkpoint);
   }
 
+  let feedbackKeys =
+    run.feedback_keys != null
+      ? Array.isArray(run.feedback_keys)
+        ? run.feedback_keys
+        : [run.feedback_keys]
+      : undefined;
+  if (!feedbackKeys?.length) feedbackKeys = undefined;
+
   const [first, ...inflight] = await Runs.put(
     runId,
     getAssistantId(assistantId),
-    { ...run, config, stream_mode: streamMode },
+    {
+      input: run.input,
+      command: run.command,
+      config,
+      stream_mode: streamMode,
+      interrupt_before: run.interrupt_before,
+      interrupt_after: run.interrupt_after,
+      webhook: run.webhook,
+      feedback_keys: feedbackKeys,
+      temporary:
+        threadId == null && (run.on_completion ?? "delete") === "delete",
+      subgraphs: run.stream_subgraphs ?? false,
+    },
     {
       threadId,
       metadata: run.metadata,
       status: "pending",
       multitaskStrategy,
       preventInsertInInflight,
-      afterSeconds: options?.afterSeconds,
-      ifNotExists: options?.ifNotExists,
+      afterSeconds: payload.after_seconds,
+      ifNotExists: payload.if_not_exists,
     }
   );
 
@@ -102,26 +118,36 @@ const createValidRun = async (
   });
 };
 
-// Runs Routes
-api.post("/runs/crons", zValidator("json", schemas.CronCreate), async (c) => {
+api.post("/runs/crons", zValidator("json", schemas.CronCreate), async () => {
   // Create Thread Cron
-  const payload = c.req.valid("json");
-
-  throw new HTTPException(500, {
-    message: "Not implemented: Create Thread Cron",
-  });
+  throw new HTTPException(500, { message: "Not implemented" });
 });
 
 api.post(
   "/runs/crons/search",
   zValidator("json", schemas.CronSearch),
-  async (c) => {
+  async () => {
     // Search Crons
-    const payload = c.req.valid("json");
+    throw new HTTPException(500, { message: "Not implemented" });
+  }
+);
 
-    throw new HTTPException(500, {
-      message: "Not implemented: Search Crons",
-    });
+api.delete(
+  "/runs/crons/:cron_id",
+  zValidator("param", z.object({ cron_id: z.string().uuid() })),
+  async () => {
+    // Delete Cron
+    throw new HTTPException(500, { message: "Not implemented" });
+  }
+);
+
+api.post(
+  "/threads/:thread_id/runs/crons",
+  zValidator("param", z.object({ thread_id: z.string().uuid() })),
+  zValidator("json", schemas.CronCreate),
+  async () => {
+    // Create Thread Cron
+    throw new HTTPException(500, { message: "Not implemented" });
   }
 );
 
@@ -177,19 +203,6 @@ api.post(
   }
 );
 
-api.delete(
-  "/runs/crons/:cron_id",
-  zValidator("param", z.object({ cron_id: z.string().uuid() })),
-  async (c) => {
-    // Delete Cron
-    const cronId = c.req.valid("param").cron_id;
-
-    throw new HTTPException(500, {
-      message: "Not implemented: Delete Cron",
-    });
-  }
-);
-
 api.get(
   "/threads/:thread_id/runs",
   zValidator("param", z.object({ thread_id: z.string().uuid() })),
@@ -232,21 +245,6 @@ api.post(
 
     const run = await createValidRun(thread_id, payload);
     return jsonExtra(c, run);
-  }
-);
-
-api.post(
-  "/threads/:thread_id/runs/crons",
-  zValidator("param", z.object({ thread_id: z.string().uuid() })),
-  zValidator("json", schemas.CronCreate),
-  async (c) => {
-    // Create Thread Cron
-    const { thread_id } = c.req.valid("param");
-    const payload = c.req.valid("json");
-
-    throw new HTTPException(500, {
-      message: "Not implemented: Create Thread Cron",
-    });
   }
 );
 
