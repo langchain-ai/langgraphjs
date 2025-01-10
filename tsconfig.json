@@ -5,6 +5,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "module": "NodeNext"
+    "module": "NodeNext",
+    "noUnusedLocals": true
   }
 }

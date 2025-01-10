@@ -1,5 +1,3 @@
-import { MiddlewareHandler } from "hono";
-
 export const serialiseAsDict = (obj: unknown) => {
   return JSON.stringify(
     obj,
