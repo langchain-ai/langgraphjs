@@ -1,3 +1,4 @@
+import { RunnableConfig } from "@langchain/core/runnables";
 import {
   Checkpoint,
   CheckpointMetadata,
@@ -5,13 +6,12 @@ import {
   uuid6,
   type BaseCheckpointSaver,
 } from "@langchain/langgraph-checkpoint";
-import { RunnableConfig } from "@langchain/core/runnables";
-import { CheckpointerTestInitializer } from "../types.js";
 import {
   initialCheckpointTuple,
   it_skipForSomeModules,
   putTuples,
 } from "../test_utils.js";
+import { CheckpointerTestInitializer } from "../types.js";
 
 export function putTests<T extends BaseCheckpointSaver>(
   initializer: CheckpointerTestInitializer<T>
@@ -176,7 +176,7 @@ export function putTests<T extends BaseCheckpointSaver>(
         });
       });
     });
-
+    
     it("should default to empty namespace if the checkpoint namespace is missing from config.configurable", async () => {
       const missingNamespaceConfig: RunnableConfig = {
         configurable: { thread_id },
@@ -211,6 +211,8 @@ export function putTests<T extends BaseCheckpointSaver>(
         "TODO: MongoDBSaver doesn't store channel deltas",
       "@langchain/langgraph-checkpoint-sqlite":
         "TODO: SQLiteSaver doesn't store channel deltas",
+      "@langchain/langgraph-checkpoint-supabase":
+        "TODO: SupabaseSaver doesn't store channel deltas",
     })(
       "should only store channel_values that have changed (based on newVersions)",
       async () => {
