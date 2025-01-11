@@ -368,32 +368,37 @@ export class SubgraphExtractor {
       }
     }
 
-    host.compilerHost.resolveModuleNames = (moduleNames, containingFile) => {
-      const resolvedModules: (ts.ResolvedModule | undefined)[] = [];
-      for (const moduleName of moduleNames) {
-        let target = containingFile;
-        const relative = path.relative(dirname, containingFile);
-        if (
-          moduleName.startsWith("@langchain/langgraph") &&
-          relative &&
-          !relative.startsWith("..") &&
-          !path.isAbsolute(relative)
-        ) {
-          target = path.resolve(__dirname, relative);
-        }
+    // TODO: this is in all instances broken, will need to address in a way
+    // that allows loading fs-backed modules from different vfs
+    // host.compilerHost.resolveModuleNames = (moduleNames, containingFile) => {
+    //   const resolvedModules: (ts.ResolvedModule | undefined)[] = [];
+    //   for (const moduleName of moduleNames) {
+    //     let target = containingFile;
+    //     const relative = path.relative(dirname, containingFile);
 
-        resolvedModules.push(
-          ts.resolveModuleName(
-            moduleName,
-            target,
-            compilerOptions,
-            host.compilerHost
-          ).resolvedModule
-        );
-      }
+    //     logger.debug(`${moduleName} ${containingFile}`);
+    //     if (
+    //       moduleName.startsWith("@langchain/langgraph") &&
+    //       relative &&
+    //       !relative.startsWith("..") &&
+    //       !path.isAbsolute(relative)
+    //     ) {
+    //       target = path.resolve(__dirname, "../", relative);
+    //       process.stderr.write(`${moduleName} ${relative} -> ${target}\n`);
+    //     }
 
-      return resolvedModules;
-    };
+    //     resolvedModules.push(
+    //       ts.resolveModuleName(
+    //         moduleName,
+    //         target,
+    //         compilerOptions,
+    //         host.compilerHost
+    //       ).resolvedModule
+    //     );
+    //   }
+
+    //   return resolvedModules;
+    // };
 
     const research = ts.createProgram({
       rootNames: [inferTemplatePath, targetPath],

@@ -194,7 +194,9 @@ export async function* streamState(
             preprocessDebugCheckpointTask(debugChunk.payload)
           );
         }
-      } else if (mode === "messages") {
+      }
+
+      if (mode === "messages") {
         if (userStreamMode.includes("messages-tuple")) {
           yield { event: "messages", data: chunk };
         }
