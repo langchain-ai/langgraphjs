@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "build": "esbuild src/server.mts --bundle --platform=node --outfile=dist/index.js",
-    "dev": "tsx watch --env-file=./tests/.env.test src/server.mts",
-    "dev:inspect": "tsx watch --inspect-brk --env-file=./tests/.env.test src/server.mts",
+    "dev": "tsx watch --env-file=./tests/.env.test src/server.dev.mts",
+    "dev:inspect": "tsx watch --inspect-brk --env-file=./tests/.env.test src/server.dev.mts",
     "test": "vitest"
   },
   "dependencies": {
@@ -24,6 +24,7 @@
     "langsmith": "^0.2.15",
     "open": "^10.1.0",
     "prompts": "^2.4.2",
+    "superjson": "^2.2.2",
     "tsx": "^4.19.1",
     "typescript": "^5.5.4",
     "undici": "^6.19.7",
@@ -36,6 +37,7 @@
     "@langchain/langgraph-sdk": "^0.0.33",
     "@types/node": "^22.2.0",
     "@types/uuid": "^10.0.0",
+    "postgres": "^3.4.5",
     "prettier": "^3.3.3",
     "vitest": "^2.1.8"
   }

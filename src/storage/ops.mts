@@ -11,7 +11,9 @@ import { checkpointer } from "./checkpoint.mjs";
 import { store } from "./store.mjs";
 import { logger } from "../logging.mjs";
 import { serializeError } from "../utils/serde.mjs";
-
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import superjson from "superjson";
 export type Metadata = Record<string, unknown>;
 
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error";
@@ -118,19 +120,69 @@ export interface Run {
   multitask_strategy: MultitaskStrategy;
 }
 
-const STORE: {
+interface Store {
   runs: Record<string, Run>;
   threads: Record<string, Thread>;
   assistants: Record<string, Assistant>;
   assistant_versions: AssistantVersion[];
   retry_counter: Record<string, number>;
-} = {
-  runs: {},
-  threads: {},
-  assistants: {},
-  assistant_versions: [],
-  retry_counter: {},
-};
+}
+
+let MEMORY_STORE: {
+  filename: string;
+  store: Store;
+} | null = null;
+let MEMORY_STORE_FLUSH = Promise.resolve<void>(undefined);
+
+export async function initializeMemoryStore(cwd: string) {
+  const filename = path.resolve(cwd, ".langgraph_api", ".langgraphjs_ops.json");
+
+  try {
+    MEMORY_STORE = {
+      filename,
+      store: superjson.parse(await fs.readFile(filename, "utf-8")),
+    };
+  } catch {
+    MEMORY_STORE = {
+      filename,
+      store: {
+        runs: {},
+        threads: {},
+        assistants: {},
+        assistant_versions: [],
+        retry_counter: {},
+      },
+    };
+  }
+}
+
+async function withStore<T>(fn: (store: Store) => T) {
+  if (MEMORY_STORE == null) throw new Error("Memory store not initialized");
+  const { filename, store } = MEMORY_STORE;
+
+  try {
+    return await fn(store);
+  } finally {
+    MEMORY_STORE_FLUSH = MEMORY_STORE_FLUSH.then(async () => {
+      await fs.mkdir(path.dirname(filename), { recursive: true });
+      return fs.writeFile(filename, superjson.stringify(store), "utf-8");
+    });
+  }
+}
+
+async function* withStoreGenerator<T>(fn: (store: Store) => AsyncGenerator<T>) {
+  if (MEMORY_STORE == null) throw new Error("Memory store not initialized");
+  const { filename, store } = MEMORY_STORE;
+
+  try {
+    yield* fn(store);
+  } finally {
+    MEMORY_STORE_FLUSH = MEMORY_STORE_FLUSH.then(async () => {
+      await fs.mkdir(path.dirname(filename), { recursive: true });
+      return fs.writeFile(filename, superjson.stringify(store), "utf-8");
+    });
+  }
+}
 
 class TimeoutError extends Error {}
 class AbortError extends Error {}
@@ -241,20 +293,22 @@ export const truncate = (flags: {
   checkpointer?: boolean;
   store?: boolean;
 }) => {
-  if (flags.runs) STORE.runs = {};
-  if (flags.threads) STORE.threads = {};
-  if (flags.assistants) {
-    STORE.assistants = Object.fromEntries(
-      Object.entries(STORE.assistants).filter(
-        ([_key, assistant]) =>
-          !assistant.metadata?.created_by ||
-          assistant.metadata?.created_by === "system"
-      )
-    );
-  }
+  return withStore((STORE) => {
+    if (flags.runs) STORE.runs = {};
+    if (flags.threads) STORE.threads = {};
+    if (flags.assistants) {
+      STORE.assistants = Object.fromEntries(
+        Object.entries(STORE.assistants).filter(
+          ([_key, assistant]) =>
+            !assistant.metadata?.created_by ||
+            assistant.metadata?.created_by === "system"
+        )
+      );
+    }
 
-  if (flags.checkpointer) checkpointer.clear();
-  if (flags.store) store.clear();
+    if (flags.checkpointer) checkpointer.clear();
+    if (flags.store) store.clear();
+  });
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> => {
@@ -286,43 +340,47 @@ export class Assistants {
     limit: number;
     offset: number;
   }) {
-    let filtered = Object.values(STORE.assistants)
-      .filter((assistant) => {
-        if (
-          options.graph_id != null &&
-          assistant["graph_id"] !== options.graph_id
-        ) {
-          return false;
-        }
+    yield* withStoreGenerator(async function* (STORE) {
+      let filtered = Object.values(STORE.assistants)
+        .filter((assistant) => {
+          if (
+            options.graph_id != null &&
+            assistant["graph_id"] !== options.graph_id
+          ) {
+            return false;
+          }
 
-        if (
-          options.metadata != null &&
-          !isJsonbContained(assistant["metadata"], options.metadata)
-        ) {
-          return false;
-        }
+          if (
+            options.metadata != null &&
+            !isJsonbContained(assistant["metadata"], options.metadata)
+          ) {
+            return false;
+          }
 
-        return true;
-      })
-      .sort((a, b) => {
-        const aCreatedAt = a["created_at"]?.getTime() ?? 0;
-        const bCreatedAt = b["created_at"]?.getTime() ?? 0;
-        return bCreatedAt - aCreatedAt;
-      });
+          return true;
+        })
+        .sort((a, b) => {
+          const aCreatedAt = a["created_at"]?.getTime() ?? 0;
+          const bCreatedAt = b["created_at"]?.getTime() ?? 0;
+          return bCreatedAt - aCreatedAt;
+        });
 
-    for (const assistant of filtered.slice(
-      options.offset,
-      options.offset + options.limit
-    )) {
-      yield assistant;
-    }
+      for (const assistant of filtered.slice(
+        options.offset,
+        options.offset + options.limit
+      )) {
+        yield assistant;
+      }
+    });
   }
 
   static async get(assistantId: string): Promise<Assistant> {
-    const result = STORE.assistants[assistantId];
-    if (result == null)
-      throw new HTTPException(404, { message: "Assistant not found" });
-    return result;
+    return withStore((STORE) => {
+      const result = STORE.assistants[assistantId];
+      if (result == null)
+        throw new HTTPException(404, { message: "Assistant not found" });
+      return result;
+    });
   }
 
   static async put(
@@ -335,36 +393,38 @@ export class Assistants {
       name?: string;
     }
   ): Promise<Assistant> {
-    if (STORE.assistants[assistantId] != null) {
-      if (options.if_exists === "raise") {
-        throw new HTTPException(409, { message: "Assistant already exists" });
+    return withStore((STORE) => {
+      if (STORE.assistants[assistantId] != null) {
+        if (options.if_exists === "raise") {
+          throw new HTTPException(409, { message: "Assistant already exists" });
+        }
+        return STORE.assistants[assistantId];
       }
+
+      const now = new Date();
+
+      STORE.assistants[assistantId] ??= {
+        assistant_id: assistantId,
+        version: 1,
+        config: options.config ?? {},
+        created_at: now,
+        updated_at: now,
+        graph_id: options.graph_id,
+        metadata: options.metadata ?? ({} as Metadata),
+        name: options.name,
+      };
+
+      STORE.assistant_versions.push({
+        assistant_id: assistantId,
+        version: 1,
+        graph_id: options.graph_id,
+        config: options.config ?? {},
+        metadata: options.metadata ?? ({} as Metadata),
+        created_at: now,
+      });
+
       return STORE.assistants[assistantId];
-    }
-
-    const now = new Date();
-
-    STORE.assistants[assistantId] ??= {
-      assistant_id: assistantId,
-      version: 1,
-      config: options.config ?? {},
-      created_at: now,
-      updated_at: now,
-      graph_id: options.graph_id,
-      metadata: options.metadata ?? ({} as Metadata),
-      name: options.name,
-    };
-
-    STORE.assistant_versions.push({
-      assistant_id: assistantId,
-      version: 1,
-      graph_id: options.graph_id,
-      config: options.config ?? {},
-      metadata: options.metadata ?? ({} as Metadata),
-      created_at: now,
     });
-
-    return STORE.assistants[assistantId];
   }
 
   static async patch(
@@ -376,104 +436,112 @@ export class Assistants {
       name?: string;
     }
   ): Promise<Assistant> {
-    const assistant = STORE.assistants[assistantId];
-    if (!assistant)
-      throw new HTTPException(404, { message: "Assistant not found" });
+    return withStore((STORE) => {
+      const assistant = STORE.assistants[assistantId];
+      if (!assistant)
+        throw new HTTPException(404, { message: "Assistant not found" });
 
-    const now = new Date();
+      const now = new Date();
 
-    const metadata =
-      options?.metadata != null
-        ? {
-            ...assistant["metadata"],
-            ...options.metadata,
-          }
-        : null;
+      const metadata =
+        options?.metadata != null
+          ? {
+              ...assistant["metadata"],
+              ...options.metadata,
+            }
+          : null;
 
-    if (options?.graph_id != null) {
-      assistant["graph_id"] = options?.graph_id ?? assistant["graph_id"];
-    }
+      if (options?.graph_id != null) {
+        assistant["graph_id"] = options?.graph_id ?? assistant["graph_id"];
+      }
 
-    if (options?.config != null) {
-      assistant["config"] = options?.config ?? assistant["config"];
-    }
+      if (options?.config != null) {
+        assistant["config"] = options?.config ?? assistant["config"];
+      }
 
-    if (options?.name != null) {
-      assistant["name"] = options?.name ?? assistant["name"];
-    }
+      if (options?.name != null) {
+        assistant["name"] = options?.name ?? assistant["name"];
+      }
 
-    if (metadata != null) {
-      assistant["metadata"] = metadata ?? assistant["metadata"];
-    }
+      if (metadata != null) {
+        assistant["metadata"] = metadata ?? assistant["metadata"];
+      }
 
-    assistant["updated_at"] = now;
+      assistant["updated_at"] = now;
 
-    const newVersion =
-      Math.max(
-        ...STORE.assistant_versions
-          .filter((v) => v["assistant_id"] === assistantId)
-          .map((v) => v["version"])
-      ) + 1;
+      const newVersion =
+        Math.max(
+          ...STORE.assistant_versions
+            .filter((v) => v["assistant_id"] === assistantId)
+            .map((v) => v["version"])
+        ) + 1;
 
-    const newVersionEntry = {
-      assistant_id: assistantId,
-      version: newVersion,
-      graph_id: options?.graph_id ?? assistant["graph_id"],
-      config: options?.config ?? assistant["config"],
-      metadata: metadata ?? assistant["metadata"],
-      created_at: now,
-    };
+      const newVersionEntry = {
+        assistant_id: assistantId,
+        version: newVersion,
+        graph_id: options?.graph_id ?? assistant["graph_id"],
+        config: options?.config ?? assistant["config"],
+        metadata: metadata ?? assistant["metadata"],
+        created_at: now,
+      };
 
-    STORE.assistant_versions.push(newVersionEntry);
-    return assistant;
+      STORE.assistant_versions.push(newVersionEntry);
+      return assistant;
+    });
   }
 
   static async delete(assistantId: string): Promise<string[]> {
-    const assistant = STORE.assistants[assistantId];
-    if (!assistant)
-      throw new HTTPException(404, { message: "Assistant not found" });
+    return withStore((STORE) => {
+      const assistant = STORE.assistants[assistantId];
+      if (!assistant)
+        throw new HTTPException(404, { message: "Assistant not found" });
 
-    delete STORE.assistants[assistantId];
+      delete STORE.assistants[assistantId];
 
-    // Cascade delete for assistant versions and crons
-    STORE.assistant_versions = STORE.assistant_versions.filter(
-      (v) => v["assistant_id"] !== assistantId
-    );
+      // Cascade delete for assistant versions and crons
+      STORE.assistant_versions = STORE.assistant_versions.filter(
+        (v) => v["assistant_id"] !== assistantId
+      );
 
-    for (const run of Object.values(STORE.runs)) {
-      if (run["assistant_id"] === assistantId) {
-        delete STORE.runs[run["run_id"]];
+      for (const run of Object.values(STORE.runs)) {
+        if (run["assistant_id"] === assistantId) {
+          delete STORE.runs[run["run_id"]];
+        }
       }
-    }
 
-    return [assistant.assistant_id];
+      return [assistant.assistant_id];
+    });
   }
 
   static async setLatest(
     assistantId: string,
     version: number
   ): Promise<Assistant> {
-    const assistant = STORE.assistants[assistantId];
-    if (!assistant)
-      throw new HTTPException(404, { message: "Assistant not found" });
+    return withStore((STORE) => {
+      const assistant = STORE.assistants[assistantId];
+      if (!assistant)
+        throw new HTTPException(404, { message: "Assistant not found" });
 
-    const assistantVersion = STORE.assistant_versions.find(
-      (v) => v["assistant_id"] === assistantId && v["version"] === version
-    );
+      const assistantVersion = STORE.assistant_versions.find(
+        (v) => v["assistant_id"] === assistantId && v["version"] === version
+      );
 
-    if (!assistantVersion)
-      throw new HTTPException(404, { message: "Assistant version not found" });
+      if (!assistantVersion)
+        throw new HTTPException(404, {
+          message: "Assistant version not found",
+        });
 
-    const now = new Date();
-    STORE.assistants[assistantId] = {
-      ...assistant,
-      config: assistantVersion["config"],
-      metadata: assistantVersion["metadata"],
-      version: assistantVersion["version"],
-      updated_at: now,
-    };
+      const now = new Date();
+      STORE.assistants[assistantId] = {
+        ...assistant,
+        config: assistantVersion["config"],
+        metadata: assistantVersion["metadata"],
+        version: assistantVersion["version"],
+        updated_at: now,
+      };
 
-    return STORE.assistants[assistantId];
+      return STORE.assistants[assistantId];
+    });
   }
 
   static async getVersions(
@@ -484,22 +552,24 @@ export class Assistants {
       metadata?: Metadata;
     }
   ) {
-    const versions = STORE.assistant_versions
-      .filter((version) => {
-        if (version["assistant_id"] !== assistantId) return false;
+    return withStore((STORE) => {
+      const versions = STORE.assistant_versions
+        .filter((version) => {
+          if (version["assistant_id"] !== assistantId) return false;
 
-        if (
-          options.metadata != null &&
-          !isJsonbContained(version["metadata"], options.metadata)
-        ) {
-          return false;
-        }
+          if (
+            options.metadata != null &&
+            !isJsonbContained(version["metadata"], options.metadata)
+          ) {
+            return false;
+          }
 
-        return true;
-      })
-      .sort((a, b) => b["version"] - a["version"]);
+          return true;
+        })
+        .sort((a, b) => b["version"] - a["version"]);
 
-    return versions.slice(options.offset, options.offset + options.limit);
+      return versions.slice(options.offset, options.offset + options.limit);
+    });
   }
 }
 
@@ -566,44 +636,48 @@ export class Threads {
     limit: number;
     offset: number;
   }): AsyncGenerator<Thread> {
-    const filtered = Object.values(STORE.threads)
-      .filter((thread) => {
-        if (
-          options.metadata != null &&
-          !isJsonbContained(thread["metadata"], options.metadata)
-        )
-          return false;
+    yield* withStoreGenerator(async function* (STORE) {
+      const filtered = Object.values(STORE.threads)
+        .filter((thread) => {
+          if (
+            options.metadata != null &&
+            !isJsonbContained(thread["metadata"], options.metadata)
+          )
+            return false;
 
-        if (
-          options.values != null &&
-          typeof thread["values"] !== "undefined" &&
-          !isJsonbContained(thread["values"], options.values)
-        )
-          return false;
+          if (
+            options.values != null &&
+            typeof thread["values"] !== "undefined" &&
+            !isJsonbContained(thread["values"], options.values)
+          )
+            return false;
 
-        if (options.status != null && thread["status"] !== options.status)
-          return false;
+          if (options.status != null && thread["status"] !== options.status)
+            return false;
 
-        return true;
-      })
-      .sort((a, b) => b["created_at"].getTime() - a["created_at"].getTime());
+          return true;
+        })
+        .sort((a, b) => b["created_at"].getTime() - a["created_at"].getTime());
 
-    for (const thread of filtered.slice(
-      options.offset,
-      options.offset + options.limit
-    )) {
-      yield thread;
-    }
+      for (const thread of filtered.slice(
+        options.offset,
+        options.offset + options.limit
+      )) {
+        yield thread;
+      }
+    });
   }
 
   static async get(threadId: string): Promise<Thread> {
-    const result = STORE.threads[threadId];
-    if (result == null)
-      throw new HTTPException(404, {
-        message: `Thread with ID ${threadId} not found`,
-      });
+    return withStore((STORE) => {
+      const result = STORE.threads[threadId];
+      if (result == null)
+        throw new HTTPException(404, {
+          message: `Thread with ID ${threadId} not found`,
+        });
 
-    return result;
+      return result;
+    });
   }
 
   static async put(
@@ -613,26 +687,28 @@ export class Threads {
       if_exists: OnConflictBehavior;
     }
   ): Promise<Thread> {
-    const now = new Date();
+    return withStore((STORE) => {
+      const now = new Date();
 
-    if (STORE.threads[threadId] != null) {
-      if (options?.if_exists === "raise") {
-        throw new HTTPException(409, { message: "Thread already exists" });
+      if (STORE.threads[threadId] != null) {
+        if (options?.if_exists === "raise") {
+          throw new HTTPException(409, { message: "Thread already exists" });
+        }
+        return STORE.threads[threadId];
       }
+
+      STORE.threads[threadId] ??= {
+        thread_id: threadId,
+        created_at: now,
+        updated_at: now,
+        metadata: options?.metadata ?? {},
+        status: "idle",
+        config: {},
+        values: undefined,
+      };
+
       return STORE.threads[threadId];
-    }
-
-    STORE.threads[threadId] ??= {
-      thread_id: threadId,
-      created_at: now,
-      updated_at: now,
-      metadata: options?.metadata ?? {},
-      status: "idle",
-      config: {},
-      values: undefined,
-    };
-
-    return STORE.threads[threadId];
+    });
   }
 
   static async patch(
@@ -641,19 +717,22 @@ export class Threads {
       metadata?: Metadata;
     }
   ): Promise<Thread> {
-    const thread = STORE.threads[threadId];
-    if (!thread) throw new HTTPException(404, { message: "Thread not found" });
+    return withStore((STORE) => {
+      const thread = STORE.threads[threadId];
+      if (!thread)
+        throw new HTTPException(404, { message: "Thread not found" });
 
-    const now = new Date();
-    if (options?.metadata != null) {
-      thread["metadata"] = {
-        ...thread["metadata"],
-        ...options.metadata,
-      };
-    }
+      const now = new Date();
+      if (options?.metadata != null) {
+        thread["metadata"] = {
+          ...thread["metadata"],
+          ...options.metadata,
+        };
+      }
 
-    thread["updated_at"] = now;
-    return thread;
+      thread["updated_at"] = now;
+      return thread;
+    });
   }
 
   static async setStatus(
@@ -663,80 +742,88 @@ export class Threads {
       exception?: Error;
     }
   ) {
-    const thread = STORE.threads[threadId];
-    if (!thread) throw new HTTPException(404, { message: "Thread not found" });
+    return withStore((STORE) => {
+      const thread = STORE.threads[threadId];
+      if (!thread)
+        throw new HTTPException(404, { message: "Thread not found" });
 
-    let hasNext = false;
-    if (options.checkpoint != null) {
-      hasNext = options.checkpoint.next.length > 0;
-    }
+      let hasNext = false;
+      if (options.checkpoint != null) {
+        hasNext = options.checkpoint.next.length > 0;
+      }
 
-    const hasPendingRuns = Object.values(STORE.runs).some(
-      (run) => run["thread_id"] === threadId && run["status"] === "pending"
-    );
+      const hasPendingRuns = Object.values(STORE.runs).some(
+        (run) => run["thread_id"] === threadId && run["status"] === "pending"
+      );
 
-    let status: ThreadStatus = "idle";
+      let status: ThreadStatus = "idle";
 
-    if (options.exception != null) {
-      status = "error";
-    } else if (hasNext) {
-      status = "interrupted";
-    } else if (hasPendingRuns) {
-      status = "busy";
-    }
+      if (options.exception != null) {
+        status = "error";
+      } else if (hasNext) {
+        status = "interrupted";
+      } else if (hasPendingRuns) {
+        status = "busy";
+      }
 
-    const now = new Date();
-    thread.updated_at = now;
-    thread.status = status;
-    thread.values =
-      options.checkpoint != null ? options.checkpoint.values : undefined;
-    thread.interrupts =
-      options.checkpoint != null
-        ? options.checkpoint.tasks.reduce<Record<string, unknown>>(
-            (acc, task) => {
-              if (task.interrupts) acc[task.id] = task.interrupts;
-              return acc;
-            },
-            {}
-          )
-        : undefined;
+      const now = new Date();
+      thread.updated_at = now;
+      thread.status = status;
+      thread.values =
+        options.checkpoint != null ? options.checkpoint.values : undefined;
+      thread.interrupts =
+        options.checkpoint != null
+          ? options.checkpoint.tasks.reduce<Record<string, unknown>>(
+              (acc, task) => {
+                if (task.interrupts) acc[task.id] = task.interrupts;
+                return acc;
+              },
+              {}
+            )
+          : undefined;
+    });
   }
 
   static async delete(threadId: string): Promise<string[]> {
-    const thread = STORE.threads[threadId];
-    if (!thread)
-      throw new HTTPException(404, {
-        message: `Thread with ID ${threadId} not found`,
-      });
+    return withStore((STORE) => {
+      const thread = STORE.threads[threadId];
+      if (!thread)
+        throw new HTTPException(404, {
+          message: `Thread with ID ${threadId} not found`,
+        });
 
-    delete STORE.threads[threadId];
-    for (const run of Object.values(STORE.runs)) {
-      if (run["thread_id"] === threadId) {
-        delete STORE.runs[run["run_id"]];
+      delete STORE.threads[threadId];
+      for (const run of Object.values(STORE.runs)) {
+        if (run["thread_id"] === threadId) {
+          delete STORE.runs[run["run_id"]];
+        }
       }
-    }
-    checkpointer.delete(threadId, null);
+      checkpointer.delete(threadId, null);
 
-    return [thread.thread_id];
+      return [thread.thread_id];
+    });
   }
 
   static async copy(threadId: string): Promise<Thread> {
-    const thread = STORE.threads[threadId];
-    if (!thread) throw new HTTPException(409, { message: "Thread not found" });
+    return withStore((STORE) => {
+      const thread = STORE.threads[threadId];
+      if (!thread)
+        throw new HTTPException(409, { message: "Thread not found" });
 
-    const newThreadId = uuid4();
-    const now = new Date();
-    STORE.threads[newThreadId] = {
-      thread_id: newThreadId,
-      created_at: now,
-      updated_at: now,
-      metadata: { ...thread.metadata, thread_id: newThreadId },
-      config: {},
-      status: "idle",
-    };
+      const newThreadId = uuid4();
+      const now = new Date();
+      STORE.threads[newThreadId] = {
+        thread_id: newThreadId,
+        created_at: now,
+        updated_at: now,
+        metadata: { ...thread.metadata, thread_id: newThreadId },
+        config: {},
+        status: "idle",
+      };
 
-    checkpointer.copy(threadId, newThreadId);
-    return STORE.threads[newThreadId];
+      checkpointer.copy(threadId, newThreadId);
+      return STORE.threads[newThreadId];
+    });
   }
 
   static State = class {
@@ -812,12 +899,14 @@ export class Threads {
       const state = await Threads.State.get(config, { subgraphs: false });
 
       // update thread values
-      for (const thread of Object.values(STORE.threads)) {
-        if (thread.thread_id === threadId) {
-          thread.values = state.values;
-          break;
+      await withStore(async (STORE) => {
+        for (const thread of Object.values(STORE.threads)) {
+          if (thread.thread_id === threadId) {
+            thread.values = state.values;
+            break;
+          }
         }
-      }
+      });
 
       return { checkpoint: nextConfig.configurable };
     }
@@ -863,39 +952,41 @@ export class Runs {
     attempt: number;
     signal: AbortSignal;
   }> {
-    const now = new Date();
-    const pendingRuns = Object.values(STORE.runs)
-      .filter((run) => run.status === "pending" && run.created_at < now)
-      .sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
+    yield* withStoreGenerator(async function* (STORE) {
+      const now = new Date();
+      const pendingRuns = Object.values(STORE.runs)
+        .filter((run) => run.status === "pending" && run.created_at < now)
+        .sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
 
-    if (!pendingRuns.length) {
-      return;
-    }
-
-    for (const run of pendingRuns) {
-      const runId = run.run_id;
-      const threadId = run.thread_id;
-      const thread = STORE.threads[threadId];
-
-      if (!thread) {
-        await console.warn(
-          `Unexpected missing thread in Runs.next: ${threadId}`
-        );
-        continue;
+      if (!pendingRuns.length) {
+        return;
       }
 
-      if (StreamManager.isLocked(runId)) continue;
-      try {
-        const signal = StreamManager.lock(runId);
+      for (const run of pendingRuns) {
+        const runId = run.run_id;
+        const threadId = run.thread_id;
+        const thread = STORE.threads[threadId];
 
-        STORE.retry_counter[runId] ??= 0;
-        STORE.retry_counter[runId] += 1;
+        if (!thread) {
+          await console.warn(
+            `Unexpected missing thread in Runs.next: ${threadId}`
+          );
+          continue;
+        }
 
-        yield { run, attempt: STORE.retry_counter[runId], signal };
-      } finally {
-        StreamManager.unlock(runId);
+        if (StreamManager.isLocked(runId)) continue;
+        try {
+          const signal = StreamManager.lock(runId);
+
+          STORE.retry_counter[runId] ??= 0;
+          STORE.retry_counter[runId] += 1;
+
+          yield { run, attempt: STORE.retry_counter[runId], signal };
+        } finally {
+          StreamManager.unlock(runId);
+        }
       }
-    }
+    });
   }
 
   static async put(
@@ -913,155 +1004,161 @@ export class Runs {
       afterSeconds?: number;
     }
   ): Promise<Run[]> {
-    const assistant = STORE.assistants[assistantId];
-    if (!assistant) return [];
+    return withStore(async (STORE) => {
+      const assistant = STORE.assistants[assistantId];
+      if (!assistant) return [];
 
-    const ifNotExists = options?.ifNotExists ?? "reject";
-    const multitaskStrategy = options?.multitaskStrategy ?? "reject";
-    const afterSeconds = options?.afterSeconds ?? 0;
-    const status = options?.status ?? "pending";
+      const ifNotExists = options?.ifNotExists ?? "reject";
+      const multitaskStrategy = options?.multitaskStrategy ?? "reject";
+      const afterSeconds = options?.afterSeconds ?? 0;
+      const status = options?.status ?? "pending";
 
-    let threadId = options?.threadId;
-    const metadata = options?.metadata ?? {};
-    const config: RunnableConfig = kwargs.config ?? {};
+      let threadId = options?.threadId;
+      const metadata = options?.metadata ?? {};
+      const config: RunnableConfig = kwargs.config ?? {};
 
-    const existingThread = Object.values(STORE.threads).find(
-      (thread) => thread.thread_id === threadId
-    );
+      const existingThread = Object.values(STORE.threads).find(
+        (thread) => thread.thread_id === threadId
+      );
 
-    const now = new Date();
+      const now = new Date();
 
-    if (!existingThread && (threadId == null || ifNotExists === "create")) {
-      threadId ??= uuid4();
-      const thread: Thread = {
-        thread_id: threadId,
-        status: "busy",
-        metadata: { graph_id: assistant.graph_id, assistant_id: assistantId },
-        config: Object.assign({}, assistant.config, config, {
-          configurable: Object.assign(
-            {},
-            assistant.config?.configurable,
-            config?.configurable
-          ),
-        }),
-        created_at: now,
-        updated_at: now,
-      };
-      STORE.threads[threadId] = thread;
-    } else if (existingThread) {
-      if (existingThread.status !== "busy") {
-        existingThread.status = "busy";
-        existingThread.metadata = Object.assign({}, existingThread.metadata, {
-          graph_id: assistant.graph_id,
-          assistant_id: assistantId,
-        });
-
-        existingThread.config = Object.assign(
-          {},
-          assistant.config,
-          existingThread.config,
-          config,
-          {
+      if (!existingThread && (threadId == null || ifNotExists === "create")) {
+        threadId ??= uuid4();
+        const thread: Thread = {
+          thread_id: threadId,
+          status: "busy",
+          metadata: { graph_id: assistant.graph_id, assistant_id: assistantId },
+          config: Object.assign({}, assistant.config, config, {
             configurable: Object.assign(
               {},
               assistant.config?.configurable,
-              existingThread?.config?.configurable,
               config?.configurable
             ),
-          }
-        );
+          }),
+          created_at: now,
+          updated_at: now,
+        };
+        STORE.threads[threadId] = thread;
+      } else if (existingThread) {
+        if (existingThread.status !== "busy") {
+          existingThread.status = "busy";
+          existingThread.metadata = Object.assign({}, existingThread.metadata, {
+            graph_id: assistant.graph_id,
+            assistant_id: assistantId,
+          });
 
-        existingThread.updated_at = now;
+          existingThread.config = Object.assign(
+            {},
+            assistant.config,
+            existingThread.config,
+            config,
+            {
+              configurable: Object.assign(
+                {},
+                assistant.config?.configurable,
+                existingThread?.config?.configurable,
+                config?.configurable
+              ),
+            }
+          );
+
+          existingThread.updated_at = now;
+        }
+      } else {
+        return [];
       }
-    } else {
-      return [];
-    }
 
-    // if multitask_mode = reject, check for inflight runs
-    // and if there are any, return them to reject putting a new run
-    const inflightRuns = Object.values(STORE.runs).filter(
-      (run) => run.thread_id === threadId && run.status === "pending"
-    );
+      // if multitask_mode = reject, check for inflight runs
+      // and if there are any, return them to reject putting a new run
+      const inflightRuns = Object.values(STORE.runs).filter(
+        (run) => run.thread_id === threadId && run.status === "pending"
+      );
 
-    if (options?.preventInsertInInflight) {
-      if (inflightRuns.length > 0) return inflightRuns;
-    }
+      if (options?.preventInsertInInflight) {
+        if (inflightRuns.length > 0) return inflightRuns;
+      }
 
-    // create new run
-    const configurable = Object.assign(
-      {},
-      assistant.config?.configurable,
-      existingThread?.config?.configurable,
-      config?.configurable,
-      {
+      // create new run
+      const configurable = Object.assign(
+        {},
+        assistant.config?.configurable,
+        existingThread?.config?.configurable,
+        config?.configurable,
+        {
+          run_id: runId,
+          thread_id: threadId,
+          graph_id: assistant.graph_id,
+          assistant_id: assistantId,
+          user_id:
+            config.configurable?.user_id ??
+            existingThread?.config?.configurable?.user_id ??
+            assistant.config?.configurable?.user_id ??
+            options?.userId,
+        }
+      );
+
+      const mergedMetadata = Object.assign(
+        {},
+        assistant.metadata,
+        existingThread?.metadata,
+        metadata
+      );
+
+      const newRun: Run = {
         run_id: runId,
-        thread_id: threadId,
-        graph_id: assistant.graph_id,
+        thread_id: threadId!,
         assistant_id: assistantId,
-        user_id:
-          config.configurable?.user_id ??
-          existingThread?.config?.configurable?.user_id ??
-          assistant.config?.configurable?.user_id ??
-          options?.userId,
-      }
-    );
+        metadata: mergedMetadata,
+        status: status,
+        kwargs: Object.assign({}, kwargs, {
+          config: Object.assign(
+            {},
+            assistant.config,
+            config,
+            { configurable },
+            { metadata: mergedMetadata }
+          ),
+        }),
+        multitask_strategy: multitaskStrategy,
+        created_at: new Date(now.valueOf() + afterSeconds * 1000),
+        updated_at: now,
+      };
 
-    const mergedMetadata = Object.assign(
-      {},
-      assistant.metadata,
-      existingThread?.metadata,
-      metadata
-    );
-
-    const newRun: Run = {
-      run_id: runId,
-      thread_id: threadId!,
-      assistant_id: assistantId,
-      metadata: mergedMetadata,
-      status: status,
-      kwargs: Object.assign({}, kwargs, {
-        config: Object.assign(
-          {},
-          assistant.config,
-          config,
-          { configurable },
-          { metadata: mergedMetadata }
-        ),
-      }),
-      multitask_strategy: multitaskStrategy,
-      created_at: new Date(now.valueOf() + afterSeconds * 1000),
-      updated_at: now,
-    };
-
-    STORE.runs[runId] = newRun;
-    return [newRun, ...inflightRuns];
+      STORE.runs[runId] = newRun;
+      return [newRun, ...inflightRuns];
+    });
   }
 
   static async get(
     runId: string,
     threadId: string | undefined
   ): Promise<Run | null> {
-    const run = STORE.runs[runId];
-    if (
-      !run ||
-      run.run_id !== runId ||
-      (threadId != null && run.thread_id !== threadId)
-    )
-      return null;
-    return run;
+    return withStore(async (STORE) => {
+      const run = STORE.runs[runId];
+      if (
+        !run ||
+        run.run_id !== runId ||
+        (threadId != null && run.thread_id !== threadId)
+      )
+        return null;
+      return run;
+    });
   }
 
   static async delete(
     runId: string,
     threadId: string | undefined
   ): Promise<string | null> {
-    const run = STORE.runs[runId];
-    if (!run || (threadId != null && run.thread_id !== threadId))
-      throw new Error("Run not found");
+    return withStore(async (STORE) => {
+      const run = STORE.runs[runId];
+      if (!run || (threadId != null && run.thread_id !== threadId))
+        throw new Error("Run not found");
 
-    if (threadId != null) checkpointer.delete(threadId, runId);
-    delete STORE.runs[runId];
-    return run.run_id;
+      if (threadId != null) checkpointer.delete(threadId, runId);
+      delete STORE.runs[runId];
+      return run.run_id;
+    });
   }
 
   static async wait(runId: string, threadId: string | undefined) {
@@ -1105,51 +1202,56 @@ export class Runs {
       action?: "interrupt" | "rollback";
     }
   ) {
-    const action = options.action ?? "interrupt";
-    const promises: Promise<unknown>[] = [];
+    return withStore(async (STORE) => {
+      const action = options.action ?? "interrupt";
+      const promises: Promise<unknown>[] = [];
 
-    let foundRunsCount = 0;
+      let foundRunsCount = 0;
 
-    for (const runId of runIds) {
-      const run = STORE.runs[runId];
-      if (!run || (threadId != null && run.thread_id !== threadId)) continue;
-      foundRunsCount += 1;
+      for (const runId of runIds) {
+        const run = STORE.runs[runId];
+        if (!run || (threadId != null && run.thread_id !== threadId)) continue;
+        foundRunsCount += 1;
 
-      // send cancellation message
-      const control = StreamManager.getControl(runId);
-      control?.abort(options.action ?? "interrupt");
+        // send cancellation message
+        const control = StreamManager.getControl(runId);
+        control?.abort(options.action ?? "interrupt");
 
-      if (run.status === "pending") {
-        if (control || action !== "rollback") {
-          run.status = "interrupted";
-          run.updated_at = new Date();
+        if (run.status === "pending") {
+          if (control || action !== "rollback") {
+            run.status = "interrupted";
+            run.updated_at = new Date();
+          } else {
+            logger.info(
+              "Eagerly deleting unscheduled run with rollback action",
+              {
+                run_id: runId,
+                thread_id: threadId,
+              }
+            );
+
+            promises.push(Runs.delete(runId, threadId));
+          }
         } else {
-          logger.info("Eagerly deleting unscheduled run with rollback action", {
+          logger.warn("Attempted to cancel non-pending run.", {
             run_id: runId,
-            thread_id: threadId,
+            status: run.status,
           });
-
-          promises.push(Runs.delete(runId, threadId));
         }
-      } else {
-        logger.warn("Attempted to cancel non-pending run.", {
-          run_id: runId,
-          status: run.status,
-        });
       }
-    }
 
-    await Promise.all(promises);
+      await Promise.all(promises);
 
-    if (foundRunsCount === runIds.length) {
-      logger.info("Cancelled runs", {
-        run_ids: runIds,
-        thread_id: threadId,
-        action,
-      });
-    } else {
-      throw new HTTPException(404, { message: "Run not found" });
-    }
+      if (foundRunsCount === runIds.length) {
+        logger.info("Cancelled runs", {
+          run_ids: runIds,
+          thread_id: threadId,
+          action,
+        });
+      } else {
+        throw new HTTPException(404, { message: "Run not found" });
+      }
+    });
   }
 
   static async search(
@@ -1161,25 +1263,30 @@ export class Runs {
       metadata?: Metadata | null;
     }
   ) {
-    const runs = Object.values(STORE.runs).filter((run) => {
-      if (run.thread_id !== threadId) return false;
-      if (options?.status != null && run.status !== options.status)
-        return false;
-      if (
-        options?.metadata != null &&
-        !isJsonbContained(run.metadata, options.metadata)
-      )
-        return false;
-      return true;
-    });
+    return withStore(async (STORE) => {
+      const runs = Object.values(STORE.runs).filter((run) => {
+        if (run.thread_id !== threadId) return false;
+        if (options?.status != null && run.status !== options.status)
+          return false;
+        if (
+          options?.metadata != null &&
+          !isJsonbContained(run.metadata, options.metadata)
+        )
+          return false;
+        return true;
+      });
 
-    return runs.slice(options?.offset ?? 0, options?.limit ?? 10);
+      return runs.slice(options?.offset ?? 0, options?.limit ?? 10);
+    });
   }
+
   static async setStatus(runId: string, status: RunStatus) {
-    const run = STORE.runs[runId];
-    if (!run) throw new Error(`Run ${runId} not found`);
-    run.status = status;
-    run.updated_at = new Date();
+    return withStore(async (STORE) => {
+      const run = STORE.runs[runId];
+      if (!run) throw new Error(`Run ${runId} not found`);
+      run.status = status;
+      run.updated_at = new Date();
+    });
   }
 
   static Stream = class {
