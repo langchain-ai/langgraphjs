@@ -14,6 +14,7 @@ import { serializeError } from "../utils/serde.mjs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import superjson from "superjson";
+import { FileSystemPersistence } from "./persist.mjs";
 export type Metadata = Record<string, unknown>;
 
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error";
@@ -128,61 +129,16 @@ interface Store {
   retry_counter: Record<string, number>;
 }
 
-let MEMORY_STORE: {
-  filename: string;
-  store: Store;
-} | null = null;
-let MEMORY_STORE_FLUSH = Promise.resolve<void>(undefined);
-
-export async function initializeMemoryStore(cwd: string) {
-  const filename = path.resolve(cwd, ".langgraph_api", ".langgraphjs_ops.json");
-
-  try {
-    MEMORY_STORE = {
-      filename,
-      store: superjson.parse(await fs.readFile(filename, "utf-8")),
-    };
-  } catch {
-    MEMORY_STORE = {
-      filename,
-      store: {
-        runs: {},
-        threads: {},
-        assistants: {},
-        assistant_versions: [],
-        retry_counter: {},
-      },
-    };
-  }
-}
-
-async function withStore<T>(fn: (store: Store) => T) {
-  if (MEMORY_STORE == null) throw new Error("Memory store not initialized");
-  const { filename, store } = MEMORY_STORE;
-
-  try {
-    return await fn(store);
-  } finally {
-    MEMORY_STORE_FLUSH = MEMORY_STORE_FLUSH.then(async () => {
-      await fs.mkdir(path.dirname(filename), { recursive: true });
-      return fs.writeFile(filename, superjson.stringify(store), "utf-8");
-    });
-  }
-}
-
-async function* withStoreGenerator<T>(fn: (store: Store) => AsyncGenerator<T>) {
-  if (MEMORY_STORE == null) throw new Error("Memory store not initialized");
-  const { filename, store } = MEMORY_STORE;
-
-  try {
-    yield* fn(store);
-  } finally {
-    MEMORY_STORE_FLUSH = MEMORY_STORE_FLUSH.then(async () => {
-      await fs.mkdir(path.dirname(filename), { recursive: true });
-      return fs.writeFile(filename, superjson.stringify(store), "utf-8");
-    });
-  }
-}
+export const conn = new FileSystemPersistence<Store>(
+  ".langgraphjs_ops.json",
+  () => ({
+    runs: {},
+    threads: {},
+    assistants: {},
+    assistant_versions: [],
+    retry_counter: {},
+  })
+);
 
 class TimeoutError extends Error {}
 class AbortError extends Error {}
@@ -293,7 +249,7 @@ export const truncate = (flags: {
   checkpointer?: boolean;
   store?: boolean;
 }) => {
-  return withStore((STORE) => {
+  return conn.with((STORE) => {
     if (flags.runs) STORE.runs = {};
     if (flags.threads) STORE.threads = {};
     if (flags.assistants) {
@@ -340,7 +296,7 @@ export class Assistants {
     limit: number;
     offset: number;
   }) {
-    yield* withStoreGenerator(async function* (STORE) {
+    yield* conn.withGenerator(async function* (STORE) {
       let filtered = Object.values(STORE.assistants)
         .filter((assistant) => {
           if (
@@ -375,7 +331,7 @@ export class Assistants {
   }
 
   static async get(assistantId: string): Promise<Assistant> {
-    return withStore((STORE) => {
+    return conn.with((STORE) => {
       const result = STORE.assistants[assistantId];
       if (result == null)
         throw new HTTPException(404, { message: "Assistant not found" });
@@ -393,7 +349,7 @@ export class Assistants {
       name?: string;
     }
   ): Promise<Assistant> {
-    return withStore((STORE) => {
+    return conn.with((STORE) => {
       if (STORE.assistants[assistantId] != null) {
         if (options.if_exists === "raise") {
           throw new HTTPException(409, { message: "Assistant already exists" });
@@ -436,7 +392,7 @@ export class Assistants {
       name?: string;
     }
   ): Promise<Assistant> {
-    return withStore((STORE) => {
+    return conn.with((STORE) => {
       const assistant = STORE.assistants[assistantId];
       if (!assistant)
         throw new HTTPException(404, { message: "Assistant not found" });
@@ -491,7 +447,7 @@ export class Assistants {
   }
 
   static async delete(assistantId: string): Promise<string[]> {
-    return withStore((STORE) => {
+    return conn.with((STORE) => {
       const assistant = STORE.assistants[assistantId];
       if (!assistant)
         throw new HTTPException(404, { message: "Assistant not found" });
@@ -517,7 +473,7 @@ export class Assistants {
     assistantId: string,
     version: number
   ): Promise<Assistant> {
-    return withStore((STORE) => {
+    return conn.with((STORE) => {
       const assistant = STORE.assistants[assistantId];
       if (!assistant)
         throw new HTTPException(404, { message: "Assistant not found" });
@@ -552,7 +508,7 @@ export class Assistants {
       metadata?: Metadata;
     }
   ) {
-    return withStore((STORE) => {
+    return conn.with((STORE) => {
       const versions = STORE.assistant_versions
         .filter((version) => {
           if (version["assistant_id"] !== assistantId) return false;
@@ -636,7 +592,7 @@ export class Threads {
     limit: number;
     offset: number;
   }): AsyncGenerator<Thread> {
-    yield* withStoreGenerator(async function* (STORE) {
+    yield* conn.withGenerator(async function* (STORE) {
       const filtered = Object.values(STORE.threads)
         .filter((thread) => {
           if (
@@ -669,7 +625,7 @@ export class Threads {
   }
 
   static async get(threadId: string): Promise<Thread> {
-    return withStore((STORE) => {
+    return conn.with((STORE) => {
       const result = STORE.threads[threadId];
       if (result == null)
         throw new HTTPException(404, {
@@ -687,7 +643,7 @@ export class Threads {
       if_exists: OnConflictBehavior;
     }
   ): Promise<Thread> {
-    return withStore((STORE) => {
+    return conn.with((STORE) => {
       const now = new Date();
 
       if (STORE.threads[threadId] != null) {
@@ -717,7 +673,7 @@ export class Threads {
       metadata?: Metadata;
     }
   ): Promise<Thread> {
-    return withStore((STORE) => {
+    return conn.with((STORE) => {
       const thread = STORE.threads[threadId];
       if (!thread)
         throw new HTTPException(404, { message: "Thread not found" });
@@ -742,7 +698,7 @@ export class Threads {
       exception?: Error;
     }
   ) {
-    return withStore((STORE) => {
+    return conn.with((STORE) => {
       const thread = STORE.threads[threadId];
       if (!thread)
         throw new HTTPException(404, { message: "Thread not found" });
@@ -785,7 +741,7 @@ export class Threads {
   }
 
   static async delete(threadId: string): Promise<string[]> {
-    return withStore((STORE) => {
+    return conn.with((STORE) => {
       const thread = STORE.threads[threadId];
       if (!thread)
         throw new HTTPException(404, {
@@ -805,7 +761,7 @@ export class Threads {
   }
 
   static async copy(threadId: string): Promise<Thread> {
-    return withStore((STORE) => {
+    return conn.with((STORE) => {
       const thread = STORE.threads[threadId];
       if (!thread)
         throw new HTTPException(409, { message: "Thread not found" });
@@ -899,7 +855,7 @@ export class Threads {
       const state = await Threads.State.get(config, { subgraphs: false });
 
       // update thread values
-      await withStore(async (STORE) => {
+      await conn.with(async (STORE) => {
         for (const thread of Object.values(STORE.threads)) {
           if (thread.thread_id === threadId) {
             thread.values = state.values;
@@ -952,7 +908,7 @@ export class Runs {
     attempt: number;
     signal: AbortSignal;
   }> {
-    yield* withStoreGenerator(async function* (STORE) {
+    yield* conn.withGenerator(async function* (STORE) {
       const now = new Date();
       const pendingRuns = Object.values(STORE.runs)
         .filter((run) => run.status === "pending" && run.created_at < now)
@@ -1004,7 +960,7 @@ export class Runs {
       afterSeconds?: number;
     }
   ): Promise<Run[]> {
-    return withStore(async (STORE) => {
+    return conn.with(async (STORE) => {
       const assistant = STORE.assistants[assistantId];
       if (!assistant) return [];
 
@@ -1134,7 +1090,7 @@ export class Runs {
     runId: string,
     threadId: string | undefined
   ): Promise<Run | null> {
-    return withStore(async (STORE) => {
+    return conn.with(async (STORE) => {
       const run = STORE.runs[runId];
       if (
         !run ||
@@ -1150,7 +1106,7 @@ export class Runs {
     runId: string,
     threadId: string | undefined
   ): Promise<string | null> {
-    return withStore(async (STORE) => {
+    return conn.with(async (STORE) => {
       const run = STORE.runs[runId];
       if (!run || (threadId != null && run.thread_id !== threadId))
         throw new Error("Run not found");
@@ -1202,7 +1158,7 @@ export class Runs {
       action?: "interrupt" | "rollback";
     }
   ) {
-    return withStore(async (STORE) => {
+    return conn.with(async (STORE) => {
       const action = options.action ?? "interrupt";
       const promises: Promise<unknown>[] = [];
 
@@ -1263,7 +1219,7 @@ export class Runs {
       metadata?: Metadata | null;
     }
   ) {
-    return withStore(async (STORE) => {
+    return conn.with(async (STORE) => {
       const runs = Object.values(STORE.runs).filter((run) => {
         if (run.thread_id !== threadId) return false;
         if (options?.status != null && run.status !== options.status)
@@ -1281,7 +1237,7 @@ export class Runs {
   }
 
   static async setStatus(runId: string, status: RunStatus) {
-    return withStore(async (STORE) => {
+    return conn.with(async (STORE) => {
       const run = STORE.runs[runId];
       if (!run) throw new Error(`Run ${runId} not found`);
       run.status = status;

@@ -8,12 +8,14 @@ import runs from "./api/runs.mjs";
 import threads from "./api/threads.mjs";
 import assistants from "./api/assistants.mjs";
 import store from "./api/store.mjs";
-import { initializeMemoryStore, truncate } from "./storage/ops.mjs";
+import { truncate, conn as opsConn } from "./storage/ops.mjs";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { queue } from "./queue.mjs";
 import { logger, requestLogger } from "./logging.mjs";
 import { ConfigSchema } from "./utils/config.mjs";
+import { checkpointer } from "./storage/checkpoint.mjs";
+import { store as graphStore } from "./storage/store.mjs";
 
 const app = new Hono();
 
@@ -68,7 +70,13 @@ export async function startServer(options: {
   const hostname = options.host ?? "0.0.0.0";
   const projectDir = options.cwd ?? process.cwd();
 
-  initializeMemoryStore(projectDir);
+  // TODO: Implement safe exit
+  logger.info(`Initializing storage`);
+  await Promise.all([
+    opsConn.initialize(projectDir),
+    checkpointer.initialize(projectDir),
+    graphStore.initialize(projectDir),
+  ]);
 
   logger.info(`Registering graphs from ${projectDir}`);
   await registerFromEnv(specs, { cwd: projectDir });
