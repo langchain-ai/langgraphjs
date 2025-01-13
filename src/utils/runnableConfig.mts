@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Checkpoint, RunnableConfig } from "../storage/ops.mjs";
+import type { Checkpoint, RunnableConfig } from "../storage/ops.mjs";
 
 const ConfigurableSchema = z.object({
   thread_id: z.string(),

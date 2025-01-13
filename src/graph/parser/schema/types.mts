@@ -18,7 +18,7 @@ import * as vm from "node:vm";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
-import { JSONSchema7, JSONSchema7TypeName } from "json-schema";
+import type { JSONSchema7, JSONSchema7TypeName } from "json-schema";
 import dedent from "dedent";
 
 const REGEX_FILE_NAME_OR_SPACE = /(\bimport\(".*?"\)|".*?")\.| /g;

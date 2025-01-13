@@ -1,12 +1,18 @@
-import { Run, RunCommand, RunnableConfig, RunSend } from "./storage/ops.mjs";
+import type {
+  Run,
+  RunCommand,
+  RunnableConfig,
+  RunSend,
+  Checkpoint,
+} from "./storage/ops.mjs";
 import { getGraph } from "./graph/load.mjs";
 import { Client as LangSmithClient } from "langsmith";
 import {
-  CheckpointMetadata,
+  type CheckpointMetadata,
+  type Interrupt,
+  type StateSnapshot,
   Command,
-  Interrupt,
   Send,
-  StateSnapshot,
 } from "@langchain/langgraph";
 import type { Pregel } from "@langchain/langgraph/pregel";
 import { runnableConfigToCheckpoint } from "./utils/runnableConfig.mjs";
@@ -70,27 +76,39 @@ const isRunnableConfig = (config: unknown): config is RunnableConfig => {
   );
 };
 
-function preprocessDebugCheckpointTask(
-  task: DebugTask
-): Record<string, unknown> {
+type Prettify<T> = {
+  [K in keyof T]: T[K];
+} & {};
+
+export type StreamCheckpoint = Prettify<
+  Omit<DebugCheckpoint, "parentConfig"> & {
+    parent_config: DebugCheckpoint["parentConfig"];
+  }
+>;
+
+export type StreamTaskResult = Prettify<
+  Omit<DebugTask, "state"> & {
+    state?: StateSnapshot;
+    checkpoint?: Checkpoint;
+  }
+>;
+
+function preprocessDebugCheckpointTask(task: DebugTask): StreamTaskResult {
   if (
     !isRunnableConfig(task.state) ||
     !runnableConfigToCheckpoint(task.state)
   ) {
-    return task as unknown as Record<string, unknown>;
+    return task as unknown as StreamTaskResult;
   }
 
   const cloneTask: Record<string, unknown> = { ...task };
   cloneTask.checkpoint = runnableConfigToCheckpoint(task.state);
   delete cloneTask.state;
 
-  return cloneTask;
+  return cloneTask as StreamTaskResult;
 }
 
-export type StreamCheckpoint = ReturnType<typeof preprocessDebugCheckpoint>;
-export type StreamTaskResult = ReturnType<typeof preprocessDebugCheckpointTask>;
-
-function preprocessDebugCheckpoint(payload: DebugCheckpoint) {
+function preprocessDebugCheckpoint(payload: DebugCheckpoint): StreamCheckpoint {
   const result: Record<string, unknown> = {
     ...payload,
     checkpoint: runnableConfigToCheckpoint(payload["config"]),
@@ -103,7 +121,7 @@ function preprocessDebugCheckpoint(payload: DebugCheckpoint) {
   result.parent_config = payload["parentConfig"];
   delete result.parentConfig;
 
-  return result;
+  return result as StreamCheckpoint;
 }
 
 export async function* streamState(
@@ -159,7 +177,9 @@ export async function* streamState(
   };
 
   const events = graph.streamEvents(
-    kwargs.command != null ? getLangGraphCommand(kwargs.command) : kwargs.input ?? null,
+    kwargs.command != null
+      ? getLangGraphCommand(kwargs.command)
+      : (kwargs.input ?? null),
     {
       version: "v2" as const,
 

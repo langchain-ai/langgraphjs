@@ -6,8 +6,8 @@ import {
   END,
   messagesStateReducer,
   SharedValue,
-  LangGraphRunnableConfig,
   interrupt,
+  type LangGraphRunnableConfig,
 } from "@langchain/langgraph";
 import { FakeListChatModel } from "@langchain/core/utils/testing";
 import { ChatGenerationChunk } from "@langchain/core/outputs";

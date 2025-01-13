@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, beforeAll } from "vitest";
 import { Client } from "@langchain/langgraph-sdk";
 import { findLast, gatherIterator } from "./utils.mjs";
-import {
+import type {
   BaseMessageFields,
   BaseMessageLike,
   MessageType,

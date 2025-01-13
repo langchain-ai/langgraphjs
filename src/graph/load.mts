@@ -9,8 +9,8 @@ import type {
 } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
 import {
-  GraphSchema,
-  GraphSpec,
+  type GraphSchema,
+  type GraphSpec,
   resolveGraph,
   runGraphSchemaWorker,
 } from "./load.utils.mjs";

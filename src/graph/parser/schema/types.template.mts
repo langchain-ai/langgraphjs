@@ -7,7 +7,10 @@ import type {
 import type { Graph } from "@langchain/langgraph";
 import type { Pregel } from "@langchain/langgraph/pregel";
 
+// @ts-expect-error
 type AnyPregel = Pregel<any, any>;
+
+// @ts-expect-error
 type AnyGraph = Graph<any, any, any, any, any>;
 
 type Wrap<T> = (a: T) => void;
@@ -23,6 +26,7 @@ type Defactorify<T> = T extends (...args: any[]) => infer R
   ? Awaited<R>
   : Awaited<T>;
 
+// @ts-expect-error
 type Inspect<T> = T extends unknown
   ? {
       [K in keyof T]: 0 extends 1 & T[K]
@@ -39,6 +43,7 @@ type ReflectCompiled<T> = T extends { RunInput: infer S; RunOutput: infer U }
   ? { state: S; update: U }
   : never;
 
+// @ts-expect-error
 type Reflect<T> =
   Defactorify<T> extends infer DT
     ? DT extends {
@@ -62,6 +67,7 @@ type BuilderReflectCompiled<T> = T extends {
     }
   : never;
 
+// @ts-expect-error
 type BuilderReflect<T> =
   Defactorify<T> extends infer DT
     ? DT extends {
@@ -71,4 +77,5 @@ type BuilderReflect<T> =
       : BuilderReflectCompiled<DT>
     : never;
 
+// @ts-expect-error
 type FilterAny<T> = 0 extends 1 & T ? never : T;

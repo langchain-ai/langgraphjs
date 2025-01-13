@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { v4 as uuid4 } from "uuid";
 
 import * as schemas from "../schemas.mjs";
-import { RunnableConfig, Threads } from "../storage/ops.mjs";
+import { type RunnableConfig, Threads } from "../storage/ops.mjs";
 import { z } from "zod";
 import { stateSnapshotToThreadState } from "../state.mjs";
 import { jsonExtra } from "../utils/hono.mjs";

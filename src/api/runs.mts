@@ -5,7 +5,7 @@ import { getAssistantId } from "../graph/load.mjs";
 import { zValidator } from "@hono/zod-validator";
 import * as schemas from "../schemas.mjs";
 import { z } from "zod";
-import { Run, RunKwargs, Runs, Threads } from "../storage/ops.mjs";
+import { type Run, type RunKwargs, Runs, Threads } from "../storage/ops.mjs";
 import { serialiseAsDict } from "../utils/serde.mjs";
 import {
   getDisconnectAbortSignal,

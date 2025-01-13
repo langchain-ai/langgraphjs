@@ -1,5 +1,9 @@
-import { Run, Runs, Threads } from "./storage/ops.mjs";
-import { StreamCheckpoint, StreamTaskResult, streamState } from "./stream.mjs";
+import { type Run, Runs, Threads } from "./storage/ops.mjs";
+import {
+  type StreamCheckpoint,
+  type StreamTaskResult,
+  streamState,
+} from "./stream.mjs";
 import { logger } from "./logging.mjs";
 import { serializeError } from "./utils/serde.mjs";
 

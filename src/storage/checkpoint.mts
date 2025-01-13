@@ -1,7 +1,7 @@
-import { RunnableConfig } from "@langchain/core/runnables";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import {
-  Checkpoint,
-  CheckpointMetadata,
+  type Checkpoint,
+  type CheckpointMetadata,
   MemorySaver,
 } from "@langchain/langgraph";
 import { FileSystemPersistence } from "./persist.mjs";
