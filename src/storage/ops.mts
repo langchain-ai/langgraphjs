@@ -11,9 +11,6 @@ import { checkpointer } from "./checkpoint.mjs";
 import { store } from "./store.mjs";
 import { logger } from "../logging.mjs";
 import { serializeError } from "../utils/serde.mjs";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
-import superjson from "superjson";
 import { FileSystemPersistence } from "./persist.mjs";
 export type Metadata = Record<string, unknown>;
 
