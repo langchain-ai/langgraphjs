@@ -181,10 +181,10 @@ api.post(
   }
 );
 
-api.get(
+api.post(
   "/assistants/:assistant_id/versions",
   zValidator(
-    "query",
+    "json",
     z.object({
       limit: z.number().min(1).max(1000).optional().default(10),
       offset: z.number().min(0).optional().default(0),
@@ -194,7 +194,7 @@ api.get(
   async (c) => {
     // Get Assistant Versions
     const assistantId = getAssistantId(c.req.param("assistant_id"));
-    const { limit, offset, metadata } = c.req.valid("query");
+    const { limit, offset, metadata } = c.req.valid("json");
     return c.json(
       await Assistants.getVersions(assistantId, {
         limit,

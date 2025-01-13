@@ -187,6 +187,87 @@ describe("assistants", () => {
     );
   });
 
+  it("get assistant versions", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+
+    // (1) initial version
+    expect(
+      await client.assistants.getVersions(assistant.assistant_id)
+    ).toMatchObject([{ version: 1 }]);
+
+    // (2) update and create a new version
+    await client.assistants.update(assistant.assistant_id, {
+      config: { configurable: { foo: "bar" } },
+    });
+    expect(
+      await client.assistants.getVersions(assistant.assistant_id)
+    ).toMatchObject([
+      { version: 2, config: { configurable: { foo: "bar" } } },
+      { version: 1 },
+    ]);
+
+    // Check if limit and offset works
+    expect(
+      await client.assistants.getVersions(assistant.assistant_id, {
+        limit: 1,
+      })
+    ).toMatchObject([{ version: 2 }]);
+
+    // descending order
+    expect(
+      await client.assistants.getVersions(assistant.assistant_id, {
+        offset: 1,
+      })
+    ).toMatchObject([{ version: 1 }]);
+
+    // (3) create a version with metadata
+    await client.assistants.update(assistant.assistant_id, {
+      metadata: { foo: "baz" },
+    });
+
+    expect(
+      await client.assistants.getVersions(assistant.assistant_id, {
+        metadata: { foo: "baz" },
+      })
+    ).toMatchObject([{ version: 3 }]);
+
+    // (4) noop update
+    await client.assistants.update(assistant.assistant_id, {});
+
+    expect(
+      await client.assistants.getVersions(assistant.assistant_id)
+    ).toMatchObject([
+      { version: 4 },
+      { version: 3 },
+      { version: 2 },
+      { version: 1 },
+    ]);
+
+    await client.assistants.delete(assistant.assistant_id);
+    expect(
+      await client.assistants.getVersions(assistant.assistant_id)
+    ).toMatchObject([]);
+  });
+
+  it("set latest version", async () => {
+    const created = await client.assistants.create({ graphId: "agent" });
+    const updated = await client.assistants.update(created.assistant_id, {});
+    expect(updated.version).toBe(2);
+
+    const changed = await client.assistants.setLatest(created.assistant_id, 1);
+    expect(changed.version).toBe(1);
+
+    const updatedAgain = await client.assistants.update(
+      created.assistant_id,
+      {}
+    );
+
+    expect(updatedAgain.version).toBe(3);
+    await expect(
+      client.assistants.setLatest(created.assistant_id, 4)
+    ).rejects.toThrow();
+  });
+
   it("config from env", async () => {
     let search = await client.assistants.search({
       graphId: "agent",

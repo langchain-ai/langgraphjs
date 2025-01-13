@@ -432,6 +432,8 @@ export class Assistants {
             .map((v) => v["version"])
         ) + 1;
 
+      assistant.version = newVersion;
+
       const newVersionEntry = {
         assistant_id: assistantId,
         version: newVersion,
