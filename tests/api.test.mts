@@ -2001,3 +2001,189 @@ it("continue after interrupt must have checkpoint present", async () => {
     }))
   );
 });
+
+describe("multitasking", () => {
+  // TODO: replace with expect.poll
+  const pollRun = async (
+    threadId: string,
+    runId: string,
+    maxIter: number = 600
+  ) => {
+    let lastStatus:
+      | Awaited<ReturnType<typeof client.runs.get>>["status"]
+      | null = null;
+
+    let iter = 0;
+    while (lastStatus == null || lastStatus === "pending") {
+      const run = await client.runs.get(threadId, runId);
+      lastStatus = run.status;
+
+      if (iter >= maxIter) throw new Error("Max iterations reached");
+      if (iter > 0) await new Promise((resolve) => setTimeout(resolve, 100));
+      iter += 1;
+    }
+    return lastStatus;
+  };
+
+  type AgentState = {
+    messages: { content: string }[];
+  };
+
+  it("multitasking reject", { timeout: 8_000, retry: 3 }, async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+
+    const input = {
+      messages: [{ role: "human", content: "foo", id: "initial-message" }],
+      sleep: 1,
+    };
+
+    // Try background run first
+    const run = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      { input, config: globalConfig }
+    );
+
+    // Attempt another run that should be rejected
+    expect(() =>
+      client.runs.create(thread.thread_id, assistant.assistant_id, {
+        input,
+        multitaskStrategy: "reject",
+        config: globalConfig,
+      })
+    ).rejects.toThrow();
+
+    const runStatus = await pollRun(thread.thread_id, run.run_id);
+    expect(runStatus).toBe("success");
+  });
+
+  it("multitasking interrupt", { timeout: 8_000, retry: 3 }, async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+
+    // Start first run
+    const input1 = {
+      messages: [{ role: "human", content: "foo", id: "initial-message-1" }],
+      sleep: 2,
+    };
+    const run1 = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      { input: input1, config: globalConfig }
+    );
+
+    // Start second run that should interrupt first
+    const input2 = {
+      messages: [{ role: "human", content: "bar", id: "initial-message-2" }],
+      sleep: 0,
+    };
+    const run2 = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      {
+        input: input2,
+        multitaskStrategy: "interrupt",
+        config: globalConfig,
+      }
+    );
+
+    const run1Status = await pollRun(thread.thread_id, run1.run_id);
+    expect(run1Status).toBe("interrupted");
+
+    const run2Status = await pollRun(thread.thread_id, run2.run_id);
+    expect(run2Status).toBe("success");
+
+    const state = await client.threads.getState<AgentState>(thread.thread_id);
+
+    if (state.values.messages.length === 4) {
+      expect(state.values.messages[0].content).toBe("bar");
+    } else {
+      // x in <5, 8>
+      expect(state.values.messages.length).toBeGreaterThanOrEqual(5);
+      expect(state.values.messages.length).toBeLessThanOrEqual(8);
+      expect(state.values.messages.at(0)?.content).toBe("foo");
+    }
+  });
+
+  it("multitasking rollback", { timeout: 8_000, retry: 3 }, async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+
+    // Start first run
+    const input1 = {
+      messages: [{ role: "human", content: "foo", id: "initial-message-1" }],
+      sleep: 4,
+    };
+    const run1 = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      { input: input1, config: globalConfig }
+    );
+
+    // Start second run that should rollback first
+    const input2 = {
+      messages: [{ role: "human", content: "bar", id: "initial-message-2" }],
+    };
+    const run2 = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      { input: input2, multitaskStrategy: "rollback", config: globalConfig }
+    );
+
+    // First run should be deleted
+    await expect(() =>
+      pollRun(thread.thread_id, run1.run_id)
+    ).rejects.toThrow();
+
+    const run2Status = await pollRun(thread.thread_id, run2.run_id);
+    expect(run2Status).toBe("success");
+
+    const state = await client.threads.getState<AgentState>(thread.thread_id);
+    expect(state.values.messages.length).toBe(4);
+    expect(state.values.messages.at(0)?.content).toBe("bar");
+  });
+
+  it("multitasking enqueue", { timeout: 8_000, retry: 3 }, async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+
+    // Start first run
+    const input1 = {
+      messages: [{ role: "human", content: "foo", id: "initial-message-1" }],
+      sleep: 2,
+    };
+    const run1 = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      { input: input1, config: globalConfig }
+    );
+
+    // Start second run that should be enqueued
+    const input2 = {
+      messages: [{ role: "human", content: "bar", id: "initial-message-2" }],
+      sleep: 0,
+    };
+    const run2 = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      {
+        input: input2,
+        multitaskStrategy: "enqueue",
+        config: globalConfig,
+      }
+    );
+
+    const run1Status = await pollRun(thread.thread_id, run1.run_id);
+    expect(run1Status).toBe("success");
+
+    const run2Status = await pollRun(thread.thread_id, run2.run_id);
+    expect(run2Status).toBe("success");
+
+    const state = await client.threads.getState<AgentState>(thread.thread_id);
+
+    expect(state.values.messages.length).toBe(8);
+    expect(state.values.messages.at(0)?.content).toBe("foo");
+    expect(state.values.messages.at(-4)?.content).toBe("bar");
+  });
+});

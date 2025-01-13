@@ -107,7 +107,7 @@ const createValidRun = async (
 
     return first;
   } else if (multitaskStrategy === "reject") {
-    throw new HTTPException(409, {
+    throw new HTTPException(422, {
       message:
         "Thread is already running a task. Wait for it to finish or choose a different multitask strategy.",
     });
