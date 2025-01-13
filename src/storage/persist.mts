@@ -2,6 +2,16 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import * as superjson from "superjson";
 
+// Add custom transformers for Uint8Array
+superjson.registerCustom<Uint8Array, string>(
+  {
+    isApplicable: (v): v is Uint8Array => v instanceof Uint8Array,
+    serialize: (v) => Buffer.from(v).toString("base64"),
+    deserialize: (v) => new Uint8Array(Buffer.from(v, "base64")),
+  },
+  "Uint8Array"
+);
+
 export class FileSystemPersistence<Schema> {
   private filepath: string | null = null;
   private data: Schema | null = null;
