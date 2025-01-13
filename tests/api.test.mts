@@ -1866,3 +1866,57 @@ it("stream debug checkpoint", async () => {
     }))
   );
 });
+
+it("continue after interrupt must have checkpoint present", async () => {
+  const assistant = await client.assistants.create({ graphId: "weather" });
+  const thread = await client.threads.create();
+
+  const input = {
+    messages: [{ role: "human", content: "What's weather in SF?" }],
+  };
+
+  let stream = await gatherIterator(
+    client.runs.stream(thread.thread_id, assistant.assistant_id, {
+      input,
+      streamMode: "debug",
+      interruptBefore: ["router_node"],
+    })
+  );
+
+  const initialStream = stream
+    .filter((i) => i.event === "debug" && i.data.type === "checkpoint")
+    .map((i) => i.data.payload);
+
+  const history = (await client.threads.getHistory(thread.thread_id)).reverse();
+  const checkpoint = history[history.length - 1].checkpoint;
+
+  // Continue the run from the checkpoint
+  stream = await gatherIterator(
+    client.runs.stream(thread.thread_id, assistant.assistant_id, {
+      streamMode: "debug",
+      checkpoint,
+    })
+  );
+
+  const continueHistory = (
+    await client.threads.getHistory(thread.thread_id)
+  ).reverse();
+
+  const continueStream = stream
+    .filter((i) => i.event === "debug" && i.data.type === "checkpoint")
+    .map((i) => i.data.payload);
+
+  expect(
+    [...initialStream, ...continueStream.slice(1)].map((i: any) => ({
+      step: i.metadata?.step,
+      checkpoint: i.checkpoint,
+      parent_checkpoint: i.parent_checkpoint,
+    }))
+  ).toEqual(
+    continueHistory.map((i) => ({
+      step: i.metadata?.step,
+      checkpoint: i.checkpoint,
+      parent_checkpoint: i.parent_checkpoint,
+    }))
+  );
+});
