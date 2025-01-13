@@ -1823,3 +1823,46 @@ describe.skip("command update state", () => {
     expect(state.values).toMatchObject({ keyOne: "value1", keyTwo: "value2" });
   });
 });
+
+it("stream debug checkpoint", async () => {
+  const assistant = await client.assistants.create({ graphId: "weather" });
+  const thread = await client.threads.create();
+
+  const input = {
+    messages: [{ role: "human", content: "What's the weather in SF?" }],
+  };
+
+  const runStream = client.runs.stream(
+    thread.thread_id,
+    assistant.assistant_id,
+    {
+      input,
+      streamMode: "debug",
+    }
+  );
+
+  const stream = [];
+  for await (const chunk of runStream) {
+    if (chunk.event === "debug" && chunk.data.type === "checkpoint") {
+      stream.push(chunk.data.payload);
+    }
+  }
+
+  const history = (
+    await client.threads.getHistory(thread.thread_id, { limit: stream.length })
+  ).reverse();
+
+  expect(
+    stream.map((i: any) => ({
+      step: i.metadata?.step,
+      checkpoint: i.checkpoint,
+      parent_checkpoint: i.parent_checkpoint,
+    }))
+  ).toEqual(
+    history.map((i) => ({
+      step: i.metadata?.step,
+      checkpoint: i.checkpoint,
+      parent_checkpoint: i.parent_checkpoint,
+    }))
+  );
+});

@@ -34,7 +34,7 @@ interface DebugChunk<Name extends string, Payload> {
 
 interface DebugCheckpoint {
   config: RunnableConfig;
-  parent_config: RunnableConfig | undefined;
+  parentConfig: RunnableConfig | undefined;
   values: unknown;
   metadata: CheckpointMetadata;
   next: string[];
@@ -91,12 +91,19 @@ export type StreamCheckpoint = ReturnType<typeof preprocessDebugCheckpoint>;
 export type StreamTaskResult = ReturnType<typeof preprocessDebugCheckpointTask>;
 
 function preprocessDebugCheckpoint(payload: DebugCheckpoint) {
-  return {
+  const result: Record<string, unknown> = {
     ...payload,
     checkpoint: runnableConfigToCheckpoint(payload["config"]),
-    parent_checkpoint: runnableConfigToCheckpoint(payload["parent_config"]),
+    parent_checkpoint: runnableConfigToCheckpoint(payload["parentConfig"]),
     tasks: payload["tasks"].map(preprocessDebugCheckpointTask),
   };
+
+  // Handle LangGraph JS pascalCase vs snake_case
+  // TODO: use stream to LangGraph.JS
+  result.parent_config = payload["parentConfig"];
+  delete result.parentConfig;
+
+  return result;
 }
 
 export async function* streamState(
@@ -152,7 +159,7 @@ export async function* streamState(
   };
 
   const events = graph.streamEvents(
-    kwargs.command != null ? getLangGraphCommand(kwargs.command) : kwargs.input,
+    kwargs.command != null ? getLangGraphCommand(kwargs.command) : kwargs.input ?? null,
     {
       version: "v2" as const,
 
@@ -183,30 +190,32 @@ export async function* streamState(
       ) as [string[] | null, LangGraphStreamMode, unknown];
 
       // Listen for debug events and capture checkpoint
+      let data: unknown = chunk;
       if (mode === "debug") {
         const debugChunk = chunk as LangGraphDebugChunk;
+
         if (debugChunk.type === "checkpoint") {
-          options?.onCheckpoint?.(
-            preprocessDebugCheckpoint(debugChunk.payload)
-          );
+          const debugCheckpoint = preprocessDebugCheckpoint(debugChunk.payload);
+          options?.onCheckpoint?.(debugCheckpoint);
+          data = { ...debugChunk, payload: debugCheckpoint };
         } else if (debugChunk.type === "task_result") {
-          options?.onTaskResult?.(
-            preprocessDebugCheckpointTask(debugChunk.payload)
-          );
+          const debugResult = preprocessDebugCheckpointTask(debugChunk.payload);
+          options?.onTaskResult?.(debugResult);
+          data = { ...debugChunk, payload: debugResult };
         }
       }
 
       if (mode === "messages") {
         if (userStreamMode.includes("messages-tuple")) {
-          yield { event: "messages", data: chunk };
+          yield { event: "messages", data };
         }
       } else if (mode === "custom") {
         logger.warn("unhandled custom mode", { mode, chunk });
       } else if (userStreamMode.includes(mode)) {
         if (kwargs.subgraphs && ns?.length) {
-          yield { event: `${mode}|${ns.join("|")}`, data: chunk };
+          yield { event: `${mode}|${ns.join("|")}`, data };
         } else {
-          yield { event: mode, data: chunk };
+          yield { event: mode, data };
         }
       }
     } else if (userStreamMode.includes("events")) {
