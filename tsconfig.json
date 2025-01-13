@@ -6,6 +6,7 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "module": "NodeNext",
+    "verbatimModuleSyntax": true,
     "noUnusedLocals": true
   }
 }
