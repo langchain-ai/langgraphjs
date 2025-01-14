@@ -25,6 +25,7 @@
     "@typescript/vfs": "^1.6.0",
     "chokidar": "^4.0.3",
     "commander": "^13.0.0",
+    "dedent": "^1.5.3",
     "dotenv": "^16.4.7",
     "hono": "^4.5.4",
     "langsmith": "^0.2.15",

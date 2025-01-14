@@ -5,7 +5,7 @@ import * as fs from "node:fs/promises";
 import type { ChildProcess } from "node:child_process";
 
 import { Command } from "@commander-js/extra-typings";
-import { spawn } from "cross-spawn";
+import { spawn } from "node:child_process";
 import open from "open";
 import * as dotenv from "dotenv";
 
