@@ -365,7 +365,12 @@ export class SubgraphExtractor {
     if (typeof target !== "string") {
       fsMap.set(targetPath, target.contents);
       for (const [name, contents] of target.files ?? []) {
-        fsMap.set(path.resolve(dirname, name), contents);
+        let tsFileName = path.resolve(dirname, name);
+        // TS for some reason uses UNIX backslashes instead of the Window ones
+        if (process.platform === "win32") {
+          tsFileName = tsFileName.replace(/\\/g, "/");
+        }
+        fsMap.set(tsFileName, contents);
       }
     }
 
