@@ -2,7 +2,7 @@ import { Worker } from "node:worker_threads";
 import * as fs from "node:fs/promises";
 import type { CompiledGraph, Graph } from "@langchain/langgraph";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import * as uuid from "uuid";
 import type { JSONSchema7 } from "json-schema";
 
@@ -63,9 +63,9 @@ export async function resolveGraph(
     return "compile" in graph && typeof graph.compile === "function";
   };
 
-  const graph: GraphUnknown = await import(sourceFile).then(
-    (module) => module[exportSymbol || "default"]
-  );
+  const graph: GraphUnknown = await import(
+    pathToFileURL(sourceFile).toString()
+  ).then((module) => module[exportSymbol || "default"]);
 
   // obtain the graph, and if not compiled, compile it
   const resolved: CompiledGraph<string> = await (async () => {
