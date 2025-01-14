@@ -1,4 +1,4 @@
-# Exit on error
+Set-PSDebug -Trace 1
 $ErrorActionPreference = "Stop"
 
 pnpm run build

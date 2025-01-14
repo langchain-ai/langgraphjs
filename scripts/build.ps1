@@ -1,3 +1,4 @@
+Set-PSDebug -Trace 1
 $ErrorActionPreference = "Stop"
 
 Remove-Item -Path "dist" -Recurse -Force -ErrorAction SilentlyContinue

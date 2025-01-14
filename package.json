@@ -13,12 +13,12 @@
     "dist/"
   ],
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "node scripts/spawn.mjs build",
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "dev": "tsx watch src/cli/cli.mts dev",
     "test": "vitest",
-    "test:ci": "node scripts/test.mjs"
+    "test:ci": "node scripts/spawn.mjs test"
   },
   "dependencies": {
     "@commander-js/extra-typings": "^13.0.0",
