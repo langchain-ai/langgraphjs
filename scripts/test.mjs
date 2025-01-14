@@ -1,8 +1,13 @@
-#!/bin/bash
-import "./build.mjs";
-await spinner("Clearing API", () => fs.remove("tests/graphs/.langgraph_api"));
+#!/usr/bin/env node
+import { spawn } from "node:child_process";
+import * as process from "node:process";
 
-const server = `node dist/cli/cli.mjs dev --no-browser --config ./tests/graphs/langgraph.json`;
-const test = `npx -y wait-port -t 3000 localhost:9123 && vitest run`;
-
-await $`npx -y concurrently -k -s "command-test" -n "server,test" ${server} ${test}`;
+if (process.platform === "win32") {
+  spawn(
+    "powershell.exe",
+    ["-ExecutionPolicy", "Bypass", "-File", "scripts/test.ps1"],
+    { stdio: "inherit" }
+  );
+} else {
+  spawn("bash", ["-c", "scripts/test.sh"], { stdio: "inherit" });
+}
