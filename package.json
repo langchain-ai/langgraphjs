@@ -14,7 +14,7 @@
   ],
   "scripts": {
     "build": "./scripts/build.sh",
-    "prepare": "npm run build",
+    "prepack": "npm run build",
     "dev": "tsx watch --env-file=./tests/.env.test src/server.dev.mts",
     "dev:inspect": "tsx watch --inspect-brk --env-file=./tests/.env.test src/server.dev.mts",
     "typecheck": "tsc --noEmit",
@@ -24,9 +24,6 @@
     "@commander-js/extra-typings": "^13.0.0",
     "@hono/node-server": "^1.12.0",
     "@hono/zod-validator": "^0.2.2",
-    "@langchain/core": "^0.3.27",
-    "@langchain/langgraph": "^0.2.39",
-    "@langchain/langgraph-checkpoint": "^0.0.13",
     "@types/json-schema": "^7.0.15",
     "@typescript/vfs": "^1.6.0",
     "chokidar": "^4.0.3",
@@ -38,11 +35,16 @@
     "open": "^10.1.0",
     "superjson": "^2.2.2",
     "tsx": "^4.19.2",
-    "typescript": "^5.5.4",
     "uuid": "^10.0.0",
     "winston": "^3.17.0",
     "winston-console-format": "^1.0.8",
     "zod": "^3.23.8"
+  },
+  "peerDependencies": {
+    "@langchain/core": "^0.3.27",
+    "@langchain/langgraph": "^0.2.39",
+    "@langchain/langgraph-checkpoint": "^0.0.13",
+    "typescript": "^5.5.4"
   },
   "devDependencies": {
     "@langchain/langgraph-sdk": "^0.0.33",
