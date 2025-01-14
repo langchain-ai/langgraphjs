@@ -1,3 +1,5 @@
+import "../preload.mjs";
+
 import * as process from "node:process";
 import { startServer, StartServerSchema } from "../server.mjs";
 import { connectToServer } from "./ipc/client.mjs";

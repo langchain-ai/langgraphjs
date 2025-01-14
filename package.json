@@ -3,7 +3,10 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "main": "index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/server.mjs",
   "bin": {
     "langgraph": "./dist/cli/cli.mjs"
   },

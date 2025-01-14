@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-import "../preload.mjs";
-
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import type { ChildProcess } from "node:child_process";
@@ -22,8 +20,8 @@ const tsxTarget = new URL("../../cli.mjs", import.meta.resolve("tsx/esm/api"));
 const entrypointTarget = new URL(import.meta.resolve("./entrypoint.mjs"));
 
 command
-  .name("langgraph-api")
-  .description("LangGraph API development server")
+  .name("langgraph")
+  .description("LangGraph.js CLI")
   .version("0.0.1")
   .command("dev")
   .description(
