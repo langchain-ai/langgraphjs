@@ -29,6 +29,10 @@ jobs:
           # - "22.x"
     steps:
       - uses: actions/checkout@v3
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         name: actions/setup-node@v4 for ${{ matrix.node-version }}
         with:
