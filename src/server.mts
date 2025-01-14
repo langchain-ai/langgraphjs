@@ -13,7 +13,6 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { queue } from "./queue.mjs";
 import { logger, requestLogger } from "./logging.mjs";
-import { ConfigSchema } from "./utils/config.mjs";
 import { checkpointer } from "./storage/checkpoint.mjs";
 import { store as graphStore } from "./storage/store.mjs";
 
@@ -49,44 +48,35 @@ app.post(
   }
 );
 
-const N_WORKERS = 10;
+export const StartServerSchema = z.object({
+  port: z.number(),
+  nWorkers: z.number(),
+  host: z.string(),
+  cwd: z.string(),
+  graphs: z.record(z.string()),
+});
 
-export async function startServer(options: {
-  port?: number;
-  nWorkers?: number;
-  host?: string;
-  config?: z.infer<typeof ConfigSchema>;
-  cwd?: string;
-}): Promise<string> {
-  const specs =
-    options.config != null
-      ? options.config.graphs
-      : z.record(z.string()).parse(JSON.parse(process.env.LANGSERVE_GRAPHS));
-
-  const port =
-    options.port ??
-    (process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 9123);
-
-  const hostname = options.host ?? "0.0.0.0";
-  const projectDir = options.cwd ?? process.cwd();
-
+export async function startServer(options: z.infer<typeof StartServerSchema>) {
   // TODO: Implement safe exit
   logger.info(`Initializing storage`);
   await Promise.all([
-    opsConn.initialize(projectDir),
-    checkpointer.initialize(projectDir),
-    graphStore.initialize(projectDir),
+    opsConn.initialize(options.cwd),
+    checkpointer.initialize(options.cwd),
+    graphStore.initialize(options.cwd),
   ]);
 
-  logger.info(`Registering graphs from ${projectDir}`);
-  await registerFromEnv(specs, { cwd: projectDir });
+  logger.info(`Registering graphs from ${options.cwd}`);
+  await registerFromEnv(options.graphs, { cwd: options.cwd });
 
-  logger.info(`Starting ${options.nWorkers ?? N_WORKERS} workers`);
-  for (let i = 0; i < (options.nWorkers ?? N_WORKERS); i++) queue();
+  logger.info(`Starting ${options.nWorkers} workers`);
+  for (let i = 0; i < options.nWorkers; i++) queue();
 
-  return new Promise((resolve) => {
-    serve({ fetch: app.fetch, port, hostname }, (c) => {
-      resolve(`${c.address}:${c.port}`);
-    });
+  return new Promise<string>((resolve) => {
+    serve(
+      { fetch: app.fetch, port: options.port, hostname: options.host },
+      (c) => {
+        resolve(`${c.address}:${c.port}`);
+      }
+    );
   });
 }

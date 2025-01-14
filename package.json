@@ -1,7 +1,7 @@
 {
   "name": "@langchain/langgraph-api",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "main": "index.js",
   "scripts": {
     "build": "esbuild src/server.mts --bundle --platform=node --outfile=dist/index.js",
@@ -11,6 +11,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@commander-js/extra-typings": "^13.0.0",
     "@hono/node-server": "^1.12.0",
     "@hono/zod-validator": "^0.2.2",
     "@langchain/core": "^0.3.27",
@@ -18,7 +19,9 @@
     "@langchain/langgraph-checkpoint": "^0.0.13",
     "@types/json-schema": "^7.0.15",
     "@typescript/vfs": "^1.6.0",
+    "chokidar": "^4.0.3",
     "commander": "^13.0.0",
+    "cross-spawn": "^7.0.6",
     "dedent": "^1.5.3",
     "dotenv": "^16.4.7",
     "hono": "^4.5.4",
@@ -26,7 +29,7 @@
     "open": "^10.1.0",
     "prompts": "^2.4.2",
     "superjson": "^2.2.2",
-    "tsx": "^4.19.1",
+    "tsx": "^4.19.2",
     "typescript": "^5.5.4",
     "undici": "^6.19.7",
     "uuid": "^10.0.0",
@@ -36,6 +39,7 @@
   },
   "devDependencies": {
     "@langchain/langgraph-sdk": "^0.0.33",
+    "@types/cross-spawn": "^6.0.6",
     "@types/node": "^22.2.0",
     "@types/uuid": "^10.0.0",
     "postgres": "^3.4.5",
