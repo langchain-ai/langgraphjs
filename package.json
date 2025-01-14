@@ -13,12 +13,12 @@
     "dist/"
   ],
   "scripts": {
-    "build": "npx zx scripts/build.mjs",
+    "build": "npx zx --verbose scripts/build.mjs",
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "dev": "tsx watch src/cli/cli.mts dev",
     "test": "vitest",
-    "test:ci": "npx zx scripts/test.mjs"
+    "test:ci": "npx zx --verbose scripts/test.mjs"
   },
   "dependencies": {
     "@commander-js/extra-typings": "^13.0.0",
