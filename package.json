@@ -15,10 +15,10 @@
   "scripts": {
     "build": "./scripts/build.sh",
     "prepack": "npm run build",
-    "dev": "tsx watch --env-file=./tests/.env.test src/server.dev.mts",
-    "dev:inspect": "tsx watch --inspect-brk --env-file=./tests/.env.test src/server.dev.mts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest"
+    "dev": "tsx watch src/cli/cli.mts dev",
+    "test": "vitest",
+    "test:ci": "./scripts/test.sh"
   },
   "dependencies": {
     "@commander-js/extra-typings": "^13.0.0",
