@@ -83,6 +83,22 @@ For production use, please use LangGraph Cloud.
         }
       });
 
+      // check if .gitignore already contains .langgraph-api
+      const gitignorePath = path.resolve(projectCwd, ".gitignore");
+      const gitignoreContent = await fs
+        .readFile(gitignorePath, "utf-8")
+        .catch(() => "");
+
+      if (!gitignoreContent.includes(".langgraph_api")) {
+        logger.info(
+          "Updating .gitignore to prevent `.langgraph_api` from being committed."
+        );
+        await fs.appendFile(
+          gitignorePath,
+          "\n# LangGraph API\n.langgraph_api\n"
+        );
+      }
+
       const prepareContext = async () => {
         const config = ConfigSchema.parse(
           JSON.parse(await fs.readFile(configPath, "utf-8"))
@@ -155,6 +171,7 @@ For production use, please use LangGraph Cloud.
         launchTsx();
       });
 
+      // TODO: handle errors
       launchTsx();
 
       process.on("exit", () => {
