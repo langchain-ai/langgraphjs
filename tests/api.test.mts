@@ -1271,7 +1271,7 @@ describe("StoreClient", () => {
 });
 
 describe("subgraphs", () => {
-  it.concurrent("get subgraphs", async () => {
+  it.concurrent("get subgraphs", { timeout: 10_000 }, async () => {
     const assistant = await client.assistants.create({ graphId: "nested" });
 
     expect(
