@@ -1,4 +1,7 @@
 #!/usr/bin/env zx
+import { usePowerShell, $ } from "zx";
+if (process.platform === "win32") usePowerShell();
+
 await spinner("Removing `dist`", () => fs.remove("dist"));
 await spinner("Building", () => $`tsc --outDir dist`);
 await spinner("Moving files from `dist/src` to `dist`", async () => {
