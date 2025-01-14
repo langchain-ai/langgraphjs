@@ -7,6 +7,9 @@
   "bin": {
     "langgraph": "./dist/cli/cli.mjs"
   },
+  "files": [
+    "dist/"
+  ],
   "scripts": {
     "build": "./scripts/build.sh",
     "dev": "tsx watch --env-file=./tests/.env.test src/server.dev.mts",

@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import "../preload.mjs";
 
 import * as path from "node:path";
@@ -46,9 +47,9 @@ command
       let child: ChildProcess | undefined = undefined;
 
       const localUrl = `http://${options.host}:${options.port}`;
-      const studioUrl = `https://smith.langchain.com/studio?baseUrl=${encodeURIComponent(
+      const studioUrl = `https://smith.langchain.com/studio?baseUrl=${
         localUrl
-      )}`;
+      }`;
 
       console.log(
         `
@@ -74,15 +75,7 @@ For production use, please use LangGraph Cloud.
         if (options.browser && !hasOpenedFlag) {
           hasOpenedFlag = true;
 
-          const targetUrl = host.startsWith("::1")
-            ? `http://localhost:${host.substring("::1".length)}`
-            : `http://${host}`;
-
-          open(
-            `https://smith.langchain.com/studio?baseUrl=${encodeURIComponent(
-              targetUrl
-            )}`
-          );
+          open(studioUrl);
         }
       });
 
