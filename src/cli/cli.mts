@@ -25,6 +25,10 @@ command
   .name("langgraph-api")
   .description("LangGraph API development server")
   .version("0.0.1")
+  .command("dev")
+  .description(
+    "Run LangGraph API server in development mode with hot reloading."
+  )
   .option("-p, --port <number>", "port to run the server on", "9123")
   .option("-h, --host <string>", "host to bind to", "localhost")
   .option("--no-browser", "disable auto-opening the browser")
