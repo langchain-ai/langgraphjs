@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import type { ChildProcess } from "node:child_process";
 
 import { Command } from "@commander-js/extra-typings";
@@ -147,10 +148,10 @@ For production use, please use LangGraph Cloud.
         child = spawn(
           process.execPath,
           [
-            tsxTarget.pathname,
+            fileURLToPath(tsxTarget),
             "watch",
             "--clear-screen=false",
-            entrypointTarget.pathname,
+            fileURLToPath(entrypointTarget),
             pid.toString(),
             JSON.stringify({
               port: Number.parseInt(options.port, 10),

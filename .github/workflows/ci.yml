@@ -18,8 +18,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-js:
-    timeout-minutes: 15
+  test-nodejs:
+    timeout-minutes: 5
     strategy:
       matrix:
         node-version:

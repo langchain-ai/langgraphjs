@@ -2,6 +2,7 @@ import { Worker } from "node:worker_threads";
 import * as fs from "node:fs/promises";
 import type { CompiledGraph, Graph } from "@langchain/langgraph";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as uuid from "uuid";
 import type { JSONSchema7 } from "json-schema";
 
@@ -83,7 +84,7 @@ export async function runGraphSchemaWorker(spec: GraphSpec) {
 
   return await new Promise<Record<string, GraphSchema>>((resolve, reject) => {
     const worker = new Worker(
-      new URL("./parser/parser.worker.mjs", import.meta.url).pathname
+      fileURLToPath(new URL("./parser/parser.worker.mjs", import.meta.url))
     );
 
     // Set a timeout to reject if the worker takes too long
