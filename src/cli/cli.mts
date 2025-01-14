@@ -23,7 +23,7 @@ const entrypointTarget = new URL(import.meta.resolve("./entrypoint.mjs"));
 command
   .name("langgraph")
   .description("LangGraph.js CLI")
-  .version("0.0.1")
+  .version("0.0.0-preview.1")
   .command("dev")
   .description(
     "Run LangGraph API server in development mode with hot reloading."
