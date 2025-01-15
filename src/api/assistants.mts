@@ -161,9 +161,9 @@ api.get(
     const result: Array<[name: string, schema: Record<string, any>]> = [];
     const subgraphsGenerator =
       "getSubgraphsAsync" in graph
-        ? graph.getSubgraphsAsync
+        ? graph.getSubgraphsAsync.bind(graph)
         : // @ts-expect-error older versions of langgraph don't have getSubgraphsAsync
-          graph.getSubgraphs;
+          graph.getSubgraphs.bind(graph);
 
     for await (const [ns] of subgraphsGenerator(namespace, recurse)) {
       result.push([
