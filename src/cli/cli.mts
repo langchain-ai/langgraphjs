@@ -28,7 +28,7 @@ command
   .description(
     "Run LangGraph API server in development mode with hot reloading."
   )
-  .option("-p, --port <number>", "port to run the server on", "9123")
+  .option("-p, --port <number>", "port to run the server on", "2024")
   .option("-h, --host <string>", "host to bind to", "localhost")
   .option("--no-browser", "disable auto-opening the browser")
   .option("-n, --n-jobs-per-worker <number>", "number of workers to run", "10")
