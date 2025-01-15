@@ -119,8 +119,15 @@ export function* mapCommand(
         "Expected cmd.update to be a dict mapping channel names to update values"
       );
     }
-    for (const [k, v] of Object.entries(cmd.update)) {
-      yield [NULL_TASK_ID, k, v];
+
+    if (Array.isArray(cmd.update)) {
+      for (const [k, v] of cmd.update) {
+        yield [NULL_TASK_ID, k, v];
+      }
+    } else {
+      for (const [k, v] of Object.entries(cmd.update)) {
+        yield [NULL_TASK_ID, k, v];
+      }
     }
   }
 }
