@@ -9,7 +9,7 @@ import type {
 import postgres from "postgres";
 import { randomUUID } from "crypto";
 
-const API_URL = "http://localhost:9123";
+const API_URL = "http://localhost:2024";
 const client = new Client({ apiUrl: API_URL });
 
 // Passed to all invocation requests as the graph now requires this field to be present
@@ -2046,7 +2046,7 @@ describe("multitasking", () => {
     );
 
     // Attempt another run that should be rejected
-    expect(() =>
+    await expect(() =>
       client.runs.create(thread.thread_id, assistant.assistant_id, {
         input,
         multitaskStrategy: "reject",
