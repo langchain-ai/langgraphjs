@@ -64,13 +64,18 @@ For production use, please use LangGraph Cloud.
       );
 
       server.on("data", (data) => {
-        const { host } = z.object({ host: z.string() }).parse(data);
+        const { host, organizationId } = z
+          .object({ host: z.string(), organizationId: z.string().nullish() })
+          .parse(data);
         logger.info(`Server running at ${host}`);
 
         if (options.browser && !hasOpenedFlag) {
           hasOpenedFlag = true;
-
-          open(studioUrl);
+          open(
+            organizationId
+              ? `${studioUrl}&organizationId=${organizationId}`
+              : studioUrl
+          );
         }
       });
 
