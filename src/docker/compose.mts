@@ -1,7 +1,7 @@
 import { $ } from "execa";
 import * as yaml from "yaml";
 import { z } from "zod";
-import { getExecaOptions } from "../../../langchainplus/smith-studio-desktop/packages/main/src/utils/shell.js";
+import { getExecaOptions } from "./shell.mjs";
 
 export const DEFAULT_POSTGRES_URI =
   "postgres://postgres:postgres@langgraph-postgres:5432/postgres?sslmode=disable";
