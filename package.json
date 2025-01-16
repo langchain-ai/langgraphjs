@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-api",
-  "version": "0.0.0-preview.3",
+  "version": "0.0.0-preview.4",
   "type": "module",
   "engines": {
     "node": ">=18"
@@ -16,7 +16,8 @@
     "build": "node scripts/spawn.mjs build",
     "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit",
-    "cli": "tsx watch src/cli/cli.mts",
+    "cli": "tsx src/cli/cli.mts",
+    "cli:watch": "tsx watch src/cli/cli.mts",
     "test:cli": "pnpm run cli dev --no-browser --config ./tests/graphs/langgraph.json",
     "test": "vitest",
     "test:ci": "node scripts/spawn.mjs test"
