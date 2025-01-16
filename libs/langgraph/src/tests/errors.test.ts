@@ -2,8 +2,10 @@
 import { it, expect } from "@jest/globals";
 import {
   Annotation,
+  END,
   InvalidUpdateError,
   MultipleSubgraphsError,
+  START,
   StateGraph,
 } from "../web.js";
 import { MemorySaverAssertImmutable } from "./utils.js";
@@ -119,4 +121,27 @@ it("MultipleSubgraph error", async () => {
   }
   expect(error).toBeInstanceOf(MultipleSubgraphsError);
   expect(error?.lc_error_code).toEqual("MULTIPLE_SUBGRAPHS");
+});
+
+it("Should throw errors in conditional edges", async () => {
+  class TestError extends Error {}
+
+  const StateAnnotation = Annotation.Root({
+    myKey: Annotation<string>,
+  });
+
+  const graph = new StateGraph(StateAnnotation)
+    .addNode("init", (state) => state)
+    .addNode("x", (state) => state)
+    .addEdge(START, "init")
+    .addConditionalEdges("init", () => {
+      throw new TestError();
+    })
+    .addEdge("x", END);
+
+  const app = graph.compile({ checkpointer: new MemorySaverAssertImmutable() });
+
+  await expect(
+    app.invoke({}, { configurable: { thread_id: "1" } })
+  ).rejects.toThrow(TestError);
 });
