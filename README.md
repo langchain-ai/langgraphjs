@@ -1,24 +1,55 @@
-# LangGraph.js API
+# LangGraph.js CLI
 
-This package implements the LangGraph API for rapid development and testing. Build and iterate on LangGraph.js agents with a tight feedback loop. The server is backed by a predominently in-memory data store that is persisted to local disk.
-
-For production use, see the various [deployment options](https://langchain-ai.github.io/langgraph/concepts/deployment_options/) for the LangGraph API, which are backed by a production-grade database.
+The official command-line interface for LangGraph.js, providing tools to create, develop, and deploy LangGraph.js applications.
 
 ## Installation
 
-Install the `@langchain/langgraph-api` package via your package manager of choice.
+The `@langchain/langgraph-cli` is a CLI binary that can be run via `npx` or installed via your package manager of choice:
 
 ```bash
-npm install @langchain/langgraph-api
+npx @langchain/langgraph-cli
 ```
 
-## Usage
+## Commands
 
-Start the development server:
+### `langgraph dev`
+
+Run LangGraph.js API server in development mode with hot reloading.
 
 ```bash
-npm run langgraph dev
+langgraph dev
 ```
 
-Your agent's state (threads, runs, assistants, store) persists in memory while the server is running - perfect for development and testing. Each run's state is tracked and can be inspected, making it easy to debug and improve your agent's behavior.
+### `langgraph build`
+
+Build a Docker image for your LangGraph.js application.
+
+```bash
+langgraph build
+```
+
+### `langgraph dockerfile`
+
+Generate a Dockerfile for custom deployments
+
+```bash
+langgraph dockerfile <save path>
+```
+
+## Configuration
+
+The CLI uses a `langgraph.json` configuration file with these key settings:
+
+```json
+{
+  "graphs": {
+    "graph": "./src/graph.ts:graph" // Required: Graph definitions
+  },
+  "node_version": "20",             // Optional: Node version (20 only at the moment)
+  "env": ".env",                    // Optional: Environment variables
+  "dockerfile_lines": []            // Optional: Additional Dockerfile commands
+}
+```
+
+See the [full documentation](https://langchain-ai.github.io/langgraph/cloud/reference/cli) for detailed configuration options.
 
