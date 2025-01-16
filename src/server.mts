@@ -57,13 +57,17 @@ export const StartServerSchema = z.object({
 });
 
 export async function startServer(options: z.infer<typeof StartServerSchema>) {
-  // TODO: Implement safe exit
-  logger.info(`Initializing storage`);
-  await Promise.all([
+  logger.info(`Initializing storage...`);
+  const callbacks = await Promise.all([
     opsConn.initialize(options.cwd),
     checkpointer.initialize(options.cwd),
     graphStore.initialize(options.cwd),
   ]);
+
+  const cleanup = async () => {
+    logger.info(`Flushing to persistent storage, exiting...`);
+    await Promise.all(callbacks.map((c) => c.flush()));
+  };
 
   logger.info(`Registering graphs from ${options.cwd}`);
   await registerFromEnv(options.graphs, { cwd: options.cwd });
@@ -71,12 +75,14 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
   logger.info(`Starting ${options.nWorkers} workers`);
   for (let i = 0; i < options.nWorkers; i++) queue();
 
-  return new Promise<string>((resolve) => {
-    serve(
-      { fetch: app.fetch, port: options.port, hostname: options.host },
-      (c) => {
-        resolve(`${c.address}:${c.port}`);
-      }
-    );
-  });
+  return new Promise<{ host: string; cleanup: () => Promise<void> }>(
+    (resolve) => {
+      serve(
+        { fetch: app.fetch, port: options.port, hostname: options.host },
+        (c) => {
+          resolve({ host: `${c.address}:${c.port}`, cleanup });
+        }
+      );
+    }
+  );
 }

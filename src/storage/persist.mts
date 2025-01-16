@@ -19,7 +19,7 @@ export class FileSystemPersistence<Schema> {
   private defaultSchema: () => Schema;
   private name: string;
 
-  private flushChain: Promise<void> = Promise.resolve<void>(undefined);
+  private flushTimeout: NodeJS.Timeout | undefined = undefined;
 
   constructor(name: `.${string}.json`, defaultSchema: () => Schema) {
     this.name = name;
@@ -35,27 +35,26 @@ export class FileSystemPersistence<Schema> {
       this.data = this.defaultSchema();
     }
 
-    this.flushChain = this.flushChain.then(async () => {
-      if (this.data == null || this.filepath == null) return;
-      await fs.mkdir(path.dirname(this.filepath), { recursive: true });
-    });
+    await fs
+      .mkdir(path.dirname(this.filepath), { recursive: true })
+      .catch(() => void 0);
 
     return this;
   }
 
+  protected async persist() {
+    if (this.data == null || this.filepath == null) return;
+    clearTimeout(this.flushTimeout);
+    await fs.writeFile(this.filepath, superjson.stringify(this.data), "utf-8");
+  }
+
   protected schedulePersist() {
-    this.flushChain = this.flushChain.then(async () => {
-      if (this.data == null || this.filepath == null) return;
-      await fs.writeFile(
-        this.filepath,
-        superjson.stringify(this.data),
-        "utf-8"
-      );
-    });
+    clearTimeout(this.flushTimeout);
+    this.flushTimeout = setTimeout(() => this.persist(), 3000);
   }
 
   async flush() {
-    await this.flushChain;
+    await this.persist();
   }
 
   async with<T>(fn: (data: Schema) => T) {

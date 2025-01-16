@@ -1,10 +1,13 @@
 import "../preload.mjs";
 
+import { asyncExitHook } from "exit-hook";
 import * as process from "node:process";
 import { startServer, StartServerSchema } from "../server.mjs";
 import { connectToServer } from "./utils/ipc/client.mjs";
 import { Client as LangSmithClient } from "langsmith";
 import { logger } from "../logging.mjs";
+
+logger.info(`Starting server...`);
 
 const [ppid, payload] = process.argv.slice(-2);
 const sendToParent = await connectToServer(+ppid);
@@ -19,7 +22,7 @@ const isTracingEnabled = () => {
   return value === "true";
 };
 
-const [host, organizationId] = await Promise.all([
+const [{ host, cleanup }, organizationId] = await Promise.all([
   startServer(StartServerSchema.parse(JSON.parse(payload))),
   (async () => {
     if (isTracingEnabled()) {
@@ -34,4 +37,5 @@ const [host, organizationId] = await Promise.all([
   })(),
 ]);
 
+asyncExitHook(cleanup, { wait: 1000 });
 sendToParent?.({ host, organizationId });
