@@ -108,6 +108,37 @@ function preprocessDebugCheckpointTask(task: DebugTask): StreamTaskResult {
   return cloneTask as StreamTaskResult;
 }
 
+const isConfigurablePresent = (
+  config: unknown
+): config is {
+  [key: string]: unknown;
+  callbacks?: unknown;
+  configurable: { [key: string]: unknown };
+} =>
+  typeof config === "object" &&
+  config != null &&
+  "configurable" in config &&
+  typeof config.configurable === "object" &&
+  config.configurable != null;
+
+const deleteInternalConfigurableFields = (config: unknown) => {
+  if (isConfigurablePresent(config)) {
+    const newConfig = {
+      ...config,
+      configurable: Object.fromEntries(
+        Object.entries(config.configurable).filter(
+          ([key]) => !key.startsWith("__")
+        )
+      ),
+    };
+
+    delete newConfig.callbacks;
+    return newConfig;
+  }
+
+  return config;
+};
+
 function preprocessDebugCheckpoint(payload: DebugCheckpoint): StreamCheckpoint {
   const result: Record<string, unknown> = {
     ...payload,
@@ -120,6 +151,9 @@ function preprocessDebugCheckpoint(payload: DebugCheckpoint): StreamCheckpoint {
   // TODO: use stream to LangGraph.JS
   result.parent_config = payload["parentConfig"];
   delete result.parentConfig;
+
+  result.config = deleteInternalConfigurableFields(result.config);
+  result.parent_config = deleteInternalConfigurableFields(result.parent_config);
 
   return result as StreamCheckpoint;
 }
