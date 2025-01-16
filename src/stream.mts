@@ -15,7 +15,10 @@ import {
   Send,
 } from "@langchain/langgraph";
 import type { Pregel } from "@langchain/langgraph/pregel";
-import { runnableConfigToCheckpoint } from "./utils/runnableConfig.mjs";
+import {
+  runnableConfigToCheckpoint,
+  taskRunnableConfigToCheckpoint,
+} from "./utils/runnableConfig.mjs";
 import { BaseMessageChunk, isBaseMessage } from "@langchain/core/messages";
 import { logger } from "./logging.mjs";
 
@@ -96,13 +99,13 @@ export type StreamTaskResult = Prettify<
 function preprocessDebugCheckpointTask(task: DebugTask): StreamTaskResult {
   if (
     !isRunnableConfig(task.state) ||
-    !runnableConfigToCheckpoint(task.state)
+    !taskRunnableConfigToCheckpoint(task.state)
   ) {
     return task as unknown as StreamTaskResult;
   }
 
   const cloneTask: Record<string, unknown> = { ...task };
-  cloneTask.checkpoint = runnableConfigToCheckpoint(task.state);
+  cloneTask.checkpoint = taskRunnableConfigToCheckpoint(task.state);
   delete cloneTask.state;
 
   return cloneTask as StreamTaskResult;
