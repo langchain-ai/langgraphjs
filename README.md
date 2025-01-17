@@ -12,36 +12,36 @@ npx @langchain/langgraph-cli
 
 ## Commands
 
-### `langgraph dev`
+### `langgraphjs dev`
 
 Run LangGraph.js API server in development mode with hot reloading.
 
 ```bash
-langgraph dev
+npx @langchain/langgraph-cli dev
 ```
 
-### `langgraph build`
+### `langgraphjs build`
 
 Build a Docker image for your LangGraph.js application.
 
 ```bash
-langgraph build
+npx @langchain/langgraph-cli build
 ```
 
-### `langgraph up`
+### `langgraphjs up`
 
 Run LangGraph.js API server in Docker.
 
 ```bash
-langgraph up
+npx @langchain/langgraph-cli up
 ```
 
-### `langgraph dockerfile`
+### `langgraphjs dockerfile`
 
 Generate a Dockerfile for custom deployments
 
 ```bash
-langgraph dockerfile <save path>
+npx @langchain/langgraph-cli dockerfile <save path>
 ```
 
 ## Configuration
