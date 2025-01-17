@@ -59,13 +59,8 @@ export const logError = (error: unknown) => {
   }
 };
 
-process.on("uncaughtException", (error) => {
-  logError(error);
-});
-
-process.on("unhandledRejection", (error) => {
-  logError(error);
-});
+process.on("uncaughtException", (error) => logError(error));
+process.on("unhandledRejection", (error) => logError(error));
 
 export const requestLogger = (): MiddlewareHandler =>
   honoLogger((message, ...rest) => {
