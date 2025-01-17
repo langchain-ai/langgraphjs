@@ -48,12 +48,23 @@ export const logger = createLogger({
           }),
         ])
   ),
-  transports: [
-    new transports.Console({
-      handleExceptions: true,
-      handleRejections: true,
-    }),
-  ],
+  transports: [new transports.Console()],
+});
+
+export const logError = (error: unknown) => {
+  if (error instanceof Error) {
+    logger.error(error.stack || error.message);
+  } else {
+    logger.error(String(error), { error });
+  }
+};
+
+process.on("uncaughtException", (error) => {
+  logError(error);
+});
+
+process.on("unhandledRejection", (error) => {
+  logError(error);
 });
 
 export const requestLogger = (): MiddlewareHandler =>
