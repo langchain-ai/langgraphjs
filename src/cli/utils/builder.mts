@@ -13,7 +13,7 @@ try {
     new URL("../../../package.json", import.meta.url)
   );
   const { version } = JSON.parse(await fs.readFile(packageJson, "utf-8"));
-  builder.version(version);
+  builder.version(version + "+js");
 } catch (error) {
   console.error(error);
   // pass
