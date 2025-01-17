@@ -2,6 +2,10 @@ import { createLogger, format, transports } from "winston";
 import { logger as honoLogger } from "hono/logger";
 import { consoleFormat } from "winston-console-format";
 import type { MiddlewareHandler } from "hono";
+import { parse as stacktraceParser } from "stacktrace-parser";
+import { readFileSync } from "fs";
+import { codeFrameColumns } from "@babel/code-frame";
+import path from "node:path";
 
 const LOG_JSON = process.env.LOG_JSON === "true";
 const LOG_LEVEL = process.env.LOG_LEVEL || "debug";
@@ -51,6 +55,55 @@ export const logger = createLogger({
   transports: [new transports.Console()],
 });
 
+const formatStack = (stack: string | undefined | null) => {
+  if (!stack) return stack;
+
+  const [firstFile] = stacktraceParser(stack).filter(
+    (item) =>
+      !item.file?.split(path.sep).includes("node_modules") &&
+      !item.file?.startsWith("node:")
+  );
+
+  if (firstFile?.file && firstFile?.lineNumber) {
+    const filePath = firstFile.file;
+    const line = firstFile.lineNumber;
+    const column = firstFile.column ?? 0;
+
+    const messageLines = stack.split("\n");
+    const spliceIndex = messageLines.findIndex((i) => i.includes(filePath));
+
+    const padding = " ".repeat(
+      Math.max(0, messageLines[spliceIndex].indexOf("at"))
+    );
+
+    const highlightCode = process.stdout.isTTY;
+
+    let codeFrame = codeFrameColumns(
+      readFileSync(filePath, "utf-8"),
+      { start: { line, column } },
+      { highlightCode }
+    );
+
+    codeFrame = codeFrame
+      .split("\n")
+      .map((i) => padding + i + "\x1b[0m")
+      .join("\n");
+
+    if (highlightCode) {
+      codeFrame = "\x1b[36m" + codeFrame + "\x1b[31m";
+    }
+
+    // insert codeframe after the line but dont lose the stack
+    return [
+      ...messageLines.slice(0, spliceIndex + 1),
+      codeFrame,
+      ...messageLines.slice(spliceIndex + 1),
+    ].join("\n");
+  }
+
+  return stack;
+};
+
 export const logError = (
   error: unknown,
   options?: {
@@ -62,7 +115,7 @@ export const logError = (
   let context = options?.context;
 
   if (error instanceof Error) {
-    message = error.stack || error.message;
+    message = formatStack(error.stack) || error.message;
   } else {
     message = String(error);
     context = { ...context, error };
