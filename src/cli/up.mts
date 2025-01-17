@@ -47,7 +47,7 @@ builder
     "-d, --docker-compose <path>",
     "Advanced: Path to docker-compose.yml file with additional services to launch"
   )
-  .option("-p, --port <port>", "Port to run the server on", "8000")
+  .option("-p, --port <port>", "Port to run the server on", "8123")
   .option("--recreate", "Force recreate containers and volumes", false)
   .option(
     "--no-pull",
