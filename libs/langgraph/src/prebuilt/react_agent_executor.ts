@@ -19,6 +19,7 @@ import {
   BaseCheckpointSaver,
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
+import { z } from "zod";
 
 import {
   END,
@@ -30,7 +31,12 @@ import {
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { ToolNode } from "./tool_node.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import { Annotation } from "../graph/annotation.js";
+import { Messages, messagesStateReducer } from "../graph/message.js";
 
+type StructuredResponse =
+  | z.ZodType<Record<string, unknown>>
+  | Record<string, unknown>;
 export interface AgentState {
   messages: BaseMessage[];
   // TODO: This won't be set until we
@@ -38,6 +44,7 @@ export interface AgentState {
   // Will be useful for inserting a message on
   // graph recursion end
   // is_last_step: boolean;
+  structuredResponse: StructuredResponse;
 }
 
 export type N = typeof START | "agent" | "tools";
@@ -153,6 +160,14 @@ export type MessageModifier =
   | ((messages: BaseMessage[]) => Promise<BaseMessage[]>)
   | Runnable;
 
+const ReactAgentAnnotation = Annotation.Root({
+  messages: Annotation<BaseMessage[], Messages>({
+    reducer: messagesStateReducer,
+    default: () => [],
+  }),
+  structuredResponse: Annotation<StructuredResponse>,
+});
+
 export type CreateReactAgentParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   A extends AnnotationRoot<any> = AnnotationRoot<any>
@@ -223,6 +238,19 @@ export type CreateReactAgentParams<
   /** An optional list of node names to interrupt after running. */
   interruptAfter?: N[] | All;
   store?: BaseStore;
+  /**
+   * An optional schema for the final agent output.
+   *
+   * If provided, output will be formatted to match the given schema and returned in the 'structured_response' state key.
+   * If not provided, `structured_response` will not be present in the output state.
+   *
+   * Can be passed in as:
+   *   - Zod schema
+   *   - Dictionary object
+   *   - [prompt, schema], where schema is one of the above.
+   *        The prompt will be used together with the model that is being used to generate the structured response.
+   */
+  responseFormat?: StructuredResponse | [string, StructuredResponse];
 };
 
 /**
@@ -290,6 +318,7 @@ export function createReactAgent<
     interruptBefore,
     interruptAfter,
     store,
+    responseFormat,
   } = params;
 
   let toolClasses: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
@@ -317,10 +346,33 @@ export function createReactAgent<
       isAIMessage(lastMessage) &&
       (!lastMessage.tool_calls || lastMessage.tool_calls.length === 0)
     ) {
-      return END;
+      return responseFormat ? "generate_structured_response" : END;
     } else {
       return "continue";
     }
+  };
+
+  const generateStructuredResponse = async (
+    state: AgentState,
+    config?: RunnableConfig
+  ) => {
+    // Exclude the last message as there's enough information
+    // for the LLM to generate the structured response
+    const messages = state.messages.slice(0, -1);
+    let structuredResponseSchema = responseFormat;
+
+    if (Array.isArray(responseFormat)) {
+      const [systemPrompt, schema] = responseFormat;
+      structuredResponseSchema = schema;
+      messages.unshift(new SystemMessage({ content: systemPrompt }));
+    }
+
+    const modelWithStructuredOutput = llm.withStructuredOutput(
+      structuredResponseSchema as StructuredResponse
+    );
+
+    const response = await modelWithStructuredOutput.invoke(messages, config);
+    return { structuredResponse: response };
   };
 
   const callModel = async (state: AgentState, config?: RunnableConfig) => {
@@ -328,15 +380,25 @@ export function createReactAgent<
     return { messages: [await modelRunnable.invoke(state, config)] };
   };
 
-  const workflow = new StateGraph(stateSchema ?? MessagesAnnotation)
+  const pathMap: Record<string, unknown> = {
+    continue: "tools",
+    [END]: END,
+  };
+
+  const workflow = new StateGraph(stateSchema ?? ReactAgentAnnotation)
     .addNode("agent", callModel)
     .addNode("tools", new ToolNode(toolClasses))
     .addEdge(START, "agent")
-    .addConditionalEdges("agent", shouldContinue, {
-      continue: "tools",
-      [END]: END,
-    })
     .addEdge("tools", "agent");
+
+  if (responseFormat) {
+    workflow
+      .addNode("generate_structured_response", generateStructuredResponse)
+      .addEdge("generate_structured_response", END);
+    pathMap.generate_structured_response = "generate_structured_response";
+  }
+
+  workflow.addConditionalEdges("agent", shouldContinue, pathMap);
 
   return workflow.compile({
     checkpointer: checkpointSaver,
