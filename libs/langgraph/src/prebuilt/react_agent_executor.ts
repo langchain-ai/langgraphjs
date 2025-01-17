@@ -35,6 +35,7 @@ import { Annotation } from "../graph/annotation.js";
 import { Messages, messagesStateReducer } from "../graph/message.js";
 
 export interface AgentState<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   StructuredResponseType extends Record<string, any> = Record<string, any>
 > {
   messages: BaseMessage[];
@@ -47,6 +48,12 @@ export interface AgentState<
 }
 
 export type N = typeof START | "agent" | "tools";
+
+export type StructuredResponseSchemaAndPrompt<StructuredResponseType> = {
+  prompt: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  schema: z.ZodType<StructuredResponseType> | Record<string, any>;
+};
 
 function _convertMessageModifierToStateModifier(
   messageModifier: MessageModifier
@@ -78,7 +85,7 @@ function _convertMessageModifierToStateModifier(
 }
 
 function _getStateModifierRunnable(
-  stateModifier: StateModifier | undefined
+  stateModifier?: StateModifier
 ): RunnableInterface {
   let stateModifierRunnable: RunnableInterface;
 
@@ -160,6 +167,7 @@ export type MessageModifier =
   | Runnable;
 
 export const createReactAgentAnnotation = <
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   T extends Record<string, any> = Record<string, any>
 >() =>
   Annotation.Root({
@@ -173,7 +181,8 @@ export const createReactAgentAnnotation = <
 export type CreateReactAgentParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   A extends AnnotationRoot<any> = AnnotationRoot<any>,
-  StructuredResponseType extends Record<string, any> = Record<string, any>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  StructuredResponseType = Record<string, any>
 > = {
   /** The chat model that can utilize OpenAI-style tool calling. */
   llm: BaseChatModel;
@@ -255,10 +264,8 @@ export type CreateReactAgentParams<
    */
   responseFormat?:
     | z.ZodType<StructuredResponseType>
-    | {
-        prompt: string;
-        schema: z.ZodType<StructuredResponseType> | Record<string, any>;
-      }
+    | StructuredResponseSchemaAndPrompt<StructuredResponseType>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     | Record<string, any>;
 };
 
@@ -306,20 +313,22 @@ export type CreateReactAgentParams<
  */
 
 export function createReactAgent<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/ban-types
   A extends AnnotationRoot<any> = AnnotationRoot<{}>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  T extends Record<string, any> = Record<string, any>
+  StructuredResponseFormat extends Record<string, any> = Record<string, any>
 >(
-  params: CreateReactAgentParams<A, T>
+  params: CreateReactAgentParams<A, StructuredResponseFormat>
 ): CompiledStateGraph<
   (typeof MessagesAnnotation)["State"],
   (typeof MessagesAnnotation)["Update"],
-  typeof params extends { responseFormat: any }
-    ? typeof START | "agent" | "tools" | "generate_structured_response"
-    : typeof START | "agent" | "tools",
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
   typeof MessagesAnnotation.spec & A["spec"],
-  ReturnType<typeof createReactAgentAnnotation<T>>["spec"] & A["spec"]
+  ReturnType<
+    typeof createReactAgentAnnotation<StructuredResponseFormat>
+  >["spec"] &
+    A["spec"]
 > {
   const {
     llm,
@@ -352,7 +361,7 @@ export function createReactAgent<
   );
   const modelRunnable = (preprocessor as Runnable).pipe(modelWithTools);
 
-  const shouldContinue = (state: AgentState<T>) => {
+  const shouldContinue = (state: AgentState<StructuredResponseFormat>) => {
     const { messages } = state;
     const lastMessage = messages[messages.length - 1];
     if (
@@ -366,7 +375,7 @@ export function createReactAgent<
   };
 
   const generateStructuredResponse = async (
-    state: AgentState<T>,
+    state: AgentState<StructuredResponseFormat>,
     config?: RunnableConfig
   ) => {
     if (responseFormat == null) {
@@ -395,20 +404,23 @@ export function createReactAgent<
     return { structuredResponse: response };
   };
 
-  const callModel = async (state: AgentState<T>, config?: RunnableConfig) => {
+  const callModel = async (
+    state: AgentState<StructuredResponseFormat>,
+    config?: RunnableConfig
+  ) => {
     // TODO: Auto-promote streaming.
     return { messages: [await modelRunnable.invoke(state, config)] };
   };
 
   const workflow = new StateGraph(
-    stateSchema ?? createReactAgentAnnotation<T>()
+    stateSchema ?? createReactAgentAnnotation<StructuredResponseFormat>()
   )
     .addNode("agent", callModel)
     .addNode("tools", new ToolNode(toolClasses))
     .addEdge(START, "agent")
     .addEdge("tools", "agent");
 
-  if (responseFormat) {
+  if (responseFormat !== undefined) {
     workflow
       .addNode("generate_structured_response", generateStructuredResponse)
       .addEdge("generate_structured_response", END)
