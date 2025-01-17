@@ -54,9 +54,14 @@ describe("createReactAgent with response format", () => {
 
     const result = await agent.invoke({
       messages: [new HumanMessage("What is the weather in San Francisco?")],
+      // @ts-expect-error should complain about passing unexpected keys
+      foo: "bar",
     });
 
     expect(result.structuredResponse).toBeInstanceOf(Object);
+
+    // @ts-expect-error should not allow access to unspecified keys
+    void result.structuredResponse.unspecified;
 
     // Assert it has the required keys
     expect(result.structuredResponse).toHaveProperty("answer");
@@ -123,8 +128,6 @@ describe("createReactAgent with response format", () => {
       messages: [new HumanMessage("What is the weather in San Francisco?")],
     });
 
-    void result.structuredResponse.notused;
-
     // Assert it has the required keys
     expect(result.structuredResponse).toHaveProperty("answer");
     expect(result.structuredResponse).toHaveProperty("reasoning");
@@ -185,6 +188,9 @@ describe("createReactAgent", () => {
     expect((lastMessage.content as string).toLowerCase()).toContain(
       "not too cold"
     );
+
+    // @ts-expect-error should not allow access to structuredResponse if no responseFormat is passed
+    void result.structuredResponse;
   });
 
   it("can stream a tool call with a checkpointer", async () => {

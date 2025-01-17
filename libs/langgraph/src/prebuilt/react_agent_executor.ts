@@ -159,7 +159,7 @@ export type MessageModifier =
   | ((messages: BaseMessage[]) => Promise<BaseMessage[]>)
   | Runnable;
 
-export const ReactAgentAnnotation = <
+export const createReactAgentAnnotation = <
   T extends Record<string, any> = Record<string, any>
 >() =>
   Annotation.Root({
@@ -255,11 +255,11 @@ export type CreateReactAgentParams<
    */
   responseFormat?:
     | z.ZodType<StructuredResponseType>
-    | Record<string, any>
     | {
         prompt: string;
         schema: z.ZodType<StructuredResponseType> | Record<string, any>;
-      };
+      }
+    | Record<string, any>;
 };
 
 /**
@@ -307,19 +307,19 @@ export type CreateReactAgentParams<
 
 export function createReactAgent<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  A extends AnnotationRoot<any> = AnnotationRoot<any>,
+  A extends AnnotationRoot<any> = AnnotationRoot<{}>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   T extends Record<string, any> = Record<string, any>
 >(
   params: CreateReactAgentParams<A, T>
 ): CompiledStateGraph<
-  ReturnType<typeof ReactAgentAnnotation<T>>["State"],
-  ReturnType<typeof ReactAgentAnnotation<T>>["Update"],
+  (typeof MessagesAnnotation)["State"],
+  (typeof MessagesAnnotation)["Update"],
   typeof params extends { responseFormat: any }
     ? typeof START | "agent" | "tools" | "generate_structured_response"
     : typeof START | "agent" | "tools",
-  ReturnType<typeof ReactAgentAnnotation<T>>["spec"] & A["spec"],
-  ReturnType<typeof ReactAgentAnnotation<T>>["spec"] & A["spec"]
+  typeof MessagesAnnotation.spec & A["spec"],
+  ReturnType<typeof createReactAgentAnnotation<T>>["spec"] & A["spec"]
 > {
   const {
     llm,
@@ -359,7 +359,7 @@ export function createReactAgent<
       isAIMessage(lastMessage) &&
       (!lastMessage.tool_calls || lastMessage.tool_calls.length === 0)
     ) {
-      return responseFormat ? "generate_structured_response" : END;
+      return responseFormat != null ? "generate_structured_response" : END;
     } else {
       return "continue";
     }
@@ -369,10 +369,15 @@ export function createReactAgent<
     state: AgentState<T>,
     config?: RunnableConfig
   ) => {
+    if (responseFormat == null) {
+      throw new Error(
+        "Attempted to generate structured output with no passed response schema. Please contact us for help."
+      );
+    }
     // Exclude the last message as there's enough information
     // for the LLM to generate the structured response
     const messages = state.messages.slice(0, -1);
-    let structuredResponseSchema = responseFormat;
+    let modelWithStructuredOutput;
 
     if (
       typeof responseFormat === "object" &&
@@ -380,13 +385,11 @@ export function createReactAgent<
       "schema" in responseFormat
     ) {
       const { prompt, schema } = responseFormat;
-      structuredResponseSchema = schema;
+      modelWithStructuredOutput = llm.withStructuredOutput(schema);
       messages.unshift(new SystemMessage({ content: prompt }));
+    } else {
+      modelWithStructuredOutput = llm.withStructuredOutput(responseFormat);
     }
-
-    const modelWithStructuredOutput = llm.withStructuredOutput(
-      structuredResponseSchema
-    );
 
     const response = await modelWithStructuredOutput.invoke(messages, config);
     return { structuredResponse: response };
@@ -397,7 +400,9 @@ export function createReactAgent<
     return { messages: [await modelRunnable.invoke(state, config)] };
   };
 
-  const workflow = new StateGraph(stateSchema ?? ReactAgentAnnotation<T>())
+  const workflow = new StateGraph(
+    stateSchema ?? createReactAgentAnnotation<T>()
+  )
     .addNode("agent", callModel)
     .addNode("tools", new ToolNode(toolClasses))
     .addEdge(START, "agent")
