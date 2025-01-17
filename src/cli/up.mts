@@ -20,8 +20,23 @@ const getProjectName = (configPath: string) => {
 };
 
 const stream = <T extends { spawnargs: string[] }>(proc: T): T => {
-  logger.info(`Running "${proc.spawnargs.join(" ")}"`);
+  logger.debug(`Running "${proc.spawnargs.join(" ")}"`);
   return proc;
+};
+
+const waitForHealthcheck = async (port: number) => {
+  const now = Date.now();
+  while (Date.now() - now < 10_000) {
+    const ok = await fetch(`http://localhost:${port}/ok`).then(
+      (res) => res.ok,
+      () => false
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    if (ok) return true;
+  }
+
+  throw new Error("Healthcheck timed out");
 };
 
 builder
@@ -129,38 +144,28 @@ builder
     }
 
     logger.info(`Launching docker-compose...`);
-    const execInput = $({
-      ...execOpts,
-      input,
-      stdout: "pipe",
-      stderr: "inherit",
-    });
-
     const cmd =
       capabilities.composeType === "plugin"
         ? ["docker", "compose"]
         : ["docker-compose"];
+    cmd.push("--project-directory", cwd, "--project-name", name);
 
-    cmd.push("--project-directory", cwd);
-    cmd.push("--project-name", name);
     const userCompose = params.dockerCompose || config.docker_compose_file;
     if (userCompose) cmd.push("-f", userCompose);
     cmd.push("-f", "-");
 
-    const up = stream(execInput`${cmd} up ${args}`);
-    up.stdout.on("data", (data) => {
-      process.stdout.write(data);
-
-      if (data.toString().includes("Application startup complete")) {
+    const up = stream($({ ...execOpts, input })`${cmd} up ${args}`);
+    waitForHealthcheck(+params.port).then(
+      () => {
         logger.info(`
           Ready!
           - API: http://localhost:${params.port}
           - Docs: http://localhost:${params.port}/docs
           - LangGraph Studio: https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:${params.port}
         `);
-      }
-    });
+      },
+      () => void 0
+    );
 
-    // TODO: sometimes the promise resolves earlier than compose finishes gracefully exiting
     await up.catch(() => void 0);
   });
