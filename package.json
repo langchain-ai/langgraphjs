@@ -8,7 +8,7 @@
   "license": "Elastic-2.0",
   "main": "./dist/server.mjs",
   "bin": {
-    "langgraph": "dist/cli/cli.mjs"
+    "langgraphjs": "dist/cli/cli.mjs"
   },
   "files": [
     "dist/"
