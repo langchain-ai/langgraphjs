@@ -9,6 +9,17 @@ import { getProjectPath } from "./utils/project.mjs";
 import { builder } from "./utils/builder.mjs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import dedent from "dedent";
+import { logger } from "../logging.mjs";
+
+const fileExists = async (path: string) => {
+  try {
+    await fs.access(path);
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
 
 builder
   .command("dockerfile")
@@ -29,12 +40,14 @@ builder
     const dockerfile = await configToDocker(configPath, config, localDeps);
 
     if (savePath === "-") {
-      console.log(dockerfile);
+      process.stdout.write(dockerfile);
+      process.stdout.write("\n");
       return;
     }
 
-    const targetPath = path.resolve(process.cwd(), savePath, "Dockerfile");
+    const targetPath = path.resolve(process.cwd(), savePath);
     await fs.writeFile(targetPath, dockerfile);
+    logger.info(`✅ Created: ${path.basename(targetPath)}`);
 
     if (options.addDockerCompose) {
       const { apiDef } = await configToCompose(configPath, config, {
@@ -45,13 +58,82 @@ builder
       const compose = createCompose(capabilities, { apiDef });
 
       const composePath = path.resolve(
-        process.cwd(),
-        savePath,
+        path.dirname(targetPath),
         "docker-compose.yml"
       );
 
       await fs.writeFile(composePath, compose);
+      logger.info("✅ Created: .docker-compose.yml");
 
-      // TODO: add .dockerignore and .env files
+      const dockerignorePath = path.resolve(
+        path.dirname(targetPath),
+        ".dockerignore"
+      );
+
+      if (!fileExists(dockerignorePath)) {
+        await fs.writeFile(
+          dockerignorePath,
+          dedent`
+            # Ignore node_modules and other dependency directories
+            node_modules
+            bower_components
+            vendor
+  
+            # Ignore logs and temporary files
+            *.log
+            *.tmp
+            *.swp
+  
+            # Ignore .env files and other environment files
+            .env
+            .env.*
+            *.local
+  
+            # Ignore git-related files
+            .git
+            .gitignore
+  
+            # Ignore Docker-related files and configs
+            .dockerignore
+            docker-compose.yml
+  
+            # Ignore build and cache directories
+            dist
+            build
+            .cache
+            __pycache__
+  
+            # Ignore IDE and editor configurations
+            .vscode
+            .idea
+            *.sublime-project
+            *.sublime-workspace
+            .DS_Store  # macOS-specific
+  
+            # Ignore test and coverage files
+            coverage
+            *.coverage
+            *.test.js
+            *.spec.js
+            tests
+          `
+        );
+        logger.info(`✅ Created: ${path.basename(dockerignorePath)}`);
+      }
+
+      const envPath = path.resolve(path.dirname(targetPath), ".env");
+      if (!fileExists(envPath)) {
+        await fs.writeFile(
+          envPath,
+          dedent`
+            # Uncomment the following line to add your LangSmith API key
+            # LANGSMITH_API_KEY=your-api-key
+            # Or if you have a LangGraph Cloud license key, then uncomment the following line:
+            # LANGGRAPH_CLOUD_LICENSE_KEY=your-license-key
+            # Add any other environment variables go below...
+          `
+        );
+        logger.info(`✅ Created: ${path.basename(envPath)}`);
+      }
     }
   });
