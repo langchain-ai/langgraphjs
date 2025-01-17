@@ -34,17 +34,16 @@ import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { Annotation } from "../graph/annotation.js";
 import { Messages, messagesStateReducer } from "../graph/message.js";
 
-type StructuredResponse =
-  | z.ZodType<Record<string, unknown>>
-  | Record<string, unknown>;
-export interface AgentState {
+export interface AgentState<
+  StructuredResponseType extends Record<string, any> = Record<string, any>
+> {
   messages: BaseMessage[];
   // TODO: This won't be set until we
   // implement managed values in LangGraphJS
   // Will be useful for inserting a message on
   // graph recursion end
   // is_last_step: boolean;
-  structuredResponse: StructuredResponse;
+  structuredResponse: StructuredResponseType;
 }
 
 export type N = typeof START | "agent" | "tools";
@@ -160,17 +159,21 @@ export type MessageModifier =
   | ((messages: BaseMessage[]) => Promise<BaseMessage[]>)
   | Runnable;
 
-const ReactAgentAnnotation = Annotation.Root({
-  messages: Annotation<BaseMessage[], Messages>({
-    reducer: messagesStateReducer,
-    default: () => [],
-  }),
-  structuredResponse: Annotation<StructuredResponse>,
-});
+export const ReactAgentAnnotation = <
+  T extends Record<string, any> = Record<string, any>
+>() =>
+  Annotation.Root({
+    messages: Annotation<BaseMessage[], Messages>({
+      reducer: messagesStateReducer,
+      default: () => [],
+    }),
+    structuredResponse: Annotation<T>,
+  });
 
 export type CreateReactAgentParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  A extends AnnotationRoot<any> = AnnotationRoot<any>
+  A extends AnnotationRoot<any> = AnnotationRoot<any>,
+  StructuredResponseType extends Record<string, any> = Record<string, any>
 > = {
   /** The chat model that can utilize OpenAI-style tool calling. */
   llm: BaseChatModel;
@@ -250,7 +253,13 @@ export type CreateReactAgentParams<
    *   - [prompt, schema], where schema is one of the above.
    *        The prompt will be used together with the model that is being used to generate the structured response.
    */
-  responseFormat?: StructuredResponse | [string, StructuredResponse];
+  responseFormat?:
+    | z.ZodType<StructuredResponseType>
+    | Record<string, any>
+    | {
+        prompt: string;
+        schema: z.ZodType<StructuredResponseType> | Record<string, any>;
+      };
 };
 
 /**
@@ -298,15 +307,19 @@ export type CreateReactAgentParams<
 
 export function createReactAgent<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  A extends AnnotationRoot<any> = AnnotationRoot<any>
+  A extends AnnotationRoot<any> = AnnotationRoot<any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  T extends Record<string, any> = Record<string, any>
 >(
-  params: CreateReactAgentParams<A>
+  params: CreateReactAgentParams<A, T>
 ): CompiledStateGraph<
-  (typeof MessagesAnnotation)["State"],
-  (typeof MessagesAnnotation)["Update"],
-  typeof START | "agent" | "tools",
-  typeof MessagesAnnotation.spec & A["spec"],
-  typeof MessagesAnnotation.spec & A["spec"]
+  ReturnType<typeof ReactAgentAnnotation<T>>["State"],
+  ReturnType<typeof ReactAgentAnnotation<T>>["Update"],
+  typeof params extends { responseFormat: any }
+    ? typeof START | "agent" | "tools" | "generate_structured_response"
+    : typeof START | "agent" | "tools",
+  ReturnType<typeof ReactAgentAnnotation<T>>["spec"] & A["spec"],
+  ReturnType<typeof ReactAgentAnnotation<T>>["spec"] & A["spec"]
 > {
   const {
     llm,
@@ -339,7 +352,7 @@ export function createReactAgent<
   );
   const modelRunnable = (preprocessor as Runnable).pipe(modelWithTools);
 
-  const shouldContinue = (state: AgentState) => {
+  const shouldContinue = (state: AgentState<T>) => {
     const { messages } = state;
     const lastMessage = messages[messages.length - 1];
     if (
@@ -353,7 +366,7 @@ export function createReactAgent<
   };
 
   const generateStructuredResponse = async (
-    state: AgentState,
+    state: AgentState<T>,
     config?: RunnableConfig
   ) => {
     // Exclude the last message as there's enough information
@@ -361,26 +374,30 @@ export function createReactAgent<
     const messages = state.messages.slice(0, -1);
     let structuredResponseSchema = responseFormat;
 
-    if (Array.isArray(responseFormat)) {
-      const [systemPrompt, schema] = responseFormat;
+    if (
+      typeof responseFormat === "object" &&
+      "prompt" in responseFormat &&
+      "schema" in responseFormat
+    ) {
+      const { prompt, schema } = responseFormat;
       structuredResponseSchema = schema;
-      messages.unshift(new SystemMessage({ content: systemPrompt }));
+      messages.unshift(new SystemMessage({ content: prompt }));
     }
 
     const modelWithStructuredOutput = llm.withStructuredOutput(
-      structuredResponseSchema as StructuredResponse
+      structuredResponseSchema
     );
 
     const response = await modelWithStructuredOutput.invoke(messages, config);
     return { structuredResponse: response };
   };
 
-  const callModel = async (state: AgentState, config?: RunnableConfig) => {
+  const callModel = async (state: AgentState<T>, config?: RunnableConfig) => {
     // TODO: Auto-promote streaming.
     return { messages: [await modelRunnable.invoke(state, config)] };
   };
 
-  const workflow = new StateGraph(stateSchema ?? ReactAgentAnnotation)
+  const workflow = new StateGraph(stateSchema ?? ReactAgentAnnotation<T>())
     .addNode("agent", callModel)
     .addNode("tools", new ToolNode(toolClasses))
     .addEdge(START, "agent")

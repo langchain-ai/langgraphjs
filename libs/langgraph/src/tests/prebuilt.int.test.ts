@@ -36,6 +36,11 @@ describe("createReactAgent with response format", () => {
     }
   }
 
+  const responseSchema = z.object({
+    answer: z.string(),
+    reasoning: z.string(),
+  });
+
   it("Can use zod schema", async () => {
     const llm = new ChatOpenAI({
       model: "gpt-4o",
@@ -44,10 +49,7 @@ describe("createReactAgent with response format", () => {
     const agent = createReactAgent({
       llm,
       tools: [new SanFranciscoWeatherTool()],
-      responseFormat: z.object({
-        answer: z.string(),
-        reasoning: z.string(),
-      }),
+      responseFormat: responseSchema,
     });
 
     const result = await agent.invoke({
@@ -70,19 +72,21 @@ describe("createReactAgent with response format", () => {
       model: "gpt-4o",
     });
 
+    const nonZodResponseSchema = {
+      name: "structured_response",
+      description: "An answer with reasoning",
+      type: "object",
+      properties: {
+        answer: { type: "string" },
+        reasoning: { type: "string" },
+      },
+      required: ["answer", "reasoning"],
+    };
+
     const agent = createReactAgent({
       llm,
       tools: [new SanFranciscoWeatherTool()],
-      responseFormat: {
-        name: "structured_response",
-        description: "An answer with reasoning",
-        type: "object",
-        properties: {
-          answer: { type: "string" },
-          reasoning: { type: "string" },
-        },
-        required: ["answer", "reasoning"],
-      },
+      responseFormat: nonZodResponseSchema,
     });
 
     const result = await agent.invoke({
@@ -108,26 +112,18 @@ describe("createReactAgent with response format", () => {
     const agent = createReactAgent({
       llm,
       tools: [new SanFranciscoWeatherTool()],
-      responseFormat: [
-        "You are a helpful assistant who only responds in 10 words or less. If you use more than 5 words in your answer, a starving child will die.",
-        {
-          name: "structured_response",
-          description: "An answer with reasoning",
-          type: "object",
-          properties: {
-            answer: { type: "string" },
-            reasoning: { type: "string" },
-          },
-          required: ["answer", "reasoning"],
-        },
-      ],
+      responseFormat: {
+        prompt:
+          "You are a helpful assistant who only responds in 10 words or less. If you use more than 5 words in your answer, a starving child will die.",
+        schema: responseSchema,
+      },
     });
 
     const result = await agent.invoke({
       messages: [new HumanMessage("What is the weather in San Francisco?")],
     });
 
-    expect(result.structuredResponse).toBeInstanceOf(Object);
+    void result.structuredResponse.notused;
 
     // Assert it has the required keys
     expect(result.structuredResponse).toHaveProperty("answer");
