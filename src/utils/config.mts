@@ -40,7 +40,7 @@ export const PythonConfigSchema = BaseConfigSchema.merge(
 );
 
 export const NodeConfigSchema = BaseConfigSchema.merge(
-  z.object({ node_version: z.literal("20") })
+  z.object({ node_version: z.literal("20").default("20") })
 );
 
 export const ConfigSchema = z.union([NodeConfigSchema, PythonConfigSchema]);
