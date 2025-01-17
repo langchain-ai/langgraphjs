@@ -12,6 +12,7 @@ import { $ } from "execa";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { logger } from "../logging.mjs";
+import { withAnalytics } from "./utils/analytics.mjs";
 
 const stream = <T extends { spawnargs: string[] }>(proc: T): T => {
   logger.info(`Running "${proc.spawnargs.join(" ")}"`);
@@ -29,6 +30,13 @@ builder
   )
   .argument("[args...]")
   .passThroughOptions()
+  .hook(
+    "preAction",
+    withAnalytics((command) => ({
+      config: command.opts().config !== process.cwd(),
+      pull: command.opts().pull,
+    }))
+  )
   .action(async (pass, params) => {
     const configPath = await getProjectPath(params.config);
     await getDockerCapabilities();

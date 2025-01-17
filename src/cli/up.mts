@@ -10,6 +10,7 @@ import { getExecaOptions } from "../docker/shell.mjs";
 import { $ } from "execa";
 import { createHash } from "node:crypto";
 import dedent from "dedent";
+import { withAnalytics } from "./utils/analytics.mjs";
 
 const sha256 = (input: string) =>
   createHash("sha256").update(input).digest("hex");
@@ -62,6 +63,19 @@ builder
   .option(
     "--postgres-uri <uri>",
     "Postgres URI to use for the database. Defaults to launching a local database"
+  )
+  .hook(
+    "preAction",
+    withAnalytics((command) => ({
+      config: command.opts().config !== process.cwd(),
+      port: command.opts().port !== "8123",
+      postgres_uri: !!command.opts().postgresUri,
+      docker_compose: !!command.opts().dockerCompose,
+      recreate: command.opts().recreate,
+      pull: command.opts().pull,
+      watch: command.opts().watch,
+      wait: command.opts().wait,
+    }))
   )
   .action(async (params) => {
     logger.info("Starting LangGraph API server...");

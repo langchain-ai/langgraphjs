@@ -12,6 +12,7 @@ import { getProjectPath } from "./utils/project.mjs";
 import { getConfig } from "../utils/config.mjs";
 import { builder } from "./utils/builder.mjs";
 import { logger } from "../logging.mjs";
+import { withAnalytics } from "./utils/analytics.mjs";
 
 builder
   .command("dev")
@@ -25,6 +26,15 @@ builder
   .option("-c, --config <path>", "path to configuration file", process.cwd())
   .allowExcessArguments()
   .allowUnknownOption()
+  .hook(
+    "preAction",
+    withAnalytics((command) => ({
+      config: command.opts().config !== process.cwd(),
+      port: command.opts().port !== "2024",
+      host: command.opts().host !== "localhost",
+      n_jobs_per_worker: command.opts().nJobsPerWorker !== "10",
+    }))
+  )
   .action(async (options, { args }) => {
     try {
       const configPath = await getProjectPath(options.config);

@@ -11,6 +11,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import dedent from "dedent";
 import { logger } from "../logging.mjs";
+import { withAnalytics } from "./utils/analytics.mjs";
 
 const fileExists = async (path: string) => {
   try {
@@ -32,6 +33,13 @@ builder
     "Add additional files for running the LangGraph API server with docker-compose. These files include a docker-compose.yml, .env file, and a .dockerignore file."
   )
   .option("-c, --config <path>", "Path to configuration file", process.cwd())
+  .hook(
+    "preAction",
+    withAnalytics((command) => ({
+      config: command.opts().config !== process.cwd(),
+      add_docker_compose: !!command.opts().addDockerCompose,
+    }))
+  )
   .action(async (savePath, options) => {
     const configPath = await getProjectPath(options.config);
     const config = getConfig(await fs.readFile(configPath, "utf-8"));
