@@ -28,6 +28,14 @@ Build a Docker image for your LangGraph.js application.
 langgraph build
 ```
 
+### `langgraph up`
+
+Run LangGraph.js API server in Docker.
+
+```bash
+langgraph up
+```
+
 ### `langgraph dockerfile`
 
 Generate a Dockerfile for custom deployments
@@ -45,11 +53,10 @@ The CLI uses a `langgraph.json` configuration file with these key settings:
   "graphs": {
     "graph": "./src/graph.ts:graph" // Required: Graph definitions
   },
-  "node_version": "20",             // Optional: Node version (20 only at the moment)
-  "env": ".env",                    // Optional: Environment variables
-  "dockerfile_lines": []            // Optional: Additional Dockerfile commands
+  "node_version": "20", // Optional: Node version (20 only at the moment)
+  "env": ".env", // Optional: Environment variables
+  "dockerfile_lines": [] // Optional: Additional Dockerfile commands
 }
 ```
 
 See the [full documentation](https://langchain-ai.github.io/langgraph/cloud/reference/cli) for detailed configuration options.
-
