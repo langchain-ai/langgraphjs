@@ -11,7 +11,7 @@ import { createIpcServer } from "./utils/ipc/server.mjs";
 import { getProjectPath } from "./utils/project.mjs";
 import { getConfig } from "../utils/config.mjs";
 import { builder } from "./utils/builder.mjs";
-import { logger } from "../logging.mjs";
+import { logError, logger } from "../logging.mjs";
 import { withAnalytics } from "./utils/analytics.mjs";
 
 builder
@@ -150,6 +150,6 @@ builder
         child?.kill();
       });
     } catch (error) {
-      logger.error(error);
+      logError(error, { prefix: "Failed to launch server" });
     }
   });

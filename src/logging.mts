@@ -51,12 +51,25 @@ export const logger = createLogger({
   transports: [new transports.Console()],
 });
 
-export const logError = (error: unknown) => {
-  if (error instanceof Error) {
-    logger.error(error.stack || error.message);
-  } else {
-    logger.error(String(error), { error });
+export const logError = (
+  error: unknown,
+  options?: {
+    context?: Record<string, unknown>;
+    prefix?: string;
   }
+) => {
+  let message;
+  let context = options?.context;
+
+  if (error instanceof Error) {
+    message = error.stack || error.message;
+  } else {
+    message = String(error);
+    context = { ...context, error };
+  }
+
+  if (options?.prefix != null) message = `${options.prefix}:\n${message}`;
+  logger.error(message, ...(context != null ? [context] : []));
 };
 
 process.on("uncaughtException", (error) => logError(error));

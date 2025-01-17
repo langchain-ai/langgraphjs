@@ -12,7 +12,7 @@ import {
   jsonExtra,
   waitKeepAlive,
 } from "../utils/hono.mjs";
-import { logger } from "../logging.mjs";
+import { logError, logger } from "../logging.mjs";
 import { v4 as uuid4 } from "uuid";
 
 const api = new Hono();
@@ -171,7 +171,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
         await stream.writeSSE({ data: serialiseAsDict(data), event });
       }
     } catch (error) {
-      logger.error("Error streaming run", { error });
+      logError(error, { prefix: "Error streaming run" });
     }
   });
 });
@@ -273,7 +273,7 @@ api.post(
           await stream.writeSSE({ data: serialiseAsDict(data), event });
         }
       } catch (error) {
-        logger.error("Error streaming run", { error });
+        logError(error, { prefix: "Error streaming run" });
       }
     });
   }

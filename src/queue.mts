@@ -4,7 +4,7 @@ import {
   type StreamTaskResult,
   streamState,
 } from "./stream.mjs";
-import { logger } from "./logging.mjs";
+import { logError, logger } from "./logging.mjs";
 import { serializeError } from "./utils/serde.mjs";
 
 const MAX_RETRY_ATTEMPTS = 3;
@@ -82,14 +82,16 @@ const worker = async (run: Run, attempt: number, abortSignal: AbortSignal) => {
     const endedAt = new Date();
     if (error instanceof Error) exception = error;
 
-    logger.info("Background run failed", {
-      exc_info: error,
-      run_id: run.run_id,
-      run_attempt: attempt,
-      run_created_at: run.created_at,
-      run_started_at: startedAt,
-      run_ended_at: endedAt,
-      run_exec_ms: endedAt.valueOf() - startedAt.valueOf(),
+    logError(error, {
+      prefix: "Background run failed",
+      context: {
+        run_id: run.run_id,
+        run_attempt: attempt,
+        run_created_at: run.created_at,
+        run_started_at: startedAt,
+        run_ended_at: endedAt,
+        run_exec_ms: endedAt.valueOf() - startedAt.valueOf(),
+      },
     });
     await Runs.setStatus(run.run_id, "error");
   } finally {
