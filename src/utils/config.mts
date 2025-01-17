@@ -18,7 +18,7 @@ const StoreConfigSchema = z.object({
 const BaseConfigSchema = z.object({
   docker_compose_file: z.string().optional(),
   dockerfile_lines: z.array(z.string()).default([]),
-  graphs: z.record(z.string()).default({}),
+  graphs: z.record(z.string()),
   env: z
     .union([z.array(z.string()), z.record(z.string()), z.string()])
     .default({}),
@@ -27,7 +27,7 @@ const BaseConfigSchema = z.object({
   auth: AuthConfigSchema.optional(),
 });
 
-export const PythonConfigSchema = BaseConfigSchema.merge(
+const PythonConfigSchema = BaseConfigSchema.merge(
   z.object({
     python_version: z
       .union([z.literal("3.11"), z.literal("3.12")])
@@ -39,12 +39,36 @@ export const PythonConfigSchema = BaseConfigSchema.merge(
   })
 );
 
-export const NodeConfigSchema = BaseConfigSchema.merge(
+const NodeConfigSchema = BaseConfigSchema.merge(
   z.object({ node_version: z.literal("20").default("20") })
 );
 
-export const ConfigSchema = z.union([NodeConfigSchema, PythonConfigSchema]);
+const ConfigSchema = z.union([NodeConfigSchema, PythonConfigSchema]);
 
 export type PythonConfig = z.infer<typeof PythonConfigSchema>;
 export type NodeConfig = z.infer<typeof NodeConfigSchema>;
+
 export type Config = z.infer<typeof ConfigSchema>;
+import * as path from "node:path";
+
+export type InputNodeConfig = z.input<typeof NodeConfigSchema>;
+export type InputPythonConfig = z.input<typeof PythonConfigSchema>;
+export type InputConfig = z.input<typeof ConfigSchema>;
+
+const PYTHON_EXTENSIONS = [".py", ".pyx", ".pyd", ".pyi"];
+
+// TODO: implement this in Python CLI
+export const getConfig = (config: InputConfig | string) => {
+  const rawConfig = typeof config === "string" ? JSON.parse(config) : config;
+  const { graphs } = BaseConfigSchema.parse(rawConfig);
+
+  const preferPython = Object.values(graphs).every((i) =>
+    PYTHON_EXTENSIONS.includes(path.extname(i.split(":")[0]))
+  );
+
+  if (preferPython) {
+    return z.union([PythonConfigSchema, NodeConfigSchema]).parse(rawConfig);
+  }
+
+  return z.union([NodeConfigSchema, PythonConfigSchema]).parse(rawConfig);
+};

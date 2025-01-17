@@ -8,7 +8,7 @@ import open from "open";
 import * as dotenv from "dotenv";
 
 import { logger } from "../logging.mjs";
-import { ConfigSchema } from "../utils/config.mjs";
+import { getConfig } from "../utils/config.mjs";
 import { createIpcServer } from "./utils/ipc/server.mjs";
 import { z } from "zod";
 import { watch } from "chokidar";
@@ -96,9 +96,7 @@ For production use, please use LangGraph Cloud.
       }
 
       const prepareContext = async () => {
-        const config = ConfigSchema.parse(
-          JSON.parse(await fs.readFile(configPath, "utf-8"))
-        );
+        const config = getConfig(await fs.readFile(configPath, "utf-8"));
         const newWatch = [configPath];
         const env = { ...process.env } as NodeJS.ProcessEnv;
         const configEnv = config?.env;

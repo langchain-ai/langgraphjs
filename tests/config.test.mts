@@ -5,8 +5,8 @@ import {
   configToCompose,
   configToDocker,
   configToWatch,
-} from "../src/docker/dockerfile.mjs";
-import { type Config, ConfigSchema } from "../src/utils/config.mjs";
+} from "../src/docker/docker.mjs";
+import { type Config, getConfig } from "../src/utils/config.mjs";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
@@ -86,11 +86,11 @@ describe("config to docker", () => {
 
   it("simple", async () => {
     const graphs = { agent: "./agent.py:graph" };
-    const config: Config = {
+    const config = getConfig({
       ...DEFAULT_CONFIG,
       dependencies: ["."],
       graphs,
-    };
+    });
 
     const actual = await configToDocker(
       PATH_TO_CONFIG,
@@ -117,12 +117,12 @@ describe("config to docker", () => {
 
   it("pipconfig", async () => {
     const graphs = { agent: "./agent.py:graph" };
-    const config: Config = {
+    const config = getConfig({
       ...DEFAULT_CONFIG,
       dependencies: ["."],
       graphs,
       pip_config_file: "pipconfig.txt",
-    };
+    });
     const actual = await configToDocker(
       PATH_TO_CONFIG,
       config,
@@ -151,11 +151,11 @@ describe("config to docker", () => {
     // test missing local dependencies
     await expect(async () => {
       const graphs = { agent: "./agent.py:graph" };
-      const config: Config = {
+      const config = getConfig({
         ...DEFAULT_CONFIG,
         dependencies: ["./missing"],
         graphs,
-      };
+      });
 
       await configToDocker(
         PATH_TO_CONFIG,
@@ -167,11 +167,11 @@ describe("config to docker", () => {
     // test missing local module
     await expect(async () => {
       const graphs = { agent: "./missing.py:graph" };
-      const config: Config = {
+      const config = getConfig({
         ...DEFAULT_CONFIG,
         dependencies: ["."],
         graphs,
-      };
+      });
 
       await configToDocker(
         PATH_TO_CONFIG,
@@ -183,11 +183,11 @@ describe("config to docker", () => {
 
   it("local deps", async () => {
     const graphs = { agent: "./graphs/agent.py:graph" };
-    const config: Config = {
+    const config = getConfig({
       ...DEFAULT_CONFIG,
       dependencies: ["./graphs"],
       graphs,
-    };
+    });
 
     const actual = await configToDocker(
       PATH_TO_CONFIG,
@@ -225,11 +225,11 @@ describe("config to docker", () => {
     );
 
     const graphs = { agent: "./graphs/agent.py:graph" };
-    const config: Config = {
+    const config = getConfig({
       ...DEFAULT_CONFIG,
       dependencies: ["."],
       graphs,
-    };
+    });
 
     const actual = await configToDocker(
       PATH_TO_CONFIG,
@@ -249,14 +249,14 @@ describe("config to docker", () => {
 
   it("e2e", async () => {
     const graphs = { agent: "./graphs/agent.py:graph" };
-    const config: Config = {
+    const config = getConfig({
       python_version: "3.12" as const,
       dependencies: ["./graphs/", "langchain", "langchain_openai"],
       graphs: graphs,
       pip_config_file: "pipconfig.txt",
       dockerfile_lines: ["ARG woof", "ARG foo"],
       env: {},
-    };
+    });
 
     const actual = await configToDocker(
       PATH_TO_CONFIG,
@@ -286,12 +286,12 @@ describe("config to docker", () => {
 
   it("js", async () => {
     const graphs = { agent: "./agent.js:graph" };
-    const config: Config = {
+    const config = getConfig({
       dockerfile_lines: [],
       env: {},
       node_version: "20" as const,
       graphs,
-    };
+    });
 
     const actual = await configToDocker(
       PATH_TO_CONFIG,
@@ -613,7 +613,7 @@ describe("packaging", () => {
     rel: string
   ): Promise<[path: string, config: Config]> {
     const res = path.resolve(__dirname, rel);
-    const config = ConfigSchema.parse(
+    const config = getConfig(
       JSON.parse(await fs.readFile(res, { encoding: "utf-8" }))
     );
     return [res, config];
@@ -717,7 +717,7 @@ describe("packaging", () => {
 it("node config and python config", () => {
   // node config
   expect(
-    ConfigSchema.parse({
+    getConfig({
       node_version: "20",
       dockerfile_lines: [],
       dependencies: ["."],
@@ -732,7 +732,7 @@ it("node config and python config", () => {
 
   // python config
   expect(
-    ConfigSchema.parse({
+    getConfig({
       dockerfile_lines: [],
       env: {},
       python_version: "3.11" as const,
@@ -751,7 +751,7 @@ it("node config and python config", () => {
 
   // default config
   expect(
-    ConfigSchema.parse({
+    getConfig({
       dependencies: ["."],
       graphs: { agent: "./agent.py:graph" },
     })

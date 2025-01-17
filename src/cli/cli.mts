@@ -2,7 +2,7 @@
 import { builder } from "./utils/builder.mjs";
 
 import "./dev.mjs";
-import "./dockerfile.mjs";
+import "./docker.mjs";
 import "./build.mjs";
 // import "./up.mjs";
 

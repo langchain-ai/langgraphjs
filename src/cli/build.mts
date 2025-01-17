@@ -3,9 +3,9 @@ import {
   assembleLocalDeps,
   configToDocker,
   getBaseImage,
-} from "../docker/dockerfile.mjs";
+} from "../docker/docker.mjs";
 import { getExecaOptions } from "../docker/shell.mjs";
-import { ConfigSchema } from "../utils/config.mjs";
+import { getConfig } from "../utils/config.mjs";
 import { builder } from "./utils/builder.mjs";
 import { getProjectPath } from "./utils/project.mjs";
 import { $ } from "execa";
@@ -34,9 +34,7 @@ builder
     await getDockerCapabilities();
 
     const projectDir = path.dirname(configPath);
-    const config = ConfigSchema.parse(
-      JSON.parse(await fs.readFile(configPath, "utf-8"))
-    );
+    const config = getConfig(await fs.readFile(configPath, "utf-8"));
 
     const opts = await getExecaOptions({
       cwd: projectDir,

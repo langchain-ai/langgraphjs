@@ -2,9 +2,9 @@ import {
   assembleLocalDeps,
   configToCompose,
   configToDocker,
-} from "../docker/dockerfile.mjs";
+} from "../docker/docker.mjs";
 import { createCompose, getDockerCapabilities } from "../docker/compose.mjs";
-import { ConfigSchema } from "../utils/config.mjs";
+import { getConfig } from "../utils/config.mjs";
 import { getProjectPath } from "./utils/project.mjs";
 import { builder } from "./utils/builder.mjs";
 import * as fs from "node:fs/promises";
@@ -23,9 +23,7 @@ builder
   .option("-c, --config <path>", "Path to configuration file", process.cwd())
   .action(async (savePath, options) => {
     const configPath = await getProjectPath(options.config);
-    const config = ConfigSchema.parse(
-      JSON.parse(await fs.readFile(configPath, "utf-8"))
-    );
+    const config = getConfig(await fs.readFile(configPath, "utf-8"));
 
     const localDeps = await assembleLocalDeps(configPath, config);
     const dockerfile = await configToDocker(configPath, config, localDeps);
