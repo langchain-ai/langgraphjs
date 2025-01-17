@@ -380,11 +380,6 @@ export function createReactAgent<
     return { messages: [await modelRunnable.invoke(state, config)] };
   };
 
-  const pathMap: Record<string, string> = {
-    continue: "tools",
-    [END]: END,
-  };
-
   const workflow = new StateGraph(stateSchema ?? ReactAgentAnnotation)
     .addNode("agent", callModel)
     .addNode("tools", new ToolNode(toolClasses))
@@ -394,11 +389,18 @@ export function createReactAgent<
   if (responseFormat) {
     workflow
       .addNode("generate_structured_response", generateStructuredResponse)
-      .addEdge("generate_structured_response", END);
-    pathMap.generate_structured_response = "generate_structured_response";
+      .addEdge("generate_structured_response", END)
+      .addConditionalEdges("agent", shouldContinue, {
+        continue: "tools",
+        [END]: END,
+        generate_structured_response: "generate_structured_response",
+      });
+  } else {
+    workflow.addConditionalEdges("agent", shouldContinue, {
+      continue: "tools",
+      [END]: END,
+    });
   }
-
-  workflow.addConditionalEdges("agent", shouldContinue, pathMap);
 
   return workflow.compile({
     checkpointer: checkpointSaver,
