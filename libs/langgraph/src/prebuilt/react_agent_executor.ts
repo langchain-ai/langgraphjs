@@ -380,7 +380,7 @@ export function createReactAgent<
     return { messages: [await modelRunnable.invoke(state, config)] };
   };
 
-  const pathMap: Record<string, unknown> = {
+  const pathMap: Record<string, string> = {
     continue: "tools",
     [END]: END,
   };
