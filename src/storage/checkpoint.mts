@@ -177,6 +177,11 @@ class InMemorySaver extends MemorySaver {
       }
     });
   }
+
+  toJSON() {
+    // Prevent serialization of internal state
+    return "[InMemorySaver]";
+  }
 }
 
 export const checkpointer = new InMemorySaver();

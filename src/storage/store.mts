@@ -58,5 +58,10 @@ class InMemoryStore extends BaseMemoryStore {
   ): ReturnType<BaseMemoryStore["listNamespaces"]> {
     return await conn.with(() => super.listNamespaces(...args));
   }
+
+  toJSON() {
+    // Prevent serialization of internal state
+    return "[InMemoryStore]";
+  }
 }
 export const store = new InMemoryStore();
