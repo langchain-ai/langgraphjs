@@ -10,6 +10,11 @@ The LangGraph.js CLI is a multi-platform command-line tool for building and runn
 
 The LangGraph.js CLI can be installed from the NPM registry:
 
+=== "npx"
+    ```bash
+    npx @langchain/langgraph-cli
+    ```
+
 === "npm"
     ```bash
     npm install @langchain/langgraph-cli
@@ -30,11 +35,6 @@ The LangGraph.js CLI can be installed from the NPM registry:
     bun add @langchain/langgraph-cli
     ```
 
-=== "npx"
-    ```bash
-    npx @langchain/langgraph-cli
-    ```
-
 ## Commands
 
 The CLI provides the following core functionality:
@@ -52,8 +52,20 @@ The `langgraph dev` command starts a lightweight development server that require
 
 **Note**: This command is intended for local development and testing only. It is not recommended for production use.
 
+### `up`
+
+The `langgraph up` command starts an instance of the [LangGraph API server](./langgraph_server.md) locally in a docker container. This requires the docker server to be running locally. It also requires a LangSmith API key for local development or a license key for production use.
+
+The server includes all API endpoints for your graph's runs, threads, assistants, etc. as well as the other services required to run your agent, including a managed database for checkpointing and storage.
+
 ### `dockerfile`
 
 The `langgraph dockerfile` command generates a [Dockerfile](https://docs.docker.com/reference/dockerfile/) that can be used to build images for and deploy instances of the [LangGraph API server](./langgraph_server.md). This is useful if you want to further customize the dockerfile or deploy in a more custom way.
+
+
+??? note "Updating your langgraph.json file"
+    The `langgraph dockerfile` command translates all the configuration in your `langgraph.json` file into Dockerfile commands. When using this command, you will have to re-run it whenever you update your `langgraph.json` file. Otherwise, your changes will not be reflected when you build or run the dockerfile.
+
+## Related
 
 - [LangGraph CLI API Reference](https://langchain-ai.github.io/langgraph/cloud/reference/cli/)
