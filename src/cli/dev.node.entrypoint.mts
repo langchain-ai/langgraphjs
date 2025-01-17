@@ -22,8 +22,10 @@ const isTracingEnabled = () => {
   return value === "true";
 };
 
+const options = StartServerSchema.parse(JSON.parse(payload));
+
 const [{ host, cleanup }, organizationId] = await Promise.all([
-  startServer(StartServerSchema.parse(JSON.parse(payload))),
+  startServer(options),
   (async () => {
     if (isTracingEnabled()) {
       try {
@@ -37,5 +39,10 @@ const [{ host, cleanup }, organizationId] = await Promise.all([
   })(),
 ]);
 
+logger.info(`Server running at ${host}`);
+
+let queryParams = `?baseUrl=http://${options.host}:${options.port}`;
+if (organizationId) queryParams += `&organizationId=${organizationId}`;
+
 asyncExitHook(cleanup, { wait: 1000 });
-sendToParent?.({ host, organizationId });
+sendToParent?.({ queryParams });

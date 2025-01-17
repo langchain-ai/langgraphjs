@@ -1,22 +1,17 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import type { ChildProcess } from "node:child_process";
 
-import { spawn } from "node:child_process";
-import open from "open";
-import * as dotenv from "dotenv";
-
-import { logger } from "../logging.mjs";
-import { getConfig } from "../utils/config.mjs";
-import { createIpcServer } from "./utils/ipc/server.mjs";
-import { z } from "zod";
+import { parse, populate } from "dotenv";
 import { watch } from "chokidar";
-import { builder } from "./utils/builder.mjs";
-import { getProjectPath } from "./utils/project.mjs";
+import { z } from "zod";
+import open from "open";
 
-const tsxTarget = new URL("../../cli.mjs", import.meta.resolve("tsx/esm/api"));
-const entrypointTarget = new URL(import.meta.resolve("./dev.entrypoint.mjs"));
+import { createIpcServer } from "./utils/ipc/server.mjs";
+import { getProjectPath } from "./utils/project.mjs";
+import { getConfig } from "../utils/config.mjs";
+import { builder } from "./utils/builder.mjs";
+import { logger } from "../logging.mjs";
 
 builder
   .command("dev")
@@ -28,7 +23,9 @@ builder
   .option("--no-browser", "disable auto-opening the browser")
   .option("-n, --n-jobs-per-worker <number>", "number of workers to run", "10")
   .option("-c, --config <path>", "path to configuration file", process.cwd())
-  .action(async (options) => {
+  .allowExcessArguments()
+  .allowUnknownOption()
+  .action(async (options, { args }) => {
     try {
       const configPath = await getProjectPath(options.config);
       const projectCwd = path.dirname(configPath);
@@ -41,41 +38,11 @@ builder
       let hasOpenedFlag = false;
       let child: ChildProcess | undefined = undefined;
 
-      const localUrl = `http://${options.host}:${options.port}`;
-      const studioUrl = `https://smith.langchain.com/studio?baseUrl=${
-        localUrl
-      }`;
-
-      console.log(
-        `
-         Welcome to
-
-╦  ┌─┐┌┐┌┌─┐╔═╗┬─┐┌─┐┌─┐┬ ┬
-║  ├─┤││││ ┬║ ╦├┬┘├─┤├─┘├─┤
-╩═╝┴ ┴┘└┘└─┘╚═╝┴└─┴ ┴┴  ┴ ┴.js
-
-- 🚀 API: \x1b[36m${localUrl}\x1b[0m
-- 🎨 Studio UI: \x1b[36m${studioUrl}\x1b[0m
-
-This in-memory server is designed for development and testing.
-For production use, please use LangGraph Cloud.
-
-`
-      );
-
       server.on("data", (data) => {
-        const { host, organizationId } = z
-          .object({ host: z.string(), organizationId: z.string().nullish() })
-          .parse(data);
-        logger.info(`Server running at ${host}`);
-
+        const response = z.object({ queryParams: z.string() }).parse(data);
         if (options.browser && !hasOpenedFlag) {
           hasOpenedFlag = true;
-          open(
-            organizationId
-              ? `${studioUrl}&organizationId=${organizationId}`
-              : studioUrl
-          );
+          open(`https://smith.langchain.com/studio${response.queryParams}`);
         }
       });
 
@@ -107,15 +74,12 @@ For production use, please use LangGraph Cloud.
             newWatch.push(envPath);
 
             const envData = await fs.readFile(envPath, "utf-8");
-            dotenv.populate(
-              env as Record<string, string>,
-              dotenv.parse(envData)
-            );
+            populate(env as Record<string, string>, parse(envData));
           } else if (Array.isArray(configEnv)) {
             throw new Error("Env storage is not supported by CLI.");
           } else if (typeof configEnv === "object") {
             if (!process.env) throw new Error("process.env is not defined");
-            dotenv.populate(env as Record<string, string>, configEnv);
+            populate(env as Record<string, string>, configEnv);
           }
         }
 
@@ -136,37 +100,39 @@ For production use, please use LangGraph Cloud.
         return { config, env };
       };
 
-      const launchTsx = async () => {
+      const launchServer = async () => {
         const { config, env } = await prepareContext();
         if (child != null) child.kill();
 
-        child = spawn(
-          process.execPath,
-          [
-            fileURLToPath(tsxTarget),
-            "watch",
-            "--clear-screen=false",
-            fileURLToPath(entrypointTarget),
-            pid.toString(),
-            JSON.stringify({
-              port: Number.parseInt(options.port, 10),
-              nWorkers: Number.parseInt(options.nJobsPerWorker, 10),
-              host: options.host,
-              graphs: config.graphs,
-              cwd: projectCwd,
-            }),
-          ],
-          { stdio: ["inherit", "inherit", "inherit", "ipc"], env }
-        );
+        if ("python_version" in config) {
+          logger.warn(
+            "Launching Python server from @langchain/langgraph-cli is experimental. Please use the `langgraph-cli` package from PyPi instead."
+          );
+
+          const { spawnPythonServer } = await import("./dev.python.mjs");
+          child = await spawnPythonServer(
+            { ...options, rest: args },
+            { configPath, config, env },
+            { pid, projectCwd }
+          );
+        } else {
+          const { spawnNodeServer } = await import("./dev.node.mjs");
+          child = await spawnNodeServer(
+            { ...options, rest: args },
+            { configPath, config, env },
+            { pid, projectCwd }
+          );
+        }
       };
 
       watcher.on("all", async (_name, path) => {
         logger.warn(`Detected changes in ${path}, restarting server`);
-        launchTsx();
+        launchServer();
       });
 
-      // TODO: handle errors
-      launchTsx();
+      // TODO: sometimes the server keeps sending stuff
+      // while gracefully exiting
+      launchServer();
 
       process.on("exit", () => {
         watcher.close();
