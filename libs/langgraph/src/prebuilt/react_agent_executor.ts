@@ -19,6 +19,7 @@ import {
   BaseCheckpointSaver,
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
+import { z } from "zod";
 
 import {
   END,
@@ -30,17 +31,29 @@ import {
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { ToolNode } from "./tool_node.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import { Annotation } from "../graph/annotation.js";
+import { Messages, messagesStateReducer } from "../graph/message.js";
 
-export interface AgentState {
+export interface AgentState<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  StructuredResponseType extends Record<string, any> = Record<string, any>
+> {
   messages: BaseMessage[];
   // TODO: This won't be set until we
   // implement managed values in LangGraphJS
   // Will be useful for inserting a message on
   // graph recursion end
   // is_last_step: boolean;
+  structuredResponse: StructuredResponseType;
 }
 
 export type N = typeof START | "agent" | "tools";
+
+export type StructuredResponseSchemaAndPrompt<StructuredResponseType> = {
+  prompt: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  schema: z.ZodType<StructuredResponseType> | Record<string, any>;
+};
 
 function _convertMessageModifierToStateModifier(
   messageModifier: MessageModifier
@@ -72,7 +85,7 @@ function _convertMessageModifierToStateModifier(
 }
 
 function _getStateModifierRunnable(
-  stateModifier: StateModifier | undefined
+  stateModifier?: StateModifier
 ): RunnableInterface {
   let stateModifierRunnable: RunnableInterface;
 
@@ -153,9 +166,23 @@ export type MessageModifier =
   | ((messages: BaseMessage[]) => Promise<BaseMessage[]>)
   | Runnable;
 
+export const createReactAgentAnnotation = <
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  T extends Record<string, any> = Record<string, any>
+>() =>
+  Annotation.Root({
+    messages: Annotation<BaseMessage[], Messages>({
+      reducer: messagesStateReducer,
+      default: () => [],
+    }),
+    structuredResponse: Annotation<T>,
+  });
+
 export type CreateReactAgentParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  A extends AnnotationRoot<any> = AnnotationRoot<any>
+  A extends AnnotationRoot<any> = AnnotationRoot<any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  StructuredResponseType = Record<string, any>
 > = {
   /** The chat model that can utilize OpenAI-style tool calling. */
   llm: BaseChatModel;
@@ -223,6 +250,23 @@ export type CreateReactAgentParams<
   /** An optional list of node names to interrupt after running. */
   interruptAfter?: N[] | All;
   store?: BaseStore;
+  /**
+   * An optional schema for the final agent output.
+   *
+   * If provided, output will be formatted to match the given schema and returned in the 'structured_response' state key.
+   * If not provided, `structured_response` will not be present in the output state.
+   *
+   * Can be passed in as:
+   *   - Zod schema
+   *   - Dictionary object
+   *   - [prompt, schema], where schema is one of the above.
+   *        The prompt will be used together with the model that is being used to generate the structured response.
+   */
+  responseFormat?:
+    | z.ZodType<StructuredResponseType>
+    | StructuredResponseSchemaAndPrompt<StructuredResponseType>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    | Record<string, any>;
 };
 
 /**
@@ -269,16 +313,22 @@ export type CreateReactAgentParams<
  */
 
 export function createReactAgent<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/ban-types
+  A extends AnnotationRoot<any> = AnnotationRoot<{}>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  A extends AnnotationRoot<any> = AnnotationRoot<any>
+  StructuredResponseFormat extends Record<string, any> = Record<string, any>
 >(
-  params: CreateReactAgentParams<A>
+  params: CreateReactAgentParams<A, StructuredResponseFormat>
 ): CompiledStateGraph<
   (typeof MessagesAnnotation)["State"],
   (typeof MessagesAnnotation)["Update"],
-  typeof START | "agent" | "tools",
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
   typeof MessagesAnnotation.spec & A["spec"],
-  typeof MessagesAnnotation.spec & A["spec"]
+  ReturnType<
+    typeof createReactAgentAnnotation<StructuredResponseFormat>
+  >["spec"] &
+    A["spec"]
 > {
   const {
     llm,
@@ -290,6 +340,7 @@ export function createReactAgent<
     interruptBefore,
     interruptAfter,
     store,
+    responseFormat,
   } = params;
 
   let toolClasses: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
@@ -310,33 +361,80 @@ export function createReactAgent<
   );
   const modelRunnable = (preprocessor as Runnable).pipe(modelWithTools);
 
-  const shouldContinue = (state: AgentState) => {
+  const shouldContinue = (state: AgentState<StructuredResponseFormat>) => {
     const { messages } = state;
     const lastMessage = messages[messages.length - 1];
     if (
       isAIMessage(lastMessage) &&
       (!lastMessage.tool_calls || lastMessage.tool_calls.length === 0)
     ) {
-      return END;
+      return responseFormat != null ? "generate_structured_response" : END;
     } else {
       return "continue";
     }
   };
 
-  const callModel = async (state: AgentState, config?: RunnableConfig) => {
+  const generateStructuredResponse = async (
+    state: AgentState<StructuredResponseFormat>,
+    config?: RunnableConfig
+  ) => {
+    if (responseFormat == null) {
+      throw new Error(
+        "Attempted to generate structured output with no passed response schema. Please contact us for help."
+      );
+    }
+    // Exclude the last message as there's enough information
+    // for the LLM to generate the structured response
+    const messages = state.messages.slice(0, -1);
+    let modelWithStructuredOutput;
+
+    if (
+      typeof responseFormat === "object" &&
+      "prompt" in responseFormat &&
+      "schema" in responseFormat
+    ) {
+      const { prompt, schema } = responseFormat;
+      modelWithStructuredOutput = llm.withStructuredOutput(schema);
+      messages.unshift(new SystemMessage({ content: prompt }));
+    } else {
+      modelWithStructuredOutput = llm.withStructuredOutput(responseFormat);
+    }
+
+    const response = await modelWithStructuredOutput.invoke(messages, config);
+    return { structuredResponse: response };
+  };
+
+  const callModel = async (
+    state: AgentState<StructuredResponseFormat>,
+    config?: RunnableConfig
+  ) => {
     // TODO: Auto-promote streaming.
     return { messages: [await modelRunnable.invoke(state, config)] };
   };
 
-  const workflow = new StateGraph(stateSchema ?? MessagesAnnotation)
+  const workflow = new StateGraph(
+    stateSchema ?? createReactAgentAnnotation<StructuredResponseFormat>()
+  )
     .addNode("agent", callModel)
     .addNode("tools", new ToolNode(toolClasses))
     .addEdge(START, "agent")
-    .addConditionalEdges("agent", shouldContinue, {
+    .addEdge("tools", "agent");
+
+  if (responseFormat !== undefined) {
+    workflow
+      .addNode("generate_structured_response", generateStructuredResponse)
+      .addEdge("generate_structured_response", END)
+      .addConditionalEdges("agent", shouldContinue, {
+        continue: "tools",
+        [END]: END,
+        generate_structured_response: "generate_structured_response",
+      });
+  } else {
+    workflow.addConditionalEdges("agent", shouldContinue, {
       continue: "tools",
       [END]: END,
-    })
-    .addEdge("tools", "agent");
+    });
+  }
 
   return workflow.compile({
     checkpointer: checkpointSaver,
