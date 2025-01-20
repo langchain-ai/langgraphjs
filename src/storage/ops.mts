@@ -961,7 +961,11 @@ export class Runs {
   ): Promise<Run[]> {
     return conn.with(async (STORE) => {
       const assistant = STORE.assistants[assistantId];
-      if (!assistant) return [];
+      if (!assistant) {
+        throw new HTTPException(404, {
+          message: `No assistant found for "${assistantId}". Make sure the assistant ID is for a valid assistant or a valid graph ID.`,
+        });
+      }
 
       const ifNotExists = options?.ifNotExists ?? "reject";
       const multitaskStrategy = options?.multitaskStrategy ?? "reject";

@@ -1026,6 +1026,23 @@ describe("runs", () => {
     thread = await client.threads.get(thread.thread_id);
     expect(thread.status).toBe("interrupted");
   });
+
+  it.only.concurrent("non-existent graph id", async () => {
+    const thread = await client.threads.create();
+    const input = {
+      messages: [{ type: "human", content: "foo", id: "initial-message" }],
+    };
+
+    await expect(
+      client.runs.wait(thread.thread_id, "non-existent", { input })
+    ).rejects.toThrow(/No assistant found for/);
+
+    await expect(
+      gatherIterator(
+        client.runs.stream(thread.thread_id, "non-existent", { input })
+      )
+    ).rejects.toThrow(/No assistant found for/);
+  });
 });
 
 describe("shared state", () => {
