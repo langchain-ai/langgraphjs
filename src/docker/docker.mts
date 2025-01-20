@@ -267,10 +267,11 @@ export async function nodeConfigToDocker(
       .then((a) => a.isFile())
       .catch(() => false);
 
-  const [npm, yarn, pnpm] = await Promise.all([
+  const [npm, yarn, pnpm, bun] = await Promise.all([
     testFile("package-lock.json"),
     testFile("yarn.lock"),
     testFile("pnpm-lock.yaml"),
+    testFile("bun.lockb"),
   ]);
 
   let installCmd = "npm i";
@@ -281,6 +282,8 @@ export async function nodeConfigToDocker(
     installCmd = "pnpm i --frozen-lockfile";
   } else if (npm) {
     installCmd = "npm ci";
+  } else if (bun) {
+    installCmd = "bun i";
   }
 
   const lines: string[] = [
