@@ -1260,6 +1260,7 @@ export class Pregel<
 
         const runner = new PregelRunner({
           loop,
+          nodeFinished: config.configurable?.nodeFinished,
         });
 
         if (options?.subgraphs) {

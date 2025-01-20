@@ -1,7 +1,18 @@
 import { PendingWrite } from "@langchain/langgraph-checkpoint";
-import { PregelExecutableTask } from "./types.js";
-import { RetryPolicy } from "./utils/index.js";
-import { CONFIG_KEY_SEND, ERROR, INTERRUPT, RESUME } from "../constants.js";
+import { Call, PregelExecutableTask } from "./types.js";
+import { patchConfigurable, RetryPolicy } from "./utils/index.js";
+import {
+  CONFIG_KEY_SEND,
+  CONFIG_KEY_SCRATCHPAD,
+  PUSH,
+  ERROR,
+  INTERRUPT,
+  RESUME,
+  NO_WRITES,
+  TAG_HIDDEN,
+  RETURN,
+  CONFIG_KEY_CALL,
+} from "../constants.js";
 import {
   GraphInterrupt,
   isGraphBubbleUp,
@@ -39,14 +50,23 @@ export type TickOptions = {
  * Responsible for handling task execution on each tick of the @see PregelLoop.
  */
 export class PregelRunner {
-  loop: PregelLoop;
+  private nodeFinished?: (id: string) => void;
+
+  private loop: PregelLoop;
 
   /**
    * Construct a new PregelRunner, which executes tasks from the provided PregelLoop.
    * @param loop - The PregelLoop that produces tasks for this runner to execute.
    */
-  constructor({ loop }: { loop: PregelLoop }) {
+  constructor({
+    loop,
+    nodeFinished,
+  }: {
+    loop: PregelLoop;
+    nodeFinished?: (id: string) => void;
+  }) {
     this.loop = loop;
+    this.nodeFinished = nodeFinished;
   }
 
   /**
@@ -56,24 +76,24 @@ export class PregelRunner {
    * @param options - Options for the execution.
    */
   async tick(options: TickOptions = {}): Promise<void> {
-    const tasks = Object.values(this.loop.tasks);
-
     const { timeout, signal, retryPolicy, onStepWrite } = options;
 
+    let graphInterrupt: GraphInterrupt | undefined;
+
     // Start task execution
-    const pendingTasks = tasks.filter((t) => t.writes.length === 0);
+    const pendingTasks = Object.values(this.loop.tasks).filter(
+      (t) => t.writes.length === 0
+    );
+
     const taskStream = this._executeTasksWithRetry(pendingTasks, {
       stepTimeout: timeout,
       signal,
       retryPolicy,
     });
 
-    let graphInterrupt: GraphInterrupt | undefined;
-
     for await (const { task, error } of taskStream) {
       graphInterrupt = this._commit(task, error) ?? graphInterrupt;
     }
-
     onStepWrite?.(
       this.loop.step,
       Object.values(this.loop.tasks)
@@ -113,10 +133,137 @@ export class PregelRunner {
 
     const writer = (
       task: PregelExecutableTask<string, string>,
-      writes: Array<[string, unknown]>
+      writes: Array<[string, unknown]>,
+      { calls }: { calls?: Call[] } = {}
     ): Array<Promise<unknown> | undefined> => {
-      // placeholder function - will have logic added when functional API is implemented
-      return task.config?.configurable?.[CONFIG_KEY_SEND]?.(writes) ?? [];
+      if (writes.every(([channel]) => channel !== PUSH)) {
+        return task.config?.configurable?.[CONFIG_KEY_SEND]?.(writes) ?? [];
+      }
+
+      // TODO: type the scratchpad stuff, extract boilerplate
+      // Schedule PUSH tasks, collect promises
+      if (task.config?.configurable?.[CONFIG_KEY_SCRATCHPAD] == null) {
+        patchConfigurable(task.config, {
+          [CONFIG_KEY_SCRATCHPAD]: {},
+        });
+      }
+      const scratchpad = task.config?.configurable?.[
+        CONFIG_KEY_SCRATCHPAD
+      ] as Record<string, unknown>;
+      scratchpad.callCounter = (scratchpad.callCounter as number) ?? 0;
+
+      const rtn: Record<number, Promise<unknown> | undefined> = {};
+
+      for (const [idx, write] of writes.entries()) {
+        const [channel] = write;
+        if (channel !== PUSH) {
+          continue;
+        }
+
+        const wcall = calls?.[idx];
+        const cnt = scratchpad.callCounter as number;
+        scratchpad.callCounter = cnt + 1;
+
+        if (wcall == null) {
+          throw new Error("BUG: No call found");
+        }
+
+        const nextTask = this.loop.acceptPush(task, cnt, wcall);
+
+        if (!nextTask) {
+          continue;
+        }
+
+        // Check if this task is already running
+        const existingPromise = executingTasksMap[nextTask.id];
+
+        if (existingPromise !== undefined) {
+          // If the parent task was retried, the next task might already be running
+          rtn[idx] = existingPromise;
+        } else if (nextTask.writes.length > 0) {
+          // If it already ran, return the result
+          const returns = nextTask.writes.filter(([c]) => c === RETURN);
+          const errors = nextTask.writes.filter(([c]) => c === ERROR);
+
+          if (returns.length > 0) {
+            // Task completed successfully
+            if (returns.length === 1) {
+              rtn[idx] = Promise.resolve(returns[0][1]);
+            } else {
+              // the only way this should happen is if the task executes multiple times and writes aren't cleared
+              throw new Error(
+                `BUG: multiple returns found for task ${nextTask.name}__${nextTask.id}`
+              );
+            }
+          } else if (errors.length > 0) {
+            if (errors.length === 1) {
+              const errorValue = errors[0][1];
+              // Task failed
+              const error =
+                // eslint-disable-next-line no-instanceof/no-instanceof
+                errorValue instanceof Error
+                  ? errorValue
+                  : new Error(String(errorValue));
+
+              rtn[idx] = Promise.reject(error);
+            } else {
+              // the only way this should happen is if the task executes multiple times and writes aren't cleared
+              throw new Error(
+                `BUG: multiple errors found for task ${nextTask.name}__${nextTask.id}`
+              );
+            }
+          }
+        } else {
+          // Schedule the next task with retry
+          const prom = _runWithRetry<string, string>(nextTask, retryPolicy, {
+            [CONFIG_KEY_SEND]: writer.bind(this, nextTask),
+            // eslint-disable-next-line @typescript-eslint/no-use-before-define
+            [CONFIG_KEY_CALL]: call.bind(this, nextTask),
+          });
+
+          executingTasksMap[nextTask.id] = prom;
+
+          rtn[idx] = prom.then(({ result, error }) => {
+            if (error) {
+              return Promise.reject(error);
+            }
+
+            return result;
+          });
+        }
+      }
+
+      return Object.values(rtn);
+    };
+
+    const call = (
+      task: PregelExecutableTask<string, string>,
+      func: (...args: unknown[]) => unknown | Promise<unknown>,
+      name: string,
+      input: unknown,
+      options: { retry?: RetryPolicy; callbacks?: unknown } = {}
+    ) => {
+      const result = writer(task, [[PUSH, null]], {
+        calls: [
+          new Call({
+            func,
+            name,
+            input,
+            retry: options.retry,
+            callbacks: options.callbacks,
+          }),
+        ],
+      });
+
+      // eslint-disable-next-line no-instanceof/no-instanceof
+      if (result !== undefined) {
+        if (result.length === 1) {
+          return result[0];
+        }
+        return Promise.all(result);
+      }
+
+      return Promise.resolve(result);
     };
 
     if (stepTimeout && signal) {
@@ -147,6 +294,7 @@ export class PregelRunner {
             pregelTask.id,
             _runWithRetry(pregelTask, retryPolicy, {
               [CONFIG_KEY_SEND]: writer?.bind(this, pregelTask),
+              [CONFIG_KEY_CALL]: call?.bind(this, pregelTask),
             }).catch((error) => {
               return { task: pregelTask, error };
             }),
@@ -212,6 +360,18 @@ export class PregelRunner {
         throw error;
       }
     } else {
+      if (
+        this.nodeFinished &&
+        (task.config?.tags == null || !task.config.tags.includes(TAG_HIDDEN))
+      ) {
+        this.nodeFinished(String(task.name));
+      }
+
+      if (task.writes.length === 0) {
+        // Add no writes marker
+        task.writes.push([NO_WRITES, null]);
+      }
+
       // Save task writes to checkpointer
       this.loop.putWrites(task.id, task.writes);
     }

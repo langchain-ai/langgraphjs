@@ -21,7 +21,7 @@ import {
   createCheckpoint,
   emptyChannels,
 } from "../channels/base.js";
-import { PregelExecutableTask, StreamMode } from "./types.js";
+import { Call, PregelExecutableTask, StreamMode, TaskPath } from "./types.js";
 import {
   isCommand,
   CHECKPOINT_NAMESPACE_SEPARATOR,
@@ -36,10 +36,12 @@ import {
   NULL_TASK_ID,
   RESUME,
   TAG_HIDDEN,
+  PUSH,
 } from "../constants.js";
 import {
   _applyWrites,
   _prepareNextTasks,
+  _prepareSingleTask,
   increment,
   shouldInterrupt,
   WritesProtocol,
@@ -68,6 +70,7 @@ import {
   mapDebugTasks,
   mapDebugCheckpoint,
   mapDebugTaskResults,
+  printStepTasks,
 } from "./debug.js";
 import { PregelNode } from "./read.js";
 import { ManagedValueMapping, WritableManagedValue } from "../managed/base.js";
@@ -759,6 +762,59 @@ export class PregelLoop {
     return suppress;
   }
 
+  acceptPush(
+    task: PregelExecutableTask<string, string>,
+    writeIdx: number,
+    call?: Call
+  ): PregelExecutableTask<string, string> | void {
+    if (
+      this.interruptAfter?.length > 0 &&
+      shouldInterrupt(this.checkpoint, this.interruptAfter, [task])
+    ) {
+      this.toInterrupt.push(task);
+      return;
+    }
+
+    const pushed = _prepareSingleTask(
+      [PUSH, task.path ?? [], writeIdx, task.id, call] as TaskPath,
+      this.checkpoint,
+      task.writes.map(([c, v]) => [task.id, c, v]),
+      this.nodes,
+      this.channels,
+      this.managed,
+      this.config,
+      true,
+      {
+        step: this.step,
+        checkpointer: this.checkpointer,
+        manager: this.manager,
+        store: this.store,
+      }
+    );
+    if (pushed) {
+      if (
+        this.interruptBefore?.length > 0 &&
+        shouldInterrupt(this.checkpoint, this.interruptBefore, [pushed])
+      ) {
+        this.toInterrupt.push(pushed);
+        return;
+      }
+      this._emit(
+        gatherIteratorSync(
+          prefixGenerator(mapDebugTasks(this.step, [pushed]), "debug")
+        )
+      );
+      if (this.debug) {
+        printStepTasks(this.step, [pushed]);
+      }
+      this.tasks[pushed.id] = pushed;
+      if (this.skipDoneTasks) {
+        this._matchWrites({ [pushed.id]: pushed });
+      }
+      return pushed;
+    }
+  }
+
   protected _suppressInterrupt(e?: Error): boolean {
     return isGraphInterrupt(e) && !this.isNested;
   }
@@ -942,5 +998,24 @@ export class PregelLoop {
       };
     }
     this.step += 1;
+  }
+
+  protected _matchWrites(
+    tasks: Record<string, PregelExecutableTask<string, string>>
+  ) {
+    for (const [tid, k, v] of this.checkpointPendingWrites) {
+      if (k === ERROR || k === INTERRUPT || k === RESUME) {
+        continue;
+      }
+      const task = Object.values(tasks).find((t) => t.id === tid);
+      if (task) {
+        task.writes.push([k, v]);
+      }
+    }
+    for (const task of Object.values(tasks)) {
+      if (task.writes.length > 0) {
+        this._outputWrites(task.id, task.writes, true);
+      }
+    }
   }
 }

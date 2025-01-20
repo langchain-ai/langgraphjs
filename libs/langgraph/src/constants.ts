@@ -3,6 +3,7 @@ export const MISSING = Symbol.for("__missing__");
 export const INPUT = "__input__";
 export const ERROR = "__error__";
 export const CONFIG_KEY_SEND = "__pregel_send";
+export const CONFIG_KEY_CALL = "__pregel_call";
 export const CONFIG_KEY_READ = "__pregel_read";
 export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
 export const CONFIG_KEY_RESUMING = "__pregel_resuming";
@@ -18,6 +19,8 @@ export const CONFIG_KEY_CHECKPOINT_MAP = "checkpoint_map";
 
 export const INTERRUPT = "__interrupt__";
 export const RESUME = "__resume__";
+export const NO_WRITES = "__no_writes__";
+export const RETURN = "__return__";
 export const RUNTIME_PLACEHOLDER = "__pregel_runtime_placeholder__";
 export const RECURSION_LIMIT_DEFAULT = 25;
 
@@ -58,7 +61,12 @@ export interface SendInterface {
 
 export function _isSendInterface(x: unknown): x is SendInterface {
   const operation = x as SendInterface;
-  return typeof operation.node === "string" && operation.args !== undefined;
+  return (
+    operation !== null &&
+    operation !== undefined &&
+    typeof operation.node === "string" &&
+    operation.args !== undefined
+  );
 }
 
 /**
