@@ -208,8 +208,24 @@ export const RunCreate = z
       .optional(),
     stream_mode: z
       .union([
-        z.array(z.enum(["values", "messages", "updates", "events", "debug"])),
-        z.enum(["values", "messages", "updates", "events", "debug"]),
+        z.array(
+          z.enum([
+            "values",
+            "messages",
+            "messages-tuple",
+            "updates",
+            "events",
+            "debug",
+          ])
+        ),
+        z.enum([
+          "values",
+          "messages",
+          "messages-tuple",
+          "updates",
+          "events",
+          "debug",
+        ]),
       ])
       .optional(),
     stream_subgraphs: z.boolean().optional(),
