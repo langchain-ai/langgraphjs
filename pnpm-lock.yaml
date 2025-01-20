@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@babel/code-frame':
+        specifier: ^7.26.2
+        version: 7.26.2
       '@commander-js/extra-typings':
         specifier: ^13.0.0
         version: 13.0.0(commander@13.0.0)
@@ -93,9 +96,6 @@ importers:
         specifier: ^3.23.8
         version: 3.24.1
     devDependencies:
-      '@babel/code-frame':
-        specifier: ^7.26.2
-        version: 7.26.2
       '@langchain/langgraph-sdk':
         specifier: ^0.0.33
         version: 0.0.33
