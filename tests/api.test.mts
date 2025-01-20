@@ -1027,7 +1027,7 @@ describe("runs", () => {
     expect(thread.status).toBe("interrupted");
   });
 
-  it.only.concurrent("non-existent graph id", async () => {
+  it.concurrent("non-existent graph id", async () => {
     const thread = await client.threads.create();
     const input = {
       messages: [{ type: "human", content: "foo", id: "initial-message" }],
