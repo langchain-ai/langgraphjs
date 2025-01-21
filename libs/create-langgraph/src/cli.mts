@@ -5,6 +5,8 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import zipExtract from "extract-zip";
 import { version } from "./utils/version.mjs";
+import color from "picocolors";
+import dedent from "dedent";
 
 const TEMPLATES = {
   "New LangGraph Project": {
@@ -107,7 +109,7 @@ async function downloadAndExtract(url: string, targetPath: string) {
 }
 
 async function createNew(projectPath?: string, templateId?: string) {
-  intro("create-langgraph");
+  intro(`${color.bgCyan(color.black(" 🦜 create-langgraph "))}`);
 
   let resolvedPath = projectPath;
   if (!resolvedPath) {
@@ -142,6 +144,7 @@ async function createNew(projectPath?: string, templateId?: string) {
     }
   }
 
+  let language: "js" | "python" = "js";
   let templateUrl: string;
   if (templateId) {
     const config = TEMPLATE_ID_TO_CONFIG[templateId];
@@ -162,26 +165,44 @@ async function createNew(projectPath?: string, templateId?: string) {
       process.exit(0);
     }
 
-    const languageChoice = await select({
+    const userLaunguage = await select({
       message: "Choose language",
       options: [
-        { value: "js", label: "JavaScript/TypeScript 🌐" },
+        { value: "js", label: "TypeScript 🌐" },
         { value: "python", label: "Python 🐍" },
       ],
     });
 
-    if (isCancel(languageChoice)) {
+    if (isCancel(userLaunguage)) {
       cancel("Operation cancelled");
       process.exit(0);
     }
 
     const template = TEMPLATES[templateChoice as keyof typeof TEMPLATES];
     if (!template) throw new Error("Invalid template choice");
-    templateUrl = template[languageChoice as "js" | "python"];
+    language = userLaunguage as "js" | "python";
+    templateUrl = template[language];
   }
 
   await downloadAndExtract(templateUrl, absolutePath);
-  outro(`Project created successfully at ${absolutePath}`);
+
+  const guide =
+    language === "js"
+      ? color.cyan(
+          dedent`
+            Next steps:
+            - cd ${path.relative(process.cwd(), absolutePath)}
+            - yarn install
+            - npx @langchain/langgraph-cli@latest dev
+          `
+        )
+      : null;
+
+  outro(
+    [`Project created successfully at ${color.green(absolutePath)}`, guide]
+      .filter(Boolean)
+      .join("\n\n")
+  );
 }
 
 const program = new Command()
