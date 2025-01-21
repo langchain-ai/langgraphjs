@@ -93,6 +93,10 @@ export type PregelLoopInitializeParams = {
   stream: IterableReadableWritableStream;
   store?: BaseStore;
   checkSubgraphs?: boolean;
+  interruptAfter: string[] | All;
+  interruptBefore: string[] | All;
+  manager?: CallbackManagerForChainRun;
+  debug: boolean;
 };
 
 type PregelLoopParams = {
@@ -115,9 +119,13 @@ type PregelLoopParams = {
   checkpointNamespace: string[];
   skipDoneTasks: boolean;
   isNested: boolean;
+  manager?: CallbackManagerForChainRun;
   stream: IterableReadableWritableStream;
   store?: AsyncBatchedStore;
   prevCheckpointConfig: RunnableConfig | undefined;
+  interruptAfter: string[] | All;
+  interruptBefore: string[] | All;
+  debug: boolean;
 };
 
 export class IterableReadableWritableStream extends IterableReadableStream<StreamChunk> {
@@ -254,6 +262,16 @@ export class PregelLoop {
 
   store?: AsyncBatchedStore;
 
+  manager?: CallbackManagerForChainRun;
+
+  interruptAfter: string[] | All;
+
+  interruptBefore: string[] | All;
+
+  toInterrupt: PregelExecutableTask<string, string>[] = [];
+
+  debug: boolean = false;
+
   constructor(params: PregelLoopParams) {
     this.input = params.input;
     this.checkpointer = params.checkpointer;
@@ -277,6 +295,7 @@ export class PregelLoop {
     this.config = params.config;
     this.checkpointConfig = params.checkpointConfig;
     this.isNested = params.isNested;
+    this.manager = params.manager;
     this.outputKeys = params.outputKeys;
     this.streamKeys = params.streamKeys;
     this.nodes = params.nodes;
@@ -285,6 +304,9 @@ export class PregelLoop {
     this.stream = params.stream;
     this.checkpointNamespace = params.checkpointNamespace;
     this.prevCheckpointConfig = params.prevCheckpointConfig;
+    this.interruptAfter = params.interruptAfter;
+    this.interruptBefore = params.interruptBefore;
+    this.debug = params.debug;
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
@@ -401,6 +423,7 @@ export class PregelLoop {
       channels,
       managed: params.managed,
       isNested,
+      manager: params.manager,
       skipDoneTasks,
       step,
       stop,
@@ -411,6 +434,9 @@ export class PregelLoop {
       nodes: params.nodes,
       stream,
       store,
+      interruptAfter: params.interruptAfter,
+      interruptBefore: params.interruptBefore,
+      debug: params.debug,
     });
   }
 
@@ -532,21 +558,11 @@ export class PregelLoop {
    * Returns true if more iterations are needed.
    * @param params
    */
-  async tick(params: {
-    inputKeys?: string | string[];
-    interruptAfter: string[] | All;
-    interruptBefore: string[] | All;
-    manager?: CallbackManagerForChainRun;
-  }): Promise<boolean> {
+  async tick(params: { inputKeys?: string | string[] }): Promise<boolean> {
     if (this.store && !this.store.isRunning) {
       this.store?.start();
     }
-    const {
-      inputKeys = [],
-      interruptAfter = [],
-      interruptBefore = [],
-      manager,
-    } = params;
+    const { inputKeys = [] } = params;
     if (this.status !== "pending") {
       throw new Error(
         `Cannot tick when status is no longer "pending". Current status: "${this.status}"`
@@ -592,7 +608,7 @@ export class PregelLoop {
       if (
         shouldInterrupt(
           this.checkpoint,
-          interruptAfter,
+          this.interruptAfter,
           Object.values(this.tasks)
         )
       ) {
@@ -619,7 +635,7 @@ export class PregelLoop {
         step: this.step,
         checkpointer: this.checkpointer,
         isResuming: this.input === INPUT_RESUMING,
-        manager,
+        manager: this.manager,
         store: this.store,
       }
     );
@@ -669,19 +685,14 @@ export class PregelLoop {
     }
     // if all tasks have finished, re-tick
     if (Object.values(this.tasks).every((task) => task.writes.length > 0)) {
-      return this.tick({
-        inputKeys,
-        interruptAfter,
-        interruptBefore,
-        manager,
-      });
+      return this.tick({ inputKeys });
     }
 
     // Before execution, check if we should interrupt
     if (
       shouldInterrupt(
         this.checkpoint,
-        interruptBefore,
+        this.interruptBefore,
         Object.values(this.tasks)
       )
     ) {

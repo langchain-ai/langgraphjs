@@ -95,26 +95,24 @@ export class ParentCommand extends GraphBubbleUp {
   }
 }
 
-export function isParentCommand(e?: Error): e is ParentCommand {
+export function isParentCommand(e?: unknown): e is ParentCommand {
   return (
     e !== undefined &&
     (e as ParentCommand).name === ParentCommand.unminifiable_name
   );
 }
 
-export function isGraphBubbleUp(e?: Error): e is GraphBubbleUp {
+export function isGraphBubbleUp(e?: unknown): e is GraphBubbleUp {
   return e !== undefined && (e as GraphBubbleUp).is_bubble_up === true;
 }
 
-export function isGraphInterrupt(
-  e?: GraphInterrupt | Error
-): e is GraphInterrupt {
+export function isGraphInterrupt(e?: unknown): e is GraphInterrupt {
   return (
     e !== undefined &&
     [
       GraphInterrupt.unminifiable_name,
       NodeInterrupt.unminifiable_name,
-    ].includes(e.name)
+    ].includes((e as Error).name)
   );
 }
 
