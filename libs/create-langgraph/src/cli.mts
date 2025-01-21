@@ -4,6 +4,7 @@ import { intro, outro, select, text, isCancel, cancel } from "@clack/prompts";
 import * as fs from "fs/promises";
 import * as path from "path";
 import zipExtract from "extract-zip";
+import { version } from "./utils/version.mjs";
 
 const TEMPLATES = {
   "New LangGraph Project": {
@@ -60,9 +61,8 @@ const TEMPLATE_IDS = Object.keys(TEMPLATE_ID_TO_CONFIG);
 async function downloadAndExtract(url: string, targetPath: string) {
   try {
     const response = await fetch(url);
-    if (!response.ok) {
+    if (!response.ok)
       throw new Error(`Failed to download: ${response.statusText}`);
-    }
 
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -131,9 +131,7 @@ async function createNew(projectPath?: string, templateId?: string) {
     const stats = await fs.stat(absolutePath);
     if (stats.isDirectory()) {
       const files = await fs.readdir(absolutePath);
-      if (files.length > 0) {
-        throw new Error("Directory is not empty");
-      }
+      if (files.length > 0) throw new Error("Directory is not empty");
     }
   } catch (error: unknown) {
     if (
@@ -145,14 +143,9 @@ async function createNew(projectPath?: string, templateId?: string) {
   }
 
   let templateUrl: string;
-
   if (templateId) {
     const config = TEMPLATE_ID_TO_CONFIG[templateId];
-    if (!config) {
-      throw new Error(
-        `Invalid template ID. Available options:\n${TEMPLATE_IDS.join("\n")}`
-      );
-    }
+    if (!config) throw new Error("Invalid template ID.");
     templateUrl = config[2];
   } else {
     const templateChoice = await select({
@@ -183,23 +176,32 @@ async function createNew(projectPath?: string, templateId?: string) {
     }
 
     const template = TEMPLATES[templateChoice as keyof typeof TEMPLATES];
-    if (!template) {
-      throw new Error("Invalid template choice");
-    }
+    if (!template) throw new Error("Invalid template choice");
     templateUrl = template[languageChoice as "js" | "python"];
   }
 
   await downloadAndExtract(templateUrl, absolutePath);
-
   outro(`Project created successfully at ${absolutePath}`);
 }
 
 const program = new Command()
   .name("create-langgraph")
+  .version(version)
   .description("Create a new LangGraph project")
   .argument("[path]", "Path to create the project")
   .option("-t, --template <template>", "Template to use", "")
   .action((path, options) => {
+    if (options.template) {
+      const config = TEMPLATE_ID_TO_CONFIG[options.template];
+      if (!config) {
+        console.error(`Invalid template ID "${options.template}"`);
+        console.error(
+          `Available options:\n${TEMPLATE_IDS.map((id) => `- ${id}`).join("\n")}`
+        );
+        process.exit(1);
+      }
+    }
+
     createNew(path, options.template).catch((error) => {
       console.error("Error:", error.message);
       process.exit(1);
