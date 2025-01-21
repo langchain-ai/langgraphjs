@@ -6,7 +6,40 @@ settings:
 
 importers:
 
-  .:
+  .: {}
+
+  libs/create-langgraph:
+    dependencies:
+      '@clack/prompts':
+        specifier: ^0.9.1
+        version: 0.9.1
+      '@commander-js/extra-typings':
+        specifier: ^13.0.0
+        version: 13.0.0(commander@13.0.0)
+      commander:
+        specifier: ^13.0.0
+        version: 13.0.0
+      dedent:
+        specifier: ^1.5.3
+        version: 1.5.3
+      execa:
+        specifier: ^9.5.2
+        version: 9.5.2
+    devDependencies:
+      '@types/node':
+        specifier: ^22.2.0
+        version: 22.10.5
+      prettier:
+        specifier: ^3.3.3
+        version: 3.4.2
+      tsx:
+        specifier: ^4.19.2
+        version: 4.19.2
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.8(@types/node@22.10.5)
+
+  libs/langgraph-cli:
     dependencies:
       '@babel/code-frame':
         specifier: ^7.26.2
@@ -130,6 +163,12 @@ packages:
 
   '@cfworker/json-schema@4.1.0':
     resolution: {integrity: sha512-/vYKi/qMxwNsuIJ9WGWwM2rflY40ZenK3Kh4uR5vB9/Nz12Y7IUN/Xf4wDA7vzPfw0VNh3b/jz4+MjcVgARKJg==}
+
+  '@clack/core@0.4.1':
+    resolution: {integrity: sha512-Pxhij4UXg8KSr7rPek6Zowm+5M22rbd2g1nfojHJkxp5YkFqiZ2+YLEM/XGVIzvGOcM0nqjIFxrpDwWRZYWYjA==}
+
+  '@clack/prompts@0.9.1':
+    resolution: {integrity: sha512-JIpyaboYZeWYlyP0H+OoPPxd6nqueG/CmN6ixBiNFsIDHREevjIf0n0Ohh5gr5C8pEDknzgvz+pIJ8dMhzWIeg==}
 
   '@colors/colors@1.6.0':
     resolution: {integrity: sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA==}
@@ -1126,6 +1165,9 @@ packages:
   simple-swizzle@0.2.2:
     resolution: {integrity: sha512-JA//kQgZtbuY83m+xT+tXJkmJncGMTFT+C+g2h2R9uxkYIrE2yy9sgmcLhCnw57/WSD+Eh3J97FPEDFnbXnDUg==}
 
+  sisteransi@1.0.5:
+    resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
+
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
@@ -1359,6 +1401,17 @@ snapshots:
   '@babel/helper-validator-identifier@7.25.9': {}
 
   '@cfworker/json-schema@4.1.0': {}
+
+  '@clack/core@0.4.1':
+    dependencies:
+      picocolors: 1.1.1
+      sisteransi: 1.0.5
+
+  '@clack/prompts@0.9.1':
+    dependencies:
+      '@clack/core': 0.4.1
+      picocolors: 1.1.1
+      sisteransi: 1.0.5
 
   '@colors/colors@1.6.0': {}
 
@@ -2193,6 +2246,8 @@ snapshots:
   simple-swizzle@0.2.2:
     dependencies:
       is-arrayish: 0.3.2
+
+  sisteransi@1.0.5: {}
 
   source-map-js@1.2.1: {}
 

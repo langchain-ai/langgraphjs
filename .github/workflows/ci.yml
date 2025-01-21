@@ -47,5 +47,6 @@ jobs:
           pnpm install
 
       - name: Run integration tests
+        working-directory: libs/langgraph-cli
         run: |
           pnpm run test:ci

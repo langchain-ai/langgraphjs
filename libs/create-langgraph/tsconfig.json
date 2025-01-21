@@ -10,7 +10,5 @@
     "verbatimModuleSyntax": true,
     "noUnusedLocals": true
   },
-  "exclude": [
-    "scripts/*"
-  ]
+  "exclude": ["scripts/*"]
 }

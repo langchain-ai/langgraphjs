@@ -1,0 +1,27 @@
+{
+  "name": "create-langgraph",
+  "version": "0.0.0-preview.11",
+  "description": "",
+  "license": "MIT",
+  "main": "dist/cli.mjs",
+  "bin": {
+    "create-langgraph": "dist/cli.mjs"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc --outDir dist"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.9.1",
+    "@commander-js/extra-typings": "^13.0.0",
+    "commander": "^13.0.0",
+    "dedent": "^1.5.3",
+    "execa": "^9.5.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.2.0",
+    "prettier": "^3.3.3",
+    "tsx": "^4.19.2",
+    "vitest": "^2.1.8"
+  },
+  "keywords": []
+}

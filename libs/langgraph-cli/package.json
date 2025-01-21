@@ -1,0 +1,68 @@
+{
+  "name": "@langchain/langgraph-cli",
+  "version": "0.0.0-preview.11",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "Elastic-2.0",
+  "main": "./dist/server.mjs",
+  "bin": {
+    "langgraphjs": "dist/cli/cli.mjs"
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "node scripts/spawn.mjs build",
+    "prepack": "pnpm run build",
+    "typecheck": "tsc --noEmit",
+    "cli": "tsx src/cli/cli.mts",
+    "cli:watch": "tsx watch src/cli/cli.mts",
+    "test:cli": "pnpm run cli dev --no-browser --config ./tests/graphs/langgraph.json",
+    "test": "vitest",
+    "test:ci": "node scripts/spawn.mjs test"
+  },
+  "dependencies": {
+    "@commander-js/extra-typings": "^13.0.0",
+    "@hono/node-server": "^1.12.0",
+    "@hono/zod-validator": "^0.2.2",
+    "@types/json-schema": "^7.0.15",
+    "@typescript/vfs": "^1.6.0",
+    "chokidar": "^4.0.3",
+    "commander": "^13.0.0",
+    "dedent": "^1.5.3",
+    "dotenv": "^16.4.7",
+    "execa": "^9.5.2",
+    "exit-hook": "^4.0.0",
+    "extract-zip": "^2.0.1",
+    "hono": "^4.5.4",
+    "langsmith": "^0.2.15",
+    "open": "^10.1.0",
+    "stacktrace-parser": "^0.1.10",
+    "superjson": "^2.2.2",
+    "tar": "^7.4.3",
+    "tsx": "^4.19.2",
+    "uuid": "^10.0.0",
+    "winston": "^3.17.0",
+    "winston-console-format": "^1.0.8",
+    "yaml": "^2.7.0",
+    "zod": "^3.23.8",
+    "@babel/code-frame": "^7.26.2"
+  },
+  "peerDependencies": {
+    "@langchain/core": "^0.3.27",
+    "@langchain/langgraph": "^0.2.39",
+    "@langchain/langgraph-checkpoint": "^0.0.13",
+    "typescript": "^5.5.4"
+  },
+  "devDependencies": {
+    "@langchain/langgraph-sdk": "^0.0.33",
+    "@types/babel__code-frame": "^7.0.6",
+    "@types/node": "^22.2.0",
+    "@types/uuid": "^10.0.0",
+    "postgres": "^3.4.5",
+    "prettier": "^3.3.3",
+    "vitest": "^2.1.8"
+  }
+}
