@@ -7,6 +7,9 @@
   "bin": {
     "create-langgraph": "dist/cli.mjs"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "rm -rf dist && tsc --outDir dist"
   },
