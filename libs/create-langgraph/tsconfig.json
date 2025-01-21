@@ -8,7 +8,8 @@
     "module": "NodeNext",
     "allowJs": true,
     "verbatimModuleSyntax": true,
-    "noUnusedLocals": true
+    "noUnusedLocals": true,
+    "outDir": "dist"
   },
-  "exclude": ["scripts/*"]
+  "exclude": ["scripts/*", "dist/*"]
 }
