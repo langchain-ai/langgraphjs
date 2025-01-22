@@ -6,3 +6,6 @@ import { initializeAsyncLocalStorageSingleton } from "./setup/async_local_storag
 initializeAsyncLocalStorageSingleton();
 
 export * from "./web.js";
+
+export { interrupt } from "./interrupt.js";
+export { getStore } from "./pregel/utils/config.js";

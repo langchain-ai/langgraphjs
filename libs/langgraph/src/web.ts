@@ -39,7 +39,6 @@ export {
   isCommand,
   type Interrupt,
 } from "./constants.js";
-export { interrupt } from "./interrupt.js";
 
 export {
   MemorySaver,
@@ -74,5 +73,3 @@ export {
 
 export { MessagesAnnotation } from "./graph/messages_annotation.js";
 export { type LangGraphRunnableConfig } from "./pregel/runnable_types.js";
-
-export { getStore } from "./pregel/utils/config.js";
