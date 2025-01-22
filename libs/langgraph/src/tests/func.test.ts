@@ -112,7 +112,7 @@ describe("task and entrypoint decorators", () => {
     );
 
     currTasks = (await graph.getState(config)).tasks;
-    expect(currTasks[0].interrupts).toHaveLength(0);
+    expect(currTasks.length).toBe(0);
 
     expect(result).toBe("the correct answer");
     expect(taskCallCount).toBe(2);
@@ -201,7 +201,6 @@ describe("task and entrypoint decorators", () => {
     // Using for-await to process the stream - pass empty array since no args needed
     for await (const chunk of await graph.stream([])) {
       const now = Date.now();
-      console.warn(`Received chunk ${JSON.stringify(chunk)} at ${now}`);
       if ("slowTask" in chunk) {
         arrivalTimes.push(now);
       }

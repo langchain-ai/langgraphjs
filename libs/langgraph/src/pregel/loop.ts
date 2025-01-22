@@ -49,7 +49,9 @@ import {
 import {
   gatherIterator,
   gatherIteratorSync,
+  IterableReadableWritableStream,
   prefixGenerator,
+  StreamChunk,
 } from "../utils.js";
 import {
   mapCommand,
@@ -79,9 +81,6 @@ import { LangGraphRunnableConfig } from "./runnable_types.js";
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
 const DEFAULT_LOOP_LIMIT = 25;
-
-// [namespace, streamMode, payload]
-export type StreamChunk = [string[], StreamMode, unknown];
 
 export type PregelLoopInitializeParams = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -130,60 +129,6 @@ type PregelLoopParams = {
   interruptBefore: string[] | All;
   debug: boolean;
 };
-
-export class IterableReadableWritableStream extends IterableReadableStream<StreamChunk> {
-  modes: Set<StreamMode>;
-
-  private controller: ReadableStreamDefaultController;
-
-  private passthroughFn?: (chunk: StreamChunk) => void;
-
-  constructor(params: {
-    passthroughFn?: (chunk: StreamChunk) => void;
-    modes: Set<StreamMode>;
-  }) {
-    let streamControllerPromiseResolver: (
-      controller: ReadableStreamDefaultController
-    ) => void;
-    const streamControllerPromise: Promise<ReadableStreamDefaultController> =
-      new Promise<ReadableStreamDefaultController>((resolve) => {
-        streamControllerPromiseResolver = resolve;
-      });
-
-    super({
-      start: (controller) => {
-        streamControllerPromiseResolver!(controller);
-      },
-    });
-
-    // .start() will always be called before the stream can be interacted
-    // with anyway
-    void streamControllerPromise.then((controller) => {
-      this.controller = controller;
-    });
-
-    this.passthroughFn = params.passthroughFn;
-    this.modes = params.modes;
-  }
-
-  push(chunk: StreamChunk) {
-    this.passthroughFn?.(chunk);
-    this.controller.enqueue(chunk);
-  }
-
-  close() {
-    try {
-      this.controller.close();
-    } catch (e) {
-      // pass
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  error(e: any) {
-    this.controller.error(e);
-  }
-}
 
 function createDuplexStream(...streams: IterableReadableWritableStream[]) {
   return new IterableReadableWritableStream({
@@ -522,9 +467,6 @@ export class PregelLoop {
 
   _outputWrites(taskId: string, writes: [string, unknown][], cached = false) {
     const task = this.tasks[taskId];
-    console.warn(
-      `_outputWrites ${task.name} ${JSON.stringify(writes)} at ${Date.now()}`
-    );
     if (task !== undefined) {
       if (
         task.config !== undefined &&
@@ -781,7 +723,7 @@ export class PregelLoop {
     const pushed = _prepareSingleTask(
       [PUSH, task.path ?? [], writeIdx, task.id, call] as TaskPath,
       this.checkpoint,
-      task.writes.map(([c, v]) => [task.id, c, v]),
+      this.checkpointPendingWrites,
       this.nodes,
       this.channels,
       this.managed,
