@@ -9429,6 +9429,44 @@ graph TD;
     const thirdState = await graph.getState(config);
     expect(thirdState.tasks).toHaveLength(0);
   });
+
+  it("should cancel when signal is aborted", async () => {
+    let oneCount = 0;
+    let twoCount = 0;
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", async () => {
+        oneCount += 1;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return {};
+      })
+      .addNode("two", () => {
+        twoCount += 1;
+        throw new Error("Should not be called!");
+      })
+      .addEdge(START, "one")
+      .addEdge("one", "two")
+      .addEdge("two", END)
+      .compile();
+
+    const abortController = new AbortController();
+    const config = {
+      signal: abortController.signal,
+    };
+
+    setTimeout(() => abortController.abort(), 10);
+
+    await expect(
+      async () =>
+        await graph.invoke(
+          {
+            messages: [],
+          },
+          config
+        )
+    ).rejects.toThrow("Aborted");
+    expect(oneCount).toEqual(1);
+    expect(twoCount).toEqual(0);
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
