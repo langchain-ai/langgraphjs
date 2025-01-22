@@ -822,7 +822,11 @@ export class Threads {
 
     static async post(
       config: RunnableConfig,
-      values?: Record<string, unknown>[] | Record<string, unknown> | undefined,
+      values?:
+        | Record<string, unknown>[]
+        | Record<string, unknown>
+        | null
+        | undefined,
       asNode?: string | undefined
     ) {
       const threadId = config.configurable?.thread_id;

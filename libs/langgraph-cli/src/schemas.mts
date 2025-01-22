@@ -75,7 +75,7 @@ export const Cron = z.object({
 });
 
 export const CheckpointSchema = z.object({
-  checkpoint_id: z.string(),
+  checkpoint_id: z.string().uuid().optional(),
   checkpoint_ns: z.string().nullish(),
   checkpoint_map: z.record(z.unknown()).nullish(),
 });

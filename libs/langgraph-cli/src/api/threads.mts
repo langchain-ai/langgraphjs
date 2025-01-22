@@ -75,13 +75,15 @@ api.post(
   zValidator(
     "json",
     z.object({
-      values: z.union([
-        z.record(z.string(), z.unknown()),
-        z.array(z.record(z.string(), z.unknown())),
-      ]),
+      values: z
+        .union([
+          z.record(z.string(), z.unknown()),
+          z.array(z.record(z.string(), z.unknown())),
+        ])
+        .nullish(),
       as_node: z.string().optional(),
       checkpoint_id: z.string().optional(),
-      checkpoint: z.record(z.string(), z.unknown()).optional(),
+      checkpoint: schemas.CheckpointSchema.nullish(),
     })
   ),
   async (c) => {
@@ -141,11 +143,7 @@ api.post(
     "json",
     z.object({
       subgraphs: schemas.coercedBoolean.optional(),
-      checkpoint: z.object({
-        checkpoint_id: z.string().uuid().optional(),
-        checkpoint_ns: z.string().optional(),
-        checkpoint_map: z.record(z.string(), z.unknown()).optional(),
-      }),
+      checkpoint: schemas.CheckpointSchema.nullish(),
     })
   ),
   async (c) => {
