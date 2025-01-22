@@ -1398,6 +1398,7 @@ export class Pregel<
               );
             }
           },
+          signal: config.signal,
         });
       }
       if (loop.status === "out_of_steps") {
