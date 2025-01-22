@@ -24,6 +24,9 @@ const isTracingEnabled = () => {
 
 const options = StartServerSchema.parse(JSON.parse(payload));
 
+// Export PORT to the environment
+process.env.PORT = options.port.toString();
+
 const [{ host, cleanup }, organizationId] = await Promise.all([
   startServer(options),
   (async () => {
