@@ -522,6 +522,9 @@ export class PregelLoop {
 
   _outputWrites(taskId: string, writes: [string, unknown][], cached = false) {
     const task = this.tasks[taskId];
+    console.warn(
+      `_outputWrites ${task.name} ${JSON.stringify(writes)} at ${Date.now()}`
+    );
     if (task !== undefined) {
       if (
         task.config !== undefined &&
