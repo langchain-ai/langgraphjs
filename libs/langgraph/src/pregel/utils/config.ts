@@ -1,5 +1,6 @@
 import { RunnableConfig } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
+import { BaseStore } from "@langchain/langgraph-checkpoint";
 import { LangGraphRunnableConfig } from "../runnable_types.js";
 
 const COPIABLE_KEYS = ["tags", "metadata", "callbacks", "configurable"];
@@ -91,4 +92,10 @@ export function ensureLangGraphConfig(
   }
 
   return empty;
+}
+
+export function getStore(): BaseStore | undefined {
+  const config: LangGraphRunnableConfig =
+    AsyncLocalStorageProviderSingleton.getRunnableConfig();
+  return config?.store;
 }
