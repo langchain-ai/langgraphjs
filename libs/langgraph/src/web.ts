@@ -65,5 +65,12 @@ export {
 } from "@langchain/langgraph-checkpoint";
 export * from "./managed/index.js";
 
+export {
+  entrypoint,
+  type EntrypointOptions,
+  task,
+  type TaskOptions,
+} from "./func.js";
+
 export { MessagesAnnotation } from "./graph/messages_annotation.js";
 export { type LangGraphRunnableConfig } from "./pregel/runnable_types.js";
