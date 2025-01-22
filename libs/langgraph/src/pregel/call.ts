@@ -1,4 +1,8 @@
-import { RunnableConfig, RunnableSequence } from "@langchain/core/runnables";
+import {
+  Runnable,
+  RunnableConfig,
+  RunnableSequence,
+} from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { CONFIG_KEY_CALL, RETURN, TAG_HIDDEN } from "../constants.js";
 import { ChannelWrite, PASSTHROUGH } from "./write.js";
@@ -12,8 +16,9 @@ import { RunnableCallable, type RunnableCallableArgs } from "../utils.js";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getRunnableForFunc<FuncT extends (...args: any[]) => any>(
   name: string,
-  func: FuncT
-): RunnableSequence<Parameters<FuncT>, ReturnType<FuncT>> {
+  func: FuncT,
+  writeReturn: boolean = true
+): Runnable<Parameters<FuncT>, ReturnType<FuncT>> {
   const run = new RunnableCallable<Parameters<FuncT>, ReturnType<FuncT>>({
     func: (input: Parameters<FuncT>) => func(...input),
     name,
@@ -21,18 +26,20 @@ export function getRunnableForFunc<FuncT extends (...args: any[]) => any>(
     recurse: false,
   } as RunnableCallableArgs);
 
-  // writes to return channel
-  const seq = new RunnableSequence<Parameters<FuncT>, ReturnType<FuncT>>({
-    name,
-    first: run,
-    last: new ChannelWrite<ReturnType<FuncT>>(
-      [{ channel: RETURN, value: PASSTHROUGH }],
-      [TAG_HIDDEN]
-    ),
-    // TODO: add trace_inputs for task?
-  });
+  if (writeReturn) {
+    // writes to return channel
+    return new RunnableSequence<Parameters<FuncT>, ReturnType<FuncT>>({
+      name,
+      first: run,
+      last: new ChannelWrite<ReturnType<FuncT>>(
+        [{ channel: RETURN, value: PASSTHROUGH }],
+        [TAG_HIDDEN]
+      ),
+      // TODO: add trace_inputs for task?
+    });
+  }
 
-  return seq;
+  return run;
 }
 
 export type CallWrapperOptions<FuncT extends (...args: unknown[]) => unknown> =

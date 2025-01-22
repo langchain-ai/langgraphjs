@@ -103,7 +103,7 @@ export function entrypoint<FuncT extends (...args: any[]) => any>(
     checkpointer,
     nodes: {
       [name]: new PregelNode({
-        bound: getRunnableForFunc(name, func),
+        bound: getRunnableForFunc(name, func, false),
         triggers: [START],
         channels: [START],
         writers: [
@@ -120,8 +120,7 @@ export function entrypoint<FuncT extends (...args: any[]) => any>(
     },
     inputChannels: START,
     outputChannels: END,
-    streamChannels: [],
-    streamMode: "values",
+    streamMode: "updates",
   });
   p.name = name;
   return p;

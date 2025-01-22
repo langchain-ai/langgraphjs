@@ -84,7 +84,7 @@ import {
   RetryPolicy,
 } from "./utils/index.js";
 import { findSubgraphPregel } from "./utils/subgraph.js";
-import { PregelLoop, IterableReadableWritableStream } from "./loop.js";
+import { PregelLoop } from "./loop.js";
 import {
   ChannelKeyPlaceholder,
   isConfiguredManagedValue,
@@ -93,7 +93,13 @@ import {
   NoopManagedValue,
   type ManagedValueSpec,
 } from "../managed/base.js";
-import { gatherIterator, patchConfigurable } from "../utils.js";
+import {
+  gatherIterator,
+  IterableReadableWritableStream,
+  patchConfigurable,
+  StreamChunk,
+  StreamFlusher,
+} from "../utils.js";
 import { ensureLangGraphConfig } from "./utils/config.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { StreamMessagesHandler } from "./messages.js";
@@ -1239,6 +1245,7 @@ export class Pregel<
      * from the loop to the main stream and therefore back to the user as soon as
      * they are available.
      */
+
     const createAndRunLoop = async () => {
       try {
         loop = await PregelLoop.initialize({
@@ -1300,6 +1307,14 @@ export class Pregel<
       }
     };
     const runLoopPromise = createAndRunLoop();
+
+    const streamFlusher = new StreamFlusher({
+      stream,
+      streamMode,
+      streamSubgraphs,
+      streamModeSingle,
+    });
+
     try {
       for await (const chunk of stream) {
         if (chunk === undefined) {
@@ -1368,7 +1383,7 @@ export class Pregel<
     runner: PregelRunner;
     config: RunnableConfig;
     debug: boolean;
-  }) {
+  }): Promise<void> {
     const { loop, runner, debug, config } = params;
     let tickError;
     try {

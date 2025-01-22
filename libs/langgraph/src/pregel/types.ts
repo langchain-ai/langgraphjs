@@ -24,6 +24,7 @@ export type PregelInputType = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PregelOutputType = any;
 
+// TODO: name this something sensible, and move to utils
 export type Promisified<T extends (...args: unknown[]) => unknown> =
   ReturnType<T> extends Promise<unknown>
     ? ReturnType<T>
@@ -235,6 +236,7 @@ export interface StateSnapshot {
 export type PregelScratchpad<Resume> = {
   interruptCounter: number;
   usedNullResume: boolean;
+  callCounter: number;
   resume: Resume[];
 };
 

@@ -16,6 +16,7 @@ import {
   uuid5,
   maxChannelVersion,
   BaseStore,
+  CheckpointPendingWrite,
 } from "@langchain/langgraph-checkpoint";
 import {
   BaseChannel,
@@ -48,11 +49,13 @@ import {
   CONFIG_KEY_WRITES,
   RETURN,
   ERROR,
+  NO_WRITES,
 } from "../constants.js";
 import {
   Call,
   isCall,
   PregelExecutableTask,
+  PregelScratchpad,
   PregelTaskDescription,
   SimpleTaskPath,
   TaskPath,
@@ -203,6 +206,7 @@ export function _localWrite(
 }
 
 const IGNORE = new Set<string | number | symbol>([
+  NO_WRITES,
   PUSH,
   RESUME,
   INTERRUPT,
@@ -486,7 +490,7 @@ export function _prepareSingleTask<
 >(
   taskPath: SimpleTaskPath,
   checkpoint: ReadonlyCheckpoint,
-  pendingWrites: [string, string, unknown][] | undefined,
+  pendingWrites: CheckpointPendingWrite[] | undefined,
   processes: Nn,
   channels: Cc,
   managed: ManagedValueMapping,
@@ -501,7 +505,7 @@ export function _prepareSingleTask<
 >(
   taskPath: TaskPath,
   checkpoint: ReadonlyCheckpoint,
-  pendingWrites: [string, string, unknown][] | undefined,
+  pendingWrites: CheckpointPendingWrite[] | undefined,
   processes: Nn,
   channels: Cc,
   managed: ManagedValueMapping,
@@ -516,7 +520,7 @@ export function _prepareSingleTask<
 >(
   taskPath: TaskPath,
   checkpoint: ReadonlyCheckpoint,
-  pendingWrites: [string, string, unknown][] | undefined,
+  pendingWrites: CheckpointPendingWrite[] | undefined,
   processes: Nn,
   channels: Cc,
   managed: ManagedValueMapping,
@@ -535,7 +539,7 @@ export function _prepareSingleTask<
 >(
   taskPath: TaskPath,
   checkpoint: ReadonlyCheckpoint,
-  pendingWrites: [string, string, unknown][] | undefined,
+  pendingWrites: CheckpointPendingWrite[] | undefined,
   processes: Nn,
   channels: Cc,
   managed: ManagedValueMapping,
@@ -631,7 +635,13 @@ export function _prepareSingleTask<
                 ...(pendingWrites || []),
                 ...(configurable[CONFIG_KEY_WRITES] || []),
               ].filter((w) => w[0] === NULL_TASK_ID || w[0] === id),
-              [CONFIG_KEY_SCRATCHPAD]: {},
+              [CONFIG_KEY_SCRATCHPAD]: _scratchpad(
+                [
+                  ...(pendingWrites || []),
+                  ...(configurable[CONFIG_KEY_WRITES] || []),
+                ],
+                id
+              ),
               checkpoint_id: undefined,
               checkpoint_ns: taskCheckpointNamespace,
             },
@@ -759,7 +769,13 @@ export function _prepareSingleTask<
                   ...(pendingWrites || []),
                   ...(configurable[CONFIG_KEY_WRITES] || []),
                 ].filter((w) => w[0] === NULL_TASK_ID || w[0] === taskId),
-                [CONFIG_KEY_SCRATCHPAD]: {},
+                [CONFIG_KEY_SCRATCHPAD]: _scratchpad(
+                  [
+                    ...(pendingWrites || []),
+                    ...(configurable[CONFIG_KEY_WRITES] || []),
+                  ],
+                  taskId
+                ),
                 checkpoint_id: undefined,
                 checkpoint_ns: taskCheckpointNamespace,
               },
@@ -897,7 +913,13 @@ export function _prepareSingleTask<
                     ...(pendingWrites || []),
                     ...(configurable[CONFIG_KEY_WRITES] || []),
                   ].filter((w) => w[0] === NULL_TASK_ID || w[0] === taskId),
-                  [CONFIG_KEY_SCRATCHPAD]: {},
+                  [CONFIG_KEY_SCRATCHPAD]: _scratchpad(
+                    [
+                      ...(pendingWrites || []),
+                      ...(configurable[CONFIG_KEY_WRITES] || []),
+                    ],
+                    taskId
+                  ),
                   checkpoint_id: undefined,
                   checkpoint_ns: taskCheckpointNamespace,
                 },
@@ -988,4 +1010,20 @@ function _procInput(
   }
 
   return val;
+}
+
+function _scratchpad(
+  pendingWrites: CheckpointPendingWrite[],
+  taskId: string
+): PregelScratchpad<unknown> {
+  return {
+    interruptCounter: -1,
+    callCounter: 0,
+    usedNullResume: false,
+    resume: pendingWrites
+      .filter(
+        ([writeTaskId, chan]) => writeTaskId === taskId && chan === RESUME
+      )
+      .map(([_writeTaskId, _chan, resume]) => resume),
+  };
 }

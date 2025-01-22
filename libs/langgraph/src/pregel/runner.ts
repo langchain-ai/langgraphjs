@@ -1,6 +1,6 @@
 import { PendingWrite } from "@langchain/langgraph-checkpoint";
-import { Call, PregelExecutableTask } from "./types.js";
-import { patchConfigurable, RetryPolicy } from "./utils/index.js";
+import { Call, PregelExecutableTask, PregelScratchpad } from "./types.js";
+import { RetryPolicy } from "./utils/index.js";
 import {
   CONFIG_KEY_SEND,
   CONFIG_KEY_SCRATCHPAD,
@@ -75,7 +75,7 @@ export class PregelRunner {
    * Note: this method does NOT call @see PregelLoop#tick. That must be handled externally.
    * @param options - Options for the execution.
    */
-  async tick(options: TickOptions = {}): Promise<void> {
+  async tick(options: TickOptions = {}) {
     const { timeout, signal, retryPolicy, onStepWrite } = options;
 
     let graphInterrupt: GraphInterrupt | undefined;
@@ -92,9 +92,9 @@ export class PregelRunner {
     });
 
     for await (const { task, error } of taskStream) {
-      console.warn(`Commiting task ${task.name} at ${Date.now()}`);
       graphInterrupt = this._commit(task, error) ?? graphInterrupt;
     }
+
     onStepWrite?.(
       this.loop.step,
       Object.values(this.loop.tasks)
@@ -159,17 +159,9 @@ export class PregelRunner {
         return task.config?.configurable?.[CONFIG_KEY_SEND]?.(writes) ?? [];
       }
 
-      // TODO: type the scratchpad stuff, extract boilerplate
       // Schedule PUSH tasks, collect promises
-      if (task.config?.configurable?.[CONFIG_KEY_SCRATCHPAD] == null) {
-        patchConfigurable(task.config, {
-          [CONFIG_KEY_SCRATCHPAD]: {},
-        });
-      }
-      const scratchpad = task.config?.configurable?.[
-        CONFIG_KEY_SCRATCHPAD
-      ] as Record<string, unknown>;
-      scratchpad.callCounter = (scratchpad.callCounter as number) ?? 0;
+      const scratchpad: PregelScratchpad<unknown> =
+        task.config?.configurable?.[CONFIG_KEY_SCRATCHPAD];
 
       const rtn: Record<number, Promise<unknown> | undefined> = {};
 
@@ -180,8 +172,8 @@ export class PregelRunner {
         }
 
         const wcall = calls?.[idx];
-        const cnt = scratchpad.callCounter as number;
-        scratchpad.callCounter = cnt + 1;
+        const cnt = scratchpad.callCounter;
+        scratchpad.callCounter += 1;
 
         if (wcall == null) {
           throw new Error("BUG: No call found");
@@ -209,7 +201,7 @@ export class PregelRunner {
             if (returns.length === 1) {
               rtn[idx] = Promise.resolve(returns[0][1]);
             } else {
-              // the only way this should happen is if the task executes multiple times and writes aren't cleared
+              // should be unreachable
               throw new Error(
                 `BUG: multiple returns found for task ${nextTask.name}__${nextTask.id}`
               );
@@ -278,36 +270,12 @@ export class PregelRunner {
       // eslint-disable-next-line no-instanceof/no-instanceof
       if (result !== undefined) {
         if (result.length === 1) {
-          return result[0]
-            ?.then((r) => {
-              console.warn(`${name} finished at ${Date.now()}`);
-              return r;
-            })
-            .catch((e) => {
-              console.error(`${name} failed at ${Date.now()}`);
-              throw e;
-            });
+          return result[0];
         }
-        return Promise.all(result)
-          .then((r) => {
-            console.warn(`${name} finished at ${Date.now()}`);
-            return r;
-          })
-          .catch((e) => {
-            console.error(`${name} failed at ${Date.now()}`);
-            throw e;
-          });
+        return Promise.all(result);
       }
 
-      return Promise.resolve(result)
-        .then((r) => {
-          console.warn(`${name} finished at ${Date.now()}`);
-          return r;
-        })
-        .catch((e) => {
-          console.error(`${name} failed at ${Date.now()}`);
-          throw e;
-        });
+      return Promise.resolve();
     };
 
     if (stepTimeout && signal) {
