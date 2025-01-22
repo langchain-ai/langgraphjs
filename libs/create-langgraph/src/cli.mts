@@ -165,22 +165,8 @@ async function createNew(projectPath?: string, templateId?: string) {
       process.exit(0);
     }
 
-    const userLaunguage = await select({
-      message: "Choose language",
-      options: [
-        { value: "js", label: "TypeScript 🌐" },
-        { value: "python", label: "Python 🐍" },
-      ],
-    });
-
-    if (isCancel(userLaunguage)) {
-      cancel("Operation cancelled");
-      process.exit(0);
-    }
-
     const template = TEMPLATES[templateChoice as keyof typeof TEMPLATES];
     if (!template) throw new Error("Invalid template choice");
-    language = userLaunguage as "js" | "python";
     templateUrl = template[language];
   }
 
