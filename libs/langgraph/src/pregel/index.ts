@@ -84,7 +84,7 @@ import {
   RetryPolicy,
 } from "./utils/index.js";
 import { findSubgraphPregel } from "./utils/subgraph.js";
-import { PregelLoop } from "./loop.js";
+import { IterableReadableWritableStream, PregelLoop } from "./loop.js";
 import {
   ChannelKeyPlaceholder,
   isConfiguredManagedValue,
@@ -93,13 +93,7 @@ import {
   NoopManagedValue,
   type ManagedValueSpec,
 } from "../managed/base.js";
-import {
-  gatherIterator,
-  IterableReadableWritableStream,
-  patchConfigurable,
-  StreamChunk,
-  StreamFlusher,
-} from "../utils.js";
+import { gatherIterator, patchConfigurable } from "../utils.js";
 import { ensureLangGraphConfig } from "./utils/config.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { StreamMessagesHandler } from "./messages.js";
@@ -1307,13 +1301,6 @@ export class Pregel<
       }
     };
     const runLoopPromise = createAndRunLoop();
-
-    const streamFlusher = new StreamFlusher({
-      stream,
-      streamMode,
-      streamSubgraphs,
-      streamModeSingle,
-    });
 
     try {
       for await (const chunk of stream) {
