@@ -74,3 +74,5 @@ export {
 
 export { MessagesAnnotation } from "./graph/messages_annotation.js";
 export { type LangGraphRunnableConfig } from "./pregel/runnable_types.js";
+
+export { getStore } from "./pregel/utils/config.js";
