@@ -7,8 +7,8 @@ import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { CONFIG_KEY_CALL, RETURN, TAG_HIDDEN } from "../constants.js";
 import { ChannelWrite, PASSTHROUGH } from "./write.js";
 import { RetryPolicy } from "./utils/index.js";
-import { Promisified } from "./types.js";
 import { RunnableCallable, type RunnableCallableArgs } from "../utils.js";
+import { Promisified } from "../utils.js";
 
 /**
  * Get a runnable sequence for a function that wraps it in a sequence with a RETURN channel write

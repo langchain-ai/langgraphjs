@@ -9,7 +9,7 @@ import { ManagedValueSpec } from "./managed/base.js";
 import { EphemeralValue } from "./channels/ephemeral_value.js";
 import { call, getRunnableForFunc } from "./pregel/call.js";
 import { RetryPolicy } from "./pregel/utils/index.js";
-import { Promisified } from "./pregel/types.js";
+import { Promisified } from "./utils.js";
 
 /**
  * Options for the @see task function
