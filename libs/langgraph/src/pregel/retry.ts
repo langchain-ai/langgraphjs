@@ -1,11 +1,15 @@
-import { CHECKPOINT_NAMESPACE_SEPARATOR, Command } from "../constants.js";
+import {
+  CHECKPOINT_NAMESPACE_SEPARATOR,
+  Command,
+  CONFIG_KEY_RESUMING,
+} from "../constants.js";
 import {
   getSubgraphsSeenSet,
   isGraphBubbleUp,
   isParentCommand,
 } from "../errors.js";
 import { PregelExecutableTask } from "./types.js";
-import type { RetryPolicy } from "./utils/index.js";
+import { patchConfigurable, type RetryPolicy } from "./utils/index.js";
 
 export const DEFAULT_INITIAL_INTERVAL = 500;
 export const DEFAULT_BACKOFF_FACTOR = 2;
@@ -56,59 +60,19 @@ export type SettledPregelTask = {
   error: Error;
 };
 
-export async function* executeTasksWithRetry(
+export async function _runWithRetry<
+  N extends PropertyKey,
+  C extends PropertyKey
+>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tasks: PregelExecutableTask<any, any>[],
-  options?: {
-    stepTimeout?: number;
-    signal?: AbortSignal;
-    retryPolicy?: RetryPolicy;
-  }
-): AsyncGenerator<SettledPregelTask> {
-  const { stepTimeout, retryPolicy } = options ?? {};
-  let signal = options?.signal;
-  // Start tasks
-  const executingTasksMap = Object.fromEntries(
-    tasks.map((pregelTask) => {
-      return [pregelTask.id, _runWithRetry(pregelTask, retryPolicy)];
-    })
-  );
-  if (stepTimeout && signal) {
-    if ("any" in AbortSignal) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      signal = (AbortSignal as any).any([
-        signal,
-        AbortSignal.timeout(stepTimeout),
-      ]);
-    }
-  } else if (stepTimeout) {
-    signal = AbortSignal.timeout(stepTimeout);
-  }
-
-  // Abort if signal is aborted
-  signal?.throwIfAborted();
-
-  let listener: () => void;
-  const signalPromise = new Promise<never>((_resolve, reject) => {
-    listener = () => reject(new Error("Abort"));
-    signal?.addEventListener("abort", listener);
-  }).finally(() => signal?.removeEventListener("abort", listener));
-
-  while (Object.keys(executingTasksMap).length > 0) {
-    const settledTask = await Promise.race([
-      ...Object.values(executingTasksMap),
-      signalPromise,
-    ]);
-    yield settledTask;
-    delete executingTasksMap[settledTask.task.id];
-  }
-}
-
-async function _runWithRetry(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pregelTask: PregelExecutableTask<any, any>,
-  retryPolicy?: RetryPolicy
-) {
+  pregelTask: PregelExecutableTask<N, C>,
+  retryPolicy?: RetryPolicy,
+  configurable?: Record<string, unknown>
+): Promise<{
+  task: PregelExecutableTask<N, C>;
+  result: unknown;
+  error: Error | undefined;
+}> {
   const resolvedRetryPolicy = pregelTask.retry_policy ?? retryPolicy;
   let interval =
     resolvedRetryPolicy !== undefined
@@ -117,30 +81,29 @@ async function _runWithRetry(
   let attempts = 0;
   let error;
   let result;
+
+  let { config } = pregelTask;
+  if (configurable) {
+    config = patchConfigurable(config, configurable);
+  }
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    // Modify writes in place to clear any previous retries
-    while (pregelTask.writes.length > 0) {
-      pregelTask.writes.pop();
-    }
+    // Clear any writes from previous attempts
+    pregelTask.writes.splice(0, pregelTask.writes.length);
     error = undefined;
     try {
-      result = await pregelTask.proc.invoke(
-        pregelTask.input,
-        pregelTask.config
-      );
+      result = await pregelTask.proc.invoke(pregelTask.input, config);
       break;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (e: any) {
+    } catch (e: unknown) {
       error = e;
-      error.pregelTaskId = pregelTask.id;
+      (error as { pregelTaskId: string }).pregelTaskId = pregelTask.id;
       if (isParentCommand(error)) {
-        const ns: string = pregelTask.config?.configurable?.checkpoint_ns;
+        const ns: string = config?.configurable?.checkpoint_ns;
         const cmd = error.command;
         if (cmd.graph === ns) {
           // this command is for the current graph, handle it
           for (const writer of pregelTask.writers) {
-            await writer.invoke(cmd, pregelTask.config);
+            await writer.invoke(cmd, config);
           }
           break;
         } else if (cmd.graph === Command.PARENT) {
@@ -184,18 +147,21 @@ async function _runWithRetry(
       await new Promise((resolve) => setTimeout(resolve, intervalWithJitter));
       // log the retry
       const errorName =
-        error.name ??
+        (error as Error).name ??
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (error.constructor as any).unminifiable_name ??
-        error.constructor.name;
+        ((error as Error).constructor as any).unminifiable_name ??
+        (error as Error).constructor.name;
       console.log(
-        `Retrying task "${pregelTask.name}" after ${interval.toFixed(
+        `Retrying task "${String(pregelTask.name)}" after ${interval.toFixed(
           2
         )}ms (attempt ${attempts}) after ${errorName}: ${error}`
       );
+
+      // signal subgraphs to resume (if available)
+      config = patchConfigurable(config, { [CONFIG_KEY_RESUMING]: true });
     } finally {
       // Clear checkpoint_ns seen (for subgraph detection)
-      const checkpointNs = pregelTask.config?.configurable?.checkpoint_ns;
+      const checkpointNs = config?.configurable?.checkpoint_ns;
       if (checkpointNs) {
         getSubgraphsSeenSet().delete(checkpointNs);
       }
@@ -204,6 +170,6 @@ async function _runWithRetry(
   return {
     task: pregelTask,
     result,
-    error,
+    error: error as Error | undefined,
   };
 }
