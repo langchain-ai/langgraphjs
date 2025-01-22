@@ -92,6 +92,7 @@ export class PregelRunner {
     });
 
     for await (const { task, error } of taskStream) {
+      console.warn(`Commiting task ${task.name} at ${Date.now()}`);
       graphInterrupt = this._commit(task, error) ?? graphInterrupt;
     }
     onStepWrite?.(
@@ -121,6 +122,24 @@ export class PregelRunner {
   ): AsyncGenerator<SettledPregelTask> {
     const { stepTimeout, retryPolicy } = options ?? {};
     let signal = options?.signal;
+
+    const promiseAddedSymbol = Symbol.for("promiseAdded");
+
+    let addedPromiseSignal: () => void;
+
+    let addedPromiseWait: Promise<typeof promiseAddedSymbol>;
+    function waitHandler(resolve: (value: unknown) => void) {
+      addedPromiseSignal = () => {
+        addedPromiseWait = new Promise(waitHandler) as Promise<
+          typeof promiseAddedSymbol
+        >;
+        resolve(promiseAddedSymbol);
+      };
+    }
+
+    addedPromiseWait = new Promise(waitHandler) as Promise<
+      typeof promiseAddedSymbol
+    >;
 
     const executingTasksMap: Record<
       string,
@@ -222,6 +241,7 @@ export class PregelRunner {
           });
 
           executingTasksMap[nextTask.id] = prom;
+          addedPromiseSignal();
 
           rtn[idx] = prom.then(({ result, error }) => {
             if (error) {
@@ -258,12 +278,36 @@ export class PregelRunner {
       // eslint-disable-next-line no-instanceof/no-instanceof
       if (result !== undefined) {
         if (result.length === 1) {
-          return result[0];
+          return result[0]
+            ?.then((r) => {
+              console.warn(`${name} finished at ${Date.now()}`);
+              return r;
+            })
+            .catch((e) => {
+              console.error(`${name} failed at ${Date.now()}`);
+              throw e;
+            });
         }
-        return Promise.all(result);
+        return Promise.all(result)
+          .then((r) => {
+            console.warn(`${name} finished at ${Date.now()}`);
+            return r;
+          })
+          .catch((e) => {
+            console.error(`${name} failed at ${Date.now()}`);
+            throw e;
+          });
       }
 
-      return Promise.resolve(result);
+      return Promise.resolve(result)
+        .then((r) => {
+          console.warn(`${name} finished at ${Date.now()}`);
+          return r;
+        })
+        .catch((e) => {
+          console.error(`${name} failed at ${Date.now()}`);
+          throw e;
+        });
     };
 
     if (stepTimeout && signal) {
@@ -313,9 +357,15 @@ export class PregelRunner {
       const settledTask = await Promise.race([
         ...Object.values(executingTasksMap),
         signalPromise,
+        addedPromiseWait,
       ]);
+
+      if (settledTask === promiseAddedSymbol) {
+        continue;
+      }
+
       yield settledTask as SettledPregelTask;
-      delete executingTasksMap[settledTask.task.id];
+      delete executingTasksMap[(settledTask as SettledPregelTask).task.id];
     }
   }
 
