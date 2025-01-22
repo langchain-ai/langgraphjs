@@ -123,6 +123,7 @@ See the [multi-agent tutorials](../tutorials/index.md#multi-agent-systems) for i
 - [How to add memory to a ReAct agent](react-memory.ipynb)
 - [How to add a system prompt to a ReAct agent](react-system-prompt.ipynb)
 - [How to add Human-in-the-loop to a ReAct agent](react-human-in-the-loop.ipynb)
+- [How to return structured output from a ReAct agent](react-return-structured-output.ipynb)
 
 ## LangGraph Platform
 
