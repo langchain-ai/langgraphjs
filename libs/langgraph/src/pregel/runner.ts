@@ -119,6 +119,25 @@ export class PregelRunner {
       return task.config?.configurable?.[CONFIG_KEY_SEND]?.(writes) ?? [];
     };
 
+    if (stepTimeout && signal) {
+      if ("any" in AbortSignal) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        signal = (AbortSignal as any).any([
+          signal,
+          AbortSignal.timeout(stepTimeout),
+        ]);
+      }
+    } else if (stepTimeout) {
+      signal = AbortSignal.timeout(stepTimeout);
+    }
+
+    // don't start tasks if signal is aborted!
+    if (signal?.aborted) {
+      // note: don't use throwIfAborted here because it throws a DOMException,
+      // which isn't consistent with how we throw on abort below.
+      throw new Error("Abort");
+    }
+
     // Start tasks
     Object.assign(
       executingTasksMap,
@@ -135,21 +154,6 @@ export class PregelRunner {
         })
       )
     );
-
-    if (stepTimeout && signal) {
-      if ("any" in AbortSignal) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        signal = (AbortSignal as any).any([
-          signal,
-          AbortSignal.timeout(stepTimeout),
-        ]);
-      }
-    } else if (stepTimeout) {
-      signal = AbortSignal.timeout(stepTimeout);
-    }
-
-    // Abort if signal is aborted
-    signal?.throwIfAborted();
 
     let listener: () => void;
     const signalPromise = new Promise<never>((_resolve, reject) => {
