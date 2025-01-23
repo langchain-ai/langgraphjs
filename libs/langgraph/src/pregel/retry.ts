@@ -67,7 +67,8 @@ export async function _runWithRetry<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   pregelTask: PregelExecutableTask<N, C>,
   retryPolicy?: RetryPolicy,
-  configurable?: Record<string, unknown>
+  configurable?: Record<string, unknown>,
+  signal?: AbortSignal
 ): Promise<{
   task: PregelExecutableTask<N, C>;
   result: unknown;
@@ -88,6 +89,11 @@ export async function _runWithRetry<
   }
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    if (signal?.aborted) {
+      // no need to throw here - we'll throw from the runner, instead.
+      // there's just no point in retrying if the user has requested an abort.
+      break;
+    }
     // Clear any writes from previous attempts
     pregelTask.writes.splice(0, pregelTask.writes.length);
     error = undefined;

@@ -9464,6 +9464,9 @@ graph TD;
           config
         )
     ).rejects.toThrow("Aborted");
+
+    // Ensure that the `twoCount` has had time to increment before we check it, in case the stream aborted but the graph execution didn't.
+    await new Promise((resolve) => setTimeout(resolve, 300));
     expect(oneCount).toEqual(1);
     expect(twoCount).toEqual(0);
   });
