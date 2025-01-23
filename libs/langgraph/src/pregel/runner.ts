@@ -290,7 +290,6 @@ export class PregelRunner {
       signal = AbortSignal.timeout(stepTimeout);
     }
 
-    // don't start tasks if signal is aborted!
     if (signal?.aborted) {
       // note: don't use throwIfAborted here because it throws a DOMException,
       // which isn't consistent with how we throw on abort below.
