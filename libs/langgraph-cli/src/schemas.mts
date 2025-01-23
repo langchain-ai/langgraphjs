@@ -295,7 +295,7 @@ export const ThreadSearchRequest = z
       .describe("Metadata to search for.")
       .optional(),
     status: z
-      .enum(["idle", "busy", "interrupted"])
+      .enum(["idle", "busy", "interrupted", "error"])
       .describe("Filter by thread status.")
       .optional(),
     values: z
@@ -323,7 +323,7 @@ export const Thread = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   metadata: z.record(z.unknown()).optional(),
-  status: z.enum(["idle", "busy", "interrupted"]).optional(),
+  status: z.enum(["idle", "busy", "interrupted", "error"]).optional(),
 });
 
 export const ThreadCreate = z
