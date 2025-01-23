@@ -8566,24 +8566,6 @@ graph TD;
       ],
       [
         new _AnyIdAIMessageChunk({
-          content: "2",
-        }),
-        {
-          langgraph_step: 2,
-          langgraph_node: "c_two",
-          langgraph_triggers: ["c_one"],
-          langgraph_path: [PULL, "c_two"],
-          langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
-          __pregel_resuming: false,
-          __pregel_task_id: expect.any(String),
-          checkpoint_ns: expect.stringMatching(/^p_two:/),
-          name: "c_two",
-          tags: ["graph:step:2"],
-          ls_stop: undefined,
-        },
-      ],
-      [
-        new _AnyIdAIMessageChunk({
           content: "x",
         }),
         {
@@ -8734,27 +8716,6 @@ graph TD;
             ls_provider: "FakeChatModel",
             ls_stop: undefined,
             tags: ["c_two_chat_model"],
-          },
-        ],
-      ],
-      [
-        "messages",
-        [
-          new _AnyIdAIMessageChunk({
-            content: "2",
-          }),
-          {
-            langgraph_step: 2,
-            langgraph_node: "c_two",
-            langgraph_triggers: ["c_one"],
-            langgraph_path: [PULL, "c_two"],
-            langgraph_checkpoint_ns:
-              expect.stringMatching(/^p_two:.*\|c_two:.*/),
-            __pregel_resuming: false,
-            __pregel_task_id: expect.any(String),
-            checkpoint_ns: expect.stringMatching(/^p_two:/),
-            tags: ["graph:step:2"],
-            name: "c_two",
           },
         ],
       ],
@@ -9499,6 +9460,37 @@ graph TD;
       graph.invoke(new Command({ resume: "hello" }))
     ).rejects.toThrow("Cannot use Command(resume=...) without checkpointer");
   });
+  
+  it.each(["omit", "first-only", "always"] as const)(
+    "`messages` inherits message ID - %p",
+    async (streamMessageId) => {
+      const checkpointer = await createCheckpointer();
+
+      const graph = new StateGraph(MessagesAnnotation)
+        .addNode("one", async () => {
+          const model = new FakeChatModel({
+            responses: [new AIMessage({ id: "123", content: "Output" })],
+            streamMessageId,
+          });
+
+          const invoke = await model.invoke([new HumanMessage("Input")]);
+          return { messages: invoke };
+        })
+        .addEdge(START, "one")
+        .compile({ checkpointer });
+
+      const messages = await gatherIterator(
+        graph.stream(
+          { messages: [] },
+          { configurable: { thread_id: "1" }, streamMode: "messages" }
+        )
+      );
+
+      const messageIds = [...new Set(messages.map(([m]) => m.id))];
+      expect(messageIds).toHaveLength(1);
+      if (streamMessageId !== "omit") expect(messageIds[0]).toBe("123");
+    }
+  );
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
