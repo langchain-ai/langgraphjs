@@ -19,6 +19,7 @@ const CONFIG_KEYS = [
   "writer",
   "interruptBefore",
   "interruptAfter",
+  "signal",
 ];
 
 const DEFAULT_RECURSION_LIMIT = 25;
