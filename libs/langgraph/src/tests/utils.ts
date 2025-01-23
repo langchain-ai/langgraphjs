@@ -1,7 +1,7 @@
 /* eslint-disable no-promise-executor-return */
 /* eslint-disable import/no-extraneous-dependencies */
 import assert from "node:assert";
-import { expect } from "@jest/globals";
+import { expect, it } from "@jest/globals";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import {
   BaseChatModel,
@@ -404,5 +404,13 @@ export class _AnyIdAIMessageChunk extends AIMessageChunk {
       };
     }
     super(fieldsWithJestMatcher as AIMessageFields);
+  }
+}
+
+export function skipIf(condition: () => boolean): typeof it | typeof it.skip {
+  if (condition()) {
+    return it.skip;
+  } else {
+    return it;
   }
 }

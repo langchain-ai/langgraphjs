@@ -1,4 +1,7 @@
-import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
+import {
+  BaseCheckpointSaver,
+  BaseStore,
+} from "@langchain/langgraph-checkpoint";
 import { Pregel } from "./pregel/index.js";
 import { PregelNode } from "./pregel/read.js";
 import { END, START } from "./graph/graph.js";
@@ -10,6 +13,7 @@ import { EphemeralValue } from "./channels/ephemeral_value.js";
 import { call, getRunnableForFunc } from "./pregel/call.js";
 import { RetryPolicy } from "./pregel/utils/index.js";
 import { Promisified } from "./utils.js";
+import { LastValue } from "./channels/last_value.js";
 
 /**
  * Options for the @see task function
@@ -66,6 +70,12 @@ export type EntrypointOptions = {
    * @experimental
    */
   checkpointer?: BaseCheckpointSaver;
+  /**
+   * The store for the entrypoint
+   *
+   * @experimental
+   */
+  store?: BaseStore;
 };
 
 /**
@@ -84,7 +94,7 @@ export type EntrypointOptions = {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function entrypoint<FuncT extends (...args: any[]) => any>(
-  { name, checkpointer }: EntrypointOptions,
+  { name, checkpointer, store }: EntrypointOptions,
   func: FuncT
 ): Pregel<
   Record<string, PregelNode>,
@@ -115,12 +125,14 @@ export function entrypoint<FuncT extends (...args: any[]) => any>(
       }),
     },
     channels: {
-      [START]: new EphemeralValue(),
-      [END]: new EphemeralValue(),
+      [START]: new EphemeralValue<Parameters<FuncT>>(),
+      [END]: new LastValue<ReturnType<FuncT>>(),
     },
     inputChannels: START,
     outputChannels: END,
+    streamChannels: END,
     streamMode: "updates",
+    store,
   });
   p.name = name;
   return p;
