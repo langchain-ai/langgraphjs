@@ -6,6 +6,7 @@ import type {
   BaseMessageLike,
   MessageType,
 } from "@langchain/core/messages";
+import { RemoteGraph } from "@langchain/langgraph/remote";
 import postgres from "postgres";
 import { randomUUID } from "crypto";
 
@@ -2236,5 +2237,40 @@ describe("multitasking", () => {
     expect(state.values.messages.length).toBe(8);
     expect(state.values.messages.at(0)?.content).toBe("foo");
     expect(state.values.messages.at(-4)?.content).toBe("bar");
+  });
+});
+
+describe.only("RemoteGraph", () => {
+  it.concurrent("stream values", async () => {
+    const graph = new RemoteGraph({
+      graphId: "agent",
+      client,
+      config: globalConfig,
+    });
+    const stream = await graph.stream(
+      { messages: [{ type: "human", content: "foo", id: "initial-message" }] },
+      { streamMode: "values", ...globalConfig }
+    );
+
+    const chunks = await gatherIterator(stream);
+    expect(chunks).toMatchObject([
+      { messages: [{ content: "foo" }] },
+      { messages: [{ content: "foo" }, { content: "begin" }] },
+      {
+        messages: [
+          { content: "foo" },
+          { content: "begin" },
+          { content: "tool_call__begin" },
+        ],
+      },
+      {
+        messages: [
+          { content: "foo" },
+          { content: "begin" },
+          { content: "tool_call__begin" },
+          { content: "end" },
+        ],
+      },
+    ]);
   });
 });

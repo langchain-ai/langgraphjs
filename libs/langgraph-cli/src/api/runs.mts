@@ -152,7 +152,7 @@ api.post(
 );
 
 api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
-  // Stream Run
+  // Stream Stateless Run
   const payload = c.req.valid("json");
 
   const run = await createValidRun(undefined, payload);
@@ -166,7 +166,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
       for await (const { event, data } of Runs.Stream.join(
         run.run_id,
         undefined,
-        { cancelOnDisconnect }
+        { cancelOnDisconnect, ignore404: true }
       )) {
         await stream.writeSSE({ data: serialiseAsDict(data), event });
       }
@@ -177,7 +177,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
 });
 
 api.post("/runs/wait", zValidator("json", schemas.RunCreate), async (c) => {
-  // Wait Run
+  // Wait Stateless Run
   const payload = c.req.valid("json");
   const run = await createValidRun(undefined, payload);
   return waitKeepAlive(c, Runs.wait(run.run_id, undefined));
