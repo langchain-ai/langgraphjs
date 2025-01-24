@@ -113,7 +113,6 @@ export function runFuncTests(
             const graph = entrypoint(
               { name: "graph", checkpointer },
               async (data: number[]) => {
-                console.warn(data);
                 const mapped = await Promise.all(
                   data.map(async (i) => await mapper(i))
                 );
