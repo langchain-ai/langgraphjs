@@ -1,5 +1,3 @@
-export const MISSING = Symbol.for("__missing__");
-
 export const INPUT = "__input__";
 export const ERROR = "__error__";
 export const CONFIG_KEY_SEND = "__pregel_send";

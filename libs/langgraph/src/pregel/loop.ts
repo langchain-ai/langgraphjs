@@ -853,7 +853,7 @@ export class PregelLoop {
       CONFIG_KEY_SCRATCHPAD
     ] as PregelScratchpad;
 
-    if (scratchpad && scratchpad.nullResume != null) {
+    if (scratchpad && scratchpad.nullResume !== undefined) {
       this.putWrites(NULL_TASK_ID, [[RESUME, scratchpad.nullResume]]);
     }
 

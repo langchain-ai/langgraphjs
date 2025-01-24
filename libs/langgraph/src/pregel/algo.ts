@@ -49,7 +49,6 @@ import {
   RETURN,
   ERROR,
   NO_WRITES,
-  MISSING,
 } from "../constants.js";
 import {
   Call,
@@ -1028,9 +1027,8 @@ function _scratchpad(
         ([writeTaskId, chan]) => writeTaskId === taskId && chan === RESUME
       )
       .flatMap(([_writeTaskId, _chan, resume]) => resume),
-    nullResume:
-      pendingWrites.find(
-        ([writeTaskId, chan]) => writeTaskId === NULL_TASK_ID && chan === RESUME
-      )?.[2] ?? MISSING,
+    nullResume: pendingWrites.find(
+      ([writeTaskId, chan]) => writeTaskId === NULL_TASK_ID && chan === RESUME
+    )?.[2],
   };
 }
