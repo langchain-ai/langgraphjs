@@ -9,17 +9,57 @@
 
 ## Overview
 
-[LangGraph.js](https://langchain-ai.github.io/langgraphjs/) is a library for building stateful, multi-actor applications with LLMs, used to create agent and multi-agent workflows. Compared to other LLM frameworks, it offers these core benefits: cycles, controllability, and persistence. LangGraph allows you to define flows that involve cycles, essential for most agentic architectures, differentiating it from DAG-based solutions. As a very low-level framework, it provides fine-grained control over both the flow and state of your application, crucial for creating reliable agents. Additionally, LangGraph includes built-in persistence, enabling advanced human-in-the-loop and memory features.
+[LangGraph.js](https://langchain-ai.github.io/langgraphjs/) is a library for building
+stateful, multi-actor applications with LLMs, used to create agent and multi-agent
+workflows. Check out an introductory tutorial [here](https://langchain-ai.github.io/langgraphjs/tutorials/quickstart/).
+
 
 LangGraph is inspired by [Pregel](https://research.google/pubs/pub37252/) and [Apache Beam](https://beam.apache.org/). The public interface draws inspiration from [NetworkX](https://networkx.org/documentation/latest/). LangGraph is built by LangChain Inc, the creators of [LangChain](https://github.com/langchain-ai/langchainjs), but can be used without LangChain.
 
-### Key Features
+### Why use LangGraph?
 
-- **Cycles and Branching**: Implement loops and conditionals in your apps.
-- **Persistence**: Automatically save state after each step in the graph. Pause and resume the graph execution at any point to support error recovery, human-in-the-loop workflows, time travel and more.
-- **Human-in-the-Loop**: Interrupt graph execution to approve or edit next action planned by the agent.
-- **Streaming Support**: Stream outputs as they are produced by each node (including token streaming).
-- **Integration with LangChain**: LangGraph integrates seamlessly with [LangChain.js](https://github.com/langchain-ai/langchainjs/) and [LangSmith](https://docs.smith.langchain.com/) (but does not require them).
+LangGraph provides fine-grained control over both the flow and state of your
+agent applications. It implements a central
+[persistence layer](https://langchain-ai.github.io/langgraphjs/concepts/persistence/),
+enabling features that are common to most agent architectures:
+
+- **Memory**: LangGraph persists arbitrary aspects of your application's state,
+supporting memory of conversations and other updates within and across user
+interactions;
+- **Human-in-the-loop**: Because state is checkpointed, execution can be interrupted
+and resumed, allowing for decisions, validation, and corrections at key stages via
+human input.
+
+Standardizing these components allows individuals and teams to focus on the behavior
+of their agent, instead of its supporting infrastructure.
+
+Through [LangGraph Platform](#langgraph-platform), LangGraph also provides tooling for
+the development, deployment, debugging, and monitoring of your applications.
+
+LangGraph integrates seamlessly with
+[LangChain](https://github.com/langchain-ai/langchainjs) and
+[LangSmith](https://docs.smith.langchain.com/) (but does not require them).
+
+To learn more about LangGraph, check out our first LangChain Academy
+course, *Introduction to LangGraph*, available for free
+[here](https://academy.langchain.com/courses/intro-to-langgraph).
+
+
+### LangGraph Platform
+
+[LangGraph Platform](https://langchain-ai.github.io/langgraphjs/concepts/langgraph_platform/) is infrastructure for deploying LangGraph agents. It is a commercial solution for deploying agentic applications to production, built on the open-source LangGraph framework. The LangGraph Platform consists of several components that work together to support the development, deployment, debugging, and monitoring of LangGraph applications: [LangGraph Server](https://langchain-ai.github.io/langgraphjs/concepts/langgraph_server/) (APIs), [LangGraph SDKs](https://langchain-ai.github.io/langgraphjs/concepts/sdk/) (clients for the APIs), [LangGraph CLI](https://langchain-ai.github.io/langgraphjs/concepts/langgraph_cli/) (command line tool for building the server), and [LangGraph Studio](https://langchain-ai.github.io/langgraphjs/concepts/langgraph_studio/) (UI/debugger).
+
+See deployment options [here](https://langchain-ai.github.io/langgraphjs/concepts/deployment_options/)
+(includes a free tier).
+
+Here are some common issues that arise in complex deployments, which LangGraph Platform addresses:
+
+- **Streaming support**: LangGraph Server provides [multiple streaming modes](https://langchain-ai.github.io/langgraphjs/concepts/streaming/) optimized for various application needs
+- **Background runs**: Runs agents asynchronously in the background
+- **Support for long running agents**: Infrastructure that can handle long running processes
+- **[Double texting](https://langchain-ai.github.io/langgraphjs/concepts/double_texting/)**: Handle the case where you get two messages from the user before the agent can respond
+- **Handle burstiness**: Task queue for ensuring requests are handled consistently without loss, even under heavy loads
+
 
 ## Installation
 
