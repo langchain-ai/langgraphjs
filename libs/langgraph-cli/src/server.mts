@@ -18,6 +18,21 @@ import { store as graphStore } from "./storage/store.mjs";
 
 const app = new Hono();
 
+// This is used to match the behavior of the original LangGraph API
+// where the content-type is not being validated. Might be nice
+// to warn about this in the future and throw an error instead.
+app.use(async (c, next) => {
+  if (
+    c.req.header("content-type")?.startsWith("text/plain") &&
+    c.req.method !== "GET" &&
+    c.req.method !== "OPTIONS"
+  ) {
+    c.req.raw.headers.set("content-type", "application/json");
+  }
+
+  await next();
+});
+
 app.use(cors());
 app.use(requestLogger());
 

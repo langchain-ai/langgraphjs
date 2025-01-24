@@ -2240,7 +2240,7 @@ describe("multitasking", () => {
   });
 });
 
-describe.only("RemoteGraph", () => {
+describe("RemoteGraph", () => {
   it.concurrent("stream values", async () => {
     const graph = new RemoteGraph({
       graphId: "agent",
