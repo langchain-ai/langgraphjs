@@ -84,7 +84,7 @@ import {
   RetryPolicy,
 } from "./utils/index.js";
 import { findSubgraphPregel } from "./utils/subgraph.js";
-import { PregelLoop, IterableReadableWritableStream } from "./loop.js";
+import { IterableReadableWritableStream, PregelLoop } from "./loop.js";
 import {
   ChannelKeyPlaceholder,
   isConfiguredManagedValue,
@@ -1239,6 +1239,7 @@ export class Pregel<
      * from the loop to the main stream and therefore back to the user as soon as
      * they are available.
      */
+
     const createAndRunLoop = async () => {
       try {
         loop = await PregelLoop.initialize({
@@ -1260,6 +1261,7 @@ export class Pregel<
 
         const runner = new PregelRunner({
           loop,
+          nodeFinished: config.configurable?.nodeFinished,
         });
 
         if (options?.subgraphs) {
@@ -1299,6 +1301,7 @@ export class Pregel<
       }
     };
     const runLoopPromise = createAndRunLoop();
+
     try {
       for await (const chunk of stream) {
         if (chunk === undefined) {
@@ -1367,7 +1370,7 @@ export class Pregel<
     runner: PregelRunner;
     config: RunnableConfig;
     debug: boolean;
-  }) {
+  }): Promise<void> {
     const { loop, runner, debug, config } = params;
     let tickError;
     try {

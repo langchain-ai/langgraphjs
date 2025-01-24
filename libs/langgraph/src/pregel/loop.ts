@@ -21,7 +21,13 @@ import {
   createCheckpoint,
   emptyChannels,
 } from "../channels/base.js";
-import { PregelExecutableTask, StreamMode } from "./types.js";
+import {
+  Call,
+  PregelExecutableTask,
+  PregelScratchpad,
+  StreamMode,
+  TaskPath,
+} from "./types.js";
 import {
   isCommand,
   CHECKPOINT_NAMESPACE_SEPARATOR,
@@ -36,10 +42,13 @@ import {
   NULL_TASK_ID,
   RESUME,
   TAG_HIDDEN,
+  PUSH,
+  CONFIG_KEY_SCRATCHPAD,
 } from "../constants.js";
 import {
   _applyWrites,
   _prepareNextTasks,
+  _prepareSingleTask,
   increment,
   shouldInterrupt,
   WritesProtocol,
@@ -68,6 +77,7 @@ import {
   mapDebugTasks,
   mapDebugCheckpoint,
   mapDebugTaskResults,
+  printStepTasks,
 } from "./debug.js";
 import { PregelNode } from "./read.js";
 import { ManagedValueMapping, WritableManagedValue } from "../managed/base.js";
@@ -99,41 +109,18 @@ export type PregelLoopInitializeParams = {
   debug: boolean;
 };
 
-type PregelLoopParams = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  input?: any | Command;
-  config: RunnableConfig;
-  checkpointer?: BaseCheckpointSaver;
-  checkpoint: Checkpoint;
-  checkpointMetadata: CheckpointMetadata;
-  checkpointPreviousVersions: Record<string, string | number>;
-  checkpointPendingWrites: CheckpointPendingWrite[];
-  checkpointConfig: RunnableConfig;
-  channels: Record<string, BaseChannel>;
-  managed: ManagedValueMapping;
-  step: number;
-  stop: number;
-  outputKeys: string | string[];
-  streamKeys: string | string[];
-  nodes: Record<string, PregelNode>;
-  checkpointNamespace: string[];
-  skipDoneTasks: boolean;
-  isNested: boolean;
-  manager?: CallbackManagerForChainRun;
-  stream: IterableReadableWritableStream;
-  store?: AsyncBatchedStore;
-  prevCheckpointConfig: RunnableConfig | undefined;
-  interruptAfter: string[] | All;
-  interruptBefore: string[] | All;
-  debug: boolean;
-};
-
 export class IterableReadableWritableStream extends IterableReadableStream<StreamChunk> {
   modes: Set<StreamMode>;
 
   private controller: ReadableStreamDefaultController;
 
   private passthroughFn?: (chunk: StreamChunk) => void;
+
+  private _closed: boolean = false;
+
+  get closed() {
+    return this._closed;
+  }
 
   constructor(params: {
     passthroughFn?: (chunk: StreamChunk) => void;
@@ -173,6 +160,8 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
       this.controller.close();
     } catch (e) {
       // pass
+    } finally {
+      this._closed = true;
     }
   }
 
@@ -181,6 +170,35 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
     this.controller.error(e);
   }
 }
+
+type PregelLoopParams = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  input?: any | Command;
+  config: RunnableConfig;
+  checkpointer?: BaseCheckpointSaver;
+  checkpoint: Checkpoint;
+  checkpointMetadata: CheckpointMetadata;
+  checkpointPreviousVersions: Record<string, string | number>;
+  checkpointPendingWrites: CheckpointPendingWrite[];
+  checkpointConfig: RunnableConfig;
+  channels: Record<string, BaseChannel>;
+  managed: ManagedValueMapping;
+  step: number;
+  stop: number;
+  outputKeys: string | string[];
+  streamKeys: string | string[];
+  nodes: Record<string, PregelNode>;
+  checkpointNamespace: string[];
+  skipDoneTasks: boolean;
+  isNested: boolean;
+  manager?: CallbackManagerForChainRun;
+  stream: IterableReadableWritableStream;
+  store?: AsyncBatchedStore;
+  prevCheckpointConfig: RunnableConfig | undefined;
+  interruptAfter: string[] | All;
+  interruptBefore: string[] | All;
+  debug: boolean;
+};
 
 function createDuplexStream(...streams: IterableReadableWritableStream[]) {
   return new IterableReadableWritableStream({
@@ -759,23 +777,94 @@ export class PregelLoop {
     return suppress;
   }
 
+  acceptPush(
+    task: PregelExecutableTask<string, string>,
+    writeIdx: number,
+    call?: Call
+  ): PregelExecutableTask<string, string> | void {
+    if (
+      this.interruptAfter?.length > 0 &&
+      shouldInterrupt(this.checkpoint, this.interruptAfter, [task])
+    ) {
+      this.toInterrupt.push(task);
+      return;
+    }
+
+    const pushed = _prepareSingleTask(
+      [PUSH, task.path ?? [], writeIdx, task.id, call] as TaskPath,
+      this.checkpoint,
+      this.checkpointPendingWrites,
+      this.nodes,
+      this.channels,
+      this.managed,
+      this.config,
+      true,
+      {
+        step: this.step,
+        checkpointer: this.checkpointer,
+        manager: this.manager,
+        store: this.store,
+      }
+    );
+    if (pushed) {
+      if (
+        this.interruptBefore?.length > 0 &&
+        shouldInterrupt(this.checkpoint, this.interruptBefore, [pushed])
+      ) {
+        this.toInterrupt.push(pushed);
+        return;
+      }
+      this._emit(
+        gatherIteratorSync(
+          prefixGenerator(mapDebugTasks(this.step, [pushed]), "debug")
+        )
+      );
+      if (this.debug) {
+        printStepTasks(this.step, [pushed]);
+      }
+      this.tasks[pushed.id] = pushed;
+      if (this.skipDoneTasks) {
+        this._matchWrites({ [pushed.id]: pushed });
+      }
+      return pushed;
+    }
+  }
+
   protected _suppressInterrupt(e?: Error): boolean {
     return isGraphInterrupt(e) && !this.isNested;
   }
 
-  /**
-   * Resuming from previous checkpoint requires
-   * - finding a previous checkpoint
-   * - receiving null input (outer graph) or RESUMING flag (subgraph)
-   */
   protected async _first(inputKeys: string | string[]) {
+    /*
+     * Resuming from previous checkpoint requires
+     * - finding a previous checkpoint
+     * - receiving null input (outer graph) or RESUMING flag (subgraph)
+     */
+
+    const { configurable } = this.config;
     const isResuming =
       Object.keys(this.checkpoint.channel_versions).length !== 0 &&
       (this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined ||
         this.input === null ||
         isCommand(this.input));
+
+    // take resume value from parent
+    const scratchpad = configurable?.[
+      CONFIG_KEY_SCRATCHPAD
+    ] as PregelScratchpad;
+
+    if (scratchpad && scratchpad.nullResume !== undefined) {
+      this.putWrites(NULL_TASK_ID, [[RESUME, scratchpad.nullResume]]);
+    }
+
     if (isCommand(this.input)) {
+      if (this.input.resume != null && this.checkpointer == null) {
+        // TODO: add test to gaurd this throw
+        throw new Error("Cannot use Command(resume=...) without checkpointer");
+      }
+
       const writes: { [key: string]: PendingWrite[] } = {};
+
       // group writes by task id
       for (const [tid, key, value] of mapCommand(
         this.input,
@@ -789,11 +878,13 @@ export class PregelLoop {
       if (Object.keys(writes).length === 0) {
         throw new EmptyInputError("Received empty Command input");
       }
+
       // save writes
       for (const [tid, ws] of Object.entries(writes)) {
         this.putWrites(tid, ws);
       }
     }
+
     // apply null writes
     const nullWrites = (this.checkpointPendingWrites ?? [])
       .filter((w) => w[0] === NULL_TASK_ID)
@@ -867,10 +958,10 @@ export class PregelLoop {
       });
     }
     // done with input
-    this.input = isResuming ? INPUT_RESUMING : INPUT_DONE;
+    this.input = this.input === INPUT_RESUMING ? INPUT_RESUMING : INPUT_DONE;
     if (!this.isNested) {
       this.config = patchConfigurable(this.config, {
-        [CONFIG_KEY_RESUMING]: isResuming,
+        [CONFIG_KEY_RESUMING]: this.input === INPUT_RESUMING,
       });
     }
   }
@@ -942,5 +1033,24 @@ export class PregelLoop {
       };
     }
     this.step += 1;
+  }
+
+  protected _matchWrites(
+    tasks: Record<string, PregelExecutableTask<string, string>>
+  ) {
+    for (const [tid, k, v] of this.checkpointPendingWrites) {
+      if (k === ERROR || k === INTERRUPT || k === RESUME) {
+        continue;
+      }
+      const task = Object.values(tasks).find((t) => t.id === tid);
+      if (task) {
+        task.writes.push([k, v]);
+      }
+    }
+    for (const task of Object.values(tasks)) {
+      if (task.writes.length > 0) {
+        this._outputWrites(task.id, task.writes, true);
+      }
+    }
   }
 }

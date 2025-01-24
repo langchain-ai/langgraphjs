@@ -24,6 +24,12 @@ export type PregelInputType = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PregelOutputType = any;
 
+// TODO: name this something sensible, and move to utils
+export type Promisified<T extends (...args: unknown[]) => unknown> =
+  ReturnType<T> extends Promise<unknown>
+    ? ReturnType<T>
+    : Promise<ReturnType<T>>;
+
 /**
  * Config for executing the graph.
  */
@@ -173,7 +179,7 @@ export interface PregelTaskDescription {
   readonly error?: unknown;
   readonly interrupts: Interrupt[];
   readonly state?: LangGraphRunnableConfig | StateSnapshot;
-  readonly path?: [string, ...(string | number)[]];
+  readonly path?: TaskPath;
 }
 
 export interface PregelExecutableTask<
@@ -189,7 +195,7 @@ export interface PregelExecutableTask<
   readonly triggers: Array<string>;
   readonly retry_policy?: RetryPolicy;
   readonly id: string;
-  readonly path?: [string, ...(string | number)[]];
+  readonly path?: TaskPath;
   readonly subgraphs?: Runnable[];
   readonly writers: Runnable[];
 }
@@ -227,8 +233,61 @@ export interface StateSnapshot {
   readonly tasks: PregelTaskDescription[];
 }
 
-export type PregelScratchpad<Resume> = {
+export type PregelScratchpad<Resume = unknown> = {
+  /** Counter for tracking call invocations */
+  callCounter: number;
+  /** Counter for tracking interrupts */
   interruptCounter: number;
-  usedNullResume: boolean;
+  /** List of resume values */
   resume: Resume[];
+  /** Single resume value for null task ID */
+  nullResume: Resume;
 };
+
+export type CallOptions = {
+  func: (...args: unknown[]) => unknown | Promise<unknown>;
+  name: string;
+  input: unknown;
+  retry?: RetryPolicy;
+  callbacks?: unknown;
+};
+
+export class Call {
+  func: (...args: unknown[]) => unknown | Promise<unknown>;
+
+  name: string;
+
+  input: unknown;
+
+  retry?: RetryPolicy;
+
+  callbacks?: unknown;
+
+  readonly __lg_type = "call";
+
+  constructor({ func, name, input, retry, callbacks }: CallOptions) {
+    this.func = func;
+    this.name = name;
+    this.input = input;
+    this.retry = retry;
+
+    // TODO: where is this used?
+    this.callbacks = callbacks;
+  }
+}
+
+export function isCall(value: unknown): value is Call {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "__lg_type" in value &&
+    value.__lg_type === "call"
+  );
+}
+
+export type SimpleTaskPath = [string, string | number];
+export type VariadicTaskPath = [string, ...(string | number)[]];
+export type CallTaskPath =
+  | [string, ...(string | number)[], Call]
+  | [string, TaskPath, ...(string | number)[], Call];
+export type TaskPath = SimpleTaskPath | CallTaskPath | VariadicTaskPath;

@@ -66,10 +66,10 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
 
   async invoke(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    input: any,
+    input: I,
     options?: Partial<RunnableConfig> | undefined
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): Promise<any> {
+  ): Promise<O> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let returnValue: any;
     const config = ensureLangGraphConfig(options);
@@ -177,3 +177,9 @@ export function patchConfigurable(
     };
   }
 }
+
+// TODO: name this something sensible, and move to utils
+export type Promisified<T extends (...args: unknown[]) => unknown> =
+  ReturnType<T> extends Promise<unknown>
+    ? ReturnType<T>
+    : Promise<ReturnType<T>>;

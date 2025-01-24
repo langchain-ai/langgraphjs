@@ -38,7 +38,6 @@ export {
   isCommand,
   type Interrupt,
 } from "./constants.js";
-export { interrupt } from "./interrupt.js";
 
 export {
   MemorySaver,
@@ -63,6 +62,13 @@ export {
   type ListNamespacesOperation,
 } from "@langchain/langgraph-checkpoint";
 export * from "./managed/index.js";
+
+export {
+  entrypoint,
+  type EntrypointOptions,
+  task,
+  type TaskOptions,
+} from "./func/index.js";
 
 export { MessagesAnnotation } from "./graph/messages_annotation.js";
 export { type LangGraphRunnableConfig } from "./pregel/runnable_types.js";
