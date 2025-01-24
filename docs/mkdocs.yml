@@ -216,7 +216,7 @@ nav:
     - Resources:
         - FAQ: concepts/faq.md
         - Troubleshooting:
-            - Troubleshooting: how-tos/troubleshooting/errors/index.md
+            - Troubleshooting: troubleshooting/errors/
             - troubleshooting/errors/index.md
             - troubleshooting/errors/GRAPH_RECURSION_LIMIT.ipynb
             - troubleshooting/errors/INVALID_CONCURRENT_GRAPH_UPDATE.ipynb
