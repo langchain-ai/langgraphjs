@@ -34,6 +34,14 @@ import {
   BaseLanguageModelCallOptions,
   BaseLanguageModelInput,
 } from "@langchain/core/language_models/base";
+import { Pregel, PregelInputType, PregelOutputType } from "../pregel/index.js";
+import { StrRecord } from "../pregel/algo.js";
+import { PregelNode } from "../pregel/read.js";
+import {
+  BaseChannel,
+  LangGraphRunnableConfig,
+  ManagedValueSpec,
+} from "../web.js";
 
 export interface FakeChatModelArgs extends BaseChatModelParams {
   responses: BaseMessage[];
@@ -413,4 +421,90 @@ export function skipIf(condition: () => boolean): typeof it | typeof it.skip {
   } else {
     return it;
   }
+}
+
+export async function dumpDebugStream<
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
+  InputType = PregelInputType,
+  OutputType = PregelOutputType
+>(
+  graph: Pregel<Nn, Cc, ConfigurableFieldType, InputType, OutputType>,
+  input: InputType,
+  config: LangGraphRunnableConfig<ConfigurableFieldType>
+) {
+  console.log(`invoking ${graph.name} with arguments ${JSON.stringify(input)}`);
+  const stream = await graph.stream(input, {
+    ...config,
+    streamMode: ["updates", "debug", "values"],
+  });
+
+  let lastStep = 0;
+  let lastCheckpointRef: {
+    checkpoint_id: string;
+    checkpoint_ns: string;
+    thread_id: string;
+  } = { checkpoint_id: "", checkpoint_ns: "", thread_id: "" };
+
+  let invokeReturnValue;
+
+  for await (const value of stream) {
+    if (value[1] === "updates") {
+      invokeReturnValue = value[2].payload;
+      continue;
+    }
+
+    if (value[1] === "values") {
+      const vals = value[2];
+      console.log(
+        `step ${lastStep} finished with state ${JSON.stringify(vals, null, 2)}`
+      );
+      console.log();
+    }
+
+    if (value[1] === "debug") {
+      const { type, step, /* timestamp, */ payload } = value[2];
+
+      if (value[2].type === "checkpoint") {
+        const { configurable } = value[2].payload.config;
+        lastCheckpointRef = configurable;
+        continue;
+      }
+
+      lastStep = step;
+
+      if (type === "task") {
+        const { /* id, */ name, input, triggers /* interrupts */ } = payload;
+        console.log(
+          `step ${step}: starting ${name} triggered by ${JSON.stringify(
+            triggers
+          )} with inputs ${JSON.stringify(input)}`
+        );
+      }
+      if (type === "task_result") {
+        const { /* id , */ name, result /* interrupts */ } = payload;
+        console.log(
+          `step ${step}: task ${name} returned ${JSON.stringify(result)}`
+        );
+      }
+    }
+  }
+
+  console.log(
+    `graph execution finished - returned: ${JSON.stringify(
+      invokeReturnValue,
+      null,
+      2
+    )}`
+  );
+
+  const graphState = await graph.getState({
+    configurable: lastCheckpointRef,
+  });
+
+  console.log();
+  console.log(`final state: ${JSON.stringify(graphState.values, null, 2)}`);
+  return invokeReturnValue as ReturnType<typeof graph.invoke>;
 }

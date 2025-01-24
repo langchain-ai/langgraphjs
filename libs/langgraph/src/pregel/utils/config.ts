@@ -94,6 +94,11 @@ export function ensureLangGraphConfig(
   return empty;
 }
 
+/**
+ * A helper utility function that returns the @see BaseStore that was set when the graph was initialized
+ *
+ * @returns a reference to the @see BaseStore that was set when the graph was initialized
+ */
 export function getStore(): BaseStore | undefined {
   const config: LangGraphRunnableConfig =
     AsyncLocalStorageProviderSingleton.getRunnableConfig();

@@ -69,7 +69,7 @@ export {
   type EntrypointOptions,
   task,
   type TaskOptions,
-} from "./func.js";
+} from "./func/index.js";
 
 export { MessagesAnnotation } from "./graph/messages_annotation.js";
 export { type LangGraphRunnableConfig } from "./pregel/runnable_types.js";
