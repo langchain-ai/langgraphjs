@@ -4,20 +4,23 @@ import {
   RunnableSequence,
 } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
-import { CONFIG_KEY_CALL, RETURN, TAG_HIDDEN } from "../constants.js";
+import { CONFIG_KEY_CALL, PREVIOUS, RETURN, TAG_HIDDEN } from "../constants.js";
 import { ChannelWrite, PASSTHROUGH } from "./write.js";
 import { RetryPolicy } from "./utils/index.js";
 import { RunnableCallable, type RunnableCallableArgs } from "../utils.js";
 import { Promisified } from "../utils.js";
-
+import {
+  EntrypointFuncReturnT,
+  finalSymbol,
+  isEntrypointFinal,
+} from "../func/types.js";
 /**
- * Get a runnable sequence for a function that wraps it in a sequence with a RETURN channel write
+ * Wraps a user function in a Runnable.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getRunnableForFunc<FuncT extends (...args: any[]) => any>(
   name: string,
-  func: FuncT,
-  writeReturn: boolean = true
+  func: FuncT
 ): Runnable<Parameters<FuncT>, ReturnType<FuncT>> {
   const run = new RunnableCallable<Parameters<FuncT>, ReturnType<FuncT>>({
     func: (input: Parameters<FuncT>) => func(...input),
@@ -26,20 +29,63 @@ export function getRunnableForFunc<FuncT extends (...args: any[]) => any>(
     recurse: false,
   } as RunnableCallableArgs);
 
-  if (writeReturn) {
-    // writes to return channel
-    return new RunnableSequence<Parameters<FuncT>, ReturnType<FuncT>>({
-      name,
-      first: run,
-      last: new ChannelWrite<ReturnType<FuncT>>(
-        [{ channel: RETURN, value: PASSTHROUGH }],
+  return new RunnableSequence<Parameters<FuncT>, ReturnType<FuncT>>({
+    name,
+    first: run,
+    last: new ChannelWrite<ReturnType<FuncT>>(
+      [{ channel: RETURN, value: PASSTHROUGH }],
+      [TAG_HIDDEN]
+    ),
+  });
+}
+
+export function getRunnableForEntrypoint<
+  FuncT extends (...args: unknown[]) => unknown
+>(
+  name: string,
+  func: FuncT
+): Runnable<Parameters<FuncT>, EntrypointFuncReturnT<FuncT>> {
+  const run = new RunnableCallable<Parameters<FuncT>, ReturnType<FuncT>>({
+    func: (input: Parameters<FuncT>) => func(...input),
+    name,
+    trace: false,
+    recurse: false,
+  } as RunnableCallableArgs);
+
+  return new RunnableSequence<Parameters<FuncT>, EntrypointFuncReturnT<FuncT>>({
+    name,
+    first: run,
+    middle: [
+      new ChannelWrite(
+        [
+          {
+            channel: "__end__",
+            value: PASSTHROUGH,
+            mapper: new RunnableCallable({
+              func: (value) =>
+                isEntrypointFinal(value) ? value[finalSymbol].value : value,
+            }),
+          },
+        ],
         [TAG_HIDDEN]
       ),
-      // TODO: add trace_inputs for task?
-    });
-  }
-
-  return run;
+      new ChannelWrite([
+        {
+          channel: PREVIOUS,
+          value: PASSTHROUGH,
+          mapper: new RunnableCallable({
+            func: (value) => {
+              return isEntrypointFinal(value) ? value[finalSymbol].save : value;
+            },
+          }),
+        },
+      ]),
+    ],
+    last: new RunnableCallable({
+      func: (final: ReturnType<FuncT>) =>
+        isEntrypointFinal(final) ? final[finalSymbol].value : final,
+    }),
+  });
 }
 
 export type CallWrapperOptions<FuncT extends (...args: unknown[]) => unknown> =

@@ -49,6 +49,8 @@ import {
   RETURN,
   ERROR,
   NO_WRITES,
+  CONFIG_KEY_PREVIOUS,
+  PREVIOUS,
 } from "../constants.js";
 import {
   Call,
@@ -639,6 +641,7 @@ export function _prepareSingleTask<
                 ],
                 id
               ),
+              [CONFIG_KEY_PREVIOUS]: checkpoint.channel_values[PREVIOUS],
               checkpoint_id: undefined,
               checkpoint_ns: taskCheckpointNamespace,
             },
@@ -775,6 +778,7 @@ export function _prepareSingleTask<
                   ],
                   taskId
                 ),
+                [CONFIG_KEY_PREVIOUS]: checkpoint.channel_values[PREVIOUS],
                 checkpoint_id: undefined,
                 checkpoint_ns: taskCheckpointNamespace,
               },
@@ -923,6 +927,7 @@ export function _prepareSingleTask<
                     ],
                     taskId
                   ),
+                  [CONFIG_KEY_PREVIOUS]: checkpoint.channel_values[PREVIOUS],
                   checkpoint_id: undefined,
                   checkpoint_ns: taskCheckpointNamespace,
                 },

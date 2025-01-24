@@ -1,8 +1,8 @@
 import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { describe, it, expect, beforeAll } from "@jest/globals";
-import { task, entrypoint } from "../func.js";
+import { task, entrypoint, getPreviousState } from "../func/index.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
-import { Command } from "../constants.js";
+import { Command, PREVIOUS } from "../constants.js";
 import { interrupt } from "../interrupt.js";
 import { MemorySaverAssertImmutable, skipIf } from "./utils.js";
 import { Annotation, START, StateGraph } from "../graph/index.js";
@@ -462,16 +462,23 @@ export function runFuncTests(
             return { timestamp: Date.now() };
           });
 
-          const graph = entrypoint({ name: "streamGraph" }, async () => {
-            const first = await slowTask();
-            const second = await slowTask();
-            return [first, second];
-          });
+          const graph = entrypoint(
+            { name: "streamGraph", checkpointer },
+            async () => {
+              const first = await slowTask();
+              const second = await slowTask();
+              return [first, second];
+            }
+          );
 
           const arrivalTimes: number[] = [];
 
+          const config = {
+            configurable: { thread_id },
+          };
+
           // Using for-await to process the stream - pass empty array since no args needed
-          for await (const chunk of await graph.stream([])) {
+          for await (const chunk of await graph.stream([], config)) {
             const now = Date.now();
             if ("slowTask" in chunk) {
               arrivalTimes.push(now);
@@ -581,6 +588,84 @@ export function runFuncTests(
 
             // Verify double() was only called 3 times (cached appropriately)
             expect(counter).toBe(3);
+          }
+        );
+
+        skipIf(() => !withCheckpointer)(
+          "accumulates state with multiple invocations of the same thread",
+          async () => {
+            const states: unknown[] = [];
+
+            const graph = entrypoint(
+              { name: "graph", checkpointer },
+              async (inputs: Record<string, string>) => {
+                const previous = getPreviousState<unknown>();
+                states.push(previous);
+                return {
+                  previous,
+                  current: inputs,
+                };
+              }
+            );
+
+            const config = {
+              configurable: { thread_id },
+            };
+
+            const first = await graph.invoke([{ a: "1" }], config);
+            const second = await graph.invoke([{ a: "2" }], config);
+            const third = await graph.invoke([{ a: "3" }], config);
+
+            expect(first).toEqual({
+              current: { a: "1" },
+            });
+
+            expect(second).toEqual({
+              current: { a: "2" },
+              previous: { current: { a: "1" } },
+            });
+
+            expect(third).toEqual({
+              current: { a: "3" },
+              previous: {
+                current: { a: "2" },
+                previous: { current: { a: "1" } },
+              },
+            });
+          }
+        );
+
+        skipIf(() => !withCheckpointer)(
+          "can return a final value separately from the persisted value",
+          async () => {
+            const graph = entrypoint(
+              { name: "graph", checkpointer },
+              async (input: number) => {
+                const previous = getPreviousState<number>();
+
+                return entrypoint.final({
+                  value: input + (previous ?? 0),
+                  save: input,
+                });
+              }
+            );
+
+            const config = {
+              configurable: { thread_id },
+            };
+
+            const first = await graph.invoke([1], config);
+            const second = await graph.invoke([2], config);
+            const third = await graph.invoke([3], config);
+            const state = await graph.getState(config);
+            const checkpointConfig = state.config;
+            const checkpoint = await checkpointer?.get(checkpointConfig);
+            const previous = checkpoint?.channel_values[PREVIOUS];
+
+            expect(first).toEqual(1);
+            expect(second).toEqual(3);
+            expect(third).toEqual(5);
+            expect(previous).toEqual(3);
           }
         );
       }

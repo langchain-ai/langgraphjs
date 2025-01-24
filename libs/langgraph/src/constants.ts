@@ -9,6 +9,7 @@ export const CONFIG_KEY_TASK_ID = "__pregel_task_id";
 export const CONFIG_KEY_STREAM = "__pregel_stream";
 export const CONFIG_KEY_RESUME_VALUE = "__pregel_resume_value";
 export const CONFIG_KEY_SCRATCHPAD = "__pregel_scratchpad";
+export const CONFIG_KEY_PREVIOUS = "__pregel_previous";
 export const CONFIG_KEY_CHECKPOINT_NS = "checkpoint_ns";
 
 // this one is part of public API
@@ -18,6 +19,7 @@ export const INTERRUPT = "__interrupt__";
 export const RESUME = "__resume__";
 export const NO_WRITES = "__no_writes__";
 export const RETURN = "__return__";
+export const PREVIOUS = "__previous__";
 export const RUNTIME_PLACEHOLDER = "__pregel_runtime_placeholder__";
 export const RECURSION_LIMIT_DEFAULT = 25;
 

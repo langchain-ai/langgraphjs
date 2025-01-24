@@ -2,18 +2,23 @@ import {
   BaseCheckpointSaver,
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
-import { Pregel } from "./pregel/index.js";
-import { PregelNode } from "./pregel/read.js";
-import { END, START } from "./graph/graph.js";
-import { BaseChannel } from "./channels/base.js";
-import { ChannelWrite, PASSTHROUGH } from "./pregel/write.js";
-import { TAG_HIDDEN } from "./constants.js";
-import { ManagedValueSpec } from "./managed/base.js";
-import { EphemeralValue } from "./channels/ephemeral_value.js";
-import { call, getRunnableForFunc } from "./pregel/call.js";
-import { RetryPolicy } from "./pregel/utils/index.js";
-import { Promisified } from "./utils.js";
-import { LastValue } from "./channels/last_value.js";
+import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
+import { Pregel } from "../pregel/index.js";
+import { PregelNode } from "../pregel/read.js";
+import { END, START } from "../graph/graph.js";
+import { CONFIG_KEY_PREVIOUS, PREVIOUS } from "../constants.js";
+import { EphemeralValue } from "../channels/ephemeral_value.js";
+import { call, getRunnableForEntrypoint } from "../pregel/call.js";
+import { RetryPolicy } from "../pregel/utils/index.js";
+import { Promisified } from "../utils.js";
+import { LastValue } from "../channels/last_value.js";
+import {
+  EntrypointFinal,
+  EntrypointFuncReturnT,
+  EntrypointFuncSaveT,
+  finalSymbol,
+} from "./types.js";
+import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 
 /**
  * Options for the @see task function
@@ -96,37 +101,31 @@ export type EntrypointOptions = {
 export function entrypoint<FuncT extends (...args: any[]) => any>(
   { name, checkpointer, store }: EntrypointOptions,
   func: FuncT
-): Pregel<
-  Record<string, PregelNode>,
-  Record<string, BaseChannel | ManagedValueSpec>,
-  Record<string, unknown>,
-  Parameters<FuncT>,
-  ReturnType<FuncT>
-> {
+) {
   const p = new Pregel<
-    Record<string, PregelNode>,
-    Record<string, BaseChannel | ManagedValueSpec>,
+    Record<string, PregelNode<Parameters<FuncT>, EntrypointFuncReturnT<FuncT>>>,
+    {
+      [START]: EphemeralValue<Parameters<FuncT>>;
+      [END]: LastValue<EntrypointFuncReturnT<FuncT>>;
+      [PREVIOUS]: LastValue<EntrypointFuncSaveT<FuncT>>;
+    },
     Record<string, unknown>,
     Parameters<FuncT>,
-    ReturnType<FuncT>
+    EntrypointFuncReturnT<FuncT>
   >({
     checkpointer,
     nodes: {
-      [name]: new PregelNode({
-        bound: getRunnableForFunc(name, func, false),
+      [name]: new PregelNode<Parameters<FuncT>, EntrypointFuncReturnT<FuncT>>({
+        bound: getRunnableForEntrypoint(name, func),
         triggers: [START],
         channels: [START],
-        writers: [
-          new ChannelWrite(
-            [{ channel: END, value: PASSTHROUGH }],
-            [TAG_HIDDEN]
-          ),
-        ],
+        writers: [],
       }),
     },
     channels: {
       [START]: new EphemeralValue<Parameters<FuncT>>(),
-      [END]: new LastValue<ReturnType<FuncT>>(),
+      [END]: new LastValue<EntrypointFuncReturnT<FuncT>>(),
+      [PREVIOUS]: new LastValue<EntrypointFuncSaveT<FuncT>>(),
     },
     inputChannels: START,
     outputChannels: END,
@@ -136,4 +135,36 @@ export function entrypoint<FuncT extends (...args: any[]) => any>(
   });
   p.name = name;
   return p;
+}
+
+/**
+ * A helper utility for use with the functional API that returns a value to the caller, as well as a separate state value to persist to the checkpoint
+ *
+ * @param value - The value to return to the caller
+ * @param save - The value to save to the checkpoint
+ * @returns An object with the value and save properties
+ */
+entrypoint.final = function final<ValueT, SaveT>({
+  value,
+  save,
+}: {
+  value?: ValueT;
+  save?: SaveT;
+}): EntrypointFinal<ValueT, SaveT> {
+  return {
+    [finalSymbol]: { value, save },
+  };
+};
+
+/**
+ * A helper utility function for use with the functional API that returns the previous state from the checkpoint from the last invocation of the current thread.
+ *
+ * Related: @see {@link entrypoint#final}
+ *
+ * @returns the previous saved state from the last invocation of the current thread.
+ */
+export function getPreviousState<StateT>(): StateT {
+  const config: LangGraphRunnableConfig =
+    AsyncLocalStorageProviderSingleton.getRunnableConfig();
+  return config.configurable?.[CONFIG_KEY_PREVIOUS] as StateT;
 }
