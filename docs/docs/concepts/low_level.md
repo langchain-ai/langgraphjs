@@ -434,6 +434,59 @@ Use `Command` when you need to **both** update the graph state **and** route to 
 
 Use [conditional edges](#conditional-edges) to route between nodes conditionally without updating the state.
 
+### Navigating to a node in a parent graph
+
+If you are using [subgraphs](#subgraphs), you might want to navigate from a node a subgraph to a different subgraph (i.e. a different node in the parent graph). To do so, you can specify `graph: Command.PARENT` in `Command`:
+
+```ts
+const myNode = (state: typeof StateAnnotation.State) => {
+  return new Command({
+    update: { foo: "bar" },
+    goto: "other_subgraph", // where `other_subgraph` is a node in the parent graph
+    graph: Command.PARENT,
+  });
+};
+```
+
+!!! note
+
+    Setting `graph` to `Command.PARENT` will navigate to the closest parent graph.
+
+This is particularly useful when implementing [multi-agent handoffs](./multi_agent.md#handoffs).
+
+### Using inside tools
+
+A common use case is updating graph state from inside a tool. For example, in a customer support application you might want to look up customer information based on their account number or ID in the beginning of the conversation. To update the graph state from the tool, you can return `Command({ update: { my_custom_key: "foo", messages: [...] } })` from the tool:
+
+```ts
+import { tool } from "@langchain/core/tools";
+
+const lookupUserInfo = tool(async (input, config) => {
+  const userInfo = getUserInfo(config);
+  return new Command({
+    // update state keys
+    update: {
+      user_info: userInfo,
+      messages: [
+        new ToolMessage({
+          content: "Successfully looked up user information",
+          tool_call_id: config.toolCall.id,
+        }),
+      ],
+    },
+  });
+}, {
+  name: "lookup_user_info",
+  description: "Use this to look up user information to better assist them with their questions.",
+  schema: z.object(...)
+});
+```
+
+!!! important
+    You MUST include `messages` (or any state key used for the message history) in `Command.update` when returning `Command` from a tool and the list of messages in `messages` MUST contain a `ToolMessage`. This is necessary for the resulting message history to be valid (LLM providers require AI messages with tool calls to be followed by the tool result messages).
+
+If you are using tools that update state via `Command`, we recommend using prebuilt [`ToolNode`](/langgraphjs/reference/classes/langgraph_prebuilt.ToolNode.html) which automatically handles tools returning `Command` objects and propagates them to the graph state. If you're writing a custom node that calls tools, you would need to manually propagate `Command` objects returned by the tools as the update from node.
+
 ### Human-in-the-loop
 
 `Command` is an important part of human-in-the-loop workflows: when using `interrupt()` to collect user input, `Command` is then used to supply the input and resume execution via `new Command({ resume: "User input" })`. Check out [this conceptual guide](/langgraphjs/concepts/human_in_the_loop) for more information.
