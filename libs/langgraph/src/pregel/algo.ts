@@ -46,10 +46,10 @@ import {
   RESUME,
   NULL_TASK_ID,
   CONFIG_KEY_SCRATCHPAD,
-  CONFIG_KEY_WRITES,
   RETURN,
   ERROR,
   NO_WRITES,
+  MISSING,
 } from "../constants.js";
 import {
   Call,
@@ -599,10 +599,10 @@ export function _prepareSingleTask<
             configurable: {
               [CONFIG_KEY_TASK_ID]: id,
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              [CONFIG_KEY_SEND]: (writes_: [string, any][]) =>
+              [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
                 _localWrite(
                   step,
-                  (items: [keyof Cc, unknown][]) => writes.push(...items),
+                  (items: PendingWrite<keyof Cc>[]) => writes.push(...items),
                   processes,
                   managed,
                   writes_
@@ -618,7 +618,7 @@ export function _prepareSingleTask<
                   managed,
                   {
                     name: call.name,
-                    writes: writes as Array<[string, unknown]>,
+                    writes: writes as PendingWrite[],
                     triggers,
                     path: taskPath.slice(0, 3) as VariadicTaskPath,
                   },
@@ -631,14 +631,12 @@ export function _prepareSingleTask<
                 ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                 [parentNamespace]: checkpoint.id,
               },
-              [CONFIG_KEY_WRITES]: [
-                ...(pendingWrites || []),
-                ...(configurable[CONFIG_KEY_WRITES] || []),
-              ].filter((w) => w[0] === NULL_TASK_ID || w[0] === id),
               [CONFIG_KEY_SCRATCHPAD]: _scratchpad(
                 [
                   ...(pendingWrites || []),
-                  ...(configurable[CONFIG_KEY_WRITES] || []),
+                  ...(configurable[CONFIG_KEY_SCRATCHPAD]?.resume || []).map(
+                    (v: unknown): CheckpointPendingWrite => [id, RESUME, v]
+                  ),
                 ],
                 id
               ),
@@ -733,10 +731,10 @@ export function _prepareSingleTask<
               configurable: {
                 [CONFIG_KEY_TASK_ID]: taskId,
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                [CONFIG_KEY_SEND]: (writes_: [string, any][]) =>
+                [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
                   _localWrite(
                     step,
-                    (items: [keyof Cc, unknown][]) => writes.push(...items),
+                    (items: PendingWrite<keyof Cc>[]) => writes.push(...items),
                     processes,
                     managed,
                     writes_
@@ -752,7 +750,7 @@ export function _prepareSingleTask<
                     managed,
                     {
                       name: packet.node,
-                      writes: writes as Array<[string, unknown]>,
+                      writes: writes as PendingWrite[],
                       triggers,
                       path: taskPath,
                     },
@@ -765,14 +763,16 @@ export function _prepareSingleTask<
                   ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                   [parentNamespace]: checkpoint.id,
                 },
-                [CONFIG_KEY_WRITES]: [
-                  ...(pendingWrites || []),
-                  ...(configurable[CONFIG_KEY_WRITES] || []),
-                ].filter((w) => w[0] === NULL_TASK_ID || w[0] === taskId),
                 [CONFIG_KEY_SCRATCHPAD]: _scratchpad(
                   [
                     ...(pendingWrites || []),
-                    ...(configurable[CONFIG_KEY_WRITES] || []),
+                    ...(configurable[CONFIG_KEY_SCRATCHPAD]?.resume || []).map(
+                      (v: unknown): CheckpointPendingWrite => [
+                        taskId,
+                        RESUME,
+                        v,
+                      ]
+                    ),
                   ],
                   taskId
                 ),
@@ -875,10 +875,10 @@ export function _prepareSingleTask<
                 configurable: {
                   [CONFIG_KEY_TASK_ID]: taskId,
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  [CONFIG_KEY_SEND]: (writes_: [string, any][]) =>
+                  [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
                     _localWrite(
                       step,
-                      (items: [keyof Cc, unknown][]) => {
+                      (items: PendingWrite<keyof Cc>[]) => {
                         writes.push(...items);
                       },
                       processes,
@@ -896,7 +896,7 @@ export function _prepareSingleTask<
                       managed,
                       {
                         name,
-                        writes: writes as Array<[string, unknown]>,
+                        writes: writes as PendingWrite[],
                         triggers,
                         path: taskPath,
                       },
@@ -909,14 +909,18 @@ export function _prepareSingleTask<
                     ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                     [parentNamespace]: checkpoint.id,
                   },
-                  [CONFIG_KEY_WRITES]: [
-                    ...(pendingWrites || []),
-                    ...(configurable[CONFIG_KEY_WRITES] || []),
-                  ].filter((w) => w[0] === NULL_TASK_ID || w[0] === taskId),
                   [CONFIG_KEY_SCRATCHPAD]: _scratchpad(
                     [
                       ...(pendingWrites || []),
-                      ...(configurable[CONFIG_KEY_WRITES] || []),
+                      ...(
+                        configurable[CONFIG_KEY_SCRATCHPAD]?.resume || []
+                      ).map(
+                        (v: unknown): CheckpointPendingWrite => [
+                          taskId,
+                          RESUME,
+                          v,
+                        ]
+                      ),
                     ],
                     taskId
                   ),
@@ -1015,15 +1019,18 @@ function _procInput(
 function _scratchpad(
   pendingWrites: CheckpointPendingWrite[],
   taskId: string
-): PregelScratchpad<unknown> {
+): PregelScratchpad {
   return {
-    interruptCounter: -1,
     callCounter: 0,
-    usedNullResume: false,
+    interruptCounter: -1,
     resume: pendingWrites
       .filter(
         ([writeTaskId, chan]) => writeTaskId === taskId && chan === RESUME
       )
-      .map(([_writeTaskId, _chan, resume]) => resume),
+      .flatMap(([_writeTaskId, _chan, resume]) => resume),
+    nullResume:
+      pendingWrites.find(
+        ([writeTaskId, chan]) => writeTaskId === NULL_TASK_ID && chan === RESUME
+      )?.[2] ?? MISSING,
   };
 }

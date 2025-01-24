@@ -233,11 +233,15 @@ export interface StateSnapshot {
   readonly tasks: PregelTaskDescription[];
 }
 
-export type PregelScratchpad<Resume> = {
-  interruptCounter: number;
-  usedNullResume: boolean;
+export type PregelScratchpad<Resume = unknown> = {
+  /** Counter for tracking call invocations */
   callCounter: number;
+  /** Counter for tracking interrupts */
+  interruptCounter: number;
+  /** List of resume values */
   resume: Resume[];
+  /** Single resume value for null task ID */
+  nullResume: Resume;
 };
 
 export type CallOptions = {

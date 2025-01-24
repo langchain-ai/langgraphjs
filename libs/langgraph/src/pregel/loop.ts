@@ -21,7 +21,13 @@ import {
   createCheckpoint,
   emptyChannels,
 } from "../channels/base.js";
-import { Call, PregelExecutableTask, StreamMode, TaskPath } from "./types.js";
+import {
+  Call,
+  PregelExecutableTask,
+  PregelScratchpad,
+  StreamMode,
+  TaskPath,
+} from "./types.js";
 import {
   isCommand,
   CHECKPOINT_NAMESPACE_SEPARATOR,
@@ -37,6 +43,7 @@ import {
   RESUME,
   TAG_HIDDEN,
   PUSH,
+  CONFIG_KEY_SCRATCHPAD,
 } from "../constants.js";
 import {
   _applyWrites,
@@ -827,19 +834,37 @@ export class PregelLoop {
     return isGraphInterrupt(e) && !this.isNested;
   }
 
-  /**
-   * Resuming from previous checkpoint requires
-   * - finding a previous checkpoint
-   * - receiving null input (outer graph) or RESUMING flag (subgraph)
-   */
   protected async _first(inputKeys: string | string[]) {
+    /*
+     * Resuming from previous checkpoint requires
+     * - finding a previous checkpoint
+     * - receiving null input (outer graph) or RESUMING flag (subgraph)
+     */
+
+    const { configurable } = this.config;
     const isResuming =
       Object.keys(this.checkpoint.channel_versions).length !== 0 &&
       (this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined ||
         this.input === null ||
         isCommand(this.input));
+
+    // take resume value from parent
+    const scratchpad = configurable?.[
+      CONFIG_KEY_SCRATCHPAD
+    ] as PregelScratchpad;
+
+    if (scratchpad && scratchpad.nullResume != null) {
+      this.putWrites(NULL_TASK_ID, [[RESUME, scratchpad.nullResume]]);
+    }
+
     if (isCommand(this.input)) {
+      if (this.input.resume != null && this.checkpointer == null) {
+        // TODO: add test to gaurd this throw
+        throw new Error("Cannot use Command(resume=...) without checkpointer");
+      }
+
       const writes: { [key: string]: PendingWrite[] } = {};
+
       // group writes by task id
       for (const [tid, key, value] of mapCommand(
         this.input,
@@ -853,11 +878,13 @@ export class PregelLoop {
       if (Object.keys(writes).length === 0) {
         throw new EmptyInputError("Received empty Command input");
       }
+
       // save writes
       for (const [tid, ws] of Object.entries(writes)) {
         this.putWrites(tid, ws);
       }
     }
+
     // apply null writes
     const nullWrites = (this.checkpointPendingWrites ?? [])
       .filter((w) => w[0] === NULL_TASK_ID)
@@ -931,10 +958,10 @@ export class PregelLoop {
       });
     }
     // done with input
-    this.input = isResuming ? INPUT_RESUMING : INPUT_DONE;
+    this.input = this.input === INPUT_RESUMING ? INPUT_RESUMING : INPUT_DONE;
     if (!this.isNested) {
       this.config = patchConfigurable(this.config, {
-        [CONFIG_KEY_RESUMING]: isResuming,
+        [CONFIG_KEY_RESUMING]: this.input === INPUT_RESUMING,
       });
     }
   }
