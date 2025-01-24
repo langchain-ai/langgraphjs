@@ -839,6 +839,40 @@ describe("runs", () => {
     expect(run.status).toBe("success");
   });
 
+  it.concurrent("stream messages tuple", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const input = {
+      messages: [{ type: "human", content: "foo", id: "initial-message" }],
+    };
+    const stream = await client.runs.stream(
+      thread.thread_id,
+      assistant.assistant_id,
+      { input, streamMode: "messages-tuple", config: globalConfig }
+    );
+
+    const chunks = await gatherIterator(stream);
+    const runId = findLast(chunks, (i) => i.event === "metadata")?.data.run_id;
+    expect(runId).not.toBeNull();
+
+    const messages = chunks
+      .filter((i) => i.event === "messages")
+      .map((i) => i.data[0]);
+
+    expect(messages).toHaveLength("begin".length + "end".length + 1);
+    expect(messages).toMatchObject([
+      ..."begin".split("").map((c) => ({ content: c })),
+      { content: "tool_call__begin" },
+      ..."end".split("").map((c) => ({ content: c })),
+    ]);
+
+    const seenEventTypes = new Set(chunks.map((i) => i.event));
+    expect(seenEventTypes).toEqual(new Set(["metadata", "messages"]));
+
+    const run = await client.runs.get(thread.thread_id, runId as string);
+    expect(run.status).toBe("success");
+  });
+
   it.concurrent("stream mixed modes", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
