@@ -7,7 +7,6 @@ import {
   CONFIG_KEY_SCRATCHPAD,
   CONFIG_KEY_SEND,
   CHECKPOINT_NAMESPACE_SEPARATOR,
-  MISSING,
   RESUME,
 } from "./constants.js";
 import { PregelScratchpad } from "./pregel/types.js";
@@ -74,14 +73,14 @@ export function interrupt<I = unknown, R = unknown>(value: I): R {
   }
 
   // Find current resume value
-  if (scratchpad.nullResume !== MISSING) {
+  if (scratchpad.nullResume !== undefined) {
     if (scratchpad.resume.length !== idx) {
       throw new Error(
         `Resume length mismatch: ${scratchpad.resume.length} !== ${idx}`
       );
     }
     const v = scratchpad.nullResume;
-    scratchpad.nullResume = MISSING;
+    delete scratchpad.nullResume;
     scratchpad.resume.push(v);
     const send = conf[CONFIG_KEY_SEND];
     if (send) {
