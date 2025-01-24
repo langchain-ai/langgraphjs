@@ -113,6 +113,7 @@ export function runFuncTests(
             const graph = entrypoint(
               { name: "graph", checkpointer },
               async (data: number[]) => {
+                console.warn(data);
                 const mapped = await Promise.all(
                   data.map(async (i) => await mapper(i))
                 );
@@ -512,75 +513,77 @@ export function runFuncTests(
               config
             );
 
-            // TODO: null, should be undefined - is this test actually succeeding?
-            expect(result).toBeNull();
-            // expect(result).toBeUndefined();
+            expect(result).toBeUndefined();
           }
         );
 
         // skipped because it's not implemented yet
-        it.skip("handles multiple interrupts in an imperative style", async () => {
-          // equivalent to `test_multiple_interrupts_imperative` in python tests
-          let counter = 0;
+        skipIf(() => !withCheckpointer)(
+          "handles multiple interrupts in an imperative style",
+          async () => {
+            // equivalent to `test_multiple_interrupts_imperative` in python tests
+            let counter = 0;
 
-          const double = task("double", async (x: number): Promise<number> => {
-            counter += 1;
-            return 2 * x;
-          });
-
-          const graph = entrypoint(
-            { checkpointer, name: "graph" },
-            async () => {
-              const values: (number | string)[] = [];
-
-              for (const idx of [1, 2, 3]) {
-                values.push(await double(idx));
-                values.push(await interrupt({ a: "boo" }));
+            const double = task(
+              "double",
+              async (x: number): Promise<number> => {
+                counter += 1;
+                return 2 * x;
               }
+            );
 
-              return { values };
-            }
-          );
+            const graph = entrypoint(
+              { checkpointer, name: "graph" },
+              async () => {
+                const values: (number | string)[] = [];
 
-          const config = { configurable: { thread_id } };
+                for (const idx of [1, 2, 3]) {
+                  values.push(await double(idx));
+                  values.push(await interrupt({ a: `boo${idx}` }));
+                }
 
-          // First run should interrupt
-          const firstRun = await graph.invoke([], config);
-          expect(firstRun).toBeUndefined();
+                return { values };
+              }
+            );
 
-          await graph.getState(config);
+            const config = { configurable: { thread_id } };
 
-          // Resume with first answer
-          const secondRun = await graph.invoke(
-            new Command({ resume: "a" }),
-            config
-          );
-          // TODO: null, should be undefined
-          // expect(secondRun).toBeUndefined();
-          expect(secondRun).toBeNull();
+            // First run should interrupt
+            const firstRun = await graph.invoke([], config);
+            expect(firstRun).toBeUndefined();
 
-          // Resume with second answer
-          const thirdRun = await graph.invoke(
-            new Command({ resume: "b" }),
-            config
-          );
-          // TODO: null, should be undefined
-          // expect(thirdRun).toBeUndefined();
-          expect(thirdRun).toBeNull();
+            // Resume with first answer
+            const secondRun = await graph.invoke(
+              new Command({ resume: "a" }),
+              config
+            );
 
-          // Resume with final answer and get result
-          const result = await graph.invoke(
-            new Command({ resume: "c" }),
-            config
-          );
+            // TODO: why u null?! seems to be coming from an attempt to read the output of __end__, but why doesn't it do that in the first run?
+            expect(secondRun).toBeNull();
 
-          expect(result).toEqual({
-            values: [2, "a", 4, "b", 6, "c"],
-          });
+            // Resume with second answer
+            const thirdRun = await graph.invoke(
+              new Command({ resume: "b" }),
+              config
+            );
 
-          // Verify double() was only called 3 times (cached appropriately)
-          expect(counter).toBe(3);
-        });
+            // TODO: why u null?! seems to be coming from an attempt to read the output of __end__, but why doesn't it do that in the first run?
+            expect(thirdRun).toBeNull();
+
+            // Resume with final answer and get result
+            const result = await graph.invoke(
+              new Command({ resume: "c" }),
+              config
+            );
+
+            expect(result).toEqual({
+              values: [2, "a", 4, "b", 6, "c"],
+            });
+
+            // Verify double() was only called 3 times (cached appropriately)
+            expect(counter).toBe(3);
+          }
+        );
       }
     );
   });
