@@ -61,6 +61,7 @@ export async function registerFromEnv(
         metadata: { created_by: "system" },
         config: config ?? {},
         if_exists: "do_nothing",
+        name: graphId,
       });
 
       return resolved;

@@ -5,8 +5,8 @@ import type {
 } from "@langchain/langgraph";
 
 import { HTTPException } from "hono/http-exception";
-import { v4 as uuid4 } from "uuid";
-import { getGraph } from "../graph/load.mjs";
+import { v4 as uuid4, v5 as uuid5 } from "uuid";
+import { getGraph, NAMESPACE_GRAPH } from "../graph/load.mjs";
 import { checkpointer } from "./checkpoint.mjs";
 import { store } from "./store.mjs";
 import { logger } from "../logging.mjs";
@@ -70,6 +70,7 @@ interface AssistantVersion {
   config: RunnableConfig;
   metadata: Metadata;
   created_at: Date;
+  name: string | undefined;
 }
 
 export interface RunSend {
@@ -252,9 +253,9 @@ export const truncate = (flags: {
     if (flags.assistants) {
       STORE.assistants = Object.fromEntries(
         Object.entries(STORE.assistants).filter(
-          ([_key, assistant]) =>
-            !assistant.metadata?.created_by ||
-            assistant.metadata?.created_by === "system"
+          ([key, assistant]) =>
+            assistant.metadata?.created_by === "system" &&
+            uuid5(assistant.graph_id, NAMESPACE_GRAPH) === key
         )
       );
     }
@@ -322,7 +323,7 @@ export class Assistants {
         options.offset,
         options.offset + options.limit
       )) {
-        yield assistant;
+        yield { ...assistant, name: assistant.name ?? assistant.graph_id };
       }
     });
   }
@@ -332,7 +333,7 @@ export class Assistants {
       const result = STORE.assistants[assistantId];
       if (result == null)
         throw new HTTPException(404, { message: "Assistant not found" });
-      return result;
+      return { ...result, name: result.name ?? result.graph_id };
     });
   }
 
@@ -364,7 +365,7 @@ export class Assistants {
         updated_at: now,
         graph_id: options.graph_id,
         metadata: options.metadata ?? ({} as Metadata),
-        name: options.name,
+        name: options.name || options.graph_id,
       };
 
       STORE.assistant_versions.push({
@@ -374,6 +375,7 @@ export class Assistants {
         config: options.config ?? {},
         metadata: options.metadata ?? ({} as Metadata),
         created_at: now,
+        name: options.name || options.graph_id,
       });
 
       return STORE.assistants[assistantId];
@@ -436,6 +438,7 @@ export class Assistants {
         version: newVersion,
         graph_id: options?.graph_id ?? assistant["graph_id"],
         config: options?.config ?? assistant["config"],
+        name: options?.name ?? assistant["name"],
         metadata: metadata ?? assistant["metadata"],
         created_at: now,
       };
@@ -492,6 +495,7 @@ export class Assistants {
         config: assistantVersion["config"],
         metadata: assistantVersion["metadata"],
         version: assistantVersion["version"],
+        name: assistantVersion["name"],
         updated_at: now,
       };
 
