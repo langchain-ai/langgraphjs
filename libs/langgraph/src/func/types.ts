@@ -23,26 +23,28 @@ export function isEntrypointFinal<ValueT, SaveT>(
   return typeof value === "object" && value !== null && finalSymbol in value;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type EntrypointFuncReturnT<FuncT extends (...args: any[]) => any> =
-  ReturnType<FuncT> extends
-    | EntrypointFinal<infer SaveT, unknown>
-    | Promise<EntrypointFinal<infer SaveT, unknown>>
-    ? SaveT
-    : ReturnType<FuncT>;
+export type EntrypointReturnT<OutputT> = OutputT extends
+  | Generator<infer YieldT>
+  | AsyncGenerator<infer YieldT>
+  | Promise<Generator<infer YieldT>>
+  | Promise<AsyncGenerator<infer YieldT>>
+  ? YieldT extends EntrypointFinal<infer ValueT, unknown>
+    ? ValueT
+    : YieldT[]
+  : OutputT extends
+      | EntrypointFinal<infer ValueT, unknown>
+      | Promise<EntrypointFinal<infer ValueT, unknown>>
+  ? ValueT
+  : OutputT;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type EntrypointFuncSaveT<FuncT extends (...args: any[]) => any> =
-  ReturnType<FuncT> extends
-    | EntrypointFinal<unknown, infer SaveT>
-    | Promise<EntrypointFinal<unknown, infer SaveT>>
-    ? SaveT
-    : ReturnType<FuncT>;
+export type EntrypointFuncSaveT<OutputT> = OutputT extends
+  | EntrypointFinal<unknown, infer SaveT>
+  | Promise<EntrypointFinal<unknown, infer SaveT>>
+  ? SaveT
+  : OutputT;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type EntrypointFuncFinalT<FuncT extends (...args: any[]) => any> =
-  ReturnType<FuncT> extends
-    | EntrypointFinal<infer ValueT, infer SaveT>
-    | Promise<EntrypointFinal<infer ValueT, infer SaveT>>
-    ? EntrypointFinal<ValueT, SaveT>
-    : ReturnType<FuncT>;
+export type EntrypointFuncFinalT<OutputT> = OutputT extends
+  | EntrypointFinal<infer ValueT, infer SaveT>
+  | Promise<EntrypointFinal<infer ValueT, infer SaveT>>
+  ? EntrypointFinal<ValueT, SaveT>
+  : OutputT;

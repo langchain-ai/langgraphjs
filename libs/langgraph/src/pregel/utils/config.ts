@@ -2,6 +2,7 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { BaseStore } from "@langchain/langgraph-checkpoint";
 import { LangGraphRunnableConfig } from "../runnable_types.js";
+import { CONFIG_KEY_GENERATOR_WRITER } from "../../constants.js";
 
 const COPIABLE_KEYS = ["tags", "metadata", "callbacks", "configurable"];
 
@@ -103,4 +104,19 @@ export function getStore(): BaseStore | undefined {
   const config: LangGraphRunnableConfig =
     AsyncLocalStorageProviderSingleton.getRunnableConfig();
   return config?.store;
+}
+
+/**
+ * A helper utility function that returns the @see LangGraphRunnableConfig.writer if "custom" stream mode is enabled, otherwise undefined
+ *
+ * @returns a reference to the @see LangGraphRunnableConfig.writer if "custom" stream mode is enabled, otherwise undefined
+ */
+export function getWriter(): ((chunk: unknown) => void) | undefined {
+  const config: LangGraphRunnableConfig =
+    AsyncLocalStorageProviderSingleton.getRunnableConfig();
+  return config?.configurable?.[CONFIG_KEY_GENERATOR_WRITER];
+}
+
+export function getConfig(): LangGraphRunnableConfig {
+  return AsyncLocalStorageProviderSingleton.getRunnableConfig();
 }

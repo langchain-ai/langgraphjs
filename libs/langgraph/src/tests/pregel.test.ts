@@ -59,9 +59,7 @@ import { gatherIterator } from "../utils.js";
 import { LastValue } from "../channels/last_value.js";
 import {
   Annotation,
-  END,
   Graph,
-  START,
   StateGraph,
   StateGraphArgs,
   StateType,
@@ -91,11 +89,13 @@ import {
 import {
   isCommand,
   Command,
+  END,
   ERROR,
   INTERRUPT,
   PULL,
   PUSH,
   Send,
+  START,
   TAG_NOSTREAM,
 } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";

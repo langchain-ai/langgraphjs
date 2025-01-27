@@ -178,8 +178,22 @@ export function patchConfigurable(
   }
 }
 
-// TODO: name this something sensible, and move to utils
-export type Promisified<T extends (...args: unknown[]) => unknown> =
-  ReturnType<T> extends Promise<unknown>
-    ? ReturnType<T>
-    : Promise<ReturnType<T>>;
+export function isAsyncGeneratorFunction(
+  val: unknown
+): val is AsyncGeneratorFunction {
+  return (
+    val != null &&
+    typeof val === "function" &&
+    // eslint-disable-next-line no-instanceof/no-instanceof
+    val instanceof Object.getPrototypeOf(async function* () {}).constructor
+  );
+}
+
+export function isGeneratorFunction(val: unknown): val is GeneratorFunction {
+  return (
+    val != null &&
+    typeof val === "function" &&
+    // eslint-disable-next-line no-instanceof/no-instanceof
+    val instanceof Object.getPrototypeOf(function* () {}).constructor
+  );
+}
