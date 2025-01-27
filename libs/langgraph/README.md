@@ -36,7 +36,7 @@ human input.
 Standardizing these components allows individuals and teams to focus on the behavior
 of their agent, instead of its supporting infrastructure.
 
-Through [LangGraph Platform](../../README.md#langgraph-platform), LangGraph also provides tooling for
+Through [LangGraph Platform](#langgraph-platform), LangGraph also provides tooling for
 the development, deployment, debugging, and monitoring of your applications.
 
 LangGraph integrates seamlessly with
