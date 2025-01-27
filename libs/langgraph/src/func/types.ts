@@ -1,3 +1,5 @@
+import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+
 export const finalSymbol = Symbol.for("__pregel_final");
 
 /**
@@ -24,16 +26,8 @@ export function isEntrypointFinal<ValueT, SaveT>(
 }
 
 export type EntrypointReturnT<OutputT> = OutputT extends
-  | Generator<infer YieldT>
-  | AsyncGenerator<infer YieldT>
-  | Promise<Generator<infer YieldT>>
-  | Promise<AsyncGenerator<infer YieldT>>
-  ? YieldT extends EntrypointFinal<infer ValueT, unknown>
-    ? ValueT
-    : YieldT[]
-  : OutputT extends
-      | EntrypointFinal<infer ValueT, unknown>
-      | Promise<EntrypointFinal<infer ValueT, unknown>>
+  | EntrypointFinal<infer ValueT, unknown>
+  | Promise<EntrypointFinal<infer ValueT, unknown>>
   ? ValueT
   : OutputT;
 
@@ -48,3 +42,13 @@ export type EntrypointFuncFinalT<OutputT> = OutputT extends
   | Promise<EntrypointFinal<infer ValueT, infer SaveT>>
   ? EntrypointFinal<ValueT, SaveT>
   : OutputT;
+
+export type EntrypointFunc<InputT, OutputT> = OutputT extends AsyncGenerator<
+  unknown,
+  unknown,
+  unknown
+>
+  ? never
+  : OutputT extends Generator<unknown, unknown, unknown>
+  ? never
+  : (input: InputT, config: LangGraphRunnableConfig) => OutputT;

@@ -274,110 +274,62 @@ export function runFuncTests(
           expect(timeDiff).toBeGreaterThanOrEqual(timeDelay);
         });
 
+        it("can use a stream writer", async () => {
+          const graph = entrypoint(
+            { name: "graph", checkpointer },
+            async (input: string, config: LangGraphRunnableConfig) => {
+              config.writer?.(`hello ${input}`);
+              await new Promise((resolve) => {
+                setTimeout(resolve, 100);
+              });
+              config.writer?.(`hello again, ${input}`);
+              return `goodbye, ${input}`;
+            }
+          );
+
+          const config = { configurable: { thread_id } };
+          expect(await graph.invoke("world", config)).toEqual("goodbye, world");
+
+          expect(
+            await gatherIterator(
+              graph.stream("world", { ...config, streamMode: "custom" })
+            )
+          ).toEqual(["hello world", "hello again, world"]);
+        });
+
         describe("generator functions as entrypoints", () => {
-          it("can use a generator as an entrypoint", async () => {
-            // equivalent to `test_entrypoint_generator` in python tests
-            const graph = entrypoint(
-              { name: "graph", checkpointer },
-              async function* () {
-                yield "a";
-                yield "b";
-              }
-            );
-
-            const config = { configurable: { thread_id } };
-
-            const result: ("b" | "a")[] = await graph.invoke({}, config);
-            expect(result).toEqual(["a", "b"]);
-
-            expect(await gatherIterator(graph.stream({}, config))).toEqual([
-              "a",
-              "b",
-            ]);
-          });
-
-          it("can use a stream writer", async () => {
-            // equivalent to `test_entrypoint_request_stream_writer` in python tests
-            const graph = entrypoint(
-              { name: "graph", checkpointer },
-              async function* (_: object, config: LangGraphRunnableConfig) {
-                config.writer?.("a");
-                yield "b";
-              }
-            );
-
-            const config = { configurable: { thread_id } };
-            expect(await graph.invoke({}, config)).toEqual(["b"]);
-            expect(await gatherIterator(graph.stream({}, config))).toEqual([
-              "a",
-              "b",
-            ]);
-
-            expect(
-              await gatherIterator(
-                graph.stream({}, { ...config, streamMode: ["updates"] })
-              )
-            ).toEqual([["updates", { graph: ["b"] }]]);
-
-            expect(
-              await gatherIterator(
-                graph.stream({}, { ...config, streamMode: ["values"] })
-              )
-            ).toEqual([["values", ["b"]]]);
-
-            expect(
-              await gatherIterator(
-                graph.stream({}, { ...config, streamMode: ["custom"] })
-              )
-            ).toEqual([
-              ["custom", "a"],
-              ["custom", "b"],
-            ]);
-          });
-
-          if (withCheckpointer) {
-            it("only returns the entrypoint.final value when using a generator as an entrypoint", async () => {
-              // equivalent to `test_entrypoint_async_generator_with_return_and_save` in python tests
-              // but without the previous checks, as that doesn't fit here
-
-              const graph = entrypoint(
+          it("disallows use of generator as an entrypoint", async () => {
+            expect(() =>
+              entrypoint(
                 { name: "graph", checkpointer },
-                async function* () {
-                  yield "hello";
-                  yield "world";
-                  yield entrypoint.final({ value: "!", save: "saved value" });
+                // we need ts-expect-error here because the type system also gaurds against this
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-expect-error
+                function* () {
+                  yield "a";
+                  yield "b";
                 }
-              );
-
-              const config = { configurable: { thread_id } };
-              expect(await gatherIterator(graph.stream({}, config))).toEqual([
-                "hello",
-                "world",
-              ]);
-
-              expect(await graph.invoke({}, config)).toEqual("!");
-            });
-          }
-
-          it("should throw when yielding after final value", async () => {
-            const graph = entrypoint(
-              { name: "graph", checkpointer },
-              async function* () {
-                yield "a";
-                yield entrypoint.final({
-                  value: "!",
-                  save: "saved value",
-                });
-                yield "b";
-              }
+              )
+            ).toThrow(
+              "Generators are disallowed as entrypoints. For streaming responses, use config.write."
             );
+          });
 
-            const config = { configurable: { thread_id } };
-
-            await expect(
-              async () => await graph.invoke({}, config)
-            ).rejects.toThrow(
-              "Yielding a value after a entrypoint.final object is not allowed."
+          it("disallows use of async generator as an entrypoint", async () => {
+            expect(() =>
+              entrypoint(
+                { name: "graph", checkpointer },
+                // we need ts-expect-error here because the type system also gaurds against this
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-expect-error
+                async function* () {
+                  await Promise.resolve(); // useless thing just to make it async
+                  yield "a";
+                  yield "b";
+                }
+              )
+            ).toThrow(
+              "Generators are disallowed as entrypoints. For streaming responses, use config.write."
             );
           });
         });

@@ -3,24 +3,22 @@ import {
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
-import { Runnable } from "@langchain/core/runnables";
 import { Pregel } from "../pregel/index.js";
 import { PregelNode } from "../pregel/read.js";
 import { CONFIG_KEY_PREVIOUS, END, PREVIOUS, START } from "../constants.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { call, getRunnableForEntrypoint } from "../pregel/call.js";
 import { RetryPolicy } from "../pregel/utils/index.js";
-import { isAsyncGeneratorFunction, isGeneratorFunction } from "../utils.js";
 import { LastValue } from "../channels/last_value.js";
 import {
   EntrypointFinal,
   EntrypointReturnT,
   EntrypointFuncSaveT,
   finalSymbol,
-  isEntrypointFinal,
+  EntrypointFunc,
 } from "./types.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
-import { getWriter } from "../pregel/utils/config.js";
+import { isAsyncGeneratorFunction, isGeneratorFunction } from "../utils.js";
 
 /**
  * Options for the @see task function
@@ -101,67 +99,15 @@ export type EntrypointOptions = {
  */
 export function entrypoint<InputT, OutputT>(
   { name, checkpointer, store }: EntrypointOptions,
-  func: (input: InputT, config: LangGraphRunnableConfig) => OutputT
+  func: EntrypointFunc<InputT, OutputT>
 ) {
-  let bound: Runnable<
-    InputT,
-    EntrypointReturnT<OutputT>,
-    LangGraphRunnableConfig
-  >;
-  let streamMode: "updates" | "custom" = "updates";
-  if (isGeneratorFunction(func) || isAsyncGeneratorFunction(func)) {
-    const wrapper = async (input: InputT, config: LangGraphRunnableConfig) => {
-      const final = [];
-      const result = await func(input, config);
-      const writer = getWriter();
-
-      // generator case
-      if (isAsyncGeneratorFunction(func) || isGeneratorFunction(func)) {
-        const chunks: unknown[] = [];
-        let chunk: IteratorResult<unknown>;
-        const iterator = result as
-          | AsyncGenerator<unknown, unknown, unknown>
-          | Generator<unknown, unknown, unknown>;
-
-        // using do-while here because it can be written to work with sync and async generators
-        do {
-          chunk = await iterator.next();
-          const { done, value } = chunk;
-          if (done) {
-            continue;
-          }
-
-          if (isEntrypointFinal(value)) {
-            if (final.length === 0) {
-              final.push(value);
-            } else {
-              throw new Error(
-                "Yielding multiple entrypoint.final objects is not allowed."
-              );
-            }
-          } else {
-            if (final.length > 0) {
-              throw new Error(
-                "Yielding a value after a entrypoint.final object is not allowed."
-              );
-            }
-            writer?.(value);
-            chunks.push(value);
-          }
-        } while (!chunk.done);
-        if (final.length > 0) {
-          return final[0] as EntrypointReturnT<OutputT>;
-        }
-        return chunks as EntrypointReturnT<OutputT>;
-      }
-      return result as EntrypointReturnT<OutputT>;
-    };
-    bound = getRunnableForEntrypoint(name, wrapper);
-    streamMode = "custom";
-  } else {
-    bound = getRunnableForEntrypoint(name, func);
-    streamMode = "updates";
+  if (isAsyncGeneratorFunction(func) || isGeneratorFunction(func)) {
+    throw new Error(
+      "Generators are disallowed as entrypoints. For streaming responses, use config.write."
+    );
   }
+  const streamMode = "updates";
+  const bound = getRunnableForEntrypoint(name, func);
 
   const p = new Pregel<
     Record<string, PregelNode<InputT, EntrypointReturnT<OutputT>>>, // node types
