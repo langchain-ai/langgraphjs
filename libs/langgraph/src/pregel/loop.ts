@@ -1,6 +1,5 @@
 import type { RunnableConfig } from "@langchain/core/runnables";
 import type { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
-import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   BaseCheckpointSaver,
   Checkpoint,
@@ -82,13 +81,11 @@ import {
 import { PregelNode } from "./read.js";
 import { ManagedValueMapping, WritableManagedValue } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
+import { IterableReadableWritableStream, StreamChunk } from "./stream.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
 const DEFAULT_LOOP_LIMIT = 25;
-
-// [namespace, streamMode, payload]
-export type StreamChunk = [string[], StreamMode, unknown];
 
 export type PregelLoopInitializeParams = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -108,68 +105,6 @@ export type PregelLoopInitializeParams = {
   manager?: CallbackManagerForChainRun;
   debug: boolean;
 };
-
-export class IterableReadableWritableStream extends IterableReadableStream<StreamChunk> {
-  modes: Set<StreamMode>;
-
-  private controller: ReadableStreamDefaultController;
-
-  private passthroughFn?: (chunk: StreamChunk) => void;
-
-  private _closed: boolean = false;
-
-  get closed() {
-    return this._closed;
-  }
-
-  constructor(params: {
-    passthroughFn?: (chunk: StreamChunk) => void;
-    modes: Set<StreamMode>;
-  }) {
-    let streamControllerPromiseResolver: (
-      controller: ReadableStreamDefaultController
-    ) => void;
-    const streamControllerPromise: Promise<ReadableStreamDefaultController> =
-      new Promise<ReadableStreamDefaultController>((resolve) => {
-        streamControllerPromiseResolver = resolve;
-      });
-
-    super({
-      start: (controller) => {
-        streamControllerPromiseResolver!(controller);
-      },
-    });
-
-    // .start() will always be called before the stream can be interacted
-    // with anyway
-    void streamControllerPromise.then((controller) => {
-      this.controller = controller;
-    });
-
-    this.passthroughFn = params.passthroughFn;
-    this.modes = params.modes;
-  }
-
-  push(chunk: StreamChunk) {
-    this.passthroughFn?.(chunk);
-    this.controller.enqueue(chunk);
-  }
-
-  close() {
-    try {
-      this.controller.close();
-    } catch (e) {
-      // pass
-    } finally {
-      this._closed = true;
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  error(e: any) {
-    this.controller.error(e);
-  }
-}
 
 type PregelLoopParams = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -655,6 +590,7 @@ export class PregelLoop {
         isResuming: this.input === INPUT_RESUMING,
         manager: this.manager,
         store: this.store,
+        stream: this.stream,
       }
     );
     this.tasks = nextTasks;
@@ -804,6 +740,7 @@ export class PregelLoop {
         checkpointer: this.checkpointer,
         manager: this.manager,
         store: this.store,
+        stream: this.stream,
       }
     );
     if (pushed) {
