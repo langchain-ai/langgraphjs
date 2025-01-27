@@ -7,6 +7,9 @@
 
 ⚡ Building language agents as graphs ⚡
 
+> [!NOTE]
+> Looking for the Python version? See the [Python repo](https://github.com/langchain-ai/langgraph) and the [Python docs](https://langchain-ai.github.io/langgraph/).
+
 ## Overview
 
 [LangGraph](https://langchain-ai.github.io/langgraphjs/) is a library for building
@@ -280,7 +283,7 @@ console.log(finalState.messages[finalState.messages.length - 1].content);
 <summary>Initialize graph with state.</summary>
 
 <ul>
-    <li>We initialize the graph (<code>StateGraph</code>) by passing state schema with a reducer that defines how the state should be updated. In our case, we want to append new messages to the list and overwrite messages with the same ID, so we use <code>messagesStateReducer</code>.</li>
+    <li>We initialize the graph (<code>StateGraph</code>) by passing state schema with a reducer that defines how the state should be updated. In our case, we want to append new messages to the list and overwrite messages with the same ID, so we use the prebuilt <code>messagesStateReducer</code>.</li>
 </ul>
 </details>
 
