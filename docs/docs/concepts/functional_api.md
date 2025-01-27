@@ -19,29 +19,29 @@ Below we demonstrate a simple application that writes an essay and [interrupts](
 import { task, entrypoint, interrupt, MemorySaver } from "@langchain/langgraph";
 
 const writeEssay = task("write_essay", (topic: string): string => {
-    // A placeholder for a long-running task.
-    return `An essay about topic: ${topic}`;
+  // A placeholder for a long-running task.
+  return `An essay about topic: ${topic}`;
 });
 
 const workflow = entrypoint(
-    { checkpointer: new MemorySaver(), name: "workflow" },
-    async (topic: string) => {
-        const essay = await writeEssay(topic);
-        const isApproved = interrupt({
-            // Any json-serializable payload provided to interrupt as argument.
-            // It will be surfaced on the client side as an Interrupt when streaming data
-            // from the workflow.
-            essay, // The essay we want reviewed.
-            // We can add any additional information that we need.
-            // For example, introduce a key called "action" with some instructions.
-            action: "Please approve/reject the essay",
-        });
+  { checkpointer: new MemorySaver(), name: "workflow" },
+  async (topic: string) => {
+    const essay = await writeEssay(topic);
+    const isApproved = interrupt({
+      // Any json-serializable payload provided to interrupt as argument.
+      // It will be surfaced on the client side as an Interrupt when streaming data
+      // from the workflow.
+      essay, // The essay we want reviewed.
+      // We can add any additional information that we need.
+      // For example, introduce a key called "action" with some instructions.
+      action: "Please approve/reject the essay",
+    });
 
-        return {
-            essay, // The essay that was generated
-            isApproved, // Response from HIL
-        };
-    }
+    return {
+      essay, // The essay that was generated
+      isApproved, // Response from HIL
+    };
+  }
 );
 ```
 
@@ -55,45 +55,45 @@ const workflow = entrypoint(
     import { task, entrypoint, interrupt, MemorySaver, Command } from "@langchain/langgraph";
 
     const writeEssay = task("write_essay", (topic: string): string => {
-        return `An essay about topic: ${topic}`;
+      return `An essay about topic: ${topic}`;
     });
 
     const workflow = entrypoint(
-        { checkpointer: new MemorySaver(), name: "workflow" },
-        async (topic: string) => {
-            const essay = await writeEssay(topic);
-            const isApproved = interrupt({
-                essay, // The essay we want reviewed.
-                action: "Please approve/reject the essay",
-            });
+      { checkpointer: new MemorySaver(), name: "workflow" },
+      async (topic: string) => {
+        const essay = await writeEssay(topic);
+        const isApproved = interrupt({
+          essay, // The essay we want reviewed.
+          action: "Please approve/reject the essay",
+        });
 
-            return {
-                essay,
-                isApproved,
-            };
-        }
+        return {
+          essay,
+          isApproved,
+        };
+      }
     );
 
     const threadId = crypto.randomUUID();
 
     const config = {
-        configurable: {
-            thread_id: threadId,
-        },
+      configurable: {
+        thread_id: threadId,
+      },
     };
 
-    for await (const item of await workflow.stream(["cat"], config)) {
-        console.log(item);
+    for await (const item of await workflow.stream("cat", config)) {
+      console.log(item);
     }
     ```
 
     ```typescript
     { write_essay: 'An essay about topic: cat' }
     { __interrupt__: [{
-        value: { essay: 'An essay about topic: cat', action: 'Please approve/reject the essay' },
-        resumable: true,
-        ns: ['workflow:f7b8508b-21c0-8b4c-5958-4e8de74d2684'],
-        when: 'during'
+      value: { essay: 'An essay about topic: cat', action: 'Please approve/reject the essay' },
+      resumable: true,
+      ns: ['workflow:f7b8508b-21c0-8b4c-5958-4e8de74d2684'],
+      when: 'during'
     }] }
     ```
 
@@ -105,7 +105,7 @@ const workflow = entrypoint(
     const humanReview = true;
 
     for await (const item of await workflow.stream(new Command({ resume: humanReview }), config)) {
-        console.log(item);
+      console.log(item);
     }
     ```
 
@@ -132,18 +132,20 @@ An **entrypoint** is defined by passing a function to the `entrypoint` function.
 
 The function **must accept a single positional argument**, which serves as the workflow input. If you need to pass multiple pieces of data, use an object as the input type for the first argument.
 
-You will usually want to pass a **checkpointer** to the `entrypoint` function to enable persistence and use features like **human-in-the-loop**.
+You will often want to pass a **checkpointer** to the `entrypoint` function to enable persistence and use features like **human-in-the-loop**.
 
 ```typescript
-import { entrypoint } from "@langchain/langgraph";
+import { entrypoint, MemorySaver } from "@langchain/langgraph";
+
+const checkpointer = new MemorySaver();
 
 const myWorkflow = entrypoint(
-    { checkpointer, name: "myWorkflow" },
-    async (someInput: Record<string, any>): Promise<number> => {
-        // some logic that may involve long-running tasks like API calls,
-        // and may be interrupted for human-in-the-loop.
-        return result;
-    }
+  { checkpointer, name: "myWorkflow" },
+  async (someInput: Record<string, any>): Promise<number> => {
+    // some logic that may involve long-running tasks like API calls,
+    // and may be interrupted for human-in-the-loop.
+    return result;
+  }
 );
 ```
 
@@ -153,32 +155,37 @@ const myWorkflow = entrypoint(
 
 ### Injectable Parameters
 
-When declaring an `entrypoint`, you can request access to additional parameters that will be injected automatically at run time by using the `getPreviousState` function and other utilities. These parameters include:
+When declaring an `entrypoint`, you can request access to additional parameters that will be injected automatically at run time by using the [`getPreviousState`](/langgraphjs/reference/functions/langgraph.getPreviousState.html) function and other utilities. These parameters include:
 
 | Parameter    | Description                                                                                                                                           |
 |--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **previous** | Access the state associated with the previous `checkpoint` for the given thread using `getPreviousState`. See [state management](#state-management).  |
+| **previous** | Access the state associated with the previous `checkpoint` for the given thread using [`getPreviousState`](/langgraphjs/reference/functions/langgraph.getPreviousState.html). See [state management](#state-management).  |
 | **store**    | An instance of [BaseStore](/langgraphjs/reference/classes/checkpoint.BaseStore.html). Useful for [long-term memory](#long-term-memory).                                         |
 | **config**   | For accessing run time configuration. See [RunnableConfig](https://js.langchain.com/docs/concepts/runnables/#runnableconfig) for information.         |
 
 ??? example "Requesting Injectable Parameters"
 
     ```typescript
-    import { entrypoint, getPreviousState, BaseStore, InMemoryStore } from "@langchain/langgraph";
+    import {
+      entrypoint,
+      getPreviousState,
+      BaseStore,
+      InMemoryStore,
+    } from "@langchain/langgraph";
     import { RunnableConfig } from "@langchain/core/runnables";
 
     const inMemoryStore = new InMemoryStore(...);  // An instance of InMemoryStore for long-term memory
 
     const myWorkflow = entrypoint(
-        {
-            checkpointer,  // Specify the checkpointer
-            store: inMemoryStore,  // Specify the store
-            name: "myWorkflow",
-        },
-        async (someInput: Record<string, any>) => {
-            const previous = getPreviousState<any>(); // For short-term memory
-            // Rest of workflow logic...
-        }
+      {
+        checkpointer,  // Specify the checkpointer
+        store: inMemoryStore,  // Specify the store
+        name: "myWorkflow",
+      },
+      async (someInput: Record<string, any>) => {
+        const previous = getPreviousState<any>(); // For short-term memory
+        // Rest of workflow logic...
+      }
     );
     ```
 
@@ -190,24 +197,24 @@ Using the [`entrypoint`](#entrypoint) function will return an object that can be
 
     ```typescript
     const config = {
-        configurable: {
-            thread_id: "some_thread_id"
-        }
+      configurable: {
+        thread_id: "some_thread_id",
+      },
     };
-    await myWorkflow.invoke([someInput], config);  // Wait for the result
+    await myWorkflow.invoke(someInput, config);  // Wait for the result
     ```
 
 === "Stream"
-    
+
     ```typescript
     const config = {
-        configurable: {
-            thread_id: "some_thread_id"
-        }
+      configurable: {
+        thread_id: "some_thread_id",
+      },
     };
 
-    for await (const chunk of await myWorkflow.stream([someInput], config)) {
-        console.log(chunk);
+    for await (const chunk of await myWorkflow.stream(someInput, config)) {
+      console.log(chunk);
     }
     ```
 
@@ -221,9 +228,9 @@ Resuming an execution after an [interrupt](/langgraphjs/reference/functions/lang
     import { Command } from "@langchain/langgraph";
 
     const config = {
-        configurable: {
-            thread_id: "some_thread_id"
-        }
+      configurable: {
+        thread_id: "some_thread_id",
+      },
     };
     
     await myWorkflow.invoke(new Command({ resume: someResumeValue }), config);
@@ -235,29 +242,34 @@ Resuming an execution after an [interrupt](/langgraphjs/reference/functions/lang
     import { Command } from "@langchain/langgraph";
 
     const config = {
-        configurable: {
-            thread_id: "some_thread_id"
-        }
+      configurable: {
+        thread_id: "some_thread_id",
+      },
     };
     
-    for await (const chunk of await myWorkflow.stream(new Command({ resume: someResumeValue }), config)) {
-        console.log(chunk);
+    const stream = await myWorkflow.stream(
+      new Command({ resume: someResumeValue }),
+      config,
+    );
+    
+    for await (const chunk of stream) {
+      console.log(chunk);
     }
     ```
 
-**Resuming after an error**
+**Resuming after transient error**
 
-To resume after an error, run the `entrypoint` with a `null` and the same **thread id** (config).
+To resume after a transient error (such as a model provider outage), run the `entrypoint` with a `null` and the same **thread id** (config).
 
 === "Invoke"
 
     ```typescript
     const config = {
-        configurable: {
-            thread_id: "some_thread_id"
-        }
+      configurable: {
+        thread_id: "some_thread_id",
+      },
     };
-    
+
     await myWorkflow.invoke(null, config);
     ```
 
@@ -265,13 +277,13 @@ To resume after an error, run the `entrypoint` with a `null` and the same **thre
 
     ```typescript
     const config = {
-        configurable: {
-            thread_id: "some_thread_id"
-        }
+      configurable: {
+        thread_id: "some_thread_id",
+      },
     };
     
     for await (const chunk of await myWorkflow.stream(null, config)) {
-        console.log(chunk);
+      console.log(chunk);
     }
     ```
 
@@ -279,7 +291,7 @@ To resume after an error, run the `entrypoint` with a `null` and the same **thre
 
 When an `entrypoint` is defined with a `checkpointer`, it stores information between successive invocations on the same **thread id** in [checkpoints](persistence.md#checkpoints). 
 
-This allows accessing the state from the previous invocation using the `getPreviousState` function.
+This allows accessing the state from the previous invocation using the [`getPreviousState`](/langchainjs/reference/functions/langgraph.getPreviousState.html) function.
 
 By default, the previous state is the return value of the previous invocation.
 
@@ -293,13 +305,13 @@ const myWorkflow = entrypoint(
 );
 
 const config = {
-    configurable: {
-        thread_id: "some_thread_id"
-    }
+  configurable: {
+    thread_id: "some_thread_id",
+  },
 };
 
-await myWorkflow.invoke([1], config);  // 1 (previous was undefined)
-await myWorkflow.invoke([2], config);  // 3 (previous was 1 from the previous invocation)
+await myWorkflow.invoke(1, config);  // 1 (previous was undefined)
+await myWorkflow.invoke(2, config);  // 3 (previous was 1 from the previous invocation)
 ```
 
 #### `entrypoint.final`
@@ -324,13 +336,13 @@ const myWorkflow = entrypoint(
 );
 
 const config = {
-    configurable: {
-        thread_id: "1"
-    }
+  configurable: {
+    thread_id: "1",
+  },
 };
 
-await myWorkflow.invoke([3], config);  // 0 (previous was undefined)
-await myWorkflow.invoke([1], config);  // 6 (previous was 3 * 2 from the previous invocation)
+await myWorkflow.invoke(3, config);  // 0 (previous was undefined)
+await myWorkflow.invoke(1, config);  // 6 (previous was 3 * 2 from the previous invocation)
 ```
 
 ## Task
@@ -345,9 +357,9 @@ Tasks are defined using the `task` function, which wraps a regular function.
 import { task } from "@langchain/langgraph";
 
 const slowComputation = task("slowComputation", async (inputValue: any) => {
-    // Simulate a long-running operation
-    ...
-    return result;
+  // Simulate a long-running operation
+  ...
+  return result;
 });
 ```
 
@@ -476,13 +488,13 @@ Side effects, such as writing to a file or sending an email, should be encapsula
         const deltaT = t1 - inputs.t0;
         
         if (deltaT > 1000) {
-            const result = await slowTask(1);
-            const value = interrupt("question");
-            return { result, value };
+          const result = await slowTask(1);
+          const value = interrupt("question");
+          return { result, value };
         } else {
-            const result = await slowTask(2);
-            const value = interrupt("question");
-            return { result, value };
+          const result = await slowTask(2);
+          const value = interrupt("question");
+          return { result, value };
         }
       }
     );
@@ -507,13 +519,13 @@ Side effects, such as writing to a file or sending an email, should be encapsula
         const deltaT = t1 - inputs.t0;
         
         if (deltaT > 1000) {
-            const result = await slowTask(1);
-            const value = interrupt("question");
-            return { result, value };
+          const result = await slowTask(1);
+          const value = interrupt("question");
+          return { result, value };
         } else {
-            const result = await slowTask(2);
-            const value = interrupt("question");
-            return { result, value };
+          const result = await slowTask(2);
+          const value = interrupt("question");
+          return { result, value };
         }
       }
     );
@@ -572,8 +584,8 @@ const someWorkflow = entrypoint(
     // Call another graph defined using the graph API
     const result2 = await anotherGraph.invoke(...);
     return {
-        result1,
-        result2
+      result1,
+      result2,
     };
   }
 );
@@ -616,22 +628,27 @@ const checkpointer = new MemorySaver();
 const main = entrypoint(
   { checkpointer, name: "main" },
   async (inputs: { number: number }, config: LangGraphRunnableConfig) => {
-    config?.writer("hello"); // Write some data to the `custom` stream
+    config.writer?.("hello"); // Write some data to the `custom` stream
     await addOne(inputs.number); // Will write data to the `updates` stream
-    config?.writer("world"); // Write some more data to the `custom` stream
+    config.writer?.("world"); // Write some more data to the `custom` stream
     await addTwo(inputs.number); // Will write data to the `updates` stream
     return 5;
   }
 );
 
 const config = {
-    configurable: {
-        thread_id: "1"
-    }
+  configurable: {
+    thread_id: "1"
+  }
 };
 
-for await (const chunk of await main.stream([{ number: 1 }], { streamMode: ["custom", "updates"], config })) {
-    console.log(chunk);
+const stream = await main.stream(
+  { number: 1 },
+  { streamMode: ["custom", "updates"], ...config }
+);
+
+for await (const chunk of stream) {
+  console.log(chunk);
 }
 ```
 
@@ -695,17 +712,17 @@ const main = entrypoint(
 
 // Workflow execution configuration with a unique thread identifier
 const config = {
-    configurable: {
-        thread_id: "1" // Unique identifier to track workflow execution
-    }
+  configurable: {
+    thread_id: "1" // Unique identifier to track workflow execution
+  }
 };
 
 // This invocation will take ~1 second due to the slowTask execution
 try {
-    // First invocation will throw an error due to the `getInfo` task failing
-    await main.invoke([{ anyInput: "foobar" }], config);
+  // First invocation will throw an error due to the `getInfo` task failing
+  await main.invoke({ anyInput: "foobar" }, config);
 } catch (err) {
-    // Handle the failure gracefully
+  // Handle the failure gracefully
 }
 ```
 
@@ -730,7 +747,7 @@ Please see the following examples for more details:
 
 ### Short-term memory
 
-[State management](#state-management) using the `getPreviousState` function and optionally using the `entrypoint.final` primitive can be used to implement [short term memory](memory.md).
+[State management](#state-management) using the [`getPreviousState`](/langgraphjs/reference/functions/langgraph.getPreviousState.html) function and optionally using the `entrypoint.final` primitive can be used to implement [short term memory](memory.md).
 
 Please see the following how-to guides for more details:
 

@@ -224,7 +224,7 @@ As noted in the [Anthropic blog](https://www.anthropic.com/research/building-eff
       return polishedJoke;
     });
 
-    const stream = await workflow.stream(["cats"], {
+    const stream = await workflow.stream("cats", {
       streamMode: "updates",
     });
 
@@ -372,7 +372,7 @@ With parallelization, LLMs work simultaneously on a task:
     });
 
     // Invoke
-    const stream = await workflow.stream(["cats"], {
+    const stream = await workflow.stream("cats", {
       streamMode: "updates",
     });
 
@@ -603,7 +603,7 @@ Routing classifies an input and directs it to a followup task. As noted in the [
     });
 
     // Invoke
-    const stream = await workflow.stream(["Write me a joke about cats"], {
+    const stream = await workflow.stream("Write me a joke about cats", {
       streamMode: "updates",
     });
 
@@ -817,7 +817,7 @@ With orchestrator-worker, an orchestrator breaks down a task and delegates each 
     });
 
     // Invoke
-    const stream = await workflow.stream(["Create a report on LLM scaling laws"], {
+    const stream = await workflow.stream("Create a report on LLM scaling laws", {
       streamMode: "updates",
     });
 
@@ -989,7 +989,7 @@ In the evaluator-optimizer workflow, one LLM call generates a response while ano
     });
 
     // Invoke
-    const stream = await workflow.stream(["Cats"], {
+    const stream = await workflow.stream("Cats", {
       streamMode: "updates",
     });
 
@@ -1212,7 +1212,7 @@ const llmWithTools = llm.bindTools(tools);
       content: "Add 3 and 4."
     }];
 
-    const stream = await agent.stream([[messages]], {
+    const stream = await agent.stream([messages], {
       streamMode: "updates",
     });
 
