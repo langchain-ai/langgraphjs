@@ -14,7 +14,7 @@
 
 [LangGraph](https://langchain-ai.github.io/langgraphjs/) is a library for building
 stateful, multi-actor applications with LLMs, used to create agent and multi-agent
-workflows. Check out an introductory tutorial [here](https://langchain-ai.github.io/langgraphjs/tutorials/introduction/).
+workflows. Check out an introductory tutorial [here](https://langchain-ai.github.io/langgraphjs/tutorials/quickstart/).
 
 
 LangGraph is inspired by [Pregel](https://research.google/pubs/pub37252/) and [Apache Beam](https://beam.apache.org/). The public interface draws inspiration from [NetworkX](https://networkx.org/documentation/latest/). LangGraph is built by LangChain Inc, the creators of LangChain, but can be used without LangChain.
@@ -65,7 +65,7 @@ Here are some common issues that arise in complex deployments, which LangGraph P
 ## Installation
 
 ```shell
-yarn add @langchain/langgraph @langchain/core
+npm install @langchain/langgraph @langchain/core
 ```
 
 ## Example
@@ -73,7 +73,7 @@ yarn add @langchain/langgraph @langchain/core
 Let's build a tool-calling [ReAct-style](https://langchain-ai.github.io/langgraphjs/concepts/agentic_concepts/#react-implementation) agent that uses a search tool!
 
 ```shell
-yarn add @langchain/anthropic zod
+npm install @langchain/anthropic zod
 ```
 
 ```shell
