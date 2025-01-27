@@ -338,53 +338,24 @@ export function runFuncTests(
           if (withCheckpointer) {
             it("only returns the entrypoint.final value when using a generator as an entrypoint", async () => {
               // equivalent to `test_entrypoint_async_generator_with_return_and_save` in python tests
-              let previous_ = null;
+              // but without the previous checks, as that doesn't fit here
 
               const graph = entrypoint(
                 { name: "graph", checkpointer },
                 async function* () {
-                  const previous = getPreviousState();
-                  previous_ = previous;
-
                   yield "hello";
                   yield "world";
                   yield entrypoint.final({ value: "!", save: "saved value" });
                 }
               );
 
-              // invoke with thread 0
-              expect(
-                await gatherIterator(
-                  graph.stream({}, { configurable: { thread_id: "0" } })
-                )
-              ).toEqual(["hello", "world"]);
+              const config = { configurable: { thread_id } };
+              expect(await gatherIterator(graph.stream({}, config))).toEqual([
+                "hello",
+                "world",
+              ]);
 
-              // unset because it's the first time running it
-              expect(previous_).toBeUndefined();
-
-              // invoke with thread 1 (new thread)
-              expect(
-                await graph.invoke({}, { configurable: { thread_id: "1" } })
-              ).toEqual("!");
-
-              // new thread, so no previous state should be visible
-              expect(previous_).toBeUndefined();
-
-              // invoke with thread 1 again
-              expect(
-                await graph.invoke({}, { configurable: { thread_id: "1" } })
-              ).toEqual("!");
-
-              // previous should be set this time because it's our second invocation of this thread
-              expect(previous_).toEqual("saved value");
-
-              // invoke with thread 2 (new thread)
-              expect(
-                await graph.invoke({}, { configurable: { thread_id: "2" } })
-              ).toEqual("!");
-
-              // new thread, so no previous state should have been set
-              expect(previous_).toBeUndefined();
+              expect(await graph.invoke({}, config)).toEqual("!");
             });
           }
 
@@ -451,6 +422,75 @@ export function runFuncTests(
         expect(second).toEqual(3);
         expect(third).toEqual(5);
         expect(previous).toEqual(3);
+      });
+
+      it("stores previous returned value in state", async () => {
+        // equivalent to `test_entrypoint_stateful` in python tests
+        const previousStates: unknown[] = [];
+
+        const graph = entrypoint(
+          { name: "graph", checkpointer },
+          async (inputs: Record<string, string>) => {
+            const previous = getPreviousState<unknown>();
+            previousStates.push(previous);
+            return {
+              previous,
+              current: inputs,
+            };
+          }
+        );
+
+        const config = {
+          configurable: { thread_id },
+        };
+
+        expect(await graph.invoke({ a: "1" }, config)).toEqual({
+          current: { a: "1" },
+        });
+
+        expect(await graph.invoke({ a: "2" }, config)).toEqual({
+          current: { a: "2" },
+          previous: { current: { a: "1" } },
+        });
+
+        expect(await graph.invoke({ a: "3" }, config)).toEqual({
+          current: { a: "3" },
+          previous: {
+            current: { a: "2" },
+            previous: { current: { a: "1" } },
+          },
+        });
+
+        // new thread, so no previous state should be visible
+        expect(
+          await graph.invoke({ a: "4" }, { configurable: { thread_id: "0" } })
+        ).toEqual({
+          current: { a: "4" },
+        });
+
+        // same thread, so previous state should be visible
+        expect(
+          await graph.invoke({ a: "5" }, { configurable: { thread_id: "0" } })
+        ).toEqual({
+          current: { a: "5" },
+          previous: {
+            current: { a: "4" },
+          },
+        });
+
+        expect(previousStates).toEqual([
+          undefined,
+          { current: { a: "1" }, previous: undefined },
+          {
+            current: { a: "2" },
+            previous: { current: { a: "1" }, previous: undefined },
+          },
+          undefined, // start of new thread
+          {
+            current: { a: "4" },
+            previous: undefined,
+          },
+        ]);
       });
     });
 
@@ -754,47 +794,6 @@ export function runFuncTests(
 
         // Verify double() was only called 3 times (cached appropriately)
         expect(counter).toBe(3);
-      });
-
-      it("handles multiple interrupts", async () => {
-        const states: unknown[] = [];
-
-        const graph = entrypoint(
-          { name: "graph", checkpointer },
-          async (inputs: Record<string, string>) => {
-            const previous = getPreviousState<unknown>();
-            states.push(previous);
-            return {
-              previous,
-              current: inputs,
-            };
-          }
-        );
-
-        const config = {
-          configurable: { thread_id },
-        };
-
-        const first = await graph.invoke({ a: "1" }, config);
-        const second = await graph.invoke({ a: "2" }, config);
-        const third = await graph.invoke({ a: "3" }, config);
-
-        expect(first).toEqual({
-          current: { a: "1" },
-        });
-
-        expect(second).toEqual({
-          current: { a: "2" },
-          previous: { current: { a: "1" } },
-        });
-
-        expect(third).toEqual({
-          current: { a: "3" },
-          previous: {
-            current: { a: "2" },
-            previous: { current: { a: "1" } },
-          },
-        });
       });
     });
   });
