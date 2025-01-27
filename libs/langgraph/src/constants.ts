@@ -1,3 +1,7 @@
+/** Special reserved node name denoting the start of a graph. */
+export const START = "__start__";
+/** Special reserved node name denoting the end of a graph. */
+export const END = "__end__";
 export const INPUT = "__input__";
 export const ERROR = "__error__";
 export const CONFIG_KEY_SEND = "__pregel_send";
@@ -7,6 +11,7 @@ export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
 export const CONFIG_KEY_RESUMING = "__pregel_resuming";
 export const CONFIG_KEY_TASK_ID = "__pregel_task_id";
 export const CONFIG_KEY_STREAM = "__pregel_stream";
+export const CONFIG_KEY_GENERATOR_WRITER = "__pregel_generator_writer";
 export const CONFIG_KEY_RESUME_VALUE = "__pregel_resume_value";
 export const CONFIG_KEY_SCRATCHPAD = "__pregel_scratchpad";
 export const CONFIG_KEY_PREVIOUS = "__pregel_previous";

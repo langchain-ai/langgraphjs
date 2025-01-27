@@ -3,22 +3,24 @@ import {
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
+import { Runnable } from "@langchain/core/runnables";
 import { Pregel } from "../pregel/index.js";
 import { PregelNode } from "../pregel/read.js";
-import { END, START } from "../graph/graph.js";
-import { CONFIG_KEY_PREVIOUS, PREVIOUS } from "../constants.js";
+import { CONFIG_KEY_PREVIOUS, END, PREVIOUS, START } from "../constants.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { call, getRunnableForEntrypoint } from "../pregel/call.js";
 import { RetryPolicy } from "../pregel/utils/index.js";
-import { Promisified } from "../utils.js";
+import { isAsyncGeneratorFunction, isGeneratorFunction } from "../utils.js";
 import { LastValue } from "../channels/last_value.js";
 import {
   EntrypointFinal,
-  EntrypointFuncReturnT,
+  EntrypointReturnT,
   EntrypointFuncSaveT,
   finalSymbol,
+  isEntrypointFinal,
 } from "./types.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import { getWriter } from "../pregel/utils/config.js";
 
 /**
  * Options for the @see task function
@@ -51,7 +53,7 @@ export function task<FuncT extends (...args: any[]) => any>(
   name: string,
   func: FuncT,
   options?: TaskOptions
-): (...args: Parameters<FuncT>) => Promisified<FuncT> {
+): (...args: Parameters<FuncT>) => Promise<ReturnType<FuncT>> {
   return (...args: Parameters<FuncT>) => {
     return call({ func, name, retry: options?.retry }, ...args);
   };
@@ -97,40 +99,99 @@ export type EntrypointOptions = {
  * @param func - The function that executes this entrypoint
  * @returns A Pregel instance that can be run
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function entrypoint<FuncT extends (...args: any[]) => any>(
+export function entrypoint<InputT, OutputT>(
   { name, checkpointer, store }: EntrypointOptions,
-  func: FuncT
+  func: (input: InputT, config: LangGraphRunnableConfig) => OutputT
 ) {
+  let bound: Runnable<
+    InputT,
+    EntrypointReturnT<OutputT>,
+    LangGraphRunnableConfig
+  >;
+  let streamMode: "updates" | "custom" = "updates";
+  if (isGeneratorFunction(func) || isAsyncGeneratorFunction(func)) {
+    const wrapper = async (input: InputT, config: LangGraphRunnableConfig) => {
+      const final = [];
+      const result = await func(input, config);
+      const writer = getWriter();
+
+      // generator case
+      if (isAsyncGeneratorFunction(func) || isGeneratorFunction(func)) {
+        const chunks: unknown[] = [];
+        let chunk: IteratorResult<unknown>;
+        const iterator = result as
+          | AsyncGenerator<unknown, unknown, unknown>
+          | Generator<unknown, unknown, unknown>;
+
+        // using do-while here because it can be written to work with sync and async generators
+        do {
+          chunk = await iterator.next();
+          const { done, value } = chunk;
+          if (done) {
+            continue;
+          }
+
+          if (isEntrypointFinal(value)) {
+            if (final.length === 0) {
+              final.push(value);
+            } else {
+              throw new Error(
+                "Yielding multiple entrypoint.final objects is not allowed."
+              );
+            }
+          } else {
+            if (final.length > 0) {
+              throw new Error(
+                "Yielding a value after a entrypoint.final object is not allowed."
+              );
+            }
+            writer?.(value);
+            chunks.push(value);
+          }
+        } while (!chunk.done);
+        if (final.length > 0) {
+          return final[0] as EntrypointReturnT<OutputT>;
+        }
+        return chunks as EntrypointReturnT<OutputT>;
+      }
+      return result as EntrypointReturnT<OutputT>;
+    };
+    bound = getRunnableForEntrypoint(name, wrapper);
+    streamMode = "custom";
+  } else {
+    bound = getRunnableForEntrypoint(name, func);
+    streamMode = "updates";
+  }
+
   const p = new Pregel<
-    Record<string, PregelNode<Parameters<FuncT>, EntrypointFuncReturnT<FuncT>>>,
+    Record<string, PregelNode<InputT, EntrypointReturnT<OutputT>>>, // node types
     {
-      [START]: EphemeralValue<Parameters<FuncT>>;
-      [END]: LastValue<EntrypointFuncReturnT<FuncT>>;
-      [PREVIOUS]: LastValue<EntrypointFuncSaveT<FuncT>>;
-    },
-    Record<string, unknown>,
-    Parameters<FuncT>,
-    EntrypointFuncReturnT<FuncT>
+      [START]: EphemeralValue<InputT>;
+      [END]: LastValue<EntrypointReturnT<OutputT>>;
+      [PREVIOUS]: LastValue<EntrypointFuncSaveT<OutputT>>;
+    }, // channel types
+    Record<string, unknown>, // configurable types
+    InputT, // input type
+    EntrypointReturnT<OutputT> // output type
   >({
     checkpointer,
     nodes: {
-      [name]: new PregelNode<Parameters<FuncT>, EntrypointFuncReturnT<FuncT>>({
-        bound: getRunnableForEntrypoint(name, func),
+      [name]: new PregelNode<InputT, EntrypointReturnT<OutputT>>({
+        bound,
         triggers: [START],
         channels: [START],
         writers: [],
       }),
     },
     channels: {
-      [START]: new EphemeralValue<Parameters<FuncT>>(),
-      [END]: new LastValue<EntrypointFuncReturnT<FuncT>>(),
-      [PREVIOUS]: new LastValue<EntrypointFuncSaveT<FuncT>>(),
+      [START]: new EphemeralValue<InputT>(),
+      [END]: new LastValue<EntrypointReturnT<OutputT>>(),
+      [PREVIOUS]: new LastValue<EntrypointFuncSaveT<OutputT>>(),
     },
     inputChannels: START,
     outputChannels: END,
     streamChannels: END,
-    streamMode: "updates",
+    streamMode,
     store,
   });
   p.name = name;

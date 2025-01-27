@@ -51,6 +51,7 @@ import {
   NO_WRITES,
   CONFIG_KEY_PREVIOUS,
   PREVIOUS,
+  CONFIG_KEY_GENERATOR_WRITER,
 } from "../constants.js";
 import {
   Call,
@@ -67,6 +68,7 @@ import { getNullChannelVersion } from "./utils/index.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { getRunnableForFunc } from "./call.js";
+import { IterableReadableWritableStream } from "./stream.js";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -386,6 +388,7 @@ export type NextTaskExtraFields = {
   checkpointer?: BaseCheckpointSaver;
   manager?: CallbackManagerForChainRun;
   store?: BaseStore;
+  stream?: IterableReadableWritableStream;
 };
 
 export type NextTaskExtraFieldsWithStore = NextTaskExtraFields & {
@@ -644,6 +647,11 @@ export function _prepareSingleTask<
               [CONFIG_KEY_PREVIOUS]: checkpoint.channel_values[PREVIOUS],
               checkpoint_id: undefined,
               checkpoint_ns: taskCheckpointNamespace,
+              // Used by the functional API iff the entrypoint is a generator function. It's necessary to set it regardless
+              // of streammode, because we can't tell when initializing the graph whether the entrypoint is a function that
+              // returns a generator.
+              [CONFIG_KEY_GENERATOR_WRITER]: (chunk: unknown) =>
+                extra.stream?.push([[], "custom", chunk]),
             },
           }
         ),
@@ -781,6 +789,11 @@ export function _prepareSingleTask<
                 [CONFIG_KEY_PREVIOUS]: checkpoint.channel_values[PREVIOUS],
                 checkpoint_id: undefined,
                 checkpoint_ns: taskCheckpointNamespace,
+                // Used by the functional API iff the entrypoint is a generator function. It's necessary to set it regardless
+                // of streammode, because we can't tell when initializing the graph whether the entrypoint is a function that
+                // returns a generator.
+                [CONFIG_KEY_GENERATOR_WRITER]: (chunk: unknown) =>
+                  extra.stream?.push([[], "custom", chunk]),
               },
             }
           ),
@@ -930,6 +943,11 @@ export function _prepareSingleTask<
                   [CONFIG_KEY_PREVIOUS]: checkpoint.channel_values[PREVIOUS],
                   checkpoint_id: undefined,
                   checkpoint_ns: taskCheckpointNamespace,
+                  // Used by the functional API iff the entrypoint is a generator function. It's necessary to set it regardless
+                  // of streammode, because we can't tell when initializing the graph whether the entrypoint is a function that
+                  // returns a generator.
+                  [CONFIG_KEY_GENERATOR_WRITER]: (chunk: unknown) =>
+                    extra.stream?.push([[], "custom", chunk]),
                 },
               }
             ),

@@ -22,8 +22,6 @@ import {
 import { z } from "zod";
 
 import {
-  END,
-  START,
   StateGraph,
   CompiledStateGraph,
   AnnotationRoot,
@@ -33,6 +31,7 @@ import { ToolNode } from "./tool_node.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { Annotation } from "../graph/annotation.js";
 import { Messages, messagesStateReducer } from "../graph/message.js";
+import { END, START } from "../constants.js";
 
 export interface AgentState<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
