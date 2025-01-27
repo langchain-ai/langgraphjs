@@ -85,8 +85,10 @@ nav:
                 - Persistence:
                     - Persistence: how-tos#persistence
                     - how-tos/persistence.ipynb
+                    - how-tos/persistence-functional.ipynb
                     - how-tos/subgraph-persistence.ipynb
                     - how-tos/cross-thread-persistence.ipynb
+                    - how-tos/cross-thread-persistence-functional.ipynb
                     - how-tos/persistence-postgres.ipynb
                 - Memory:
                     - Memory: how-tos#memory
@@ -100,8 +102,10 @@ nav:
                     - how-tos/dynamic_breakpoints.ipynb
                     - how-tos/edit-graph-state.ipynb
                     - how-tos/wait-user-input.ipynb
+                    - how-tos/wait-user-input-functional.ipynb
                     - how-tos/time-travel.ipynb
                     - how-tos/review-tool-calls.ipynb
+                    - how-tos/review-tool-calls-functional.ipynb
                 - Streaming:
                     - Streaming: how-tos#streaming
                     - how-tos/stream-values.ipynb
@@ -126,6 +130,9 @@ nav:
                     - how-tos/subgraph-transform-state.ipynb
                 - Multi-agent:
                     - how-tos/multi-agent-network.ipynb
+                    - how-tos/multi-agent-network-functional.ipynb
+                    - how-tos/multi-agent-multi-turn-convo.ipynb
+                    - how-tos/multi-agent-multi-turn-convo-functional.ipynb
                 - State Management:
                     - State Management: how-tos#state-management
                     - how-tos/define-state.ipynb
@@ -144,6 +151,7 @@ nav:
                     - how-tos/react-memory.ipynb
                     - how-tos/react-system-prompt.ipynb
                     - how-tos/react-human-in-the-loop.ipynb
+                    - how-tos/react-agent-from-scratch-functional.ipynb
 
         - Concepts:
             - concepts/index.md
@@ -188,6 +196,7 @@ nav:
             - Quick Start:
                 - Quick Start: tutorials#quick-start
                 - tutorials/quickstart.ipynb
+                - tutorials/workflows/index.md
             - Chatbots:
                 - Chatbots: tutorials/chatbots/customer_support_small_model.ipynb
             - RAG:
