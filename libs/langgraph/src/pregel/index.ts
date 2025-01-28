@@ -1240,7 +1240,6 @@ export class Pregel<
      * from the loop to the main stream and therefore back to the user as soon as
      * they are available.
      */
-
     const createAndRunLoop = async () => {
       try {
         loop = await PregelLoop.initialize({

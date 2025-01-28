@@ -35,6 +35,12 @@ import { isAsyncGeneratorFunction, isGeneratorFunction } from "../utils.js";
  */
 export type TaskOptions = {
   /**
+   * The name of the task, analogous to the node name in {@link StateGraph}.
+   *
+   * @beta
+   */
+  name: string;
+  /**
    * The retry policy for the task. Configures how many times and under what conditions
    * the task should be retried if it fails.
    *
@@ -55,21 +61,20 @@ export type TaskOptions = {
  * A task can be called like a regular function with the following differences:
  *
  * - When a checkpointer is enabled, the function inputs and outputs must be serializable.
- * - The decorated function can only be called from within an entrypoint or StateGraph.
+ * - The wrapped function can only be called from within an entrypoint or StateGraph.
  * - Calling the function produces a promise. This makes it easy to parallelize tasks.
  *
  * @typeParam ArgsT - The type of arguments the task function accepts
  * @typeParam OutputT - The type of value the task function returns
- * @param name - The name of the task, analogous to the node name in {@link StateGraph}
+ * @param optionsOrName - Either an {@link TaskOptions} object, or a string for the name of the task
  * @param func - The function that executes this task
- * @param options.retry - An optional retry policy to use for the task in case of a failure
  * @returns A proxy function that accepts the same arguments as the original and always returns the result as a Promise
  *
- * @example
+ * @example basic example
  * ```typescript
  * const addOne = task("add", async (a: number) => a + 1);
  *
- * const workflow = entrypoint({ name: "example" }, async (numbers: number[]) => {
+ * const workflow = entrypoint("example", async (numbers: number[]) => {
  *   const promises = numbers.map(n => addOne(n));
  *   const results = await Promise.all(promises);
  *   return results;
@@ -78,19 +83,38 @@ export type TaskOptions = {
  * // Call the entrypoint
  * await workflow.invoke([1, 2, 3]); // Returns [2, 3, 4]
  * ```
+ *
+ * @example using a retry policy
+ * ```typescript
+ * const addOne = task({
+ *     name: "add",
+ *     retry: { maxAttempts: 3 }
+ *   },
+ *   async (a: number) => a + 1
+ * );
+ *
+ * const workflow = entrypoint("example", async (numbers: number[]) => {
+ *   const promises = numbers.map(n => addOne(n));
+ *   const results = await Promise.all(promises);
+ *   return results;
+ * });
+ * ```
  */
 export function task<ArgsT extends unknown[], OutputT>(
-  name: string,
-  func: TaskFunc<ArgsT, OutputT>,
-  options?: TaskOptions
+  optionsOrName: TaskOptions | string,
+  func: TaskFunc<ArgsT, OutputT>
 ): (...args: ArgsT) => Promise<OutputT> {
+  const { name, retry } =
+    typeof optionsOrName === "string"
+      ? { name: optionsOrName, retry: undefined }
+      : optionsOrName;
   if (isAsyncGeneratorFunction(func) || isGeneratorFunction(func)) {
     throw new Error(
       "Generators are disallowed as tasks. For streaming responses, use config.write."
     );
   }
   return (...args: ArgsT) => {
-    return call({ func, name, retry: options?.retry }, ...args);
+    return call({ func, name, retry }, ...args);
   };
 }
 
@@ -130,7 +154,7 @@ export type EntrypointOptions = {
  */
 export interface EntrypointFunction {
   <InputT, OutputT>(
-    options: EntrypointOptions,
+    optionsOrName: EntrypointOptions | string,
     func: EntrypointFunc<InputT, OutputT>
   ): Pregel<
     Record<string, PregelNode<InputT, EntrypointReturnT<OutputT>>>,
@@ -184,7 +208,7 @@ export interface EntrypointFunction {
  *
  * ### Function signature
  *
- * The decorated function must accept at most **two parameters**. The first parameter
+ * The wrapped function must accept at most **two parameters**. The first parameter
  * is the input to the function. The second (optional) parameter is a
  * {@link LangGraphRunnableConfig} object. If you wish to pass multiple parameters to
  * the function, you can pass them as an object.
@@ -192,7 +216,7 @@ export interface EntrypointFunction {
  * ### Helper functions
  *
  * #### Streaming
- * The to write data to the "custom" stream, use the {@link getWriter} function, or the
+ * To write data to the "custom" stream, use the {@link getWriter} function, or the
  * {@link LangGraphRunnableConfig.writer} property.
  *
  * #### State management
@@ -204,9 +228,7 @@ export interface EntrypointFunction {
  *
  * @typeParam InputT - The type of input the entrypoint accepts
  * @typeParam OutputT - The type of output the entrypoint produces
- * @param options.name - The name of the entrypoint, analogous to the node name in {@link StateGraph}
- * @param options.checkpointer - Specify a checkpointer to create a workflow that can persist its state across runs
- * @param options.store - A generalized key-value store. Some implementations may support semantic search capabilities
+ * @param optionsOrName - Either an {@link EntrypointOptions} object, or a string for the name of the entrypoint
  * @param func - The function that executes this entrypoint
  * @returns A {@link Pregel} instance that can be run to execute the workflow
  *
@@ -266,6 +288,7 @@ export interface EntrypointFunction {
  * import { MemorySaver } from "@langchain/langgraph-checkpoint";
  *
  * const accumulator = entrypoint({
+ *   name: "accumulator",
  *   checkpointer: new MemorySaver()
  * }, async (input: string) => {
  *   const previous = getPreviousState<number>();
@@ -287,6 +310,7 @@ export interface EntrypointFunction {
  * import { MemorySaver } from "@langchain/langgraph-checkpoint";
  *
  * const myWorkflow = entrypoint({
+ *   name: "accumulator",
  *   checkpointer: new MemorySaver()
  * }, async (num: number) => {
  *   const previous = getPreviousState<number>();
@@ -311,10 +335,13 @@ export interface EntrypointFunction {
  * ```
  */
 export const entrypoint = function entrypoint<InputT, OutputT>(
-  options: EntrypointOptions,
+  optionsOrName: EntrypointOptions | string,
   func: EntrypointFunc<InputT, OutputT>
 ) {
-  const { name, checkpointer, store } = options;
+  const { name, checkpointer, store } =
+    typeof optionsOrName === "string"
+      ? { name: optionsOrName, checkpointer: undefined, store: undefined }
+      : optionsOrName;
   if (isAsyncGeneratorFunction(func) || isGeneratorFunction(func)) {
     throw new Error(
       "Generators are disallowed as entrypoints. For streaming responses, use config.write."

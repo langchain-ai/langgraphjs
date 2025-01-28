@@ -212,15 +212,14 @@ export function runFuncTests(
           let attempts = 0;
 
           const failingTask = task(
-            "failingTask",
+            { name: "failingTask", retry: { maxAttempts: 3 } },
             () => {
               attempts += 1;
               if (attempts < 3) {
                 throw new Error("Task failed");
               }
               return "success";
-            },
-            { retry: { maxAttempts: 3 } }
+            }
           );
 
           const graph = entrypoint(
