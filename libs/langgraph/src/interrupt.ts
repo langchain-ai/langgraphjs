@@ -14,6 +14,7 @@ import {
 } from "./constants.js";
 import { PregelScratchpad } from "./pregel/types.js";
 
+// TODO: Remove first generic since it's not useful and gets in the way
 /**
  * Interrupts the execution of a graph node.
  * This function can be used to pause execution of a node, and return the value of the `resume`
@@ -53,7 +54,7 @@ import { PregelScratchpad } from "./pregel/types.js";
  * @throws {Error} If called outside the context of a graph
  * @throws {GraphInterrupt} When no resume value is available
  */
-export function interrupt<R = unknown>(value: unknown): R {
+export function interrupt<I = unknown, R = unknown>(value: I): R {
   const config: RunnableConfig | undefined =
     AsyncLocalStorageProviderSingleton.getRunnableConfig();
   if (!config) {
