@@ -18,6 +18,7 @@ import {
   EntrypointFunc,
   EntrypointReturnT,
   isEntrypointFinal,
+  TaskFunc,
 } from "../func/types.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 /**
@@ -91,17 +92,16 @@ export function getRunnableForEntrypoint<InputT, OutputT>(
   });
 }
 
-export type CallWrapperOptions<FuncT extends (...args: unknown[]) => unknown> =
-  {
-    func: FuncT;
-    name: string;
-    retry?: RetryPolicy;
-  };
+export type CallWrapperOptions<ArgsT extends unknown[], OutputT> = {
+  func: TaskFunc<ArgsT, OutputT>;
+  name: string;
+  retry?: RetryPolicy;
+};
 
-export function call<FuncT extends (...args: unknown[]) => unknown>(
-  { func, name, retry }: CallWrapperOptions<FuncT>,
-  ...args: Parameters<FuncT>
-): Promise<ReturnType<FuncT>> {
+export function call<ArgsT extends unknown[], OutputT>(
+  { func, name, retry }: CallWrapperOptions<ArgsT, OutputT>,
+  ...args: ArgsT
+): Promise<OutputT> {
   const config =
     AsyncLocalStorageProviderSingleton.getRunnableConfig() as RunnableConfig;
   // TODO: type the CONFIG_KEY_CALL function

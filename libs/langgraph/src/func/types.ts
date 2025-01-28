@@ -33,24 +33,36 @@ export function isEntrypointFinal<ValueT, SaveT>(
   );
 }
 
+/**
+ * The return type of an entrypoint function.
+ */
 export type EntrypointReturnT<OutputT> = OutputT extends
   | EntrypointFinal<infer ValueT, unknown>
   | Promise<EntrypointFinal<infer ValueT, unknown>>
   ? ValueT
   : OutputT;
 
-export type EntrypointFuncSaveT<OutputT> = OutputT extends
+/**
+ * The value to be saved when a function returns an EntrypointFinal.
+ */
+export type EntrypointFinalSaveT<OutputT> = OutputT extends
   | EntrypointFinal<unknown, infer SaveT>
   | Promise<EntrypointFinal<unknown, infer SaveT>>
   ? SaveT
   : OutputT;
 
-export type EntrypointFuncFinalT<OutputT> = OutputT extends
+/**
+ * The value to be returned when a function returns an EntrypointFinal.
+ */
+export type EntrypointFinalValueT<OutputT> = OutputT extends
   | EntrypointFinal<infer ValueT, infer SaveT>
   | Promise<EntrypointFinal<infer ValueT, infer SaveT>>
   ? EntrypointFinal<ValueT, SaveT>
   : OutputT;
 
+/**
+ * Matches valid function signatures for entrypoints. Disallows generator functions.
+ */
 export type EntrypointFunc<InputT, OutputT> = OutputT extends AsyncGenerator<
   unknown,
   unknown,
@@ -60,3 +72,15 @@ export type EntrypointFunc<InputT, OutputT> = OutputT extends AsyncGenerator<
   : OutputT extends Generator<unknown, unknown, unknown>
   ? never
   : (input: InputT, config: LangGraphRunnableConfig) => OutputT;
+
+/**
+ * Matches valid function signatures for tasks. Disallows generator functions.
+ */
+export type TaskFunc<
+  ArgsT extends unknown[],
+  OutputT
+> = OutputT extends AsyncGenerator<unknown, unknown, unknown>
+  ? never
+  : OutputT extends Generator<unknown, unknown, unknown>
+  ? never
+  : (...args: ArgsT) => OutputT;

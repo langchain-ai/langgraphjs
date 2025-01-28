@@ -331,7 +331,7 @@ export function runFuncTests(
           ).toEqual(["hello world", "hello again, world", "goodbye, world"]);
         });
 
-        describe("generator functions as entrypoints", () => {
+        describe("generator functions", () => {
           it("disallows use of generator as an entrypoint", async () => {
             expect(() =>
               entrypoint(
@@ -364,6 +364,41 @@ export function runFuncTests(
               )
             ).toThrow(
               "Generators are disallowed as entrypoints. For streaming responses, use config.write."
+            );
+          });
+
+          it("disallows use of generator as a task", async () => {
+            expect(() =>
+              task(
+                "task",
+                // we need ts-expect-error here because the type system also gaurds against this
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-expect-error
+                function* () {
+                  yield "a";
+                  yield "b";
+                }
+              )
+            ).toThrow(
+              "Generators are disallowed as tasks. For streaming responses, use config.write."
+            );
+          });
+
+          it("disallows use of async generator as a task", async () => {
+            expect(() =>
+              task(
+                "task",
+                // we need ts-expect-error here because the type system also gaurds against this
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-expect-error
+                async function* () {
+                  await Promise.resolve(); // useless thing just to make it async
+                  yield "a";
+                  yield "b";
+                }
+              )
+            ).toThrow(
+              "Generators are disallowed as tasks. For streaming responses, use config.write."
             );
           });
         });

@@ -18,8 +18,9 @@ import { LastValue } from "../channels/last_value.js";
 import {
   EntrypointFinal,
   EntrypointReturnT,
-  EntrypointFuncSaveT,
+  EntrypointFinalSaveT,
   EntrypointFunc,
+  TaskFunc,
 } from "./types.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { isAsyncGeneratorFunction, isGeneratorFunction } from "../utils.js";
@@ -50,13 +51,17 @@ export type TaskOptions = {
  * @param options.retry - The retry policy for the task
  * @returns A proxy function that accepts the same arguments as the original and always returns the result as a @see Promise.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function task<FuncT extends (...args: any[]) => any>(
+export function task<ArgsT extends unknown[], OutputT>(
   name: string,
-  func: FuncT,
+  func: TaskFunc<ArgsT, OutputT>,
   options?: TaskOptions
-): (...args: Parameters<FuncT>) => Promise<ReturnType<FuncT>> {
-  return (...args: Parameters<FuncT>) => {
+): (...args: ArgsT) => Promise<OutputT> {
+  if (isAsyncGeneratorFunction(func) || isGeneratorFunction(func)) {
+    throw new Error(
+      "Generators are disallowed as tasks. For streaming responses, use config.write."
+    );
+  }
+  return (...args: ArgsT) => {
     return call({ func, name, retry: options?.retry }, ...args);
   };
 }
@@ -118,7 +123,7 @@ export function entrypoint<InputT, OutputT>(
     {
       [START]: EphemeralValue<InputT>;
       [END]: LastValue<EntrypointReturnT<OutputT>>;
-      [PREVIOUS]: LastValue<EntrypointFuncSaveT<OutputT>>;
+      [PREVIOUS]: LastValue<EntrypointFinalSaveT<OutputT>>;
     }, // channel types
     Record<string, unknown>, // configurable types
     InputT, // input type
@@ -136,7 +141,7 @@ export function entrypoint<InputT, OutputT>(
     channels: {
       [START]: new EphemeralValue<InputT>(),
       [END]: new LastValue<EntrypointReturnT<OutputT>>(),
-      [PREVIOUS]: new LastValue<EntrypointFuncSaveT<OutputT>>(),
+      [PREVIOUS]: new LastValue<EntrypointFinalSaveT<OutputT>>(),
     },
     inputChannels: START,
     outputChannels: END,
