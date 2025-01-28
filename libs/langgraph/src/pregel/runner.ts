@@ -22,7 +22,7 @@ import { _runWithRetry, SettledPregelTask } from "./retry.js";
 import { PregelLoop } from "./loop.js";
 
 /**
- * Options for the @see PregelRunner#tick method.
+ * Options for the {@link PregelRunner#tick} method.
  */
 export type TickOptions = {
   /**
@@ -31,12 +31,12 @@ export type TickOptions = {
   timeout?: number;
 
   /**
-   * An optional @see AbortSignal to cancel processing of tasks.
+   * An optional {@link AbortSignal} to cancel processing of tasks.
    */
   signal?: AbortSignal;
 
   /**
-   * The @see RetryPolicy to use for the tick.
+   * The {@link RetryPolicy} to use for the tick.
    */
   retryPolicy?: RetryPolicy;
 
@@ -47,7 +47,7 @@ export type TickOptions = {
 };
 
 /**
- * Responsible for handling task execution on each tick of the @see PregelLoop.
+ * Responsible for handling task execution on each tick of the {@link PregelLoop}.
  */
 export class PregelRunner {
   private nodeFinished?: (id: string) => void;
@@ -72,7 +72,7 @@ export class PregelRunner {
   /**
    * Execute tasks from the current step of the PregelLoop.
    *
-   * Note: this method does NOT call @see PregelLoop#tick. That must be handled externally.
+   * Note: this method does NOT call {@link PregelLoop}#tick. That must be handled externally.
    * @param options - Options for the execution.
    */
   async tick(options: TickOptions = {}) {
@@ -108,7 +108,7 @@ export class PregelRunner {
   }
 
   /**
-   * Concurrently executes tasks with the requested retry policy, yielding a @see SettledPregelTask for each task as it completes.
+   * Concurrently executes tasks with the requested retry policy, yielding a {@link SettledPregelTask} for each task as it completes.
    * @param tasks - The tasks to execute.
    * @param options - Options for the execution.
    */
@@ -339,13 +339,13 @@ export class PregelRunner {
   /**
    * Determines what writes to apply based on whether the task completed successfully, and what type of error occurred.
    *
-   * Throws an error if the error is a @see GraphBubbleUp error and @see PregelLoop#isNested is true.
+   * Throws an error if the error is a {@link GraphBubbleUp} error and {@link PregelLoop}#isNested is true.
    *
-   * Note that in the case of a @see GraphBubbleUp error that is not a @see GraphInterrupt, like a @see Command, this method does not apply any writes.
+   * Note that in the case of a {@link GraphBubbleUp} error that is not a {@link GraphInterrupt}, like a {@link Command}, this method does not apply any writes.
    *
    * @param task - The task to commit.
    * @param error - The error that occurred, if any.
-   * @returns The @see GraphInterrupt that occurred, if the user's code threw one.
+   * @returns The {@link GraphInterrupt} that occurred, if the user's code threw one.
    */
   private _commit(
     task: PregelExecutableTask<string, string>,

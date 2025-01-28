@@ -26,30 +26,58 @@ import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { isAsyncGeneratorFunction, isGeneratorFunction } from "../utils.js";
 
 /**
- * Options for the @see task function
+ * Options for the {@link task} function
  *
- * @experimental
+ * !!! warning "Beta"
+ *     The Functional API is currently in beta and is subject to change.
+ *
+ * @beta
  */
 export type TaskOptions = {
   /**
-   * The retry policy for the task
+   * The retry policy for the task. Configures how many times and under what conditions
+   * the task should be retried if it fails.
+   *
+   * @beta
    */
   retry?: RetryPolicy;
 };
 
 /**
- * Wraps a function in a task that can be retried
+ * Define a LangGraph task using the `task` function.
  *
- *  !!! warning "Experimental"
- *      This is an experimental API that is subject to change.
- *      Do not use for production code.
+ * !!! warning "Beta"
+ *     The Functional API is currently in beta and is subject to change.
  *
- * @experimental
+ * @beta
  *
- * @param name - The name of the task, analagous to the node name in @see StateGraph
+ * Tasks can only be called from within an {@link entrypoint} or from within a StateGraph.
+ * A task can be called like a regular function with the following differences:
+ *
+ * - When a checkpointer is enabled, the function inputs and outputs must be serializable.
+ * - The decorated function can only be called from within an entrypoint or StateGraph.
+ * - Calling the function produces a promise. This makes it easy to parallelize tasks.
+ *
+ * @typeParam ArgsT - The type of arguments the task function accepts
+ * @typeParam OutputT - The type of value the task function returns
+ * @param name - The name of the task, analogous to the node name in {@link StateGraph}
  * @param func - The function that executes this task
- * @param options.retry - The retry policy for the task
- * @returns A proxy function that accepts the same arguments as the original and always returns the result as a @see Promise.
+ * @param options.retry - An optional retry policy to use for the task in case of a failure
+ * @returns A proxy function that accepts the same arguments as the original and always returns the result as a Promise
+ *
+ * @example
+ * ```typescript
+ * const addOne = task("add", async (a: number) => a + 1);
+ *
+ * const workflow = entrypoint({ name: "example" }, async (numbers: number[]) => {
+ *   const promises = numbers.map(n => addOne(n));
+ *   const results = await Promise.all(promises);
+ *   return results;
+ * });
+ *
+ * // Call the entrypoint
+ * await workflow.invoke([1, 2, 3]); // Returns [2, 3, 4]
+ * ```
  */
 export function task<ArgsT extends unknown[], OutputT>(
   name: string,
@@ -67,49 +95,226 @@ export function task<ArgsT extends unknown[], OutputT>(
 }
 
 /**
- * Options for the @see entrypoint function
+ * Options for the {@link entrypoint} function
  *
- * @experimental
+ * !!! warning "Beta"
+ *     The Functional API is currently in beta and is subject to change.
+ *
+ * @beta
  */
 export type EntrypointOptions = {
   /**
-   * The name of the entrypoint, analagous to the node name in @see StateGraph
+   * The name of the {@link entrypoint}, analogous to the node name in {@link StateGraph}.
+   * This name is used for logging, debugging, and checkpoint identification.
    *
-   * @experimental
+   * @beta
    */
   name: string;
   /**
-   * The checkpointer for the entrypoint
+   * The checkpointer for the {@link entrypoint}. Used to save and restore state between
+   * invocations of the workflow.
    *
-   * @experimental
+   * @beta
    */
   checkpointer?: BaseCheckpointSaver;
   /**
-   * The store for the entrypoint
+   * The store for the {@link entrypoint}. Used to persist data across workflow runs.
    *
-   * @experimental
+   * @beta
    */
   store?: BaseStore;
 };
 
 /**
- * Creates an entrypoint that returns a Pregel instance
- *
- *  !!! warning "Experimental"
- *      This is an experimental API that is subject to change.
- *      Do not use for production code.
- *
- * @experimental
- *
- * @param options.name - The name of the entrypoint, analagous to the node name in @see StateGraph
- * @param options.checkpointer - The checkpointer for the entrypoint
- * @param func - The function that executes this entrypoint
- * @returns A Pregel instance that can be run
+ * Type declaration for the entrypoint function with its properties
  */
-export function entrypoint<InputT, OutputT>(
-  { name, checkpointer, store }: EntrypointOptions,
+export interface EntrypointFunction {
+  <InputT, OutputT>(
+    options: EntrypointOptions,
+    func: EntrypointFunc<InputT, OutputT>
+  ): Pregel<
+    Record<string, PregelNode<InputT, EntrypointReturnT<OutputT>>>,
+    {
+      [START]: EphemeralValue<InputT>;
+      [END]: LastValue<EntrypointReturnT<OutputT>>;
+      [PREVIOUS]: LastValue<EntrypointFinalSaveT<OutputT>>;
+    },
+    Record<string, unknown>,
+    InputT,
+    EntrypointReturnT<OutputT>
+  >;
+
+  /**
+   * A helper utility for use with the functional API that returns a value to the caller,
+   * as well as a separate state value to persist to the checkpoint. This allows workflows
+   * to maintain state between runs while returning different values to the caller.
+   *
+   * !!! warning "Beta"
+   *     The Functional API is currently in beta and is subject to change.
+   *
+   * @beta
+   *
+   * @typeParam ValueT - The type of the value to return to the caller
+   * @typeParam SaveT - The type of the state to save to the checkpoint
+   * @param value - The value to return to the caller
+   * @param save - The value to save to the checkpoint
+   * @returns An object with the value and save properties
+   *
+   * @example
+   * ```typescript
+   * return entrypoint.final({
+   *   value: "result for caller",
+   *   save: { counter: currentCount + 1 }
+   * });
+   * ```
+   */
+  final<ValueT, SaveT>(options: {
+    value?: ValueT;
+    save?: SaveT;
+  }): EntrypointFinal<ValueT, SaveT>;
+}
+
+/**
+ * Define a LangGraph workflow using the `entrypoint` function.
+ *
+ * !!! warning "Beta"
+ *     The Functional API is currently in beta and is subject to change.
+ *
+ * @beta
+ *
+ * ### Function signature
+ *
+ * The decorated function must accept at most **two parameters**. The first parameter
+ * is the input to the function. The second (optional) parameter is a
+ * {@link LangGraphRunnableConfig} object. If you wish to pass multiple parameters to
+ * the function, you can pass them as an object.
+ *
+ * ### Helper functions
+ *
+ * #### Streaming
+ * The to write data to the "custom" stream, use the {@link getWriter} function, or the
+ * {@link LangGraphRunnableConfig.writer} property.
+ *
+ * #### State management
+ * The {@link getPreviousState} function can be used to access the previous state
+ * that was returned from the last invocation of the entrypoint on the same thread id.
+ *
+ * If you wish to save state other than the return value, you can use the
+ * {@link entrypoint.final} function.
+ *
+ * @typeParam InputT - The type of input the entrypoint accepts
+ * @typeParam OutputT - The type of output the entrypoint produces
+ * @param options.name - The name of the entrypoint, analogous to the node name in {@link StateGraph}
+ * @param options.checkpointer - Specify a checkpointer to create a workflow that can persist its state across runs
+ * @param options.store - A generalized key-value store. Some implementations may support semantic search capabilities
+ * @param func - The function that executes this entrypoint
+ * @returns A {@link Pregel} instance that can be run to execute the workflow
+ *
+ * @example Using entrypoint and tasks
+ * ```typescript
+ * import { task, entrypoint } from "@langchain/langgraph";
+ * import { MemorySaver } from "@langchain/langgraph-checkpoint";
+ * import { interrupt, Command } from "@langchain/langgraph";
+ *
+ * const composeEssay = task("compose", async (topic: string) => {
+ *   await new Promise(r => setTimeout(r, 1000)); // Simulate slow operation
+ *   return `An essay about ${topic}`;
+ * });
+ *
+ * const reviewWorkflow = entrypoint({
+ *   name: "review",
+ *   checkpointer: new MemorySaver()
+ * }, async (topic: string) => {
+ *   const essay = await composeEssay(topic);
+ *   const humanReview = await interrupt({
+ *     question: "Please provide a review",
+ *     essay
+ *   });
+ *   return {
+ *     essay,
+ *     review: humanReview
+ *   };
+ * });
+ *
+ * // Example configuration for the workflow
+ * const config = {
+ *   configurable: {
+ *     thread_id: "some_thread"
+ *   }
+ * };
+ *
+ * // Topic for the essay
+ * const topic = "cats";
+ *
+ * // Stream the workflow to generate the essay and await human review
+ * for await (const result of reviewWorkflow.stream(topic, config)) {
+ *   console.log(result);
+ * }
+ *
+ * // Example human review provided after the interrupt
+ * const humanReview = "This essay is great.";
+ *
+ * // Resume the workflow with the provided human review
+ * for await (const result of reviewWorkflow.stream(new Command({ resume: humanReview }), config)) {
+ *   console.log(result);
+ * }
+ * ```
+ *
+ * @example Accessing the previous return value
+ * ```typescript
+ * import { entrypoint, getPreviousState } from "@langchain/langgraph";
+ * import { MemorySaver } from "@langchain/langgraph-checkpoint";
+ *
+ * const accumulator = entrypoint({
+ *   checkpointer: new MemorySaver()
+ * }, async (input: string) => {
+ *   const previous = getPreviousState<number>();
+ *   return previous !== undefined ? `${previous } ${input}` : input;
+ * });
+ *
+ * const config = {
+ *   configurable: {
+ *     thread_id: "some_thread"
+ *   }
+ * };
+ * await accumulator.invoke("hello", config); // returns "hello"
+ * await accumulator.invoke("world", config); // returns "hello world"
+ * ```
+ *
+ * @example Using entrypoint.final to save a value
+ * ```typescript
+ * import { entrypoint, getPreviousState } from "@langchain/langgraph";
+ * import { MemorySaver } from "@langchain/langgraph-checkpoint";
+ *
+ * const myWorkflow = entrypoint({
+ *   checkpointer: new MemorySaver()
+ * }, async (num: number) => {
+ *   const previous = getPreviousState<number>();
+ *
+ *   // This will return the previous value to the caller, saving
+ *   // 2 * num to the checkpoint, which will be used in the next invocation
+ *   // for the `previous` parameter.
+ *   return entrypoint.final({
+ *     value: previous ?? 0,
+ *     save: 2 * num
+ *   });
+ * });
+ *
+ * const config = {
+ *   configurable: {
+ *     thread_id: "some_thread"
+ *   }
+ * };
+ *
+ * await myWorkflow.invoke(3, config); // 0 (previous was undefined)
+ * await myWorkflow.invoke(1, config); // 6 (previous was 3 * 2 from the previous invocation)
+ * ```
+ */
+export const entrypoint = function entrypoint<InputT, OutputT>(
+  options: EntrypointOptions,
   func: EntrypointFunc<InputT, OutputT>
 ) {
+  const { name, checkpointer, store } = options;
   if (isAsyncGeneratorFunction(func) || isGeneratorFunction(func)) {
     throw new Error(
       "Generators are disallowed as entrypoints. For streaming responses, use config.write."
@@ -150,15 +355,9 @@ export function entrypoint<InputT, OutputT>(
     streamMode,
     store,
   });
-}
+} as EntrypointFunction;
 
-/**
- * A helper utility for use with the functional API that returns a value to the caller, as well as a separate state value to persist to the checkpoint
- *
- * @param value - The value to return to the caller
- * @param save - The value to save to the checkpoint
- * @returns An object with the value and save properties
- */
+// documented by the EntrypointFunction interface
 entrypoint.final = function final<ValueT, SaveT>({
   value,
   save,
@@ -170,11 +369,25 @@ entrypoint.final = function final<ValueT, SaveT>({
 };
 
 /**
- * A helper utility function for use with the functional API that returns the previous state from the checkpoint from the last invocation of the current thread.
+ * A helper utility function for use with the functional API that returns the previous
+ * state from the checkpoint from the last invocation of the current thread.
  *
- * Related: @see {@link entrypoint#final}
+ * This function allows workflows to access state that was saved in previous runs
+ * using {@link entrypoint.final}.
  *
- * @returns the previous saved state from the last invocation of the current thread.
+ * !!! warning "Beta"
+ *     The Functional API is currently in beta and is subject to change.
+ *
+ * @beta
+ *
+ * @typeParam StateT - The type of the state that was previously saved
+ * @returns The previous saved state from the last invocation of the current thread
+ *
+ * @example
+ * ```typescript
+ * const previousState = getPreviousState<{ counter: number }>();
+ * const newCount = (previousState?.counter ?? 0) + 1;
+ * ```
  */
 export function getPreviousState<StateT>(): StateT {
   const config: LangGraphRunnableConfig =

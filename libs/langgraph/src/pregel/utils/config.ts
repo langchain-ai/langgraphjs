@@ -95,9 +95,9 @@ export function ensureLangGraphConfig(
 }
 
 /**
- * A helper utility function that returns the @see BaseStore that was set when the graph was initialized
+ * A helper utility function that returns the {@link BaseStore} that was set when the graph was initialized
  *
- * @returns a reference to the @see BaseStore that was set when the graph was initialized
+ * @returns a reference to the {@link BaseStore} that was set when the graph was initialized
  */
 export function getStore(): BaseStore | undefined {
   const config: LangGraphRunnableConfig =
@@ -106,9 +106,9 @@ export function getStore(): BaseStore | undefined {
 }
 
 /**
- * A helper utility function that returns the @see LangGraphRunnableConfig.writer if "custom" stream mode is enabled, otherwise undefined
+ * A helper utility function that returns the {@link LangGraphRunnableConfig#writer} if "custom" stream mode is enabled, otherwise undefined
  *
- * @returns a reference to the @see LangGraphRunnableConfig.writer if "custom" stream mode is enabled, otherwise undefined
+ * @returns a reference to the {@link LangGraphRunnableConfig#writer} if "custom" stream mode is enabled, otherwise undefined
  */
 export function getWriter(): ((chunk: unknown) => void) | undefined {
   const config: LangGraphRunnableConfig =
