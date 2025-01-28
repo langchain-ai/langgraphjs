@@ -15,7 +15,7 @@ When building agents and workflows, LangGraph [offers a number of benefits](http
 
 !!! note Compatibility
 
-    The Functional API requires `@langchain/langgraph>=0.3.0`.
+    The Functional API requires `@langchain/langgraph>=0.2.24`.
 
 You can use [any chat model](https://js.langchain.com/docs/integrations/chat/) that supports structured outputs and tool calling. Below, we show the process of installing the packages, setting API keys, and testing structured outputs / tool calling for Anthropic.
 
@@ -209,24 +209,25 @@ As noted in the [Anthropic blog](https://www.anthropic.com/research/building-eff
     });
 
     // Third LLM call for final polish
-    const polishJoke = task(async (joke: string) => {
+    const polishJoke = task("polishJoke", async (joke: string) => {
       const msg = await llm.invoke(
         `Add a surprising twist to this joke: ${joke}`
       );
       return msg.content;
     });
 
-    const workflow = entrypoint({
-      name: "jokeMaker",
-    }, async (topic: string) => {
-      const originalJoke = await generateJoke(topic);
-      if (checkPunchline(originalJoke) === "Pass") {
-        return originalJoke;
+    const workflow = entrypoint(
+      "jokeMaker",
+      async (topic: string) => {
+        const originalJoke = await generateJoke(topic);
+        if (checkPunchline(originalJoke) === "Pass") {
+          return originalJoke;
+        }
+        const improvedJoke = await improveJoke(originalJoke);
+        const polishedJoke = await polishJoke(improvedJoke);
+        return polishedJoke;
       }
-      const improvedJoke = await improveJoke(originalJoke);
-      const polishedJoke = await polishJoke(improvedJoke);
-      return polishedJoke;
-    });
+    );
 
     const stream = await workflow.stream("cats", {
       streamMode: "updates",
@@ -363,17 +364,18 @@ With parallelization, LLMs work simultaneously on a task:
     });
 
     // Build workflow
-    const workflow = entrypoint({
-      name: "parallelWorkflow",
-    }, async (topic: string) => {
-      const [joke, story, poem] = await Promise.all([
-        callLlm1(topic),
-        callLlm2(topic),
-        callLlm3(topic),
-      ]);
+    const workflow = entrypoint(
+      "parallelWorkflow",
+      async (topic: string) => {
+        const [joke, story, poem] = await Promise.all([
+          callLlm1(topic),
+          callLlm2(topic),
+          callLlm3(topic),
+        ]);
 
-      return aggregator({ topic, joke, story, poem });
-    });
+        return aggregator({ topic, joke, story, poem });
+      }
+    );
 
     // Invoke
     const stream = await workflow.stream("cats", {
@@ -588,23 +590,24 @@ Routing classifies an input and directs it to a followup task. As noted in the [
     });
 
     // Build workflow
-    const workflow = entrypoint({
-      name: "routerWorkflow",
-    }, async (input: string) => {
-      const nextStep = await llmCallRouter(input);
+    const workflow = entrypoint(
+      "routerWorkflow",
+      async (input: string) => {
+        const nextStep = await llmCallRouter(input);
 
-      let llmCall;
-      if (nextStep === "story") {
-        llmCall = llmCall1;
-      } else if (nextStep === "joke") {
-        llmCall = llmCall2;
-      } else if (nextStep === "poem") {
-        llmCall = llmCall3;
+        let llmCall;
+        if (nextStep === "story") {
+          llmCall = llmCall1;
+        } else if (nextStep === "joke") {
+          llmCall = llmCall2;
+        } else if (nextStep === "poem") {
+          llmCall = llmCall3;
+        }
+
+        const finalResult = await llmCall(input);
+        return finalResult;
       }
-
-      const finalResult = await llmCall(input);
-      return finalResult;
-    });
+    );
 
     // Invoke
     const stream = await workflow.stream("Write me a joke about cats", {
@@ -810,15 +813,16 @@ With orchestrator-worker, an orchestrator breaks down a task and delegates each 
     });
 
     // Build workflow
-    const workflow = entrypoint({
-      name: "orchestratorWorker",
-    }, async (topic: string) => {
-      const sections = await orchestrator(topic);
-      const completedSections = await Promise.all(
-        sections.map((section) => llmCall(section))
-      );
-      return synthesizer(completedSections);
-    });
+    const workflow = entrypoint(
+      "orchestratorWorker",
+      async (topic: string) => {
+        const sections = await orchestrator(topic);
+        const completedSections = await Promise.all(
+          sections.map((section) => llmCall(section))
+        );
+        return synthesizer(completedSections);
+      }
+    );
 
     // Invoke
     const stream = await workflow.stream("Create a report on LLM scaling laws", {
@@ -974,23 +978,24 @@ In the evaluator-optimizer workflow, one LLM call generates a response while ano
     });
 
     // Build workflow
-    const workflow = entrypoint({
-      name: "optimizerWorkflow",
-    }, async (topic: string) => {
-      let feedback: z.infer<typeof feedbackSchema> | undefined;
-      let joke: string;
+    const workflow = entrypoint(
+      "optimizerWorkflow",
+      async (topic: string) => {
+        let feedback: z.infer<typeof feedbackSchema> | undefined;
+        let joke: string;
 
-      while (true) {
-        joke = await llmCallGenerator({ topic, feedback });
-        feedback = await llmCallEvaluator(joke);
+        while (true) {
+          joke = await llmCallGenerator({ topic, feedback });
+          feedback = await llmCallEvaluator(joke);
 
-        if (feedback.grade === "funny") {
-          break;
+          if (feedback.grade === "funny") {
+            break;
+          }
         }
-      }
 
-      return joke;
-    });
+        return joke;
+      }
+    );
 
     // Invoke
     const stream = await workflow.stream("Cats", {
@@ -1187,28 +1192,29 @@ const llmWithTools = llm.bindTools(tools);
       return tool.invoke(toolCall.args);
     });
 
-    const agent = entrypoint({
-      name: "agent",
-    }, async (messages: BaseMessageLike[]) => {
-      let llmResponse = await callLlm(messages);
+    const agent = entrypoint(
+      "agent",
+      async (messages: BaseMessageLike[]) => {
+        let llmResponse = await callLlm(messages);
 
-      while (true) {
-        if (!llmResponse.tool_calls?.length) {
-          break;
+        while (true) {
+          if (!llmResponse.tool_calls?.length) {
+            break;
+          }
+
+          // Execute tools
+          const toolResults = await Promise.all(
+            llmResponse.tool_calls.map((toolCall) => callTool(toolCall))
+          );
+
+          messages = addMessages(messages, [llmResponse, ...toolResults]);
+          llmResponse = await callLlm(messages);
         }
 
-        // Execute tools
-        const toolResults = await Promise.all(
-          llmResponse.tool_calls.map((toolCall) => callTool(toolCall))
-        );
-
-        messages = addMessages(messages, [llmResponse, ...toolResults]);
-        llmResponse = await callLlm(messages);
+        messages = addMessages(messages, [llmResponse]);
+        return messages;
       }
-
-      messages = addMessages(messages, [llmResponse]);
-      return messages;
-    });
+    );
 
     // Invoke
     const messages = [{
