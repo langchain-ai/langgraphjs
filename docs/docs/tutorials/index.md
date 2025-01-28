@@ -1,6 +1,4 @@
 ---
-hide:
-  - navigation
 title: Tutorials
 ---
 
@@ -13,6 +11,7 @@ Welcome to the LangGraph.js Tutorials! These notebooks introduce LangGraph throu
 Learn the basics of LangGraph through a comprehensive quick start in which you will build an agent from scratch.
 
 - [Quick Start](quickstart.ipynb)
+- [Common Workflows](workflows/index.md): Overview of the most common workflows using LLMs implemented with LangGraph.
 - [LangGraph Cloud Quick Start](https://langchain-ai.github.io/langgraph/cloud/quick_start/): In this tutorial, you will build and deploy an agent to LangGraph Cloud.
 
 ## Use cases
