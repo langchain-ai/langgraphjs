@@ -145,6 +145,7 @@ export async function spawnPythonServer(
   context: {
     configPath: string;
     config: Config;
+    hostUrl: string;
     env: NodeJS.ProcessEnv;
   },
   options: {

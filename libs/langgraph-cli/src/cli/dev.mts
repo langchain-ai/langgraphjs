@@ -47,12 +47,13 @@ builder
 
       let hasOpenedFlag = false;
       let child: ChildProcess | undefined = undefined;
+      let hostUrl = "https://smith.langchain.com";
 
       server.on("data", (data) => {
         const response = z.object({ queryParams: z.string() }).parse(data);
         if (options.browser && !hasOpenedFlag) {
           hasOpenedFlag = true;
-          open(`https://smith.langchain.com/studio${response.queryParams}`);
+          open(`${hostUrl}/studio${response.queryParams}`);
         }
       });
 
@@ -107,11 +108,24 @@ builder
         );
 
         watcher.unwatch(removedTarget).add(addedTarget);
-        return { config, env };
+
+        try {
+          const { Client } = await import("langsmith");
+          const apiUrl =
+            env?.["LANGSMITH_ENDPOINT"] ||
+            env?.["LANGCHAIN_ENDPOINT"] ||
+            undefined;
+
+          hostUrl = new Client({ apiUrl }).getHostUrl() || hostUrl;
+        } catch {
+          // pass
+        }
+
+        return { config, env, hostUrl };
       };
 
       const launchServer = async () => {
-        const { config, env } = await prepareContext();
+        const { config, env, hostUrl } = await prepareContext();
         if (child != null) child.kill();
 
         if ("python_version" in config) {
@@ -122,14 +136,14 @@ builder
           const { spawnPythonServer } = await import("./dev.python.mjs");
           child = await spawnPythonServer(
             { ...options, rest: args },
-            { configPath, config, env },
+            { configPath, config, env, hostUrl },
             { pid, projectCwd }
           );
         } else {
           const { spawnNodeServer } = await import("./dev.node.mjs");
           child = await spawnNodeServer(
             { ...options, rest: args },
-            { configPath, config, env },
+            { configPath, config, env, hostUrl },
             { pid, projectCwd }
           );
         }
