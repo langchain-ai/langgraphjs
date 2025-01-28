@@ -53,7 +53,8 @@ import { PregelScratchpad } from "./pregel/types.js";
  * @throws {Error} If called outside the context of a graph
  * @throws {GraphInterrupt} When no resume value is available
  */
-export function interrupt<I = unknown, R = unknown>(value: I): R {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function interrupt<I = unknown, R = any>(value: I): R {
   const config: RunnableConfig | undefined =
     AsyncLocalStorageProviderSingleton.getRunnableConfig();
   if (!config) {

@@ -7,6 +7,7 @@ export {
   CompiledStateGraph,
   MessageGraph,
   messagesStateReducer,
+  messagesStateReducer as addMessages,
   type Messages,
   Annotation,
   type StateType,
