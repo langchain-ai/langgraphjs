@@ -5,7 +5,12 @@ import {
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { Pregel } from "../pregel/index.js";
 import { PregelNode } from "../pregel/read.js";
-import { CONFIG_KEY_PREVIOUS, END, PREVIOUS, START } from "../constants.js";
+import {
+  CONFIG_KEY_PREVIOUS_STATE,
+  END,
+  PREVIOUS,
+  START,
+} from "../constants.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { call, getRunnableForEntrypoint } from "../pregel/call.js";
 import { RetryPolicy } from "../pregel/utils/index.js";
@@ -173,5 +178,5 @@ entrypoint.final = function final<ValueT, SaveT>({
 export function getPreviousState<StateT>(): StateT {
   const config: LangGraphRunnableConfig =
     AsyncLocalStorageProviderSingleton.getRunnableConfig();
-  return config.configurable?.[CONFIG_KEY_PREVIOUS] as StateT;
+  return config.configurable?.[CONFIG_KEY_PREVIOUS_STATE] as StateT;
 }
