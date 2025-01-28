@@ -794,7 +794,7 @@ export function runFuncTests(
           config
         );
 
-        // TODO: why u null?! seems to be coming from an attempt to read the output of __end__, but why doesn't it do that in the first run?
+        // TODO: make this return something other than null when we figure out a interrupt return value
         expect(secondRun).toBeNull();
 
         // Resume with second answer
@@ -803,7 +803,6 @@ export function runFuncTests(
           config
         );
 
-        // TODO: why u null?! seems to be coming from an attempt to read the output of __end__, but why doesn't it do that in the first run?
         expect(thirdRun).toBeNull();
 
         // Resume with final answer and get result

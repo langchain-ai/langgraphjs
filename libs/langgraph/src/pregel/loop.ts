@@ -796,7 +796,6 @@ export class PregelLoop {
 
     if (isCommand(this.input)) {
       if (this.input.resume != null && this.checkpointer == null) {
-        // TODO: add test to gaurd this throw
         throw new Error("Cannot use Command(resume=...) without checkpointer");
       }
 

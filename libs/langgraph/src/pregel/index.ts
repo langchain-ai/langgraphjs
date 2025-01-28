@@ -1262,7 +1262,6 @@ export class Pregel<
 
         const runner = new PregelRunner({
           loop,
-          // TODO: I don't think this is wired up?
           nodeFinished: config.configurable?.nodeFinished,
         });
 

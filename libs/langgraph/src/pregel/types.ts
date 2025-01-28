@@ -24,12 +24,6 @@ export type PregelInputType = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PregelOutputType = any;
 
-// TODO: name this something sensible, and move to utils
-export type Promisified<T extends (...args: unknown[]) => unknown> =
-  ReturnType<T> extends Promise<unknown>
-    ? ReturnType<T>
-    : Promise<ReturnType<T>>;
-
 /**
  * Config for executing the graph.
  */
@@ -276,7 +270,6 @@ export class Call {
     this.input = input;
     this.retry = retry;
 
-    // TODO: where is this used?
     this.callbacks = callbacks;
   }
 }

@@ -21,23 +21,25 @@ import {
   TaskFunc,
 } from "../func/types.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
+
 /**
- * Wraps a user function in a Runnable.
+ * Wraps a user function in a Runnable that writes the returned value to the RETURN channel.
  */
-export function getRunnableForFunc<
-  FuncT extends (...args: unknown[]) => unknown
->(name: string, func: FuncT): Runnable<Parameters<FuncT>, ReturnType<FuncT>> {
-  const run = new RunnableCallable<Parameters<FuncT>, ReturnType<FuncT>>({
-    func: (input: Parameters<FuncT>) => func(...input),
+export function getRunnableForFunc<ArgsT extends unknown[], OutputT>(
+  name: string,
+  func: TaskFunc<ArgsT, OutputT>
+): Runnable<ArgsT, OutputT, LangGraphRunnableConfig> {
+  const run = new RunnableCallable<ArgsT, OutputT>({
+    func: (input: ArgsT) => func(...input),
     name,
     trace: false,
     recurse: false,
   } as RunnableCallableArgs);
 
-  return new RunnableSequence<Parameters<FuncT>, ReturnType<FuncT>>({
+  return new RunnableSequence<ArgsT, OutputT>({
     name,
     first: run,
-    last: new ChannelWrite<ReturnType<FuncT>>(
+    last: new ChannelWrite<OutputT>(
       [{ channel: RETURN, value: PASSTHROUGH }],
       [TAG_HIDDEN]
     ),
@@ -104,7 +106,6 @@ export function call<ArgsT extends unknown[], OutputT>(
 ): Promise<OutputT> {
   const config =
     AsyncLocalStorageProviderSingleton.getRunnableConfig() as RunnableConfig;
-  // TODO: type the CONFIG_KEY_CALL function
   if (typeof config.configurable?.[CONFIG_KEY_CALL] === "function") {
     return config.configurable[CONFIG_KEY_CALL](func, name, args, {
       retry,

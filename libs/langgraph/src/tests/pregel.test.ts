@@ -9470,6 +9470,35 @@ graph TD;
     expect(oneCount).toEqual(1);
     expect(twoCount).toEqual(0);
   });
+
+  it("should throw when resuming without a checkpointer", async () => {
+    const chain = Channel.subscribeTo("input").pipe(
+      Channel.writeTo(["output"])
+    );
+
+    const channels = {
+      input: new LastValue(),
+      output: new LastValue(),
+    };
+
+    // create Pregel class
+    const graph = new Pregel({
+      nodes: { chain },
+      debug: false,
+      inputChannels: "input",
+      outputChannels: "output",
+      interruptBefore: ["chain"],
+      streamMode: "values",
+      channels,
+    });
+
+    // TODO: should ideally throw here when no checkpointer is provided
+    expect(await graph.invoke("a")).toBeUndefined();
+
+    await expect(() =>
+      graph.invoke(new Command({ resume: "hello" }))
+    ).rejects.toThrow("Cannot use Command(resume=...) without checkpointer");
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
