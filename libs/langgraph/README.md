@@ -7,54 +7,174 @@
 
 ⚡ Building language agents as graphs ⚡
 
+> [!NOTE]
+> Looking for the Python version? See the [Python repo](https://github.com/langchain-ai/langgraph) and the [Python docs](https://langchain-ai.github.io/langgraph/).
+
 ## Overview
 
-[LangGraph.js](https://langchain-ai.github.io/langgraphjs/) is a library for building stateful, multi-actor applications with LLMs, used to create agent and multi-agent workflows. Compared to other LLM frameworks, it offers these core benefits: cycles, controllability, and persistence. LangGraph allows you to define flows that involve cycles, essential for most agentic architectures, differentiating it from DAG-based solutions. As a very low-level framework, it provides fine-grained control over both the flow and state of your application, crucial for creating reliable agents. Additionally, LangGraph includes built-in persistence, enabling advanced human-in-the-loop and memory features.
+[LangGraph](https://langchain-ai.github.io/langgraphjs/) is a library for building
+stateful, multi-actor applications with LLMs, used to create agent and multi-agent
+workflows. Check out an introductory tutorial [here](https://langchain-ai.github.io/langgraphjs/tutorials/quickstart/).
 
-LangGraph is inspired by [Pregel](https://research.google/pubs/pub37252/) and [Apache Beam](https://beam.apache.org/). The public interface draws inspiration from [NetworkX](https://networkx.org/documentation/latest/). LangGraph is built by LangChain Inc, the creators of [LangChain](https://github.com/langchain-ai/langchainjs), but can be used without LangChain.
 
-### Key Features
+LangGraph is inspired by [Pregel](https://research.google/pubs/pub37252/) and [Apache Beam](https://beam.apache.org/). The public interface draws inspiration from [NetworkX](https://networkx.org/documentation/latest/). LangGraph is built by LangChain Inc, the creators of LangChain, but can be used without LangChain.
 
-- **Cycles and Branching**: Implement loops and conditionals in your apps.
-- **Persistence**: Automatically save state after each step in the graph. Pause and resume the graph execution at any point to support error recovery, human-in-the-loop workflows, time travel and more.
-- **Human-in-the-Loop**: Interrupt graph execution to approve or edit next action planned by the agent.
-- **Streaming Support**: Stream outputs as they are produced by each node (including token streaming).
-- **Integration with LangChain**: LangGraph integrates seamlessly with [LangChain.js](https://github.com/langchain-ai/langchainjs/) and [LangSmith](https://docs.smith.langchain.com/) (but does not require them).
+### Why use LangGraph?
+
+LangGraph provides fine-grained control over both the flow and state of your
+agent applications. It implements a central
+[persistence layer](https://langchain-ai.github.io/langgraphjs/concepts/persistence/),
+enabling features that are common to most agent architectures:
+
+- **Memory**: LangGraph persists arbitrary aspects of your application's state,
+supporting memory of conversations and other updates within and across user
+interactions;
+- **Human-in-the-loop**: Because state is checkpointed, execution can be interrupted
+and resumed, allowing for decisions, validation, and corrections at key stages via
+human input.
+
+Standardizing these components allows individuals and teams to focus on the behavior
+of their agent, instead of its supporting infrastructure.
+
+Through [LangGraph Platform](#langgraph-platform), LangGraph also provides tooling for
+the development, deployment, debugging, and monitoring of your applications.
+
+LangGraph integrates seamlessly with
+[LangChain](https://js.langchain.com/docs/introduction/) and
+[LangSmith](https://docs.smith.langchain.com/) (but does not require them).
+
+To learn more about LangGraph, check out our first LangChain Academy
+course, *Introduction to LangGraph*, available for free
+[here](https://academy.langchain.com/courses/intro-to-langgraph).
+
+### LangGraph Platform
+
+[LangGraph Platform](https://langchain-ai.github.io/langgraphjs/concepts/langgraph_platform) is infrastructure for deploying LangGraph agents. It is a commercial solution for deploying agentic applications to production, built on the open-source LangGraph framework. The LangGraph Platform consists of several components that work together to support the development, deployment, debugging, and monitoring of LangGraph applications: [LangGraph Server](https://langchain-ai.github.io/langgraphjs/concepts/langgraph_server) (APIs), [LangGraph SDKs](https://langchain-ai.github.io/langgraphjs/concepts/sdk) (clients for the APIs), [LangGraph CLI](https://langchain-ai.github.io/langgraphjs/concepts/langgraph_cli) (command line tool for building the server), and [LangGraph Studio](https://langchain-ai.github.io/langgraphjs/concepts/langgraph_studio) (UI/debugger).
+
+See deployment options [here](https://langchain-ai.github.io/langgraphjs/concepts/deployment_options/)
+(includes a free tier).
+
+Here are some common issues that arise in complex deployments, which LangGraph Platform addresses:
+
+- **Streaming support**: LangGraph Server provides [multiple streaming modes](https://langchain-ai.github.io/langgraphjs/concepts/streaming) optimized for various application needs
+- **Background runs**: Runs agents asynchronously in the background
+- **Support for long running agents**: Infrastructure that can handle long running processes
+- **[Double texting](https://langchain-ai.github.io/langgraphjs/concepts/double_texting)**: Handle the case where you get two messages from the user before the agent can respond
+- **Handle burstiness**: Task queue for ensuring requests are handled consistently without loss, even under heavy loads
 
 ## Installation
 
-```bash
+```shell
 npm install @langchain/langgraph @langchain/core
 ```
 
 ## Example
 
-One of the central concepts of LangGraph is state. Each graph execution creates a state that is passed between nodes in the graph as they execute, and each node updates this internal state with its return value after it executes. The way that the graph updates its internal state is defined by either the type of graph chosen or a custom function.
+Let's build a tool-calling [ReAct-style](https://langchain-ai.github.io/langgraphjs/concepts/agentic_concepts/#react-implementation) agent that uses a search tool!
 
-Let's take a look at an example of an agent that can use a search tool.
-
-First install the required dependencies:
-
-```bash
-npm install @langchain/anthropic
+```shell
+npm install @langchain/anthropic zod
 ```
 
-Then set the required environment variables:
-
-```bash
+```shell
 export ANTHROPIC_API_KEY=sk-...
 ```
 
-Optionally, set up [LangSmith](https://docs.smith.langchain.com/) for best-in-class observability:
+Optionally, we can set up [LangSmith](https://docs.smith.langchain.com/) for best-in-class observability.
 
-```bash
-export LANGCHAIN_TRACING_V2=true
-export LANGCHAIN_API_KEY=ls__...
+```shell
+export LANGSMITH_TRACING=true
+export LANGSMITH_API_KEY=lsv2_sk_...
 ```
 
-Now let's define our agent:
+The simplest way to create a tool-calling agent in LangGraph is to use [`createReactAgent`](https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph_prebuilt.createReactAgent.html):
 
-```typescript
+<details open>
+  <summary>High-level implementation</summary>
+
+```ts
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { MemorySaver } from "@langchain/langgraph";
+import { ChatAnthropic } from "@langchain/anthropic";
+import { tool } from "@langchain/core/tools";
+
+import { z } from "zod";
+
+// Define the tools for the agent to use
+const search = tool(async ({ query }) => {
+  // This is a placeholder, but don't tell the LLM that...
+  if (query.toLowerCase().includes("sf") || query.toLowerCase().includes("san francisco")) {
+    return "It's 60 degrees and foggy."
+  }
+  return "It's 90 degrees and sunny."
+}, {
+  name: "search",
+  description: "Call to surf the web.",
+  schema: z.object({
+    query: z.string().describe("The query to use in your search."),
+  }),
+});
+
+const tools = [search];
+const model =  new ChatAnthropic({
+  model: "claude-3-5-sonnet-latest"
+});
+
+// Initialize memory to persist state between graph runs
+const checkpointer = new MemorySaver();
+
+const app = createReactAgent({
+  llm: model,
+  tools,
+  checkpointSaver: checkpointer,
+});
+
+// Use the agent
+const result = await app.invoke(
+  {
+    messages: [{
+      role: "user",
+      content: "what is the weather in sf"
+    }]
+  },
+  { configurable: { thread_id: 42 } }
+);
+console.log(result.messages.at(-1)?.content);
+```
+```
+"Based on the search results, it's currently 60 degrees Fahrenheit and foggy in San Francisco, which is quite typical weather for the city."
+```
+
+Now when we pass the same <code>"thread_id"</code>, the conversation context is retained via the saved state (i.e. stored list of messages)
+
+```ts
+const followup = await app.invoke(
+  {
+    messages: [{
+      role: "user",
+      content: "what about ny"
+    }]
+  },
+  { configurable: { thread_id: 42 } }
+);
+
+console.log(followup.messages.at(-1)?.content);
+```
+
+```
+"According to the search results, it's currently 90 degrees Fahrenheit and sunny in New York City. That's quite a warm day for New York!"
+```
+</details>
+
+> [!TIP]
+> LangGraph is a **low-level** framework that allows you to implement any custom agent
+architectures. Click on the low-level implementation below to see how to implement a
+tool-calling agent from scratch.
+
+<details>
+<summary>Low-level implementation</summary>
+
+```ts
 import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
@@ -145,139 +265,102 @@ const finalState = await app.invoke(
 console.log(finalState.messages[finalState.messages.length - 1].content);
 ```
 
-This will output:
+<b>Step-by-step Breakdown</b>:
 
-```
-Based on the information I received, the current weather in San Francisco is:
+<details>
+<summary>Initialize the model and tools.</summary>
+<ul>
+  <li>
+    We use <code>ChatAnthropic</code> as our LLM. <strong>NOTE:</strong> we need to make sure the model knows that it has these tools available to call. We can do this by converting the LangChain tools into the format for OpenAI tool calling using the <code>.bindTools()</code> method.
+  </li>
+  <li>
+    We define the tools we want to use - a search tool in our case. It is really easy to create your own tools - see documentation here on how to do that <a href="https://js.langchain.com/docs/how_to/custom_tools">here</a>.
+  </li>
+</ul>
+</details>
 
-Temperature: 60 degrees Fahrenheit
-Conditions: Foggy
+<details>
+<summary>Initialize graph with state.</summary>
 
-San Francisco is known for its foggy weather, especially during certain times of the year. The moderate temperature of 60°F (about 15.5°C) is quite typical for the city, which generally has mild weather year-round due to its coastal location.
+<ul>
+    <li>We initialize the graph (<code>StateGraph</code>) by passing state schema with a reducer that defines how the state should be updated. In our case, we want to append new messages to the list and overwrite messages with the same ID, so we use the prebuilt <code>messagesStateReducer</code>.</li>
+</ul>
+</details>
 
-Is there anything else you'd like to know about the weather in San Francisco or any other location?
-```
+<details>
+<summary>Define graph nodes.</summary>
 
-Now when we pass the same `"thread_id"`, the conversation context is retained via the saved state (i.e. stored list of messages):
+There are two main nodes we need:
 
-```typescript
-const nextState = await app.invoke(
-  { messages: [new HumanMessage("what about ny")] },
-  { configurable: { thread_id: "42" } }
-);
-console.log(nextState.messages[nextState.messages.length - 1].content);
-```
+<ul>
+    <li>The <code>agent</code> node: responsible for deciding what (if any) actions to take.</li>
+    <li>The <code>tools</code> node that invokes tools: if the agent decides to take an action, this node will then execute that action.</li>
+</ul>
+</details>
 
-```
-Based on the information I received, the current weather in New York is:
+<details>
+<summary>Define entry point and graph edges.</summary>
 
-Temperature: 90 degrees Fahrenheit (approximately 32.2 degrees Celsius)
-Conditions: Sunny
+First, we need to set the entry point for graph execution - <code>agent</code> node.
 
-New York is experiencing quite warm weather today. A temperature of 90°F is considered hot for most people, and it's significantly warmer than the San Francisco weather we just checked. The sunny conditions suggest it's a clear day without cloud cover, which can make it feel even warmer.
+Then we define one normal and one conditional edge. Conditional edge means that the destination depends on the contents of the graph's state. In our case, the destination is not known until the agent (LLM) decides.
 
-On a day like this in New York, it would be advisable for people to stay hydrated, seek shade when possible, and use sun protection if spending time outdoors.
+<ul>
+  <li>Conditional edge: after the agent is called, we should either:
+    <ul>
+      <li>a. Run tools if the agent said to take an action, OR</li>
+      <li>b. Finish (respond to the user) if the agent did not ask to run tools</li>
+    </ul>
+  </li>
+  <li>Normal edge: after the tools are invoked, the graph should always return to the agent to decide what to do next</li>
+</ul>
+</details>
 
-Is there anything else you'd like to know about the weather in New York or any other location?
-```
+<details>
+<summary>Compile the graph.</summary>
 
-### Step-by-step Breakdown
+<ul>
+  <li>
+    When we compile the graph, we turn it into a LangChain 
+    <a href="https://js.langchain.com/docs/concepts/runnables">Runnable</a>, 
+    which automatically enables calling <code>.invoke()</code>, <code>.stream()</code> and <code>.batch()</code> 
+    with your inputs
+  </li>
+  <li>
+    We can also optionally pass checkpointer object for persisting state between graph runs, and enabling memory, 
+    human-in-the-loop workflows, time travel and more. In our case we use <code>MemorySaver</code> - 
+    a simple in-memory checkpointer
+  </li>
+</ul>
+</details>
 
-1. <details>
-    <summary>Initialize the model and tools.</summary>
+<details>
+<summary>Execute the graph.</summary>
 
-    - We use `ChatAnthropic` as our LLM. **NOTE:** We need make sure the model knows that it has these tools available to call. We can do this by converting the LangChain tools into the format for Anthropic tool calling using the `.bindTools()` method.
-    - We define the tools we want to use -- a weather tool in our case. See the documentation [here](https://js.langchain.com/docs/how_to/custom_tools/) on how to create your own tools.
-   </details>
+<ol>
+  <li>LangGraph adds the input message to the internal state, then passes the state to the entrypoint node, <code>"agent"</code>.</li>
+  <li>The <code>"agent"</code> node executes, invoking the chat model.</li>
+  <li>The chat model returns an <code>AIMessage</code>. LangGraph adds this to the state.</li>
+  <li>Graph cycles the following steps until there are no more <code>tool_calls</code> on <code>AIMessage</code>:
+    <ul>
+      <li>If <code>AIMessage</code> has <code>tool_calls</code>, <code>"tools"</code> node executes</li>
+      <li>The <code>"agent"</code> node executes again and returns <code>AIMessage</code></li>
+    </ul>
+  </li>
+  <li>Execution progresses to the special <code>END</code> value and outputs the final state. And as a result, we get a list of all our chat messages as output.</li>
+</ol>
+</details>
 
-2. <details>
-    <summary>Initialize graph with state.</summary>
-
-    - We initialize the graph (`StateGraph`) by passing the state interface (`AgentState`).
-    - The `StateAnnotation` object defines how updates from each node should be merged into the graph's state.
-   </details>
-
-3. <details>
-    <summary>Define graph nodes.</summary>
-
-    There are two main nodes we need:
-
-      - The `agent` node: responsible for deciding what (if any) actions to take.
-      - The `tools` node that invokes tools: if the agent decides to take an action, this node will then execute that action.
-   </details>
-
-4. <details>
-    <summary>Define entry point and graph edges.</summary>
-
-      First, we need to set the entry point for graph execution - the `agent` node.
-
-      Then we define one normal and one conditional edge. A conditional edge means that the destination depends on the contents of the graph's state (`AgentState`). In our case, the destination is not known until the agent (LLM) decides.
-
-      - Conditional edge: after the agent is called, we should either:
-        - a. Run tools if the agent said to take an action, OR
-        - b. Finish (respond to the user) if the agent did not ask to run tools
-      - Normal edge: after the tools are invoked, the graph should always return to the agent to decide what to do next
-   </details>
-
-5. <details>
-    <summary>Compile the graph.</summary>
-
-    - When we compile the graph, we turn it into a LangChain [Runnable](https://js.langchain.com/docs/expression_language/), which automatically enables calling `.invoke()`, `.stream()` and `.batch()` with your inputs.
-    - We can also optionally pass a checkpointer object for persisting state between graph runs, enabling memory, human-in-the-loop workflows, time travel and more. In our case we use `MemorySaver` - a simple in-memory checkpointer.
-   </details>
-
-6. <details>
-    <summary>Execute the graph.</summary>
-
-    1. LangGraph adds the input message to the internal state, then passes the state to the entrypoint node, `"agent"`.
-    2. The `"agent"` node executes, invoking the chat model.
-    3. The chat model returns an `AIMessage`. LangGraph adds this to the state.
-    4. The graph cycles through the following steps until there are no more `tool_calls` on the `AIMessage`:
-
-        - If `AIMessage` has `tool_calls`, the `"tools"` node executes.
-        - The `"agent"` node executes again and returns an `AIMessage`.
-
-    5. Execution progresses to the special `__end__` value and outputs the final state.
-    As a result, we get a list of all our chat messages as output.
-   </details>
+</details>
 
 ## Documentation
 
-- [Tutorials](https://langchain-ai.github.io/langgraphjs/tutorials/): Learn to build with LangGraph through guided examples.
-- [How-to Guides](https://langchain-ai.github.io/langgraphjs/how-tos/): Accomplish specific things within LangGraph, from streaming, to adding memory & persistence, to common design patterns (branching, subgraphs, etc.). These are the place to go if you want to copy and run a specific code snippet.
-- [Conceptual Guides](https://langchain-ai.github.io/langgraphjs/concepts/): In-depth explanations of the key concepts and principles behind LangGraph, such as nodes, edges, state and more.
-- [API Reference](https://langchain-ai.github.io/langgraphjs/reference/): Review important classes and methods, simple examples of how to use the graph and checkpointing APIs, higher-level prebuilt components and more.
+* [Tutorials](https://langchain-ai.github.io/langgraphjs/tutorials/): Learn to build with LangGraph through guided examples.
+* [How-to Guides](https://langchain-ai.github.io/langgraphjs/how-tos/): Accomplish specific things within LangGraph, from streaming, to adding memory & persistence, to common design patterns (branching, subgraphs, etc.), these are the place to go if you want to copy and run a specific code snippet.
+* [Conceptual Guides](https://langchain-ai.github.io/langgraphjs/concepts/high_level/): In-depth explanations of the key concepts and principles behind LangGraph, such as nodes, edges, state and more.
+* [API Reference](https://langchain-ai.github.io/langgraphjs/reference/): Review important classes and methods, simple examples of how to use the graph and checkpointing APIs, higher-level prebuilt components and more.
+* [LangGraph Platform](https://langchain-ai.github.io/langgraphjs/concepts/#langgraph-platform): LangGraph Platform is a commercial solution for deploying agentic applications in production, built on the open-source LangGraph framework.
 
-## Running Example Jupyter Notebooks
+## Contributing
 
-Please note that the *.ipynb notebooks in the `examples/` folder require [tslab](https://github.com/yunabe/tslab?tab=readme-ov-file) to be installed. In order to run these notebooks in VSCode, you will also need the [Jupyter](https://marketplace.visualstudio.com/items?itemName=ms-toolsai.jupyter) VSCode Extension installed. After cloning this repository, you can run `yarn build` in the root. You should then be all set!
-
-If you are still having trouble, try adding the following `tsconfig.json` file to the `examples/` directory:
-
-```
-{
-  "compilerOptions": {
-    "esModuleInterop": true,
-    "moduleResolution": "node",
-    "target": "ES2020",
-    "module": "ES2020",
-    "lib": [
-      "ES2020"
-    ],
-    "strict": true,
-    "baseUrl": ".",
-    "paths": {
-      "@langchain/langgraph": [
-        "../langgraph/src"
-      ]
-    }
-  },
-  "include": [
-    "./**/*.ts",
-    "./**/*.tsx"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
-}
-```
+For more information on how to contribute, see [here](https://github.com/langchain-ai/langgraphjs/blob/main/CONTRIBUTING.md).
