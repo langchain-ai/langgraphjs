@@ -14,6 +14,7 @@ export async function spawnNodeServer(
     configPath: string;
     config: Config;
     env: NodeJS.ProcessEnv;
+    hostUrl: string;
   },
   options: {
     pid: number;
@@ -21,7 +22,7 @@ export async function spawnNodeServer(
   }
 ) {
   const localUrl = `http://${args.host}:${args.port}`;
-  const studioUrl = `https://smith.langchain.com/studio?baseUrl=${localUrl}`;
+  const studioUrl = `${context.hostUrl}/studio?baseUrl=${localUrl}`;
 
   console.log(`
           Welcome to
