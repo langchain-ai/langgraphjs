@@ -16,6 +16,9 @@ import { Interrupt } from "../constants.js";
 import { type ManagedValueSpec } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 
+/**
+ * Selects the type of output you'll receive when streaming from the graph. See [Streaming](/langgraphjs/how-tos/#streaming) for more details.
+ */
 export type StreamMode = "values" | "updates" | "debug" | "messages" | "custom";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -33,8 +36,12 @@ export interface PregelOptions<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ConfigurableFieldType extends Record<string, any> = Record<string, any>
 > extends RunnableConfig<ConfigurableFieldType> {
-  /** The stream mode for the graph run. Default is ["values"]. */
+  /**
+   * The stream mode for the graph run. See [Streaming](/langgraphjs/how-tos/#streaming) for more details.
+   * @default ["values"]
+   */
   streamMode?: StreamMode | StreamMode[];
+  /** The input keys to retrieve from the checkpoint on resume. You generally don't need to set this. */
   inputKeys?: keyof Cc | Array<keyof Cc>;
   /** The output keys to retrieve from the graph run. */
   outputKeys?: keyof Cc | Array<keyof Cc>;
@@ -111,6 +118,10 @@ export interface PregelInterface<
   ): Promise<PregelOutputType>;
 }
 
+/**
+ * Parameters for creating a Pregel graph.
+ * @internal
+ */
 export type PregelParams<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
@@ -120,34 +131,56 @@ export type PregelParams<
    */
   name?: string;
 
+  /**
+   * The nodes in the graph.
+   */
   nodes: Nn;
 
+  /**
+   * The channels in the graph.
+   */
   channels: Cc;
 
   /**
+   * Whether to validate the graph.
+   *
    * @default true
    */
   autoValidate?: boolean;
 
   /**
-   * @default "values"
+   * The stream mode for the graph run. See [Streaming](/langgraphjs/how-tos/#streaming) for more details.
+   *
+   * @default ["values"]
    */
   streamMode?: StreamMode | StreamMode[];
 
+  /**
+   * The input channels for the graph run.
+   */
   inputChannels: keyof Cc | Array<keyof Cc>;
 
+  /**
+   * The output channels for the graph run.
+   */
   outputChannels: keyof Cc | Array<keyof Cc>;
 
   /**
+   * After processing one of the nodes named in this list, the graph will be interrupted and a resume {@link Command} must be provided to proceed with the execution of this thread.
    * @default []
    */
   interruptAfter?: Array<keyof Nn> | All;
 
   /**
+   * Before processing one of the nodes named in this list, the graph will be interrupted and a resume {@link Command} must be provided to proceed with the execution of this thread.
    * @default []
    */
   interruptBefore?: Array<keyof Nn> | All;
 
+  /**
+   * The channels to stream from the graph run.
+   * @default []
+   */
   streamChannels?: keyof Cc | Array<keyof Cc>;
 
   /**
@@ -160,10 +193,19 @@ export type PregelParams<
    */
   debug?: boolean;
 
+  /**
+   * The {@link BaseCheckpointSaver | checkpointer} to use for the graph run.
+   */
   checkpointer?: BaseCheckpointSaver | false;
 
+  /**
+   * The default retry policy for this graph. For defaults, see {@link RetryPolicy}.
+   */
   retryPolicy?: RetryPolicy;
 
+  /**
+   * The configuration for the graph run.
+   */
   config?: LangGraphRunnableConfig;
 
   /**
