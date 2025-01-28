@@ -16,6 +16,7 @@ export const CONFIG_KEY_RESUME_VALUE = "__pregel_resume_value";
 export const CONFIG_KEY_SCRATCHPAD = "__pregel_scratchpad";
 /** config key containing state from previous invocation of graph for the given thread */
 export const CONFIG_KEY_PREVIOUS_STATE = "__pregel_previous";
+export const CONFIG_KEY_CHECKPOINT_ID = "checkpoint_id";
 export const CONFIG_KEY_CHECKPOINT_NS = "checkpoint_ns";
 
 // this one is part of public API
@@ -46,18 +47,28 @@ export const TASK_NAMESPACE = "6ba7b831-9dad-11d1-80b4-00c04fd430c8";
 export const NULL_TASK_ID = "00000000-0000-0000-0000-000000000000";
 
 export const RESERVED = [
+  TAG_HIDDEN,
+  INPUT,
   INTERRUPT,
   RESUME,
   ERROR,
+  NO_WRITES,
   TASKS,
+
+  // reserved config.configurable keys
   CONFIG_KEY_SEND,
   CONFIG_KEY_READ,
   CONFIG_KEY_CHECKPOINTER,
+  CONFIG_KEY_STREAM,
   CONFIG_KEY_RESUMING,
   CONFIG_KEY_TASK_ID,
-  CONFIG_KEY_STREAM,
+  CONFIG_KEY_CALL,
+  CONFIG_KEY_RESUME_VALUE,
+  CONFIG_KEY_SCRATCHPAD,
+  CONFIG_KEY_PREVIOUS_STATE,
   CONFIG_KEY_CHECKPOINT_MAP,
-  INPUT,
+  CONFIG_KEY_CHECKPOINT_NS,
+  CONFIG_KEY_CHECKPOINT_ID,
 ];
 
 export const CHECKPOINT_NAMESPACE_SEPARATOR = "|";
