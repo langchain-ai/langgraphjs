@@ -13,6 +13,10 @@ When building agents and workflows, LangGraph [offers a number of benefits](http
 
 ## Set up
 
+!!! note Compatibility
+
+    The Functional API requires `@langchain/langgraph>=0.3.0`.
+
 You can use [any chat model](https://js.langchain.com/docs/integrations/chat/) that supports structured outputs and tool calling. Below, we show the process of installing the packages, setting API keys, and testing structured outputs / tool calling for Anthropic.
 
 ??? "Install dependencies"
