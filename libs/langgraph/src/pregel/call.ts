@@ -112,5 +112,7 @@ export function call<ArgsT extends unknown[], OutputT>(
       callbacks: config.callbacks,
     });
   }
-  throw new Error("BUG: No CALL config found");
+  throw new Error(
+    "Async local storage not initialized. Please call initializeAsyncLocalStorageSingleton() before using this function."
+  );
 }

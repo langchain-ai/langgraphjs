@@ -63,11 +63,9 @@ export type EntrypointFinalValueT<OutputT> = OutputT extends
 /**
  * Matches valid function signatures for entrypoints. Disallows generator functions.
  */
-export type EntrypointFunc<InputT, OutputT> = OutputT extends AsyncGenerator<
-  unknown,
-  unknown,
-  unknown
->
+export type EntrypointFunc<InputT, OutputT> = [OutputT] extends never
+  ? (input: InputT, config: LangGraphRunnableConfig) => never
+  : OutputT extends AsyncGenerator<unknown, unknown, unknown>
   ? never
   : OutputT extends Generator<unknown, unknown, unknown>
   ? never
@@ -76,10 +74,11 @@ export type EntrypointFunc<InputT, OutputT> = OutputT extends AsyncGenerator<
 /**
  * Matches valid function signatures for tasks. Disallows generator functions.
  */
-export type TaskFunc<
-  ArgsT extends unknown[],
-  OutputT
-> = OutputT extends AsyncGenerator<unknown, unknown, unknown>
+export type TaskFunc<ArgsT extends unknown[], OutputT> = [OutputT] extends [
+  never
+]
+  ? (...args: ArgsT) => never
+  : OutputT extends AsyncGenerator<unknown, unknown, unknown>
   ? never
   : OutputT extends Generator<unknown, unknown, unknown>
   ? never

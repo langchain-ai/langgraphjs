@@ -331,6 +331,34 @@ export function runFuncTests(
           ).toEqual(["hello world", "hello again, world", "goodbye, world"]);
         });
 
+        it("propagates errors thrown from entrypoints", async () => {
+          const graph = entrypoint(
+            { name: "graph", checkpointer },
+            async () => {
+              throw new Error("test error");
+            }
+          );
+
+          const config = { configurable: { thread_id } };
+          await expect(graph.invoke([], config)).rejects.toThrow("test error");
+        });
+
+        it("propagates errors thrown from tasks", async () => {
+          const errorTask = task("errorTask", () => {
+            throw new Error("test error");
+          });
+
+          const graph = entrypoint(
+            { name: "graph", checkpointer },
+            async () => {
+              await errorTask();
+            }
+          );
+
+          const config = { configurable: { thread_id } };
+          await expect(graph.invoke([], config)).rejects.toThrow("test error");
+        });
+
         describe("generator functions", () => {
           it("disallows use of generator as an entrypoint", async () => {
             expect(() =>
