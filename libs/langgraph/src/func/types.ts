@@ -1,28 +1,36 @@
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 
-export const finalSymbol = Symbol.for("__pregel_final");
-
 /**
  * Allows the entrypoint function to return a value to the caller, as well as a separate state value to persist to the checkpoint
  */
 export type EntrypointFinal<ValueT, SaveT> = {
-  [finalSymbol]: {
-    /**
-     * The value to return to the caller
-     */
-    value?: ValueT;
+  /**
+   * The value to return to the caller
+   */
+  value?: ValueT;
 
-    /**
-     * The value to save to the checkpoint
-     */
-    save?: SaveT;
-  };
+  /**
+   * The value to save to the checkpoint
+   */
+  save?: SaveT;
+
+  __lg_type: "__pregel_final";
 };
 
+/**
+ * Checks if a value is an EntrypointFinal - use this instead of `instanceof`, as value may have been deserialized
+ * @param value The value to check
+ * @returns Whether the value is an EntrypointFinal
+ */
 export function isEntrypointFinal<ValueT, SaveT>(
   value: unknown
 ): value is EntrypointFinal<ValueT, SaveT> {
-  return typeof value === "object" && value !== null && finalSymbol in value;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "__lg_type" in value &&
+    value.__lg_type === "__pregel_final"
+  );
 }
 
 export type EntrypointReturnT<OutputT> = OutputT extends

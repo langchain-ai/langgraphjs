@@ -19,7 +19,6 @@ import {
   EntrypointFinal,
   EntrypointReturnT,
   EntrypointFuncSaveT,
-  finalSymbol,
   EntrypointFunc,
 } from "./types.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
@@ -163,9 +162,7 @@ entrypoint.final = function final<ValueT, SaveT>({
   value?: ValueT;
   save?: SaveT;
 }): EntrypointFinal<ValueT, SaveT> {
-  return {
-    [finalSymbol]: { value, save },
-  };
+  return { value, save, __lg_type: "__pregel_final" };
 };
 
 /**

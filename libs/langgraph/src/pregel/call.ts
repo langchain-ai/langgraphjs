@@ -15,19 +15,17 @@ import { ChannelWrite, PASSTHROUGH } from "./write.js";
 import { RetryPolicy } from "./utils/index.js";
 import { RunnableCallable, type RunnableCallableArgs } from "../utils.js";
 import {
+  EntrypointFunc,
   EntrypointReturnT,
-  finalSymbol,
   isEntrypointFinal,
 } from "../func/types.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 /**
  * Wraps a user function in a Runnable.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function getRunnableForFunc<FuncT extends (...args: any[]) => any>(
-  name: string,
-  func: FuncT
-): Runnable<Parameters<FuncT>, ReturnType<FuncT>> {
+export function getRunnableForFunc<
+  FuncT extends (...args: unknown[]) => unknown
+>(name: string, func: FuncT): Runnable<Parameters<FuncT>, ReturnType<FuncT>> {
   const run = new RunnableCallable<Parameters<FuncT>, ReturnType<FuncT>>({
     func: (input: Parameters<FuncT>) => func(...input),
     name,
@@ -47,16 +45,10 @@ export function getRunnableForFunc<FuncT extends (...args: any[]) => any>(
 
 export function getRunnableForEntrypoint<InputT, OutputT>(
   name: string,
-  func:
-    | ((
-        input: InputT,
-        config: LangGraphRunnableConfig
-      ) => Promise<EntrypointReturnT<OutputT>>)
-    | ((input: InputT, config: LangGraphRunnableConfig) => OutputT)
+  func: EntrypointFunc<InputT, OutputT>
 ): Runnable<InputT, EntrypointReturnT<OutputT>, LangGraphRunnableConfig> {
   const run = new RunnableCallable<InputT, EntrypointReturnT<OutputT>>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    func: (input: any, config: LangGraphRunnableConfig) => {
+    func: (input: InputT, config: LangGraphRunnableConfig) => {
       return func(input, config);
     },
     name,
@@ -74,8 +66,7 @@ export function getRunnableForEntrypoint<InputT, OutputT>(
             channel: END,
             value: PASSTHROUGH,
             mapper: new RunnableCallable({
-              func: (value) =>
-                isEntrypointFinal(value) ? value[finalSymbol].value : value,
+              func: (value) => (isEntrypointFinal(value) ? value.value : value),
             }),
           },
         ],
@@ -87,7 +78,7 @@ export function getRunnableForEntrypoint<InputT, OutputT>(
           value: PASSTHROUGH,
           mapper: new RunnableCallable({
             func: (value) => {
-              return isEntrypointFinal(value) ? value[finalSymbol].save : value;
+              return isEntrypointFinal(value) ? value.save : value;
             },
           }),
         },
@@ -95,7 +86,7 @@ export function getRunnableForEntrypoint<InputT, OutputT>(
     ],
     last: new RunnableCallable({
       func: (final: EntrypointReturnT<typeof func>) =>
-        isEntrypointFinal(final) ? final[finalSymbol].value : final,
+        isEntrypointFinal(final) ? final.value : final,
     }),
   });
 }
@@ -107,8 +98,7 @@ export type CallWrapperOptions<FuncT extends (...args: unknown[]) => unknown> =
     retry?: RetryPolicy;
   };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function call<FuncT extends (...args: any[]) => any>(
+export function call<FuncT extends (...args: unknown[]) => unknown>(
   { func, name, retry }: CallWrapperOptions<FuncT>,
   ...args: Parameters<FuncT>
 ): Promise<ReturnType<FuncT>> {
