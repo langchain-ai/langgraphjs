@@ -51,7 +51,7 @@ def _highlight_code_blocks(markdown: str) -> str:
     # existing hl_lines for Python and JavaScript
     # Pattern to find code blocks with highlight comments, handling optional indentation
     code_block_pattern = re.compile(
-        r"(?P<indent>[ \t]*)```(?P<language>py|python|js|javascript)(?!\s+hl_lines=)\n"
+        r"(?P<indent>[ \t]*)```(?P<language>py|python|js|javascript|ts|typescript)(?!\s+hl_lines=)\n"
         r"(?P<code>((?:.*\n)*?))"  # Capture the code inside the block using named group
         r"(?P=indent)```"  # Match closing backticks with the same indentation
     )
