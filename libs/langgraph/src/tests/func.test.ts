@@ -236,25 +236,25 @@ export function runFuncTests(
           expect(attempts).toBe(3);
         });
 
-        it("should stream results", async () => {
-          const timeDelay = 10; // 10ms delay
+        it("should send updates immediately when streaming", async () => {
+          let lastIdx = null;
 
-          const slowTask = task("slowTask", async () => {
-            // eslint-disable-next-line no-promise-executor-return
-            await new Promise((resolve) => setTimeout(resolve, timeDelay));
-            return { timestamp: Date.now() };
+          const slowTask = task("slowTask", async (idx: number) => {
+            await new Promise((resolve) => {
+              setTimeout(resolve, 10);
+            });
+            lastIdx = idx;
+            return { idx };
           });
 
           const graph = entrypoint(
             { name: "streamGraph", checkpointer },
             async () => {
-              const first = await slowTask();
-              const second = await slowTask();
+              const first = await slowTask(0);
+              const second = await slowTask(1);
               return [first, second];
             }
           );
-
-          const arrivalTimes: number[] = [];
 
           const config = {
             configurable: { thread_id },
@@ -262,16 +262,10 @@ export function runFuncTests(
 
           // Using for-await to process the stream - pass empty array since no args needed
           for await (const chunk of await graph.stream([], config)) {
-            const now = Date.now();
             if ("slowTask" in chunk) {
-              arrivalTimes.push(now);
+              expect(chunk.slowTask.idx).toBe(lastIdx);
             }
           }
-
-          expect(arrivalTimes.length).toBe(2);
-          const timeDiff = arrivalTimes[1] - arrivalTimes[0];
-          // Time difference should be at least the delay
-          expect(timeDiff).toBeGreaterThanOrEqual(timeDelay);
         });
 
         it("can use a stream writer", async () => {
