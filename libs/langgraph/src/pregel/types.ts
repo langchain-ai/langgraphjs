@@ -121,6 +121,11 @@ export type PregelParams<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
 > = {
+  /**
+   * The name of the graph. @see {@link Runnable.name}
+   */
+  name?: string;
+
   nodes: Nn;
 
   channels: Cc;

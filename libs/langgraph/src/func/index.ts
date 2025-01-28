@@ -118,7 +118,7 @@ export function entrypoint<InputT, OutputT>(
   const streamMode = "updates";
   const bound = getRunnableForEntrypoint(name, func);
 
-  const p = new Pregel<
+  return new Pregel<
     Record<string, PregelNode<InputT, EntrypointReturnT<OutputT>>>, // node types
     {
       [START]: EphemeralValue<InputT>;
@@ -129,6 +129,7 @@ export function entrypoint<InputT, OutputT>(
     InputT, // input type
     EntrypointReturnT<OutputT> // output type
   >({
+    name,
     checkpointer,
     nodes: {
       [name]: new PregelNode<InputT, EntrypointReturnT<OutputT>>({
@@ -149,8 +150,6 @@ export function entrypoint<InputT, OutputT>(
     streamMode,
     store,
   });
-  p.name = name;
-  return p;
 }
 
 /**
