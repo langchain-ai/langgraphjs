@@ -1227,7 +1227,7 @@ const llmWithTools = llm.bindTools(tools);
 
 #### Pre-built
 
-LangGraph also provides a **pre-built method** for creating an agent as defined above (using the [`createReactAgent`](/langgraphjs/reference/functions/langgraph_prebuilt.createReactAgent.html)] function):
+LangGraph also provides a **pre-built method** for creating an agent as defined above (using the [`createReactAgent`](/langgraphjs/reference/functions/langgraph_prebuilt.createReactAgent.html) function):
 
 https://langchain-ai.github.io/langgraphjs/how-tos/create-react-agent/
 

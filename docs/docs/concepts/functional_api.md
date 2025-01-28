@@ -155,13 +155,14 @@ const myWorkflow = entrypoint(
 
 ### Injectable Parameters
 
-When declaring an `entrypoint`, you can request access to additional parameters that will be injected automatically at run time by using the [`getPreviousState`](/langgraphjs/reference/functions/langgraph.getPreviousState.html) function and other utilities. These parameters include:
+When declaring an `entrypoint`, you can access additional parameters that will be injected automatically at run time by using the [`getPreviousState`](/langgraphjs/reference/functions/langgraph.getPreviousState.html) function and other utilities. These parameters include:
 
 | Parameter    | Description                                                                                                                                           |
 |--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **previous** | Access the state associated with the previous `checkpoint` for the given thread using [`getPreviousState`](/langgraphjs/reference/functions/langgraph.getPreviousState.html). See [state management](#state-management).  |
-| **store**    | An instance of [BaseStore](/langgraphjs/reference/classes/checkpoint.BaseStore.html). Useful for [long-term memory](#long-term-memory).                                         |
-| **config**   | For accessing run time configuration. See [RunnableConfig](https://js.langchain.com/docs/concepts/runnables/#runnableconfig) for information.         |
+| **config**   | For accessing runtime configuration. Automatically populated as the second argument to the `entrypoint` function (but not `task`, since tasks can have a variable number of arguments). See [RunnableConfig](https://js.langchain.com/docs/concepts/runnables/#runnableconfig) for information.         |
+| **config.store**    | An instance of [BaseStore](/langgraphjs/reference/classes/checkpoint.BaseStore.html). Useful for [long-term memory](#long-term-memory).     |
+| **config.writer**    | A `writer` used for streaming back custom data. See the [guide on streaming custom data](../how-tos/streaming-content.ipynb)     |
+| **getPreviousState()** | Access the state associated with the previous `checkpoint` for the given thread using [`getPreviousState`](/langgraphjs/reference/functions/langgraph.getPreviousState.html). See [state management](#state-management).  |
 
 ??? example "Requesting Injectable Parameters"
 
@@ -291,7 +292,7 @@ To resume after a transient error (such as a model provider outage), run the `en
 
 When an `entrypoint` is defined with a `checkpointer`, it stores information between successive invocations on the same **thread id** in [checkpoints](persistence.md#checkpoints). 
 
-This allows accessing the state from the previous invocation using the [`getPreviousState`](/langchainjs/reference/functions/langgraph.getPreviousState.html) function.
+This allows accessing the state from the previous invocation using the [`getPreviousState`](/langgraphjs/reference/functions/langgraph.getPreviousState.html) function.
 
 By default, the previous state is the return value of the previous invocation.
 
@@ -764,7 +765,7 @@ Please see the following how-to guides for more details:
 
 ### Workflows
 
-* [Workflows and agent](../tutorials/workflows/workflows.md) guide for more examples of how to build workflows using the Functional API.
+* [Workflows and agent](../tutorials/workflows/index.md) guide for more examples of how to build workflows using the Functional API.
 
 ### Agents
 
