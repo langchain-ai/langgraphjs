@@ -297,6 +297,40 @@ export function runFuncTests(
           ).toEqual(["hello world", "hello again, world"]);
         });
 
+        it("can stream subgraph results", async () => {
+          const subgraph = entrypoint(
+            { name: "subgraph", checkpointer },
+            async (input: string, config: LangGraphRunnableConfig) => {
+              config.writer?.(`hello ${input}`);
+              await new Promise((resolve) => {
+                setTimeout(resolve, 100);
+              });
+              config.writer?.(`hello again, ${input}`);
+              return `goodbye, ${input}`;
+            }
+          );
+
+          const graph = entrypoint(
+            { name: "graph", checkpointer },
+            async (input: string, config: LangGraphRunnableConfig) => {
+              const subgraphResult = await subgraph.stream(input);
+              for await (const chunk of subgraphResult) {
+                config.writer?.(chunk);
+              }
+              return "done";
+            }
+          );
+
+          const config = { configurable: { thread_id } };
+          expect(await graph.invoke("world", config)).toEqual("done");
+
+          expect(
+            await gatherIterator(
+              graph.stream("world", { ...config, streamMode: "custom" })
+            )
+          ).toEqual(["hello world", "hello again, world", "goodbye, world"]);
+        });
+
         describe("generator functions as entrypoints", () => {
           it("disallows use of generator as an entrypoint", async () => {
             expect(() =>
