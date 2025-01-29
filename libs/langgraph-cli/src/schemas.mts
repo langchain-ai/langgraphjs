@@ -158,13 +158,7 @@ export const RunCreate = z
     assistant_id: z.union([z.string().uuid(), z.string()]),
     checkpoint_id: z.string().optional(),
     checkpoint: CheckpointSchema.optional(),
-    input: z
-      .union([
-        z.array(z.object({}).catchall(z.any())),
-        z.object({}).catchall(z.any()),
-        z.null(),
-      ])
-      .optional(),
+    input: z.union([z.unknown(), z.null()]).optional(),
     command: z
       .object({
         goto: z

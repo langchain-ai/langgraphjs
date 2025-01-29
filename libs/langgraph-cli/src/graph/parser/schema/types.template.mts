@@ -41,7 +41,9 @@ type Inspect<T> = T extends unknown
 
 type ReflectCompiled<T> = T extends { RunInput: infer S; RunOutput: infer U }
   ? { state: S; update: U }
-  : never;
+  : T extends { "~InputType": infer InputType; "~OutputType": infer OutputType }
+    ? { state: OutputType; update: InputType }
+    : never;
 
 // @ts-expect-error
 type Reflect<T> =
