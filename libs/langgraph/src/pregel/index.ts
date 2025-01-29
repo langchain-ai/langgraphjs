@@ -217,6 +217,12 @@ export class Pregel<
     return "LangGraph";
   }
 
+  /** @private Used for type inferrence */
+  declare RunInput: InputType;
+
+  /** @private Used for type inferrence */
+  declare RunOutput: Awaited<OutputType>;
+
   // Because Pregel extends `Runnable`.
   lc_namespace = ["langgraph", "pregel"];
 
