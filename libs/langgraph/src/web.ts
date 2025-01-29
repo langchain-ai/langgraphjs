@@ -34,8 +34,8 @@ export {
   type LastValue,
   type NamedBarrierValue,
   type Topic,
-  type EphemeralValue,
 } from "./channels/index.js";
+export type { EphemeralValue } from "./channels/ephemeral_value.js";
 export { type AnnotationRoot as _INTERNAL_ANNOTATION_ROOT } from "./graph/index.js";
 export { type RetryPolicy } from "./pregel/utils/index.js";
 export {

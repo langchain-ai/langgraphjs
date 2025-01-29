@@ -12,4 +12,3 @@ export type {
 export type { LastValue } from "./last_value.js";
 export type { NamedBarrierValue } from "./named_barrier_value.js";
 export type { Topic } from "./topic.js";
-export type { EphemeralValue } from "./ephemeral_value.js";
