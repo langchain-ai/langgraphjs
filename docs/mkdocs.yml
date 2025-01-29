@@ -66,9 +66,11 @@ nav:
     - Introduction: index.md
     - Get started:
         - Learn the basics: tutorials/quickstart.ipynb
-        - Local Deploy: tutorials/langgraph-platform/local-server.md
         - Deployment:
-            - https://langchain-ai.github.io/langgraphjs/tutorials/deployment/
+          - tutorials/deployment.md
+          - Local Deploy: tutorials/langgraph-platform/local-server.md
+          - Template Applications: concepts/template_applications.md  # TODO: make tutorial
+          - Cloud Deploy: cloud/quick_start.md
     - Guides:
         - How-to Guides:
             - how-tos/index.md

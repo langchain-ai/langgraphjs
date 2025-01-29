@@ -2,43 +2,29 @@
 
 This is a quick start guide to help you get a LangGraph app up and running locally.
 
-!!! info "Requirements"
-
-    - Python >= 3.11
-    - [LangGraph CLI](https://langchain-ai.github.io/langgraph/cloud/reference/cli/): Requires langchain-cli[inmem] >= 0.1.58
-
 ## Install the LangGraph CLI
 
 ```bash
-pip install --upgrade "langgraph-cli[inmem]"
+$ npx @langchain/langgraph-cli@latest
+
+# Or install globally, will be available as `langgraphjs`
+$ npm install -g @langchain/langgraph-cli
 ```
 
 ## 🌱 Create a LangGraph App
 
-Create a new app from the `react-agent` template. This template is a simple agent that can be flexibly extended to many tools.
+Create a new app and follow the instructions, selecting `ReAct Agent` as the template. This template is a simple agent that can be flexibly extended to many tools.
 
-=== "Python Server"
-
-    ```shell
-    langgraph new path/to/your/app --template react-agent-python 
-    ```
-
-=== "Node Server"
-
-    ```shell
-    langgraph new path/to/your/app --template react-agent-js
-    ```
-
-!!! tip "Additional Templates"
-
-    If you use `langgraph new` without specifying a template, you will be presented with an interactive menu that will allow you to choose from a list of available templates.
+```shell
+$ npm create langgraph
+```
 
 ## Install Dependencies
 
 In the root of your new LangGraph app, install the dependencies in `edit` mode so your local changes are used by the server:
 
 ```shell
-pip install -e .
+$ yarn
 ```
 
 ## Create a `.env` file
@@ -63,39 +49,34 @@ OPENAI_API_KEY=sk-...
 ## 🚀 Launch LangGraph Server
 
 ```shell
-langgraph dev
+$ npx @langchain/langgraph-cli@latest dev
 ```
 
 This will start up the LangGraph API server locally. If this runs successfully, you should see something like:
 
->    Ready!
-> 
->    - API: [http://localhost:2024](http://localhost:2024/)
->     
->    - Docs: http://localhost:2024/docs
->     
->    - LangGraph Studio Web UI: https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024
+>    - 🚀 API: http://localhost:2024
+>    - 🎨 Studio UI: https://smith.langchain.com/studio?baseUrl=http://localhost:2024
 
 
 !!! note "In-Memory Mode"
 
-    The `langgraph dev` command starts LangGraph Server in an in-memory mode. This mode is suitable for development and testing purposes. For production use, you should deploy LangGraph Server with access to a persistent storage backend.
+    The `langgraphjs dev` command starts LangGraph Server in an in-memory mode. This mode is suitable for development and testing purposes. For production use, you should deploy LangGraph Cloud with access to a persistent storage backend.
 
-    If you want to test your application with a persistent storage backend, you can use the `langgraph up` command instead of `langgraph dev`. You will
+    If you want to test your application with a persistent storage backend, you can use the `langgraphjs up` command instead of `langgraphjs dev`. You will
     need to have `docker` installed on your machine to use this command.
 
 ## LangGraph Studio Web UI
 
 LangGraph Studio Web is a specialized UI that you can connect to LangGraph API server to enable visualization, interaction, and debugging of your application locally. Test your graph in the LangGraph Studio Web UI by visiting the URL provided in the output of the `langgraph dev` command.
 
->    - LangGraph Studio Web UI: https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024
+>    - LangGraph Studio Web UI: https://smith.langchain.com/studio/?baseUrl=http://localhost:2024
 
 !!! info "Connecting to a server with a custom host/port"
 
     If you are running the LangGraph API server with a custom host / port, you can point the Studio Web UI at it by changing the `baseUrl` URL param. For example, if you are running your server on port 8000, you can change the above URL to the following:
 
     ```
-    https://smith.langchain.com/studio/baseUrl=http://127.0.0.1:8000
+    https://smith.langchain.com/studio/baseUrl=http://localhost:8000
     ```
 
 
@@ -110,7 +91,7 @@ LangGraph Studio Web is a specialized UI that you can connect to LangGraph API s
     **Install the LangGraph Python SDK**
 
     ```shell
-    pip install langgraph-sdk
+    $ pip install langgraph-sdk
     ```
 
     **Send a message to the assistant (threadless run)**
@@ -141,7 +122,7 @@ LangGraph Studio Web is a specialized UI that you can connect to LangGraph API s
     **Install the LangGraph Python SDK**
 
     ```shell
-    pip install langgraph-sdk
+    $ pip install langgraph-sdk
     ```
 
     **Send a message to the assistant (threadless run)**
@@ -172,7 +153,7 @@ LangGraph Studio Web is a specialized UI that you can connect to LangGraph API s
     **Install the LangGraph JS SDK**
 
     ```shell
-    npm install @langchain/langgraph-sdk
+    $ yarn add @langchain/langgraph-sdk
     ```
 
     **Send a message to the assistant (threadless run)**
