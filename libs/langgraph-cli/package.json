@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-cli",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "type": "module",
   "engines": {
     "node": ">=18"
@@ -51,9 +51,9 @@
     "@babel/code-frame": "^7.26.2"
   },
   "peerDependencies": {
-    "@langchain/core": "^0.3.27",
-    "@langchain/langgraph": "^0.2.39",
-    "@langchain/langgraph-checkpoint": "^0.0.13",
+    "@langchain/core": "^0.3.36",
+    "@langchain/langgraph": "^0.2.43",
+    "@langchain/langgraph-checkpoint": "^0.0.14",
     "typescript": "^5.5.4"
   },
   "devDependencies": {
