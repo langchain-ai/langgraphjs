@@ -1,23 +1,37 @@
-export const MISSING = Symbol.for("__missing__");
-
+/** Special reserved node name denoting the start of a graph. */
+export const START = "__start__";
+/** Special reserved node name denoting the end of a graph. */
+export const END = "__end__";
 export const INPUT = "__input__";
 export const ERROR = "__error__";
 export const CONFIG_KEY_SEND = "__pregel_send";
+/** config key containing function used to call a node (push task) */
+export const CONFIG_KEY_CALL = "__pregel_call";
 export const CONFIG_KEY_READ = "__pregel_read";
 export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
 export const CONFIG_KEY_RESUMING = "__pregel_resuming";
 export const CONFIG_KEY_TASK_ID = "__pregel_task_id";
 export const CONFIG_KEY_STREAM = "__pregel_stream";
 export const CONFIG_KEY_RESUME_VALUE = "__pregel_resume_value";
-export const CONFIG_KEY_WRITES = "__pregel_writes";
 export const CONFIG_KEY_SCRATCHPAD = "__pregel_scratchpad";
+/** config key containing state from previous invocation of graph for the given thread */
+export const CONFIG_KEY_PREVIOUS_STATE = "__pregel_previous";
+export const CONFIG_KEY_CHECKPOINT_ID = "checkpoint_id";
 export const CONFIG_KEY_CHECKPOINT_NS = "checkpoint_ns";
 
 // this one is part of public API
 export const CONFIG_KEY_CHECKPOINT_MAP = "checkpoint_map";
 
+/** Special channel reserved for graph interrupts */
 export const INTERRUPT = "__interrupt__";
+/** Special channel reserved for graph resume */
 export const RESUME = "__resume__";
+/** Special channel reserved for cases when a task exits without any writes */
+export const NO_WRITES = "__no_writes__";
+/** Special channel reserved for graph return */
+export const RETURN = "__return__";
+/** Special channel reserved for graph previous state */
+export const PREVIOUS = "__previous__";
 export const RUNTIME_PLACEHOLDER = "__pregel_runtime_placeholder__";
 export const RECURSION_LIMIT_DEFAULT = 25;
 
@@ -33,18 +47,28 @@ export const TASK_NAMESPACE = "6ba7b831-9dad-11d1-80b4-00c04fd430c8";
 export const NULL_TASK_ID = "00000000-0000-0000-0000-000000000000";
 
 export const RESERVED = [
+  TAG_HIDDEN,
+  INPUT,
   INTERRUPT,
   RESUME,
   ERROR,
+  NO_WRITES,
   TASKS,
+
+  // reserved config.configurable keys
   CONFIG_KEY_SEND,
   CONFIG_KEY_READ,
   CONFIG_KEY_CHECKPOINTER,
+  CONFIG_KEY_STREAM,
   CONFIG_KEY_RESUMING,
   CONFIG_KEY_TASK_ID,
-  CONFIG_KEY_STREAM,
+  CONFIG_KEY_CALL,
+  CONFIG_KEY_RESUME_VALUE,
+  CONFIG_KEY_SCRATCHPAD,
+  CONFIG_KEY_PREVIOUS_STATE,
   CONFIG_KEY_CHECKPOINT_MAP,
-  INPUT,
+  CONFIG_KEY_CHECKPOINT_NS,
+  CONFIG_KEY_CHECKPOINT_ID,
 ];
 
 export const CHECKPOINT_NAMESPACE_SEPARATOR = "|";
@@ -58,7 +82,12 @@ export interface SendInterface {
 
 export function _isSendInterface(x: unknown): x is SendInterface {
   const operation = x as SendInterface;
-  return typeof operation.node === "string" && operation.args !== undefined;
+  return (
+    operation !== null &&
+    operation !== undefined &&
+    typeof operation.node === "string" &&
+    operation.args !== undefined
+  );
 }
 
 /**

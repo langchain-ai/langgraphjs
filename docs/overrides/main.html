@@ -34,17 +34,6 @@
       color: #1E88E5;
     }
 
-    .md-sidebar {
-      display: none;
-    }
-
-    /* Show sidebar on mobile */
-    @media screen and (max-width: 1220px) {
-      .md-sidebar--primary {
-        display: block;
-      }
-    }
-
     .md-typeset a:hover {
       color: #1565C0;
     }
@@ -164,6 +153,17 @@
     .jupyter-wrapper .jp-Notebook .jp-Cell .jp-OutputPrompt {
       display: none !important;
     }
+
+    /* control the navbar depth */
+    [data-md-level="2"] .md-nav {
+      display: none;
+    }
+
+    /* disable the collapse/expand icon in the navar */
+    .md-nav__icon {
+      display: none;
+    }
+
   </style>
 {% endblock %}
 

@@ -4,6 +4,7 @@ import {
   BaseMessageLike,
   isAIMessage,
   isBaseMessage,
+  isToolMessage,
   SystemMessage,
 } from "@langchain/core/messages";
 import {
@@ -22,8 +23,6 @@ import {
 import { z } from "zod";
 
 import {
-  END,
-  START,
   StateGraph,
   CompiledStateGraph,
   AnnotationRoot,
@@ -33,6 +32,7 @@ import { ToolNode } from "./tool_node.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { Annotation } from "../graph/annotation.js";
 import { Messages, messagesStateReducer } from "../graph/message.js";
+import { END, START } from "../constants.js";
 
 export interface AgentState<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -245,6 +245,8 @@ export type CreateReactAgentParams<
   stateSchema?: A;
   /** An optional checkpoint saver to persist the agent's state. */
   checkpointSaver?: BaseCheckpointSaver;
+  /** An optional checkpoint saver to persist the agent's state. Alias of "checkpointSaver". */
+  checkpointer?: BaseCheckpointSaver;
   /** An optional list of node names to interrupt before running. */
   interruptBefore?: N[] | All;
   /** An optional list of node names to interrupt after running. */
@@ -337,6 +339,7 @@ export function createReactAgent<
     stateModifier,
     stateSchema,
     checkpointSaver,
+    checkpointer,
     interruptBefore,
     interruptAfter,
     store,
@@ -360,6 +363,14 @@ export function createReactAgent<
     messageModifier
   );
   const modelRunnable = (preprocessor as Runnable).pipe(modelWithTools);
+
+  // If any of the tools are configured to return_directly after running,
+  // our graph needs to check if these were called
+  const shouldReturnDirect = new Set(
+    toolClasses
+      .filter((tool) => "returnDirect" in tool && tool.returnDirect)
+      .map((tool) => tool.name)
+  );
 
   const shouldContinue = (state: AgentState<StructuredResponseFormat>) => {
     const { messages } = state;
@@ -417,8 +428,7 @@ export function createReactAgent<
   )
     .addNode("agent", callModel)
     .addNode("tools", new ToolNode(toolClasses))
-    .addEdge(START, "agent")
-    .addEdge("tools", "agent");
+    .addEdge(START, "agent");
 
   if (responseFormat !== undefined) {
     workflow
@@ -436,8 +446,29 @@ export function createReactAgent<
     });
   }
 
+  const routeToolResponses = (state: AgentState<StructuredResponseFormat>) => {
+    // Check the last consecutive tool calls
+    for (let i = state.messages.length - 1; i >= 0; i -= 1) {
+      const message = state.messages[i];
+      if (!isToolMessage(message)) {
+        break;
+      }
+      // Check if this tool is configured to return directly
+      if (message.name !== undefined && shouldReturnDirect.has(message.name)) {
+        return END;
+      }
+    }
+    return "agent";
+  };
+
+  if (shouldReturnDirect.size > 0) {
+    workflow.addConditionalEdges("tools", routeToolResponses, ["agent", END]);
+  } else {
+    workflow.addEdge("tools", "agent");
+  }
+
   return workflow.compile({
-    checkpointer: checkpointSaver,
+    checkpointer: checkpointer ?? checkpointSaver,
     interruptBefore,
     interruptAfter,
     store,

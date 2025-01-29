@@ -11,10 +11,8 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { BaseChannel, isBaseChannel } from "../channels/base.js";
 import {
-  END,
   CompiledGraph,
   Graph,
-  START,
   Branch,
   AddNodeOptions,
   NodeSpec,
@@ -35,8 +33,10 @@ import {
   CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Command,
+  END,
   SELF,
   Send,
+  START,
   TAG_HIDDEN,
 } from "../constants.js";
 import { InvalidUpdateError, ParentCommand } from "../errors.js";

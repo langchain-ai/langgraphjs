@@ -1,5 +1,6 @@
 import { RunnableConfig } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
+import { BaseStore } from "@langchain/langgraph-checkpoint";
 import { LangGraphRunnableConfig } from "../runnable_types.js";
 
 const COPIABLE_KEYS = ["tags", "metadata", "callbacks", "configurable"];
@@ -91,4 +92,30 @@ export function ensureLangGraphConfig(
   }
 
   return empty;
+}
+
+/**
+ * A helper utility function that returns the {@link BaseStore} that was set when the graph was initialized
+ *
+ * @returns a reference to the {@link BaseStore} that was set when the graph was initialized
+ */
+export function getStore(): BaseStore | undefined {
+  const config: LangGraphRunnableConfig =
+    AsyncLocalStorageProviderSingleton.getRunnableConfig();
+  return config?.store;
+}
+
+/**
+ * A helper utility function that returns the {@link LangGraphRunnableConfig#writer} if "custom" stream mode is enabled, otherwise undefined
+ *
+ * @returns a reference to the {@link LangGraphRunnableConfig#writer} if "custom" stream mode is enabled, otherwise undefined
+ */
+export function getWriter(): ((chunk: unknown) => void) | undefined {
+  const config: LangGraphRunnableConfig =
+    AsyncLocalStorageProviderSingleton.getRunnableConfig();
+  return config?.configurable?.writer;
+}
+
+export function getConfig(): LangGraphRunnableConfig {
+  return AsyncLocalStorageProviderSingleton.getRunnableConfig();
 }

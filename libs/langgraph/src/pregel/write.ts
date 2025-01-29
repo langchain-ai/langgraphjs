@@ -42,7 +42,7 @@ const IS_WRITER = Symbol("IS_WRITER");
 export class ChannelWrite<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   RunInput = any
-> extends RunnableCallable {
+> extends RunnableCallable<RunInput, RunInput> {
   writes: Array<ChannelWriteEntry | ChannelWriteTupleEntry | Send>;
 
   constructor(
