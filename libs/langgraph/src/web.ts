@@ -21,6 +21,8 @@ export type {
   PregelParams,
   PregelOptions,
 } from "./pregel/types.js";
+export type { PregelNode } from "./pregel/read.js";
+export type { Pregel } from "./pregel/index.js";
 export * from "./errors.js";
 export {
   BaseChannel,
@@ -33,6 +35,7 @@ export {
   type NamedBarrierValue,
   type Topic,
 } from "./channels/index.js";
+export type { EphemeralValue } from "./channels/ephemeral_value.js";
 export { type AnnotationRoot as _INTERNAL_ANNOTATION_ROOT } from "./graph/index.js";
 export { type RetryPolicy } from "./pregel/utils/index.js";
 export {
@@ -44,7 +47,6 @@ export {
   END,
   type Interrupt,
 } from "./constants.js";
-
 export {
   MemorySaver,
   type Checkpoint,
