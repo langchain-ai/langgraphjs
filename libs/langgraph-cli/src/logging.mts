@@ -65,40 +65,44 @@ const formatStack = (stack: string | undefined | null) => {
   );
 
   if (firstFile?.file && firstFile?.lineNumber) {
-    const filePath = firstFile.file;
-    const line = firstFile.lineNumber;
-    const column = firstFile.column ?? 0;
+    try {
+      const filePath = firstFile.file;
+      const line = firstFile.lineNumber;
+      const column = firstFile.column ?? 0;
 
-    const messageLines = stack.split("\n");
-    const spliceIndex = messageLines.findIndex((i) => i.includes(filePath));
+      const messageLines = stack.split("\n");
+      const spliceIndex = messageLines.findIndex((i) => i.includes(filePath));
 
-    const padding = " ".repeat(
-      Math.max(0, messageLines[spliceIndex].indexOf("at"))
-    );
+      const padding = " ".repeat(
+        Math.max(0, messageLines[spliceIndex].indexOf("at"))
+      );
 
-    const highlightCode = process.stdout.isTTY;
+      const highlightCode = process.stdout.isTTY;
 
-    let codeFrame = codeFrameColumns(
-      readFileSync(filePath, "utf-8"),
-      { start: { line, column } },
-      { highlightCode }
-    );
+      let codeFrame = codeFrameColumns(
+        readFileSync(filePath, "utf-8"),
+        { start: { line, column } },
+        { highlightCode }
+      );
 
-    codeFrame = codeFrame
-      .split("\n")
-      .map((i) => padding + i + "\x1b[0m")
-      .join("\n");
+      codeFrame = codeFrame
+        .split("\n")
+        .map((i) => padding + i + "\x1b[0m")
+        .join("\n");
 
-    if (highlightCode) {
-      codeFrame = "\x1b[36m" + codeFrame + "\x1b[31m";
+      if (highlightCode) {
+        codeFrame = "\x1b[36m" + codeFrame + "\x1b[31m";
+      }
+
+      // insert codeframe after the line but dont lose the stack
+      return [
+        ...messageLines.slice(0, spliceIndex + 1),
+        codeFrame,
+        ...messageLines.slice(spliceIndex + 1),
+      ].join("\n");
+    } catch {
+      // pass
     }
-
-    // insert codeframe after the line but dont lose the stack
-    return [
-      ...messageLines.slice(0, spliceIndex + 1),
-      codeFrame,
-      ...messageLines.slice(spliceIndex + 1),
-    ].join("\n");
   }
 
   return stack;
