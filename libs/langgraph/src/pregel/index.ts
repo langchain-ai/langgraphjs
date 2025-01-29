@@ -218,10 +218,10 @@ export class Pregel<
   }
 
   /** @internal Used for type inferrence */
-  declare RunInput: Awaited<OutputType>;
+  declare "~InputType": InputType;
 
   /** @internal Used for type inferrence */
-  declare RunOutput: Awaited<InputType>;
+  declare "~OutputType": OutputType;
 
   // Because Pregel extends `Runnable`.
   lc_namespace = ["langgraph", "pregel"];
