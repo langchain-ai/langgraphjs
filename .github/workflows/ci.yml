@@ -21,6 +21,7 @@ jobs:
   test-nodejs:
     timeout-minutes: 5
     strategy:
+      fail-fast: false # Allow all tests to run even if one fails
       matrix:
         node-version:
           - "18.x"

@@ -1,7 +1,7 @@
 import dedent from "dedent";
 import * as path from "node:path";
 import { promises as fs } from "node:fs";
-import type { Config, NodeConfig, PythonConfig } from "../utils/config.mjs";
+import type { Config } from "../utils/config.mjs";
 
 const dedenter = dedent.withOptions({ escapeSpecialCharacters: false });
 
@@ -27,26 +27,6 @@ export async function assembleLocalDeps(
   configPath: string,
   config: Config
 ): Promise<LocalDeps> {
-  if ("node_version" in config) {
-    const rebuildFiles: LocalDeps["rebuildFiles"] = [];
-    const workingDir = `/deps/${path.basename(path.dirname(configPath))}`;
-
-    rebuildFiles.push(path.resolve(path.dirname(configPath), "package.json"));
-    rebuildFiles.push(
-      path.resolve(path.dirname(configPath), "package-lock.json")
-    );
-    rebuildFiles.push(path.resolve(path.dirname(configPath), "yarn.lock"));
-    rebuildFiles.push(path.resolve(path.dirname(configPath), "pnpm-lock.yaml"));
-
-    return {
-      pipReqs: [],
-      realPkgs: {},
-      fauxPkgs: {},
-      rebuildFiles,
-      workingDir,
-    };
-  }
-
   const reserved = new Set([
     "src",
     "langgraph-api",
@@ -79,7 +59,8 @@ export async function assembleLocalDeps(
   let workingDir: string | undefined;
   let reloadDir: string | undefined;
 
-  for (const localDep of config.dependencies) {
+  const dependencies = "dependencies" in config ? config.dependencies : [];
+  for (const localDep of dependencies) {
     if (!localDep.startsWith(".")) continue;
 
     const resolved = path.resolve(path.dirname(configPath), localDep);
@@ -165,6 +146,21 @@ export async function assembleLocalDeps(
     }
   }
 
+  if ("node_version" in config) {
+    for (const name of [
+      "package.json",
+      "package-lock.json",
+      "yarn.lock",
+      "pnpm-lock.yaml",
+      "bun.lockb",
+    ]) {
+      const jsFile = path.resolve(path.dirname(configPath), name);
+      rebuildFiles.push(jsFile);
+    }
+
+    workingDir ??= `/deps/${path.basename(path.dirname(configPath))}`;
+  }
+
   return { pipReqs, realPkgs, fauxPkgs, workingDir, reloadDir, rebuildFiles };
 }
 
@@ -217,12 +213,12 @@ async function updateGraphPaths(
 }
 
 export function getBaseImage(config: Config) {
-  if ("python_version" in config) {
-    return `langchain/langgraph-api:${config._INTERNAL_docker_tag || config.python_version}`;
-  }
-
   if ("node_version" in config) {
     return `langchain/langgraphjs-api:${config._INTERNAL_docker_tag || config.node_version}`;
+  }
+
+  if ("python_version" in config) {
+    return `langchain/langgraph-api:${config._INTERNAL_docker_tag || config.python_version}`;
   }
 
   throw new Error("Invalid config type");
@@ -238,34 +234,72 @@ export async function configToDocker(
     onWorkingDir?: (workingDir: string | undefined) => void;
   }
 ) {
-  if ("python_version" in config) {
-    return pythonConfigToDocker(configPath, config, localDeps, options);
-  }
-
-  if ("node_version" in config) {
-    return nodeConfigToDocker(configPath, config, localDeps, options);
-  }
-
-  throw new Error("Invalid config type");
-}
-
-export async function nodeConfigToDocker(
-  configPath: string,
-  config: NodeConfig,
-  localDeps: LocalDeps,
-  options?: {
-    watch: boolean;
-    onWorkingDir?: (workingDir: string | undefined) => void;
-  }
-) {
   // figure out the package manager used here
-  const projectFolder = path.dirname(configPath);
-
   const testFile = async (file: string) =>
     fs
-      .stat(path.resolve(projectFolder, file))
+      .stat(path.resolve(path.dirname(configPath), file))
       .then((a) => a.isFile())
       .catch(() => false);
+
+  let pipInstall = `PYTHONDONTWRITEBYTECODE=1 pip install -c /api/constraints.txt`;
+  if ("python_version" in config && config.pip_config_file) {
+    pipInstall = `PIP_CONFIG_FILE=/pipconfig.txt ${pipInstall}`;
+  }
+  pipInstall = `--mount=type=cache,target=/root/.cache/pip ${pipInstall}`;
+
+  const pipConfigFile =
+    "python_version" in config && config.pip_config_file
+      ? `ADD ${config.pip_config_file} /pipconfig.txt`
+      : undefined;
+
+  const _pypiDeps =
+    "python_version" in config
+      ? config.dependencies.filter((dep) => !dep.startsWith("."))
+      : [];
+
+  await updateGraphPaths(configPath, config, localDeps);
+
+  const pipPkgs = _pypiDeps.length
+    ? `RUN ${pipInstall} ${_pypiDeps.join(" ")}`
+    : undefined;
+
+  const pipReqs = localDeps.pipReqs.map(
+    ([reqpath, destpath]) => `ADD ${reqpath} ${destpath}`
+  );
+  if (pipReqs.length) {
+    pipReqs.push(
+      `RUN ${pipInstall} ${localDeps.pipReqs.map(([, r]) => `-r ${r}`).join(" ")}`
+    );
+  }
+
+  const localPkg = Object.entries(localDeps.realPkgs).map(
+    ([fullpath, relpath]) => `ADD ${relpath} /deps/${path.basename(fullpath)}`
+  );
+
+  const fauxPkgs = Object.entries(localDeps.fauxPkgs).flatMap(
+    ([fullpath, [relpath, destpath]]) => [
+      `ADD ${relpath} ${destpath}`,
+      dedenter`
+        RUN set -ex && \
+            for line in '[project]' \
+                        'name = "${path.basename(fullpath)}"' \
+                        'version = "0.1"' \
+                        '[tool.setuptools.package-data]' \
+                        '"*" = ["**/*"]'; do \
+                echo "${options?.dockerCommand === "build" ? "$line" : "$$line"}" >> /deps/__outer_${path.basename(fullpath)}/pyproject.toml; \
+            done
+      `,
+    ]
+  );
+
+  if (
+    !pipReqs.length &&
+    !localPkg.length &&
+    !fauxPkgs.length &&
+    "node_version" in config
+  ) {
+    pipReqs.push(`ADD . ${localDeps.workingDir}`);
+  }
 
   const [npm, yarn, pnpm, bun] = await Promise.all([
     testFile("package-lock.json"),
@@ -286,111 +320,25 @@ export async function nodeConfigToDocker(
     installCmd = "bun i";
   }
 
-  const lines: string[] = [
-    `FROM ${getBaseImage(config)}`,
-    ...config.dockerfile_lines,
-    `ADD . ${localDeps.workingDir}`,
-    `RUN cd ${localDeps.workingDir} && ${installCmd}`,
-    `ENV LANGSERVE_GRAPHS='${JSON.stringify(config.graphs)}'`,
-    ...(config.store
-      ? [`ENV LANGGRAPH_STORE='${JSON.stringify(config.store)}'`]
-      : []),
-    ...(config.auth
-      ? [`ENV LANGGRAPH_AUTH='${JSON.stringify(config.auth)}'`]
-      : []),
-    `WORKDIR ${localDeps.workingDir}`,
-    `RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts`,
-  ];
-
-  if (options?.watch) {
-    // TODO: hacky, should add as entrypoint to the langgraph-api base image
-    lines.push(
-      `CMD exec uvicorn langgraph_api.server:app --log-config /api/logging.json --no-access-log --host 0.0.0.0 --port 8000 --reload --reload-dir ${localDeps.workingDir}`
-    );
-  }
-
-  return lines.filter(Boolean).join("\n");
-}
-
-export async function pythonConfigToDocker(
-  configPath: string,
-  config: PythonConfig,
-  localDeps: LocalDeps,
-  options?: {
-    watch: boolean;
-    dockerCommand?: string;
-    onWorkingDir?: (workingDir: string | undefined) => void;
-  }
-) {
-  let pipInstall = `PYTHONDONTWRITEBYTECODE=1 pip install -c /api/constraints.txt`;
-  if (config.pip_config_file) {
-    pipInstall = `PIP_CONFIG_FILE=/pipconfig.txt ${pipInstall}`;
-  }
-
-  pipInstall = `--mount=type=cache,target=/root/.cache/pip ${pipInstall}`;
-
-  const pipConfigFileStr = config.pip_config_file
-    ? [`ADD ${config.pip_config_file} /pipconfig.txt`].join("\n")
-    : "";
-
-  const pypiDeps = config.dependencies.filter((dep) => !dep.startsWith("."));
-  await updateGraphPaths(configPath, config, localDeps);
-
-  const pipPkgsStr = pypiDeps.length
-    ? `RUN ${pipInstall} ${pypiDeps.join(" ")}`
-    : "";
-
-  let pipReqStr: string;
-  if (localDeps.pipReqs.length) {
-    const pipReqsStr = localDeps.pipReqs
-      .map(([reqpath, destpath]) => `ADD ${reqpath} ${destpath}`)
-      .join("\n");
-    pipReqStr = `${pipReqsStr}\nRUN ${pipInstall} ${localDeps.pipReqs.map(([, r]) => `-r ${r}`)}`;
-  } else {
-    pipReqStr = "";
-  }
-
-  const localPkgStr = Object.entries(localDeps.realPkgs)
-    .map(
-      ([fullpath, relpath]) => `ADD ${relpath} /deps/${path.basename(fullpath)}`
-    )
-    .join("\n");
-
-  const fauxPkgsStr = Object.entries(localDeps.fauxPkgs)
-    .map(([fullpath, [relpath, destpath]]) => {
-      const x = dedenter`
-        ADD ${relpath} ${destpath}
-        RUN set -ex && \
-            for line in '[project]' \
-                        'name = "${path.basename(fullpath)}"' \
-                        'version = "0.1"' \
-                        '[tool.setuptools.package-data]' \
-                        '"*" = ["**/*"]'; do \
-                echo "${options?.dockerCommand === "build" ? "$line" : "$$line"}" >> /deps/__outer_${path.basename(fullpath)}/pyproject.toml; \
-            done
-      `;
-
-      return x;
-    })
-    .join("\n");
-
   const lines = [
     `FROM ${getBaseImage(config)}`,
-    ...config.dockerfile_lines,
-    pipConfigFileStr,
-    pipPkgsStr,
-    pipReqStr,
-    localPkgStr,
-    fauxPkgsStr,
-    `RUN ${pipInstall} -e /deps/*`,
+    config.dockerfile_lines,
+    pipConfigFile,
+    pipPkgs,
+    pipReqs,
+    localPkg,
+    fauxPkgs,
+    "python_version" in config ? `RUN ${pipInstall} -e /deps/*` : undefined,
     `ENV LANGSERVE_GRAPHS='${JSON.stringify(config.graphs)}'`,
-    ...(config.store
-      ? [`ENV LANGGRAPH_STORE='${JSON.stringify(config.store)}'`]
-      : []),
-    ...(config.auth
-      ? [`ENV LANGGRAPH_AUTH='${JSON.stringify(config.auth)}'`]
-      : []),
-    localDeps.workingDir ? `WORKDIR ${localDeps.workingDir}` : null,
+    !!config.store && `ENV LANGGRAPH_STORE='${JSON.stringify(config.store)}'`,
+    !!config.auth && `ENV LANGGRAPH_AUTH='${JSON.stringify(config.auth)}'`,
+    !!localDeps.workingDir && `WORKDIR ${localDeps.workingDir}`,
+    "node_version" in config
+      ? [
+          `RUN ${installCmd}`,
+          `RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts`,
+        ]
+      : undefined,
   ];
 
   if (options?.watch && (localDeps.workingDir || localDeps.reloadDir)) {
@@ -400,11 +348,14 @@ export async function pythonConfigToDocker(
     );
   }
 
-  return lines.filter(Boolean).join("\n");
+  return lines.flat().filter(Boolean).join("\n");
 }
 
-export async function configToWatch(configPath: string, config: Config) {
-  const localDeps = await assembleLocalDeps(configPath, config);
+export async function configToWatch(
+  configPath: string,
+  config: Config,
+  localDeps: LocalDeps
+) {
   const projectDir = path.dirname(configPath);
   const watch: Array<{
     path: string;
@@ -496,7 +447,7 @@ export async function configToCompose(
   }
 
   if (options?.watch) {
-    const watch = await configToWatch(configPath, config);
+    const watch = await configToWatch(configPath, config, localDeps);
     if (watch) result.develop = { watch };
   }
 
