@@ -1,7 +1,12 @@
 .PHONY: clean build-docs serve-docs serve-clean-docs
-
+	
 build-docs:
 	python _scripts/copy_notebooks.py
+	mkdir -p docs/cloud
+	if [ -z "$$(ls -A docs/cloud)" ]; then \
+		curl -L https://api.github.com/repos/langchain-ai/langgraph/tarball/main | tar -xz --strip-components=4 -C docs/cloud "*/docs/docs/cloud/*.md" "*/docs/docs/cloud/*/img/*"; \
+	fi
+	find docs/cloud -type f -name "*.md" -exec sed -i '' 's/\[[^]]*\]\[[^]]*\]//g' {} +
 	python -m mkdocs build --clean -f mkdocs.yml --strict -d site
 
 serve-docs:
@@ -14,4 +19,5 @@ serve-clean-docs: clean
 
 clean:
 	find ./docs -name "*.ipynb" -type f -delete
+	rm -rf docs/cloud
 	rm -rf site
