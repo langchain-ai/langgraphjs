@@ -1,15 +1,15 @@
 # Functional API
 
 !!! warning "Beta"
-    The Functional API is currently in **beta** and is subject to change. Please [report any issues](https://github.com/langchain-ai/langgraphjs/issues) or feedback to the LangGraph team.
+The Functional API is currently in **beta** and is subject to change. Please [report any issues](https://github.com/langchain-ai/langgraphjs/issues) or feedback to the LangGraph team.
 
 !!! note Compatibility
 
-    The Functional API requires `@langchain/langgraph>=0.3.0`.
+    The Functional API requires `@langchain/langgraph>=0.2.42`.
 
 ## Overview
 
-The Functional API is an alternative to [Graph API (StateGraph)](low_level.md#stategraph) for development in LangGraph. 
+The Functional API is an alternative to [Graph API (StateGraph)](low_level.md#stategraph) for development in LangGraph.
 
 If modeling your application with explicit nodes and edges is not useful to you, the Functional API allows you to take advantage of LangGraph's key features for [persistence](persistence.md), [human-in-the-loop](human_in_the_loop.md) workflows, and [streaming](streaming.md) without explicitly specifying state, or control flow in terms of nodes and edges.
 
@@ -132,16 +132,16 @@ The **Functional API** and the [Graph APIs (StateGraph)](./low_level.md#stategra
 
 The **Functional API** provides two primitives for building workflows:
 
-- **[Entrypoint](#entrypoint)**: An **entrypoint** is a wrapper that takes a function as the starting point of a workflow. It encapsulates workflow logic and manages execution flow, including handling *long-running tasks* and [interrupts](human_in_the_loop.md).
-- **[Task](#task)**: Represents a discrete unit of work, such as an API call or data processing step, that can be executed asynchronously from within an **entrypoint**. Invoking a **task** returns a promise-like object.
+- **[Entrypoint](#entrypoint)**: An **entrypoint** is a wrapper that takes a function as the starting point of a workflow. It encapsulates workflow logic and manages execution flow, including handling _long-running tasks_ and [interrupts](human_in_the_loop.md).
+- **[Task](#task)**: Represents a discrete unit of work, such as an API call or data processing step, that can be executed asynchronously from within an **entrypoint** with retries. Invoking a **task** returns a promise-like object.
 
 ## Entrypoint
 
-The [`entrypoint`](/langgraphjs/reference/functions/langgraph.entrypoint-1.html) function can be used to create a workflow from a function. It encapsulates workflow logic and manages execution flow, including handling *long-running tasks* and [interrupts](./low_level.md#interrupt).
+The [`entrypoint`](/langgraphjs/reference/functions/langgraph.entrypoint-1.html) function can be used to create a workflow from a function. It encapsulates workflow logic and manages execution flow, including handling _long-running tasks_ and [interrupts](./low_level.md#interrupt).
 
 ### Definition
 
-An **entrypoint** is defined by passing a function to the `entrypoint` function. 
+An **entrypoint** is defined by passing a function to the `entrypoint` function.
 
 The function **must accept a single positional argument**, which serves as the workflow input. If you need to pass multiple pieces of data, use an object as the input type for the first argument.
 
@@ -170,12 +170,12 @@ const myWorkflow = entrypoint(
 
 When declaring an `entrypoint`, you can access additional parameters that will be injected automatically at run time by using the [`getPreviousState`](/langgraphjs/reference/functions/langgraph.getPreviousState.html) function and other utilities. These parameters include:
 
-| Parameter    | Description                                                                                                                                           |
-|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **config**   | For accessing runtime configuration. Automatically populated as the second argument to the `entrypoint` function (but not `task`, since tasks can have a variable number of arguments). See [RunnableConfig](https://js.langchain.com/docs/concepts/runnables/#runnableconfig) for information.         |
-| **config.store**    | An instance of [BaseStore](/langgraphjs/reference/classes/checkpoint.BaseStore.html). Useful for [long-term memory](#long-term-memory).     |
-| **config.writer**    | A `writer` used for streaming back custom data. See the [guide on streaming custom data](../how-tos/streaming-content.ipynb)     |
-| **getPreviousState()** | Access the state associated with the previous `checkpoint` for the given thread using [`getPreviousState`](/langgraphjs/reference/functions/langgraph.getPreviousState.html). See [state management](#state-management).  |
+| Parameter              | Description                                                                                                                                                                                                                                                                                     |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **config**             | For accessing runtime configuration. Automatically populated as the second argument to the `entrypoint` function (but not `task`, since tasks can have a variable number of arguments). See [RunnableConfig](https://js.langchain.com/docs/concepts/runnables/#runnableconfig) for information. |
+| **config.store**       | An instance of [BaseStore](/langgraphjs/reference/classes/checkpoint.BaseStore.html). Useful for [long-term memory](#long-term-memory).                                                                                                                                                         |
+| **config.writer**      | A `writer` used for streaming back custom data. See the [guide on streaming custom data](../how-tos/streaming-content.ipynb)                                                                                                                                                                    |
+| **getPreviousState()** | Access the state associated with the previous `checkpoint` for the given thread using [`getPreviousState`](/langgraphjs/reference/functions/langgraph.getPreviousState.html). See [state management](#state-management).                                                                        |
 
 ??? example "Requesting Injectable Parameters"
 
@@ -246,7 +246,7 @@ Resuming an execution after an [interrupt](/langgraphjs/reference/functions/lang
         thread_id: "some_thread_id",
       },
     };
-    
+
     await myWorkflow.invoke(new Command({ resume: someResumeValue }), config);
     ```
 
@@ -260,12 +260,12 @@ Resuming an execution after an [interrupt](/langgraphjs/reference/functions/lang
         thread_id: "some_thread_id",
       },
     };
-    
+
     const stream = await myWorkflow.stream(
       new Command({ resume: someResumeValue }),
       config,
     );
-    
+
     for await (const chunk of stream) {
       console.log(chunk);
     }
@@ -297,7 +297,7 @@ This assumes that the underlying **error** has been resolved and execution can p
         thread_id: "some_thread_id",
       },
     };
-    
+
     for await (const chunk of await myWorkflow.stream(null, config)) {
       console.log(chunk);
     }
@@ -305,7 +305,7 @@ This assumes that the underlying **error** has been resolved and execution can p
 
 ### State Management
 
-When an `entrypoint` is defined with a `checkpointer`, it stores information between successive invocations on the same **thread id** in [checkpoints](persistence.md#checkpoints). 
+When an `entrypoint` is defined with a `checkpointer`, it stores information between successive invocations on the same **thread id** in [checkpoints](persistence.md#checkpoints).
 
 This allows accessing the state from the previous invocation using the [`getPreviousState`](/langgraphjs/reference/functions/langgraph.getPreviousState.html) function.
 
@@ -326,8 +326,8 @@ const config = {
   },
 };
 
-await myWorkflow.invoke(1, config);  // 1 (previous was undefined)
-await myWorkflow.invoke(2, config);  // 3 (previous was 1 from the previous invocation)
+await myWorkflow.invoke(1, config); // 1 (previous was undefined)
+await myWorkflow.invoke(2, config); // 3 (previous was 1 from the previous invocation)
 ```
 
 #### `entrypoint.final`
@@ -342,11 +342,11 @@ const myWorkflow = entrypoint(
   async (number: number) => {
     const previous = getPreviousState<number>();
     // This will return the previous value to the caller, saving
-    // 2 * number to the checkpoint, which will be used in the next invocation 
+    // 2 * number to the checkpoint, which will be used in the next invocation
     // for the previous state
     return entrypoint.final({
       value: previous ?? 0,
-      save: 2 * number
+      save: 2 * number,
     });
   }
 );
@@ -357,16 +357,17 @@ const config = {
   },
 };
 
-await myWorkflow.invoke(3, config);  // 0 (previous was undefined)
-await myWorkflow.invoke(1, config);  // 6 (previous was 3 * 2 from the previous invocation)
+await myWorkflow.invoke(3, config); // 0 (previous was undefined)
+await myWorkflow.invoke(1, config); // 6 (previous was 3 * 2 from the previous invocation)
 ```
 
 ## Task
 
-A **task** represents a discrete unit of work, such as an API call or data processing step. It has two key characteristics:
+A **task** represents a discrete unit of work, such as an API call or data processing step. It has three key characteristics:
 
-* **Asynchronous Execution**: Tasks are designed to be executed asynchronously, allowing multiple operations to run concurrently without blocking.
-* **Checkpointing**: Task results are saved to a checkpoint, enabling resumption of the workflow from the last saved state. (See [persistence](persistence.md) for more details).
+- **Asynchronous Execution**: Tasks are designed to be executed asynchronously, allowing multiple operations to run concurrently without blocking.
+- **Checkpointing**: Task results are saved to a checkpoint, enabling resumption of the workflow from the last saved state. (See [persistence](persistence.md) for more details).
+- **Retries**: Tasks can be configured with a [retry policy](./low_level.md#retry-policies) to handle transient errors.
 
 ### Definition
 
@@ -375,7 +376,7 @@ Tasks are defined using the `task` function, which wraps a regular function.
 ```typescript
 import { task } from "@langchain/langgraph";
 
-const slowComputation = task("slowComputation", async (inputValue: any) => {
+const slowComputation = task({"slowComputation", async (inputValue: any) => {
   // Simulate a long-running operation
   ...
   return result;
@@ -384,19 +385,37 @@ const slowComputation = task("slowComputation", async (inputValue: any) => {
 
 !!! important "Serialization"
 
-    The **outputs** of tasks must be JSON-serializable to support checkpointing.
+    The **outputs** of tasks **must** be JSON-serializable to support checkpointing.
 
 ### Execution
 
-**Tasks** can only be called from within an **entrypoint**, another **task**, or a [state graph node](./low_level.md#nodes). 
+**Tasks** can only be called from within an **entrypoint**, another **task**, or a [state graph node](./low_level.md#nodes).
 
-Tasks *cannot* be called directly from the main application code. 
+Tasks _cannot_ be called directly from the main application code.
 
 ```typescript
 const myWorkflow = entrypoint(
   { checkpointer, name: "myWorkflow" },
   async (someInput: number) => {
     return await slowComputation(someInput);
+  }
+);
+```
+
+### Retry Policy
+
+You can specify a [retry policy](./low_level.md#retry-policies) for a **task** by passing a `retry` parameter to the `task` function.
+
+```typescript
+const slowComputation = task(
+  {
+    name: "slowComputation",
+    // only attempt to run this task once before giving up
+    retry: { maxAttempts: 1 },
+  },
+  async (inputValue: any) => {
+    // A long-running operation that may fail
+    return result;
   }
 );
 ```
@@ -427,9 +446,9 @@ Providing non-serializable inputs or outputs will result in a runtime error when
 
 ## Determinism
 
-To utilize features like **human-in-the-loop**, any randomness should be encapsulated inside of **tasks**. This guarantees that when execution is halted (e.g., for human in the loop) and then resumed, it will follow the same *sequence of steps*, even if **task** results are non-deterministic.
+To utilize features like **human-in-the-loop**, any randomness should be encapsulated inside of **tasks**. This guarantees that when execution is halted (e.g., for human in the loop) and then resumed, it will follow the same _sequence of steps_, even if **task** results are non-deterministic.
 
-LangGraph achieves this behavior by persisting **task** and [**subgraph**](./low_level.md#subgraphs) results as they execute. A well-designed workflow ensures that resuming execution follows the *same sequence of steps*, allowing previously computed results to be retrieved correctly without having to re-execute them. This is particularly useful for long-running **tasks** or **tasks** with non-deterministic results, as it avoids repeating previously done work and allows resuming from essentially the same 
+LangGraph achieves this behavior by persisting **task** and [**subgraph**](./low_level.md#subgraphs) results as they execute. A well-designed workflow ensures that resuming execution follows the _same sequence of steps_, allowing previously computed results to be retrieved correctly without having to re-execute them. This is particularly useful for long-running **tasks** or **tasks** with non-deterministic results, as it avoids repeating previously done work and allows resuming from essentially the same
 
 While different runs of a workflow can produce different results, resuming a **specific** run should always follow the same sequence of recorded steps. This allows LangGraph to efficiently look up **task** and **subgraph** results that were executed prior to the graph being interrupted and avoid recomputing them.
 
@@ -488,8 +507,8 @@ Encapsulate side effects (e.g., writing to a file, sending an email) in tasks to
 
 Operations that might give different results each time (like getting current time or random numbers) should be encapsulated in tasks to ensure that on resume, the same result is returned.
 
-* In a task: Get random number (5) → interrupt → resume → (returns 5 again) → ...
-* Not in a task: Get random number (5) → interrupt → resume → get new random number (7) → ...
+- In a task: Get random number (5) → interrupt → resume → (returns 5 again) → ...
+- Not in a task: Get random number (5) → interrupt → resume → get new random number (7) → ...
 
 This is especially important when using **human-in-the-loop** workflows with multiple interrupts calls. LangGraph keeps a list
 of resume values for each task/entrypoint. When an interrupt is encountered, it's matched with the corresponding resume value.
@@ -509,9 +528,9 @@ Please read the section on [determinism](#determinism) for more details.
       async (inputs: { t0: number }) => {
         // highlight-next-line
         const t1 = Date.now();
-        
+
         const deltaT = t1 - inputs.t0;
-        
+
         if (deltaT > 1000) {
           const result = await slowTask(1);
           const value = interrupt("question");
@@ -540,9 +559,9 @@ Please read the section on [determinism](#determinism) for more details.
       async (inputs: { t0: number }) => {
         // highlight-next-line
         const t1 = await getTime();
-        
+
         const deltaT = t1 - inputs.t0;
-        
+
         if (deltaT > 1000) {
           const result = await slowTask(1);
           const value = interrupt("question");
@@ -572,7 +591,7 @@ const myWorkflow = entrypoint(
   }
 );
 
-await myWorkflow.invoke([{ value: 1, anotherValue: 2 }]);  
+await myWorkflow.invoke([{ value: 1, anotherValue: 2 }]);
 ```
 
 ### Parallel execution
@@ -642,7 +661,12 @@ const myWorkflow = entrypoint(
 You can stream custom data from an **entrypoint** by using the `write` method on `config`. This allows you to write custom data to the `custom` stream.
 
 ```typescript
-import { entrypoint, task, MemorySaver, LangGraphRunnableConfig } from "@langchain/langgraph";
+import {
+  entrypoint,
+  task,
+  MemorySaver,
+  LangGraphRunnableConfig,
+} from "@langchain/langgraph";
 
 const addOne = task("addOne", (x: number) => x + 1);
 
@@ -663,8 +687,8 @@ const main = entrypoint(
 
 const config = {
   configurable: {
-    thread_id: "1"
-  }
+    thread_id: "1",
+  },
 };
 
 const stream = await main.stream(
@@ -678,11 +702,9 @@ for await (const chunk of stream) {
 ```
 
 ```typescript
-["updates", { addOne: 2 }]
-["updates", { addTwo: 3 }]
-["custom", "hello"]
-["custom", "world"]
-["updates", { main: 5 }]
+["updates", { addOne: 2 }][("updates", { addTwo: 3 })][("custom", "hello")][
+  ("custom", "world")
+][("updates", { main: 5 })];
 ```
 
 ### Resuming after an error
@@ -738,8 +760,8 @@ const main = entrypoint(
 // Workflow execution configuration with a unique thread identifier
 const config = {
   configurable: {
-    thread_id: "1" // Unique identifier to track workflow execution
-  }
+    thread_id: "1", // Unique identifier to track workflow execution
+  },
 };
 
 // This invocation will take ~1 second due to the slowTask execution
@@ -758,7 +780,7 @@ await main.invoke(null, config);
 ```
 
 ```typescript
-"Ran slow task."
+"Ran slow task.";
 ```
 
 ### Human-in-the-loop
@@ -767,8 +789,8 @@ The functional API supports [human-in-the-loop](human_in_the_loop.md) workflows 
 
 Please see the following examples for more details:
 
-* [How to wait for user input (Functional API)](../how-tos/wait-user-input-functional.ipynb): Shows how to implement a simple human-in-the-loop workflow using the functional API.
-* [How to review tool calls (Functional API)](../how-tos/review-tool-calls-functional.ipynb): Guide demonstrates how to implement human-in-the-loop workflows in a ReAct agent using the LangGraph Functional API.
+- [How to wait for user input (Functional API)](../how-tos/wait-user-input-functional.ipynb): Shows how to implement a simple human-in-the-loop workflow using the functional API.
+- [How to review tool calls (Functional API)](../how-tos/review-tool-calls-functional.ipynb): Guide demonstrates how to implement human-in-the-loop workflows in a ReAct agent using the LangGraph Functional API.
 
 ### Short-term memory
 
@@ -776,7 +798,7 @@ Please see the following examples for more details:
 
 Please see the following how-to guides for more details:
 
-*  [How to add thread-level persistence (functional API)](../how-tos/persistence-functional.ipynb): Shows how to add thread-level persistence to a functional API workflow and implements a simple chatbot.
+- [How to add thread-level persistence (functional API)](../how-tos/persistence-functional.ipynb): Shows how to add thread-level persistence to a functional API workflow and implements a simple chatbot.
 
 ### Long-term memory
 
@@ -785,14 +807,14 @@ about a given user in one conversation and using it in another.
 
 Please see the following how-to guides for more details:
 
-* [How to add cross-thread persistence (functional API)](../how-tos/cross-thread-persistence-functional.ipynb): Shows how to add cross-thread persistence to a functional API workflow and implements a simple chatbot.
+- [How to add cross-thread persistence (functional API)](../how-tos/cross-thread-persistence-functional.ipynb): Shows how to add cross-thread persistence to a functional API workflow and implements a simple chatbot.
 
 ### Workflows
 
-* [Workflows and agent](../tutorials/workflows/index.md) guide for more examples of how to build workflows using the Functional API.
+- [Workflows and agent](../tutorials/workflows/index.md) guide for more examples of how to build workflows using the Functional API.
 
 ### Agents
 
-* [How to create a React agent from scratch (Functional API)](../how-tos/react-agent-from-scratch-functional.ipynb): Shows how to create a simple React agent from scratch using the functional API.
-* [How to build a multi-agent network](../how-tos/multi-agent-network-functional.ipynb): Shows how to build a multi-agent network using the functional API.
-* [How to add multi-turn conversation in a multi-agent application (functional API)](../how-tos/multi-agent-multi-turn-convo-functional.ipynb): allow an end-user to engage in a multi-turn conversation with one or more agents.
+- [How to create a React agent from scratch (Functional API)](../how-tos/react-agent-from-scratch-functional.ipynb): Shows how to create a simple React agent from scratch using the functional API.
+- [How to build a multi-agent network](../how-tos/multi-agent-network-functional.ipynb): Shows how to build a multi-agent network using the functional API.
+- [How to add multi-turn conversation in a multi-agent application (functional API)](../how-tos/multi-agent-multi-turn-convo-functional.ipynb): allow an end-user to engage in a multi-turn conversation with one or more agents.

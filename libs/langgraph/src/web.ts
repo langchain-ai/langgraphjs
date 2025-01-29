@@ -1,12 +1,11 @@
 export {
-  END,
   Graph,
   type StateGraphArgs,
-  START,
   StateGraph,
   CompiledStateGraph,
   MessageGraph,
   messagesStateReducer,
+  messagesStateReducer as addMessages,
   type Messages,
   Annotation,
   type StateType,
@@ -16,7 +15,12 @@ export {
   type SingleReducer,
   type CompiledGraph,
 } from "./graph/index.js";
-export type { StateSnapshot } from "./pregel/types.js";
+export type {
+  StateSnapshot,
+  StreamMode,
+  PregelParams,
+  PregelOptions,
+} from "./pregel/types.js";
 export * from "./errors.js";
 export {
   BaseChannel,
@@ -36,9 +40,10 @@ export {
   Command,
   type CommandParams,
   isCommand,
+  START,
+  END,
   type Interrupt,
 } from "./constants.js";
-export { interrupt } from "./interrupt.js";
 
 export {
   MemorySaver,
@@ -63,6 +68,13 @@ export {
   type ListNamespacesOperation,
 } from "@langchain/langgraph-checkpoint";
 export * from "./managed/index.js";
+
+export {
+  entrypoint,
+  type EntrypointOptions,
+  task,
+  type TaskOptions,
+} from "./func/index.js";
 
 export { MessagesAnnotation } from "./graph/messages_annotation.js";
 export { type LangGraphRunnableConfig } from "./pregel/runnable_types.js";

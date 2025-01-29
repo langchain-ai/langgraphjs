@@ -17,8 +17,8 @@ import {
 } from "@langchain/core/outputs";
 import { ChainValues } from "@langchain/core/utils/types";
 
-import { StreamChunk } from "./loop.js";
 import { TAG_HIDDEN, TAG_NOSTREAM } from "../constants.js";
+import { StreamChunk } from "./stream.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Meta = [string[], Record<string, any>];

@@ -7,10 +7,9 @@ import {
 import { RunnableConfig, RunnableToolLike } from "@langchain/core/runnables";
 import { StructuredToolInterface } from "@langchain/core/tools";
 import { RunnableCallable } from "../utils.js";
-import { END } from "../graph/graph.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { isGraphInterrupt } from "../errors.js";
-import { isCommand } from "../constants.js";
+import { END, isCommand } from "../constants.js";
 
 export type ToolNodeOptions = {
   name?: string;

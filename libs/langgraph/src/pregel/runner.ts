@@ -1,7 +1,18 @@
 import { PendingWrite } from "@langchain/langgraph-checkpoint";
-import { PregelExecutableTask } from "./types.js";
+import { Call, PregelExecutableTask, PregelScratchpad } from "./types.js";
 import { RetryPolicy } from "./utils/index.js";
-import { CONFIG_KEY_SEND, ERROR, INTERRUPT, RESUME } from "../constants.js";
+import {
+  CONFIG_KEY_SEND,
+  CONFIG_KEY_SCRATCHPAD,
+  PUSH,
+  ERROR,
+  INTERRUPT,
+  RESUME,
+  NO_WRITES,
+  TAG_HIDDEN,
+  RETURN,
+  CONFIG_KEY_CALL,
+} from "../constants.js";
 import {
   GraphInterrupt,
   isGraphBubbleUp,
@@ -11,7 +22,7 @@ import { _runWithRetry, SettledPregelTask } from "./retry.js";
 import { PregelLoop } from "./loop.js";
 
 /**
- * Options for the @see PregelRunner#tick method.
+ * Options for the {@link PregelRunner#tick} method.
  */
 export type TickOptions = {
   /**
@@ -20,12 +31,12 @@ export type TickOptions = {
   timeout?: number;
 
   /**
-   * An optional @see AbortSignal to cancel processing of tasks.
+   * An optional {@link AbortSignal} to cancel processing of tasks.
    */
   signal?: AbortSignal;
 
   /**
-   * The @see RetryPolicy to use for the tick.
+   * The {@link RetryPolicy} to use for the tick.
    */
   retryPolicy?: RetryPolicy;
 
@@ -36,39 +47,49 @@ export type TickOptions = {
 };
 
 /**
- * Responsible for handling task execution on each tick of the @see PregelLoop.
+ * Responsible for handling task execution on each tick of the {@link PregelLoop}.
  */
 export class PregelRunner {
-  loop: PregelLoop;
+  private nodeFinished?: (id: string) => void;
+
+  private loop: PregelLoop;
 
   /**
    * Construct a new PregelRunner, which executes tasks from the provided PregelLoop.
    * @param loop - The PregelLoop that produces tasks for this runner to execute.
    */
-  constructor({ loop }: { loop: PregelLoop }) {
+  constructor({
+    loop,
+    nodeFinished,
+  }: {
+    loop: PregelLoop;
+    nodeFinished?: (id: string) => void;
+  }) {
     this.loop = loop;
+    this.nodeFinished = nodeFinished;
   }
 
   /**
    * Execute tasks from the current step of the PregelLoop.
    *
-   * Note: this method does NOT call @see PregelLoop#tick. That must be handled externally.
+   * Note: this method does NOT call {@link PregelLoop}#tick. That must be handled externally.
    * @param options - Options for the execution.
    */
-  async tick(options: TickOptions = {}): Promise<void> {
-    const tasks = Object.values(this.loop.tasks);
-
+  async tick(options: TickOptions = {}) {
     const { timeout, signal, retryPolicy, onStepWrite } = options;
 
+    let graphInterrupt: GraphInterrupt | undefined;
+
     // Start task execution
-    const pendingTasks = tasks.filter((t) => t.writes.length === 0);
+    const pendingTasks = Object.values(this.loop.tasks).filter(
+      (t) => t.writes.length === 0
+    );
+
     const taskStream = this._executeTasksWithRetry(pendingTasks, {
       stepTimeout: timeout,
       signal,
       retryPolicy,
     });
-
-    let graphInterrupt: GraphInterrupt | undefined;
 
     for await (const { task, error } of taskStream) {
       graphInterrupt = this._commit(task, error) ?? graphInterrupt;
@@ -87,7 +108,7 @@ export class PregelRunner {
   }
 
   /**
-   * Concurrently executes tasks with the requested retry policy, yielding a @see SettledPregelTask for each task as it completes.
+   * Concurrently executes tasks with the requested retry policy, yielding a {@link SettledPregelTask} for each task as it completes.
    * @param tasks - The tasks to execute.
    * @param options - Options for the execution.
    */
@@ -102,6 +123,24 @@ export class PregelRunner {
     const { stepTimeout, retryPolicy } = options ?? {};
     let signal = options?.signal;
 
+    const promiseAddedSymbol = Symbol.for("promiseAdded");
+
+    let addedPromiseSignal: () => void;
+
+    let addedPromiseWait: Promise<typeof promiseAddedSymbol>;
+    function waitHandler(resolve: (value: unknown) => void) {
+      addedPromiseSignal = () => {
+        addedPromiseWait = new Promise(waitHandler) as Promise<
+          typeof promiseAddedSymbol
+        >;
+        resolve(promiseAddedSymbol);
+      };
+    }
+
+    addedPromiseWait = new Promise(waitHandler) as Promise<
+      typeof promiseAddedSymbol
+    >;
+
     const executingTasksMap: Record<
       string,
       Promise<{
@@ -113,10 +152,130 @@ export class PregelRunner {
 
     const writer = (
       task: PregelExecutableTask<string, string>,
-      writes: Array<[string, unknown]>
+      writes: Array<[string, unknown]>,
+      { calls }: { calls?: Call[] } = {}
     ): Array<Promise<unknown> | undefined> => {
-      // placeholder function - will have logic added when functional API is implemented
-      return task.config?.configurable?.[CONFIG_KEY_SEND]?.(writes) ?? [];
+      if (writes.every(([channel]) => channel !== PUSH)) {
+        return task.config?.configurable?.[CONFIG_KEY_SEND]?.(writes) ?? [];
+      }
+
+      // Schedule PUSH tasks, collect promises
+      const scratchpad: PregelScratchpad<unknown> =
+        task.config?.configurable?.[CONFIG_KEY_SCRATCHPAD];
+
+      const rtn: Record<number, Promise<unknown> | undefined> = {};
+
+      for (const [idx, write] of writes.entries()) {
+        const [channel] = write;
+        if (channel !== PUSH) {
+          continue;
+        }
+
+        const wcall = calls?.[idx];
+        const cnt = scratchpad.callCounter;
+        scratchpad.callCounter += 1;
+
+        if (wcall == null) {
+          throw new Error("BUG: No call found");
+        }
+
+        const nextTask = this.loop.acceptPush(task, cnt, wcall);
+
+        if (!nextTask) {
+          continue;
+        }
+
+        // Check if this task is already running
+        const existingPromise = executingTasksMap[nextTask.id];
+
+        if (existingPromise !== undefined) {
+          // If the parent task was retried, the next task might already be running
+          rtn[idx] = existingPromise;
+        } else if (nextTask.writes.length > 0) {
+          // If it already ran, return the result
+          const returns = nextTask.writes.filter(([c]) => c === RETURN);
+          const errors = nextTask.writes.filter(([c]) => c === ERROR);
+
+          if (returns.length > 0) {
+            // Task completed successfully
+            if (returns.length === 1) {
+              rtn[idx] = Promise.resolve(returns[0][1]);
+            } else {
+              // should be unreachable
+              throw new Error(
+                `BUG: multiple returns found for task ${nextTask.name}__${nextTask.id}`
+              );
+            }
+          } else if (errors.length > 0) {
+            if (errors.length === 1) {
+              const errorValue = errors[0][1];
+              // Task failed
+              const error =
+                // eslint-disable-next-line no-instanceof/no-instanceof
+                errorValue instanceof Error
+                  ? errorValue
+                  : new Error(String(errorValue));
+
+              rtn[idx] = Promise.reject(error);
+            } else {
+              // the only way this should happen is if the task executes multiple times and writes aren't cleared
+              throw new Error(
+                `BUG: multiple errors found for task ${nextTask.name}__${nextTask.id}`
+              );
+            }
+          }
+        } else {
+          // Schedule the next task with retry
+          const prom = _runWithRetry<string, string>(nextTask, retryPolicy, {
+            [CONFIG_KEY_SEND]: writer.bind(this, nextTask),
+            // eslint-disable-next-line @typescript-eslint/no-use-before-define
+            [CONFIG_KEY_CALL]: call.bind(this, nextTask),
+          });
+
+          executingTasksMap[nextTask.id] = prom;
+          addedPromiseSignal();
+
+          rtn[idx] = prom.then(({ result, error }) => {
+            if (error) {
+              return Promise.reject(error);
+            }
+
+            return result;
+          });
+        }
+      }
+
+      return Object.values(rtn);
+    };
+
+    const call = (
+      task: PregelExecutableTask<string, string>,
+      func: (...args: unknown[]) => unknown | Promise<unknown>,
+      name: string,
+      input: unknown,
+      options: { retry?: RetryPolicy; callbacks?: unknown } = {}
+    ) => {
+      const result = writer(task, [[PUSH, null]], {
+        calls: [
+          new Call({
+            func,
+            name,
+            input,
+            retry: options.retry,
+            callbacks: options.callbacks,
+          }),
+        ],
+      });
+
+      // eslint-disable-next-line no-instanceof/no-instanceof
+      if (result !== undefined) {
+        if (result.length === 1) {
+          return result[0];
+        }
+        return Promise.all(result);
+      }
+
+      return Promise.resolve();
     };
 
     if (stepTimeout && signal) {
@@ -131,7 +290,6 @@ export class PregelRunner {
       signal = AbortSignal.timeout(stepTimeout);
     }
 
-    // don't start tasks if signal is aborted!
     if (signal?.aborted) {
       // note: don't use throwIfAborted here because it throws a DOMException,
       // which isn't consistent with how we throw on abort below.
@@ -147,6 +305,7 @@ export class PregelRunner {
             pregelTask.id,
             _runWithRetry(pregelTask, retryPolicy, {
               [CONFIG_KEY_SEND]: writer?.bind(this, pregelTask),
+              [CONFIG_KEY_CALL]: call?.bind(this, pregelTask),
             }).catch((error) => {
               return { task: pregelTask, error };
             }),
@@ -165,22 +324,28 @@ export class PregelRunner {
       const settledTask = await Promise.race([
         ...Object.values(executingTasksMap),
         signalPromise,
+        addedPromiseWait,
       ]);
+
+      if (settledTask === promiseAddedSymbol) {
+        continue;
+      }
+
       yield settledTask as SettledPregelTask;
-      delete executingTasksMap[settledTask.task.id];
+      delete executingTasksMap[(settledTask as SettledPregelTask).task.id];
     }
   }
 
   /**
    * Determines what writes to apply based on whether the task completed successfully, and what type of error occurred.
    *
-   * Throws an error if the error is a @see GraphBubbleUp error and @see PregelLoop#isNested is true.
+   * Throws an error if the error is a {@link GraphBubbleUp} error and {@link PregelLoop}#isNested is true.
    *
-   * Note that in the case of a @see GraphBubbleUp error that is not a @see GraphInterrupt, like a @see Command, this method does not apply any writes.
+   * Note that in the case of a {@link GraphBubbleUp} error that is not a {@link GraphInterrupt}, like a {@link Command}, this method does not apply any writes.
    *
    * @param task - The task to commit.
    * @param error - The error that occurred, if any.
-   * @returns The @see GraphInterrupt that occurred, if the user's code threw one.
+   * @returns The {@link GraphInterrupt} that occurred, if the user's code threw one.
    */
   private _commit(
     task: PregelExecutableTask<string, string>,
@@ -212,6 +377,18 @@ export class PregelRunner {
         throw error;
       }
     } else {
+      if (
+        this.nodeFinished &&
+        (task.config?.tags == null || !task.config.tags.includes(TAG_HIDDEN))
+      ) {
+        this.nodeFinished(String(task.name));
+      }
+
+      if (task.writes.length === 0) {
+        // Add no writes marker
+        task.writes.push([NO_WRITES, null]);
+      }
+
       // Save task writes to checkpointer
       this.loop.putWrites(task.id, task.writes);
     }

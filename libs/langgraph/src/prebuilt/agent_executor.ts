@@ -4,7 +4,7 @@ import { Runnable, type RunnableConfig } from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
 import { ToolExecutor } from "./tool_executor.js";
 import { StateGraph } from "../graph/state.js";
-import { END, START } from "../graph/index.js";
+import { END, START } from "../constants.js";
 
 interface Step {
   action: AgentAction | AgentFinish;

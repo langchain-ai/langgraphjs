@@ -139,4 +139,16 @@ export class AsyncBatchedStore extends BaseStore {
       }
     }
   }
+
+  // AsyncBatchedStore is internal and gets passed as args into traced tasks
+  // some BaseStores contain circular references so just serialize without it
+  // as this causes warnings when tracing with LangSmith.
+  toJSON() {
+    return {
+      queue: this.queue,
+      nextKey: this.nextKey,
+      running: this.running,
+      store: "[LangGraphStore]",
+    };
+  }
 }

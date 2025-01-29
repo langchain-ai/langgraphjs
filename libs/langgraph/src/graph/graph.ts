@@ -24,7 +24,9 @@ import {
   _isSend,
   CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
+  END,
   Send,
+  START,
   TAG_HIDDEN,
 } from "../constants.js";
 import {
@@ -40,11 +42,6 @@ import {
 import { StateDefinition, StateType } from "./annotation.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
-
-/** Special reserved node name denoting the start of a graph. */
-export const START = "__start__";
-/** Special reserved node name denoting the end of a graph. */
-export const END = "__end__";
 
 export interface BranchOptions<
   IO,

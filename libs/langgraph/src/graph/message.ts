@@ -17,7 +17,7 @@ export type Messages =
  * instances.
  */
 export function messagesStateReducer(
-  left: BaseMessage[],
+  left: Messages,
   right: Messages
 ): BaseMessage[] {
   const leftArray = Array.isArray(left) ? left : [left];

@@ -84,7 +84,7 @@ import {
   RetryPolicy,
 } from "./utils/index.js";
 import { findSubgraphPregel } from "./utils/subgraph.js";
-import { PregelLoop, IterableReadableWritableStream } from "./loop.js";
+import { PregelLoop } from "./loop.js";
 import {
   ChannelKeyPlaceholder,
   isConfiguredManagedValue,
@@ -98,6 +98,7 @@ import { ensureLangGraphConfig } from "./utils/config.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { StreamMessagesHandler } from "./messages.js";
 import { PregelRunner } from "./runner.js";
+import { IterableReadableWritableStream } from "./stream.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -1260,6 +1261,7 @@ export class Pregel<
 
         const runner = new PregelRunner({
           loop,
+          nodeFinished: config.configurable?.nodeFinished,
         });
 
         if (options?.subgraphs) {
@@ -1299,6 +1301,7 @@ export class Pregel<
       }
     };
     const runLoopPromise = createAndRunLoop();
+
     try {
       for await (const chunk of stream) {
         if (chunk === undefined) {
@@ -1367,7 +1370,7 @@ export class Pregel<
     runner: PregelRunner;
     config: RunnableConfig;
     debug: boolean;
-  }) {
+  }): Promise<void> {
     const { loop, runner, debug, config } = params;
     let tickError;
     try {
