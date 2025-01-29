@@ -12,7 +12,7 @@ Learn the basics of LangGraph through a comprehensive quick start in which you w
 
 - [Quick Start](quickstart.ipynb)
 - [Common Workflows](workflows/index.md): Overview of the most common workflows using LLMs implemented with LangGraph.
-- [LangGraph Cloud Quick Start](https://langchain-ai.github.io/langgraph/cloud/quick_start/): In this tutorial, you will build and deploy an agent to LangGraph Cloud.
+- [LangGraph Cloud Quick Start](/langgraphjs/cloud/quick_start/): In this tutorial, you will build and deploy an agent to LangGraph Cloud.
 
 ## Use cases
 
