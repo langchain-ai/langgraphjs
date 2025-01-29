@@ -1,6 +1,6 @@
 {
   "name": "create-langgraph",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "",
   "license": "MIT",
   "main": "dist/cli.mjs",
