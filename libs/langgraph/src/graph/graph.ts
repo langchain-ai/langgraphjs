@@ -519,8 +519,10 @@ export class CompiledGraph<
 > {
   declare NodeType: N;
 
+  // @ts-expect-error Can be overshadowed by the Pregel class
   declare RunInput: State;
 
+  // @ts-expect-error Can be overshadowed by the Pregel class
   declare RunOutput: Update;
 
   builder: Graph<N, State, Update>;
