@@ -245,6 +245,8 @@ export type CreateReactAgentParams<
   stateSchema?: A;
   /** An optional checkpoint saver to persist the agent's state. */
   checkpointSaver?: BaseCheckpointSaver;
+  /** An optional checkpoint saver to persist the agent's state. Alias of "checkpointSaver". */
+  checkpointer?: BaseCheckpointSaver;
   /** An optional list of node names to interrupt before running. */
   interruptBefore?: N[] | All;
   /** An optional list of node names to interrupt after running. */
@@ -337,6 +339,7 @@ export function createReactAgent<
     stateModifier,
     stateSchema,
     checkpointSaver,
+    checkpointer,
     interruptBefore,
     interruptAfter,
     store,
@@ -465,7 +468,7 @@ export function createReactAgent<
   }
 
   return workflow.compile({
-    checkpointer: checkpointSaver,
+    checkpointer: checkpointer ?? checkpointSaver,
     interruptBefore,
     interruptAfter,
     store,
