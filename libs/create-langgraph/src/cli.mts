@@ -7,6 +7,7 @@ import zipExtract from "extract-zip";
 import { version } from "./utils/version.mjs";
 import color from "picocolors";
 import dedent from "dedent";
+import { withAnalytics } from "./utils/analytics.mjs";
 
 const TEMPLATES = {
   "New LangGraph Project": {
@@ -197,6 +198,7 @@ const program = new Command()
   .description("Create a new LangGraph project")
   .argument("[path]", "Path to create the project")
   .option("-t, --template <template>", "Template to use", "")
+  .hook("preAction", withAnalytics())
   .action((path, options) => {
     if (options.template) {
       const config = TEMPLATE_ID_TO_CONFIG[options.template];
