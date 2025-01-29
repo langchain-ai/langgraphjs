@@ -1672,7 +1672,7 @@ __metadata:
     typescript: ^4.9.5 || ^5.4.5
   peerDependencies:
     "@langchain/core": ">=0.2.31 <0.4.0"
-    "@langchain/langgraph-checkpoint": ~0.0.6
+    "@langchain/langgraph-checkpoint": ~0.0.15
   languageName: unknown
   linkType: soft
 
@@ -1710,7 +1710,7 @@ __metadata:
     typescript: ^4.9.5 || ^5.4.5
   peerDependencies:
     "@langchain/core": ">=0.2.31 <0.4.0"
-    "@langchain/langgraph-checkpoint": ~0.0.6
+    "@langchain/langgraph-checkpoint": ~0.0.15
   languageName: unknown
   linkType: soft
 
@@ -1748,7 +1748,7 @@ __metadata:
     typescript: ^4.9.5 || ^5.4.5
   peerDependencies:
     "@langchain/core": ">=0.2.31 <0.4.0"
-    "@langchain/langgraph-checkpoint": ~0.0.6
+    "@langchain/langgraph-checkpoint": ~0.0.15
   languageName: unknown
   linkType: soft
 
@@ -1796,13 +1796,13 @@ __metadata:
     zod: ^3.23.8
   peerDependencies:
     "@langchain/core": ">=0.2.31 <0.4.0"
-    "@langchain/langgraph-checkpoint": ~0.0.6
+    "@langchain/langgraph-checkpoint": ~0.0.15
   bin:
     validate-checkpointer: ./bin/cli.js
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint, @langchain/langgraph-checkpoint@~0.0.14":
+"@langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint, @langchain/langgraph-checkpoint@~0.0.15":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-checkpoint@workspace:libs/checkpoint"
   dependencies:
@@ -1857,7 +1857,7 @@ __metadata:
     "@langchain/anthropic": ^0.3.12
     "@langchain/community": ^0.3.27
     "@langchain/core": ^0.3.36
-    "@langchain/langgraph-checkpoint": ~0.0.14
+    "@langchain/langgraph-checkpoint": ~0.0.15
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
     "@langchain/langgraph-sdk": ~0.0.32
