@@ -210,3 +210,20 @@ describe("EphemeralValue with gaurd: false", () => {
     expect(channel.get()).toBe(5);
   });
 });
+
+it.each(
+  [LastValue, AnyValue, EphemeralValue].map((Channel) => ({
+    channel: Channel,
+  }))
+)("$channel.name should handle undefined values", (Channel) => {
+  const channel = new Channel.channel<number | undefined>();
+  expect(() => {
+    channel.get();
+  }).toThrow(EmptyChannelError);
+  channel.update([undefined]);
+  expect(channel.get()).toBe(undefined);
+  channel.update([3]);
+  expect(channel.get()).toBe(3);
+  channel.update([undefined]);
+  expect(channel.get()).toBe(undefined);
+});

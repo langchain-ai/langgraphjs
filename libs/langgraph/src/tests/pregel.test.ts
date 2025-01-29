@@ -59,9 +59,7 @@ import { gatherIterator } from "../utils.js";
 import { LastValue } from "../channels/last_value.js";
 import {
   Annotation,
-  END,
   Graph,
-  START,
   StateGraph,
   StateGraphArgs,
   StateType,
@@ -91,11 +89,13 @@ import {
 import {
   isCommand,
   Command,
+  END,
   ERROR,
   INTERRUPT,
   PULL,
   PUSH,
   Send,
+  START,
   TAG_NOSTREAM,
 } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
@@ -3270,7 +3270,7 @@ graph TD;
 
       const toolsNode = async (toolCall: ToolCall) => {
         await new Promise((resolve) =>
-          setTimeout(resolve, toolCall.args.idx * 100)
+          setTimeout(resolve, (toolCall.args.idx ?? 0 + 1) * 100)
         );
         const toolMessage = await toolsByName[toolCall.name].invoke(toolCall);
         return {
@@ -9469,6 +9469,35 @@ graph TD;
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(oneCount).toEqual(1);
     expect(twoCount).toEqual(0);
+  });
+
+  it("should throw when resuming without a checkpointer", async () => {
+    const chain = Channel.subscribeTo("input").pipe(
+      Channel.writeTo(["output"])
+    );
+
+    const channels = {
+      input: new LastValue(),
+      output: new LastValue(),
+    };
+
+    // create Pregel class
+    const graph = new Pregel({
+      nodes: { chain },
+      debug: false,
+      inputChannels: "input",
+      outputChannels: "output",
+      interruptBefore: ["chain"],
+      streamMode: "values",
+      channels,
+    });
+
+    // TODO: should ideally throw here when no checkpointer is provided
+    expect(await graph.invoke("a")).toBeUndefined();
+
+    await expect(() =>
+      graph.invoke(new Command({ resume: "hello" }))
+    ).rejects.toThrow("Cannot use Command(resume=...) without checkpointer");
   });
 }
 

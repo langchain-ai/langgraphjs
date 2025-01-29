@@ -1,6 +1,4 @@
 ---
-hide:
-  - navigation
 title: How-to Guides
 description: How to accomplish common tasks in LangGraph.js
 ---
@@ -34,6 +32,12 @@ LangGraph.js makes it easy to persist state across graph runs. The guides below 
 - [How to add cross-thread persistence](cross-thread-persistence.ipynb)
 - [How to use a Postgres checkpointer for persistence](persistence-postgres.ipynb)
 
+See the below guides for how-to add persistence to your workflow using the (beta)
+[Functional API](../concepts/functional_api.md):
+
+- [How to add thread-level persistence (functional API)](persistence-functional.ipynb)
+- [How to add cross-thread persistence (functional API)](cross-thread-persistence-functional.ipynb)
+
 ### Memory
 
 LangGraph makes it easy to manage conversation [memory](../concepts/memory.md) in your graph. These how-to guides show how to implement different strategies for that.
@@ -59,6 +63,12 @@ Other methods:
 - [How to add static breakpoints](breakpoints.ipynb): Use for debugging purposes. For [**human-in-the-loop**](/langgraphjs/concepts/human_in_the_loop) workflows, we recommend the [`interrupt` function](/langgraphjs/reference/functions/langgraph.interrupt-1.html) instead.
 - [How to edit graph state](edit-graph-state.ipynb): Edit graph state using `graph.update_state` method. Use this if implementing a **human-in-the-loop** workflow via **static breakpoints**.
 - [How to add dynamic breakpoints with `NodeInterrupt`](dynamic_breakpoints.ipynb): **Not recommended**: Use the [`interrupt` function](/langgraphjs/concepts/human_in_the_loop) instead.
+
+See the below guides for how-to implement human-in-the-loop workflows with the (beta)
+[Functional API](../concepts/functional_api.md):
+
+- [How to wait for user input (Functional API)](wait-user-input-functional.ipynb)
+- [How to review tool calls (Functional API)](review-tool-calls-functional.ipynb)
 
 ### Time Travel
 
@@ -103,6 +113,12 @@ These guides show how to use different streaming modes.
 
 See the [multi-agent tutorials](../tutorials/index.md#multi-agent-systems) for implementations of other multi-agent architectures.
 
+See the below guides for how-to implement multi-agent workflows with the (beta)
+[Functional API](../concepts/functional_api.md):
+
+- [How to build a multi-agent network (functional API)](multi-agent-network-functional.ipynb)
+- [How to add multi-turn conversation in a multi-agent application (functional API)](multi-agent-multi-turn-convo-functional.ipynb)
+
 ### State management
 
 - [How to define graph state](define-state.ipynb)
@@ -125,6 +141,11 @@ See the [multi-agent tutorials](../tutorials/index.md#multi-agent-systems) for i
 - [How to add Human-in-the-loop to a ReAct agent](react-human-in-the-loop.ipynb)
 - [How to return structured output from a ReAct agent](react-return-structured-output.ipynb)
 
+See the below guide for how-to build ReAct agents with the (beta)
+[Functional API](../concepts/functional_api.md):
+
+- [How to create a ReAct agent from scratch (Functional API)](react-agent-from-scratch-functional.ipynb)
+
 ## LangGraph Platform
 
 This section includes how-to guides for LangGraph Platform.
@@ -140,17 +161,17 @@ LangGraph Platform is a commercial solution for deploying agentic applications i
 
 Learn how to set up your app for deployment to LangGraph Platform:
 
-- [How to set up app for deployment (requirements.txt)](https://langchain-ai.github.io/langgraph/cloud/deployment/setup)
-- [How to set up app for deployment (pyproject.toml)](https://langchain-ai.github.io/langgraph/cloud/deployment/setup_pyproject)
-- [How to set up app for deployment (JavaScript)](https://langchain-ai.github.io/langgraph/cloud/deployment/setup_javascript)
-- [How to customize Dockerfile](https://langchain-ai.github.io/langgraph/cloud/deployment/custom_docker)
-- [How to test locally](https://langchain-ai.github.io/langgraph/cloud/deployment/test_locally)
+- [How to set up app for deployment (requirements.txt)](/langgraphjs/cloud/deployment/setup)
+- [How to set up app for deployment (pyproject.toml)](/langgraphjs/cloud/deployment/setup_pyproject)
+- [How to set up app for deployment (JavaScript)](/langgraphjs/cloud/deployment/setup_javascript)
+- [How to customize Dockerfile](/langgraphjs/cloud/deployment/custom_docker)
+- [How to test locally](/langgraphjs/cloud/deployment/test_locally)
 
 ### Deployment
 
 LangGraph applications can be deployed using LangGraph Cloud, which provides a range of services to help you deploy, manage, and scale your applications.
 
-- [How to deploy to LangGraph cloud](https://langchain-ai.github.io/langgraph/cloud/deployment/cloud)
+- [How to deploy to LangGraph cloud](/langgraphjs/cloud/deployment/cloud)
 - [How to deploy to a self-hosted environment](./deploy-self-hosted.md)
 - [How to interact with the deployment using RemoteGraph](./use-remote-graph.md)
 
@@ -158,69 +179,69 @@ LangGraph applications can be deployed using LangGraph Cloud, which provides a r
 
 [Assistants](../concepts/assistants.md) are a configured instance of a template.
 
-- [How to configure agents](https://langchain-ai.github.io/langgraph/cloud/how-tos/configuration_cloud)
-- [How to version assistants](https://langchain-ai.github.io/langgraph/cloud/how-tos/assistant_versioning)
+- [How to configure agents](/langgraphjs/cloud/how-tos/configuration_cloud)
+- [How to version assistants](/langgraphjs/cloud/how-tos/assistant_versioning)
 
 ### Threads
 
-- [How to copy threads](https://langchain-ai.github.io/langgraph/cloud/how-tos/copy_threads)
-- [How to check status of your threads](https://langchain-ai.github.io/langgraph/cloud/how-tos/check_thread_status)
+- [How to copy threads](/langgraphjs/cloud/how-tos/copy_threads)
+- [How to check status of your threads](/langgraphjs/cloud/how-tos/check_thread_status)
 
 ### Runs
 
 LangGraph Cloud supports multiple types of runs besides streaming runs.
 
-- [How to run an agent in the background](https://langchain-ai.github.io/langgraph/cloud/how-tos/background_run)
-- [How to run multiple agents in the same thread](https://langchain-ai.github.io/langgraph/cloud/how-tos/same-thread)
-- [How to create cron jobs](https://langchain-ai.github.io/langgraph/cloud/how-tos/cron_jobs)
-- [How to create stateless runs](https://langchain-ai.github.io/langgraph/cloud/how-tos/stateless_runs)
+- [How to run an agent in the background](/langgraphjs/cloud/how-tos/background_run)
+- [How to run multiple agents in the same thread](/langgraphjs/cloud/how-tos/same-thread)
+- [How to create cron jobs](/langgraphjs/cloud/how-tos/cron_jobs)
+- [How to create stateless runs](/langgraphjs/cloud/how-tos/stateless_runs)
 
 ### Streaming
 
 Streaming the results of your LLM application is vital for ensuring a good user experience, especially when your graph may call multiple models and take a long time to fully complete a run. Read about how to stream values from your graph in these how to guides:
 
-- [How to stream values](https://langchain-ai.github.io/langgraph/cloud/how-tos/stream_values)
-- [How to stream updates](https://langchain-ai.github.io/langgraph/cloud/how-tos/stream_updates)
-- [How to stream messages](https://langchain-ai.github.io/langgraph/cloud/how-tos/stream_messages)
-- [How to stream events](https://langchain-ai.github.io/langgraph/cloud/how-tos/stream_events)
-- [How to stream in debug mode](https://langchain-ai.github.io/langgraph/cloud/how-tos/stream_debug)
-- [How to stream multiple modes](https://langchain-ai.github.io/langgraph/cloud/how-tos/stream_multiple)
+- [How to stream values](/langgraphjs/cloud/how-tos/stream_values)
+- [How to stream updates](/langgraphjs/cloud/how-tos/stream_updates)
+- [How to stream messages](/langgraphjs/cloud/how-tos/stream_messages)
+- [How to stream events](/langgraphjs/cloud/how-tos/stream_events)
+- [How to stream in debug mode](/langgraphjs/cloud/how-tos/stream_debug)
+- [How to stream multiple modes](/langgraphjs/cloud/how-tos/stream_multiple)
 
 ### Human-in-the-loop
 
 When creating complex graphs, leaving every decision up to the LLM can be dangerous, especially when the decisions involve invoking certain tools or accessing specific documents. To remedy this, LangGraph allows you to insert human-in-the-loop behavior to ensure your graph does not have undesired outcomes. Read more about the different ways you can add human-in-the-loop capabilities to your LangGraph Cloud projects in these how-to guides:
 
-- [How to add a breakpoint](https://langchain-ai.github.io/langgraph/cloud/how-tos/human_in_the_loop_breakpoint)
-- [How to wait for user input](https://langchain-ai.github.io/langgraph/cloud/how-tos/human_in_the_loop_user_input)
-- [How to edit graph state](https://langchain-ai.github.io/langgraph/cloud/how-tos/human_in_the_loop_edit_state)
-- [How to replay and branch from prior states](https://langchain-ai.github.io/langgraph/cloud/how-tos/human_in_the_loop_time_travel)
-- [How to review tool calls](https://langchain-ai.github.io/langgraph/cloud/how-tos/human_in_the_loop_review_tool_calls)
+- [How to add a breakpoint](/langgraphjs/cloud/how-tos/human_in_the_loop_breakpoint)
+- [How to wait for user input](/langgraphjs/cloud/how-tos/human_in_the_loop_user_input)
+- [How to edit graph state](/langgraphjs/cloud/how-tos/human_in_the_loop_edit_state)
+- [How to replay and branch from prior states](/langgraphjs/cloud/how-tos/human_in_the_loop_time_travel)
+- [How to review tool calls](/langgraphjs/cloud/how-tos/human_in_the_loop_review_tool_calls)
 
 ### Double-texting
 
 Graph execution can take a while, and sometimes users may change their mind about the input they wanted to send before their original input has finished running. For example, a user might notice a typo in their original request and will edit the prompt and resend it. Deciding what to do in these cases is important for ensuring a smooth user experience and preventing your graphs from behaving in unexpected ways. The following how-to guides provide information on the various options LangGraph Cloud gives you for dealing with double-texting:
 
-- [How to use the interrupt option](https://langchain-ai.github.io/langgraph/cloud/how-tos/interrupt_concurrent)
-- [How to use the rollback option](https://langchain-ai.github.io/langgraph/cloud/how-tos/rollback_concurrent)
-- [How to use the reject option](https://langchain-ai.github.io/langgraph/cloud/how-tos/reject_concurrent)
-- [How to use the enqueue option](https://langchain-ai.github.io/langgraph/cloud/how-tos/enqueue_concurrent)
+- [How to use the interrupt option](/langgraphjs/cloud/how-tos/interrupt_concurrent)
+- [How to use the rollback option](/langgraphjs/cloud/how-tos/rollback_concurrent)
+- [How to use the reject option](/langgraphjs/cloud/how-tos/reject_concurrent)
+- [How to use the enqueue option](/langgraphjs/cloud/how-tos/enqueue_concurrent)
 
 ### Webhooks
 
-- [How to integrate webhooks](https://langchain-ai.github.io/langgraph/cloud/how-tos/webhooks)
+- [How to integrate webhooks](/langgraphjs/cloud/how-tos/webhooks)
 
 ### Cron Jobs
 
-- [How to create cron jobs](https://langchain-ai.github.io/langgraph/cloud/how-tos/cron_jobs)
+- [How to create cron jobs](/langgraphjs/cloud/how-tos/cron_jobs)
 
 ### LangGraph Studio
 
 LangGraph Studio is a built-in UI for visualizing, testing, and debugging your agents.
 
-- [How to connect to a LangGraph Cloud deployment](https://langchain-ai.github.io/langgraph/cloud/how-tos/test_deployment)
-- [How to connect to a local deployment](https://langchain-ai.github.io/langgraph/cloud/how-tos/test_local_deployment)
-- [How to test your graph in LangGraph Studio](https://langchain-ai.github.io/langgraph/cloud/how-tos/invoke_studio)
-- [How to interact with threads in LangGraph Studio](https://langchain-ai.github.io/langgraph/cloud/how-tos/threads_studio)
+- [How to connect to a LangGraph Cloud deployment](/langgraphjs/cloud/how-tos/test_deployment)
+- [How to connect to a local deployment](/langgraphjs/cloud/how-tos/test_local_deployment)
+- [How to test your graph in LangGraph Studio](/langgraphjs/cloud/how-tos/invoke_studio)
+- [How to interact with threads in LangGraph Studio](/langgraphjs/cloud/how-tos/threads_studio)
 
 ## Troubleshooting
 

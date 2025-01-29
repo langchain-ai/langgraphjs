@@ -13,6 +13,7 @@ import {
   INTERRUPT,
   NULL_TASK_ID,
   RESUME,
+  RETURN,
   SELF,
   TAG_HIDDEN,
   TASKS,
@@ -210,7 +211,17 @@ export function* mapOutputUpdates<N extends PropertyKey, C extends PropertyKey>(
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let updated: [N, Record<string, any>][];
-  if (!Array.isArray(outputChannels)) {
+  if (
+    outputTasks.some(([task]) =>
+      task.writes.some(([chan, _]) => chan === RETURN)
+    )
+  ) {
+    updated = outputTasks.flatMap(([task]) =>
+      task.writes
+        .filter(([chan, _]) => chan === RETURN)
+        .map(([_, value]) => [task.name, value] as [N, Record<string, unknown>])
+    );
+  } else if (!Array.isArray(outputChannels)) {
     updated = outputTasks.flatMap(([task]) =>
       task.writes
         .filter(([chan, _]) => chan === outputChannels)
