@@ -25,15 +25,23 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 describe("config to watch", () => {
   it("python e2e", async () => {
+    const config = getConfig({
+      ...DEFAULT_CONFIG,
+      dependencies: ["."],
+      graphs: { agent: "./agent.py:graph" },
+      env: ".env",
+      dockerfile_lines: [],
+    });
+
+    const localDeps = await assembleLocalDeps(
+      path.resolve(__dirname, "./unit_tests/langgraph.json"),
+      config
+    );
+
     const watch = await configToWatch(
       path.resolve(__dirname, "./unit_tests/langgraph.json"),
-      {
-        ...DEFAULT_CONFIG,
-        dependencies: ["."],
-        graphs: { agent: "./agent.py:graph" },
-        env: ".env",
-        dockerfile_lines: [],
-      }
+      config,
+      localDeps
     );
 
     expect(watch).toEqual([
@@ -47,15 +55,23 @@ describe("config to watch", () => {
   });
 
   it("js e2e", async () => {
+    const config = getConfig({
+      ...DEFAULT_CONFIG,
+      node_version: "20",
+      dockerfile_lines: [],
+      graphs: { agent: "./graphs/agent.js:graph" },
+      env: ".env",
+    });
+
+    const localDeps = await assembleLocalDeps(
+      path.resolve(__dirname, "./unit_tests/langgraph.json"),
+      config
+    );
+
     const watch = await configToWatch(
       path.resolve(__dirname, "./unit_tests/langgraph.json"),
-      {
-        node_version: "20",
-        dockerfile_lines: [],
-        dependencies: ["."],
-        graphs: { agent: "./route.ts:agent" },
-        env: ".env",
-      }
+      config,
+      localDeps
     );
 
     expect(watch).toEqual([
@@ -63,6 +79,7 @@ describe("config to watch", () => {
       { action: "rebuild", path: "package-lock.json" },
       { action: "rebuild", path: "yarn.lock" },
       { action: "rebuild", path: "pnpm-lock.yaml" },
+      { action: "rebuild", path: "bun.lockb" },
       {
         action: "sync",
         ignore: [
@@ -73,6 +90,7 @@ describe("config to watch", () => {
           "package-lock.json",
           "yarn.lock",
           "pnpm-lock.yaml",
+          "bun.lockb",
         ],
         path: ".",
         target: "/deps/unit_tests",
@@ -285,7 +303,7 @@ describe("config to docker", () => {
   });
 
   it("js", async () => {
-    const graphs = { agent: "./agent.js:graph" };
+    const graphs = { agent: "./graphs/agent.js:graph" };
     const config = getConfig({
       dockerfile_lines: [],
       env: {},
@@ -303,9 +321,9 @@ describe("config to docker", () => {
     expect(actual).toEqual(dedenter`
       FROM langchain/langgraphjs-api:20
       ADD . /deps/unit_tests
-      RUN cd /deps/unit_tests && npm i
-      ENV LANGSERVE_GRAPHS='{"agent":"./agent.js:graph"}'
+      ENV LANGSERVE_GRAPHS='{"agent":"./graphs/agent.js:graph"}'
       WORKDIR /deps/unit_tests
+      RUN npm i
       RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts
     `);
   });
@@ -555,6 +573,50 @@ describe("config to compose", () => {
     );
   });
 
+  it("multilanguage", async () => {
+    const graphs = {
+      python: "./graphs/agent.py:graph",
+      js: "./graphs/agent.js:graph",
+    };
+    const config = getConfig({
+      dockerfile_lines: [],
+      env: {},
+      node_version: "20" as const,
+      python_version: "3.12" as const,
+      graphs,
+      dependencies: ["."],
+    });
+
+    const { apiDef: actual } = await configToCompose(PATH_TO_CONFIG, config, {
+      watch: false,
+    });
+
+    const expected =
+      dedenter`
+        pull_policy: build
+        build:
+          context: .
+          dockerfile_inline: |
+            FROM langchain/langgraphjs-api:20
+            ADD . /deps/__outer_unit_tests/unit_tests
+            RUN set -ex && \
+                for line in '[project]' \
+                            'name = "unit_tests"' \
+                            'version = "0.1"' \
+                            '[tool.setuptools.package-data]' \
+                            '"*" = ["**/*"]'; do \
+                    echo "$$line" >> /deps/__outer_unit_tests/pyproject.toml; \
+                done
+            RUN --mount=type=cache,target=/root/.cache/pip PYTHONDONTWRITEBYTECODE=1 pip install -c /api/constraints.txt -e /deps/*
+            ENV LANGSERVE_GRAPHS='{"python":"/deps/__outer_unit_tests/unit_tests/graphs/agent.py:graph","js":"/deps/__outer_unit_tests/unit_tests/graphs/agent.js:graph"}'
+            WORKDIR /deps/__outer_unit_tests/unit_tests
+            RUN npm i
+            RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts
+        ` + "\n";
+
+    expect(yaml.stringify(actual, { blockQuote: "literal" })).toEqual(expected);
+  });
+
   it("e2e", async () => {
     const graph = { agent: "./agent.py:graph" };
     const expected =
@@ -677,9 +739,9 @@ describe("packaging", () => {
           dockerfile_inline: |
             FROM langchain/langgraphjs-api:20
             ADD . /deps/js
-            RUN cd /deps/js && npm i
             ENV LANGSERVE_GRAPHS='{"agent":"./route.ts:agent"}'
             WORKDIR /deps/js
+            RUN npm i
             RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts
             CMD exec uvicorn langgraph_api.server:app --log-config /api/logging.json --no-access-log --host 0.0.0.0 --port 8000 --reload --reload-dir /deps/js
         env_file: .env
@@ -693,6 +755,8 @@ describe("packaging", () => {
               action: rebuild
             - path: pnpm-lock.yaml
               action: rebuild
+            - path: bun.lockb
+              action: rebuild
             - path: .
               action: sync
               target: /deps/js
@@ -704,6 +768,7 @@ describe("packaging", () => {
                 - package-lock.json
                 - yarn.lock
                 - pnpm-lock.yaml
+                - bun.lockb
       ` + "\n";
 
     expect(yaml.stringify(actual, { blockQuote: "literal" })).toEqual(expected);
@@ -763,4 +828,83 @@ it("node config and python config", () => {
     graphs: { agent: "./agent.py:graph" },
     env: {},
   });
+
+  // default node
+  expect(getConfig({ graphs: { agent: "./agent.js:graph" } })).toEqual({
+    node_version: "20",
+    dockerfile_lines: [],
+    graphs: { agent: "./agent.js:graph" },
+    env: {},
+  });
+
+  // Default multiplatform
+  expect(
+    getConfig({
+      dependencies: ["."],
+      graphs: { js: "./agent.js:graph", py: "./agent.py:graph" },
+    })
+  ).toEqual({
+    python_version: "3.12",
+    node_version: "20",
+    dependencies: ["."],
+    graphs: { js: "./agent.js:graph", py: "./agent.py:graph" },
+    dockerfile_lines: [],
+    env: {},
+  });
+
+  // Invalid combination
+  expect
+    .soft(() =>
+      getConfig({
+        node_version: "20",
+        python_version: "3.11",
+        graphs: { agent: "./agent.py:graph", js: "./agent.js:graph" },
+        dependencies: ["."],
+      })
+    )
+    .toThrow("Only Python 3.12 is supported with Node.js");
+
+  // Invalid graph import format
+  expect
+    .soft(() =>
+      getConfig({
+        graphs: { agent: "agent.py" },
+        dependencies: ["."],
+      })
+    )
+    .toThrow(`Import string must be in format '<file>:<export>'`);
+
+  // Empty dependencies
+  expect
+    .soft(() =>
+      getConfig({
+        graphs: { agent: "./agent.py:graph" },
+        // @ts-expect-error
+        dependencies: [], // Empty array
+      })
+    )
+    .toThrow("You need to specify at least one dependency");
+
+  // Invalid Python version
+  expect
+    .soft(() =>
+      getConfig({
+        // @ts-expect-error
+        python_version: "3.10", // Unsupported version
+        graphs: { agent: "./agent.py:graph" },
+        dependencies: ["."],
+      })
+    )
+    .toThrow();
+
+  // Invalid Node version
+  expect
+    .soft(() =>
+      getConfig({
+        // @ts-expect-error
+        node_version: "18", // Unsupported version
+        graphs: { agent: "./agent.js:graph" },
+      })
+    )
+    .toThrow();
 });
