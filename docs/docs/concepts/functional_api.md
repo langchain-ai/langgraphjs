@@ -15,8 +15,8 @@ It is designed to integrate these features into existing code that may use stand
 
 The **Functional API** uses two key building blocks:  
 
-- **`@entrypoint`** – An **entrypoint** is a wrapper that takes a function as the starting point of a workflow. It encapsulates workflow logic and manages execution flow, including handling _long-running tasks_ and [interrupts](human_in_the_loop.md).
-- **`@task`** – Represents a discrete unit of work, such as an API call or data processing step, that can be executed asynchronously within an entrypoint. Tasks return a future-like object that can be awaited or resolved synchronously.
+- **`entrypoint`** – An **entrypoint** is a wrapper that takes a function as the starting point of a workflow. It encapsulates workflow logic and manages execution flow, including handling _long-running tasks_ and [interrupts](human_in_the_loop.md).
+- **`task`** – Represents a discrete unit of work, such as an API call or data processing step, that can be executed asynchronously within an entrypoint. Tasks return a future-like object that can be awaited or resolved synchronously.
 
 This provides a minimal abstraction for building workflows with state management and streaming.
 
