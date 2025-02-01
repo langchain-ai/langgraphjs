@@ -35,7 +35,7 @@ const checkpoint = {
   channel_versions: {
     __start__: 2,
     my_key: 3,
-    start:node: 3,
+    "start:node": 3,
     node: 3
   },
   versions_seen: {
@@ -44,7 +44,7 @@ const checkpoint = {
       __start__: 1
     },
     node: {
-      start:node: 2
+      "start:node": 2
     }
   },
   pending_sends: [],
