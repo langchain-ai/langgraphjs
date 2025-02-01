@@ -288,7 +288,7 @@ In the example below, the graph has one node. The `checkpointer` parameter in Pr
 Invocation 1:
 
 1. When the graph is invoked with `2`, `input` channels value becomes `2`
-2. Node `one` runs because it is subscribed to `input`. The node tranforms `2` to `2` by running `inputPlusTotal`.
+2. Node `one` runs because it is subscribed to `input`. The node transforms `2` to `2` by running `inputPlusTotal`.
 3. The value of channels `output` and `total` get set to `2` because node `one` writes to both channels
 4. Because `memory` is passed into the graph, `total` at thread_id of `1` is saved as a value of `2`
 5. The graph ends with `output`'s value which is `2`
