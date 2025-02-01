@@ -42,7 +42,7 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => ({
       and cw.checkpoint_id = cp.parent_checkpoint_id
       and cw.channel = '${TASKS}'
   ) as pending_sends
-from ${schema}.checkpoints cp `,
+from ${schema}.checkpoints cp `, // <-- the trailing space is necessary for combining with WHERE clauses
 
   UPSERT_CHECKPOINT_BLOBS_SQL: 
 `INSERT INTO ${schema}.checkpoint_blobs (thread_id, checkpoint_ns, channel, version, type, blob)
