@@ -13,7 +13,7 @@ import {
 import pg from "pg";
 
 import { getMigrations } from "./migrations.js";
-import { type SQL_STATEMENTS, getSQLStatements } from "./sql.js";
+import { type SQL_STATEMENTS, getSQLStatements, getTables } from "./sql.js";
 
 const { Pool } = pg;
 
@@ -93,12 +93,13 @@ export class PostgresSaver extends BaseCheckpointSaver {
    */
   async setup(): Promise<void> {
     const client = await this.pool.connect();
+    const SCHEMA_TABLES = getTables(this.schema);
     try {
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.schema}`);
       let version = -1;
       try {
         const result = await client.query(
-          `SELECT v FROM ${this.schema}.checkpoint_migrations ORDER BY v DESC LIMIT 1`
+          `SELECT v FROM ${SCHEMA_TABLES.checkpoint_migrations} ORDER BY v DESC LIMIT 1`
         );
         if (result.rows.length > 0) {
           version = result.rows[0].v;
@@ -108,7 +109,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
         // Assume table doesn't exist if there's an error
         if (
           error?.message.includes(
-            `relation "${this.schema}.checkpoint_migrations" does not exist`
+            `relation "${SCHEMA_TABLES.checkpoint_migrations}" does not exist`
           )
         ) {
           version = -1;
@@ -121,7 +122,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
       for (let v = version + 1; v < MIGRATIONS.length; v += 1) {
         await client.query(MIGRATIONS[v]);
         await client.query(
-          `INSERT INTO ${this.schema}.checkpoint_migrations (v) VALUES ($1)`,
+          `INSERT INTO ${SCHEMA_TABLES.checkpoint_migrations} (v) VALUES ($1)`,
           [v]
         );
       }
