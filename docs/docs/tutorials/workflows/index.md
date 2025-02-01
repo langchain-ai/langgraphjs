@@ -68,7 +68,7 @@ const multiply = tool(
   },
   {
     name: "multiply",
-    description: "mutiplies two numbers together",
+    description: "multiplies two numbers together",
     schema: z.object({
       a: z.number("the first number"),
       b: z.number("the second number"),
