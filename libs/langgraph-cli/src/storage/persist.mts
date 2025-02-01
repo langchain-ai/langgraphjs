@@ -1,6 +1,8 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import * as superjson from "superjson";
+import * as importMap from "./importMap.mjs";
+import { load } from "@langchain/core/load";
 
 // Add custom transformers for Uint8Array
 superjson.registerCustom<Uint8Array, string>(
@@ -11,6 +13,15 @@ superjson.registerCustom<Uint8Array, string>(
   },
   "Uint8Array"
 );
+
+export function serialize(data: unknown) {
+  return superjson.stringify(data);
+}
+
+export async function deserialize<T>(input: string) {
+  const result = await load(input, { importMap });
+  return superjson.deserialize<T>(result as superjson.SuperJSONResult);
+}
 
 export class FileSystemPersistence<Schema> {
   private filepath: string | null = null;
@@ -30,8 +41,9 @@ export class FileSystemPersistence<Schema> {
     this.filepath = path.resolve(cwd, ".langgraph_api", `${this.name}`);
 
     try {
-      this.data = superjson.parse(await fs.readFile(this.filepath, "utf-8"));
-    } catch {
+      this.data = await deserialize(await fs.readFile(this.filepath, "utf-8"));
+    } catch (error) {
+      console.error(error);
       this.data = this.defaultSchema();
     }
 
@@ -45,7 +57,7 @@ export class FileSystemPersistence<Schema> {
   protected async persist() {
     if (this.data == null || this.filepath == null) return;
     clearTimeout(this.flushTimeout);
-    await fs.writeFile(this.filepath, superjson.stringify(this.data), "utf-8");
+    await fs.writeFile(this.filepath, serialize(this.data), "utf-8");
   }
 
   protected schedulePersist() {
