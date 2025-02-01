@@ -48,9 +48,12 @@ const checkpoint2: Checkpoint = {
   pending_sends: [],
 };
 
-const postgresSavers: PostgresSaver[] = [];
+let postgresSavers: PostgresSaver[] = [];
 
-describe("PostgresSaver", () => {
+describe.each([
+  { schema: undefined, description: 'default schema' },
+  { schema: 'custom_schema', description: 'custom schema' }
+])("PostgresSaver with $description", ({ schema }) => {
   let postgresSaver: PostgresSaver;
 
   beforeEach(async () => {
@@ -71,7 +74,7 @@ describe("PostgresSaver", () => {
       const dbConnectionString = `${process.env.TEST_POSTGRES_URL?.split("/")
         .slice(0, -1)
         .join("/")}/${dbName}`;
-      postgresSaver = PostgresSaver.fromConnString(dbConnectionString, 'custom_schema');
+      postgresSaver = PostgresSaver.fromConnString(dbConnectionString, schema);
       postgresSavers.push(postgresSaver);
       await postgresSaver.setup();
     } finally {
@@ -81,6 +84,8 @@ describe("PostgresSaver", () => {
 
   afterAll(async () => {
     await Promise.all(postgresSavers.map((saver) => saver.end()));
+    // clear the ended savers to clean up for the next test
+    postgresSavers = [];
     // Drop all test databases
     const pool = new Pool({
       connectionString: process.env.TEST_POSTGRES_URL,
