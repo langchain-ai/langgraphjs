@@ -1,12 +1,12 @@
 /**
- * To add a new migration, add a new string to the MIGRATIONS list.
+ * To add a new migration, add a new string to the list returned by the getMigrations function.
  * The position of the migration in the list is the version number.
  */
-export const MIGRATIONS = [
-  `CREATE TABLE IF NOT EXISTS checkpoint_migrations (
+export const getMigrations = (schema: string) => [
+  `CREATE TABLE IF NOT EXISTS ${schema}.checkpoint_migrations (
   v INTEGER PRIMARY KEY
 );`,
-  `CREATE TABLE IF NOT EXISTS checkpoints (
+  `CREATE TABLE IF NOT EXISTS ${schema}.checkpoints (
   thread_id TEXT NOT NULL,
   checkpoint_ns TEXT NOT NULL DEFAULT '',
   checkpoint_id TEXT NOT NULL,
@@ -16,7 +16,7 @@ export const MIGRATIONS = [
   metadata JSONB NOT NULL DEFAULT '{}',
   PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
 );`,
-  `CREATE TABLE IF NOT EXISTS checkpoint_blobs (
+  `CREATE TABLE IF NOT EXISTS ${schema}.checkpoint_blobs (
   thread_id TEXT NOT NULL,
   checkpoint_ns TEXT NOT NULL DEFAULT '',
   channel TEXT NOT NULL,
@@ -25,7 +25,7 @@ export const MIGRATIONS = [
   blob BYTEA,
   PRIMARY KEY (thread_id, checkpoint_ns, channel, version)
 );`,
-  `CREATE TABLE IF NOT EXISTS checkpoint_writes (
+  `CREATE TABLE IF NOT EXISTS ${schema}.checkpoint_writes (
   thread_id TEXT NOT NULL,
   checkpoint_ns TEXT NOT NULL DEFAULT '',
   checkpoint_id TEXT NOT NULL,
@@ -36,5 +36,5 @@ export const MIGRATIONS = [
   blob BYTEA NOT NULL,
   PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
 );`,
-  "ALTER TABLE checkpoint_blobs ALTER COLUMN blob DROP not null;",
+  `ALTER TABLE ${schema}.checkpoint_blobs ALTER COLUMN blob DROP not null;`,
 ];
