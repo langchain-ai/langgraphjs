@@ -48,6 +48,11 @@ const checkpoint2: Checkpoint = {
   pending_sends: [],
 };
 
+const TEST_POSTGRES_URL = process.env.TEST_POSTGRES_URL;
+if (!TEST_POSTGRES_URL) {
+  throw new Error("TEST_POSTGRES_URL environment variable is required");
+}
+
 let postgresSavers: PostgresSaver[] = [];
 
 describe.each([
@@ -58,7 +63,7 @@ describe.each([
 
   beforeEach(async () => {
     const pool = new Pool({
-      connectionString: process.env.TEST_POSTGRES_URL,
+      connectionString: TEST_POSTGRES_URL,
     });
     // Generate a unique database name
     const dbName = `lg_test_db_${Date.now()}_${Math.floor(
@@ -71,7 +76,7 @@ describe.each([
       console.log(`Created database: ${dbName}`);
 
       // Connect to the new database
-      const dbConnectionString = `${process.env.TEST_POSTGRES_URL?.split("/")
+      const dbConnectionString = `${TEST_POSTGRES_URL?.split("/")
         .slice(0, -1)
         .join("/")}/${dbName}`;
       postgresSaver = PostgresSaver.fromConnString(dbConnectionString, schema);
@@ -88,7 +93,7 @@ describe.each([
     postgresSavers = [];
     // Drop all test databases
     const pool = new Pool({
-      connectionString: process.env.TEST_POSTGRES_URL,
+      connectionString: TEST_POSTGRES_URL,
     });
 
     try {
