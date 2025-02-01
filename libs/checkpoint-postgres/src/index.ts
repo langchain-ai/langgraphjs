@@ -13,10 +13,7 @@ import {
 import pg from "pg";
 
 import { getMigrations } from "./migrations.js";
-import {
-  type SQL_STATEMENTS,
-  getSQLStatements,
-} from "./sql.js";
+import { type SQL_STATEMENTS, getSQLStatements } from "./sql.js";
 
 const { Pool } = pg;
 
@@ -71,17 +68,17 @@ export class PostgresSaver extends BaseCheckpointSaver {
   }
 
   /**
- * Creates a new instance of PostgresSaver from a connection string.
- *
- * @param {string} connString - The connection string to connect to the Postgres database.
- * @param {string} [schema] - The schema name to use. Defaults to 'public' if not provided.
- * @returns {PostgresSaver} A new instance of PostgresSaver.
- *
- * @example
- * const connString = "postgresql://user:password@localhost:5432/db";
-  * const checkpointer = PostgresSaver.fromConnString(connString, "custom_schema");
-  * await checkpointer.setup();
-  */
+   * Creates a new instance of PostgresSaver from a connection string.
+   *
+   * @param {string} connString - The connection string to connect to the Postgres database.
+   * @param {string} [schema] - The schema name to use. Defaults to 'public' if not provided.
+   * @returns {PostgresSaver} A new instance of PostgresSaver.
+   *
+   * @example
+   * const connString = "postgresql://user:password@localhost:5432/db";
+   * const checkpointer = PostgresSaver.fromConnString(connString, "custom_schema");
+   * await checkpointer.setup();
+   */
   static fromConnString(connString: string, schema?: string): PostgresSaver {
     const pool = new Pool({ connectionString: connString });
     return new PostgresSaver(pool, undefined, schema);
@@ -332,7 +329,10 @@ export class PostgresSaver extends BaseCheckpointSaver {
       args = [thread_id, checkpoint_ns];
     }
 
-    const result = await this.pool.query(this.SQL_STATEMENTS.SELECT_SQL + where, args);
+    const result = await this.pool.query(
+      this.SQL_STATEMENTS.SELECT_SQL + where,
+      args
+    );
 
     const [row] = result.rows;
 
@@ -464,7 +464,10 @@ export class PostgresSaver extends BaseCheckpointSaver {
         newVersions
       );
       for (const serializedBlob of serializedBlobs) {
-        await client.query(this.SQL_STATEMENTS.UPSERT_CHECKPOINT_BLOBS_SQL, serializedBlob);
+        await client.query(
+          this.SQL_STATEMENTS.UPSERT_CHECKPOINT_BLOBS_SQL,
+          serializedBlob
+        );
       }
       await client.query(this.SQL_STATEMENTS.UPSERT_CHECKPOINTS_SQL, [
         thread_id,

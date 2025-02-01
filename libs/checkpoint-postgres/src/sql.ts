@@ -9,8 +9,7 @@ export interface SQL_STATEMENTS {
 }
 
 export const getSQLStatements = (schema: string): SQL_STATEMENTS => ({
-  SELECT_SQL: 
-`select
+  SELECT_SQL: `select
   thread_id,
   checkpoint,
   checkpoint_ns,
@@ -44,14 +43,12 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => ({
   ) as pending_sends
 from ${schema}.checkpoints cp `, // <-- the trailing space is necessary for combining with WHERE clauses
 
-  UPSERT_CHECKPOINT_BLOBS_SQL: 
-`INSERT INTO ${schema}.checkpoint_blobs (thread_id, checkpoint_ns, channel, version, type, blob)
+  UPSERT_CHECKPOINT_BLOBS_SQL: `INSERT INTO ${schema}.checkpoint_blobs (thread_id, checkpoint_ns, channel, version, type, blob)
 VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (thread_id, checkpoint_ns, channel, version) DO NOTHING
 `,
 
-  UPSERT_CHECKPOINTS_SQL: 
-`INSERT INTO ${schema}.checkpoints (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, checkpoint, metadata)
+  UPSERT_CHECKPOINTS_SQL: `INSERT INTO ${schema}.checkpoints (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, checkpoint, metadata)
 VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id)
 DO UPDATE SET
@@ -59,8 +56,7 @@ DO UPDATE SET
   metadata = EXCLUDED.metadata;
 `,
 
-  UPSERT_CHECKPOINT_WRITES_SQL: 
-`INSERT INTO ${schema}.checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob)
+  UPSERT_CHECKPOINT_WRITES_SQL: `INSERT INTO ${schema}.checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id, task_id, idx) DO UPDATE SET
   channel = EXCLUDED.channel,
@@ -68,8 +64,7 @@ ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id, task_id, idx) DO UPDATE SE
   blob = EXCLUDED.blob;
 `,
 
-  INSERT_CHECKPOINT_WRITES_SQL: 
-`INSERT INTO ${schema}.checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob)
+  INSERT_CHECKPOINT_WRITES_SQL: `INSERT INTO ${schema}.checkpoint_writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id, task_id, idx) DO NOTHING
 `,
