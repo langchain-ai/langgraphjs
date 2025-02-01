@@ -19,7 +19,8 @@ const readConfig = {
   }
 };
 
-const checkpointer = PostgresSaver.fromConnString("postgresql://...");
+// you can optionally provide a schema name as the second argument, otherwise it will default to "public"
+const checkpointer = PostgresSaver.fromConnString("postgresql://...", "schema_name");
 
 // You must call .setup() the first time you use the checkpointer:
 await checkpointer.setup();
