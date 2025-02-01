@@ -70,6 +70,18 @@ export class PostgresSaver extends BaseCheckpointSaver {
     this.SQL_STATEMENTS = getSQLStatements(this.schema);
   }
 
+  /**
+ * Creates a new instance of PostgresSaver from a connection string.
+ *
+ * @param {string} connString - The connection string to connect to the Postgres database.
+ * @param {string} [schema] - The schema name to use. Defaults to 'public' if not provided.
+ * @returns {PostgresSaver} A new instance of PostgresSaver.
+ *
+ * @example
+ * const connString = "postgresql://user:password@localhost:5432/db";
+  * const checkpointer = PostgresSaver.fromConnString(connString, "custom_schema");
+  * await checkpointer.setup();
+  */
   static fromConnString(connString: string, schema?: string): PostgresSaver {
     const pool = new Pool({ connectionString: connString });
     return new PostgresSaver(pool, undefined, schema);
