@@ -320,7 +320,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
       args = [thread_id, checkpoint_ns];
     }
 
-    const result = await this.pool.query(SELECT_SQL + where, args);
+    const result = await this.pool.query(this.SQL_STATEMENTS.SELECT_SQL + where, args);
 
     const [row] = result.rows;
 
@@ -373,7 +373,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
   ): AsyncGenerator<CheckpointTuple> {
     const { filter, before, limit } = options ?? {};
     const [where, args] = this._searchWhere(config, filter, before);
-    let query = `${SELECT_SQL}${where} ORDER BY checkpoint_id DESC`;
+    let query = `${this.SQL_STATEMENTS.SELECT_SQL}${where} ORDER BY checkpoint_id DESC`;
     if (limit !== undefined) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       query += ` LIMIT ${parseInt(limit as any, 10)}`; // sanitize via parseInt, as limit could be an externally provided value
@@ -452,9 +452,9 @@ export class PostgresSaver extends BaseCheckpointSaver {
         newVersions
       );
       for (const serializedBlob of serializedBlobs) {
-        await client.query(UPSERT_CHECKPOINT_BLOBS_SQL, serializedBlob);
+        await client.query(this.SQL_STATEMENTS.UPSERT_CHECKPOINT_BLOBS_SQL, serializedBlob);
       }
-      await client.query(UPSERT_CHECKPOINTS_SQL, [
+      await client.query(this.SQL_STATEMENTS.UPSERT_CHECKPOINTS_SQL, [
         thread_id,
         checkpoint_ns,
         checkpoint.id,
@@ -486,8 +486,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
     taskId: string
   ): Promise<void> {
     const query = writes.every((w) => w[0] in WRITES_IDX_MAP)
-      ? UPSERT_CHECKPOINT_WRITES_SQL
-      : INSERT_CHECKPOINT_WRITES_SQL;
+      ? this.SQL_STATEMENTS.UPSERT_CHECKPOINT_WRITES_SQL
+      : this.SQL_STATEMENTS.INSERT_CHECKPOINT_WRITES_SQL;
 
     const dumpedWrites = this._dumpWrites(
       config.configurable?.thread_id,
