@@ -6240,7 +6240,7 @@ graph TD;
         const { store } = config;
         expect(store).toBeDefined();
         if (!store) {
-          throw new Error("No store foubd");
+          throw new Error("No store found");
         }
 
         expect(config.configurable?.assistant_id).toEqual("a");
@@ -6260,7 +6260,7 @@ graph TD;
         const { store } = config;
         expect(store).toBeDefined();
         if (!store) {
-          throw new Error("No store foubd");
+          throw new Error("No store found");
         }
 
         expect(config.configurable?.assistant_id).toEqual("a");
@@ -6414,7 +6414,7 @@ graph TD;
 
       // below combo of assertions is asserting two things
       // - outer_1 finishes before inner interrupts (because we see its output in stream, which only happens after node finishes)
-      // - the writes of outer are persisted in 1st call and used in 2nd call, ie outer isn't called again (because we dont see outer_1 output again in 2nd stream)
+      // - the writes of outer are persisted in 1st call and used in 2nd call, ie outer isn't called again (because we don't see outer_1 output again in 2nd stream)
       // test stream updates w/ nested interrupt
       const config2 = { configurable: { thread_id: "2" } };
 

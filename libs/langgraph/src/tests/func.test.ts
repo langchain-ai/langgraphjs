@@ -357,7 +357,7 @@ export function runFuncTests(
             expect(() =>
               entrypoint(
                 { name: "graph", checkpointer },
-                // we need ts-expect-error here because the type system also gaurds against this
+                // we need ts-expect-error here because the type system also guards against this
                 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                 // @ts-expect-error
                 function* () {
@@ -374,7 +374,7 @@ export function runFuncTests(
             expect(() =>
               entrypoint(
                 { name: "graph", checkpointer },
-                // we need ts-expect-error here because the type system also gaurds against this
+                // we need ts-expect-error here because the type system also guards against this
                 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                 // @ts-expect-error
                 async function* () {
@@ -392,7 +392,7 @@ export function runFuncTests(
             expect(() =>
               task(
                 "task",
-                // we need ts-expect-error here because the type system also gaurds against this
+                // we need ts-expect-error here because the type system also guards against this
                 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                 // @ts-expect-error
                 function* () {
@@ -409,7 +409,7 @@ export function runFuncTests(
             expect(() =>
               task(
                 "task",
-                // we need ts-expect-error here because the type system also gaurds against this
+                // we need ts-expect-error here because the type system also guards against this
                 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                 // @ts-expect-error
                 async function* () {
