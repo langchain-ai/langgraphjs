@@ -65,6 +65,7 @@ describe("PostgresSaver", () => {
     try {
       // Create a new database
       await pool.query(`CREATE DATABASE ${dbName}`);
+      console.log(`Created database: ${dbName}`);
 
       // Connect to the new database
       const dbConnectionString = `${process.env.TEST_POSTGRES_URL?.split("/")
