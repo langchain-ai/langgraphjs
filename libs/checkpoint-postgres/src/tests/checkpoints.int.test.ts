@@ -56,8 +56,8 @@ if (!TEST_POSTGRES_URL) {
 let postgresSavers: PostgresSaver[] = [];
 
 describe.each([
-  { schema: undefined, description: 'default schema' },
-  { schema: 'custom_schema', description: 'custom schema' }
+  { schema: undefined, description: 'the default schema' },
+  { schema: 'custom_schema', description: 'a custom schema' }
 ])("PostgresSaver with $description", ({ schema }) => {
   let postgresSaver: PostgresSaver;
 
