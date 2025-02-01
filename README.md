@@ -22,6 +22,7 @@ LangGraph is inspired by [Pregel](https://research.google/pubs/pub37252/) and [A
 ### Why use LangGraph?
 
 LangGraph powers [production-grade agents](https://www.langchain.com/built-with-langgraph), trusted by Linkedin, Uber, Klarna, GitLab, and many more. LangGraph provides fine-grained control over both the flow and state of your agent applications. It implements a central [persistence layer](https://langchain-ai.github.io/langgraphjs/concepts/persistence/), enabling features that are common to most agent architectures:
+
 - **Memory**: LangGraph persists arbitrary aspects of your application's state,
 supporting memory of conversations and other updates within and across user
 interactions;
