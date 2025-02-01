@@ -12,13 +12,10 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import pg from "pg";
 
-import { MIGRATIONS } from "./migrations.js";
+import { getMigrations } from "./migrations.js";
 import {
-  INSERT_CHECKPOINT_WRITES_SQL,
-  SELECT_SQL,
-  UPSERT_CHECKPOINT_BLOBS_SQL,
-  UPSERT_CHECKPOINT_WRITES_SQL,
-  UPSERT_CHECKPOINTS_SQL,
+  type SQL_STATEMENTS,
+  getSQLStatements,
 } from "./sql.js";
 
 const { Pool } = pg;
@@ -60,18 +57,22 @@ const { Pool } = pg;
  */
 export class PostgresSaver extends BaseCheckpointSaver {
   private pool: pg.Pool;
+  private readonly schema: string = "public";
+  private readonly SQL_STATEMENTS: SQL_STATEMENTS;
 
   protected isSetup: boolean;
 
-  constructor(pool: pg.Pool, serde?: SerializerProtocol) {
+  constructor(pool: pg.Pool, serde?: SerializerProtocol, schema?: string) {
     super(serde);
     this.pool = pool;
     this.isSetup = false;
+    this.schema = schema ?? this.schema;
+    this.SQL_STATEMENTS = getSQLStatements(this.schema);
   }
 
-  static fromConnString(connString: string): PostgresSaver {
+  static fromConnString(connString: string, schema?: string): PostgresSaver {
     const pool = new Pool({ connectionString: connString });
-    return new PostgresSaver(pool);
+    return new PostgresSaver(pool, undefined, schema);
   }
 
   /**
@@ -84,10 +85,11 @@ export class PostgresSaver extends BaseCheckpointSaver {
   async setup(): Promise<void> {
     const client = await this.pool.connect();
     try {
+      await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.schema}`);
       let version = -1;
       try {
         const result = await client.query(
-          "SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1"
+          `SELECT v FROM ${this.schema}.checkpoint_migrations ORDER BY v DESC LIMIT 1`
         );
         if (result.rows.length > 0) {
           version = result.rows[0].v;
@@ -97,7 +99,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
         // Assume table doesn't exist if there's an error
         if (
           error?.message.includes(
-            'relation "checkpoint_migrations" does not exist'
+            `relation "${this.schema}.checkpoint_migrations" does not exist`
           )
         ) {
           version = -1;
@@ -106,10 +108,11 @@ export class PostgresSaver extends BaseCheckpointSaver {
         }
       }
 
+      const MIGRATIONS = getMigrations(this.schema);
       for (let v = version + 1; v < MIGRATIONS.length; v += 1) {
         await client.query(MIGRATIONS[v]);
         await client.query(
-          "INSERT INTO checkpoint_migrations (v) VALUES ($1)",
+          `INSERT INTO ${this.schema}.checkpoint_migrations (v) VALUES ($1)`,
           [v]
         );
       }
