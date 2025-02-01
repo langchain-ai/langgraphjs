@@ -237,10 +237,10 @@ export class PostgresSaver extends BaseCheckpointSaver {
   }
 
   /**
-   * Return WHERE clause predicates for alist() given config, filter, cursor.
+   * Return WHERE clause predicates for a given list() config, filter, cursor.
    *
    * This method returns a tuple of a string and a tuple of values. The string
-   * is the parametered WHERE clause predicate (including the WHERE keyword):
+   * is the parameterized WHERE clause predicate (including the WHERE keyword):
    * "WHERE column1 = $1 AND column2 IS $2". The list of values contains the
    * values for each of the corresponding parameters.
    */
