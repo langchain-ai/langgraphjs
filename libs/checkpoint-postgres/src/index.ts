@@ -23,6 +23,10 @@ export interface PostgresSaverOptions {
   schema?: string;
 }
 
+interface DefaultPostgresSaverOptions extends PostgresSaverOptions {
+  schema: "public" | string;
+}
+
 const { Pool } = pg;
 
 /**
@@ -66,7 +70,7 @@ const { Pool } = pg;
  */
 export class PostgresSaver extends BaseCheckpointSaver {
   private pool: pg.Pool;
-  private readonly options: Required<PostgresSaverOptions> = {
+  private readonly options: DefaultPostgresSaverOptions = {
     schema: "public",
   };
   private readonly SQL_STATEMENTS: SQL_STATEMENTS;
