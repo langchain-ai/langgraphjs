@@ -13,7 +13,7 @@ import {
 import pg from "pg";
 
 import { getMigrations } from "./migrations.js";
-import { type SQL_STATEMENTS, getSQLStatements, getTables } from "./sql.js";
+import { type SQL_STATEMENTS, getSQLStatements, getTablesWithSchema } from "./sql.js";
 
 const { Pool } = pg;
 
@@ -93,7 +93,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
    */
   async setup(): Promise<void> {
     const client = await this.pool.connect();
-    const SCHEMA_TABLES = getTables(this.schema);
+    const SCHEMA_TABLES = getTablesWithSchema(this.schema);
     try {
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.schema}`);
       let version = -1;

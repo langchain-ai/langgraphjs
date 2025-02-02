@@ -1,11 +1,11 @@
-import { getTables } from './sql.js';
+import { getTablesWithSchema } from './sql.js';
 
 /**
  * To add a new migration, add a new string to the list returned by the getMigrations function.
  * The position of the migration in the list is the version number.
  */
 export const getMigrations = (schema: string) => {
-  const SCHEMA_TABLES = getTables(schema);
+  const SCHEMA_TABLES = getTablesWithSchema(schema);
   return [
     `CREATE TABLE IF NOT EXISTS ${SCHEMA_TABLES.checkpoint_migrations} (
     v INTEGER PRIMARY KEY

@@ -15,7 +15,7 @@ interface TABLES {
   checkpoint_migrations: string;
 }
 
-export const getTables = (schema: string): TABLES => {
+export const getTablesWithSchema = (schema: string): TABLES => {
   const tables = ["checkpoints", "checkpoint_blobs", "checkpoint_writes", "checkpoint_migrations"];
   return tables.reduce((acc, table) => {
     acc[table as keyof TABLES] = `${schema}.${table}`;
@@ -24,7 +24,7 @@ export const getTables = (schema: string): TABLES => {
 };
 
 export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
-  const SCHEMA_TABLES = getTables(schema);
+  const SCHEMA_TABLES = getTablesWithSchema(schema);
   return {
     SELECT_SQL: `select
     thread_id,
