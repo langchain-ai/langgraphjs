@@ -101,7 +101,9 @@ export class PostgresSaver extends BaseCheckpointSaver {
    *
    * @example
    * const connString = "postgresql://user:password@localhost:5432/db";
-   * const checkpointer = PostgresSaver.fromConnString(connString, );
+   * const checkpointer = PostgresSaver.fromConnString(connString, {
+   *  schema: "custom_schema" // defaults to "public"
+   * });
    * await checkpointer.setup();
    */
   static fromConnString(
