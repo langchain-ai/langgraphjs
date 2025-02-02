@@ -19,6 +19,10 @@ import {
   getTablesWithSchema,
 } from "./sql.js";
 
+export interface PostgresSaverOptions {
+  schema?: string;
+}
+
 const { Pool } = pg;
 
 /**
@@ -34,7 +38,10 @@ const { Pool } = pg;
  *
  * const checkpointer = PostgresSaver.fromConnString(
  *   "postgresql://user:password@localhost:5432/db",
- *   "custom_schema" // optional schema name, defaults to 'public'
+ *   // optional configuration object
+ *   {
+ *     schema: "custom_schema" // defaults to "public"
+ *   },
  * );
  *
  * // NOTE: you need to call .setup() the first time you're using your checkpointer
@@ -59,17 +66,22 @@ const { Pool } = pg;
  */
 export class PostgresSaver extends BaseCheckpointSaver {
   private pool: pg.Pool;
-  private readonly schema: string = "public";
+  private readonly options: Required<PostgresSaverOptions> = {
+    schema: "public",
+  };
   private readonly SQL_STATEMENTS: SQL_STATEMENTS;
 
   protected isSetup: boolean;
 
-  constructor(pool: pg.Pool, serde?: SerializerProtocol, schema?: string) {
+  constructor(pool: pg.Pool, serde?: SerializerProtocol, options?: PostgresSaverOptions) {
     super(serde);
     this.pool = pool;
     this.isSetup = false;
-    this.schema = schema ?? this.schema;
-    this.SQL_STATEMENTS = getSQLStatements(this.schema);
+    this.options = {
+      ...this.options,
+      ...options,
+    };
+    this.SQL_STATEMENTS = getSQLStatements(this.options.schema);
   }
 
   /**
@@ -84,9 +96,9 @@ export class PostgresSaver extends BaseCheckpointSaver {
    * const checkpointer = PostgresSaver.fromConnString(connString, "custom_schema");
    * await checkpointer.setup();
    */
-  static fromConnString(connString: string, schema?: string): PostgresSaver {
+  static fromConnString(connString: string, config: PostgresSaverOptions = {}): PostgresSaver {
     const pool = new Pool({ connectionString: connString });
-    return new PostgresSaver(pool, undefined, schema);
+    return new PostgresSaver(pool, undefined, config);
   }
 
   /**
@@ -98,9 +110,9 @@ export class PostgresSaver extends BaseCheckpointSaver {
    */
   async setup(): Promise<void> {
     const client = await this.pool.connect();
-    const SCHEMA_TABLES = getTablesWithSchema(this.schema);
+    const SCHEMA_TABLES = getTablesWithSchema(this.options.schema);
     try {
-      await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.schema}`);
+      await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.options.schema}`);
       let version = -1;
       try {
         const result = await client.query(
@@ -123,7 +135,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
         }
       }
 
-      const MIGRATIONS = getMigrations(this.schema);
+      const MIGRATIONS = getMigrations(this.options.schema);
       for (let v = version + 1; v < MIGRATIONS.length; v += 1) {
         await client.query(MIGRATIONS[v]);
         await client.query(
