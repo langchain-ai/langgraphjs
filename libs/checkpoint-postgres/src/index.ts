@@ -13,7 +13,11 @@ import {
 import pg from "pg";
 
 import { getMigrations } from "./migrations.js";
-import { type SQL_STATEMENTS, getSQLStatements, getTablesWithSchema } from "./sql.js";
+import {
+  type SQL_STATEMENTS,
+  getSQLStatements,
+  getTablesWithSchema,
+} from "./sql.js";
 
 const { Pool } = pg;
 

@@ -1,4 +1,4 @@
-import { getTablesWithSchema } from './sql.js';
+import { getTablesWithSchema } from "./sql.js";
 
 /**
  * To add a new migration, add a new string to the list returned by the getMigrations function.
@@ -42,4 +42,4 @@ export const getMigrations = (schema: string) => {
   );`,
     `ALTER TABLE ${SCHEMA_TABLES.checkpoint_blobs} ALTER COLUMN blob DROP not null;`,
   ];
-}
+};

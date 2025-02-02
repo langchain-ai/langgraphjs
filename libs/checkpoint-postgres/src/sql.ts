@@ -16,7 +16,12 @@ interface TABLES {
 }
 
 export const getTablesWithSchema = (schema: string): TABLES => {
-  const tables = ["checkpoints", "checkpoint_blobs", "checkpoint_writes", "checkpoint_migrations"];
+  const tables = [
+    "checkpoints",
+    "checkpoint_blobs",
+    "checkpoint_migrations",
+    "checkpoint_writes",
+  ];
   return tables.reduce((acc, table) => {
     acc[table as keyof TABLES] = `${schema}.${table}`;
     return acc;
@@ -59,12 +64,12 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
         and cw.channel = '${TASKS}'
     ) as pending_sends
   from ${SCHEMA_TABLES.checkpoints} cp `, // <-- the trailing space is necessary for combining with WHERE clauses
-  
+
     UPSERT_CHECKPOINT_BLOBS_SQL: `INSERT INTO ${SCHEMA_TABLES.checkpoint_blobs} (thread_id, checkpoint_ns, channel, version, type, blob)
   VALUES ($1, $2, $3, $4, $5, $6)
   ON CONFLICT (thread_id, checkpoint_ns, channel, version) DO NOTHING
   `,
-  
+
     UPSERT_CHECKPOINTS_SQL: `INSERT INTO ${SCHEMA_TABLES.checkpoints} (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, checkpoint, metadata)
   VALUES ($1, $2, $3, $4, $5, $6)
   ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id)
@@ -72,7 +77,7 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
     checkpoint = EXCLUDED.checkpoint,
     metadata = EXCLUDED.metadata;
   `,
-  
+
     UPSERT_CHECKPOINT_WRITES_SQL: `INSERT INTO ${SCHEMA_TABLES.checkpoint_writes} (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob)
   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
   ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id, task_id, idx) DO UPDATE SET
@@ -80,7 +85,7 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
     type = EXCLUDED.type,
     blob = EXCLUDED.blob;
   `,
-  
+
     INSERT_CHECKPOINT_WRITES_SQL: `INSERT INTO ${SCHEMA_TABLES.checkpoint_writes} (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob)
   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
   ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id, task_id, idx) DO NOTHING
