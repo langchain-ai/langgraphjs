@@ -79,7 +79,9 @@ describe.each([
       const dbConnectionString = `${TEST_POSTGRES_URL?.split("/")
         .slice(0, -1)
         .join("/")}/${dbName}`;
-      postgresSaver = PostgresSaver.fromConnString(dbConnectionString, { schema });
+      postgresSaver = PostgresSaver.fromConnString(dbConnectionString, {
+        schema,
+      });
       postgresSavers.push(postgresSaver);
       await postgresSaver.setup();
     } finally {

@@ -73,7 +73,11 @@ export class PostgresSaver extends BaseCheckpointSaver {
 
   protected isSetup: boolean;
 
-  constructor(pool: pg.Pool, serde?: SerializerProtocol, options?: PostgresSaverOptions) {
+  constructor(
+    pool: pg.Pool,
+    serde?: SerializerProtocol,
+    options?: PostgresSaverOptions
+  ) {
     super(serde);
     this.pool = pool;
     this.isSetup = false;
