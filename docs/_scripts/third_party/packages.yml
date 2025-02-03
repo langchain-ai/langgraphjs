@@ -1,0 +1,8 @@
+#A list of third-party packages to surface on the third-party page.
+packages:
+  - name: "placeholder1"
+    repo: "org-name/placeholder1"
+    description: "Package description."
+  - name: "package2"
+    repo: "org-name/placeholder2"
+    description: "Package description."
