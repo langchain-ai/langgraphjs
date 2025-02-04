@@ -42,8 +42,7 @@ export class FileSystemPersistence<Schema> {
 
     try {
       this.data = await deserialize(await fs.readFile(this.filepath, "utf-8"));
-    } catch (error) {
-      console.error(error);
+    } catch {
       this.data = this.defaultSchema();
     }
 
