@@ -18,7 +18,30 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  test-nodejs:
+  test-cli:
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: "pnpm"
+
+      - name: Install dependencies dependencies
+        run: |
+          pnpm install
+
+      - name: Run integration tests
+        working-directory: libs/langgraph-cli
+        run: |
+          pnpm run test
+
+  test-api:
     timeout-minutes: 5
     strategy:
       fail-fast: false # Allow all tests to run even if one fails
@@ -48,6 +71,6 @@ jobs:
           pnpm install
 
       - name: Run integration tests
-        working-directory: libs/langgraph-cli
+        working-directory: libs/langgraph-api
         run: |
           pnpm run test:ci

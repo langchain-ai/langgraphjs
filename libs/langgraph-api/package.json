@@ -14,7 +14,7 @@
     "build": "node scripts/spawn.mjs build",
     "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit",
-    "test:cli": "tsx watch --clear-screen=false ./tests/utils.server.mjs",
+    "test:cli": "tsx watch --clear-screen=false ./tests/utils.server.mts",
     "test": "vitest",
     "test:ci": "node scripts/spawn.mjs test"
   },
