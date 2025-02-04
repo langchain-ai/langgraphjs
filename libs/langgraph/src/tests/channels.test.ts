@@ -195,7 +195,7 @@ describe("AnyValue", () => {
   });
 });
 
-describe("EphemeralValue with gaurd: false", () => {
+describe("EphemeralValue with guard: false", () => {
   it("should handle ephemeral value correctly", () => {
     const channel = new EphemeralValue<number>(false);
 

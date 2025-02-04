@@ -40,7 +40,7 @@ See the [how-to guide](/langgraphjs/cloud/how-tos/interrupt_concurrent) for conf
 This option rolls back all work done up until that point.
 It then sends the user input in, basically as if it just followed the original run input.
 
-This may create some weird states - for example, you may have two `User` messages in a row, with no `Asssitant` message in between them.
+This may create some weird states - for example, you may have two `User` messages in a row, with no `Assistant` message in between them.
 
 You will need to make sure the LLM you are calling can handle that, or combine those into a single `User` message.
 
