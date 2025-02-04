@@ -21,7 +21,7 @@ if (typeof config.env === "object" && config.env !== null) {
 
 const server = await startServer({
   port: 2024,
-  nWorkers: 1,
+  nWorkers: 10,
   host: "localhost",
   cwd,
   graphs: config.graphs,
