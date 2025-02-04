@@ -205,6 +205,9 @@ importers:
       prettier:
         specifier: ^3.3.3
         version: 3.4.2
+      typescript:
+        specifier: ^5.5.4
+        version: 5.5.4
       vitest:
         specifier: ^2.1.8
         version: 2.1.8(@types/node@22.10.5)
