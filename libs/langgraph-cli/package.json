@@ -5,7 +5,7 @@
   "engines": {
     "node": ">=18"
   },
-  "license": "Elastic-2.0",
+  "license": "MIT",
   "main": "./dist/server.mjs",
   "bin": {
     "langgraphjs": "dist/cli/cli.mjs"
@@ -19,9 +19,7 @@
     "typecheck": "tsc --noEmit",
     "cli": "tsx src/cli/cli.mts",
     "cli:watch": "tsx watch src/cli/cli.mts",
-    "test:cli": "pnpm run cli dev --no-browser --config ./tests/graphs/langgraph.json",
-    "test": "vitest",
-    "test:ci": "node scripts/spawn.mjs test"
+    "test": "vitest"
   },
   "dependencies": {
     "@commander-js/extra-typings": "^13.0.0",
