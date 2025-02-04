@@ -1,7 +1,5 @@
 import { createLogger, format, transports } from "winston";
-import { logger as honoLogger } from "hono/logger";
 import { consoleFormat } from "winston-console-format";
-import type { MiddlewareHandler } from "hono";
 import { parse as stacktraceParser } from "stacktrace-parser";
 import { readFileSync } from "fs";
 import { codeFrameColumns } from "@babel/code-frame";
@@ -131,8 +129,3 @@ export const logError = (
 
 process.on("uncaughtException", (error) => logError(error));
 process.on("unhandledRejection", (error) => logError(error));
-
-export const requestLogger = (): MiddlewareHandler =>
-  honoLogger((message, ...rest) => {
-    logger.info(message, ...rest);
-  });

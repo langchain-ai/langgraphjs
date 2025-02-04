@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getConfig } from "../utils/config.mjs";
 import { getProjectPath } from "./utils/project.mjs";
-import { logger } from "../logging.mjs";
+import { logger } from "../utils/logging.mjs";
 import { createCompose, getDockerCapabilities } from "../docker/compose.mjs";
 import { configToCompose, getBaseImage } from "../docker/docker.mjs";
 import { getExecaOptions } from "../docker/shell.mjs";

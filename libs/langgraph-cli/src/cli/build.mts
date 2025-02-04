@@ -11,7 +11,7 @@ import { getProjectPath } from "./utils/project.mjs";
 import { $ } from "execa";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { logger } from "../logging.mjs";
+import { logger } from "../utils/logging.mjs";
 import { withAnalytics } from "./utils/analytics.mjs";
 
 const stream = <T extends { spawnargs: string[] }>(proc: T): T => {
