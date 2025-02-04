@@ -11,7 +11,7 @@ import { createIpcServer } from "./utils/ipc/server.mjs";
 import { getProjectPath } from "./utils/project.mjs";
 import { getConfig } from "../utils/config.mjs";
 import { builder } from "./utils/builder.mjs";
-import { logError, logger } from "../logging.mjs";
+import { logError, logger } from "../utils/logging.mjs";
 import { withAnalytics } from "./utils/analytics.mjs";
 
 builder
@@ -140,10 +140,10 @@ builder
             { pid, projectCwd }
           );
         } else {
-          const { spawnNodeServer } = await import("./dev.node.mjs");
-          child = await spawnNodeServer(
-            { ...options, rest: args },
-            { configPath, config, env, hostUrl },
+          const { spawnServer } = await import("@langchain/langgraph-api");
+          child = await spawnServer(
+            options,
+            { config, env, hostUrl },
             { pid, projectCwd }
           );
         }

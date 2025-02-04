@@ -8,7 +8,7 @@ import os from "node:os";
 import { extract as tarExtract } from "tar";
 import zipExtract from "extract-zip";
 
-import { logger } from "../logging.mjs";
+import { logger } from "../utils/logging.mjs";
 import type { Config } from "../utils/config.mjs";
 import { assembleLocalDeps } from "../docker/docker.mjs";
 

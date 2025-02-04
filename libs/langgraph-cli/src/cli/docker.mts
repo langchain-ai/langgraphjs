@@ -10,7 +10,7 @@ import { builder } from "./utils/builder.mjs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import dedent from "dedent";
-import { logger } from "../logging.mjs";
+import { logger } from "../utils/logging.mjs";
 import { withAnalytics } from "./utils/analytics.mjs";
 
 const fileExists = async (path: string) => {
