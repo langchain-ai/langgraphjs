@@ -41,6 +41,41 @@ jobs:
         run: |
           pnpm run test
 
+  test-parser:
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false # Allow all tests to run even if one fails
+      matrix:
+        node-version:
+          - "18.x"
+          - "20.x"
+          - "22.x"
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        name: actions/setup-node@v4 for ${{ matrix.node-version }}
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "pnpm"
+
+      - name: Install dependencies dependencies
+        run: |
+          pnpm install
+
+      - name: Run integration tests
+        working-directory: libs/langgraph-api
+        run: |
+          pnpm run test:parser
+
+
   test-api:
     timeout-minutes: 5
     strategy:
@@ -73,4 +108,4 @@ jobs:
       - name: Run integration tests
         working-directory: libs/langgraph-api
         run: |
-          pnpm run test:ci
+          pnpm run test:api
