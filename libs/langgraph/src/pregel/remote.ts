@@ -105,16 +105,12 @@ const getStreamModes = (
     (typeof streamMode === "string" ||
       (Array.isArray(streamMode) && streamMode.length > 0))
   ) {
-    if (typeof streamMode === "string") {
-      updatedStreamModes.push(streamMode);
-    } else {
-      reqSingle = false;
-      updatedStreamModes.push(...streamMode);
-    }
+    reqSingle = typeof streamMode === "string";
+    const mapped = Array.isArray(streamMode) ? streamMode : [streamMode];
+    updatedStreamModes.push(...mapped);
   } else {
     updatedStreamModes.push(defaultStreamMode);
   }
-  // TODO: Map messages to messages-tuple
   if (updatedStreamModes.includes("updates")) {
     reqUpdates = true;
   } else {
@@ -412,7 +408,10 @@ export class RemoteGraph<
         ...updatedStreamModes,
         ...(streamProtocolInstance?.modes ?? new Set()),
       ]),
-    ];
+    ].map((mode) => {
+      if (mode === "messages") return "messages-tuple";
+      return mode;
+    });
 
     let command;
     let serializedInput;
