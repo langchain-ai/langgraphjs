@@ -47,7 +47,7 @@ For production use, please use LangGraph Cloud.
       ),
       "watch",
       "--clear-screen=false",
-      fileURLToPath(new URL(import.meta.resolve("./dev.node.entrypoint.mjs"))),
+      fileURLToPath(new URL(import.meta.resolve("@langchain/langgraph-api"))),
       options.pid.toString(),
       JSON.stringify({
         port: Number.parseInt(args.port, 10),

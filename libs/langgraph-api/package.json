@@ -1,15 +1,12 @@
 {
-  "name": "@langchain/langgraph-cli",
+  "name": "@langchain/langgraph-api",
   "version": "0.0.9",
   "type": "module",
   "engines": {
     "node": ">=18"
   },
   "license": "Elastic-2.0",
-  "main": "./dist/server.mjs",
-  "bin": {
-    "langgraphjs": "dist/cli/cli.mjs"
-  },
+  "main": "./dist/cli/entrypoint.mjs",
   "files": [
     "dist/"
   ],
@@ -17,15 +14,12 @@
     "build": "node scripts/spawn.mjs build",
     "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit",
-    "cli": "tsx src/cli/cli.mts",
-    "cli:watch": "tsx watch src/cli/cli.mts",
-    "test:cli": "pnpm run cli dev --no-browser --config ./tests/graphs/langgraph.json",
+    "test:cli": "tsx watch --clear-screen=false ./tests/utils.server.mjs",
     "test": "vitest",
     "test:ci": "node scripts/spawn.mjs test"
   },
   "dependencies": {
     "@commander-js/extra-typings": "^13.0.0",
-    "@langchain/langgraph-api": "workspace:*",
     "@hono/node-server": "^1.12.0",
     "@hono/zod-validator": "^0.2.2",
     "@types/json-schema": "^7.0.15",
