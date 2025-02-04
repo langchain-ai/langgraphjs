@@ -4,7 +4,7 @@ set -x # Print commands before execution
 
 rm -rf dist
 tsc --outDir dist
-tsc --module nodenext --outDir dist/cli -d src/cli/spawn.mts
+tsc --module nodenext --outDir dist/src/cli -d src/cli/spawn.mts
 
 cp src/graph/parser/schema/types.template.mts dist/src/graph/parser/schema
 rm -rf dist/src/graph/parser/schema/types.template.mjs

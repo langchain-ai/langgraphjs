@@ -1,29 +1,24 @@
 // run the server for CLI
-import { startServer } from "../src/server.mjs";
-import * as url from "node:url";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
-import { logger } from "../src/logging.mjs";
+import { spawnServer } from "../src/cli/spawn.mjs";
+import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
+import { dirname } from "node:path";
 
-const configPath = url.fileURLToPath(
+const configPath = fileURLToPath(
   new URL("./graphs/langgraph.json", import.meta.url)
 );
+const config = JSON.parse(await readFile(configPath, "utf-8"));
 
-const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
-const cwd = path.dirname(configPath);
-
-if (typeof config.env === "object" && config.env !== null) {
-  Object.assign(process.env, config.env);
-} else {
-  throw new Error("env file not supported by test server");
-}
-
-const server = await startServer({
-  port: 2024,
-  nWorkers: 10,
-  host: "localhost",
-  cwd,
-  graphs: config.graphs,
-});
-
-logger.info(`Server running at ${server.host}`);
+await spawnServer(
+  {
+    port: "2024",
+    nJobsPerWorker: "10",
+    host: "localhost",
+  },
+  {
+    config,
+    env: config.env,
+    hostUrl: "https://smith.langchain.com",
+  },
+  { pid: process.pid, projectCwd: dirname(configPath) }
+);
