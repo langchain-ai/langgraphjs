@@ -6,7 +6,7 @@
     "node": ">=18"
   },
   "license": "Elastic-2.0",
-  "main": "./dist/cli/entrypoint.mjs",
+  "main": "./dist/cli/spawn.mjs",
   "files": [
     "dist/"
   ],

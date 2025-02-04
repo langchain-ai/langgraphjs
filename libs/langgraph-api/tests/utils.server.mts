@@ -1,5 +1,4 @@
 // run the server for CLI
-
 import { startServer } from "../src/server.mjs";
 import * as url from "node:url";
 import * as fs from "node:fs/promises";

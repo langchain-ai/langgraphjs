@@ -7,6 +7,7 @@
   },
   "license": "MIT",
   "main": "./dist/server.mjs",
+  "types": "./dist/server.d.mts",
   "bin": {
     "langgraphjs": "dist/cli/cli.mjs"
   },
@@ -23,7 +24,6 @@
   },
   "dependencies": {
     "@commander-js/extra-typings": "^13.0.0",
-    "@langchain/langgraph-api": "workspace:*",
     "chokidar": "^4.0.3",
     "commander": "^13.0.0",
     "dedent": "^1.5.3",
@@ -35,14 +35,15 @@
     "open": "^10.1.0",
     "stacktrace-parser": "^0.1.10",
     "tar": "^7.4.3",
-    "tsx": "^4.19.2",
     "winston": "^3.17.0",
     "winston-console-format": "^1.0.8",
     "yaml": "^2.7.0",
     "zod": "^3.23.8",
-    "@babel/code-frame": "^7.26.2"
+    "@babel/code-frame": "^7.26.2",
+    "@langchain/langgraph-api": "workspace:*"
   },
   "devDependencies": {
+    "tsx": "^4.19.2",
     "@types/babel__code-frame": "^7.0.6",
     "@types/node": "^22.2.0",
     "prettier": "^3.3.3",

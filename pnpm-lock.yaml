@@ -180,9 +180,6 @@ importers:
       tar:
         specifier: ^7.4.3
         version: 7.4.3
-      tsx:
-        specifier: ^4.19.2
-        version: 4.19.2
       winston:
         specifier: ^3.17.0
         version: 3.17.0
@@ -205,6 +202,9 @@ importers:
       prettier:
         specifier: ^3.3.3
         version: 3.4.2
+      tsx:
+        specifier: ^4.19.2
+        version: 4.19.2
       typescript:
         specifier: ^5.5.4
         version: 5.5.4

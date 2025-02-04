@@ -1,18 +1,14 @@
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
-import { type Config } from "../utils/config.mjs";
 
-export async function spawnNodeServer(
+export async function spawnServer(
   args: {
     host: string;
     port: string;
     nJobsPerWorker: string;
-    browser: boolean;
-    rest: string[];
   },
   context: {
-    configPath: string;
-    config: Config;
+    config: { graphs: Record<string, string> };
     env: NodeJS.ProcessEnv;
     hostUrl: string;
   },

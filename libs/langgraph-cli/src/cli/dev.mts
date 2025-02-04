@@ -140,10 +140,10 @@ builder
             { pid, projectCwd }
           );
         } else {
-          const { spawnNodeServer } = await import("./dev.node.mjs");
-          child = await spawnNodeServer(
-            { ...options, rest: args },
-            { configPath, config, env, hostUrl },
+          const { spawnServer } = await import("@langchain/langgraph-api");
+          child = await spawnServer(
+            options,
+            { config, env, hostUrl },
             { pid, projectCwd }
           );
         }
