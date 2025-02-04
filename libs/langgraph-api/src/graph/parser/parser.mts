@@ -348,8 +348,14 @@ export class SubgraphExtractor {
     const dirname =
       typeof target === "string" ? path.dirname(target) : __dirname;
 
+    // This API is not well made for Windows, ensure that the paths are UNIX slashes
     const fsMap = new Map<string, string>();
     const system = vfs.createFSBackedSystem(fsMap, dirname, ts);
+    const vfsPath = (inputPath: string) => {
+      if (process.platform === "win32") return inputPath.replace(/\\/g, "/");
+      return inputPath;
+    };
+
     const host = vfs.createVirtualCompilerHost(system, compilerOptions, ts);
 
     const targetPath =
@@ -363,14 +369,9 @@ export class SubgraphExtractor {
     );
 
     if (typeof target !== "string") {
-      fsMap.set(targetPath, target.contents);
+      fsMap.set(vfsPath(targetPath), target.contents);
       for (const [name, contents] of target.files ?? []) {
-        let tsFileName = path.resolve(dirname, name);
-        // TS for some reason uses UNIX backslashes instead of the Window ones
-        if (process.platform === "win32") {
-          tsFileName = tsFileName.replace(/\\/g, "/");
-        }
-        fsMap.set(tsFileName, contents);
+        fsMap.set(vfsPath(path.resolve(dirname, name)), contents);
       }
     }
 
@@ -421,7 +422,7 @@ export class SubgraphExtractor {
 
     const { files, exports } = extractor.getAugmentedSourceFile(name);
     for (const [name, source] of files) {
-      system.writeFile(path.resolve(dirname, name), source);
+      system.writeFile(vfsPath(path.resolve(dirname, name)), source);
     }
 
     const extract = ts.createProgram({
