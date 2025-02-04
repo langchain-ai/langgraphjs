@@ -50,9 +50,6 @@ importers:
       '@babel/code-frame':
         specifier: ^7.26.2
         version: 7.26.2
-      '@commander-js/extra-typings':
-        specifier: ^13.0.0
-        version: 13.0.0(commander@13.0.0)
       '@hono/node-server':
         specifier: ^1.12.0
         version: 1.13.7(hono@4.6.16)
@@ -74,27 +71,15 @@ importers:
       '@typescript/vfs':
         specifier: ^1.6.0
         version: 1.6.0(typescript@5.5.4)
-      chokidar:
-        specifier: ^4.0.3
-        version: 4.0.3
-      commander:
-        specifier: ^13.0.0
-        version: 13.0.0
       dedent:
         specifier: ^1.5.3
         version: 1.5.3
       dotenv:
         specifier: ^16.4.7
         version: 16.4.7
-      execa:
-        specifier: ^9.5.2
-        version: 9.5.2
       exit-hook:
         specifier: ^4.0.0
         version: 4.0.0
-      extract-zip:
-        specifier: ^2.0.1
-        version: 2.0.1
       hono:
         specifier: ^4.5.4
         version: 4.6.16
@@ -110,9 +95,6 @@ importers:
       superjson:
         specifier: ^2.2.2
         version: 2.2.2
-      tar:
-        specifier: ^7.4.3
-        version: 7.4.3
       tsx:
         specifier: ^4.19.2
         version: 4.19.2
@@ -128,9 +110,6 @@ importers:
       winston-console-format:
         specifier: ^1.0.8
         version: 1.0.8
-      yaml:
-        specifier: ^2.7.0
-        version: 2.7.0
       zod:
         specifier: ^3.23.8
         version: 3.24.1
@@ -165,30 +144,9 @@ importers:
       '@commander-js/extra-typings':
         specifier: ^13.0.0
         version: 13.0.0(commander@13.0.0)
-      '@hono/node-server':
-        specifier: ^1.12.0
-        version: 1.13.7(hono@4.6.16)
-      '@hono/zod-validator':
-        specifier: ^0.2.2
-        version: 0.2.2(hono@4.6.16)(zod@3.24.1)
-      '@langchain/core':
-        specifier: ^0.3.36
-        version: 0.3.36
-      '@langchain/langgraph':
-        specifier: ^0.2.43
-        version: 0.2.43(@langchain/core@0.3.36)
       '@langchain/langgraph-api':
         specifier: workspace:*
         version: link:../langgraph-api
-      '@langchain/langgraph-checkpoint':
-        specifier: ^0.0.14
-        version: 0.0.14(@langchain/core@0.3.36)
-      '@types/json-schema':
-        specifier: ^7.0.15
-        version: 7.0.15
-      '@typescript/vfs':
-        specifier: ^1.6.0
-        version: 1.6.0(typescript@5.5.4)
       chokidar:
         specifier: ^4.0.3
         version: 4.0.3
@@ -210,9 +168,6 @@ importers:
       extract-zip:
         specifier: ^2.0.1
         version: 2.0.1
-      hono:
-        specifier: ^4.5.4
-        version: 4.6.16
       langsmith:
         specifier: ^0.2.15
         version: 0.2.15
@@ -222,21 +177,12 @@ importers:
       stacktrace-parser:
         specifier: ^0.1.10
         version: 0.1.10
-      superjson:
-        specifier: ^2.2.2
-        version: 2.2.2
       tar:
         specifier: ^7.4.3
         version: 7.4.3
       tsx:
         specifier: ^4.19.2
         version: 4.19.2
-      typescript:
-        specifier: ^5.5.4
-        version: 5.5.4
-      uuid:
-        specifier: ^10.0.0
-        version: 10.0.0
       winston:
         specifier: ^3.17.0
         version: 3.17.0
@@ -250,21 +196,12 @@ importers:
         specifier: ^3.23.8
         version: 3.24.1
     devDependencies:
-      '@langchain/langgraph-sdk':
-        specifier: ^0.0.33
-        version: 0.0.33
       '@types/babel__code-frame':
         specifier: ^7.0.6
         version: 7.0.6
       '@types/node':
         specifier: ^22.2.0
         version: 22.10.5
-      '@types/uuid':
-        specifier: ^10.0.0
-        version: 10.0.0
-      postgres:
-        specifier: ^3.4.5
-        version: 3.4.5
       prettier:
         specifier: ^3.3.3
         version: 3.4.2
