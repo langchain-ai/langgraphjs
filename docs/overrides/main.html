@@ -164,6 +164,21 @@
       display: none;
     }
 
+    .md-banner {
+      background-color: #CFC9FA;
+      color: #000000;
+    }
+
+    /* Add styles for banner links */
+    .md-banner a {
+      color: #000000;
+      text-decoration: underline;
+    }
+
+    .md-banner a:hover {
+      color: #000000;
+    }
+
   </style>
 {% endblock %}
 
@@ -189,4 +204,8 @@
   {% else %}
     <title>{{ config.site_name }}</title>
   {% endif %}
+{% endblock %}
+
+{% block announce %}
+  To learn more about LangGraph, check out our first LangChain Academy course, <em>Introduction to LangGraph</em>, available for free <a href="https://academy.langchain.com/courses/intro-to-langgraph">here</a>.
 {% endblock %}
