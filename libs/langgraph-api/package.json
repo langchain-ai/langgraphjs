@@ -12,11 +12,12 @@
   ],
   "scripts": {
     "build": "node scripts/spawn.mjs build",
+    "dev": "tsx ./tests/utils.server.mts",
     "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit",
-    "test:cli": "tsx ./tests/utils.server.mts",
     "test": "vitest",
-    "test:ci": "node scripts/spawn.mjs test"
+    "test:parser": "vitest run ./tests/parser.test.mts",
+    "test:api": "node scripts/spawn.mjs test"
   },
   "dependencies": {
     "@babel/code-frame": "^7.26.2",
