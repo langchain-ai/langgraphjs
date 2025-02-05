@@ -240,7 +240,7 @@ function resolveRequiredFile(
   symbol: ts.Symbol,
   key: string,
   fileName: string,
-  objectName: string
+  objectName: string,
 ): any {
   const sourceFile = getSourceFile(symbol);
   const requiredFilePath = /^[.\/]+/.test(fileName)
@@ -404,7 +404,7 @@ function getCanonicalDeclaration(sym: ts.Symbol): ts.Declaration {
 
   const declarationCount = sym.declarations?.length ?? 0;
   throw new Error(
-    `Symbol "${sym.name}" has no valueDeclaration and ${declarationCount} declarations.`
+    `Symbol "${sym.name}" has no valueDeclaration and ${declarationCount} declarations.`,
   );
 }
 
@@ -418,7 +418,7 @@ function getSourceFile(sym: ts.Symbol): ts.SourceFile {
   while (currentDecl.kind !== ts.SyntaxKind.SourceFile) {
     if (currentDecl.parent === undefined) {
       throw new Error(
-        `Unable to locate source file for declaration "${sym.name}".`
+        `Unable to locate source file for declaration "${sym.name}".`,
       );
     }
     currentDecl = currentDecl.parent;
@@ -561,7 +561,7 @@ class JsonSchemaGenerator {
     userSymbols: { [name: string]: ts.Symbol },
     inheritingTypes: { [baseName: string]: string[] },
     tc: ts.TypeChecker,
-    private args = getDefaultArgs()
+    private args = getDefaultArgs(),
   ) {
     this.symbols = symbols;
     this.allSymbols = allSymbols;
@@ -570,7 +570,7 @@ class JsonSchemaGenerator {
     this.tc = tc;
     this.userValidationKeywords = args.validationKeywords.reduce(
       (acc, word) => ({ ...acc, [word]: true }),
-      {}
+      {},
     );
     this.constAsEnum = args.constAsEnum;
   }
@@ -606,7 +606,7 @@ class JsonSchemaGenerator {
   private parseCommentsIntoDefinition(
     symbol: ts.Symbol,
     definition: Definition,
-    otherAnnotations: Record<string, true>
+    otherAnnotations: Record<string, true>,
   ): void {
     if (!symbol) {
       return;
@@ -621,7 +621,7 @@ class JsonSchemaGenerator {
           .map((comment) => {
             const newlineNormalizedComment = comment.text.replace(
               /\r\n/g,
-              "\n"
+              "\n",
             );
 
             // If a comment contains a "{@link XYZ}" inline tag that could not be
@@ -657,7 +657,7 @@ class JsonSchemaGenerator {
         }
       } else if (name === "TJS" && text.startsWith("-")) {
         let match: string[] | RegExpExecArray | null = new RegExp(
-          REGEX_TJS_JSDOC
+          REGEX_TJS_JSDOC,
         ).exec(originalText);
         if (match) {
           name = match[1];
@@ -673,7 +673,7 @@ class JsonSchemaGenerator {
       // to process the "." and beyond from the value
       if (subDefinitions[name]) {
         const match: string[] | RegExpExecArray | null = new RegExp(
-          REGEX_GROUP_JSDOC
+          REGEX_GROUP_JSDOC,
         ).exec(text);
         if (match) {
           const k = match[1];
@@ -716,7 +716,7 @@ class JsonSchemaGenerator {
     reffedType: ts.Symbol,
     definition: Definition,
     defaultNumberType = this.args.defaultNumberType,
-    ignoreUndefined = false
+    ignoreUndefined = false,
   ): Definition {
     const tupleType = resolveTupleType(propertyType);
 
@@ -725,7 +725,7 @@ class JsonSchemaGenerator {
       const elemTypes: ts.NodeArray<ts.TypeNode> = (propertyType as any)
         .typeArguments;
       const fixedTypes = elemTypes.map((elType) =>
-        this.getTypeDefinition(elType as any)
+        this.getTypeDefinition(elType as any),
       );
       definition.type = "array";
       if (fixedTypes.length > 0) {
@@ -743,12 +743,12 @@ class JsonSchemaGenerator {
       const propertyTypeString = this.tc.typeToString(
         propertyType,
         undefined,
-        ts.TypeFormatFlags.UseFullyQualifiedType
+        ts.TypeFormatFlags.UseFullyQualifiedType,
       );
       const flags = propertyType.flags;
       const arrayType = this.tc.getIndexTypeOfType(
         propertyType,
-        ts.IndexKind.Number
+        ts.IndexKind.Number,
       );
 
       if (flags & ts.TypeFlags.String) {
@@ -826,7 +826,7 @@ class JsonSchemaGenerator {
             };
             if (
               !!Array.from((propertyType as any).members as any[])?.find(
-                (member: [string]) => member[0] !== "__index"
+                (member: [string]) => member[0] !== "__index",
               )
             ) {
               this.getClassDefinition(propertyType, definition);
@@ -879,7 +879,7 @@ class JsonSchemaGenerator {
         } else {
           // Report that type could not be processed
           const error = new TypeError(
-            "Unsupported type: " + propertyTypeString
+            "Unsupported type: " + propertyTypeString,
           );
           (error as any).type = propertyType;
           throw error;
@@ -908,7 +908,7 @@ class JsonSchemaGenerator {
 
   private getDefinitionForProperty(
     prop: ts.Symbol,
-    node: ts.Node
+    node: ts.Node,
   ): Definition | null {
     if (prop.flags & ts.SymbolFlags.Method) {
       return null;
@@ -923,7 +923,7 @@ class JsonSchemaGenerator {
       undefined,
       undefined,
       prop,
-      reffedType
+      reffedType,
     );
 
     if (this.args.titles) {
@@ -967,12 +967,12 @@ class JsonSchemaGenerator {
             definition.default = val;
           } else if (val) {
             console.warn(
-              "unknown initializer for property " + propertyName + ": " + val
+              "unknown initializer for property " + propertyName + ": " + val,
             );
           }
         } catch (e) {
           console.warn(
-            "exception evaluating initializer for property " + propertyName
+            "exception evaluating initializer for property " + propertyName,
           );
         }
       }
@@ -983,13 +983,13 @@ class JsonSchemaGenerator {
 
   private getEnumDefinition(
     clazzType: ts.Type,
-    definition: Definition
+    definition: Definition,
   ): Definition {
     const node = clazzType.getSymbol()!.getDeclarations()![0];
     const fullName = this.tc.typeToString(
       clazzType,
       undefined,
-      ts.TypeFormatFlags.UseFullyQualifiedType
+      ts.TypeFormatFlags.UseFullyQualifiedType,
     );
     const members: ts.NodeArray<ts.EnumMember> =
       node.kind === ts.SyntaxKind.EnumDeclaration
@@ -1034,7 +1034,7 @@ class JsonSchemaGenerator {
                 "initializer is expression for enum: " +
                   fullName +
                   "." +
-                  caseLabel
+                  caseLabel,
               );
             }
           } else if (
@@ -1068,7 +1068,7 @@ class JsonSchemaGenerator {
   private getUnionDefinition(
     unionType: ts.UnionType,
     unionModifier: keyof Definition,
-    definition: Definition
+    definition: Definition,
   ): Definition {
     const enumValues: PrimitiveType[] = [];
     const simpleTypes: JSONSchema7TypeName[] = [];
@@ -1100,7 +1100,7 @@ class JsonSchemaGenerator {
           symbol,
           undefined,
           undefined,
-          true
+          true,
         );
         if (def.type === ("undefined" as any)) {
           continue;
@@ -1184,7 +1184,7 @@ class JsonSchemaGenerator {
 
   private getIntersectionDefinition(
     intersectionType: ts.IntersectionType,
-    definition: Definition
+    definition: Definition,
   ): Definition {
     const simpleTypes: JSONSchema7TypeName[] = [];
     const schemas: Definition[] = [];
@@ -1230,7 +1230,7 @@ class JsonSchemaGenerator {
 
   private getClassDefinition(
     clazzType: ts.Type,
-    definition: Definition
+    definition: Definition,
   ): Definition {
     const node = clazzType.getSymbol()!.getDeclarations()![0];
 
@@ -1277,7 +1277,7 @@ class JsonSchemaGenerator {
     const fullName = this.tc.typeToString(
       clazzType,
       undefined,
-      ts.TypeFormatFlags.UseFullyQualifiedType
+      ts.TypeFormatFlags.UseFullyQualifiedType,
     );
 
     const modifierFlags = ts.getCombinedModifierFlags(node);
@@ -1297,7 +1297,7 @@ class JsonSchemaGenerator {
           clazz.members == null
             ? []
             : clazz.members.filter(
-                (x) => x.kind === ts.SyntaxKind.IndexSignature
+                (x) => x.kind === ts.SyntaxKind.IndexSignature,
               );
         if (indexSignatures.length === 1) {
           // for case "array-types"
@@ -1305,21 +1305,21 @@ class JsonSchemaGenerator {
             indexSignatures[0] as ts.IndexSignatureDeclaration;
           if (indexSignature.parameters.length !== 1) {
             throw new Error(
-              "Not supported: IndexSignatureDeclaration parameters.length != 1"
+              "Not supported: IndexSignatureDeclaration parameters.length != 1",
             );
           }
           const indexSymbol: ts.Symbol = (indexSignature.parameters[0] as any)
             .symbol;
           const indexType = this.tc.getTypeOfSymbolAtLocation(
             indexSymbol,
-            node
+            node,
           );
           const isIndexedObject =
             indexType.flags === ts.TypeFlags.String ||
             indexType.flags === ts.TypeFlags.Number;
           if (indexType.flags !== ts.TypeFlags.Number && !isIndexedObject) {
             throw new Error(
-              "Not supported: IndexSignatureDeclaration with index symbol other than a number or a string"
+              "Not supported: IndexSignatureDeclaration with index symbol other than a number or a string",
             );
           }
 
@@ -1327,7 +1327,7 @@ class JsonSchemaGenerator {
           let def: Definition | undefined;
           if (typ.flags & ts.TypeFlags.IndexedAccess) {
             const targetName = ts.escapeLeadingUnderscores(
-              (clazzType as any).mapper?.target?.value
+              (clazzType as any).mapper?.target?.value,
             );
             const indexedAccessType = typ as ts.IndexedAccessType;
             const symbols: Map<ts.__String, ts.Symbol> = (
@@ -1339,7 +1339,7 @@ class JsonSchemaGenerator {
               const targetNode = targetSymbol.getDeclarations()![0];
               const targetDef = this.getDefinitionForProperty(
                 targetSymbol,
-                targetNode
+                targetNode,
               );
               if (targetDef) {
                 def = targetDef;
@@ -1372,7 +1372,7 @@ class JsonSchemaGenerator {
           }
           return all;
         },
-        {}
+        {},
       );
 
       if (definition.type === undefined) {
@@ -1403,7 +1403,7 @@ class JsonSchemaGenerator {
             order.push(prop.getName());
             return order;
           },
-          []
+          [],
         );
 
         definition.propertyOrder = propertyOrder;
@@ -1427,7 +1427,7 @@ class JsonSchemaGenerator {
             }
             return required;
           },
-          []
+          [],
         );
 
         if (requiredProps.length > 0) {
@@ -1454,9 +1454,9 @@ class JsonSchemaGenerator {
           typ,
           undefined,
           ts.TypeFormatFlags.NoTruncation |
-            ts.TypeFormatFlags.UseFullyQualifiedType
+            ts.TypeFormatFlags.UseFullyQualifiedType,
         )
-        .replace(REGEX_FILE_NAME_OR_SPACE, "")
+        .replace(REGEX_FILE_NAME_OR_SPACE, ""),
     );
   }
 
@@ -1489,7 +1489,7 @@ class JsonSchemaGenerator {
     reffedType?: ts.Symbol,
     pairedSymbol?: ts.Symbol,
     forceNotRef: boolean = false,
-    ignoreUndefined = false
+    ignoreUndefined = false,
   ): Definition {
     const definition: Definition = {}; // real definition
 
@@ -1574,7 +1574,7 @@ class JsonSchemaGenerator {
         .getFullyQualifiedName(
           reffedType!.getFlags() & ts.SymbolFlags.Alias
             ? this.tc.getAliasedSymbol(reffedType!)
-            : reffedType!
+            : reffedType!,
         )
         .replace(REGEX_FILE_NAME_OR_SPACE, "");
       if (this.args.uniqueNames && reffedType) {
@@ -1582,7 +1582,7 @@ class JsonSchemaGenerator {
         const relativePath = path.relative(process.cwd(), sourceFile.fileName);
         fullTypeName = `${typeName}.${generateHashOfNode(
           getCanonicalDeclaration(reffedType!),
-          relativePath
+          relativePath,
         )}`;
       } else {
         fullTypeName = this.makeTypeNameUnique(typ, typeName);
@@ -1595,7 +1595,7 @@ class JsonSchemaGenerator {
         const relativePath = path.relative(process.cwd(), sourceFile.fileName);
         fullTypeName = `${this.getTypeName(typ)}.${generateHashOfNode(
           getCanonicalDeclaration(sym),
-          relativePath
+          relativePath,
         )}`;
       } else if (
         reffedType &&
@@ -1631,20 +1631,20 @@ class JsonSchemaGenerator {
     this.parseCommentsIntoDefinition(
       typ.aliasSymbol!,
       definition,
-      otherAnnotations
+      otherAnnotations,
     );
     if (prop) {
       this.parseCommentsIntoDefinition(
         prop,
         returnedDefinition,
-        otherAnnotations
+        otherAnnotations,
       );
     }
     if (pairedSymbol && symbol && this.isFromDefaultLib(symbol)) {
       this.parseCommentsIntoDefinition(
         pairedSymbol,
         definition,
-        otherAnnotations
+        otherAnnotations,
       );
     }
 
@@ -1669,7 +1669,7 @@ class JsonSchemaGenerator {
             true,
             undefined,
             symbol,
-            symbol
+            symbol,
           );
         } else {
           reffedDefinition = definition;
@@ -1693,7 +1693,7 @@ class JsonSchemaGenerator {
           this.getUnionDefinition(
             typ as ts.UnionType,
             unionModifier,
-            definition
+            definition,
           );
         } else if (typ.flags & ts.TypeFlags.Intersection) {
           if (this.args.noExtraProps) {
@@ -1711,7 +1711,7 @@ class JsonSchemaGenerator {
                 undefined,
                 undefined,
                 undefined,
-                true
+                true,
               );
               definition.type = other.type; // should always be object
               definition.properties = {
@@ -1722,19 +1722,19 @@ class JsonSchemaGenerator {
               if (Object.keys(other.default || {}).length > 0) {
                 definition.default = extend(
                   definition.default || {},
-                  other.default
+                  other.default,
                 );
               }
               if (other.required) {
                 definition.required = unique(
-                  (definition.required || []).concat(other.required)
+                  (definition.required || []).concat(other.required),
                 ).sort();
               }
             }
           } else {
             this.getIntersectionDefinition(
               typ as ts.IntersectionType,
-              definition
+              definition,
             );
           }
         } else if (isRawType) {
@@ -1746,7 +1746,7 @@ class JsonSchemaGenerator {
             reffedType!,
             definition,
             undefined,
-            ignoreUndefined
+            ignoreUndefined,
           );
         } else if (
           node &&
@@ -1806,7 +1806,7 @@ class JsonSchemaGenerator {
   public getSchemaForSymbol(
     symbolName: string,
     includeReffedDefinitions: boolean = true,
-    includeAllOverrides: boolean = false
+    includeAllOverrides: boolean = false,
   ): Definition {
     const overrideDefinition = this.schemaOverrides.get(symbolName);
     if (!this.allSymbols[symbolName] && !overrideDefinition) {
@@ -1827,7 +1827,7 @@ class JsonSchemaGenerator {
             undefined,
             undefined,
             undefined,
-            this.userSymbols[symbolName] || undefined
+            this.userSymbols[symbolName] || undefined,
           );
     }
 
@@ -1849,7 +1849,7 @@ class JsonSchemaGenerator {
   public getSchemaForSymbols(
     symbolNames: string[],
     includeReffedDefinitions: boolean = true,
-    includeAllOverrides: boolean = false
+    includeAllOverrides: boolean = false,
   ): Definition {
     const root: {
       $id?: string;
@@ -1875,7 +1875,7 @@ class JsonSchemaGenerator {
         undefined,
         undefined,
         undefined,
-        this.userSymbols[symbolName]
+        this.userSymbols[symbolName],
       );
     }
     if (
@@ -1902,7 +1902,7 @@ class JsonSchemaGenerator {
 
   public getMainFileSymbols(
     program: ts.Program,
-    onlyIncludeFiles?: string[]
+    onlyIncludeFiles?: string[],
   ): string[] {
     function includeFile(file: ts.SourceFile): boolean {
       if (onlyIncludeFiles === undefined) {
@@ -1940,7 +1940,7 @@ function generateHashOfNode(node: ts.Node, relativePath: string): string {
 
 export function buildGenerator(
   program: ts.Program,
-  args: PartialArgs = {}
+  args: PartialArgs = {},
 ): JsonSchemaGenerator | null {
   // Use defaults unless otherwise specified
   const settings = getDefaultArgs();
@@ -1990,7 +1990,7 @@ export function buildGenerator(
           var baseName = tc.typeToString(
             baseType,
             undefined,
-            ts.TypeFormatFlags.UseFullyQualifiedType
+            ts.TypeFormatFlags.UseFullyQualifiedType,
           );
           if (!inheritingTypes[baseName]) {
             inheritingTypes[baseName] = [];
@@ -2011,14 +2011,14 @@ export function buildGenerator(
     userSymbols,
     inheritingTypes,
     typeChecker,
-    settings
+    settings,
   );
 }
 
 export async function extractGraphSchema(
   id: string,
   userPath: string,
-  exportName: string
+  exportName: string,
 ) {
   const filePath = path.resolve(process.cwd(), userPath);
   const parentPath = path.dirname(filePath);
@@ -2104,7 +2104,7 @@ export async function extractGraphSchema(
         export type __input = Inspect<FilterAny<__builder["input"]>>;
         export type __output = Inspect<FilterAny<__builder["output"]>>;
         export type __config = Inspect<FilterAny<__builder["config"]>>;
-      `
+      `,
     );
     const program = ts.createProgram([typePath], {
       noEmit: true,
@@ -2120,7 +2120,7 @@ export async function extractGraphSchema(
       } catch (e) {
         console.error(
           `Failed to obtain symbol "${symbol}":`,
-          (e as Error)?.message
+          (e as Error)?.message,
         );
       }
       return undefined;

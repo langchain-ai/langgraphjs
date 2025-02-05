@@ -15,7 +15,7 @@ export async function spawnServer(
   options: {
     pid: number;
     projectCwd: string;
-  }
+  },
 ) {
   const localUrl = `http://${args.host}:${args.port}`;
   const studioUrl = `${context.hostUrl}/studio?baseUrl=${localUrl}`;
@@ -39,7 +39,7 @@ For production use, please use LangGraph Cloud.
     process.execPath,
     [
       fileURLToPath(
-        new URL("../../cli.mjs", import.meta.resolve("tsx/esm/api"))
+        new URL("../../cli.mjs", import.meta.resolve("tsx/esm/api")),
       ),
       "watch",
       "--clear-screen=false",
@@ -53,6 +53,6 @@ For production use, please use LangGraph Cloud.
         cwd: options.projectCwd,
       }),
     ],
-    { stdio: ["inherit", "inherit", "inherit", "ipc"], env: context.env }
+    { stdio: ["inherit", "inherit", "inherit", "ipc"], env: context.env },
   );
 }

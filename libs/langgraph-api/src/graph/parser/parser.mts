@@ -28,7 +28,7 @@ export class SubgraphExtractor {
     program: ts.Program,
     sourceFile: ts.SourceFile,
     inferFile: ts.SourceFile,
-    options?: { strict?: boolean }
+    options?: { strict?: boolean },
   ) {
     this.program = program;
     this.sourceFile = sourceFile;
@@ -65,7 +65,7 @@ export class SubgraphExtractor {
 
   private find = (
     root: ts.Node,
-    predicate: (node: ts.Node) => boolean
+    predicate: (node: ts.Node) => boolean,
   ): ts.Node | undefined => {
     let result: ts.Node | undefined = undefined;
 
@@ -84,7 +84,7 @@ export class SubgraphExtractor {
 
   protected findSubgraphs = (
     node: ts.Node,
-    namespace: string[] = []
+    namespace: string[] = [],
   ): {
     node: string;
     namespace: string[];
@@ -96,7 +96,7 @@ export class SubgraphExtractor {
         namespace: string[];
         subgraph: { name: string; node: ts.Node };
       }[],
-      node: ts.Node
+      node: ts.Node,
     ) => {
       if (ts.isCallExpression(node)) {
         const firstChild = node.getChildAt(0);
@@ -128,7 +128,7 @@ export class SubgraphExtractor {
               variables = this.reduceChildren(
                 callArg,
                 this.findSubgraphIdentifiers,
-                []
+                [],
               );
             } else if (ts.isIdentifier(callArg)) {
               variables = this.findSubgraphIdentifiers([], callArg);
@@ -166,13 +166,13 @@ export class SubgraphExtractor {
       type InternalFlowNode = ts.Node & { flowNode?: { node: ts.Node } };
       const candidate = this.find(
         node,
-        (node: any) => node && "flowNode" in node && node.flowNode
+        (node: any) => node && "flowNode" in node && node.flowNode,
       ) as InternalFlowNode | undefined;
 
       if (
         candidate?.flowNode &&
         this.isGraphOrPregelType(
-          this.checker.getTypeAtLocation(candidate.flowNode.node)
+          this.checker.getTypeAtLocation(candidate.flowNode.node),
         )
       ) {
         subgraphs = this.findSubgraphs(candidate.flowNode.node, namespace);
@@ -184,7 +184,7 @@ export class SubgraphExtractor {
       return [
         ...subgraphs,
         ...subgraphs.map(({ subgraph, node }) =>
-          this.findSubgraphs(subgraph.node, [...namespace, node])
+          this.findSubgraphs(subgraph.node, [...namespace, node]),
         ),
       ].flat();
     }
@@ -199,7 +199,7 @@ export class SubgraphExtractor {
     const targetExport = exports.find((item) => item.name === name);
     if (!targetExport) throw new Error(`Failed to find export "${name}"`);
     const varDecls = (targetExport.declarations ?? []).filter(
-      ts.isVariableDeclaration
+      ts.isVariableDeclaration,
     );
 
     return varDecls.flatMap((varDecl) => {
@@ -209,7 +209,7 @@ export class SubgraphExtractor {
   };
 
   public getAugmentedSourceFile = (
-    name: string
+    name: string,
   ): {
     files: [filePath: string, contents: string][];
     exports: { typeName: string; valueName: string; graphName: string }[];
@@ -238,7 +238,7 @@ export class SubgraphExtractor {
       this.getText(this.sourceFile),
       ...typeExports.map(
         ({ typeName, valueName }) =>
-          `export type ${typeName} = typeof ${valueName}`
+          `export type ${typeName} = typeof ${valueName}`,
       ),
     ].join("\n\n");
 
@@ -246,7 +246,7 @@ export class SubgraphExtractor {
     const inferContents = [
       ...typeExports.map(
         ({ typeName }) =>
-          `import type { ${typeName}} from "./__langgraph__source.mts"`
+          `import type { ${typeName}} from "./__langgraph__source.mts"`,
       ),
       this.inferFile.getText(this.inferFile),
 
@@ -277,7 +277,7 @@ export class SubgraphExtractor {
 
   protected findSubgraphIdentifiers = (
     acc: { node: ts.Node; name: string }[],
-    node: ts.Node
+    node: ts.Node,
   ) => {
     if (ts.isIdentifier(node)) {
       const smb = this.checker.getSymbolAtLocation(node);
@@ -322,7 +322,7 @@ export class SubgraphExtractor {
   protected reduceChildren<Acc>(
     node: ts.Node,
     fn: (acc: Acc, node: ts.Node) => Acc,
-    initial: Acc
+    initial: Acc,
   ): Acc {
     let acc = initial;
     function it(node: ts.Node) {
@@ -343,7 +343,7 @@ export class SubgraphExtractor {
           files?: [fileName: string, contents: string][];
         },
     name: string,
-    options?: { strict?: boolean }
+    options?: { strict?: boolean },
   ) {
     const dirname =
       typeof target === "string" ? path.dirname(target) : __dirname;
@@ -365,7 +365,7 @@ export class SubgraphExtractor {
 
     const inferTemplatePath = path.resolve(
       __dirname,
-      "./schema/types.template.mts"
+      "./schema/types.template.mts",
     );
 
     if (typeof target !== "string") {
@@ -417,7 +417,7 @@ export class SubgraphExtractor {
       research,
       research.getSourceFile(targetPath)!,
       research.getSourceFile(inferTemplatePath)!,
-      options
+      options,
     );
 
     const { files, exports } = extractor.getAugmentedSourceFile(name);
@@ -438,7 +438,7 @@ export class SubgraphExtractor {
       } catch (e) {
         console.warn(
           `Failed to obtain symbol "${symbol}":`,
-          (e as Error)?.message
+          (e as Error)?.message,
         );
       }
       return undefined;
@@ -453,7 +453,7 @@ export class SubgraphExtractor {
           state: trySymbol(schemaGenerator, `${typeName}__update`),
           config: trySymbol(schemaGenerator, `${typeName}__config`),
         },
-      ])
+      ]),
     );
   }
 }

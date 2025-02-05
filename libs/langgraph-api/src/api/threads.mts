@@ -46,7 +46,7 @@ api.post(
     }
 
     return jsonExtra(c, result);
-  }
+  },
 );
 
 api.get(
@@ -54,7 +54,7 @@ api.get(
   zValidator("param", z.object({ thread_id: z.string().uuid() })),
   zValidator(
     "query",
-    z.object({ subgraphs: schemas.coercedBoolean.optional() })
+    z.object({ subgraphs: schemas.coercedBoolean.optional() }),
   ),
   async (c) => {
     // Get Latest Thread State
@@ -62,11 +62,11 @@ api.get(
     const { subgraphs } = c.req.valid("query");
 
     const state = stateSnapshotToThreadState(
-      await Threads.State.get({ configurable: { thread_id } }, { subgraphs })
+      await Threads.State.get({ configurable: { thread_id } }, { subgraphs }),
     );
 
     return jsonExtra(c, state);
-  }
+  },
 );
 
 api.post(
@@ -84,7 +84,7 @@ api.post(
       as_node: z.string().optional(),
       checkpoint_id: z.string().optional(),
       checkpoint: schemas.CheckpointSchema.nullish(),
-    })
+    }),
   ),
   async (c) => {
     // Update Thread State
@@ -104,22 +104,25 @@ api.post(
     const inserted = await Threads.State.post(
       config,
       payload.values,
-      payload.as_node
+      payload.as_node,
     );
 
     return jsonExtra(c, inserted);
-  }
+  },
 );
 
 api.get(
   "/threads/:thread_id/state/:checkpoint_id",
   zValidator(
     "param",
-    z.object({ thread_id: z.string().uuid(), checkpoint_id: z.string().uuid() })
+    z.object({
+      thread_id: z.string().uuid(),
+      checkpoint_id: z.string().uuid(),
+    }),
   ),
   zValidator(
     "query",
-    z.object({ subgraphs: schemas.coercedBoolean.optional() })
+    z.object({ subgraphs: schemas.coercedBoolean.optional() }),
   ),
   async (c) => {
     // Get Thread State At Checkpoint
@@ -128,12 +131,12 @@ api.get(
     const state = stateSnapshotToThreadState(
       await Threads.State.get(
         { configurable: { thread_id, checkpoint_id } },
-        { subgraphs }
-      )
+        { subgraphs },
+      ),
     );
 
     return jsonExtra(c, state);
-  }
+  },
 );
 
 api.post(
@@ -144,7 +147,7 @@ api.post(
     z.object({
       subgraphs: schemas.coercedBoolean.optional(),
       checkpoint: schemas.CheckpointSchema.nullish(),
-    })
+    }),
   ),
   async (c) => {
     // Get Thread State At Checkpoint Post
@@ -154,12 +157,12 @@ api.post(
     const state = stateSnapshotToThreadState(
       await Threads.State.get(
         { configurable: { thread_id, ...checkpoint } },
-        { subgraphs }
-      )
+        { subgraphs },
+      ),
     );
 
     return jsonExtra(c, state);
-  }
+  },
 );
 
 api.get(
@@ -174,7 +177,7 @@ api.get(
         .default("10")
         .transform((value) => parseInt(value, 10)),
       before: z.string().optional(),
-    })
+    }),
   ),
   async (c) => {
     // Get Thread History
@@ -183,10 +186,10 @@ api.get(
 
     const states = await Threads.State.list(
       { configurable: { thread_id, checkpoint_ns: "" } },
-      { limit, before }
+      { limit, before },
     );
     return jsonExtra(c, states.map(stateSnapshotToThreadState));
-  }
+  },
 );
 
 api.post(
@@ -205,7 +208,7 @@ api.post(
           checkpoint_map: z.record(z.string(), z.unknown()).optional(),
         })
         .optional(),
-    })
+    }),
   ),
   async (c) => {
     // Get Thread History Post
@@ -214,11 +217,11 @@ api.post(
 
     const states = await Threads.State.list(
       { configurable: { thread_id, checkpoint_ns: "", ...checkpoint } },
-      { limit, before, metadata }
+      { limit, before, metadata },
     );
 
     return jsonExtra(c, states.map(stateSnapshotToThreadState));
-  }
+  },
 );
 
 api.get(
@@ -228,7 +231,7 @@ api.get(
     // Get Thread
     const { thread_id } = c.req.valid("param");
     return jsonExtra(c, await Threads.get(thread_id));
-  }
+  },
 );
 
 api.delete(
@@ -239,7 +242,7 @@ api.delete(
     const { thread_id } = c.req.valid("param");
     await Threads.delete(thread_id);
     return new Response(null, { status: 204 });
-  }
+  },
 );
 
 api.patch(
@@ -251,7 +254,7 @@ api.patch(
     const { thread_id } = c.req.valid("param");
     const { metadata } = c.req.valid("json");
     return jsonExtra(c, await Threads.patch(thread_id, { metadata }));
-  }
+  },
 );
 
 api.post(
@@ -261,7 +264,7 @@ api.post(
     // Copy Thread
     const { thread_id } = c.req.valid("param");
     return jsonExtra(c, await Threads.copy(thread_id));
-  }
+  },
 );
 
 export default api;

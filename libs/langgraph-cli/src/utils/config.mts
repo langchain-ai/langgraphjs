@@ -7,7 +7,7 @@ const BaseConfigSchema = z.object({
   graphs: z.record(
     z.string().refine((i) => i.includes(":"), {
       message: "Import string must be in format '<file>:<export>'",
-    })
+    }),
   ),
   _INTERNAL_docker_tag: z.string().optional(),
   env: z
@@ -45,16 +45,16 @@ const PythonConfigSchema = BaseConfigSchema.merge(
     dependencies: z
       .array(z.string())
       .nonempty("You need to specify at least one dependency"),
-  })
+  }),
 ).merge(
   z.object({
     python_version: PythonVersionSchema.default(DEFAULT_PYTHON_VERSION),
     node_version: NodeVersionSchema.optional(),
-  })
+  }),
 );
 
 const NodeConfigSchema = BaseConfigSchema.merge(
-  z.object({ node_version: NodeVersionSchema.default(DEFAULT_NODE_VERSION) })
+  z.object({ node_version: NodeVersionSchema.default(DEFAULT_NODE_VERSION) }),
 );
 
 const ConfigSchema = z.union([NodeConfigSchema, PythonConfigSchema]);
@@ -66,7 +66,7 @@ export const getConfig = (config: z.input<typeof ConfigSchema> | string) => {
   const { graphs } = BaseConfigSchema.parse(input);
 
   const isPython = Object.values(graphs).map((i) =>
-    PYTHON_EXTENSIONS.includes(extname(i.split(":")[0]))
+    PYTHON_EXTENSIONS.includes(extname(i.split(":")[0])),
   );
   const somePython = isPython.some((i) => i);
   const someNode = !isPython.every((i) => i);

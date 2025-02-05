@@ -15,12 +15,15 @@
     "dist/"
   ],
   "scripts": {
+    "clean": "npx -y bun scripts/clean.mjs",
     "build": "npx -y bun scripts/build.mjs",
     "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit",
     "cli": "tsx src/cli/cli.mts",
     "cli:watch": "tsx watch src/cli/cli.mts",
-    "test": "vitest"
+    "test": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@commander-js/extra-typings": "^13.0.0",

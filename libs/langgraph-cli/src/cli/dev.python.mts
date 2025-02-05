@@ -79,7 +79,7 @@ function getDownloadUrl(info: UvBinaryInfo): string {
 async function downloadAndExtract(
   url: string,
   destPath: string,
-  info: UvBinaryInfo
+  info: UvBinaryInfo,
 ): Promise<string> {
   const response = await fetch(url);
   if (!response.ok)
@@ -100,7 +100,7 @@ async function downloadAndExtract(
       await tarExtract({ file: tempFilePath, cwd: tempDirPath });
       sourceBinaryPath = path.resolve(
         sourceBinaryPath,
-        path.basename(tempFilePath).slice(0, ".tar.gz".length * -1)
+        path.basename(tempFilePath).slice(0, ".tar.gz".length * -1),
       );
     }
     sourceBinaryPath = path.resolve(sourceBinaryPath, info.binaryName);
@@ -151,7 +151,7 @@ export async function spawnPythonServer(
   options: {
     pid: number;
     projectCwd: string;
-  }
+  },
 ) {
   const deps = await assembleLocalDeps(context.configPath, context.config);
   const requirements = deps.rebuildFiles.filter((i) => i.endsWith(".txt"));
@@ -180,6 +180,6 @@ export async function spawnPythonServer(
       stdio: ["inherit", "inherit", "inherit"],
       env: context.env,
       cwd: options.projectCwd,
-    }
+    },
   );
 }

@@ -51,18 +51,18 @@ The CLI uses a `langgraph.json` configuration file with these key settings:
 ```json5
 {
   // Required: Graph definitions
-  "graphs": {
-    "graph": "./src/graph.ts:graph" 
+  graphs: {
+    graph: "./src/graph.ts:graph",
   },
 
   // Optional: Node version (20 only at the moment)
-  "node_version": "20",
+  node_version: "20",
 
   // Optional: Environment variables
-  "env": ".env",
-  
+  env: ".env",
+
   // Optional: Additional Dockerfile commands
-  "dockerfile_lines": []
+  dockerfile_lines: [],
 }
 ```
 

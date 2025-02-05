@@ -135,7 +135,7 @@ export const conn = new FileSystemPersistence<Store>(
     assistants: {},
     assistant_versions: [],
     retry_counter: {},
-  })
+  }),
 );
 
 class TimeoutError extends Error {}
@@ -255,8 +255,8 @@ export const truncate = (flags: {
         Object.entries(STORE.assistants).filter(
           ([key, assistant]) =>
             assistant.metadata?.created_by === "system" &&
-            uuid5(assistant.graph_id, NAMESPACE_GRAPH) === key
-        )
+            uuid5(assistant.graph_id, NAMESPACE_GRAPH) === key,
+        ),
       );
     }
 
@@ -271,7 +271,7 @@ const isObject = (value: unknown): value is Record<string, unknown> => {
 
 const isJsonbContained = (
   superset: Record<string, unknown> | undefined,
-  subset: Record<string, unknown> | undefined
+  subset: Record<string, unknown> | undefined,
 ): boolean => {
   if (superset == null || subset == null) return true;
   for (const [key, value] of Object.entries(subset)) {
@@ -321,7 +321,7 @@ export class Assistants {
 
       for (const assistant of filtered.slice(
         options.offset,
-        options.offset + options.limit
+        options.offset + options.limit,
       )) {
         yield { ...assistant, name: assistant.name ?? assistant.graph_id };
       }
@@ -345,7 +345,7 @@ export class Assistants {
       metadata?: Metadata;
       if_exists: OnConflictBehavior;
       name?: string;
-    }
+    },
   ): Promise<Assistant> {
     return conn.with((STORE) => {
       if (STORE.assistants[assistantId] != null) {
@@ -389,7 +389,7 @@ export class Assistants {
       graph_id?: string;
       metadata?: Metadata;
       name?: string;
-    }
+    },
   ): Promise<Assistant> {
     return conn.with((STORE) => {
       const assistant = STORE.assistants[assistantId];
@@ -428,7 +428,7 @@ export class Assistants {
         Math.max(
           ...STORE.assistant_versions
             .filter((v) => v["assistant_id"] === assistantId)
-            .map((v) => v["version"])
+            .map((v) => v["version"]),
         ) + 1;
 
       assistant.version = newVersion;
@@ -458,7 +458,7 @@ export class Assistants {
 
       // Cascade delete for assistant versions and crons
       STORE.assistant_versions = STORE.assistant_versions.filter(
-        (v) => v["assistant_id"] !== assistantId
+        (v) => v["assistant_id"] !== assistantId,
       );
 
       for (const run of Object.values(STORE.runs)) {
@@ -473,7 +473,7 @@ export class Assistants {
 
   static async setLatest(
     assistantId: string,
-    version: number
+    version: number,
   ): Promise<Assistant> {
     return conn.with((STORE) => {
       const assistant = STORE.assistants[assistantId];
@@ -481,7 +481,7 @@ export class Assistants {
         throw new HTTPException(404, { message: "Assistant not found" });
 
       const assistantVersion = STORE.assistant_versions.find(
-        (v) => v["assistant_id"] === assistantId && v["version"] === version
+        (v) => v["assistant_id"] === assistantId && v["version"] === version,
       );
 
       if (!assistantVersion)
@@ -509,7 +509,7 @@ export class Assistants {
       limit: number;
       offset: number;
       metadata?: Metadata;
-    }
+    },
   ) {
     return conn.with((STORE) => {
       const versions = STORE.assistant_versions
@@ -620,7 +620,7 @@ export class Threads {
 
       for (const thread of filtered.slice(
         options.offset,
-        options.offset + options.limit
+        options.offset + options.limit,
       )) {
         yield thread;
       }
@@ -644,7 +644,7 @@ export class Threads {
     options?: {
       metadata?: Metadata;
       if_exists: OnConflictBehavior;
-    }
+    },
   ): Promise<Thread> {
     return conn.with((STORE) => {
       const now = new Date();
@@ -674,7 +674,7 @@ export class Threads {
     threadId: string,
     options?: {
       metadata?: Metadata;
-    }
+    },
   ): Promise<Thread> {
     return conn.with((STORE) => {
       const thread = STORE.threads[threadId];
@@ -699,7 +699,7 @@ export class Threads {
     options: {
       checkpoint?: CheckpointPayload;
       exception?: Error;
-    }
+    },
   ) {
     return conn.with((STORE) => {
       const thread = STORE.threads[threadId];
@@ -712,7 +712,7 @@ export class Threads {
       }
 
       const hasPendingRuns = Object.values(STORE.runs).some(
-        (run) => run["thread_id"] === threadId && run["status"] === "pending"
+        (run) => run["thread_id"] === threadId && run["status"] === "pending",
       );
 
       let status: ThreadStatus = "idle";
@@ -737,7 +737,7 @@ export class Threads {
                 if (task.interrupts) acc[task.id] = task.interrupts;
                 return acc;
               },
-              {}
+              {},
             )
           : undefined;
     });
@@ -790,7 +790,7 @@ export class Threads {
       config: RunnableConfig,
       options: {
         subgraphs?: boolean;
-      }
+      },
     ): Promise<LangGraphStateSnapshot> {
       const subgraphs = options.subgraphs ?? false;
       const threadId = config.configurable?.thread_id;
@@ -831,7 +831,7 @@ export class Threads {
         | Record<string, unknown>
         | null
         | undefined,
-      asNode?: string | undefined
+      asNode?: string | undefined,
     ) {
       const threadId = config.configurable?.thread_id;
       const thread = threadId ? await Threads.get(threadId) : undefined;
@@ -880,7 +880,7 @@ export class Threads {
         limit?: number;
         before?: string | RunnableConfig;
         metadata?: Metadata;
-      }
+      },
     ) {
       const threadId = config.configurable?.thread_id;
       if (!threadId) return [];
@@ -932,7 +932,7 @@ export class Runs {
 
         if (!thread) {
           await console.warn(
-            `Unexpected missing thread in Runs.next: ${threadId}`
+            `Unexpected missing thread in Runs.next: ${threadId}`,
           );
           continue;
         }
@@ -965,7 +965,7 @@ export class Runs {
       multitaskStrategy?: MultitaskStrategy;
       ifNotExists?: IfNotExists;
       afterSeconds?: number;
-    }
+    },
   ): Promise<Run[]> {
     return conn.with(async (STORE) => {
       const assistant = STORE.assistants[assistantId];
@@ -985,7 +985,7 @@ export class Runs {
       const config: RunnableConfig = kwargs.config ?? {};
 
       const existingThread = Object.values(STORE.threads).find(
-        (thread) => thread.thread_id === threadId
+        (thread) => thread.thread_id === threadId,
       );
 
       const now = new Date();
@@ -1000,7 +1000,7 @@ export class Runs {
             configurable: Object.assign(
               {},
               assistant.config?.configurable,
-              config?.configurable
+              config?.configurable,
             ),
           }),
           created_at: now,
@@ -1025,9 +1025,9 @@ export class Runs {
                 {},
                 assistant.config?.configurable,
                 existingThread?.config?.configurable,
-                config?.configurable
+                config?.configurable,
               ),
-            }
+            },
           );
 
           existingThread.updated_at = now;
@@ -1039,7 +1039,7 @@ export class Runs {
       // if multitask_mode = reject, check for inflight runs
       // and if there are any, return them to reject putting a new run
       const inflightRuns = Object.values(STORE.runs).filter(
-        (run) => run.thread_id === threadId && run.status === "pending"
+        (run) => run.thread_id === threadId && run.status === "pending",
       );
 
       if (options?.preventInsertInInflight) {
@@ -1062,14 +1062,14 @@ export class Runs {
             existingThread?.config?.configurable?.user_id ??
             assistant.config?.configurable?.user_id ??
             options?.userId,
-        }
+        },
       );
 
       const mergedMetadata = Object.assign(
         {},
         assistant.metadata,
         existingThread?.metadata,
-        metadata
+        metadata,
       );
 
       const newRun: Run = {
@@ -1084,7 +1084,7 @@ export class Runs {
             assistant.config,
             config,
             { configurable },
-            { metadata: mergedMetadata }
+            { metadata: mergedMetadata },
           ),
         }),
         multitask_strategy: multitaskStrategy,
@@ -1099,7 +1099,7 @@ export class Runs {
 
   static async get(
     runId: string,
-    threadId: string | undefined
+    threadId: string | undefined,
   ): Promise<Run | null> {
     return conn.with(async (STORE) => {
       const run = STORE.runs[runId];
@@ -1115,7 +1115,7 @@ export class Runs {
 
   static async delete(
     runId: string,
-    threadId: string | undefined
+    threadId: string | undefined,
   ): Promise<string | null> {
     return conn.with(async (STORE) => {
       const run = STORE.runs[runId];
@@ -1167,7 +1167,7 @@ export class Runs {
     runIds: string[],
     options: {
       action?: "interrupt" | "rollback";
-    }
+    },
   ) {
     return conn.with(async (STORE) => {
       const action = options.action ?? "interrupt";
@@ -1194,7 +1194,7 @@ export class Runs {
               {
                 run_id: runId,
                 thread_id: threadId,
-              }
+              },
             );
 
             promises.push(Runs.delete(runId, threadId));
@@ -1228,7 +1228,7 @@ export class Runs {
       offset?: number | null;
       status?: string | null;
       metadata?: Metadata | null;
-    }
+    },
   ) {
     return conn.with(async (STORE) => {
       const runs = Object.values(STORE.runs).filter((run) => {
@@ -1263,7 +1263,7 @@ export class Runs {
       options?: {
         ignore404?: boolean;
         cancelOnDisconnect?: AbortSignal;
-      }
+      },
     ): AsyncGenerator<{ event: string; data: unknown }> {
       // TODO: what if we're joining an already completed run? Should we check before?
       const signal = options?.cancelOnDisconnect;
@@ -1276,7 +1276,7 @@ export class Runs {
             if (message.data === "done") break;
           } else {
             const streamTopic = message.topic.substring(
-              `run:${runId}:stream:`.length
+              `run:${runId}:stream:`.length,
             );
 
             yield { event: streamTopic, data: message.data };

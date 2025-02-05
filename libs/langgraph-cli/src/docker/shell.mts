@@ -53,8 +53,8 @@ async function getLoginPath() {
 
   const [fromShell, fromBackup] = await Promise.allSettled(
     [extractPathFromShell(), guessUserPath()].map((promise) =>
-      promise.then(verifyDockerPath)
-    )
+      promise.then(verifyDockerPath),
+    ),
   );
 
   if (fromShell.status === "fulfilled") {
@@ -65,7 +65,7 @@ async function getLoginPath() {
     console.error(
       "Failed to get PATH from shell or backup",
       fromShell.reason,
-      fromBackup.reason
+      fromBackup.reason,
     );
     throw fromShell.reason || fromBackup.reason;
   }
@@ -76,7 +76,7 @@ async function getLoginPath() {
 type CommonOptions = Exclude<Parameters<ExecaScriptMethod>[1], undefined>;
 
 export async function getExecaOptions<T extends CommonOptions = {}>(
-  options?: T
+  options?: T,
 ) {
   const env = await getLoginPath();
   return { ...options, env } as T & { env: typeof env };

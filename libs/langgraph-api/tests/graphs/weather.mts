@@ -49,7 +49,7 @@ const router = new StateGraph(routerState)
       if (route === "weather") return "weather_graph";
       return "normal_llm_node";
     },
-    ["weather_graph", "normal_llm_node"]
+    ["weather_graph", "normal_llm_node"],
   )
   .addEdge("weather_graph", END)
   .addEdge("normal_llm_node", END);

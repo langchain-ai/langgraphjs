@@ -6,7 +6,7 @@ parentPort?.on("message", async (payload) => {
   const result = SubgraphExtractor.extractSchemas(
     payload.sourceFile,
     payload.exportSymbol,
-    { strict: false }
+    { strict: false },
   );
   parentPort?.postMessage(result);
 });

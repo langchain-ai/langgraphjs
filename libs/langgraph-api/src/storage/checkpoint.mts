@@ -77,18 +77,18 @@ class InMemorySaver extends MemorySaver {
   async put(
     config: RunnableConfig,
     checkpoint: Checkpoint,
-    metadata: CheckpointMetadata
+    metadata: CheckpointMetadata,
   ): Promise<RunnableConfig> {
     return await conn.with(() =>
       super.put(config, checkpoint, {
         ...Object.fromEntries(
           Object.entries(config.configurable ?? {}).filter(
-            ([key]) => !key.startsWith("__") && !EXCLUDED_KEYS.includes(key)
-          )
+            ([key]) => !key.startsWith("__") && !EXCLUDED_KEYS.includes(key),
+          ),
         ),
         ...config.metadata,
         ...metadata,
-      })
+      }),
     );
   }
 

@@ -11,7 +11,7 @@ const ConfigSchema = z.object({
 });
 
 export const runnableConfigToCheckpoint = (
-  config: RunnableConfig | null | undefined
+  config: RunnableConfig | null | undefined,
 ): Checkpoint | null => {
   if (!config || !config.configurable || !config.configurable.thread_id) {
     return null;
@@ -38,7 +38,7 @@ const TaskConfigSchema = z.object({
 });
 
 export const taskRunnableConfigToCheckpoint = (
-  config: RunnableConfig | null | undefined
+  config: RunnableConfig | null | undefined,
 ): Partial<Checkpoint> | null => {
   if (!config || !config.configurable || !config.configurable.thread_id) {
     return null;

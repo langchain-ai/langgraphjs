@@ -26,7 +26,7 @@ builder
   .option("-c, --config <path>", "Path to configuration file", process.cwd())
   .option(
     "--no-pull",
-    "Running the server with locally-built images. By default LangGraph will pull the latest images from the registry"
+    "Running the server with locally-built images. By default LangGraph will pull the latest images from the registry",
   )
   .argument("[args...]")
   .passThroughOptions()
@@ -35,7 +35,7 @@ builder
     withAnalytics((command) => ({
       config: command.opts().config !== process.cwd(),
       pull: command.opts().pull,
-    }))
+    })),
   )
   .action(async (pass, params) => {
     const configPath = await getProjectPath(params.config);
@@ -63,6 +63,6 @@ builder
 
     exec = $({ ...opts, input });
     await stream(
-      exec`docker build -f - -t ${params.tag} ${projectDir} ${pass}`
+      exec`docker build -f - -t ${params.tag} ${projectDir} ${pass}`,
     );
   });

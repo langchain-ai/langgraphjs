@@ -19,7 +19,7 @@ const api = new Hono();
 
 const createValidRun = async (
   threadId: string | undefined,
-  payload: z.infer<typeof schemas.RunCreate>
+  payload: z.infer<typeof schemas.RunCreate>,
 ): Promise<Run> => {
   const { assistant_id: assistantId, ...run } = payload;
   const runId = uuid4();
@@ -78,7 +78,7 @@ const createValidRun = async (
       preventInsertInInflight,
       afterSeconds: payload.after_seconds,
       ifNotExists: payload.if_not_exists,
-    }
+    },
   );
 
   if (first?.run_id === runId) {
@@ -91,7 +91,7 @@ const createValidRun = async (
         await Runs.cancel(
           threadId,
           inflight.map((run) => run.run_id),
-          { action: multitaskStrategy }
+          { action: multitaskStrategy },
         );
       } catch (error) {
         logger.warn(
@@ -100,7 +100,7 @@ const createValidRun = async (
             error,
             run_ids: inflight.map((run) => run.run_id),
             thread_id: threadId,
-          }
+          },
         );
       }
     }
@@ -129,7 +129,7 @@ api.post(
   async () => {
     // Search Crons
     throw new HTTPException(500, { message: "Not implemented" });
-  }
+  },
 );
 
 api.delete(
@@ -138,7 +138,7 @@ api.delete(
   async () => {
     // Delete Cron
     throw new HTTPException(500, { message: "Not implemented" });
-  }
+  },
 );
 
 api.post(
@@ -148,7 +148,7 @@ api.post(
   async () => {
     // Create Thread Cron
     throw new HTTPException(500, { message: "Not implemented" });
-  }
+  },
 );
 
 api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
@@ -166,7 +166,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
       for await (const { event, data } of Runs.Stream.join(
         run.run_id,
         undefined,
-        { cancelOnDisconnect, ignore404: true }
+        { cancelOnDisconnect, ignore404: true },
       )) {
         await stream.writeSSE({ data: serialiseAsDict(data), event });
       }
@@ -197,10 +197,10 @@ api.post(
     // Batch Runs
     const payload = c.req.valid("json");
     const runs = await Promise.all(
-      payload.map((run) => createValidRun(undefined, run))
+      payload.map((run) => createValidRun(undefined, run)),
     );
     return jsonExtra(c, runs);
-  }
+  },
 );
 
 api.get(
@@ -213,7 +213,7 @@ api.get(
       offset: z.coerce.number().nullish(),
       status: z.string().nullish(),
       metadata: z.record(z.string(), z.unknown()).nullish(),
-    })
+    }),
   ),
   async (c) => {
     // List runs
@@ -231,7 +231,7 @@ api.get(
     ]);
 
     return jsonExtra(c, runs);
-  }
+  },
 );
 
 api.post(
@@ -245,7 +245,7 @@ api.post(
 
     const run = await createValidRun(thread_id, payload);
     return jsonExtra(c, run);
-  }
+  },
 );
 
 api.post(
@@ -268,7 +268,7 @@ api.post(
         for await (const { event, data } of Runs.Stream.join(
           run.run_id,
           thread_id,
-          { cancelOnDisconnect }
+          { cancelOnDisconnect },
         )) {
           await stream.writeSSE({ data: serialiseAsDict(data), event });
         }
@@ -276,7 +276,7 @@ api.post(
         logError(error, { prefix: "Error streaming run" });
       }
     });
-  }
+  },
 );
 
 api.post(
@@ -290,14 +290,14 @@ api.post(
 
     const run = await createValidRun(thread_id, payload);
     return waitKeepAlive(c, Runs.join(run.run_id, thread_id));
-  }
+  },
 );
 
 api.get(
   "/threads/:thread_id/runs/:run_id",
   zValidator(
     "param",
-    z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() })
+    z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() }),
   ),
   async (c) => {
     const { thread_id, run_id } = c.req.valid("param");
@@ -307,45 +307,45 @@ api.get(
     ]);
 
     return jsonExtra(c, run);
-  }
+  },
 );
 
 api.delete(
   "/threads/:thread_id/runs/:run_id",
   zValidator(
     "param",
-    z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() })
+    z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() }),
   ),
   async (c) => {
     // Delete Run
     const { thread_id, run_id } = c.req.valid("param");
     await Runs.delete(run_id, thread_id);
     return c.body(null, 204);
-  }
+  },
 );
 
 api.get(
   "/threads/:thread_id/runs/:run_id/join",
   zValidator(
     "param",
-    z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() })
+    z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() }),
   ),
   async (c) => {
     // Join Run Http
     const { thread_id, run_id } = c.req.valid("param");
     return jsonExtra(c, await Runs.join(run_id, thread_id));
-  }
+  },
 );
 
 api.get(
   "/threads/:thread_id/runs/:run_id/stream",
   zValidator(
     "param",
-    z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() })
+    z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() }),
   ),
   zValidator(
     "query",
-    z.object({ cancel_on_disconnect: schemas.coercedBoolean.optional() })
+    z.object({ cancel_on_disconnect: schemas.coercedBoolean.optional() }),
   ),
   async (c) => {
     // Stream Run Http
@@ -362,21 +362,21 @@ api.get(
         await stream.writeSSE({ data: serialiseAsDict(data), event });
       }
     });
-  }
+  },
 );
 
 api.post(
   "/threads/:thread_id/runs/:run_id/cancel",
   zValidator(
     "param",
-    z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() })
+    z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() }),
   ),
   zValidator(
     "query",
     z.object({
       wait: z.coerce.boolean().optional().default(false),
       action: z.enum(["interrupt", "rollback"]).optional().default("interrupt"),
-    })
+    }),
   ),
   async (c) => {
     // Cancel Run Http
@@ -386,7 +386,7 @@ api.post(
     await Runs.cancel(thread_id, [run_id], { action });
     if (wait) await Runs.join(run_id, thread_id);
     return c.body(null, wait ? 204 : 202);
-  }
+  },
 );
 
 export default api;

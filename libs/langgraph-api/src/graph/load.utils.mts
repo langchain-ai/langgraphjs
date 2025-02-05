@@ -8,7 +8,7 @@ import type { JSONSchema7 } from "json-schema";
 
 export const GRAPHS: Record<string, CompiledGraph<string>> = {};
 export const NAMESPACE_GRAPH = uuid.parse(
-  "6ba7b821-9dad-11d1-80b4-00c04fd430c8"
+  "6ba7b821-9dad-11d1-80b4-00c04fd430c8",
 );
 
 export interface GraphSchema {
@@ -25,7 +25,7 @@ export interface GraphSpec {
 
 export async function resolveGraph(
   spec: string,
-  options: { cwd: string; onlyFilePresence?: false }
+  options: { cwd: string; onlyFilePresence?: false },
 ): Promise<{
   sourceFile: string;
   exportSymbol: string;
@@ -34,12 +34,12 @@ export async function resolveGraph(
 
 export async function resolveGraph(
   spec: string,
-  options: { cwd: string; onlyFilePresence: true }
+  options: { cwd: string; onlyFilePresence: true },
 ): Promise<{ sourceFile: string; exportSymbol: string; resolved: undefined }>;
 
 export async function resolveGraph(
   spec: string,
-  options: { cwd: string; onlyFilePresence?: boolean }
+  options: { cwd: string; onlyFilePresence?: boolean },
 ) {
   const [userFile, exportSymbol] = spec.split(":", 2);
   const sourceFile = path.resolve(options.cwd, userFile);
@@ -84,7 +84,7 @@ export async function runGraphSchemaWorker(spec: GraphSpec) {
 
   return await new Promise<Record<string, GraphSchema>>((resolve, reject) => {
     const worker = new Worker(
-      fileURLToPath(new URL("./parser/parser.worker.mjs", import.meta.url))
+      fileURLToPath(new URL("./parser/parser.worker.mjs", import.meta.url)),
     );
 
     // Set a timeout to reject if the worker takes too long

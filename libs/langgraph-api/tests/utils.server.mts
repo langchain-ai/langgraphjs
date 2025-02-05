@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 const configPath = fileURLToPath(
-  new URL("./graphs/langgraph.json", import.meta.url)
+  new URL("./graphs/langgraph.json", import.meta.url),
 );
 const config = JSON.parse(await readFile(configPath, "utf-8"));
 
@@ -20,5 +20,5 @@ await spawnServer(
     env: config.env,
     hostUrl: "https://smith.langchain.com",
   },
-  { pid: process.pid, projectCwd: dirname(configPath) }
+  { pid: process.pid, projectCwd: dirname(configPath) },
 );

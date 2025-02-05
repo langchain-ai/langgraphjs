@@ -56,7 +56,7 @@ const TEMPLATE_ID_TO_CONFIG = Object.entries(TEMPLATES).reduce(
       });
     return acc;
   },
-  {} as Record<string, [string, string, string]>
+  {} as Record<string, [string, string, string]>,
 );
 
 const TEMPLATE_IDS = Object.keys(TEMPLATE_ID_TO_CONFIG);
@@ -84,7 +84,7 @@ async function downloadAndExtract(url: string, targetPath: string) {
 
     // Move files from the extracted directory to target path
     const extractedDir = (await fs.readdir(targetPath)).find((f) =>
-      f.endsWith("-main")
+      f.endsWith("-main"),
     );
     if (extractedDir) {
       const fullExtractedPath = path.join(targetPath, extractedDir);
@@ -93,16 +93,16 @@ async function downloadAndExtract(url: string, targetPath: string) {
         files.map((file) =>
           fs.rename(
             path.join(fullExtractedPath, file),
-            path.join(targetPath, file)
-          )
-        )
+            path.join(targetPath, file),
+          ),
+        ),
       );
       await fs.rmdir(fullExtractedPath);
     }
   } catch (error: unknown) {
     if (error instanceof Error) {
       throw new Error(
-        `Failed to download and extract template: ${error.message}`
+        `Failed to download and extract template: ${error.message}`,
       );
     }
     throw new Error("Failed to download and extract template");
@@ -181,14 +181,14 @@ async function createNew(projectPath?: string, templateId?: string) {
             - cd ${path.relative(process.cwd(), absolutePath)}
             - yarn install
             - npx @langchain/langgraph-cli@latest dev
-          `
+          `,
         )
       : null;
 
   outro(
     [`Project created successfully at ${color.green(absolutePath)}`, guide]
       .filter(Boolean)
-      .join("\n\n")
+      .join("\n\n"),
   );
 }
 
@@ -205,7 +205,7 @@ const program = new Command()
       if (!config) {
         console.error(`Invalid template ID "${options.template}"`);
         console.error(
-          `Available options:\n${TEMPLATE_IDS.map((id) => `- ${id}`).join("\n")}`
+          `Available options:\n${TEMPLATE_IDS.map((id) => `- ${id}`).join("\n")}`,
         );
         process.exit(1);
       }

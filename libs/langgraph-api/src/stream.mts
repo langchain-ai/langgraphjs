@@ -112,7 +112,7 @@ function preprocessDebugCheckpointTask(task: DebugTask): StreamTaskResult {
 }
 
 const isConfigurablePresent = (
-  config: unknown
+  config: unknown,
 ): config is {
   [key: string]: unknown;
   callbacks?: unknown;
@@ -130,8 +130,8 @@ const deleteInternalConfigurableFields = (config: unknown) => {
       ...config,
       configurable: Object.fromEntries(
         Object.entries(config.configurable).filter(
-          ([key]) => !key.startsWith("__")
-        )
+          ([key]) => !key.startsWith("__"),
+        ),
       ),
     };
 
@@ -168,7 +168,7 @@ export async function* streamState(
     onCheckpoint?: (checkpoint: StreamCheckpoint) => void;
     onTaskResult?: (taskResult: StreamTaskResult) => void;
     signal?: AbortSignal;
-  }
+  },
 ): AsyncGenerator<{ event: string; data: unknown }> {
   const kwargs = run.kwargs;
   const graphId = kwargs.config?.configurable?.graph_id;
@@ -185,8 +185,8 @@ export async function* streamState(
 
   const libStreamMode: Set<LangGraphStreamMode> = new Set(
     userStreamMode.filter(
-      (mode) => mode !== "events" && mode !== "messages-tuple"
-    ) ?? []
+      (mode) => mode !== "events" && mode !== "messages-tuple",
+    ) ?? [],
   );
 
   if (userStreamMode.includes("messages-tuple")) {
@@ -232,7 +232,7 @@ export async function* streamState(
       runId: run.run_id,
       streamMode: [...libStreamMode],
       signal: options?.signal,
-    }
+    },
   );
 
   const messages: Record<string, BaseMessageChunk> = {};
@@ -344,11 +344,11 @@ export async function* streamState(
         kwargs.feedback_keys.map(async (feedback) => {
           const { url } = await client.createPresignedFeedbackToken(
             run.run_id,
-            feedback
+            feedback,
           );
           return [feedback, url];
-        })
-      )
+        }),
+      ),
     );
 
     yield { event: "feedback", data };

@@ -11,10 +11,13 @@
     "dist"
   ],
   "scripts": {
+    "clean": "npx -y bun scripts/clean.mjs",
     "cli": "tsx src/cli.mts",
     "cli:watch": "tsx watch src/cli.mts",
-    "build": "rm -rf dist && tsc --outDir dist",
-    "prepack": "pnpm run build"
+    "build": "npx -y bun scripts/build.mjs",
+    "prepack": "pnpm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@clack/prompts": "^0.9.1",

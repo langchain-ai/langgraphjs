@@ -59,7 +59,7 @@ function parseVersion(input: string): Version {
   const patchStr = parts[2] ?? "0";
 
   const major = Number.parseInt(
-    majorStr.startsWith("v") ? majorStr.slice(1) : majorStr
+    majorStr.startsWith("v") ? majorStr.slice(1) : majorStr,
   );
   const minor = Number.parseInt(minorStr);
   const patch = Number.parseInt(patchStr.split("-").at(0) ?? "0");
@@ -96,7 +96,7 @@ export async function getDockerCapabilities(): Promise<DockerCapabilities> {
           z.object({
             Name: z.string(),
             Version: z.string().optional(),
-          })
+          }),
         ),
       }),
     })
@@ -108,11 +108,11 @@ export async function getDockerCapabilities(): Promise<DockerCapabilities> {
 
   const composePlugin = info.data.ClientInfo.Plugins.find(
     (i): i is { Name: string; Version: string } =>
-      i.Name === "compose" && i.Version != null
+      i.Name === "compose" && i.Version != null,
   );
   const buildxPlugin = info.data.ClientInfo.Plugins.find(
     (i): i is { Name: string; Version: string } =>
-      i.Name === "buildx" && i.Version != null
+      i.Name === "buildx" && i.Version != null,
   );
 
   let composeRes: Pick<DockerCapabilities, "versionCompose" | "composeType">;
@@ -124,7 +124,7 @@ export async function getDockerCapabilities(): Promise<DockerCapabilities> {
   } else {
     try {
       const standalone = await $(
-        await getExecaOptions()
+        await getExecaOptions(),
       )`docker-compose --version --short`;
       composeRes = {
         composeType: "standalone",
@@ -159,7 +159,11 @@ function isPlainObject(value: unknown): value is Record<string, any> {
 
 export function createCompose(
   capabilities: DockerCapabilities,
-  options: { port?: number; postgresUri?: string; apiDef?: Record<string, any> }
+  options: {
+    port?: number;
+    postgresUri?: string;
+    apiDef?: Record<string, any>;
+  },
 ) {
   let includeDb = false;
   let postgresUri = options.postgresUri;

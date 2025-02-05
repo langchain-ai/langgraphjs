@@ -56,7 +56,7 @@ describe.concurrent("graph factories", () => {
   ])("%s", ([prop]) => {
     const schemas = SubgraphExtractor.extractSchemas(
       { contents: `${common}\n\nexport const graph = ${prop};` },
-      "graph"
+      "graph",
     );
 
     expect(schemas.graph.input).toMatchObject(MessagesSchema);
@@ -107,7 +107,7 @@ describe.concurrent("subgraphs", () => {
             .compile();
           `,
       },
-      "graph"
+      "graph",
     );
     expect(schemas["graph|child"].input).toMatchObject({
       type: "object",
@@ -226,7 +226,7 @@ describe.concurrent("subgraphs", () => {
             .compile();
         `,
       },
-      "parent"
+      "parent",
     );
 
     expect(Object.keys(schemas)).toEqual(
@@ -234,7 +234,7 @@ describe.concurrent("subgraphs", () => {
         "parent",
         "parent|parent_two",
         "parent|parent_two|child_two",
-      ])
+      ]),
     );
 
     expect(schemas.parent.state).toMatchObject({
@@ -352,10 +352,10 @@ describe.concurrent("subgraphs", () => {
         `,
         },
         "parent",
-        { strict: true }
+        { strict: true },
       );
     }).toThrowError(
-      `Multiple unique subgraph invocations found for "parent|parent_one"`
+      `Multiple unique subgraph invocations found for "parent|parent_one"`,
     );
   });
 
@@ -414,11 +414,11 @@ describe.concurrent("subgraphs", () => {
           ],
         ],
       },
-      "graph"
+      "graph",
     );
 
     expect(Object.keys(schemas)).toEqual(
-      expect.arrayContaining(["graph", "graph|child"])
+      expect.arrayContaining(["graph", "graph|child"]),
     );
 
     expect(schemas["graph|child"].input).toMatchObject({
@@ -547,11 +547,11 @@ describe.concurrent("subgraphs", () => {
           ],
         ],
       },
-      "graph"
+      "graph",
     );
 
     expect(Object.keys(schemas)).toEqual(
-      expect.arrayContaining(["graph", "graph|child"])
+      expect.arrayContaining(["graph", "graph|child"]),
     );
 
     expect(schemas["graph|child"].input).toMatchObject({
@@ -665,7 +665,7 @@ describe.concurrent("subgraphs", () => {
           export const graph = parent.compile() 
         `,
       },
-      "graph"
+      "graph",
     );
     expect(schemas["graph|child"].input).toMatchObject({
       type: "object",
@@ -803,11 +803,11 @@ test.concurrent("weather", () => {
         export const graph = router.compile();
       `,
     },
-    "graph"
+    "graph",
   );
 
   expect(Object.keys(schemas)).toEqual(
-    expect.arrayContaining(["graph", "graph|weather_graph"])
+    expect.arrayContaining(["graph", "graph|weather_graph"]),
   );
 });
 
@@ -861,10 +861,10 @@ test.concurrent("nested", () => {
         export const graph = grandParent.compile();
       `,
     },
-    "graph"
+    "graph",
   );
 
   expect(Object.keys(schemas)).toEqual(
-    expect.arrayContaining(["graph", "graph|gp_two", "graph|gp_two|p_two"])
+    expect.arrayContaining(["graph", "graph|gp_two", "graph|gp_two|p_two"]),
   );
 });

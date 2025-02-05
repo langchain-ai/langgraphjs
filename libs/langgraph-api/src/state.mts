@@ -7,13 +7,13 @@ import { runnableConfigToCheckpoint } from "./utils/runnableConfig.mjs";
 import { serializeError } from "./utils/serde.mjs";
 
 const isStateSnapshot = (
-  state: StateSnapshot | LangGraphRunnableConfig
+  state: StateSnapshot | LangGraphRunnableConfig,
 ): state is StateSnapshot => {
   return "values" in state && "next" in state;
 };
 
 export const stateSnapshotToThreadState = (
-  state: StateSnapshot
+  state: StateSnapshot,
 ): ThreadState => {
   return {
     values: state.values,

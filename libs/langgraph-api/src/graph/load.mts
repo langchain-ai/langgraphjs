@@ -23,7 +23,7 @@ export const GRAPH_SPEC: Record<string, GraphSpec> = {};
 export const GRAPH_SCHEMA: Record<string, Record<string, GraphSchema>> = {};
 
 export const NAMESPACE_GRAPH = uuid.parse(
-  "6ba7b821-9dad-11d1-80b4-00c04fd430c8"
+  "6ba7b821-9dad-11d1-80b4-00c04fd430c8",
 );
 
 const ConfigSchema = z.record(z.unknown());
@@ -35,7 +35,7 @@ export const getAssistantId = (graphId: string) => {
 
 export async function registerFromEnv(
   specs: Record<string, string>,
-  options: { cwd: string }
+  options: { cwd: string },
 ) {
   const envConfig = process.env.LANGGRAPH_CONFIG
     ? ConfigSchema.parse(JSON.parse(process.env.LANGGRAPH_CONFIG))
@@ -65,7 +65,7 @@ export async function registerFromEnv(
       });
 
       return resolved;
-    })
+    }),
   );
 }
 
@@ -74,7 +74,7 @@ export function getGraph(
   options?: {
     checkpointer?: BaseCheckpointSaver | null;
     store?: BaseStore;
-  }
+  },
 ) {
   if (!GRAPHS[graphId])
     throw new HTTPException(404, { message: `Graph "${graphId}" not found` });

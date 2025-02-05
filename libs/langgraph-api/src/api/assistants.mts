@@ -27,7 +27,7 @@ api.post(
     });
 
     return c.json(assistant);
-  }
+  },
 );
 
 api.post(
@@ -48,7 +48,7 @@ api.post(
     }
 
     return c.json(result);
-  }
+  },
 );
 
 api.get("/assistants/:assistant_id", async (c) => {
@@ -72,7 +72,7 @@ api.patch(
     const payload = c.req.valid("json");
 
     return c.json(await Assistants.patch(assistantId, payload));
-  }
+  },
 );
 
 const RunnableConfigSchema = z.object({
@@ -86,7 +86,7 @@ const RunnableConfigSchema = z.object({
 });
 
 const getRunnableConfig = (
-  userConfig: z.infer<typeof RunnableConfigSchema> | null | undefined
+  userConfig: z.infer<typeof RunnableConfigSchema> | null | undefined,
 ) => {
   if (!userConfig) return {};
   return {
@@ -111,9 +111,9 @@ api.get(
 
     const graph = getGraph(assistant.graph_id);
     return c.json(
-      graph.getGraph({ ...getRunnableConfig(assistant.config), xray }).toJSON()
+      graph.getGraph({ ...getRunnableConfig(assistant.config), xray }).toJSON(),
     );
-  }
+  },
 );
 
 api.get("/assistants/:assistant_id/schemas", async (c) => {
@@ -140,7 +140,7 @@ api.get(
   "/assistants/:assistant_id/subgraphs/:namespace?",
   zValidator(
     "param",
-    z.object({ assistant_id: z.string(), namespace: z.string().optional() })
+    z.object({ assistant_id: z.string(), namespace: z.string().optional() }),
   ),
   zValidator("query", z.object({ recurse: schemas.coercedBoolean.optional() })),
   async (c) => {
@@ -173,7 +173,7 @@ api.get(
     }
 
     return c.json(Object.fromEntries(result));
-  }
+  },
 );
 
 api.post(
@@ -184,7 +184,7 @@ api.post(
     const assistantId = getAssistantId(c.req.param("assistant_id"));
     const { version } = c.req.valid("json");
     return c.json(await Assistants.setLatest(assistantId, version));
-  }
+  },
 );
 
 api.post(
@@ -195,7 +195,7 @@ api.post(
       limit: z.number().min(1).max(1000).optional().default(10),
       offset: z.number().min(0).optional().default(0),
       metadata: z.record(z.unknown()).optional(),
-    })
+    }),
   ),
   async (c) => {
     // Get Assistant Versions
@@ -206,9 +206,9 @@ api.post(
         limit,
         offset,
         metadata,
-      })
+      }),
     );
-  }
+  },
 );
 
 export default api;

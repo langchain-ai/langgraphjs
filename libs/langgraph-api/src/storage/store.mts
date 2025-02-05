@@ -30,7 +30,7 @@ class InMemoryStore extends BaseMemoryStore {
   }
 
   async batch<Op extends readonly Operation[]>(
-    operations: Op
+    operations: Op,
   ): Promise<OperationResults<Op>> {
     return await conn.with(() => super.batch(operations));
   }

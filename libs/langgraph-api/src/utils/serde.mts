@@ -16,7 +16,7 @@ export const serialiseAsDict = (obj: unknown) => {
 
       return value;
     },
-    2
+    2,
   );
 };
 
@@ -26,5 +26,3 @@ export const serializeError = (error: unknown) => {
   }
   return { error: "Error", message: JSON.stringify(error) };
 };
-
-

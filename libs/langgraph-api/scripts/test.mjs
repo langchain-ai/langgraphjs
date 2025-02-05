@@ -12,6 +12,6 @@ await Promise.race([
   (async () => {
     await $`bun x wait-port -t 12000 localhost:2024`;
     await $`pnpm vitest run --exclude ./tests/parser.test.mts"`;
-    process.exit(0)
+    process.exit(0);
   })(),
 ]);

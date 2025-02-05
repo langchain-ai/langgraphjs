@@ -50,7 +50,7 @@ export const logger = createLogger({
 
             return JSON.stringify({ timestamp, level, event, ...rest });
           }),
-        ])
+        ]),
   ),
   transports: [new transports.Console()],
 });
@@ -61,7 +61,7 @@ const formatStack = (stack: string | undefined | null) => {
   const [firstFile] = stacktraceParser(stack).filter(
     (item) =>
       !item.file?.split(path.sep).includes("node_modules") &&
-      !item.file?.startsWith("node:")
+      !item.file?.startsWith("node:"),
   );
 
   if (firstFile?.file && firstFile?.lineNumber) {
@@ -74,7 +74,7 @@ const formatStack = (stack: string | undefined | null) => {
       const spliceIndex = messageLines.findIndex((i) => i.includes(filePath));
 
       const padding = " ".repeat(
-        Math.max(0, messageLines[spliceIndex].indexOf("at"))
+        Math.max(0, messageLines[spliceIndex].indexOf("at")),
       );
 
       const highlightCode = process.stdout.isTTY;
@@ -82,7 +82,7 @@ const formatStack = (stack: string | undefined | null) => {
       let codeFrame = codeFrameColumns(
         readFileSync(filePath, "utf-8"),
         { start: { line, column } },
-        { highlightCode }
+        { highlightCode },
       );
 
       codeFrame = codeFrame
@@ -113,7 +113,7 @@ export const logError = (
   options?: {
     context?: Record<string, unknown>;
     prefix?: string;
-  }
+  },
 ) => {
   let message;
   let context = options?.context;

@@ -171,7 +171,7 @@ export const RunCreate = z
               z.union([
                 z.string(),
                 z.object({ node: z.string(), input: z.unknown().optional() }),
-              ])
+              ]),
             ),
           ])
           .optional(),
@@ -210,7 +210,7 @@ export const RunCreate = z
             "updates",
             "events",
             "debug",
-          ])
+          ]),
         ),
         z.enum([
           "values",

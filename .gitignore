@@ -6,3 +6,4 @@ dist
 __pycache__
 .langgraph_api
 .uv
+.turbo
