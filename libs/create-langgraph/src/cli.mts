@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 import { Command } from "@commander-js/extra-typings";
-import { intro, outro, select, text, isCancel, cancel } from "@clack/prompts";
+import {
+  intro,
+  outro,
+  select,
+  text,
+  isCancel,
+  cancel,
+  confirm,
+} from "@clack/prompts";
 import * as fs from "fs/promises";
 import * as path from "path";
 import zipExtract from "extract-zip";
@@ -8,6 +16,7 @@ import { version } from "./utils/version.mjs";
 import color from "picocolors";
 import dedent from "dedent";
 import { withAnalytics } from "./utils/analytics.mjs";
+import { spawn } from "child_process";
 
 const TEMPLATES = {
   "New LangGraph Project": {
@@ -43,6 +52,22 @@ const TEMPLATES = {
       "https://github.com/langchain-ai/data-enrichment/archive/refs/heads/main.zip",
     js: "https://github.com/langchain-ai/data-enrichment-js/archive/refs/heads/main.zip",
   },
+};
+
+const getPmSpecificCommands = (): { install: string; exec: string } => {
+  const npmExecPath = process.env.npm_execpath as string | undefined;
+
+  // default to yarn, as most examples include yarn.lock
+  if (!npmExecPath) return { install: "yarn install", exec: "npx" };
+
+  const npmBin = path
+    .basename(npmExecPath)
+    .substring(0, -path.extname(npmExecPath).length);
+
+  if (npmBin === "yarn") return { install: "yarn install", exec: "npx" };
+  if (npmBin === "pnpm") return { install: "pnpm install", exec: "pnpm dlx" };
+  if (npmBin === "bun") return { install: "bun install", exec: "bunx" };
+  return { install: "npm install", exec: "npx" };
 };
 
 // Generate template IDs programmatically
@@ -173,14 +198,40 @@ async function createNew(projectPath?: string, templateId?: string) {
 
   await downloadAndExtract(templateUrl, absolutePath);
 
+  // delete yarn.lock
+  try {
+    await fs.unlink(path.join(absolutePath, "yarn.lock"));
+  } catch {
+    // do nothing
+  }
+
+  const shouldInitGit = await confirm({
+    message: "Would you like to run `git init`?",
+    initialValue: true,
+    active: "Yes",
+    inactive: "No",
+  });
+
+  if (shouldInitGit) {
+    await new Promise((resolve, reject) => {
+      const proc = spawn("git", ["init"], { cwd: absolutePath });
+      proc.on("close", (code) => {
+        if (code === 0) resolve(undefined);
+        else reject(new Error(`git init failed with code ${code}`));
+      });
+    });
+  }
+
+  const pm = getPmSpecificCommands();
+
   const guide =
     language === "js"
       ? color.cyan(
           dedent`
             Next steps:
             - cd ${path.relative(process.cwd(), absolutePath)}
-            - yarn install
-            - npx @langchain/langgraph-cli@latest dev
+            - ${pm.install}
+            - ${pm.exec} @langchain/langgraph-cli@latest dev
           `,
         )
       : null;
