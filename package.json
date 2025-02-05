@@ -1,7 +1,7 @@
 {
   "name": "langgraphjs-api",
   "private": true,
-  "packageManager": "pnpm@9.1.1",
+  "packageManager": "pnpm@10.2.0",
   "scripts": {
     "clean": "turbo run clean",
     "build": "turbo run build",
