@@ -50,6 +50,12 @@ jobs:
         run: |
           yarn install --immutable --mode=skip-build
 
+      - name: Build llms-text
+        run: |
+          source .venv/bin/activate
+          cd docs
+          make llms-text
+
       - name: Build site
         run: |
           yarn build
