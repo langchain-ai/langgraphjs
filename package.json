@@ -10,6 +10,7 @@
   },
   "scripts": {
     "clean": "turbo run clean",
+    "test": "turbo run test",
     "build": "turbo run build",
     "format": "turbo run format",
     "format:check": "turbo run format:check"
