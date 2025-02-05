@@ -15,7 +15,7 @@
     "dist/"
   ],
   "scripts": {
-    "build": "node scripts/spawn.mjs build",
+    "build": "npx -y bun scripts/build.mjs",
     "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit",
     "cli": "tsx src/cli/cli.mts",

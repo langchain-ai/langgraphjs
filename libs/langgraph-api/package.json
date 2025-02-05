@@ -11,13 +11,13 @@
     "dist/"
   ],
   "scripts": {
-    "build": "node scripts/spawn.mjs build",
+    "build": "npx -y bun scripts/build.mjs",
     "dev": "tsx ./tests/utils.server.mts",
     "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:parser": "vitest run ./tests/parser.test.mts --testTimeout 15000",
-    "test:api": "node scripts/spawn.mjs test"
+    "test:api": "npx -y bun scripts/test.mjs"
   },
   "dependencies": {
     "@babel/code-frame": "^7.26.2",
