@@ -5,7 +5,7 @@
   "engines": {
     "node": ">=18"
   },
-  "license": "Elastic-2.0",
+  "license": "MIT",
   "main": "./dist/cli/spawn.mjs",
   "files": [
     "dist/"
