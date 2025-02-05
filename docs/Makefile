@@ -1,4 +1,4 @@
-.PHONY: clean build-docs serve-docs serve-clean-docs
+.PHONY: clean build-docs serve-docs serve-clean-docs llms-text
 
 build-docs:
 	python _scripts/copy_notebooks.py
@@ -27,3 +27,7 @@ clean:
 	find ./docs -path "./docs/troubleshooting/errors" -prune -o -name "*.ipynb" -type f -exec rm {} \;
 	rm -rf docs/cloud
 	rm -rf site
+
+llms-text:
+	python _scripts/generate_llms_text.py docs/llms-full.txt
+

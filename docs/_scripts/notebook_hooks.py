@@ -105,7 +105,13 @@ def _highlight_code_blocks(markdown: str) -> str:
     return markdown
 
 
-def on_page_markdown(markdown: str, page: Page, **kwargs: Dict[str, Any]):
+def _on_page_markdown_with_config(
+    markdown: str,
+    page: Page,
+    *,
+    remove_base64_images: bool = False,
+    **kwargs: Any,
+) -> str:
     if DISABLED:
         return markdown
     if page.file.src_path.endswith(".ipynb"):
@@ -114,4 +120,18 @@ def on_page_markdown(markdown: str, page: Page, **kwargs: Dict[str, Any]):
 
     # Apply highlight comments to code blocks
     markdown = _highlight_code_blocks(markdown)
+
+    if remove_base64_images:
+        # Remove base64 encoded images from markdown
+        markdown = re.sub(r"!\[.*?\]\(data:image/[^;]+;base64,[^\)]+\)", "", markdown)
+
     return markdown
+
+
+def on_page_markdown(markdown: str, page: Page, **kwargs: Dict[str, Any]):
+    return _on_page_markdown_with_config(
+        markdown,
+        page,
+        **kwargs,
+    )
+
