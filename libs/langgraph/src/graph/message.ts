@@ -26,7 +26,7 @@ export function messagesStateReducer(
   const leftMessages = (leftArray as BaseMessageLike[]).map(
     coerceMessageLikeToMessage
   );
-  const rightMessages = (rightArray as BaseMessageLike[]).map(
+  let rightMessages = (rightArray as BaseMessageLike[]).map(
     coerceMessageLikeToMessage
   );
   // assign missing ids
@@ -36,12 +36,15 @@ export function messagesStateReducer(
       m.lc_kwargs.id = m.id;
     }
   }
+  const dedupeMap = new Map();
   for (const m of rightMessages) {
     if (m.id === null || m.id === undefined) {
       m.id = v4();
       m.lc_kwargs.id = m.id;
     }
+    dedupeMap.set(m.id, m);
   }
+  rightMessages = Array.from(dedupeMap.values());
   // merge
   const leftIdxById = new Map(leftMessages.map((m, i) => [m.id, i]));
   const merged = [...leftMessages];
