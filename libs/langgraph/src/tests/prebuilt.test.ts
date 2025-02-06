@@ -791,3 +791,24 @@ describe("MessagesAnnotation", () => {
     expect(res2.messages.length).toEqual(1);
   });
 });
+
+describe("messagesStateReducer", () => {
+  it("should dedupe messages", () => {
+    const deduped = messagesStateReducer(
+      [new HumanMessage({ id: "foo", content: "bar" })],
+      [new HumanMessage({ id: "foo", content: "bar2" })]
+    );
+    expect(deduped.length).toEqual(1);
+    expect(deduped[0].content).toEqual("bar2");
+  });
+
+  it("should dedupe messages if there are dupes on the right", () => {
+    const messages = [
+      new HumanMessage({ id: "foo", content: "bar" }),
+      new HumanMessage({ id: "foo", content: "bar2" }),
+    ];
+    const deduped = messagesStateReducer([], messages);
+    expect(deduped.length).toEqual(1);
+    expect(deduped[0].content).toEqual("bar2");
+  });
+});
