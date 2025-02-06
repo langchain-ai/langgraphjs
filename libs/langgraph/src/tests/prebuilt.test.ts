@@ -8,6 +8,7 @@ import {
   AIMessage,
   BaseMessage,
   HumanMessage,
+  RemoveMessage,
   SystemMessage,
   ToolMessage,
 } from "@langchain/core/messages";
@@ -808,6 +809,20 @@ describe("messagesStateReducer", () => {
       new HumanMessage({ id: "foo", content: "bar2" }),
     ];
     const deduped = messagesStateReducer([], messages);
+    expect(deduped.length).toEqual(1);
+    expect(deduped[0].content).toEqual("bar2");
+  });
+
+  it("should apply right-side messages in order", () => {
+    const messages = [
+      new RemoveMessage({ id: "foo" }),
+      new HumanMessage({ id: "foo", content: "bar" }),
+      new HumanMessage({ id: "foo", content: "bar2" }),
+    ];
+    const deduped = messagesStateReducer(
+      [new HumanMessage({ id: "foo", content: "bar3" })],
+      messages
+    );
     expect(deduped.length).toEqual(1);
     expect(deduped[0].content).toEqual("bar2");
   });

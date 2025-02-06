@@ -26,7 +26,7 @@ export function messagesStateReducer(
   const leftMessages = (leftArray as BaseMessageLike[]).map(
     coerceMessageLikeToMessage
   );
-  let rightMessages = (rightArray as BaseMessageLike[]).map(
+  const rightMessages = (rightArray as BaseMessageLike[]).map(
     coerceMessageLikeToMessage
   );
   // assign missing ids
@@ -36,25 +36,23 @@ export function messagesStateReducer(
       m.lc_kwargs.id = m.id;
     }
   }
-  const dedupeMap = new Map();
   for (const m of rightMessages) {
     if (m.id === null || m.id === undefined) {
       m.id = v4();
       m.lc_kwargs.id = m.id;
     }
-    dedupeMap.set(m.id, m);
   }
-  rightMessages = Array.from(dedupeMap.values());
   // merge
-  const leftIdxById = new Map(leftMessages.map((m, i) => [m.id, i]));
   const merged = [...leftMessages];
+  const mergedById = new Map(merged.map((m, i) => [m.id, i]));
   const idsToRemove = new Set();
   for (const m of rightMessages) {
-    const existingIdx = leftIdxById.get(m.id);
+    const existingIdx = mergedById.get(m.id);
     if (existingIdx !== undefined) {
       if (m._getType() === "remove") {
         idsToRemove.add(m.id);
       } else {
+        idsToRemove.delete(m.id);
         merged[existingIdx] = m;
       }
     } else {
@@ -63,6 +61,7 @@ export function messagesStateReducer(
           `Attempting to delete a message with an ID that doesn't exist ('${m.id}')`
         );
       }
+      mergedById.set(m.id, merged.length);
       merged.push(m);
     }
   }
