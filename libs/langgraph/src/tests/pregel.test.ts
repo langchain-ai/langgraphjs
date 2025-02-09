@@ -9460,7 +9460,7 @@ graph TD;
       graph.invoke(new Command({ resume: "hello" }))
     ).rejects.toThrow("Cannot use Command(resume=...) without checkpointer");
   });
-  
+
   it.each(["omit", "first-only", "always"] as const)(
     "`messages` inherits message ID - %p",
     async (streamMessageId) => {
