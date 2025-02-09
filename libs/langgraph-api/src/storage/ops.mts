@@ -28,6 +28,7 @@ export type StreamMode =
   | "values"
   | "messages"
   | "messages-tuple"
+  | "custom"
   | "updates"
   | "events"
   | "debug";
