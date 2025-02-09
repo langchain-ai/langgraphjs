@@ -2,6 +2,7 @@
 /* eslint-disable import/no-extraneous-dependencies */
 import assert from "node:assert";
 import { expect, it } from "@jest/globals";
+import { v4 as uuidv4 } from "uuid";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import {
   BaseChatModel,
@@ -52,9 +53,16 @@ export class FakeChatModel extends BaseChatModel {
 
   callCount = 0;
 
-  constructor(fields: FakeChatModelArgs) {
+  streamMessageId: "omit" | "first-only" | "always";
+
+  constructor(
+    fields: FakeChatModelArgs & {
+      streamMessageId?: "omit" | "first-only" | "always";
+    }
+  ) {
     super(fields);
     this.responses = fields.responses;
+    this.streamMessageId = fields.streamMessageId ?? "omit";
   }
 
   _combineLLMOutput() {
@@ -99,14 +107,35 @@ export class FakeChatModel extends BaseChatModel {
     runManager?: CallbackManagerForLLMRun
   ) {
     const response = this.responses[this.callCount % this.responses.length];
-    for (const text of (response.content as string).split("")) {
-      yield new ChatGenerationChunk({
-        message: new AIMessageChunk({
-          content: text as string,
-        }),
-        text,
+
+    let isFirstChunk = true;
+    const completionId = response.id ?? uuidv4();
+
+    for (const content of (response.content as string).split("")) {
+      let id: string | undefined;
+      if (
+        this.streamMessageId === "always" ||
+        (this.streamMessageId === "first-only" && isFirstChunk)
+      ) {
+        id = completionId;
+      }
+
+      const chunk = new ChatGenerationChunk({
+        message: new AIMessageChunk({ content, id }),
+        text: content,
       });
-      await runManager?.handleLLMNewToken(text as string);
+
+      yield chunk;
+      await runManager?.handleLLMNewToken(
+        content,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { chunk }
+      );
+
+      isFirstChunk = false;
     }
     this.callCount += 1;
   }

@@ -1,4 +1,3 @@
-import { v4 } from "uuid";
 import {
   BaseCallbackHandler,
   HandleLLMNewTokenCallbackFields,
@@ -44,6 +43,8 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
 
   emittedChatModelRunIds: Record<string, boolean> = {};
 
+  stableMessageIdMap: Record<string, string> = {};
+
   lc_prefer_streaming = true;
 
   constructor(streamFn: (streamChunk: StreamChunk) => void) {
@@ -51,7 +52,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     this.streamFn = streamFn;
   }
 
-  _emit(meta: Meta, message: BaseMessage, dedupe = false) {
+  _emit(meta: Meta, message: BaseMessage, runId: string, dedupe = false) {
     if (
       dedupe &&
       message.id !== undefined &&
@@ -59,13 +60,25 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     ) {
       return;
     }
-    if (message.id === undefined) {
-      const id = v4();
-      // eslint-disable-next-line no-param-reassign
-      message.id = id;
-      // eslint-disable-next-line no-param-reassign
-      message.lc_kwargs.id = id;
+
+    // For instance in ChatAnthropic, the first chunk has an message ID
+    // but the subsequent chunks do not. To avoid clients seeing two messages
+    // we rename the message ID if it's being auto-set to `run-${runId}`
+    // (see https://github.com/langchain-ai/langchainjs/pull/6646).
+    let messageId = message.id;
+    if (messageId == null || messageId === `run-${runId}`) {
+      messageId = this.stableMessageIdMap[runId] ?? messageId ?? `run-${runId}`;
     }
+    this.stableMessageIdMap[runId] ??= messageId;
+
+    if (messageId !== message.id) {
+      // eslint-disable-next-line no-param-reassign
+      message.id = messageId;
+
+      // eslint-disable-next-line no-param-reassign
+      message.lc_kwargs.id = messageId;
+    }
+
     this.seen[message.id!] = message;
     this.streamFn([meta[0], "messages", [message, meta[1]]]);
   }
@@ -104,13 +117,12 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     this.emittedChatModelRunIds[runId] = true;
     if (this.metadatas[runId] !== undefined) {
       if (isChatGenerationChunk(chunk)) {
-        this._emit(this.metadatas[runId], chunk.message);
+        this._emit(this.metadatas[runId], chunk.message, runId);
       } else {
         this._emit(
           this.metadatas[runId],
-          new AIMessageChunk({
-            content: token,
-          })
+          new AIMessageChunk({ content: token }),
+          runId
         );
       }
     }
@@ -121,11 +133,12 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     if (!this.emittedChatModelRunIds[runId]) {
       const chatGeneration = output.generations?.[0]?.[0] as ChatGeneration;
       if (isBaseMessage(chatGeneration?.message)) {
-        this._emit(this.metadatas[runId], chatGeneration?.message, true);
+        this._emit(this.metadatas[runId], chatGeneration?.message, runId, true);
       }
       delete this.emittedChatModelRunIds[runId];
     }
     delete this.metadatas[runId];
+    delete this.stableMessageIdMap[runId];
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -160,21 +173,21 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     delete this.metadatas[runId];
     if (metadata !== undefined) {
       if (isBaseMessage(outputs)) {
-        this._emit(metadata, outputs, true);
+        this._emit(metadata, outputs, runId, true);
       } else if (Array.isArray(outputs)) {
         for (const value of outputs) {
           if (isBaseMessage(value)) {
-            this._emit(metadata, value, true);
+            this._emit(metadata, value, runId, true);
           }
         }
       } else if (outputs != null && typeof outputs === "object") {
         for (const value of Object.values(outputs)) {
           if (isBaseMessage(value)) {
-            this._emit(metadata, value, true);
+            this._emit(metadata, value, runId, true);
           } else if (Array.isArray(value)) {
             for (const item of value) {
               if (isBaseMessage(item)) {
-                this._emit(metadata, item, true);
+                this._emit(metadata, item, runId, true);
               }
             }
           }
