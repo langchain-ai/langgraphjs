@@ -20,7 +20,6 @@ import {
   taskRunnableConfigToCheckpoint,
 } from "./utils/runnableConfig.mjs";
 import { BaseMessageChunk, isBaseMessage } from "@langchain/core/messages";
-import { logger } from "./logging.mjs";
 
 type LangGraphStreamMode = Pregel<any, any>["streamMode"][number];
 
@@ -266,8 +265,6 @@ export async function* streamState(
         if (userStreamMode.includes("messages-tuple")) {
           yield { event: "messages", data };
         }
-      } else if (mode === "custom") {
-        logger.warn("unhandled custom mode", { mode, chunk });
       } else if (userStreamMode.includes(mode)) {
         if (kwargs.subgraphs && ns?.length) {
           yield { event: `${mode}|${ns.join("|")}`, data };
