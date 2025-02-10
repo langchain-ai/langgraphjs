@@ -798,7 +798,7 @@ To avoid issues, refrain from dynamically changing the node's structure between 
     }
 
     for await (const chunk of await graph.stream(
-      Command({ resume: "John", update: { name: "foo" } }),
+      new Command({ resume: "John", update: { name: "foo" } }),
       config
     )) {
       console.log(chunk);
