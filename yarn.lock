@@ -1922,7 +1922,7 @@ __metadata:
     langchain: ^0.3.13
     pg: ^8.13.0
     prettier: ^2.8.3
-    promiventerator: ^0.1.2
+    promiventerator: ^0.1.3
     release-it: ^17.6.0
     rollup: ^4.34.7
     ts-jest: ^29.1.0
@@ -10701,10 +10701,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"promiventerator@npm:^0.1.2":
-  version: 0.1.2
-  resolution: "promiventerator@npm:0.1.2"
-  checksum: 7da41a991695f7fdd89a4a8402648c3cf17b0a29be83d665364fc6c895863bf7849ba4921d597fabf87a353a45f215c4d61f28932beca1ea67f2ea09289c2ecd
+"promiventerator@npm:^0.1.3":
+  version: 0.1.3
+  resolution: "promiventerator@npm:0.1.3"
+  checksum: eb320f694c5ee18ff818d6e1648c4b5c3f21fee27d7402460888ef139c61cae5c63edeec722469278e6d8909c2ebfc523d87d7eb0097112fd1835ffa18e12cc1
   languageName: node
   linkType: hard
 

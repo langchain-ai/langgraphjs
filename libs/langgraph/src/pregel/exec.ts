@@ -99,12 +99,12 @@ export function exec<
     >((resolve, reject) => {
       (async () => {
         const originalStreamMode = Array.isArray(config?.streamMode)
-          ? config?.streamMode
+          ? config?.streamMode ?? ["values"] // null coalesce to make ts happy, not sure why it doesn't type narrow here
           : [config?.streamMode ?? "values"];
 
         const stream = await p.stream(input, {
           ...config,
-          streamMode: (originalStreamMode as StreamMode[]).includes("values")
+          streamMode: originalStreamMode.includes("values")
             ? originalStreamMode
             : [...originalStreamMode, "values"],
         });
@@ -151,9 +151,7 @@ export function exec<
               await pv.emit(
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 mode as any,
-                {
-                  [chunk[0]]: chunk[1],
-                } as never // never is weird here, but it makes the type checker happy /shrug
+                payload as never // never is weird here, but it makes the type checker happy /shrug
               );
             }
           }
