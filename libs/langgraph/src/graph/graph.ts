@@ -379,7 +379,7 @@ export class Graph<
     checkpointer,
     interruptBefore,
     interruptAfter,
-    name
+    name,
   }: {
     checkpointer?: BaseCheckpointSaver | false;
     interruptBefore?: N[] | All;
@@ -408,7 +408,7 @@ export class Graph<
       outputChannels: END,
       streamChannels: [] as N[],
       streamMode: "values",
-      name
+      name,
     });
 
     // attach nodes, edges and branches

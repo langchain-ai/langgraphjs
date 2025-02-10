@@ -345,7 +345,7 @@ export function createReactAgent<
     interruptAfter,
     store,
     responseFormat,
-    name
+    name,
   } = params;
 
   let toolClasses: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
@@ -474,6 +474,6 @@ export function createReactAgent<
     interruptBefore,
     interruptAfter,
     store,
-    name
+    name,
   });
 }

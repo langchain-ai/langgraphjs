@@ -388,7 +388,7 @@ export class StateGraph<
     store,
     interruptBefore,
     interruptAfter,
-    name
+    name,
   }: {
     checkpointer?: BaseCheckpointSaver | false;
     store?: BaseStore;
@@ -430,7 +430,7 @@ export class StateGraph<
       streamChannels,
       streamMode: "updates",
       store,
-      name
+      name,
     });
 
     // attach nodes, edges and branches
