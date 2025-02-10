@@ -379,10 +379,12 @@ export class Graph<
     checkpointer,
     interruptBefore,
     interruptAfter,
+    name
   }: {
     checkpointer?: BaseCheckpointSaver | false;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
+    name?: string;
   } = {}): CompiledGraph<N> {
     // validate the graph
     this.validate([
@@ -406,6 +408,7 @@ export class Graph<
       outputChannels: END,
       streamChannels: [] as N[],
       streamMode: "values",
+      name
     });
 
     // attach nodes, edges and branches

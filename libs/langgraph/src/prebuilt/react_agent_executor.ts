@@ -269,6 +269,7 @@ export type CreateReactAgentParams<
     | StructuredResponseSchemaAndPrompt<StructuredResponseType>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     | Record<string, any>;
+  name?: string;
 };
 
 /**
@@ -344,6 +345,7 @@ export function createReactAgent<
     interruptAfter,
     store,
     responseFormat,
+    name
   } = params;
 
   let toolClasses: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
@@ -472,5 +474,6 @@ export function createReactAgent<
     interruptBefore,
     interruptAfter,
     store,
+    name
   });
 }

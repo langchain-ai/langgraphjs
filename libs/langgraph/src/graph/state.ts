@@ -388,11 +388,13 @@ export class StateGraph<
     store,
     interruptBefore,
     interruptAfter,
+    name
   }: {
     checkpointer?: BaseCheckpointSaver | false;
     store?: BaseStore;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
+    name?: string;
   } = {}): CompiledStateGraph<S, U, N, I, O, C> {
     // validate the graph
     this.validate([
@@ -428,6 +430,7 @@ export class StateGraph<
       streamChannels,
       streamMode: "updates",
       store,
+      name
     });
 
     // attach nodes, edges and branches
