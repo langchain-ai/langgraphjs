@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { describe, it, expect } from "@jest/globals";
-import { AIMessage } from "@langchain/core/messages";
+import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { StateGraph } from "../graph/state.js";
 import { END, MessagesAnnotation, START } from "../web.js";
 import { Annotation } from "../graph/annotation.js";
@@ -85,7 +85,7 @@ describe("State", () => {
 });
 
 describe("Streaming", () => {
-  it("should have strongly typed stream", async () => {
+  it("should have strongly typed values stream", async () => {
     const model = new FakeChatModel({
       responses: [new AIMessage("Cold, with a low of 3℃")],
     });
@@ -106,15 +106,67 @@ describe("Streaming", () => {
     const graph = workflow.compile();
 
     const inputs = {
-      messages: [{ role: "user", content: "what's the weather in sf" }],
+      messages: [new HumanMessage("what's the weather in sf")],
     };
 
     const pv = exec(graph, { streamMode: "values" })(inputs);
 
+    const messages: BaseMessage[] = [];
+
     for await (const chunk of pv) {
-      const [_mode, payload] = chunk;
-      console.log(payload?.messages);
-      console.log("\n====\n");
+      const [mode, payload] = chunk;
+      expect(mode).toBe("values");
+      // only push the last message
+      messages.push(payload.messages[payload.messages.length - 1]);
     }
+
+    expect(messages.length).toEqual(2);
+    expect(messages[0].getType()).toEqual("human");
+    expect(messages[0].content).toEqual("what's the weather in sf");
+    expect(messages[1].getType()).toEqual("ai");
+    expect(messages[1].content).toEqual("Cold, with a low of 3℃");
+  });
+
+  it("should have strongly typed updates stream", async () => {
+    const model = new FakeChatModel({
+      responses: [new AIMessage("Cold, with a low of 3℃")],
+    });
+
+    const callModel = async (state: typeof MessagesAnnotation.State) => {
+      // For versions of @langchain/core < 0.2.3, you must call `.stream()`
+      // and aggregate the message from chunks instead of calling `.invoke()`.
+      const { messages } = state;
+      const responseMessage = await model.invoke(messages);
+      return { messages: [responseMessage] };
+    };
+
+    const workflow = new StateGraph(MessagesAnnotation)
+      .addNode("agent", callModel)
+      .addEdge(START, "agent")
+      .addEdge("agent", END);
+
+    const graph = workflow.compile();
+
+    const inputs = {
+      messages: [new HumanMessage("what's the weather in sf")],
+    };
+
+    const pv = exec(graph, { streamMode: "updates" })(inputs);
+
+    const messages: BaseMessage[] = [];
+
+    for await (const chunk of pv) {
+      const [mode, payload] = chunk;
+      expect(mode).toBe("updates");
+      // TODO: updates stream mode yields record of node name to return val
+      expect(payload.messages).toBeDefined();
+      messages.push(...payload.messages!);
+    }
+
+    expect(messages.length).toEqual(2);
+    expect(messages[0].getType()).toEqual("human");
+    expect(messages[0].content).toEqual("what's the weather in sf");
+    expect(messages[1].getType()).toEqual("ai");
+    expect(messages[1].content).toEqual("Cold, with a low of 3℃");
   });
 });
