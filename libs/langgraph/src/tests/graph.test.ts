@@ -1,8 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { describe, it, expect } from "@jest/globals";
+import { AIMessage } from "@langchain/core/messages";
 import { StateGraph } from "../graph/state.js";
-import { END, START } from "../web.js";
+import { END, MessagesAnnotation, START } from "../web.js";
 import { Annotation } from "../graph/annotation.js";
+import { exec } from "../pregel/exec.js";
+import { FakeChatModel } from "./utils.js";
 
 describe("State", () => {
   it("should validate a new node key correctly ", () => {
@@ -78,5 +81,40 @@ describe("State", () => {
     expect(await graph.invoke({ testval: ["hello"] })).toEqual({
       testval: ["hello", "hi!"],
     });
+  });
+});
+
+describe("Streaming", () => {
+  it("should have strongly typed stream", async () => {
+    const model = new FakeChatModel({
+      responses: [new AIMessage("Cold, with a low of 3℃")],
+    });
+
+    const callModel = async (state: typeof MessagesAnnotation.State) => {
+      // For versions of @langchain/core < 0.2.3, you must call `.stream()`
+      // and aggregate the message from chunks instead of calling `.invoke()`.
+      const { messages } = state;
+      const responseMessage = await model.invoke(messages);
+      return { messages: [responseMessage] };
+    };
+
+    const workflow = new StateGraph(MessagesAnnotation)
+      .addNode("agent", callModel)
+      .addEdge(START, "agent")
+      .addEdge("agent", END);
+
+    const graph = workflow.compile();
+
+    const inputs = {
+      messages: [{ role: "user", content: "what's the weather in sf" }],
+    };
+
+    const pv = exec(graph, { streamMode: "values" })(inputs);
+
+    for await (const chunk of pv) {
+      const [_mode, payload] = chunk;
+      console.log(payload?.messages);
+      console.log("\n====\n");
+    }
   });
 });
