@@ -4,7 +4,7 @@
 
     As of LangGraph 0.2.31, the recommended way to set breakpoints is using the [`interrupt` function](/langgraphjs/reference/functions/langgraph.interrupt-1.html) as it simplifies **human-in-the-loop** patterns.
 
-    If you're looking for the previous version of this conceptual guide, which relied on static breakpoints and `NodeInterrupt` exception, it is available [here](v0-human-in-the-loop.md). 
+    If you're looking for the previous version of this conceptual guide, which relied on static breakpoints and `NodeInterrupt` exception, it is available [here](v0-human-in-the-loop.md).
 
 A **human-in-the-loop** (or "on-the-loop") workflow integrates human input into automated processes, allowing for decisions, validation, or corrections at key stages. This is especially useful in **LLM-based applications**, where the underlying model may generate occasional inaccuracies. In low-error-tolerance scenarios like compliance, decision-making, or content generation, human involvement ensures reliability by enabling review, correction, or override of model outputs.
 
@@ -18,7 +18,6 @@ Key use cases for **human-in-the-loop** workflows in LLM-based applications incl
 
 3. **💡 Providing context**: Enable the LLM to explicitly request human input for clarification or additional details or to support multi-turn conversations.
 
-
 ## `interrupt`
 
 The [`interrupt` function](/langgraphjs/reference/functions/langgraph.interrupt-1.html) in LangGraph enables human-in-the-loop workflows by pausing the graph at a specific node, presenting information to a human, and resuming the graph with their input. This function is useful for tasks like approvals, edits, or collecting additional input. The [`interrupt` function](/langgraphjs/reference/functions/langgraph.interrupt-1.html) is used in conjunction with the [`Command`](/langgraphjs/reference/classes/langgraph.Command.html) object to resume the graph with a value provided by the human.
@@ -27,33 +26,40 @@ The [`interrupt` function](/langgraphjs/reference/functions/langgraph.interrupt-
 import { interrupt } from "@langchain/langgraph";
 
 function humanNode(state: typeof GraphAnnotation.State) {
-    const value = interrupt(
-        // Any JSON serializable value to surface to the human.
-        // For example, a question or a piece of text or a set of keys in the state
-       {
-          text_to_revise: state.some_text
-       }
-    );
-    // Update the state with the human's input or route the graph based on the input
-    return {
-        some_text: value
-    };
+  const value = interrupt(
+    // Any JSON serializable value to surface to the human.
+    // For example, a question or a piece of text or a set of keys in the state
+    {
+      text_to_revise: state.some_text,
+    }
+  );
+  // Update the state with the human's input or route the graph based on the input
+  return {
+    some_text: value,
+  };
 }
 
 const graph = workflow.compile({
-    checkpointer // Required for `interrupt` to work
+  checkpointer, // Required for `interrupt` to work
 });
 
 // Run the graph until the interrupt
 const threadConfig = { configurable: { thread_id: "some_id" } };
 await graph.invoke(someInput, threadConfig);
-    
+
+// Below code can run some amount of time later and/or in a different process
+
+// Human input
+const valueFromHuman = "...";
+
 // Resume the graph with the human's input
 await graph.invoke(new Command({ resume: valueFromHuman }), threadConfig);
 ```
 
 ```typescript
-{ some_text: 'Edited text' }
+{
+  some_text: "Edited text";
+}
 ```
 
 ??? "Full Code"
@@ -97,7 +103,7 @@ await graph.invoke(new Command({ resume: valueFromHuman }), threadConfig);
 
       // Using stream() to directly surface the `__interrupt__` information.
       for await (const chunk of await graph.stream(
-         { some_text: "Original text" }, 
+         { some_text: "Original text" },
          threadConfig
       )) {
          console.log(chunk);
@@ -105,7 +111,7 @@ await graph.invoke(new Command({ resume: valueFromHuman }), threadConfig);
 
       // Resume using Command
       for await (const chunk of await graph.stream(
-         new Command({ resume: "Edited text" }), 
+         new Command({ resume: "Edited text" }),
          threadConfig
       )) {
          console.log(chunk);
@@ -125,7 +131,6 @@ await graph.invoke(new Command({ resume: valueFromHuman }), threadConfig);
       }
       { human_node: { some_text: 'Edited text' } }
       ```
-
 
 ## Requirements
 
@@ -171,7 +176,7 @@ function humanApproval(state: typeof GraphAnnotation.State): Command {
     question: "Is this correct?",
     // Surface the output that should be
     // reviewed and approved by the human.
-    llm_output: state.llm_output
+    llm_output: state.llm_output,
   });
 
   if (isApproved) {
@@ -183,9 +188,9 @@ function humanApproval(state: typeof GraphAnnotation.State): Command {
 
 // Add the node to the graph in an appropriate location
 // and connect it to the relevant nodes.
-graphBuilder.addNode("human_approval", humanApproval);
-
-const graph = graphBuilder.compile({ checkpointer });
+const graph = graphBuilder
+  .addNode("human_approval", humanApproval)
+  .compile({ checkpointer });
 
 // After running the graph and hitting the interrupt, the graph will pause.
 // Resume it with either an approval or rejection.
@@ -215,26 +220,26 @@ function humanEditing(state: typeof GraphAnnotation.State): Command {
     // Interrupt information to surface to the client.
     // Can be any JSON serializable value.
     task: "Review the output from the LLM and make any necessary edits.",
-    llm_generated_summary: state.llm_generated_summary
+    llm_generated_summary: state.llm_generated_summary,
   });
 
   // Update the state with the edited text
   return {
-    llm_generated_summary: result.edited_text
+    llm_generated_summary: result.edited_text,
   };
 }
 
 // Add the node to the graph in an appropriate location
 // and connect it to the relevant nodes.
-graphBuilder.addNode("human_editing", humanEditing);
-
-const graph = graphBuilder.compile({ checkpointer });
+const graph = graphBuilder
+  .addNode("human_editing", humanEditing)
+  .compile({ checkpointer });
 
 // After running the graph and hitting the interrupt, the graph will pause.
 // Resume it with the edited text.
 const threadConfig = { configurable: { thread_id: "some_id" } };
 await graph.invoke(
-  new Command({ resume: { edited_text: "The edited text" } }), 
+  new Command({ resume: { edited_text: "The edited text" } }),
   threadConfig
 );
 ```
@@ -262,7 +267,7 @@ function humanReviewNode(state: typeof GraphAnnotation.State): Command {
   const humanReview = interrupt({
     question: "Is this correct?",
     // Surface tool calls for review
-    tool_call: toolCall
+    tool_call: toolCall,
   });
 
   const [reviewAction, reviewData] = humanReview;
@@ -278,7 +283,7 @@ function humanReviewNode(state: typeof GraphAnnotation.State): Command {
     // to pass the message with a matching ID.
     return new Command({
       goto: "run_tool",
-      update: { messages: [updatedMsg] }
+      update: { messages: [updatedMsg] },
     });
   }
   // Give natural language feedback, and then pass that back to the agent
@@ -286,7 +291,7 @@ function humanReviewNode(state: typeof GraphAnnotation.State): Command {
     const feedbackMsg = getFeedbackMsg(reviewData);
     return new Command({
       goto: "call_llm",
-      update: { messages: [feedbackMsg] }
+      update: { messages: [feedbackMsg] },
     });
   }
 }
@@ -312,7 +317,7 @@ This design pattern is useful in an LLM application consisting of [multiple agen
 
 === "Using a human node per agent"
 
-    In this pattern, each agent has its own human node for collecting user input. 
+    In this pattern, each agent has its own human node for collecting user input.
 
     This can be achieved by either naming the human nodes with unique names (e.g., "human for agent 1", "human for agent 2") or by
     using subgraphs where a subgraph contains a human node and an agent node.
@@ -338,10 +343,10 @@ This design pattern is useful in an LLM application consisting of [multiple agen
       // ...
     }
 
-    graphBuilder.addNode("human_input", humanInput);
-    graphBuilder.addEdge("human_input", "agent");
-
-    const graph = graphBuilder.compile({ checkpointer });
+    const graph = graphBuilder
+      .addNode("human_input", humanInput)
+      .addEdge("human_input", "agent")
+      .compile({ checkpointer });
 
     // After running the graph and hitting the interrupt, the graph will pause.
     // Resume it with the human's input.
@@ -364,11 +369,11 @@ This design pattern is useful in an LLM application consisting of [multiple agen
        */
       const userInput = interrupt("Ready for user input.");
 
-      // Determine the **active agent** from the state, so 
+      // Determine the **active agent** from the state, so
       // we can route to the correct agent after collecting input.
       // For example, add a field to the state or use the last active agent.
       // or fill in `name` attribute of AI messages generated by the agents.
-      const activeAgent = ...; 
+      const activeAgent = ...;
 
       return new Command({
         goto: activeAgent,
@@ -409,11 +414,11 @@ function humanNode(state: typeof GraphAnnotation.State) {
       break;
     }
   }
-            
+
   console.log(`The human in the loop is ${answer} years old.`);
 
   return {
-    age: answer
+    age: answer,
   };
 }
 ```
@@ -428,32 +433,32 @@ The `Command` primitive provides several options to control and modify the graph
 
 1. **Pass a value to the `interrupt`**: Provide data, such as a user's response, to the graph using `new Command({ resume: value })`. Execution resumes from the beginning of the node where the `interrupt` was used, however, this time the `interrupt(...)` call will return the value passed in the `new Command({ resume: value })` instead of pausing the graph.
 
-       ```typescript
-       // Resume graph execution with the user's input.
-       await graph.invoke(new Command({ resume: { age: "25" } }), threadConfig);
-       ```
+   ```typescript
+   // Resume graph execution with the user's input.
+   await graph.invoke(new Command({ resume: { age: "25" } }), threadConfig);
+   ```
 
 2. **Update the graph state**: Modify the graph state using `Command({ goto: ..., update: ... })`. Note that resumption starts from the beginning of the node where the `interrupt` was used. Execution resumes from the beginning of the node where the `interrupt` was used, but with the updated state.
 
-      ```typescript
-      // Update the graph state and resume.
-      // You must provide a `resume` value if using an `interrupt`.
-      await graph.invoke(
-        new Command({ resume: "Let's go!!!", update: { foo: "bar" } }),
-        threadConfig
-      );
-      ```
+   ```typescript
+   // Update the graph state and resume.
+   // You must provide a `resume` value if using an `interrupt`.
+   await graph.invoke(
+     new Command({ resume: "Let's go!!!", update: { foo: "bar" } }),
+     threadConfig
+   );
+   ```
 
 By leveraging `Command`, you can resume graph execution, handle user inputs, and dynamically adjust the graph's state.
 
 ## Using with `invoke`
 
-When you use `stream` to run the graph, you will receive an `Interrupt` event that let you know the `interrupt` was triggered. 
+When you use `stream` to run the graph, you will receive an `Interrupt` event that let you know the `interrupt` was triggered.
 
 `invoke` does not return the interrupt information. To access this information, you must use the [getState](/langgraphjs/reference/classes/langgraph.CompiledStateGraph.html#getState) method to retrieve the graph state after calling `invoke`.
 
 ```typescript
-// Run the graph up to the interrupt 
+// Run the graph up to the interrupt
 const result = await graph.invoke(inputs, threadConfig);
 
 // Get the graph state to get interrupt information.
@@ -470,24 +475,28 @@ await graph.invoke(new Command({ resume: { age: "25" } }), threadConfig);
 ```
 
 ```typescript
-{ foo: 'bar' } // State values
+{
+  foo: "bar";
+} // State values
 
 [
   {
-    id: '5d8ffc92-8011-0c9b-8b59-9d3545b7e553',
-    name: 'node_foo',
-    path: ['__pregel_pull', 'node_foo'],
+    id: "5d8ffc92-8011-0c9b-8b59-9d3545b7e553",
+    name: "node_foo",
+    path: ["__pregel_pull", "node_foo"],
     error: null,
-    interrupts: [{
-      value: 'value_in_interrupt',
-      resumable: true,
-      ns: ['node_foo:5d8ffc92-8011-0c9b-8b59-9d3545b7e553'],
-      when: 'during'
-    }],
+    interrupts: [
+      {
+        value: "value_in_interrupt",
+        resumable: true,
+        ns: ["node_foo:5d8ffc92-8011-0c9b-8b59-9d3545b7e553"],
+        when: "during",
+      },
+    ],
     state: null,
-    result: null
-  }
-] // Pending tasks. interrupts 
+    result: null,
+  },
+]; // Pending tasks. interrupts
 ```
 
 ## How does resuming from an interrupt work?
@@ -525,7 +534,7 @@ The value of counter is: 2
 
 ### Side-effects
 
-Place code with side effects, such as API calls, **after** the `interrupt` to avoid duplication, as these are re-triggered every time the node is resumed. 
+Place code with side effects, such as API calls, **after** the `interrupt` to avoid duplication, as these are re-triggered every time the node is resumed.
 
 === "Side effects before interrupt (BAD)"
 
@@ -555,9 +564,9 @@ Place code with side effects, such as API calls, **after** the `interrupt` to av
       /**
        * Human node with validation.
        */
-        
+
       const answer = interrupt(question);
-        
+
       apiCall(answer); // OK as it's after the interrupt
     }
     ```
@@ -571,9 +580,9 @@ Place code with side effects, such as API calls, **after** the `interrupt` to av
       /**
        * Human node with validation.
        */
-        
+
       const answer = interrupt(question);
-        
+
       return {
         answer
       };
@@ -670,7 +679,7 @@ async function nodeInParentGraph(state: typeof GraphAnnotation.State) {
       async function parentNode(state: typeof GraphAnnotation.State) {
         counterParentNode += 1; // This code will run again on resuming!
         console.log(`Entered 'parentNode' a total of ${counterParentNode} times`);
-  
+
         // Please note that we're intentionally incrementing the state counter
         // in the graph state as well to demonstrate that the subgraph update
         // of the same key will not conflict with the parent graph (until
@@ -720,7 +729,6 @@ async function nodeInParentGraph(state: typeof GraphAnnotation.State) {
       { parent_node: null }
       ```
 
-
 ### Using multiple interrupts
 
 Using multiple interrupts within a **single** node can be helpful for patterns like [validating human input](#validating-human-input). However, using multiple interrupts in the same node can lead to unexpected behavior if not handled carefully.
@@ -761,9 +769,9 @@ To avoid issues, refrain from dynamically changing the node's structure between 
       } else {
         age = "N/A";
       }
-            
+
       console.log(`Name: ${name}. Age: ${age}`);
-        
+
       return {
         age,
         name,
@@ -790,7 +798,7 @@ To avoid issues, refrain from dynamically changing the node's structure between 
     }
 
     for await (const chunk of await graph.stream(
-      Command({ resume: "John", update: { name: "foo" } }), 
+      Command({ resume: "John", update: { name: "foo" } }),
       config
     )) {
       console.log(chunk);
