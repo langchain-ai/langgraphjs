@@ -402,6 +402,85 @@ describe("createReactAgent with prompt/state modifier", () => {
   });
 });
 
+describe("createReactAgent with bound tools", () => {
+  it.each(["openai", "anthropic"] as const)(
+    "Can use bound tools and validate tool matching with %s style",
+    async (toolStyle) => {
+      const llm = new FakeToolCallingChatModel({
+        responses: [new AIMessage("result")],
+        toolStyle,
+      });
+
+      const tool1 = tool((input) => `Tool 1: ${input.someVal}`, {
+        name: "tool1",
+        description: "Tool 1 docstring.",
+        schema: z.object({
+          someVal: z.number().describe("Input value"),
+        }),
+      });
+
+      const tool2 = tool((input) => `Tool 2: ${input.someVal}`, {
+        name: "tool2",
+        description: "Tool 2 docstring.",
+        schema: z.object({
+          someVal: z.number().describe("Input value"),
+        }),
+      });
+
+      // Test valid agent constructor
+      const agent = createReactAgent({
+        llm: llm.bindTools([tool1, tool2]),
+        tools: [tool1, tool2],
+      });
+
+      const result = await agent.nodes.tools.invoke({
+        messages: [
+          new AIMessage({
+            content: "hi?",
+            tool_calls: [
+              {
+                name: "tool1",
+                args: { someVal: 2 },
+                id: "some 1",
+              },
+              {
+                name: "tool2",
+                args: { someVal: 2 },
+                id: "some 2",
+              },
+            ],
+          }),
+        ],
+      });
+
+      const toolMessages = ((result?.messages as BaseMessage[]) || []).slice(
+        -2
+      ) as ToolMessage[];
+      for (const toolMessage of toolMessages) {
+        expect(toolMessage._getType()).toBe("tool");
+        expect(["Tool 1: 2", "Tool 2: 2"]).toContain(toolMessage.content);
+        expect(["some 1", "some 2"]).toContain(toolMessage.tool_call_id);
+      }
+
+      // Test mismatching tool lengths
+      expect(() => {
+        createReactAgent({
+          llm: llm.bindTools([tool1]),
+          tools: [tool1, tool2],
+        });
+      }).toThrow();
+
+      // Test missing bound tools
+      expect(() => {
+        createReactAgent({
+          llm: llm.bindTools([tool1]),
+          tools: [tool2],
+        });
+      }).toThrow();
+    }
+  );
+});
+
 describe("createReactAgent with legacy messageModifier", () => {
   const tools = [new SearchAPI()];
 

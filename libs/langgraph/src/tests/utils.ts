@@ -7,6 +7,8 @@ import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import {
   BaseChatModel,
   BaseChatModelParams,
+  BaseChatModelCallOptions,
+  BindToolsInput,
 } from "@langchain/core/language_models/chat_models";
 import {
   BaseMessage,
@@ -34,6 +36,7 @@ import { BaseTracer, Run } from "@langchain/core/tracers/base";
 import {
   BaseLanguageModelCallOptions,
   BaseLanguageModelInput,
+  ToolDefinition,
 } from "@langchain/core/language_models/base";
 import { Pregel, PregelInputType, PregelOutputType } from "../pregel/index.js";
 import { StrRecord } from "../pregel/algo.js";
@@ -150,11 +153,14 @@ export class FakeToolCallingChatModel extends BaseChatModel {
 
   idx: number;
 
+  toolStyle: "openai" | "anthropic" = "openai";
+
   constructor(
     fields: {
       sleep?: number;
       responses?: BaseMessage[];
       thrownErrorString?: string;
+      toolStyle?: "openai" | "anthropic";
     } & BaseChatModelParams
   ) {
     super(fields);
@@ -162,6 +168,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
     this.responses = fields.responses;
     this.thrownErrorString = fields.thrownErrorString;
     this.idx = 0;
+    this.toolStyle = fields.toolStyle ?? this.toolStyle;
   }
 
   _llmType() {
@@ -196,12 +203,38 @@ export class FakeToolCallingChatModel extends BaseChatModel {
     return generation;
   }
 
-  bindTools(_: Tool[]) {
+  bindTools(tools: BindToolsInput[]) {
+    const toolDicts = [];
+    for (const tool of tools) {
+      if (!("name" in tool)) {
+        throw new TypeError(
+          "Only tools with a name property are supported by FakeToolCallingModel.bindTools"
+        );
+      }
+
+      // NOTE: this is a simplified tool spec for testing purposes only
+      if (this.toolStyle === "openai") {
+        toolDicts.push({
+          type: "function",
+          function: {
+            name: tool.name,
+          },
+        });
+      } else if (this.toolStyle === "anthropic") {
+        toolDicts.push({
+          name: tool.name,
+        });
+      }
+    }
+
     return new FakeToolCallingChatModel({
       sleep: this.sleep,
       responses: this.responses,
       thrownErrorString: this.thrownErrorString,
-    });
+      toolStyle: this.toolStyle,
+    }).bind({
+      tools: toolDicts,
+    } as BaseChatModelCallOptions);
   }
 }
 
