@@ -72,7 +72,7 @@ class SearchAPIWithArtifact extends StructuredTool {
   }
 }
 
-describe("createReactAgent with prompt", () => {
+describe("createReactAgent with prompt/state modifier", () => {
   const tools = [new SearchAPI()];
 
   it("Can use string prompt", async () => {
@@ -92,33 +92,41 @@ describe("createReactAgent with prompt", () => {
       ],
     });
 
-    const agent = createReactAgent({
+    const agent1 = createReactAgent({
       llm,
       tools,
       prompt: "You are a helpful assistant",
     });
 
-    const result = await agent.invoke({
-      messages: [new HumanMessage("Hello Input!")],
+    const agent2 = createReactAgent({
+      llm,
+      tools,
+      stateModifier: "You are a helpful assistant",
     });
 
-    const expected = [
-      new _AnyIdHumanMessage("Hello Input!"),
-      new _AnyIdAIMessage({
-        content: "result1",
-        tool_calls: [
-          { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
-        ],
-      }),
-      new _AnyIdToolMessage({
-        name: "search_api",
-        content: "result for foo",
-        tool_call_id: "tool_abcd123",
-        artifact: undefined,
-      }),
-      new _AnyIdAIMessage("result2"),
-    ];
-    expect(result.messages).toEqual(expected);
+    for (const agent of [agent1, agent2]) {
+      const result = await agent.invoke({
+        messages: [new HumanMessage("Hello Input!")],
+      });
+
+      const expected = [
+        new _AnyIdHumanMessage("Hello Input!"),
+        new _AnyIdAIMessage({
+          content: "result1",
+          tool_calls: [
+            { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+          ],
+        }),
+        new _AnyIdToolMessage({
+          name: "search_api",
+          content: "result for foo",
+          tool_call_id: "tool_abcd123",
+          artifact: undefined,
+        }),
+        new _AnyIdAIMessage("result2"),
+      ];
+      expect(result.messages).toEqual(expected);
+    }
   });
 
   it("Can use SystemMessage prompt", async () => {
@@ -138,37 +146,45 @@ describe("createReactAgent with prompt", () => {
       ],
     });
 
-    const agent = createReactAgent({
+    const agent1 = createReactAgent({
       llm,
       tools,
       prompt: new SystemMessage("You are a helpful assistant"),
     });
 
-    const result = await agent.invoke({
-      messages: [],
+    const agent2 = createReactAgent({
+      llm,
+      tools,
+      stateModifier: new SystemMessage("You are a helpful assistant"),
     });
-    const expected = [
-      new _AnyIdAIMessage({
-        content: "result1",
-        tool_calls: [
-          { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
-        ],
-      }),
-      new _AnyIdToolMessage({
-        name: "search_api",
-        content: "result for foo",
-        tool_call_id: "tool_abcd123",
-        artifact: undefined,
-      }),
-      new _AnyIdAIMessage("result2"),
-    ];
-    expect(result.messages).toEqual(expected);
+
+    for (const agent of [agent1, agent2]) {
+      const result = await agent.invoke({
+        messages: [],
+      });
+      const expected = [
+        new _AnyIdAIMessage({
+          content: "result1",
+          tool_calls: [
+            { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+          ],
+        }),
+        new _AnyIdToolMessage({
+          name: "search_api",
+          content: "result for foo",
+          tool_call_id: "tool_abcd123",
+          artifact: undefined,
+        }),
+        new _AnyIdAIMessage("result2"),
+      ];
+      expect(result.messages).toEqual(expected);
+    }
   });
 
   it("Can use a function as a prompt", async () => {
     const llm = new FakeToolCallingChatModel({});
 
-    const agent = createReactAgent({
+    const agent1 = createReactAgent({
       llm,
       tools,
       prompt: (state) => {
@@ -176,11 +192,20 @@ describe("createReactAgent with prompt", () => {
       },
     });
 
-    const result = await agent.invoke({
-      messages: [],
+    const agent2 = createReactAgent({
+      llm,
+      tools,
+      stateModifier: (state) => {
+        return [new AIMessage("foobar")].concat(state.messages);
+      },
     });
-    const expected = [new _AnyIdAIMessage("foobar")];
-    expect(result.messages).toEqual(expected);
+    for (const agent of [agent1, agent2]) {
+      const result = await agent.invoke({
+        messages: [],
+      });
+      const expected = [new _AnyIdAIMessage("foobar")];
+      expect(result.messages).toEqual(expected);
+    }
   });
 
   it("Allows custom state schema that extends MessagesAnnotation", async () => {

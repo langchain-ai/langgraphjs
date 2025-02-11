@@ -159,7 +159,30 @@ function _shouldBindTools(
     return true;
   }
 
-  const boundTools = llm.kwargs.tools as Record<string, any>[];
+  type OpenAITool = {
+    type: "function";
+    function: {
+      name: string;
+      description: string;
+      parameters: {
+        type: "object";
+        properties: Record<string, unknown>;
+        required: string[];
+        additionalProperties: boolean;
+        $schema: string;
+      };
+    };
+  };
+
+  type AnthropicTool = {
+    name: string;
+    description: string;
+    input_schema: Record<string, unknown>;
+  };
+
+  type BoundTool = OpenAITool | AnthropicTool;
+
+  const boundTools = llm.kwargs.tools as BoundTool[];
   if (tools.length !== boundTools.length) {
     throw new Error(
       "Number of tools in the model.bindTools() and tools passed to createReactAgent must match"
@@ -172,11 +195,11 @@ function _shouldBindTools(
   for (const boundTool of boundTools) {
     let boundToolName: string;
     // OpenAI-style tool
-    if (boundTool.type === "function") {
+    if ("type" in boundTool && boundTool.type === "function") {
       boundToolName = boundTool.function.name;
     }
     // Anthropic-style tool
-    else if (boundTool.name) {
+    else if ("name" in boundTool) {
       boundToolName = boundTool.name;
     }
     // unknown tool type so we'll ignore it
@@ -202,13 +225,19 @@ function _getModel(llm: LanguageModelLike): BaseChatModel {
     model = llm.bound as BaseChatModel;
   }
 
-  if (!(model instanceof BaseChatModel)) {
+  if (
+    !(
+      "invoke" in model &&
+      typeof model.invoke === "function" &&
+      "_modelType" in model
+    )
+  ) {
     throw new Error(
-      `Expected \`llm\` to be a ChatModel or RunnableBinding (e.g. llm.bind_tools(...)), got ${llm.constructor.name}`
+      `Expected \`llm\` to be a ChatModel or RunnableBinding (e.g. llm.bind_tools(...)) with invoke() and generate() methods, got ${model.constructor.name}`
     );
   }
 
-  return model;
+  return model as BaseChatModel;
 }
 
 export type Prompt =
