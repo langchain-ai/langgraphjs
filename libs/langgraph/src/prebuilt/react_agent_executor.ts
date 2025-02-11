@@ -1,4 +1,7 @@
-import { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import {
+  BaseChatModel,
+  BindToolsInput,
+} from "@langchain/core/language_models/chat_models";
 import { LanguageModelLike } from "@langchain/core/language_models/base";
 import {
   BaseMessage,
@@ -159,30 +162,7 @@ function _shouldBindTools(
     return true;
   }
 
-  type OpenAITool = {
-    type: "function";
-    function: {
-      name: string;
-      description: string;
-      parameters: {
-        type: "object";
-        properties: Record<string, unknown>;
-        required: string[];
-        additionalProperties: boolean;
-        $schema: string;
-      };
-    };
-  };
-
-  type AnthropicTool = {
-    name: string;
-    description: string;
-    input_schema: Record<string, unknown>;
-  };
-
-  type BoundTool = OpenAITool | AnthropicTool;
-
-  const boundTools = llm.kwargs.tools as BoundTool[];
+  const boundTools = llm.kwargs.tools as BindToolsInput[];
   if (tools.length !== boundTools.length) {
     throw new Error(
       "Number of tools in the model.bindTools() and tools passed to createReactAgent must match"

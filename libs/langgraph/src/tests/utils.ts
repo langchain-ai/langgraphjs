@@ -36,7 +36,6 @@ import { BaseTracer, Run } from "@langchain/core/tracers/base";
 import {
   BaseLanguageModelCallOptions,
   BaseLanguageModelInput,
-  ToolDefinition,
 } from "@langchain/core/language_models/base";
 import { Pregel, PregelInputType, PregelOutputType } from "../pregel/index.js";
 import { StrRecord } from "../pregel/algo.js";
