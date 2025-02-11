@@ -84,7 +84,7 @@ function _convertMessageModifierToPrompt(
   );
 }
 
-const PROMPT_RUNNABLE_NAME = "state_modifier";
+const PROMPT_RUNNABLE_NAME = "prompt";
 
 function _getPromptRunnable(prompt?: Prompt): RunnableInterface {
   let promptRunnable: RunnableInterface;
