@@ -64,6 +64,9 @@ export interface AnnotationFunction {
   Root: <S extends StateDefinition>(sd: S) => AnnotationRoot<S>;
 }
 
+/**
+ * Should not be instantiated directly. See {@link Annotation}.
+ */
 export class AnnotationRoot<SD extends StateDefinition> {
   lc_graph_name = "AnnotationRoot";
 
