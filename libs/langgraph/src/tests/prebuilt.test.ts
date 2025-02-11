@@ -72,10 +72,10 @@ class SearchAPIWithArtifact extends StructuredTool {
   }
 }
 
-describe("createReactAgent with stateModifier", () => {
+describe("createReactAgent with prompt", () => {
   const tools = [new SearchAPI()];
 
-  it("Can use string message modifier", async () => {
+  it("Can use string prompt", async () => {
     const llm = new FakeToolCallingChatModel({
       responses: [
         new AIMessage({
@@ -95,7 +95,7 @@ describe("createReactAgent with stateModifier", () => {
     const agent = createReactAgent({
       llm,
       tools,
-      stateModifier: "You are a helpful assistant",
+      prompt: "You are a helpful assistant",
     });
 
     const result = await agent.invoke({
@@ -121,7 +121,7 @@ describe("createReactAgent with stateModifier", () => {
     expect(result.messages).toEqual(expected);
   });
 
-  it("Can use SystemMessage message modifier", async () => {
+  it("Can use SystemMessage prompt", async () => {
     const llm = new FakeToolCallingChatModel({
       responses: [
         new AIMessage({
@@ -141,7 +141,7 @@ describe("createReactAgent with stateModifier", () => {
     const agent = createReactAgent({
       llm,
       tools,
-      stateModifier: new SystemMessage("You are a helpful assistant"),
+      prompt: new SystemMessage("You are a helpful assistant"),
     });
 
     const result = await agent.invoke({
@@ -165,13 +165,13 @@ describe("createReactAgent with stateModifier", () => {
     expect(result.messages).toEqual(expected);
   });
 
-  it("Can use a function as a message modifier", async () => {
+  it("Can use a function as a prompt", async () => {
     const llm = new FakeToolCallingChatModel({});
 
     const agent = createReactAgent({
       llm,
       tools,
-      stateModifier: (state) => {
+      prompt: (state) => {
         return [new AIMessage("foobar")].concat(state.messages);
       },
     });
@@ -254,7 +254,7 @@ describe("createReactAgent with stateModifier", () => {
     const agent = createReactAgent({
       llm,
       tools: [new SearchAPIWithArtifact()],
-      stateModifier: "You are a helpful assistant",
+      prompt: "You are a helpful assistant",
     });
 
     const controller = new AbortController();
@@ -293,7 +293,7 @@ describe("createReactAgent with stateModifier", () => {
     const agent = createReactAgent({
       llm,
       tools: [new SearchAPIWithArtifact()],
-      stateModifier: "You are a helpful assistant",
+      prompt: "You are a helpful assistant",
     });
 
     const result = await agent.invoke({
@@ -351,7 +351,7 @@ describe("createReactAgent with stateModifier", () => {
     const agent = createReactAgent({
       llm,
       tools: [runnableToolLikeTool],
-      stateModifier: "You are a helpful assistant",
+      prompt: "You are a helpful assistant",
     });
 
     const result = await agent.invoke({
