@@ -1,4 +1,8 @@
-import { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import {
+  BaseChatModel,
+  BindToolsInput,
+} from "@langchain/core/language_models/chat_models";
+import { LanguageModelLike } from "@langchain/core/language_models/base";
 import {
   BaseMessage,
   BaseMessageLike,
@@ -142,6 +146,83 @@ function _getPrompt(
   return _getPromptRunnable(finalPrompt);
 }
 
+function _shouldBindTools(
+  llm: LanguageModelLike,
+  tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[]
+): boolean {
+  if (!Runnable.isRunnable(llm) || !("kwargs" in llm)) {
+    return true;
+  }
+
+  if (
+    !llm.kwargs ||
+    typeof llm.kwargs !== "object" ||
+    !("tools" in llm.kwargs)
+  ) {
+    return true;
+  }
+
+  const boundTools = llm.kwargs.tools as BindToolsInput[];
+  if (tools.length !== boundTools.length) {
+    throw new Error(
+      "Number of tools in the model.bindTools() and tools passed to createReactAgent must match"
+    );
+  }
+
+  const toolNames = new Set(tools.map((tool) => tool.name));
+  const boundToolNames = new Set<string>();
+
+  for (const boundTool of boundTools) {
+    let boundToolName: string;
+    // OpenAI-style tool
+    if ("type" in boundTool && boundTool.type === "function") {
+      boundToolName = boundTool.function.name;
+    }
+    // Anthropic-style tool
+    else if ("name" in boundTool) {
+      boundToolName = boundTool.name;
+    }
+    // unknown tool type so we'll ignore it
+    else {
+      continue;
+    }
+
+    boundToolNames.add(boundToolName);
+  }
+
+  const missingTools = [...toolNames].filter((x) => !boundToolNames.has(x));
+  if (missingTools.length > 0) {
+    throw new Error(
+      `Missing tools '${missingTools}' in the model.bindTools().` +
+        `Tools in the model.bindTools() must match the tools passed to createReactAgent.`
+    );
+  }
+
+  return false;
+}
+
+function _getModel(llm: LanguageModelLike): BaseChatModel {
+  // Get the underlying model from a RunnableBinding or return the model itself
+  let model = llm;
+  if (Runnable.isRunnable(llm) && "bound" in llm) {
+    model = llm.bound as BaseChatModel;
+  }
+
+  if (
+    !(
+      "invoke" in model &&
+      typeof model.invoke === "function" &&
+      "_modelType" in model
+    )
+  ) {
+    throw new Error(
+      `Expected \`llm\` to be a ChatModel or RunnableBinding (e.g. llm.bind_tools(...)) with invoke() and generate() methods, got ${model.constructor.name}`
+    );
+  }
+
+  return model as BaseChatModel;
+}
+
 export type Prompt =
   | SystemMessage
   | string
@@ -185,7 +266,7 @@ export type CreateReactAgentParams<
   StructuredResponseType = Record<string, any>
 > = {
   /** The chat model that can utilize OpenAI-style tool calling. */
-  llm: BaseChatModel;
+  llm: LanguageModelLike;
   /** A list of tools or a ToolNode. */
   tools:
     | ToolNode
@@ -326,10 +407,17 @@ export function createReactAgent<
   } else {
     toolClasses = tools;
   }
-  if (!("bindTools" in llm) || typeof llm.bindTools !== "function") {
-    throw new Error(`llm ${llm} must define bindTools method.`);
+
+  let modelWithTools: LanguageModelLike;
+  if (_shouldBindTools(llm, toolClasses)) {
+    if (!("bindTools" in llm) || typeof llm.bindTools !== "function") {
+      throw new Error(`llm ${llm} must define bindTools method.`);
+    }
+    modelWithTools = llm.bindTools(toolClasses);
+  } else {
+    modelWithTools = llm;
   }
-  const modelWithTools = llm.bindTools(toolClasses);
+
   const modelRunnable = (
     _getPrompt(prompt, stateModifier, messageModifier) as Runnable
   ).pipe(modelWithTools);
@@ -375,10 +463,11 @@ export function createReactAgent<
       "schema" in responseFormat
     ) {
       const { prompt, schema } = responseFormat;
-      modelWithStructuredOutput = llm.withStructuredOutput(schema);
+      modelWithStructuredOutput = _getModel(llm).withStructuredOutput(schema);
       messages.unshift(new SystemMessage({ content: prompt }));
     } else {
-      modelWithStructuredOutput = llm.withStructuredOutput(responseFormat);
+      modelWithStructuredOutput =
+        _getModel(llm).withStructuredOutput(responseFormat);
     }
 
     const response = await modelWithStructuredOutput.invoke(messages, config);
