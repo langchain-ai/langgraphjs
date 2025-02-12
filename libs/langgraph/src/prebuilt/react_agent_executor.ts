@@ -192,7 +192,10 @@ function _shouldBindTools(
 
   const missingTools = [...toolNames].filter((x) => !boundToolNames.has(x));
   if (missingTools.length > 0) {
-    throw new Error(`Missing tools '${missingTools}' in the model.bindTools()`);
+    throw new Error(
+      `Missing tools '${missingTools}' in the model.bindTools().` +
+        `Tools in the model.bindTools() must match the tools passed to createReactAgent.`
+    );
   }
 
   return false;
