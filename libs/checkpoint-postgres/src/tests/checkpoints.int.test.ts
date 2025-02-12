@@ -48,7 +48,7 @@ const checkpoint2: Checkpoint = {
   pending_sends: [],
 };
 
-const TEST_POSTGRES_URL = process.env.TEST_POSTGRES_URL;
+const { TEST_POSTGRES_URL } = process.env;
 if (!TEST_POSTGRES_URL) {
   throw new Error("TEST_POSTGRES_URL environment variable is required");
 }
