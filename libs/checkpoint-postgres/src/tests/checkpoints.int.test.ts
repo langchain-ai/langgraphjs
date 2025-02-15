@@ -48,14 +48,22 @@ const checkpoint2: Checkpoint = {
   pending_sends: [],
 };
 
-const postgresSavers: PostgresSaver[] = [];
+const { TEST_POSTGRES_URL } = process.env;
+if (!TEST_POSTGRES_URL) {
+  throw new Error("TEST_POSTGRES_URL environment variable is required");
+}
 
-describe("PostgresSaver", () => {
+let postgresSavers: PostgresSaver[] = [];
+
+describe.each([
+  { schema: undefined, description: "the default schema" },
+  { schema: "custom_schema", description: "a custom schema" },
+])("PostgresSaver with $description", ({ schema }) => {
   let postgresSaver: PostgresSaver;
 
   beforeEach(async () => {
     const pool = new Pool({
-      connectionString: process.env.TEST_POSTGRES_URL,
+      connectionString: TEST_POSTGRES_URL,
     });
     // Generate a unique database name
     const dbName = `lg_test_db_${Date.now()}_${Math.floor(
@@ -65,12 +73,15 @@ describe("PostgresSaver", () => {
     try {
       // Create a new database
       await pool.query(`CREATE DATABASE ${dbName}`);
+      console.log(`Created database: ${dbName}`);
 
       // Connect to the new database
-      const dbConnectionString = `${process.env.TEST_POSTGRES_URL?.split("/")
+      const dbConnectionString = `${TEST_POSTGRES_URL?.split("/")
         .slice(0, -1)
         .join("/")}/${dbName}`;
-      postgresSaver = PostgresSaver.fromConnString(dbConnectionString);
+      postgresSaver = PostgresSaver.fromConnString(dbConnectionString, {
+        schema,
+      });
       postgresSavers.push(postgresSaver);
       await postgresSaver.setup();
     } finally {
@@ -80,9 +91,11 @@ describe("PostgresSaver", () => {
 
   afterAll(async () => {
     await Promise.all(postgresSavers.map((saver) => saver.end()));
+    // clear the ended savers to clean up for the next test
+    postgresSavers = [];
     // Drop all test databases
     const pool = new Pool({
-      connectionString: process.env.TEST_POSTGRES_URL,
+      connectionString: TEST_POSTGRES_URL,
     });
 
     try {
