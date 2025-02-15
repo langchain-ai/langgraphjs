@@ -423,5 +423,4 @@ validation:
   # this is needed to handle headers with anchors for nav
   not_found: info
 copyright: >
-  Copyright &copy; 2025 LangChain, Inc
-  <a href="#__consent">Cookie settings</a>
+  Copyright &copy; 2025 LangChain, Inc | <a href="#__consent">Consent Preferences</a>
