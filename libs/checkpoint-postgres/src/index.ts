@@ -79,8 +79,11 @@ const { Pool } = pg;
  */
 export class PostgresSaver extends BaseCheckpointSaver {
   private pool: pg.Pool;
+
   private readonly options: PostgresSaverOptions;
+
   private readonly SQL_STATEMENTS: SQL_STATEMENTS;
+
   protected isSetup: boolean;
 
   constructor(
