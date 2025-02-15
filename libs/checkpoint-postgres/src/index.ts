@@ -27,7 +27,7 @@ const _defaultOptions: PostgresSaverOptions = {
   schema: "public",
 };
 
-const ensureCompleteOptions = (
+const _ensureCompleteOptions = (
   options?: Partial<PostgresSaverOptions>
 ): PostgresSaverOptions => {
   return {
@@ -91,7 +91,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     super(serde);
     this.pool = pool;
     this.isSetup = false;
-    this.options = ensureCompleteOptions(options);
+    this.options = _ensureCompleteOptions(options);
     this.SQL_STATEMENTS = getSQLStatements(this.options.schema);
   }
 
