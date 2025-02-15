@@ -19,13 +19,22 @@ import {
   getTablesWithSchema,
 } from "./sql.js";
 
-export interface PostgresSaverOptions {
-  schema?: string;
+interface PostgresSaverOptions {
+  schema: string;
 }
 
-interface DefaultPostgresSaverOptions extends PostgresSaverOptions {
-  schema: "public" | string;
-}
+const _defaultOptions: PostgresSaverOptions = {
+  schema: "public",
+};
+
+const ensureCompleteOptions = (
+  options?: Partial<PostgresSaverOptions>
+): PostgresSaverOptions => {
+  return {
+    ..._defaultOptions,
+    ...options,
+  };
+};
 
 const { Pool } = pg;
 
@@ -70,27 +79,19 @@ const { Pool } = pg;
  */
 export class PostgresSaver extends BaseCheckpointSaver {
   private pool: pg.Pool;
-
-  private readonly options: DefaultPostgresSaverOptions = {
-    schema: "public",
-  };
-
+  private readonly options: PostgresSaverOptions;
   private readonly SQL_STATEMENTS: SQL_STATEMENTS;
-
   protected isSetup: boolean;
 
   constructor(
     pool: pg.Pool,
     serde?: SerializerProtocol,
-    options?: PostgresSaverOptions
+    options?: Partial<PostgresSaverOptions>
   ) {
     super(serde);
     this.pool = pool;
     this.isSetup = false;
-    this.options = {
-      ...this.options,
-      ...options,
-    };
+    this.options = ensureCompleteOptions(options);
     this.SQL_STATEMENTS = getSQLStatements(this.options.schema);
   }
 
@@ -110,7 +111,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
    */
   static fromConnString(
     connString: string,
-    options: PostgresSaverOptions = {}
+    options?: Partial<PostgresSaverOptions>
   ): PostgresSaver {
     const pool = new Pool({ connectionString: connString });
     return new PostgresSaver(pool, undefined, options);
