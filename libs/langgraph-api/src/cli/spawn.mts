@@ -8,7 +8,7 @@ export async function spawnServer(
     nJobsPerWorker: string;
   },
   context: {
-    config: { graphs: Record<string, string> };
+    config: { graphs: Record<string, string>; ui?: Record<string, string> };
     env: NodeJS.ProcessEnv;
     hostUrl: string;
   },
@@ -50,6 +50,7 @@ For production use, please use LangGraph Cloud.
         nWorkers: Number.parseInt(args.nJobsPerWorker, 10),
         host: args.host,
         graphs: context.config.graphs,
+        ui: context.config.ui,
         cwd: options.projectCwd,
       }),
     ],
