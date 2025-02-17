@@ -147,8 +147,7 @@ api.get("/ui/:agent/:basename", async (c) => {
   const file = GRAPH_UI[agent]?.find((item) => item.basename === basename);
   if (!file) return c.text("File not found", 404);
 
-  // @ts-expect-error TODO weird TS error?
-  return c.body(file.contents, {
+  return c.body(file.contents as unknown as ArrayBuffer, {
     headers: { "Content-Type": getMimeType(file.basename) ?? "text/plain" },
   });
 });
