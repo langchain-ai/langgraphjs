@@ -106,7 +106,7 @@ const api = new Hono();
 
 api.post(
   "/ui/:agent",
-  zValidator("json", z.object({ shadowRootId: z.string() })),
+  zValidator("json", z.object({ name: z.string(), shadowRootId: z.string() })),
   async (c) => {
     const agent = c.req.param("agent");
     const host = c.req.header("host");
@@ -115,12 +115,10 @@ api.post(
     const files = GRAPH_UI[agent];
     if (!files?.length) return c.text(`UI not found for agent "${agent}"`, 404);
 
-    const strAgent = JSON.stringify(agent);
+    const strName = JSON.stringify(body.name);
     const strRootId = JSON.stringify(body.shadowRootId);
 
-    const result = [
-      `<script src="http://${host}/${agent}/entrypoint.js" onload='__LGUI_${agent}.render(${strAgent}, ${strRootId})'></script>`,
-    ];
+    const result = [];
 
     for (const css of files.filter(
       (i) => path.extname(i.basename) === ".css",
@@ -132,7 +130,9 @@ api.post(
 
     const js = files.find((i) => path.extname(i.basename) === ".js");
     if (js) {
-      result.push(`<script src="http://${host}/ui/${agent}/${js.basename}" />`);
+      result.push(
+        `<script src="http://${host}/ui/${agent}/${js.basename}" onload='__LGUI_${agent}.render(${strName}, ${strRootId})'></script>`,
+      );
     }
 
     return c.text(result.join("\n"), {
