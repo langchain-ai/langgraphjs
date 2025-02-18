@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 function $(strings, ...rest) {
-  console.log("$", ...strings.raw);
+  process.stderr.write(
+    ["$", ...strings.raw].map((i) => String(i)).join(" ") + "\n",
+  );
   return Bun.$(strings, ...rest);
 }
-
 await $`rm -rf dist`;
