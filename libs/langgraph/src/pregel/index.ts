@@ -281,6 +281,7 @@ export class Pregel<
     this.retryPolicy = fields.retryPolicy;
     this.config = fields.config;
     this.store = fields.store;
+    this.name = fields.name;
 
     if (this.autoValidate) {
       this.validate();

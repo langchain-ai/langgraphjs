@@ -1,4 +1,8 @@
-import { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import {
+  BaseChatModel,
+  BindToolsInput,
+} from "@langchain/core/language_models/chat_models";
+import { LanguageModelLike } from "@langchain/core/language_models/base";
 import {
   BaseMessage,
   BaseMessageLike,
@@ -55,9 +59,9 @@ export type StructuredResponseSchemaAndPrompt<StructuredResponseType> = {
   schema: z.ZodType<StructuredResponseType> | Record<string, any>;
 };
 
-function _convertMessageModifierToStateModifier(
+function _convertMessageModifierToPrompt(
   messageModifier: MessageModifier
-): StateModifier {
+): Prompt {
   // Handle string or SystemMessage
   if (
     typeof messageModifier === "string" ||
@@ -84,68 +88,142 @@ function _convertMessageModifierToStateModifier(
   );
 }
 
-function _getStateModifierRunnable(
-  stateModifier?: StateModifier
-): RunnableInterface {
-  let stateModifierRunnable: RunnableInterface;
+const PROMPT_RUNNABLE_NAME = "prompt";
 
-  if (stateModifier == null) {
-    stateModifierRunnable = RunnableLambda.from(
+function _getPromptRunnable(prompt?: Prompt): RunnableInterface {
+  let promptRunnable: RunnableInterface;
+
+  if (prompt == null) {
+    promptRunnable = RunnableLambda.from(
       (state: typeof MessagesAnnotation.State) => state.messages
-    ).withConfig({ runName: "state_modifier" });
-  } else if (typeof stateModifier === "string") {
-    const systemMessage = new SystemMessage(stateModifier);
-    stateModifierRunnable = RunnableLambda.from(
+    ).withConfig({ runName: PROMPT_RUNNABLE_NAME });
+  } else if (typeof prompt === "string") {
+    const systemMessage = new SystemMessage(prompt);
+    promptRunnable = RunnableLambda.from(
       (state: typeof MessagesAnnotation.State) => {
         return [systemMessage, ...(state.messages ?? [])];
       }
-    ).withConfig({ runName: "state_modifier" });
-  } else if (
-    isBaseMessage(stateModifier) &&
-    stateModifier._getType() === "system"
-  ) {
-    stateModifierRunnable = RunnableLambda.from(
-      (state: typeof MessagesAnnotation.State) => [
-        stateModifier,
-        ...state.messages,
-      ]
-    ).withConfig({ runName: "state_modifier" });
-  } else if (typeof stateModifier === "function") {
-    stateModifierRunnable = RunnableLambda.from(stateModifier).withConfig({
-      runName: "state_modifier",
+    ).withConfig({ runName: PROMPT_RUNNABLE_NAME });
+  } else if (isBaseMessage(prompt) && prompt._getType() === "system") {
+    promptRunnable = RunnableLambda.from(
+      (state: typeof MessagesAnnotation.State) => [prompt, ...state.messages]
+    ).withConfig({ runName: PROMPT_RUNNABLE_NAME });
+  } else if (typeof prompt === "function") {
+    promptRunnable = RunnableLambda.from(prompt).withConfig({
+      runName: PROMPT_RUNNABLE_NAME,
     });
-  } else if (Runnable.isRunnable(stateModifier)) {
-    stateModifierRunnable = stateModifier;
+  } else if (Runnable.isRunnable(prompt)) {
+    promptRunnable = prompt;
   } else {
-    throw new Error(
-      `Got unexpected type for 'stateModifier': ${typeof stateModifier}`
-    );
+    throw new Error(`Got unexpected type for 'prompt': ${typeof prompt}`);
   }
 
-  return stateModifierRunnable;
+  return promptRunnable;
 }
 
-function _getModelPreprocessingRunnable(
-  stateModifier: CreateReactAgentParams["stateModifier"],
-  messageModifier: CreateReactAgentParams["messageModifier"]
+function _getPrompt(
+  prompt?: Prompt,
+  stateModifier?: CreateReactAgentParams["stateModifier"],
+  messageModifier?: CreateReactAgentParams["messageModifier"]
 ) {
-  // Check if both modifiers exist
-  if (stateModifier != null && messageModifier != null) {
+  // Check if multiple modifiers exist
+  const definedCount = [prompt, stateModifier, messageModifier].filter(
+    (x) => x != null
+  ).length;
+  if (definedCount > 1) {
     throw new Error(
-      "Expected value for either stateModifier or messageModifier, got values for both"
+      "Expected only one of prompt, stateModifier, or messageModifier, got multiple values"
     );
   }
 
-  // Convert message modifier to state modifier if necessary
-  if (stateModifier == null && messageModifier != null) {
-    // eslint-disable-next-line no-param-reassign
-    stateModifier = _convertMessageModifierToStateModifier(messageModifier);
+  let finalPrompt = prompt;
+  if (stateModifier != null) {
+    finalPrompt = stateModifier;
+  } else if (messageModifier != null) {
+    finalPrompt = _convertMessageModifierToPrompt(messageModifier);
   }
 
-  return _getStateModifierRunnable(stateModifier);
+  return _getPromptRunnable(finalPrompt);
 }
 
-export type StateModifier =
+function _shouldBindTools(
+  llm: LanguageModelLike,
+  tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[]
+): boolean {
+  if (!Runnable.isRunnable(llm) || !("kwargs" in llm)) {
+    return true;
+  }
+
+  if (
+    !llm.kwargs ||
+    typeof llm.kwargs !== "object" ||
+    !("tools" in llm.kwargs)
+  ) {
+    return true;
+  }
+
+  const boundTools = llm.kwargs.tools as BindToolsInput[];
+  if (tools.length !== boundTools.length) {
+    throw new Error(
+      "Number of tools in the model.bindTools() and tools passed to createReactAgent must match"
+    );
+  }
+
+  const toolNames = new Set(tools.map((tool) => tool.name));
+  const boundToolNames = new Set<string>();
+
+  for (const boundTool of boundTools) {
+    let boundToolName: string;
+    // OpenAI-style tool
+    if ("type" in boundTool && boundTool.type === "function") {
+      boundToolName = boundTool.function.name;
+    }
+    // Anthropic-style tool
+    else if ("name" in boundTool) {
+      boundToolName = boundTool.name;
+    }
+    // unknown tool type so we'll ignore it
+    else {
+      continue;
+    }
+
+    boundToolNames.add(boundToolName);
+  }
+
+  const missingTools = [...toolNames].filter((x) => !boundToolNames.has(x));
+  if (missingTools.length > 0) {
+    throw new Error(
+      `Missing tools '${missingTools}' in the model.bindTools().` +
+        `Tools in the model.bindTools() must match the tools passed to createReactAgent.`
+    );
+  }
+
+  return false;
+}
+
+function _getModel(llm: LanguageModelLike): BaseChatModel {
+  // Get the underlying model from a RunnableBinding or return the model itself
+  let model = llm;
+  if (Runnable.isRunnable(llm) && "bound" in llm) {
+    model = llm.bound as BaseChatModel;
+  }
+
+  if (
+    !(
+      "invoke" in model &&
+      typeof model.invoke === "function" &&
+      "_modelType" in model
+    )
+  ) {
+    throw new Error(
+      `Expected \`llm\` to be a ChatModel or RunnableBinding (e.g. llm.bind_tools(...)) with invoke() and generate() methods, got ${model.constructor.name}`
+    );
+  }
+
+  return model as BaseChatModel;
+}
+
+export type Prompt =
   | SystemMessage
   | string
   | ((
@@ -158,7 +236,10 @@ export type StateModifier =
     ) => Promise<BaseMessageLike[]>)
   | Runnable;
 
-/** @deprecated Use StateModifier instead. */
+/** @deprecated Use Prompt instead. */
+export type StateModifier = Prompt;
+
+/** @deprecated Use Prompt instead. */
 export type MessageModifier =
   | SystemMessage
   | string
@@ -185,63 +266,34 @@ export type CreateReactAgentParams<
   StructuredResponseType = Record<string, any>
 > = {
   /** The chat model that can utilize OpenAI-style tool calling. */
-  llm: BaseChatModel;
+  llm: LanguageModelLike;
   /** A list of tools or a ToolNode. */
-  tools: ToolNode | (StructuredToolInterface | RunnableToolLike)[];
+  tools:
+    | ToolNode
+    | (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
   /**
-   * @deprecated
-   * Use stateModifier instead. stateModifier works the same as
-   * messageModifier in that it runs right before calling the chat model,
-   * but if passed as a function, it takes the full graph state as
-   * input whenever a tool is called rather than a list of messages.
-   *
-   * If a function is passed, it should return a list of messages to
-   * pass directly to the chat model.
-   *
-   * @example
-   * ```ts
-   * import { ChatOpenAI } from "@langchain/openai";
-   * import { MessagesAnnotation } from "@langchain/langgraph";
-   * import { createReactAgent } from "@langchain/langgraph/prebuilt";
-   * import { type BaseMessage, SystemMessage } from "@langchain/core/messages";
-   *
-   * const model = new ChatOpenAI({
-   *   model: "gpt-4o-mini",
-   * });
-   *
-   * const tools = [...];
-   *
-   * // Deprecated style with messageModifier
-   * const deprecated = createReactAgent({
-   *   llm,
-   *   tools,
-   *   messageModifier: async (messages: BaseMessage[]) => {
-   *     return [new SystemMessage("You are a pirate")].concat(messages);
-   *   }
-   * });
-   *
-   * // New style with stateModifier
-   * const agent = createReactAgent({
-   *   llm,
-   *   tools,
-   *   stateModifier: async (state: typeof MessagesAnnotation.State) => {
-   *     return [new SystemMessage("You are a pirate.")].concat(messages);
-   *   }
-   * });
-   * ```
+   * @deprecated Use prompt instead.
    */
   messageModifier?: MessageModifier;
   /**
-   * An optional state modifier. This takes full graph state BEFORE the LLM is called and prepares the input to LLM.
+   * @deprecated Use prompt instead.
+   */
+  stateModifier?: StateModifier;
+  /**
+   * An optional prompt for the LLM. This takes full graph state BEFORE the LLM is called and prepares the input to LLM.
    *
    * Can take a few different forms:
    *
-   * - SystemMessage: this is added to the beginning of the list of messages in state["messages"].
    * - str: This is converted to a SystemMessage and added to the beginning of the list of messages in state["messages"].
+   * - SystemMessage: this is added to the beginning of the list of messages in state["messages"].
    * - Function: This function should take in full graph state and the output is then passed to the language model.
    * - Runnable: This runnable should take in full graph state and the output is then passed to the language model.
+   *
+   * Note:
+   * Prior to `v0.2.46`, the prompt was set using `stateModifier` / `messagesModifier` parameters.
+   * This is now deprecated and will be removed in a future release.
    */
-  stateModifier?: StateModifier;
+  prompt?: Prompt;
   stateSchema?: A;
   /** An optional checkpoint saver to persist the agent's state. */
   checkpointSaver?: BaseCheckpointSaver;
@@ -269,6 +321,7 @@ export type CreateReactAgentParams<
     | StructuredResponseSchemaAndPrompt<StructuredResponseType>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     | Record<string, any>;
+  name?: string;
 };
 
 /**
@@ -337,6 +390,7 @@ export function createReactAgent<
     tools,
     messageModifier,
     stateModifier,
+    prompt,
     stateSchema,
     checkpointSaver,
     checkpointer,
@@ -344,6 +398,7 @@ export function createReactAgent<
     interruptAfter,
     store,
     responseFormat,
+    name,
   } = params;
 
   let toolClasses: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
@@ -352,17 +407,20 @@ export function createReactAgent<
   } else {
     toolClasses = tools;
   }
-  if (!("bindTools" in llm) || typeof llm.bindTools !== "function") {
-    throw new Error(`llm ${llm} must define bindTools method.`);
-  }
-  const modelWithTools = llm.bindTools(toolClasses);
 
-  // we're passing store here for validation
-  const preprocessor = _getModelPreprocessingRunnable(
-    stateModifier,
-    messageModifier
-  );
-  const modelRunnable = (preprocessor as Runnable).pipe(modelWithTools);
+  let modelWithTools: LanguageModelLike;
+  if (_shouldBindTools(llm, toolClasses)) {
+    if (!("bindTools" in llm) || typeof llm.bindTools !== "function") {
+      throw new Error(`llm ${llm} must define bindTools method.`);
+    }
+    modelWithTools = llm.bindTools(toolClasses);
+  } else {
+    modelWithTools = llm;
+  }
+
+  const modelRunnable = (
+    _getPrompt(prompt, stateModifier, messageModifier) as Runnable
+  ).pipe(modelWithTools);
 
   // If any of the tools are configured to return_directly after running,
   // our graph needs to check if these were called
@@ -405,10 +463,11 @@ export function createReactAgent<
       "schema" in responseFormat
     ) {
       const { prompt, schema } = responseFormat;
-      modelWithStructuredOutput = llm.withStructuredOutput(schema);
+      modelWithStructuredOutput = _getModel(llm).withStructuredOutput(schema);
       messages.unshift(new SystemMessage({ content: prompt }));
     } else {
-      modelWithStructuredOutput = llm.withStructuredOutput(responseFormat);
+      modelWithStructuredOutput =
+        _getModel(llm).withStructuredOutput(responseFormat);
     }
 
     const response = await modelWithStructuredOutput.invoke(messages, config);
@@ -472,5 +531,6 @@ export function createReactAgent<
     interruptBefore,
     interruptAfter,
     store,
+    name,
   });
 }

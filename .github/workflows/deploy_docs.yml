@@ -38,7 +38,11 @@ jobs:
           pip install uv
           uv venv
           uv pip install -r docs/docs-requirements.txt
-          uv pip install "git+https://${GITHUB_TOKEN}@github.com/langchain-ai/mkdocs-material-insiders.git"
+          # we run this installation only for internal PRs
+          # as GITHUB_TOKEN is not available for PRs from outside contributors
+          if [ -n "${GITHUB_TOKEN}" ]; then
+            uv pip install "git+https://${GITHUB_TOKEN}@github.com/langchain-ai/mkdocs-material-insiders.git"
+          fi
 
       - name: Use Node.js 18.x
         uses: actions/setup-node@v3

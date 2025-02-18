@@ -72,10 +72,10 @@ class SearchAPIWithArtifact extends StructuredTool {
   }
 }
 
-describe("createReactAgent with stateModifier", () => {
+describe("createReactAgent with prompt/state modifier", () => {
   const tools = [new SearchAPI()];
 
-  it("Can use string message modifier", async () => {
+  it("Can use string prompt", async () => {
     const llm = new FakeToolCallingChatModel({
       responses: [
         new AIMessage({
@@ -92,36 +92,44 @@ describe("createReactAgent with stateModifier", () => {
       ],
     });
 
-    const agent = createReactAgent({
+    const agent1 = createReactAgent({
+      llm,
+      tools,
+      prompt: "You are a helpful assistant",
+    });
+
+    const agent2 = createReactAgent({
       llm,
       tools,
       stateModifier: "You are a helpful assistant",
     });
 
-    const result = await agent.invoke({
-      messages: [new HumanMessage("Hello Input!")],
-    });
+    for (const agent of [agent1, agent2]) {
+      const result = await agent.invoke({
+        messages: [new HumanMessage("Hello Input!")],
+      });
 
-    const expected = [
-      new _AnyIdHumanMessage("Hello Input!"),
-      new _AnyIdAIMessage({
-        content: "result1",
-        tool_calls: [
-          { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
-        ],
-      }),
-      new _AnyIdToolMessage({
-        name: "search_api",
-        content: "result for foo",
-        tool_call_id: "tool_abcd123",
-        artifact: undefined,
-      }),
-      new _AnyIdAIMessage("result2"),
-    ];
-    expect(result.messages).toEqual(expected);
+      const expected = [
+        new _AnyIdHumanMessage("Hello Input!"),
+        new _AnyIdAIMessage({
+          content: "result1",
+          tool_calls: [
+            { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+          ],
+        }),
+        new _AnyIdToolMessage({
+          name: "search_api",
+          content: "result for foo",
+          tool_call_id: "tool_abcd123",
+          artifact: undefined,
+        }),
+        new _AnyIdAIMessage("result2"),
+      ];
+      expect(result.messages).toEqual(expected);
+    }
   });
 
-  it("Can use SystemMessage message modifier", async () => {
+  it("Can use SystemMessage prompt", async () => {
     const llm = new FakeToolCallingChatModel({
       responses: [
         new AIMessage({
@@ -138,49 +146,66 @@ describe("createReactAgent with stateModifier", () => {
       ],
     });
 
-    const agent = createReactAgent({
+    const agent1 = createReactAgent({
+      llm,
+      tools,
+      prompt: new SystemMessage("You are a helpful assistant"),
+    });
+
+    const agent2 = createReactAgent({
       llm,
       tools,
       stateModifier: new SystemMessage("You are a helpful assistant"),
     });
 
-    const result = await agent.invoke({
-      messages: [],
-    });
-    const expected = [
-      new _AnyIdAIMessage({
-        content: "result1",
-        tool_calls: [
-          { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
-        ],
-      }),
-      new _AnyIdToolMessage({
-        name: "search_api",
-        content: "result for foo",
-        tool_call_id: "tool_abcd123",
-        artifact: undefined,
-      }),
-      new _AnyIdAIMessage("result2"),
-    ];
-    expect(result.messages).toEqual(expected);
+    for (const agent of [agent1, agent2]) {
+      const result = await agent.invoke({
+        messages: [],
+      });
+      const expected = [
+        new _AnyIdAIMessage({
+          content: "result1",
+          tool_calls: [
+            { name: "search_api", id: "tool_abcd123", args: { query: "foo" } },
+          ],
+        }),
+        new _AnyIdToolMessage({
+          name: "search_api",
+          content: "result for foo",
+          tool_call_id: "tool_abcd123",
+          artifact: undefined,
+        }),
+        new _AnyIdAIMessage("result2"),
+      ];
+      expect(result.messages).toEqual(expected);
+    }
   });
 
-  it("Can use a function as a message modifier", async () => {
+  it("Can use a function as a prompt", async () => {
     const llm = new FakeToolCallingChatModel({});
 
-    const agent = createReactAgent({
+    const agent1 = createReactAgent({
+      llm,
+      tools,
+      prompt: (state) => {
+        return [new AIMessage("foobar")].concat(state.messages);
+      },
+    });
+
+    const agent2 = createReactAgent({
       llm,
       tools,
       stateModifier: (state) => {
         return [new AIMessage("foobar")].concat(state.messages);
       },
     });
-
-    const result = await agent.invoke({
-      messages: [],
-    });
-    const expected = [new _AnyIdAIMessage("foobar")];
-    expect(result.messages).toEqual(expected);
+    for (const agent of [agent1, agent2]) {
+      const result = await agent.invoke({
+        messages: [],
+      });
+      const expected = [new _AnyIdAIMessage("foobar")];
+      expect(result.messages).toEqual(expected);
+    }
   });
 
   it("Allows custom state schema that extends MessagesAnnotation", async () => {
@@ -254,7 +279,7 @@ describe("createReactAgent with stateModifier", () => {
     const agent = createReactAgent({
       llm,
       tools: [new SearchAPIWithArtifact()],
-      stateModifier: "You are a helpful assistant",
+      prompt: "You are a helpful assistant",
     });
 
     const controller = new AbortController();
@@ -293,7 +318,7 @@ describe("createReactAgent with stateModifier", () => {
     const agent = createReactAgent({
       llm,
       tools: [new SearchAPIWithArtifact()],
-      stateModifier: "You are a helpful assistant",
+      prompt: "You are a helpful assistant",
     });
 
     const result = await agent.invoke({
@@ -351,7 +376,7 @@ describe("createReactAgent with stateModifier", () => {
     const agent = createReactAgent({
       llm,
       tools: [runnableToolLikeTool],
-      stateModifier: "You are a helpful assistant",
+      prompt: "You are a helpful assistant",
     });
 
     const result = await agent.invoke({
@@ -375,6 +400,85 @@ describe("createReactAgent with stateModifier", () => {
     ];
     expect(result.messages).toEqual(expected);
   });
+});
+
+describe("createReactAgent with bound tools", () => {
+  it.each(["openai", "anthropic"] as const)(
+    "Can use bound tools and validate tool matching with %s style",
+    async (toolStyle) => {
+      const llm = new FakeToolCallingChatModel({
+        responses: [new AIMessage("result")],
+        toolStyle,
+      });
+
+      const tool1 = tool((input) => `Tool 1: ${input.someVal}`, {
+        name: "tool1",
+        description: "Tool 1 docstring.",
+        schema: z.object({
+          someVal: z.number().describe("Input value"),
+        }),
+      });
+
+      const tool2 = tool((input) => `Tool 2: ${input.someVal}`, {
+        name: "tool2",
+        description: "Tool 2 docstring.",
+        schema: z.object({
+          someVal: z.number().describe("Input value"),
+        }),
+      });
+
+      // Test valid agent constructor
+      const agent = createReactAgent({
+        llm: llm.bindTools([tool1, tool2]),
+        tools: [tool1, tool2],
+      });
+
+      const result = await agent.nodes.tools.invoke({
+        messages: [
+          new AIMessage({
+            content: "hi?",
+            tool_calls: [
+              {
+                name: "tool1",
+                args: { someVal: 2 },
+                id: "some 1",
+              },
+              {
+                name: "tool2",
+                args: { someVal: 2 },
+                id: "some 2",
+              },
+            ],
+          }),
+        ],
+      });
+
+      const toolMessages = ((result?.messages as BaseMessage[]) || []).slice(
+        -2
+      ) as ToolMessage[];
+      for (const toolMessage of toolMessages) {
+        expect(toolMessage._getType()).toBe("tool");
+        expect(["Tool 1: 2", "Tool 2: 2"]).toContain(toolMessage.content);
+        expect(["some 1", "some 2"]).toContain(toolMessage.tool_call_id);
+      }
+
+      // Test mismatching tool lengths
+      expect(() => {
+        createReactAgent({
+          llm: llm.bindTools([tool1]),
+          tools: [tool1, tool2],
+        });
+      }).toThrow();
+
+      // Test missing bound tools
+      expect(() => {
+        createReactAgent({
+          llm: llm.bindTools([tool1]),
+          tools: [tool2],
+        });
+      }).toThrow();
+    }
+  );
 });
 
 describe("createReactAgent with legacy messageModifier", () => {
