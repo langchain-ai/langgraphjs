@@ -34,6 +34,7 @@ export async function registerGraphUi(
         bundle: true,
         platform: "browser",
         target: "es2020",
+        jsx: "automatic",
         external: ["react", "react-dom", "@langchain/langgraph-sdk"],
         plugins: [
           {
