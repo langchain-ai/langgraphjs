@@ -32,8 +32,7 @@ LangGraph.js makes it easy to persist state across graph runs. The guides below 
 - [How to add cross-thread persistence](cross-thread-persistence.ipynb)
 - [How to use a Postgres checkpointer for persistence](persistence-postgres.ipynb)
 
-See the below guides for how-to add persistence to your workflow using the (beta)
-[Functional API](../concepts/functional_api.md):
+See the below guides for how-to add persistence to your workflow using the [Functional API](../concepts/functional_api.md):
 
 - [How to add thread-level persistence (functional API)](persistence-functional.ipynb)
 - [How to add cross-thread persistence (functional API)](cross-thread-persistence-functional.ipynb)
@@ -64,8 +63,7 @@ Other methods:
 - [How to edit graph state](edit-graph-state.ipynb): Edit graph state using `graph.update_state` method. Use this if implementing a **human-in-the-loop** workflow via **static breakpoints**.
 - [How to add dynamic breakpoints with `NodeInterrupt`](dynamic_breakpoints.ipynb): **Not recommended**: Use the [`interrupt` function](/langgraphjs/concepts/human_in_the_loop) instead.
 
-See the below guides for how-to implement human-in-the-loop workflows with the (beta)
-[Functional API](../concepts/functional_api.md):
+See the below guides for how-to implement human-in-the-loop workflows with the [Functional API](../concepts/functional_api.md):
 
 - [How to wait for user input (Functional API)](wait-user-input-functional.ipynb)
 - [How to review tool calls (Functional API)](review-tool-calls-functional.ipynb)
@@ -113,8 +111,7 @@ These guides show how to use different streaming modes.
 
 See the [multi-agent tutorials](../tutorials/index.md#multi-agent-systems) for implementations of other multi-agent architectures.
 
-See the below guides for how-to implement multi-agent workflows with the (beta)
-[Functional API](../concepts/functional_api.md):
+See the below guides for how-to implement multi-agent workflows with the [Functional API](../concepts/functional_api.md):
 
 - [How to build a multi-agent network (functional API)](multi-agent-network-functional.ipynb)
 - [How to add multi-turn conversation in a multi-agent application (functional API)](multi-agent-multi-turn-convo-functional.ipynb)
@@ -141,8 +138,7 @@ See the below guides for how-to implement multi-agent workflows with the (beta)
 - [How to add Human-in-the-loop to a ReAct agent](react-human-in-the-loop.ipynb)
 - [How to return structured output from a ReAct agent](react-return-structured-output.ipynb)
 
-See the below guide for how-to build ReAct agents with the (beta)
-[Functional API](../concepts/functional_api.md):
+See the below guide for how-to build ReAct agents with the [Functional API](../concepts/functional_api.md):
 
 - [How to create a ReAct agent from scratch (Functional API)](react-agent-from-scratch-functional.ipynb)
 

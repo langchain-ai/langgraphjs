@@ -1,8 +1,5 @@
 # Functional API
 
-!!! warning "Beta"
-The Functional API is currently in **beta** and is subject to change. Please [report any issues](https://github.com/langchain-ai/langgraphjs/issues) or feedback to the LangGraph team.
-
 !!! note Compatibility
 
     The Functional API requires `@langchain/langgraph>=0.2.42`.
