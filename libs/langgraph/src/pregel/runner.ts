@@ -13,11 +13,7 @@ import {
   RETURN,
   CONFIG_KEY_CALL,
 } from "../constants.js";
-import {
-  GraphInterrupt,
-  isGraphBubbleUp,
-  isGraphInterrupt,
-} from "../errors.js";
+import { GraphBubbleUp, isGraphBubbleUp, isGraphInterrupt } from "../errors.js";
 import { _runWithRetry, SettledPregelTask } from "./retry.js";
 import { PregelLoop } from "./loop.js";
 
@@ -78,7 +74,7 @@ export class PregelRunner {
   async tick(options: TickOptions = {}) {
     const { timeout, signal, retryPolicy, onStepWrite } = options;
 
-    let graphInterrupt: GraphInterrupt | undefined;
+    let graphBubbleUp: GraphBubbleUp | undefined;
 
     // Start task execution
     const pendingTasks = Object.values(this.loop.tasks).filter(
@@ -92,7 +88,12 @@ export class PregelRunner {
     });
 
     for await (const { task, error } of taskStream) {
-      graphInterrupt = this._commit(task, error) ?? graphInterrupt;
+      this._commit(task, error);
+      if (isGraphInterrupt(error)) {
+        graphBubbleUp = error;
+      } else if (isGraphBubbleUp(error) && !isGraphInterrupt(graphBubbleUp)) {
+        graphBubbleUp = error;
+      }
     }
 
     onStepWrite?.(
@@ -102,8 +103,12 @@ export class PregelRunner {
         .flat()
     );
 
-    if (graphInterrupt) {
-      throw graphInterrupt;
+    if (isGraphInterrupt(graphBubbleUp)) {
+      throw graphBubbleUp;
+    }
+
+    if (isGraphBubbleUp(graphBubbleUp) && this.loop.isNested) {
+      throw graphBubbleUp;
     }
   }
 
@@ -341,39 +346,29 @@ export class PregelRunner {
    *
    * Throws an error if the error is a {@link GraphBubbleUp} error and {@link PregelLoop}#isNested is true.
    *
-   * Note that in the case of a {@link GraphBubbleUp} error that is not a {@link GraphInterrupt}, like a {@link Command}, this method does not apply any writes.
-   *
    * @param task - The task to commit.
    * @param error - The error that occurred, if any.
-   * @returns The {@link GraphInterrupt} that occurred, if the user's code threw one.
    */
-  private _commit(
-    task: PregelExecutableTask<string, string>,
-    error?: Error
-  ): GraphInterrupt | undefined {
-    let graphInterrupt;
+  private _commit(task: PregelExecutableTask<string, string>, error?: Error) {
     if (error !== undefined) {
-      if (isGraphBubbleUp(error)) {
-        if (this.loop.isNested) {
-          throw error;
-        }
-        if (isGraphInterrupt(error)) {
-          graphInterrupt = error;
-          if (error.interrupts.length) {
-            const interrupts: PendingWrite<string>[] = error.interrupts.map(
-              (interrupt) => [INTERRUPT, interrupt]
-            );
-            const resumes = task.writes.filter((w) => w[0] === RESUME);
-            if (resumes.length) {
-              interrupts.push(...resumes);
-            }
-            this.loop.putWrites(task.id, interrupts);
+      if (isGraphInterrupt(error)) {
+        if (error.interrupts.length) {
+          const interrupts: PendingWrite<string>[] = error.interrupts.map(
+            (interrupt) => [INTERRUPT, interrupt]
+          );
+          const resumes = task.writes.filter((w) => w[0] === RESUME);
+          if (resumes.length) {
+            interrupts.push(...resumes);
           }
+          this.loop.putWrites(task.id, interrupts);
         }
+      } else if (isGraphBubbleUp(error) && task.writes.length) {
+        this.loop.putWrites(task.id, task.writes);
       } else {
         this.loop.putWrites(task.id, [
           [ERROR, { message: error.message, name: error.name }],
         ]);
+        // TODO: is throwing here safe? what about commits from other concurrent tasks?
         throw error;
       }
     } else {
@@ -392,6 +387,5 @@ export class PregelRunner {
       // Save task writes to checkpointer
       this.loop.putWrites(task.id, task.writes);
     }
-    return graphInterrupt;
   }
 }

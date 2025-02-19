@@ -469,6 +469,50 @@ export function runPregelTests(
         expect(pregel._defaults(config2)).toEqual(expectedDefaults2);
       });
     });
+
+    describe("stream", () => {
+      describe("streamMode: updates", () => {
+        it("should return multiple update entries when a task has multiple writes to the same channel", async () => {
+          const StateAnnotation = Annotation.Root({
+            val: Annotation<string>({
+              reducer: (current, added) => `${current ?? ""}${added}`,
+              default: () => "",
+            }),
+          });
+
+          const nodeA = (_state: typeof StateAnnotation.State) => [
+            new Command({
+              update: { val: "a1" },
+            }),
+            new Command({
+              update: { val: "a2" },
+            }),
+          ];
+
+          const nodeB = (_state: typeof StateAnnotation.State) => ({
+            val: "b",
+          });
+
+          const graph = new StateGraph(StateAnnotation)
+            .addNode("nodeA", nodeA)
+            .addNode("nodeB", nodeB)
+            .addEdge(START, "nodeA")
+            .addEdge("nodeA", "nodeB")
+            .compile();
+
+          expect(await graph.invoke({ val: "" })).toEqual({ val: "a1a2b" });
+
+          const updates = await gatherIterator(
+            graph.stream({ val: "" }, { streamMode: "updates" })
+          );
+
+          expect(updates).toEqual([
+            { nodeA: [{ val: "a1" }, { val: "a2" }] },
+            { nodeB: { val: "b" } },
+          ]);
+        });
+      });
+    });
   });
 
   describe("shouldInterrupt", () => {
@@ -3829,7 +3873,7 @@ graph TD;
             now: 345, // ignored because not in input schema
           })
         )
-      ).toEqual([{}, { b: { hello: "again" } }, {}]);
+      ).toEqual([{ a: {} }, { b: { hello: "again" } }, { c: {} }]);
 
       const res2 = await graph.invoke({
         hello: "there",
@@ -8140,7 +8184,9 @@ graph TD;
         metadata: {
           step: 1,
           source: "loop",
-          writes: {},
+          writes: {
+            edit: {},
+          },
           parents: { "": expect.any(String) },
         },
         createdAt: expect.any(String),
@@ -8160,6 +8206,7 @@ graph TD;
           },
         ],
       });
+
       expect(
         await graph.getState(outerState.tasks[1].state as RunnableConfig)
       ).toEqual({
@@ -8178,7 +8225,9 @@ graph TD;
         metadata: {
           step: 1,
           source: "loop",
-          writes: {},
+          writes: {
+            edit: {},
+          },
           parents: { "": expect.any(String) },
         },
         createdAt: expect.any(String),
@@ -9073,6 +9122,11 @@ graph TD;
         source: "loop",
         writes: {
           alice: {
+            messages: [
+              new _AnyIdHumanMessage({
+                content: "get user name",
+              }),
+            ],
             user_name: "Meow",
           },
         },
@@ -9091,6 +9145,129 @@ graph TD;
     });
   });
 
+  it("should merge parent state with subgraph state on ParentCommand", async () => {
+    const StateAnnotation = Annotation.Root({
+      foo: Annotation<string>,
+      visitedNodes: Annotation<string[]>({
+        reducer: (a, b) => [...new Set([...a, ...b])],
+        default: () => [],
+      }),
+    });
+
+    const subgraph = new StateGraph(StateAnnotation)
+      .addNode(
+        "subgraph_node_1",
+        async (_state) =>
+          new Command({
+            goto: "subgraph_node_2",
+            update: {
+              foo: "foo",
+              visitedNodes: ["subgraph_node_1"],
+            },
+          }),
+        {
+          ends: ["subgraph_node_2"],
+        }
+      )
+      .addNode(
+        "subgraph_node_2",
+        async (_state) =>
+          new Command({
+            goto: "node_3",
+            graph: Command.PARENT,
+            update: {
+              // foo purposefully excluded
+              visitedNodes: ["subgraph_node_2"],
+            },
+          })
+      )
+      .addEdge(START, "subgraph_node_1")
+      .compile();
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode(
+        "node_1",
+        async (_state) =>
+          new Command({
+            goto: "node_2",
+            update: {
+              visitedNodes: ["node_1"],
+            },
+          }),
+        {
+          ends: ["node_2"],
+        }
+      )
+      .addNode("node_2", subgraph)
+      .addNode(
+        "node_3",
+        async (_state) =>
+          new Command({
+            update: {
+              visitedNodes: ["node_3"],
+            },
+          })
+      )
+      .addEdge(START, "node_1")
+      .addEdge("node_2", "node_3")
+      .compile();
+
+    const invokeResult = await graph.invoke({});
+
+    expect(invokeResult).toEqual({
+      foo: "foo",
+      visitedNodes: ["node_1", "subgraph_node_1", "subgraph_node_2", "node_3"],
+    });
+
+    const streamResult = await gatherIterator(
+      graph.stream(
+        {},
+        {
+          streamMode: "updates",
+          subgraphs: true,
+        }
+      )
+    );
+
+    expect(streamResult.length).toEqual(5);
+
+    // node_1 updates
+    expect(streamResult[0]).toEqual([
+      [],
+      { node_1: { visitedNodes: ["node_1"] } },
+    ]);
+
+    // subgraph_node_1 updates
+    expect(streamResult[1]).toEqual([
+      [expect.stringMatching(/^node_2:.*/)],
+      { subgraph_node_1: { foo: "foo", visitedNodes: ["subgraph_node_1"] } },
+    ]);
+
+    // subgraph_node_2 updates
+    expect(streamResult[2]).toEqual([
+      [expect.stringMatching(/^node_2:.*/)],
+      { subgraph_node_2: {} }, // no updates because it returned a Parent command
+    ]);
+
+    // node_2 updates
+    expect(streamResult[3]).toEqual([
+      [],
+      {
+        node_2: [
+          { foo: "foo" },
+          { visitedNodes: ["node_1", "subgraph_node_1"] },
+          { visitedNodes: ["subgraph_node_2"] },
+        ],
+      },
+    ]);
+
+    // node_3 updates
+    expect(streamResult[4]).toEqual([
+      [],
+      { node_3: { visitedNodes: ["node_3"] } },
+    ]);
+  });
+
   it("should handle Command.PARENT as described in the docs", async () => {
     // See https://langchain-ai.github.io/langgraphjs/how-tos/command/#navigating-to-a-node-in-a-parent-graph
     // Note that the example in the docs isn't deterministic, so this example is modified slightly
@@ -9098,7 +9275,10 @@ graph TD;
 
     // Define graph state
     const StateAnnotation = Annotation.Root({
-      foo: Annotation<string>,
+      foo: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
     });
 
     const callLog: string[] = [];
