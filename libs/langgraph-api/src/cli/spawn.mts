@@ -53,6 +53,12 @@ For production use, please use LangGraph Cloud.
         cwd: options.projectCwd,
       }),
     ],
-    { stdio: ["inherit", "inherit", "inherit", "ipc"], env: context.env },
+    {
+      stdio: ["inherit", "inherit", "inherit", "ipc"],
+      env: {
+        ...context.env,
+        NODE_ENV: "development",
+      },
+    },
   );
 }
