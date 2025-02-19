@@ -9091,6 +9091,74 @@ graph TD;
     });
   });
 
+  it("should handle Command.PARENT as described in the docs", async () => {
+    // See https://langchain-ai.github.io/langgraphjs/how-tos/command/#navigating-to-a-node-in-a-parent-graph
+    // Note that the example in the docs isn't deterministic, so this example is modified slightly
+    // to allow us to decide which way the graph branches explicitly from outside of the graph
+
+    // Define graph state
+    const StateAnnotation = Annotation.Root({
+      foo: Annotation<string>,
+    });
+
+    const callLog: string[] = [];
+    let goto = ""; // will init before execution
+
+    // Define the nodes
+    const nodeASubgraph = async (_state: typeof StateAnnotation.State) => {
+      callLog.push("Called A");
+      return new Command({
+        update: {
+          foo: "a",
+        },
+        goto,
+        graph: Command.PARENT,
+      });
+    };
+
+    // Nodes B and C are unchanged
+    const nodeB = async (state: typeof StateAnnotation.State) => {
+      callLog.push("Called B");
+      return {
+        foo: state.foo + "|b",
+      };
+    };
+
+    const nodeC = async (state: typeof StateAnnotation.State) => {
+      callLog.push("Called C");
+      return {
+        foo: state.foo + "|c",
+      };
+    };
+
+    const subgraph = new StateGraph(StateAnnotation)
+      .addNode("nodeA", nodeASubgraph)
+      .addEdge("__start__", "nodeA")
+      .compile();
+
+    const parentGraph = new StateGraph(StateAnnotation)
+      .addNode("subgraph", subgraph, {
+        ends: ["nodeB", "nodeC"],
+      })
+      .addNode("nodeB", nodeB)
+      .addNode("nodeC", nodeC)
+      .addEdge("__start__", "subgraph")
+      .compile();
+
+    goto = "nodeB";
+    let result = await parentGraph.invoke({});
+    expect(callLog).toEqual(["Called A", "Called B"]);
+    expect(result).toEqual({ foo: "a|b" });
+
+    // clear callLog
+    callLog.splice(0, callLog.length);
+
+    goto = "nodeC";
+    result = await parentGraph.invoke({});
+    expect(callLog).toEqual(["Called A", "Called C"]);
+    expect(result).toEqual({ foo: "a|c" });
+  });
+
   it("should pass recursion limit set via .withConfig", async () => {
     const StateAnnotation = Annotation.Root({
       prop: Annotation<string>,
