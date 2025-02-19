@@ -115,7 +115,7 @@ def _on_page_markdown_with_config(
     if DISABLED:
         return markdown
     if page.file.src_path.endswith(".ipynb"):
-        logger.info("Processing Jupyter notebook: %s", page.file.src_path)
+        logger.info(f"Processing Jupyter notebook: {page.file.src_path}")
         markdown = convert_notebook(page.file.abs_src_path)
 
     # Apply highlight comments to code blocks
