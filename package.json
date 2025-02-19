@@ -49,7 +49,7 @@
     "tslab": "^1.0.21",
     "tsx": "^4.7.0",
     "turbo": "canary",
-    "typedoc": "^0.25.13",
+    "typedoc": "^0.27.7",
     "typescript": "^4.9.5 || ^5.4.5"
   },
   "resolutions": {

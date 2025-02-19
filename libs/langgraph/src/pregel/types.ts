@@ -28,32 +28,124 @@ export type PregelInputType = any;
 export type PregelOutputType = any;
 
 /**
- * Config for executing the graph.
+ * Configuration options for executing a Pregel graph.
+ * These options control how the graph executes, what data is streamed, and how interrupts are handled.
+ *
+ * @typeParam Nodes - Mapping of node names to their {@link PregelNode} implementations
+ * @typeParam Channels - Mapping of channel names to their {@link BaseChannel} or {@link ManagedValueSpec} implementations
+ * @typeParam ConfigurableFieldType - Type of configurable fields in the {@link RunnableConfig} that is passed to the graph
  */
 export interface PregelOptions<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+  Nodes extends StrRecord<string, PregelNode>,
+  Channels extends StrRecord<string, BaseChannel | ManagedValueSpec>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ConfigurableFieldType extends Record<string, any> = Record<string, any>
 > extends RunnableConfig<ConfigurableFieldType> {
   /**
-   * The stream mode for the graph run. See [Streaming](/langgraphjs/how-tos/#streaming) for more details.
+   * Controls what information is streamed during graph execution.
+   * Multiple modes can be enabled simultaneously.
+   *
+   * Supported modes:
+   * - "values": Streams complete state after each step
+   * - "updates": Streams only state changes after each step
+   * - "messages": Streams messages from within nodes
+   * - "custom": Streams custom events from within nodes
+   * - "debug": Streams detailed execution events for tracing & debugging
+   *
+   * @example
+   * ```typescript
+   * // Stream only values
+   * streamMode: "values"
+   *
+   * // Stream both values and debug info
+   * streamMode: ["values", "debug"]
+   * ```
+   *
    * @default ["values"]
    */
   streamMode?: StreamMode | StreamMode[];
-  /** The input keys to retrieve from the checkpoint on resume. You generally don't need to set this. */
-  inputKeys?: keyof Cc | Array<keyof Cc>;
-  /** The output keys to retrieve from the graph run. */
-  outputKeys?: keyof Cc | Array<keyof Cc>;
-  /** The nodes to interrupt the graph run before. */
-  interruptBefore?: All | Array<keyof Nn>;
-  /** The nodes to interrupt the graph run after. */
-  interruptAfter?: All | Array<keyof Nn>;
-  /** Enable debug mode for the graph run. */
+
+  /**
+   * Specifies which channel keys to retrieve from the checkpoint when resuming execution.
+   * This is an advanced option that you generally don't need to set manually.
+   * The graph will automatically determine the appropriate input keys based on its configuration.
+   */
+  inputKeys?: keyof Channels | Array<keyof Channels>;
+
+  /**
+   * Specifies which channel keys to include in the output stream and final result.
+   * Use this to filter which parts of the graph state you want to observe.
+   *
+   * @example
+   * ```typescript
+   * // Stream only the 'result' channel
+   * outputKeys: "result"
+   *
+   * // Stream multiple channels
+   * outputKeys: ["result", "intermediateState"]
+   * ```
+   */
+  outputKeys?: keyof Channels | Array<keyof Channels>;
+
+  /**
+   * List of nodes where execution should be interrupted BEFORE the node runs.
+   * Can be used for debugging and advanced state manipulation use cases. For
+   * human-in-the-loop workflows, developers should prefer the
+   * @link {interrupt} function instead.
+   *
+   * When interrupted, a resume @link {Command} must be provided to continue
+   * execution.
+   *
+   * @example
+   * ```typescript
+   * // Interrupt before specific nodes
+   * interruptBefore: ["humanReview", "qualityCheck"]
+   *
+   * // Interrupt before all nodes
+   * interruptBefore: "all"
+   * ```
+   */
+  interruptBefore?: All | Array<keyof Nodes>;
+
+  /**
+   * List of nodes where execution should be interrupted AFTER the node runs.
+   * Similar to interruptBefore, but interrupts after node completion.
+   * Useful when the node's output needs to be reviewed before proceeding.
+   *
+   * @example
+   * ```typescript
+   * // Interrupt after specific nodes
+   * interruptAfter: ["generateContent", "analyze"]
+   *
+   * // Interrupt after all nodes
+   * interruptAfter: "all"
+   * ```
+   */
+  interruptAfter?: All | Array<keyof Nodes>;
+
+  /**
+   * Enables detailed debug logging during graph execution.
+   * When enabled, prints information about:
+   * - Task execution
+   * - Channel updates
+   * - Checkpoint writes
+   *
+   * @default false
+   */
   debug?: boolean;
-  /** Whether to stream subgraphs. */
+
+  /**
+   * Whether to include subgraph execution details in the stream.
+   * When true, state updates from nested graphs will also be streamed.
+   *
+   * @default false
+   */
   subgraphs?: boolean;
-  /** The shared value store */
+
+  /**
+   * A shared value store that allows you to store and retrieve state across
+   * threads. Useful for implementing long-term memory patterns.
+   */
   store?: BaseStore;
 }
 
@@ -65,14 +157,14 @@ type StrRecord<K extends string, T> = {
 };
 
 export interface PregelInterface<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+  Nodes extends StrRecord<string, PregelNode>,
+  Channels extends StrRecord<string, BaseChannel | ManagedValueSpec>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>
 > {
   lg_is_pregel: boolean;
 
-  withConfig(config: RunnableConfig): PregelInterface<Nn, Cc>;
+  withConfig(config: RunnableConfig): PregelInterface<Nodes, Channels>;
 
   getGraphAsync(
     config: RunnableConfig & { xray?: boolean | number }
@@ -104,17 +196,17 @@ export interface PregelInterface<
   updateState(
     inputConfig: LangGraphRunnableConfig,
     values: Record<string, unknown> | unknown,
-    asNode?: keyof Nn | string
+    asNode?: keyof Nodes | string
   ): Promise<RunnableConfig>;
 
   stream(
     input: PregelInputType,
-    options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
+    options?: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>>
   ): Promise<IterableReadableStream<PregelOutputType>>;
 
   invoke(
     input: PregelInputType,
-    options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
+    options?: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>>
   ): Promise<PregelOutputType>;
 }
 
@@ -123,8 +215,8 @@ export interface PregelInterface<
  * @internal
  */
 export type PregelParams<
-  Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>
+  Nodes extends StrRecord<string, PregelNode>,
+  Channels extends StrRecord<string, BaseChannel | ManagedValueSpec>
 > = {
   /**
    * The name of the graph. @see {@link Runnable.name}
@@ -134,12 +226,12 @@ export type PregelParams<
   /**
    * The nodes in the graph.
    */
-  nodes: Nn;
+  nodes: Nodes;
 
   /**
    * The channels in the graph.
    */
-  channels: Cc;
+  channels: Channels;
 
   /**
    * Whether to validate the graph.
@@ -158,30 +250,30 @@ export type PregelParams<
   /**
    * The input channels for the graph run.
    */
-  inputChannels: keyof Cc | Array<keyof Cc>;
+  inputChannels: keyof Channels | Array<keyof Channels>;
 
   /**
    * The output channels for the graph run.
    */
-  outputChannels: keyof Cc | Array<keyof Cc>;
+  outputChannels: keyof Channels | Array<keyof Channels>;
 
   /**
    * After processing one of the nodes named in this list, the graph will be interrupted and a resume {@link Command} must be provided to proceed with the execution of this thread.
    * @default []
    */
-  interruptAfter?: Array<keyof Nn> | All;
+  interruptAfter?: Array<keyof Nodes> | All;
 
   /**
    * Before processing one of the nodes named in this list, the graph will be interrupted and a resume {@link Command} must be provided to proceed with the execution of this thread.
    * @default []
    */
-  interruptBefore?: Array<keyof Nn> | All;
+  interruptBefore?: Array<keyof Nodes> | All;
 
   /**
    * The channels to stream from the graph run.
    * @default []
    */
-  streamChannels?: keyof Cc | Array<keyof Cc>;
+  streamChannels?: keyof Channels | Array<keyof Channels>;
 
   /**
    * @default undefined
@@ -224,14 +316,14 @@ export interface PregelTaskDescription {
 }
 
 export interface PregelExecutableTask<
-  N extends PropertyKey,
-  C extends PropertyKey
+  NodeKey extends PropertyKey,
+  ChannelKey extends PropertyKey
 > {
-  readonly name: N;
+  readonly name: NodeKey;
   readonly input: unknown;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly proc: Runnable<any, any, LangGraphRunnableConfig>;
-  readonly writes: PendingWrite<C>[];
+  readonly writes: PendingWrite<ChannelKey>[];
   readonly config?: LangGraphRunnableConfig;
   readonly triggers: Array<string>;
   readonly retry_policy?: RetryPolicy;
@@ -274,6 +366,48 @@ export interface StateSnapshot {
   readonly tasks: PregelTaskDescription[];
 }
 
+/**
+ * Options for subscribing to multiple channels.
+ */
+export type MultipleChannelSubscriptionOptions = {
+  /**
+   * Optional tags to associate with the subscription.
+   */
+  tags?: string[];
+};
+
+/**
+ * Options for subscribing to a single channel.
+ */
+export type SingleChannelSubscriptionOptions = {
+  /**
+   * When specified, the channel mapping will be an object with this key pointing
+   * to the array of channels to subscribe to. Otherwise, the channel mapping
+   * will be an array of channels.
+   */
+  key?: string;
+  /**
+   * Optional tags to associate with the subscription.
+   */
+  tags?: string[];
+};
+
+/**
+ * Options for getting the state of the graph.
+ */
+export type GetStateOptions = {
+  /**
+   * Whether to include subgraph states.
+   * @default false
+   */
+  subgraphs?: boolean;
+};
+
+/**
+ * Used for storing/retrieving internal execution state.
+ *
+ * @internal
+ */
 export type PregelScratchpad<Resume = unknown> = {
   /** Counter for tracking call invocations */
   callCounter: number;

@@ -20,6 +20,9 @@ export type {
   StreamMode,
   PregelParams,
   PregelOptions,
+  SingleChannelSubscriptionOptions,
+  MultipleChannelSubscriptionOptions,
+  GetStateOptions,
 } from "./pregel/types.js";
 export type { PregelNode } from "./pregel/read.js";
 export type { Pregel } from "./pregel/index.js";

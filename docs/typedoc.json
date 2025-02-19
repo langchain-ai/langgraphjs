@@ -1,5 +1,7 @@
 {
-	"navigationLinks": {
-		"Back to documentation": "/langgraphjs/"
-	},
+  "navigationLinks": {
+    "Back to documentation": "/langgraphjs/"
+  },
+  "excludeInternal": true,
+  "excludePrivate": true,
 }
