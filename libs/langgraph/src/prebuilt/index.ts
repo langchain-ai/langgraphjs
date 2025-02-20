@@ -10,6 +10,7 @@ export {
   type AgentState,
   type CreateReactAgentParams,
   createReactAgent,
+  createReactAgentAnnotation,
 } from "./react_agent_executor.js";
 
 export {
