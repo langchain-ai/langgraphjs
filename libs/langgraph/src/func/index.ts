@@ -27,35 +27,21 @@ import { isAsyncGeneratorFunction, isGeneratorFunction } from "../utils.js";
 
 /**
  * Options for the {@link task} function
- *
- * !!! warning "Beta"
- *     The Functional API is currently in beta and is subject to change.
- *
- * @beta
  */
 export type TaskOptions = {
   /**
    * The name of the task, analogous to the node name in {@link StateGraph}.
-   *
-   * @beta
    */
   name: string;
   /**
    * The retry policy for the task. Configures how many times and under what conditions
    * the task should be retried if it fails.
-   *
-   * @beta
    */
   retry?: RetryPolicy;
 };
 
 /**
  * Define a LangGraph task using the `task` function.
- *
- * !!! warning "Beta"
- *     The Functional API is currently in beta and is subject to change.
- *
- * @beta
  *
  * Tasks can only be called from within an {@link entrypoint} or from within a StateGraph.
  * A task can be called like a regular function with the following differences:
@@ -120,31 +106,20 @@ export function task<ArgsT extends unknown[], OutputT>(
 
 /**
  * Options for the {@link entrypoint} function
- *
- * !!! warning "Beta"
- *     The Functional API is currently in beta and is subject to change.
- *
- * @beta
  */
 export type EntrypointOptions = {
   /**
    * The name of the {@link entrypoint}, analogous to the node name in {@link StateGraph}.
    * This name is used for logging, debugging, and checkpoint identification.
-   *
-   * @beta
    */
   name: string;
   /**
    * The checkpointer for the {@link entrypoint}. Used to save and restore state between
    * invocations of the workflow.
-   *
-   * @beta
    */
   checkpointer?: BaseCheckpointSaver;
   /**
    * The store for the {@link entrypoint}. Used to persist data across workflow runs.
-   *
-   * @beta
    */
   store?: BaseStore;
 };
@@ -173,11 +148,6 @@ export interface EntrypointFunction {
    * as well as a separate state value to persist to the checkpoint. This allows workflows
    * to maintain state between runs while returning different values to the caller.
    *
-   * !!! warning "Beta"
-   *     The Functional API is currently in beta and is subject to change.
-   *
-   * @beta
-   *
    * @typeParam ValueT - The type of the value to return to the caller
    * @typeParam SaveT - The type of the state to save to the checkpoint
    * @param value - The value to return to the caller
@@ -200,11 +170,6 @@ export interface EntrypointFunction {
 
 /**
  * Define a LangGraph workflow using the `entrypoint` function.
- *
- * !!! warning "Beta"
- *     The Functional API is currently in beta and is subject to change.
- *
- * @beta
  *
  * ### Function signature
  *
@@ -401,11 +366,6 @@ entrypoint.final = function final<ValueT, SaveT>({
  *
  * This function allows workflows to access state that was saved in previous runs
  * using {@link entrypoint.final}.
- *
- * !!! warning "Beta"
- *     The Functional API is currently in beta and is subject to change.
- *
- * @beta
  *
  * @typeParam StateT - The type of the state that was previously saved
  * @returns The previous saved state from the last invocation of the current thread
