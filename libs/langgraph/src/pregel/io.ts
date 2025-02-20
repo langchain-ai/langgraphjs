@@ -192,13 +192,19 @@ export function* mapOutputValues<C extends PropertyKey>(
 
 /**
  * Map pending writes (a sequence of tuples (channel, value)) to output chunk.
+ * @internal
+ *
+ * @param outputChannels - The channels to output.
+ * @param tasks - The tasks to output.
+ * @param cached - Whether the output is cached.
+ *
+ * @returns A generator that yields the output chunk (if any).
  */
 export function* mapOutputUpdates<N extends PropertyKey, C extends PropertyKey>(
   outputChannels: C | Array<C>,
   tasks: readonly [PregelExecutableTask<N, C>, PendingWrite<C>[]][],
   cached?: boolean
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Generator<Record<N, Record<string, any> | any>> {
+): Generator<Record<N, Record<string, unknown> | unknown>> {
   const outputTasks = tasks.filter(([task, ww]) => {
     return (
       (task.config === undefined || !task.config.tags?.includes(TAG_HIDDEN)) &&
@@ -209,63 +215,83 @@ export function* mapOutputUpdates<N extends PropertyKey, C extends PropertyKey>(
   if (!outputTasks.length) {
     return;
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let updated: [N, Record<string, any>][];
+
+  let updated: [N, Record<string, unknown>][];
+
   if (
     outputTasks.some(([task]) =>
       task.writes.some(([chan, _]) => chan === RETURN)
     )
   ) {
+    // TODO: probably should assert that RETURN is the only "non-special" channel (starts with "__")
     updated = outputTasks.flatMap(([task]) =>
       task.writes
         .filter(([chan, _]) => chan === RETURN)
         .map(([_, value]) => [task.name, value] as [N, Record<string, unknown>])
     );
   } else if (!Array.isArray(outputChannels)) {
+    // special case where graph state is a single channel (MessageGraph)
+    // probably using this in functional API, too
     updated = outputTasks.flatMap(([task]) =>
       task.writes
         .filter(([chan, _]) => chan === outputChannels)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map(([_, value]) => [task.name, value] as [N, Record<string, any>])
+        .map(([_, value]) => [task.name, value] as [N, Record<string, unknown>])
     );
   } else {
-    updated = outputTasks
-      .filter(([task]) =>
-        task.writes.some(([chan]) => outputChannels.includes(chan))
-      )
-      .map(([task]) => [
-        task.name,
-        Object.fromEntries(
-          task.writes.filter(([chan]) => outputChannels.includes(chan))
-        ),
-      ]);
+    updated = outputTasks.flatMap(([task]) => {
+      const { writes } = task;
+      const counts: Record<C, number> = {} as Record<C, number>;
+      for (const [chan] of writes) {
+        if (outputChannels.includes(chan)) {
+          counts[chan] = (counts[chan] || 0) + 1;
+        }
+      }
+
+      if ((Object.values(counts) as number[]).some((count) => count > 1)) {
+        // Multiple writes to the same channel: create separate entries
+        return writes
+          .filter(([chan]) => outputChannels.includes(chan))
+          .map(
+            ([chan, value]) =>
+              [task.name, { [chan]: value }] as [N, Record<string, unknown>]
+          );
+      } else {
+        // Single write to each channel: create a single combined entry
+        return [
+          [
+            task.name,
+            Object.fromEntries(
+              writes.filter(([chan]) => outputChannels.includes(chan))
+            ),
+          ] as [N, Record<string, unknown>],
+        ];
+      }
+    });
   }
-  const grouped = Object.fromEntries(
-    outputTasks.map(([t]) => [t.name, []])
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ) as unknown as Record<N, Record<string, any>>;
+
+  const grouped = {} as Record<N, unknown[]>;
 
   for (const [node, value] of updated) {
+    if (!(node in grouped)) {
+      grouped[node] = [];
+    }
     grouped[node].push(value);
   }
 
-  for (const [node, value] of Object.entries(grouped) as [
-    N,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Record<string, any>[]
-  ][]) {
-    if (value.length === 0) {
-      delete grouped[node];
-    } else if (value.length === 1) {
-      // TODO: Fix incorrect cast here
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      grouped[node] = value[0] as Record<string, any>[];
+  const flattened = {} as Record<N, unknown>;
+  for (const node in grouped) {
+    if (grouped[node].length === 1) {
+      const [write] = grouped[node];
+      flattened[node] = write;
+    } else {
+      flattened[node] = grouped[node];
     }
   }
+
   if (cached) {
-    grouped["__metadata__" as N] = { cached };
+    flattened["__metadata__" as N] = { cached };
   }
-  yield grouped;
+  yield flattened;
 }
 
 export function single<T>(iter: IterableIterator<T>): T | null {
