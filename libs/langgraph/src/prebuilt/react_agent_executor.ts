@@ -479,7 +479,10 @@ export function createReactAgent<
     config?: RunnableConfig
   ) => {
     // TODO: Auto-promote streaming.
-    return { messages: [await modelRunnable.invoke(state, config)] };
+    const response = (await modelRunnable.invoke(state, config)) as BaseMessage;
+    // add agent name to the AIMessage
+    response.name = name;
+    return { messages: [response] };
   };
 
   const workflow = new StateGraph(
