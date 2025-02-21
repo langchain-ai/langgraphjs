@@ -12,14 +12,29 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import pg from "pg";
 
-import { MIGRATIONS } from "./migrations.js";
+import { getMigrations } from "./migrations.js";
 import {
-  INSERT_CHECKPOINT_WRITES_SQL,
-  SELECT_SQL,
-  UPSERT_CHECKPOINT_BLOBS_SQL,
-  UPSERT_CHECKPOINT_WRITES_SQL,
-  UPSERT_CHECKPOINTS_SQL,
+  type SQL_STATEMENTS,
+  getSQLStatements,
+  getTablesWithSchema,
 } from "./sql.js";
+
+interface PostgresSaverOptions {
+  schema: string;
+}
+
+const _defaultOptions: PostgresSaverOptions = {
+  schema: "public",
+};
+
+const _ensureCompleteOptions = (
+  options?: Partial<PostgresSaverOptions>
+): PostgresSaverOptions => {
+  return {
+    ..._defaultOptions,
+    ...options,
+  };
+};
 
 const { Pool } = pg;
 
@@ -35,7 +50,11 @@ const { Pool } = pg;
  * import { createReactAgent } from "@langchain/langgraph/prebuilt";
  *
  * const checkpointer = PostgresSaver.fromConnString(
- *   "postgresql://user:password@localhost:5432/db"
+ *   "postgresql://user:password@localhost:5432/db",
+ *   // optional configuration object
+ *   {
+ *     schema: "custom_schema" // defaults to "public"
+ *   }
  * );
  *
  * // NOTE: you need to call .setup() the first time you're using your checkpointer
@@ -61,17 +80,44 @@ const { Pool } = pg;
 export class PostgresSaver extends BaseCheckpointSaver {
   private pool: pg.Pool;
 
+  private readonly options: PostgresSaverOptions;
+
+  private readonly SQL_STATEMENTS: SQL_STATEMENTS;
+
   protected isSetup: boolean;
 
-  constructor(pool: pg.Pool, serde?: SerializerProtocol) {
+  constructor(
+    pool: pg.Pool,
+    serde?: SerializerProtocol,
+    options?: Partial<PostgresSaverOptions>
+  ) {
     super(serde);
     this.pool = pool;
     this.isSetup = false;
+    this.options = _ensureCompleteOptions(options);
+    this.SQL_STATEMENTS = getSQLStatements(this.options.schema);
   }
 
-  static fromConnString(connString: string): PostgresSaver {
+  /**
+   * Creates a new instance of PostgresSaver from a connection string.
+   *
+   * @param {string} connString - The connection string to connect to the Postgres database.
+   * @param {PostgresSaverOptions} [options] - Optional configuration object.
+   * @returns {PostgresSaver} A new instance of PostgresSaver.
+   *
+   * @example
+   * const connString = "postgresql://user:password@localhost:5432/db";
+   * const checkpointer = PostgresSaver.fromConnString(connString, {
+   *  schema: "custom_schema" // defaults to "public"
+   * });
+   * await checkpointer.setup();
+   */
+  static fromConnString(
+    connString: string,
+    options?: Partial<PostgresSaverOptions>
+  ): PostgresSaver {
     const pool = new Pool({ connectionString: connString });
-    return new PostgresSaver(pool);
+    return new PostgresSaver(pool, undefined, options);
   }
 
   /**
@@ -83,11 +129,13 @@ export class PostgresSaver extends BaseCheckpointSaver {
    */
   async setup(): Promise<void> {
     const client = await this.pool.connect();
+    const SCHEMA_TABLES = getTablesWithSchema(this.options.schema);
     try {
+      await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.options.schema}`);
       let version = -1;
       try {
         const result = await client.query(
-          "SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1"
+          `SELECT v FROM ${SCHEMA_TABLES.checkpoint_migrations} ORDER BY v DESC LIMIT 1`
         );
         if (result.rows.length > 0) {
           version = result.rows[0].v;
@@ -97,7 +145,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
         // Assume table doesn't exist if there's an error
         if (
           error?.message.includes(
-            'relation "checkpoint_migrations" does not exist'
+            `relation "${SCHEMA_TABLES.checkpoint_migrations}" does not exist`
           )
         ) {
           version = -1;
@@ -106,10 +154,11 @@ export class PostgresSaver extends BaseCheckpointSaver {
         }
       }
 
+      const MIGRATIONS = getMigrations(this.options.schema);
       for (let v = version + 1; v < MIGRATIONS.length; v += 1) {
         await client.query(MIGRATIONS[v]);
         await client.query(
-          "INSERT INTO checkpoint_migrations (v) VALUES ($1)",
+          `INSERT INTO ${SCHEMA_TABLES.checkpoint_migrations} (v) VALUES ($1)`,
           [v]
         );
       }
@@ -317,7 +366,10 @@ export class PostgresSaver extends BaseCheckpointSaver {
       args = [thread_id, checkpoint_ns];
     }
 
-    const result = await this.pool.query(SELECT_SQL + where, args);
+    const result = await this.pool.query(
+      this.SQL_STATEMENTS.SELECT_SQL + where,
+      args
+    );
 
     const [row] = result.rows;
 
@@ -370,7 +422,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
   ): AsyncGenerator<CheckpointTuple> {
     const { filter, before, limit } = options ?? {};
     const [where, args] = this._searchWhere(config, filter, before);
-    let query = `${SELECT_SQL}${where} ORDER BY checkpoint_id DESC`;
+    let query = `${this.SQL_STATEMENTS.SELECT_SQL}${where} ORDER BY checkpoint_id DESC`;
     if (limit !== undefined) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       query += ` LIMIT ${parseInt(limit as any, 10)}`; // sanitize via parseInt, as limit could be an externally provided value
@@ -449,9 +501,12 @@ export class PostgresSaver extends BaseCheckpointSaver {
         newVersions
       );
       for (const serializedBlob of serializedBlobs) {
-        await client.query(UPSERT_CHECKPOINT_BLOBS_SQL, serializedBlob);
+        await client.query(
+          this.SQL_STATEMENTS.UPSERT_CHECKPOINT_BLOBS_SQL,
+          serializedBlob
+        );
       }
-      await client.query(UPSERT_CHECKPOINTS_SQL, [
+      await client.query(this.SQL_STATEMENTS.UPSERT_CHECKPOINTS_SQL, [
         thread_id,
         checkpoint_ns,
         checkpoint.id,
@@ -483,8 +538,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
     taskId: string
   ): Promise<void> {
     const query = writes.every((w) => w[0] in WRITES_IDX_MAP)
-      ? UPSERT_CHECKPOINT_WRITES_SQL
-      : INSERT_CHECKPOINT_WRITES_SQL;
+      ? this.SQL_STATEMENTS.UPSERT_CHECKPOINT_WRITES_SQL
+      : this.SQL_STATEMENTS.INSERT_CHECKPOINT_WRITES_SQL;
 
     const dumpedWrites = this._dumpWrites(
       config.configurable?.thread_id,
