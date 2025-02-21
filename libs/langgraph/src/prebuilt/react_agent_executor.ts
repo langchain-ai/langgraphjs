@@ -369,14 +369,14 @@ export type CreateReactAgentParams<
 
 export function createReactAgent<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/ban-types
-  A extends AnnotationRoot<any> = AnnotationRoot<{}>,
+  A extends AnnotationRoot<any> = typeof MessagesAnnotation,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   StructuredResponseFormat extends Record<string, any> = Record<string, any>
 >(
   params: CreateReactAgentParams<A, StructuredResponseFormat>
 ): CompiledStateGraph<
-  (typeof MessagesAnnotation)["State"],
-  (typeof MessagesAnnotation)["Update"],
+  A["State"],
+  A["Update"],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any,
   typeof MessagesAnnotation.spec & A["spec"],
