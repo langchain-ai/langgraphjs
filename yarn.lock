@@ -251,7 +251,7 @@ __metadata:
   resolution: "@langchain/langgraph-supervisor@workspace:."
   dependencies:
     "@langchain/core": ^0.3.40
-    "@langchain/langgraph": ^0.2.47
+    "@langchain/langgraph": ^0.2.48
     "@langchain/scripts": ^0.1.3
     "@tsconfig/recommended": ^1.0.3
     prettier: ^2.8.3
@@ -263,9 +263,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph@npm:^0.2.47":
-  version: 0.2.47
-  resolution: "@langchain/langgraph@npm:0.2.47"
+"@langchain/langgraph@npm:^0.2.48":
+  version: 0.2.48
+  resolution: "@langchain/langgraph@npm:0.2.48"
   dependencies:
     "@langchain/langgraph-checkpoint": ~0.0.15
     "@langchain/langgraph-sdk": ~0.0.32
@@ -273,7 +273,7 @@ __metadata:
     zod: ^3.23.8
   peerDependencies:
     "@langchain/core": ">=0.2.36 <0.3.0 || >=0.3.40 < 0.4.0"
-  checksum: f15d3c65fc6f08479f66518076ca95d9b177dda2bcd8a66c73cf2ad9a811adc2165c52310e6d91c7d67378c9cdf2797a7a6008bd3d2335cbe7834301a96f7bdd
+  checksum: 68b4675a6ec303e765b970f3a15d8abed7765be5cf93441ec177d4d9567414f99541da316409dd1b44c5fe67baeac8c4cc8a1f01d2f567fe26671a1839c8f878
   languageName: node
   linkType: hard
 
