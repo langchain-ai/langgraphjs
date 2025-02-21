@@ -6,6 +6,7 @@ import {
   StateGraph,
   CompiledStateGraph,
   AnnotationRoot,
+  MessagesAnnotation,
 } from "@langchain/langgraph";
 import {
   createReactAgent,
@@ -113,7 +114,7 @@ export type CreateSupervisorParams<
  * @param supervisorName Name of the supervisor node
  */
 const createSupervisor = <
-  AnnotationRootT extends AnnotationRoot<any> = AnnotationRoot<{}>
+  AnnotationRootT extends AnnotationRoot<any> = typeof MessagesAnnotation
 >({
   agents,
   llm,
@@ -123,7 +124,15 @@ const createSupervisor = <
   outputMode = "last_message",
   addHandoffBackMessages = true,
   supervisorName = "supervisor",
-}: CreateSupervisorParams<AnnotationRootT>) => {
+}: CreateSupervisorParams<AnnotationRootT>): StateGraph<
+  AnnotationRootT["spec"],
+  AnnotationRootT["State"],
+  AnnotationRootT["Update"],
+  any,
+  AnnotationRootT["spec"],
+  AnnotationRootT["spec"],
+  any
+> => {
   const agentNames = new Set<string>();
 
   for (const agent of agents) {
@@ -160,15 +169,16 @@ const createSupervisor = <
     }
   }
 
+  const schema = stateSchema ?? createReactAgentAnnotation();
   const supervisorAgent = createReactAgent({
     name: supervisorName,
     llm: supervisorLLM,
     tools: allTools,
     prompt,
-    stateSchema: stateSchema ?? createReactAgentAnnotation(),
+    stateSchema: schema,
   });
 
-  const builder = new StateGraph(stateSchema ?? createReactAgentAnnotation())
+  const builder = new StateGraph(schema)
     .addNode(supervisorAgent.name as string, supervisorAgent, {
       ends: [...agentNames],
     })
