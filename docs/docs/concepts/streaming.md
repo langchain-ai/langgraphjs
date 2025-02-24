@@ -58,7 +58,10 @@ const app = workflow.compile();
 
 const inputs = [{ role: "user", content: "hi!" }];
 
-for await (const event of app.streamEvents({ messages: inputs })) {
+for await (const event of app.streamEvents(
+  { messages: inputs },
+  { version: "v2" }
+)) {
   const kind = event.event;
   console.log(`${kind}: ${event.name}`);
 }
