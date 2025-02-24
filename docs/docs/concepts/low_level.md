@@ -60,7 +60,13 @@ It is also possible to define explicit input and output schemas for a graph. In 
 Let's look at an example:
 
 ```ts
-import { Annotation, StateGraph } from "@langchain/langgraph";
+import {
+  Annotation,
+  START,
+  StateGraph,
+  StateType,
+  UpdateType,
+} from "@langchain/langgraph";
 
 const InputStateAnnotation = Annotation.Root({
   user_input: Annotation<string>,
@@ -92,7 +98,14 @@ const node3 = async (state: typeof OverallStateAnnotation.State) => {
   return { graph_output: state.bar + " Lance" };
 };
 
-const graph = new StateGraph({
+const graph = new StateGraph<
+  typeof OverallStateAnnotation["spec"],
+  StateType<typeof OverallStateAnnotation["spec"]>,
+  UpdateType<typeof OutputStateAnnotation["spec"]>,
+  typeof START,
+  typeof InputStateAnnotation["spec"],
+  typeof OutputStateAnnotation["spec"]
+>({
   input: InputStateAnnotation,
   output: OutputStateAnnotation,
   stateSchema: OverallStateAnnotation,
