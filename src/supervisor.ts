@@ -187,7 +187,10 @@ const createSupervisor = <
   for (const agent of agents) {
     builder.addNode(
       agent.name as string,
-      makeCallAgent(agent, outputMode, addHandoffBackMessages, supervisorName)
+      makeCallAgent(agent, outputMode, addHandoffBackMessages, supervisorName),
+      {
+        subgraphs: [agent],
+      }
     );
     builder.addEdge(agent.name as string, supervisorAgent.name as string);
   }
