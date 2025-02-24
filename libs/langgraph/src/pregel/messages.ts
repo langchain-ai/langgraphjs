@@ -7,6 +7,7 @@ import {
   AIMessageChunk,
   BaseMessage,
   isBaseMessage,
+  isToolMessage,
 } from "@langchain/core/messages";
 import { Serialized } from "@langchain/core/load/serializable";
 import {
@@ -61,15 +62,22 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       return;
     }
 
-    // For instance in ChatAnthropic, the first chunk has an message ID
-    // but the subsequent chunks do not. To avoid clients seeing two messages
-    // we rename the message ID if it's being auto-set to `run-${runId}`
-    // (see https://github.com/langchain-ai/langchainjs/pull/6646).
     let messageId = message.id;
-    if (messageId == null || messageId === `run-${runId}`) {
-      messageId = this.stableMessageIdMap[runId] ?? messageId ?? `run-${runId}`;
+    if (isToolMessage(message)) {
+      // Distinguish tool messages by tool call ID.
+      messageId ??= `run-${runId}-tool-${message.tool_call_id}`;
+    } else {
+      // For instance in ChatAnthropic, the first chunk has an message ID
+      // but the subsequent chunks do not. To avoid clients seeing two messages
+      // we rename the message ID if it's being auto-set to `run-${runId}`
+      // (see https://github.com/langchain-ai/langchainjs/pull/6646).
+      if (messageId == null || messageId === `run-${runId}`) {
+        messageId =
+          this.stableMessageIdMap[runId] ?? messageId ?? `run-${runId}`;
+      }
+
+      this.stableMessageIdMap[runId] ??= messageId;
     }
-    this.stableMessageIdMap[runId] ??= messageId;
 
     if (messageId !== message.id) {
       // eslint-disable-next-line no-param-reassign
@@ -79,7 +87,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       message.lc_kwargs.id = messageId;
     }
 
-    this.seen[message.id!] = message;
+    if (message.id != null) this.seen[message.id] = message;
     this.streamFn([meta[0], "messages", [message, meta[1]]]);
   }
 

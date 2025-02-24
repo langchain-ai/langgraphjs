@@ -9739,6 +9739,37 @@ graph TD;
       if (streamMessageId !== "omit") expect(messageIds[0]).toBe("123");
     }
   );
+
+  it("should not assign message ID for tool messages", async () => {
+    const checkpointer = await createCheckpointer();
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", async () => {
+        return {
+          messages: [
+            new ToolMessage({ content: "Tool 1", tool_call_id: "1" }),
+            new ToolMessage({ content: "Tool 2", tool_call_id: "2" }),
+          ],
+        };
+      })
+      .addEdge(START, "one")
+      .compile({ checkpointer });
+
+    const messages = await gatherIterator(
+      graph.stream(
+        { messages: [] },
+        { configurable: { thread_id: "1" }, streamMode: "messages" }
+      )
+    );
+
+    expect(messages.length).toBe(2);
+    expect(
+      (await graph.getState({ configurable: { thread_id: "1" } })).values
+        .messages
+    ).toMatchObject([
+      expect.objectContaining({ content: "Tool 1", tool_call_id: "1" }),
+      expect.objectContaining({ content: "Tool 2", tool_call_id: "2" }),
+    ]);
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
