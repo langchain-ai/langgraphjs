@@ -67,7 +67,13 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     // (see https://github.com/langchain-ai/langchainjs/pull/6646).
     let messageId = message.id;
     if (messageId == null || messageId === `run-${runId}`) {
-      messageId = this.stableMessageIdMap[runId] ?? messageId ?? `run-${runId}`;
+      messageId = this.stableMessageIdMap[runId] ?? messageId;
+
+      // Avoid assigning message ID for tool messages
+      // as doing so will assign same ID for all parallel tool responses.
+      // Which b/c the callback runs earlier than the reducer will cause
+      // other tools responses to be dropped.
+      if (message.getType() !== "tool") messageId ??= `run-${runId}`;
     }
     this.stableMessageIdMap[runId] ??= messageId;
 
@@ -79,7 +85,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       message.lc_kwargs.id = messageId;
     }
 
-    this.seen[message.id!] = message;
+    if (message.id != null) this.seen[message.id] = message;
     this.streamFn([meta[0], "messages", [message, meta[1]]]);
   }
 
