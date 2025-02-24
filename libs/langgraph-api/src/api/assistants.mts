@@ -110,9 +110,11 @@ api.get(
     const { xray } = c.req.valid("query");
 
     const graph = getGraph(assistant.graph_id);
-    return c.json(
-      graph.getGraph({ ...getRunnableConfig(assistant.config), xray }).toJSON(),
-    );
+    const drawable = await graph.getGraphAsync({
+      ...getRunnableConfig(assistant.config),
+      xray: xray ?? undefined,
+    });
+    return c.json(drawable.toJSON());
   },
 );
 
