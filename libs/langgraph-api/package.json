@@ -3,7 +3,7 @@
   "version": "0.0.12",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=20.16.0"
   },
   "license": "MIT",
   "main": "./dist/cli/spawn.mjs",
