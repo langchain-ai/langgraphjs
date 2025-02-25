@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-api",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "type": "module",
   "engines": {
     "node": ">=18"
@@ -47,9 +47,9 @@
     "zod": "^3.23.8"
   },
   "peerDependencies": {
-    "@langchain/core": "^0.3.36",
-    "@langchain/langgraph": "^0.2.43",
-    "@langchain/langgraph-checkpoint": "^0.0.14",
+    "@langchain/core": "^0.3.40",
+    "@langchain/langgraph": "^0.2.49",
+    "@langchain/langgraph-checkpoint": "^0.0.15",
     "typescript": "^5.5.4"
   },
   "devDependencies": {
