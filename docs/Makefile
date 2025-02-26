@@ -1,6 +1,6 @@
-.PHONY: clean build-docs serve-docs serve-clean-docs llms-text
+.PHONY: clean build-docs serve-docs serve-clean-docs llms-text generate-prebuilt-page
 
-build-docs:
+build-docs: generate-prebuilt-page
 	python _scripts/copy_notebooks.py
 	mkdir -p docs/cloud
 	if [ -z "$$(ls -A docs/cloud)" ]; then \
@@ -20,7 +20,7 @@ generate-prebuilt-page:
 	# Looks up download stats for each of the prebuilt packages and
 	# generates the final prebuilt page.
 	python -m _scripts.third_party.get_download_stats stats.yml
-	python -m _scripts.third_party.create_third_party_page stats.yml docs/prebuilt.md --language python
+	python -m _scripts.third_party.create_third_party_page stats.yml docs/prebuilt.md --language javascript
 
 
 serve-docs:
