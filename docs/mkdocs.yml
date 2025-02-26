@@ -373,6 +373,7 @@ extra_css:
 hooks:
   - _scripts/notebook_hooks.py
 extra:
+  scope: /langgraph/
   consent:
     title: Cookie consent
     actions:
