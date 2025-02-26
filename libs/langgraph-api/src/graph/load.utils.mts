@@ -80,7 +80,18 @@ export async function resolveGraph(
 }
 
 export async function runGraphSchemaWorker(spec: GraphSpec) {
-  const SCHEMA_RESOLVE_TIMEOUT_MS = 30_000;
+  let SCHEMA_RESOLVE_TIMEOUT_MS = 30_000;
+  try {
+    const envTimeout = Number.parseInt(
+      process.env.LANGGRAPH_SCHEMA_RESOLVE_TIMEOUT_MS ?? "0",
+      10,
+    );
+    if (!Number.isNaN(envTimeout) && envTimeout > 0) {
+      SCHEMA_RESOLVE_TIMEOUT_MS = envTimeout;
+    }
+  } catch {
+    // ignore
+  }
 
   return await new Promise<Record<string, GraphSchema>>((resolve, reject) => {
     const worker = new Worker(
