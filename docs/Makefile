@@ -15,6 +15,14 @@ build-docs:
 	fi
 	python -m mkdocs build --clean -f mkdocs.yml --strict -d site
 
+generate-prebuilt-page:
+	# Use to create an update to date prebuilt page.
+	# Looks up download stats for each of the prebuilt packages and
+	# generates the final prebuilt page.
+	python -m _scripts.third_party.get_download_stats stats.yml
+	python -m _scripts.third_party.create_third_party_page stats.yml docs/prebuilt.md --language python
+
+
 serve-docs:
 	python _scripts/copy_notebooks.py
 	python -m mkdocs serve -f mkdocs.yml -w ../libs --dirty -o

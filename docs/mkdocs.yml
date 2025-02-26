@@ -294,6 +294,7 @@ nav:
                 - tutorials/chatbot-simulation-evaluation/agent-simulation-evaluation.ipynb
 
     - Resources:
+        - Prebuilt Agents: prebuilt.md
         - Adopters: adopters.md
         - FAQ: concepts/faq.md
         - Troubleshooting:
