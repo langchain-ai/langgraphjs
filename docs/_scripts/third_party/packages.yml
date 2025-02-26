@@ -2,4 +2,4 @@
 packages:
   - name: "@langchain/langgraph-supervisor"
     repo: "langchain-ai/langgraph-supervisor-js"
-    description: "Package description."
+    description: "Build supervisor multi-agent systems with LangGraph"
