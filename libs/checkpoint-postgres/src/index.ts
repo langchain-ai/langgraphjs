@@ -78,7 +78,7 @@ const { Pool } = pg;
  * ```
  */
 export class PostgresSaver extends BaseCheckpointSaver {
-  private pool: pg.Pool;
+  private readonly pool: pg.Pool;
 
   private readonly options: PostgresSaverOptions;
 
@@ -132,7 +132,12 @@ export class PostgresSaver extends BaseCheckpointSaver {
     const SCHEMA_TABLES = getTablesWithSchema(this.options.schema);
     try {
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.options.schema}`);
-      let version = -1;
+      let version = 0;
+      const MIGRATIONS = getMigrations(this.options.schema);
+
+      // Run first migration to ensure checkpoint_migrations table exists
+      await client.query(MIGRATIONS[0]);
+
       try {
         const result = await client.query(
           `SELECT v FROM ${SCHEMA_TABLES.checkpoint_migrations} ORDER BY v DESC LIMIT 1`
@@ -140,11 +145,14 @@ export class PostgresSaver extends BaseCheckpointSaver {
         if (result.rows.length > 0) {
           version = result.rows[0].v;
         }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Assume table doesn't exist if there's an error
         if (
-          error?.message.includes(
+          typeof error === "object" &&
+          error !== null &&
+          "message" in error &&
+          typeof error.message === "string" &&
+          error.message.includes(
             `relation "${SCHEMA_TABLES.checkpoint_migrations}" does not exist`
           )
         ) {
@@ -154,7 +162,6 @@ export class PostgresSaver extends BaseCheckpointSaver {
         }
       }
 
-      const MIGRATIONS = getMigrations(this.options.schema);
       for (let v = version + 1; v < MIGRATIONS.length; v += 1) {
         await client.query(MIGRATIONS[v]);
         await client.query(
@@ -359,10 +366,12 @@ export class PostgresSaver extends BaseCheckpointSaver {
     let args: unknown[];
     let where: string;
     if (checkpoint_id) {
-      where = `WHERE thread_id = $1 AND checkpoint_ns = $2 AND checkpoint_id = $3`;
+      where =
+        "WHERE thread_id = $1 AND checkpoint_ns = $2 AND checkpoint_id = $3";
       args = [thread_id, checkpoint_ns, checkpoint_id];
     } else {
-      where = `WHERE thread_id = $1 AND checkpoint_ns = $2 ORDER BY checkpoint_id DESC LIMIT 1`;
+      where =
+        "WHERE thread_id = $1 AND checkpoint_ns = $2 ORDER BY checkpoint_id DESC LIMIT 1";
       args = [thread_id, checkpoint_ns];
     }
 
@@ -425,7 +434,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     let query = `${this.SQL_STATEMENTS.SELECT_SQL}${where} ORDER BY checkpoint_id DESC`;
     if (limit !== undefined) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      query += ` LIMIT ${parseInt(limit as any, 10)}`; // sanitize via parseInt, as limit could be an externally provided value
+      query += ` LIMIT ${Number.parseInt(limit as any, 10)}`; // sanitize via parseInt, as limit could be an externally provided value
     }
 
     const result = await this.pool.query(query, args);
