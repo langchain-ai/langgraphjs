@@ -13,7 +13,7 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { logger } from "../utils/logging.mjs";
 import { withAnalytics } from "./utils/analytics.mjs";
-
+import { gracefulExit } from "exit-hook";
 const stream = <T extends { spawnargs: string[] }>(proc: T): T => {
   logger.info(`Running "${proc.spawnargs.join(" ")}"`);
   return proc;
@@ -30,6 +30,7 @@ builder
   )
   .argument("[args...]")
   .passThroughOptions()
+  .exitOverride((error) => gracefulExit(error.exitCode))
   .hook(
     "preAction",
     withAnalytics((command) => ({
