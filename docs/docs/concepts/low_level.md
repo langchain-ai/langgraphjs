@@ -98,6 +98,9 @@ const node3 = async (state: typeof OverallStateAnnotation.State) => {
   return { graph_output: state.bar + " Lance" };
 };
 
+// Most of the time the StateGraph type parameters are inferred by TypeScript,
+// but this is a special case where they must be specified explicitly in order
+// to avoid a type error.
 const graph = new StateGraph<
   typeof OverallStateAnnotation["spec"],
   StateType<typeof OverallStateAnnotation["spec"]>,
