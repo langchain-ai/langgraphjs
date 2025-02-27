@@ -162,6 +162,7 @@ Learn how to set up your app for deployment to LangGraph Platform:
 - [How to set up app for deployment (JavaScript)](/langgraphjs/cloud/deployment/setup_javascript)
 - [How to customize Dockerfile](/langgraphjs/cloud/deployment/custom_docker)
 - [How to test locally](/langgraphjs/cloud/deployment/test_locally)
+- [How to integrate LangGraph into your React application](/langgraphjs/cloud/how-tos/use_stream_react)
 
 ### Deployment
 
