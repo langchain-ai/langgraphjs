@@ -103,7 +103,9 @@ export async function getGraphSchema(graphId: string) {
     try {
       GRAPH_SCHEMA[graphId] = await runGraphSchemaWorker(GRAPH_SPEC[graphId]);
     } catch (error) {
-      throw new Error(`Failed to extract schema for "${graphId}": ${error}`);
+      throw new Error(`Failed to extract schema for "${graphId}"`, {
+        cause: error,
+      });
     }
   }
 
