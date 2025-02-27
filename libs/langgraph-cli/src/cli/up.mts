@@ -11,6 +11,7 @@ import { $ } from "execa";
 import { createHash } from "node:crypto";
 import dedent from "dedent";
 import { withAnalytics } from "./utils/analytics.mjs";
+import { gracefulExit } from "exit-hook";
 
 const sha256 = (input: string) =>
   createHash("sha256").update(input).digest("hex");
@@ -64,6 +65,7 @@ builder
     "--postgres-uri <uri>",
     "Postgres URI to use for the database. Defaults to launching a local database",
   )
+  .exitOverride((error) => gracefulExit(error.exitCode))
   .hook(
     "preAction",
     withAnalytics((command) => ({

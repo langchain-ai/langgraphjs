@@ -12,6 +12,7 @@ import * as path from "node:path";
 import dedent from "dedent";
 import { logger } from "../utils/logging.mjs";
 import { withAnalytics } from "./utils/analytics.mjs";
+import { gracefulExit } from "exit-hook";
 
 const fileExists = async (path: string) => {
   try {
@@ -33,6 +34,7 @@ builder
     "Add additional files for running the LangGraph API server with docker-compose. These files include a docker-compose.yml, .env file, and a .dockerignore file.",
   )
   .option("-c, --config <path>", "Path to configuration file", process.cwd())
+  .exitOverride((error) => gracefulExit(error.exitCode))
   .hook(
     "preAction",
     withAnalytics((command) => ({

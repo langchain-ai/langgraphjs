@@ -13,6 +13,7 @@ import { getConfig } from "../utils/config.mjs";
 import { builder } from "./utils/builder.mjs";
 import { logError, logger } from "../utils/logging.mjs";
 import { withAnalytics } from "./utils/analytics.mjs";
+import { gracefulExit } from "exit-hook";
 
 builder
   .command("dev")
@@ -26,6 +27,7 @@ builder
   .option("-c, --config <path>", "path to configuration file", process.cwd())
   .allowExcessArguments()
   .allowUnknownOption()
+  .exitOverride((error) => gracefulExit(error.exitCode))
   .hook(
     "preAction",
     withAnalytics((command) => ({
