@@ -98,9 +98,8 @@ export async function _runWithRetry<
       (error as { pregelTaskId: string }).pregelTaskId = pregelTask.id;
       if (isParentCommand(error)) {
         const ns: string = config?.configurable?.checkpoint_ns;
-        const parentNs = getParentCheckpointNamespace(ns);
         const cmd = error.command;
-        if (cmd.graph === parentNs) {
+        if (cmd.graph === ns) {
           // this command is for the current graph, handle it
           for (const writer of pregelTask.writers) {
             await writer.invoke(cmd, config);
@@ -109,6 +108,7 @@ export async function _runWithRetry<
           break;
         } else if (cmd.graph === Command.PARENT) {
           // this command is for the parent graph, assign it to the parent
+          const parentNs = getParentCheckpointNamespace(ns);
           error.command = new Command({
             ...error.command,
             graph: parentNs,
