@@ -49,6 +49,8 @@ class ResolvedPackage(TypedDict):
     """The name of the package."""
     repo: str
     """Repository ID within github. Format is: [orgname]/[repo_name]."""
+    monorepo_path: str | None
+    """Optional: The path to the package root within a monorepo. Must be relative to the root of the monorepo."""
     weekly_downloads: int | None
     """The weekly download count of the package."""
     description: str
@@ -92,15 +94,24 @@ def generate_markdown(
     ]
 
     for package in sorted_packages:
-        name = f"**{package['name']}**"
-        repo_url = f"[{package['repo']}](https://github.com/{package['repo']})"
+        package_url = f"https://npmjs.com/package/{package['name']}"
+        package_link = f"**[{package['name']}]({package_url})**"
+        monorepo_path = package.get("monorepo_path", "")
+        if monorepo_path:
+            monorepo_path = monorepo_path[1:] if monorepo_path.startswith('/') else monorepo_path
+            repo_url_suffix = f"/tree/main/{monorepo_path}"
+        else:
+            repo_url_suffix = ""
+        repo_display_name = f"{package['repo']}{(' : ' + monorepo_path) if monorepo_path else ''}"
+        repo_url = f"https://github.com/{package['repo']}{repo_url_suffix}"
+        repo_link = f"[{repo_display_name}]({repo_url})"
         stars_badge = (
             f"https://img.shields.io/github/stars/{package['repo']}?style=social"
         )
         stars = f"![GitHub stars]({stars_badge})"
 
         downloads = package["weekly_downloads"] or "-"
-        row = f"| {name} | {repo_url} | {package['description']} | {downloads} | {stars}"
+        row = f"| {package_link} | {repo_link} | {package['description']} | {downloads} | {stars}"
         rows.append(row)
     markdown_content = MARKDOWN.format(
         library_list="\n".join(rows), langgraph_url=langgraph_url
