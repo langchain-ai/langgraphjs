@@ -134,8 +134,8 @@ export function recastCheckpointNamespace(namespace: string): string {
 
 export function getParentCheckpointNamespace(namespace: string): string {
   const parts = namespace.split(CHECKPOINT_NAMESPACE_SEPARATOR);
-  while (parts.length > 1 && !parts[parts.length - 1].match(/^\d+$/)) {
+  while (parts.length > 1 && parts[parts.length - 1].match(/^\d+$/)) {
     parts.pop();
   }
-  return parts.join(CHECKPOINT_NAMESPACE_SEPARATOR);
+  return parts.slice(0, -1).join(CHECKPOINT_NAMESPACE_SEPARATOR);
 }

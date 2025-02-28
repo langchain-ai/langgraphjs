@@ -104,13 +104,14 @@ export async function _runWithRetry<
           for (const writer of pregelTask.writers) {
             await writer.invoke(cmd, config);
           }
+          error = undefined;
           break;
         } else if (cmd.graph === Command.PARENT) {
           // this command is for the parent graph, assign it to the parent
-          const parent_ns = getParentCheckpointNamespace(ns);
+          const parentNs = getParentCheckpointNamespace(ns);
           error.command = new Command({
             ...error.command,
-            graph: parent_ns,
+            graph: parentNs,
           });
         }
       }

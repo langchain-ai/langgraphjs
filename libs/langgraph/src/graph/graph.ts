@@ -97,6 +97,7 @@ export class Branch<
   ) {
     return ChannelWrite.registerWriter(
       new RunnableCallable({
+        name: "<branch_run>",
         trace: false,
         func: async (input: IO, config: CallOptions) => {
           try {
