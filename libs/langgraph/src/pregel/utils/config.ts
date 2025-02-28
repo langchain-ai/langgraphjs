@@ -2,6 +2,10 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { BaseStore } from "@langchain/langgraph-checkpoint";
 import { LangGraphRunnableConfig } from "../runnable_types.js";
+import {
+  CHECKPOINT_NAMESPACE_END,
+  CHECKPOINT_NAMESPACE_SEPARATOR,
+} from "../../constants.js";
 
 const COPIABLE_KEYS = ["tags", "metadata", "callbacks", "configurable"];
 
@@ -118,4 +122,20 @@ export function getWriter(): ((chunk: unknown) => void) | undefined {
 
 export function getConfig(): LangGraphRunnableConfig {
   return AsyncLocalStorageProviderSingleton.getRunnableConfig();
+}
+
+export function recastCheckpointNamespace(namespace: string): string {
+  return namespace
+    .split(CHECKPOINT_NAMESPACE_SEPARATOR)
+    .filter((part) => !part.match(/^\d+$/))
+    .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
+    .join(CHECKPOINT_NAMESPACE_SEPARATOR);
+}
+
+export function getParentCheckpointNamespace(namespace: string): string {
+  const parts = namespace.split(CHECKPOINT_NAMESPACE_SEPARATOR);
+  while (parts.length > 1 && !parts[parts.length - 1].match(/^\d+$/)) {
+    parts.pop();
+  }
+  return parts.join(CHECKPOINT_NAMESPACE_SEPARATOR);
 }

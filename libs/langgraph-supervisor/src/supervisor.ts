@@ -86,7 +86,10 @@ export type CreateSupervisorParams<
 > = {
   agents: CompiledStateGraph<
     AnnotationRootT["State"],
-    AnnotationRootT["Update"]
+    AnnotationRootT["Update"],
+    string,
+    AnnotationRootT["spec"],
+    AnnotationRootT["spec"]
   >[];
   llm: LanguageModelLike;
   tools?: (StructuredToolInterface | RunnableToolLike | DynamicTool)[];
@@ -157,7 +160,7 @@ const createSupervisor = <
   }
 
   const handoffTools = agents.map((agent) =>
-    createHandoffTool({ agentName: agent.name as string })
+    createHandoffTool({ agentName: agent.name! })
   );
   const allTools = [...(tools ?? []), ...handoffTools];
 
@@ -182,21 +185,21 @@ const createSupervisor = <
     stateSchema: schema,
   });
 
-  const builder = new StateGraph(schema)
-    .addNode(supervisorAgent.name as string, supervisorAgent, {
+  let builder = new StateGraph(schema)
+    .addNode(supervisorAgent.name!, supervisorAgent, {
       ends: [...agentNames],
     })
-    .addEdge(START, supervisorAgent.name as string);
+    .addEdge(START, supervisorAgent.name!);
 
   for (const agent of agents) {
-    builder.addNode(
-      agent.name as string,
+    builder = builder.addNode(
+      agent.name!,
       makeCallAgent(agent, outputMode, addHandoffBackMessages, supervisorName),
       {
         subgraphs: [agent],
       }
     );
-    builder.addEdge(agent.name as string, supervisorAgent.name as string);
+    builder = builder.addEdge(agent.name!, supervisorAgent.name!);
   }
 
   return builder;
