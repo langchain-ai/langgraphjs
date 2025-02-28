@@ -9209,7 +9209,7 @@ graph TD;
     });
   });
 
-  it("test_parent_command from grandchild graph", async () => {
+  it.only("test_parent_command from grandchild graph", async () => {
     const getUserName = tool(
       async () => {
         return new Command({
@@ -9232,7 +9232,6 @@ graph TD;
     const childGraph = new StateGraph(MessagesAnnotation)
       .addNode("bob", grandchildGraph)
       .addNode("robert", async () => {
-        console.log("robert");
         return { messages: [{ role: "assistant", content: "robert" }] };
       })
       .addEdge("__start__", "bob")
@@ -9278,44 +9277,60 @@ graph TD;
       ],
     });
 
-    // const state = await graph.getState(config);
-    // expect(state).toEqual({
-    //   values: {
-    //     messages: [
-    //       new _AnyIdHumanMessage({
-    //         content: "get user name",
-    //       }),
-    //     ],
-    //     user_name: "Meow",
-    //   },
-    //   next: [],
-    //   config: {
-    //     configurable: {
-    //       thread_id: "1",
-    //       checkpoint_ns: "",
-    //       checkpoint_id: expect.any(String),
-    //     },
-    //   },
-    //   metadata: {
-    //     source: "loop",
-    //     writes: {
-    //       alice: {
-    //         user_name: "Meow",
-    //       },
-    //     },
-    //     step: 1,
-    //     parents: {},
-    //   },
-    //   createdAt: expect.any(String),
-    //   parentConfig: {
-    //     configurable: {
-    //       thread_id: "1",
-    //       checkpoint_ns: "",
-    //       checkpoint_id: expect.any(String),
-    //     },
-    //   },
-    //   tasks: [],
-    // });
+    const state = await graph.getState(config);
+
+    expect(state).toEqual({
+      values: {
+        messages: [
+          new _AnyIdHumanMessage({
+            content: "get user name",
+          }),
+          new _AnyIdAIMessage({
+            content: "grandkid",
+          }),
+          new _AnyIdAIMessage({
+            content: "robert",
+          }),
+        ],
+      },
+      next: [],
+      tasks: [],
+      metadata: {
+        source: "loop",
+        writes: {
+          alice: {
+            messages: [
+              new _AnyIdHumanMessage({
+                content: "get user name",
+              }),
+              new _AnyIdAIMessage({
+                content: "grandkid",
+              }),
+              new _AnyIdAIMessage({
+                content: "robert",
+              }),
+            ],
+          },
+        },
+        step: 1,
+        parents: {},
+      },
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_id: expect.any(String),
+          checkpoint_ns: "",
+        },
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+    });
   });
 
   it("should merge parent state with subgraph state on ParentCommand", async () => {
