@@ -2226,7 +2226,7 @@ graph TD;
 
   it("should handle checkpoints correctly", async () => {
     const inputPlusTotal = jest.fn(
-      (x: { total: number; input: number }): number => x.total + x.input
+      (x: { total: number; input: number }): number => (x.total ?? 0) + x.input
     );
     const raiseIfAbove10 = (input: number): number => {
       if (input > 10) {
@@ -3967,7 +3967,7 @@ graph TD;
       };
 
       const add = ({ input, total }: typeof GraphAnnotation.State) => ({
-        total: input + total,
+        total: input + (total ?? 0),
       });
 
       const app = new StateGraph(GraphAnnotation)
@@ -6747,6 +6747,7 @@ graph TD;
                   name: "inner2",
                   path: [PULL, "inner2"],
                   interrupts: [],
+                  state: undefined,
                 },
               ],
               next: ["inner2"],
@@ -6949,6 +6950,7 @@ graph TD;
               name: "inner2",
               path: [PULL, "inner2"],
               interrupts: [],
+              state: undefined,
             },
           ],
         },
@@ -7004,7 +7006,7 @@ graph TD;
           metadata: {
             source: "input",
             writes: {
-              __start__: { myKey: "hi my value", otherParentKey: null },
+              __start__: { myKey: "hi my value" },
             },
             step: -1,
             parents: { "": expect.any(String) },
@@ -7016,6 +7018,7 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              state: undefined,
             },
           ],
         },
