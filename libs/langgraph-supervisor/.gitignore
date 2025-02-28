@@ -5,3 +5,6 @@ index.d.cts
 node_modules
 dist
 .yarn
+
+# LangGraph API
+.langgraph_api
