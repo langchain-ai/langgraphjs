@@ -13,25 +13,27 @@ import {
   createReactAgentAnnotation,
   CreateReactAgentParams,
 } from "@langchain/langgraph/prebuilt";
-import { createHandoffTool, createHandoffBackMessages } from "./handoff.js";
 import {
   BaseChatModel,
   BindToolsInput,
 } from "@langchain/core/language_models/chat_models";
+import { createHandoffTool, createHandoffBackMessages } from "./handoff.js";
 
 type OutputMode = "full_history" | "last_message";
 const PROVIDERS_WITH_PARALLEL_TOOL_CALLS_PARAM = new Set(["ChatOpenAI"]);
 
 // type guards
 type ChatModelWithBindTools = BaseChatModel & {
-  bindTools(tools: BindToolsInput[], kwargs?: any): LanguageModelLike;
+  bindTools(tools: BindToolsInput[], kwargs?: unknown): LanguageModelLike;
 };
+
 type ChatModelWithParallelToolCallsParam = BaseChatModel & {
   bindTools(
     tools: BindToolsInput[],
-    kwargs?: { parallel_tool_calls?: boolean } & Record<string, any>
+    kwargs?: { parallel_tool_calls?: boolean } & Record<string, unknown>
   ): LanguageModelLike;
 };
+
 function isChatModelWithBindTools(
   llm: LanguageModelLike
 ): llm is ChatModelWithBindTools {
@@ -51,7 +53,8 @@ function isChatModelWithParallelToolCallsParam(
 }
 
 const makeCallAgent = (
-  agent: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  agent: any, // TODO: agent should not be `any`
   outputMode: OutputMode,
   addHandoffBackMessages: boolean,
   supervisorName: string
@@ -62,9 +65,9 @@ const makeCallAgent = (
     );
   }
 
-  return async (state: Record<string, any>) => {
+  return async (state: Record<string, unknown>) => {
     const output = await agent.invoke(state);
-    let messages = output.messages;
+    let { messages } = output;
 
     if (outputMode === "last_message") {
       messages = messages.slice(-1);
@@ -78,6 +81,7 @@ const makeCallAgent = (
 };
 
 export type CreateSupervisorParams<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AnnotationRootT extends AnnotationRoot<any>
 > = {
   agents: CompiledStateGraph<
@@ -114,6 +118,7 @@ export type CreateSupervisorParams<
  * @param supervisorName Name of the supervisor node
  */
 const createSupervisor = <
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AnnotationRootT extends AnnotationRoot<any> = typeof MessagesAnnotation
 >({
   agents,
@@ -128,10 +133,9 @@ const createSupervisor = <
   AnnotationRootT["spec"],
   AnnotationRootT["State"],
   AnnotationRootT["Update"],
-  any,
+  string,
   AnnotationRootT["spec"],
-  AnnotationRootT["spec"],
-  any
+  AnnotationRootT["spec"]
 > => {
   const agentNames = new Set<string>();
 
