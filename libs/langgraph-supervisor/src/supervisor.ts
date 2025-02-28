@@ -86,7 +86,10 @@ export type CreateSupervisorParams<
 > = {
   agents: CompiledStateGraph<
     AnnotationRootT["State"],
-    AnnotationRootT["Update"]
+    AnnotationRootT["Update"],
+    string,
+    AnnotationRootT["spec"],
+    AnnotationRootT["spec"]
   >[];
   llm: LanguageModelLike;
   tools?: (StructuredToolInterface | RunnableToolLike | DynamicTool)[];
