@@ -9209,11 +9209,19 @@ graph TD;
     });
   });
 
-  it.only("test_parent_command from grandchild graph", async () => {
+  it("test_parent_command from grandchild graph", async () => {
+    const CustomStateAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      user_name: Annotation<string>,
+    });
+
     const getUserName = tool(
       async () => {
         return new Command({
-          update: { messages: [{ role: "assistant", content: "grandkid" }] },
+          update: {
+            messages: [{ role: "assistant", content: "grandkid" }],
+            user_name: "jeffrey",
+          },
           goto: "robert",
           graph: Command.PARENT,
         });
@@ -9224,28 +9232,26 @@ graph TD;
       }
     );
 
-    const grandchildGraph = new StateGraph(MessagesAnnotation)
+    const grandchildGraph = new StateGraph(CustomStateAnnotation)
       .addNode("tool", getUserName)
       .addEdge("__start__", "tool")
       .compile();
 
-    const childGraph = new StateGraph(MessagesAnnotation)
+    const childGraph = new StateGraph(CustomStateAnnotation)
       .addNode("bob", grandchildGraph)
-      .addNode("robert", async () => {
+      .addNode("robert", async (state) => {
+        if (state.user_name !== "jeffrey") {
+          throw new Error("failed to update state from grandchild");
+        }
         return { messages: [{ role: "assistant", content: "robert" }] };
       })
       .addEdge("__start__", "bob")
       .addEdge("bob", "robert")
       .compile();
 
-    const CustomParentStateAnnotation = Annotation.Root({
-      ...MessagesAnnotation.spec,
-      user_name: Annotation<string>,
-    });
-
     const checkpointer = await createCheckpointer();
 
-    const graph = new StateGraph(CustomParentStateAnnotation)
+    const graph = new StateGraph(CustomStateAnnotation)
       .addNode("alice", childGraph)
       .addEdge("__start__", "alice")
       .compile({ checkpointer });
@@ -9275,6 +9281,7 @@ graph TD;
           content: "robert",
         }),
       ],
+      user_name: "jeffrey",
     });
 
     const state = await graph.getState(config);
@@ -9292,6 +9299,7 @@ graph TD;
             content: "robert",
           }),
         ],
+        user_name: "jeffrey",
       },
       next: [],
       tasks: [],
@@ -9310,6 +9318,7 @@ graph TD;
                 content: "robert",
               }),
             ],
+            user_name: "jeffrey",
           },
         },
         step: 1,
