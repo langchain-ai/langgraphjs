@@ -9209,6 +9209,115 @@ graph TD;
     });
   });
 
+  it("test_parent_command from grandchild graph", async () => {
+    const getUserName = tool(
+      async () => {
+        return new Command({
+          update: { messages: [{ role: "assistant", content: "grandkid" }] },
+          goto: "robert",
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "get_user_name",
+        schema: z.object({}),
+      }
+    );
+
+    const grandchildGraph = new StateGraph(MessagesAnnotation)
+      .addNode("tool", getUserName)
+      .addEdge("__start__", "tool")
+      .compile();
+
+    const childGraph = new StateGraph(MessagesAnnotation)
+      .addNode("bob", grandchildGraph)
+      .addNode("robert", async () => {
+        console.log("robert");
+        return { messages: [{ role: "assistant", content: "robert" }] };
+      })
+      .addEdge("__start__", "bob")
+      .addEdge("bob", "robert")
+      .compile();
+
+    const CustomParentStateAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      user_name: Annotation<string>,
+    });
+
+    const checkpointer = await createCheckpointer();
+
+    const graph = new StateGraph(CustomParentStateAnnotation)
+      .addNode("alice", childGraph)
+      .addEdge("__start__", "alice")
+      .compile({ checkpointer });
+
+    const config = {
+      configurable: {
+        thread_id: "1",
+      },
+    };
+
+    const res = await graph.invoke(
+      {
+        messages: [{ role: "user", content: "get user name" }],
+      },
+      config
+    );
+
+    expect(res).toEqual({
+      messages: [
+        new _AnyIdHumanMessage({
+          content: "get user name",
+        }),
+        new _AnyIdAIMessage({
+          content: "grandkid",
+        }),
+        new _AnyIdAIMessage({
+          content: "robert",
+        }),
+      ],
+    });
+
+    // const state = await graph.getState(config);
+    // expect(state).toEqual({
+    //   values: {
+    //     messages: [
+    //       new _AnyIdHumanMessage({
+    //         content: "get user name",
+    //       }),
+    //     ],
+    //     user_name: "Meow",
+    //   },
+    //   next: [],
+    //   config: {
+    //     configurable: {
+    //       thread_id: "1",
+    //       checkpoint_ns: "",
+    //       checkpoint_id: expect.any(String),
+    //     },
+    //   },
+    //   metadata: {
+    //     source: "loop",
+    //     writes: {
+    //       alice: {
+    //         user_name: "Meow",
+    //       },
+    //     },
+    //     step: 1,
+    //     parents: {},
+    //   },
+    //   createdAt: expect.any(String),
+    //   parentConfig: {
+    //     configurable: {
+    //       thread_id: "1",
+    //       checkpoint_ns: "",
+    //       checkpoint_id: expect.any(String),
+    //     },
+    //   },
+    //   tasks: [],
+    // });
+  });
+
   it("should merge parent state with subgraph state on ParentCommand", async () => {
     const StateAnnotation = Annotation.Root({
       foo: Annotation<string>,

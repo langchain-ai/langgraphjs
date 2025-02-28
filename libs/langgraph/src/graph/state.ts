@@ -843,6 +843,7 @@ function _getControlBranch() {
     tags: [TAG_HIDDEN],
     trace: false,
     recurse: false,
+    name: "<control_branch>",
   });
   return new Branch({
     path: CONTROL_BRANCH_PATH,
