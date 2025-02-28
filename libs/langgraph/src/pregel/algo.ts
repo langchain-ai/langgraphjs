@@ -952,6 +952,13 @@ export function _prepareSingleTask<
   return undefined;
 }
 
+/**
+ *  Function injected under CONFIG_KEY_READ in task config, to read current state.
+ *  Used by conditional edges to read a copy of the state with reflecting the writes
+ *  from that node only.
+ *
+ * @internal
+ */
 function _procInput(
   step: number,
   proc: PregelNode,
@@ -978,7 +985,7 @@ function _procInput(
         }
       } else if (chan in channels) {
         try {
-          val[k] = readChannel(channels, chan, true);
+          val[k] = readChannel(channels, chan, false);
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (e: any) {
           if (e.name === EmptyChannelError.unminifiable_name) {
