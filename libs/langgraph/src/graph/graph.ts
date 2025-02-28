@@ -647,6 +647,12 @@ export class CompiledGraph<
       if (end === END && endNodes[END] === undefined) {
         endNodes[END] = graph.addNode({ schema: z.any() }, END);
       }
+      if (startNodes[start] === undefined) {
+        return;
+      }
+      if (endNodes[end] === undefined) {
+        throw new Error(`End node ${end} not found!`);
+      }
       return graph.addEdge(
         startNodes[start],
         endNodes[end],
@@ -681,8 +687,10 @@ export class CompiledGraph<
                 xray: newXrayValue,
               })
             : node.getGraph(config);
+
         drawableSubgraph.trimFirstNode();
         drawableSubgraph.trimLastNode();
+
         if (Object.keys(drawableSubgraph.nodes).length > 1) {
           const [e, s] = graph.extend(drawableSubgraph, displayKey);
           if (e === undefined) {
