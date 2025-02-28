@@ -1079,6 +1079,7 @@ const llmWithTools = llm.bindTools(tools);
 
     ```ts
     import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
+    import { ToolNode } from "@langchain/langgraph/prebuilt";
     import {
       SystemMessage,
       ToolMessage
@@ -1100,26 +1101,7 @@ const llmWithTools = llm.bindTools(tools);
       };
     }
 
-    async function toolNode(state: typeof MessagesAnnotation.State) {
-      // Performs the tool call
-      const results: ToolMessage[] = [];
-      const lastMessage = state.messages.at(-1);
-
-      if (lastMessage?.tool_calls?.length) {
-        for (const toolCall of lastMessage.tool_calls) {
-          const tool = toolsByName[toolCall.name];
-          const observation = await tool.invoke(toolCall.args);
-          results.push(
-            new ToolMessage({
-              content: observation,
-              tool_call_id: toolCall.id,
-            })
-          );
-        }
-      }
-
-      return { messages: results };
-    }
+    const toolNode = new ToolNode(tools);
 
     // Conditional edge function to route to the tool node or end
     function shouldContinue(state: typeof MessagesAnnotation.State) {
