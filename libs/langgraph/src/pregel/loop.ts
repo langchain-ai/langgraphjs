@@ -43,6 +43,7 @@ import {
   TAG_HIDDEN,
   PUSH,
   CONFIG_KEY_SCRATCHPAD,
+  CONFIG_KEY_CHECKPOINT_NS,
 } from "../constants.js";
 import {
   _applyWrites,
@@ -65,11 +66,9 @@ import {
   readChannels,
 } from "./io.js";
 import {
-  getSubgraphsSeenSet,
   EmptyInputError,
   GraphInterrupt,
   isGraphInterrupt,
-  MultipleSubgraphsError,
   isParentCommand,
 } from "../errors.js";
 import { getNewChannelVersions, patchConfigurable } from "./utils/index.js";
@@ -100,7 +99,6 @@ export type PregelLoopInitializeParams = {
   managed: ManagedValueMapping;
   stream: IterableReadableWritableStream;
   store?: BaseStore;
-  checkSubgraphs?: boolean;
   interruptAfter: string[] | All;
   interruptBefore: string[] | All;
   manager?: CallbackManagerForChainRun;
@@ -261,11 +259,11 @@ export class PregelLoop {
     this.interruptAfter = params.interruptAfter;
     this.interruptBefore = params.interruptBefore;
     this.debug = params.debug;
+    this._incrementSubgraphCounter();
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
     let { config, stream } = params;
-    const { checkSubgraphs = true } = params;
     if (
       stream !== undefined &&
       config.configurable?.[CONFIG_KEY_STREAM] !== undefined
@@ -348,23 +346,6 @@ export class PregelLoop {
       // Start the store. This is a batch store, so it will run continuously
       store.start();
     }
-    if (checkSubgraphs && isNested && params.checkpointer !== undefined) {
-      if (getSubgraphsSeenSet().has(config.configurable?.checkpoint_ns)) {
-        throw new MultipleSubgraphsError(
-          [
-            "Detected the same subgraph called multiple times by the same node.",
-            "This is not allowed if checkpointing is enabled.",
-            "",
-            `You can disable checkpointing for a subgraph by compiling it with ".compile({ checkpointer: false });"`,
-          ].join("\n"),
-          {
-            lc_error_code: "MULTIPLE_SUBGRAPHS",
-          }
-        );
-      } else {
-        getSubgraphsSeenSet().add(config.configurable?.checkpoint_ns);
-      }
-    }
     return new PregelLoop({
       input: params.input,
       config,
@@ -392,6 +373,25 @@ export class PregelLoop {
       interruptBefore: params.interruptBefore,
       debug: params.debug,
     });
+  }
+
+  /**
+   * @internal
+   */
+  protected _incrementSubgraphCounter() {
+    const { configurable } = this.config;
+    const scratchpad = configurable?.[CONFIG_KEY_SCRATCHPAD];
+
+    // purposefully allowing zero to be falsy here so we don't append call count to parent ns
+    if (scratchpad?.subgraph_counter) {
+      this.config = patchConfigurable(this.config, {
+        [CONFIG_KEY_CHECKPOINT_NS]: [
+          configurable![CONFIG_KEY_CHECKPOINT_NS],
+          scratchpad.subgraph_counter.toString(),
+        ].join(CHECKPOINT_NAMESPACE_SEPARATOR),
+      });
+      scratchpad.subgraph_counter += 1;
+    }
   }
 
   protected _checkpointerPutAfterPrevious(input: {

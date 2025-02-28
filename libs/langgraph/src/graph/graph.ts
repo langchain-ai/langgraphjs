@@ -575,7 +575,7 @@ export class CompiledGraph<
     branch: Branch<State, N>
   ) {
     // add hidden start node
-    if (start === START && this.nodes[START]) {
+    if (start === START && !this.nodes[START]) {
       this.nodes[START] = Channel.subscribeTo(START, { tags: [TAG_HIDDEN] });
     }
 

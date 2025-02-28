@@ -1,14 +1,7 @@
-import {
-  CHECKPOINT_NAMESPACE_SEPARATOR,
-  Command,
-  CONFIG_KEY_RESUMING,
-} from "../constants.js";
-import {
-  getSubgraphsSeenSet,
-  isGraphBubbleUp,
-  isParentCommand,
-} from "../errors.js";
+import { Command, CONFIG_KEY_RESUMING } from "../constants.js";
+import { isGraphBubbleUp, isParentCommand } from "../errors.js";
 import { PregelExecutableTask } from "./types.js";
+import { getParentCheckpointNamespace } from "./utils/config.js";
 import { patchConfigurable, type RetryPolicy } from "./utils/index.js";
 
 export const DEFAULT_INITIAL_INTERVAL = 500;
@@ -114,10 +107,7 @@ export async function _runWithRetry<
           break;
         } else if (cmd.graph === Command.PARENT) {
           // this command is for the parent graph, assign it to the parent
-          const parent_ns = ns
-            .split(CHECKPOINT_NAMESPACE_SEPARATOR)
-            .slice(0, -1)
-            .join(CHECKPOINT_NAMESPACE_SEPARATOR);
+          const parent_ns = getParentCheckpointNamespace(ns);
           error.command = new Command({
             ...error.command,
             graph: parent_ns,
@@ -165,12 +155,6 @@ export async function _runWithRetry<
 
       // signal subgraphs to resume (if available)
       config = patchConfigurable(config, { [CONFIG_KEY_RESUMING]: true });
-    } finally {
-      // Clear checkpoint_ns seen (for subgraph detection)
-      const checkpointNs = config?.configurable?.checkpoint_ns;
-      if (checkpointNs) {
-        getSubgraphsSeenSet().delete(checkpointNs);
-      }
     }
   }
   return {

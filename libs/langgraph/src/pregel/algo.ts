@@ -1039,5 +1039,6 @@ function _scratchpad(
     nullResume: pendingWrites.find(
       ([writeTaskId, chan]) => writeTaskId === NULL_TASK_ID && chan === RESUME
     )?.[2],
+    subgraphCounter: 0,
   };
 }

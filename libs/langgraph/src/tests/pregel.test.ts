@@ -83,7 +83,6 @@ import { StateSnapshot } from "../pregel/types.js";
 import {
   GraphRecursionError,
   InvalidUpdateError,
-  MultipleSubgraphsError,
   NodeInterrupt,
 } from "../errors.js";
 import {
@@ -7285,9 +7284,9 @@ graph TD;
       // Add checkpointer
       app.checkpointer = checkpointer;
       // Subgraph is called twice in the same node, through .map(), so raises
-      await expect(
-        app.invoke([2, 3], { configurable: { thread_id: "1" } })
-      ).rejects.toThrow(MultipleSubgraphsError);
+      expect(
+        await app.invoke([2, 3], { configurable: { thread_id: "1" } })
+      ).toBe(27);
 
       // Set inner graph checkpointer to not checkpoint
       innerApp.checkpointer = false;
@@ -8460,6 +8459,68 @@ graph TD;
         chunks.push(chunk);
       }
       expect(chunks.length).toEqual(4);
+    });
+
+    it("should handle non-overlapping parent command updates", async () => {
+      const StateAnnotation = Annotation.Root({
+        uniqueStrings: Annotation<string[]>({
+          reducer: (a, b) => Array.from(new Set([...a, ...b])),
+        }),
+      });
+
+      // Define subgraph
+      const subgraph = new StateGraph(StateAnnotation)
+        .addNode(
+          "subgraph_node_1",
+          () =>
+            new Command({
+              goto: "subgraph_node_2",
+              update: {
+                uniqueStrings: ["bar"],
+                visitedNodes: ["subgraph_node_1"],
+              },
+            }),
+          { ends: ["subgraph_node_2"] }
+        )
+        .addNode(
+          "subgraph_node_2",
+          () =>
+            new Command({
+              goto: "node_3",
+              update: { visitedNodes: ["subgraph_node_2"] },
+              graph: "PARENT",
+            })
+        )
+        .addEdge(START, "subgraph_node_1")
+        .compile();
+
+      // Define main graph
+      const mainGraph = new StateGraph(StateAnnotation)
+        .addNode(
+          "node_1",
+          () =>
+            new Command({
+              goto: "node_2",
+              update: { uniqueStrings: ["foo"] },
+            }),
+          { ends: ["node_2"] }
+        )
+        .addNode("node_2", subgraph)
+        .addNode(
+          "node_3",
+          () =>
+            new Command({
+              update: { uniqueStrings: ["baz"] },
+            })
+        )
+        .addEdge(START, "node_1")
+        .addEdge("node_2", "node_3")
+        .compile();
+
+      const result = await mainGraph.invoke({ uniqueStrings: [] });
+      expect(result).toEqual({
+        uniqueStrings: ["foo", "bar", "baz"],
+      });
     });
   });
 
