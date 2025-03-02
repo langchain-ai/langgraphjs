@@ -403,7 +403,7 @@ describe("createReactAgent with prompt/state modifier", () => {
 });
 
 describe("createReactAgent with bound tools", () => {
-  it.each(["openai", "anthropic"] as const)(
+  it.each(["openai", "anthropic", "bedrock"] as const)(
     "Can use bound tools and validate tool matching with %s style",
     async (toolStyle) => {
       const llm = new FakeToolCallingChatModel({

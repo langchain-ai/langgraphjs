@@ -152,14 +152,14 @@ export class FakeToolCallingChatModel extends BaseChatModel {
 
   idx: number;
 
-  toolStyle: "openai" | "anthropic" = "openai";
+  toolStyle: "openai" | "anthropic" | "bedrock" = "openai";
 
   constructor(
     fields: {
       sleep?: number;
       responses?: BaseMessage[];
       thrownErrorString?: string;
-      toolStyle?: "openai" | "anthropic";
+      toolStyle?: "openai" | "anthropic" | "bedrock";
     } & BaseChatModelParams
   ) {
     super(fields);
@@ -222,6 +222,12 @@ export class FakeToolCallingChatModel extends BaseChatModel {
       } else if (this.toolStyle === "anthropic") {
         toolDicts.push({
           name: tool.name,
+        });
+      } else if (this.toolStyle === "bedrock") {
+        toolDicts.push({
+          toolSpec: {
+            name: tool.name,
+          },
         });
       }
     }
