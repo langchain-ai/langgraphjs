@@ -31,7 +31,7 @@ class FakeChatModel extends FakeStreamingChatModel {
   }
 
   async _generate(
-    messages: BaseMessage[],
+    _: BaseMessage[],
     _options: this["ParsedCallOptions"],
     _runManager?: CallbackManagerForLLMRun
   ): Promise<ChatResult> {
@@ -164,9 +164,11 @@ describe("Swarm", () => {
     );
 
     expect(turn1.messages.length).toBe(4);
-    expect(turn1.messages.at(-2)?.content).toBe("Successfully transferred to Bob")
-    expect(turn1.messages.at(-1)?.content).toBe(recordedMessages[1].content)
-    expect(turn1.activeAgent).toBe("Bob")
+    expect(turn1.messages.at(-2)?.content).toBe(
+      "Successfully transferred to Bob"
+    );
+    expect(turn1.messages.at(-1)?.content).toBe(recordedMessages[1].content);
+    expect(turn1.activeAgent).toBe("Bob");
 
     const turn2 = await app.invoke(
       { messages: [{ role: "user", content: "what's 5 + 7?" }] },
@@ -174,12 +176,14 @@ describe("Swarm", () => {
     );
 
     expect(turn2.messages.length).toBe(10);
-    expect(turn2.messages.at(-4)?.content).toBe("Successfully transferred to Alice")
-    expect((turn2.messages.at(-3) as AIMessage)?.tool_calls).toBe(recordedMessages[3].tool_calls)
-    expect(turn2.messages.at(-2)?.content).toBe("12")
-    expect(turn2.messages.at(-1)?.content).toBe(recordedMessages[4].content)
-    expect(turn2.activeAgent).toBe("Alice")
-
-    console.log(turn2);
+    expect(turn2.messages.at(-4)?.content).toBe(
+      "Successfully transferred to Alice"
+    );
+    expect((turn2.messages.at(-3) as AIMessage)?.tool_calls).toBe(
+      recordedMessages[3].tool_calls
+    );
+    expect(turn2.messages.at(-2)?.content).toBe("12");
+    expect(turn2.messages.at(-1)?.content).toBe(recordedMessages[4].content);
+    expect(turn2.activeAgent).toBe("Alice");
   });
 });

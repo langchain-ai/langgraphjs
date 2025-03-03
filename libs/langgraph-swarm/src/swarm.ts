@@ -11,7 +11,7 @@ import { getHandoffDestinations } from "./handoff.js";
 /**
  * State schema for the multi-agent swarm.
  */
-export const SwarmState = Annotation.Root({
+const SwarmState = Annotation.Root({
   ...MessagesAnnotation.spec,
   activeAgent: Annotation<string>,
 });
@@ -26,15 +26,15 @@ export const SwarmState = Annotation.Root({
  */
 const addActiveAgentRouter = <
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  T extends AnnotationRoot<any>
+  AnnotationRootT extends AnnotationRoot<any> = typeof SwarmState
 >(
   builder: StateGraph<
-    T["spec"],
-    T["State"],
-    T["Update"],
-    string,
-    T["spec"],
-    T["spec"]
+    AnnotationRootT["spec"],
+    AnnotationRootT["State"],
+    AnnotationRootT["Update"],
+    any,
+    AnnotationRootT["spec"],
+    AnnotationRootT["spec"]
   >,
   {
     routeTo,
@@ -44,12 +44,12 @@ const addActiveAgentRouter = <
     defaultActiveAgent: string;
   }
 ): StateGraph<
-  T["spec"],
-  T["State"],
-  T["Update"],
-  string,
-  T["spec"],
-  T["spec"]
+  AnnotationRootT["spec"],
+  AnnotationRootT["State"],
+  AnnotationRootT["Update"],
+  any,
+  AnnotationRootT["spec"],
+  AnnotationRootT["spec"]
 > => {
   if (!routeTo.includes(defaultActiveAgent)) {
     throw new Error(
@@ -57,8 +57,8 @@ const addActiveAgentRouter = <
     );
   }
 
-  const routeToActiveAgent = (state: Record<string, unknown>) => {
-    return (state.activeAgent as string) || defaultActiveAgent;
+  const routeToActiveAgent = (state: typeof SwarmState.State) => {
+    return state.activeAgent || defaultActiveAgent;
   };
 
   builder.addConditionalEdges(START, routeToActiveAgent, routeTo);
@@ -67,14 +67,16 @@ const addActiveAgentRouter = <
 
 export type CreateSwarmParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  AnnotationRootT extends AnnotationRoot<any>
+  AnnotationRootT extends AnnotationRoot<any> = typeof SwarmState,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  AgentAnnotationRootT extends AnnotationRoot<any> = typeof MessagesAnnotation
 > = {
   agents: CompiledStateGraph<
-    AnnotationRootT["State"],
-    AnnotationRootT["Update"],
+    AgentAnnotationRootT["State"],
+    AgentAnnotationRootT["Update"],
     string,
-    AnnotationRootT["spec"],
-    AnnotationRootT["spec"]
+    AgentAnnotationRootT["spec"],
+    AgentAnnotationRootT["spec"]
   >[];
   defaultActiveAgent: string;
   stateSchema?: AnnotationRootT;
@@ -93,7 +95,7 @@ const createSwarm = <
 >({
   agents,
   defaultActiveAgent,
-  stateSchema = SwarmState as unknown as AnnotationRootT,
+  stateSchema,
 }: CreateSwarmParams<AnnotationRootT>): StateGraph<
   AnnotationRootT["spec"],
   AnnotationRootT["State"],
@@ -102,7 +104,7 @@ const createSwarm = <
   AnnotationRootT["spec"],
   AnnotationRootT["spec"]
 > => {
-  if (!("activeAgent" in stateSchema.spec)) {
+  if (stateSchema && !("activeAgent" in stateSchema.spec)) {
     throw new Error("Missing required key 'activeAgent' in stateSchema");
   }
 
@@ -125,7 +127,7 @@ const createSwarm = <
     agentNames.add(agent.name);
   }
 
-  let builder = new StateGraph(stateSchema);
+  let builder = new StateGraph(stateSchema ?? SwarmState);
 
   addActiveAgentRouter(builder, {
     routeTo: [...agentNames],
@@ -142,4 +144,4 @@ const createSwarm = <
   return builder;
 };
 
-export { createSwarm, addActiveAgentRouter };
+export { createSwarm, addActiveAgentRouter, SwarmState };
