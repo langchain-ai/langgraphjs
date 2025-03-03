@@ -156,7 +156,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
 
   handleChainStart(
     _chain: Serialized,
-    _inputs: ChainValues,
+    inputs: ChainValues,
     runId: string,
     _parentRunId?: string,
     tags?: string[],
@@ -173,6 +173,30 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
         (metadata.langgraph_checkpoint_ns as string).split("|"),
         { tags, name, ...metadata },
       ];
+
+      if (isBaseMessage(inputs) && inputs.id != null) {
+        this.seen[inputs.id] = inputs;
+      } else if (Array.isArray(inputs)) {
+        for (const value of inputs) {
+          if (isBaseMessage(value) && value.id != null) {
+            this.seen[value.id] = value;
+          }
+        }
+      } else if (typeof inputs === "object" && inputs != null) {
+        for (const value of Object.values(inputs)) {
+          if (isBaseMessage(value) && value.id != null) {
+            this.seen[value.id] = value;
+          }
+
+          if (Array.isArray(value)) {
+            for (const item of value) {
+              if (isBaseMessage(item) && item.id != null) {
+                this.seen[item.id] = item;
+              }
+            }
+          }
+        }
+      }
     }
   }
 
