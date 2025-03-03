@@ -17,16 +17,12 @@ import { ManagedValueSpec } from "../managed/base.js";
 
 type ValuesEvent<T> = T extends StateDefinition ? StateType<T> : T;
 
-type UpdatesEvent<
-  Nodes extends StrRecord<string, PregelNode>
-> = {
+type UpdatesEvent<Nodes extends StrRecord<string, PregelNode>> = {
   [K in keyof Omit<
     Nodes,
     typeof START | typeof END
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  >]: Nodes[K] extends PregelNode<any, infer Update>
-  ? Update
-  : never;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  >]: Nodes[K] extends PregelNode<any, infer Update> ? Update : never;
 };
 
 type StreamMapping<
@@ -63,11 +59,7 @@ type StreamEvents<
   ? StreamModeT extends StreamMode
     ? {
         // not streaming subgraphs, and user passed string literal stream mode
-        [K in StreamModeT]: StreamMapping<
-          GraphOutputT,
-          Nodes,
-          CustomEventT
-        >[K];
+        [K in StreamModeT]: StreamMapping<GraphOutputT, Nodes, CustomEventT>[K];
       }
     : StreamModeT extends StreamMode[]
     ? {
@@ -80,11 +72,7 @@ type StreamEvents<
       }
     : {
         // default case StreamModeT extends undefined - ["values"]
-        values: StreamMapping<
-          GraphOutputT,
-          Nodes,
-          CustomEventT
-        >["values"];
+        values: StreamMapping<GraphOutputT, Nodes, CustomEventT>["values"];
       }
   : StreamModeT extends StreamMode // from here on, we are streaming subgraphs
   ? {
@@ -160,13 +148,7 @@ export function exec<
   input: InputType
 ) => Promiventerator<
   OutputType,
-  StreamEvents<
-    CustomEventT,
-    OutputType,
-    Nodes,
-    StreamSubgraphsT,
-    StreamModeT
-  >
+  StreamEvents<CustomEventT, OutputType, Nodes, StreamSubgraphsT, StreamModeT>
 > {
   return (input: InputType) => {
     const pv = new Promiventerator<

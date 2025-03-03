@@ -470,58 +470,60 @@ export type CallTaskPath =
 export type TaskPath = SimpleTaskPath | CallTaskPath | VariadicTaskPath;
 
 export type LangGraphMetadata = {
-  langgraph_step: number,
-  langgraph_node: string,
-  langgraph_triggers: string[],
-  langgraph_path: TaskPath,
-  langgraph_checkpoint_ns: string,
+  langgraph_step: number;
+  langgraph_node: string;
+  langgraph_triggers: string[];
+  langgraph_path: TaskPath;
+  langgraph_checkpoint_ns: string;
 
-  [key: string]: unknown,
-}
+  [key: string]: unknown;
+};
 
 export type MessagesEvent = {
-  message: AIMessageChunk | ToolMessage,
-  metadata: LangGraphMetadata,
-}
-
+  message: AIMessageChunk | ToolMessage;
+  metadata: LangGraphMetadata;
+};
 
 export type DebugTaskEvent = {
-  type: "task",
-  timestamp: string,
-  step: number,
+  type: "task";
+  timestamp: string;
+  step: number;
   payload: {
-    id: string,
-    name: string,
-    input: Record<string, unknown>,
-    triggers: string[],
-    interrupts: Interrupt[],
-  }
-}
+    id: string;
+    name: string;
+    input: Record<string, unknown>;
+    triggers: string[];
+    interrupts: Interrupt[];
+  };
+};
 
 export type DebugTaskResultEvent = {
-  type: "task_result",
-  timestamp: string,
-  step: number,
+  type: "task_result";
+  timestamp: string;
+  step: number;
   payload: {
-    id: string,
-    name: string,
-    result: PendingWrite<string>[],
-    interrupts: Interrupt[],
-  }
-}
+    id: string;
+    name: string;
+    result: PendingWrite<string>[];
+    interrupts: Interrupt[];
+  };
+};
 
 export type DebugCheckpointEvent = {
-  type: "checkpoint",
-  timestamp: string,
-  step: number,
+  type: "checkpoint";
+  timestamp: string;
+  step: number;
   payload: {
-    config: Partial<RunnableConfig>,
-    values: Record<string, unknown>,
-    metadata: CheckpointMetadata,
-    next: string[],
-    tasks: PregelTaskDescription[],
-    parentConfig?: Partial<RunnableConfig> | undefined,
-  }
-}
+    config: Partial<RunnableConfig>;
+    values: Record<string, unknown>;
+    metadata: CheckpointMetadata;
+    next: string[];
+    tasks: PregelTaskDescription[];
+    parentConfig?: Partial<RunnableConfig> | undefined;
+  };
+};
 
-export type DebugEvent = DebugTaskEvent | DebugTaskResultEvent | DebugCheckpointEvent;
+export type DebugEvent =
+  | DebugTaskEvent
+  | DebugTaskResultEvent
+  | DebugCheckpointEvent;
