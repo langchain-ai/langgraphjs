@@ -32,7 +32,7 @@
   "license": "MIT",
   "dependencies": {
     "@langchain/core": "^0.3.40",
-    "@langchain/langgraph": "^0.2.50",
+    "@langchain/langgraph": "^0.2.51",
     "zod": "^3.23.8"
   },
   "devDependencies": {
