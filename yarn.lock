@@ -1916,7 +1916,6 @@ __metadata:
     tsx: ^4.7.0
     turbo: latest
     typescript: ^4.9.5 || ^5.4.5
-    uuid: ^10.0.0
     zod: ^3.23.8
   languageName: unknown
   linkType: soft

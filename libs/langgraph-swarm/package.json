@@ -33,7 +33,6 @@
   "dependencies": {
     "@langchain/core": "^0.3.40",
     "@langchain/langgraph": "^0.2.50",
-    "uuid": "^10.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
