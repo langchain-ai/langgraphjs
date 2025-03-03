@@ -103,14 +103,12 @@ const checkpointer = new MemorySaver()
 // long-term memory
 const store = new InMemoryStore()
 
-model = ...
 alice = ...
 bob = ...
 
-const workflow = createSupervisor({
-  agents: [researchAgent, mathAgent],
-  llm: model,
-  prompt: "You are a team supervisor managing a research expert and a math expert.",
+const workflow = createSwarm({
+  agents: [alice, bob],
+  defaultActiveAgent: "Alice",
 })
 
 // Compile with checkpointer/store
