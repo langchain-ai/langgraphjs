@@ -18,6 +18,7 @@ import {
   BaseStore,
   CheckpointPendingWrite,
 } from "@langchain/langgraph-checkpoint";
+import { StrRecord } from "../pregel/types.js";
 import {
   BaseChannel,
   createCheckpoint,
@@ -68,13 +69,6 @@ import { ManagedValueMapping } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { getRunnableForFunc } from "./call.js";
 import { IterableReadableWritableStream } from "./stream.js";
-
-/**
- * Construct a type with a set of properties K of type T
- */
-export type StrRecord<K extends string, T> = {
-  [P in K]: T;
-};
 
 export type WritesProtocol<C = string> = {
   name: string;

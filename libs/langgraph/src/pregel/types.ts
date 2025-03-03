@@ -9,6 +9,7 @@ import type {
 } from "@langchain/langgraph-checkpoint";
 import { Graph as DrawableGraph } from "@langchain/core/runnables/graph";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
+import { AIMessageChunk, ToolMessage } from "@langchain/core/messages";
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
 import { RetryPolicy } from "./utils/index.js";
@@ -152,7 +153,7 @@ export interface PregelOptions<
 /**
  * Construct a type with a set of properties K of type T
  */
-type StrRecord<K extends string, T> = {
+export type StrRecord<K extends string, T> = {
   [P in K]: T;
 };
 
@@ -467,3 +468,60 @@ export type CallTaskPath =
   | [string, ...(string | number)[], Call]
   | [string, TaskPath, ...(string | number)[], Call];
 export type TaskPath = SimpleTaskPath | CallTaskPath | VariadicTaskPath;
+
+export type LangGraphMetadata = {
+  langgraph_step: number,
+  langgraph_node: string,
+  langgraph_triggers: string[],
+  langgraph_path: TaskPath,
+  langgraph_checkpoint_ns: string,
+
+  [key: string]: unknown,
+}
+
+export type MessagesEvent = {
+  message: AIMessageChunk | ToolMessage,
+  metadata: LangGraphMetadata,
+}
+
+
+export type DebugTaskEvent = {
+  type: "task",
+  timestamp: string,
+  step: number,
+  payload: {
+    id: string,
+    name: string,
+    input: Record<string, unknown>,
+    triggers: string[],
+    interrupts: Interrupt[],
+  }
+}
+
+export type DebugTaskResultEvent = {
+  type: "task_result",
+  timestamp: string,
+  step: number,
+  payload: {
+    id: string,
+    name: string,
+    result: PendingWrite<string>[],
+    interrupts: Interrupt[],
+  }
+}
+
+export type DebugCheckpointEvent = {
+  type: "checkpoint",
+  timestamp: string,
+  step: number,
+  payload: {
+    config: Partial<RunnableConfig>,
+    values: Record<string, unknown>,
+    metadata: CheckpointMetadata,
+    next: string[],
+    tasks: PregelTaskDescription[],
+    parentConfig?: Partial<RunnableConfig> | undefined,
+  }
+}
+
+export type DebugEvent = DebugTaskEvent | DebugTaskResultEvent | DebugCheckpointEvent;
