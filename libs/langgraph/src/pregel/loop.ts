@@ -569,6 +569,11 @@ export class PregelLoop {
         this.status = "interrupt_after";
         throw new GraphInterrupt();
       }
+
+      // unset resuming flag
+      if (this.config.configurable) {
+        this.config.configurable[CONFIG_KEY_RESUMING] = false;
+      }
     } else {
       return false;
     }
