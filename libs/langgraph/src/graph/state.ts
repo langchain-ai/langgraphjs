@@ -559,7 +559,7 @@ export class CompiledStateGraph<
         if (input.graph === Command.PARENT) {
           return null;
         }
-        return input._updateAsTuples();
+        return input._updateAsTuples().filter(([k]) => outputKeys.includes(k));
       } else if (
         Array.isArray(input) &&
         input.length > 0 &&
@@ -571,7 +571,9 @@ export class CompiledStateGraph<
             if (item.graph === Command.PARENT) {
               continue;
             }
-            updates.push(...item._updateAsTuples());
+            updates.push(
+              ...item._updateAsTuples().filter(([k]) => outputKeys.includes(k))
+            );
           } else {
             const itemUpdates = _getUpdates(item);
             if (itemUpdates) {
@@ -841,6 +843,7 @@ function _getControlBranch() {
     tags: [TAG_HIDDEN],
     trace: false,
     recurse: false,
+    name: "<control_branch>",
   });
   return new Branch({
     path: CONTROL_BRANCH_PATH,

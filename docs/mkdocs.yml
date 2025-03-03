@@ -60,6 +60,7 @@ plugins:
       options: "typedoc.json"
       name: "API Reference"
       title_link: "/" # optional, default: '/'
+  - open-in-new-tab
 
 nav:
   - Home:
@@ -294,6 +295,7 @@ nav:
                 - tutorials/chatbot-simulation-evaluation/agent-simulation-evaluation.ipynb
 
     - Resources:
+        - Prebuilt Agents: prebuilt.md
         - Adopters: adopters.md
         - FAQ: concepts/faq.md
         - Troubleshooting:
@@ -373,6 +375,7 @@ extra_css:
 hooks:
   - _scripts/notebook_hooks.py
 extra:
+  scope: /langgraph/
   consent:
     title: Cookie consent
     actions:

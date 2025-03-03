@@ -83,7 +83,6 @@ import { StateSnapshot } from "../pregel/types.js";
 import {
   GraphRecursionError,
   InvalidUpdateError,
-  MultipleSubgraphsError,
   NodeInterrupt,
 } from "../errors.js";
 import {
@@ -2227,7 +2226,7 @@ graph TD;
 
   it("should handle checkpoints correctly", async () => {
     const inputPlusTotal = jest.fn(
-      (x: { total: number; input: number }): number => x.total + x.input
+      (x: { total: number; input: number }): number => (x.total ?? 0) + x.input
     );
     const raiseIfAbove10 = (input: number): number => {
       if (input > 10) {
@@ -3968,7 +3967,7 @@ graph TD;
       };
 
       const add = ({ input, total }: typeof GraphAnnotation.State) => ({
-        total: input + total,
+        total: input + (total ?? 0),
       });
 
       const app = new StateGraph(GraphAnnotation)
@@ -6748,6 +6747,7 @@ graph TD;
                   name: "inner2",
                   path: [PULL, "inner2"],
                   interrupts: [],
+                  state: undefined,
                 },
               ],
               next: ["inner2"],
@@ -6950,6 +6950,7 @@ graph TD;
               name: "inner2",
               path: [PULL, "inner2"],
               interrupts: [],
+              state: undefined,
             },
           ],
         },
@@ -7005,7 +7006,7 @@ graph TD;
           metadata: {
             source: "input",
             writes: {
-              __start__: { myKey: "hi my value", otherParentKey: null },
+              __start__: { myKey: "hi my value" },
             },
             step: -1,
             parents: { "": expect.any(String) },
@@ -7017,6 +7018,7 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              state: undefined,
             },
           ],
         },
@@ -7285,9 +7287,9 @@ graph TD;
       // Add checkpointer
       app.checkpointer = checkpointer;
       // Subgraph is called twice in the same node, through .map(), so raises
-      await expect(
-        app.invoke([2, 3], { configurable: { thread_id: "1" } })
-      ).rejects.toThrow(MultipleSubgraphsError);
+      expect(
+        await app.invoke([2, 3], { configurable: { thread_id: "1" } })
+      ).toBe(27);
 
       // Set inner graph checkpointer to not checkpoint
       innerApp.checkpointer = false;
@@ -8461,6 +8463,68 @@ graph TD;
       }
       expect(chunks.length).toEqual(4);
     });
+
+    it("should handle non-overlapping parent command updates", async () => {
+      const StateAnnotation = Annotation.Root({
+        uniqueStrings: Annotation<string[]>({
+          reducer: (a, b) => Array.from(new Set([...a, ...b])),
+        }),
+      });
+
+      // Define subgraph
+      const subgraph = new StateGraph(StateAnnotation)
+        .addNode(
+          "subgraph_node_1",
+          () =>
+            new Command({
+              goto: "subgraph_node_2",
+              update: {
+                uniqueStrings: ["bar"],
+                visitedNodes: ["subgraph_node_1"],
+              },
+            }),
+          { ends: ["subgraph_node_2"] }
+        )
+        .addNode(
+          "subgraph_node_2",
+          () =>
+            new Command({
+              goto: "node_3",
+              update: { visitedNodes: ["subgraph_node_2"] },
+              graph: "PARENT",
+            })
+        )
+        .addEdge(START, "subgraph_node_1")
+        .compile();
+
+      // Define main graph
+      const mainGraph = new StateGraph(StateAnnotation)
+        .addNode(
+          "node_1",
+          () =>
+            new Command({
+              goto: "node_2",
+              update: { uniqueStrings: ["foo"] },
+            }),
+          { ends: ["node_2"] }
+        )
+        .addNode("node_2", subgraph)
+        .addNode(
+          "node_3",
+          () =>
+            new Command({
+              update: { uniqueStrings: ["baz"] },
+            })
+        )
+        .addEdge(START, "node_1")
+        .addEdge("node_2", "node_3")
+        .compile();
+
+      const result = await mainGraph.invoke({ uniqueStrings: [] });
+      expect(result).toEqual({
+        uniqueStrings: ["foo", "bar", "baz"],
+      });
+    });
   });
 
   it("should work with streamMode messages and custom from within a subgraph", async () => {
@@ -9142,6 +9206,139 @@ graph TD;
         },
       },
       tasks: [],
+    });
+  });
+
+  it("test_parent_command from grandchild graph", async () => {
+    const CustomStateAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      user_name: Annotation<string>,
+    });
+
+    const getUserName = tool(
+      async () => {
+        return new Command({
+          update: {
+            messages: [{ role: "assistant", content: "grandkid" }],
+            user_name: "jeffrey",
+          },
+          goto: "robert",
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "get_user_name",
+        schema: z.object({}),
+      }
+    );
+
+    const grandchildGraph = new StateGraph(CustomStateAnnotation)
+      .addNode("tool", getUserName)
+      .addEdge("__start__", "tool")
+      .compile();
+
+    const childGraph = new StateGraph(CustomStateAnnotation)
+      .addNode("bob", grandchildGraph)
+      .addNode("robert", async (state) => {
+        if (state.user_name !== "jeffrey") {
+          throw new Error("failed to update state from grandchild");
+        }
+        return { messages: [{ role: "assistant", content: "robert" }] };
+      })
+      .addEdge("__start__", "bob")
+      .addEdge("bob", "robert")
+      .compile();
+
+    const checkpointer = await createCheckpointer();
+
+    const graph = new StateGraph(CustomStateAnnotation)
+      .addNode("alice", childGraph)
+      .addEdge("__start__", "alice")
+      .compile({ checkpointer });
+
+    const config = {
+      configurable: {
+        thread_id: "1",
+      },
+    };
+
+    const res = await graph.invoke(
+      {
+        messages: [{ role: "user", content: "get user name" }],
+      },
+      config
+    );
+
+    expect(res).toEqual({
+      messages: [
+        new _AnyIdHumanMessage({
+          content: "get user name",
+        }),
+        new _AnyIdAIMessage({
+          content: "grandkid",
+        }),
+        new _AnyIdAIMessage({
+          content: "robert",
+        }),
+      ],
+      user_name: "jeffrey",
+    });
+
+    const state = await graph.getState(config);
+
+    expect(state).toEqual({
+      values: {
+        messages: [
+          new _AnyIdHumanMessage({
+            content: "get user name",
+          }),
+          new _AnyIdAIMessage({
+            content: "grandkid",
+          }),
+          new _AnyIdAIMessage({
+            content: "robert",
+          }),
+        ],
+        user_name: "jeffrey",
+      },
+      next: [],
+      tasks: [],
+      metadata: {
+        source: "loop",
+        writes: {
+          alice: {
+            messages: [
+              new _AnyIdHumanMessage({
+                content: "get user name",
+              }),
+              new _AnyIdAIMessage({
+                content: "grandkid",
+              }),
+              new _AnyIdAIMessage({
+                content: "robert",
+              }),
+            ],
+            user_name: "jeffrey",
+          },
+        },
+        step: 1,
+        parents: {},
+      },
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_id: expect.any(String),
+          checkpoint_ns: "",
+        },
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
     });
   });
 

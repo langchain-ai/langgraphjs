@@ -1,25 +1,3 @@
-<!--
-  Copyright (c) 2016-2025 Martin Donath <martin.donath@squidfunk.com>
-
-  Permission is hereby granted, free of charge, to any person obtaining a copy
-  of this software and associated documentation files (the "Software"), to
-  deal in the Software without restriction, including without limitation the
-  rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
-  sell copies of the Software, and to permit persons to whom the Software is
-  furnished to do so, subject to the following conditions:
-
-  The above copyright notice and this permission notice shall be included in
-  all copies or substantial portions of the Software.
-
-  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-  FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE
-  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-  IN THE SOFTWARE.
--->
-
 <!-- Determine analytics property -->
 {% if config.extra.analytics %}
   {% set property = config.extra.analytics.property | d("", true) %}
@@ -27,9 +5,187 @@
 
 <!-- Integrate with Google Analytics 4 -->
 <script id="__analytics">
+  /**
+   * Gets a descriptive path for a DOM node
+   * @param {Node} node - The DOM node to describe
+   * @return {string} A descriptive path for the node
+   */
+  function _getNodePath(node) {
+    if (!node) return "unknown";
+    if (node.nodeType === Node.TEXT_NODE) {
+      return _getNodePath(node.parentNode) + ":text";
+    }
+
+    const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentNode;
+    if (!element) return "unknown";
+
+    // Start building path for this element
+    let path = [];
+    let currentElement = element;
+    
+    // Build the full path up to the root or a unique parent
+    while (currentElement && currentElement !== document.documentElement) {
+      // Get a descriptor for the current element
+      let descriptor = currentElement.tagName.toLowerCase();
+      
+      // Add ID if available (most specific identifier)
+      if (currentElement.id) {
+        descriptor += "#" + currentElement.id;
+        // If we find an ID, we can stop here as it should be unique on the page
+        path.unshift(descriptor);
+        break;
+      }
+      
+      // Add classes (up to 3) if available
+      if (currentElement.classList && currentElement.classList.length) {
+        const classes = Array.from(currentElement.classList).slice(0, 3);
+        descriptor += "." + classes.join(".");
+      }
+      
+      // Add data attributes for more specificity
+      if (currentElement.dataset) {
+        const dataAttrs = Object.keys(currentElement.dataset);
+        for (const attr of dataAttrs.slice(0, 3)) {
+          const value = currentElement.dataset[attr];
+          if (value) {
+            descriptor += `[data-${attr}="${value}"]`;
+          }
+        }
+      }
+      
+      // Add position-based selector for elements without IDs, to ensure uniqueness
+      if (!currentElement.id) {
+        // Find the element's position among siblings with the same tag
+        const siblings = Array.from(currentElement.parentNode.children)
+          .filter(el => el.tagName === currentElement.tagName);
+        
+        if (siblings.length > 1) {
+          const index = siblings.indexOf(currentElement) + 1;
+          descriptor += `:nth-of-type(${index})`;
+        }
+      }
+      
+      // For headings, add text content for better identification
+      if (/^h[1-6]$/.test(currentElement.tagName.toLowerCase()) && currentElement.textContent) {
+        const headingText = currentElement.textContent.trim().substring(0, 20);
+        if (headingText) {
+          descriptor += `[title="${headingText}${headingText.length >= 20 ? "..." : ""}"]`;
+        }
+      }
+      
+      // Add this component to the path
+      path.unshift(descriptor);
+      
+      // Get the parent for the next iteration
+      currentElement = currentElement.parentElement;
+    }
+    
+    // Join all path parts with spaces to create a valid CSS selector
+    // If no path was built (e.g., for document.documentElement), return the basic element descriptor
+    return path.length > 0 ? path.join(" > ") : element.tagName.toLowerCase();
+  }
+
+
+  /**
+   * Gets details about the current text selection
+   * @returns {Object} Selection details
+   */
+  function _getSelectionDetails() {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+    
+    const range = selection.getRangeAt(0);
+    if (!range) return null;
+    
+    // Get containing element path
+    const containerPath = _getNodePath(range.commonAncestorContainer);
+    
+    // Get start and end element paths
+    const startPath = _getNodePath(range.startContainer);
+    const endPath = _getNodePath(range.endContainer);
+    
+    // Get the parent element content type
+    let contentType = "text";
+    const parentElement = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE ? 
+                         range.commonAncestorContainer : 
+                         range.commonAncestorContainer.parentElement;
+                         
+    if (parentElement) {
+      if (parentElement.closest('code, pre')) {
+        contentType = "code";
+      } else if (parentElement.closest('h1, h2, h3, h4, h5, h6')) {
+        contentType = "heading";
+      } else if (parentElement.closest('table')) {
+        contentType = "table";
+      } else if (parentElement.closest('blockquote')) {
+        contentType = "quote";
+      } else if (parentElement.closest('li')) {
+        contentType = "list-item";
+      }
+    }
+    
+    // Get selection length (character count)
+    const selectedText = selection.toString();
+    const textLength = selectedText ? selectedText.length : 0;
+    
+    // Return selection details
+    return {
+      container: containerPath,
+      start: startPath,
+      startOffset: range.startOffset,
+      end: endPath,
+      endOffset: range.endOffset,
+      length: textLength,
+      type: contentType,
+      pageSection: _getPageSection(range.commonAncestorContainer),
+      charPreview: selectedText ? selectedText.substring(0, 15) + (selectedText.length > 15 ? '...' : '') : ''
+    };
+  }
+  
+  /**
+   * Determines which section of the page the node is in
+   * @param {Node} node - The DOM node
+   * @return {string} The section name
+   */
+  function _getPageSection(node) {
+    if (!node) return "unknown";
+    
+    const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentNode;
+    if (!element) return "unknown";
+    
+    // Walk up the DOM to find major section containers
+    let current = element;
+    while (current && current !== document.body) {
+      // Check for common section identifiers
+      if (current.id) {
+        if (current.id === "header") return "header";
+        if (current.id === "footer") return "footer";
+        if (current.id === "content") return "main-content";
+        if (current.id === "navigation") return "navigation";
+        if (current.id === "toc") return "table-of-contents";
+        if (current.id.includes("nav")) return "navigation";
+      }
+      
+      // Check by class or other attributes
+      if (current.classList) {
+        if (current.classList.contains("md-header")) return "header";
+        if (current.classList.contains("md-footer")) return "footer";
+        if (current.classList.contains("md-content")) return "main-content";
+        if (current.classList.contains("md-sidebar")) return "sidebar";
+        if (current.classList.contains("md-nav")) return "navigation";
+        if (current.classList.contains("md-main")) return "main-content";
+      }
+      
+      current = current.parentElement;
+    }
+    
+    return "other";
+  }
+
   function __md_analytics() {
     window.dataLayer = window.dataLayer || [];
     function gtag() { dataLayer.push(arguments); }
+    window.gtag = window.gtag || gtag;
 
     /* Set default consent */
     gtag("consent", "default", {
@@ -47,23 +203,32 @@
     gtag("js", new Date());
     gtag("config", "{{ property }}");
 
-    /* Register event handlers after document is loaded */
-    document.addEventListener("DOMContentLoaded", function() {
-      const userConsentSetting = __md_get("__consent");
-      const userAnalyticsPreference = !!userConsentSetting?.analytics;
+    var script = document.createElement("script")
+    script.async = true
+    script.src = "https://www.googletagmanager.com/gtag/js?id={{ property }}"
 
-      const consentValue = userAnalyticsPreference ? "granted" : "denied";
-      gtag("consent", "update", {
-        analytics_storage: consentValue,
-      });
-      gtag("consent", "update", {
-        functionality_storage: consentValue,
-      });
-      gtag("consent", "update", {
-        personalization_storage: consentValue,
-      });
+    /* Inject script tag */
+    var container = document.getElementById("__analytics")
+    container.insertAdjacentElement("afterEnd", script)
+  }
 
-      /* Set up search tracking */
+  /* Register event handlers after document is loaded */
+  document.addEventListener("DOMContentLoaded", function() {
+    const userConsentSetting = __md_get("__consent");
+    const userAnalyticsPreference = !!userConsentSetting?.analytics;
+
+    const consentValue = userAnalyticsPreference ? "granted" : "denied";
+    gtag("consent", "update", {
+      analytics_storage: consentValue,
+    });
+    gtag("consent", "update", {
+      functionality_storage: consentValue,
+    });
+    gtag("consent", "update", {
+      personalization_storage: consentValue,
+    });
+
+    if (userAnalyticsPreference) {
       if (document.forms.search) {
         var query = document.forms.search.query;
         query.addEventListener("blur", function() {
@@ -71,52 +236,76 @@
             gtag("event", "search", { search_term: this.value });
         });
       }
-
-      /* Set up feedback, i.e., "Was this page helpful?" */
-      document$.subscribe(function() {
-        var feedback = document.forms.feedback;
-        if (typeof feedback === "undefined")
-          return;
-
-        /* Send feedback to Google Analytics */
-        for (var button of feedback.querySelectorAll("[type=submit]")) {
-          button.addEventListener("click", function(ev) {
-            ev.preventDefault();
-
-            /* Retrieve and send data */
-            var page = document.location.pathname;
-            var data = this.getAttribute("data-md-value");
-            gtag("event", "feedback", { page, data });
-
-            /* Disable form and show note, if given */
-            feedback.firstElementChild.disabled = true;
-            var note = feedback.querySelector(
-              ".md-feedback__note [data-md-value='" + data + "']"
-            );
-            if (note)
-              note.hidden = false;
-          });
-
-          /* Show feedback */
-          feedback.hidden = false;
+      
+      document.addEventListener("copy", () => {
+        const selection = window.getSelection();
+        if (selection && !selection.isCollapsed) {
+          const selectionDetails = _getSelectionDetails();
+          if (selectionDetails) {
+            gtag("event", "copyText", { selectionDetails });
+          }
         }
       });
 
-      /* Send page view on location change */
-      location$.subscribe(function(url) {
-        gtag("config", "{{ property }}", {
-          page_path: url.pathname
+    }
+
+    document$.subscribe(function() {
+      const copyButtons = document.querySelectorAll('button[data-md-type="copy"]')
+
+      for (const btn of copyButtons) {
+        btn.addEventListener("click", (e) => {
+          const clickedButton = e.target;
+          const codeElement = document.querySelector(clickedButton.getAttribute("data-clipboard-target"));
+          const codeDiv = codeElement.parentElement.parentElement;
+          if (codeElement) {
+            const codeDetails = {
+              codeType: "code-block",
+              path: _getNodePath(codeElement),
+              length: codeElement.innerText?.length || 0,
+              language: codeDiv.className.match(/language-(\w+)/) ? 
+                        codeDiv.className.match(/language-(\w+)/)[1] : "unknown",
+              pageSection: _getPageSection(codeElement)
+            };
+            
+            gtag("event", "copyCode", { codeDetails });
+          }
         });
+      };
+
+      var feedback = document.forms.feedback;
+      if (typeof feedback === "undefined")
+        return;
+
+      /* Send feedback to Google Analytics */
+      for (var button of feedback.querySelectorAll("[type=submit]")) {
+        button.addEventListener("click", function(ev) {
+          ev.preventDefault();
+
+          /* Retrieve and send data */
+          var page = document.location.pathname;
+          var data = this.getAttribute("data-md-value");
+          gtag("event", "feedback", { page, data });
+
+          /* Disable form and show note, if given */
+          feedback.firstElementChild.disabled = true;
+          var note = feedback.querySelector(
+            ".md-feedback__note [data-md-value='" + data + "']"
+          );
+          if (note)
+            note.hidden = false;
+        });
+
+        /* Show feedback */
+        feedback.hidden = false;
+      }
+    });
+
+    /* Send page view on location change */
+    location$.subscribe(function(url) {
+      gtag("config", "{{ property }}", {
+        page_path: url.pathname
       });
     });
-  }
+  });
+
 </script>
-
-<!-- Google Tag Manager -->
-<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-  })(window,document,'script','dataLayer','{{ property }}');</script>
-  <!-- End Google Tag Manager -->
-
