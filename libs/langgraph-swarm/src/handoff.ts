@@ -6,7 +6,11 @@ import {
   tool,
 } from "@langchain/core/tools";
 import { RunnableToolLike } from "@langchain/core/runnables";
-import { Command } from "@langchain/langgraph";
+import {
+  AnnotationRoot,
+  Command,
+  CompiledStateGraph,
+} from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
 const WHITESPACE_RE = /\s+/;
@@ -85,7 +89,16 @@ const createHandoffTool = ({
   return handoffTool;
 };
 
-function getHandoffDestinations(agent: any, toolNodeName = "tools"): string[] {
+const getHandoffDestinations = <AnnotationRootT extends AnnotationRoot<any>>(
+  agent: CompiledStateGraph<
+    AnnotationRootT["State"],
+    AnnotationRootT["Update"],
+    string,
+    AnnotationRootT["spec"],
+    AnnotationRootT["spec"]
+  >,
+  toolNodeName: string = "tools"
+): string[] => {
   /**
    * Get a list of destinations from agent's handoff tools.
    *
@@ -98,7 +111,7 @@ function getHandoffDestinations(agent: any, toolNodeName = "tools"): string[] {
   }
 
   const toolNode = nodes[toolNodeName].data;
-  if (!toolNode || !toolNode.tools) {
+  if (!toolNode || !("tools" in toolNode) || !toolNode.tools) {
     return [];
   }
 
@@ -111,7 +124,7 @@ function getHandoffDestinations(agent: any, toolNodeName = "tools"): string[] {
         METADATA_KEY_HANDOFF_DESTINATION in tool.metadata
     )
     .map((tool) => tool.metadata![METADATA_KEY_HANDOFF_DESTINATION] as string);
-}
+};
 
 export {
   createHandoffTool,

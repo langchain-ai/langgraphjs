@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { describe, it } from "@jest/globals";
+import { describe, expect, it } from "@jest/globals";
 import { tool } from "@langchain/core/tools";
 import { FakeStreamingChatModel } from "@langchain/core/utils/testing";
 import { AIMessage, BaseMessage } from "@langchain/core/messages";
@@ -46,7 +46,7 @@ class FakeChatModel extends FakeStreamingChatModel {
       ],
     };
 
-    this.idx++;
+    this.idx += 1;
     return generation;
   }
 }

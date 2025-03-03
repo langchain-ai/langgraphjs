@@ -32,6 +32,7 @@ const addActiveAgentRouter = <
     AnnotationRootT["spec"],
     AnnotationRootT["State"],
     AnnotationRootT["Update"],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any,
     AnnotationRootT["spec"],
     AnnotationRootT["spec"]
@@ -47,6 +48,7 @@ const addActiveAgentRouter = <
   AnnotationRootT["spec"],
   AnnotationRootT["State"],
   AnnotationRootT["Update"],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any,
   AnnotationRootT["spec"],
   AnnotationRootT["spec"]
@@ -91,6 +93,7 @@ export type CreateSwarmParams<
  * @returns A multi-agent swarm StateGraph.
  */
 const createSwarm = <
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AnnotationRootT extends AnnotationRoot<any> = typeof SwarmState
 >({
   agents,
@@ -127,7 +130,7 @@ const createSwarm = <
     agentNames.add(agent.name);
   }
 
-  let builder = new StateGraph(stateSchema ?? SwarmState);
+  const builder = new StateGraph(stateSchema ?? SwarmState);
 
   addActiveAgentRouter(builder, {
     routeTo: [...agentNames],
