@@ -120,6 +120,11 @@ export function getWriter(): ((chunk: unknown) => void) | undefined {
   return config?.configurable?.writer;
 }
 
+/**
+ * A helper utility function that returns the {@link LangGraphRunnableConfig} that was set when the graph was initialized
+ *
+ * @returns the {@link LangGraphRunnableConfig} that was set when the graph was initialized
+ */
 export function getConfig(): LangGraphRunnableConfig {
   return AsyncLocalStorageProviderSingleton.getRunnableConfig();
 }
