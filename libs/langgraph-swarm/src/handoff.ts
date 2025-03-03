@@ -89,6 +89,7 @@ const createHandoffTool = ({
   return handoffTool;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getHandoffDestinations = <AnnotationRootT extends AnnotationRoot<any>>(
   agent: CompiledStateGraph<
     AnnotationRootT["State"],
@@ -105,7 +106,7 @@ const getHandoffDestinations = <AnnotationRootT extends AnnotationRoot<any>>(
    * @param agent - The compiled state graph
    * @param toolNodeName - The name of the tool node in the graph
    */
-  const nodes = agent.getGraph().nodes;
+  const { nodes } = agent.getGraph();
   if (!(toolNodeName in nodes)) {
     return [];
   }
@@ -115,7 +116,7 @@ const getHandoffDestinations = <AnnotationRootT extends AnnotationRoot<any>>(
     return [];
   }
 
-  const tools = (toolNode as ToolNode).tools;
+  const { tools } = toolNode as ToolNode;
   return tools
     .filter(
       (tool): tool is DynamicTool =>
