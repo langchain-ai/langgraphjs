@@ -5,7 +5,7 @@ import {
   isBaseMessage,
 } from "@langchain/core/messages";
 import { RunnableConfig, RunnableToolLike } from "@langchain/core/runnables";
-import { StructuredToolInterface } from "@langchain/core/tools";
+import { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
 import { RunnableCallable } from "../utils.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { isGraphInterrupt } from "../errors.js";
@@ -136,14 +136,14 @@ export type ToolNodeOptions = {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ToolNode<T = any> extends RunnableCallable<T, T> {
-  tools: (StructuredToolInterface | RunnableToolLike)[];
+  tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
 
   handleToolErrors = true;
 
   trace = false;
 
   constructor(
-    tools: (StructuredToolInterface | RunnableToolLike)[],
+    tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[],
     options?: ToolNodeOptions
   ) {
     const { name, tags, handleToolErrors } = options ?? {};
