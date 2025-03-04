@@ -5,7 +5,22 @@ description: How to accomplish common tasks in LangGraph.js
 
 # How-to guides
 
-Here you’ll find answers to “How do I...?” types of questions. These guides are **goal-oriented** and concrete; they're meant to help you complete a specific task. For conceptual explanations see the [Conceptual guide](../concepts/index.md). For end-to-end walk-throughs see [Tutorials](../tutorials/index.md). For comprehensive descriptions of every class and function see the [API Reference](https://langchain-ai.github.io/langgraphjs/reference/).
+Here you'll find answers to "How do I...?" types of questions. These guides are **goal-oriented** and concrete; they're meant to help you complete a specific task. For conceptual explanations see the [Conceptual guide](../concepts/index.md). For end-to-end walk-throughs see [Tutorials](../tutorials/index.md). For comprehensive descriptions of every class and function see the [API Reference](https://langchain-ai.github.io/langgraphjs/reference/).
+
+> 🧭 **Need guidance on what to learn next?** Check out our [Learning Path](/langgraphjs/learning-path/) that organizes these how-to guides into a structured progression from beginner to expert concepts.
+
+## Choose Your API Style
+
+LangGraph.js offers two different approaches to building applications:
+
+- **StateGraph API**: The original, object-oriented approach with explicit graph construction
+- **Functional API**: A more concise, functional programming style with less boilerplate
+
+Most examples in our documentation use the StateGraph API, but many patterns are also available using the Functional API. Look for guides marked with "(Functional API)" to see the functional equivalents.
+
+You can mix both approaches in a single project - graphs built with StateGraph can call Functional API graphs, and vice versa. This flexibility lets you use the best approach for each component of your application.
+
+For a deeper comparison, see the [StateGraph vs Functional API comparison](../concepts/functional_api.md#comparison-with-stategraph).
 
 ## Installation
 
