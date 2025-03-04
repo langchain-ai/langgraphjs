@@ -162,7 +162,11 @@ function _shouldBindTools(
     return true;
   }
 
-  const boundTools = llm.kwargs.tools as BindToolsInput[];
+  let boundTools = llm.kwargs.tools as BindToolsInput[];
+  // google-style
+  if (boundTools.length === 1 && "functionDeclarations" in boundTools[0]) {
+    boundTools = boundTools[0].functionDeclarations;
+  }
   if (tools.length !== boundTools.length) {
     throw new Error(
       "Number of tools in the model.bindTools() and tools passed to createReactAgent must match"
@@ -178,7 +182,7 @@ function _shouldBindTools(
     if ("type" in boundTool && boundTool.type === "function") {
       boundToolName = boundTool.function.name;
     }
-    // Anthropic-style tool
+    // Anthropic- or Google-style tool
     else if ("name" in boundTool) {
       boundToolName = boundTool.name;
     }
