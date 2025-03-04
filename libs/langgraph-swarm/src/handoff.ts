@@ -8,8 +8,10 @@ import {
 import { RunnableToolLike } from "@langchain/core/runnables";
 import {
   AnnotationRoot,
+  MessagesAnnotation,
   Command,
   CompiledStateGraph,
+  getCurrentTaskInput,
 } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
@@ -69,11 +71,14 @@ const createHandoffTool = ({
         tool_call_id: config.toolCall.id,
       });
 
+      // inject the current agent state
+      const state =
+        getCurrentTaskInput() as (typeof MessagesAnnotation)["State"];
       return new Command({
         goto: agentName,
         graph: Command.PARENT,
         update: {
-          messages: [toolMessage],
+          messages: state.messages.concat(toolMessage),
           activeAgent: agentName,
         },
       });
