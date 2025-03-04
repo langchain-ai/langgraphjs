@@ -9967,6 +9967,271 @@ graph TD;
       expect.objectContaining({ content: "Tool 2", tool_call_id: "2" }),
     ]);
   });
+
+  it("should handle subgraph with checkpointer=true", async () => {
+    const checkpointer = await createCheckpointer();
+
+    // Define inner state schema
+    const InnerStateAnnotation = Annotation.Root({
+      my_key: Annotation<string>({
+        reducer: (a, b) => (a || "") + b,
+        default: () => "",
+      }),
+      my_other_key: Annotation<string>,
+    });
+
+    // Define inner graph nodes
+    const inner1 = async (state: typeof InnerStateAnnotation.State) => {
+      return {
+        my_key: " got here",
+        my_other_key: state.my_key,
+      };
+    };
+
+    const inner2 = async (_: typeof InnerStateAnnotation.State) => {
+      return {
+        my_key: " and there",
+      };
+    };
+
+    // Create inner graph
+    const innerGraph = new StateGraph(InnerStateAnnotation)
+      .addNode("inner_1", inner1)
+      .addNode("inner_2", inner2)
+      .addEdge("inner_1", "inner_2")
+      .addEdge(START, "inner_1")
+      .addEdge("inner_2", END)
+      .compile({ checkpointer: true });
+
+    // Define outer state schema
+    const OuterStateAnnotation = Annotation.Root({
+      my_key: Annotation<string>,
+    });
+
+    // Create outer graph
+    const outerGraph = new StateGraph(OuterStateAnnotation)
+      .addNode("inner", innerGraph)
+      .addEdge(START, "inner")
+      .addConditionalEdges("inner", (state) =>
+        state.my_key.split("there").length - 1 < 2 ? "inner" : END
+      )
+      .compile({ checkpointer });
+
+    // Run the graph and collect stream results
+    const config = { configurable: { thread_id: "2" } };
+    const streamResults = await gatherIterator(
+      outerGraph.stream(
+        { my_key: "" },
+        { ...config, streamMode: "updates", subgraphs: true }
+      )
+    );
+
+    // Expected structure of stream results
+    expect(streamResults).toEqual([
+      // First pass through inner graph
+      [["inner"], { inner_1: { my_key: " got here", my_other_key: "" } }],
+      [["inner"], { inner_2: { my_key: " and there" } }],
+      [[], { inner: { my_key: " got here and there" } }],
+
+      // Second pass through inner graph
+      [
+        ["inner"],
+        {
+          inner_1: {
+            my_key: " got here",
+            my_other_key: " got here and there",
+          },
+        },
+      ],
+      [["inner"], { inner_2: { my_key: " and there" } }],
+      [
+        [],
+        {
+          inner: {
+            my_key: " got here and there got here and there",
+          },
+        },
+      ],
+    ]);
+
+    // Verify final state
+    const finalState = await outerGraph.getState({
+      configurable: { thread_id: "2" },
+    });
+    expect(finalState.values.my_key).toBe(
+      " got here and there got here and there"
+    );
+  });
+
+  it("should handle subgraph with checkpoint=true and interrupt", async () => {
+    const checkpointer = await createCheckpointer();
+
+    // Define subgraph state schema
+    const SubgraphStateAnnotation = Annotation.Root({
+      bar: Annotation<string>,
+      baz: Annotation<string>,
+    });
+
+    // Define parent state schema
+    const ParentStateAnnotation = Annotation.Root({
+      foo: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+    });
+
+    // Define subgraph nodes
+    const subgraphNode1 = async (_: typeof SubgraphStateAnnotation.State) => {
+      const bazValue = interrupt("Provide baz value");
+      return { baz: bazValue };
+    };
+
+    const subgraphNode2 = async (
+      state: typeof SubgraphStateAnnotation.State
+    ) => {
+      return { bar: state.bar + state.baz };
+    };
+
+    // Build subgraph
+    const subgraph = new StateGraph(SubgraphStateAnnotation)
+      .addNode("subgraph_node_1", subgraphNode1)
+      .addNode("subgraph_node_2", subgraphNode2)
+      .addEdge(START, "subgraph_node_1")
+      .addEdge("subgraph_node_1", "subgraph_node_2")
+      .compile({ checkpointer: true });
+
+    // Define parent graph nodes
+    const node1 = async (state: typeof ParentStateAnnotation.State) => {
+      return { foo: "hi! " + state.foo };
+    };
+
+    const node2 = async (state: typeof ParentStateAnnotation.State) => {
+      const response = await subgraph.invoke({ bar: state.foo });
+      return { foo: response.bar };
+    };
+
+    // Build parent graph
+    const graph = new StateGraph(ParentStateAnnotation)
+      .addNode("node_1", node1)
+      .addNode("node_2", node2)
+      .addEdge(START, "node_1")
+      .addEdge("node_1", "node_2")
+      .compile({ checkpointer });
+
+    // Run the graph
+    const config = { configurable: { thread_id: "1" } };
+
+    // First invocation should run until interrupt
+    const result1 = await graph.invoke({ foo: "foo" }, config);
+    expect(result1).toEqual({ foo: "hi! foo" });
+
+    // Check subgraph state
+    const state = await graph.getState(config, { subgraphs: true });
+    expect((state.tasks[0].state as StateSnapshot).values).toEqual({
+      bar: "hi! foo",
+    });
+
+    // Resume with baz value
+    const result2 = await graph.invoke(new Command({ resume: "baz" }), config);
+    expect(result2).toEqual({ foo: "hi! foobaz" });
+  });
+
+  it("reenter subgraph with interrupt when subgraph checkpointer is true", async () => {
+    const checkpointer = await createCheckpointer();
+
+    const SubgraphStateAnnotation = Annotation.Root({
+      foo: Annotation<string>,
+      bar: Annotation<string>,
+    });
+
+    const ParentStateAnnotation = Annotation.Root({
+      foo: Annotation<string>,
+      counter: Annotation<number>,
+    });
+
+    const called: string[] = [];
+    const barValues: (string | undefined)[] = [];
+
+    const subnode1 = async (state: typeof SubgraphStateAnnotation.State) => {
+      called.push("subnode_1");
+      barValues.push(state.bar);
+      return { foo: "subgraph_1" };
+    };
+
+    const subnode2 = async (_: typeof SubgraphStateAnnotation.State) => {
+      called.push("subnode_2");
+      const value = interrupt("Provide value");
+      const valueWithBaz = value + "baz";
+      return { foo: "subgraph_2", bar: valueWithBaz };
+    };
+
+    const subgraph = new StateGraph(SubgraphStateAnnotation)
+      .addNode("subnode_1", subnode1)
+      .addNode("subnode_2", subnode2)
+      .addEdge(START, "subnode_1")
+      .addEdge("subnode_1", "subnode_2")
+      .compile({ checkpointer: true });
+
+    const callSubgraph = async (state: typeof ParentStateAnnotation.State) => {
+      called.push("call_subgraph");
+      return subgraph.invoke(state);
+    };
+
+    const node = async (state: typeof ParentStateAnnotation.State) => {
+      called.push("parent");
+      if (state.counter < 1) {
+        return new Command({
+          goto: "call_subgraph",
+          update: { counter: state.counter + 1 },
+        });
+      }
+
+      return { foo: state.foo + "|" + "parent" };
+    };
+
+    const parent = new StateGraph(ParentStateAnnotation)
+      .addNode("call_subgraph", callSubgraph)
+      .addNode("node", node)
+      .addEdge(START, "call_subgraph")
+      .addEdge("call_subgraph", "node")
+      .compile({ checkpointer });
+
+    const config = { configurable: { thread_id: "1" } };
+
+    // First invocation - should interrupt in subnode_2
+    const result1 = await parent.invoke({ foo: "", counter: 0 }, config);
+    expect(result1).toEqual({ foo: "", counter: 0 });
+
+    // Resume with "bar" value
+    const result2 = await parent.invoke(new Command({ resume: "bar" }), config);
+    expect(result2).toEqual({ foo: "subgraph_2", counter: 1 });
+
+    // Resume with "qux" value
+    const result3 = await parent.invoke(new Command({ resume: "qux" }), config);
+    expect(result3).toEqual({ foo: "subgraph_2|parent", counter: 1 });
+
+    // Check the call sequence
+    expect(called).toEqual([
+      "call_subgraph",
+      "subnode_1",
+      "subnode_2",
+      "call_subgraph",
+      "subnode_2",
+      "parent",
+      "call_subgraph",
+      "subnode_1",
+      "subnode_2",
+      "call_subgraph",
+      "subnode_2",
+      "parent",
+    ]);
+
+    // New turn - invoke parent again with new initial state
+    await parent.invoke({ foo: "meow", counter: 0 }, config);
+
+    // Confirm that we preserve the state values from the previous invocation
+    expect(barValues).toEqual([undefined, "barbaz", "quxbaz"]);
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());

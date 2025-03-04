@@ -27,6 +27,8 @@ export type PregelInputType = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PregelOutputType = any;
 
+export type Checkpointer = BaseCheckpointSaver | boolean;
+
 /**
  * Configuration options for executing a Pregel graph.
  * These options control how the graph executes, what data is streamed, and how interrupts are handled.
@@ -288,7 +290,7 @@ export type PregelParams<
   /**
    * The {@link BaseCheckpointSaver | checkpointer} to use for the graph run.
    */
-  checkpointer?: BaseCheckpointSaver | false;
+  checkpointer?: Checkpointer;
 
   /**
    * The default retry policy for this graph. For defaults, see {@link RetryPolicy}.

@@ -67,6 +67,7 @@ import {
   SingleChannelSubscriptionOptions,
   MultipleChannelSubscriptionOptions,
   GetStateOptions,
+  Checkpointer,
 } from "./types.js";
 import {
   GraphRecursionError,
@@ -431,7 +432,7 @@ export class Pregel<
    * When provided, saves a checkpoint of the graph state at every superstep.
    * When false or undefined, checkpointing is disabled, and the graph will not be able to save or restore state.
    */
-  checkpointer?: BaseCheckpointSaver | false;
+  checkpointer?: Checkpointer;
 
   /** Optional retry policy for handling failures in node execution */
   retryPolicy?: RetryPolicy;
@@ -693,7 +694,13 @@ export class Pregel<
         managed,
         saved.config,
         false,
-        { step: (saved.metadata?.step ?? -1) + 1 }
+        {
+          step: (saved.metadata?.step ?? -1) + 1,
+          checkpointer:
+            typeof this.checkpointer === "boolean"
+              ? undefined
+              : this.checkpointer,
+        }
       )
     );
     const subgraphs = await gatherIterator(this.getSubgraphsAsync());
@@ -805,7 +812,18 @@ export class Pregel<
       );
     }
 
-    const mergedConfig = mergeConfigs(this.config, config);
+    let mergedConfig = mergeConfigs(this.config, config);
+    if (
+      this.checkpointer === true &&
+      mergedConfig.configurable?.checkpoint_ns
+    ) {
+      const ns = mergedConfig.configurable.checkpoint_ns;
+      mergedConfig = mergeConfigs(mergedConfig, {
+        configurable: {
+          checkpoint_ns: recastCheckpointNamespace(ns),
+        },
+      });
+    }
     const saved = await checkpointer.getTuple(config);
     const snapshot = await this._prepareStateSnapshot({
       config: mergedConfig,
@@ -996,7 +1014,10 @@ export class Pregel<
           true,
           {
             step: (saved.metadata?.step ?? -1) + 1,
-            checkpointer: this.checkpointer || undefined,
+            checkpointer:
+              typeof this.checkpointer === "boolean"
+                ? undefined
+                : this.checkpointer,
             store: this.store,
           }
         );
@@ -1077,8 +1098,10 @@ export class Pregel<
         true,
         {
           store: this.store,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          checkpointer: this.checkpointer as any,
+          checkpointer:
+            typeof this.checkpointer === "boolean"
+              ? undefined
+              : this.checkpointer,
           step: (saved.metadata?.step ?? -1) + 1,
         }
       );
@@ -1348,6 +1371,8 @@ export class Pregel<
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] !== undefined
     ) {
       defaultCheckpointer = config.configurable[CONFIG_KEY_CHECKPOINTER];
+    } else if (this.checkpointer === true) {
+      throw new Error("checkpointer=True cannot be used for root graphs.");
     } else {
       defaultCheckpointer = this.checkpointer;
     }
@@ -1521,6 +1546,12 @@ export class Pregel<
       modes: new Set(streamMode),
     });
 
+    // set up subgraph checkpointing
+    if (this.checkpointer === true && config.configurable?.checkpoint_ns) {
+      config.configurable.checkpoint_ns = recastCheckpointNamespace(
+        config.configurable.checkpoint_ns
+      );
+    }
     // set up messages stream mode
     if (streamMode.includes("messages")) {
       const messageStreamer = new StreamMessagesHandler((chunk) =>
