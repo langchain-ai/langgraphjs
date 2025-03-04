@@ -9967,6 +9967,88 @@ graph TD;
       expect.objectContaining({ content: "Tool 2", tool_call_id: "2" }),
     ]);
   });
+
+  it("stream messages dedupe inputs", async () => {
+    const subgraph = new StateGraph(MessagesAnnotation)
+      .addNode("call_model", async () => {
+        return { messages: [new AIMessage({ id: "1", content: "hi" })] };
+      })
+      .addNode("route", async () => {
+        return new Command({ goto: "node_2", graph: Command.PARENT });
+      })
+      .addEdge(START, "call_model")
+      .addEdge("call_model", "route")
+      .compile();
+
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("node_1", subgraph, { ends: ["node_2"] })
+      .addNode("node_2", (state) => state)
+      .addEdge(START, "node_1")
+      .compile();
+
+    const messages = await gatherIterator(
+      graph.stream({ messages: [] }, { streamMode: "messages" })
+    );
+
+    expect(messages.length).toBe(1);
+    expect(messages[0][0]).toMatchObject({ content: "hi", id: "1" });
+    expect(messages[0][1].langgraph_node).toBe("call_model");
+  });
+
+  it("stream messages dedupe state", async () => {
+    const checkpointer = await createCheckpointer();
+    const toEmit = [
+      new AIMessage({ id: "1", content: "bye" }),
+      new AIMessage({ id: "2", content: "bye again" }),
+    ];
+
+    const subgraph = new StateGraph(MessagesAnnotation)
+      .addNode("call_model", async () => {
+        const message = toEmit.shift();
+        if (!message) return { messages: [] };
+        return { messages: [message] };
+      })
+      .addNode("route", async () => {
+        return new Command({ goto: "node_2", graph: Command.PARENT });
+      })
+      .addEdge(START, "call_model")
+      .addEdge("call_model", "route")
+      .compile();
+
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("node_1", subgraph, { ends: ["node_2"] })
+      .addNode("node_2", (state) => state)
+      .addEdge(START, "node_1")
+      .compile({ checkpointer });
+
+    const thread = { configurable: { thread_id: "1" } };
+
+    let messages = (
+      await gatherIterator(
+        graph.stream(
+          { messages: "hi" },
+          { ...thread, streamMode: "messages", subgraphs: true }
+        )
+      )
+    ).map(([_ns, chunk]) => chunk);
+
+    expect(messages.length).toBe(1);
+    expect(messages[0][0]).toMatchObject({ content: "bye", id: "1" });
+    expect(messages[0][1].langgraph_node).toBe("call_model");
+
+    messages = (
+      await gatherIterator(
+        graph.stream(
+          { messages: "hi again" },
+          { ...thread, streamMode: "messages", subgraphs: true }
+        )
+      )
+    ).map(([_ns, chunk]) => chunk);
+
+    expect(messages.length).toBe(1);
+    expect(messages[0][0]).toMatchObject({ content: "bye again", id: "2" });
+    expect(messages[0][1].langgraph_node).toBe("call_model");
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
