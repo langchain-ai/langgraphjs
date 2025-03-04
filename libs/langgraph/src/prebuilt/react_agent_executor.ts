@@ -182,6 +182,10 @@ function _shouldBindTools(
     else if ("name" in boundTool) {
       boundToolName = boundTool.name;
     }
+    // Bedrock-style tool
+    else if ("toolSpec" in boundTool && "name" in boundTool.toolSpec) {
+      boundToolName = boundTool.toolSpec.name;
+    }
     // unknown tool type so we'll ignore it
     else {
       continue;
