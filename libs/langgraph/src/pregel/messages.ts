@@ -19,9 +19,10 @@ import { ChainValues } from "@langchain/core/utils/types";
 
 import { TAG_HIDDEN, TAG_NOSTREAM } from "../constants.js";
 import { StreamChunk } from "./stream.js";
+import { LangGraphMetadata } from "./types.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Meta = [string[], Record<string, any>];
+type Meta = [string[], LangGraphMetadata];
 
 function isChatGenerationChunk(x: unknown): x is ChatGenerationChunk {
   return isBaseMessage((x as ChatGenerationChunk)?.message);
@@ -98,7 +99,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     _parentRunId?: string,
     _extraParams?: Record<string, unknown>,
     tags?: string[],
-    metadata?: Record<string, unknown>,
+    metadata?: LangGraphMetadata,
     name?: string
   ) {
     if (
@@ -160,7 +161,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     runId: string,
     _parentRunId?: string,
     tags?: string[],
-    metadata?: Record<string, unknown>,
+    metadata?: LangGraphMetadata,
     _runType?: string,
     name?: string
   ) {
