@@ -9,6 +9,8 @@ This guide provides explanations of the key concepts behind the LangGraph framew
 
 We recommend that you go through at least the [Quick Start](../tutorials/quickstart.ipynb) before diving into the conceptual guide. This will provide practical context that will make it easier to understand the concepts discussed here.
 
+> 📚 **Want to learn concepts in the right order?** Follow our [Learning Path](/langgraphjs/learning-path/) that introduces concepts progressively as you build your knowledge from beginner to advanced.
+
 The conceptual guide does not cover step-by-step instructions or specific implementation examples — those are found in the [Tutorials](../tutorials/index.md) and [How-to guides](../how-tos/index.md). For detailed reference material, please see the [API reference](https://langchain-ai.github.io/langgraphjs/reference/).
 
 ## LangGraph
@@ -17,7 +19,18 @@ The conceptual guide does not cover step-by-step instructions or specific implem
 
 - [Why LangGraph?](high_level.md): A high-level overview of LangGraph and its goals.
 
-### Concepts
+### API Styles
+
+LangGraph offers two distinct ways to build your applications:
+
+- [StateGraph API](low_level.md): The original object-oriented approach to building graphs with explicit nodes and edges.
+- [Functional API](functional_api.md): A more concise alternative that uses JavaScript functions for a cleaner, more modern syntax.
+
+Not sure which to choose? See our [comparison guide](functional_api.md#comparison-with-stategraph) to help you decide.
+
+The good news is that you don't have to choose just one approach - you can mix both in the same project! Graphs built with StateGraph can call Functional API graphs, and vice versa. This flexibility allows you to use the most appropriate style for each component of your application.
+
+### Core Concepts
 
 - [LangGraph Glossary](low_level.md): LangGraph workflows are designed as graphs, with nodes representing different components and edges representing the flow of information between them. This guide provides an overview of the key concepts associated with LangGraph graph primitives.
 - [Common Agentic Patterns](agentic_concepts.md): An agent uses an LLM to pick its own control flow to solve more complex problems! Agents are a key building block in many LLM applications. This guide explains the different types of agent architectures and how they can be used to control the flow of an application.
@@ -28,7 +41,6 @@ The conceptual guide does not cover step-by-step instructions or specific implem
 - [Persistence](persistence.md): LangGraph has a built-in persistence layer, implemented through checkpointers. This persistence layer helps to support powerful capabilities like human-in-the-loop, memory, time travel, and fault-tolerance.
 - [Memory](memory.md): Memory in AI applications refers to the ability to process, store, and effectively recall information from past interactions. With memory, your agents can learn from feedback and adapt to users' preferences.
 - [Streaming](streaming.md): Streaming is crucial for enhancing the responsiveness of applications built on LLMs. By displaying output progressively, even before a complete response is ready, streaming significantly improves user experience (UX), particularly when dealing with the latency of LLMs.
-- [Functional API](functional_api.md): An alternative to [Graph API (StateGraph)](low_level.md#stategraph) for development in LangGraph.
 - [FAQ](faq.md): Frequently asked questions about LangGraph.
 
 ## LangGraph Platform

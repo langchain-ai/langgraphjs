@@ -6,6 +6,10 @@ title: Tutorials
 
 Welcome to the LangGraph.js Tutorials! These notebooks introduce LangGraph through building various language agents and applications.
 
+> 🧠 **Looking for a structured learning experience?** Check out our [Learning Path](/langgraphjs/learning-path/) that guides you from beginner to expert through carefully sequenced content.
+
+> 🔄 **API Style Options**: LangGraph.js offers two ways to build applications: the original **StateGraph API** with explicit nodes and edges, and the more concise **Functional API**. Most tutorials use the StateGraph API, but you can learn about both approaches in our [concepts documentation](/langgraphjs/concepts/functional_api.md#comparison-with-stategraph). Best of all, you can mix both approaches in a single project - each style can call graphs built with the other!
+
 ## Quick Start
 
 Learn the basics of LangGraph through a comprehensive quick start in which you will build an agent from scratch.

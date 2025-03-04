@@ -16,6 +16,13 @@
 stateful, multi-actor applications with LLMs, used to create agent and multi-agent
 workflows. Check out an introductory tutorial [here](https://langchain-ai.github.io/langgraphjs/tutorials/quickstart/).
 
+LangGraph offers two API styles to accommodate different programming preferences:
+- **StateGraph API**: An object-oriented approach with explicit graph construction
+- **Functional API**: A more concise, functional programming style with less boilerplate
+
+## Learning Path
+
+New to LangGraph.js? Follow our [structured learning path](https://langchain-ai.github.io/langgraphjs/learning-path/) to go from beginner to expert. The learning path provides a curated sequence of tutorials, concepts, and how-to guides organized by experience level.
 
 LangGraph is inspired by [Pregel](https://research.google/pubs/pub37252/) and [Apache Beam](https://beam.apache.org/). The public interface draws inspiration from [NetworkX](https://networkx.org/documentation/latest/). LangGraph is built by LangChain Inc, the creators of LangChain, but can be used without LangChain.
 
