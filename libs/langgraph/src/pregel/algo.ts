@@ -634,15 +634,16 @@ export function _prepareSingleTask<
                 ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                 [parentNamespace]: checkpoint.id,
               },
-              [CONFIG_KEY_SCRATCHPAD]: _scratchpad(
-                [
+              [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
+                pendingWrites: [
                   ...(pendingWrites || []),
                   ...(configurable[CONFIG_KEY_SCRATCHPAD]?.resume || []).map(
                     (v: unknown): CheckpointPendingWrite => [id, RESUME, v]
                   ),
                 ],
-                id
-              ),
+                taskId: id,
+                currentTaskInput: call.input,
+              }),
               [CONFIG_KEY_PREVIOUS_STATE]: checkpoint.channel_values[PREVIOUS],
               checkpoint_id: undefined,
               checkpoint_ns: taskCheckpointNamespace,
@@ -767,8 +768,8 @@ export function _prepareSingleTask<
                   ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                   [parentNamespace]: checkpoint.id,
                 },
-                [CONFIG_KEY_SCRATCHPAD]: _scratchpad(
-                  [
+                [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
+                  pendingWrites: [
                     ...(pendingWrites || []),
                     ...(configurable[CONFIG_KEY_SCRATCHPAD]?.resume || []).map(
                       (v: unknown): CheckpointPendingWrite => [
@@ -778,8 +779,9 @@ export function _prepareSingleTask<
                       ]
                     ),
                   ],
-                  taskId
-                ),
+                  taskId,
+                  currentTaskInput: packet.args,
+                }),
                 [CONFIG_KEY_PREVIOUS_STATE]:
                   checkpoint.channel_values[PREVIOUS],
                 checkpoint_id: undefined,
@@ -915,8 +917,8 @@ export function _prepareSingleTask<
                     ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                     [parentNamespace]: checkpoint.id,
                   },
-                  [CONFIG_KEY_SCRATCHPAD]: _scratchpad(
-                    [
+                  [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
+                    pendingWrites: [
                       ...(pendingWrites || []),
                       ...(
                         configurable[CONFIG_KEY_SCRATCHPAD]?.resume || []
@@ -928,8 +930,9 @@ export function _prepareSingleTask<
                         ]
                       ),
                     ],
-                    taskId
-                  ),
+                    taskId,
+                    currentTaskInput: val,
+                  }),
                   [CONFIG_KEY_PREVIOUS_STATE]:
                     checkpoint.channel_values[PREVIOUS],
                   checkpoint_id: undefined,
@@ -1031,10 +1034,15 @@ function _procInput(
   return val;
 }
 
-function _scratchpad(
-  pendingWrites: CheckpointPendingWrite[],
-  taskId: string
-): PregelScratchpad {
+function _scratchpad({
+  pendingWrites,
+  taskId,
+  currentTaskInput,
+}: {
+  pendingWrites: CheckpointPendingWrite[];
+  taskId: string;
+  currentTaskInput: unknown;
+}): PregelScratchpad {
   return {
     callCounter: 0,
     interruptCounter: -1,
@@ -1047,5 +1055,6 @@ function _scratchpad(
       ([writeTaskId, chan]) => writeTaskId === NULL_TASK_ID && chan === RESUME
     )?.[2],
     subgraphCounter: 0,
+    currentTaskInput,
   };
 }
