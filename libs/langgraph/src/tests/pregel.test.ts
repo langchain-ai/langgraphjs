@@ -9967,6 +9967,126 @@ graph TD;
       expect.objectContaining({ content: "Tool 2", tool_call_id: "2" }),
     ]);
   });
+
+  it("should not stream input messages in streamMode: messages", async () => {
+    const subgraph = new StateGraph(MessagesAnnotation)
+      .addNode("callModel", async () => {
+        return {
+          messages: new AIMessage({
+            content: "Hi",
+            id: "123",
+          }),
+        };
+      })
+      .addNode("route", async () => {
+        return new Command({
+          goto: "node2",
+          graph: Command.PARENT,
+        });
+      })
+      .addEdge(START, "callModel")
+      .addEdge("callModel", "route")
+      .compile();
+
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("node1", subgraph, { ends: ["node2"] })
+      .addNode("node2", async (state: typeof MessagesAnnotation.State) => state)
+      .addEdge(START, "node1")
+      .compile();
+
+    const chunks = await gatherIterator(
+      graph.stream(
+        { messages: "hi" },
+        { streamMode: "messages", subgraphs: true }
+      )
+    );
+
+    expect(chunks.length).toBe(1);
+    expect(chunks[0][0]).toEqual([
+      expect.stringMatching(/^node1:.*$/),
+      expect.stringMatching(/^callModel:.*$/),
+    ]);
+    expect(chunks[0][1][0]).toEqual(
+      new AIMessage({ content: "Hi", id: "123" })
+    );
+    expect(chunks[0][1][1].langgraph_node).toEqual("callModel");
+  });
+
+  it("should not stream input messages in streamMode: messages when continuing checkpointed thread", async () => {
+    const toEmit = [
+      new AIMessage({
+        content: "bye",
+        id: "1",
+      }),
+      new AIMessage({
+        content: "bye again",
+        id: "2",
+      }),
+    ];
+    const subgraph = new StateGraph(MessagesAnnotation)
+      .addNode("callModel", async () => {
+        return {
+          messages: toEmit.shift(),
+        };
+      })
+      .addNode("route", async () => {
+        return new Command({
+          goto: "node2",
+          graph: Command.PARENT,
+        });
+      })
+      .addEdge(START, "callModel")
+      .addEdge("callModel", "route")
+      .compile();
+
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("node1", subgraph, { ends: ["node2"] })
+      .addNode("node2", async (state: typeof MessagesAnnotation.State) => state)
+      .addEdge(START, "node1")
+      .compile({
+        checkpointer: await createCheckpointer(),
+      });
+
+    const chunks = await gatherIterator(
+      graph.stream(
+        { messages: "hi" },
+        {
+          streamMode: "messages",
+          subgraphs: true,
+          configurable: { thread_id: "1" },
+        }
+      )
+    );
+
+    expect(chunks.length).toBe(1);
+    expect(chunks[0][0]).toEqual([
+      expect.stringMatching(/^node1:.*$/),
+      expect.stringMatching(/^callModel:.*$/),
+    ]);
+    expect(chunks[0][1][0]).toEqual(new AIMessage({ content: "bye", id: "1" }));
+    expect(chunks[0][1][1].langgraph_node).toEqual("callModel");
+
+    const chunks2 = await gatherIterator(
+      graph.stream(
+        { messages: "bye" },
+        {
+          streamMode: "messages",
+          subgraphs: true,
+          configurable: { thread_id: "1" },
+        }
+      )
+    );
+
+    expect(chunks2.length).toBe(1);
+    expect(chunks2[0][0]).toEqual([
+      expect.stringMatching(/^node1:.*$/),
+      expect.stringMatching(/^callModel:.*$/),
+    ]);
+    expect(chunks2[0][1][0]).toEqual(
+      new AIMessage({ content: "bye again", id: "2" })
+    );
+    expect(chunks2[0][1][1].langgraph_node).toEqual("callModel");
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
