@@ -2,7 +2,11 @@ import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { AIMessage, ToolMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
-import { Command } from "@langchain/langgraph";
+import {
+  Command,
+  MessagesAnnotation,
+  getCurrentTaskInput,
+} from "@langchain/langgraph";
 
 const WHITESPACE_RE = /\s+/;
 
@@ -37,10 +41,13 @@ const createHandoffTool = ({ agentName }: { agentName: string }) => {
         tool_call_id: config.toolCall.id,
       });
 
+      // inject the current agent state
+      const state =
+        getCurrentTaskInput() as (typeof MessagesAnnotation)["State"];
       return new Command({
         goto: agentName,
         graph: Command.PARENT,
-        update: { messages: [toolMessage] },
+        update: { messages: state.messages.concat(toolMessage) },
       });
     },
     {
