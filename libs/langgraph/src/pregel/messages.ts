@@ -7,6 +7,7 @@ import {
   AIMessageChunk,
   BaseMessage,
   isBaseMessage,
+  isBaseMessageChunk,
   isToolMessage,
 } from "@langchain/core/messages";
 import { Serialized } from "@langchain/core/load/serializable";
@@ -156,7 +157,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
 
   handleChainStart(
     _chain: Serialized,
-    _inputs: ChainValues,
+    inputs: ChainValues,
     runId: string,
     _parentRunId?: string,
     tags?: string[],
@@ -173,6 +174,26 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
         (metadata.langgraph_checkpoint_ns as string).split("|"),
         { tags, name, ...metadata },
       ];
+
+      if (typeof inputs === "object") {
+        for (const value of Object.values(inputs)) {
+          if (
+            (isBaseMessage(value) || isBaseMessageChunk(value)) &&
+            value.id !== undefined
+          ) {
+            this.seen[value.id] = value;
+          } else if (Array.isArray(value)) {
+            for (const item of value) {
+              if (
+                (isBaseMessage(item) || isBaseMessageChunk(item)) &&
+                item.id !== undefined
+              ) {
+                this.seen[item.id] = item;
+              }
+            }
+          }
+        }
+      }
     }
   }
 
