@@ -13,7 +13,7 @@ This library is built on top of [LangGraph](https://github.com/langchain-ai/lang
 ## Installation
 
 ```bash
-npm install @langchain/langgraph-supervisor
+npm install @langchain/langgraph-supervisor @langchain/langgraph @langchain/core
 ```
 
 ## Quickstart
@@ -23,7 +23,7 @@ Here's a simple example of a supervisor managing two specialized agents:
 ![Supervisor Architecture](static/img/supervisor.png)
 
 ```bash
-npm install @langchain/langgraph-supervisor @langchain/openai
+npm install @langchain/langgraph-supervisor @langchain/langgraph @langchain/core @langchain/openai
 
 export OPENAI_API_KEY=<your_api_key>
 ```

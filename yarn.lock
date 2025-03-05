@@ -1854,7 +1854,6 @@ __metadata:
   resolution: "@langchain/langgraph-supervisor@workspace:libs/langgraph-supervisor"
   dependencies:
     "@jest/globals": ^29.5.0
-    "@langchain/core": ^0.3.40
     "@langchain/langgraph": "workspace:*"
     "@langchain/openai": ^0.4.4
     "@langchain/scripts": ^0.1.3
@@ -1882,6 +1881,9 @@ __metadata:
     typescript: ^4.9.5 || ^5.4.5
     uuid: ^10.0.0
     zod: ^3.23.8
+  peerDependencies:
+    "@langchain/core": ^0.3.40
+    "@langchain/langgraph": ^0.2.53
   languageName: unknown
   linkType: soft
 
@@ -1890,7 +1892,6 @@ __metadata:
   resolution: "@langchain/langgraph-swarm@workspace:libs/langgraph-swarm"
   dependencies:
     "@jest/globals": ^29.5.0
-    "@langchain/core": ^0.3.40
     "@langchain/langgraph": "workspace:*"
     "@langchain/openai": ^0.4.4
     "@langchain/scripts": ^0.1.3
@@ -1917,6 +1918,9 @@ __metadata:
     turbo: latest
     typescript: ^4.9.5 || ^5.4.5
     zod: ^3.23.8
+  peerDependencies:
+    "@langchain/core": ^0.3.40
+    "@langchain/langgraph": ^0.2.53
   languageName: unknown
   linkType: soft
 
