@@ -14,13 +14,13 @@ This library is built on top of [LangGraph](https://github.com/langchain-ai/lang
 ## Installation
 
 ```bash
-npm install @langchain/langgraph-swarm
+npm install @langchain/langgraph-swarm @langchain/langgraph @langchain/core
 ```
 
 ## Quickstart
 
 ```bash
-npm install @langchain/langgraph-swarm @langchain/openai
+npm install @langchain/langgraph-swarm @langchain/langgraph @langchain/core @langchain/openai
 
 export OPENAI_API_KEY=<your_api_key>
 ```
