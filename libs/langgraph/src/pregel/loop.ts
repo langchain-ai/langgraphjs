@@ -69,7 +69,6 @@ import {
   EmptyInputError,
   GraphInterrupt,
   isGraphInterrupt,
-  isParentCommand,
 } from "../errors.js";
 import { getNewChannelVersions, patchConfigurable } from "./utils/index.js";
 import {
@@ -667,7 +666,6 @@ export class PregelLoop {
   }
 
   async finishAndHandleError(error?: Error) {
-    this._syncStateOnParentCommand(error);
     const suppress = this._suppressInterrupt(error);
     if (suppress || error === undefined) {
       this.output = readChannels(this.channels, this.outputKeys);
@@ -989,23 +987,6 @@ export class PregelLoop {
       if (task.writes.length > 0) {
         this._outputWrites(task.id, task.writes, true);
       }
-    }
-  }
-
-  _syncStateOnParentCommand(error: unknown) {
-    if (isParentCommand(error)) {
-      const state = Object.entries(
-        readChannels(
-          this.channels,
-          typeof this.outputKeys === "string"
-            ? [this.outputKeys]
-            : this.outputKeys
-        )
-      );
-      const update = [...state, ...error.command._updateAsTuples()];
-
-      // eslint-disable-next-line no-param-reassign
-      error.command.update = update;
     }
   }
 }
