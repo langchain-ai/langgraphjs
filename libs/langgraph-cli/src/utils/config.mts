@@ -9,6 +9,7 @@ const BaseConfigSchema = z.object({
       message: "Import string must be in format '<file>:<export>'",
     }),
   ),
+  ui: z.record(z.string()).optional(),
   _INTERNAL_docker_tag: z.string().optional(),
   env: z
     .union([z.array(z.string()), z.record(z.string()), z.string()])

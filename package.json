@@ -15,6 +15,9 @@
     "format": "turbo run format",
     "format:check": "turbo run format:check"
   },
+  "resolutions": {
+    "esbuild": "^0.25.0"
+  },
   "keywords": [],
   "devDependencies": {
     "turbo": "^2.4.0"

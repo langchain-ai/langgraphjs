@@ -8,6 +8,7 @@ import runs from "./api/runs.mjs";
 import threads from "./api/threads.mjs";
 import assistants from "./api/assistants.mjs";
 import store from "./api/store.mjs";
+
 import { truncate, conn as opsConn } from "./storage/ops.mjs";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
@@ -40,6 +41,7 @@ app.route("/", assistants);
 app.route("/", runs);
 app.route("/", threads);
 app.route("/", store);
+
 app.get("/info", (c) => c.json({ flags: { assistants: true, crons: false } }));
 
 app.post(
@@ -69,6 +71,7 @@ export const StartServerSchema = z.object({
   host: z.string(),
   cwd: z.string(),
   graphs: z.record(z.string()),
+  ui: z.record(z.string()).optional(),
 });
 
 export async function startServer(options: z.infer<typeof StartServerSchema>) {
@@ -86,6 +89,22 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
 
   logger.info(`Registering graphs from ${options.cwd}`);
   await registerFromEnv(options.graphs, { cwd: options.cwd });
+
+  if (options.ui) {
+    if (process.versions.node.startsWith("18")) {
+      // Not supported due to weird interop issues with `@tailwindcss/postcss` and `tsx`
+      throw new Error(
+        "Built-in UI is not supported in Node.js 18.x. Please upgrade to Node.js 20.16 or later.",
+      );
+    }
+
+    logger.info(`Loading UI`);
+    const { api, registerGraphUi } = await import("./ui/load.mjs");
+    app.route("/", api);
+
+    logger.info(`Registering UI from ${options.cwd}`);
+    await registerGraphUi(options.ui, { cwd: options.cwd });
+  }
 
   logger.info(`Starting ${options.nWorkers} workers`);
   for (let i = 0; i < options.nWorkers; i++) queue();
