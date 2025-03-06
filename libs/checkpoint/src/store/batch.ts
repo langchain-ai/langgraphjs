@@ -63,14 +63,16 @@ export class AsyncBatchedStore extends BaseStore {
       filter?: Record<string, any>;
       limit?: number;
       offset?: number;
+      query?: string;
     }
   ): Promise<Item[]> {
-    const { filter, limit = 10, offset = 0 } = options || {};
+    const { filter, limit = 10, offset = 0, query } = options || {};
     return this.enqueueOperation({
       namespacePrefix,
       filter,
       limit,
       offset,
+      query,
     } as SearchOperation);
   }
 
