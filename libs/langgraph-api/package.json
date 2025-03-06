@@ -10,6 +10,16 @@
   "files": [
     "dist/"
   ],
+  "exports": {
+    ".": {
+      "types": "./dist/cli/spawn.d.ts",
+      "default": "./dist/cli/spawn.mjs"
+    },
+    "./ui/bundler": {
+      "types": "./dist/ui/bundler.d.ts",
+      "default": "./dist/ui/bundler.mjs"
+    }
+  },
   "repository": {
     "type": "git",
     "url": "git@github.com:langchain-ai/langgraphjs-api.git"

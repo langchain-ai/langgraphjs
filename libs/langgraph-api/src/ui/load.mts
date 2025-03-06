@@ -1,13 +1,9 @@
-import * as path from "node:path";
-import * as url from "node:url";
-import * as fs from "node:fs";
-
 import { z } from "zod";
 import { Hono } from "hono";
 import { getMimeType } from "hono/utils/mime";
 import { zValidator } from "@hono/zod-validator";
-import { context } from "esbuild";
-import tailwind from "esbuild-plugin-tailwindcss";
+import * as path from "node:path";
+import { watch } from "./bundler.mjs";
 
 const GRAPH_UI: Record<string, { basename: string; contents: Uint8Array }[]> =
   {};
@@ -16,91 +12,12 @@ export async function registerGraphUi(
   defs: Record<string, string>,
   options: { cwd: string },
 ) {
-  const textEncoder = new TextEncoder();
-  const renderTemplate = await fs.promises.readFile(
-    path.resolve(
-      path.dirname(url.fileURLToPath(import.meta.url)),
-      "./render.template.mts",
-    ),
-    "utf-8",
-  );
-
-  const projectDir = options.cwd;
   const result = await Promise.all(
     Object.entries(defs).map(async ([agentName, uiUserPath]) => {
-      const ctx = await context({
-        entryPoints: ["entrypoint"],
-        outdir: path.resolve(projectDir, "dist"),
-        bundle: true,
-        platform: "browser",
-        target: "es2020",
-        jsx: "automatic",
-        external: [
-          "react",
-          "react-dom",
-          "@langchain/langgraph-sdk",
-          "@langchain/langgraph-sdk/react-ui",
-        ],
-        plugins: [
-          {
-            name: "entrypoint",
-            setup(build) {
-              build.onResolve({ filter: /^entrypoint$/ }, (args) => ({
-                path: path.resolve(projectDir, "ui.entrypoint.tsx"),
-                namespace: "entrypoint-ns",
-              }));
-
-              build.onLoad(
-                { filter: /.*/, namespace: "entrypoint-ns" },
-                () => ({
-                  resolveDir: projectDir,
-                  contents: [
-                    `import ui from "${uiUserPath}"`,
-                    renderTemplate,
-                    `export const render = createRenderer(ui)`,
-                  ].join("\n"),
-                  loader: "tsx",
-                }),
-              );
-            },
-          },
-          tailwind(),
-          {
-            name: "require-transform",
-            setup(build) {
-              build.onEnd(async (result) => {
-                const newResult: {
-                  basename: string;
-                  contents: Uint8Array;
-                }[] = [];
-
-                for (const item of result.outputFiles ?? []) {
-                  let basename = path.basename(item.path);
-                  let contents = item.contents;
-                  if (basename === "entrypoint.js") {
-                    contents = textEncoder.encode(
-                      item.text.replaceAll(
-                        `typeof require !== "undefined" ? require`,
-                        `typeof globalThis[Symbol.for("LGUI_REQUIRE")] !== "undefined" ? globalThis[Symbol.for("LGUI_REQUIRE")]`,
-                      ),
-                    );
-                  }
-
-                  newResult.push({ basename, contents });
-                }
-
-                if (newResult.length > 0) {
-                  GRAPH_UI[agentName] = newResult;
-                }
-              });
-            },
-          },
-        ],
-        write: false,
-        globalName: `__LGUI_${agentName}`,
+      const userPath = path.resolve(options.cwd, uiUserPath);
+      const ctx = await watch(agentName, userPath, (result) => {
+        GRAPH_UI[agentName] = result;
       });
-
-      await ctx.watch();
       return [agentName, ctx] as [string, typeof ctx];
     }),
   );
@@ -108,9 +25,9 @@ export async function registerGraphUi(
   return Object.fromEntries(result);
 }
 
-const api = new Hono();
+const ui = new Hono();
 
-api.post(
+ui.post(
   "/ui/:agent",
   zValidator("json", z.object({ name: z.string() })),
   async (c) => {
@@ -145,7 +62,7 @@ api.post(
   },
 );
 
-api.get("/ui/:agent/:basename", async (c) => {
+ui.get("/ui/:agent/:basename", async (c) => {
   const agent = c.req.param("agent");
   const basename = c.req.param("basename");
   const file = GRAPH_UI[agent]?.find((item) => item.basename === basename);
@@ -156,4 +73,4 @@ api.get("/ui/:agent/:basename", async (c) => {
   });
 });
 
-export default api;
+export default ui;
