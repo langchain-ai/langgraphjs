@@ -50,7 +50,7 @@
     "@langchain/langgraph-api": "workspace:*"
   },
   "devDependencies": {
-    "tsx": "^4.19.2",
+    "tsx": "^4.19.3",
     "@types/babel__code-frame": "^7.0.6",
     "@types/node": "^22.2.0",
     "prettier": "^3.3.3",
