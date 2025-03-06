@@ -13,7 +13,7 @@ import tailwind from "esbuild-plugin-tailwindcss";
 
 const renderTemplate = await fs.promises.readFile(
   path.resolve(
-    path.dirname(url.fileURLToPath(import.meta.url)),
+    path.dirname(url.fileURLToPath(new URL(".", import.meta.url))),
     "./render.template.mts",
   ),
   "utf-8",
