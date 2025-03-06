@@ -25,9 +25,9 @@ export async function registerGraphUi(
   return Object.fromEntries(result);
 }
 
-const ui = new Hono();
+export const api = new Hono();
 
-ui.post(
+api.post(
   "/ui/:agent",
   zValidator("json", z.object({ name: z.string() })),
   async (c) => {
@@ -62,7 +62,7 @@ ui.post(
   },
 );
 
-ui.get("/ui/:agent/:basename", async (c) => {
+api.get("/ui/:agent/:basename", async (c) => {
   const agent = c.req.param("agent");
   const basename = c.req.param("basename");
   const file = GRAPH_UI[agent]?.find((item) => item.basename === basename);
@@ -72,5 +72,3 @@ ui.get("/ui/:agent/:basename", async (c) => {
     headers: { "Content-Type": getMimeType(file.basename) ?? "text/plain" },
   });
 });
-
-export default ui;
