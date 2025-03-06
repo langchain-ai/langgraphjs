@@ -100,11 +100,11 @@ jobs:
       matrix:
         node-version:
           - "18.x"
-          # - "20.x"
-          # - "22.x"
+          - "20.x"
+          - "22.x"
         os:
           - ubuntu-latest
-          # - windows-latest
+          - windows-latest
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
