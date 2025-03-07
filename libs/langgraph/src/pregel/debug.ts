@@ -42,7 +42,7 @@ const COLORS_MAP: ConsoleColorMap = {
 /**
  * Wrap some text in a color for printing to the console.
  */
-const wrap = (color: ConsoleColors, text: string): string =>
+export const wrap = (color: ConsoleColors, text: string): string =>
   `${color.start}${text}${color.end}`;
 
 export function printCheckpoint<Value>(
@@ -62,7 +62,7 @@ export function printCheckpoint<Value>(
   );
 }
 
-function* _readChannels<Value>(
+export function* _readChannels<Value>(
   channels: Record<string, BaseChannel<Value>>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): IterableIterator<[string, any]> {
