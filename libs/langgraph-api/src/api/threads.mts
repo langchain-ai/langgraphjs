@@ -197,15 +197,19 @@ api.post(
   zValidator(
     "json",
     z.object({
-      states: z.array(
+      checkpoints: z.array(
         z.object({
-          values: z
-            .union([
-              z.record(z.string(), z.unknown()),
-              z.array(z.record(z.string(), z.unknown())),
-            ])
-            .nullish(),
-          as_node: z.string().optional(),
+          updates: z.array(
+            z.object({
+              values: z
+                .union([
+                  z.record(z.string(), z.unknown()),
+                  z.array(z.record(z.string(), z.unknown())),
+                ])
+                .nullish(),
+              as_node: z.string(),
+            }),
+          ),
         }),
       ),
       thread_id: z
@@ -235,8 +239,14 @@ api.post(
       configurable: { thread_id: newThread.thread_id },
     };
 
-    for (const state of payload.states) {
-      await Threads.State.post(config, state.values, state.as_node);
+    for (const checkpoint of payload.checkpoints) {
+      await Threads.State.batch(
+        config,
+        checkpoint.updates.map((update) => ({
+          values: update.values,
+          asNode: update.as_node,
+        })),
+      );
     }
 
     return jsonExtra(c, newThread);

@@ -859,7 +859,6 @@ export class Threads {
       updateConfig.configurable.checkpoint_ns ??= "";
 
       const nextConfig = await graph.updateState(updateConfig, values, asNode);
-
       const state = await Threads.State.get(config, { subgraphs: false });
 
       // update thread values
@@ -873,6 +872,53 @@ export class Threads {
       });
 
       return { checkpoint: nextConfig.configurable };
+    }
+
+    static async batch(
+      config: RunnableConfig,
+      writes: Array<{
+        values:
+          | Record<string, unknown>[]
+          | Record<string, unknown>
+          | null
+          | undefined;
+        asNode?: string | undefined;
+      }>,
+    ) {
+      const threadId = config.configurable?.thread_id;
+      if (!threadId) return [];
+
+      const thread = await Threads.get(threadId);
+      const graphId = thread.metadata?.graph_id as string | undefined | null;
+      if (graphId == null) {
+        throw new HTTPException(400, {
+          message: `Thread ${threadId} has no graph ID`,
+        });
+      }
+
+      config.configurable ??= {};
+      config.configurable.graph_id ??= graphId;
+
+      const graph = await getGraph(graphId, { checkpointer, store });
+
+      const updateConfig = structuredClone(config);
+      updateConfig.configurable ??= {};
+      updateConfig.configurable.checkpoint_ns ??= "";
+
+      const nextConfig = await graph.bulkUpdateState(updateConfig, writes);
+      const state = await Threads.State.get(config, { subgraphs: false });
+
+      // update thread values
+      await conn.with(async (STORE) => {
+        for (const thread of Object.values(STORE.threads)) {
+          if (thread.thread_id === threadId) {
+            thread.values = state.values;
+            break;
+          }
+        }
+      });
+
+      return nextConfig;
     }
 
     static async list(
