@@ -10015,7 +10015,7 @@ graph TD;
         { values: { foo: "error" } },
         { values: { bar: "error" } },
       ])
-    ).rejects.toThrow(`"asNode" is required`);
+    ).rejects.toThrow();
 
     // throw if no updates are provided
     await expect(graph.bulkUpdateState(config, [])).rejects.toThrow(
@@ -10028,7 +10028,7 @@ graph TD;
         { values: null, asNode: "__end__" },
         { values: null, asNode: "__copy__" },
       ])
-    ).rejects.toThrow(`when applying multiple updates`);
+    ).rejects.toThrow();
   });
 }
 

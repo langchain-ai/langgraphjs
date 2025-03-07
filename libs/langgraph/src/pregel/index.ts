@@ -959,25 +959,26 @@ export class Pregel<
     }
 
     // Find last node that updated the state, if not provided
-    if (updates.length === 1) {
-      const { values, asNode } = updates[0];
-      if (values == null && asNode === undefined) {
-        const nextConfig = await checkpointer.put(
-          checkpointConfig,
-          createCheckpoint(checkpoint, undefined, step),
-          {
-            source: "update",
-            step: step + 1,
-            writes: {},
-            parents: saved?.metadata?.parents ?? {},
-          },
-          {}
-        );
-        return patchCheckpointMap(
-          nextConfig,
-          saved ? saved.metadata : undefined
+    const { values, asNode } = updates[0];
+    if (values == null && asNode === undefined) {
+      if (updates.length > 1) {
+        throw new InvalidUpdateError(
+          `Cannot create empty checkpoint with multiple updates`
         );
       }
+
+      const nextConfig = await checkpointer.put(
+        checkpointConfig,
+        createCheckpoint(checkpoint, undefined, step),
+        {
+          source: "update",
+          step: step + 1,
+          writes: {},
+          parents: saved?.metadata?.parents ?? {},
+        },
+        {}
+      );
+      return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
     }
 
     // update channels
@@ -988,11 +989,11 @@ export class Pregel<
 
     // Pass `skipManaged: true` as managed values are not used/relevant in update state calls.
     const { managed } = await this.prepareSpecs(config, { skipManaged: true });
-    const { values, asNode } = updates[0];
+
     if (values === null && asNode === "__end__") {
       if (updates.length > 1) {
         throw new InvalidUpdateError(
-          `Cannot update as "__end__" when applying multiple updates`
+          `Cannot apply multiple updates when clearing state`
         );
       }
 
@@ -1061,7 +1062,7 @@ export class Pregel<
     if (values == null && asNode === "__copy__") {
       if (updates.length > 1) {
         throw new InvalidUpdateError(
-          `Cannot update as "__copy__" when applying multiple updates`
+          `Cannot copy checkpoint with multiple updates`
         );
       }
 
