@@ -4,34 +4,39 @@
 
 These components can be tested without complex mocks:
 
-### 1. Configuration Utilities (`utils/config.ts`)
+### 1. Configuration Utilities (`utils/config.ts`) ✅
 - Test `ensureLangGraphConfig` with various input configurations
 - Test namespace handling functions with different formatted namespaces
 - Test parent/child checkpoint namespace relationships
+- **Status**: All tests implemented and passing
 
-### 2. Validation Logic (`validate.ts`)
+### 2. Validation Logic (`validate.ts`) ✅
 - Test graph structure validation with valid/invalid nodes and channels
 - Test key validation for reserved channels and duplicate edges
 - Test valid channel writing permissions
+- **Status**: All tests implemented and passing
 
-### 3. I/O Functions (`io.ts`)
+### 3. I/O Functions (`io.ts`) ✅
 - Test channel reading with single and multiple channels
 - Test transformation of input/output values
 - Test mapping of commands to appropriate functions
+- **Status**: All tests implemented and passing, including `io.mapCommand` testing
 
-### 4. Subgraph Utilities (`utils/subgraph.ts`)
+### 4. Subgraph Utilities (`utils/subgraph.ts`) ✅
 - Test detection of Pregel-like objects in nested structures
 - Test finding subgraph Pregel instances at various depths
+- **Status**: All tests implemented and passing
 
-### 5. Debug Functions (`debug.ts`)
+### 5. Debug Functions (`debug.ts`) ✅
 - Test formatting of task and channel states
 - Test checkpoint printing functionality
+- **Status**: All tests implemented and passing
 
 ## Complex Components with Real Implementations
 
 For components with deeper dependencies, we'll use simplified but real implementations:
 
-### 1. Channel Reading/Writing (`read.ts`, `write.ts`)
+### 1. Channel Reading/Writing (`read.ts`, `write.ts`) ✅
 
 **Test Fixtures:**
 ```typescript
@@ -61,6 +66,8 @@ const channels = {
 - Writing to channels and validating updates
 - Combining writes with getWriters
 - Error handling for invalid channel operations
+
+**Status**: All tests implemented and passing for both `read.ts` and `write.ts`
 
 ### 2. Execution Engine (`loop.ts`, `runner.ts`)
 
@@ -183,3 +190,18 @@ Key approaches for testing with real components:
 5. **Record all state transitions** for debugging and validation
 
 This approach will provide a robust testing strategy for the Pregel components while minimizing the need for complex mocks.
+
+## Progress Summary
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| `utils/config.ts` | ✅ Complete | Tests cover configuration merging, namespace handling |
+| `utils/subgraph.ts` | ✅ Complete | Tests cover Pregel detection and nested structures |
+| `debug.ts` | ✅ Complete | Tests for task/channel formatting and checkpoint printing |
+| `io.ts` + `io.mapCommand.ts` | ✅ Complete | Tests for command mapping and channel operations |
+| `read.ts` | ✅ Complete | Tests for channel reading with various inputs |
+| `write.ts` | ✅ Complete | Tests for channel writing with validation |
+| `validate.ts` | ✅ Complete | Tests for graph structure validation |
+| `loop.ts`, `runner.ts` | 🔄 In Progress | Integration tests needed |
+| `algo.ts` | 🔄 In Progress | Integration tests needed |
+| `remote.ts` | ⚠️ Pending | Type issues in the API client integration |
