@@ -11,6 +11,7 @@ describe("isPregelLike", () => {
     };
 
     // Cast to any to test just the logic, not the type constraints
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(isPregelLike(mockPregelObj as any)).toBe(true);
   });
 
@@ -21,6 +22,7 @@ describe("isPregelLike", () => {
     };
 
     // Cast to any to test just the logic, not the type constraints
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(isPregelLike(nonPregelObj as any)).toBe(false);
   });
 
@@ -32,6 +34,7 @@ describe("isPregelLike", () => {
     };
 
     // Cast to any to test just the logic, not the type constraints
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(isPregelLike(nonPregelObj as any)).toBe(false);
   });
 });

@@ -36,7 +36,11 @@ describe("ChannelRead", () => {
   it("should read multiple channel values", async () => {
     // Setup mock read function
     const mockRead = jest
-      .fn<(channels: string | string[]) => { channel1: string; channel2: string } | null>()
+      .fn<
+        (
+          channels: string | string[]
+        ) => { channel1: string; channel2: string } | null
+      >()
       .mockImplementation((channels: string | string[]) => {
         if (Array.isArray(channels)) {
           return {

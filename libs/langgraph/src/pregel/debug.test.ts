@@ -48,8 +48,10 @@ describe("_readChannels", () => {
       }),
       update: jest.fn<(values: unknown[]) => boolean>().mockReturnValue(true),
       checkpoint: jest.fn<() => unknown>(),
-      fromCheckpoint: jest.fn<(checkpoint?: unknown) => BaseChannel<string>>().mockReturnThis(),
-      consume: jest.fn<() => boolean>().mockReturnValue(false)
+      fromCheckpoint: jest
+        .fn<(checkpoint?: unknown) => BaseChannel<string>>()
+        .mockReturnThis(),
+      consume: jest.fn<() => boolean>().mockReturnValue(false),
     };
 
     const channels = {
@@ -76,15 +78,17 @@ describe("_readChannels", () => {
       }),
       update: jest.fn<(values: unknown[]) => boolean>().mockReturnValue(true),
       checkpoint: jest.fn<() => unknown>(),
-      fromCheckpoint: jest.fn<(checkpoint?: unknown) => BaseChannel<string>>().mockReturnThis(),
-      consume: jest.fn<() => boolean>().mockReturnValue(false)
+      fromCheckpoint: jest
+        .fn<(checkpoint?: unknown) => BaseChannel<string>>()
+        .mockReturnThis(),
+      consume: jest.fn<() => boolean>().mockReturnValue(false),
     };
 
     const channels = {
       channel1: new LastValue<string>(),
       errorChannel: mockErrorChannel,
     };
-    
+
     channels.channel1.update(["value1"]);
 
     expect(() => Array.from(_readChannels(channels))).toThrow("Other error");
@@ -94,8 +98,18 @@ describe("_readChannels", () => {
 describe("tasksWithWrites", () => {
   it("should return task descriptions with no writes", () => {
     const tasks = [
-      { id: "task1", name: "Task 1", path: ["PULL", "Task 1"] as ["PULL", string], interrupts: [] },
-      { id: "task2", name: "Task 2", path: ["PULL", "Task 2"] as ["PULL", string], interrupts: [] },
+      {
+        id: "task1",
+        name: "Task 1",
+        path: ["PULL", "Task 1"] as ["PULL", string],
+        interrupts: [],
+      },
+      {
+        id: "task2",
+        name: "Task 2",
+        path: ["PULL", "Task 2"] as ["PULL", string],
+        interrupts: [],
+      },
     ];
 
     const pendingWrites: Array<[string, string, unknown]> = [];
@@ -110,11 +124,23 @@ describe("tasksWithWrites", () => {
 
   it("should include error information", () => {
     const tasks = [
-      { id: "task1", name: "Task 1", path: ["PULL", "Task 1"] as ["PULL", string], interrupts: [] },
-      { id: "task2", name: "Task 2", path: ["PULL", "Task 2"] as ["PULL", string], interrupts: [] },
+      {
+        id: "task1",
+        name: "Task 1",
+        path: ["PULL", "Task 1"] as ["PULL", string],
+        interrupts: [],
+      },
+      {
+        id: "task2",
+        name: "Task 2",
+        path: ["PULL", "Task 2"] as ["PULL", string],
+        interrupts: [],
+      },
     ];
 
-    const pendingWrites: Array<[string, string, unknown]> = [["task1", "__error__", { message: "Test error" }]];
+    const pendingWrites: Array<[string, string, unknown]> = [
+      ["task1", "__error__", { message: "Test error" }],
+    ];
 
     const result = tasksWithWrites(tasks, pendingWrites);
 
@@ -132,8 +158,18 @@ describe("tasksWithWrites", () => {
 
   it("should include state information", () => {
     const tasks = [
-      { id: "task1", name: "Task 1", path: ["PULL", "Task 1"] as ["PULL", string], interrupts: [] },
-      { id: "task2", name: "Task 2", path: ["PULL", "Task 2"] as ["PULL", string], interrupts: [] },
+      {
+        id: "task1",
+        name: "Task 1",
+        path: ["PULL", "Task 1"] as ["PULL", string],
+        interrupts: [],
+      },
+      {
+        id: "task2",
+        name: "Task 2",
+        path: ["PULL", "Task 2"] as ["PULL", string],
+        interrupts: [],
+      },
     ];
 
     const pendingWrites: Array<[string, string, unknown]> = [];
@@ -157,7 +193,14 @@ describe("tasksWithWrites", () => {
   });
 
   it("should include interrupts", () => {
-    const tasks = [{ id: "task1", name: "Task 1", path: ["PULL", "Task 1"] as ["PULL", string], interrupts: [] }];
+    const tasks = [
+      {
+        id: "task1",
+        name: "Task 1",
+        path: ["PULL", "Task 1"] as ["PULL", string],
+        interrupts: [],
+      },
+    ];
 
     const pendingWrites: Array<[string, string, unknown]> = [
       ["task1", "__interrupt__", { value: "Interrupted", when: "during" }],
