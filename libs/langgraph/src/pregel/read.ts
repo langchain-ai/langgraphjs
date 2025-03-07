@@ -55,7 +55,7 @@ export class ChannelRead<
       config.configurable?.[CONFIG_KEY_READ];
     if (!read) {
       throw new Error(
-        `Runnable ${this} is not configured with a read function. Make sure to call in the context of a Pregel process`
+        "Runnable is not configured with a read function. Make sure to call in the context of a Pregel process"
       );
     }
     if (mapper) {
