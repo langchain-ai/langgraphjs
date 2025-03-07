@@ -992,7 +992,7 @@ export class Pregel<
     if (values === null && asNode === "__end__") {
       if (updates.length > 1) {
         throw new InvalidUpdateError(
-          "Cannot update as __end__ in bulk with multiple updates"
+          `Cannot update as "__end__" when applying multiple updates`
         );
       }
 
@@ -1061,7 +1061,7 @@ export class Pregel<
     if (values == null && asNode === "__copy__") {
       if (updates.length > 1) {
         throw new InvalidUpdateError(
-          "Cannot update as __copy__ in bulk with multiple updates"
+          `Cannot update as "__copy__" when applying multiple updates`
         );
       }
 
@@ -1145,10 +1145,6 @@ export class Pregel<
     if (updates.length === 1) {
       // eslint-disable-next-line prefer-const
       let { values, asNode } = updates[0];
-      if (values === null && asNode === "__end__") {
-        throw new Error("Cannot update as __end__ in bulk");
-      }
-
       if (asNode === undefined && nonNullVersion === undefined) {
         if (
           typeof this.inputChannels === "string" &&
@@ -1191,7 +1187,7 @@ export class Pregel<
       for (const { asNode, values } of updates) {
         if (asNode == null) {
           throw new InvalidUpdateError(
-            "asNode is required when applying multiple updates"
+            `"asNode" is required when applying multiple updates`
           );
         }
 
