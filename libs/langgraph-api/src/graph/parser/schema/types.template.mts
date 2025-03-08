@@ -27,17 +27,19 @@ type Defactorify<T> = T extends (...args: any[]) => infer R
   : Awaited<T>;
 
 // @ts-expect-error
-type Inspect<T> = T extends unknown
-  ? {
-      [K in keyof T]: 0 extends 1 & T[K]
-        ? T[K]
-        : Wrap<MatchBaseMessageArray<T[K]>> extends Wrap<BaseMessage[]>
-          ? BaseMessage[]
-          : Wrap<MatchBaseMessage<T[K]>> extends Wrap<BaseMessage>
-            ? BaseMessage
-            : Inspect<T[K]>;
-    }
-  : never;
+type Inspect<T, TDepth extends Array<0> = []> = TDepth extends [0, 0, 0]
+  ? any
+  : T extends unknown
+    ? {
+        [K in keyof T]: 0 extends 1 & T[K]
+          ? T[K]
+          : Wrap<MatchBaseMessageArray<T[K]>> extends Wrap<BaseMessage[]>
+            ? BaseMessage[]
+            : Wrap<MatchBaseMessage<T[K]>> extends Wrap<BaseMessage>
+              ? BaseMessage
+              : Inspect<T[K], [0, ...TDepth]>;
+      }
+    : never;
 
 type ReflectCompiled<T> = T extends { RunInput: infer S; RunOutput: infer U }
   ? { state: S; update: U }
