@@ -17,6 +17,7 @@ import {
   type SQL_STATEMENTS,
   getSQLStatements,
   getTablesWithSchema,
+  tableExistsSQL,
 } from "./sql.js";
 
 interface PostgresSaverOptions {
@@ -31,8 +32,8 @@ const _ensureCompleteOptions = (
   options?: Partial<PostgresSaverOptions>
 ): PostgresSaverOptions => {
   return {
-    ..._defaultOptions,
     ...options,
+    schema: options?.schema ?? _defaultOptions.schema,
   };
 };
 
@@ -132,11 +133,17 @@ export class PostgresSaver extends BaseCheckpointSaver {
     const SCHEMA_TABLES = getTablesWithSchema(this.options.schema);
     try {
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.options.schema}`);
-      let version = 0;
+      let version = -1;
       const MIGRATIONS = getMigrations(this.options.schema);
-
-      // Run first migration to ensure checkpoint_migrations table exists
-      await client.query(MIGRATIONS[0]);
+      // Check if checkpoint_migrations table exists
+      const checkpointMigrationsExists = await client.query(
+        tableExistsSQL(this.options.schema, SCHEMA_TABLES.checkpoint_migrations)
+      );
+      if (!checkpointMigrationsExists.rows[0].exists) {
+        // Run first migration to ensure checkpoint_migrations table exists
+        await client.query(MIGRATIONS[0]);
+        version += 1;
+      }
 
       try {
         const result = await client.query(
@@ -257,7 +264,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
       pending_sends: [],
     };
     if ("channel_values" in serialized) {
-      delete serialized.channel_values;
+      serialized.channel_values = undefined;
     }
     return serialized;
   }
@@ -284,7 +291,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
         checkpointNs,
         checkpointId,
         taskId,
-        WRITES_IDX_MAP[channel] !== undefined ? WRITES_IDX_MAP[channel] : idx,
+        WRITES_IDX_MAP[channel] ?? idx,
         channel,
         type,
         new Uint8Array(serializedValue),
@@ -433,8 +440,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     const [where, args] = this._searchWhere(config, filter, before);
     let query = `${this.SQL_STATEMENTS.SELECT_SQL}${where} ORDER BY checkpoint_id DESC`;
     if (limit !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      query += ` LIMIT ${Number.parseInt(limit as any, 10)}`; // sanitize via parseInt, as limit could be an externally provided value
+      query += ` LIMIT ${Number.parseInt(limit.toString(), 10)}`; // sanitize via parseInt, as limit could be an externally provided value
     }
 
     const result = await this.pool.query(query, args);
