@@ -417,6 +417,11 @@ export type PregelScratchpad<Resume = unknown> = {
   resume: Resume[];
   /** Single resume value for null task ID */
   nullResume: Resume;
+  /** Counter for tracking subgraph invocations */
+  subgraphCounter: number;
+
+  /** The input to the currently executing task */
+  currentTaskInput: unknown;
 };
 
 export type CallOptions = {

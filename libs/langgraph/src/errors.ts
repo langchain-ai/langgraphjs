@@ -149,6 +149,9 @@ export class InvalidUpdateError extends BaseLangGraphError {
   }
 }
 
+/**
+ * @deprecated This exception type is no longer thrown.
+ */
 export class MultipleSubgraphsError extends BaseLangGraphError {
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
     super(message, fields);

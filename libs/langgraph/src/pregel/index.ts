@@ -97,7 +97,10 @@ import {
   type ManagedValueSpec,
 } from "../managed/base.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
-import { ensureLangGraphConfig } from "./utils/config.js";
+import {
+  ensureLangGraphConfig,
+  recastCheckpointNamespace,
+} from "./utils/config.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { StreamMessagesHandler } from "./messages.js";
 import { PregelRunner } from "./runner.js";
@@ -783,15 +786,12 @@ export class Pregel<
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
     ) {
       // remove task_ids from checkpoint_ns
-      const recastCheckpointNamespace = checkpointNamespace
-        .split(CHECKPOINT_NAMESPACE_SEPARATOR)
-        .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
-        .join(CHECKPOINT_NAMESPACE_SEPARATOR);
+      const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
       for await (const [name, subgraph] of this.getSubgraphsAsync(
-        recastCheckpointNamespace,
+        recastNamespace,
         true
       )) {
-        if (name === recastCheckpointNamespace) {
+        if (name === recastNamespace) {
           return await subgraph.getState(
             patchConfigurable(config, {
               [CONFIG_KEY_CHECKPOINTER]: checkpointer,
@@ -801,7 +801,7 @@ export class Pregel<
         }
       }
       throw new Error(
-        `Subgraph with namespace "${recastCheckpointNamespace}" not found.`
+        `Subgraph with namespace "${recastNamespace}" not found.`
       );
     }
 
@@ -844,17 +844,14 @@ export class Pregel<
       checkpointNamespace !== "" &&
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
     ) {
-      const recastCheckpointNamespace = checkpointNamespace
-        .split(CHECKPOINT_NAMESPACE_SEPARATOR)
-        .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
-        .join(CHECKPOINT_NAMESPACE_SEPARATOR);
+      const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
 
       // find the subgraph with the matching name
       for await (const [name, pregel] of this.getSubgraphsAsync(
-        recastCheckpointNamespace,
+        recastNamespace,
         true
       )) {
-        if (name === recastCheckpointNamespace) {
+        if (name === recastNamespace) {
           yield* pregel.getStateHistory(
             patchConfigurable(config, {
               [CONFIG_KEY_CHECKPOINTER]: checkpointer,
@@ -865,7 +862,7 @@ export class Pregel<
         }
       }
       throw new Error(
-        `Subgraph with namespace "${recastCheckpointNamespace}" not found.`
+        `Subgraph with namespace "${recastNamespace}" not found.`
       );
     }
 
@@ -918,16 +915,11 @@ export class Pregel<
       inputConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
     ) {
       // remove task_ids from checkpoint_ns
-      const recastCheckpointNamespace = checkpointNamespace
-        .split(CHECKPOINT_NAMESPACE_SEPARATOR)
-        .map((part) => {
-          return part.split(CHECKPOINT_NAMESPACE_END)[0];
-        })
-        .join(CHECKPOINT_NAMESPACE_SEPARATOR);
+      const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
       // find the subgraph with the matching name
       // eslint-disable-next-line no-unreachable-loop
       for await (const [, pregel] of this.getSubgraphsAsync(
-        recastCheckpointNamespace,
+        recastNamespace,
         true
       )) {
         return await pregel.updateState(
@@ -938,7 +930,7 @@ export class Pregel<
           asNode
         );
       }
-      throw new Error(`Subgraph "${recastCheckpointNamespace}" not found`);
+      throw new Error(`Subgraph "${recastNamespace}" not found`);
     }
     // get last checkpoint
     const config = this.config

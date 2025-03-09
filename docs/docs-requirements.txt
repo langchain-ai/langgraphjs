@@ -3,6 +3,7 @@ mkdocstrings
 mkdocs-jupyter
 mkdocs-redirects
 mkdocs-minify-plugin
+mkdocs-open-in-new-tab
 mkdocs-rss-plugin
 mkdocs-typedoc
 markdown-include

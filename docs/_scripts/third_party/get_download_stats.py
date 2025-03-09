@@ -68,12 +68,10 @@ def _get_weekly_downloads(packages: list[Package]) -> list[ResolvedPackage]:
             num_downloads = None
 
         resolved_packages.append(
-            {
-                "name": package["name"],
-                "repo": package["repo"],
-                "weekly_downloads": num_downloads,
-                "description": package["description"],
-            }
+            dict(
+                **package,
+                weekly_downloads=num_downloads,
+            )
         )
 
     return resolved_packages

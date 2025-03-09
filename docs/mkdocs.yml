@@ -60,6 +60,7 @@ plugins:
       options: "typedoc.json"
       name: "API Reference"
       title_link: "/" # optional, default: '/'
+  - open-in-new-tab
 
 nav:
   - Home:

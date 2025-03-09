@@ -2,6 +2,11 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { BaseStore } from "@langchain/langgraph-checkpoint";
 import { LangGraphRunnableConfig } from "../runnable_types.js";
+import {
+  CHECKPOINT_NAMESPACE_END,
+  CHECKPOINT_NAMESPACE_SEPARATOR,
+  CONFIG_KEY_SCRATCHPAD,
+} from "../../constants.js";
 
 const COPIABLE_KEYS = ["tags", "metadata", "callbacks", "configurable"];
 
@@ -116,6 +121,50 @@ export function getWriter(): ((chunk: unknown) => void) | undefined {
   return config?.configurable?.writer;
 }
 
+/**
+ * A helper utility function that returns the {@link LangGraphRunnableConfig} that was set when the graph was initialized
+ *
+ * @returns the {@link LangGraphRunnableConfig} that was set when the graph was initialized
+ */
 export function getConfig(): LangGraphRunnableConfig {
   return AsyncLocalStorageProviderSingleton.getRunnableConfig();
+}
+
+/**
+ * A helper utility function that returns the input for the currently executing task
+ *
+ * @returns the input for the currently executing task
+ */
+export function getCurrentTaskInput<T = unknown>(): T {
+  const config: LangGraphRunnableConfig =
+    AsyncLocalStorageProviderSingleton.getRunnableConfig();
+  if (config === undefined) {
+    throw new Error(
+      "Config not retrievable. This is likely because you are running in an environment without support for AsyncLocalStorage."
+    );
+  }
+
+  if (
+    config.configurable?.[CONFIG_KEY_SCRATCHPAD]?.currentTaskInput === undefined
+  ) {
+    throw new Error("BUG: internal scratchpad not initialized.");
+  }
+
+  return config!.configurable![CONFIG_KEY_SCRATCHPAD]!.currentTaskInput as T;
+}
+
+export function recastCheckpointNamespace(namespace: string): string {
+  return namespace
+    .split(CHECKPOINT_NAMESPACE_SEPARATOR)
+    .filter((part) => !part.match(/^\d+$/))
+    .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
+    .join(CHECKPOINT_NAMESPACE_SEPARATOR);
+}
+
+export function getParentCheckpointNamespace(namespace: string): string {
+  const parts = namespace.split(CHECKPOINT_NAMESPACE_SEPARATOR);
+  while (parts.length > 1 && parts[parts.length - 1].match(/^\d+$/)) {
+    parts.pop();
+  }
+  return parts.slice(0, -1).join(CHECKPOINT_NAMESPACE_SEPARATOR);
 }

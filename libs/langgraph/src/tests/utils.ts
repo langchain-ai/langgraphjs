@@ -152,14 +152,14 @@ export class FakeToolCallingChatModel extends BaseChatModel {
 
   idx: number;
 
-  toolStyle: "openai" | "anthropic" = "openai";
+  toolStyle: "openai" | "anthropic" | "bedrock" | "google" = "openai";
 
   constructor(
     fields: {
       sleep?: number;
       responses?: BaseMessage[];
       thrownErrorString?: string;
-      toolStyle?: "openai" | "anthropic";
+      toolStyle?: "openai" | "anthropic" | "bedrock" | "google";
     } & BaseChatModelParams
   ) {
     super(fields);
@@ -219,20 +219,29 @@ export class FakeToolCallingChatModel extends BaseChatModel {
             name: tool.name,
           },
         });
-      } else if (this.toolStyle === "anthropic") {
+      } else if (["anthropic", "google"].includes(this.toolStyle)) {
         toolDicts.push({
           name: tool.name,
         });
+      } else if (this.toolStyle === "bedrock") {
+        toolDicts.push({
+          toolSpec: {
+            name: tool.name,
+          },
+        });
       }
     }
-
+    let toolsToBind: BindToolsInput[] = toolDicts;
+    if (this.toolStyle === "google") {
+      toolsToBind = [{ functionDeclarations: toolDicts }];
+    }
     return new FakeToolCallingChatModel({
       sleep: this.sleep,
       responses: this.responses,
       thrownErrorString: this.thrownErrorString,
       toolStyle: this.toolStyle,
     }).bind({
-      tools: toolDicts,
+      tools: toolsToBind,
     } as BaseChatModelCallOptions);
   }
 }

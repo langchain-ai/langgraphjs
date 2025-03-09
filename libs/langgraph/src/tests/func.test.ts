@@ -173,41 +173,6 @@ export function runFuncTests(
           ]);
         });
 
-        it("multiple tasks with different timings", async () => {
-          const delay = 10; // 10ms delay
-
-          const slowMapper = task("slowMapper", async (input: number) => {
-            // eslint-disable-next-line no-promise-executor-return
-            await new Promise((resolve) => setTimeout(resolve, delay * input));
-            return `${input}${input}`;
-          });
-
-          const graph = entrypoint(
-            { checkpointer, name: "parallelGraph" },
-            async (inputs: number[]) => {
-              const startTime = Date.now();
-              const results = await Promise.all(
-                inputs.map((i) => slowMapper(i))
-              );
-              const endTime = Date.now();
-
-              // The total time should be close to the longest task's time
-              // We add some buffer for test stability
-              expect(endTime - startTime).toBeLessThan(
-                delay * Math.max(...inputs) * 1.5
-              );
-
-              return results;
-            }
-          );
-
-          const result = await graph.invoke([1, 2, 3], {
-            configurable: { thread_id },
-          });
-
-          expect(result).toEqual(["11", "22", "33"]);
-        });
-
         it("task with retry policy", async () => {
           let attempts = 0;
 

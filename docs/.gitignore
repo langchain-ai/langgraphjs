@@ -4,3 +4,5 @@
 !plugins/typedoc/google_analytics/*.js
 site/
 docs/cloud/
+stats.yml
+docs/prebuilt.md
