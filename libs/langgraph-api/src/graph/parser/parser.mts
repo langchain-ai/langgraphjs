@@ -351,6 +351,12 @@ export class SubgraphExtractor {
     // This API is not well made for Windows, ensure that the paths are UNIX slashes
     const fsMap = new Map<string, string>();
     const system = vfs.createFSBackedSystem(fsMap, dirname, ts);
+
+    // TODO: investigate if we should create a PR in @typescript/vfs
+    const oldReadFile = system.readFile.bind(system);
+    system.readFile = (fileName) =>
+      oldReadFile(fileName) ?? "// Non-existent file";
+
     const vfsPath = (inputPath: string) => {
       if (process.platform === "win32") return inputPath.replace(/\\/g, "/");
       return inputPath;
