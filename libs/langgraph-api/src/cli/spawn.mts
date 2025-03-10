@@ -44,7 +44,7 @@ For production use, please use LangGraph Cloud.
       "watch",
       "--clear-screen=false",
       "--import",
-      fileURLToPath(new URL(import.meta.resolve("../preload.mjs"))),
+      new URL(import.meta.resolve("../preload.mjs")).toString(),
       fileURLToPath(new URL(import.meta.resolve("./entrypoint.mjs"))),
       options.pid.toString(),
       JSON.stringify({
