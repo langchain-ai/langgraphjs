@@ -15,10 +15,10 @@ const firstGraphFile =
     .flatMap((i) => i.split(":").at(0))
     .at(0) || "index.mts";
 
-const parentURL = pathToFileURL(join(options.cwd, firstGraphFile)).toString();
-console.log("Parent URL", parentURL);
 // enforce API @langchain/langgraph resolution
 register("./graph/load.hooks.mjs", import.meta.url, {
   parentURL: "data:",
-  data: { parentURL },
+  data: {
+    parentURL: pathToFileURL(join(options.cwd, firstGraphFile)).toString(),
+  },
 });
