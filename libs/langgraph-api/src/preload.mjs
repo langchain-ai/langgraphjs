@@ -5,10 +5,7 @@ import { join } from "node:path";
 // arguments passed to the entrypoint: [ppid, payload]
 // we only care about the payload, which contains the server definition
 const lastArg = process.argv.at(-1);
-const options = JSON.parse(lastArg || "{}") as {
-  graphs: Record<string, string>;
-  cwd: string;
-};
+const options = JSON.parse(lastArg || "{}");
 
 // find the first file, as `parentURL` needs to be a valid file URL
 // if no graph found, just assume a dummy default file, which should
