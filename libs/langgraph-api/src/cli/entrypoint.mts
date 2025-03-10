@@ -1,5 +1,3 @@
-import "../preload.mjs";
-
 import { asyncExitHook } from "exit-hook";
 import * as process from "node:process";
 import { startServer, StartServerSchema } from "../server.mjs";
