@@ -296,17 +296,17 @@ With parallelization, LLMs work simultaneously on a task:
 
     // Build workflow
     const parallelWorkflow = new StateGraph(StateAnnotation)
-      .addNode("callLlm1", callLlm1);
-      .addNode("callLlm2", callLlm2);
-      .addNode("callLlm3", callLlm3);
-      .addNode("aggregator", aggregator);
-      .addEdge("__start__", "callLlm1");
-      .addEdge("__start__", "callLlm2");
-      .addEdge("__start__", "callLlm3");
-      .addEdge("callLlm1", "aggregator");
-      .addEdge("callLlm2", "aggregator");
-      .addEdge("callLlm3", "aggregator");
-      .addEdge("aggregator", "__end__");
+      .addNode("callLlm1", callLlm1)
+      .addNode("callLlm2", callLlm2)
+      .addNode("callLlm3", callLlm3)
+      .addNode("aggregator", aggregator)
+      .addEdge("__start__", "callLlm1")
+      .addEdge("__start__", "callLlm2")
+      .addEdge("__start__", "callLlm3")
+      .addEdge("callLlm1", "aggregator")
+      .addEdge("callLlm2", "aggregator")
+      .addEdge("callLlm3", "aggregator")
+      .addEdge("aggregator", "__end__")
       .compile();
 
     // Invoke
