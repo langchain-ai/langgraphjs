@@ -79,7 +79,10 @@ export async function resolveGraph(
   return { sourceFile, exportSymbol, resolved };
 }
 
-export async function runGraphSchemaWorker(spec: GraphSpec) {
+export async function runGraphSchemaWorker(
+  spec: GraphSpec,
+  options?: { mainThread?: boolean },
+) {
   let SCHEMA_RESOLVE_TIMEOUT_MS = 30_000;
   try {
     const envTimeout = Number.parseInt(
@@ -91,6 +94,15 @@ export async function runGraphSchemaWorker(spec: GraphSpec) {
     }
   } catch {
     // ignore
+  }
+
+  if (options?.mainThread) {
+    const { SubgraphExtractor } = await import("./parser/parser.mjs");
+    return SubgraphExtractor.extractSchemas(
+      spec.sourceFile,
+      spec.exportSymbol,
+      { strict: false },
+    );
   }
 
   return await new Promise<Record<string, GraphSchema>>((resolve, reject) => {

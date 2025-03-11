@@ -7,6 +7,13 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
+const OVERRIDE_RESOLVE = [
+  // Override `@langchain/langgraph` or `@langchain/langgraph/prebuilt`,
+  // but not `@langchain/langgraph-sdk`
+  new RegExp(`^@langchain\/langgraph(\/.+)?$`),
+  new RegExp(`^@langchain\/langgraph-checkpoint(\/.+)?$`),
+];
+
 const compilerOptions = {
   noEmit: true,
   strict: true,
@@ -362,7 +369,8 @@ export class SubgraphExtractor {
       return inputPath;
     };
 
-    const host = vfs.createVirtualCompilerHost(system, compilerOptions, ts);
+    const vfsHost = vfs.createVirtualCompilerHost(system, compilerOptions, ts);
+    const host = vfsHost.compilerHost;
 
     const targetPath =
       typeof target === "string"
@@ -381,42 +389,43 @@ export class SubgraphExtractor {
       }
     }
 
-    // TODO: this is in all instances broken, will need to address in a way
-    // that allows loading fs-backed modules from different vfs
-    // host.compilerHost.resolveModuleNames = (moduleNames, containingFile) => {
-    //   const resolvedModules: (ts.ResolvedModule | undefined)[] = [];
-    //   for (const moduleName of moduleNames) {
-    //     let target = containingFile;
-    //     const relative = path.relative(dirname, containingFile);
+    const moduleCache = ts.createModuleResolutionCache(dirname, (x) => x);
+    host.resolveModuleNameLiterals = (
+      entries,
+      containingFile,
+      redirectedReference,
+      options,
+    ) =>
+      entries.flatMap((entry) => {
+        const specifier = entry.text;
 
-    //     logger.debug(`${moduleName} ${containingFile}`);
-    //     if (
-    //       moduleName.startsWith("@langchain/langgraph") &&
-    //       relative &&
-    //       !relative.startsWith("..") &&
-    //       !path.isAbsolute(relative)
-    //     ) {
-    //       target = path.resolve(__dirname, "../", relative);
-    //       process.stderr.write(`${moduleName} ${relative} -> ${target}\n`);
-    //     }
+        // Force module resolution to use @langchain/langgraph from the local project
+        // rather than from API/CLI.
+        let targetFile = containingFile;
+        if (OVERRIDE_RESOLVE.some((regex) => regex.test(specifier))) {
+          // check if we're not already importing from node_modules
+          if (!containingFile.split(path.sep).includes("node_modules")) {
+            // Doesn't matter if the file exists, only used to nudge `ts.resolveModuleName`
+            targetFile = path.resolve(dirname, "__langgraph__resolve.mts");
+          }
+        }
 
-    //     resolvedModules.push(
-    //       ts.resolveModuleName(
-    //         moduleName,
-    //         target,
-    //         compilerOptions,
-    //         host.compilerHost
-    //       ).resolvedModule
-    //     );
-    //   }
-
-    //   return resolvedModules;
-    // };
+        return [
+          ts.resolveModuleName(
+            specifier,
+            targetFile,
+            options,
+            host,
+            moduleCache,
+            redirectedReference,
+          ),
+        ];
+      });
 
     const research = ts.createProgram({
       rootNames: [inferTemplatePath, targetPath],
       options: compilerOptions,
-      host: host.compilerHost,
+      host,
     });
 
     const extractor = new SubgraphExtractor(
@@ -434,7 +443,7 @@ export class SubgraphExtractor {
     const extract = ts.createProgram({
       rootNames: [path.resolve(dirname, "./__langraph__infer.mts")],
       options: compilerOptions,
-      host: host.compilerHost,
+      host,
     });
 
     const schemaGenerator = buildGenerator(extract);
