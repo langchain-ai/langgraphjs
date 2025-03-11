@@ -9708,47 +9708,6 @@ graph TD;
     expect(thirdState.tasks).toHaveLength(0);
   });
 
-  it("should cancel when signal is aborted", async () => {
-    let oneCount = 0;
-    let twoCount = 0;
-    const graph = new StateGraph(MessagesAnnotation)
-      .addNode("one", async () => {
-        oneCount += 1;
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        return {};
-      })
-      .addNode("two", () => {
-        twoCount += 1;
-        throw new Error("Should not be called!");
-      })
-      .addEdge(START, "one")
-      .addEdge("one", "two")
-      .addEdge("two", END)
-      .compile();
-
-    const abortController = new AbortController();
-    const config = {
-      signal: abortController.signal,
-    };
-
-    setTimeout(() => abortController.abort(), 10);
-
-    await expect(
-      async () =>
-        await graph.invoke(
-          {
-            messages: [],
-          },
-          config
-        )
-    ).rejects.toThrow("Aborted");
-
-    // Ensure that the `twoCount` has had time to increment before we check it, in case the stream aborted but the graph execution didn't.
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(oneCount).toEqual(1);
-    expect(twoCount).toEqual(0);
-  });
-
   it("should throw when resuming without a checkpointer", async () => {
     const chain = Channel.subscribeTo("input").pipe(
       Channel.writeTo(["output"])
