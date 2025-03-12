@@ -91,13 +91,6 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
   await registerFromEnv(options.graphs, { cwd: options.cwd });
 
   if (options.ui) {
-    if (process.versions.node.startsWith("18")) {
-      // Not supported due to weird interop issues with `@tailwindcss/postcss` and `tsx`
-      throw new Error(
-        "Built-in UI is not supported in Node.js 18.x. Please upgrade to Node.js 20.16 or later.",
-      );
-    }
-
     logger.info(`Loading UI`);
     const { api, registerGraphUi } = await import("./ui/load.mjs");
     app.route("/", api);
