@@ -210,6 +210,7 @@ export async function* streamState(
     langgraph_version: "0.2.35",
     langgraph_plan: "developer",
     langgraph_host: "self-hosted",
+    langgraph_api_url: process.env.LANGGRAPH_API_URL ?? undefined,
   };
 
   const events = graph.streamEvents(

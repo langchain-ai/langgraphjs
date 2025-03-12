@@ -61,6 +61,7 @@ For production use, please use LangGraph Cloud.
       env: {
         ...context.env,
         NODE_ENV: "development",
+        LANGGRAPH_API_URL: localUrl,
       },
     },
   );
