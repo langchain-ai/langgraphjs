@@ -45,14 +45,14 @@ api.post(
       (i) => path.extname(i.basename) === ".css",
     )) {
       result.push(
-        `<link rel="stylesheet" href="//${host}/ui/${agent}/${css.basename}" />`,
+        `<link rel="stylesheet" href="http://${host}/ui/${agent}/${css.basename}" />`,
       );
     }
 
     const js = files.find((i) => path.extname(i.basename) === ".js");
     if (js) {
       result.push(
-        `<script src="//${host}/ui/${agent}/${js.basename}" onload='__LGUI_${agent}.render(${messageName}, "{{shadowRootId}}")'></script>`,
+        `<script src="http://${host}/ui/${agent}/${js.basename}" onload='__LGUI_${agent}.render(${messageName}, "{{shadowRootId}}")'></script>`,
       );
     }
 
