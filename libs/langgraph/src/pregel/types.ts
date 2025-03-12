@@ -417,6 +417,8 @@ export type PregelScratchpad<Resume = unknown> = {
   resume: Resume[];
   /** Single resume value for null task ID */
   nullResume: Resume;
+
+  consumeNullResume: () => Resume | undefined;
   /** Counter for tracking subgraph invocations */
   subgraphCounter: number;
 
