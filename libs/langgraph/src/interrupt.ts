@@ -80,8 +80,7 @@ export function interrupt<I = unknown, R = any>(value: I): R {
         `Resume length mismatch: ${scratchpad.resume.length} !== ${idx}`
       );
     }
-    const v = scratchpad.nullResume;
-    delete scratchpad.nullResume;
+    const v = scratchpad.consumeNullResume();
     scratchpad.resume.push(v);
     const send = conf[CONFIG_KEY_SEND];
     if (send) {
