@@ -275,8 +275,10 @@ export class PregelLoop {
       ? !("checkpoint_id" in config.configurable)
       : true;
 
-    const scratchpad = config.configurable?.[CONFIG_KEY_SCRATCHPAD] as PregelScratchpad | undefined;
-    
+    const scratchpad = config.configurable?.[CONFIG_KEY_SCRATCHPAD] as
+      | PregelScratchpad
+      | undefined;
+
     if (config.configurable && scratchpad) {
       if (scratchpad.subgraphCounter > 0) {
         config = patchConfigurable(config, {
@@ -729,7 +731,7 @@ export class PregelLoop {
       this.nodes,
       this.channels,
       this.managed,
-      this.config,
+      task.config ?? {},
       true,
       {
         step: this.step,

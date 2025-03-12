@@ -155,18 +155,26 @@ export class PregelRunner {
       }>
     > = {};
 
-    const writer = (
+    function writer(
+      runner: PregelRunner,
       task: PregelExecutableTask<string, string>,
       writes: Array<[string, unknown]>,
       { calls }: { calls?: Call[] } = {}
-    ): Array<Promise<unknown> | undefined> => {
+    ): Array<Promise<unknown> | undefined> {
       if (writes.every(([channel]) => channel !== PUSH)) {
         return task.config?.configurable?.[CONFIG_KEY_SEND]?.(writes) ?? [];
       }
 
       // Schedule PUSH tasks, collect promises
-      const scratchpad: PregelScratchpad<unknown> =
-        task.config?.configurable?.[CONFIG_KEY_SCRATCHPAD];
+      const scratchpad = task.config?.configurable?.[CONFIG_KEY_SCRATCHPAD] as
+        | PregelScratchpad<unknown>
+        | undefined;
+
+      if (!scratchpad) {
+        throw new Error(
+          `BUG: No scratchpad found on task ${task.name}__${task.id}`
+        );
+      }
 
       const rtn: Record<number, Promise<unknown> | undefined> = {};
 
@@ -184,7 +192,7 @@ export class PregelRunner {
           throw new Error("BUG: No call found");
         }
 
-        const nextTask = this.loop.acceptPush(task, cnt, wcall);
+        const nextTask = runner.loop.acceptPush(task, cnt, wcall);
 
         if (!nextTask) {
           continue;
@@ -232,9 +240,9 @@ export class PregelRunner {
         } else {
           // Schedule the next task with retry
           const prom = _runWithRetry<string, string>(nextTask, retryPolicy, {
-            [CONFIG_KEY_SEND]: writer.bind(this, nextTask),
+            [CONFIG_KEY_SEND]: writer.bind(null, runner, nextTask),
             // eslint-disable-next-line @typescript-eslint/no-use-before-define
-            [CONFIG_KEY_CALL]: call.bind(this, nextTask),
+            [CONFIG_KEY_CALL]: call.bind(null, runner, nextTask),
           });
 
           executingTasksMap[nextTask.id] = prom;
@@ -251,16 +259,17 @@ export class PregelRunner {
       }
 
       return Object.values(rtn);
-    };
+    }
 
-    const call = (
+    function call(
+      runner: PregelRunner,
       task: PregelExecutableTask<string, string>,
       func: (...args: unknown[]) => unknown | Promise<unknown>,
       name: string,
       input: unknown,
       options: { retry?: RetryPolicy; callbacks?: unknown } = {}
-    ) => {
-      const result = writer(task, [[PUSH, null]], {
+    ) {
+      const result = writer(runner, task, [[PUSH, null]], {
         calls: [
           new Call({
             func,
@@ -281,7 +290,7 @@ export class PregelRunner {
       }
 
       return Promise.resolve();
-    };
+    }
 
     if (stepTimeout && signal) {
       if ("any" in AbortSignal) {
@@ -309,8 +318,8 @@ export class PregelRunner {
           return [
             pregelTask.id,
             _runWithRetry(pregelTask, retryPolicy, {
-              [CONFIG_KEY_SEND]: writer?.bind(this, pregelTask),
-              [CONFIG_KEY_CALL]: call?.bind(this, pregelTask),
+              [CONFIG_KEY_SEND]: writer?.bind(null, this, pregelTask),
+              [CONFIG_KEY_CALL]: call?.bind(null, this, pregelTask),
             }).catch((error) => {
               return { task: pregelTask, error };
             }),
