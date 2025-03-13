@@ -1648,7 +1648,7 @@ __metadata:
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
     "@tsconfig/recommended": ^1.0.3
-    "@types/better-sqlite3": ^7.6.9
+    "@types/better-sqlite3": ^7.6.12
     "@types/uuid": ^10
     "@typescript-eslint/eslint-plugin": ^6.12.0
     "@typescript-eslint/parser": ^6.12.0
@@ -1724,11 +1724,11 @@ __metadata:
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
     "@tsconfig/recommended": ^1.0.3
-    "@types/better-sqlite3": ^7.6.9
+    "@types/better-sqlite3": ^7.6.12
     "@types/uuid": ^10
     "@typescript-eslint/eslint-plugin": ^6.12.0
     "@typescript-eslint/parser": ^6.12.0
-    better-sqlite3: ^9.5.0
+    better-sqlite3: ^11.7.0
     dotenv: ^16.3.1
     dpdm: ^3.12.0
     eslint: ^8.33.0
@@ -1772,7 +1772,7 @@ __metadata:
     "@types/uuid": ^10
     "@typescript-eslint/eslint-plugin": ^6.12.0
     "@typescript-eslint/parser": ^6.12.0
-    better-sqlite3: ^9.5.0
+    better-sqlite3: ^11.7.0
     dotenv: ^16.3.1
     dpdm: ^3.12.0
     eslint: ^8.33.0
@@ -3120,12 +3120,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/better-sqlite3@npm:^7.6.9":
-  version: 7.6.9
-  resolution: "@types/better-sqlite3@npm:7.6.9"
+"@types/better-sqlite3@npm:^7.6.12":
+  version: 7.6.12
+  resolution: "@types/better-sqlite3@npm:7.6.12"
   dependencies:
     "@types/node": "*"
-  checksum: 6572076639dde1e65ad8fe0e319e797fa40793ca805ec39aa1d072d3f145f218775eafd27d7266fb4e42a6291d8b8b836278e7880b15ef728c750dfcbba2ee52
+  checksum: 1b6d8499cdc489cfd920ca96ae86c8f2f06fb5b41ca50830ba335aced8d3f040575c89d7d08ace33610eddf5fc310e5efd52ad9bef7aeb8b531ae483e0351725
   languageName: node
   linkType: hard
 
@@ -4423,14 +4423,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"better-sqlite3@npm:^9.5.0":
-  version: 9.6.0
-  resolution: "better-sqlite3@npm:9.6.0"
+"better-sqlite3@npm:^11.7.0":
+  version: 11.8.1
+  resolution: "better-sqlite3@npm:11.8.1"
   dependencies:
     bindings: ^1.5.0
     node-gyp: latest
     prebuild-install: ^7.1.1
-  checksum: be3a1d2a3f6f9b5141be6607a38c0a51fa5849495b071955e507bc0c2a2fb08430852c1bf03796eec1a53344b25645807db48dcb51c71b0662b74c5a70420bb0
+  checksum: e71522678a4b54fedbcefa70184856721cb4027675e5820ea135ad9c7f7e7b4110e938a42bb000c83deadb2ca0f574354a8dba0a998b0e89df4b9de1bdd4dc03
   languageName: node
   linkType: hard
 
