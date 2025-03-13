@@ -9,8 +9,9 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { StateGraph } from "../../graph/state.js";
-import { Annotation, END, Graph, START } from "../../index.js";
+import { Annotation, Command, END, Graph, Send, START } from "../../index.js";
 import { gatherIterator } from "../../utils.js";
+import { interrupt } from "../../interrupt.js";
 
 class LongPutCheckpointer extends MemorySaver {
   constructor(private logs: string[], private delayMsec: number = 100) {
@@ -36,7 +37,7 @@ class LongPutCheckpointer extends MemorySaver {
   }
 }
 
-describe("checkpoint errors (Python port)", () => {
+describe("Checkpoint Tests (Python port)", () => {
   /**
    * Port of test_checkpoint_errors from test_pregel_async_checkpoint.py
    */
@@ -664,5 +665,212 @@ describe("checkpoint errors (Python port)", () => {
 
     // Verify the task was cancelled
     expect(innerTaskCancelled).toBe(true);
+  });
+
+  /**
+   * Port of test_copy_checkpoint from test_pregel_async_checkpoint.py
+   */
+  it("should test copy checkpoint functionality", async () => {
+    // We'll use MemorySaver directly since we don't have parametrize in Jest
+    const checkpointer = new MemorySaver();
+
+    // Define the state structure using Annotation
+
+    // Define the state annotation
+    const StateAnnotation = Annotation.Root({
+      my_key: Annotation<string>({
+        reducer: (a, b) => a + b,
+        default: () => "",
+      }),
+      market: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+    });
+
+    // Track tool_two_node invocation count
+    let tool_two_node_count = 0;
+
+    // Define tool_one node function
+    const tool_one = (): typeof StateAnnotation.Update => {
+      return { my_key: " one" };
+    };
+
+    // Define tool_two_node function with interrupt
+    const tool_two_node = (
+      state: typeof StateAnnotation.State
+    ): typeof StateAnnotation.Update => {
+      tool_two_node_count += 1;
+      let answer;
+      if (state.market === "DE") {
+        answer = interrupt("Just because...");
+      } else {
+        answer = " all good";
+      }
+      return { my_key: answer };
+    };
+
+    // Define conditional entry point function
+    const start = (state: typeof StateAnnotation.State): (Send | string)[] => {
+      return ["tool_two", new Send("tool_one", state)];
+    };
+
+    // Create the graph
+    const tool_two_graph = new StateGraph({
+      stateSchema: StateAnnotation,
+    })
+      .addNode("tool_two", tool_two_node, {
+        retryPolicy: { maxAttempts: 2 },
+      })
+      .addNode("tool_one", tool_one);
+
+    tool_two_graph.addConditionalEdges(START, start);
+
+    // Compile the graph without a checkpointer first
+    const tool_two = tool_two_graph.compile();
+
+    // Test basic invoke functionality
+    const result1 = await tool_two.invoke({
+      my_key: "value",
+      market: "DE",
+    });
+
+    expect(result1).toEqual({
+      my_key: "value one",
+      market: "DE",
+    });
+
+    expect(tool_two_node_count).toBe(1);
+
+    // Test with a different market value
+    const result2 = await tool_two.invoke({
+      my_key: "value",
+      market: "US",
+    });
+
+    expect(result2).toEqual({
+      my_key: "value all good one",
+      market: "US",
+    });
+
+    // Now compile the graph with a checkpointer
+    const tool_two_with_checkpoint = tool_two_graph.compile({
+      checkpointer,
+    });
+
+    // Test missing thread_id error
+    await expect(
+      tool_two_with_checkpoint.invoke({
+        my_key: "value",
+        market: "DE",
+      })
+    ).rejects.toThrow("thread_id");
+
+    // Test interrupt flow with resuming
+    const thread2 = { configurable: { thread_id: "2" } };
+
+    // Stream execution will be interrupted
+    const stream1 = await tool_two_with_checkpoint.stream(
+      {
+        my_key: "value ⛰️",
+        market: "DE",
+      },
+      thread2
+    );
+
+    const results1 = await gatherIterator(stream1);
+
+    // Assert that we got the expected outputs including an interrupt
+    expect(results1).toEqual([
+      {
+        tool_one: { my_key: " one" },
+      },
+      {
+        __interrupt__: [
+          expect.objectContaining({
+            value: "Just because...",
+            resumable: true,
+            ns: expect.any(Array),
+            when: "during",
+          }),
+        ],
+      },
+    ]);
+
+    // Resume with an answer
+    const stream2 = await tool_two_with_checkpoint.stream(
+      new Command({ resume: " my answer" }),
+      thread2
+    );
+
+    const results2 = await gatherIterator(stream2);
+
+    // Assert that we get the cached output from tool_one and the new output from tool_two
+    expect(results2).toEqual([
+      {
+        tool_one: { my_key: " one" },
+        __metadata__: { cached: true },
+      },
+      {
+        tool_two: { my_key: " my answer" },
+      },
+    ]);
+
+    // Test interrupt flow with state updating
+    const thread1 = { configurable: { thread_id: "1" } };
+
+    // Invoke with DE market (will cause interrupt)
+    const result3 = await tool_two_with_checkpoint.invoke(
+      {
+        my_key: "value ⛰️",
+        market: "DE",
+      },
+      thread1
+    );
+
+    expect(result3).toEqual({
+      my_key: "value ⛰️ one",
+      market: "DE",
+    });
+
+    // Check the state
+    const state = await tool_two_with_checkpoint.getState(thread1);
+
+    // Just check partial state since the structure might vary
+    expect(state.values).toEqual({
+      my_key: "value ⛰️",
+      market: "DE",
+    });
+
+    // Check for an interrupted task
+    expect(
+      state.tasks.some(
+        (task) =>
+          task.name === "tool_two" &&
+          task.interrupts &&
+          task.interrupts.length > 0 &&
+          task.interrupts[0].value === "Just because..." &&
+          task.interrupts[0].resumable === true
+      )
+    ).toBe(true);
+
+    // Update state to clear the interrupt
+    await tool_two_with_checkpoint.updateState(thread1, null, "__copy__");
+
+    // Check updated state
+    const updatedState = await tool_two_with_checkpoint.getState(thread1);
+
+    // Check values were preserved
+    expect(updatedState.values).toEqual({
+      my_key: "value ⛰️",
+      market: "DE",
+    });
+
+    // Check that the tool_two task no longer has interrupts
+    const toolTwoTask = updatedState.tasks.find(
+      (task) => task.name === "tool_two"
+    );
+    expect(toolTwoTask).toBeDefined();
+    expect(toolTwoTask?.interrupts).toEqual([]);
   });
 });
