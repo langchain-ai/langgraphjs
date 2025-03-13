@@ -204,6 +204,13 @@ Streaming the results of your LLM application is vital for ensuring a good user 
 - [How to stream in debug mode](/langgraphjs/cloud/how-tos/stream_debug)
 - [How to stream multiple modes](/langgraphjs/cloud/how-tos/stream_multiple)
 
+### Frontend and Generative UI
+
+With LangGraph Platform you can integrate LangGraph agents into your React applications and colocate UI components with your agent code.
+
+- [How to integrate LangGraph into your React application](/langgraphjs/cloud/how-tos/use_stream_react.md)
+- [How to implement Generative User Interfaces with LangGraph](/langgraphjs/cloud/how-tos/generative_ui_react.md)
+
 ### Human-in-the-loop
 
 When creating complex graphs, leaving every decision up to the LLM can be dangerous, especially when the decisions involve invoking certain tools or accessing specific documents. To remedy this, LangGraph allows you to insert human-in-the-loop behavior to ensure your graph does not have undesired outcomes. Read more about the different ways you can add human-in-the-loop capabilities to your LangGraph Cloud projects in these how-to guides:
