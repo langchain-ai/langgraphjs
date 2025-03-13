@@ -983,4 +983,167 @@ describe("Checkpoint Tests (Python port)", () => {
     expect(checkpoint5).not.toBeUndefined();
     expect(checkpoint5?.channel_values.total).toBe(5);
   });
+
+  /**
+   * Port of test_pending_writes_resume from test_pregel_async_checkpoint.py
+   */
+  it("should test pending writes resume functionality", async () => {
+    // Create a memory saver checkpoint instance
+    const checkpointer = new MemorySaver();
+
+    // Define the state annotation
+    const StateAnnotation = Annotation.Root({
+      value: Annotation<number>({
+        reducer: (a, b) => a + b,
+        default: () => 0,
+      }),
+    });
+
+    // Create the AwhileMaker class that simulates delayed node execution
+    class AwhileMaker {
+      private sleep: number;
+
+      rtn: Record<string, unknown> | Error;
+
+      public calls: number;
+
+      constructor(sleep: number, rtn: Record<string, unknown> | Error) {
+        this.sleep = sleep;
+        this.rtn = rtn;
+        this.reset();
+      }
+
+      async call(
+        _input: typeof StateAnnotation.State
+      ): Promise<typeof StateAnnotation.Update> {
+        this.calls += 1;
+        await new Promise<void>((resolve) => {
+          setTimeout(() => {
+            resolve();
+          }, this.sleep);
+        });
+
+        // eslint-disable-next-line no-instanceof/no-instanceof
+        if (this.rtn instanceof Error) {
+          throw this.rtn;
+        } else {
+          return this.rtn as typeof StateAnnotation.Update;
+        }
+      }
+
+      reset(): void {
+        this.calls = 0;
+      }
+    }
+
+    // Create two nodes - one succeeds, one fails
+    const one = new AwhileMaker(10, { value: 2 });
+    const two = new AwhileMaker(300, new Error("I'm not good"));
+
+    // Create the graph
+    const builder = new StateGraph({
+      stateSchema: StateAnnotation,
+    })
+      .addNode("one", one.call.bind(one))
+      .addNode("two", two.call.bind(two), {
+        retryPolicy: {
+          maxAttempts: 2,
+          initialInterval: 10,
+          maxInterval: 20,
+          backoffFactor: 2,
+          logWarning: false,
+        },
+      })
+      .addEdge(START, "one")
+      .addEdge(START, "two");
+
+    const graph = builder.compile({
+      checkpointer,
+    });
+
+    const thread1 = { configurable: { thread_id: "1" } };
+
+    // Invoke the graph - should fail with the error from node two
+    await expect(graph.invoke({ value: 1 }, thread1)).rejects.toThrow(
+      "I'm not good"
+    );
+
+    // Both nodes should have been called
+    expect(one.calls).toBe(1);
+    expect(two.calls).toBe(2); // Two attempts due to retry policy
+
+    const state = await graph.getState(thread1);
+    expect(state).toBeDefined();
+
+    // Latest checkpoint should be before nodes "one", "two"
+    // but we should have applied the write from "one"
+    expect(state.next).toEqual(["two"]);
+    expect(state.values).toEqual({ value: 3 }); // 1 + 2 = 3
+
+    // Check that tasks were correctly recorded
+    expect(state.tasks.length).toBe(2);
+    const oneTask = state.tasks.find((task) => task.name === "one");
+    const twoTask = state.tasks.find((task) => task.name === "two");
+
+    expect(oneTask).toBeDefined();
+    // Don't need to verify specific properties that might vary
+    expect(oneTask?.name).toBe("one");
+
+    expect(twoTask).toBeDefined();
+    expect(twoTask?.name).toBe("two");
+    // The error exists and contains our message
+    expect(twoTask?.error).toBeDefined();
+    expect(JSON.stringify(twoTask?.error)).toContain("I'm not good");
+
+    // Metadata should match expected values
+    expect(state.metadata).toEqual({
+      parents: {},
+      source: "loop",
+      step: 0,
+      writes: null,
+      thread_id: "1",
+    });
+
+    // Get state with checkpoint_id should not apply any pending writes
+    const rawState = await graph.getState(state.config);
+    expect(rawState).toBeDefined();
+    expect(rawState.values).toEqual({ value: 1 });
+    expect(rawState.next).toEqual(expect.arrayContaining(["one", "two"]));
+
+    // Resume execution - should still fail with same error
+    await expect(graph.invoke(null, thread1)).rejects.toThrow("I'm not good");
+
+    // Node "one" succeeded previously, so shouldn't be called again
+    expect(one.calls).toBe(1);
+    // Node "two" should have been called again
+    expect(two.calls).toBe(4); // two attempts before + two attempts now
+
+    // Confirm no new checkpoints saved by checking state_two metadata
+    const stateTwo = await graph.getState(thread1);
+    expect(stateTwo.metadata).toEqual(state.metadata);
+
+    two.rtn = { value: 3 };
+
+    // Both the pending write and the new write were applied, 1 + 2 + 3 = 6
+    const finalResult = await graph.invoke(null, thread1);
+    expect(finalResult).toEqual({ value: 6 });
+
+    // Check checkpoints using list
+    const checkpoints = [];
+    for await (const checkpoint of checkpointer.list({ ...thread1 })) {
+      checkpoints.push(checkpoint);
+    }
+
+    // We should have 3 checkpoints
+    expect(checkpoints.length).toBe(3);
+
+    // First checkpoint (most recent) should have no pending writes
+    expect(checkpoints[0]?.pendingWrites).toEqual([]);
+
+    // Check that the metadata in the first checkpoint has writes
+    expect(checkpoints[0]?.metadata?.writes).toBeDefined();
+
+    expect(checkpoints[1]?.pendingWrites).toBeDefined();
+    expect(checkpoints[2]?.pendingWrites).toBeDefined();
+  });
 });
