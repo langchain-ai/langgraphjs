@@ -198,6 +198,10 @@ nav:
                     - cloud/how-tos/stream_events.md
                     - cloud/how-tos/stream_debug.md
                     - cloud/how-tos/stream_multiple.md
+                - Frontend & Generative UI:
+                    - Frontend & Generative UI: how-tos#frontend-generative-ui
+                    - cloud/how-tos/use_stream_react.md
+                    - cloud/how-tos/generative_ui_react.md
                 - Human-in-the-loop:
                     - Human-in-the-loop: how-tos#human-in-the-loop_1
                     - cloud/how-tos/human_in_the_loop_breakpoint.md

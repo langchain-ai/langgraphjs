@@ -204,12 +204,12 @@ Streaming the results of your LLM application is vital for ensuring a good user 
 - [How to stream in debug mode](/langgraphjs/cloud/how-tos/stream_debug)
 - [How to stream multiple modes](/langgraphjs/cloud/how-tos/stream_multiple)
 
-### Frontend and Generative UI
+### Frontend & Generative UI
 
 With LangGraph Platform you can integrate LangGraph agents into your React applications and colocate UI components with your agent code.
 
-- [How to integrate LangGraph into your React application](/langgraphjs/cloud/how-tos/use_stream_react.md)
-- [How to implement Generative User Interfaces with LangGraph](/langgraphjs/cloud/how-tos/generative_ui_react.md)
+- [How to integrate LangGraph into your React application](/langgraphjs/cloud/how-tos/use_stream_react)
+- [How to implement Generative User Interfaces with LangGraph](/langgraphjs/cloud/how-tos/generative_ui_react)
 
 ### Human-in-the-loop
 
