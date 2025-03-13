@@ -72,6 +72,9 @@ export type RetryPolicy = {
   /** A function that returns True for exceptions that should trigger a retry. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   retryOn?: (e: any) => boolean;
+
+  /** Whether to log a warning when a retry is attempted. Defaults to true. */
+  logWarning?: boolean;
 };
 
 export function patchConfigurable(

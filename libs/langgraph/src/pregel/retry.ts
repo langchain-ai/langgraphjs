@@ -148,11 +148,13 @@ export async function _runWithRetry<
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ((error as Error).constructor as any).unminifiable_name ??
         (error as Error).constructor.name;
-      console.log(
-        `Retrying task "${String(pregelTask.name)}" after ${interval.toFixed(
-          2
-        )}ms (attempt ${attempts}) after ${errorName}: ${error}`
-      );
+      if (resolvedRetryPolicy?.logWarning ?? true) {
+        console.log(
+          `Retrying task "${String(pregelTask.name)}" after ${interval.toFixed(
+            2
+          )}ms (attempt ${attempts}) after ${errorName}: ${error}`
+        );
+      }
 
       // signal subgraphs to resume (if available)
       config = patchConfigurable(config, { [CONFIG_KEY_RESUMING]: true });
