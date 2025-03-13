@@ -12,6 +12,9 @@ import { StateGraph } from "../../graph/state.js";
 import { Annotation, Command, END, Graph, Send, START } from "../../index.js";
 import { gatherIterator } from "../../utils.js";
 import { interrupt } from "../../interrupt.js";
+import { LastValue } from "../../channels/last_value.js";
+import { BinaryOperatorAggregate } from "../../channels/binop.js";
+import { Channel, Pregel } from "../../pregel/index.js";
 
 class LongPutCheckpointer extends MemorySaver {
   constructor(private logs: string[], private delayMsec: number = 100) {
@@ -536,27 +539,6 @@ describe("Checkpoint Tests (Python port)", () => {
    */
   it("should not cancel checkpoint put operation when streamEvents is cancelled", async () => {
     const logs: string[] = [];
-
-    class LongPutCheckpointer extends MemorySaver {
-      async put(
-        config: RunnableConfig,
-        checkpoint: Checkpoint,
-        metadata: CheckpointMetadata
-      ): Promise<RunnableConfig> {
-        logs.push("checkpoint.aput.start");
-        try {
-          await new Promise<void>((resolve) => {
-            setTimeout(() => {
-              resolve();
-            }, 1000);
-          });
-          return await super.put(config, checkpoint, metadata);
-        } finally {
-          logs.push("checkpoint.aput.end");
-        }
-      }
-    }
-
     let innerTaskCancelled = false;
 
     // Node function that sleeps for 1 second
@@ -614,7 +596,7 @@ describe("Checkpoint Tests (Python port)", () => {
       .addEdge("agent", END);
 
     const graph = builder.compile({
-      checkpointer: new LongPutCheckpointer(),
+      checkpointer: new LongPutCheckpointer(logs),
     });
 
     const thread1 = { configurable: { thread_id: "1" } };
@@ -720,7 +702,13 @@ describe("Checkpoint Tests (Python port)", () => {
       stateSchema: StateAnnotation,
     })
       .addNode("tool_two", tool_two_node, {
-        retryPolicy: { maxAttempts: 2 },
+        retryPolicy: {
+          maxAttempts: 2,
+          initialInterval: 10,
+          maxInterval: 20,
+          backoffFactor: 2,
+          logWarning: false,
+        },
       })
       .addNode("tool_one", tool_one);
 
@@ -872,5 +860,127 @@ describe("Checkpoint Tests (Python port)", () => {
     );
     expect(toolTwoTask).toBeDefined();
     expect(toolTwoTask?.interrupts).toEqual([]);
+  });
+
+  /**
+   * Port of test_invoke_checkpoint from test_pregel_async_checkpoint.py
+   */
+  it("should test invoke checkpoint functionality", async () => {
+    // Define the add_one function
+    const addOne = (input: { total: number; input: number }): number => {
+      return input.total + input.input;
+    };
+
+    // Track whether raiseIfAbove10 has errored once
+    let erroredOnce = false;
+
+    // Create a function that will raise an error if input is above certain thresholds
+    const raiseIfAbove10 = (input: number): number => {
+      if (input > 4) {
+        if (erroredOnce) {
+          // Do nothing on second attempt
+        } else {
+          erroredOnce = true;
+          throw new Error("ConnectionError: I will be retried");
+        }
+      }
+      if (input > 10) {
+        throw new Error("ValueError: Input is too large");
+      }
+      return input;
+    };
+
+    // Create a checkpoint saver
+    const checkpointer = new MemorySaver();
+
+    // Create a graph with subscription and channel writes
+    const one = Channel.subscribeTo(["input"])
+      .join(["total"])
+      .pipe(addOne)
+      .pipe(
+        Channel.writeTo([], {
+          output: (x: number) => x,
+          total: (x: number) => x,
+        })
+      )
+      .pipe(raiseIfAbove10);
+
+    // Create the Pregel graph
+    const app = new Pregel({
+      nodes: {
+        one,
+      },
+      channels: {
+        total: new BinaryOperatorAggregate<number>(
+          (a, b) => a + b,
+          () => 0
+        ),
+        input: new LastValue<number>(),
+        output: new LastValue<number>(),
+      },
+      inputChannels: "input",
+      outputChannels: "output",
+      checkpointer,
+      retryPolicy: {
+        maxAttempts: 3,
+        initialInterval: 10,
+        maxInterval: 40,
+        backoffFactor: 2,
+        logWarning: false,
+      },
+    });
+
+    // Test the first invocation - total starts at 0, so output is 0+2=2
+    const result1 = await app.invoke(2, { configurable: { thread_id: "1" } });
+    expect(result1).toBe(2);
+
+    // Check checkpoint state
+    const checkpoint1 = await checkpointer.get({
+      configurable: { thread_id: "1" },
+    });
+    expect(checkpoint1).not.toBeUndefined();
+    expect(checkpoint1?.channel_values.total).toBe(2);
+
+    // Test second invocation - total is now 2, so output is 2+3=5
+    const result2 = await app.invoke(3, { configurable: { thread_id: "1" } });
+    expect(result2).toBe(5);
+    expect(erroredOnce).toBe(true); // Should have errored and retried
+
+    // Check updated checkpoint
+    const checkpoint2 = await checkpointer.get({
+      configurable: { thread_id: "1" },
+    });
+    expect(checkpoint2).not.toBeUndefined();
+    expect(checkpoint2?.channel_values.total).toBe(7);
+
+    // Test third invocation - total is now 7, output would be 7+4=11, but raises ValueError
+    await expect(
+      app.invoke(4, { configurable: { thread_id: "1" } })
+    ).rejects.toThrow("ValueError");
+
+    // Checkpoint should not be updated after error
+    const checkpoint3 = await checkpointer.get({
+      configurable: { thread_id: "1" },
+    });
+    expect(checkpoint3).not.toBeUndefined();
+    expect(checkpoint3?.channel_values.total).toBe(7);
+
+    // Test invocation with new thread - total starts at 0, so output is 0+5=5
+    const result4 = await app.invoke(5, { configurable: { thread_id: "2" } });
+    expect(result4).toBe(5);
+
+    // Original thread should still have its state
+    const checkpoint4 = await checkpointer.get({
+      configurable: { thread_id: "1" },
+    });
+    expect(checkpoint4).not.toBeUndefined();
+    expect(checkpoint4?.channel_values.total).toBe(7);
+
+    // New thread should have its own state
+    const checkpoint5 = await checkpointer.get({
+      configurable: { thread_id: "2" },
+    });
+    expect(checkpoint5).not.toBeUndefined();
+    expect(checkpoint5?.channel_values.total).toBe(5);
   });
 });
