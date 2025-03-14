@@ -2,7 +2,6 @@ import { describe, it, expect } from "@jest/globals";
 import { RunnableConfig } from "@langchain/core/runnables";
 import {
   AIMessage,
-  BaseMessage,
   HumanMessage,
   isAIMessage,
   SystemMessage,
@@ -30,8 +29,14 @@ import { initializeAsyncLocalStorageSingleton } from "../../setup/async_local_st
 import { FakeToolCallingChatModel } from "../utils.js";
 
 class LongPutCheckpointer extends MemorySaver {
-  constructor(private logs: string[], private delayMsec: number = 100) {
+  logs: string[];
+
+  delayMsec: number;
+
+  constructor(logs: string[], delayMsec: number = 100) {
     super();
+    this.logs = logs;
+    this.delayMsec = delayMsec;
   }
 
   async put(
@@ -1411,7 +1416,6 @@ describe("Checkpoint Tests (Python port)", () => {
       inputChannels: "input",
       outputChannels: "output",
       checkpointer,
-      debug: true,
     });
 
     // Create thread config for first thread
@@ -1593,10 +1597,6 @@ describe("Checkpoint Tests (Python port)", () => {
       }),
       new AIMessage({ content: "answer" }),
       new AIMessage({ content: "answer" }),
-      new AIMessage({ content: "answer" }),
-      new AIMessage({ content: "answer" }),
-      new AIMessage({ content: "answer" }),
-      new AIMessage({ content: "answer" }),
     ];
 
     const fakeChatModel = new FakeToolCallingChatModel({
@@ -1622,7 +1622,7 @@ describe("Checkpoint Tests (Python port)", () => {
 
     // Create prompt
     const prompt = {
-      invoke: (state: { messages: BaseMessage[] }) => {
+      invoke: (state: typeof MessagesAnnotation.State) => {
         return [
           new SystemMessage("You are a nice assistant."),
           ...state.messages,
@@ -1631,14 +1631,14 @@ describe("Checkpoint Tests (Python port)", () => {
     };
 
     // Agent node function
-    const agent = async (state: { messages: BaseMessage[] }) => {
+    const agent = async (state: typeof MessagesAnnotation.State) => {
       const formatted = prompt.invoke(state);
       const response = await fakeChatModel.invoke(formatted);
       return { messages: [new AIMessage(response)] };
     };
 
     // Should continue function
-    const shouldContinue = (data: { messages: BaseMessage[] }) => {
+    const shouldContinue = (data: typeof MessagesAnnotation.State) => {
       const lastMessage = data.messages[data.messages.length - 1];
       if (
         isAIMessage(lastMessage) &&
@@ -1778,5 +1778,88 @@ describe("Checkpoint Tests (Python port)", () => {
       expect(tplMetadata.test_config_3).toBe("foo");
       expect(tplMetadata.test_config_4).toBe("bar");
     }
+  });
+
+  /**
+   * Port of test_checkpointer_null_pending_writes from test_pregel_async_checkpoint.py
+   */
+  it("should handle checkpoint with null pending writes", async () => {
+    // Create a MemorySaverNoPending implementation
+    class MemorySaverNoPending extends MemorySaver {
+      async getTuple(
+        config: RunnableConfig
+      ): Promise<CheckpointTuple | undefined> {
+        const result = await super.getTuple(config);
+        if (result) {
+          // Return a CheckpointTuple without the pendingWrites property
+          const { config: resultConfig, checkpoint, metadata } = result;
+          return {
+            config: resultConfig,
+            checkpoint,
+            metadata,
+          };
+        }
+        return result;
+      }
+    }
+
+    // Set up an Annotation for the array reducer
+    const StateAnnotation = Annotation.Root({
+      value: Annotation<string[]>({
+        reducer: (a, b) => [...(a || []), ...b],
+        default: () => [],
+      }),
+    });
+
+    // Create a simple node that just returns its name
+    class Node {
+      name: string;
+
+      constructor(name: string) {
+        this.name = name;
+      }
+
+      call(): typeof StateAnnotation.Update {
+        return { value: [this.name] };
+      }
+    }
+
+    // Create a graph with the node
+    const builder = new StateGraph({ stateSchema: StateAnnotation })
+      .addNode("1", new Node("1").call)
+      .addEdge(START, "1");
+
+    // Compile the graph with our special checkpointer
+    const graph = builder.compile({
+      checkpointer: new MemorySaverNoPending(),
+    });
+
+    // First invocation should return ["1"]
+    const result1 = await graph.invoke(
+      { value: [] },
+      { configurable: { thread_id: "foo" } }
+    );
+    expect(result1.value).toEqual(["1"]);
+
+    // Second invocation should return ["1", "1"]
+    const result2 = await graph.invoke(
+      { value: [] },
+      { configurable: { thread_id: "foo" } }
+    );
+    expect(result2.value).toEqual(["1", "1"]);
+
+    // Third invocation (async) should return ["1", "1", "1"]
+    const result3 = await graph.invoke(
+      { value: [] },
+      { configurable: { thread_id: "foo" } }
+    );
+    expect(result3.value).toEqual(["1", "1", "1"]);
+
+    // Fourth invocation (async) should return ["1", "1", "1", "1"]
+    const result4 = await graph.invoke(
+      { value: [] },
+      { configurable: { thread_id: "foo" } }
+    );
+    expect(result4.value).toEqual(["1", "1", "1", "1"]);
   });
 });
