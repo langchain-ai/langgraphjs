@@ -23,6 +23,7 @@ import {
   PendingWrite,
   SCHEDULED,
   uuid5,
+  CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
 import {
   BaseChannel,
@@ -44,18 +45,18 @@ import {
   CONFIG_KEY_CHECKPOINTER,
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
+  CONFIG_KEY_TASK_ID,
   ERROR,
+  INPUT,
   INTERRUPT,
+  PUSH,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   CHECKPOINT_NAMESPACE_END,
   CONFIG_KEY_STREAM,
-  CONFIG_KEY_TASK_ID,
   Command,
   NULL_TASK_ID,
-  INPUT,
   COPY,
   END,
-  PUSH,
 } from "../constants.js";
 import {
   PregelExecutableTask,
@@ -658,6 +659,7 @@ export class Pregel<
    * @param config - Configuration for preparing the snapshot
    * @param saved - Optional saved checkpoint data
    * @param subgraphCheckpointer - Optional checkpointer for subgraphs
+   * @param applyPendingWrites - Whether to apply pending writes to tasks and then to channels
    * @returns A snapshot of the graph state
    * @internal
    */
@@ -665,10 +667,12 @@ export class Pregel<
     config,
     saved,
     subgraphCheckpointer,
+    applyPendingWrites = false,
   }: {
     config: RunnableConfig;
     saved?: CheckpointTuple;
     subgraphCheckpointer?: BaseCheckpointSaver;
+    applyPendingWrites?: boolean;
   }): Promise<StateSnapshot> {
     if (saved === undefined) {
       return {
@@ -678,14 +682,36 @@ export class Pregel<
         tasks: [],
       };
     }
-    // Pass `skipManaged: true` as managed values should not be returned in get state calls.
-    const { managed } = await this.prepareSpecs(config, { skipManaged: true });
 
+    // Create all channels
+    const { managed } = await this.prepareSpecs(config, {
+      skipManaged: true,
+    });
     const channels = emptyChannels(
       this.channels as Record<string, BaseChannel>,
       saved.checkpoint
     );
 
+    // Apply null writes first (from NULL_TASK_ID)
+    if (saved.pendingWrites?.length) {
+      const nullWrites = saved.pendingWrites
+        .filter(([taskId, _]) => taskId === NULL_TASK_ID)
+        .map(
+          ([_, channel, value]) => [String(channel), value] as [string, unknown]
+        );
+
+      if (nullWrites.length > 0) {
+        _applyWrites(saved.checkpoint, channels, [
+          {
+            name: INPUT,
+            writes: nullWrites as PendingWrite[],
+            triggers: [],
+          },
+        ]);
+      }
+    }
+
+    // Prepare next tasks
     const nextTasks = Object.values(
       _prepareNextTasks(
         saved.checkpoint,
@@ -694,20 +720,24 @@ export class Pregel<
         channels,
         managed,
         saved.config,
-        false,
-        { step: (saved.metadata?.step ?? -1) + 1 }
+        true,
+        { step: (saved.metadata?.step ?? -1) + 1, store: this.store }
       )
     );
+
+    // Find subgraphs
     const subgraphs = await gatherIterator(this.getSubgraphsAsync());
     const parentNamespace = saved.config.configurable?.checkpoint_ns ?? "";
     const taskStates: Record<string, RunnableConfig | StateSnapshot> = {};
+
+    // Prepare task states for subgraphs
     for (const task of nextTasks) {
       const matchingSubgraph = subgraphs.find(([name]) => name === task.name);
       if (!matchingSubgraph) {
         continue;
       }
       // assemble checkpoint_ns for this task
-      let taskNs = `${task.name}${CHECKPOINT_NAMESPACE_END}${task.id}`;
+      let taskNs = `${String(task.name)}${CHECKPOINT_NAMESPACE_END}${task.id}`;
       if (parentNamespace) {
         taskNs = `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${taskNs}`;
       }
@@ -722,40 +752,76 @@ export class Pregel<
         taskStates[task.id] = config;
       } else {
         // get the state of the subgraph
-        const config: RunnableConfig = {
+        const subgraphConfig: RunnableConfig = {
           configurable: {
             [CONFIG_KEY_CHECKPOINTER]: subgraphCheckpointer,
             thread_id: saved.config.configurable?.thread_id,
             checkpoint_ns: taskNs,
           },
         };
-        taskStates[task.id] = await matchingSubgraph[1].getState(config, {
+        const pregel = matchingSubgraph[1];
+        taskStates[task.id] = await pregel.getState(subgraphConfig, {
           subgraphs: true,
         });
       }
     }
-    // apply pending writes
-    const nullWrites = (saved.pendingWrites ?? [])
-      .filter((w) => w[0] === NULL_TASK_ID)
-      .map((w) => w.slice(1)) as PendingWrite<string>[];
-    if (nullWrites.length > 0) {
-      _applyWrites(saved.checkpoint, channels, [
-        {
-          name: INPUT,
-          writes: nullWrites,
-          triggers: [],
-        },
-      ]);
+
+    // Apply pending writes to tasks and then to channels if applyPendingWrites is true
+    if (applyPendingWrites && saved.pendingWrites?.length) {
+      // Map task IDs to task objects for easy lookup
+      const nextTaskById = Object.fromEntries(
+        nextTasks.map((task) => [task.id, task])
+      );
+
+      // Apply pending writes to the appropriate tasks
+      for (const [taskId, channel, value] of saved.pendingWrites) {
+        // Skip special channels and tasks not in nextTasks
+        if ([ERROR, INTERRUPT, SCHEDULED].includes(channel)) {
+          continue;
+        }
+        if (!(taskId in nextTaskById)) {
+          continue;
+        }
+        // Add the write to the task
+        nextTaskById[taskId].writes.push([String(channel), value]);
+      }
+
+      // Apply writes from tasks that have writes
+      const tasksWithWrites = nextTasks.filter(
+        (task) => task.writes.length > 0
+      );
+      if (tasksWithWrites.length > 0) {
+        _applyWrites(
+          saved.checkpoint,
+          channels,
+          tasksWithWrites as unknown as WritesProtocol[]
+        );
+      }
     }
+
+    // Preserve thread_id from the config in metadata
+    let metadata = saved?.metadata;
+    if (metadata && saved?.config?.configurable?.thread_id) {
+      metadata = {
+        ...metadata,
+        thread_id: saved.config.configurable.thread_id as string,
+      } as CheckpointMetadata;
+    }
+
+    // Filter next tasks - only include tasks without writes
+    const nextList = nextTasks
+      .filter((task) => task.writes.length === 0)
+      .map((task) => task.name as string);
+
     // assemble the state snapshot
     return {
       values: readChannels(
         channels,
         this.streamChannelsAsIs as string | string[]
       ),
-      next: nextTasks.map((task) => task.name),
+      next: nextList,
       tasks: tasksWithWrites(nextTasks, saved?.pendingWrites ?? [], taskStates),
-      metadata: saved.metadata,
+      metadata,
       config: patchCheckpointMap(saved.config, saved.metadata),
       createdAt: saved.checkpoint.ts,
       parentConfig: saved.parentConfig,
@@ -813,6 +879,7 @@ export class Pregel<
       config: mergedConfig,
       saved,
       subgraphCheckpointer: options?.subgraphs ? checkpointer : undefined,
+      applyPendingWrites: !config.configurable?.checkpoint_id,
     });
     return snapshot;
   }
@@ -1730,13 +1797,13 @@ export class Pregel<
 
     const callbackManager = await getCallbackManagerForConfig(config);
     const runManager = await callbackManager?.handleChainStart(
-      this.toJSON(),
-      _coerceToDict(input, "input"),
-      runId,
-      undefined,
-      undefined,
-      undefined,
-      config?.runName ?? this.getName()
+      this.toJSON(), // chain
+      _coerceToDict(input, "input"), // inputs
+      runId, // run_id
+      undefined, // run_type
+      undefined, // tags
+      undefined, // metadata
+      config?.runName ?? this.getName() // run_name
     );
 
     const { channelSpecs, managed } = await this.prepareSpecs(config);

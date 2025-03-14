@@ -89,7 +89,6 @@ import {
   isCommand,
   Command,
   END,
-  ERROR,
   INTERRUPT,
   PULL,
   PUSH,
@@ -1595,6 +1594,7 @@ export function runPregelTests(
           step: 6,
           writes: { two: 5 },
           parents: {},
+          thread_id: "1",
         },
         createdAt: expect.any(String),
         parentConfig: history[1].config,
@@ -1617,7 +1617,13 @@ export function runPregelTests(
             checkpoint_id: expect.any(String),
           },
         },
-        metadata: { source: "loop", step: 5, writes: {}, parents: {} },
+        metadata: {
+          source: "loop",
+          step: 5,
+          writes: {},
+          parents: {},
+          thread_id: "1",
+        },
         createdAt: expect.any(String),
         parentConfig: history[2].config,
       }),
@@ -1644,6 +1650,7 @@ export function runPregelTests(
           step: 4,
           writes: { input: 3 },
           parents: {},
+          thread_id: "1",
         },
         createdAt: expect.any(String),
         parentConfig: history[3].config,
@@ -1666,7 +1673,13 @@ export function runPregelTests(
             checkpoint_id: expect.any(String),
           },
         },
-        metadata: { source: "loop", step: 3, writes: {}, parents: {} },
+        metadata: {
+          source: "loop",
+          step: 3,
+          writes: {},
+          parents: {},
+          thread_id: "1",
+        },
         createdAt: expect.any(String),
         parentConfig: history[4].config,
       }),
@@ -1693,6 +1706,7 @@ export function runPregelTests(
           step: 2,
           writes: { input: 20 },
           parents: {},
+          thread_id: "1",
         },
         createdAt: expect.any(String),
         parentConfig: history[5].config,
@@ -1713,6 +1727,7 @@ export function runPregelTests(
           step: 1,
           writes: { two: 4 },
           parents: {},
+          thread_id: "1",
         },
         createdAt: expect.any(String),
         parentConfig: history[6].config,
@@ -1735,7 +1750,13 @@ export function runPregelTests(
             checkpoint_id: expect.any(String),
           },
         },
-        metadata: { source: "loop", step: 0, writes: {}, parents: {} },
+        metadata: {
+          source: "loop",
+          step: 0,
+          writes: {},
+          parents: {},
+          thread_id: "1",
+        },
         createdAt: expect.any(String),
         parentConfig: history[7].config,
       }),
@@ -1762,9 +1783,9 @@ export function runPregelTests(
           step: -1,
           writes: { input: 2 },
           parents: {},
+          thread_id: "1",
         },
         createdAt: expect.any(String),
-        parentConfig: undefined,
       }),
     ]);
 
@@ -1901,129 +1922,6 @@ export function runPregelTests(
 
     // An Inbox channel accumulates updates into a sequence
     expect(await app.invoke(2)).toEqual([3, 3]);
-  });
-
-  it("pending writes resume", async () => {
-    const checkpointer = await createCheckpointer();
-    const StateAnnotation = Annotation.Root({
-      value: Annotation<number>({ reducer: (a, b) => a + b }),
-    });
-    class AwhileMaker extends RunnableLambda<any, any> {
-      calls: number = 0;
-
-      sleep: number;
-
-      rtn: Record<string, unknown> | Error;
-
-      constructor(sleep: number, rtn: Record<string, unknown> | Error) {
-        super({
-          func: async () => {
-            this.calls += 1;
-            await new Promise((resolve) => setTimeout(resolve, this.sleep));
-            if (this.rtn instanceof Error) {
-              throw this.rtn;
-            }
-            return this.rtn;
-          },
-        });
-        this.sleep = sleep;
-        this.rtn = rtn;
-      }
-
-      reset() {
-        this.calls = 0;
-      }
-    }
-
-    const one = new AwhileMaker(0.2, { value: 2 });
-    const two = new AwhileMaker(0.6, new Error("I'm not good"));
-    const builder = new StateGraph(StateAnnotation)
-      .addNode("one", one)
-      .addNode("two", two)
-      .addEdge("__start__", "one")
-      .addEdge("__start__", "two")
-      .addEdge("one", "__end__")
-      // TODO: Add retry policy
-      .addEdge("two", "__end__");
-    const graph = builder.compile({ checkpointer });
-    const thread1 = { configurable: { thread_id: "1" } };
-    await expect(graph.invoke({ value: 1 }, thread1)).rejects.toThrow(
-      "I'm not good"
-    );
-    expect(one.calls).toEqual(1);
-    expect(two.calls).toEqual(1);
-
-    const state = await graph.getState(thread1);
-    expect(state).toBeDefined();
-    expect(state.values).toEqual({ value: 1 });
-    expect(state.next).toEqual(["one", "two"]);
-    expect(state.tasks).toEqual([
-      {
-        id: expect.any(String),
-        name: "one",
-        interrupts: [],
-        path: [PULL, "one"],
-      },
-      {
-        id: expect.any(String),
-        name: "two",
-        error: expect.objectContaining({
-          message: "I'm not good",
-        }),
-        path: [PULL, "two"],
-        interrupts: [],
-      },
-    ]);
-    expect(state.metadata).toEqual({
-      source: "loop",
-      step: 0,
-      writes: null,
-      parents: {},
-    });
-
-    // should contain pending write of "one" and should contain error from "two"
-    const checkpoint = await checkpointer.getTuple(thread1);
-    expect(checkpoint).toBeDefined();
-    const expectedWrites = [
-      [expect.any(String), "one", "one"],
-      [expect.any(String), "value", 2],
-      [
-        expect.any(String),
-        ERROR,
-        expect.objectContaining({
-          message: "I'm not good",
-        }),
-      ],
-    ];
-    expect(checkpoint?.pendingWrites).toEqual(
-      expect.arrayContaining(expectedWrites)
-    );
-
-    // both non-error pending writes come from same task
-    const nonErrorWrites = checkpoint!.pendingWrites!.filter(
-      (w) => w[1] !== ERROR
-    );
-    expect(nonErrorWrites[0][0]).toEqual(nonErrorWrites[1][0]);
-    const errorWrites = checkpoint!.pendingWrites!.filter(
-      (w) => w[1] === ERROR
-    );
-    expect(errorWrites[0][0]).not.toEqual(nonErrorWrites[0][0]);
-
-    // resume execution
-    await expect(graph.invoke(null, thread1)).rejects.toThrow("I'm not good");
-    // node "one" succeeded previously, so shouldn't be called again
-    expect(one.calls).toEqual(1);
-    // node "two" should have been called once again
-    expect(two.calls).toEqual(2);
-
-    // confirm no new checkpoints saved
-    const state2 = await graph.getState(thread1);
-    expect(state2.metadata).toEqual(state.metadata);
-
-    // resume execution, without exception
-    two.rtn = { value: 3 };
-    // both the pending write and the new write were applied, 1 + 2 + 3 = 6
-    expect(await graph.invoke(null, thread1)).toEqual({ value: 6 });
   });
 
   it("should allow a conditional edge after a send", async () => {
@@ -2948,7 +2846,9 @@ graph TD;
       };
 
       const toolTwoGraph = new StateGraph(StateAnnotation)
-        .addNode("tool_two", toolTwoNode, { retryPolicy: {} })
+        .addNode("tool_two", toolTwoNode, {
+          retryPolicy: { logWarning: false },
+        })
         .addEdge(START, "tool_two");
       let toolTwo = toolTwoGraph.compile();
 
@@ -3017,7 +2917,6 @@ graph TD;
             id: expect.any(String),
             name: "tool_two",
             path: [PULL, "tool_two"],
-            state: undefined,
             interrupts: [
               {
                 ns: [expect.stringMatching(/^tool_two:/)],
@@ -3030,7 +2929,13 @@ graph TD;
         ],
         config: (await toolTwoCheckpointer.getTuple(thread1))!.config,
         createdAt: (await toolTwoCheckpointer.getTuple(thread1))!.checkpoint.ts,
-        metadata: { source: "loop", step: 0, writes: null, parents: {} },
+        metadata: {
+          source: "loop",
+          step: 0,
+          writes: null,
+          parents: {},
+          thread_id: "1",
+        },
         parentConfig: (
           await gatherIterator(toolTwoCheckpointer.list(thread1, { limit: 2 }))
         ).slice(-1)[0].config,
@@ -3460,6 +3365,7 @@ graph TD;
             },
           },
           parents: {},
+          thread_id: "1",
         },
         config: (await appWithInterruptCheckpointer.getTuple(config))?.config,
         createdAt: (await appWithInterruptCheckpointer.getTuple(config))
@@ -3510,6 +3416,7 @@ graph TD;
         ],
         metadata: {
           parents: {},
+          thread_id: "1",
           source: "update",
           step: 2,
           writes: {
@@ -3602,6 +3509,7 @@ graph TD;
         ],
         metadata: {
           parents: {},
+          thread_id: "1",
           source: "loop",
           step: 4,
           writes: {
@@ -3663,6 +3571,7 @@ graph TD;
           source: "update",
           step: 5,
           parents: {},
+          thread_id: "1",
           writes: {
             agent: {
               messages: new AIMessage({
@@ -3973,7 +3882,7 @@ graph TD;
       const app = new StateGraph(GraphAnnotation)
         .addNode("add", add)
         .addNode("check", raiseIfAbove10, {
-          retryPolicy: {},
+          retryPolicy: { logWarning: false },
         })
         .addEdge("__start__", "add")
         .addEdge("add", "check")
@@ -4104,6 +4013,7 @@ graph TD;
           next: [],
           tasks: [],
           metadata: {
+            thread_id: "102",
             source: "loop",
             writes: {
               wipeFields: {
@@ -4145,6 +4055,7 @@ graph TD;
             },
           ],
           metadata: {
+            thread_id: "102",
             source: "loop",
             writes: {
               updateTest: {
@@ -4185,6 +4096,7 @@ graph TD;
             },
           ],
           metadata: {
+            thread_id: "102",
             source: "loop",
             writes: null,
             step: 0,
@@ -4220,6 +4132,7 @@ graph TD;
             },
           ],
           metadata: {
+            thread_id: "102",
             source: "input",
             writes: {
               __start__: {
@@ -4237,7 +4150,6 @@ graph TD;
             },
           },
           createdAt: expect.any(String),
-          parentConfig: undefined,
         },
       ]);
     });
@@ -4831,7 +4743,6 @@ graph TD;
               checkpoint_id: expect.any(String),
             },
           },
-          parentConfig: undefined,
           values: {},
           metadata: {
             source: "input",
@@ -4846,7 +4757,6 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
-              state: undefined,
             },
           ],
         },
@@ -4893,7 +4803,6 @@ graph TD;
               name: "prepare",
               path: [PULL, "prepare"],
               interrupts: [],
-              state: undefined,
             },
           ],
         },
@@ -4963,7 +4872,6 @@ graph TD;
               name: "tool_two_slow",
               path: [PULL, "tool_two_slow"],
               interrupts: [],
-              state: undefined,
             },
           ],
         },
@@ -5033,7 +4941,6 @@ graph TD;
               name: "finish",
               path: [PULL, "finish"],
               interrupts: [],
-              state: undefined,
             },
           ],
         },
@@ -5214,7 +5121,13 @@ graph TD;
       ],
       config: (await toolTwoCheckpointer.getTuple(thread1))!.config,
       createdAt: (await toolTwoCheckpointer.getTuple(thread1))!.checkpoint.ts,
-      metadata: { source: "loop", step: 0, writes: null, parents: {} },
+      metadata: {
+        source: "loop",
+        step: 0,
+        writes: null,
+        parents: {},
+        thread_id: "1",
+      },
       parentConfig: (
         await last(toolTwoCheckpointer.list(thread1, { limit: 2 }))
       ).config,
@@ -5235,6 +5148,7 @@ graph TD;
         step: 1,
         writes: { tool_two_slow: { my_key: " slow" } },
         parents: {},
+        thread_id: "1",
       },
       parentConfig: (
         await last(toolTwoCheckpointer.list(thread1, { limit: 2 }))
@@ -5264,7 +5178,13 @@ graph TD;
       ],
       config: (await toolTwoCheckpointer.getTuple(thread2))!.config,
       createdAt: (await toolTwoCheckpointer.getTuple(thread2))!.checkpoint.ts,
-      metadata: { source: "loop", step: 0, writes: null, parents: {} },
+      metadata: {
+        source: "loop",
+        step: 0,
+        writes: null,
+        parents: {},
+        thread_id: "2",
+      },
       parentConfig: (
         await last(toolTwoCheckpointer.list(thread2, { limit: 2 }))
       ).config,
@@ -5283,6 +5203,7 @@ graph TD;
       metadata: {
         source: "loop",
         step: 1,
+        thread_id: "2",
         writes: { tool_two_fast: { my_key: " fast" } },
         parents: {},
       },
@@ -5314,7 +5235,13 @@ graph TD;
       ],
       config: (await toolTwoCheckpointer.getTuple(thread3))!.config,
       createdAt: (await toolTwoCheckpointer.getTuple(thread3))!.checkpoint.ts,
-      metadata: { source: "loop", step: 0, writes: null, parents: {} },
+      metadata: {
+        source: "loop",
+        step: 0,
+        writes: null,
+        parents: {},
+        thread_id: "3",
+      },
       parentConfig: (
         await last(toolTwoCheckpointer.list(thread3, { limit: 2 }))
       ).config,
@@ -5339,6 +5266,7 @@ graph TD;
         step: 1,
         writes: { [START]: { my_key: "key" } },
         parents: {},
+        thread_id: "3",
       },
       parentConfig: (
         await last(toolTwoCheckpointer.list(thread3, { limit: 2 }))
@@ -5360,6 +5288,7 @@ graph TD;
         step: 2,
         writes: { tool_two_fast: { my_key: " fast" } },
         parents: {},
+        thread_id: "3",
       },
       parentConfig: (
         await last(toolTwoCheckpointer.list(thread3, { limit: 2 }))
@@ -6717,6 +6646,7 @@ graph TD;
           source: "loop",
           writes: { outer1: { myKey: "hi my value" } },
           step: 1,
+          thread_id: "1",
         },
         createdAt: expect.any(String),
         parentConfig: {
@@ -6747,7 +6677,6 @@ graph TD;
                   name: "inner2",
                   path: [PULL, "inner2"],
                   interrupts: [],
-                  state: undefined,
                 },
               ],
               next: ["inner2"],
@@ -6762,6 +6691,7 @@ graph TD;
                 },
               },
               metadata: {
+                thread_id: "1",
                 parents: {
                   "": expect.any(String),
                 },
@@ -6794,6 +6724,7 @@ graph TD;
           },
         },
         metadata: {
+          thread_id: "1",
           parents: {},
           source: "loop",
           writes: { outer1: { myKey: "hi my value" } },
@@ -6836,6 +6767,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             parents: {},
             source: "loop",
             writes: {
@@ -6870,7 +6802,13 @@ graph TD;
               checkpoint_id: expect.any(String),
             },
           },
-          metadata: { parents: {}, source: "loop", step: 0, writes: null },
+          metadata: {
+            parents: {},
+            source: "loop",
+            step: 0,
+            writes: null,
+            thread_id: "1",
+          },
           createdAt: expect.any(String),
           parentConfig: {
             configurable: {
@@ -6899,6 +6837,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             parents: {},
             source: "input",
             writes: { __start__: { myKey: "my value" } },
@@ -6926,6 +6865,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             source: "loop",
             writes: {
               inner1: {
@@ -6950,7 +6890,6 @@ graph TD;
               name: "inner2",
               path: [PULL, "inner2"],
               interrupts: [],
-              state: undefined,
             },
           ],
         },
@@ -6968,6 +6907,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             source: "loop",
             writes: null,
             step: 0,
@@ -7004,6 +6944,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             source: "input",
             writes: {
               __start__: { myKey: "hi my value" },
@@ -7018,7 +6959,6 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
-              state: undefined,
             },
           ],
         },
@@ -7038,6 +6978,7 @@ graph TD;
           },
         },
         metadata: {
+          thread_id: "1",
           parents: {},
           source: "loop",
           writes: {
@@ -7070,6 +7011,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             parents: {},
             source: "loop",
             writes: {
@@ -7105,6 +7047,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             parents: {},
             source: "loop",
             writes: { inner: { myKey: "hi my value here and there" } },
@@ -7144,6 +7087,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             parents: {},
             source: "loop",
             writes: { outer1: { myKey: "hi my value" } },
@@ -7176,7 +7120,13 @@ graph TD;
               checkpoint_id: expect.any(String),
             },
           },
-          metadata: { parents: {}, source: "loop", writes: null, step: 0 },
+          metadata: {
+            parents: {},
+            source: "loop",
+            writes: null,
+            step: 0,
+            thread_id: "1",
+          },
           createdAt: expect.any(String),
           parentConfig: {
             configurable: {
@@ -7205,6 +7155,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             parents: {},
             source: "input",
             writes: { __start__: { myKey: "my value" } },
@@ -7404,6 +7355,7 @@ graph TD;
           source: "loop",
           writes: { parent1: { myKey: "hi my value" } },
           step: 1,
+          thread_id: "1",
         },
         createdAt: expect.any(String),
         parentConfig: {
@@ -7454,6 +7406,7 @@ graph TD;
           },
         },
         metadata: {
+          thread_id: "1",
           parents: expect.objectContaining({
             "": expect.any(String),
           }),
@@ -7517,6 +7470,7 @@ graph TD;
                         grandchild1: { myKey: "hi my value here" },
                       },
                       step: 1,
+                      thread_id: "1",
                     },
                     createdAt: expect.any(String),
                     parentConfig: {
@@ -7541,6 +7495,7 @@ graph TD;
                 },
               },
               metadata: {
+                thread_id: "1",
                 parents: { "": expect.any(String) },
                 source: "loop",
                 writes: null,
@@ -7566,6 +7521,7 @@ graph TD;
           },
         },
         metadata: {
+          thread_id: "1",
           parents: {},
           source: "loop",
           writes: { parent1: { myKey: "hi my value" } },
@@ -7615,6 +7571,7 @@ graph TD;
           },
         },
         metadata: {
+          thread_id: "1",
           parents: {},
           source: "loop",
           writes: {
@@ -7646,6 +7603,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             parents: {},
             source: "loop",
             writes: {
@@ -7673,6 +7631,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             source: "loop",
             writes: { child: { myKey: "hi my value here and there" } },
             step: 2,
@@ -7720,6 +7679,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             parents: {},
             source: "loop",
             writes: { parent1: { myKey: "hi my value" } },
@@ -7744,7 +7704,13 @@ graph TD;
               checkpoint_id: expect.any(String),
             },
           },
-          metadata: { source: "loop", writes: null, step: 0, parents: {} },
+          metadata: {
+            source: "loop",
+            writes: null,
+            step: 0,
+            parents: {},
+            thread_id: "1",
+          },
           createdAt: expect.any(String),
           parentConfig: {
             configurable: {
@@ -7773,6 +7739,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             source: "input",
             writes: { __start__: { myKey: "my value" } },
             step: -1,
@@ -7808,6 +7775,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             source: "loop",
             writes: { child1: { myKey: "hi my value here and there" } },
             step: 1,
@@ -7838,6 +7806,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             source: "loop",
             writes: null,
             step: 0,
@@ -7880,6 +7849,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             source: "input",
             writes: { __start__: { myKey: "hi my value" } },
             step: -1,
@@ -7915,6 +7885,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             source: "loop",
             writes: { grandchild2: { myKey: "hi my value here and there" } },
             step: 2,
@@ -7946,6 +7917,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             source: "loop",
             writes: { grandchild1: { myKey: "hi my value here" } },
             step: 1,
@@ -7984,6 +7956,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             source: "loop",
             writes: null,
             step: 0,
@@ -8022,6 +7995,7 @@ graph TD;
             },
           },
           metadata: {
+            thread_id: "1",
             source: "input",
             writes: { __start__: { myKey: "hi my value" } },
             step: -1,
@@ -8157,7 +8131,13 @@ graph TD;
             checkpoint_id: expect.any(String),
           },
         },
-        metadata: { parents: {}, source: "loop", writes: null, step: 0 },
+        metadata: {
+          parents: {},
+          source: "loop",
+          writes: null,
+          step: 0,
+          thread_id: "1",
+        },
         createdAt: expect.any(String),
         parentConfig: {
           configurable: {
@@ -8190,6 +8170,7 @@ graph TD;
             edit: {},
           },
           parents: { "": expect.any(String) },
+          thread_id: "1",
         },
         createdAt: expect.any(String),
         parentConfig: {
@@ -8225,6 +8206,7 @@ graph TD;
           },
         },
         metadata: {
+          thread_id: "1",
           step: 1,
           source: "loop",
           writes: {
@@ -8286,6 +8268,7 @@ graph TD;
         },
         metadata: {
           parents: {},
+          thread_id: "1",
           source: "loop",
           writes: {
             generateJoke: [
@@ -8335,6 +8318,7 @@ graph TD;
               ],
             },
             step: 1,
+            thread_id: "1",
           },
           createdAt: expect.any(String),
           parentConfig: {
@@ -8381,7 +8365,13 @@ graph TD;
               checkpoint_id: expect.any(String),
             },
           },
-          metadata: { parents: {}, source: "loop", writes: null, step: 0 },
+          metadata: {
+            parents: {},
+            source: "loop",
+            writes: null,
+            step: 0,
+            thread_id: "1",
+          },
           createdAt: expect.any(String),
           parentConfig: {
             configurable: {
@@ -8414,6 +8404,7 @@ graph TD;
             source: "input",
             writes: { __start__: { subjects: ["cats", "dogs"] } },
             step: -1,
+            thread_id: "1",
           },
           createdAt: expect.any(String),
         },
@@ -8956,6 +8947,12 @@ graph TD;
       return checkpoints.map((checkpoint) => {
         const clone = { ...checkpoint };
         delete clone.createdAt;
+        if (clone.metadata) {
+          clone.metadata = {
+            ...clone.metadata,
+            ...{ thread_id: "1" },
+          };
+        }
         return clone;
       });
     }
@@ -9100,6 +9097,14 @@ graph TD;
           delete clone.parentConfig.configurable.checkpoint_map;
         }
 
+        if (clone.metadata) {
+          // state snapshots are augmented with thread_id, so we add it to the cloned checkpoint so we don't get an assertion failure
+          clone.metadata = {
+            ...clone.metadata,
+            ...{ thread_id: "1" },
+          };
+        }
+
         return clone;
       });
     }
@@ -9191,6 +9196,7 @@ graph TD;
         },
         step: 1,
         parents: {},
+        thread_id: "1",
       },
       createdAt: expect.any(String),
       parentConfig: {
@@ -9318,6 +9324,7 @@ graph TD;
         },
         step: 1,
         parents: {},
+        thread_id: "1",
       },
       config: {
         configurable: {

@@ -177,7 +177,10 @@ export function runFuncTests(
           let attempts = 0;
 
           const failingTask = task(
-            { name: "failingTask", retry: { maxAttempts: 3 } },
+            {
+              name: "failingTask",
+              retry: { maxAttempts: 3, logWarning: false },
+            },
             () => {
               attempts += 1;
               if (attempts < 3) {

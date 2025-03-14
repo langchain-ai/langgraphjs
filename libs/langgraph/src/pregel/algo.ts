@@ -796,6 +796,37 @@ export function _prepareSingleTask<
     if (proc === undefined) {
       return undefined;
     }
+
+    // Check if this task already has successful writes in the pending writes
+    if (pendingWrites?.length) {
+      // Find the task ID for this node/path
+      const checkpointNamespace =
+        parentNamespace === ""
+          ? name
+          : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${name}`;
+
+      const taskId = uuid5(
+        JSON.stringify([
+          checkpointNamespace,
+          step.toString(),
+          name,
+          PULL,
+          name,
+        ]),
+        checkpoint.id
+      );
+
+      // Check if there are successful writes (not ERROR) for this task ID
+      const hasSuccessfulWrites = pendingWrites.some(
+        (w) => w[0] === taskId && w[1] !== ERROR
+      );
+
+      // If task completed successfully, don't include it in next tasks
+      if (hasSuccessfulWrites) {
+        return undefined;
+      }
+    }
+
     const nullVersion = getNullChannelVersion(checkpoint.channel_versions);
     if (nullVersion === undefined) {
       return undefined;
