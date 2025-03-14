@@ -889,24 +889,23 @@ export class Pregel<
    * from a list of updates, especially if a checkpoint
    * is created as a result of multiple tasks.
    *
-   * @param inputConfig - Configuration for the update
+   * @param startConfig - Configuration for the update
    * @param updates - The list of updates to apply to graph state
    * @returns Updated configuration
    * @throws {GraphValueError} If no checkpointer is configured
    * @throws {InvalidUpdateError} If the update cannot be attributed to a node or an update can be only applied in sequence.
    */
   async bulkUpdateState(
-    startingConfig: LangGraphRunnableConfig,
+    startConfig: LangGraphRunnableConfig,
     supersteps: Array<{
       updates: Array<{
-        values: Record<string, unknown> | unknown;
+        values?: Record<string, unknown> | unknown;
         asNode?: keyof Nodes | string;
       }>;
     }>
   ): Promise<RunnableConfig> {
     const checkpointer: BaseCheckpointSaver | undefined =
-      startingConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] ??
-      this.checkpointer;
+      startConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
     if (!checkpointer) {
       throw new GraphValueError("No checkpointer set");
     }
@@ -920,10 +919,10 @@ export class Pregel<
 
     // delegate to subgraph
     const checkpointNamespace: string =
-      startingConfig.configurable?.checkpoint_ns ?? "";
+      startConfig.configurable?.checkpoint_ns ?? "";
     if (
       checkpointNamespace !== "" &&
-      startingConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
+      startConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
     ) {
       // remove task_ids from checkpoint_ns
       const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
@@ -934,7 +933,7 @@ export class Pregel<
         true
       )) {
         return await pregel.bulkUpdateState(
-          patchConfigurable(startingConfig, {
+          patchConfigurable(startConfig, {
             [CONFIG_KEY_CHECKPOINTER]: checkpointer,
           }),
           supersteps
@@ -946,7 +945,7 @@ export class Pregel<
     const updateSuperStep = async (
       inputConfig: LangGraphRunnableConfig,
       updates: {
-        values: Record<string, unknown> | unknown;
+        values?: Record<string, unknown> | unknown;
         asNode?: keyof Nodes | string;
       }[]
     ) => {
@@ -1347,7 +1346,7 @@ export class Pregel<
       return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
     };
 
-    let currentConfig = startingConfig;
+    let currentConfig = startConfig;
     for (const { updates } of supersteps) {
       currentConfig = await updateSuperStep(currentConfig, updates);
     }
