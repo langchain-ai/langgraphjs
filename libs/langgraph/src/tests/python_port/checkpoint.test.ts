@@ -1288,4 +1288,217 @@ describe("Checkpoint Tests (Python port)", () => {
       throw new Error("Expected checkpoint_id to be defined in history[1]");
     }
   });
+
+  /**
+   * Port of test_invoke_checkpoint_three from test_pregel_async_checkpoint.py
+   */
+  it("should test invoke checkpoint functionality with multiple operations", async () => {
+    // Create a memory saver checkpoint instance
+    const checkpointer = new MemorySaver();
+
+    // Mock the add_one function - in JS we'll track calls with a counter
+    const addOne = (input: { total: number; input: number }): number => {
+      return input.total + input.input;
+    };
+
+    // Create function that raises error for values above threshold
+    const raiseIfAbove10 = (input: number): number => {
+      if (input > 10) {
+        throw new Error("ValueError: Input is too large");
+      }
+      return input;
+    };
+
+    // Create a channel pipeline with subscription and writes
+    const one = Channel.subscribeTo(["input"])
+      .join(["total"])
+      .pipe(addOne)
+      .pipe(
+        Channel.writeTo([], {
+          output: (x: number) => x,
+          total: (x: number) => x,
+        })
+      )
+      .pipe(raiseIfAbove10);
+
+    // Create the Pregel graph with appropriate channels
+    const app = new Pregel({
+      nodes: {
+        one,
+      },
+      channels: {
+        total: new BinaryOperatorAggregate<number>(
+          (a, b) => a + b,
+          () => 0
+        ),
+        input: new LastValue<number>(),
+        output: new LastValue<number>(),
+      },
+      inputChannels: "input",
+      outputChannels: "output",
+      checkpointer,
+      debug: true,
+    });
+
+    // Create thread config for first thread
+    const thread1 = { configurable: { thread_id: "1" } };
+
+    // First invocation - total starts at 0, so output is 0+2=2
+    const result1 = await app.invoke(2, thread1);
+    expect(result1).toBe(2);
+
+    // Check state after first invocation
+    const state1 = await app.getState(thread1);
+    expect(state1).not.toBeUndefined();
+    expect(state1?.values.total).toBe(2);
+
+    // Verify checkpoint ID matches
+    const checkpoint1 = await checkpointer.get(thread1);
+    expect(state1?.config?.configurable?.checkpoint_id).toBe(checkpoint1?.id);
+
+    // Second invocation - total is now 2, so output is 2+3=5
+    const result2 = await app.invoke(3, thread1);
+    expect(result2).toBe(5);
+
+    // Check updated state
+    const state2 = await app.getState(thread1);
+    expect(state2).not.toBeUndefined();
+    expect(state2?.values.total).toBe(7);
+
+    // Verify updated checkpoint ID
+    const checkpoint2 = await checkpointer.get(thread1);
+    expect(state2?.config?.configurable?.checkpoint_id).toBe(checkpoint2?.id);
+
+    // Third invocation - total is now 7, so output would be 7+4=11, but raises ValueError
+    await expect(app.invoke(4, thread1)).rejects.toThrow("ValueError");
+
+    // Checkpoint should not be updated after error
+    const state3 = await app.getState(thread1);
+    expect(state3).not.toBeUndefined();
+    expect(state3?.values.total).toBe(7);
+    expect(state3?.next).toEqual(["one"]);
+
+    // We can recover from error by sending new inputs
+    const result4 = await app.invoke(2, thread1);
+    expect(result4).toBe(9);
+
+    // Check state after recovery
+    const state4 = await app.getState(thread1);
+    expect(state4).not.toBeUndefined();
+    expect(state4?.values.total).toBe(16); // total is now 7+9=16
+    expect(state4?.next).toEqual([]);
+
+    // Test with new thread - thread 2
+    const thread2 = { configurable: { thread_id: "2" } };
+
+    // On a new thread, total starts at 0, so output is 0+5=5
+    const result5 = await app.invoke(5, thread2);
+    expect(result5).toBe(5);
+
+    // Original thread should still have its state
+    const state5 = await app.getState({ configurable: { thread_id: "1" } });
+    expect(state5).not.toBeUndefined();
+    expect(state5?.values.total).toBe(16);
+    expect(state5?.next).toEqual([]);
+
+    // New thread should have its own state
+    const state6 = await app.getState(thread2);
+    expect(state6).not.toBeUndefined();
+    expect(state6?.values.total).toBe(5);
+    expect(state6?.next).toEqual([]);
+
+    // Test state history functionality
+    const historyLimit1 = [];
+    for await (const state of app.getStateHistory(thread1, { limit: 1 })) {
+      historyLimit1.push(state);
+    }
+    expect(historyLimit1.length).toBe(1);
+
+    // List all checkpoints for thread 1
+    const thread1History = [];
+    for await (const state of app.getStateHistory(thread1)) {
+      thread1History.push(state);
+    }
+
+    // There should be 7 checkpoints
+    expect(thread1History.length).toBe(7);
+
+    // Count sources of checkpoints
+    const sourceCounts: Record<string, number> = {};
+    for (const state of thread1History) {
+      expect(state.metadata).toBeDefined();
+      const { source } = state.metadata!;
+      sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+    }
+    expect(sourceCounts).toEqual({ input: 4, loop: 3 });
+
+    // Verify checkpoints are sorted descending by ID
+    expect(
+      thread1History[0]?.config?.configurable?.checkpoint_id >
+        thread1History[1].config?.configurable?.checkpoint_id
+    ).toBe(true);
+
+    // Test cursor pagination (get checkpoint after the first one)
+    const cursored = [];
+    for await (const state of app.getStateHistory(thread1, {
+      limit: 1,
+      before: thread1History[0].config,
+    })) {
+      cursored.push(state);
+    }
+    expect(cursored.length).toBe(1);
+    expect(cursored[0].config).toEqual(thread1History[1].config);
+
+    // Check values at specific checkpoints
+    expect(thread1History[0].values.total).toBe(16); // The last checkpoint
+    expect(thread1History[thread1History.length - 2].values.total).toBe(2); // The first "loop" checkpoint
+
+    // Verify get with config works
+    const checkpoint1GetWithConfig = await checkpointer.get(
+      thread1History[0].config
+    );
+    expect(checkpoint1GetWithConfig?.id).toBe(
+      thread1History[0]?.config?.configurable?.checkpoint_id
+    );
+
+    const checkpoint2GetWithConfig = await checkpointer.get(
+      thread1History[1].config
+    );
+    expect(checkpoint2GetWithConfig?.id).toBe(
+      thread1History[1]?.config?.configurable?.checkpoint_id
+    );
+
+    // Test updating state from a specific checkpoint
+    const thread1NextConfig = await app.updateState(
+      thread1History[1].config,
+      10
+    );
+
+    // Update creates a new checkpoint with higher ID
+    expect(
+      thread1NextConfig.configurable?.checkpoint_id >
+        thread1History[0]?.config?.configurable?.checkpoint_id
+    ).toBe(true);
+
+    // There should now be 8 checkpoints in history
+    const updatedHistory = [];
+    for await (const state of app.getStateHistory(thread1)) {
+      updatedHistory.push(state);
+    }
+    expect(updatedHistory.length).toBe(8);
+
+    // Count sources after update
+    const updatedSourceCounts: Record<string, number> = {};
+    for (const state of updatedHistory) {
+      expect(state.metadata).toBeDefined();
+      const { source } = state.metadata!;
+      updatedSourceCounts[source] = (updatedSourceCounts[source] || 0) + 1;
+    }
+    expect(updatedSourceCounts).toEqual({ update: 1, input: 4, loop: 3 });
+
+    // The latest checkpoint should be the updated one
+    const latestState = await app.getState(thread1);
+    const updatedState = await app.getState(thread1NextConfig);
+    expect(latestState).toEqual(updatedState);
+  });
 });
