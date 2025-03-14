@@ -7,7 +7,7 @@
     "resolveJsonModule": true,
     "module": "NodeNext",
     "allowJs": true,
-    "verbatimModuleSyntax": true,
+    "jsx": "react-jsx",
     "noUnusedLocals": true,
     "outDir": "dist"
   },

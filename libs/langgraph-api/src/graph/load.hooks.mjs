@@ -9,6 +9,7 @@ const OVERRIDE_RESOLVE = [
 ];
 
 let parentURL;
+let langgraphPackageURL;
 
 export async function initialize(args) {
   parentURL = args.parentURL;
@@ -25,8 +26,31 @@ export async function resolve(specifier, context, nextResolve) {
     return { shortCircuit: true, url: specifier, format: "module" };
   }
 
+  if (specifier === "@langchain/langgraph-checkpoint") {
+    // resolve relative to @langchain/langgraph package instead
+    // This is done to avoid adding a direct dependency on @langchain/langgraph-checkpoint
+    // in project, which if not present will cause `pnpm` to not find the package.
+    if (!langgraphPackageURL) {
+      const main = await nextResolve("@langchain/langgraph", {
+        ...context,
+        parentURL,
+      });
+      langgraphPackageURL = main.url.toString();
+    }
+
+    return await nextResolve(specifier, {
+      ...context,
+      parentURL: langgraphPackageURL,
+    });
+  }
+
   if (OVERRIDE_RESOLVE.some((regex) => regex.test(specifier))) {
-    return await nextResolve(specifier, { ...context, parentURL });
+    const resolved = await nextResolve(specifier, { ...context, parentURL });
+
+    // If @langchain/langgraph is resolved first, cache it!
+    if (specifier === "@langchain/langgraph" && !langgraphPackageURL) {
+      langgraphPackageURL = resolved.url.toString();
+    }
   }
   return nextResolve(specifier, context);
 }

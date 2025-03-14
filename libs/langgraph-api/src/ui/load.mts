@@ -13,11 +13,14 @@ export async function registerGraphUi(
   options: { cwd: string },
 ) {
   const result = await Promise.all(
-    Object.entries(defs).map(async ([agentName, uiUserPath]) => {
-      const userPath = path.resolve(options.cwd, uiUserPath);
-      const ctx = await watch(agentName, userPath, (result) => {
-        GRAPH_UI[agentName] = result;
-      });
+    Object.entries(defs).map(async ([agentName, userPath]) => {
+      const ctx = await watch(
+        agentName,
+        { cwd: options.cwd, userPath },
+        (result) => {
+          GRAPH_UI[agentName] = result;
+        },
+      );
       return [agentName, ctx] as [string, typeof ctx];
     }),
   );
