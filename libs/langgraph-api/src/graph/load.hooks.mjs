@@ -20,10 +20,15 @@ export async function resolve(specifier, context, nextResolve) {
   //       Node.js crashes with "TypeError [ERR_INVALID_URL_SCHEME]: The URL must be of scheme file".
   //       As it already is a valid URI, we can just short-circuit the resolution and avoid `tsx`.
   if (
-    specifier.includes("@tailwindcss/node/dist/esm-cache.loader.mjs") &&
+    specifier.includes("@tailwindcss/node/dist/esm-cache.loader") &&
     specifier.startsWith("file://")
   ) {
-    return { shortCircuit: true, url: specifier, format: "module" };
+    return {
+      shortCircuit: true,
+      // Node 18.x will for some reason attempt to load `.mts` instead of `.mjs`
+      url: specifier.replace(".mts", ".mjs"),
+      format: "module",
+    };
   }
 
   if (specifier === "@langchain/langgraph-checkpoint") {
