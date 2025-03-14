@@ -14,7 +14,9 @@ export type CheckpointPendingWrite<TaskId = string> = [
  *
  * @typeParam ExtraProperties - Optional additional properties to include in the metadata.
  */
-export type CheckpointMetadata<ExtraProperties extends object = object> = {
+export type CheckpointMetadata<
+  ExtraProperties extends object = object
+> = {
   /**
    * The source of the checkpoint.
    * - "input": The checkpoint was created from an input to invoke/stream/batch.
