@@ -16,20 +16,33 @@ const renderTemplate = await fs.promises.readFile(
   "utf-8",
 );
 
-function entrypointPlugin(uiUserPath: string): Plugin {
-  const projectDir = path.dirname(uiUserPath);
+function entrypointPlugin(paths: { cwd: string; userPath: string }): Plugin {
+  const fullPath = path.resolve(paths.cwd, paths.userPath);
+
+  let relativeUiPath = path
+    .relative(paths.cwd, fullPath)
+    .replaceAll(path.sep, "/");
+
+  if (relativeUiPath.startsWith("../")) {
+    throw new Error(
+      `UI path must be relative to the project root. Received: "${relativeUiPath}"`,
+    );
+  }
+
+  if (!relativeUiPath.startsWith("./")) relativeUiPath = `./${relativeUiPath}`;
+
   return {
     name: "entrypoint",
     setup(build) {
-      build.onResolve({ filter: /^entrypoint$/ }, (args) => ({
-        path: path.resolve(projectDir, "ui.entrypoint.tsx"),
+      build.onResolve({ filter: /^entrypoint$/ }, () => ({
+        path: path.resolve(path.dirname(fullPath), "ui.entrypoint.tsx"),
         namespace: "entrypoint-ns",
       }));
 
       build.onLoad({ filter: /.*/, namespace: "entrypoint-ns" }, () => ({
-        resolveDir: projectDir,
+        resolveDir: paths.cwd,
         contents: [
-          `import ui from "${uiUserPath}"`,
+          `import ui from "${relativeUiPath}"`,
           renderTemplate,
           `export const render = createRenderer(ui)`,
         ].join("\n"),
@@ -70,12 +83,12 @@ function registerPlugin(
 
 function setup(
   agentName: string,
-  uiUserPath: string,
+  args: { cwd: string; userPath: string },
   onResult: (result: { basename: string; contents: Uint8Array }[]) => void,
 ): BuildOptions {
   return {
     write: false,
-    outdir: path.resolve(path.dirname(uiUserPath), "dist"),
+    outdir: path.resolve(args.cwd, "dist"),
     entryPoints: ["entrypoint"],
     bundle: true,
     platform: "browser",
@@ -87,27 +100,26 @@ function setup(
       "@langchain/langgraph-sdk",
       "@langchain/langgraph-sdk/react-ui",
     ],
-    plugins: [
-      tailwind(),
-      entrypointPlugin(uiUserPath),
-      registerPlugin(onResult),
-    ],
+    plugins: [tailwind(), entrypointPlugin(args), registerPlugin(onResult)],
     globalName: `__LGUI_${agentName}`,
   };
 }
 
-export async function build(agentName: string, uiUserPath: string) {
+export async function build(
+  agentName: string,
+  args: { cwd: string; userPath: string },
+) {
   let results: { basename: string; contents: Uint8Array }[] = [];
-  await runBuild(setup(agentName, uiUserPath, (result) => (results = result)));
+  await runBuild(setup(agentName, args, (result) => (results = result)));
   return results;
 }
 
 export async function watch(
   agentName: string,
-  uiUserPath: string,
+  args: { cwd: string; userPath: string },
   onResult: (result: { basename: string; contents: Uint8Array }[]) => void,
 ) {
-  const ctx = await runContext(setup(agentName, uiUserPath, onResult));
+  const ctx = await runContext(setup(agentName, args, onResult));
   await ctx.watch();
   return ctx;
 }

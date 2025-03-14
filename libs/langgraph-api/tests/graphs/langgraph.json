@@ -7,6 +7,9 @@
     "error": "./error.mts:graph",
     "delay": "./delay.mts:graph"
   },
+  "ui": {
+    "agent": "./agent/ui.tsx"
+  },
   "env": {
     "LANGGRAPH_CONFIG": "{\"agent\": {\"configurable\": {\"model_name\": \"openai\"}}}"
   }
