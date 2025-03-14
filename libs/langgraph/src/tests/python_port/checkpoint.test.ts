@@ -1,4 +1,14 @@
 import { describe, it, expect } from "@jest/globals";
+import { RunnableConfig } from "@langchain/core/runnables";
+import {
+  AIMessage,
+  BaseMessage,
+  HumanMessage,
+  isAIMessage,
+  SystemMessage,
+} from "@langchain/core/messages";
+import { StructuredTool } from "@langchain/core/tools";
+import { z } from "zod";
 import {
   BaseCheckpointSaver,
   Checkpoint,
@@ -7,14 +17,17 @@ import {
   ChannelVersions,
   MemorySaver,
 } from "@langchain/langgraph-checkpoint";
-import { RunnableConfig } from "@langchain/core/runnables";
 import { StateGraph } from "../../graph/state.js";
-import { Annotation, Command, END, Graph, Send, START } from "../../index.js";
+import { Annotation, Command, END, Graph, Send, START } from "../../web.js";
 import { gatherIterator } from "../../utils.js";
 import { interrupt } from "../../interrupt.js";
 import { LastValue } from "../../channels/last_value.js";
 import { BinaryOperatorAggregate } from "../../channels/binop.js";
 import { Channel, Pregel } from "../../pregel/index.js";
+import { MessagesAnnotation } from "../../graph/messages_annotation.js";
+import { ToolNode } from "../../prebuilt/index.js";
+import { initializeAsyncLocalStorageSingleton } from "../../setup/async_local_storage.js";
+import { FakeToolCallingChatModel } from "../utils.js";
 
 class LongPutCheckpointer extends MemorySaver {
   constructor(private logs: string[], private delayMsec: number = 100) {
@@ -26,19 +39,80 @@ class LongPutCheckpointer extends MemorySaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
-    this.logs.push("checkpoint.aput.start");
+    this.logs.push("putting checkpoint");
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, this.delayMsec);
+    });
     try {
-      await new Promise<void>((resolve) => {
-        setTimeout(() => {
-          resolve();
-        }, this.delayMsec);
-      });
-      return super.put(config, checkpoint, metadata);
-    } finally {
-      this.logs.push("checkpoint.aput.end");
+      const result = await super.put(config, checkpoint, metadata);
+      this.logs.push("put checkpoint");
+      return result;
+    } catch (err) {
+      this.logs.push("error putting checkpoint");
+      throw err;
     }
   }
 }
+
+/**
+ * Custom checkpointer that verifies a run's configurable fields
+ * are merged with the previous checkpoint config for each step
+ */
+class MemorySaverAssertCheckpointMetadata extends MemorySaver {
+  /**
+   * This implementation merges config["configurable"] (a run's configurable fields)
+   * with the metadata field. The state of the checkpoint metadata can be asserted
+   * to confirm that the run's configurable fields were merged.
+   */
+  async put(
+    config: RunnableConfig,
+    checkpoint: Checkpoint,
+    metadata: CheckpointMetadata
+  ): Promise<RunnableConfig> {
+    const configurable = { ...config.configurable };
+
+    // Remove checkpoint_id to make testing simpler
+    delete configurable.checkpoint_id;
+
+    const threadId = config.configurable?.thread_id;
+    const checkpointNs = config.configurable?.checkpoint_ns || "";
+
+    // Make sure storage structure exists
+    if (!this.storage[threadId]) {
+      this.storage[threadId] = {};
+    }
+    if (!this.storage[threadId][checkpointNs]) {
+      this.storage[threadId][checkpointNs] = {};
+    }
+
+    // Serialize checkpoint and merged metadata
+    const serializedCheckpoint = this.serde.dumpsTyped(checkpoint)[1];
+    const serializedMergedMetadata = this.serde.dumpsTyped({
+      ...configurable,
+      ...metadata,
+    })[1];
+
+    // Store in the storage with merged metadata
+    this.storage[threadId][checkpointNs][checkpoint.id] = [
+      serializedCheckpoint,
+      serializedMergedMetadata,
+      config.configurable?.checkpoint_id,
+    ];
+
+    // Return updated config with checkpoint id
+    return {
+      configurable: {
+        thread_id: threadId,
+        checkpoint_id: checkpoint.id,
+      },
+    };
+  }
+}
+
+beforeAll(() => {
+  // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
+  initializeAsyncLocalStorageSingleton();
+});
 
 describe("Checkpoint Tests (Python port)", () => {
   /**
@@ -402,7 +476,7 @@ describe("Checkpoint Tests (Python port)", () => {
 
     // Check logs before cancellation is handled
     expect(logs).toContain("awhile.start");
-    expect(logs).toContain("checkpoint.aput.start");
+    expect(logs).toContain("putting checkpoint");
 
     await cancelPromise;
 
@@ -413,8 +487,8 @@ describe("Checkpoint Tests (Python port)", () => {
     expect(logs.sort()).toEqual([
       "awhile.end",
       "awhile.start",
-      "checkpoint.aput.end",
-      "checkpoint.aput.start",
+      "put checkpoint",
+      "putting checkpoint",
     ]);
 
     // Verify task was cancelled
@@ -513,7 +587,7 @@ describe("Checkpoint Tests (Python port)", () => {
       setTimeout(resolve, 20);
     });
     expect(logs).toContain("awhile.start");
-    expect(logs).toContain("checkpoint.aput.start");
+    expect(logs).toContain("putting checkpoint");
 
     await cancelPromise;
 
@@ -526,8 +600,8 @@ describe("Checkpoint Tests (Python port)", () => {
     expect(logs.sort()).toEqual([
       "awhile.end",
       "awhile.start",
-      "checkpoint.aput.end",
-      "checkpoint.aput.start",
+      "put checkpoint",
+      "putting checkpoint",
     ]);
 
     // Verify task was cancelled
@@ -626,7 +700,7 @@ describe("Checkpoint Tests (Python port)", () => {
     });
 
     // Check logs before cancellation is fully handled
-    expect(logs).toContain("checkpoint.aput.start");
+    expect(logs).toContain("putting checkpoint");
     expect(logs).toContain("awhile.start");
     expect(logs.length).toBe(2);
 
@@ -641,8 +715,8 @@ describe("Checkpoint Tests (Python port)", () => {
     expect(logs.sort()).toEqual([
       "awhile.end",
       "awhile.start",
-      "checkpoint.aput.end",
-      "checkpoint.aput.start",
+      "put checkpoint",
+      "putting checkpoint",
     ]);
 
     // Verify the task was cancelled
@@ -1500,5 +1574,209 @@ describe("Checkpoint Tests (Python port)", () => {
     const latestState = await app.getState(thread1);
     const updatedState = await app.getState(thread1NextConfig);
     expect(latestState).toEqual(updatedState);
+  });
+
+  /**
+   * Port of test_checkpoint_metadata from test_pregel_async_checkpoint.py
+   */
+  it("verifies that a run's configurable fields are merged with checkpoint config", async () => {
+    const responses = [
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          {
+            id: "tool_call123",
+            name: "search_api",
+            args: { query: "query" },
+          },
+        ],
+      }),
+      new AIMessage({ content: "answer" }),
+      new AIMessage({ content: "answer" }),
+      new AIMessage({ content: "answer" }),
+      new AIMessage({ content: "answer" }),
+      new AIMessage({ content: "answer" }),
+      new AIMessage({ content: "answer" }),
+    ];
+
+    const fakeChatModel = new FakeToolCallingChatModel({
+      responses,
+    });
+
+    // Create a search tool
+    class SearchTool extends StructuredTool {
+      name = "search_api";
+
+      description = "Searches the API for the query.";
+
+      schema = z.object({
+        query: z.string().describe("The search query"),
+      });
+
+      async _call(input: { query: string }): Promise<string> {
+        return `result for ${input.query}`;
+      }
+    }
+
+    const tools = [new SearchTool()];
+
+    // Create prompt
+    const prompt = {
+      invoke: (state: { messages: BaseMessage[] }) => {
+        return [
+          new SystemMessage("You are a nice assistant."),
+          ...state.messages,
+        ];
+      },
+    };
+
+    // Agent node function
+    const agent = async (state: { messages: BaseMessage[] }) => {
+      const formatted = prompt.invoke(state);
+      const response = await fakeChatModel.invoke(formatted);
+      return { messages: [new AIMessage(response)] };
+    };
+
+    // Should continue function
+    const shouldContinue = (data: { messages: BaseMessage[] }) => {
+      const lastMessage = data.messages[data.messages.length - 1];
+      if (
+        isAIMessage(lastMessage) &&
+        (lastMessage.tool_calls?.length ?? 0) > 0
+      ) {
+        return "continue";
+      } else {
+        return "exit";
+      }
+    };
+
+    // Define graph
+    const workflow = new StateGraph(MessagesAnnotation)
+      .addNode("agent", agent)
+      .addNode("tools", new ToolNode(tools))
+      .addEdge(START, "agent")
+      .addConditionalEdges("agent", shouldContinue, {
+        continue: "tools",
+        exit: END,
+      })
+      .addEdge("tools", "agent");
+
+    // Graph without interrupt
+    const checkpointer1 = new MemorySaverAssertCheckpointMetadata();
+    const app = workflow.compile({ checkpointer: checkpointer1 });
+
+    // Graph with interrupt
+    const checkpointer2 = new MemorySaverAssertCheckpointMetadata();
+    const appWithInterrupt = workflow.compile({
+      checkpointer: checkpointer2,
+      interruptBefore: ["tools"],
+    });
+
+    // Invoke graph without interrupt
+    await app.invoke(
+      { messages: [new HumanMessage("what is weather in sf")] },
+      {
+        configurable: {
+          thread_id: "1",
+          test_config_1: "foo",
+          test_config_2: "bar",
+        },
+      }
+    );
+
+    // Get checkpoint metadata
+    const config1 = { configurable: { thread_id: "1" } };
+    const checkpointTuple1 = await checkpointer1.getTuple(config1);
+    expect(checkpointTuple1).toBeDefined();
+
+    expect(checkpointTuple1).toBeDefined();
+    expect(checkpointTuple1?.metadata).toBeDefined();
+
+    const tuple1Metadata = checkpointTuple1!.metadata! as CheckpointMetadata<{
+      thread_id: string;
+      test_config_1: string;
+      test_config_2: string;
+    }>;
+
+    // Assert that checkpoint metadata contains the run's configurable fields
+    expect(tuple1Metadata.thread_id).toBe("1");
+    expect(tuple1Metadata.test_config_1).toBe("foo");
+    expect(tuple1Metadata.test_config_2).toBe("bar");
+
+    // Verify that all checkpoint metadata have the expected keys
+    for await (const chkpntTuple of checkpointer1.list(config1)) {
+      const tplMetadata = chkpntTuple.metadata as CheckpointMetadata<{
+        thread_id: string;
+        test_config_1: string;
+        test_config_2: string;
+      }>;
+      expect(tplMetadata.thread_id).toBe("1");
+      expect(tplMetadata.test_config_1).toBe("foo");
+      expect(tplMetadata.test_config_2).toBe("bar");
+    }
+
+    // Invoke graph with interrupt
+    await appWithInterrupt.invoke(
+      { messages: [new HumanMessage("what is weather in sf")] },
+      {
+        configurable: {
+          thread_id: "2",
+          test_config_3: "foo",
+          test_config_4: "bar",
+        },
+      }
+    );
+
+    // Get checkpoint metadata
+    const config2 = { configurable: { thread_id: "2" } };
+    const checkpointTuple2 = await checkpointer2.getTuple(config2);
+    expect(checkpointTuple2).toBeDefined();
+
+    const tuple2Metadata = checkpointTuple2!.metadata! as CheckpointMetadata<{
+      thread_id: string;
+      test_config_3: string;
+      test_config_4: string;
+    }>;
+
+    // Assert that checkpoint metadata contains the run's configurable fields
+    expect(tuple2Metadata.thread_id).toBe("2");
+    expect(tuple2Metadata.test_config_3).toBe("foo");
+    expect(tuple2Metadata.test_config_4).toBe("bar");
+
+    // Resume graph execution
+    await appWithInterrupt.invoke(null, {
+      configurable: {
+        thread_id: "2",
+        test_config_3: "foo",
+        test_config_4: "bar",
+      },
+    });
+
+    // Get updated checkpoint metadata
+    const checkpointTuple3 = await checkpointer2.getTuple(config2);
+    expect(checkpointTuple3).toBeDefined();
+
+    const tuple3Metadata = checkpointTuple3!.metadata! as CheckpointMetadata<{
+      thread_id: string;
+      test_config_3: string;
+      test_config_4: string;
+    }>;
+
+    // Assert that checkpoint metadata contains the run's configurable fields
+    expect(tuple3Metadata.thread_id).toBe("2");
+    expect(tuple3Metadata.test_config_3).toBe("foo");
+    expect(tuple3Metadata.test_config_4).toBe("bar");
+
+    // Verify that all checkpoint metadata have the expected keys
+    for await (const chkpntTuple of checkpointer2.list(config2)) {
+      const tplMetadata = chkpntTuple.metadata as CheckpointMetadata<{
+        thread_id: string;
+        test_config_3: string;
+        test_config_4: string;
+      }>;
+      expect(tplMetadata.thread_id).toBe("2");
+      expect(tplMetadata.test_config_3).toBe("foo");
+      expect(tplMetadata.test_config_4).toBe("bar");
+    }
   });
 });
