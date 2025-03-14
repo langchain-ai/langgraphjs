@@ -197,21 +197,15 @@ api.post(
   zValidator(
     "json",
     z.object({
-      checkpoints: z.array(
-        z.object({
-          updates: z.array(
-            z.object({
-              values: z
-                .union([
-                  z.record(z.string(), z.unknown()),
-                  z.array(z.record(z.string(), z.unknown())),
-                ])
-                .nullish(),
-              as_node: z.string(),
-            }),
-          ),
-        }),
-      ),
+      supersteps: z
+        .array(
+          z.object({
+            updates: z.array(
+              z.object({ values: z.unknown().nullish(), as_node: z.string() }),
+            ),
+          }),
+        )
+        .describe("The supersteps to apply to the thread."),
       thread_id: z
         .string()
         .uuid()
@@ -235,20 +229,10 @@ api.post(
       if_exists: payload.if_exists ?? "raise",
     });
 
-    const config: RunnableConfig = {
-      configurable: { thread_id: newThread.thread_id },
-    };
-
-    for (const checkpoint of payload.checkpoints) {
-      await Threads.State.batch(
-        config,
-        checkpoint.updates.map((update) => ({
-          values: update.values,
-          asNode: update.as_node,
-        })),
-      );
-    }
-
+    await Threads.State.batch(
+      { configurable: { thread_id: newThread.thread_id } },
+      payload.supersteps,
+    );
     return jsonExtra(c, newThread);
   },
 );

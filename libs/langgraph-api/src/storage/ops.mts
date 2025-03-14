@@ -876,13 +876,16 @@ export class Threads {
 
     static async batch(
       config: RunnableConfig,
-      writes: Array<{
-        values:
-          | Record<string, unknown>[]
-          | Record<string, unknown>
-          | null
-          | undefined;
-        asNode?: string | undefined;
+      supersteps: Array<{
+        updates: Array<{
+          values?:
+            | Record<string, unknown>[]
+            | Record<string, unknown>
+            | unknown
+            | null
+            | undefined;
+          as_node?: string | undefined;
+        }>;
       }>,
     ) {
       const threadId = config.configurable?.thread_id;
@@ -905,7 +908,7 @@ export class Threads {
       updateConfig.configurable ??= {};
       updateConfig.configurable.checkpoint_ns ??= "";
 
-      const nextConfig = await graph.bulkUpdateState(updateConfig, writes);
+      const nextConfig = await graph.bulkUpdateState(updateConfig, supersteps);
       const state = await Threads.State.get(config, { subgraphs: false });
 
       // update thread values
