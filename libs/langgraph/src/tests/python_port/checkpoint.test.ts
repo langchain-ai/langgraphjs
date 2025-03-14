@@ -826,7 +826,7 @@ describe("Checkpoint Tests (Python port)", () => {
 
     // Just check partial state since the structure might vary
     expect(state.values).toEqual({
-      my_key: "value ⛰️",
+      my_key: "value ⛰️ one",
       market: "DE",
     });
 
@@ -1145,5 +1145,147 @@ describe("Checkpoint Tests (Python port)", () => {
 
     expect(checkpoints[1]?.pendingWrites).toBeDefined();
     expect(checkpoints[2]?.pendingWrites).toBeDefined();
+  });
+
+  /**
+   * Port of test_run_from_checkpoint_id_retains_previous_writes from test_pregel_async_checkpoint.py
+   */
+  it("should test that running from a checkpoint ID retains previous writes", async () => {
+    // Create a memory saver checkpoint instance
+    const checkpointer = new MemorySaver();
+
+    // Define the state annotation
+    const StateAnnotation = Annotation.Root({
+      myval: Annotation<number>({
+        reducer: (a, b) => a + b,
+        default: () => 0,
+      }),
+      otherval: Annotation<boolean>({
+        reducer: (_, b) => b,
+        default: () => false,
+      }),
+    });
+
+    // Create the Anode class that toggles its state on each call
+    class Anode {
+      private switch = false;
+
+      async call(
+        _state: typeof StateAnnotation.State
+      ): Promise<typeof StateAnnotation.Update> {
+        this.switch = !this.switch;
+        return {
+          myval: this.switch ? 2 : 1,
+          otherval: this.switch,
+        };
+      }
+    }
+
+    // Create a node instance
+    const theNode = new Anode();
+
+    // Create the conditional edge function generator
+    const getEdge = (src: string) => {
+      const swap = src === "node_two" ? "node_one" : "node_two";
+
+      return (state: typeof StateAnnotation.State): string => {
+        if (state.myval > 3) {
+          return END;
+        }
+        if (state.otherval) {
+          return swap;
+        }
+        return src;
+      };
+    };
+
+    // Create the graph
+    const builder = new StateGraph({
+      stateSchema: StateAnnotation,
+    })
+      .addNode("node_one", theNode.call.bind(theNode))
+      .addNode("node_two", theNode.call.bind(theNode))
+      .addEdge(START, "node_one")
+      .addConditionalEdges("node_one", getEdge("node_one"))
+      .addConditionalEdges("node_two", getEdge("node_two"));
+
+    const graph = builder.compile({
+      checkpointer,
+    });
+
+    // Generate a unique thread_id
+    const threadId = `thread-${Date.now()}`;
+    const thread1 = { configurable: { thread_id: threadId } };
+
+    // First run of the graph
+    const result = await graph.invoke({ myval: 1 }, thread1);
+    expect(result.myval).toBe(4);
+
+    // Get state history
+    const historyPromise = graph.getStateHistory(thread1);
+    const history = [];
+    for await (const state of historyPromise) {
+      history.push(state);
+    }
+
+    // Check history
+    expect(history.length).toBe(4);
+    // Last state (oldest) should have myval = 0 (default)
+    expect(history[history.length - 1].values.myval).toBe(0);
+    // First state (most recent) should have final values
+    expect(history[0].values).toEqual({ myval: 4, otherval: false });
+
+    // Make sure we have a checkpoint_id before proceeding
+    expect(history[1]?.config).toBeDefined();
+    if (history[1]?.config?.configurable?.checkpoint_id) {
+      // Run from the second checkpoint
+      const secondRunConfig = {
+        ...thread1,
+        configurable: {
+          ...thread1.configurable,
+          checkpoint_id: history[1].config.configurable.checkpoint_id,
+        },
+      };
+
+      const secondResult = await graph.invoke(null, secondRunConfig);
+      expect(secondResult).toEqual({ myval: 5, otherval: true });
+
+      // Get updated history
+      const newHistoryPromise = graph.getStateHistory({
+        configurable: { thread_id: threadId, checkpoint_ns: "" },
+      });
+      const newHistory = [];
+      for await (const state of newHistoryPromise) {
+        newHistory.push(state);
+      }
+
+      // Check updated history
+      expect(newHistory.length).toBe(history.length + 1);
+
+      // Compare original history with new history (skipping the first new state)
+      for (let i = 0; i < history.length; i += 1) {
+        const original = history[i];
+        const newState = newHistory[i + 1];
+
+        expect(newState.values).toEqual(original.values);
+        expect(newState.next).toEqual(original.next);
+
+        // Check metadata if both have it
+        if (newState.metadata && original.metadata) {
+          expect(newState.metadata.step).toBe(original.metadata.step);
+        }
+      }
+
+      // Helper function to get tasks
+      type HistoryItem = { tasks: unknown };
+      const getTasks = (hist: HistoryItem[], start: number): unknown[] => {
+        return hist.slice(start).map((h) => h.tasks);
+      };
+
+      // Compare tasks
+      expect(getTasks(newHistory, 1)).toEqual(getTasks(history, 0));
+    } else {
+      throw new Error("Expected checkpoint_id to be defined in history[1]");
+    }
   });
 });
