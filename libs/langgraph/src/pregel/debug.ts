@@ -8,6 +8,9 @@ import { BaseChannel } from "../channels/base.js";
 import { ERROR, Interrupt, INTERRUPT, TAG_HIDDEN } from "../constants.js";
 import { EmptyChannelError } from "../errors.js";
 import {
+  DebugCheckpointEvent,
+  DebugTaskEvent,
+  DebugTaskResultEvent,
   PregelExecutableTask,
   PregelTaskDescription,
   StateSnapshot,
@@ -107,7 +110,7 @@ export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
         triggers,
         interrupts,
       },
-    };
+    } as DebugTaskEvent;
   }
 }
 
@@ -136,7 +139,7 @@ export function* mapDebugTaskResults<
         }),
         interrupts: writes.filter((w) => w[0] === INTERRUPT).map((w) => w[1]),
       },
-    };
+    } as DebugTaskResultEvent;
   }
 }
 
@@ -217,7 +220,7 @@ export function* mapDebugCheckpoint<
       tasks: tasksWithWrites(tasks, pendingWrites, taskStates),
       parentConfig: parentConfig ? formatConfig(parentConfig) : undefined,
     },
-  };
+  } as DebugCheckpointEvent;
 }
 
 export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
