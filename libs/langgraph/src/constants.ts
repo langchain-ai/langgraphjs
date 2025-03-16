@@ -1,3 +1,5 @@
+import { PendingWrite } from "@langchain/langgraph-checkpoint";
+
 /** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
 /** Special reserved node name denoting the end of a graph. */
@@ -171,7 +173,8 @@ export type CommandParams<R> = {
   /**
    * Graph to send the command to. Supported values are:
    *   - None: the current graph (default)
-   *   - GraphCommand.PARENT: closest parent graph
+   *   - The specific name of the graph to send the command to
+   *   - {@link Command.PARENT}: closest parent graph (only supported when returned from a node in a subgraph)
    */
   graph?: string;
 
@@ -257,13 +260,33 @@ export class Command<R = unknown> {
 
   lc_direct_tool_output = true;
 
+  /**
+   * Graph to send the command to. Supported values are:
+   *   - None: the current graph (default)
+   *   - The specific name of the graph to send the command to
+   *   - {@link Command.PARENT}: closest parent graph (only supported when returned from a node in a subgraph)
+   */
   graph?: string;
 
+  /**
+   * Update to apply to the graph's state as a result of executing the node that is returning the command.
+   * Written to the state as if the node had simply returned this value instead of the Command object.
+   */
   update?: Record<string, unknown> | [string, unknown][];
 
+  /**
+   * Value to resume execution with. To be used together with {@link interrupt}.
+   */
   resume?: R;
 
-  goto: string | Send | (string | Send)[] = [];
+  /**
+   * Can be one of the following:
+   *   - name of the node to navigate to next (any node that belongs to the specified `graph`)
+   *   - sequence of node names to navigate to next
+   *   - {@link Send} object (to execute a node with the exact input provided in the {@link Send} object)
+   *   - sequence of {@link Send} objects
+   */
+  goto?: string | Send | (string | Send)[] = [];
 
   static PARENT = "__parent__";
 
@@ -276,7 +299,12 @@ export class Command<R = unknown> {
     }
   }
 
-  _updateAsTuples(): [string, unknown][] {
+  /**
+   * Convert the update field to a list of {@link PendingWrite} tuples
+   * @returns List of {@link PendingWrite} tuples of the form `[channelKey, value]`.
+   * @internal
+   */
+  _updateAsTuples(): PendingWrite[] {
     if (
       this.update &&
       typeof this.update === "object" &&
@@ -303,7 +331,7 @@ export class Command<R = unknown> {
     } else if (_isSend(this.goto)) {
       serializedGoto = this.goto.toJSON();
     } else {
-      serializedGoto = this.goto.map((innerGoto) => {
+      serializedGoto = this.goto?.map((innerGoto) => {
         if (typeof innerGoto === "string") {
           return innerGoto;
         } else {
@@ -319,6 +347,14 @@ export class Command<R = unknown> {
   }
 }
 
+/**
+ * A type guard to check if the given value is a {@link Command}.
+ *
+ * Useful for type narrowing when working with the {@link Command} object.
+ *
+ * @param x - The value to check.
+ * @returns `true` if the value is a {@link Command}, `false` otherwise.
+ */
 export function isCommand(x: unknown): x is Command {
   return typeof x === "object" && !!x && (x as Command).lg_name === "Command";
 }

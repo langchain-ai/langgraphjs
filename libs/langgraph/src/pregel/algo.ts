@@ -187,7 +187,7 @@ export function _localWrite(
   writes: [string, any][]
 ) {
   for (const [chan, value] of writes) {
-    if (chan === TASKS && value != null) {
+    if ([PUSH, TASKS].includes(chan) && value != null) {
       if (!_isSend(value)) {
         throw new InvalidUpdateError(
           `Invalid packet type, expected SendProtocol, got ${JSON.stringify(
@@ -449,6 +449,7 @@ export function _prepareNextTasks<
   const tasks:
     | Record<string, PregelExecutableTask<keyof Nn, keyof Cc>>
     | Record<string, PregelTaskDescription> = {};
+
   // Consume pending packets
   for (let i = 0; i < checkpoint.pending_sends.length; i += 1) {
     const task = _prepareSingleTask(
