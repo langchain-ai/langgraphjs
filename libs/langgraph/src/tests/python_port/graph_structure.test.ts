@@ -19,11 +19,10 @@ describe("Graph Structure Tests (Python port)", () => {
       }),
     });
 
-    // Create Node class similar to the Python version
+    // The python test used a class here, but a decorator function is fine
     function getNode(name: string) {
-      return async (state: typeof StateAnnotation.State) => {
+      return async () => {
         // Use the state parameter to avoid unused variable warning
-        console.log("Processing state:", state);
         return { items: [name] };
       };
     }
@@ -44,8 +43,7 @@ describe("Graph Structure Tests (Python port)", () => {
       .addNode("3", getNode("3"))
       .addEdge(START, "1")
       .addConditionalEdges("1", sendForFun)
-      .addConditionalEdges("2", routeToThree)
-      .addEdge("3", "__end__");
+      .addConditionalEdges("2", routeToThree);
 
     const graph = builder.compile();
 
@@ -54,5 +52,73 @@ describe("Graph Structure Tests (Python port)", () => {
 
     // Match Python's assertion exactly
     expect(result).toEqual({ items: ["0", "1", "2", "2", "3"] });
+  });
+
+  /**
+   * Port of test_concurrent_emit_sends from test_pregel_async_graph_structure.py
+   */
+  it("should handle concurrent emit sends", async () => {
+    // Define the StateAnnotation for accumulating lists
+    const StateAnnotation = Annotation.Root({
+      items: Annotation<string[]>({
+        reducer: (a, b) => a.concat(b),
+        default: () => [],
+      }),
+    });
+
+    // The python test used a class here, but a decorator function is fine
+    function getNode(name: string) {
+      return async (state: typeof StateAnnotation.State) => {
+        if (Array.isArray(state.items)) {
+          return { items: [name] };
+        } else {
+          return { items: [`${name}|${state}`] };
+        }
+      };
+    }
+
+    // Define the functions for routing and sending
+    const sendForFun = () => {
+      return [new Send("2", 1), new Send("2", 2), "3.1"];
+    };
+
+    const sendForProfit = () => {
+      return [new Send("2", 3), new Send("2", 4)];
+    };
+
+    const routeToThree = (): "3" => {
+      return "3";
+    };
+
+    // Create the graph with nodes and edges
+    const builder = new StateGraph({ stateSchema: StateAnnotation })
+      .addNode("1", getNode("1"))
+      .addNode("1.1", getNode("1.1"))
+      .addNode("2", getNode("2"))
+      .addNode("3", getNode("3"))
+      .addNode("3.1", getNode("3.1"))
+      .addEdge(START, "1")
+      .addEdge(START, "1.1")
+      .addConditionalEdges("1", sendForFun)
+      .addConditionalEdges("1.1", sendForProfit)
+      .addConditionalEdges("2", routeToThree);
+
+    const graph = builder.compile();
+
+    // Test the graph execution
+    const result = await graph.invoke({ items: ["0"] });
+
+    // Match Python's assertion exactly
+    expect(result.items).toEqual([
+      "0",
+      "1",
+      "1.1",
+      "3.1",
+      "2|1",
+      "2|2",
+      "2|3",
+      "2|4",
+      "3",
+    ]);
   });
 });
