@@ -1,4 +1,5 @@
 import { describe, it, expect } from "@jest/globals";
+import { v4 as uuidv4 } from "uuid";
 import { RunnableConfig } from "@langchain/core/runnables";
 import {
   AIMessage,
@@ -15,9 +16,19 @@ import {
   CheckpointMetadata,
   ChannelVersions,
   MemorySaver,
+  BaseStore,
+  InMemoryStore,
 } from "@langchain/langgraph-checkpoint";
 import { StateGraph } from "../../graph/state.js";
-import { Annotation, Command, END, Graph, Send, START } from "../../web.js";
+import {
+  Annotation,
+  Command,
+  END,
+  Graph,
+  LangGraphRunnableConfig,
+  Send,
+  START,
+} from "../../web.js";
 import { gatherIterator } from "../../utils.js";
 import { interrupt } from "../../interrupt.js";
 import { LastValue } from "../../channels/last_value.js";
@@ -1861,5 +1872,169 @@ describe("Checkpoint Tests (Python port)", () => {
       { configurable: { thread_id: "foo" } }
     );
     expect(result4.value).toEqual(["1", "1", "1", "1"]);
+  });
+});
+
+/**
+ * Port of test_store_injected_async from test_pregel_async_checkpoint.py
+ */
+describe("Long-term Memory Store Tests (Python port)", () => {
+  it("should pass store to nodes correctly", async () => {
+    // Define Annotation for state
+    const StateAnnotation = Annotation.Root({
+      count: Annotation<number>({
+        reducer: (a, b) => a + b,
+        default: () => 0,
+      }),
+    });
+
+    // Test setup similar to the Python test
+    const docId = uuidv4();
+    const doc = { "some-key": "this-is-a-val" };
+    const uid = uuidv4().replace(/-/g, "");
+    const namespace = [`foo-${uid}`, "bar"];
+    const thread1 = uuidv4();
+    const thread2 = uuidv4();
+
+    // Define a node that accesses store from config.store
+    const getNodeFunc =
+      (i?: number) =>
+      async (
+        state: typeof StateAnnotation.State,
+        config: LangGraphRunnableConfig
+      ) => {
+        // Access the store from config.store, which is how it's passed in JS
+        const { store } = config;
+        expect(store).toBeDefined();
+
+        const putNamespace =
+          i !== undefined &&
+          [thread1, thread2].includes(config.configurable?.thread_id)
+            ? namespace
+            : [`foo_${i ?? ""}`, "bar"];
+
+        if (store) {
+          // Use the store to write data
+          await store.put(putNamespace, docId, {
+            ...doc,
+            from_thread: config.configurable?.thread_id,
+            some_val: state.count,
+          });
+        }
+
+        return { count: 1 };
+      };
+
+    // Another node that also uses the store
+    const otherNodeFunc = async (
+      _state: typeof StateAnnotation.State,
+      config: LangGraphRunnableConfig
+    ) => {
+      // Access the store from config.store
+      const store = config.store as BaseStore | undefined;
+      expect(store).toBeDefined();
+
+      if (store) {
+        // Read from the store
+        const item = await store.get(namespace, docId);
+        expect(item).toBeDefined();
+
+        await store.put(["not", "interesting"], "key", { val: "val" });
+      }
+
+      return { count: 0 };
+    };
+
+    // Create a simple graph
+    const builder = new StateGraph<
+      typeof StateAnnotation.spec,
+      typeof StateAnnotation.State,
+      typeof StateAnnotation.Update,
+      string
+    >({ stateSchema: StateAnnotation })
+      .addNode("node", getNodeFunc())
+      .addNode("other_node", otherNodeFunc)
+      .addEdge(START, "node")
+      .addEdge("node", "other_node");
+
+    const N = 500;
+
+    for (let i = 0; i < N; i += 1) {
+      builder.addNode(`node_${i}`, getNodeFunc(i));
+      builder.addEdge(START, `node_${i}`);
+    }
+
+    const checkpointer = new MemorySaver();
+
+    // Use InMemoryStore implementation
+    const store = new InMemoryStore();
+
+    // Compile the graph with the store
+    const graph = builder.compile({
+      store,
+      checkpointer,
+    });
+
+    // First invocation
+    const result = await graph.batch(
+      [{ count: 0 }],
+      [
+        {
+          configurable: { thread_id: thread1 },
+        },
+      ]
+    );
+
+    // Check the result
+    expect(result.length).toBe(1);
+    expect(result[0].count).toBe(N + 1);
+
+    // Verify data was written correctly
+    const returnedDoc = await store.get(namespace, docId);
+    expect(returnedDoc).toBeDefined();
+    expect(returnedDoc?.value).toEqual({
+      ...doc,
+      from_thread: thread1,
+      some_val: 0,
+    });
+
+    expect((await store.search(namespace)).length).toBe(1);
+
+    // Second invocation with different thread
+    const result2 = await graph.invoke(
+      { count: 0 },
+      { configurable: { thread_id: thread1 } }
+    );
+
+    // Check the result
+    expect(result2.count).toBe((N + 1) * 2);
+
+    const returnedDoc2 = await store.get(namespace, docId);
+    expect(returnedDoc2).toBeDefined();
+    expect(returnedDoc2?.value).toEqual({
+      ...doc,
+      from_thread: thread1,
+      some_val: N + 1,
+    });
+
+    expect((await store.search(namespace)).length).toBe(1);
+
+    // Test with a different thread
+    const result3 = await graph.invoke(
+      { count: 0 },
+      { configurable: { thread_id: thread2 } }
+    );
+
+    expect(result3.count).toBe(N + 1);
+
+    const returnedDoc3 = await store.get(namespace, docId);
+    expect(returnedDoc3).toBeDefined();
+    expect(returnedDoc3?.value).toEqual({
+      ...doc,
+      from_thread: thread2,
+      some_val: 0,
+    });
+
+    expect((await store.search(namespace)).length).toBe(1);
   });
 });
