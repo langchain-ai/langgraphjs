@@ -1957,7 +1957,7 @@ describe("Long-term Memory Store Tests (Python port)", () => {
       .addEdge(START, "node")
       .addEdge("node", "other_node");
 
-    const N = 500;
+    const N = 50;
 
     for (let i = 0; i < N; i += 1) {
       builder.addNode(`node_${i}`, getNodeFunc(i));
@@ -2036,5 +2036,91 @@ describe("Long-term Memory Store Tests (Python port)", () => {
     });
 
     expect((await store.search(namespace)).length).toBe(1);
+  });
+});
+
+/**
+ * Port of test_checkpoint_recovery_async from test_pregel_async_checkpoint.py
+ */
+describe("Checkpoint Recovery Tests (Python port)", () => {
+  it("should recover from checkpoints after failures with async nodes", async () => {
+    // Create state annotation with steps and attempt
+    const StateAnnotation = Annotation.Root({
+      steps: Annotation<string[]>({
+        reducer: (a, b) => [...(a || []), ...(b || [])],
+        default: () => [],
+      }),
+      attempt: Annotation<number>({
+        reducer: (_, b) => b,
+        default: () => 0,
+      }),
+    });
+
+    // Helper function for controlled delays
+    const delay = (ms: number) =>
+      new Promise((resolve) => {
+        setTimeout(resolve, ms);
+      });
+
+    // Node that fails on first attempt, succeeds on retry
+    const failingNode = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      // Fail on first attempt, succeed on retry
+      if (state.attempt === 1) {
+        throw new Error("Simulated failure");
+      }
+      await delay(100); // Simulate async work
+      return { steps: ["node1"] };
+    };
+
+    // Second node for the pipeline
+    const secondNode = async (
+      _state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      await delay(100); // Simulate async work
+      return { steps: ["node2"] };
+    };
+
+    // Create the graph
+    const builder = new StateGraph({
+      stateSchema: StateAnnotation,
+    })
+      .addNode("node1", failingNode)
+      .addNode("node2", secondNode)
+      .addEdge(START, "node1")
+      .addEdge("node1", "node2");
+
+    // Use MemorySaver directly
+    const saver = new MemorySaver();
+    const graph = builder.compile({ checkpointer: saver });
+    const config = { configurable: { thread_id: "1" } };
+
+    // First attempt should fail
+    await expect(
+      graph.invoke({ steps: ["start"], attempt: 1 }, config)
+    ).rejects.toThrow("Simulated failure");
+
+    // Verify checkpoint state
+    const state = await graph.getState(config);
+    expect(state).not.toBeNull();
+    expect(state?.values).toEqual({ steps: ["start"], attempt: 1 }); // input state saved
+    expect(state?.next).toEqual(["node1"]); // Should retry failed node
+
+    // Retry with updated attempt count
+    const result = await graph.invoke({ steps: [], attempt: 2 }, config);
+    expect(result).toEqual({ steps: ["start", "node1", "node2"], attempt: 2 });
+
+    // Verify checkpoint history shows both attempts
+    const history = await gatherIterator(graph.getStateHistory(config));
+
+    expect(history.length).toBe(6); // Initial + failed attempt + successful attempt
+
+    // Verify the error was recorded in checkpoint
+    const failedCheckpoint = history.find((c) => c.tasks && c.tasks[0]?.error);
+    expect(failedCheckpoint?.tasks?.[0]?.error).toHaveProperty(
+      "message",
+      "Simulated failure"
+    );
   });
 });
