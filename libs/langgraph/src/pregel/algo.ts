@@ -187,7 +187,7 @@ export function _localWrite(
   writes: [string, any][]
 ) {
   for (const [chan, value] of writes) {
-    if (chan === TASKS && value != null) {
+    if ([PUSH, TASKS].includes(chan) && value != null) {
       if (!_isSend(value)) {
         throw new InvalidUpdateError(
           `Invalid packet type, expected SendProtocol, got ${JSON.stringify(
@@ -449,6 +449,7 @@ export function _prepareNextTasks<
   const tasks:
     | Record<string, PregelExecutableTask<keyof Nn, keyof Cc>>
     | Record<string, PregelTaskDescription> = {};
+
   // Consume pending packets
   for (let i = 0; i < checkpoint.pending_sends.length; i += 1) {
     const task = _prepareSingleTask(
@@ -668,7 +669,15 @@ export function _prepareSingleTask<
     if (index >= checkpoint.pending_sends.length) {
       return undefined;
     }
-    const packet = checkpoint.pending_sends[index];
+
+    const packet =
+      _isSendInterface(checkpoint.pending_sends[index]) &&
+      !_isSend(checkpoint.pending_sends[index])
+        ? new Send(
+            checkpoint.pending_sends[index].node,
+            checkpoint.pending_sends[index].args
+          )
+        : checkpoint.pending_sends[index];
     if (!_isSendInterface(packet)) {
       console.warn(
         `Ignoring invalid packet ${JSON.stringify(packet)} in pending sends.`
@@ -701,7 +710,7 @@ export function _prepareSingleTask<
       langgraph_step: step,
       langgraph_node: packet.node,
       langgraph_triggers: triggers,
-      langgraph_path: taskPath,
+      langgraph_path: taskPath.slice(0, 3),
       langgraph_checkpoint_ns: taskCheckpointNamespace,
     };
     if (forExecution) {

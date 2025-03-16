@@ -223,6 +223,27 @@ export class PregelLoop {
 
   debug: boolean = false;
 
+  get isResuming() {
+    const hasChannelVersions =
+      Object.keys(this.checkpoint.channel_versions).length !== 0;
+    const configHasResumingFlag =
+      this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined;
+    const configIsResuming =
+      configHasResumingFlag && this.config.configurable?.[CONFIG_KEY_RESUMING];
+    const inputIsNullOrUndefined =
+      this.input === null || this.input === undefined;
+    const inputIsCommand = isCommand(this.input);
+    const inputIsResuming = this.input === INPUT_RESUMING;
+
+    return (
+      hasChannelVersions &&
+      (configIsResuming ||
+        inputIsNullOrUndefined ||
+        inputIsCommand ||
+        inputIsResuming)
+    );
+  }
+
   constructor(params: PregelLoopParams) {
     this.input = params.input;
     this.checkpointer = params.checkpointer;
@@ -521,11 +542,13 @@ export class PregelLoop {
     }
     if (![INPUT_DONE, INPUT_RESUMING].includes(this.input)) {
       await this._first(inputKeys);
+    } else if (this.toInterrupt.length > 0) {
+      this.status = "interrupt_before";
+      throw new GraphInterrupt();
     } else if (
-      Object.values(this.tasks).every(
-        (task) => task.writes.filter(([c]) => !(c in WRITES_IDX_MAP)).length > 0
-      )
+      Object.values(this.tasks).every((task) => task.writes.length > 0)
     ) {
+      // finish superstep
       const writes = Object.values(this.tasks).flatMap((t) => t.writes);
       // All tasks have finished
       const managedValueWrites = _applyWrites(
@@ -566,6 +589,11 @@ export class PregelLoop {
         this.status = "interrupt_after";
         throw new GraphInterrupt();
       }
+
+      // unset resuming flag
+      if (this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined) {
+        delete this.config.configurable?.[CONFIG_KEY_RESUMING];
+      }
     } else {
       return false;
     }
@@ -585,7 +613,7 @@ export class PregelLoop {
       {
         step: this.step,
         checkpointer: this.checkpointer,
-        isResuming: this.input === INPUT_RESUMING,
+        isResuming: this.isResuming,
         manager: this.manager,
         store: this.store,
         stream: this.stream,
@@ -777,11 +805,6 @@ export class PregelLoop {
      */
 
     const { configurable } = this.config;
-    const isResuming =
-      Object.keys(this.checkpoint.channel_versions).length !== 0 &&
-      (this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined ||
-        this.input === null ||
-        isCommand(this.input));
 
     // take resume value from parent
     const scratchpad = configurable?.[
@@ -837,7 +860,7 @@ export class PregelLoop {
         this.checkpointerGetNextVersion
       );
     }
-    if (isResuming) {
+    if (this.isResuming) {
       for (const channelName of Object.keys(this.channels)) {
         if (this.checkpoint.channel_versions[channelName] !== undefined) {
           const version = this.checkpoint.channel_versions[channelName];
@@ -855,47 +878,52 @@ export class PregelLoop {
         )
       );
       this._emit(valuesOutput);
+      this.input = INPUT_RESUMING;
     } else {
       // map inputs to channel updates
       const inputWrites = await gatherIterator(mapInput(inputKeys, this.input));
-      if (inputWrites.length === 0) {
+      if (inputWrites.length > 0) {
+        const discardTasks = _prepareNextTasks(
+          this.checkpoint,
+          this.checkpointPendingWrites,
+          this.nodes,
+          this.channels,
+          this.managed,
+          this.config,
+          true,
+          { step: this.step }
+        );
+        _applyWrites(
+          this.checkpoint,
+          this.channels,
+          (Object.values(discardTasks) as WritesProtocol[]).concat([
+            {
+              name: INPUT,
+              writes: inputWrites as PendingWrite[],
+              triggers: [],
+            },
+          ]),
+          this.checkpointerGetNextVersion
+        );
+        // save input checkpoint
+        await this._putCheckpoint({
+          source: "input",
+          writes: Object.fromEntries(inputWrites),
+        });
+
+        this.input = INPUT_DONE;
+      } else if (!(CONFIG_KEY_RESUMING in (this.config.configurable ?? {}))) {
         throw new EmptyInputError(
           `Received no input writes for ${JSON.stringify(inputKeys, null, 2)}`
         );
+      } else {
+        // done with input
+        this.input = INPUT_DONE;
       }
-      const discardTasks = _prepareNextTasks(
-        this.checkpoint,
-        this.checkpointPendingWrites,
-        this.nodes,
-        this.channels,
-        this.managed,
-        this.config,
-        true,
-        { step: this.step }
-      );
-      _applyWrites(
-        this.checkpoint,
-        this.channels,
-        (Object.values(discardTasks) as WritesProtocol[]).concat([
-          {
-            name: INPUT,
-            writes: inputWrites as PendingWrite[],
-            triggers: [],
-          },
-        ]),
-        this.checkpointerGetNextVersion
-      );
-      // save input checkpoint
-      await this._putCheckpoint({
-        source: "input",
-        writes: Object.fromEntries(inputWrites),
-      });
     }
-    // done with input
-    this.input = this.input === INPUT_RESUMING ? INPUT_RESUMING : INPUT_DONE;
     if (!this.isNested) {
       this.config = patchConfigurable(this.config, {
-        [CONFIG_KEY_RESUMING]: this.input === INPUT_RESUMING,
+        [CONFIG_KEY_RESUMING]: this.isResuming,
       });
     }
   }

@@ -817,20 +817,24 @@ function _controlBranch(value: any): (string | Send)[] {
   const commands = [];
   if (isCommand(value)) {
     commands.push(value);
-  } else if (Array.isArray(value) && value.every(isCommand)) {
-    commands.push(...value);
-  } else {
-    return [];
+  } else if (Array.isArray(value)) {
+    commands.push(...value.filter(isCommand));
   }
   const destinations: (string | Send)[] = [];
+
   for (const command of commands) {
     if (command.graph === Command.PARENT) {
       throw new ParentCommand(command);
     }
-    if (_isSend(command.goto) || typeof command.goto === "string") {
+
+    if (_isSend(command.goto)) {
+      destinations.push(command.goto);
+    } else if (typeof command.goto === "string") {
       destinations.push(command.goto);
     } else {
-      destinations.push(...command.goto);
+      if (Array.isArray(command.goto)) {
+        destinations.push(...command.goto);
+      }
     }
   }
   return destinations;
