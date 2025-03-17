@@ -558,4 +558,165 @@ describe("Graph Structure Tests (Python port)", () => {
       { graph: { a: "0foobarbaz", c: "something else" } },
     ]);
   });
+
+  /**
+   * Port of test_send_dedupe_on_resume from test_pregel_async_graph_structure.py
+   */
+  it("should deduplicate sends on resume", async () => {
+    // Set up state annotation using operator.add (which concatenates in JS)
+    const StateAnnotation = Annotation.Root({
+      value: Annotation<string[]>({
+        reducer: (a, b) => a.concat(b),
+        default: () => [],
+      }),
+    });
+
+    // First, create the InterruptOnce class that will interrupt on first tick
+    class InterruptOnce {
+      ticks = 0;
+
+      constructor() {
+        // No initialization needed
+      }
+
+      async call(
+        state: typeof StateAnnotation.State
+      ): Promise<{ value: string[] }> {
+        this.ticks += 1;
+        if (this.ticks === 1) {
+          throw new Error("Bahh");
+        }
+        return { value: [`flaky|${state}`] };
+      }
+    }
+
+    // Create a Node class that tracks its calls
+    class Node {
+      name: string;
+
+      ticks = 0;
+
+      constructor(name: string) {
+        this.name = name;
+      }
+
+      async call(
+        state: typeof StateAnnotation.State | Command
+      ): Promise<{ value: string[] } | Command> {
+        this.ticks += 1;
+
+        // Handle different types of state
+        const update =
+          typeof state === "object" &&
+          "value" in state &&
+          Array.isArray(state.value)
+            ? [this.name]
+            : [
+                `${this.name}|${
+                  isCommand(state)
+                    ? JSON.stringify(state.toJSON())
+                    : String(state)
+                }`,
+              ];
+
+        // If state is a Command, preserve its goto property
+        if (isCommand(state)) {
+          return new Command({
+            goto: state.goto,
+            update: { value: update },
+          });
+        } else {
+          return { value: update };
+        }
+      }
+    }
+
+    // Create the routing functions
+    const sendForFun = () => {
+      return [
+        new Send("2", new Command({ goto: new Send("2", 3) })),
+        new Send("2", new Command({ goto: new Send("flaky", 4) })),
+        "3.1",
+      ];
+    };
+
+    const routeToThree = (): "3" => {
+      return "3";
+    };
+
+    // Create node instances
+    const node1 = new Node("1");
+    const node2 = new Node("2");
+    const node3 = new Node("3");
+    const node31 = new Node("3.1");
+    const flakyNode = new InterruptOnce();
+
+    // Create the graph builder
+    const builder = new StateGraph({ stateSchema: StateAnnotation })
+      .addNode("1", (state) => node1.call(state))
+      .addNode("2", (state) => node2.call(state))
+      .addNode("3", (state) => node3.call(state))
+      .addNode("3.1", (state) => node31.call(state))
+      .addNode("flaky", (state) => flakyNode.call(state))
+      .addEdge(START, "1")
+      .addConditionalEdges("1", sendForFun)
+      .addConditionalEdges("2", routeToThree);
+
+    // Use memory saver for checkpointing
+    const checkpointer = new MemorySaver();
+    const graph = builder.compile({ checkpointer });
+
+    const thread1 = { configurable: { thread_id: "1" } };
+
+    // Initial invocation will fail at the "flaky" node
+    try {
+      await graph.invoke({ value: ["0"] }, thread1);
+    } catch (error) {
+      // Expected to fail
+    }
+
+    expect(node2.ticks).toBe(3);
+    expect(flakyNode.ticks).toBe(1);
+
+    // Resume execution
+    const result = await graph.invoke(null, thread1);
+
+    // Verify the final state
+    expect(result.value).toEqual([
+      "0",
+      "1",
+      "3.1",
+      '2|{"goto":[{"node":"2","args":3}]}',
+      '2|{"goto":[{"node":"flaky","args":4}]}',
+      "3",
+      "2|3",
+      "flaky|4",
+      "3",
+    ]);
+
+    // Node "2" doesn't get called again, as we recover writes saved before
+    expect(node2.ticks).toBe(3);
+
+    // Node "flaky" gets called again after the interrupt
+    expect(flakyNode.ticks).toBe(2);
+
+    // Check history
+    const history = await gatherIterator(await graph.getStateHistory(thread1));
+
+    // Verify history snapshots are in correct order and contain expected data
+    expect(history.length).toBe(5); // Should have all snapshots
+
+    // Check the final state in history
+    expect(history[0].values.value).toEqual([
+      "0",
+      "1",
+      "3.1",
+      '2|{"goto":[{"node":"2","args":3}]}',
+      '2|{"goto":[{"node":"flaky","args":4}]}',
+      "3",
+      "2|3",
+      "flaky|4",
+      "3",
+    ]);
+  });
 });
