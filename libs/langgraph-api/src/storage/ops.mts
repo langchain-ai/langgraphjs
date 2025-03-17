@@ -908,7 +908,15 @@ export class Threads {
       updateConfig.configurable ??= {};
       updateConfig.configurable.checkpoint_ns ??= "";
 
-      const nextConfig = await graph.bulkUpdateState(updateConfig, supersteps);
+      const nextConfig = await graph.bulkUpdateState(
+        updateConfig,
+        supersteps.map((i) => ({
+          updates: i.updates.map((j) => ({
+            values: j.values,
+            asNode: j.as_node,
+          })),
+        })),
+      );
       const state = await Threads.State.get(config, { subgraphs: false });
 
       // update thread values
