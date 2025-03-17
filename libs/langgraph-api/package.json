@@ -59,9 +59,9 @@
     "zod": "^3.23.8"
   },
   "peerDependencies": {
-    "@langchain/core": "^0.3.40",
-    "@langchain/langgraph": "^0.2.49",
-    "@langchain/langgraph-checkpoint": "^0.0.15",
+    "@langchain/core": "^0.3.42",
+    "@langchain/langgraph": "^0.2.56",
+    "@langchain/langgraph-checkpoint": "^0.0.16",
     "typescript": "^5.5.4"
   },
   "devDependencies": {
