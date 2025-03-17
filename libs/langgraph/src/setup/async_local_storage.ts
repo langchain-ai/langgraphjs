@@ -1,8 +1,12 @@
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
-import { AsyncLocalStorage } from "node:async_hooks";
 
 export function initializeAsyncLocalStorageSingleton() {
-  AsyncLocalStorageProviderSingleton.initializeGlobalInstance(
-    new AsyncLocalStorage()
-  );
+  if (typeof require !== "undefined") {
+    // eslint-disable-next-line global-require, @typescript-eslint/no-var-requires
+    const { AsyncLocalStorage } = require("node:async_hooks");
+
+    AsyncLocalStorageProviderSingleton.initializeGlobalInstance(
+      new AsyncLocalStorage()
+    );
+  }
 }

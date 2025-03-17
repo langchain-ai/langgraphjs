@@ -1,4 +1,4 @@
-import { test, expect } from "@jest/globals";
+import { test, expect } from "vitest";
 import { createReactAgent } from "../prebuilt/index.js";
 import { FakeSearchTool, FakeToolCallingChatModel } from "./utils.js";
 import { Annotation, StateGraph } from "../web.js";

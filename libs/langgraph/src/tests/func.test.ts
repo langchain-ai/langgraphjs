@@ -1,5 +1,6 @@
 import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
-import { describe, it, expect, beforeAll } from "@jest/globals";
+import { RunnableConfig } from "@langchain/core/runnables";
+import { describe, it, expect, beforeEach, beforeAll } from "vitest";
 import { task, entrypoint, getPreviousState } from "../func/index.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { Command, PREVIOUS, START } from "../constants.js";
@@ -50,19 +51,22 @@ export function runFuncTests(
           let mapperCallCount = 0;
 
           // Define a simple mapper task
-          const mapper = task("mapper", (input: number) => {
-            mapperCallCount += 1;
-            return `${input}${input}`;
-          });
+          const mapper = task(
+            "mapper",
+            (input: number, config: RunnableConfig) => {
+              mapperCallCount += 1;
+              return `${input}${input}`;
+            }
+          );
 
           let entrypointCallCount = 0;
 
           // Create a graph using entrypoint
           const graph = entrypoint(
             { checkpointer, name: "graph" },
-            async (inputs: number[]) => {
+            async (inputs: number[], config: RunnableConfig) => {
               entrypointCallCount += 1;
-              return Promise.all(inputs.map((i) => mapper(i)));
+              return Promise.all(inputs.map((i) => mapper(i, config)));
             }
           );
 
@@ -81,19 +85,24 @@ export function runFuncTests(
           // note that we can't halt active tasks this way, but we can prevent the graph from executing new tasks
 
           let mapperCalls = 0;
-          const mapper = task("mapper", async (input: number | string) => {
-            mapperCalls += 1;
-            await new Promise((resolve) => {
-              setTimeout(resolve, 100);
-            });
-            return `${input}${input}`;
-          });
+          const mapper = task(
+            "mapper",
+            async (input: number | string, _: RunnableConfig) => {
+              mapperCalls += 1;
+              await new Promise((resolve) => {
+                setTimeout(resolve, 100);
+              });
+              return `${input}${input}`;
+            }
+          );
 
           const graph = entrypoint(
             { checkpointer, name: "cancelableGraph" },
-            async (inputs: number[]) => {
+            async (inputs: number[], config: RunnableConfig) => {
               const results = await Promise.all(
-                (await Promise.all(inputs.map(mapper))).map(mapper)
+                (
+                  await Promise.all(inputs.map((i) => mapper(i, config)))
+                ).map((r) => mapper(r, config))
               );
               return results;
             }
@@ -136,27 +145,38 @@ export function runFuncTests(
             c?: string;
           }
 
-          const foo = task("foo", async (state: State): Promise<State> => {
-            return { a: `${state.a}foo`, b: "bar" };
-          });
+          const foo = task(
+            "foo",
+            async (state: State, _: RunnableConfig): Promise<State> => {
+              return { a: `${state.a}foo`, b: "bar" };
+            }
+          );
 
           const bar = task(
             "bar",
-            async (a: string, b: string, c?: string): Promise<State> => {
+            async (
+              a: string,
+              b: string,
+              c?: string,
+              _: RunnableConfig
+            ): Promise<State> => {
               return { a: a + b, c: `${c || ""}bark` };
             }
           );
 
-          const baz = task("baz", async (state: State): Promise<State> => {
-            return { a: `${state.a}baz`, c: "something else" };
-          });
+          const baz = task(
+            "baz",
+            async (state: State, _: RunnableConfig): Promise<State> => {
+              return { a: `${state.a}baz`, c: "something else" };
+            }
+          );
 
           const graph = entrypoint(
             { checkpointer, name: "graph" },
-            async (state: State): Promise<State> => {
-              const fooRes = await foo(state);
-              const barRes = await bar(fooRes.a, fooRes.b!);
-              const bazRes = await baz(barRes);
+            async (state: State, config: RunnableConfig): Promise<State> => {
+              const fooRes = await foo(state, config);
+              const barRes = await bar(fooRes.a, fooRes.b!, fooRes.c, config);
+              const bazRes = await baz(barRes, config);
               return bazRes;
             }
           );
@@ -178,7 +198,7 @@ export function runFuncTests(
 
           const failingTask = task(
             { name: "failingTask", retry: { maxAttempts: 3 } },
-            () => {
+            (_: RunnableConfig) => {
               attempts += 1;
               if (attempts < 3) {
                 throw new Error("Task failed");
@@ -189,7 +209,7 @@ export function runFuncTests(
 
           const graph = entrypoint(
             { checkpointer, name: "retryGraph" },
-            async () => failingTask()
+            async (_, config: RunnableConfig) => failingTask(config)
           );
 
           const result = await graph.invoke([], {
@@ -203,19 +223,22 @@ export function runFuncTests(
         it("should send updates immediately when streaming", async () => {
           let lastIdx = null;
 
-          const slowTask = task("slowTask", async (idx: number) => {
-            await new Promise((resolve) => {
-              setTimeout(resolve, 10);
-            });
-            lastIdx = idx;
-            return { idx };
-          });
+          const slowTask = task(
+            "slowTask",
+            async (idx: number, _: RunnableConfig) => {
+              await new Promise((resolve) => {
+                setTimeout(resolve, 10);
+              });
+              lastIdx = idx;
+              return { idx };
+            }
+          );
 
           const graph = entrypoint(
             { name: "streamGraph", checkpointer },
-            async () => {
-              const first = await slowTask(0);
-              const second = await slowTask(1);
+            async (_, config: RunnableConfig) => {
+              const first = await slowTask(0, config);
+              const second = await slowTask(1, config);
               return [first, second];
             }
           );
@@ -302,14 +325,14 @@ export function runFuncTests(
         });
 
         it("propagates errors thrown from tasks", async () => {
-          const errorTask = task("errorTask", () => {
+          const errorTask = task("errorTask", (_: RunnableConfig) => {
             throw new Error("test error");
           });
 
           const graph = entrypoint(
             { name: "graph", checkpointer },
-            async () => {
-              await errorTask();
+            async (_, config: RunnableConfig) => {
+              await errorTask(config);
             }
           );
 
@@ -403,8 +426,8 @@ export function runFuncTests(
       it("can return a final value separately from the persisted value", async () => {
         const graph = entrypoint(
           { name: "graph", checkpointer },
-          async (input: number) => {
-            const previous = getPreviousState<number>();
+          async (input: number, config: RunnableConfig) => {
+            const previous = getPreviousState<number>(config);
 
             return entrypoint.final({
               value: input + (previous ?? 0),
@@ -437,8 +460,8 @@ export function runFuncTests(
 
         const graph = entrypoint(
           { name: "graph", checkpointer },
-          async (inputs: Record<string, string>) => {
-            const previous = getPreviousState<unknown>();
+          async (inputs: Record<string, string>, config: RunnableConfig) => {
+            const previous = getPreviousState<unknown>(config);
             previousStates.push(previous);
             return {
               previous,
@@ -528,30 +551,36 @@ export function runFuncTests(
 
         const addA = builder.compile({ checkpointer });
 
-        const submapper = task("submapper", (data: number) => {
-          return data.toString();
-        });
+        const submapper = task(
+          "submapper",
+          (data: number, _: RunnableConfig) => {
+            return data.toString();
+          }
+        );
 
-        const mapper = task("mapper", async (data: number) => {
-          await new Promise((resolve) => {
-            setTimeout(resolve, Math.max(data / 100, 1));
-          });
+        const mapper = task(
+          "mapper",
+          async (data: number, config: RunnableConfig) => {
+            await new Promise((resolve) => {
+              setTimeout(resolve, Math.max(data / 100, 1));
+            });
 
-          const sub = await submapper(data);
-          return `${sub}${sub}`;
-        });
+            const sub = await submapper(data, config);
+            return `${sub}${sub}`;
+          }
+        );
 
         let capturedOutput: string[] | undefined;
 
         const graph = entrypoint(
           { name: "graph", checkpointer },
-          async (data: number[]) => {
+          async (data: number[], config: RunnableConfig) => {
             const mapped = await Promise.all(
-              data.map(async (i) => await mapper(i))
+              data.map(async (i) => await mapper(i, config))
             );
-            const answer = await interrupt("question");
+            const answer = await interrupt("question", config);
             const final = mapped.map((m) => m + answer);
-            const { data: output } = await addA.invoke({ data: final });
+            const { data: output } = await addA.invoke({ data: final }, config);
             capturedOutput = output;
             return output;
           }
@@ -596,17 +625,20 @@ export function runFuncTests(
       it("task with interrupts", async () => {
         let taskCallCount = 0;
 
-        const interruptingTask = task("interruptTask", async () => {
-          taskCallCount += 1;
-          return (await interrupt("Please provide input")) as string;
-        });
+        const interruptingTask = task(
+          "interruptTask",
+          async (config: RunnableConfig) => {
+            taskCallCount += 1;
+            return (await interrupt("Please provide input", config)) as string;
+          }
+        );
 
         let graphCallCount = 0;
         const graph = entrypoint(
           { checkpointer, name: "interruptGraph" },
-          async (input: string) => {
+          async (input: string, config: RunnableConfig) => {
             graphCallCount += 1;
-            const response = await interruptingTask();
+            const response = await interruptingTask(config);
             return input + response;
           }
         );
@@ -644,24 +676,30 @@ export function runFuncTests(
           a: string;
         }
 
-        const foo = task("foo", async (state: State): Promise<State> => {
-          return { a: `${state.a}foo` };
-        });
+        const foo = task(
+          "foo",
+          async (state: State, _: RunnableConfig): Promise<State> => {
+            return { a: `${state.a}foo` };
+          }
+        );
 
         const bar = task(
           "bar",
-          async (state: State & { b: string }): Promise<State> => {
+          async (
+            state: State & { b: string },
+            _: RunnableConfig
+          ): Promise<State> => {
             return { a: state.a + state.b };
           }
         );
 
         const graph = entrypoint(
           { checkpointer, name: "interruptGraph" },
-          async (inputs: State) => {
-            const fooResult = await foo(inputs);
-            const value = await interrupt("Provide value for bar:");
+          async (inputs: State, config: RunnableConfig) => {
+            const fooResult = await foo(inputs, config);
+            const value = await interrupt("Provide value for bar:", config);
             const barInput = { ...fooResult, b: value as string };
-            const barResult = await bar(barInput);
+            const barResult = await bar(barInput, config);
             return barResult;
           }
         );
@@ -687,20 +725,26 @@ export function runFuncTests(
           a: string;
         }
 
-        const foo = task("foo", async (state: State): Promise<State> => {
-          return { a: `${state.a}foo` };
-        });
+        const foo = task(
+          "foo",
+          async (state: State, _: RunnableConfig): Promise<State> => {
+            return { a: `${state.a}foo` };
+          }
+        );
 
-        const bar = task("bar", async (state: State): Promise<State> => {
-          const value = await interrupt("Provide value for bar:");
-          return { a: state.a + value };
-        });
+        const bar = task(
+          "bar",
+          async (state: State, config: RunnableConfig): Promise<State> => {
+            const value = await interrupt("Provide value for bar:", config);
+            return { a: state.a + value };
+          }
+        );
 
         const graph = entrypoint(
           { checkpointer, name: "interruptGraph" },
-          async (inputs: State) => {
-            const fooResult = await foo(inputs);
-            const barResult = await bar(fooResult);
+          async (inputs: State, config: RunnableConfig) => {
+            const fooResult = await foo(inputs, config);
+            const barResult = await bar(fooResult, config);
             return barResult;
           }
         );
@@ -727,9 +771,9 @@ export function runFuncTests(
 
         const graph = entrypoint(
           { checkpointer, name: "falsyGraph" },
-          async (_state: Record<string, unknown>) => {
-            await falsyTask();
-            await interrupt("test");
+          async (_state: Record<string, unknown>, config: RunnableConfig) => {
+            await falsyTask(config);
+            await interrupt("test", config);
           }
         );
 
@@ -752,21 +796,27 @@ export function runFuncTests(
         // equivalent to `test_multiple_interrupts_imperative` in python tests
         let counter = 0;
 
-        const double = task("double", async (x: number): Promise<number> => {
-          counter += 1;
-          return 2 * x;
-        });
-
-        const graph = entrypoint({ checkpointer, name: "graph" }, async () => {
-          const values: (number | string)[] = [];
-
-          for (const idx of [1, 2, 3]) {
-            values.push(await double(idx));
-            values.push(await interrupt({ a: `boo${idx}` }));
+        const double = task(
+          "double",
+          async (x: number, _: RunnableConfig): Promise<number> => {
+            counter += 1;
+            return 2 * x;
           }
+        );
 
-          return { values };
-        });
+        const graph = entrypoint(
+          { checkpointer, name: "graph" },
+          async (_, config: RunnableConfig) => {
+            const values: (number | string)[] = [];
+
+            for (const idx of [1, 2, 3]) {
+              values.push(await double(idx, config));
+              values.push(await interrupt({ a: `boo${idx}` }, config));
+            }
+
+            return { values };
+          }
+        );
 
         const config = { configurable: { thread_id } };
 

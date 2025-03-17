@@ -135,9 +135,8 @@ export function getConfig(): LangGraphRunnableConfig {
  *
  * @returns the input for the currently executing task
  */
-export function getCurrentTaskInput<T = unknown>(): T {
-  const config: LangGraphRunnableConfig =
-    AsyncLocalStorageProviderSingleton.getRunnableConfig();
+export function getCurrentTaskInput<T = unknown>(c?: RunnableConfig): T {
+  const config = c ?? AsyncLocalStorageProviderSingleton.getRunnableConfig();
   if (config === undefined) {
     throw new Error(
       "Config not retrievable. This is likely because you are running in an environment without support for AsyncLocalStorage."

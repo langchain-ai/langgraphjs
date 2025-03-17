@@ -1,7 +1,7 @@
 /* eslint-disable no-process-env */
 /* eslint-disable no-param-reassign */
 /* eslint-disable no-return-assign */
-import { beforeAll, describe, expect, it } from "@jest/globals";
+import { beforeAll, describe, expect, it } from "vitest";
 import { StructuredTool, tool } from "@langchain/core/tools";
 
 import {
@@ -35,11 +35,13 @@ import { MessagesAnnotation } from "../graph/messages_annotation.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
-  process.env.LANGCHAIN_TRACING_V2 = "false";
-  process.env.LANGCHAIN_ENDPOINT = "";
-  process.env.LANGCHAIN_ENDPOINT = "";
-  process.env.LANGCHAIN_API_KEY = "";
-  process.env.LANGCHAIN_PROJECT = "";
+  if (typeof process !== "undefined") {
+    process.env.LANGCHAIN_TRACING_V2 = "false";
+    process.env.LANGCHAIN_ENDPOINT = "";
+    process.env.LANGCHAIN_ENDPOINT = "";
+    process.env.LANGCHAIN_API_KEY = "";
+    process.env.LANGCHAIN_PROJECT = "";
+  }
 });
 
 const searchSchema = z.object({

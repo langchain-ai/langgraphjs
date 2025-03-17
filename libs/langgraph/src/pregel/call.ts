@@ -104,9 +104,11 @@ export function call<ArgsT extends unknown[], OutputT>(
   { func, name, retry }: CallWrapperOptions<ArgsT, OutputT>,
   ...args: ArgsT
 ): Promise<OutputT> {
-  const config =
-    AsyncLocalStorageProviderSingleton.getRunnableConfig() as RunnableConfig;
-  if (typeof config.configurable?.[CONFIG_KEY_CALL] === "function") {
+  let config = args[args.length - 1] as RunnableConfig;
+  config =
+    config ??
+    (AsyncLocalStorageProviderSingleton.getRunnableConfig() as RunnableConfig);
+  if (typeof config?.configurable?.[CONFIG_KEY_CALL] === "function") {
     return config.configurable[CONFIG_KEY_CALL](func, name, args, {
       retry,
       callbacks: config.callbacks,

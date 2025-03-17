@@ -51,9 +51,11 @@ import { PregelScratchpad } from "./pregel/types.js";
  * @throws {GraphInterrupt} When no resume value is available
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function interrupt<I = unknown, R = any>(value: I): R {
-  const config: RunnableConfig | undefined =
-    AsyncLocalStorageProviderSingleton.getRunnableConfig();
+export function interrupt<I = unknown, R = any>(
+  value: I,
+  c?: RunnableConfig
+): R {
+  const config = c ?? AsyncLocalStorageProviderSingleton.getRunnableConfig();
   if (!config) {
     throw new Error("Called interrupt() outside the context of a graph.");
   }

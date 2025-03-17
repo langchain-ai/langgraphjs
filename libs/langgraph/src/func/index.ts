@@ -3,6 +3,7 @@ import {
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
+import { RunnableConfig } from "@langchain/core/runnables";
 import { Pregel } from "../pregel/index.js";
 import { PregelNode } from "../pregel/read.js";
 import {
@@ -376,8 +377,9 @@ entrypoint.final = function final<ValueT, SaveT>({
  * const newCount = (previousState?.counter ?? 0) + 1;
  * ```
  */
-export function getPreviousState<StateT>(): StateT {
-  const config: LangGraphRunnableConfig =
-    AsyncLocalStorageProviderSingleton.getRunnableConfig();
+export function getPreviousState<StateT>(c?: RunnableConfig): StateT {
+  const config =
+    c ??
+    (AsyncLocalStorageProviderSingleton.getRunnableConfig() as LangGraphRunnableConfig);
   return config.configurable?.[CONFIG_KEY_PREVIOUS_STATE] as StateT;
 }
