@@ -495,4 +495,67 @@ describe("Graph Structure Tests (Python port)", () => {
       { graph: { a: "0foobarbaz", c: "something else" } },
     ]);
   });
+
+  /**
+   * Port of test_imp_stream_order from test_pregel_async_graph_structure.py
+   */
+  it("should handle imperative task streaming order", async () => {
+    // Define task functions similar to the Python version
+    const foo = task(
+      "foo",
+      async (
+        state: Record<string, string>
+      ): Promise<Record<string, string>> => {
+        return { a: `${state.a}foo`, b: "bar" };
+      }
+    );
+
+    const bar = task(
+      "bar",
+      async (
+        a: string,
+        b: string,
+        c?: string
+      ): Promise<Record<string, string>> => {
+        return { a: `${a}${b}`, c: `${c || ""}bark` };
+      }
+    );
+
+    const baz = task(
+      "baz",
+      async (
+        state: Record<string, string>
+      ): Promise<Record<string, string>> => {
+        return { a: `${state.a}baz`, c: "something else" };
+      }
+    );
+
+    // Create a graph using entrypoint that combines these tasks
+    const graph = entrypoint(
+      { name: "graph", checkpointer: new MemorySaver() },
+      async (
+        state: Record<string, string>
+      ): Promise<Record<string, string>> => {
+        const fooRes = await foo(state);
+        const barRes = await bar(fooRes.a, fooRes.b);
+        const bazRes = await baz(barRes);
+        return bazRes;
+      }
+    );
+
+    const thread1 = { configurable: { thread_id: "1" } };
+
+    // Gather the streaming results from the graph
+    const results = await gatherIterator(
+      await graph.stream({ a: "0" }, thread1)
+    );
+
+    // Validate the streaming outputs (match Python's assertion exactly)
+    expect(results).toEqual([
+      { foo: { a: "0foo", b: "bar" } },
+      { bar: { a: "0foobar", c: "bark" } },
+      { baz: { a: "0foobarbaz", c: "something else" } },
+      { graph: { a: "0foobarbaz", c: "something else" } },
+    ]);
+  });
 });
