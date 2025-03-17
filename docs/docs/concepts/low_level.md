@@ -557,43 +557,44 @@ const nodeA = (state, config) => {
 
 See [this guide](../how-tos/configuration.ipynb) for a full breakdown on configuration
 
+### Recursion Limit
+
+The recursion limit sets the maximum number of [super-steps](#graphs) the graph can execute during a single execution. Once the limit is reached, LangGraph will raise `GraphRecursionError`. By default this value is set to 25 steps. The recursion limit can be set on any graph at runtime, and is passed to `.invoke`/`.stream` via the config dictionary. Importantly, `recursionLimit` is a standalone `config` key and should not be passed inside the `configurable` key as all other user-defined configuration. See the example below:
+
+```ts
+await graph.invoke(inputs, { recursionLimit: 50 });
+```
+
+Read [this how-to](/langgraphjs/how-tos/recursion-limit/) to learn more about how the recursion limit works.
+
+## `interrupt`
+
+Use the [interrupt](/langgraphjs/reference/functions/langgraph.interrupt-1.html) function to **pause** the graph at specific points to collect user input. The `interrupt` function surfaces interrupt information to the client, allowing the developer to collect user input, validate the graph state, or make decisions before resuming execution.
+
+```ts
+import { interrupt } from "@langchain/langgraph";
+
+const humanApprovalNode = (state: typeof StateAnnotation.State) => {
+  ...
+  const answer = interrupt(
+      // This value will be sent to the client.
+      // It can be any JSON serializable value.
+      { question: "is it ok to continue?"},
+  );
+  ...
+```
+
+Resuming the graph is done by passing a [`Command`](#command) object to the graph with the `resume` key set to the value returned by the `interrupt` function.
+
+Read more about how the `interrupt` is used for **human-in-the-loop** workflows in the [Human-in-the-loop conceptual guide](./human_in_the_loop.md).
+
+**Note:** The `interrupt` function is not currently available in [web environments](/langgraphjs/how-tos/use-in-web-environments/).
+
 ## Breakpoints
 
-It can often be useful to set breakpoints before or after certain nodes execute. This can be used to wait for human approval before continuing. These can be set when you ["compile" a graph](#compiling-your-graph), or thrown dynamically using a special error called a [`NodeInterrupt`](../how-tos/dynamic_breakpoints.ipynb). You can set breakpoints either _before_ a node executes (using `interruptBefore`) or after a node executes (using `interruptAfter`).
+Breakpoints pause graph execution at specific points and enable stepping through execution step by step. Breakpoints are powered by LangGraph's [**persistence layer**](./persistence.md), which saves the state after each graph step. Breakpoints can also be used to enable [**human-in-the-loop**](./human_in_the_loop.md) workflows, though we recommend using the [`interrupt` function](#interrupt) for this purpose.
 
-You **MUST** use a checkpointer when using breakpoints. This is because your graph needs to be able to resume execution after interrupting.
-
-In order to resume execution, you can just invoke your graph with `null` as the input and the same `thread_id`.
-
-```typescript
-const config = { configurable: { thread_id: "foo" } };
-
-// Initial run of graph
-await graph.invoke(inputs, config);
-
-// Let's assume it hit a breakpoint somewhere, you can then resume by passing in None
-await graph.invoke(null, config);
-```
-
-See [this guide](../how-tos/breakpoints.ipynb) for a full walkthrough of how to add breakpoints.
-
-### Dynamic Breakpoints
-
-It may be helpful to **dynamically** interrupt the graph from inside a given node based on some condition. In `LangGraph` you can do so by using `NodeInterrupt` -- a special error that can be raised from inside a node.
-
-```typescript
-function myNode(
-  state: typeof GraphAnnotation.State
-): typeof GraphAnnotation.State {
-  if (state.input.length > 5) {
-    throw new NodeInterrupt(
-      `Received input that is longer than 5 characters: ${state.input}`
-    );
-  }
-
-  return state;
-}
-```
+Read more about breakpoints in the [Breakpoints conceptual guide](./breakpoints.md).
 
 ## Subgraphs
 

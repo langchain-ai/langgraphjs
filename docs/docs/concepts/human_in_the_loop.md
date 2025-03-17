@@ -156,6 +156,8 @@ There are typically three different **actions** that you can do with a human-in-
 
 Below we show different design patterns that can be implemented using these **actions**.
 
+**Note:** The `interrupt` function propagates by throwing a special `GraphInterrupt` error. Therefore, you should avoid using `try/catch` blocks around the `interrupt` function - or if you do, ensure that the `GraphInterrupt` error is thrown again within your `catch` block.
+
 ### Approve or Reject
 
 <figure markdown="1">

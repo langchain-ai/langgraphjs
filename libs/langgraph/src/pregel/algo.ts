@@ -635,12 +635,7 @@ export function _prepareSingleTask<
                 [parentNamespace]: checkpoint.id,
               },
               [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
-                pendingWrites: [
-                  ...(pendingWrites || []),
-                  ...(configurable[CONFIG_KEY_SCRATCHPAD]?.resume || []).map(
-                    (v: unknown): CheckpointPendingWrite => [id, RESUME, v]
-                  ),
-                ],
+                pendingWrites: pendingWrites ?? [],
                 taskId: id,
                 currentTaskInput: call.input,
               }),
@@ -769,16 +764,7 @@ export function _prepareSingleTask<
                   [parentNamespace]: checkpoint.id,
                 },
                 [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
-                  pendingWrites: [
-                    ...(pendingWrites || []),
-                    ...(configurable[CONFIG_KEY_SCRATCHPAD]?.resume || []).map(
-                      (v: unknown): CheckpointPendingWrite => [
-                        taskId,
-                        RESUME,
-                        v,
-                      ]
-                    ),
-                  ],
+                  pendingWrites: pendingWrites ?? [],
                   taskId,
                   currentTaskInput: packet.args,
                 }),
@@ -864,7 +850,6 @@ export function _prepareSingleTask<
             metadata = { ...metadata, ...proc.metadata };
           }
           const writes: [keyof Cc, unknown][] = [];
-          const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
           return {
             name,
             input: val,
@@ -918,18 +903,7 @@ export function _prepareSingleTask<
                     [parentNamespace]: checkpoint.id,
                   },
                   [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
-                    pendingWrites: [
-                      ...(pendingWrites || []),
-                      ...(
-                        configurable[CONFIG_KEY_SCRATCHPAD]?.resume || []
-                      ).map(
-                        (v: unknown): CheckpointPendingWrite => [
-                          taskId,
-                          RESUME,
-                          v,
-                        ]
-                      ),
-                    ],
+                    pendingWrites: pendingWrites ?? [],
                     taskId,
                     currentTaskInput: val,
                   }),
@@ -1043,7 +1017,11 @@ function _scratchpad({
   taskId: string;
   currentTaskInput: unknown;
 }): PregelScratchpad {
-  return {
+  const nullResume = pendingWrites.find(
+    ([writeTaskId, chan]) => writeTaskId === NULL_TASK_ID && chan === RESUME
+  )?.[2];
+
+  const scratchpad = {
     callCounter: 0,
     interruptCounter: -1,
     resume: pendingWrites
@@ -1051,10 +1029,22 @@ function _scratchpad({
         ([writeTaskId, chan]) => writeTaskId === taskId && chan === RESUME
       )
       .flatMap(([_writeTaskId, _chan, resume]) => resume),
-    nullResume: pendingWrites.find(
-      ([writeTaskId, chan]) => writeTaskId === NULL_TASK_ID && chan === RESUME
-    )?.[2],
+    nullResume,
     subgraphCounter: 0,
     currentTaskInput,
+    consumeNullResume: () => {
+      if (scratchpad.nullResume) {
+        delete scratchpad.nullResume;
+        pendingWrites.splice(
+          pendingWrites.findIndex(
+            ([writeTaskId, chan]) =>
+              writeTaskId === NULL_TASK_ID && chan === RESUME
+          ),
+          1
+        );
+        return nullResume;
+      }
+    },
   };
+  return scratchpad;
 }

@@ -177,13 +177,13 @@ This is useful for developing individual features.
 If you add support for a new external API, please add a new integration test.
 Integration tests should be called `*.int.test.ts`.
 
-Note that most integration tests require credentials or other setup. You will likely need to set up a `langgraph/.env` file
-like the example [here](https://github.com/langchain-ai/langgraphjs/blob/main/langgraph/.env.example).
+Note that most integration tests require credentials or other setup. You will likely need to set up a `libs/langgraph/.env` file
+like the example [here](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph/.env.example).
 
 We generally recommend only running integration tests with `yarn test:single`, but if you want to run all integration tests, run:
 
 ```bash
-yarn test:integration
+yarn test:int
 ```
 
 ### Building
