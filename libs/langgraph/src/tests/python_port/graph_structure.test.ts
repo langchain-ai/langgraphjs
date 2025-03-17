@@ -272,7 +272,7 @@ describe("Graph Structure Tests (Python port)", () => {
         const answer = interrupt("question");
 
         // Append the answer to each mapped result
-        return mapped.map((m: string) => m + answer);
+        return mapped.map((m: string) => `${m}${answer}`);
       }
     );
 
@@ -346,5 +346,98 @@ describe("Graph Structure Tests (Python port)", () => {
 
     // Verify the mapper wasn't called again
     expect(mapperCallCount).toBe(2);
+  });
+
+  /**
+   * Port of test_imp_nested from test_pregel_async_graph_structure.py
+   */
+  it("should handle nested imperative tasks", async () => {
+    // Create a simple graph that adds "a" to each string in a list
+    const StringsAnnotation = Annotation.Root({
+      items: Annotation<string[]>({
+        default: () => [],
+        reducer: (_, b) => b,
+      }),
+    });
+
+    const mynode = async (state: {
+      items: string[];
+    }): Promise<{ items: string[] }> => {
+      return { items: state.items.map((it) => `${it}a`) };
+    };
+
+    const builder = new StateGraph({ stateSchema: StringsAnnotation })
+      .addNode("mynode", mynode)
+      .addEdge(START, "mynode");
+
+    const addA = builder.compile();
+
+    // Create tasks similar to the Python version
+    const submapper = task("submapper", (input: number): string => {
+      return String(input);
+    });
+
+    const mapper = task("mapper", async (input: number): Promise<string> => {
+      // Simulate delay with setTimeout
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, Math.max(input / 100, 1));
+      });
+      const result = await submapper(input);
+      return result.repeat(2);
+    });
+
+    // Create a graph using entrypoint that combines these tasks
+    const graph = entrypoint(
+      { name: "graph", checkpointer: new MemorySaver() },
+      async (input: number[]): Promise<string[]> => {
+        // Map the input values in parallel using the mapper task
+        const promises = input.map((i) => mapper(i));
+        const mapped = await Promise.all(promises);
+
+        // Use interrupt function to ask a question
+        const answer = interrupt("question");
+
+        // Append the answer to each mapped result
+        const final = mapped.map((m: string) => `${m}${answer}`);
+
+        // Use the addA graph to process the final list
+        const result = await addA.invoke({ items: final });
+        // Extract the items array from the result to match the Python behavior
+        return result.items;
+      }
+    );
+
+    // Create a thread for testing
+    const thread1 = { configurable: { thread_id: "1" } };
+
+    // Gather the streaming results from the graph
+    const results = await gatherIterator(await graph.stream([0, 1], thread1));
+
+    // Validate the streaming outputs (match Python's assertion exactly)
+    expect(results).toEqual([
+      { submapper: "0" },
+      { mapper: "00" },
+      { submapper: "1" },
+      { mapper: "11" },
+      {
+        [INTERRUPT]: [
+          {
+            value: "question",
+            resumable: true,
+            ns: expect.arrayContaining([expect.stringMatching(/^graph:/)]),
+            when: "during",
+          },
+        ],
+      },
+    ]);
+
+    // Resume the graph with an answer
+    const finalResult = await graph.invoke(
+      new Command({ resume: "answer" }),
+      thread1
+    );
+
+    // Verify the final result contains the expected values
+    expect(finalResult).toEqual(["00answera", "11answera"]);
   });
 });
