@@ -142,7 +142,13 @@ describe("Graph Structure Tests (Python port)", () => {
           "items" in state &&
           Array.isArray(state.items)
             ? { items: [name] }
-            : { items: [`${name}|${JSON.stringify(state)}`] };
+            : {
+                items: [
+                  `${name}|${JSON.stringify(
+                    isCommand(state) ? state.toJSON() : state
+                  )}`,
+                ],
+              };
 
         if (isCommand(state)) {
           return new Command({

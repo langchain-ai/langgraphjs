@@ -141,8 +141,16 @@ export function _isSendInterface(x: unknown): x is SendInterface {
 export class Send implements SendInterface {
   lg_name = "Send";
 
+  public node: string;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(public node: string, public args: any) {}
+  public args: any;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(node: string, args: any) {
+    this.node = node;
+    this.args = _convertCommandSendTree(args);
+  }
 
   toJSON() {
     return {
@@ -153,8 +161,8 @@ export class Send implements SendInterface {
 }
 
 export function _isSend(x: unknown): x is Send {
-  const operation = x as Send;
-  return operation !== undefined && operation.lg_name === "Send";
+  // eslint-disable-next-line no-instanceof/no-instanceof
+  return x instanceof Send;
 }
 
 export type Interrupt = {
@@ -190,7 +198,7 @@ export type CommandParams<R> = {
    *   - `Send` object (to execute a node with the input provided)
    *   - sequence of `Send` objects
    */
-  goto?: string | Send | (string | Send)[];
+  goto?: string | SendInterface | (string | SendInterface)[];
 };
 
 /**
@@ -295,7 +303,9 @@ export class Command<R = unknown> {
     this.graph = args.graph;
     this.update = args.update;
     if (args.goto) {
-      this.goto = Array.isArray(args.goto) ? args.goto : [args.goto];
+      this.goto = Array.isArray(args.goto)
+        ? (_convertCommandSendTree(args.goto) as (string | Send)[])
+        : [_convertCommandSendTree(args.goto) as string | Send];
     }
   }
 
@@ -356,5 +366,69 @@ export class Command<R = unknown> {
  * @returns `true` if the value is a {@link Command}, `false` otherwise.
  */
 export function isCommand(x: unknown): x is Command {
-  return typeof x === "object" && !!x && (x as Command).lg_name === "Command";
+  // eslint-disable-next-line no-instanceof/no-instanceof
+  return x instanceof Command;
+}
+
+/**
+ * A type guard to check if the given value is a {@link CommandParams}.
+ *
+ * Useful for type narrowing when working with the {@link CommandParams} object.
+ *
+ * @param x - The value to check.
+ * @returns `true` if the value is a {@link CommandParams}, `false` otherwise.
+ */
+export function isCommandParams<R = unknown>(
+  x: unknown
+): x is CommandParams<R> {
+  if (typeof x !== "object") {
+    return false;
+  }
+
+  if (x === null || x === undefined) {
+    return false;
+  }
+
+  if ("update" in x && "resume" in x && "goto" in x) {
+    return true;
+  }
+
+  return false;
+}
+
+function _convertCommandSendTree(
+  x: unknown,
+  seen: Set<unknown> = new Set()
+): unknown {
+  if (x !== undefined && x !== null && typeof x === "object") {
+    if (seen.has(x)) {
+      throw new Error("Command send tree contains a cycle");
+    }
+
+    seen.add(x);
+
+    if (Array.isArray(x)) {
+      return x.map((innerX) => _convertCommandSendTree(innerX, new Set(seen)));
+    }
+
+    if (isCommand(x) || _isSend(x)) {
+      return x;
+    }
+
+    if (isCommandParams(x)) {
+      return new Command(x);
+    }
+
+    if (_isSendInterface(x)) {
+      return new Send(x.node, x.args);
+    }
+
+    return Object.fromEntries(
+      Object.entries(x).map(([key, value]) => [
+        key,
+        _convertCommandSendTree(value, seen),
+      ])
+    );
+  }
+  return x;
 }

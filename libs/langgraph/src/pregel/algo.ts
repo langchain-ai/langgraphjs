@@ -669,7 +669,15 @@ export function _prepareSingleTask<
     if (index >= checkpoint.pending_sends.length) {
       return undefined;
     }
-    const packet = checkpoint.pending_sends[index];
+
+    const packet =
+      _isSendInterface(checkpoint.pending_sends[index]) &&
+      !_isSend(checkpoint.pending_sends[index])
+        ? new Send(
+            checkpoint.pending_sends[index].node,
+            checkpoint.pending_sends[index].args
+          )
+        : checkpoint.pending_sends[index];
     if (!_isSendInterface(packet)) {
       console.warn(
         `Ignoring invalid packet ${JSON.stringify(packet)} in pending sends.`
@@ -702,7 +710,7 @@ export function _prepareSingleTask<
       langgraph_step: step,
       langgraph_node: packet.node,
       langgraph_triggers: triggers,
-      langgraph_path: taskPath,
+      langgraph_path: taskPath.slice(0, 3),
       langgraph_checkpoint_ns: taskCheckpointNamespace,
     };
     if (forExecution) {
