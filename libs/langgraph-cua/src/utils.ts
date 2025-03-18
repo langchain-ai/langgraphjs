@@ -11,20 +11,17 @@ import { CUAEnvironment, getConfigurationWithDefaults } from "./types.js";
 /**
  * Gets the Scrapybara client, using the API key from the graph's configuration object.
  *
- * @param {LangGraphRunnableConfig} config The configuration for the runnable. This will include the Scrapybara API key.
+ * @param {string} apiKey The API key for Scrapybara.
  * @returns {ScrapybaraClient} The Scrapybara client.
  */
-export function getScrapybaraClient(
-  config: LangGraphRunnableConfig
-): ScrapybaraClient {
-  const { scrapybaraApiKey } = getConfigurationWithDefaults(config);
-  if (!scrapybaraApiKey) {
+export function getScrapybaraClient(apiKey: string): ScrapybaraClient {
+  if (!apiKey) {
     throw new Error(
       "Scrapybara API key not provided. Please provide one in the configurable fields, or set it as an environment variable (SCRAPYBARA_API_KEY)"
     );
   }
   const client = new ScrapybaraClient({
-    apiKey: scrapybaraApiKey,
+    apiKey,
   });
   return client;
 }
@@ -46,18 +43,25 @@ export async function initOrLoad(
   config: LangGraphRunnableConfig
 ): Promise<UbuntuInstance | BrowserInstance | WindowsInstance> {
   const { instanceId, environment } = inputs;
-  const client = getScrapybaraClient(config);
+  const { scrapybaraApiKey, timeoutHours } =
+    getConfigurationWithDefaults(config);
+  if (!scrapybaraApiKey) {
+    throw new Error(
+      "Scrapybara API key not provided. Please provide one in the configurable fields, or set it as an environment variable (SCRAPYBARA_API_KEY)"
+    );
+  }
+  const client = getScrapybaraClient(scrapybaraApiKey);
 
   if (instanceId) {
     return await client.get(instanceId);
   }
 
   if (environment === "ubuntu") {
-    return await client.startUbuntu();
+    return await client.startUbuntu({ timeoutHours });
   } else if (environment === "windows") {
-    return await client.startWindows();
+    return await client.startWindows({ timeoutHours });
   } else if (environment === "web") {
-    return await client.startBrowser();
+    return await client.startBrowser({ timeoutHours });
   }
 
   throw new Error(
