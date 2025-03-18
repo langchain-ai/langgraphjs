@@ -1129,7 +1129,6 @@ export class Pregel<
         }
 
         // apply to checkpoint
-        // TODO: Why does keyof StrRecord allow number and symbol?
         _applyWrites(
           checkpoint,
           channels,
@@ -1141,12 +1140,6 @@ export class Pregel<
             },
           ],
           checkpointer.getNextVersion.bind(this.checkpointer)
-        );
-
-        await checkpointer.putWrites(
-          checkpointConfig,
-          inputWrites as PendingWrite[],
-          uuid5(INPUT, checkpoint.id)
         );
 
         // apply input write to channels
@@ -1163,6 +1156,13 @@ export class Pregel<
             checkpointPreviousVersions,
             checkpoint.channel_versions
           )
+        );
+
+        // Store the writes
+        await checkpointer.putWrites(
+          nextConfig,
+          inputWrites as PendingWrite[],
+          uuid5(INPUT, checkpoint.id)
         );
 
         return patchCheckpointMap(

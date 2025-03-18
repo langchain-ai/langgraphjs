@@ -10034,6 +10034,45 @@ graph TD;
       ])
     ).rejects.toThrow();
   });
+
+  it("update as input", async () => {
+    const checkpointer = await createCheckpointer();
+    const graph = new StateGraph(Annotation.Root({ foo: Annotation<string> }))
+      .addNode("agent", () => ({ foo: "agent" }))
+      .addNode("tool", () => ({ foo: "tool" }))
+      .addEdge(START, "agent")
+      .addEdge("agent", "tool")
+      .compile({ checkpointer });
+
+    const res = await graph.invoke(
+      { foo: "input" },
+      { configurable: { thread_id: "1" } }
+    );
+    expect(res).toEqual({ foo: "tool" });
+
+    const history = await gatherIterator(
+      graph.getStateHistory({ configurable: { thread_id: "1" } })
+    );
+
+    // now clone the thread
+    await graph.bulkUpdateState({ configurable: { thread_id: "2" } }, [
+      { updates: [{ values: { foo: "input" }, asNode: "__input__" }] },
+      { updates: [{ values: { foo: "input" }, asNode: "__start__" }] },
+      { updates: [{ values: { foo: "agent" }, asNode: "agent" }] },
+      { updates: [{ values: { foo: "tool" }, asNode: "tool" }] },
+    ]);
+
+    const state = await graph.getState({ configurable: { thread_id: "2" } });
+    expect(state.values).toEqual({ foo: "tool" });
+
+    const newHistory = await gatherIterator(
+      graph.getStateHistory({ configurable: { thread_id: "2" } })
+    );
+
+    expect(
+      newHistory.map((i) => ({ values: i.values, next: i.next }))
+    ).toMatchObject(history.map((i) => ({ values: i.values, next: i.next })));
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
