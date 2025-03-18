@@ -10035,7 +10035,7 @@ graph TD;
     ).rejects.toThrow();
   });
 
-  it.only("update as input", async () => {
+  it("update as input", async () => {
     const checkpointer = await createCheckpointer();
     const graph = new StateGraph(Annotation.Root({ foo: Annotation<string> }))
       .addNode("agent", () => ({ foo: "agent" }))
@@ -10087,7 +10087,7 @@ graph TD;
     expect(newHistory.map(mapSnapshot)).toMatchObject(history.map(mapSnapshot));
   });
 
-  it.skip("batch update as input (map-reduce)", async () => {
+  it("batch update as input (map-reduce)", async () => {
     const checkpointer = await createCheckpointer();
     const graph = new StateGraph(
       Annotation.Root({
@@ -10147,7 +10147,7 @@ graph TD;
       {
         updates: [
           {
-            command: new Command({
+            values: new Command({
               goto: [
                 new Send("task", { index: 0 }),
                 new Send("task", { index: 1 }),
