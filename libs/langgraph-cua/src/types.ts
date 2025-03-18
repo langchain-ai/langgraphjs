@@ -1,4 +1,8 @@
-import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
+import {
+  Annotation,
+  LangGraphRunnableConfig,
+  MessagesAnnotation,
+} from "@langchain/langgraph";
 import { ScrapybaraClient } from "scrapybara";
 
 export type CUAEnvironment = "web" | "ubuntu" | "windows";
@@ -163,6 +167,24 @@ export const CUAConfigurable = Annotation.Root({
     default: () => 768,
   }),
 });
+
+/**
+ * Gets the configuration with default values.
+ *
+ * @param {LangGraphRunnableConfig} config - The configuration to use.
+ * @returns {typeof CUAConfigurable.State} - The configuration with default values.
+ */
+export function getConfigurationWithDefaults(
+  config: LangGraphRunnableConfig
+): typeof CUAConfigurable.State {
+  return {
+    scrapybaraApiKey:
+      config.configurable?.scrapybaraApiKey ?? process.env.SCRAPYBARA_API_KEY,
+    timeoutHours: config.configurable?.timeoutHours ?? 1,
+    displayHeight: config.configurable?.displayHeight ?? 1024,
+    displayWidth: config.configurable?.displayWidth ?? 768,
+  };
+}
 
 export type CUAState = typeof CUAAnnotation.State;
 export type CUAUpdate = typeof CUAAnnotation.Update;

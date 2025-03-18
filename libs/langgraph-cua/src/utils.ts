@@ -6,7 +6,7 @@ import {
   BrowserInstance,
   WindowsInstance,
 } from "scrapybara";
-import { CUAEnvironment } from "./types.js";
+import { CUAEnvironment, getConfigurationWithDefaults } from "./types.js";
 
 /**
  * Gets the Scrapybara client, using the API key from the graph's configuration object.
@@ -17,11 +17,14 @@ import { CUAEnvironment } from "./types.js";
 export function getScrapybaraClient(
   config: LangGraphRunnableConfig
 ): ScrapybaraClient {
-  if (!config.configurable?.scrapybaraApiKey) {
-    throw new Error("Scrapybara API key not provided");
+  const { scrapybaraApiKey } = getConfigurationWithDefaults(config);
+  if (!scrapybaraApiKey) {
+    throw new Error(
+      "Scrapybara API key not provided. Please provide one in the configurable fields, or set it as an environment variable (SCRAPYBARA_API_KEY)"
+    );
   }
   const client = new ScrapybaraClient({
-    apiKey: config.configurable?.scrapybaraApiKey,
+    apiKey: scrapybaraApiKey,
   });
   return client;
 }

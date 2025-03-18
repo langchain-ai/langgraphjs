@@ -1,6 +1,11 @@
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
-import { CUAEnvironment, CUAState, CUAUpdate } from "../types.js";
+import {
+  CUAEnvironment,
+  CUAState,
+  CUAUpdate,
+  getConfigurationWithDefaults,
+} from "../types.js";
 
 const getOpenAIEnvFromStateEnv = (env: CUAEnvironment) => {
   switch (env) {
@@ -26,12 +31,7 @@ export async function callModel(
   state: CUAState,
   config: LangGraphRunnableConfig
 ): Promise<CUAUpdate> {
-  if (
-    !config.configurable?.displayWidth ||
-    !config.configurable?.displayHeight
-  ) {
-    throw new Error("displayWidth and displayHeight must be provided");
-  }
+  const { displayWidth, displayHeight } = getConfigurationWithDefaults(config);
 
   const model = new ChatOpenAI({
     model: "computer-use-preview",
@@ -40,8 +40,8 @@ export async function callModel(
     .bindTools([
       {
         type: "computer-preview",
-        display_width: config.configurable.displayWidth,
-        display_height: config.configurable.displayHeight,
+        display_width: displayWidth,
+        display_height: displayHeight,
         environment: getOpenAIEnvFromStateEnv(state.environment),
       },
     ])
