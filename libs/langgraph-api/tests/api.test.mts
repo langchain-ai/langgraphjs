@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, beforeAll } from "vitest";
-import { Client } from "@langchain/langgraph-sdk";
+import { Client, type FeedbackStreamEvent } from "@langchain/langgraph-sdk";
 import { findLast, gatherIterator } from "./utils.mjs";
 import type {
   BaseMessageFields,
@@ -11,7 +11,7 @@ import postgres from "postgres";
 import { randomUUID } from "crypto";
 
 const API_URL = "http://localhost:2024";
-const client = new Client({ apiUrl: API_URL });
+const client = new Client<any>({ apiUrl: API_URL });
 
 // Passed to all invocation requests as the graph now requires this field to be present
 // in `configurable` due to a new `SharedValue` field requiring it.
@@ -791,7 +791,9 @@ describe("runs", () => {
 
     expect(
       new Set(
-        events.filter((i) => i.event === "events").map((i) => i.data.event),
+        events
+          .filter((i) => i.event === "events")
+          .map((i) => (i.data as any).event),
       ),
     ).toEqual(
       new Set([
@@ -875,7 +877,10 @@ describe("runs", () => {
     );
 
     const chunks = await gatherIterator(stream);
-    const runId = findLast(chunks, (i) => i.event === "metadata")?.data.run_id;
+    const runId = findLast(
+      chunks,
+      (i): i is FeedbackStreamEvent => i.event === "metadata",
+    )?.data.run_id;
     expect(runId).not.toBeNull();
 
     const messages = chunks
@@ -934,7 +939,7 @@ describe("runs", () => {
       ]),
     );
 
-    const run = await client.runs.get(thread.thread_id, runId);
+    const run = await client.runs.get(thread.thread_id, runId!);
     expect(run.status).toBe("success");
   });
 
@@ -1409,7 +1414,7 @@ describe("subgraphs", () => {
       }
 
       if (chunk.event === "error") {
-        throw new Error(chunk.data);
+        throw new Error(chunk.data.error);
       }
     }
 
@@ -1522,7 +1527,7 @@ describe("subgraphs", () => {
     expect(threadAfterInterrupt.status).toBe("interrupted");
 
     // continue after interrupt
-    chunks = await gatherIterator(
+    const chunksSubgraph = await gatherIterator(
       client.runs.stream(thread.thread_id, assistant.assistant_id, {
         input: null,
         streamMode: ["values", "updates"],
@@ -1530,16 +1535,17 @@ describe("subgraphs", () => {
       }),
     );
 
-    expect(chunks.filter((i) => i.event === "error")).toEqual([]);
-    expect(chunks.at(-1)?.event).toBe("values");
+    expect(chunksSubgraph.filter((i) => i.event === "error")).toEqual([]);
+    expect(chunksSubgraph.at(-1)?.event).toBe("values");
 
-    const continueMessages = findLast(chunks, (i) => i.event === "values")?.data
-      .messages;
+    const continueMessages = chunksSubgraph.findLast(
+      (i) => i.event === "values",
+    )?.data.messages;
 
     expect(continueMessages.length).toBe(2);
     expect(continueMessages[0].content).toBe("SF");
     expect(continueMessages[1].content).toBe("It's sunny in San Francisco!");
-    expect(chunks).toEqual([
+    expect(chunksSubgraph).toEqual([
       {
         event: "metadata",
         data: { run_id: expect.any(String), attempt: 1 },
@@ -2010,8 +2016,8 @@ it("stream debug checkpoint", async () => {
 
   const stream = [];
   for await (const chunk of runStream) {
-    if (chunk.event === "debug" && chunk.data.type === "checkpoint") {
-      stream.push(chunk.data.payload);
+    if (chunk.event === "debug" && (chunk.data as any).type === "checkpoint") {
+      stream.push((chunk.data as any).payload);
     }
   }
 
@@ -2051,8 +2057,10 @@ it("continue after interrupt must have checkpoint present", async () => {
   );
 
   const initialStream = stream
-    .filter((i) => i.event === "debug" && i.data.type === "checkpoint")
-    .map((i) => i.data.payload);
+    .filter(
+      (i) => i.event === "debug" && (i.data as any)?.type === "checkpoint",
+    )
+    .map((i) => (i.data as any)?.payload);
 
   const history = (await client.threads.getHistory(thread.thread_id)).reverse();
   const checkpoint = history[history.length - 1].checkpoint;
@@ -2070,8 +2078,8 @@ it("continue after interrupt must have checkpoint present", async () => {
   ).reverse();
 
   const continueStream = stream
-    .filter((i) => i.event === "debug" && i.data.type === "checkpoint")
-    .map((i) => i.data.payload);
+    .filter((i) => i.event === "debug" && (i.data as any).type === "checkpoint")
+    .map((i) => (i.data as any).payload);
 
   expect(
     [...initialStream, ...continueStream.slice(1)].map((i: any) => ({
@@ -2307,4 +2315,54 @@ describe("RemoteGraph", () => {
       },
     ]);
   });
+});
+
+it("batch update state", async () => {
+  const assistant = await client.assistants.create({ graphId: "agent" });
+  const thread = await client.threads.create();
+  const input = { messages: [{ role: "human", content: "foo" }] };
+
+  await gatherIterator(
+    client.runs.stream(thread.thread_id, assistant.assistant_id, {
+      input,
+      config: globalConfig,
+    }),
+  );
+
+  const history = await client.threads.getHistory(thread.thread_id);
+  const supersteps = history
+    .slice()
+    .reverse()
+    .flatMap((i) =>
+      Object.entries(i.metadata?.writes ?? {}).flatMap(([asNode, values]) => {
+        if (i.metadata?.source === "input") {
+          return [
+            { updates: [{ asNode: "__input__", values }] },
+            { updates: [{ asNode: "__start__", values }] },
+          ];
+        }
+        return { updates: [{ asNode, values }] };
+      }),
+    )
+    .filter((i) => i.updates.length > 0);
+
+  const newThread = await client.threads.bulkUpdateState(supersteps, {
+    graphId: "agent",
+  });
+  const newHistory = await client.threads.getHistory(newThread.thread_id);
+
+  expect(newHistory.map((i) => i.next)).toMatchObject(
+    history.map((i) => i.next),
+  );
+  expect(newHistory.map((i) => i.values)).toMatchObject(
+    history.map((i) => ({
+      ...i.values,
+      messages: i.values.messages.map((msg: any) => ({
+        ...msg,
+        // as the initial message does not have an ID, we just assume that
+        // the field is present
+        id: expect.any(String),
+      })),
+    })),
+  );
 });

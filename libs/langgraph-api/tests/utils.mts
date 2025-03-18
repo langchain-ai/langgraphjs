@@ -6,12 +6,12 @@ export async function gatherIterator<T>(
   return out;
 }
 
-export function findLast<T>(
+export function findLast<T, S extends T>(
   lst: Array<T>,
-  predicate: (item: T) => boolean,
-): T | undefined {
+  predicate: (item: T) => item is S,
+): S | undefined {
   for (let i = lst.length - 1; i >= 0; i--) {
-    if (predicate(lst[i])) return lst[i];
+    if (predicate(lst[i])) return lst[i] as S;
   }
   return undefined;
 }
