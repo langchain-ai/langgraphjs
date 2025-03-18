@@ -1,3 +1,4 @@
+import { AIMessageChunk } from "@langchain/core/messages";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 import {
@@ -33,6 +34,12 @@ export async function callModel(
 ): Promise<CUAUpdate> {
   const { displayWidth, displayHeight } = getConfigurationWithDefaults(config);
 
+  const lastMessage = state.messages[state.messages.length - 1];
+  let previousResponseId: string | undefined;
+  if (lastMessage?.id && lastMessage.getType() === "ai") {
+    previousResponseId = lastMessage.id;
+  }
+
   const model = new ChatOpenAI({
     model: "computer-use-preview",
     useResponsesApi: true,
@@ -47,9 +54,21 @@ export async function callModel(
     ])
     .bind({
       truncation: "auto",
+      previous_response_id: previousResponseId,
     });
 
-  const response = await model.invoke(state.messages);
+  let response: AIMessageChunk;
+  if (state.computerCallOutput) {
+    // TODO: How to pass back computer call outputs?
+    response = await model.invoke([
+      {
+        role: "tool",
+        content: [state.computerCallOutput],
+      },
+    ]);
+  } else {
+    response = await model.invoke(state.messages);
+  }
 
   return {
     messages: response,

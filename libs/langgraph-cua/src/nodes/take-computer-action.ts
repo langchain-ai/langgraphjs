@@ -1,7 +1,6 @@
 import { Scrapybara } from "scrapybara";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
-import { ResponseInputItem } from "openai/resources/responses/responses";
-import { CUAState, CUAUpdate } from "../types.js";
+import { ComputerCallOutput, CUAState, CUAUpdate } from "../types.js";
 import { initOrLoad, isComputerToolCall } from "../utils.js";
 
 export async function takeComputerAction(
@@ -30,6 +29,7 @@ export async function takeComputerAction(
   }
 
   const action = toolOutputs[0].action;
+  let computerCallOutput: ComputerCallOutput | undefined;
 
   try {
     let computerResponse: Scrapybara.ComputerResponse;
@@ -100,18 +100,13 @@ export async function takeComputerAction(
         );
     }
 
-    const computerCallOutput: ResponseInputItem.ComputerCallOutput = {
+    computerCallOutput = {
       call_id: toolOutputs[0].call_id,
       type: "computer_call_output",
       output: {
         type: "computer_screenshot",
         image_url: `data:image/png;base64,${computerResponse.base64Image}`,
       },
-    };
-
-    return {
-      computerCallOutput,
-      streamUrl,
     };
   } catch (e) {
     console.error(
@@ -121,9 +116,11 @@ export async function takeComputerAction(
       },
       "Failed to execute computer call."
     );
-
-    return {
-      computerCallOutput: undefined,
-    };
   }
+
+  return {
+    computerCallOutput,
+    instanceId: instance.id,
+    streamUrl,
+  };
 }

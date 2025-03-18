@@ -65,7 +65,36 @@ test("It can use the agent to interact with the browser", async () => {
         console.log(update[1]);
       } else {
         console.log("\n---UPDATE---\n");
-        console.dir(update[1], { depth: Infinity });
+        if ("callModel" in update[1]) {
+          const messages = update[1].callModel?.messages;
+          console.dir(
+            {
+              additional_kwargs: messages?.additional_kwargs,
+              content: messages?.content,
+            },
+            { depth: Infinity }
+          );
+        } else if ("takeComputerAction" in update[1]) {
+          const computerCallOutput =
+            update[1].takeComputerAction?.computerCallOutput;
+          console.dir(
+            {
+              computerCallOutput: {
+                ...computerCallOutput,
+                output: {
+                  ...computerCallOutput?.output,
+                  image_url: computerCallOutput?.output?.image_url?.slice(
+                    0,
+                    100
+                  ),
+                },
+              },
+            },
+            { depth: Infinity }
+          );
+        } else {
+          console.dir(update[1], { depth: Infinity });
+        }
       }
     } else {
       console.log("\n---UPDATE (not array)---\n");
