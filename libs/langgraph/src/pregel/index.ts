@@ -32,7 +32,7 @@ import {
 } from "../channels/base.js";
 import { PregelNode } from "./read.js";
 import { validateGraph, validateKeys } from "./validate.js";
-import { readChannels } from "./io.js";
+import { mapInput, readChannels } from "./io.js";
 import {
   printStepCheckpoint,
   printStepTasks,
@@ -1107,6 +1107,70 @@ export class Pregel<
           saved ? saved.metadata : undefined
         );
       }
+
+      if (asNode === "__input__") {
+        if (updates.length > 1) {
+          throw new InvalidUpdateError(
+            `Cannot apply multiple updates when clearing state`
+          );
+        }
+
+        const inputWrites = await gatherIterator(
+          mapInput(this.inputChannels, values)
+        );
+        if (inputWrites.length === 0) {
+          throw new InvalidUpdateError(
+            `Received no input writes for ${JSON.stringify(
+              this.inputChannels,
+              null,
+              2
+            )}`
+          );
+        }
+
+        // apply to checkpoint
+        // TODO: Why does keyof StrRecord allow number and symbol?
+        _applyWrites(
+          checkpoint,
+          channels,
+          [
+            {
+              name: INPUT,
+              writes: inputWrites as PendingWrite[],
+              triggers: [],
+            },
+          ],
+          checkpointer.getNextVersion.bind(this.checkpointer)
+        );
+
+        await checkpointer.putWrites(
+          checkpointConfig,
+          inputWrites as PendingWrite[],
+          uuid5(INPUT, checkpoint.id)
+        );
+
+        // apply input write to channels
+        const nextConfig = await checkpointer.put(
+          checkpointConfig,
+          createCheckpoint(checkpoint, channels, step),
+          {
+            source: "input",
+            step: saved?.metadata?.step != null ? saved.metadata.step + 1 : -1,
+            writes: Object.fromEntries(inputWrites),
+            parents: saved?.metadata?.parents ?? {},
+          },
+          getNewChannelVersions(
+            checkpointPreviousVersions,
+            checkpoint.channel_versions
+          )
+        );
+
+        return patchCheckpointMap(
+          nextConfig,
+          saved ? saved.metadata : undefined
+        );
+      }
+
       // apply pending writes, if not on specific checkpoint
       if (
         config.configurable?.checkpoint_id === undefined &&
