@@ -9918,6 +9918,122 @@ graph TD;
     );
     expect(chunks2[0][1][1].langgraph_node).toEqual("callModel");
   });
+
+  it("should handle bulk state updates", async () => {
+    const State = Annotation.Root({
+      foo: Annotation<string>,
+      baz: Annotation<string>,
+    });
+
+    const checkpointer = new MemorySaverAssertImmutable();
+
+    const nodeA = (_state: typeof State.State) => ({ foo: "bar" });
+    const nodeB = (_state: typeof State.State) => ({ baz: "qux" });
+
+    const graph = new StateGraph(State)
+      .addNode("nodeA", nodeA)
+      .addNode("nodeB", nodeB)
+      .addEdge(START, "nodeA")
+      .addEdge("nodeA", "nodeB")
+      .compile({ checkpointer });
+
+    let config = { configurable: { thread_id: "1" } };
+
+    // First update with nodeA
+    await graph.bulkUpdateState(config, [
+      { updates: [{ values: { foo: "bar" }, asNode: "nodeA" }] },
+    ]);
+
+    // Then bulk update with both nodes
+    await graph.bulkUpdateState(config, [
+      {
+        updates: [
+          { values: { foo: "updated" }, asNode: "nodeA" },
+          { values: { baz: "new" }, asNode: "nodeB" },
+        ],
+      },
+    ]);
+
+    let state = await graph.getState(config);
+    expect(state.values).toEqual({ foo: "updated", baz: "new" });
+
+    // check if there are only two checkpoints
+    let checkpoints = await gatherIterator(
+      checkpointer.list({ configurable: { thread_id: "1" } })
+    );
+
+    expect(checkpoints.length).toBe(2);
+    expect(checkpoints).toMatchObject([
+      {
+        metadata: {
+          writes: { nodeA: { foo: "updated" }, nodeB: { baz: "new" } },
+        },
+      },
+      { metadata: { writes: { nodeA: { foo: "bar" } } } },
+    ]);
+
+    // perform multiple steps at the same time
+    config = { configurable: { thread_id: "2" } };
+
+    await graph.bulkUpdateState(config, [
+      {
+        updates: [{ values: { foo: "bar" }, asNode: "nodeA" }],
+      },
+      {
+        updates: [
+          { values: { foo: "updated" }, asNode: "nodeA" },
+          { values: { baz: "new" }, asNode: "nodeB" },
+        ],
+      },
+    ]);
+
+    state = await graph.getState(config);
+    expect(state.values).toEqual({ foo: "updated", baz: "new" });
+
+    checkpoints = await gatherIterator(
+      checkpointer.list({ configurable: { thread_id: "1" } })
+    );
+
+    expect(checkpoints.length).toBe(2);
+    expect(checkpoints).toMatchObject([
+      {
+        metadata: {
+          writes: { nodeA: { foo: "updated" }, nodeB: { baz: "new" } },
+        },
+      },
+      { metadata: { writes: { nodeA: { foo: "bar" } } } },
+    ]);
+
+    // throw error if updating without `asNode`
+    await expect(
+      graph.bulkUpdateState(config, [
+        {
+          updates: [{ values: { foo: "error" } }, { values: { bar: "error" } }],
+        },
+      ])
+    ).rejects.toThrow();
+
+    // throw if no updates are provided
+    await expect(graph.bulkUpdateState(config, [])).rejects.toThrow(
+      "No supersteps provided"
+    );
+
+    await expect(
+      graph.bulkUpdateState(config, [{ updates: [] }])
+    ).rejects.toThrow("No updates provided");
+
+    // throw if __end__ or __copy__ update is applied in bulk
+    await expect(
+      graph.bulkUpdateState(config, [
+        {
+          updates: [
+            { values: null, asNode: "__end__" },
+            { values: null, asNode: "__copy__" },
+          ],
+        },
+      ])
+    ).rejects.toThrow();
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
