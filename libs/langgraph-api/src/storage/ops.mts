@@ -12,6 +12,8 @@ import { store } from "./store.mjs";
 import { logger } from "../logging.mjs";
 import { serializeError } from "../utils/serde.mjs";
 import { FileSystemPersistence } from "./persist.mjs";
+import { getLangGraphCommand, type RunCommand } from "../command.mjs";
+
 export type Metadata = Record<string, unknown>;
 
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error";
@@ -72,17 +74,6 @@ interface AssistantVersion {
   metadata: Metadata;
   created_at: Date;
   name: string | undefined;
-}
-
-export interface RunSend {
-  node: string;
-  input?: unknown;
-}
-
-export interface RunCommand {
-  goto?: string | RunSend | Array<RunSend | string>;
-  update?: Record<string, unknown> | [string, unknown][];
-  resume?: unknown;
 }
 
 export interface RunKwargs {
@@ -884,6 +875,7 @@ export class Threads {
             | unknown
             | null
             | undefined;
+          command?: RunCommand | undefined;
           as_node?: string | undefined;
         }>;
       }>,
@@ -912,7 +904,8 @@ export class Threads {
         updateConfig,
         supersteps.map((i) => ({
           updates: i.updates.map((j) => ({
-            values: j.values,
+            values:
+              j.command != null ? getLangGraphCommand(j.command) : j.values,
             asNode: j.as_node,
           })),
         })),

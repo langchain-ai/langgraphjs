@@ -201,7 +201,11 @@ api.post(
         .array(
           z.object({
             updates: z.array(
-              z.object({ values: z.unknown().nullish(), as_node: z.string() }),
+              z.object({
+                values: z.unknown().nullish(),
+                command: schemas.CommandSchema.nullish(),
+                as_node: z.string(),
+              }),
             ),
           }),
         )
