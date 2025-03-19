@@ -1115,7 +1115,7 @@ export class Pregel<
       if (asNode === INPUT) {
         if (updates.length > 1) {
           throw new InvalidUpdateError(
-            `Cannot apply multiple updates when clearing state`
+            `Cannot apply multiple updates when updating as input`
           );
         }
 
