@@ -321,6 +321,20 @@ export const Thread = z.object({
 
 export const ThreadCreate = z
   .object({
+    supersteps: z
+      .array(
+        z.object({
+          updates: z.array(
+            z.object({
+              values: z.unknown().nullish(),
+              command: CommandSchema.nullish(),
+              as_node: z.string(),
+            }),
+          ),
+        }),
+      )
+      .describe("The supersteps to apply to the thread.")
+      .optional(),
     thread_id: z
       .string()
       .uuid()

@@ -2350,10 +2350,8 @@ it("batch update state", async () => {
     })
     .filter((i) => i.updates.length > 0);
 
-  const newThread = await client.threads.bulkUpdateState(supersteps, {
-    graphId: "agent",
-  });
-  const newHistory = await client.threads.getHistory(newThread.thread_id);
+  const clone = await client.threads.create({ graphId: "agent", supersteps });
+  const newHistory = await client.threads.getHistory(clone.thread_id);
 
   expect
     .soft(newHistory.map((i) => i.next))

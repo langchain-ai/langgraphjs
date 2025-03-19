@@ -20,6 +20,13 @@ api.post("/threads", zValidator("json", schemas.ThreadCreate), async (c) => {
     if_exists: payload.if_exists ?? "raise",
   });
 
+  if (payload.supersteps?.length) {
+    await Threads.State.bulk(
+      { configurable: { thread_id: thread.thread_id } },
+      payload.supersteps,
+    );
+  }
+
   return jsonExtra(c, thread);
 });
 
@@ -189,55 +196,6 @@ api.get(
       { limit, before },
     );
     return jsonExtra(c, states.map(stateSnapshotToThreadState));
-  },
-);
-
-api.post(
-  "/threads/state/bulk",
-  zValidator(
-    "json",
-    z.object({
-      supersteps: z
-        .array(
-          z.object({
-            updates: z.array(
-              z.object({
-                values: z.unknown().nullish(),
-                command: schemas.CommandSchema.nullish(),
-                as_node: z.string(),
-              }),
-            ),
-          }),
-        )
-        .describe("The supersteps to apply to the thread."),
-      thread_id: z
-        .string()
-        .uuid()
-        .describe("The ID of the thread. If not provided, an ID is generated.")
-        .optional(),
-      metadata: z
-        .object({})
-        .catchall(z.any())
-        .describe("Metadata for the thread.")
-        .optional(),
-      if_exists: z
-        .union([z.literal("raise"), z.literal("do_nothing")])
-        .optional(),
-    }),
-  ),
-  async (c) => {
-    // Create a new thread from a batch of state updates
-    const payload = c.req.valid("json");
-    const newThread = await Threads.put(payload.thread_id || uuid4(), {
-      metadata: payload.metadata,
-      if_exists: payload.if_exists ?? "raise",
-    });
-
-    await Threads.State.bulk(
-      { configurable: { thread_id: newThread.thread_id } },
-      payload.supersteps,
-    );
-    return jsonExtra(c, newThread);
   },
 );
 
