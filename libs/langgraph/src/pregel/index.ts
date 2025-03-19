@@ -891,6 +891,8 @@ export class Pregel<
    * from a list of updates, especially if a checkpoint
    * is created as a result of multiple tasks.
    *
+   * @internal The API might change in the future.
+   *
    * @param startConfig - Configuration for the update
    * @param updates - The list of updates to apply to graph state
    * @returns Updated configuration
