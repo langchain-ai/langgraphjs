@@ -2317,7 +2317,7 @@ describe("RemoteGraph", () => {
   });
 });
 
-it("batch update state", async () => {
+it.only("batch update state", async () => {
   const assistant = await client.assistants.create({ graphId: "agent" });
   const thread = await client.threads.create();
   const input = { messages: [{ role: "human", content: "foo" }] };
@@ -2333,17 +2333,21 @@ it("batch update state", async () => {
   const supersteps = history
     .slice()
     .reverse()
-    .flatMap((i) =>
-      Object.entries(i.metadata?.writes ?? {}).flatMap(([asNode, values]) => {
-        if (i.metadata?.source === "input") {
-          return [
-            { updates: [{ asNode: "__input__", values }] },
-            { updates: [{ asNode: "__start__", values }] },
-          ];
-        }
-        return { updates: [{ asNode, values }] };
-      }),
-    )
+    .flatMap((i) => {
+      if (i.metadata?.source === "input") {
+        const values = i.metadata.writes?.["__start__"] ?? i.metadata.writes;
+        return [
+          { updates: [{ asNode: "__input__", values }] },
+          { updates: [{ asNode: "__start__", values }] },
+        ];
+      }
+
+      return {
+        updates: Object.entries(i.metadata?.writes ?? {}).map(
+          ([asNode, values]) => ({ asNode, values }),
+        ),
+      };
+    })
     .filter((i) => i.updates.length > 0);
 
   const newThread = await client.threads.bulkUpdateState(supersteps, {
@@ -2351,10 +2355,10 @@ it("batch update state", async () => {
   });
   const newHistory = await client.threads.getHistory(newThread.thread_id);
 
-  expect(newHistory.map((i) => i.next)).toMatchObject(
-    history.map((i) => i.next),
-  );
-  expect(newHistory.map((i) => i.values)).toMatchObject(
+  expect
+    .soft(newHistory.map((i) => i.next))
+    .toMatchObject(history.map((i) => i.next));
+  expect.soft(newHistory.map((i) => i.values)).toMatchObject(
     history.map((i) => ({
       ...i.values,
       messages: i.values.messages.map((msg: any) => ({

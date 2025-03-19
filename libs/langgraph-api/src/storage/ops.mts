@@ -875,7 +875,7 @@ export class Threads {
             | unknown
             | null
             | undefined;
-          command?: RunCommand | undefined;
+          command?: RunCommand | undefined | null;
           as_node?: string | undefined;
         }>;
       }>,
@@ -922,7 +922,7 @@ export class Threads {
         }
       });
 
-      return nextConfig;
+      return { checkpoint: nextConfig.configurable };
     }
 
     static async list(

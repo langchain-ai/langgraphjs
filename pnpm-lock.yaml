@@ -67,8 +67,8 @@ importers:
         specifier: ^0.3.42
         version: 0.3.42
       '@langchain/langgraph':
-        specifier: ^0.2.56
-        version: 0.2.56(@langchain/core@0.3.42)
+        specifier: ^0.2.57
+        version: 0.2.57(@langchain/core@0.3.42)
       '@langchain/langgraph-checkpoint':
         specifier: ^0.0.16
         version: 0.0.16(@langchain/core@0.3.42)
@@ -128,8 +128,8 @@ importers:
         version: 3.24.1
     devDependencies:
       '@langchain/langgraph-sdk':
-        specifier: ^0.0.33
-        version: 0.0.33
+        specifier: ^0.0.59
+        version: 0.0.59(@langchain/core@0.3.42)
       '@types/babel__code-frame':
         specifier: ^7.0.6
         version: 7.0.6
@@ -449,11 +449,19 @@ packages:
     peerDependencies:
       '@langchain/core': '>=0.2.31 <0.4.0'
 
-  '@langchain/langgraph-sdk@0.0.33':
-    resolution: {integrity: sha512-l/hRbI6roLzplBXy2VyDUwqY1TkK7RcjPmrMUuVdvCCH4LTwLfIXh/G1kHatNiN7VUTskw0FkfBbgq6gtj0ang==}
+  '@langchain/langgraph-sdk@0.0.59':
+    resolution: {integrity: sha512-AyvUjViMVQpS6BD7wG3FLKsrQz31obHq9Nrn40OGNRboeFBIaUF5MqZ3sEkUvYMq2h+9tOSkS/uLBWHOZUPOmQ==}
+    peerDependencies:
+      '@langchain/core': '>=0.2.31 <0.4.0'
+      react: ^18 || ^19
+    peerDependenciesMeta:
+      '@langchain/core':
+        optional: true
+      react:
+        optional: true
 
-  '@langchain/langgraph@0.2.56':
-    resolution: {integrity: sha512-/uiQL+SeEGNv6QZOilxdwNwDoYQ+t3pFr5tZyG3lvmgmO2Pfojp7SIV2y/yuVYkNlKPvKvpdfE6mmCkCT4G2aA==}
+  '@langchain/langgraph@0.2.57':
+    resolution: {integrity: sha512-SolqE+HzwbxEEiqAVgHwE11r9lzjZAnAfEe7MMBUE77TUCaWK3GC0VvDfJMNas53ndlc0KRutmpEa0ODWdhcRQ==}
     engines: {node: '>=18'}
     peerDependencies:
       '@langchain/core': '>=0.2.36 <0.3.0 || >=0.3.40 < 0.4.0'
@@ -1807,20 +1815,24 @@ snapshots:
       '@langchain/core': 0.3.42
       uuid: 10.0.0
 
-  '@langchain/langgraph-sdk@0.0.33':
+  '@langchain/langgraph-sdk@0.0.59(@langchain/core@0.3.42)':
     dependencies:
       '@types/json-schema': 7.0.15
       p-queue: 6.6.2
       p-retry: 4.6.2
       uuid: 9.0.1
+    optionalDependencies:
+      '@langchain/core': 0.3.42
 
-  '@langchain/langgraph@0.2.56(@langchain/core@0.3.42)':
+  '@langchain/langgraph@0.2.57(@langchain/core@0.3.42)':
     dependencies:
       '@langchain/core': 0.3.42
       '@langchain/langgraph-checkpoint': 0.0.16(@langchain/core@0.3.42)
-      '@langchain/langgraph-sdk': 0.0.33
+      '@langchain/langgraph-sdk': 0.0.59(@langchain/core@0.3.42)
       uuid: 10.0.0
       zod: 3.24.1
+    transitivePeerDependencies:
+      - react
 
   '@pkgjs/parseargs@0.11.0':
     optional: true

@@ -226,7 +226,7 @@ api.post(
     }),
   ),
   async (c) => {
-    // Create a new thread from a batch states
+    // Create a new thread from a batch of state updates
     const payload = c.req.valid("json");
     const newThread = await Threads.put(payload.thread_id || uuid4(), {
       metadata: payload.metadata,
