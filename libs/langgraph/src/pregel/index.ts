@@ -32,7 +32,7 @@ import {
 } from "../channels/base.js";
 import { PregelNode } from "./read.js";
 import { validateGraph, validateKeys } from "./validate.js";
-import { readChannels } from "./io.js";
+import { mapInput, readChannels } from "./io.js";
 import {
   printStepCheckpoint,
   printStepTasks,
@@ -53,6 +53,8 @@ import {
   Command,
   NULL_TASK_ID,
   INPUT,
+  COPY,
+  END,
   PUSH,
 } from "../constants.js";
 import {
@@ -889,6 +891,8 @@ export class Pregel<
    * from a list of updates, especially if a checkpoint
    * is created as a result of multiple tasks.
    *
+   * @internal The API might change in the future.
+   *
    * @param startConfig - Configuration for the update
    * @param updates - The list of updates to apply to graph state
    * @returns Updated configuration
@@ -1012,7 +1016,7 @@ export class Pregel<
         skipManaged: true,
       });
 
-      if (values === null && asNode === "__end__") {
+      if (values === null && asNode === END) {
         if (updates.length > 1) {
           throw new InvalidUpdateError(
             `Cannot apply multiple updates when clearing state`
@@ -1084,7 +1088,7 @@ export class Pregel<
           saved ? saved.metadata : undefined
         );
       }
-      if (values == null && asNode === "__copy__") {
+      if (values == null && asNode === COPY) {
         if (updates.length > 1) {
           throw new InvalidUpdateError(
             `Cannot copy checkpoint with multiple updates`
@@ -1107,6 +1111,72 @@ export class Pregel<
           saved ? saved.metadata : undefined
         );
       }
+
+      if (asNode === INPUT) {
+        if (updates.length > 1) {
+          throw new InvalidUpdateError(
+            `Cannot apply multiple updates when updating as input`
+          );
+        }
+
+        const inputWrites = await gatherIterator(
+          mapInput(this.inputChannels, values)
+        );
+        if (inputWrites.length === 0) {
+          throw new InvalidUpdateError(
+            `Received no input writes for ${JSON.stringify(
+              this.inputChannels,
+              null,
+              2
+            )}`
+          );
+        }
+
+        // apply to checkpoint
+        _applyWrites(
+          checkpoint,
+          channels,
+          [
+            {
+              name: INPUT,
+              writes: inputWrites as PendingWrite[],
+              triggers: [],
+            },
+          ],
+          checkpointer.getNextVersion.bind(this.checkpointer)
+        );
+
+        // apply input write to channels
+        const nextStep =
+          saved?.metadata?.step != null ? saved.metadata.step + 1 : -1;
+        const nextConfig = await checkpointer.put(
+          checkpointConfig,
+          createCheckpoint(checkpoint, channels, nextStep),
+          {
+            source: "input",
+            step: nextStep,
+            writes: Object.fromEntries(inputWrites),
+            parents: saved?.metadata?.parents ?? {},
+          },
+          getNewChannelVersions(
+            checkpointPreviousVersions,
+            checkpoint.channel_versions
+          )
+        );
+
+        // Store the writes
+        await checkpointer.putWrites(
+          nextConfig,
+          inputWrites as PendingWrite[],
+          uuid5(INPUT, checkpoint.id)
+        );
+
+        return patchCheckpointMap(
+          nextConfig,
+          saved ? saved.metadata : undefined
+        );
+      }
+
       // apply pending writes, if not on specific checkpoint
       if (
         config.configurable?.checkpoint_id === undefined &&
