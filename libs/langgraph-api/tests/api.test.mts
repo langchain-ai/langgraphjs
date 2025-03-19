@@ -2317,7 +2317,7 @@ describe("RemoteGraph", () => {
   });
 });
 
-it.only("batch update state", async () => {
+it("batch update state", async () => {
   const assistant = await client.assistants.create({ graphId: "agent" });
   const thread = await client.threads.create();
   const input = { messages: [{ role: "human", content: "foo" }] };
