@@ -65,7 +65,7 @@
     "typescript": "^5.5.4"
   },
   "devDependencies": {
-    "@langchain/langgraph-sdk": "^0.0.59",
+    "@langchain/langgraph-sdk": "^0.0.60",
     "@types/babel__code-frame": "^7.0.6",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
