@@ -53,6 +53,8 @@ import {
   Command,
   NULL_TASK_ID,
   INPUT,
+  COPY,
+  END,
   PUSH,
 } from "../constants.js";
 import {
@@ -1012,7 +1014,7 @@ export class Pregel<
         skipManaged: true,
       });
 
-      if (values === null && asNode === "__end__") {
+      if (values === null && asNode === END) {
         if (updates.length > 1) {
           throw new InvalidUpdateError(
             `Cannot apply multiple updates when clearing state`
@@ -1084,7 +1086,7 @@ export class Pregel<
           saved ? saved.metadata : undefined
         );
       }
-      if (values == null && asNode === "__copy__") {
+      if (values == null && asNode === COPY) {
         if (updates.length > 1) {
           throw new InvalidUpdateError(
             `Cannot copy checkpoint with multiple updates`
@@ -1108,7 +1110,7 @@ export class Pregel<
         );
       }
 
-      if (asNode === "__input__") {
+      if (asNode === INPUT) {
         if (updates.length > 1) {
           throw new InvalidUpdateError(
             `Cannot apply multiple updates when clearing state`
