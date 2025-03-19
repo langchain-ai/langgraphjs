@@ -1152,7 +1152,7 @@ export class Pregel<
           createCheckpoint(checkpoint, channels, step),
           {
             source: "input",
-            step: saved?.metadata?.step != null ? saved.metadata.step + 1 : -1,
+            step,
             writes: Object.fromEntries(inputWrites),
             parents: saved?.metadata?.parents ?? {},
           },
