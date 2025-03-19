@@ -1147,14 +1147,12 @@ export class Pregel<
         );
 
         // apply input write to channels
-        const nextStep =
-          saved?.metadata?.step != null ? saved.metadata.step + 1 : -1;
         const nextConfig = await checkpointer.put(
           checkpointConfig,
-          createCheckpoint(checkpoint, channels, nextStep),
+          createCheckpoint(checkpoint, channels, step),
           {
             source: "input",
-            step: nextStep,
+            step: saved?.metadata?.step != null ? saved.metadata.step + 1 : -1,
             writes: Object.fromEntries(inputWrites),
             parents: saved?.metadata?.parents ?? {},
           },
