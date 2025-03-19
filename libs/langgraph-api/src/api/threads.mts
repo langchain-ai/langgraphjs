@@ -193,7 +193,7 @@ api.get(
 );
 
 api.post(
-  "/threads/state/batch",
+  "/threads/state/bulk",
   zValidator(
     "json",
     z.object({
@@ -233,7 +233,7 @@ api.post(
       if_exists: payload.if_exists ?? "raise",
     });
 
-    await Threads.State.batch(
+    await Threads.State.bulk(
       { configurable: { thread_id: newThread.thread_id } },
       payload.supersteps,
     );

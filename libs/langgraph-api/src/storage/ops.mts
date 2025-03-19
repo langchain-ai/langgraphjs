@@ -865,7 +865,7 @@ export class Threads {
       return { checkpoint: nextConfig.configurable };
     }
 
-    static async batch(
+    static async bulk(
       config: RunnableConfig,
       supersteps: Array<{
         updates: Array<{
