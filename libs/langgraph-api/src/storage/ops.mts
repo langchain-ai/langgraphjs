@@ -916,7 +916,7 @@ export class Runs {
     attempt: number;
     signal: AbortSignal;
   }> {
-    yield* conn.withGenerator(async function* (STORE) {
+    yield* conn.withGenerator(async function* (STORE, options) {
       const now = new Date();
       const pendingRuns = Object.values(STORE.runs)
         .filter((run) => run.status === "pending" && run.created_at < now)
@@ -942,6 +942,7 @@ export class Runs {
         try {
           const signal = StreamManager.lock(runId);
 
+          options.schedulePersist();
           STORE.retry_counter[runId] ??= 0;
           STORE.retry_counter[runId] += 1;
 

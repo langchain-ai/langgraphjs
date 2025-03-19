@@ -45,5 +45,5 @@ logger.info(`Server running at ${host}`);
 let queryParams = `?baseUrl=http://${options.host}:${options.port}`;
 if (organizationId) queryParams += `&organizationId=${organizationId}`;
 
-asyncExitHook(cleanup, { wait: 1000 });
+asyncExitHook(cleanup, { wait: 3_000 });
 sendToParent?.({ queryParams });
