@@ -1303,6 +1303,11 @@ describe("StoreClient", () => {
     expect(getRes?.value).toEqual(value);
 
     const searchResAfterPut = await client.store.searchItems(namespace);
+
+    // TODO: remove once we figure out the reason behind flakines
+    console.log("[searchResAfterPut]");
+    console.dir(searchResAfterPut, { depth: null });
+
     expect(searchResAfterPut.items).toBeDefined();
     expect(searchResAfterPut.items.length).toBe(1);
     expect(searchResAfterPut.items[0].key).toBe(key);
@@ -1324,6 +1329,11 @@ describe("StoreClient", () => {
     expect(getResAfterUpdate?.value).toEqual(updatedValue);
 
     const searchResAfterUpdate = await client.store.searchItems(namespace);
+
+    // TODO: remove once we figure out the reason behind flakiness
+    console.log("[searchResAfterUpdate]");
+    console.dir(searchResAfterUpdate, { depth: null });
+
     expect(searchResAfterUpdate.items).toBeDefined();
     expect(searchResAfterUpdate.items.length).toBe(1);
     expect(searchResAfterUpdate.items[0].key).toBe(key);
