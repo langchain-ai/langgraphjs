@@ -81,17 +81,21 @@ export class FileSystemPersistence<Schema> {
   }
 
   async *withGenerator<T extends AsyncGenerator<any>>(
-    fn: ((data: Schema) => T) | T,
+    fn: ((data: Schema, options: { schedulePersist: () => void }) => T) | T,
   ) {
     if (this.filepath == null || this.data == null) {
       throw new Error(`${this.name} not initialized`);
     }
 
+    let shouldPersist = false;
+    let schedulePersist = () => void (shouldPersist = true);
+
     try {
-      const gen = typeof fn === "function" ? fn(this.data) : fn;
+      const gen =
+        typeof fn === "function" ? fn(this.data, { schedulePersist }) : fn;
       yield* gen;
     } finally {
-      this.schedulePersist();
+      if (shouldPersist) this.schedulePersist();
     }
   }
 }
