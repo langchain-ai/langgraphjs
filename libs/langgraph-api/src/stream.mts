@@ -1,18 +1,10 @@
-import type {
-  Run,
-  RunCommand,
-  RunnableConfig,
-  RunSend,
-  Checkpoint,
-} from "./storage/ops.mjs";
+import type { Run, RunnableConfig, Checkpoint } from "./storage/ops.mjs";
 import { getGraph } from "./graph/load.mjs";
 import { Client as LangSmithClient } from "langsmith";
 import {
   type CheckpointMetadata,
   type Interrupt,
   type StateSnapshot,
-  Command,
-  Send,
 } from "@langchain/langgraph";
 import type { Pregel } from "@langchain/langgraph/pregel";
 import {
@@ -20,6 +12,7 @@ import {
   taskRunnableConfigToCheckpoint,
 } from "./utils/runnableConfig.mjs";
 import { BaseMessageChunk, isBaseMessage } from "@langchain/core/messages";
+import { getLangGraphCommand } from "./command.mjs";
 
 type LangGraphStreamMode = Pregel<any, any>["streamMode"][number];
 
@@ -52,22 +45,6 @@ interface DebugCheckpoint {
 type LangGraphDebugChunk =
   | DebugChunk<"checkpoint", DebugCheckpoint>
   | DebugChunk<"task_result", DebugTask>;
-
-const getLangGraphCommand = (command: RunCommand) => {
-  let goto =
-    command.goto != null && !Array.isArray(command.goto)
-      ? [command.goto]
-      : command.goto;
-
-  return new Command({
-    goto: goto?.map((item: string | RunSend) => {
-      if (typeof item !== "string") return new Send(item.node, item.input);
-      return item;
-    }),
-    update: command.update,
-    resume: command.resume,
-  });
-};
 
 const isRunnableConfig = (config: unknown): config is RunnableConfig => {
   if (typeof config !== "object" || config == null) return false;

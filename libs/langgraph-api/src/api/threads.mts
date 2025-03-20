@@ -20,6 +20,13 @@ api.post("/threads", zValidator("json", schemas.ThreadCreate), async (c) => {
     if_exists: payload.if_exists ?? "raise",
   });
 
+  if (payload.supersteps?.length) {
+    await Threads.State.bulk(
+      { configurable: { thread_id: thread.thread_id } },
+      payload.supersteps,
+    );
+  }
+
   return jsonExtra(c, thread);
 });
 

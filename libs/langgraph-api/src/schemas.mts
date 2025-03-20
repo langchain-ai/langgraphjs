@@ -153,37 +153,34 @@ export const Run = z.object({
   multitask_strategy: z.enum(["reject", "rollback", "interrupt", "enqueue"]),
 });
 
+export const CommandSchema = z.object({
+  goto: z
+    .union([
+      z.union([
+        z.string(),
+        z.object({ node: z.string(), input: z.unknown().optional() }),
+      ]),
+      z.array(
+        z.union([
+          z.string(),
+          z.object({ node: z.string(), input: z.unknown().optional() }),
+        ]),
+      ),
+    ])
+    .optional(),
+  update: z
+    .union([z.record(z.unknown()), z.array(z.tuple([z.string(), z.unknown()]))])
+    .optional(),
+  resume: z.unknown().optional(),
+});
+
 export const RunCreate = z
   .object({
     assistant_id: z.union([z.string().uuid(), z.string()]),
     checkpoint_id: z.string().optional(),
     checkpoint: CheckpointSchema.optional(),
     input: z.union([z.unknown(), z.null()]).optional(),
-    command: z
-      .object({
-        goto: z
-          .union([
-            z.union([
-              z.string(),
-              z.object({ node: z.string(), input: z.unknown().optional() }),
-            ]),
-            z.array(
-              z.union([
-                z.string(),
-                z.object({ node: z.string(), input: z.unknown().optional() }),
-              ]),
-            ),
-          ])
-          .optional(),
-        update: z
-          .union([
-            z.record(z.unknown()),
-            z.array(z.tuple([z.string(), z.unknown()])),
-          ])
-          .optional(),
-        resume: z.unknown().optional(),
-      })
-      .optional(),
+    command: CommandSchema.optional(),
     metadata: z
       .object({})
       .catchall(z.any())
@@ -324,6 +321,20 @@ export const Thread = z.object({
 
 export const ThreadCreate = z
   .object({
+    supersteps: z
+      .array(
+        z.object({
+          updates: z.array(
+            z.object({
+              values: z.unknown().nullish(),
+              command: CommandSchema.nullish(),
+              as_node: z.string(),
+            }),
+          ),
+        }),
+      )
+      .describe("The supersteps to apply to the thread.")
+      .optional(),
     thread_id: z
       .string()
       .uuid()

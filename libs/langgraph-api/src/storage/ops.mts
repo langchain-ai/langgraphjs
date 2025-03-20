@@ -12,6 +12,8 @@ import { store } from "./store.mjs";
 import { logger } from "../logging.mjs";
 import { serializeError } from "../utils/serde.mjs";
 import { FileSystemPersistence } from "./persist.mjs";
+import { getLangGraphCommand, type RunCommand } from "../command.mjs";
+
 export type Metadata = Record<string, unknown>;
 
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error";
@@ -72,17 +74,6 @@ interface AssistantVersion {
   metadata: Metadata;
   created_at: Date;
   name: string | undefined;
-}
-
-export interface RunSend {
-  node: string;
-  input?: unknown;
-}
-
-export interface RunCommand {
-  goto?: string | RunSend | Array<RunSend | string>;
-  update?: Record<string, unknown> | [string, unknown][];
-  resume?: unknown;
 }
 
 export interface RunKwargs {
@@ -859,7 +850,66 @@ export class Threads {
       updateConfig.configurable.checkpoint_ns ??= "";
 
       const nextConfig = await graph.updateState(updateConfig, values, asNode);
+      const state = await Threads.State.get(config, { subgraphs: false });
 
+      // update thread values
+      await conn.with(async (STORE) => {
+        for (const thread of Object.values(STORE.threads)) {
+          if (thread.thread_id === threadId) {
+            thread.values = state.values;
+            break;
+          }
+        }
+      });
+
+      return { checkpoint: nextConfig.configurable };
+    }
+
+    static async bulk(
+      config: RunnableConfig,
+      supersteps: Array<{
+        updates: Array<{
+          values?:
+            | Record<string, unknown>[]
+            | Record<string, unknown>
+            | unknown
+            | null
+            | undefined;
+          command?: RunCommand | undefined | null;
+          as_node?: string | undefined;
+        }>;
+      }>,
+    ) {
+      const threadId = config.configurable?.thread_id;
+      if (!threadId) return [];
+
+      const thread = await Threads.get(threadId);
+      const graphId = thread.metadata?.graph_id as string | undefined | null;
+      if (graphId == null) {
+        throw new HTTPException(400, {
+          message: `Thread ${threadId} has no graph ID`,
+        });
+      }
+
+      config.configurable ??= {};
+      config.configurable.graph_id ??= graphId;
+
+      const graph = await getGraph(graphId, { checkpointer, store });
+
+      const updateConfig = structuredClone(config);
+      updateConfig.configurable ??= {};
+      updateConfig.configurable.checkpoint_ns ??= "";
+
+      const nextConfig = await graph.bulkUpdateState(
+        updateConfig,
+        supersteps.map((i) => ({
+          updates: i.updates.map((j) => ({
+            values:
+              j.command != null ? getLangGraphCommand(j.command) : j.values,
+            asNode: j.as_node,
+          })),
+        })),
+      );
       const state = await Threads.State.get(config, { subgraphs: false });
 
       // update thread values
