@@ -10034,6 +10034,149 @@ graph TD;
       ])
     ).rejects.toThrow();
   });
+
+  it("update as input", async () => {
+    const checkpointer = await createCheckpointer();
+    const graph = new StateGraph(Annotation.Root({ foo: Annotation<string> }))
+      .addNode("agent", () => ({ foo: "agent" }))
+      .addNode("tool", () => ({ foo: "tool" }))
+      .addEdge(START, "agent")
+      .addEdge("agent", "tool")
+      .compile({ checkpointer });
+
+    expect(
+      await graph.invoke({ foo: "input" }, { configurable: { thread_id: "1" } })
+    ).toEqual({ foo: "tool" });
+
+    expect(
+      await graph.invoke({ foo: "input" }, { configurable: { thread_id: "1" } })
+    ).toEqual({ foo: "tool" });
+
+    const history = await gatherIterator(
+      graph.getStateHistory({ configurable: { thread_id: "1" } })
+    );
+
+    // now clone the thread
+    await graph.bulkUpdateState({ configurable: { thread_id: "2" } }, [
+      // first turn
+      { updates: [{ values: { foo: "input" }, asNode: "__input__" }] },
+      { updates: [{ values: { foo: "input" }, asNode: "__start__" }] },
+      { updates: [{ values: { foo: "agent" }, asNode: "agent" }] },
+      { updates: [{ values: { foo: "tool" }, asNode: "tool" }] },
+
+      // second turn
+      { updates: [{ values: { foo: "input" }, asNode: "__input__" }] },
+      { updates: [{ values: { foo: "input" }, asNode: "__start__" }] },
+      { updates: [{ values: { foo: "agent" }, asNode: "agent" }] },
+      { updates: [{ values: { foo: "tool" }, asNode: "tool" }] },
+    ]);
+
+    const state = await graph.getState({ configurable: { thread_id: "2" } });
+    expect(state.values).toEqual({ foo: "tool" });
+
+    const newHistory = await gatherIterator(
+      graph.getStateHistory({ configurable: { thread_id: "2" } })
+    );
+
+    const mapSnapshot = (i: StateSnapshot) => ({
+      values: i.values,
+      next: i.next,
+      step: i.metadata?.step,
+    });
+
+    expect(newHistory.map(mapSnapshot)).toMatchObject(history.map(mapSnapshot));
+  });
+
+  it("batch update as input (map-reduce)", async () => {
+    const checkpointer = await createCheckpointer();
+    const graph = new StateGraph(
+      Annotation.Root({
+        foo: Annotation<string>,
+        tasks: Annotation<number[]>({
+          default: () => [],
+          reducer: (acc, task: number | number[]) => [
+            ...acc,
+            ...(Array.isArray(task) ? task : [task]),
+          ],
+        }),
+      })
+    )
+      .addNode("agent", () => ({ foo: "agent" }))
+      .addNode(
+        "map",
+        () => {
+          return new Command({
+            goto: [
+              new Send("task", { index: 0 }),
+              new Send("task", { index: 1 }),
+              new Send("task", { index: 2 }),
+            ],
+            update: { foo: "map" },
+          });
+        },
+        { ends: ["task"] }
+      )
+      .addNode("task", (task: { index: number }) => ({
+        tasks: [task.index],
+      }))
+      .addEdge(START, "agent")
+      .addEdge("agent", "map")
+      .compile({ checkpointer });
+
+    expect(
+      await graph.invoke({ foo: "input" }, { configurable: { thread_id: "1" } })
+    ).toEqual({ foo: "map", tasks: [0, 1, 2] });
+
+    const mapSnapshot = (i: StateSnapshot) => ({
+      values: i.values,
+      next: i.next,
+      step: i.metadata?.step,
+      tasks: i.tasks.map((t) => t.name),
+    });
+
+    const history = await gatherIterator(
+      graph.getStateHistory({ configurable: { thread_id: "1" } })
+    );
+
+    // now clone the thread
+    await graph.bulkUpdateState({ configurable: { thread_id: "2" } }, [
+      // first turn
+      { updates: [{ values: { foo: "input" }, asNode: "__input__" }] },
+      { updates: [{ values: { foo: "input" }, asNode: "__start__" }] },
+      { updates: [{ values: { foo: "agent", tasks: [] }, asNode: "agent" }] },
+      {
+        updates: [
+          {
+            values: new Command({
+              goto: [
+                new Send("task", { index: 0 }),
+                new Send("task", { index: 1 }),
+                new Send("task", { index: 2 }),
+              ],
+              update: { foo: "map" },
+            }),
+            asNode: "map",
+          },
+        ],
+      },
+      {
+        updates: [
+          { values: { tasks: [0] }, asNode: "task" },
+          { values: { tasks: [1] }, asNode: "task" },
+          { values: { tasks: [2] }, asNode: "task" },
+        ],
+      },
+    ]);
+
+    const state = await graph.getState({ configurable: { thread_id: "2" } });
+    expect(state.values).toEqual({ foo: "map", tasks: [0, 1, 2] });
+
+    const newHistory = await gatherIterator(
+      graph.getStateHistory({ configurable: { thread_id: "2" } })
+    );
+
+    expect(newHistory.map(mapSnapshot)).toMatchObject(history.map(mapSnapshot));
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
