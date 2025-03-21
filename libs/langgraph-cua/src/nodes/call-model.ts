@@ -1,12 +1,6 @@
 import { AIMessageChunk } from "@langchain/core/messages";
-import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
-import {
-  CUAEnvironment,
-  CUAState,
-  CUAUpdate,
-  getConfigurationWithDefaults,
-} from "../types.js";
+import { CUAEnvironment, CUAState, CUAUpdate } from "../types.js";
 
 const getOpenAIEnvFromStateEnv = (env: CUAEnvironment) => {
   switch (env) {
@@ -21,23 +15,23 @@ const getOpenAIEnvFromStateEnv = (env: CUAEnvironment) => {
   }
 };
 
+// Scrapybara does not allow for configuring this. Must use a hardcoded value.
+const DEFAULT_DISPLAY_WIDTH = 1024;
+const DEFAULT_DISPLAY_HEIGHT = 768;
+
 /**
  * Invokes the computer preview model with the given messages.
  *
  * @param {CUAState} state - The current state of the thread.
- * @param {LangGraphRunnableConfig} config - The configuration for the runnable.
  * @returns {Promise<CUAUpdate>} - The updated state with the model's response.
  */
-export async function callModel(
-  state: CUAState,
-  config: LangGraphRunnableConfig
-): Promise<CUAUpdate> {
-  const { displayWidth, displayHeight } = getConfigurationWithDefaults(config);
-
+export async function callModel(state: CUAState): Promise<CUAUpdate> {
   const lastMessage = state.messages[state.messages.length - 1];
   let previousResponseId: string | undefined;
-  if (lastMessage?.id && lastMessage.getType() === "ai") {
-    previousResponseId = lastMessage.id;
+  if (lastMessage.getType() === "tool") {
+    // Assume if the last message is a tool message, the second to last will be an AI message
+    const secondToLast = state.messages[state.messages.length - 2];
+    previousResponseId = secondToLast.id;
   }
 
   const model = new ChatOpenAI({
@@ -46,9 +40,9 @@ export async function callModel(
   })
     .bindTools([
       {
-        type: "computer-preview",
-        display_width: displayWidth,
-        display_height: displayHeight,
+        type: "computer_use_preview",
+        display_width: DEFAULT_DISPLAY_WIDTH,
+        display_height: DEFAULT_DISPLAY_HEIGHT,
         environment: getOpenAIEnvFromStateEnv(state.environment),
       },
     ])
@@ -58,14 +52,12 @@ export async function callModel(
     });
 
   let response: AIMessageChunk;
-  if (state.computerCallOutput) {
-    // TODO: How to pass back computer call outputs?
-    response = await model.invoke([
-      {
-        role: "tool",
-        content: [state.computerCallOutput],
-      },
-    ]);
+  if (
+    lastMessage.getType() === "tool" &&
+    "type" in lastMessage.additional_kwargs &&
+    lastMessage.additional_kwargs.type === "computer_call_output"
+  ) {
+    response = await model.invoke([lastMessage]);
   } else {
     response = await model.invoke(state.messages);
   }

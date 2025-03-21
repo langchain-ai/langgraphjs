@@ -1,5 +1,6 @@
 import { END, START, StateGraph } from "@langchain/langgraph";
 import { callModel } from "./nodes/call-model.js";
+import { createVMInstance } from "./nodes/create-vm-instance.js";
 import { takeComputerAction } from "./nodes/take-computer-action.js";
 import { CUAState, CUAAnnotation, CUAConfigurable } from "./types.js";
 import { isComputerToolCall } from "./utils.js";
@@ -23,6 +24,23 @@ function takeActionOrEnd(state: CUAState): "takeComputerAction" | typeof END {
 }
 
 /**
+ * Routes to the takeComputerAction node if no instance ID exists, otherwise
+ * routes to takeActionOrEnd.
+ *
+ * @param {CUAState} state The current state of the thread.
+ * @returns {"takeComputerAction" | typeof END | "createVMInstance"} The next node to execute.
+ */
+function routeAfterCallingModel(
+  state: CUAState
+): "takeComputerAction" | typeof END | "createVMInstance" {
+  if (!state.instanceId) {
+    return "createVMInstance";
+  }
+
+  return takeActionOrEnd(state);
+}
+
+/**
  * Routes to the callModel node if a computer call output is present,
  * otherwise routes to END.
  *
@@ -30,21 +48,28 @@ function takeActionOrEnd(state: CUAState): "takeComputerAction" | typeof END {
  * @returns {"callModel" | typeof END} The next node to execute.
  */
 function reinvokeModelOrEnd(state: CUAState): "callModel" | typeof END {
-  if (state.computerCallOutput) {
+  const lastMsg = state.messages[state.messages.length - 1];
+  if (
+    lastMsg.getType() === "tool" &&
+    "type" in lastMsg.additional_kwargs &&
+    lastMsg.additional_kwargs.type === "computer_call_output"
+  ) {
     return "callModel";
   }
-
   return END;
 }
 
 const workflow = new StateGraph(CUAAnnotation, CUAConfigurable)
   .addNode("callModel", callModel)
+  .addNode("createVMInstance", createVMInstance)
   .addNode("takeComputerAction", takeComputerAction)
   .addEdge(START, "callModel")
-  .addConditionalEdges("callModel", takeActionOrEnd, [
+  .addConditionalEdges("callModel", routeAfterCallingModel, [
+    "createVMInstance",
     "takeComputerAction",
     END,
   ])
+  .addEdge("createVMInstance", "takeComputerAction")
   .addConditionalEdges("takeComputerAction", reinvokeModelOrEnd, [
     "callModel",
     END,

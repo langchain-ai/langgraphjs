@@ -6,7 +6,18 @@ import {
   BrowserInstance,
   WindowsInstance,
 } from "scrapybara";
-import { CUAEnvironment, getConfigurationWithDefaults } from "./types.js";
+import { getConfigurationWithDefaults } from "./types.js";
+
+// Copied from the OpenAI example repository
+// https://github.com/openai/openai-cua-sample-app/blob/eb2d58ba77ffd3206d3346d6357093647d29d99c/utils.py#L13
+// const BLOCKED_DOMAINS = [
+//     "maliciousbook.com",
+//     "evilvideos.com",
+//     "darkwebforum.com",
+//     "shadytok.com",
+//     "suspiciouspins.com",
+//     "ilanbigio.com",
+// ]
 
 /**
  * Gets the Scrapybara client, using the API key from the graph's configuration object.
@@ -26,47 +37,25 @@ export function getScrapybaraClient(apiKey: string): ScrapybaraClient {
   return client;
 }
 
-type InitOrLoadInputs = {
-  instanceId: string | undefined;
-  environment: CUAEnvironment;
-};
-
 /**
- * Initializes or loads an instance based on the inputs provided.
+ * Gets an instance from Scrapybara.
  *
- * @param {InitOrLoadInputs} inputs The instanceId and environment to use in the virtual machine.
+ * @param {string} id The ID of the instance to get.
  * @param {LangGraphRunnableConfig} config The configuration for the runnable.
- * @returns {Promise<UbuntuInstance | BrowserInstance | WindowsInstance>} The initialized or loaded instance.
+ * @returns {Promise<UbuntuInstance | BrowserInstance | WindowsInstance>} The instance.
  */
-export async function initOrLoad(
-  inputs: InitOrLoadInputs,
+export async function getInstance(
+  id: string,
   config: LangGraphRunnableConfig
 ): Promise<UbuntuInstance | BrowserInstance | WindowsInstance> {
-  const { instanceId, environment } = inputs;
-  const { scrapybaraApiKey, timeoutHours } =
-    getConfigurationWithDefaults(config);
+  const { scrapybaraApiKey } = getConfigurationWithDefaults(config);
   if (!scrapybaraApiKey) {
     throw new Error(
       "Scrapybara API key not provided. Please provide one in the configurable fields, or set it as an environment variable (SCRAPYBARA_API_KEY)"
     );
   }
   const client = getScrapybaraClient(scrapybaraApiKey);
-
-  if (instanceId) {
-    return await client.get(instanceId);
-  }
-
-  if (environment === "ubuntu") {
-    return await client.startUbuntu({ timeoutHours });
-  } else if (environment === "windows") {
-    return await client.startWindows({ timeoutHours });
-  } else if (environment === "web") {
-    return await client.startBrowser({ timeoutHours });
-  }
-
-  throw new Error(
-    `Invalid environment. Must be one of 'web', 'ubuntu', or 'windows'. Received: ${environment}`
-  );
+  return await client.get(id);
 }
 
 /**
@@ -82,4 +71,23 @@ export function isComputerToolCall(
     return false;
   }
   return toolOutputs.every((output) => output.type === "computer_call");
+}
+
+/**
+ * Stops an instance by its ID.
+ *
+ * @param {string} id The ID of the instance to stop.
+ * @param {ScrapybaraClient} client Optional client to use for stopping the instance.
+ * @returns {Promise<void>} A promise that resolves when the instance is stopped.
+ */
+export async function stopInstance(
+  id: string,
+  client?: ScrapybaraClient
+): Promise<void> {
+  let client_ = client;
+  if (!client_) {
+    client_ = getScrapybaraClient(process.env.SCRAPYBARA_API_KEY!);
+  }
+  const instance = await client_.get(id);
+  await instance.stop();
 }

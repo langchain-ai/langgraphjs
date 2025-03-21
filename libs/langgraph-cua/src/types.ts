@@ -3,87 +3,8 @@ import {
   LangGraphRunnableConfig,
   MessagesAnnotation,
 } from "@langchain/langgraph";
-import { ScrapybaraClient } from "scrapybara";
 
 export type CUAEnvironment = "web" | "ubuntu" | "windows";
-
-/**
- * A computer screenshot image used with the computer use tool.
- */
-export interface Output {
-  /**
-   * Specifies the event type. For a computer screenshot, this property is always set
-   * to `computer_screenshot`.
-   */
-  type: "computer_screenshot";
-
-  /**
-   * The identifier of an uploaded file that contains the screenshot.
-   */
-  file_id?: string;
-
-  /**
-   * The URL of the screenshot image.
-   */
-  image_url?: string;
-}
-
-/**
- * A pending safety check for the computer call.
- */
-export interface AcknowledgedSafetyCheck {
-  /**
-   * The ID of the pending safety check.
-   */
-  id: string;
-
-  /**
-   * The type of the pending safety check.
-   */
-  code: string;
-
-  /**
-   * Details about the pending safety check.
-   */
-  message: string;
-}
-
-/**
- * The output of a computer tool call.
- */
-export interface ComputerCallOutput {
-  /**
-   * The ID of the computer tool call that produced the output.
-   */
-  call_id: string;
-
-  /**
-   * A computer screenshot image used with the computer use tool.
-   */
-  output: Output;
-
-  /**
-   * The type of the computer tool call output. Always `computer_call_output`.
-   */
-  type: "computer_call_output";
-
-  /**
-   * The ID of the computer tool call output.
-   */
-  id?: string;
-
-  /**
-   * The safety checks reported by the API that have been acknowledged by the
-   * developer.
-   */
-  acknowledged_safety_checks?: Array<AcknowledgedSafetyCheck>;
-
-  /**
-   * The status of the message input. One of `in_progress`, `completed`, or
-   * `incomplete`. Populated when input items are returned via API.
-   */
-  status?: "in_progress" | "completed" | "incomplete";
-}
 
 export const CUAAnnotation = Annotation.Root({
   /**
@@ -100,23 +21,12 @@ export const CUAAnnotation = Annotation.Root({
     default: () => undefined,
   }),
   /**
-   * The Scrapybara client to use to access the virtual machine
-   */
-  scrapybaraClient: Annotation<ScrapybaraClient>,
-  /**
    * The environment to use.
    * @default "web"
    */
   environment: Annotation<CUAEnvironment>({
     reducer: (_state, update) => update,
     default: () => "web",
-  }),
-  /**
-   * The output of the most recent computer call.
-   */
-  computerCallOutput: Annotation<ComputerCallOutput | undefined>({
-    reducer: (_state, update) => update,
-    default: () => undefined,
   }),
   /**
    * The URL to the live-stream of the virtual machine.
@@ -150,22 +60,6 @@ export const CUAConfigurable = Annotation.Root({
     },
     default: () => 1,
   }),
-  /**
-   * The display height of the virtual machine.
-   * @default 1024
-   */
-  displayHeight: Annotation<number>({
-    reducer: (_state, update) => update,
-    default: () => 1024,
-  }),
-  /**
-   * The display width of the virtual machine.
-   * @default 768
-   */
-  displayWidth: Annotation<number>({
-    reducer: (_state, update) => update,
-    default: () => 768,
-  }),
 });
 
 /**
@@ -181,8 +75,6 @@ export function getConfigurationWithDefaults(
     scrapybaraApiKey:
       config.configurable?.scrapybaraApiKey ?? process.env.SCRAPYBARA_API_KEY,
     timeoutHours: config.configurable?.timeoutHours ?? 1,
-    displayHeight: config.configurable?.displayHeight ?? 1024,
-    displayWidth: config.configurable?.displayWidth ?? 768,
   };
 }
 

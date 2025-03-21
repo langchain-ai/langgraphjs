@@ -1,12 +1,46 @@
 import { Scrapybara } from "scrapybara";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
-import { ComputerCallOutput, CUAState, CUAUpdate } from "../types.js";
-import { initOrLoad, isComputerToolCall } from "../utils.js";
+import { CUAState, CUAUpdate } from "../types.js";
+import { getInstance, isComputerToolCall } from "../utils.js";
+import { ToolMessage } from "@langchain/core/messages";
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Copied from the OpenAI example repository
+// https://github.com/openai/openai-cua-sample-app/blob/eb2d58ba77ffd3206d3346d6357093647d29d99c/computers/scrapybara.py#L10
+const CUA_KEY_TO_SCRAPYBARA_KEY: Record<string, string> = {
+  "/": "slash",
+  "\\": "backslash",
+  arrowdown: "Down",
+  arrowleft: "Left",
+  arrowright: "Right",
+  arrowup: "Up",
+  backspace: "BackSpace",
+  capslock: "Caps_Lock",
+  cmd: "Meta_L",
+  delete: "Delete",
+  end: "End",
+  enter: "Return",
+  esc: "Escape",
+  home: "Home",
+  insert: "Insert",
+  option: "Alt_L",
+  pagedown: "Page_Down",
+  pageup: "Page_Up",
+  tab: "Tab",
+  win: "Meta_L",
+};
 
 export async function takeComputerAction(
   state: CUAState,
   config: LangGraphRunnableConfig
 ): Promise<CUAUpdate> {
+  if (!state.instanceId) {
+    throw new Error("Can not take computer action without an instance ID.");
+  }
+
   const message = state.messages[state.messages.length - 1];
   const toolOutputs = message.additional_kwargs?.tool_outputs;
   if (!isComputerToolCall(toolOutputs)) {
@@ -16,7 +50,7 @@ export async function takeComputerAction(
     );
   }
 
-  const instance = await initOrLoad(state, config);
+  const instance = await getInstance(state.instanceId, config);
 
   let streamUrl: string | undefined = state.streamUrl;
   if (!streamUrl) {
@@ -29,7 +63,7 @@ export async function takeComputerAction(
   }
 
   const action = toolOutputs[0].action;
-  let computerCallOutput: ComputerCallOutput | undefined;
+  let computerCallToolMsg: ToolMessage | undefined;
 
   try {
     let computerResponse: Scrapybara.ComputerResponse;
@@ -56,9 +90,16 @@ export async function takeComputerAction(
         });
         break;
       case "keypress":
+        const mappedKeys = action.keys
+          .map((k) => k.toLowerCase())
+          .map((key) =>
+            key in CUA_KEY_TO_SCRAPYBARA_KEY
+              ? CUA_KEY_TO_SCRAPYBARA_KEY[key]
+              : key
+          );
         computerResponse = await instance.computer({
           action: "press_key",
-          keys: action.keys,
+          keys: mappedKeys,
         });
         break;
       case "move":
@@ -73,18 +114,16 @@ export async function takeComputerAction(
         });
         break;
       case "wait":
+        await sleep(2000);
         computerResponse = await instance.computer({
-          action: "wait",
-          // TODO: Should this be configurable? I used 2000 since it's what OpenAI has set in their example:
-          // https://platform.openai.com/docs/guides/tools-computer-use#:~:text=await%20page.waitForTimeout(2000)%3B
-          duration: 2000,
+          action: "take_screenshot",
         });
         break;
       case "scroll":
         computerResponse = await instance.computer({
           action: "scroll",
-          deltaX: action.scroll_x,
-          deltaY: action.scroll_y,
+          deltaX: action.scroll_x / 20,
+          deltaY: action.scroll_y / 20,
           coordinates: [action.x, action.y],
         });
         break;
@@ -100,14 +139,11 @@ export async function takeComputerAction(
         );
     }
 
-    computerCallOutput = {
-      call_id: toolOutputs[0].call_id,
-      type: "computer_call_output",
-      output: {
-        type: "computer_screenshot",
-        image_url: `data:image/png;base64,${computerResponse.base64Image}`,
-      },
-    };
+    computerCallToolMsg = new ToolMessage({
+      tool_call_id: toolOutputs[0].call_id,
+      additional_kwargs: { type: "computer_call_output" },
+      content: `data:image/png;base64,${computerResponse.base64Image}`,
+    });
   } catch (e) {
     console.error(
       {
@@ -119,7 +155,7 @@ export async function takeComputerAction(
   }
 
   return {
-    computerCallOutput,
+    messages: computerCallToolMsg ? [computerCallToolMsg] : [],
     instanceId: instance.id,
     streamUrl,
   };
