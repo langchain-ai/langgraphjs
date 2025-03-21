@@ -115,7 +115,7 @@ test("It can use the agent to interact with the browser", async () => {
   } finally {
     if (instanceId) {
       console.log("Stopping instance with ID", instanceId);
-      // await stopInstance(instanceId)
+      await stopInstance(instanceId)
     }
   }
 });

@@ -32,17 +32,18 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/openai": "file:/Users/bracesproul/code/lang-chain-ai/langchainjs/libs/langchain-openai",
     "scrapybara": "^2.4.1",
     "zod": "^3.23.8"
   },
   "peerDependencies": {
     "@langchain/core": "^0.3.40",
-    "@langchain/langgraph": "^0.2.53"
+    "@langchain/langgraph": "^0.2.53",
+    "@langchain/openai": ">=0.4.7"
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",
     "@langchain/langgraph": "workspace:*",
+    "@langchain/openai": "^0.4.7",
     "@langchain/scripts": "^0.1.3",
     "@swc/core": "^1.3.90",
     "@swc/jest": "^0.2.29",
