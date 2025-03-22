@@ -52,7 +52,12 @@ import type { RetryPolicy } from "../pregel/utils/index.js";
 import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
-import { AnyZodObject, ZodToStateDefinition } from "./zod.js";
+import {
+  AnyZodObject,
+  getChannelsFromZod,
+  isAnyZodObject,
+  ZodToStateDefinition,
+} from "./zod.js";
 
 const ROOT = "__root__";
 
@@ -205,6 +210,27 @@ export class StateGraph<
   _configSchema: C | undefined;
 
   constructor(
+    fields: SD extends StateDefinition
+      ?
+          | SD
+          | AnnotationRoot<SD>
+          | StateGraphArgs<S>
+          | StateGraphArgsWithStateSchema<
+              SD,
+              ToStateDefinition<I>,
+              ToStateDefinition<O>
+            >
+          | StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
+      : StateGraphArgs<S>,
+    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+  );
+
+  constructor(
+    fields: SD extends AnyZodObject ? SD : never,
+    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+  );
+
+  constructor(
     fields: SD extends AnyZodObject
       ? SD
       : SD extends StateDefinition
@@ -225,7 +251,7 @@ export class StateGraph<
     if (
       isStateGraphArgsWithInputOutputSchemas<
         SD extends StateDefinition ? SD : never,
-        O
+        O extends StateDefinition ? O : never
       >(fields)
     ) {
       this._schemaDefinition = fields.input.spec;
@@ -243,6 +269,8 @@ export class StateGraph<
     } else if (isStateGraphArgs(fields)) {
       const spec = _getChannels(fields.channels);
       this._schemaDefinition = spec;
+    } else if (isAnyZodObject(fields)) {
+      this._schemaDefinition = getChannelsFromZod(fields);
     } else {
       throw new Error("Invalid StateGraph input.");
     }

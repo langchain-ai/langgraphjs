@@ -103,6 +103,7 @@ import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { interrupt } from "../interrupt.js";
+import { extra } from "../graph/zod.js";
 
 expect.extend({
   toHaveKeyStartingWith(received: object, prefix: string) {
@@ -10176,6 +10177,35 @@ graph TD;
     );
 
     expect(newHistory.map(mapSnapshot)).toMatchObject(history.map(mapSnapshot));
+  });
+
+  it("zod schema", async () => {
+    const schema = z.object({
+      foo: z.string(),
+      items: extra(z.array(z.string()), {
+        reducer: {
+          schema: z.union([z.string(), z.array(z.string())]),
+          fn: (a, b) => [...a, ...(Array.isArray(b) ? b : [b])],
+        },
+        default: () => ["default"],
+      }),
+    });
+    const graph = new StateGraph(schema)
+      .addNode("agent", () => ({ foo: "agent", items: ["a", "b"] }))
+      .addNode("tool", () => ({ foo: "tool", items: ["c", "d"] }))
+      .addEdge("__start__", "agent")
+      .addEdge("agent", "tool")
+      .compile();
+
+    const state = await graph.invoke(
+      { foo: "input" },
+      { configurable: { thread_id: "1" } }
+    );
+
+    expect(state).toEqual({
+      foo: "tool",
+      items: ["default", "a", "b", "c", "d"],
+    });
   });
 }
 

@@ -71,15 +71,7 @@ export function getChannelsFromZod<T extends z.ZodRawShape>(
   return channels as ZodToStateDefinition<z.ZodObject<T>>;
 }
 
-const schema = z.object({
-  a: z.number(),
-  b: extra(z.array(z.number()), {
-    default: () => [],
-    reducer: {
-      schema: z.union([z.number(), z.array(z.number())]),
-      fn: (a, b) => [...a, ...(Array.isArray(b) ? b : [b])],
-    },
-  }),
-});
-
-type X = ZodToStateDefinition<typeof schema>;
+export const isAnyZodObject = (value: unknown): value is AnyZodObject => {
+  // eslint-disable-next-line no-instanceof/no-instanceof
+  return value instanceof z.ZodObject;
+};
