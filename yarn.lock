@@ -2027,6 +2027,10 @@ __metadata:
     zod-to-json-schema: ^3.22.4
   peerDependencies:
     "@langchain/core": ">=0.2.36 <0.3.0 || >=0.3.40 < 0.4.0"
+    zod-to-json-schema: ^3.x
+  peerDependenciesMeta:
+    zod-to-json-schema:
+      optional: true
   languageName: unknown
   linkType: soft
 

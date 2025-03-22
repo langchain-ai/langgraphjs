@@ -57,7 +57,7 @@ import {
   getChannelsFromZod,
   isAnyZodObject,
   ZodToStateDefinition,
-} from "./zod.js";
+} from "./zod/state.js";
 
 const ROOT = "__root__";
 
@@ -195,6 +195,9 @@ export class StateGraph<
   _schemaDefinition: StateDefinition;
 
   /** @internal */
+  _schemaRuntimeDefinition: AnyZodObject | undefined;
+
+  /** @internal */
   _inputDefinition: I;
 
   /** @internal */
@@ -271,6 +274,7 @@ export class StateGraph<
       this._schemaDefinition = spec;
     } else if (isAnyZodObject(fields)) {
       this._schemaDefinition = getChannelsFromZod(fields);
+      this._schemaRuntimeDefinition = fields;
     } else {
       throw new Error("Invalid StateGraph input.");
     }
