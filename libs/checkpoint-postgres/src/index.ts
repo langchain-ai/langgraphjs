@@ -17,7 +17,6 @@ import {
   type SQL_STATEMENTS,
   getSQLStatements,
   getTablesWithSchema,
-  tableExistsSQL,
 } from "./sql.js";
 
 interface PostgresSaverOptions {
@@ -135,15 +134,6 @@ export class PostgresSaver extends BaseCheckpointSaver {
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.options.schema}`);
       let version = -1;
       const MIGRATIONS = getMigrations(this.options.schema);
-      // Check if checkpoint_migrations table exists
-      const checkpointMigrationsExists = await client.query(
-        tableExistsSQL(this.options.schema, SCHEMA_TABLES.checkpoint_migrations)
-      );
-      if (!checkpointMigrationsExists.rows[0].exists) {
-        // Run first migration to ensure checkpoint_migrations table exists
-        await client.query(MIGRATIONS[0]);
-        version += 1;
-      }
 
       try {
         const result = await client.query(
@@ -157,11 +147,9 @@ export class PostgresSaver extends BaseCheckpointSaver {
         if (
           typeof error === "object" &&
           error !== null &&
-          "message" in error &&
-          typeof error.message === "string" &&
-          error.message.includes(
-            `relation "${SCHEMA_TABLES.checkpoint_migrations}" does not exist`
-          )
+          "code" in error &&
+          typeof error.code === "string" &&
+          error.code === "42P01" // Postgres error code for undefined_table
         ) {
           version = -1;
         } else {
