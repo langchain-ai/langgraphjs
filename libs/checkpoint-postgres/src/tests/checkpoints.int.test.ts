@@ -76,7 +76,7 @@ describe.each([
     try {
       // Create a new database
       await pool.query(`CREATE DATABASE ${dbName}`);
-      console.log(`Created database: ${dbName}`);
+      console.log(`✅ Created database: ${dbName}`);
 
       // Connect to the new database
       const dbConnectionString = `${TEST_POSTGRES_URL?.split("/")
@@ -111,7 +111,7 @@ describe.each([
       for (const row of result.rows) {
         const dbName = row.datname;
         await pool.query(`DROP DATABASE ${dbName} WITH (FORCE)`);
-        console.log(`Dropped database: ${dbName}`);
+        console.log(`🗑️  Dropped database: ${dbName}`);
       }
     } finally {
       await pool.end();
@@ -320,7 +320,7 @@ describe.each([
       `);
       const MIGRATIONS = getMigrations(currentSchema);
       expect(Number.parseInt(migrationsResult.rows[0].count, 10)).toBe(
-        MIGRATIONS.length - 1
+        MIGRATIONS.length
       );
     } finally {
       client.release();
