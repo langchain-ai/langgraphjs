@@ -3,6 +3,7 @@ export const START = "__start__";
 /** Special reserved node name denoting the end of a graph. */
 export const END = "__end__";
 export const INPUT = "__input__";
+export const COPY = "__copy__";
 export const ERROR = "__error__";
 export const CONFIG_KEY_SEND = "__pregel_send";
 /** config key containing function used to call a node (push task) */

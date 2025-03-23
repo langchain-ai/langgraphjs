@@ -258,7 +258,6 @@ export class PregelLoop {
     this.interruptAfter = params.interruptAfter;
     this.interruptBefore = params.interruptBefore;
     this.debug = params.debug;
-    this._incrementSubgraphCounter();
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
@@ -275,6 +274,24 @@ export class PregelLoop {
     const skipDoneTasks = config.configurable
       ? !("checkpoint_id" in config.configurable)
       : true;
+
+    const scratchpad = config.configurable?.[CONFIG_KEY_SCRATCHPAD] as
+      | PregelScratchpad
+      | undefined;
+
+    if (config.configurable && scratchpad) {
+      if (scratchpad.subgraphCounter > 0) {
+        config = patchConfigurable(config, {
+          [CONFIG_KEY_CHECKPOINT_NS]: [
+            config.configurable[CONFIG_KEY_CHECKPOINT_NS],
+            scratchpad.subgraphCounter.toString(),
+          ].join(CHECKPOINT_NAMESPACE_SEPARATOR),
+        });
+      }
+
+      scratchpad.subgraphCounter += 1;
+    }
+
     const isNested = CONFIG_KEY_READ in (config.configurable ?? {});
     if (
       !isNested &&
@@ -372,25 +389,6 @@ export class PregelLoop {
       interruptBefore: params.interruptBefore,
       debug: params.debug,
     });
-  }
-
-  /**
-   * @internal
-   */
-  protected _incrementSubgraphCounter() {
-    const { configurable } = this.config;
-    const scratchpad = configurable?.[CONFIG_KEY_SCRATCHPAD];
-
-    // purposefully allowing zero to be falsy here so we don't append call count to parent ns
-    if (scratchpad?.subgraph_counter) {
-      this.config = patchConfigurable(this.config, {
-        [CONFIG_KEY_CHECKPOINT_NS]: [
-          configurable![CONFIG_KEY_CHECKPOINT_NS],
-          scratchpad.subgraph_counter.toString(),
-        ].join(CHECKPOINT_NAMESPACE_SEPARATOR),
-      });
-      scratchpad.subgraph_counter += 1;
-    }
   }
 
   protected _checkpointerPutAfterPrevious(input: {
@@ -733,7 +731,7 @@ export class PregelLoop {
       this.nodes,
       this.channels,
       this.managed,
-      this.config,
+      task.config ?? {},
       true,
       {
         step: this.step,

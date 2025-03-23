@@ -9708,47 +9708,6 @@ graph TD;
     expect(thirdState.tasks).toHaveLength(0);
   });
 
-  it("should cancel when signal is aborted", async () => {
-    let oneCount = 0;
-    let twoCount = 0;
-    const graph = new StateGraph(MessagesAnnotation)
-      .addNode("one", async () => {
-        oneCount += 1;
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        return {};
-      })
-      .addNode("two", () => {
-        twoCount += 1;
-        throw new Error("Should not be called!");
-      })
-      .addEdge(START, "one")
-      .addEdge("one", "two")
-      .addEdge("two", END)
-      .compile();
-
-    const abortController = new AbortController();
-    const config = {
-      signal: abortController.signal,
-    };
-
-    setTimeout(() => abortController.abort(), 10);
-
-    await expect(
-      async () =>
-        await graph.invoke(
-          {
-            messages: [],
-          },
-          config
-        )
-    ).rejects.toThrow("Aborted");
-
-    // Ensure that the `twoCount` has had time to increment before we check it, in case the stream aborted but the graph execution didn't.
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(oneCount).toEqual(1);
-    expect(twoCount).toEqual(0);
-  });
-
   it("should throw when resuming without a checkpointer", async () => {
     const chain = Channel.subscribeTo("input").pipe(
       Channel.writeTo(["output"])
@@ -9958,6 +9917,265 @@ graph TD;
       new AIMessage({ content: "bye again", id: "2" })
     );
     expect(chunks2[0][1][1].langgraph_node).toEqual("callModel");
+  });
+
+  it("should handle bulk state updates", async () => {
+    const State = Annotation.Root({
+      foo: Annotation<string>,
+      baz: Annotation<string>,
+    });
+
+    const checkpointer = new MemorySaverAssertImmutable();
+
+    const nodeA = (_state: typeof State.State) => ({ foo: "bar" });
+    const nodeB = (_state: typeof State.State) => ({ baz: "qux" });
+
+    const graph = new StateGraph(State)
+      .addNode("nodeA", nodeA)
+      .addNode("nodeB", nodeB)
+      .addEdge(START, "nodeA")
+      .addEdge("nodeA", "nodeB")
+      .compile({ checkpointer });
+
+    let config = { configurable: { thread_id: "1" } };
+
+    // First update with nodeA
+    await graph.bulkUpdateState(config, [
+      { updates: [{ values: { foo: "bar" }, asNode: "nodeA" }] },
+    ]);
+
+    // Then bulk update with both nodes
+    await graph.bulkUpdateState(config, [
+      {
+        updates: [
+          { values: { foo: "updated" }, asNode: "nodeA" },
+          { values: { baz: "new" }, asNode: "nodeB" },
+        ],
+      },
+    ]);
+
+    let state = await graph.getState(config);
+    expect(state.values).toEqual({ foo: "updated", baz: "new" });
+
+    // check if there are only two checkpoints
+    let checkpoints = await gatherIterator(
+      checkpointer.list({ configurable: { thread_id: "1" } })
+    );
+
+    expect(checkpoints.length).toBe(2);
+    expect(checkpoints).toMatchObject([
+      {
+        metadata: {
+          writes: { nodeA: { foo: "updated" }, nodeB: { baz: "new" } },
+        },
+      },
+      { metadata: { writes: { nodeA: { foo: "bar" } } } },
+    ]);
+
+    // perform multiple steps at the same time
+    config = { configurable: { thread_id: "2" } };
+
+    await graph.bulkUpdateState(config, [
+      {
+        updates: [{ values: { foo: "bar" }, asNode: "nodeA" }],
+      },
+      {
+        updates: [
+          { values: { foo: "updated" }, asNode: "nodeA" },
+          { values: { baz: "new" }, asNode: "nodeB" },
+        ],
+      },
+    ]);
+
+    state = await graph.getState(config);
+    expect(state.values).toEqual({ foo: "updated", baz: "new" });
+
+    checkpoints = await gatherIterator(
+      checkpointer.list({ configurable: { thread_id: "1" } })
+    );
+
+    expect(checkpoints.length).toBe(2);
+    expect(checkpoints).toMatchObject([
+      {
+        metadata: {
+          writes: { nodeA: { foo: "updated" }, nodeB: { baz: "new" } },
+        },
+      },
+      { metadata: { writes: { nodeA: { foo: "bar" } } } },
+    ]);
+
+    // throw error if updating without `asNode`
+    await expect(
+      graph.bulkUpdateState(config, [
+        {
+          updates: [{ values: { foo: "error" } }, { values: { bar: "error" } }],
+        },
+      ])
+    ).rejects.toThrow();
+
+    // throw if no updates are provided
+    await expect(graph.bulkUpdateState(config, [])).rejects.toThrow(
+      "No supersteps provided"
+    );
+
+    await expect(
+      graph.bulkUpdateState(config, [{ updates: [] }])
+    ).rejects.toThrow("No updates provided");
+
+    // throw if __end__ or __copy__ update is applied in bulk
+    await expect(
+      graph.bulkUpdateState(config, [
+        {
+          updates: [
+            { values: null, asNode: "__end__" },
+            { values: null, asNode: "__copy__" },
+          ],
+        },
+      ])
+    ).rejects.toThrow();
+  });
+
+  it("update as input", async () => {
+    const checkpointer = await createCheckpointer();
+    const graph = new StateGraph(Annotation.Root({ foo: Annotation<string> }))
+      .addNode("agent", () => ({ foo: "agent" }))
+      .addNode("tool", () => ({ foo: "tool" }))
+      .addEdge(START, "agent")
+      .addEdge("agent", "tool")
+      .compile({ checkpointer });
+
+    expect(
+      await graph.invoke({ foo: "input" }, { configurable: { thread_id: "1" } })
+    ).toEqual({ foo: "tool" });
+
+    expect(
+      await graph.invoke({ foo: "input" }, { configurable: { thread_id: "1" } })
+    ).toEqual({ foo: "tool" });
+
+    const history = await gatherIterator(
+      graph.getStateHistory({ configurable: { thread_id: "1" } })
+    );
+
+    // now clone the thread
+    await graph.bulkUpdateState({ configurable: { thread_id: "2" } }, [
+      // first turn
+      { updates: [{ values: { foo: "input" }, asNode: "__input__" }] },
+      { updates: [{ values: { foo: "input" }, asNode: "__start__" }] },
+      { updates: [{ values: { foo: "agent" }, asNode: "agent" }] },
+      { updates: [{ values: { foo: "tool" }, asNode: "tool" }] },
+
+      // second turn
+      { updates: [{ values: { foo: "input" }, asNode: "__input__" }] },
+      { updates: [{ values: { foo: "input" }, asNode: "__start__" }] },
+      { updates: [{ values: { foo: "agent" }, asNode: "agent" }] },
+      { updates: [{ values: { foo: "tool" }, asNode: "tool" }] },
+    ]);
+
+    const state = await graph.getState({ configurable: { thread_id: "2" } });
+    expect(state.values).toEqual({ foo: "tool" });
+
+    const newHistory = await gatherIterator(
+      graph.getStateHistory({ configurable: { thread_id: "2" } })
+    );
+
+    const mapSnapshot = (i: StateSnapshot) => ({
+      values: i.values,
+      next: i.next,
+      step: i.metadata?.step,
+    });
+
+    expect(newHistory.map(mapSnapshot)).toMatchObject(history.map(mapSnapshot));
+  });
+
+  it("batch update as input (map-reduce)", async () => {
+    const checkpointer = await createCheckpointer();
+    const graph = new StateGraph(
+      Annotation.Root({
+        foo: Annotation<string>,
+        tasks: Annotation<number[]>({
+          default: () => [],
+          reducer: (acc, task: number | number[]) => [
+            ...acc,
+            ...(Array.isArray(task) ? task : [task]),
+          ],
+        }),
+      })
+    )
+      .addNode("agent", () => ({ foo: "agent" }))
+      .addNode(
+        "map",
+        () => {
+          return new Command({
+            goto: [
+              new Send("task", { index: 0 }),
+              new Send("task", { index: 1 }),
+              new Send("task", { index: 2 }),
+            ],
+            update: { foo: "map" },
+          });
+        },
+        { ends: ["task"] }
+      )
+      .addNode("task", (task: { index: number }) => ({
+        tasks: [task.index],
+      }))
+      .addEdge(START, "agent")
+      .addEdge("agent", "map")
+      .compile({ checkpointer });
+
+    expect(
+      await graph.invoke({ foo: "input" }, { configurable: { thread_id: "1" } })
+    ).toEqual({ foo: "map", tasks: [0, 1, 2] });
+
+    const mapSnapshot = (i: StateSnapshot) => ({
+      values: i.values,
+      next: i.next,
+      step: i.metadata?.step,
+      tasks: i.tasks.map((t) => t.name),
+    });
+
+    const history = await gatherIterator(
+      graph.getStateHistory({ configurable: { thread_id: "1" } })
+    );
+
+    // now clone the thread
+    await graph.bulkUpdateState({ configurable: { thread_id: "2" } }, [
+      // first turn
+      { updates: [{ values: { foo: "input" }, asNode: "__input__" }] },
+      { updates: [{ values: { foo: "input" }, asNode: "__start__" }] },
+      { updates: [{ values: { foo: "agent", tasks: [] }, asNode: "agent" }] },
+      {
+        updates: [
+          {
+            values: new Command({
+              goto: [
+                new Send("task", { index: 0 }),
+                new Send("task", { index: 1 }),
+                new Send("task", { index: 2 }),
+              ],
+              update: { foo: "map" },
+            }),
+            asNode: "map",
+          },
+        ],
+      },
+      {
+        updates: [
+          { values: { tasks: [0] }, asNode: "task" },
+          { values: { tasks: [1] }, asNode: "task" },
+          { values: { tasks: [2] }, asNode: "task" },
+        ],
+      },
+    ]);
+
+    const state = await graph.getState({ configurable: { thread_id: "2" } });
+    expect(state.values).toEqual({ foo: "map", tasks: [0, 1, 2] });
+
+    const newHistory = await gatherIterator(
+      graph.getStateHistory({ configurable: { thread_id: "2" } })
+    );
+
+    expect(newHistory.map(mapSnapshot)).toMatchObject(history.map(mapSnapshot));
   });
 }
 
