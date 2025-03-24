@@ -20,6 +20,8 @@ import { Pregel, Channel } from "../../pregel/index.js";
 import { Topic } from "../../channels/topic.js";
 import { LastValue } from "../../channels/last_value.js";
 
+// NOTE: test_channel_enter_exit_timing doesn't apply to JavaScript as JS has no concept of context managers
+
 beforeAll(() => {
   // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
   initializeAsyncLocalStorageSingleton();
