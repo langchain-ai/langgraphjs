@@ -77,8 +77,9 @@ export class PregelRunner {
    * @param options - Options for the execution.
    */
   async tick(options: TickOptions = {}) {
-    const { timeout, signal, retryPolicy, onStepWrite, maxConcurrency } =
-      options;
+    const { timeout, retryPolicy, onStepWrite, maxConcurrency } = options;
+
+    let signal = options?.signal;
 
     const nodeErrors: Set<Error> = new Set();
     let graphBubbleUp: GraphBubbleUp | undefined;
@@ -88,20 +89,25 @@ export class PregelRunner {
       (t) => t.writes.length === 0
     );
 
+    if (signal && timeout) {
+      signal = this._combineSignals([signal, AbortSignal.timeout(timeout)]);
+    } else if (timeout) {
+      signal = AbortSignal.timeout(timeout);
+    }
+
     const taskStream = this._executeTasksWithRetry(pendingTasks, {
-      stepTimeout: timeout,
       signal,
       retryPolicy,
       maxConcurrency,
     });
 
-    for await (const { task, error } of taskStream) {
+    for await (const { task, error, signalAborted } of taskStream) {
       this._commit(task, error);
       if (isGraphInterrupt(error)) {
         graphBubbleUp = error;
       } else if (isGraphBubbleUp(error) && !isGraphInterrupt(graphBubbleUp)) {
         graphBubbleUp = error;
-      } else if (error) {
+      } else if (error && (nodeErrors.size === 0 || !signalAborted)) {
         nodeErrors.add(error);
       }
     }
@@ -131,6 +137,26 @@ export class PregelRunner {
     }
   }
 
+  private _combineSignals(signals: AbortSignal[]) {
+    if ("any" in AbortSignal) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (AbortSignal as any).any(signals);
+    }
+    const combinedController = new AbortController();
+    const listener = () => {
+      combinedController.abort();
+      signals.forEach((s) => s.removeEventListener("abort", listener));
+    };
+
+    signals.forEach((s) => s.addEventListener("abort", listener));
+
+    if (signals.some((s) => s.aborted)) {
+      combinedController.abort();
+    }
+
+    return combinedController.signal;
+  }
+
   /**
    * Concurrently executes tasks with the requested retry policy, yielding a {@link SettledPregelTask} for each task as it completes.
    * @param tasks - The tasks to execute.
@@ -139,13 +165,12 @@ export class PregelRunner {
   private async *_executeTasksWithRetry(
     tasks: PregelExecutableTask<string, string>[],
     options?: {
-      stepTimeout?: number;
       signal?: AbortSignal;
       retryPolicy?: RetryPolicy;
       maxConcurrency?: number;
     }
   ): AsyncGenerator<SettledPregelTask> {
-    const { stepTimeout, retryPolicy, maxConcurrency } = options ?? {};
+    const { retryPolicy, maxConcurrency } = options ?? {};
     let signal = options?.signal;
 
     const promiseAddedSymbol = Symbol.for("promiseAdded");
@@ -312,18 +337,6 @@ export class PregelRunner {
       return Promise.resolve();
     }
 
-    if (stepTimeout && signal) {
-      if ("any" in AbortSignal) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        signal = (AbortSignal as any).any([
-          signal,
-          AbortSignal.timeout(stepTimeout),
-        ]);
-      }
-    } else if (stepTimeout) {
-      signal = AbortSignal.timeout(stepTimeout);
-    }
-
     if (signal?.aborted) {
       // note: don't use throwIfAborted here because it throws a DOMException,
       // which isn't consistent with how we throw on abort below.
@@ -332,11 +345,20 @@ export class PregelRunner {
 
     let startedTasksCount = 0;
 
+    const originalSignal = signal;
+
     let listener: () => void;
     const signalPromise = new Promise<never>((_resolve, reject) => {
       listener = () => reject(new Error("Abort"));
-      signal?.addEventListener("abort", listener);
-    }).finally(() => signal?.removeEventListener("abort", listener));
+      originalSignal?.addEventListener("abort", listener);
+    }).finally(() => originalSignal?.removeEventListener("abort", listener));
+
+    const exceptionSignalController = new AbortController();
+
+    signal = this._combineSignals([
+      ...(signal ? [signal] : []),
+      exceptionSignalController.signal,
+    ]);
 
     while (
       (startedTasksCount === 0 || Object.keys(executingTasksMap).length > 0) &&
@@ -350,11 +372,16 @@ export class PregelRunner {
       ) {
         const task = tasks[startedTasksCount];
 
-        executingTasksMap[task.id] = _runWithRetry(task, retryPolicy, {
-          [CONFIG_KEY_SEND]: writer?.bind(null, this, task),
-          [CONFIG_KEY_CALL]: call?.bind(null, this, task),
-        }).catch((error) => {
-          return { task, error };
+        executingTasksMap[task.id] = _runWithRetry(
+          task,
+          retryPolicy,
+          {
+            [CONFIG_KEY_SEND]: writer?.bind(null, this, task),
+            [CONFIG_KEY_CALL]: call?.bind(null, this, task),
+          },
+          signal
+        ).catch((error) => {
+          return { task, error, signalAborted: signal?.aborted };
         });
       }
 
@@ -370,6 +397,14 @@ export class PregelRunner {
 
       yield settledTask as SettledPregelTask;
       delete executingTasksMap[(settledTask as SettledPregelTask).task.id];
+
+      if (
+        settledTask.error &&
+        !isGraphBubbleUp(settledTask.error) &&
+        !signal?.aborted
+      ) {
+        exceptionSignalController.abort();
+      }
     }
   }
 

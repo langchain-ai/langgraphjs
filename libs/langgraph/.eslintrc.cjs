@@ -66,4 +66,10 @@ module.exports = {
     "prefer-rest-params": 0,
     "new-cap": ["error", { properties: false, capIsNew: false }],
   },
+  overrides: [
+    {
+      files: ["src/tests/**/*.ts"],
+      rules: { "no-instanceof/no-instanceof": 0 },
+    },
+  ],
 };
