@@ -1294,4 +1294,634 @@ describe("Graph Structure Tests (Python port)", () => {
       { right: { output: "what is weather in sf->right" } },
     ]);
   });
+
+  /**
+   * Port of test_in_one_fan_out_state_graph_waiting_edge from test_pregel_async_graph_structure.py
+   */
+  it("should test in-one-fan-out with waiting edge", async () => {
+    // Custom sorted_add function to match Python's implementation
+    const sortedAdd = (
+      x: string[],
+      y: string[] | [string, string][]
+    ): string[] => {
+      if (y.length > 0 && Array.isArray(y[0])) {
+        const tupleArray = y as [string, string][];
+
+        // Remove elements specified in first part of tuples
+        for (const [rem] of tupleArray) {
+          const index = x.indexOf(rem);
+          if (index !== -1) {
+            x.splice(index, 1);
+          }
+        }
+
+        // Extract second part of tuples
+        // eslint-disable-next-line no-param-reassign
+        y = tupleArray.map(([, second]) => second);
+      }
+
+      return [...x, ...(y as string[])].sort();
+    };
+
+    // Create state annotation with the custom reducer
+    const StateAnnotation = Annotation.Root({
+      query: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+      answer: Annotation<string>({
+        default: () => "",
+        reducer: (_, b) => b,
+      }),
+      docs: Annotation<string[]>({
+        default: () => [],
+        reducer: sortedAdd,
+      }),
+    });
+
+    // Node functions
+    const rewriteQuery = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      return { query: `query: ${state.query}` };
+    };
+
+    const analyzerOne = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      return { query: `analyzed: ${state.query}` };
+    };
+
+    const retrieverOne = async (): Promise<typeof StateAnnotation.Update> => {
+      return { docs: ["doc1", "doc2"] };
+    };
+
+    const retrieverTwo = async (): Promise<typeof StateAnnotation.Update> => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 100);
+      });
+      return { docs: ["doc3", "doc4"] };
+    };
+
+    const qa = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      return { answer: state.docs.join(",") };
+    };
+
+    // Create state graph
+    const workflow = new StateGraph({
+      stateSchema: StateAnnotation,
+    })
+      .addNode("rewrite_query", rewriteQuery)
+      .addNode("analyzer_one", analyzerOne)
+      .addNode("retriever_one", retrieverOne)
+      .addNode("retriever_two", retrieverTwo)
+      .addNode("qa", qa);
+
+    // Add edges
+    workflow.addEdge(START, "rewrite_query");
+    workflow.addEdge("rewrite_query", "analyzer_one");
+    workflow.addEdge("analyzer_one", "retriever_one");
+    workflow.addEdge("rewrite_query", "retriever_two");
+    workflow.addEdge(["retriever_one", "retriever_two"], "qa");
+    workflow.addEdge("qa", END);
+
+    // Compile app
+    const app = workflow.compile();
+
+    // Test invoke
+    const result = await app.invoke({
+      query: "what is weather in sf",
+    });
+
+    expect(result).toEqual({
+      query: "analyzed: query: what is weather in sf",
+      docs: ["doc1", "doc2", "doc3", "doc4"],
+      answer: "doc1,doc2,doc3,doc4",
+    });
+
+    // Test stream
+    const streamResults = await gatherIterator(
+      await app.stream({
+        query: "what is weather in sf",
+      })
+    );
+
+    expect(streamResults).toEqual([
+      { rewrite_query: { query: "query: what is weather in sf" } },
+      { analyzer_one: { query: "analyzed: query: what is weather in sf" } },
+      { retriever_two: { docs: ["doc3", "doc4"] } },
+      { retriever_one: { docs: ["doc1", "doc2"] } },
+      { qa: { answer: "doc1,doc2,doc3,doc4" } },
+    ]);
+
+    // Test with checkpointer and interrupt
+    const checkpointer = new MemorySaver();
+    const appWithInterrupt = workflow.compile({
+      checkpointer,
+      interruptAfter: ["retriever_one"],
+    });
+
+    const config = { configurable: { thread_id: "1" } };
+
+    // Test stream with interrupt
+    const interruptedStreamResults = await gatherIterator(
+      await appWithInterrupt.stream(
+        {
+          query: "what is weather in sf",
+        },
+        config
+      )
+    );
+
+    expect(interruptedStreamResults).toEqual([
+      { rewrite_query: { query: "query: what is weather in sf" } },
+      { analyzer_one: { query: "analyzed: query: what is weather in sf" } },
+      { retriever_two: { docs: ["doc3", "doc4"] } },
+      { retriever_one: { docs: ["doc1", "doc2"] } },
+      { __interrupt__: [] },
+    ]);
+
+    // Resume from interrupt
+    const resumedResults = await gatherIterator(
+      await appWithInterrupt.stream(null, config)
+    );
+
+    expect(resumedResults).toEqual([{ qa: { answer: "doc1,doc2,doc3,doc4" } }]);
+  });
+
+  /**
+   * Port of test_in_one_fan_out_state_graph_waiting_edge_plus_regular from test_pregel_async_graph_structure.py
+   */
+  it("should test in-one-fan-out with waiting edge plus regular edge", async () => {
+    // Custom sorted_add function to match Python's implementation
+    const sortedAdd = (
+      x: string[],
+      y: string[] | [string, string][]
+    ): string[] => {
+      if (y.length > 0 && Array.isArray(y[0])) {
+        const tupleArray = y as [string, string][];
+
+        // Remove elements specified in first part of tuples
+        for (const [rem] of tupleArray) {
+          const index = x.indexOf(rem);
+          if (index !== -1) {
+            x.splice(index, 1);
+          }
+        }
+
+        // Extract second part of tuples
+        // eslint-disable-next-line no-param-reassign
+        y = tupleArray.map(([, second]) => second);
+      }
+
+      return [...x, ...(y as string[])].sort();
+    };
+
+    // Create state annotation with the custom reducer
+    const StateAnnotation = Annotation.Root({
+      query: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+      answer: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+      docs: Annotation<string[]>({
+        default: () => [],
+        reducer: sortedAdd,
+      }),
+    });
+
+    // Node functions
+    const rewriteQuery = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      return { query: `query: ${state.query}` };
+    };
+
+    const analyzerOne = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 100);
+      });
+      return { query: `analyzed: ${state.query}` };
+    };
+
+    const retrieverOne = async (): Promise<typeof StateAnnotation.Update> => {
+      return { docs: ["doc1", "doc2"] };
+    };
+
+    const retrieverTwo = async (): Promise<typeof StateAnnotation.Update> => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 200);
+      });
+      return { docs: ["doc3", "doc4"] };
+    };
+
+    const qa = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      return { answer: state.docs.join(",") };
+    };
+
+    // Create state graph
+    const workflow = new StateGraph({
+      stateSchema: StateAnnotation,
+    })
+      .addNode("rewrite_query", rewriteQuery)
+      .addNode("analyzer_one", analyzerOne)
+      .addNode("retriever_one", retrieverOne)
+      .addNode("retriever_two", retrieverTwo)
+      .addNode("qa", qa);
+
+    // Add edges
+    workflow.addEdge(START, "rewrite_query");
+    workflow.addEdge("rewrite_query", "analyzer_one");
+    workflow.addEdge("analyzer_one", "retriever_one");
+    workflow.addEdge("rewrite_query", "retriever_two");
+    workflow.addEdge(["retriever_one", "retriever_two"], "qa");
+    workflow.addEdge("qa", END);
+
+    // silly edge, to make sure having been triggered before doesn't break
+    // semantics of named barrier (== waiting edges)
+    workflow.addEdge("rewrite_query", "qa");
+
+    // Compile app
+    const app = workflow.compile();
+
+    // Test invoke
+    const result = await app.invoke({
+      query: "what is weather in sf",
+    });
+
+    expect(result).toEqual({
+      query: "analyzed: query: what is weather in sf",
+      docs: ["doc1", "doc2", "doc3", "doc4"],
+      answer: "doc1,doc2,doc3,doc4",
+    });
+
+    // Test stream
+    const streamResults = await gatherIterator(
+      await app.stream({
+        query: "what is weather in sf",
+      })
+    );
+
+    expect(streamResults).toEqual([
+      { rewrite_query: { query: "query: what is weather in sf" } },
+      { qa: { answer: "" } },
+      { analyzer_one: { query: "analyzed: query: what is weather in sf" } },
+      { retriever_two: { docs: ["doc3", "doc4"] } },
+      { retriever_one: { docs: ["doc1", "doc2"] } },
+      { qa: { answer: "doc1,doc2,doc3,doc4" } },
+    ]);
+
+    // Test with checkpointer and interrupt
+    const checkpointer = new MemorySaver();
+    const appWithInterrupt = workflow.compile({
+      checkpointer,
+      interruptAfter: ["retriever_one"],
+    });
+
+    const config = { configurable: { thread_id: "1" } };
+
+    // Test stream with interrupt
+    const interruptedStreamResults = await gatherIterator(
+      await appWithInterrupt.stream(
+        {
+          query: "what is weather in sf",
+        },
+        config
+      )
+    );
+
+    expect(interruptedStreamResults).toEqual([
+      { rewrite_query: { query: "query: what is weather in sf" } },
+      { qa: { answer: "" } },
+      { analyzer_one: { query: "analyzed: query: what is weather in sf" } },
+      { retriever_two: { docs: ["doc3", "doc4"] } },
+      { retriever_one: { docs: ["doc1", "doc2"] } },
+      { __interrupt__: [] },
+    ]);
+
+    // Resume from interrupt
+    const resumedResults = await gatherIterator(
+      await appWithInterrupt.stream(null, config)
+    );
+
+    expect(resumedResults).toEqual([{ qa: { answer: "doc1,doc2,doc3,doc4" } }]);
+  });
+
+  /**
+   * Port of test_in_one_fan_out_state_graph_waiting_edge_multiple from test_pregel_async_graph_structure.py
+   */
+  it("should test in-one-fan-out with waiting edge and multiple iterations", async () => {
+    // Custom sorted_add function to match Python's implementation
+    const sortedAdd = (
+      x: string[],
+      y: string[] | [string, string][]
+    ): string[] => {
+      if (y.length > 0 && Array.isArray(y[0])) {
+        const tupleArray = y as [string, string][];
+
+        // Remove elements specified in first part of tuples
+        for (const [rem] of tupleArray) {
+          const index = x.indexOf(rem);
+          if (index !== -1) {
+            x.splice(index, 1);
+          }
+        }
+
+        // Extract second part of tuples
+        // eslint-disable-next-line no-param-reassign
+        y = tupleArray.map(([, second]) => second);
+      }
+
+      return [...x, ...(y as string[])].sort();
+    };
+
+    // Create state annotation with the custom reducer
+    const StateAnnotation = Annotation.Root({
+      query: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+      answer: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+      docs: Annotation<string[]>({
+        default: () => [],
+        reducer: sortedAdd,
+      }),
+    });
+
+    // Node functions
+    const rewriteQuery = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      return { query: `query: ${state.query}` };
+    };
+
+    const analyzerOne = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      return { query: `analyzed: ${state.query}` };
+    };
+
+    const retrieverOne = async (): Promise<typeof StateAnnotation.Update> => {
+      return { docs: ["doc1", "doc2"] };
+    };
+
+    const retrieverTwo = async (): Promise<typeof StateAnnotation.Update> => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 100);
+      });
+      return { docs: ["doc3", "doc4"] };
+    };
+
+    const qa = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      return { answer: state.docs.join(",") };
+    };
+
+    const decider = async (): Promise<typeof StateAnnotation.Update> => {
+      // In Python this returns None which doesn't exist in TypeScript
+      return {};
+    };
+
+    const deciderCond = (
+      state: typeof StateAnnotation.State
+    ): "qa" | "rewrite_query" => {
+      if ((state.query.match(/analyzed/g) || []).length > 1) {
+        return "qa";
+      } else {
+        return "rewrite_query";
+      }
+    };
+
+    // Create state graph
+    const workflow = new StateGraph({
+      stateSchema: StateAnnotation,
+    })
+      .addNode("rewrite_query", rewriteQuery)
+      .addNode("analyzer_one", analyzerOne)
+      .addNode("retriever_one", retrieverOne)
+      .addNode("retriever_two", retrieverTwo)
+      .addNode("decider", decider)
+      .addNode("qa", qa);
+
+    // Add edges
+    workflow.addEdge(START, "rewrite_query");
+    workflow.addEdge("rewrite_query", "analyzer_one");
+    workflow.addEdge("analyzer_one", "retriever_one");
+    workflow.addEdge("rewrite_query", "retriever_two");
+    workflow.addEdge(["retriever_one", "retriever_two"], "decider");
+    workflow.addConditionalEdges("decider", deciderCond);
+    workflow.addEdge("qa", END);
+
+    // Compile app
+    const app = workflow.compile();
+
+    // Test invoke
+    const result = await app.invoke({
+      query: "what is weather in sf",
+    });
+
+    expect(result).toEqual({
+      query: "analyzed: query: analyzed: query: what is weather in sf",
+      docs: ["doc1", "doc1", "doc2", "doc2", "doc3", "doc3", "doc4", "doc4"],
+      answer: "doc1,doc1,doc2,doc2,doc3,doc3,doc4,doc4",
+    });
+
+    // Test stream
+    const streamResults = await gatherIterator(
+      await app.stream({
+        query: "what is weather in sf",
+      })
+    );
+
+    expect(streamResults).toEqual([
+      { rewrite_query: { query: "query: what is weather in sf" } },
+      { analyzer_one: { query: "analyzed: query: what is weather in sf" } },
+      { retriever_two: { docs: ["doc3", "doc4"] } },
+      { retriever_one: { docs: ["doc1", "doc2"] } },
+      { decider: {} },
+      {
+        rewrite_query: {
+          query: "query: analyzed: query: what is weather in sf",
+        },
+      },
+      {
+        analyzer_one: {
+          query: "analyzed: query: analyzed: query: what is weather in sf",
+        },
+      },
+      { retriever_two: { docs: ["doc3", "doc4"] } },
+      { retriever_one: { docs: ["doc1", "doc2"] } },
+      { decider: {} },
+      { qa: { answer: "doc1,doc1,doc2,doc2,doc3,doc3,doc4,doc4" } },
+    ]);
+  });
+
+  /**
+   * Port of test_in_one_fan_out_state_graph_waiting_edge_multiple_cond_edge from test_pregel_async_graph_structure.py
+   */
+  it("should test in-one-fan-out with waiting edge and multiple conditional edges", async () => {
+    // Custom sorted_add function to match Python's implementation
+    const sortedAdd = (
+      x: string[],
+      y: string[] | [string, string][]
+    ): string[] => {
+      if (y.length > 0 && Array.isArray(y[0])) {
+        const tupleArray = y as [string, string][];
+
+        // Remove elements specified in first part of tuples
+        for (const [rem] of tupleArray) {
+          const index = x.indexOf(rem);
+          if (index !== -1) {
+            x.splice(index, 1);
+          }
+        }
+
+        // Extract second part of tuples
+        // eslint-disable-next-line no-param-reassign
+        y = tupleArray.map(([, second]) => second);
+      }
+
+      return [...x, ...(y as string[])].sort();
+    };
+
+    // Create state annotation with the custom reducer
+    const StateAnnotation = Annotation.Root({
+      query: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+      answer: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+      docs: Annotation<string[]>({
+        default: () => [],
+        reducer: sortedAdd,
+      }),
+    });
+
+    // Node functions
+    const rewriteQuery = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      return { query: `query: ${state.query}` };
+    };
+
+    const retrieverPicker = async (): Promise<string[]> => {
+      return ["analyzer_one", "retriever_two"];
+    };
+
+    const analyzerOne = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      return { query: `analyzed: ${state.query}` };
+    };
+
+    const retrieverOne = async (): Promise<typeof StateAnnotation.Update> => {
+      return { docs: ["doc1", "doc2"] };
+    };
+
+    const retrieverTwo = async (): Promise<typeof StateAnnotation.Update> => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 100);
+      });
+      return { docs: ["doc3", "doc4"] };
+    };
+
+    const qa = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      return { answer: state.docs.join(",") };
+    };
+
+    const decider = async (): Promise<typeof StateAnnotation.Update> => {
+      // In Python this returns None which doesn't exist in TypeScript
+      return {};
+    };
+
+    const deciderCond = (
+      state: typeof StateAnnotation.State
+    ): "qa" | "rewrite_query" => {
+      if ((state.query.match(/analyzed/g) || []).length > 1) {
+        return "qa";
+      } else {
+        return "rewrite_query";
+      }
+    };
+
+    // Create state graph
+    const workflow = new StateGraph({
+      stateSchema: StateAnnotation,
+    })
+      .addNode("rewrite_query", rewriteQuery)
+      .addNode("analyzer_one", analyzerOne)
+      .addNode("retriever_one", retrieverOne)
+      .addNode("retriever_two", retrieverTwo)
+      .addNode("decider", decider)
+      .addNode("qa", qa);
+
+    // Add edges
+    workflow.addEdge(START, "rewrite_query");
+    workflow.addConditionalEdges("rewrite_query", retrieverPicker);
+    workflow.addEdge("analyzer_one", "retriever_one");
+    workflow.addEdge(["retriever_one", "retriever_two"], "decider");
+    workflow.addConditionalEdges("decider", deciderCond);
+    workflow.addEdge("qa", END);
+
+    // Compile app
+    const app = workflow.compile();
+
+    // Test invoke
+    const result = await app.invoke({
+      query: "what is weather in sf",
+    });
+
+    expect(result).toEqual({
+      query: "analyzed: query: analyzed: query: what is weather in sf",
+      docs: ["doc1", "doc1", "doc2", "doc2", "doc3", "doc3", "doc4", "doc4"],
+      answer: "doc1,doc1,doc2,doc2,doc3,doc3,doc4,doc4",
+    });
+
+    // Test stream
+    const streamResults = await gatherIterator(
+      await app.stream({
+        query: "what is weather in sf",
+      })
+    );
+
+    expect(streamResults).toEqual([
+      { rewrite_query: { query: "query: what is weather in sf" } },
+      { analyzer_one: { query: "analyzed: query: what is weather in sf" } },
+      { retriever_two: { docs: ["doc3", "doc4"] } },
+      { retriever_one: { docs: ["doc1", "doc2"] } },
+      { decider: {} },
+      {
+        rewrite_query: {
+          query: "query: analyzed: query: what is weather in sf",
+        },
+      },
+      {
+        analyzer_one: {
+          query: "analyzed: query: analyzed: query: what is weather in sf",
+        },
+      },
+      { retriever_two: { docs: ["doc3", "doc4"] } },
+      { retriever_one: { docs: ["doc1", "doc2"] } },
+      { decider: {} },
+      { qa: { answer: "doc1,doc1,doc2,doc2,doc3,doc3,doc4,doc4" } },
+    ]);
+  });
 });
