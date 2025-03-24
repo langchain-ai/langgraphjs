@@ -285,7 +285,7 @@ export class StateGraph<
       this._schemaRuntimeDefinition = fields.state;
 
       this._inputDefinition = inputDef as I;
-      this._inputRuntimeDefinition = fields.input ?? fields.state;
+      this._inputRuntimeDefinition = fields.input ?? fields.state.partial();
 
       this._outputDefinition = outputDef as O;
       this._outputRuntimeDefinition = fields.output ?? fields.state;
@@ -297,7 +297,7 @@ export class StateGraph<
       this._schemaRuntimeDefinition = fields.input;
 
       this._inputDefinition = inputDef as I;
-      this._inputRuntimeDefinition = fields.input;
+      this._inputRuntimeDefinition = fields.input.partial();
 
       this._outputDefinition = outputDef as O;
       this._outputRuntimeDefinition = fields.output;
@@ -308,7 +308,7 @@ export class StateGraph<
       this._schemaRuntimeDefinition = fields;
 
       this._inputDefinition = stateDef as I;
-      this._inputRuntimeDefinition = fields;
+      this._inputRuntimeDefinition = fields.partial();
 
       this._outputDefinition = stateDef as O;
       this._outputRuntimeDefinition = fields;
