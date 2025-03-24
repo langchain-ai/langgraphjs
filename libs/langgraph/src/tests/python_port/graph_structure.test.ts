@@ -1,13 +1,17 @@
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect, jest } from "@jest/globals";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
+import { RunnablePassthrough } from "@langchain/core/runnables";
 import { StateGraph } from "../../graph/state.js";
-import { Annotation, START } from "../../web.js";
-import { Send, Command, isCommand, INTERRUPT } from "../../constants.js";
+import { Annotation } from "../../web.js";
+import { Send, Command, isCommand, INTERRUPT, START, END } from "../../constants.js";
 import { task, entrypoint } from "../../func/index.js";
 import { interrupt } from "../../interrupt.js";
 import { gatherIterator } from "../../utils.js";
 import { FakeTracer } from "../utils.js";
 import { initializeAsyncLocalStorageSingleton } from "../../setup/async_local_storage.js";
+import { Pregel, Channel } from "../../pregel/index.js";
+import { Topic } from "../../channels/topic.js";
+import { LastValue } from "../../channels/last_value.js";
 
 beforeAll(() => {
   // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
@@ -48,7 +52,7 @@ describe("Graph Structure Tests (Python port)", () => {
     };
 
     // Create the graph with nodes and edges
-    const builder = new StateGraph({ stateSchema: StateAnnotation })
+    const builder = new StateGraph(StateAnnotation)
       .addNode("1", getNode("1"))
       .addNode("2", getNode("2"))
       .addNode("3", getNode("3"))
@@ -102,7 +106,7 @@ describe("Graph Structure Tests (Python port)", () => {
     };
 
     // Create the graph with nodes and edges
-    const builder = new StateGraph({ stateSchema: StateAnnotation })
+    const builder = new StateGraph(StateAnnotation)
       .addNode("1", getNode("1"))
       .addNode("1.1", getNode("1.1"))
       .addNode("2", getNode("2"))
@@ -185,7 +189,7 @@ describe("Graph Structure Tests (Python port)", () => {
     };
 
     // Create the graph with nodes and edges
-    const builder = new StateGraph({ stateSchema: StateAnnotation })
+    const builder = new StateGraph(StateAnnotation)
       .addNode("1", getNode("1"))
       .addNode("2", getNode("2"))
       .addNode("3", getNode("3"))
@@ -366,7 +370,7 @@ describe("Graph Structure Tests (Python port)", () => {
       return { items: state.items.map((it) => `${it}a`) };
     };
 
-    const builder = new StateGraph({ stateSchema: StringsAnnotation })
+    const builder = new StateGraph(StringsAnnotation)
       .addNode("mynode", mynode)
       .addEdge(START, "mynode");
 
@@ -652,7 +656,7 @@ describe("Graph Structure Tests (Python port)", () => {
     const flakyNode = new InterruptOnce();
 
     // Create the graph builder
-    const builder = new StateGraph({ stateSchema: StateAnnotation })
+    const builder = new StateGraph(StateAnnotation)
       .addNode("1", (state) => node1.call(state))
       .addNode("2", (state) => node2.call(state))
       .addNode("3", (state) => node3.call(state))
@@ -719,6 +723,552 @@ describe("Graph Structure Tests (Python port)", () => {
       "2|3",
       "flaky|4",
       "3",
+    ]);
+  });
+  
+  /**
+   * Port of test_invoke_two_processes_two_in_join_two_out from test_pregel_async_graph_structure.py
+   */
+  it("should process two inputs joined into one topic and produce two outputs", async () => {
+    const addOne = jest.fn((x: number): number => x + 1);
+    const add10Each = jest.fn((x: number[]): number[] =>
+      x.map((y) => y + 10).sort()
+    );
+
+    const one = Channel.subscribeTo("input")
+      .pipe(addOne)
+      .pipe(Channel.writeTo(["inbox"]));
+
+    const chainThree = Channel.subscribeTo("input")
+      .pipe(addOne)
+      .pipe(Channel.writeTo(["inbox"]));
+
+    const chainFour = Channel.subscribeTo("inbox")
+      .pipe(add10Each)
+      .pipe(Channel.writeTo(["output"]));
+
+    const app = new Pregel({
+      nodes: {
+        one,
+        chainThree,
+        chainFour,
+      },
+      channels: {
+        inbox: new Topic<number>(),
+        output: new LastValue<number>(),
+        input: new LastValue<number>(),
+      },
+      inputChannels: "input",
+      outputChannels: "output",
+    });
+
+    // Invoke app and check results
+    // We get a single array result as chain_four waits for all publishers to finish
+    // before operating on all elements published to topic_two as an array
+    for (let i = 0; i < 100; i += 1) {
+      expect(await app.invoke(2)).toEqual([13, 13]);
+    }
+
+    // Use Promise.all to simulate concurrent execution
+    const results = await Promise.all(
+      Array(100)
+        .fill(null)
+        .map(async () => app.invoke(2))
+    );
+
+    results.forEach((result) => {
+      expect(result).toEqual([13, 13]);
+    });
+  });
+
+  /**
+   * Port of test_invoke_join_then_call_other_pregel from test_pregel_async_graph_structure.py
+   */
+  it("should invoke join then call other app", async () => {
+    const addOne = jest.fn((x: number): number => x + 1);
+    const add10Each = jest.fn((x: number[]): number[] => x.map((y) => y + 10));
+
+    const innerApp = new Pregel({
+      nodes: {
+        one: Channel.subscribeTo("input")
+          .pipe(addOne)
+          .pipe(Channel.writeTo(["output"])),
+      },
+      channels: {
+        output: new LastValue<number>(),
+        input: new LastValue<number>(),
+      },
+      inputChannels: "input",
+      outputChannels: "output",
+    });
+
+    const one = Channel.subscribeTo("input")
+      .pipe(add10Each)
+      .pipe(Channel.writeTo(["inbox_one"]).map());
+
+    const two = Channel.subscribeTo("inbox_one")
+      .pipe(() => innerApp.map())
+      .pipe((x: number[]) => x.sort())
+      .pipe(Channel.writeTo(["outbox_one"]));
+
+    const chainThree = Channel.subscribeTo("outbox_one")
+      .pipe((x: number[]) => x.reduce((a, b) => a + b, 0))
+      .pipe(Channel.writeTo(["output"]));
+
+    const app = new Pregel({
+      nodes: {
+        one,
+        two,
+        chain_three: chainThree,
+      },
+      channels: {
+        inbox_one: new Topic<number>(),
+        outbox_one: new Topic<number>(),
+        output: new LastValue<number>(),
+        input: new LastValue<number>(),
+      },
+      inputChannels: "input",
+      outputChannels: "output",
+    });
+
+    // Run the test 10 times sequentially
+    for (let i = 0; i < 10; i += 1) {
+      expect(await app.invoke([2, 3])).toEqual(27);
+    }
+
+    // Run the test 10 times in parallel
+    const results = await Promise.all(
+      Array(10)
+        .fill(null)
+        .map(() => app.invoke([2, 3]))
+    );
+    expect(results).toEqual(Array(10).fill(27));
+  });
+
+  /**
+   * Port of test_invoke_two_processes_one_in_two_out from test_pregel_async_graph_structure.py
+   */
+  it("should handle two processes with one input and two outputs", async () => {
+    const addOne = jest.fn((x: number) => x + 1);
+
+    const one = Channel.subscribeTo("input")
+      .pipe(addOne)
+      .pipe(
+        Channel.writeTo([], {
+          output: new RunnablePassthrough(),
+          between: new RunnablePassthrough(),
+        })
+      );
+
+    const two = Channel.subscribeTo("between")
+      .pipe(addOne)
+      .pipe(Channel.writeTo(["output"]));
+
+    const app = new Pregel({
+      nodes: { one, two },
+      channels: {
+        input: new LastValue<number>(),
+        output: new LastValue<number>(),
+        between: new LastValue<number>(),
+      },
+      inputChannels: "input",
+      outputChannels: "output",
+      streamChannels: ["output", "between"],
+    });
+
+    const results = await app.stream(2);
+    const streamResults = await gatherIterator(results);
+
+    expect(streamResults).toEqual([
+      { between: 3, output: 3 },
+      { between: 3, output: 4 },
+    ]);
+  });
+
+  /**
+   * Port of test_invoke_two_processes_no_out from test_pregel_async_graph_structure.py
+   */
+  it("should finish executing without output", async () => {
+    const addOne = jest.fn((x: number): number => x + 1);
+    const one = Channel.subscribeTo("input")
+      .pipe(addOne)
+      .pipe(Channel.writeTo(["between"]));
+    const two = Channel.subscribeTo("between").pipe(addOne);
+
+    const app = new Pregel({
+      nodes: { one, two },
+      channels: {
+        input: new LastValue<number>(),
+        between: new LastValue<number>(),
+        output: new LastValue<number>(),
+      },
+      inputChannels: "input",
+      outputChannels: "output",
+    });
+
+    // It finishes executing (once no more messages being published)
+    // but returns nothing, as nothing was published to OUT topic
+    expect(await app.invoke(2)).toBeUndefined();
+  });
+
+  /**
+   * Port of test_max_concurrency from test_pregel_async_graph_structure.py
+   */
+  it("should handle maximum concurrency limits", async () => {
+    // Define the StateAnnotation for accumulating lists
+    const StateAnnotation = Annotation.Root({
+      items: Annotation<unknown[]>({
+        reducer: (a, b) => a.concat(b),
+        default: () => [],
+      }),
+    });
+
+    // Node class to track concurrent executions
+    class Node {
+      name: string;
+
+      currently = 0;
+
+      maxCurrently = 0;
+
+      constructor(name: string) {
+        this.name = name;
+      }
+
+      async call(state: unknown): Promise<{ items: unknown[] }> {
+        this.currently += 1;
+        if (this.currently > this.maxCurrently) {
+          this.maxCurrently = this.currently;
+        }
+        // Use a small delay to simulate async work
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 1);
+        });
+        this.currently -= 1;
+        return { items: [state] };
+      }
+    }
+
+    // Define simple node functions
+    const one = (): { items: unknown[] } => {
+      return { items: ["1"] };
+    };
+
+    const three = (): { items: unknown[] } => {
+      return { items: ["3"] };
+    };
+
+    // Create a function that sends to many nodes
+    const sendToMany = (): Send[] => {
+      return Array.from({ length: 100 }, (_, idx) => new Send("2", idx));
+    };
+
+    const routeToThree = (): "3" => {
+      return "3";
+    };
+
+    // Create node instance that will track concurrent executions
+    const node2 = new Node("2");
+
+    // Create the graph
+    const builder = new StateGraph(StateAnnotation)
+      .addNode("1", one)
+      .addNode("2", (state) => node2.call(state))
+      .addNode("3", three)
+      .addEdge(START, "1")
+      .addConditionalEdges("1", sendToMany)
+      .addConditionalEdges("2", routeToThree);
+
+    const graph = builder.compile();
+
+    // Test without concurrency limits
+    const result1 = await graph.invoke({ items: ["0"] });
+    
+    // Create expected result with all numbers from 0-99
+    const expectedNumbers = Array.from({ length: 100 }, (_, i) => i);
+    
+    // Check the result includes the expected values
+    expect(result1.items).toEqual(["0", "1", ...expectedNumbers, "3"]);
+    expect(node2.maxCurrently).toBe(100);
+    expect(node2.currently).toBe(0);
+    
+    // Reset for next test
+    node2.maxCurrently = 0;
+
+    // Test with concurrency limit of 10
+    const result2 = await graph.invoke({ items: ["0"] }, { maxConcurrency: 10 });
+    
+    // Check the result includes the expected values
+    expect(result2.items).toEqual(["0", "1", ...expectedNumbers, "3"]);
+    expect(node2.maxCurrently).toBe(10);
+    expect(node2.currently).toBe(0);
+
+    // Test with checkpointer and interrupts
+    const checkpointer = new MemorySaver();
+    const graphWithInterrupt = builder.compile({
+      checkpointer,
+      interruptBefore: ["2"],
+    });
+
+    const thread1 = { 
+      maxConcurrency: 10, 
+      configurable: { thread_id: "1" } 
+    };
+
+    // First invocation should stop at the interrupt
+    const result3 = await graphWithInterrupt.invoke({ items: ["0"] }, thread1);
+    expect(result3.items).toEqual(["0", "1"]);
+    
+    // Second invocation should complete the execution
+    const result4 = await graphWithInterrupt.invoke(null, thread1);
+    expect(result4.items).toEqual(["0", "1", ...expectedNumbers, "3"]);
+  });
+
+  /**
+   * Port of test_max_concurrency_control from test_pregel_async_graph_structure.py
+   */
+  it("should handle maximum concurrency limits with commands", async () => {
+    // Define the StateAnnotation for accumulating lists
+    const StateAnnotation = Annotation.Root({
+      items: Annotation<unknown[]>({
+        reducer: (a, b) => a.concat(b),
+        default: () => [],
+      }),
+    });
+
+    // Node functions that use Command objects for control flow
+    const node1 = (): Command => {
+      // Send numbers 0-99 to node2
+      const sends = Array.from({ length: 100 }, (_, idx) => new Send("2", idx));
+      return new Command({
+        update: { items: ["1"] },
+        goto: sends,
+      });
+    };
+
+    // Keep track of concurrent executions of node2
+    let node2Currently = 0;
+    let node2MaxCurrently = 0;
+
+    const node2 = (state: unknown): Promise<Command> => {
+      return new Promise((resolve) => {
+        // Track concurrent executions
+        node2Currently += 1;
+        if (node2Currently > node2MaxCurrently) {
+          node2MaxCurrently = node2Currently;
+        }
+
+        // Simulate async work
+        setTimeout(() => {
+          node2Currently -= 1;
+          resolve(
+            new Command({
+              update: { items: [state] },
+              goto: "3",
+            })
+          );
+        }, 1);
+      });
+    };
+
+    const node3 = (): { items: string[] } => {
+      return { items: ["3"] };
+    };
+
+    // Create the graph
+    const builder = new StateGraph(StateAnnotation)
+      .addNode("1", node1, { ends: ["2"] })
+      .addNode("2", node2, { ends: ["3"] })
+      .addNode("3", node3 )
+      .addEdge(START, "1");
+
+    const graph = builder.compile();
+
+    // Test without concurrency limits
+    const result1 = await graph.invoke({ items: ["0"] });
+    
+    // Create expected result with all numbers from 0-99
+    const expectedNumbers = Array.from({ length: 100 }, (_, i) => i);
+    
+    // Check the result includes the expected values
+    expect(result1.items).toEqual(["0", "1", ...expectedNumbers, "3"]);
+    expect(node2MaxCurrently).toBe(100);
+    expect(node2Currently).toBe(0);
+    
+    // Reset for next test
+    node2MaxCurrently = 0;
+
+    // Test with concurrency limit of 10
+    const result2 = await graph.invoke({ items: ["0"] }, { maxConcurrency: 10 });
+    
+    // Check the result includes the expected values
+    expect(result2.items).toEqual(["0", "1", ...expectedNumbers, "3"]);
+    expect(node2MaxCurrently).toBe(10);
+    expect(node2Currently).toBe(0);
+
+    // Test with checkpointer and interrupts
+    const checkpointer = new MemorySaver();
+    const graphWithInterrupt = builder.compile({
+      checkpointer,
+      interruptBefore: ["2"],
+    });
+
+    const thread1 = { 
+      maxConcurrency: 10, 
+      configurable: { thread_id: "1" } 
+    };
+
+    // First invocation should stop at the interrupt
+    const result3 = await graphWithInterrupt.invoke({ items: ["0"] }, thread1);
+    expect(result3.items).toEqual(["0", "1"]);
+    
+    // Second invocation should complete the execution
+    const result4 = await graphWithInterrupt.invoke(null, thread1);
+    expect(result4.items).toEqual(["0", "1", ...expectedNumbers, "3"]);
+  });
+
+  /**
+   * Port of test_conditional_entrypoint_graph from test_pregel_async_graph_structure.py
+   */
+  it("should handle conditional entrypoint graphs", async () => {
+    
+    const StateAnnotation = Annotation.Root({
+      value: Annotation<string>({
+        default: () => "",
+        reducer: (_, b) => b,
+      }),
+    })
+
+    // Define simple node functions that process strings
+    const left = async (data: typeof StateAnnotation.State) => {
+      return { value: `${data.value}->left` };
+    };
+
+    const right = async (data: typeof StateAnnotation.State) => {
+      return { value: `${data.value}->right` };
+    };
+
+    // Function to decide which path to take
+    const shouldStart = (data: typeof StateAnnotation.State) => {
+      // Logic to decide where to start
+      if (data.value.length > 10) {
+        return "go-right";
+      } else {
+        return "go-left";
+      }
+    };
+
+    // Define a new graph
+    const workflow = new StateGraph(StateAnnotation)
+      .addNode("left", left)
+      .addNode("right", right)
+
+      // In JS we use addConditionalEdges instead of setConditionalEntryPoint
+      .addConditionalEdges(START, shouldStart, {
+        "go-left": "left",
+        "go-right": "right",
+      })
+
+      // Add remaining edges
+      .addConditionalEdges("left", () => END)
+      .addEdge("right", END);
+
+    const app = workflow.compile();
+
+    // Test invoke
+    const result = await app.invoke({ value: "what is weather in sf" });
+    expect(result.value).toBe("what is weather in sf->right");
+
+    // Test stream
+    const streamResults = await gatherIterator(await app.stream({ value: "what is weather in sf" }));
+    expect(streamResults).toEqual([
+      { right: { value: "what is weather in sf->right" } },
+    ]);
+  });
+
+  /**
+   * Port of test_conditional_entrypoint_graph_state from test_pregel_async_graph_structure.py
+   */
+  it("should handle conditional entrypoint graphs with state", async () => {
+    // Define the state annotation
+    const StateAnnotation = Annotation.Root({
+      input: Annotation<string>({
+        default: () => "",
+        reducer: (_, b) => b,
+      }),
+      output: Annotation<string>({
+        default: () => "",
+        reducer: (_, b) => b,
+      }),
+      steps: Annotation<string[]>({
+        default: () => [],
+        reducer: (a, b) => a.concat(b),
+      }),
+    });
+
+    // Define node functions that work with state
+    const left = async (state: typeof StateAnnotation.State): Promise<typeof StateAnnotation.Update> => {
+      return { output: `${state.input}->left` };
+    };
+
+    const right = async (state: typeof StateAnnotation.State): Promise<typeof StateAnnotation.Update> => {
+      return { output: `${state.input}->right` };
+    };
+
+    // Function to decide which path to take
+    const shouldStart = (state: typeof StateAnnotation.State): "go-left" | "go-right" => {
+      // Verify steps is an empty array as expected
+      expect(state.steps).toEqual([]);
+
+      // Logic to decide where to start
+      if (state.input.length > 10) {
+        return "go-right";
+      } else {
+        return "go-left";
+      }
+    };
+
+    // Define a new graph with state
+    const workflow = new StateGraph(StateAnnotation)
+      .addNode("left", left)
+      .addNode("right", right);
+
+    // In JS we use addConditionalEdges instead of setConditionalEntryPoint
+    workflow.addConditionalEdges(START, shouldStart, {
+      "go-left": "left",
+      "go-right": "right",
+    })
+
+    // Add remaining edges
+    .addConditionalEdges("left", () => END)
+    .addEdge("right", END);
+
+    const app = workflow.compile();
+
+    // Test invoke
+    const result = await app.invoke({ 
+      input: "what is weather in sf",
+      output: "",
+      steps: [],
+    });
+    
+    expect(result).toEqual({
+      input: "what is weather in sf",
+      output: "what is weather in sf->right",
+      steps: [],
+    });
+
+    // Test stream
+    const streamResults = await gatherIterator(
+      await app.stream({ 
+        input: "what is weather in sf",
+        output: "",
+        steps: [],
+      })
+    );
+    
+    expect(streamResults).toEqual([
+      { right: { output: "what is weather in sf->right" } },
     ]);
   });
 });

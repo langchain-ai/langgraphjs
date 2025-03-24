@@ -77,7 +77,8 @@ export class PregelRunner {
    * @param options - Options for the execution.
    */
   async tick(options: TickOptions = {}) {
-    const { timeout, signal, retryPolicy, onStepWrite, maxConcurrency } = options;
+    const { timeout, signal, retryPolicy, onStepWrite, maxConcurrency } =
+      options;
 
     const nodeErrors: Set<Error> = new Set();
     let graphBubbleUp: GraphBubbleUp | undefined;
@@ -328,7 +329,7 @@ export class PregelRunner {
       // which isn't consistent with how we throw on abort below.
       throw new Error("Abort");
     }
-    
+
     let startedTasksCount = 0;
 
     let listener: () => void;
