@@ -864,6 +864,14 @@ export class CompiledStateGraph<
       this.nodes[end as N].triggers.push(channelName);
     }
   }
+
+  protected async _validateInput(
+    input: UpdateType<ToStateDefinition<I>>
+  ): Promise<UpdateType<ToStateDefinition<I>>> {
+    const inputSchema = this.builder._inputRuntimeDefinition;
+    if (isAnyZodObject(inputSchema)) return inputSchema.parse(input);
+    return input;
+  }
 }
 
 function isStateDefinition(obj: unknown): obj is StateDefinition {

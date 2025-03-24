@@ -10243,7 +10243,7 @@ graph TD;
   it("zod schema - input / output", async () => {
     const state = z.object({
       hey: z.string(),
-      counter: z.number(),
+      counter: z.number().gt(0),
     });
 
     const input = state.pick({ counter: true });
@@ -10262,6 +10262,10 @@ graph TD;
     );
 
     expect(value).toEqual({ hey: "tool" });
+
+    await expect(
+      graph.invoke({ counter: -1 }, { configurable: { thread_id: "1" } })
+    ).rejects.toBeDefined();
   });
 }
 

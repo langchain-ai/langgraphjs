@@ -1724,6 +1724,10 @@ export class Pregel<
     };
   }
 
+  protected async _validateInput(input: PregelInputType) {
+    return input;
+  }
+
   /**
    * Internal iterator used by stream() to generate state updates.
    * This method handles the core logic of graph execution and streaming.
@@ -1755,6 +1759,7 @@ export class Pregel<
       );
     }
 
+    const validInput = await this._validateInput(input);
     const { runId, ...restConfig } = inputConfig;
     // assign defaults
     const [
@@ -1823,7 +1828,7 @@ export class Pregel<
     const createAndRunLoop = async () => {
       try {
         loop = await PregelLoop.initialize({
-          input,
+          input: validInput,
           config,
           checkpointer,
           nodes: this.nodes,
