@@ -2545,4 +2545,98 @@ describe("Graph Structure Tests (Python port)", () => {
       },
     });
   });
+
+  /**
+   * Port of test_multiple_updates_root from test_pregel_async_streaming.py
+   */
+  it("should handle multiple updates from root node", async () => {
+    // Create the string state annotation with concatenation
+    const StateAnnotation = Annotation.Root({
+      value: Annotation<string>({
+        reducer: (a, b) => a + b,
+        default: () => "",
+      }),
+    });
+
+    // Define node functions
+    const nodeA = (): (Command | typeof StateAnnotation.Update)[] => {
+      return [
+        new Command({ update: { value: "a1" } }),
+        new Command({ update: { value: "a2" } }),
+      ];
+    };
+
+    const nodeB = (): typeof StateAnnotation.Update => {
+      return { value: "b" };
+    };
+
+    // Create the graph
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("node_a", nodeA)
+      .addNode("node_b", nodeB)
+      .addEdge("node_a", "node_b")
+      .addEdge(START, "node_a")
+      .compile();
+
+    // Test the invoke method
+    const result = await graph.invoke({ value: "" });
+    expect(result).toEqual({ value: "a1a2b" });
+
+    // Test the stream method with updates mode
+    const stream = await graph.stream({ value: "" }, { streamMode: "updates" });
+    const updates = await gatherIterator(stream);
+
+    // Only streams the last update from node_a
+    expect(updates).toEqual([
+      { node_a: [{ value: "a1" }, { value: "a2" }] },
+      { node_b: { value: "b" } },
+    ]);
+  });
+
+  /**
+   * Port of test_multiple_updates from test_pregel_async_streaming.py
+   */
+  it("should handle multiple updates", async () => {
+    // Create the state annotation with concatenation for the foo field
+    const StateAnnotation = Annotation.Root({
+      foo: Annotation<string>({
+        reducer: (a, b) => a + b,
+        default: () => "",
+      }),
+    });
+
+    // Define node functions
+    const nodeA = (): (Command | typeof StateAnnotation.Update)[] => {
+      return [
+        new Command({ update: { foo: "a1" } }),
+        new Command({ update: { foo: "a2" } }),
+      ];
+    };
+
+    const nodeB = (): typeof StateAnnotation.Update => {
+      return { foo: "b" };
+    };
+
+    // Create the graph
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("node_a", nodeA)
+      .addNode("node_b", nodeB)
+      .addEdge("node_a", "node_b")
+      .addEdge(START, "node_a")
+      .compile();
+
+    // Test the invoke method
+    const result = await graph.invoke({ foo: "" });
+    expect(result).toEqual({ foo: "a1a2b" });
+
+    // Test the stream method with updates mode
+    const stream = await graph.stream({ foo: "" }, { streamMode: "updates" });
+    const updates = await gatherIterator(stream);
+
+    // Only streams the last update from node_a
+    expect(updates).toEqual([
+      { node_a: [{ foo: "a1" }, { foo: "a2" }] },
+      { node_b: { foo: "b" } },
+    ]);
+  });
 });
