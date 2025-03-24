@@ -74,6 +74,7 @@ export class PregelRunner {
   async tick(options: TickOptions = {}) {
     const { timeout, signal, retryPolicy, onStepWrite } = options;
 
+    const nodeErrors: Set<Error> = new Set();
     let graphBubbleUp: GraphBubbleUp | undefined;
 
     // Start task execution
@@ -93,6 +94,8 @@ export class PregelRunner {
         graphBubbleUp = error;
       } else if (isGraphBubbleUp(error) && !isGraphInterrupt(graphBubbleUp)) {
         graphBubbleUp = error;
+      } else if (error) {
+        nodeErrors.add(error);
       }
     }
 
@@ -102,6 +105,15 @@ export class PregelRunner {
         .map((task) => task.writes)
         .flat()
     );
+
+    if (nodeErrors.size === 1) {
+      throw Array.from(nodeErrors)[0];
+    } else if (nodeErrors.size > 1) {
+      throw new AggregateError(
+        Array.from(nodeErrors),
+        `Multiple errors occurred during superstep ${this.loop.step}. See the "errors" field of this exception for more details.`
+      );
+    }
 
     if (isGraphInterrupt(graphBubbleUp)) {
       throw graphBubbleUp;
@@ -377,8 +389,6 @@ export class PregelRunner {
         this.loop.putWrites(task.id, [
           [ERROR, { message: error.message, name: error.name }],
         ]);
-        // TODO: is throwing here safe? what about commits from other concurrent tasks?
-        throw error;
       }
     } else {
       if (
