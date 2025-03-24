@@ -51,6 +51,7 @@ export type SettledPregelTask = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   task: PregelExecutableTask<any, any>;
   error: Error;
+  signalAborted?: boolean;
 };
 
 export async function _runWithRetry<
@@ -66,6 +67,7 @@ export async function _runWithRetry<
   task: PregelExecutableTask<N, C>;
   result: unknown;
   error: Error | undefined;
+  signalAborted?: boolean;
 }> {
   const resolvedRetryPolicy = pregelTask.retry_policy ?? retryPolicy;
   let interval =
@@ -80,6 +82,12 @@ export async function _runWithRetry<
   if (configurable) {
     config = patchConfigurable(config, configurable);
   }
+
+  config = {
+    ...config,
+    signal,
+  };
+
   // eslint-disable-next-line no-constant-condition
   while (true) {
     if (signal?.aborted) {
@@ -164,5 +172,6 @@ export async function _runWithRetry<
     task: pregelTask,
     result,
     error: error as Error | undefined,
+    signalAborted: signal?.aborted,
   };
 }

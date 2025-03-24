@@ -582,6 +582,9 @@ describe("Graph Structure Tests (Python port)", () => {
 
   /**
    * Port of test_send_dedupe_on_resume from test_pregel_async_graph_structure.py
+   *
+   * TODO: plumbing the augmented AbortSignal through to the config that's passed to the node via
+   *       `_runWithRetry` breaks this test for some reason.
    */
   it("should deduplicate sends on resume", async () => {
     // Set up state annotation using operator.add (which concatenates in JS)
@@ -605,6 +608,11 @@ describe("Graph Structure Tests (Python port)", () => {
       ): Promise<{ value: string[] }> {
         this.ticks += 1;
         if (this.ticks === 1) {
+          // give concurrent tasks some time to complete before we throw
+          // TODO: without this line the test fails because langchain abandons the promises for the concurrent tasks - fixing this may require a breaking change
+          await new Promise((resolve) => {
+            setTimeout(resolve, 10);
+          });
           throw new Error("Bahh");
         }
         return { value: [`flaky|${state}`] };
