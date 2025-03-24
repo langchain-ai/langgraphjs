@@ -1970,6 +1970,7 @@ export class Pregel<
               );
             }
           },
+          maxConcurrency: config.maxConcurrency,
           signal: config.signal,
         });
       }
