@@ -107,6 +107,17 @@ export type StateGraphArgsWithInputOutputSchemas<
   output: AnnotationRoot<O>;
 };
 
+type ZodStateGraphArgsWithStateSchema<
+  SD extends AnyZodObject,
+  I extends SDZod,
+  O extends SDZod
+> = { state: SD; input?: I; output?: O };
+
+type ZodStateGraphArgsWithIOSchema<I extends SDZod, O extends SDZod> = {
+  input: I;
+  output: O;
+};
+
 type SDZod = StateDefinition | AnyZodObject;
 
 type ToStateDefinition<T> = T extends AnyZodObject
@@ -201,7 +212,13 @@ export class StateGraph<
   _inputDefinition: I;
 
   /** @internal */
+  _inputRuntimeDefinition: AnyZodObject | undefined;
+
+  /** @internal */
   _outputDefinition: O;
+
+  /** @internal */
+  _outputRuntimeDefinition: AnyZodObject | undefined;
 
   /**
    * Map schemas to managed values
@@ -229,13 +246,18 @@ export class StateGraph<
   );
 
   constructor(
-    fields: SD extends AnyZodObject ? SD : never,
+    fields: SD extends AnyZodObject
+      ?
+          | SD
+          | ZodStateGraphArgsWithIOSchema<I, O>
+          | ZodStateGraphArgsWithStateSchema<SD, I, O>
+      : never,
     configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
     fields: SD extends AnyZodObject
-      ? SD
+      ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
       : SD extends StateDefinition
       ?
           | SD
@@ -272,14 +294,38 @@ export class StateGraph<
     } else if (isStateGraphArgs(fields)) {
       const spec = _getChannels(fields.channels);
       this._schemaDefinition = spec;
+    } else if (isZodStateGraphArgsWithStateSchema(fields)) {
+      const spec = getChannelsFromZod(fields.state);
+      this._schemaDefinition = spec;
+
+      this._inputDefinition = ((fields.input &&
+        getChannelsFromZod(fields.input)) ??
+        spec) as I;
+      this._inputRuntimeDefinition = fields.input;
+
+      this._outputDefinition = ((fields.output &&
+        getChannelsFromZod(fields.output)) ??
+        spec) as O;
+      this._outputRuntimeDefinition = fields.output;
+    } else if (isZodStateGraphArgsWithIOSchema(fields)) {
+      const spec = getChannelsFromZod(fields.input);
+      this._schemaDefinition = spec;
+
+      this._inputDefinition = spec as I;
+      this._inputRuntimeDefinition = fields.input;
+
+      this._outputDefinition = getChannelsFromZod(fields.output) as O;
+      this._outputRuntimeDefinition = fields.output;
     } else if (isAnyZodObject(fields)) {
       this._schemaDefinition = getChannelsFromZod(fields);
       this._schemaRuntimeDefinition = fields;
     } else {
       throw new Error("Invalid StateGraph input.");
     }
-    this._inputDefinition = this._inputDefinition ?? this._schemaDefinition;
-    this._outputDefinition = this._outputDefinition ?? this._schemaDefinition;
+
+    this._inputDefinition ??= this._schemaDefinition as I;
+    this._outputDefinition ??= this._schemaDefinition as O;
+
     this._addSchema(this._schemaDefinition);
     this._addSchema(this._inputDefinition);
     this._addSchema(this._outputDefinition);
@@ -863,6 +909,36 @@ function isStateGraphArgsWithInputOutputSchemas<
     (obj as any).stateSchema === undefined &&
     (obj as StateGraphArgsWithInputOutputSchemas<SD, O>).input !== undefined &&
     (obj as StateGraphArgsWithInputOutputSchemas<SD, O>).output !== undefined
+  );
+}
+
+function isZodStateGraphArgsWithStateSchema<
+  SD extends AnyZodObject,
+  I extends AnyZodObject,
+  O extends AnyZodObject
+>(value: unknown): value is ZodStateGraphArgsWithStateSchema<SD, I, O> {
+  return (
+    typeof value === "object" &&
+    value != null &&
+    "stateSchema" in value &&
+    isAnyZodObject(value.stateSchema) &&
+    (("input" in value && isAnyZodObject(value.input)) ||
+      ("output" in value && isAnyZodObject(value.output)))
+  );
+}
+
+function isZodStateGraphArgsWithIOSchema<
+  I extends AnyZodObject,
+  O extends AnyZodObject
+>(value: unknown): value is ZodStateGraphArgsWithIOSchema<I, O> {
+  return (
+    typeof value === "object" &&
+    value != null &&
+    !("stateSchema" in value && value.stateSchema != null) &&
+    "input" in value &&
+    isAnyZodObject(value.input) &&
+    "output" in value &&
+    isAnyZodObject(value.output)
   );
 }
 

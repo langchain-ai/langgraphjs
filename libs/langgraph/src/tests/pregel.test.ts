@@ -10239,6 +10239,30 @@ graph TD;
       $schema: "http://json-schema.org/draft-07/schema#",
     });
   });
+
+  it("zod schema - input / output", async () => {
+    const stateSchema = z.object({
+      hey: z.string(),
+      counter: z.number(),
+    });
+
+    const input = stateSchema.pick({ counter: true });
+    const output = stateSchema.pick({ hey: true });
+
+    const graph = new StateGraph({ state: stateSchema, input, output })
+      .addNode("agent", () => ({ hey: "agent" }))
+      .addNode("tool", () => ({ hey: "tool" }))
+      .addEdge("__start__", "agent")
+      .addEdge("agent", "tool")
+      .compile();
+
+    const state = await graph.invoke(
+      { counter: 123 },
+      { configurable: { thread_id: "1" } }
+    );
+
+    expect(state).toEqual({ counter: 1 });
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
