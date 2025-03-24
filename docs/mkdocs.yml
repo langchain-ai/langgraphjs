@@ -302,6 +302,7 @@ nav:
     - Resources:
         - Prebuilt Agents: prebuilt.md
         - Adopters: adopters.md
+        - LLMS-txt: llms-txt-overview.md
         - FAQ: concepts/faq.md
         - Troubleshooting:
             - Troubleshooting: troubleshooting/errors/
