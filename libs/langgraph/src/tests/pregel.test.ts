@@ -10241,27 +10241,27 @@ graph TD;
   });
 
   it("zod schema - input / output", async () => {
-    const stateSchema = z.object({
+    const state = z.object({
       hey: z.string(),
       counter: z.number(),
     });
 
-    const input = stateSchema.pick({ counter: true });
-    const output = stateSchema.pick({ hey: true });
+    const input = state.pick({ counter: true });
+    const output = state.pick({ hey: true });
 
-    const graph = new StateGraph({ state: stateSchema, input, output })
-      .addNode("agent", () => ({ hey: "agent" }))
-      .addNode("tool", () => ({ hey: "tool" }))
+    const graph = new StateGraph({ state, input, output })
+      .addNode("agent", () => ({ hey: "agent", counter: 1 }))
+      .addNode("tool", () => ({ hey: "tool", counter: 2 }))
       .addEdge("__start__", "agent")
       .addEdge("agent", "tool")
       .compile();
 
-    const state = await graph.invoke(
+    const value = await graph.invoke(
       { counter: 123 },
       { configurable: { thread_id: "1" } }
     );
 
-    expect(state).toEqual({ counter: 1 });
+    expect(value).toEqual({ hey: "tool" });
   });
 }
 

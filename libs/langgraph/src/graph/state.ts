@@ -273,7 +273,46 @@ export class StateGraph<
     configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   ) {
     super();
-    if (
+
+    if (isZodStateGraphArgsWithStateSchema(fields)) {
+      const stateDef = getChannelsFromZod(fields.state);
+      const inputDef =
+        fields.input != null ? getChannelsFromZod(fields.input) : stateDef;
+      const outputDef =
+        fields.output != null ? getChannelsFromZod(fields.output) : stateDef;
+
+      this._schemaDefinition = stateDef;
+      this._schemaRuntimeDefinition = fields.state;
+
+      this._inputDefinition = inputDef as I;
+      this._inputRuntimeDefinition = fields.input ?? fields.state;
+
+      this._outputDefinition = outputDef as O;
+      this._outputRuntimeDefinition = fields.output ?? fields.state;
+    } else if (isZodStateGraphArgsWithIOSchema(fields)) {
+      const inputDef = getChannelsFromZod(fields.input);
+      const outputDef = getChannelsFromZod(fields.output);
+
+      this._schemaDefinition = inputDef;
+      this._schemaRuntimeDefinition = fields.input;
+
+      this._inputDefinition = inputDef as I;
+      this._inputRuntimeDefinition = fields.input;
+
+      this._outputDefinition = outputDef as O;
+      this._outputRuntimeDefinition = fields.output;
+    } else if (isAnyZodObject(fields)) {
+      const stateDef = getChannelsFromZod(fields);
+
+      this._schemaDefinition = stateDef;
+      this._schemaRuntimeDefinition = fields;
+
+      this._inputDefinition = stateDef as I;
+      this._inputRuntimeDefinition = fields;
+
+      this._outputDefinition = stateDef as O;
+      this._outputRuntimeDefinition = fields;
+    } else if (
       isStateGraphArgsWithInputOutputSchemas<
         SD extends StateDefinition ? SD : never,
         O extends StateDefinition ? O : never
@@ -294,31 +333,6 @@ export class StateGraph<
     } else if (isStateGraphArgs(fields)) {
       const spec = _getChannels(fields.channels);
       this._schemaDefinition = spec;
-    } else if (isZodStateGraphArgsWithStateSchema(fields)) {
-      const spec = getChannelsFromZod(fields.state);
-      this._schemaDefinition = spec;
-
-      this._inputDefinition = ((fields.input &&
-        getChannelsFromZod(fields.input)) ??
-        spec) as I;
-      this._inputRuntimeDefinition = fields.input;
-
-      this._outputDefinition = ((fields.output &&
-        getChannelsFromZod(fields.output)) ??
-        spec) as O;
-      this._outputRuntimeDefinition = fields.output;
-    } else if (isZodStateGraphArgsWithIOSchema(fields)) {
-      const spec = getChannelsFromZod(fields.input);
-      this._schemaDefinition = spec;
-
-      this._inputDefinition = spec as I;
-      this._inputRuntimeDefinition = fields.input;
-
-      this._outputDefinition = getChannelsFromZod(fields.output) as O;
-      this._outputRuntimeDefinition = fields.output;
-    } else if (isAnyZodObject(fields)) {
-      this._schemaDefinition = getChannelsFromZod(fields);
-      this._schemaRuntimeDefinition = fields;
     } else {
       throw new Error("Invalid StateGraph input.");
     }
@@ -329,6 +343,7 @@ export class StateGraph<
     this._addSchema(this._schemaDefinition);
     this._addSchema(this._inputDefinition);
     this._addSchema(this._outputDefinition);
+
     this._configSchema =
       configSchema != null && "spec" in configSchema
         ? (configSchema.spec as C)
@@ -917,29 +932,46 @@ function isZodStateGraphArgsWithStateSchema<
   I extends AnyZodObject,
   O extends AnyZodObject
 >(value: unknown): value is ZodStateGraphArgsWithStateSchema<SD, I, O> {
-  return (
-    typeof value === "object" &&
-    value != null &&
-    "stateSchema" in value &&
-    isAnyZodObject(value.stateSchema) &&
-    (("input" in value && isAnyZodObject(value.input)) ||
-      ("output" in value && isAnyZodObject(value.output)))
-  );
+  if (typeof value !== "object" || value == null) {
+    return false;
+  }
+
+  if (!("state" in value) || !isAnyZodObject(value.state)) {
+    return false;
+  }
+
+  if ("input" in value && !isAnyZodObject(value.input)) {
+    return false;
+  }
+
+  if ("output" in value && !isAnyZodObject(value.output)) {
+    return false;
+  }
+
+  return true;
 }
 
 function isZodStateGraphArgsWithIOSchema<
   I extends AnyZodObject,
   O extends AnyZodObject
 >(value: unknown): value is ZodStateGraphArgsWithIOSchema<I, O> {
-  return (
-    typeof value === "object" &&
-    value != null &&
-    !("stateSchema" in value && value.stateSchema != null) &&
-    "input" in value &&
-    isAnyZodObject(value.input) &&
-    "output" in value &&
-    isAnyZodObject(value.output)
-  );
+  if (typeof value !== "object" || value == null) {
+    return false;
+  }
+
+  if ("state" in value && value.state != null) {
+    return false;
+  }
+
+  if ("input" in value && !isAnyZodObject(value.input)) {
+    return false;
+  }
+
+  if ("output" in value && !isAnyZodObject(value.output)) {
+    return false;
+  }
+
+  return true;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
