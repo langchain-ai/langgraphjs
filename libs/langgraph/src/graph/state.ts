@@ -963,15 +963,12 @@ function isZodStateGraphArgsWithIOSchema<
     return false;
   }
 
-  if ("input" in value && !isAnyZodObject(value.input)) {
-    return false;
-  }
-
-  if ("output" in value && !isAnyZodObject(value.output)) {
-    return false;
-  }
-
-  return true;
+  return (
+    "input" in value &&
+    isAnyZodObject(value.input) &&
+    "output" in value &&
+    isAnyZodObject(value.output)
+  );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
