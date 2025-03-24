@@ -22,6 +22,8 @@ export const CONFIG_KEY_PREVIOUS_STATE = "__pregel_previous";
 export const CONFIG_KEY_CHECKPOINT_ID = "checkpoint_id";
 export const CONFIG_KEY_CHECKPOINT_NS = "checkpoint_ns";
 
+export const CONFIG_KEY_NODE_FINISHED = "__pregel_node_finished";
+
 // this one is part of public API
 export const CONFIG_KEY_CHECKPOINT_MAP = "checkpoint_map";
 

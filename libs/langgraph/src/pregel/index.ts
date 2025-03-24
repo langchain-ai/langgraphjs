@@ -57,6 +57,7 @@ import {
   NULL_TASK_ID,
   COPY,
   END,
+  CONFIG_KEY_NODE_FINISHED,
 } from "../constants.js";
 import {
   PregelExecutableTask,
@@ -1840,7 +1841,7 @@ export class Pregel<
 
         const runner = new PregelRunner({
           loop,
-          nodeFinished: config.configurable?.nodeFinished,
+          nodeFinished: config.configurable?.[CONFIG_KEY_NODE_FINISHED],
         });
 
         if (options?.subgraphs) {
@@ -1905,7 +1906,13 @@ export class Pregel<
     } finally {
       await runLoopPromise;
     }
-    await runManager?.handleChainEnd(loop?.output ?? {});
+    await runManager?.handleChainEnd(
+      loop?.output ?? {},
+      runId, // run_id
+      undefined, // run_type
+      undefined, // tags
+      undefined // metadata
+    );
   }
 
   /**

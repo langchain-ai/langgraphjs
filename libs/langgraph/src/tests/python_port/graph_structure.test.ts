@@ -2,7 +2,11 @@ import { describe, it, expect, jest } from "@jest/globals";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { RunnablePassthrough } from "@langchain/core/runnables";
 import { StateGraph } from "../../graph/state.js";
-import { Annotation } from "../../web.js";
+import {
+  Annotation,
+  LangGraphRunnableConfig,
+  StateSnapshot,
+} from "../../web.js";
 import {
   Send,
   Command,
@@ -10,6 +14,10 @@ import {
   INTERRUPT,
   START,
   END,
+  CONFIG_KEY_NODE_FINISHED,
+  CONFIG_KEY_CHECKPOINT_MAP,
+  CONFIG_KEY_CHECKPOINT_ID,
+  CONFIG_KEY_CHECKPOINT_NS,
 } from "../../constants.js";
 import { task, entrypoint } from "../../func/index.js";
 import { interrupt } from "../../interrupt.js";
@@ -1370,9 +1378,7 @@ describe("Graph Structure Tests (Python port)", () => {
     };
 
     // Create state graph
-    const workflow = new StateGraph({
-      stateSchema: StateAnnotation,
-    })
+    const workflow = new StateGraph(StateAnnotation)
       .addNode("rewrite_query", rewriteQuery)
       .addNode("analyzer_one", analyzerOne)
       .addNode("retriever_one", retrieverOne)
@@ -1529,9 +1535,7 @@ describe("Graph Structure Tests (Python port)", () => {
     };
 
     // Create state graph
-    const workflow = new StateGraph({
-      stateSchema: StateAnnotation,
-    })
+    const workflow = new StateGraph(StateAnnotation)
       .addNode("rewrite_query", rewriteQuery)
       .addNode("analyzer_one", analyzerOne)
       .addNode("retriever_one", retrieverOne)
@@ -1706,9 +1710,7 @@ describe("Graph Structure Tests (Python port)", () => {
     };
 
     // Create state graph
-    const workflow = new StateGraph({
-      stateSchema: StateAnnotation,
-    })
+    const workflow = new StateGraph(StateAnnotation)
       .addNode("rewrite_query", rewriteQuery)
       .addNode("analyzer_one", analyzerOne)
       .addNode("retriever_one", retrieverOne)
@@ -1863,9 +1865,7 @@ describe("Graph Structure Tests (Python port)", () => {
     };
 
     // Create state graph
-    const workflow = new StateGraph({
-      stateSchema: StateAnnotation,
-    })
+    const workflow = new StateGraph(StateAnnotation)
       .addNode("rewrite_query", rewriteQuery)
       .addNode("analyzer_one", analyzerOne)
       .addNode("retriever_one", retrieverOne)
@@ -1923,5 +1923,626 @@ describe("Graph Structure Tests (Python port)", () => {
       { decider: {} },
       { qa: { answer: "doc1,doc1,doc2,doc2,doc3,doc3,doc4,doc4" } },
     ]);
+  });
+
+  /**
+   * Port of test_nested_graph from test_pregel_async_graph_structure.py
+   */
+  it("should handle nested graphs", async () => {
+    const neverCalled = (): never => {
+      throw new Error("This function should never be called");
+    };
+
+    // Define inner state annotation
+    const InnerStateAnnotation = Annotation.Root({
+      my_key: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+      my_other_key: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+    });
+
+    const up = (
+      state: typeof InnerStateAnnotation.State
+    ): typeof InnerStateAnnotation.Update => {
+      return {
+        my_key: `${state.my_key} there`,
+        my_other_key: state.my_key,
+      };
+    };
+
+    const inner = new StateGraph(InnerStateAnnotation)
+      .addNode("up", up)
+      .addEdge(START, "up")
+      .addEdge("up", END);
+
+    // Define outer state annotation
+    const StateAnnotation = Annotation.Root({
+      my_key: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+      neverCalled: Annotation<unknown>({
+        reducer: (_, b) => b,
+        default: () => undefined,
+      }),
+    });
+
+    const side = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      return {
+        my_key: `${state.my_key} and back again`,
+      };
+    };
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("inner", inner.compile())
+      .addNode("side", side)
+      .addEdge(START, "inner")
+      .addEdge("inner", "side")
+      .addEdge("side", END);
+
+    const app = graph.compile();
+
+    const input = { my_key: "my value", neverCalled };
+    const expected = {
+      my_key: "my value there and back again",
+      neverCalled,
+    };
+
+    // Test invoke
+    const result = await app.invoke(input);
+    expect(result).toEqual(expected);
+
+    // Test stream
+    const streamChunks = await gatherIterator(await app.stream(input));
+    expect(streamChunks).toEqual([
+      { inner: { my_key: "my value there" } },
+      { side: { my_key: "my value there and back again" } },
+    ]);
+
+    // Test stream with values mode
+    const valueStreamChunks = await gatherIterator(
+      await app.stream(input, { streamMode: "values" })
+    );
+    expect(valueStreamChunks).toEqual([
+      { my_key: "my value", neverCalled },
+      { my_key: "my value there", neverCalled },
+      { my_key: "my value there and back again", neverCalled },
+    ]);
+
+    // Testing event streaming
+    // TODO: run ID is not plumbed through
+    /*
+    let timesCalled = 0;
+    for await (const event of app.streamEvents(input, {
+      version: "v2",
+      streamMode: "values",
+      runId: "00000000-0000-0000-0000-000000000000",
+    })) {
+      if (event.event === "on_chain_end") {
+        console.log("event", JSON.stringify(event, null, 2));
+        timesCalled += 1;
+        expect(event.data).toEqual({
+          output: {
+            my_key: "my value there and back again",
+            neverCalled,
+          },
+        });
+      }
+    }
+    expect(timesCalled).toBe(1);
+
+    // Testing event streaming without values mode
+    timesCalled = 0;
+    for await (const event of await app.streamEvents(input, {
+      version: "v2",
+      runId: "00000000-0000-0000-0000-000000000000",
+    })) {
+      if (
+        event.event === "on_chain_end" &&
+        event.run_id === "00000000-0000-0000-0000-000000000000"
+      ) {
+        timesCalled += 1;
+        expect(event.data).toEqual({
+          output: {
+            my_key: "my value there and back again",
+            neverCalled,
+          },
+        });
+      }
+    }
+    expect(timesCalled).toBe(1);
+
+    // Test with chain
+    const chain = app.pipe(new RunnablePassthrough());
+
+    // Test invoke on chain
+    const chainResult = await chain.invoke(input);
+    expect(chainResult).toEqual(expected);
+
+    // Test stream on chain
+    const chainStreamChunks = await gatherIterator(await chain.stream(input));
+    expect(chainStreamChunks).toEqual([
+      { inner: { my_key: "my value there" } },
+      { side: { my_key: "my value there and back again" } },
+    ]);
+
+    // Test events on chain
+    timesCalled = 0;
+    for await (const event of await chain.streamEvents(input, {
+      version: "v2",
+      runId: "00000000-0000-0000-0000-000000000000",
+    })) {
+      if (
+        event.event === "on_chain_end" &&
+        event.run_id === "00000000-0000-0000-0000-000000000000"
+      ) {
+        timesCalled += 1;
+        expect(event.data).toEqual({
+          output: [
+            { inner: { my_key: "my value there" } },
+            { side: { my_key: "my value there and back again" } },
+          ],
+        });
+      }
+    }
+    expect(timesCalled).toBe(1);
+    */
+  });
+
+  /**
+   * Port of test_doubly_nested_graph_interrupts from test_pregel_async_graph_structure.py
+   */
+  it("should handle interruptions in doubly nested graphs", async () => {
+    // Define state types using annotations
+    const StateAnnotation = Annotation.Root({
+      my_key: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+    });
+
+    const ChildStateAnnotation = Annotation.Root({
+      my_key: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+    });
+
+    const GrandChildStateAnnotation = Annotation.Root({
+      my_key: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+    });
+
+    // Define grandchild graph functions
+    const grandchild1 = async (
+      state: typeof GrandChildStateAnnotation.State
+    ): Promise<typeof GrandChildStateAnnotation.Update> => {
+      return { my_key: `${state.my_key} here` };
+    };
+
+    const grandchild2 = async (
+      state: typeof GrandChildStateAnnotation.State
+    ): Promise<typeof GrandChildStateAnnotation.Update> => {
+      return { my_key: `${state.my_key} and there` };
+    };
+
+    // Create grandchild graph
+    const grandchild = new StateGraph(GrandChildStateAnnotation)
+      .addNode("grandchild_1", grandchild1)
+      .addNode("grandchild_2", grandchild2)
+      .addEdge("grandchild_1", "grandchild_2")
+      .addEdge(START, "grandchild_1")
+      .addEdge("grandchild_2", END);
+
+    // Create child graph
+    const child = new StateGraph(ChildStateAnnotation)
+      .addNode(
+        "child_1",
+        grandchild.compile({
+          interruptBefore: ["grandchild_2"],
+        })
+      )
+      .addEdge(START, "child_1")
+      .addEdge("child_1", END);
+
+    // Define parent graph functions
+    const parent1 = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      return { my_key: `hi ${state.my_key}` };
+    };
+
+    const parent2 = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
+      return { my_key: `${state.my_key} and back again` };
+    };
+
+    // Create parent graph
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("parent_1", parent1)
+      .addNode("child", child.compile())
+      .addNode("parent_2", parent2)
+      .addEdge(START, "parent_1")
+      .addEdge("parent_1", "child")
+      .addEdge("child", "parent_2")
+      .addEdge("parent_2", END);
+
+    // Create checkpointer and compile app
+    const checkpointer = new MemorySaver();
+    const app = graph.compile({ checkpointer });
+
+    // Test invoke with nested interrupt
+    const config1 = { configurable: { thread_id: "1" } };
+    const invokeResult1 = await app.invoke(
+      { my_key: "my value" },
+      { ...config1, debug: true }
+    );
+    expect(invokeResult1).toEqual({
+      my_key: "hi my value",
+    });
+
+    const invokeResult2 = await app.invoke(null, { ...config1, debug: true });
+    expect(invokeResult2).toEqual({
+      my_key: "hi my value here and there and back again",
+    });
+
+    // Test stream updates with nested interrupt
+    const nodesFinished: string[] = [];
+    const config2 = {
+      configurable: {
+        thread_id: "2",
+        [CONFIG_KEY_NODE_FINISHED]: (node: string) => {
+          nodesFinished.push(node);
+        },
+      },
+    };
+
+    const streamResults1 = await gatherIterator(
+      await app.stream({ my_key: "my value" }, config2)
+    );
+    expect(streamResults1).toEqual([
+      { parent_1: { my_key: "hi my value" } },
+      { __interrupt__: expect.any(Array) },
+    ]);
+    expect(nodesFinished).toEqual(["parent_1", "grandchild_1"]);
+
+    const streamResults2 = await gatherIterator(
+      await app.stream(null, config2)
+    );
+    expect(streamResults2).toEqual([
+      { child: { my_key: "hi my value here and there" } },
+      { parent_2: { my_key: "hi my value here and there and back again" } },
+    ]);
+    expect(nodesFinished).toEqual([
+      "parent_1",
+      "grandchild_1",
+      "grandchild_2",
+      "child_1",
+      "child",
+      "parent_2",
+    ]);
+
+    // Test stream values with nested interrupt
+    const config3 = { configurable: { thread_id: "3" } };
+    const streamValuesResults1 = await gatherIterator(
+      await app.stream(
+        { my_key: "my value" },
+        { ...config3, streamMode: "values" }
+      )
+    );
+    expect(streamValuesResults1).toEqual([
+      { my_key: "my value" },
+      { my_key: "hi my value" },
+    ]);
+
+    const streamValuesResults2 = await gatherIterator(
+      await app.stream(null, { ...config3, streamMode: "values" })
+    );
+    expect(streamValuesResults2).toEqual([
+      { my_key: "hi my value" },
+      { my_key: "hi my value here and there" },
+      { my_key: "hi my value here and there and back again" },
+    ]);
+  });
+
+  /**
+   * Port of test_debug_nested_subgraphs from test_pregel_async_graph_structure.py
+   *
+   * TODO: streamed configs don't contain the checkpoint_ns key in the checkpoint_map field
+   */
+  it.skip("should debug nested subgraphs", async () => {
+    // Define state annotations
+    const StateAnnotation = Annotation.Root({
+      messages: Annotation<string[]>({
+        reducer: (a, b) => a.concat(b),
+        default: () => [],
+      }),
+    });
+
+    // Create helper function for nodes
+    const node = (name: string) => {
+      return async (): Promise<typeof StateAnnotation.Update> => {
+        return { messages: [`entered ${name} node`] };
+      };
+    };
+
+    // Create child graph
+    const child = new StateGraph(StateAnnotation)
+      .addNode("c_one", node("c_one"))
+      .addNode("c_two", node("c_two"))
+      .addEdge(START, "c_one")
+      .addEdge("c_one", "c_two")
+      .addEdge("c_two", END);
+
+    // Create parent graph
+    const parent = new StateGraph(StateAnnotation)
+      .addNode("p_one", node("p_one"))
+      .addNode("p_two", child.compile())
+      .addEdge(START, "p_one")
+      .addEdge("p_one", "p_two")
+      .addEdge("p_two", END);
+
+    // Create grandparent graph
+    const grandParent = new StateGraph(StateAnnotation)
+      .addNode("gp_one", node("gp_one"))
+      .addNode("gp_two", parent.compile())
+      .addEdge(START, "gp_one")
+      .addEdge("gp_one", "gp_two")
+      .addEdge("gp_two", END);
+
+    // Compile the graph
+    const graph = grandParent.compile({ checkpointer: new MemorySaver() });
+
+    // Stream with debug mode
+    const config = { configurable: { thread_id: "1" } };
+    const eventsStream = await graph.stream(
+      { messages: [] },
+      { ...config, streamMode: "debug", subgraphs: true }
+    );
+    const events = await gatherIterator(eventsStream);
+
+    // Helper to normalize configs for comparison
+    const normalizeConfig = (
+      config?: LangGraphRunnableConfig
+    ): LangGraphRunnableConfig | null => {
+      if (!config) return null;
+
+      const cleanConfig: LangGraphRunnableConfig = {
+        configurable: {
+          thread_id: config.configurable?.thread_id,
+          [CONFIG_KEY_CHECKPOINT_ID]:
+            config.configurable?.[CONFIG_KEY_CHECKPOINT_ID],
+          [CONFIG_KEY_CHECKPOINT_NS]:
+            config.configurable?.[CONFIG_KEY_CHECKPOINT_NS],
+          [CONFIG_KEY_CHECKPOINT_MAP]:
+            config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP],
+        },
+      };
+
+      return cleanConfig;
+    };
+
+    // Collect namespaces and checkpoints
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const streamNs: Record<string, any[]> = {};
+
+    for (const [ns, e] of events) {
+      const nsKey = Array.isArray(ns) ? ns.join("|") : "";
+
+      if (!streamNs[nsKey]) {
+        streamNs[nsKey] = [];
+      }
+
+      if (e.type === "checkpoint") {
+        streamNs[nsKey].push(e.payload);
+      }
+    }
+
+    // Check namespaces - JS represents them differently than Python
+    expect(Object.keys(streamNs).length).toBe(3);
+    expect(Object.keys(streamNs)).toContain(""); // Root namespace
+
+    // Get history for each namespace
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const historyNs: Record<string, StateSnapshot[]> = {};
+
+    for (const nsKey of Object.keys(streamNs)) {
+      const ns = nsKey === "" ? [] : nsKey.split("|");
+      const historyConfig = {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: ns.join("|"),
+        },
+      };
+
+      const historyArray = await gatherIterator(
+        await graph.getStateHistory(historyConfig)
+      );
+      historyNs[nsKey] = historyArray.reverse();
+    }
+
+    // Compare checkpoint data with history
+    for (const nsKey of Object.keys(streamNs)) {
+      const checkpointEvents = streamNs[nsKey];
+      const checkpointHistory = historyNs[nsKey];
+
+      expect(checkpointEvents.length).toBe(checkpointHistory.length);
+
+      for (let i = 0; i < checkpointEvents.length; i += 1) {
+        const stream = checkpointEvents[i];
+        const history = checkpointHistory[i];
+
+        expect(stream.values).toEqual(history.values);
+        expect(stream.next).toEqual(Array.from(history.next));
+
+        expect(normalizeConfig(stream.config)).toEqual(
+          normalizeConfig(history.config)
+        );
+
+        expect(normalizeConfig(stream.parentConfig)).toEqual(
+          normalizeConfig(history.parentConfig)
+        );
+
+        expect(stream.tasks.length).toBe(history.tasks.length);
+
+        for (let j = 0; j < stream.tasks.length; j += 1) {
+          const streamTask = stream.tasks[j];
+          const historyTask = history.tasks[j];
+
+          expect(streamTask.id).toBe(historyTask.id);
+          expect(streamTask.name).toBe(historyTask.name);
+          expect(streamTask.interrupts).toEqual(historyTask.interrupts);
+          expect(streamTask.error).toEqual(historyTask.error);
+          expect(streamTask.state).toEqual(historyTask.state);
+        }
+      }
+    }
+  });
+
+  /**
+   * Port of test_nested_graph_state_error_handling from test_pregel_async_graph_structure.py
+   *
+   * TODO: fails because invalid state updates are allowed rather than rejected
+   */
+  it.skip("should handle errors when updating state in nested graphs", async () => {
+    // Define state annotations
+    const StateAnnotation = Annotation.Root({
+      count: Annotation<number>({
+        reducer: (_, b) => b,
+        default: () => 0,
+      }),
+    });
+
+    // Create child node function
+    const childNode = (
+      state: typeof StateAnnotation.State
+    ): typeof StateAnnotation.Update => {
+      return { count: state.count + 1 };
+    };
+
+    // Create child graph
+    const child = new StateGraph(StateAnnotation)
+      .addNode("child", childNode)
+      .addEdge(START, "child");
+
+    // Create parent graph
+    const parent = new StateGraph(StateAnnotation)
+      .addNode("child_graph", child.compile())
+      .addEdge(START, "child_graph");
+
+    // Compile the graph
+    const app = parent.compile({ checkpointer: new MemorySaver() });
+
+    // Test invalid state update on parent
+    await expect(
+      app.updateState(
+        { configurable: { thread_id: "1" } },
+        { invalid_key: "value" }
+      )
+    ).rejects.toThrow();
+
+    // Test invalid state update on child
+    await expect(
+      app.updateState(
+        { configurable: { thread_id: "1", checkpoint_ns: "child_graph" } },
+        { invalid_key: "value" }
+      )
+    ).rejects.toThrow();
+  });
+
+  /**
+   * Port of test_parent_command from test_pregel_async_graph_structure.py
+   */
+  it("should handle parent commands", async () => {
+    // Import necessary components for messaging
+    const { HumanMessage } = await import("@langchain/core/messages");
+    const { MessagesAnnotation } = await import(
+      "../../graph/messages_annotation.js"
+    );
+
+    // Create a tool that returns a parent command
+    const getUserName = (): Command => {
+      return new Command({
+        update: { user_name: "Meow" },
+        graph: Command.PARENT,
+      });
+    };
+
+    // Create the subgraph that uses the tool
+    const subgraphBuilder = new StateGraph(MessagesAnnotation)
+      .addNode("tool", getUserName)
+      .addEdge(START, "tool");
+
+    const subgraph = subgraphBuilder.compile();
+
+    // Create a custom parent state annotation
+    const CustomParentStateAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      user_name: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+    });
+
+    // Create the parent graph
+    const builder = new StateGraph(CustomParentStateAnnotation)
+      .addNode("alice", subgraph)
+      .addEdge(START, "alice");
+
+    // Create a checkpointer and compile the graph
+    const checkpointer = new MemorySaver();
+    const graph = builder.compile({ checkpointer });
+
+    // Test invoke
+    const config = { configurable: { thread_id: "1" } };
+    const humanMessage = new HumanMessage("get user name");
+    const result = await graph.invoke({ messages: [humanMessage] }, config);
+
+    // Check the result
+    expect(result).toEqual({
+      messages: [humanMessage],
+      user_name: "Meow",
+    });
+
+    // Check the state
+    const state = await graph.getState(config);
+
+    // Verify basic properties
+    expect(state.values).toEqual({
+      messages: [humanMessage],
+      user_name: "Meow",
+    });
+
+    expect(state.next).toEqual([]);
+
+    // Verify metadata structure (not exact values since they can vary)
+    expect(state.metadata).toMatchObject({
+      source: "loop",
+      writes: {
+        alice: {
+          user_name: "Meow",
+        },
+      },
+      thread_id: "1",
+      step: 1,
+    });
+
+    // Check for parent_config
+    expect(state.config).toMatchObject({
+      configurable: {
+        thread_id: "1",
+        checkpoint_ns: "",
+        checkpoint_id: expect.any(String),
+      },
+    });
   });
 });
