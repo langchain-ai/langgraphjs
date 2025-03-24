@@ -3,7 +3,14 @@ import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { RunnablePassthrough } from "@langchain/core/runnables";
 import { StateGraph } from "../../graph/state.js";
 import { Annotation } from "../../web.js";
-import { Send, Command, isCommand, INTERRUPT, START, END } from "../../constants.js";
+import {
+  Send,
+  Command,
+  isCommand,
+  INTERRUPT,
+  START,
+  END,
+} from "../../constants.js";
 import { task, entrypoint } from "../../func/index.js";
 import { interrupt } from "../../interrupt.js";
 import { gatherIterator } from "../../utils.js";
@@ -725,7 +732,7 @@ describe("Graph Structure Tests (Python port)", () => {
       "3",
     ]);
   });
-  
+
   /**
    * Port of test_invoke_two_processes_two_in_join_two_out from test_pregel_async_graph_structure.py
    */
@@ -983,21 +990,24 @@ describe("Graph Structure Tests (Python port)", () => {
 
     // Test without concurrency limits
     const result1 = await graph.invoke({ items: ["0"] });
-    
+
     // Create expected result with all numbers from 0-99
     const expectedNumbers = Array.from({ length: 100 }, (_, i) => i);
-    
+
     // Check the result includes the expected values
     expect(result1.items).toEqual(["0", "1", ...expectedNumbers, "3"]);
     expect(node2.maxCurrently).toBe(100);
     expect(node2.currently).toBe(0);
-    
+
     // Reset for next test
     node2.maxCurrently = 0;
 
     // Test with concurrency limit of 10
-    const result2 = await graph.invoke({ items: ["0"] }, { maxConcurrency: 10 });
-    
+    const result2 = await graph.invoke(
+      { items: ["0"] },
+      { maxConcurrency: 10 }
+    );
+
     // Check the result includes the expected values
     expect(result2.items).toEqual(["0", "1", ...expectedNumbers, "3"]);
     expect(node2.maxCurrently).toBe(10);
@@ -1010,15 +1020,15 @@ describe("Graph Structure Tests (Python port)", () => {
       interruptBefore: ["2"],
     });
 
-    const thread1 = { 
-      maxConcurrency: 10, 
-      configurable: { thread_id: "1" } 
+    const thread1 = {
+      maxConcurrency: 10,
+      configurable: { thread_id: "1" },
     };
 
     // First invocation should stop at the interrupt
     const result3 = await graphWithInterrupt.invoke({ items: ["0"] }, thread1);
     expect(result3.items).toEqual(["0", "1"]);
-    
+
     // Second invocation should complete the execution
     const result4 = await graphWithInterrupt.invoke(null, thread1);
     expect(result4.items).toEqual(["0", "1", ...expectedNumbers, "3"]);
@@ -1079,28 +1089,31 @@ describe("Graph Structure Tests (Python port)", () => {
     const builder = new StateGraph(StateAnnotation)
       .addNode("1", node1, { ends: ["2"] })
       .addNode("2", node2, { ends: ["3"] })
-      .addNode("3", node3 )
+      .addNode("3", node3)
       .addEdge(START, "1");
 
     const graph = builder.compile();
 
     // Test without concurrency limits
     const result1 = await graph.invoke({ items: ["0"] });
-    
+
     // Create expected result with all numbers from 0-99
     const expectedNumbers = Array.from({ length: 100 }, (_, i) => i);
-    
+
     // Check the result includes the expected values
     expect(result1.items).toEqual(["0", "1", ...expectedNumbers, "3"]);
     expect(node2MaxCurrently).toBe(100);
     expect(node2Currently).toBe(0);
-    
+
     // Reset for next test
     node2MaxCurrently = 0;
 
     // Test with concurrency limit of 10
-    const result2 = await graph.invoke({ items: ["0"] }, { maxConcurrency: 10 });
-    
+    const result2 = await graph.invoke(
+      { items: ["0"] },
+      { maxConcurrency: 10 }
+    );
+
     // Check the result includes the expected values
     expect(result2.items).toEqual(["0", "1", ...expectedNumbers, "3"]);
     expect(node2MaxCurrently).toBe(10);
@@ -1113,15 +1126,15 @@ describe("Graph Structure Tests (Python port)", () => {
       interruptBefore: ["2"],
     });
 
-    const thread1 = { 
-      maxConcurrency: 10, 
-      configurable: { thread_id: "1" } 
+    const thread1 = {
+      maxConcurrency: 10,
+      configurable: { thread_id: "1" },
     };
 
     // First invocation should stop at the interrupt
     const result3 = await graphWithInterrupt.invoke({ items: ["0"] }, thread1);
     expect(result3.items).toEqual(["0", "1"]);
-    
+
     // Second invocation should complete the execution
     const result4 = await graphWithInterrupt.invoke(null, thread1);
     expect(result4.items).toEqual(["0", "1", ...expectedNumbers, "3"]);
@@ -1131,13 +1144,12 @@ describe("Graph Structure Tests (Python port)", () => {
    * Port of test_conditional_entrypoint_graph from test_pregel_async_graph_structure.py
    */
   it("should handle conditional entrypoint graphs", async () => {
-    
     const StateAnnotation = Annotation.Root({
       value: Annotation<string>({
         default: () => "",
         reducer: (_, b) => b,
       }),
-    })
+    });
 
     // Define simple node functions that process strings
     const left = async (data: typeof StateAnnotation.State) => {
@@ -1180,7 +1192,9 @@ describe("Graph Structure Tests (Python port)", () => {
     expect(result.value).toBe("what is weather in sf->right");
 
     // Test stream
-    const streamResults = await gatherIterator(await app.stream({ value: "what is weather in sf" }));
+    const streamResults = await gatherIterator(
+      await app.stream({ value: "what is weather in sf" })
+    );
     expect(streamResults).toEqual([
       { right: { value: "what is weather in sf->right" } },
     ]);
@@ -1207,16 +1221,22 @@ describe("Graph Structure Tests (Python port)", () => {
     });
 
     // Define node functions that work with state
-    const left = async (state: typeof StateAnnotation.State): Promise<typeof StateAnnotation.Update> => {
+    const left = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
       return { output: `${state.input}->left` };
     };
 
-    const right = async (state: typeof StateAnnotation.State): Promise<typeof StateAnnotation.Update> => {
+    const right = async (
+      state: typeof StateAnnotation.State
+    ): Promise<typeof StateAnnotation.Update> => {
       return { output: `${state.input}->right` };
     };
 
     // Function to decide which path to take
-    const shouldStart = (state: typeof StateAnnotation.State): "go-left" | "go-right" => {
+    const shouldStart = (
+      state: typeof StateAnnotation.State
+    ): "go-left" | "go-right" => {
       // Verify steps is an empty array as expected
       expect(state.steps).toEqual([]);
 
@@ -1234,24 +1254,25 @@ describe("Graph Structure Tests (Python port)", () => {
       .addNode("right", right);
 
     // In JS we use addConditionalEdges instead of setConditionalEntryPoint
-    workflow.addConditionalEdges(START, shouldStart, {
-      "go-left": "left",
-      "go-right": "right",
-    })
+    workflow
+      .addConditionalEdges(START, shouldStart, {
+        "go-left": "left",
+        "go-right": "right",
+      })
 
-    // Add remaining edges
-    .addConditionalEdges("left", () => END)
-    .addEdge("right", END);
+      // Add remaining edges
+      .addConditionalEdges("left", () => END)
+      .addEdge("right", END);
 
     const app = workflow.compile();
 
     // Test invoke
-    const result = await app.invoke({ 
+    const result = await app.invoke({
       input: "what is weather in sf",
       output: "",
       steps: [],
     });
-    
+
     expect(result).toEqual({
       input: "what is weather in sf",
       output: "what is weather in sf->right",
@@ -1260,13 +1281,13 @@ describe("Graph Structure Tests (Python port)", () => {
 
     // Test stream
     const streamResults = await gatherIterator(
-      await app.stream({ 
+      await app.stream({
         input: "what is weather in sf",
         output: "",
         steps: [],
       })
     );
-    
+
     expect(streamResults).toEqual([
       { right: { output: "what is weather in sf->right" } },
     ]);
