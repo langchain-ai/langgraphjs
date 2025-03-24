@@ -40,6 +40,11 @@ export type TickOptions = {
    * An optional callback to be called after all task writes are completed.
    */
   onStepWrite?: (step: number, writes: PendingWrite[]) => void;
+
+  /**
+   * The maximum number of tasks to execute concurrently.
+   */
+  maxConcurrency?: number;
 };
 
 /**
@@ -72,8 +77,10 @@ export class PregelRunner {
    * @param options - Options for the execution.
    */
   async tick(options: TickOptions = {}) {
-    const { timeout, signal, retryPolicy, onStepWrite } = options;
+    const { timeout, signal, retryPolicy, onStepWrite, maxConcurrency } =
+      options;
 
+    const nodeErrors: Set<Error> = new Set();
     let graphBubbleUp: GraphBubbleUp | undefined;
 
     // Start task execution
@@ -85,6 +92,7 @@ export class PregelRunner {
       stepTimeout: timeout,
       signal,
       retryPolicy,
+      maxConcurrency,
     });
 
     for await (const { task, error } of taskStream) {
@@ -93,6 +101,8 @@ export class PregelRunner {
         graphBubbleUp = error;
       } else if (isGraphBubbleUp(error) && !isGraphInterrupt(graphBubbleUp)) {
         graphBubbleUp = error;
+      } else if (error) {
+        nodeErrors.add(error);
       }
     }
 
@@ -102,6 +112,15 @@ export class PregelRunner {
         .map((task) => task.writes)
         .flat()
     );
+
+    if (nodeErrors.size === 1) {
+      throw Array.from(nodeErrors)[0];
+    } else if (nodeErrors.size > 1) {
+      throw new AggregateError(
+        Array.from(nodeErrors),
+        `Multiple errors occurred during superstep ${this.loop.step}. See the "errors" field of this exception for more details.`
+      );
+    }
 
     if (isGraphInterrupt(graphBubbleUp)) {
       throw graphBubbleUp;
@@ -123,9 +142,10 @@ export class PregelRunner {
       stepTimeout?: number;
       signal?: AbortSignal;
       retryPolicy?: RetryPolicy;
+      maxConcurrency?: number;
     }
   ): AsyncGenerator<SettledPregelTask> {
-    const { stepTimeout, retryPolicy } = options ?? {};
+    const { stepTimeout, retryPolicy, maxConcurrency } = options ?? {};
     let signal = options?.signal;
 
     const promiseAddedSymbol = Symbol.for("promiseAdded");
@@ -310,23 +330,7 @@ export class PregelRunner {
       throw new Error("Abort");
     }
 
-    // Start tasks
-    Object.assign(
-      executingTasksMap,
-      Object.fromEntries(
-        tasks.map((pregelTask) => {
-          return [
-            pregelTask.id,
-            _runWithRetry(pregelTask, retryPolicy, {
-              [CONFIG_KEY_SEND]: writer?.bind(null, this, pregelTask),
-              [CONFIG_KEY_CALL]: call?.bind(null, this, pregelTask),
-            }).catch((error) => {
-              return { task: pregelTask, error };
-            }),
-          ];
-        })
-      )
-    );
+    let startedTasksCount = 0;
 
     let listener: () => void;
     const signalPromise = new Promise<never>((_resolve, reject) => {
@@ -334,7 +338,26 @@ export class PregelRunner {
       signal?.addEventListener("abort", listener);
     }).finally(() => signal?.removeEventListener("abort", listener));
 
-    while (Object.keys(executingTasksMap).length > 0) {
+    while (
+      (startedTasksCount === 0 || Object.keys(executingTasksMap).length > 0) &&
+      tasks.length
+    ) {
+      for (
+        ;
+        Object.values(executingTasksMap).length <
+          (maxConcurrency ?? tasks.length) && startedTasksCount < tasks.length;
+        startedTasksCount += 1
+      ) {
+        const task = tasks[startedTasksCount];
+
+        executingTasksMap[task.id] = _runWithRetry(task, retryPolicy, {
+          [CONFIG_KEY_SEND]: writer?.bind(null, this, task),
+          [CONFIG_KEY_CALL]: call?.bind(null, this, task),
+        }).catch((error) => {
+          return { task, error };
+        });
+      }
+
       const settledTask = await Promise.race([
         ...Object.values(executingTasksMap),
         signalPromise,
@@ -377,8 +400,6 @@ export class PregelRunner {
         this.loop.putWrites(task.id, [
           [ERROR, { message: error.message, name: error.name }],
         ]);
-        // TODO: is throwing here safe? what about commits from other concurrent tasks?
-        throw error;
       }
     } else {
       if (
