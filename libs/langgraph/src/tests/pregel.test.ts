@@ -9437,6 +9437,29 @@ graph TD;
     );
   });
 
+  it("should pass custom callbacks set via .withConfig", async () => {
+    const StateAnnotation = Annotation.Root({ prop: Annotation<string> });
+
+    const seen = new Set<string>();
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("one", () => ({ prop: "foo" }))
+      .addEdge(START, "one")
+      .compile()
+      .withConfig({
+        callbacks: [
+          {
+            handleChainStart: () => seen.add("handleChainStart"),
+            handleChainEnd: () => seen.add("handleChainEnd"),
+          },
+        ],
+      });
+
+    await gatherIterator(
+      graph.streamEvents({ prop: "bar" }, { version: "v2" })
+    );
+    expect(seen).toEqual(new Set(["handleChainStart", "handleChainEnd"]));
+  });
+
   it("should interrupt and resume with Command inside a subgraph", async () => {
     const subgraph = new StateGraph(MessagesAnnotation)
       .addNode("one", (_) => {

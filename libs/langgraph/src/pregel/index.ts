@@ -25,6 +25,7 @@ import {
   uuid5,
   CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
+import type { StreamEvent } from "@langchain/core/tracers/log_stream";
 import {
   BaseChannel,
   createCheckpoint,
@@ -111,6 +112,7 @@ import { PregelRunner } from "./runner.js";
 import { IterableReadableWritableStream } from "./stream.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
+type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
 
 function isString(value: unknown): value is string {
   return typeof value === "string";
@@ -1650,6 +1652,40 @@ export class Pregel<
       ...options,
     };
     return super.stream(input, config);
+  }
+
+  override streamEvents(
+    input: InputType | Command | null,
+    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+      version: "v1" | "v2";
+    },
+    streamOptions?: StreamEventsOptions
+  ): IterableReadableStream<StreamEvent>;
+
+  override streamEvents(
+    input: InputType | Command | null,
+    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+      version: "v1" | "v2";
+      encoding: "text/event-stream";
+    },
+    streamOptions?: StreamEventsOptions
+  ): IterableReadableStream<Uint8Array>;
+
+  override streamEvents(
+    input: InputType | Command | null,
+    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+      version: "v1" | "v2";
+    },
+    streamOptions?: StreamEventsOptions
+  ): IterableReadableStream<StreamEvent | Uint8Array> {
+    // Similar to `stream`, we need to pass the `config.callbacks` here,
+    // otherwise the user-provided callback will get lost in `ensureLangGraphConfig`.
+    const config = {
+      recursionLimit: this.config?.recursionLimit,
+      callbacks: this.config?.callbacks,
+      ...options,
+    };
+    return super.streamEvents(input, config, streamOptions);
   }
 
   /**
