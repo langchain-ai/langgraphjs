@@ -30,7 +30,7 @@ export async function createVMInstance(
     instance = await client.startWindows({ timeoutHours });
   } else if (environment === "web") {
     // Uncomment once blocked domains are supported
-    // const blockedDomains = BLOCKED_DOMAINS.map((d) => d.replace("https://", "").replace("www.", ""))
+    // const cleanedBlockedDomains = blockedDomains.map((d) => d.replace("https://", "").replace("www.", ""))
     instance = await client.startBrowser({ timeoutHours });
   } else {
     throw new Error(

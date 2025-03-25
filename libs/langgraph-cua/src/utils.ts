@@ -7,18 +7,8 @@ import {
   WindowsInstance,
 } from "scrapybara";
 import { getEnvironmentVariable } from "@langchain/core/utils/env";
+import { AIMessage, BaseMessage } from "@langchain/core/messages";
 import { getConfigurationWithDefaults } from "./types.js";
-
-// Copied from the OpenAI example repository
-// https://github.com/openai/openai-cua-sample-app/blob/eb2d58ba77ffd3206d3346d6357093647d29d99c/utils.py#L13
-// const BLOCKED_DOMAINS = [
-//     "maliciousbook.com",
-//     "evilvideos.com",
-//     "darkwebforum.com",
-//     "shadytok.com",
-//     "suspiciouspins.com",
-//     "ilanbigio.com",
-// ]
 
 /**
  * Gets the Scrapybara client, using the API key from the graph's configuration object.
@@ -95,4 +85,40 @@ export async function stopInstance(
   }
   const instance = await client_.get(id);
   await instance.stop();
+}
+
+/**
+ * Gets the tool outputs from an AIMessage.
+ *
+ * @param {AIMessage} message The message to get tool outputs from.
+ * @returns {ResponseComputerToolCall[] | undefined} The tool outputs from the message, or undefined if there are none.
+ */
+export function getToolOutputs(
+  message: AIMessage
+): ResponseComputerToolCall[] | undefined {
+  const toolOutputs = message.additional_kwargs?.tool_outputs
+    ? message.additional_kwargs?.tool_outputs
+    : message.response_metadata.output;
+
+  if (!toolOutputs || !toolOutputs.length) {
+    return undefined;
+  }
+
+  return toolOutputs.filter(
+    (output: Record<string, unknown>) => output.type === "computer_call"
+  );
+}
+
+/**
+ * Checks if a message is a computer call tool message.
+ *
+ * @param {BaseMessage} message The message to check.
+ * @returns {boolean} True if the message is a computer call tool message, false otherwise.
+ */
+export function isComputerCallToolMessage(message: BaseMessage): boolean {
+  return (
+    message.getType() === "tool" &&
+    "type" in message.additional_kwargs &&
+    message.additional_kwargs.type === "computer_call_output"
+  );
 }
