@@ -16,7 +16,8 @@ export const config = {
     web: "web",
     pregel: "pregel/index",
     prebuilt: "prebuilt/index",
-    remote: "remote"
+    remote: "remote",
+    zod: "graph/zod/index",
   },
   tsConfigPath: resolve("./tsconfig.json"),
   cjsSource: "./dist-cjs",

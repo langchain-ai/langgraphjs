@@ -2,7 +2,7 @@
   "extends": "@tsconfig/recommended",
   "compilerOptions": {
     "target": "ES2021",
-    "lib": ["ES2021", "ES2022.Object", "DOM"],
+    "lib": ["ES2021", "ES2022.Object", "ES2022.Error", "DOM"],
     "module": "NodeNext",
     "moduleResolution": "nodenext",
     "esModuleInterop": true,
