@@ -27,6 +27,8 @@ export const CONFIG_KEY_NODE_FINISHED = "__pregel_node_finished";
 // this one is part of public API
 export const CONFIG_KEY_CHECKPOINT_MAP = "checkpoint_map";
 
+export const CONFIG_KEY_ABORT_SIGNALS = "__pregel_abort_signals";
+
 /** Special channel reserved for graph interrupts */
 export const INTERRUPT = "__interrupt__";
 /** Special channel reserved for graph resume */

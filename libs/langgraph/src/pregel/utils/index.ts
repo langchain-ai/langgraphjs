@@ -118,7 +118,11 @@ export function patchCheckpointMap(
  * @param signals - The abort signals to combine.
  * @returns A single abort signal that is aborted if any of the input signals are aborted.
  */
-export function combineAbortSignals(...signals: AbortSignal[]) {
+export function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
+  if (signals.length === 1) {
+    return signals[0];
+  }
+
   if ("any" in AbortSignal) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (AbortSignal as any).any(signals);

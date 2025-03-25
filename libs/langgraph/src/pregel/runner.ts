@@ -1,6 +1,15 @@
 import { PendingWrite } from "@langchain/langgraph-checkpoint";
-import { Call, PregelExecutableTask, PregelScratchpad } from "./types.js";
-import { combineAbortSignals, RetryPolicy } from "./utils/index.js";
+import {
+  Call,
+  PregelAbortSignals,
+  PregelExecutableTask,
+  PregelScratchpad,
+} from "./types.js";
+import {
+  combineAbortSignals,
+  patchConfigurable,
+  RetryPolicy,
+} from "./utils/index.js";
 import {
   CONFIG_KEY_SEND,
   CONFIG_KEY_SCRATCHPAD,
@@ -12,6 +21,7 @@ import {
   TAG_HIDDEN,
   RETURN,
   CONFIG_KEY_CALL,
+  CONFIG_KEY_ABORT_SIGNALS,
 } from "../constants.js";
 import { GraphBubbleUp, isGraphBubbleUp, isGraphInterrupt } from "../errors.js";
 import { _runWithRetry, SettledPregelTask } from "./retry.js";
@@ -79,24 +89,23 @@ export class PregelRunner {
   async tick(options: TickOptions = {}) {
     const { timeout, retryPolicy, onStepWrite, maxConcurrency } = options;
 
-    let signal = options?.signal;
-
     const nodeErrors: Set<Error> = new Set();
     let graphBubbleUp: GraphBubbleUp | undefined;
+    const exceptionSignalController = new AbortController();
 
     // Start task execution
     const pendingTasks = Object.values(this.loop.tasks).filter(
       (t) => t.writes.length === 0
     );
 
-    if (signal && timeout) {
-      signal = combineAbortSignals(signal, AbortSignal.timeout(timeout));
-    } else if (timeout) {
-      signal = AbortSignal.timeout(timeout);
-    }
+    const currentSignals = this._initializeAbortSignals({
+      exceptionSignalController,
+      timeout,
+      signal: options.signal,
+    });
 
     const taskStream = this._executeTasksWithRetry(pendingTasks, {
-      signal,
+      signals: currentSignals,
       retryPolicy,
       maxConcurrency,
     });
@@ -108,6 +117,21 @@ export class PregelRunner {
       } else if (isGraphBubbleUp(error) && !isGraphInterrupt(graphBubbleUp)) {
         graphBubbleUp = error;
       } else if (error && (nodeErrors.size === 0 || !signalAborted)) {
+        /*
+         * The goal here is to capture the exception that causes the graph to terminate early. In
+         * theory it's possible for multiple nodes to throw, so this also handles the edge case of
+         * capturing concurrent exceptions thrown before the node saw an abort. This is checked via
+         * the signalAborted flag, which records the state of the abort signal at the time the node
+         * execution finished.
+         *
+         * There is a case however where one node throws some error causing us to trigger an abort,
+         * which then causes other concurrently executing nodes to throw their own AbortErrors. In
+         * this case we don't care about reporting the abort errors thrown by the other nodes,
+         * because they don't tell the user anything about what caused the graph execution to
+         * terminate early, so we ignore them (and any other errors that occur after the node sees
+         * an abort signal).
+         */
+        exceptionSignalController.abort();
         nodeErrors.add(error);
       }
     }
@@ -138,6 +162,81 @@ export class PregelRunner {
   }
 
   /**
+   * Initializes the current AbortSignals for the PregelRunner, handling the various ways that
+   * AbortSignals must be chained together so that the PregelLoop can be interrupted if necessary
+   * while still allowing nodes to gracefully exit.
+   *
+   * This method must only be called once per PregelRunner#tick. It has the side effect of updating
+   * the PregelLoop#config with the new AbortSignals so they may be propagated correctly to future
+   * ticks and subgraph calls.
+   *
+   * @param options - Options for the initialization.
+   * @returns The current abort signals.
+   * @internal
+   */
+  private _initializeAbortSignals({
+    exceptionSignalController,
+    timeout,
+    signal,
+  }: {
+    exceptionSignalController: AbortController;
+    timeout?: number;
+    signal?: AbortSignal;
+  }): PregelAbortSignals {
+    const previousSignals: PregelAbortSignals =
+      (this.loop.config.configurable?.[
+        CONFIG_KEY_ABORT_SIGNALS
+      ] as PregelAbortSignals) ?? {};
+
+    // This is true when a node calls a subgraph and, rather than forwarding its own AbortSignal,
+    // it creates a new AbortSignal and passes that along instead.
+    const subgraphCalledWithSignalCreatedByNode =
+      signal &&
+      previousSignals.composedAbortSignal &&
+      signal !== previousSignals.composedAbortSignal;
+
+    const externalAbortSignal = subgraphCalledWithSignalCreatedByNode
+      ? // Chain the signals here to make sure that the subgraph receives the external abort signal in
+        // addition to the signal created by the node.
+        combineAbortSignals(previousSignals.externalAbortSignal!, signal!)
+      : // Otherwise, just keep using the external abort signal, or initialize it if it hasn't been
+        // assigned yet
+        previousSignals.externalAbortSignal ?? signal;
+
+    const errorAbortSignal = previousSignals.errorAbortSignal
+      ? // Chaining here rather than always using a fresh one handles the case where a subgraph is
+        // called in a parallel branch to some other node in the parent graph.
+        combineAbortSignals(
+          previousSignals.errorAbortSignal!,
+          exceptionSignalController.signal
+        )
+      : exceptionSignalController.signal;
+
+    const timeoutAbortSignal = timeout
+      ? AbortSignal.timeout(timeout)
+      : undefined;
+
+    const composedAbortSignal: AbortSignal = combineAbortSignals(
+      ...(externalAbortSignal ? [externalAbortSignal] : []),
+      ...(timeoutAbortSignal ? [timeoutAbortSignal] : []),
+      errorAbortSignal
+    );
+
+    const currentSignals: PregelAbortSignals = {
+      externalAbortSignal,
+      errorAbortSignal,
+      timeoutAbortSignal,
+      composedAbortSignal,
+    };
+
+    this.loop.config = patchConfigurable(this.loop.config, {
+      [CONFIG_KEY_ABORT_SIGNALS]: currentSignals,
+    });
+
+    return currentSignals;
+  }
+
+  /**
    * Concurrently executes tasks with the requested retry policy, yielding a {@link SettledPregelTask} for each task as it completes.
    * @param tasks - The tasks to execute.
    * @param options - Options for the execution.
@@ -145,13 +244,12 @@ export class PregelRunner {
   private async *_executeTasksWithRetry(
     tasks: PregelExecutableTask<string, string>[],
     options?: {
-      signal?: AbortSignal;
+      signals?: PregelAbortSignals;
       retryPolicy?: RetryPolicy;
       maxConcurrency?: number;
     }
   ): AsyncGenerator<SettledPregelTask> {
-    const { retryPolicy, maxConcurrency } = options ?? {};
-    let signal = options?.signal;
+    const { retryPolicy, maxConcurrency, signals } = options ?? {};
 
     const promiseAddedSymbol = Symbol.for("promiseAdded");
 
@@ -317,7 +415,7 @@ export class PregelRunner {
       return Promise.resolve();
     }
 
-    if (signal?.aborted) {
+    if (signals?.composedAbortSignal?.aborted) {
       // note: don't use throwIfAborted here because it throws a DOMException,
       // which isn't consistent with how we throw on abort below.
       throw new Error("Abort");
@@ -325,20 +423,25 @@ export class PregelRunner {
 
     let startedTasksCount = 0;
 
-    const originalSignal = signal;
-
     let listener: () => void;
-    const signalPromise = new Promise<never>((_resolve, reject) => {
-      listener = () => reject(new Error("Abort"));
-      originalSignal?.addEventListener("abort", listener);
-    }).finally(() => originalSignal?.removeEventListener("abort", listener));
+    const timeoutOrCancelSignal =
+      signals?.externalAbortSignal || signals?.timeoutAbortSignal
+        ? combineAbortSignals(
+            ...(signals.externalAbortSignal
+              ? [signals.externalAbortSignal]
+              : []),
+            ...(signals.timeoutAbortSignal ? [signals.timeoutAbortSignal] : [])
+          )
+        : undefined;
 
-    const exceptionSignalController = new AbortController();
-
-    signal = combineAbortSignals(
-      ...(signal ? [signal] : []),
-      exceptionSignalController.signal
-    );
+    const abortPromise = timeoutOrCancelSignal
+      ? new Promise<never>((_resolve, reject) => {
+          listener = () => reject(new Error("Abort"));
+          timeoutOrCancelSignal.addEventListener("abort", listener, {
+            once: true,
+          });
+        })
+      : undefined;
 
     while (
       (startedTasksCount === 0 || Object.keys(executingTasksMap).length > 0) &&
@@ -359,15 +462,19 @@ export class PregelRunner {
             [CONFIG_KEY_SEND]: writer?.bind(null, this, task),
             [CONFIG_KEY_CALL]: call?.bind(null, this, task),
           },
-          signal
+          signals?.composedAbortSignal
         ).catch((error) => {
-          return { task, error, signalAborted: signal?.aborted };
+          return {
+            task,
+            error,
+            signalAborted: signals?.composedAbortSignal?.aborted,
+          };
         });
       }
 
       const settledTask = await Promise.race([
         ...Object.values(executingTasksMap),
-        signalPromise,
+        ...(abortPromise ? [abortPromise] : []),
         addedPromiseWait,
       ]);
 
@@ -377,14 +484,6 @@ export class PregelRunner {
 
       yield settledTask as SettledPregelTask;
       delete executingTasksMap[(settledTask as SettledPregelTask).task.id];
-
-      if (
-        settledTask.error &&
-        !isGraphBubbleUp(settledTask.error) &&
-        !signal?.aborted
-      ) {
-        exceptionSignalController.abort();
-      }
     }
   }
 
