@@ -1,3 +1,5 @@
+import { PendingWrite } from "@langchain/langgraph-checkpoint";
+
 /** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
 /** Special reserved node name denoting the end of a graph. */
@@ -19,6 +21,8 @@ export const CONFIG_KEY_SCRATCHPAD = "__pregel_scratchpad";
 export const CONFIG_KEY_PREVIOUS_STATE = "__pregel_previous";
 export const CONFIG_KEY_CHECKPOINT_ID = "checkpoint_id";
 export const CONFIG_KEY_CHECKPOINT_NS = "checkpoint_ns";
+
+export const CONFIG_KEY_NODE_FINISHED = "__pregel_node_finished";
 
 // this one is part of public API
 export const CONFIG_KEY_CHECKPOINT_MAP = "checkpoint_map";
@@ -140,8 +144,16 @@ export function _isSendInterface(x: unknown): x is SendInterface {
 export class Send implements SendInterface {
   lg_name = "Send";
 
+  public node: string;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(public node: string, public args: any) {}
+  public args: any;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(node: string, args: any) {
+    this.node = node;
+    this.args = _convertCommandSendTree(args);
+  }
 
   toJSON() {
     return {
@@ -152,8 +164,8 @@ export class Send implements SendInterface {
 }
 
 export function _isSend(x: unknown): x is Send {
-  const operation = x as Send;
-  return operation !== undefined && operation.lg_name === "Send";
+  // eslint-disable-next-line no-instanceof/no-instanceof
+  return x instanceof Send;
 }
 
 export type Interrupt = {
@@ -172,7 +184,8 @@ export type CommandParams<R> = {
   /**
    * Graph to send the command to. Supported values are:
    *   - None: the current graph (default)
-   *   - GraphCommand.PARENT: closest parent graph
+   *   - The specific name of the graph to send the command to
+   *   - {@link Command.PARENT}: closest parent graph (only supported when returned from a node in a subgraph)
    */
   graph?: string;
 
@@ -188,7 +201,7 @@ export type CommandParams<R> = {
    *   - `Send` object (to execute a node with the input provided)
    *   - sequence of `Send` objects
    */
-  goto?: string | Send | (string | Send)[];
+  goto?: string | SendInterface | (string | SendInterface)[];
 };
 
 /**
@@ -258,13 +271,33 @@ export class Command<R = unknown> {
 
   lc_direct_tool_output = true;
 
+  /**
+   * Graph to send the command to. Supported values are:
+   *   - None: the current graph (default)
+   *   - The specific name of the graph to send the command to
+   *   - {@link Command.PARENT}: closest parent graph (only supported when returned from a node in a subgraph)
+   */
   graph?: string;
 
+  /**
+   * Update to apply to the graph's state as a result of executing the node that is returning the command.
+   * Written to the state as if the node had simply returned this value instead of the Command object.
+   */
   update?: Record<string, unknown> | [string, unknown][];
 
+  /**
+   * Value to resume execution with. To be used together with {@link interrupt}.
+   */
   resume?: R;
 
-  goto: string | Send | (string | Send)[] = [];
+  /**
+   * Can be one of the following:
+   *   - name of the node to navigate to next (any node that belongs to the specified `graph`)
+   *   - sequence of node names to navigate to next
+   *   - {@link Send} object (to execute a node with the exact input provided in the {@link Send} object)
+   *   - sequence of {@link Send} objects
+   */
+  goto?: string | Send | (string | Send)[] = [];
 
   static PARENT = "__parent__";
 
@@ -273,11 +306,18 @@ export class Command<R = unknown> {
     this.graph = args.graph;
     this.update = args.update;
     if (args.goto) {
-      this.goto = Array.isArray(args.goto) ? args.goto : [args.goto];
+      this.goto = Array.isArray(args.goto)
+        ? (_convertCommandSendTree(args.goto) as (string | Send)[])
+        : [_convertCommandSendTree(args.goto) as string | Send];
     }
   }
 
-  _updateAsTuples(): [string, unknown][] {
+  /**
+   * Convert the update field to a list of {@link PendingWrite} tuples
+   * @returns List of {@link PendingWrite} tuples of the form `[channelKey, value]`.
+   * @internal
+   */
+  _updateAsTuples(): PendingWrite[] {
     if (
       this.update &&
       typeof this.update === "object" &&
@@ -304,7 +344,7 @@ export class Command<R = unknown> {
     } else if (_isSend(this.goto)) {
       serializedGoto = this.goto.toJSON();
     } else {
-      serializedGoto = this.goto.map((innerGoto) => {
+      serializedGoto = this.goto?.map((innerGoto) => {
         if (typeof innerGoto === "string") {
           return innerGoto;
         } else {
@@ -320,6 +360,78 @@ export class Command<R = unknown> {
   }
 }
 
+/**
+ * A type guard to check if the given value is a {@link Command}.
+ *
+ * Useful for type narrowing when working with the {@link Command} object.
+ *
+ * @param x - The value to check.
+ * @returns `true` if the value is a {@link Command}, `false` otherwise.
+ */
 export function isCommand(x: unknown): x is Command {
-  return typeof x === "object" && !!x && (x as Command).lg_name === "Command";
+  // eslint-disable-next-line no-instanceof/no-instanceof
+  return x instanceof Command;
+}
+
+/**
+ * A type guard to check if the given value is a {@link CommandParams}.
+ *
+ * Useful for type narrowing when working with the {@link CommandParams} object.
+ *
+ * @param x - The value to check.
+ * @returns `true` if the value is a {@link CommandParams}, `false` otherwise.
+ */
+export function isCommandParams<R = unknown>(
+  x: unknown
+): x is CommandParams<R> {
+  if (typeof x !== "object") {
+    return false;
+  }
+
+  if (x === null || x === undefined) {
+    return false;
+  }
+
+  if ("update" in x && "resume" in x && "goto" in x) {
+    return true;
+  }
+
+  return false;
+}
+
+function _convertCommandSendTree(
+  x: unknown,
+  seen: Set<unknown> = new Set()
+): unknown {
+  if (x !== undefined && x !== null && typeof x === "object") {
+    if (seen.has(x)) {
+      throw new Error("Command send tree contains a cycle");
+    }
+
+    seen.add(x);
+
+    if (Array.isArray(x)) {
+      return x.map((innerX) => _convertCommandSendTree(innerX, new Set(seen)));
+    }
+
+    if (isCommand(x) || _isSend(x)) {
+      return x;
+    }
+
+    if (isCommandParams(x)) {
+      return new Command(x);
+    }
+
+    if (_isSendInterface(x)) {
+      return new Send(x.node, x.args);
+    }
+
+    return Object.fromEntries(
+      Object.entries(x).map(([key, value]) => [
+        key,
+        _convertCommandSendTree(value, seen),
+      ])
+    );
+  }
+  return x;
 }

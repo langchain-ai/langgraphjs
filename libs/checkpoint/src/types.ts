@@ -9,7 +9,12 @@ export type CheckpointPendingWrite<TaskId = string> = [
   ...PendingWrite<string>
 ];
 
-export interface CheckpointMetadata {
+/**
+ * Additional details about the checkpoint, including the source, step, writes, and parents.
+ *
+ * @typeParam ExtraProperties - Optional additional properties to include in the metadata.
+ */
+export type CheckpointMetadata<ExtraProperties extends object = object> = {
   /**
    * The source of the checkpoint.
    * - "input": The checkpoint was created from an input to invoke/stream/batch.
@@ -36,4 +41,4 @@ export interface CheckpointMetadata {
    * Mapping from checkpoint namespace to checkpoint ID.
    */
   parents: Record<string, string>;
-}
+} & ExtraProperties;
