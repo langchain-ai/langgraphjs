@@ -1,6 +1,11 @@
-import { Scrapybara } from "scrapybara";
+import {
+  BrowserInstance,
+  UbuntuInstance,
+  WindowsInstance,
+  Scrapybara,
+} from "scrapybara";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
-import { CUAState, CUAUpdate } from "../types.js";
+import { CUAState, CUAUpdate, getConfigurationWithDefaults } from "../types.js";
 import { getInstance, isComputerToolCall } from "../utils.js";
 import { ToolMessage } from "@langchain/core/messages";
 
@@ -33,6 +38,11 @@ const CUA_KEY_TO_SCRAPYBARA_KEY: Record<string, string> = {
   win: "Meta_L",
 };
 
+const isBrowserInstance = (
+  instance: UbuntuInstance | BrowserInstance | WindowsInstance
+): instance is BrowserInstance =>
+  "authenticate" in instance && typeof instance.authenticate === "function";
+
 export async function takeComputerAction(
   state: CUAState,
   config: LangGraphRunnableConfig
@@ -40,6 +50,7 @@ export async function takeComputerAction(
   if (!state.instanceId) {
     throw new Error("Can not take computer action without an instance ID.");
   }
+  const { authStateId } = getConfigurationWithDefaults(config);
 
   const message = state.messages[state.messages.length - 1];
   const toolOutputs = message.additional_kwargs?.tool_outputs;
@@ -52,6 +63,18 @@ export async function takeComputerAction(
 
   const instance = await getInstance(state.instanceId, config);
 
+  let authenticatedId = state.authenticatedId;
+  if (
+    isBrowserInstance(instance) &&
+    authStateId &&
+    (!authenticatedId || authenticatedId !== authStateId)
+  ) {
+    await instance.authenticate({
+      authStateId,
+    });
+    authenticatedId = authStateId;
+  }
+
   let streamUrl: string | undefined = state.streamUrl;
   if (!streamUrl) {
     // If the streamUrl is not yet defined in state, fetch it, then write to the custom stream
@@ -62,7 +85,8 @@ export async function takeComputerAction(
     });
   }
 
-  const action = toolOutputs[0].action;
+  const output = toolOutputs[toolOutputs.length - 1];
+  const action = output.action;
   let computerCallToolMsg: ToolMessage | undefined;
 
   try {
@@ -140,7 +164,7 @@ export async function takeComputerAction(
     }
 
     computerCallToolMsg = new ToolMessage({
-      tool_call_id: toolOutputs[0].call_id,
+      tool_call_id: output.call_id,
       additional_kwargs: { type: "computer_call_output" },
       content: `data:image/png;base64,${computerResponse.base64Image}`,
     });
@@ -148,7 +172,7 @@ export async function takeComputerAction(
     console.error(
       {
         error: e,
-        computerCall: toolOutputs[0],
+        computerCall: output,
       },
       "Failed to execute computer call."
     );
@@ -158,5 +182,6 @@ export async function takeComputerAction(
     messages: computerCallToolMsg ? [computerCallToolMsg] : [],
     instanceId: instance.id,
     streamUrl,
+    authenticatedId,
   };
 }

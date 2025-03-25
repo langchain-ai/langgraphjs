@@ -10,9 +10,11 @@ import { isComputerToolCall } from "./utils.js";
  * in the last message, otherwise routes to END.
  *
  * @param {CUAState} state The current state of the thread.
- * @returns {"takeComputerAction" | typeof END} The next node to execute.
+ * @returns {"takeComputerAction" | typeof END | "createVMInstance"} The next node to execute.
  */
-function takeActionOrEnd(state: CUAState): "takeComputerAction" | typeof END {
+function takeActionOrEnd(
+  state: CUAState
+): "takeComputerAction" | "createVMInstance" | typeof END {
   const lastMessage = state.messages[state.messages.length - 1];
   if (
     !lastMessage ||
@@ -20,24 +22,12 @@ function takeActionOrEnd(state: CUAState): "takeComputerAction" | typeof END {
   ) {
     return END;
   }
-  return "takeComputerAction";
-}
 
-/**
- * Routes to the takeComputerAction node if no instance ID exists, otherwise
- * routes to takeActionOrEnd.
- *
- * @param {CUAState} state The current state of the thread.
- * @returns {"takeComputerAction" | typeof END | "createVMInstance"} The next node to execute.
- */
-function routeAfterCallingModel(
-  state: CUAState
-): "takeComputerAction" | typeof END | "createVMInstance" {
   if (!state.instanceId) {
     return "createVMInstance";
   }
 
-  return takeActionOrEnd(state);
+  return "takeComputerAction";
 }
 
 /**
@@ -64,7 +54,7 @@ const workflow = new StateGraph(CUAAnnotation, CUAConfigurable)
   .addNode("createVMInstance", createVMInstance)
   .addNode("takeComputerAction", takeComputerAction)
   .addEdge(START, "callModel")
-  .addConditionalEdges("callModel", routeAfterCallingModel, [
+  .addConditionalEdges("callModel", takeActionOrEnd, [
     "createVMInstance",
     "takeComputerAction",
     END,
@@ -75,5 +65,58 @@ const workflow = new StateGraph(CUAAnnotation, CUAConfigurable)
     END,
   ]);
 
-export const graph = workflow.compile();
-graph.name = "Computer Use Agent";
+export const cuaGraph = workflow.compile();
+cuaGraph.name = "Computer Use Agent";
+
+/**
+ * Configuration for the Computer Use Agent.
+ *
+ * @param options - Configuration options
+ * @param options.scrapybaraApiKey - The API key to use for Scrapybara.
+ *        This can be provided in the configuration, or set as an environment variable (SCRAPYBARA_API_KEY).
+ * @param options.timeoutHours - The number of hours to keep the virtual machine running before it times out.
+ *        Must be between 0.01 and 24. Default is 1.
+ * @param options.zdrEnabled - Whether or not Zero Data Retention is enabled in the user's OpenAI account. If true,
+ *        the agent will not pass the 'previous_response_id' to the model, and will always pass it the full
+ *        message history for each request. If false, the agent will pass the 'previous_response_id' to the
+ *        model, and only the latest message in the history will be passed. Default false.
+ * @param options.recursionLimit - The maximum number of recursive calls the agent can make. Default is 100.
+ * @param options.authStateId - The ID of the authentication state. If defined, it will be used to authenticate
+ *        with Scrapybara. Only applies if 'environment' is set to 'web'.
+ * @param options.environment - The environment to use. Default is "web".
+ * @returns The configured graph.
+ */
+export function createCUA({
+  scrapybaraApiKey,
+  timeoutHours = 1.0,
+  zdrEnabled = false,
+  recursionLimit = 100,
+  authStateId,
+  environment = "web",
+}: {
+  scrapybaraApiKey?: string;
+  timeoutHours?: number;
+  zdrEnabled?: boolean;
+  recursionLimit?: number;
+  authStateId?: string;
+  environment?: "web" | "ubuntu" | "windows";
+} = {}) {
+  // Validate timeout_hours is within acceptable range
+  if (timeoutHours < 0.01 || timeoutHours > 24) {
+    throw new Error("timeoutHours must be between 0.01 and 24");
+  }
+
+  // Configure the graph with the provided parameters
+  const configuredGraph = cuaGraph.withConfig({
+    configurable: {
+      scrapybaraApiKey,
+      timeoutHours,
+      zdrEnabled,
+      authStateId,
+      environment,
+    },
+    recursionLimit,
+  });
+
+  return configuredGraph;
+}

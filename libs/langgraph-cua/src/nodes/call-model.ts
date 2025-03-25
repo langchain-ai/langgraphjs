@@ -1,6 +1,12 @@
 import { AIMessageChunk } from "@langchain/core/messages";
+import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
-import { CUAEnvironment, CUAState, CUAUpdate } from "../types.js";
+import {
+  CUAEnvironment,
+  CUAState,
+  CUAUpdate,
+  getConfigurationWithDefaults,
+} from "../types.js";
 
 const getOpenAIEnvFromStateEnv = (env: CUAEnvironment) => {
   switch (env) {
@@ -23,15 +29,21 @@ const DEFAULT_DISPLAY_HEIGHT = 768;
  * Invokes the computer preview model with the given messages.
  *
  * @param {CUAState} state - The current state of the thread.
+ * @param {LangGraphRunnableConfig} config - The configuration to use.
  * @returns {Promise<CUAUpdate>} - The updated state with the model's response.
  */
-export async function callModel(state: CUAState): Promise<CUAUpdate> {
+export async function callModel(
+  state: CUAState,
+  config: LangGraphRunnableConfig
+): Promise<CUAUpdate> {
+  const configuration = getConfigurationWithDefaults(config);
+
   const lastMessage = state.messages[state.messages.length - 1];
   let previousResponseId: string | undefined;
-  if (lastMessage.getType() === "tool") {
+  if (lastMessage.getType() === "tool" && !configuration.zdrEnabled) {
     // Assume if the last message is a tool message, the second to last will be an AI message
     const secondToLast = state.messages[state.messages.length - 2];
-    previousResponseId = secondToLast.id;
+    previousResponseId = secondToLast.response_metadata.id;
   }
 
   const model = new ChatOpenAI({
@@ -43,7 +55,7 @@ export async function callModel(state: CUAState): Promise<CUAUpdate> {
         type: "computer_use_preview",
         display_width: DEFAULT_DISPLAY_WIDTH,
         display_height: DEFAULT_DISPLAY_HEIGHT,
-        environment: getOpenAIEnvFromStateEnv(state.environment),
+        environment: getOpenAIEnvFromStateEnv(configuration.environment),
       },
     ])
     .bind({
@@ -55,7 +67,8 @@ export async function callModel(state: CUAState): Promise<CUAUpdate> {
   if (
     lastMessage.getType() === "tool" &&
     "type" in lastMessage.additional_kwargs &&
-    lastMessage.additional_kwargs.type === "computer_call_output"
+    lastMessage.additional_kwargs.type === "computer_call_output" &&
+    !configuration.zdrEnabled
   ) {
     response = await model.invoke([lastMessage]);
   } else {

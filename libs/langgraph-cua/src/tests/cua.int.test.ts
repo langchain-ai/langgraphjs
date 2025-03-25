@@ -63,9 +63,10 @@ test("It can use the agent to interact with the browser", async () => {
 
     for await (const update of stream) {
       if (update.createVMInstance) {
+        instanceId = update.createVMInstance.instanceId;
         console.log("----CREATE VM INSTANCE----\n", {
           VMInstance: {
-            instanceId: update.createVMInstance.instanceId,
+            instanceId,
             streamUrl: update.createVMInstance.streamUrl,
           },
         });
@@ -87,12 +88,13 @@ test("It can use the agent to interact with the browser", async () => {
       if (update.callModel) {
         if (update.callModel?.messages) {
           const message = update.callModel.messages;
-          const toolOutputs = message.additional_kwargs?.tool_outputs?.[0];
-          if (toolOutputs) {
+          const allOutputs = message.additional_kwargs?.tool_outputs;
+          if (allOutputs?.length) {
+            const output = allOutputs[allOutputs.length - 1];
             console.log("----CALL MODEL----\n", {
               ComputerCall: {
-                ...toolOutputs.action,
-                call_id: toolOutputs.call_id,
+                ...output.action,
+                call_id: output.call_id,
               },
             });
             continue;
@@ -100,13 +102,6 @@ test("It can use the agent to interact with the browser", async () => {
           console.log("----CALL MODEL----\n", {
             AIMessage: {
               content: message.content,
-              ...(toolOutputs && {
-                tool_outputs: {
-                  type: toolOutputs.type,
-                  action: JSON.stringify(toolOutputs.action, null, 2),
-                  call_id: toolOutputs.call_id,
-                },
-              }),
             },
           });
         }
@@ -115,7 +110,7 @@ test("It can use the agent to interact with the browser", async () => {
   } finally {
     if (instanceId) {
       console.log("Stopping instance with ID", instanceId);
-      await stopInstance(instanceId)
+      await stopInstance(instanceId);
     }
   }
 });

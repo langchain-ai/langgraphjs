@@ -70,7 +70,9 @@ export function isComputerToolCall(
   if (!toolOutputs || !Array.isArray(toolOutputs)) {
     return false;
   }
-  return toolOutputs.every((output) => output.type === "computer_call");
+  return (
+    toolOutputs.filter((output) => output.type === "computer_call").length > 0
+  );
 }
 
 /**

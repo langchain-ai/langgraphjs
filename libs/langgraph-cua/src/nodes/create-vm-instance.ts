@@ -7,12 +7,13 @@ export async function createVMInstance(
   state: CUAState,
   config: LangGraphRunnableConfig
 ): Promise<CUAUpdate> {
-  const { instanceId, environment } = state;
+  const { instanceId } = state;
   if (instanceId) {
     // Instance already exists, no need to initialize
     return {};
   }
-  const { scrapybaraApiKey, timeoutHours } =
+
+  const { scrapybaraApiKey, timeoutHours, environment } =
     getConfigurationWithDefaults(config);
   if (!scrapybaraApiKey) {
     throw new Error(
