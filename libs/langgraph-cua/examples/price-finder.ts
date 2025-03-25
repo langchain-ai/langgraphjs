@@ -17,7 +17,7 @@ const configuredCuaGraph = createCua();
 const PriceFinderAnnotation = Annotation.Root({
   ...CUAAnnotation.spec,
   route: Annotation<"respond" | "computer_use_agent">(),
-})
+});
 
 type PriceFinderState = typeof PriceFinderAnnotation.State;
 type PriceFinderUpdate = typeof PriceFinderAnnotation.Update;
@@ -29,19 +29,24 @@ type PriceFinderUpdate = typeof PriceFinderAnnotation.Update;
  * @param state Current workflow state containing message history
  * @returns Updated state with routing decision
  */
-async function processInput(state: PriceFinderState): Promise<PriceFinderUpdate> {
+async function processInput(
+  state: PriceFinderState
+): Promise<PriceFinderUpdate> {
   const systemMessage = {
     role: "system",
-    content: "You're an advanced AI assistant tasked with routing the user's query to the appropriate node. " +
-    "Your options are: computer use or respond. You should pick computer use if the user's request requires " +
-    "using a computer (e.g. looking up a price on a website), and pick respond for ANY other inputs."
-  }
+    content:
+      "You're an advanced AI assistant tasked with routing the user's query to the appropriate node. " +
+      "Your options are: computer use or respond. You should pick computer use if the user's request requires " +
+      "using a computer (e.g. looking up a price on a website), and pick respond for ANY other inputs.",
+  };
 
   // Define the routing schema using zod
   const routingSchema = z.object({
-    route: z.enum(["respond", "computer_use_agent"]).describe(
-      "The node to route to, either 'computer_use_agent' for any input which might require using a computer to assist the user, or 'respond' for any other input"
-    ),
+    route: z
+      .enum(["respond", "computer_use_agent"])
+      .describe(
+        "The node to route to, either 'computer_use_agent' for any input which might require using a computer to assist the user, or 'respond' for any other input"
+      ),
   });
 
   const model = new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0 });
@@ -80,17 +85,19 @@ function formatMessages(messages: BaseMessage[]): string {
 async function respond(state: PriceFinderState) {
   const systemMessage = {
     role: "system",
-    content: "You're an advanced AI assistant tasked with responding to the user's input. " +
-    "You're provided with the full conversation between the user, and the AI assistant. " +
-    "This conversation may include messages from a computer use agent, along with " +
-    "general user inputs and AI responses. \n\n" +
-    "Given all of this, please RESPOND to the user. If there is nothing to respond to, you may return something like 'Let me know if you have any other questions.'"
-  }
+    content:
+      "You're an advanced AI assistant tasked with responding to the user's input. " +
+      "You're provided with the full conversation between the user, and the AI assistant. " +
+      "This conversation may include messages from a computer use agent, along with " +
+      "general user inputs and AI responses. \n\n" +
+      "Given all of this, please RESPOND to the user. If there is nothing to respond to, you may return something like 'Let me know if you have any other questions.'",
+  };
 
   const humanMessage = {
     role: "user",
-    content: "Here are all of the messages in the conversation:\n\n" +
-    formatMessages(state.messages)
+    content:
+      "Here are all of the messages in the conversation:\n\n" +
+      formatMessages(state.messages),
   };
 
   const model = new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0 });
@@ -132,9 +139,17 @@ graph.name = "Price Finder";
 async function main() {
   // Define the initial conversation messages
   const messages = [
-    { role: "system", content: "You're an advanced AI computer use assistant. The browser you are using " +
-      "is already initialized, and visiting google.com." },
-    { role: "user", content: "Can you find the best price for new all season tires which will fit on my 2019 Subaru Forester?" }
+    {
+      role: "system",
+      content:
+        "You're an advanced AI computer use assistant. The browser you are using " +
+        "is already initialized, and visiting google.com.",
+    },
+    {
+      role: "user",
+      content:
+        "Can you find the best price for new all season tires which will fit on my 2019 Subaru Forester?",
+    },
   ];
 
   // Stream the graph execution with updates visible
@@ -157,11 +172,6 @@ async function main() {
 }
 
 // Run the main function if this file is executed directly
-if (require.main === module) {
+if (import.meta.url === import.meta.resolve(process.argv[1])) {
   main().catch(console.error);
-}
-
-// Export the run function for the example runner
-export function run() {
-  return main();
 }

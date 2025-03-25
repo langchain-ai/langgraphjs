@@ -8,7 +8,7 @@ import {
   getConfigurationWithDefaults,
 } from "../types.js";
 
-const getOpenAIEnvFromStateEnv = (env: CUAEnvironment) => {
+const _getOpenAIEnvFromStateEnv = (env: CUAEnvironment) => {
   switch (env) {
     case "web":
       return "browser";
@@ -62,7 +62,7 @@ export async function callModel(
         type: "computer_use_preview",
         display_width: DEFAULT_DISPLAY_WIDTH,
         display_height: DEFAULT_DISPLAY_HEIGHT,
-        environment: getOpenAIEnvFromStateEnv(configuration.environment),
+        environment: _getOpenAIEnvFromStateEnv(configuration.environment),
       },
     ])
     .bind({

@@ -5,7 +5,7 @@ import {
   Scrapybara,
 } from "scrapybara";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
-import { ToolMessage } from "@langchain/core/messages";
+import { BaseMessageLike } from "@langchain/core/messages";
 import { CUAState, CUAUpdate, getConfigurationWithDefaults } from "../types.js";
 import { getInstance, isComputerToolCall } from "../utils.js";
 
@@ -89,7 +89,7 @@ export async function takeComputerAction(
 
   const output = toolOutputs[toolOutputs.length - 1];
   const { action } = output;
-  let computerCallToolMsg: ToolMessage | undefined;
+  let computerCallToolMsg: BaseMessageLike | undefined;
 
   try {
     let computerResponse: Scrapybara.ComputerResponse;
@@ -166,11 +166,12 @@ export async function takeComputerAction(
         );
     }
 
-    computerCallToolMsg = new ToolMessage({
+    computerCallToolMsg = {
+      type: "tool",
       tool_call_id: output.call_id,
       additional_kwargs: { type: "computer_call_output" },
       content: `data:image/png;base64,${computerResponse.base64Image}`,
-    });
+    };
   } catch (e) {
     console.error(
       {
