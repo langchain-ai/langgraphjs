@@ -55,7 +55,7 @@ export function isAnyZodObject(value: unknown): value is AnyZodObject {
   );
 }
 
-export function extra<ValueType, UpdateType = ValueType>(
+export function withLangGraph<ValueType, UpdateType = ValueType>(
   schema: z.ZodType<ValueType | undefined>,
   meta: Meta<ValueType, UpdateType>
 ): z.ZodType<ValueType, z.ZodTypeDef, UpdateType> {
