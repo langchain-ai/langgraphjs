@@ -87,6 +87,7 @@ import {
 } from "./algo.js";
 import {
   _coerceToDict,
+  combineAbortSignals,
   getNewChannelVersions,
   patchCheckpointMap,
   RetryPolicy,
@@ -109,7 +110,10 @@ import {
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { StreamMessagesHandler } from "./messages.js";
 import { PregelRunner } from "./runner.js";
-import { IterableReadableWritableStream } from "./stream.js";
+import {
+  IterableReadableStreamWithAbortSignal,
+  IterableReadableWritableStream,
+} from "./stream.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
@@ -1647,13 +1651,25 @@ export class Pregel<
     // There is currently no way in _streamIterator to determine whether this was
     // set by by ensureConfig or manually by the user, so we specify the bound value here
     // and override if it is passed as an explicit param in `options`.
+    const abortController = new AbortController();
+
     const config = {
       recursionLimit: this.config?.recursionLimit,
       ...options,
+      signal: options?.signal
+        ? combineAbortSignals(options.signal, abortController.signal)
+        : abortController.signal,
     };
-    return super.stream(input, config);
+
+    return new IterableReadableStreamWithAbortSignal(
+      await super.stream(input, config),
+      abortController
+    );
   }
 
+  /**
+   * @inheritdoc
+   */
   override streamEvents(
     input: InputType | Command | null,
     options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
@@ -1678,14 +1694,23 @@ export class Pregel<
     },
     streamOptions?: StreamEventsOptions
   ): IterableReadableStream<StreamEvent | Uint8Array> {
-    // Similar to `stream`, we need to pass the `config.callbacks` here,
-    // otherwise the user-provided callback will get lost in `ensureLangGraphConfig`.
+    const abortController = new AbortController();
+
     const config = {
       recursionLimit: this.config?.recursionLimit,
+      // Similar to `stream`, we need to pass the `config.callbacks` here,
+      // otherwise the user-provided callback will get lost in `ensureLangGraphConfig`.
       callbacks: this.config?.callbacks,
       ...options,
+      signal: options?.signal
+        ? combineAbortSignals(options.signal, abortController.signal)
+        : abortController.signal,
     };
-    return super.streamEvents(input, config, streamOptions);
+
+    return new IterableReadableStreamWithAbortSignal(
+      super.streamEvents(input, config, streamOptions),
+      abortController
+    );
   }
 
   /**

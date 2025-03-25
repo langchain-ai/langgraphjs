@@ -112,3 +112,28 @@ export function patchCheckpointMap(
     return config;
   }
 }
+
+/**
+ * Combine multiple abort signals into a single abort signal.
+ * @param signals - The abort signals to combine.
+ * @returns A single abort signal that is aborted if any of the input signals are aborted.
+ */
+export function combineAbortSignals(...signals: AbortSignal[]) {
+  if ("any" in AbortSignal) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (AbortSignal as any).any(signals);
+  }
+  const combinedController = new AbortController();
+  const listener = () => {
+    combinedController.abort();
+    signals.forEach((s) => s.removeEventListener("abort", listener));
+  };
+
+  signals.forEach((s) => s.addEventListener("abort", listener));
+
+  if (signals.some((s) => s.aborted)) {
+    combinedController.abort();
+  }
+
+  return combinedController.signal;
+}

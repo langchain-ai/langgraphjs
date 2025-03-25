@@ -1,6 +1,6 @@
 import { PendingWrite } from "@langchain/langgraph-checkpoint";
 import { Call, PregelExecutableTask, PregelScratchpad } from "./types.js";
-import { RetryPolicy } from "./utils/index.js";
+import { combineAbortSignals, RetryPolicy } from "./utils/index.js";
 import {
   CONFIG_KEY_SEND,
   CONFIG_KEY_SCRATCHPAD,
@@ -90,7 +90,7 @@ export class PregelRunner {
     );
 
     if (signal && timeout) {
-      signal = this._combineSignals([signal, AbortSignal.timeout(timeout)]);
+      signal = combineAbortSignals(signal, AbortSignal.timeout(timeout));
     } else if (timeout) {
       signal = AbortSignal.timeout(timeout);
     }
@@ -135,26 +135,6 @@ export class PregelRunner {
     if (isGraphBubbleUp(graphBubbleUp) && this.loop.isNested) {
       throw graphBubbleUp;
     }
-  }
-
-  private _combineSignals(signals: AbortSignal[]) {
-    if ("any" in AbortSignal) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (AbortSignal as any).any(signals);
-    }
-    const combinedController = new AbortController();
-    const listener = () => {
-      combinedController.abort();
-      signals.forEach((s) => s.removeEventListener("abort", listener));
-    };
-
-    signals.forEach((s) => s.addEventListener("abort", listener));
-
-    if (signals.some((s) => s.aborted)) {
-      combinedController.abort();
-    }
-
-    return combinedController.signal;
   }
 
   /**
@@ -355,10 +335,10 @@ export class PregelRunner {
 
     const exceptionSignalController = new AbortController();
 
-    signal = this._combineSignals([
+    signal = combineAbortSignals(
       ...(signal ? [signal] : []),
-      exceptionSignalController.signal,
-    ]);
+      exceptionSignalController.signal
+    );
 
     while (
       (startedTasksCount === 0 || Object.keys(executingTasksMap).length > 0) &&
