@@ -66,12 +66,14 @@ interface CreateCuaParams<
   /**
    * The API key to use for Scrapybara.
    * This can be provided in the configuration, or set as an environment variable (SCRAPYBARA_API_KEY).
+   * @default process.env.SCRAPYBARA_API_KEY
    */
   scrapybaraApiKey?: string;
 
   /**
    * The number of hours to keep the virtual machine running before it times out.
-   * Must be between 0.01 and 24. Default is 1.
+   * Must be between 0.01 and 24.
+   * @default 1
    */
   timeoutHours?: number;
 
@@ -79,33 +81,39 @@ interface CreateCuaParams<
    * Whether or not Zero Data Retention is enabled in the user's OpenAI account. If true,
    * the agent will not pass the 'previous_response_id' to the model, and will always pass it the full
    * message history for each request. If false, the agent will pass the 'previous_response_id' to the
-   * model, and only the latest message in the history will be passed. Default false.
+   * model, and only the latest message in the history will be passed.
+   * @default false
    */
   zdrEnabled?: boolean;
 
   /**
-   * The maximum number of recursive calls the agent can make. Default is 100.
+   * The maximum number of recursive calls the agent can make.
+   * @default 100
    */
   recursionLimit?: number;
 
   /**
    * The ID of the authentication state. If defined, it will be used to authenticate
    * with Scrapybara. Only applies if 'environment' is set to 'web'.
+   * @default undefined
    */
   authStateId?: string;
 
   /**
-   * The environment to use. Default is "web".
+   * The environment to use.
+   * @default "web"
    */
   environment?: "web" | "ubuntu" | "windows";
 
   /**
    * The prompt to use for the model. This will be used as the system prompt for the model.
+   * @default undefined
    */
   prompt?: string | SystemMessage;
 
   /**
    * A custom node to run before the computer action.
+   * @default undefined
    */
   nodeBeforeAction?: (
     state: CUAState,
@@ -114,6 +122,7 @@ interface CreateCuaParams<
 
   /**
    * A custom node to run after the computer action.
+   * @default undefined
    */
   nodeAfterAction?: (
     state: CUAState,
@@ -122,6 +131,7 @@ interface CreateCuaParams<
 
   /**
    * Optional state modifier for customizing the agent's state.
+   * @default undefined
    */
   stateModifier?: StateModifier;
 }
