@@ -103,7 +103,6 @@ import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { interrupt } from "../interrupt.js";
-import { extra } from "../graph/zod/state.js";
 import {
   getConfigTypeSchema,
   getStateTypeSchema,
@@ -10183,14 +10182,18 @@ graph TD;
   it("zod schema", async () => {
     const schema = z.object({
       foo: z.string(),
-      items: extra(z.array(z.string()), {
-        reducer: {
-          schema: z.union([z.string(), z.array(z.string())]),
-          fn: (a, b) => [...a, ...(Array.isArray(b) ? b : [b])],
+      items: z.array(z.string()).langgraph.reducer(
+        (a, b) => {
+          const bArr = Array.isArray(b) ? b : [b];
+          return [...a, ...bArr];
         },
-        default: () => ["default"],
-      }),
+        {
+          schema: z.union([z.string(), z.array(z.string())]),
+          default: () => ["default"],
+        }
+      ),
     });
+
     const graph = new StateGraph(schema)
       .addNode("agent", () => ({ foo: "agent", items: ["a", "b"] }))
       .addNode("tool", () => ({ foo: "tool", items: ["c", "d"] }))
@@ -10275,12 +10278,13 @@ graph TD;
     });
 
     const config = z.object({
-      prompt: extra(z.string().min(1), {
-        jsonSchemaExtra: {
+      prompt: z
+        .string()
+        .min(1)
+        .langgraph.metadata({
           langgraph_nodes: ["agent"],
           langgraph_type: "prompt",
-        },
-      }),
+        }),
     });
 
     const graph = new StateGraph(schema, config)
