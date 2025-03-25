@@ -130,7 +130,8 @@ const createSwarm = <
     agentNames.add(agent.name);
   }
 
-  const builder = new StateGraph(stateSchema ?? SwarmState);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const builder = new StateGraph<any>(stateSchema ?? SwarmState);
 
   addActiveAgentRouter(builder, {
     routeTo: [...agentNames],
