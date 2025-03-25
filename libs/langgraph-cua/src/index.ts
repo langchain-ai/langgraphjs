@@ -1,4 +1,5 @@
 import { END, START, StateGraph } from "@langchain/langgraph";
+import { SystemMessage } from "@langchain/core/messages";
 import { callModel } from "./nodes/call-model.js";
 import { createVMInstance } from "./nodes/create-vm-instance.js";
 import { takeComputerAction } from "./nodes/take-computer-action.js";
@@ -84,6 +85,7 @@ cuaGraph.name = "Computer Use Agent";
  * @param options.authStateId - The ID of the authentication state. If defined, it will be used to authenticate
  *        with Scrapybara. Only applies if 'environment' is set to 'web'.
  * @param options.environment - The environment to use. Default is "web".
+ * @param options.prompt - The prompt to use for the model. This will be used as the system prompt for the model.
  * @returns The configured graph.
  */
 export function createCua({
@@ -93,6 +95,7 @@ export function createCua({
   recursionLimit = 100,
   authStateId,
   environment = "web",
+  prompt,
 }: {
   scrapybaraApiKey?: string;
   timeoutHours?: number;
@@ -100,6 +103,7 @@ export function createCua({
   recursionLimit?: number;
   authStateId?: string;
   environment?: "web" | "ubuntu" | "windows";
+  prompt?: string | SystemMessage;
 } = {}) {
   // Validate timeout_hours is within acceptable range
   if (timeoutHours < 0.01 || timeoutHours > 24) {
@@ -114,6 +118,7 @@ export function createCua({
       zdrEnabled,
       authStateId,
       environment,
+      prompt,
     },
     recursionLimit,
   });

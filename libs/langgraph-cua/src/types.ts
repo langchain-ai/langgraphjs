@@ -1,3 +1,5 @@
+import { SystemMessage } from "@langchain/core/messages";
+import { getEnvironmentVariable } from "@langchain/core/utils/env";
 import {
   Annotation,
   LangGraphRunnableConfig,
@@ -43,7 +45,7 @@ export const CUAConfigurable = Annotation.Root({
    */
   scrapybaraApiKey: Annotation<string | undefined>({
     reducer: (_state, update) => update,
-    default: () => process.env.SCRAPYBARA_API_KEY,
+    default: () => getEnvironmentVariable("SCRAPYBARA_API_KEY"),
   }),
   /**
    * The number of hours to keep the virtual machine running before it times out.
@@ -87,6 +89,13 @@ export const CUAConfigurable = Annotation.Root({
     reducer: (_state, update) => update,
     default: () => undefined,
   }),
+  /**
+   * The system prompt to use when calling the model.
+   */
+  prompt: Annotation<string | SystemMessage | undefined>({
+    reducer: (_state, update) => update,
+    default: () => undefined,
+  }),
 });
 
 /**
@@ -100,11 +109,13 @@ export function getConfigurationWithDefaults(
 ): typeof CUAConfigurable.State {
   return {
     scrapybaraApiKey:
-      config.configurable?.scrapybaraApiKey ?? process.env.SCRAPYBARA_API_KEY,
+      config.configurable?.scrapybaraApiKey ??
+      getEnvironmentVariable("SCRAPYBARA_API_KEY"),
     timeoutHours: config.configurable?.timeoutHours ?? 1,
     zdrEnabled: config.configurable?.zdrEnabled ?? false,
     environment: config.configurable?.environment ?? "web",
     authStateId: config.configurable?.authStateId ?? undefined,
+    prompt: config.configurable?.prompt ?? undefined,
   };
 }
 

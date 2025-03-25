@@ -1,11 +1,12 @@
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
-import { ResponseComputerToolCall } from "openai/resources/responses/responses";
+import type { ResponseComputerToolCall } from "openai/resources/responses/responses";
 import {
   ScrapybaraClient,
   UbuntuInstance,
   BrowserInstance,
   WindowsInstance,
 } from "scrapybara";
+import { getEnvironmentVariable } from "@langchain/core/utils/env";
 import { getConfigurationWithDefaults } from "./types.js";
 
 // Copied from the OpenAI example repository
@@ -88,7 +89,9 @@ export async function stopInstance(
 ): Promise<void> {
   let client_ = client;
   if (!client_) {
-    client_ = getScrapybaraClient(process.env.SCRAPYBARA_API_KEY!);
+    client_ = getScrapybaraClient(
+      getEnvironmentVariable("SCRAPYBARA_API_KEY") ?? ""
+    );
   }
   const instance = await client_.get(id);
   await instance.stop();

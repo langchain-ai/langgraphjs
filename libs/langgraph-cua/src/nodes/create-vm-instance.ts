@@ -41,7 +41,7 @@ export async function createVMInstance(
   if (!state.streamUrl) {
     // If the streamUrl is not yet defined in state, fetch it, then write to the custom stream
     // so that it's made accessible to the client (or whatever is reading the stream) before any actions are taken.
-    const streamUrl = (await instance.getStreamUrl()).streamUrl;
+    const { streamUrl } = await instance.getStreamUrl();
     return {
       instanceId: instance.id,
       streamUrl,

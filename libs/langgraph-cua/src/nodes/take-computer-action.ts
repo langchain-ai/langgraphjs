@@ -5,12 +5,14 @@ import {
   Scrapybara,
 } from "scrapybara";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
+import { ToolMessage } from "@langchain/core/messages";
 import { CUAState, CUAUpdate, getConfigurationWithDefaults } from "../types.js";
 import { getInstance, isComputerToolCall } from "../utils.js";
-import { ToolMessage } from "@langchain/core/messages";
 
 async function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 // Copied from the OpenAI example repository
@@ -63,7 +65,7 @@ export async function takeComputerAction(
 
   const instance = await getInstance(state.instanceId, config);
 
-  let authenticatedId = state.authenticatedId;
+  let { authenticatedId } = state;
   if (
     isBrowserInstance(instance) &&
     authStateId &&
@@ -75,7 +77,7 @@ export async function takeComputerAction(
     authenticatedId = authStateId;
   }
 
-  let streamUrl: string | undefined = state.streamUrl;
+  let { streamUrl } = state;
   if (!streamUrl) {
     // If the streamUrl is not yet defined in state, fetch it, then write to the custom stream
     // so that it's made accessible to the client (or whatever is reading the stream) before any actions are taken.
@@ -86,7 +88,7 @@ export async function takeComputerAction(
   }
 
   const output = toolOutputs[toolOutputs.length - 1];
-  const action = output.action;
+  const { action } = output;
   let computerCallToolMsg: ToolMessage | undefined;
 
   try {
@@ -113,7 +115,7 @@ export async function takeComputerAction(
           path: action.path.map(({ x, y }) => [x, y]),
         });
         break;
-      case "keypress":
+      case "keypress": {
         const mappedKeys = action.keys
           .map((k) => k.toLowerCase())
           .map((key) =>
@@ -126,6 +128,7 @@ export async function takeComputerAction(
           keys: mappedKeys,
         });
         break;
+      }
       case "move":
         computerResponse = await instance.computer({
           action: "move_mouse",

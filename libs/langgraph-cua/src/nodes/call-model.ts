@@ -1,4 +1,4 @@
-import { AIMessageChunk } from "@langchain/core/messages";
+import { AIMessageChunk, SystemMessage } from "@langchain/core/messages";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 import {
@@ -24,6 +24,13 @@ const getOpenAIEnvFromStateEnv = (env: CUAEnvironment) => {
 // Scrapybara does not allow for configuring this. Must use a hardcoded value.
 const DEFAULT_DISPLAY_WIDTH = 1024;
 const DEFAULT_DISPLAY_HEIGHT = 768;
+
+const _promptToSysMessage = (prompt: string | SystemMessage | undefined) => {
+  if (typeof prompt === "string") {
+    return { role: "system", content: prompt };
+  }
+  return prompt;
+};
 
 /**
  * Invokes the computer preview model with the given messages.
@@ -72,7 +79,11 @@ export async function callModel(
   ) {
     response = await model.invoke([lastMessage]);
   } else {
-    response = await model.invoke(state.messages);
+    const prompt = _promptToSysMessage(configuration.prompt);
+    response = await model.invoke([
+      ...(prompt ? [prompt] : []),
+      ...state.messages,
+    ]);
   }
 
   return {

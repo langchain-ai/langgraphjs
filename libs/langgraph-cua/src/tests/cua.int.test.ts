@@ -80,7 +80,7 @@ test("It can use the agent to interact with the browser", async () => {
             ToolMessage: {
               type: message.additional_kwargs?.type,
               tool_call_id: message.tool_call_id,
-              content: message.content.slice(0, 50) + "...",
+              content: `${message.content.slice(0, 50)}...`,
             },
           });
         }
