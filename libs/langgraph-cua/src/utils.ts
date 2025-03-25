@@ -7,8 +7,8 @@ import {
   WindowsInstance,
 } from "scrapybara";
 import { getEnvironmentVariable } from "@langchain/core/utils/env";
-import { getConfigurationWithDefaults } from "./types.js";
 import { AIMessage, BaseMessage } from "@langchain/core/messages";
+import { getConfigurationWithDefaults } from "./types.js";
 
 /**
  * Gets the Scrapybara client, using the API key from the graph's configuration object.
