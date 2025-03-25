@@ -107,6 +107,17 @@ export type StateGraphArgsWithInputOutputSchemas<
   output: AnnotationRoot<O>;
 };
 
+type ZodStateGraphArgsWithStateSchema<
+  SD extends AnyZodObject,
+  I extends SDZod,
+  O extends SDZod
+> = { state: SD; input?: I; output?: O };
+
+type ZodStateGraphArgsWithIOSchema<I extends SDZod, O extends SDZod> = {
+  input: I;
+  output: O;
+};
+
 type SDZod = StateDefinition | AnyZodObject;
 
 type ToStateDefinition<T> = T extends AnyZodObject
@@ -201,7 +212,13 @@ export class StateGraph<
   _inputDefinition: I;
 
   /** @internal */
+  _inputRuntimeDefinition: AnyZodObject | undefined;
+
+  /** @internal */
   _outputDefinition: O;
+
+  /** @internal */
+  _outputRuntimeDefinition: AnyZodObject | undefined;
 
   /**
    * Map schemas to managed values
@@ -229,13 +246,18 @@ export class StateGraph<
   );
 
   constructor(
-    fields: SD extends AnyZodObject ? SD : never,
+    fields: SD extends AnyZodObject
+      ?
+          | SD
+          | ZodStateGraphArgsWithIOSchema<I, O>
+          | ZodStateGraphArgsWithStateSchema<SD, I, O>
+      : never,
     configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
     fields: SD extends AnyZodObject
-      ? SD
+      ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
       : SD extends StateDefinition
       ?
           | SD
@@ -251,7 +273,46 @@ export class StateGraph<
     configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   ) {
     super();
-    if (
+
+    if (isZodStateGraphArgsWithStateSchema(fields)) {
+      const stateDef = getChannelsFromZod(fields.state);
+      const inputDef =
+        fields.input != null ? getChannelsFromZod(fields.input) : stateDef;
+      const outputDef =
+        fields.output != null ? getChannelsFromZod(fields.output) : stateDef;
+
+      this._schemaDefinition = stateDef;
+      this._schemaRuntimeDefinition = fields.state;
+
+      this._inputDefinition = inputDef as I;
+      this._inputRuntimeDefinition = fields.input ?? fields.state.partial();
+
+      this._outputDefinition = outputDef as O;
+      this._outputRuntimeDefinition = fields.output ?? fields.state;
+    } else if (isZodStateGraphArgsWithIOSchema(fields)) {
+      const inputDef = getChannelsFromZod(fields.input);
+      const outputDef = getChannelsFromZod(fields.output);
+
+      this._schemaDefinition = inputDef;
+      this._schemaRuntimeDefinition = fields.input;
+
+      this._inputDefinition = inputDef as I;
+      this._inputRuntimeDefinition = fields.input.partial();
+
+      this._outputDefinition = outputDef as O;
+      this._outputRuntimeDefinition = fields.output;
+    } else if (isAnyZodObject(fields)) {
+      const stateDef = getChannelsFromZod(fields);
+
+      this._schemaDefinition = stateDef;
+      this._schemaRuntimeDefinition = fields;
+
+      this._inputDefinition = stateDef as I;
+      this._inputRuntimeDefinition = fields.partial();
+
+      this._outputDefinition = stateDef as O;
+      this._outputRuntimeDefinition = fields;
+    } else if (
       isStateGraphArgsWithInputOutputSchemas<
         SD extends StateDefinition ? SD : never,
         O extends StateDefinition ? O : never
@@ -272,17 +333,17 @@ export class StateGraph<
     } else if (isStateGraphArgs(fields)) {
       const spec = _getChannels(fields.channels);
       this._schemaDefinition = spec;
-    } else if (isAnyZodObject(fields)) {
-      this._schemaDefinition = getChannelsFromZod(fields);
-      this._schemaRuntimeDefinition = fields;
     } else {
       throw new Error("Invalid StateGraph input.");
     }
-    this._inputDefinition = this._inputDefinition ?? this._schemaDefinition;
-    this._outputDefinition = this._outputDefinition ?? this._schemaDefinition;
+
+    this._inputDefinition ??= this._schemaDefinition as I;
+    this._outputDefinition ??= this._schemaDefinition as O;
+
     this._addSchema(this._schemaDefinition);
     this._addSchema(this._inputDefinition);
     this._addSchema(this._outputDefinition);
+
     this._configSchema =
       configSchema != null && "spec" in configSchema
         ? (configSchema.spec as C)
@@ -803,6 +864,14 @@ export class CompiledStateGraph<
       this.nodes[end as N].triggers.push(channelName);
     }
   }
+
+  protected async _validateInput(
+    input: UpdateType<ToStateDefinition<I>>
+  ): Promise<UpdateType<ToStateDefinition<I>>> {
+    const inputSchema = this.builder._inputRuntimeDefinition;
+    if (isAnyZodObject(inputSchema)) return inputSchema.parse(input);
+    return input;
+  }
 }
 
 function isStateDefinition(obj: unknown): obj is StateDefinition {
@@ -863,6 +932,50 @@ function isStateGraphArgsWithInputOutputSchemas<
     (obj as any).stateSchema === undefined &&
     (obj as StateGraphArgsWithInputOutputSchemas<SD, O>).input !== undefined &&
     (obj as StateGraphArgsWithInputOutputSchemas<SD, O>).output !== undefined
+  );
+}
+
+function isZodStateGraphArgsWithStateSchema<
+  SD extends AnyZodObject,
+  I extends AnyZodObject,
+  O extends AnyZodObject
+>(value: unknown): value is ZodStateGraphArgsWithStateSchema<SD, I, O> {
+  if (typeof value !== "object" || value == null) {
+    return false;
+  }
+
+  if (!("state" in value) || !isAnyZodObject(value.state)) {
+    return false;
+  }
+
+  if ("input" in value && !isAnyZodObject(value.input)) {
+    return false;
+  }
+
+  if ("output" in value && !isAnyZodObject(value.output)) {
+    return false;
+  }
+
+  return true;
+}
+
+function isZodStateGraphArgsWithIOSchema<
+  I extends AnyZodObject,
+  O extends AnyZodObject
+>(value: unknown): value is ZodStateGraphArgsWithIOSchema<I, O> {
+  if (typeof value !== "object" || value == null) {
+    return false;
+  }
+
+  if ("state" in value && value.state != null) {
+    return false;
+  }
+
+  return (
+    "input" in value &&
+    isAnyZodObject(value.input) &&
+    "output" in value &&
+    isAnyZodObject(value.output)
   );
 }
 
