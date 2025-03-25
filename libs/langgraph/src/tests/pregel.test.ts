@@ -108,6 +108,7 @@ import {
   getStateTypeSchema,
   getUpdateTypeSchema,
 } from "../graph/zod/schema.js";
+import "../graph/zod/plugin.js";
 
 expect.extend({
   toHaveKeyStartingWith(received: object, prefix: string) {
