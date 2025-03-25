@@ -113,11 +113,6 @@ type ZodStateGraphArgsWithStateSchema<
   O extends SDZod
 > = { state: SD; input?: I; output?: O };
 
-type ZodStateGraphArgsWithIOSchema<I extends SDZod, O extends SDZod> = {
-  input: I;
-  output: O;
-};
-
 type SDZod = StateDefinition | AnyZodObject;
 
 type ToStateDefinition<T> = T extends AnyZodObject
@@ -247,10 +242,7 @@ export class StateGraph<
 
   constructor(
     fields: SD extends AnyZodObject
-      ?
-          | SD
-          | ZodStateGraphArgsWithIOSchema<I, O>
-          | ZodStateGraphArgsWithStateSchema<SD, I, O>
+      ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
       : never,
     configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
@@ -289,18 +281,6 @@ export class StateGraph<
 
       this._outputDefinition = outputDef as O;
       this._outputRuntimeDefinition = fields.output ?? fields.state;
-    } else if (isZodStateGraphArgsWithIOSchema(fields)) {
-      const inputDef = getChannelsFromZod(fields.input);
-      const outputDef = getChannelsFromZod(fields.output);
-
-      this._schemaDefinition = inputDef;
-      this._schemaRuntimeDefinition = fields.input;
-
-      this._inputDefinition = inputDef as I;
-      this._inputRuntimeDefinition = fields.input.partial();
-
-      this._outputDefinition = outputDef as O;
-      this._outputRuntimeDefinition = fields.output;
     } else if (isAnyZodObject(fields)) {
       const stateDef = getChannelsFromZod(fields);
 
@@ -972,26 +952,6 @@ function isZodStateGraphArgsWithStateSchema<
   }
 
   return true;
-}
-
-function isZodStateGraphArgsWithIOSchema<
-  I extends AnyZodObject,
-  O extends AnyZodObject
->(value: unknown): value is ZodStateGraphArgsWithIOSchema<I, O> {
-  if (typeof value !== "object" || value == null) {
-    return false;
-  }
-
-  if ("state" in value && value.state != null) {
-    return false;
-  }
-
-  return (
-    "input" in value &&
-    isAnyZodObject(value.input) &&
-    "output" in value &&
-    isAnyZodObject(value.output)
-  );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

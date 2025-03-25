@@ -10183,16 +10183,14 @@ graph TD;
   it("zod schema", async () => {
     const schema = z.object({
       foo: z.string(),
-      items: z.array(z.string()).langgraph.reducer(
-        (a, b) => {
-          const bArr = Array.isArray(b) ? b : [b];
-          return [...a, ...bArr];
-        },
-        {
-          schema: z.union([z.string(), z.array(z.string())]),
-          default: () => ["default"],
-        }
-      ),
+      items: z
+        .array(z.string())
+        .default(() => ["default"])
+        .langgraph.reducer(
+          // eslint-disable-next-line no-nested-ternary
+          (a, b) => a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+          z.union([z.string(), z.array(z.string())])
+        ),
     });
 
     const graph = new StateGraph(schema)
@@ -10215,20 +10213,24 @@ graph TD;
 
     expect(
       getStateTypeSchema(graph.builder._schemaRuntimeDefinition!)
-    ).toMatchObject({
+    ).toStrictEqual({
       type: "object",
       properties: {
         foo: { type: "string" },
-        items: { type: "array", items: { type: "string" } },
+        items: {
+          type: "array",
+          items: { type: "string" },
+          default: ["default"],
+        },
       },
-      required: ["foo", "items"],
+      required: ["foo"],
       additionalProperties: false,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
     expect(
       getUpdateTypeSchema(graph.builder._schemaRuntimeDefinition!)
-    ).toMatchObject({
+    ).toStrictEqual({
       type: "object",
       properties: {
         foo: { type: "string" },
@@ -10239,7 +10241,6 @@ graph TD;
           ],
         },
       },
-      required: ["foo", "items"],
       additionalProperties: false,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
@@ -10309,18 +10310,48 @@ graph TD;
       )
     ).rejects.toBeDefined();
 
-    expect(getConfigTypeSchema(graph.builder._configSchema!)).toMatchObject({
+    expect(getConfigTypeSchema(graph.builder._configSchema!)).toStrictEqual({
+      $schema: "http://json-schema.org/draft-07/schema#",
       additionalProperties: false,
       properties: {
         prompt: {
           type: "string",
           langgraph_nodes: ["agent"],
           langgraph_type: "prompt",
+          minLength: 1,
         },
       },
       required: ["prompt"],
       type: "object",
     });
+  });
+
+  it("zod overlap schema", async () => {
+    const state = z.object({
+      question: z.string(),
+      answer: z.string(),
+      language: z.string(),
+    });
+
+    const input = state.pick({ question: true });
+    const output = state.pick({ answer: true });
+
+    const graph = new StateGraph({ state, input, output })
+      .addNode("agent", (state) => {
+        return {
+          answer: "agent",
+          language: state.language,
+        };
+      })
+      .addNode("tool", () => ({ answer: "tool" }))
+      .addEdge("__start__", "agent")
+      .addEdge("agent", "tool")
+      .compile();
+
+    await graph.invoke(
+      { question: "hey" },
+      { configurable: { thread_id: "1" } }
+    );
   });
 }
 
