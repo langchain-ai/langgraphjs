@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph",
-  "version": "0.2.57",
+  "version": "0.2.58",
   "description": "LangGraph",
   "type": "module",
   "engines": {
@@ -134,6 +134,15 @@
       "import": "./remote.js",
       "require": "./remote.cjs"
     },
+    "./zod": {
+      "types": {
+        "import": "./zod.d.ts",
+        "require": "./zod.d.cts",
+        "default": "./zod.d.ts"
+      },
+      "import": "./zod.js",
+      "require": "./zod.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -157,6 +166,10 @@
     "remote.cjs",
     "remote.js",
     "remote.d.ts",
-    "remote.d.cts"
+    "remote.d.cts",
+    "zod.cjs",
+    "zod.js",
+    "zod.d.ts",
+    "zod.d.cts"
   ]
 }
