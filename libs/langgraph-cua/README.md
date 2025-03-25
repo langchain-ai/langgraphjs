@@ -178,8 +178,7 @@ These custom nodes allow you to:
 
 - Perform validation or preprocessing before a computer action
 - Modify or analyze the results after a computer action
-- Implement custom logic that integrates with your application
-- Log or monitor the agent's actions for debugging or analytics
+- Implement custom logic that integrates with your application (e.g. for Generative UI)
 
 ### State Modifier
 
@@ -208,7 +207,6 @@ By using state modifiers, you can:
 - Store additional context or metadata in the agent's state
 - Customize the default behavior of the agent
 - Implement domain-specific functionality
-- Integrate with external systems or databases
 
 ## Auth States
 
