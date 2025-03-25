@@ -741,7 +741,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       .addConditionalEdges(START, () => ["awhile", "alittlewhile"]);
 
     const graph = builder.compile();
-    graph.stepTimeout = 10; // Set step timeout to 1 second
+    graph.stepTimeout = 10;
 
     // Test with different stream hang durations
     const streamHangMsec = [100, 300];
@@ -761,5 +761,294 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
 
       expect(innerTaskCancelled).toBe(true);
     }
+  });
+
+  /**
+   * Port of test_cancel_graph_astream from test_pregel_async_interrupt.py
+   *
+   * This test verifies that when a stream is cancelled,
+   * ongoing tasks are cancelled and the state is properly saved.
+   */
+  it("should handle cancellation of stream", async () => {
+    // Initialize AsyncLocalStorage for running with checkpointer
+    initializeAsyncLocalStorageSingleton();
+
+    // Define our state schema
+    const StateAnnotation = Annotation.Root({
+      value: Annotation<number>({
+        reducer: (a, b) => (a || 0) + b,
+      }),
+    });
+
+    // Create a class that monitors when its function is started and cancelled
+    class AwhileMaker {
+      started: boolean;
+
+      cancelled: boolean;
+
+      constructor() {
+        this.reset();
+      }
+
+      async call(
+        _input: unknown,
+        config?: RunnableConfig
+      ): Promise<typeof StateAnnotation.Update | void> {
+        this.started = true;
+        try {
+          // Create a promise that will be rejected if the abort signal is triggered
+          return new Promise<typeof StateAnnotation.Update>(
+            (resolve, reject) => {
+              const timeout = setTimeout(() => {
+                resolve({});
+              }, 1500);
+
+              // Only set up abort handler if config has a signal
+              // eslint-disable-next-line no-instanceof/no-instanceof
+              if (config?.signal instanceof AbortSignal) {
+                const abortHandler = () => {
+                  this.cancelled = true;
+                  clearTimeout(timeout);
+                  reject(new Error("AbortError"));
+                };
+
+                if (config.signal.aborted) {
+                  abortHandler();
+                } else {
+                  config.signal.addEventListener("abort", abortHandler, {
+                    once: true,
+                  });
+                }
+              } else {
+                clearTimeout(timeout);
+                reject(new Error("No signal provided"));
+              }
+            }
+          );
+        } catch (error) {
+          if (error instanceof Error && error.message === "AbortError") {
+            this.cancelled = true;
+          }
+          throw error;
+        }
+      }
+
+      reset(): void {
+        this.started = false;
+        this.cancelled = false;
+      }
+    }
+
+    // Create a node that runs for a shorter time
+    async function alittlewhile(): Promise<typeof StateAnnotation.Update> {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 600);
+      });
+      return { value: 2 };
+    }
+
+    const awhile = new AwhileMaker();
+    const aparallelwhile = new AwhileMaker();
+
+    // Create the graph
+    const builder = new StateGraph({ stateSchema: StateAnnotation })
+      .addNode("awhile", awhile.call.bind(awhile))
+      .addNode("aparallelwhile", aparallelwhile.call.bind(aparallelwhile))
+      .addNode("alittlewhile", alittlewhile)
+      .addEdge(START, "alittlewhile")
+      .addEdge(START, "aparallelwhile")
+      .addEdge("alittlewhile", "awhile");
+
+    const checkpointer = new MemorySaver();
+    const graph = builder.compile({ checkpointer });
+
+    // Test interrupting astream
+    const thread1 = { configurable: { thread_id: "1" } };
+
+    const stream = await graph.stream({ value: 1 }, thread1);
+    const chunk = (await stream.next()).value;
+    expect(chunk).toEqual({ alittlewhile: { value: 2 } });
+
+    // Cancel the stream
+    await stream.cancel();
+
+    // Allow time for the cancellation to propagate
+    await new Promise((resolve) => {
+      setTimeout(resolve, 100);
+    });
+
+    // Node aparallelwhile should start, but be cancelled
+    expect(aparallelwhile.started).toBe(true);
+    expect(aparallelwhile.cancelled).toBe(true);
+
+    // Node "awhile" should never start
+    expect(awhile.started).toBe(false);
+
+    // Check that checkpoint with output of "alittlewhile" has been saved
+    // and pending writes have been applied
+    const state = await graph.getState(thread1);
+    expect(state).not.toBeNull();
+    expect(state?.values.value).toBe(3); // 1 + 2
+    expect(state?.next).toEqual(["aparallelwhile"]);
+    expect(state?.metadata).toEqual(
+      expect.objectContaining({
+        parents: {},
+        source: "loop",
+        step: 0,
+        thread_id: "1",
+      })
+    );
+  });
+
+  /**
+   * Port of test_cancel_graph_astream_events_v2 from test_pregel_async_interrupt.py
+   *
+   * This test verifies that when a stream events v2 is cancelled,
+   * ongoing tasks are cancelled and the state is properly saved.
+   */
+  it("should handle cancellation of astream_events v2", async () => {
+    // Initialize AsyncLocalStorage for running with checkpointer
+    initializeAsyncLocalStorageSingleton();
+
+    // Define our state schema
+    const StateAnnotation = Annotation.Root({
+      value: Annotation<number>(),
+    });
+
+    // Create a class that monitors when its function is started and cancelled
+    class AwhileMaker {
+      started: boolean;
+
+      cancelled: boolean;
+
+      constructor() {
+        this.reset();
+      }
+
+      async call(
+        _input: unknown,
+        config?: RunnableConfig
+      ): Promise<typeof StateAnnotation.Update | void> {
+        this.started = true;
+        try {
+          // Create a promise that will be rejected if the abort signal is triggered
+          return await new Promise<typeof StateAnnotation.Update>(
+            (resolve, reject) => {
+              const timeout = setTimeout(() => {
+                resolve({});
+              }, 1500);
+
+              // Only set up abort handler if config has a signal
+              // eslint-disable-next-line no-instanceof/no-instanceof
+              if (config?.signal instanceof AbortSignal) {
+                const abortHandler = () => {
+                  this.cancelled = true;
+                  clearTimeout(timeout);
+                  reject(new Error("AbortError"));
+                };
+
+                if (config.signal.aborted) {
+                  abortHandler();
+                } else {
+                  config.signal.addEventListener("abort", abortHandler, {
+                    once: true,
+                  });
+                }
+              }
+            }
+          );
+        } catch (error) {
+          if (error instanceof Error && error.message === "AbortError") {
+            this.cancelled = true;
+          }
+          throw error;
+        }
+      }
+
+      reset(): void {
+        this.started = false;
+        this.cancelled = false;
+      }
+    }
+
+    // Create a node that runs for a shorter time
+    async function alittlewhile(): Promise<typeof StateAnnotation.Update> {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 600);
+      });
+      return { value: 2 };
+    }
+
+    const awhile = new AwhileMaker();
+    const anotherwhile = new AwhileMaker();
+
+    // Create the graph
+    const builder = new StateGraph({ stateSchema: StateAnnotation })
+      .addNode("alittlewhile", alittlewhile)
+      .addNode("awhile", awhile.call.bind(awhile))
+      .addNode("anotherwhile", anotherwhile.call.bind(anotherwhile))
+      .addEdge(START, "alittlewhile")
+      .addEdge("alittlewhile", "awhile")
+      .addEdge("awhile", "anotherwhile");
+
+    const checkpointer = new MemorySaver();
+    const graph = builder.compile({ checkpointer });
+
+    // Test interrupting astream_events v2
+    let gotEvent = false;
+    const thread2 = { configurable: { thread_id: "2" } };
+
+    const stream = graph.streamEvents(
+      { value: 1 },
+      { configurable: { thread_id: "2" }, version: "v2" }
+    );
+
+    for await (const chunk of stream) {
+      if (
+        chunk.event === "on_chain_stream" &&
+        !chunk.metadata.parent_ids?.length
+      ) {
+        gotEvent = true;
+        expect(chunk.data.chunk).toEqual({ alittlewhile: { value: 2 } });
+        await new Promise((resolve) => {
+          setTimeout(resolve, 100);
+        });
+        break;
+      }
+    }
+
+    await stream.cancel();
+
+    // Did break
+    expect(gotEvent).toBe(true);
+
+    // Allow time for the cancellation to propagate
+    await new Promise((resolve) => {
+      setTimeout(resolve, 100);
+    });
+
+    // Node "awhile" maybe starts (impl detail of astream_events)
+    // if it does start, it must be cancelled
+    if (awhile.started) {
+      expect(awhile.cancelled).toBe(true);
+    }
+
+    // Node "anotherwhile" should never start
+    expect(anotherwhile.started).toBe(false);
+
+    // Check that checkpoint with output of "alittlewhile" has been saved
+    const state = await graph.getState(thread2);
+    expect(state).not.toBeNull();
+    expect(state?.values.value).toBe(2);
+    expect(state?.next).toEqual(["awhile"]);
+    expect(state?.metadata).toEqual(
+      expect.objectContaining({
+        parents: {},
+        source: "loop",
+        step: 1,
+        thread_id: "2",
+      })
+    );
+    expect(state?.metadata?.writes).toEqual({ alittlewhile: { value: 2 } });
   });
 });

@@ -25,6 +25,7 @@ import {
   uuid5,
   CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
+import { StreamEvent } from "@langchain/core/types/stream";
 import {
   BaseChannel,
   createCheckpoint,
@@ -86,6 +87,7 @@ import {
 } from "./algo.js";
 import {
   _coerceToDict,
+  combineAbortSignals,
   getNewChannelVersions,
   patchCheckpointMap,
   RetryPolicy,
@@ -108,7 +110,10 @@ import {
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { StreamMessagesHandler } from "./messages.js";
 import { PregelRunner } from "./runner.js";
-import { IterableReadableWritableStream } from "./stream.js";
+import {
+  IterableReadableStreamWithAbortSignal,
+  IterableReadableWritableStream,
+} from "./stream.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 
@@ -1645,11 +1650,65 @@ export class Pregel<
     // There is currently no way in _streamIterator to determine whether this was
     // set by by ensureConfig or manually by the user, so we specify the bound value here
     // and override if it is passed as an explicit param in `options`.
+
+    const abortController = new AbortController();
+
     const config = {
       recursionLimit: this.config?.recursionLimit,
       ...options,
+      signal: options?.signal
+        ? combineAbortSignals(options.signal, abortController.signal)
+        : abortController.signal,
     };
-    return super.stream(input, config);
+
+    return new IterableReadableStreamWithAbortSignal(
+      await super.stream(input, config),
+      abortController
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  override streamEvents(
+    input: InputType | Command | null,
+    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+      version: "v1" | "v2";
+    },
+    streamOptions?: Parameters<typeof Runnable.prototype.streamEvents>[2]
+  ): IterableReadableStream<StreamEvent>;
+
+  override streamEvents(
+    input: InputType | Command | null,
+    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+      version: "v1" | "v2";
+      encoding: "text/event-stream";
+    },
+    streamOptions?: Parameters<typeof Runnable.prototype.streamEvents>[2]
+  ): IterableReadableStream<Uint8Array>;
+
+  override streamEvents(
+    input: InputType | Command | null,
+    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+      version: "v1" | "v2";
+      encoding?: "text/event-stream";
+    },
+    streamOptions?: Parameters<typeof Runnable.prototype.streamEvents>[2]
+  ): IterableReadableStream<StreamEvent> | IterableReadableStream<Uint8Array> {
+    const abortController = new AbortController();
+
+    const config = {
+      recursionLimit: this.config?.recursionLimit,
+      ...options,
+      signal: options?.signal
+        ? combineAbortSignals(options.signal, abortController.signal)
+        : abortController.signal,
+    };
+
+    return new IterableReadableStreamWithAbortSignal(
+      super.streamEvents(input, config, streamOptions),
+      abortController
+    );
   }
 
   /**
@@ -1757,6 +1816,7 @@ export class Pregel<
 
     const { runId, ...restConfig } = inputConfig;
     // assign defaults
+    const defaults = this._defaults(restConfig);
     const [
       debug,
       streamMode,
@@ -1768,7 +1828,7 @@ export class Pregel<
       checkpointer,
       store,
       streamModeSingle,
-    ] = this._defaults(restConfig);
+    ] = defaults;
 
     const stream = new IterableReadableWritableStream({
       modes: new Set(streamMode),
