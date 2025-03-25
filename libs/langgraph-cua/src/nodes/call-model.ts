@@ -7,6 +7,7 @@ import {
   CUAUpdate,
   getConfigurationWithDefaults,
 } from "../types.js";
+import { isComputerCallToolMessage } from "../utils.js";
 
 const _getOpenAIEnvFromStateEnv = (env: CUAEnvironment) => {
   switch (env) {
@@ -47,7 +48,9 @@ export async function callModel(
 
   const lastMessage = state.messages[state.messages.length - 1];
   let previousResponseId: string | undefined;
-  if (lastMessage.getType() === "tool" && !configuration.zdrEnabled) {
+  const isLastMessageComputerCallOutput =
+    isComputerCallToolMessage(lastMessage);
+  if (isLastMessageComputerCallOutput && !configuration.zdrEnabled) {
     // Assume if the last message is a tool message, the second to last will be an AI message
     const secondToLast = state.messages[state.messages.length - 2];
     previousResponseId = secondToLast.response_metadata.id;
@@ -71,12 +74,7 @@ export async function callModel(
     });
 
   let response: AIMessageChunk;
-  if (
-    lastMessage.getType() === "tool" &&
-    "type" in lastMessage.additional_kwargs &&
-    lastMessage.additional_kwargs.type === "computer_call_output" &&
-    !configuration.zdrEnabled
-  ) {
+  if (isLastMessageComputerCallOutput && !configuration.zdrEnabled) {
     response = await model.invoke([lastMessage]);
   } else {
     const prompt = _promptToSysMessage(configuration.prompt);

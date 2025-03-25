@@ -6,6 +6,17 @@ import {
   MessagesAnnotation,
 } from "@langchain/langgraph";
 
+// Copied from the OpenAI example repository
+// https://github.com/openai/openai-cua-sample-app/blob/eb2d58ba77ffd3206d3346d6357093647d29d99c/utils.py#L13
+export const BLOCKED_DOMAINS = [
+  "maliciousbook.com",
+  "evilvideos.com",
+  "darkwebforum.com",
+  "shadytok.com",
+  "suspiciouspins.com",
+  "ilanbigio.com",
+];
+
 export type CUAEnvironment = "web" | "ubuntu" | "windows";
 
 export const CUAAnnotation = Annotation.Root({
@@ -96,6 +107,15 @@ export const CUAConfigurable = Annotation.Root({
     reducer: (_state, update) => update,
     default: () => undefined,
   }),
+  /**
+   * Domains to block the browser instance from visiting.
+   * If a value is passed, it will override the default, not
+   * append to it.
+   */
+  blockedDomains: Annotation<string[]>({
+    reducer: (_state, update) => update,
+    default: () => BLOCKED_DOMAINS,
+  }),
 });
 
 /**
@@ -109,13 +129,14 @@ export function getConfigurationWithDefaults(
 ): typeof CUAConfigurable.State {
   return {
     scrapybaraApiKey:
-      config.configurable?.scrapybaraApiKey ??
+      config.configurable?.scrapybaraApiKey ||
       getEnvironmentVariable("SCRAPYBARA_API_KEY"),
     timeoutHours: config.configurable?.timeoutHours ?? 1,
     zdrEnabled: config.configurable?.zdrEnabled ?? false,
     environment: config.configurable?.environment ?? "web",
     authStateId: config.configurable?.authStateId ?? undefined,
     prompt: config.configurable?.prompt ?? undefined,
+    blockedDomains: config.configurable?.blockedDomains ?? BLOCKED_DOMAINS,
   };
 }
 

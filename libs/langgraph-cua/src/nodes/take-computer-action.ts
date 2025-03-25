@@ -7,7 +7,7 @@ import {
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { BaseMessageLike } from "@langchain/core/messages";
 import { CUAState, CUAUpdate, getConfigurationWithDefaults } from "../types.js";
-import { getInstance, isComputerToolCall } from "../utils.js";
+import { getInstance, getToolOutputs } from "../utils.js";
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -55,8 +55,8 @@ export async function takeComputerAction(
   const { authStateId } = getConfigurationWithDefaults(config);
 
   const message = state.messages[state.messages.length - 1];
-  const toolOutputs = message.additional_kwargs?.tool_outputs;
-  if (!isComputerToolCall(toolOutputs)) {
+  const toolOutputs = getToolOutputs(message);
+  if (!toolOutputs?.length) {
     // This should never happen, but include the check for proper type narrowing.
     throw new Error(
       "Can not take computer action without a computer call in the last message."

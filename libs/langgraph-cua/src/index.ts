@@ -1,26 +1,34 @@
-import { END, START, StateGraph } from "@langchain/langgraph";
+import {
+  END,
+  LangGraphRunnableConfig,
+  START,
+  StateGraph,
+} from "@langchain/langgraph";
 import { SystemMessage } from "@langchain/core/messages";
 import { callModel } from "./nodes/call-model.js";
 import { createVMInstance } from "./nodes/create-vm-instance.js";
 import { takeComputerAction } from "./nodes/take-computer-action.js";
-import { CUAState, CUAAnnotation, CUAConfigurable } from "./types.js";
-import { isComputerToolCall } from "./utils.js";
+import {
+  CUAState,
+  CUAAnnotation,
+  CUAConfigurable,
+  CUAUpdate,
+} from "./types.js";
+import { getToolOutputs, isComputerCallToolMessage } from "./utils.js";
 
 /**
- * Routes to the takeComputerAction node if a computer call is present
+ * Routes to the nodeBeforeAction node if a computer call is present
  * in the last message, otherwise routes to END.
  *
  * @param {CUAState} state The current state of the thread.
- * @returns {"takeComputerAction" | typeof END | "createVMInstance"} The next node to execute.
+ * @returns {"nodeBeforeAction" | typeof END | "createVMInstance"} The next node to execute.
  */
 function takeActionOrEnd(
   state: CUAState
-): "takeComputerAction" | "createVMInstance" | typeof END {
+): "nodeBeforeAction" | "createVMInstance" | typeof END {
   const lastMessage = state.messages[state.messages.length - 1];
-  if (
-    !lastMessage ||
-    !isComputerToolCall(lastMessage.additional_kwargs?.tool_outputs)
-  ) {
+  const toolOutputs = getToolOutputs(lastMessage);
+  if (!lastMessage || !toolOutputs) {
     return END;
   }
 
@@ -28,7 +36,7 @@ function takeActionOrEnd(
     return "createVMInstance";
   }
 
-  return "takeComputerAction";
+  return "nodeBeforeAction";
 }
 
 /**
@@ -40,34 +48,11 @@ function takeActionOrEnd(
  */
 function reinvokeModelOrEnd(state: CUAState): "callModel" | typeof END {
   const lastMsg = state.messages[state.messages.length - 1];
-  if (
-    lastMsg.getType() === "tool" &&
-    "type" in lastMsg.additional_kwargs &&
-    lastMsg.additional_kwargs.type === "computer_call_output"
-  ) {
+  if (isComputerCallToolMessage(lastMsg)) {
     return "callModel";
   }
   return END;
 }
-
-const workflow = new StateGraph(CUAAnnotation, CUAConfigurable)
-  .addNode("callModel", callModel)
-  .addNode("createVMInstance", createVMInstance)
-  .addNode("takeComputerAction", takeComputerAction)
-  .addEdge(START, "callModel")
-  .addConditionalEdges("callModel", takeActionOrEnd, [
-    "createVMInstance",
-    "takeComputerAction",
-    END,
-  ])
-  .addEdge("createVMInstance", "takeComputerAction")
-  .addConditionalEdges("takeComputerAction", reinvokeModelOrEnd, [
-    "callModel",
-    END,
-  ]);
-
-export const cuaGraph = workflow.compile();
-cuaGraph.name = "Computer Use Agent";
 
 /**
  * Configuration for the Computer Use Agent.
@@ -86,6 +71,8 @@ cuaGraph.name = "Computer Use Agent";
  *        with Scrapybara. Only applies if 'environment' is set to 'web'.
  * @param options.environment - The environment to use. Default is "web".
  * @param options.prompt - The prompt to use for the model. This will be used as the system prompt for the model.
+ * @param options.nodeBeforeAction - A custom node to run before the computer action.
+ * @param options.nodeAfterAction - A custom node to run after the computer action.
  * @returns The configured graph.
  */
 export function createCua({
@@ -96,6 +83,8 @@ export function createCua({
   authStateId,
   environment = "web",
   prompt,
+  nodeBeforeAction,
+  nodeAfterAction,
 }: {
   scrapybaraApiKey?: string;
   timeoutHours?: number;
@@ -104,11 +93,45 @@ export function createCua({
   authStateId?: string;
   environment?: "web" | "ubuntu" | "windows";
   prompt?: string | SystemMessage;
+  nodeBeforeAction?: (
+    state: CUAState,
+    config: LangGraphRunnableConfig<typeof CUAConfigurable.State>
+  ) => Promise<CUAUpdate>;
+  nodeAfterAction?: (
+    state: CUAState,
+    config: LangGraphRunnableConfig<typeof CUAConfigurable.State>
+  ) => Promise<CUAUpdate>;
 } = {}) {
   // Validate timeout_hours is within acceptable range
   if (timeoutHours < 0.01 || timeoutHours > 24) {
     throw new Error("timeoutHours must be between 0.01 and 24");
   }
+
+  const nodeBefore = nodeBeforeAction ?? (async () => {});
+  const nodeAfter = nodeAfterAction ?? (async () => {});
+
+  const workflow = new StateGraph(CUAAnnotation, CUAConfigurable)
+    .addNode("callModel", callModel)
+    .addNode("createVMInstance", createVMInstance)
+    .addNode("nodeBeforeAction", nodeBefore)
+    .addNode("nodeAfterAction", nodeAfter)
+    .addNode("takeComputerAction", takeComputerAction)
+    .addEdge(START, "callModel")
+    .addConditionalEdges("callModel", takeActionOrEnd, [
+      "createVMInstance",
+      "nodeBeforeAction",
+      END,
+    ])
+    .addEdge("nodeBeforeAction", "takeComputerAction")
+    .addEdge("takeComputerAction", "nodeAfterAction")
+    .addEdge("createVMInstance", "nodeBeforeAction")
+    .addConditionalEdges("nodeAfterAction", reinvokeModelOrEnd, [
+      "callModel",
+      END,
+    ]);
+
+  const cuaGraph = workflow.compile();
+  cuaGraph.name = "Computer Use Agent";
 
   // Configure the graph with the provided parameters
   const configuredGraph = cuaGraph.withConfig({
@@ -125,3 +148,11 @@ export function createCua({
 
   return configuredGraph;
 }
+
+export {
+  type CUAState,
+  type CUAUpdate,
+  CUAAnnotation,
+  CUAConfigurable,
+  type CUAEnvironment,
+} from "./types.js";
