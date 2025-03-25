@@ -1,4 +1,6 @@
 import {
+  Annotation,
+  AnnotationRoot,
   END,
   LangGraphRunnableConfig,
   START,
@@ -56,26 +58,83 @@ function reinvokeModelOrEnd(state: CUAState): "callModel" | typeof END {
 
 /**
  * Configuration for the Computer Use Agent.
+ */
+interface CreateCuaParams<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  StateModifier extends AnnotationRoot<any> = typeof CUAAnnotation
+> {
+  /**
+   * The API key to use for Scrapybara.
+   * This can be provided in the configuration, or set as an environment variable (SCRAPYBARA_API_KEY).
+   */
+  scrapybaraApiKey?: string;
+
+  /**
+   * The number of hours to keep the virtual machine running before it times out.
+   * Must be between 0.01 and 24. Default is 1.
+   */
+  timeoutHours?: number;
+
+  /**
+   * Whether or not Zero Data Retention is enabled in the user's OpenAI account. If true,
+   * the agent will not pass the 'previous_response_id' to the model, and will always pass it the full
+   * message history for each request. If false, the agent will pass the 'previous_response_id' to the
+   * model, and only the latest message in the history will be passed. Default false.
+   */
+  zdrEnabled?: boolean;
+
+  /**
+   * The maximum number of recursive calls the agent can make. Default is 100.
+   */
+  recursionLimit?: number;
+
+  /**
+   * The ID of the authentication state. If defined, it will be used to authenticate
+   * with Scrapybara. Only applies if 'environment' is set to 'web'.
+   */
+  authStateId?: string;
+
+  /**
+   * The environment to use. Default is "web".
+   */
+  environment?: "web" | "ubuntu" | "windows";
+
+  /**
+   * The prompt to use for the model. This will be used as the system prompt for the model.
+   */
+  prompt?: string | SystemMessage;
+
+  /**
+   * A custom node to run before the computer action.
+   */
+  nodeBeforeAction?: (
+    state: CUAState,
+    config: LangGraphRunnableConfig<typeof CUAConfigurable.State>
+  ) => Promise<CUAUpdate>;
+
+  /**
+   * A custom node to run after the computer action.
+   */
+  nodeAfterAction?: (
+    state: CUAState,
+    config: LangGraphRunnableConfig<typeof CUAConfigurable.State>
+  ) => Promise<CUAUpdate>;
+
+  /**
+   * Optional state modifier for customizing the agent's state.
+   */
+  stateModifier?: StateModifier;
+}
+
+/**
+ * Creates and configures a Computer Use Agent.
  *
- * @param options - Configuration options
- * @param options.scrapybaraApiKey - The API key to use for Scrapybara.
- *        This can be provided in the configuration, or set as an environment variable (SCRAPYBARA_API_KEY).
- * @param options.timeoutHours - The number of hours to keep the virtual machine running before it times out.
- *        Must be between 0.01 and 24. Default is 1.
- * @param options.zdrEnabled - Whether or not Zero Data Retention is enabled in the user's OpenAI account. If true,
- *        the agent will not pass the 'previous_response_id' to the model, and will always pass it the full
- *        message history for each request. If false, the agent will pass the 'previous_response_id' to the
- *        model, and only the latest message in the history will be passed. Default false.
- * @param options.recursionLimit - The maximum number of recursive calls the agent can make. Default is 100.
- * @param options.authStateId - The ID of the authentication state. If defined, it will be used to authenticate
- *        with Scrapybara. Only applies if 'environment' is set to 'web'.
- * @param options.environment - The environment to use. Default is "web".
- * @param options.prompt - The prompt to use for the model. This will be used as the system prompt for the model.
- * @param options.nodeBeforeAction - A custom node to run before the computer action.
- * @param options.nodeAfterAction - A custom node to run after the computer action.
  * @returns The configured graph.
  */
-export function createCua({
+export function createCua<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  StateModifier extends AnnotationRoot<any> = typeof CUAAnnotation
+>({
   scrapybaraApiKey,
   timeoutHours = 1.0,
   zdrEnabled = false,
@@ -85,23 +144,8 @@ export function createCua({
   prompt,
   nodeBeforeAction,
   nodeAfterAction,
-}: {
-  scrapybaraApiKey?: string;
-  timeoutHours?: number;
-  zdrEnabled?: boolean;
-  recursionLimit?: number;
-  authStateId?: string;
-  environment?: "web" | "ubuntu" | "windows";
-  prompt?: string | SystemMessage;
-  nodeBeforeAction?: (
-    state: CUAState,
-    config: LangGraphRunnableConfig<typeof CUAConfigurable.State>
-  ) => Promise<CUAUpdate>;
-  nodeAfterAction?: (
-    state: CUAState,
-    config: LangGraphRunnableConfig<typeof CUAConfigurable.State>
-  ) => Promise<CUAUpdate>;
-} = {}) {
+  stateModifier,
+}: CreateCuaParams<StateModifier> = {}) {
   // Validate timeout_hours is within acceptable range
   if (timeoutHours < 0.01 || timeoutHours > 24) {
     throw new Error("timeoutHours must be between 0.01 and 24");
@@ -110,7 +154,12 @@ export function createCua({
   const nodeBefore = nodeBeforeAction ?? (async () => {});
   const nodeAfter = nodeAfterAction ?? (async () => {});
 
-  const workflow = new StateGraph(CUAAnnotation, CUAConfigurable)
+  const StateAnnotation = Annotation.Root({
+    ...CUAAnnotation.spec,
+    ...stateModifier?.spec,
+  });
+
+  const workflow = new StateGraph(StateAnnotation, CUAConfigurable)
     .addNode("callModel", callModel)
     .addNode("createVMInstance", createVMInstance)
     .addNode("nodeBeforeAction", nodeBefore)
@@ -156,3 +205,4 @@ export {
   CUAConfigurable,
   type CUAEnvironment,
 } from "./types.js";
+export { getToolOutputs, isComputerCallToolMessage } from "./utils.js";
