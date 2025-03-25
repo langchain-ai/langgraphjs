@@ -426,6 +426,29 @@ export type PregelScratchpad<Resume = unknown> = {
   currentTaskInput: unknown;
 };
 
+/**
+ * @internal
+ */
+export type PregelAbortSignals = {
+  /** Aborts when the user calls `stream.cancel()` or aborts the {@link AbortSignal} that they passed in via the `signal` option */
+  externalAbortSignal?: AbortSignal;
+
+  /**
+   * Aborts when the currently executing task throws any error other than a {@link GraphBubbleUp}
+   */
+  errorAbortSignal?: AbortSignal;
+
+  /**
+   * Aborts when the currently executing task throws any error other than a {@link GraphBubbleUp}
+   */
+  timeoutAbortSignal?: AbortSignal;
+
+  /**
+   * A reference to the AbortSignal that is passed to the node. Aborts on step timeout, stream cancel, or when an error is thrown.
+   */
+  composedAbortSignal?: AbortSignal;
+};
+
 export type CallOptions = {
   func: (...args: unknown[]) => unknown | Promise<unknown>;
   name: string;
