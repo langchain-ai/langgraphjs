@@ -7,7 +7,7 @@ import {
   WindowsInstance,
 } from "scrapybara";
 import { getEnvironmentVariable } from "@langchain/core/utils/env";
-import { AIMessage, BaseMessage } from "@langchain/core/messages";
+import { AIMessage, BaseMessage, ToolMessage } from "@langchain/core/messages";
 import { getConfigurationWithDefaults } from "./types.js";
 
 /**
@@ -115,7 +115,9 @@ export function getToolOutputs(
  * @param {BaseMessage} message The message to check.
  * @returns {boolean} True if the message is a computer call tool message, false otherwise.
  */
-export function isComputerCallToolMessage(message: BaseMessage): boolean {
+export function isComputerCallToolMessage(
+  message: BaseMessage
+): message is ToolMessage {
   return (
     message.getType() === "tool" &&
     "type" in message.additional_kwargs &&
