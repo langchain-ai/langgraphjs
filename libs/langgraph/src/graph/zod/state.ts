@@ -7,7 +7,12 @@ import { LastValue } from "../../channels/last_value.js";
 const META_MAP = new WeakMap<z.ZodType, Meta<any, any>>();
 
 export interface Meta<ValueType, UpdateType = ValueType> {
-  metadata?: Record<string, unknown>;
+  jsonSchemaExtra?: {
+    langgraph_nodes?: string[];
+    langgraph_type?: "prompt";
+
+    [key: string]: unknown;
+  };
   reducer?: {
     schema?: z.ZodType<UpdateType>;
     fn: (a: ValueType, b: UpdateType) => ValueType;

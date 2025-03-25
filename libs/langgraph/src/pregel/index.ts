@@ -1724,8 +1724,26 @@ export class Pregel<
     };
   }
 
+  /**
+   * Validates the input for the graph.
+   * @param input - The input to validate
+   * @returns The validated input
+   * @internal
+   */
   protected async _validateInput(input: PregelInputType) {
     return input;
+  }
+
+  /**
+   * Validates the configurable options for the graph.
+   * @param config - The configurable options to validate
+   * @returns The validated configurable options
+   * @internal
+   */
+  protected async _validateConfigurable(
+    config: Partial<LangGraphRunnableConfig["configurable"]>
+  ): Promise<LangGraphRunnableConfig["configurable"]> {
+    return config;
   }
 
   /**
@@ -1774,6 +1792,8 @@ export class Pregel<
       store,
       streamModeSingle,
     ] = this._defaults(restConfig);
+
+    config.configurable = await this._validateConfigurable(config.configurable);
 
     const stream = new IterableReadableWritableStream({
       modes: new Set(streamMode),

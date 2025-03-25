@@ -105,6 +105,7 @@ import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_stora
 import { interrupt } from "../interrupt.js";
 import { extra } from "../graph/zod/state.js";
 import {
+  getConfigTypeSchema,
   getStateTypeSchema,
   getUpdateTypeSchema,
 } from "../graph/zod/schema.js";
@@ -10266,6 +10267,55 @@ graph TD;
     await expect(
       graph.invoke({ counter: -1 }, { configurable: { thread_id: "1" } })
     ).rejects.toBeDefined();
+  });
+
+  it("zod schema - config", async () => {
+    const schema = z.object({
+      foo: z.string(),
+    });
+
+    const config = z.object({
+      prompt: extra(z.string().min(1), {
+        jsonSchemaExtra: {
+          langgraph_nodes: ["agent"],
+          langgraph_type: "prompt",
+        },
+      }),
+    });
+
+    const graph = new StateGraph(schema, config)
+      .addNode("agent", () => ({ foo: "agent" }))
+      .addNode("tool", () => ({ foo: "tool" }))
+      .addEdge("__start__", "agent")
+      .addEdge("agent", "tool")
+      .compile();
+
+    expect(
+      await graph.invoke(
+        { foo: "input" },
+        { configurable: { thread_id: "1", prompt: "user input" } }
+      )
+    ).toEqual({ foo: "tool" });
+
+    await expect(
+      graph.invoke(
+        { foo: "input" },
+        { configurable: { thread_id: "1", prompt: "" } }
+      )
+    ).rejects.toBeDefined();
+
+    expect(getConfigTypeSchema(graph.builder._configSchema!)).toMatchObject({
+      additionalProperties: false,
+      properties: {
+        prompt: {
+          type: "string",
+          langgraph_nodes: ["agent"],
+          langgraph_type: "prompt",
+        },
+      },
+      required: ["prompt"],
+      type: "object",
+    });
   });
 }
 
