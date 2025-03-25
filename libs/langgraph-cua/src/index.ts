@@ -86,7 +86,7 @@ cuaGraph.name = "Computer Use Agent";
  * @param options.environment - The environment to use. Default is "web".
  * @returns The configured graph.
  */
-export function createCUA({
+export function createCua({
   scrapybaraApiKey,
   timeoutHours = 1.0,
   zdrEnabled = false,

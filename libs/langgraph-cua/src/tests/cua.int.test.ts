@@ -1,6 +1,6 @@
 import { test, expect } from "@jest/globals";
 import { ChatOpenAI } from "@langchain/openai";
-import { graph } from "../index.js";
+import { createCua } from "../index.js";
 import { stopInstance } from "../utils.js";
 
 test.skip("Can invoke the computer preview model", async () => {
@@ -40,8 +40,9 @@ test.skip("Can invoke the computer preview model", async () => {
 
 test("It can use the agent to interact with the browser", async () => {
   let instanceId: string | undefined;
+  const cuaGraph = createCua();
   try {
-    const stream = await graph.stream(
+    const stream = await cuaGraph.stream(
       {
         messages: [
           {
