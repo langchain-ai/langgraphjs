@@ -75,7 +75,7 @@ main().catch(console.error);
 
 The above example will invoke the graph, passing in a request for it to do some research into LangGraph.js from the standpoint of a new contributor. The code will log the stream URL, which you can open in your browser to view the CUA stream.
 
-You can find more examples inside the [`examples` directory](./examples/).
+You can find more examples inside the [`examples` directory](/libs/langgraph-cua/examples).
 
 ## How to customize
 
