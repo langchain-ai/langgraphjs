@@ -147,8 +147,8 @@ async function main() {
     },
     {
       role: "user",
-      content: "Hi whats up brah"
-        // "Can you find the best price for new all season tires which will fit on my 2019 Subaru Forester?",
+      content: "Hi whats up brah",
+      // "Can you find the best price for new all season tires which will fit on my 2019 Subaru Forester?",
     },
   ];
 
