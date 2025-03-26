@@ -32,7 +32,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "scrapybara": "^2.4.2",
+    "scrapybara": "^2.4.4",
     "zod": "^3.23.8"
   },
   "peerDependencies": {
