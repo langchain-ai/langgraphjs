@@ -225,8 +225,8 @@ describe("Graph Structure Tests (Python port)", () => {
       "0",
       "1",
       "3.1",
-      '2|{"goto":[{"node":"2","args":3}]}',
-      '2|{"goto":[{"node":"2","args":4}]}',
+      '2|{"lg_name":"Command","goto":[{"lg_name":"Send","node":"2","args":3}]}',
+      '2|{"lg_name":"Command","goto":[{"lg_name":"Send","node":"2","args":4}]}',
       "3",
       "2|3",
       "2|4",
@@ -256,8 +256,8 @@ describe("Graph Structure Tests (Python port)", () => {
       "0",
       "1",
       "3.1",
-      '2|{"goto":[{"node":"2","args":3}]}',
-      '2|{"goto":[{"node":"2","args":4}]}',
+      '2|{"lg_name":"Command","goto":[{"lg_name":"Send","node":"2","args":3}]}',
+      '2|{"lg_name":"Command","goto":[{"lg_name":"Send","node":"2","args":4}]}',
       "3",
       "2|3",
       "2|4",
@@ -674,11 +674,15 @@ describe("Graph Structure Tests (Python port)", () => {
 
     // Create the graph builder
     const builder = new StateGraph(StateAnnotation)
-      .addNode("1", (state) => node1.call(state))
-      .addNode("2", (state) => node2.call(state))
-      .addNode("3", (state) => node3.call(state))
-      .addNode("3.1", (state) => node31.call(state))
-      .addNode("flaky", (state) => flakyNode.call(state))
+      .addNode("1", (state: typeof StateAnnotation.State) => node1.call(state))
+      .addNode("2", (state: typeof StateAnnotation.State) => node2.call(state))
+      .addNode("3", (state: typeof StateAnnotation.State) => node3.call(state))
+      .addNode("3.1", (state: typeof StateAnnotation.State) =>
+        node31.call(state)
+      )
+      .addNode("flaky", (state: typeof StateAnnotation.State) =>
+        flakyNode.call(state)
+      )
       .addEdge(START, "1")
       .addConditionalEdges("1", sendForFun)
       .addConditionalEdges("2", routeToThree);
@@ -707,8 +711,8 @@ describe("Graph Structure Tests (Python port)", () => {
       "0",
       "1",
       "3.1",
-      '2|{"goto":[{"node":"2","args":3}]}',
-      '2|{"goto":[{"node":"flaky","args":4}]}',
+      '2|{"lg_name":"Command","goto":[{"lg_name":"Send","node":"2","args":3}]}',
+      '2|{"lg_name":"Command","goto":[{"lg_name":"Send","node":"flaky","args":4}]}',
       "3",
       "2|3",
       "flaky|4",
@@ -734,8 +738,8 @@ describe("Graph Structure Tests (Python port)", () => {
       "0",
       "1",
       "3.1",
-      '2|{"goto":[{"node":"2","args":3}]}',
-      '2|{"goto":[{"node":"flaky","args":4}]}',
+      '2|{"lg_name":"Command","goto":[{"lg_name":"Send","node":"2","args":3}]}',
+      '2|{"lg_name":"Command","goto":[{"lg_name":"Send","node":"flaky","args":4}]}',
       "3",
       "2|3",
       "flaky|4",
@@ -990,7 +994,7 @@ describe("Graph Structure Tests (Python port)", () => {
     // Create the graph
     const builder = new StateGraph(StateAnnotation)
       .addNode("1", one)
-      .addNode("2", (state) => node2.call(state))
+      .addNode("2", (state: typeof StateAnnotation.State) => node2.call(state))
       .addNode("3", three)
       .addEdge(START, "1")
       .addConditionalEdges("1", sendToMany)
