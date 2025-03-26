@@ -92,6 +92,9 @@ You can either pass these parameters when calling `createCua`, or at runtime whe
 - `authStateId`: The ID of the authentication state. If defined, it will be used to authenticate with Scrapybara. Only applies if 'environment' is set to 'web'.
 - `environment`: The environment to use. Default is `web`. Options are `web`, `ubuntu`, and `windows`.
 - `prompt`: The prompt to pass to the model. This will be passed as the system message.
+- `nodeBeforeAction`: A custom node to run before the computer action. This function will receive the current state and config as parameters.
+- `nodeAfterAction`: A custom node to run after the computer action. This function will receive the current state and config as parameters.
+- `stateModifier`: Optional state modifier for customizing the agent's state.
 
 ### System Prompts
 
@@ -137,6 +140,73 @@ If you choose to use this prompt, ensure you're populating the `{todays_date}` p
 
 </details>
 
+### Node Before/After Action
+
+LangGraph CUA allows you to customize the agent's behavior by providing custom nodes that run before and after computer actions. These nodes give you fine-grained control over the agent's workflow.
+
+```typescript
+import { createCua, CUAState, CUAUpdate } from "@langchain/langgraph-cua";
+import { LangGraphRunnableConfig } from "@langchain/langgraph";
+
+// Custom node that runs before a computer action
+async function customNodeBefore(
+  state: CUAState,
+  config: LangGraphRunnableConfig
+): Promise<CUAUpdate> {
+  console.log("Running before computer action");
+  // You can modify the state here
+  return {};
+}
+
+// Custom node that runs after a computer action
+async function customNodeAfter(
+  state: CUAState,
+  config: LangGraphRunnableConfig
+): Promise<CUAUpdate> {
+  console.log("Running after computer action");
+  // You can process the results of the computer action here
+  return {};
+}
+
+const cuaGraph = createCua({
+  nodeBeforeAction: customNodeBefore,
+  nodeAfterAction: customNodeAfter,
+});
+```
+
+These custom nodes allow you to:
+
+- Perform validation or preprocessing before a computer action
+- Modify or analyze the results after a computer action
+- Implement custom logic that integrates with your application (e.g. for Generative UI)
+
+### State Modifier
+
+The `stateModifier` parameter allows you to customize the agent's state by extending the default state annotation. This gives you the ability to add custom fields to the state object.
+
+```typescript
+import { createCua, CUAAnnotation } from "@langchain/langgraph-cua";
+import { Annotation } from "@langchain/langgraph";
+
+// Create a custom state annotation that extends the default CUA state
+const CustomStateAnnotation = Annotation.Root({
+  ...CUAAnnotation.spec,
+  // Add your custom fields here
+  customField: Annotation.Field({
+    default: "default value",
+  }),
+});
+
+const cuaGraph = createCua({
+  stateModifier: CustomStateAnnotation,
+});
+```
+
+By using state modifiers, you can:
+
+- Store additional context or metadata in the agent's state
+- Customize the default behavior of the agent
+- Implement domain-specific functionality
 
 ## Auth States
 
