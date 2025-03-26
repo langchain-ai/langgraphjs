@@ -98,7 +98,7 @@ export function getToolOutputs(
 ): ResponseComputerToolCall[] | undefined {
   const toolOutputs = message.additional_kwargs?.tool_outputs
     ? message.additional_kwargs?.tool_outputs
-    : message.response_metadata.output;
+    : message.response_metadata?.output;
 
   if (!toolOutputs || !toolOutputs.length) {
     return undefined;
