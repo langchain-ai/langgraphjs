@@ -13,7 +13,7 @@ export async function createVMInstance(
     return {};
   }
 
-  const { scrapybaraApiKey, timeoutHours, environment } =
+  const { scrapybaraApiKey, timeoutHours, environment, blockedDomains } =
     getConfigurationWithDefaults(config);
   if (!scrapybaraApiKey) {
     throw new Error(
@@ -30,8 +30,8 @@ export async function createVMInstance(
     instance = await client.startWindows({ timeoutHours });
   } else if (environment === "web") {
     // Uncomment once blocked domains are supported
-    // const cleanedBlockedDomains = blockedDomains.map((d) => d.replace("https://", "").replace("www.", ""))
-    instance = await client.startBrowser({ timeoutHours });
+    const cleanedBlockedDomains = blockedDomains.map((d) => d.replace("https://", "").replace("www.", ""))
+    instance = await client.startBrowser({ timeoutHours, blockedDomains: cleanedBlockedDomains });
   } else {
     throw new Error(
       `Invalid environment. Must be one of 'web', 'ubuntu', or 'windows'. Received: ${environment}`
