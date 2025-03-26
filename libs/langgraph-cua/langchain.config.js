@@ -13,11 +13,7 @@ export const config = {
   internals: [/node\:/, /@langchain\/core\//, /async_hooks/],
   entrypoints: {
     index: "index",
-    web: "web",
-    pregel: "pregel/index",
-    prebuilt: "prebuilt/index",
-    remote: "remote",
-    zod: "graph/zod/index",
+    utils: "utils"
   },
   tsConfigPath: resolve("./tsconfig.json"),
   cjsSource: "./dist-cjs",

@@ -1,9 +1,11 @@
 {
   "extends": "@tsconfig/recommended",
   "compilerOptions": {
+    "outDir": "../dist",
+    "rootDir": "./src",
     "target": "ES2021",
-    "lib": ["ES2021", "ES2022.Object", "ES2022.Error", "DOM"],
-    "module": "NodeNext",
+    "lib": ["ES2021", "ES2022.Object", "DOM"],
+    "module": "ES2020",
     "moduleResolution": "nodenext",
     "esModuleInterop": true,
     "declaration": true,
@@ -15,18 +17,8 @@
     "strictPropertyInitialization": false,
     "allowJs": true,
     "strict": true,
-    "outDir": "dist"
+    "sourceMap": true
   },
-  "include": [
-    "libs/*/src/**/*",
-    "libs/*/*.d.ts",
-    "libs/langgraph/*.d.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "**/dist/",
-    "environment_tests",
-    "examples/web_browsing/labeling.ts",
-    "langgraph/dist/checkpoint/sqlite.js"
-  ]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "docs"]
 }

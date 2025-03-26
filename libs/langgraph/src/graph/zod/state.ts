@@ -31,7 +31,12 @@ function isZodType(value: unknown): value is z.ZodType {
   );
 }
 
-function isZodDefault(value: unknown): value is z.ZodDefault<z.ZodTypeAny> {
+/**
+ * @internal
+ */
+export function isZodDefault(
+  value: unknown
+): value is z.ZodDefault<z.ZodTypeAny> {
   return (
     isZodType(value) &&
     "removeDefault" in value &&
@@ -39,6 +44,9 @@ function isZodDefault(value: unknown): value is z.ZodDefault<z.ZodTypeAny> {
   );
 }
 
+/**
+ * @internal
+ */
 export function isAnyZodObject(value: unknown): value is AnyZodObject {
   return (
     isZodType(value) &&
@@ -47,7 +55,7 @@ export function isAnyZodObject(value: unknown): value is AnyZodObject {
   );
 }
 
-export function extra<ValueType, UpdateType = ValueType>(
+export function withLangGraph<ValueType, UpdateType = ValueType>(
   schema: z.ZodType<ValueType | undefined>,
   meta: Meta<ValueType, UpdateType>
 ): z.ZodType<ValueType, z.ZodTypeDef, UpdateType> {
@@ -69,6 +77,19 @@ export function getMeta<ValueType, UpdateType = ValueType>(
   schema: z.ZodType<ValueType>
 ): Meta<ValueType, UpdateType> | undefined {
   return META_MAP.get(schema);
+}
+
+export function extendMeta<ValueType, UpdateType = ValueType>(
+  schema: z.ZodType<ValueType>,
+  update: (
+    meta: Meta<ValueType, UpdateType> | undefined
+  ) => Meta<ValueType, UpdateType>
+): void {
+  const existingMeta = getMeta(schema) as
+    | Meta<ValueType, UpdateType>
+    | undefined;
+  const newMeta = update(existingMeta);
+  META_MAP.set(schema, newMeta);
 }
 
 export type ZodToStateDefinition<T extends AnyZodObject> = {
