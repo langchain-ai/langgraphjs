@@ -4,6 +4,50 @@ import { StreamMode } from "./types.js";
 // [namespace, streamMode, payload]
 export type StreamChunk = [string[], StreamMode, unknown];
 
+export class IterableReadableStreamWithAbortSignal<
+  T
+> extends IterableReadableStream<T> {
+  protected _abortController: AbortController;
+
+  protected _reader: ReadableStreamDefaultReader<T>;
+
+  constructor(
+    readableStream: ReadableStream<T>,
+    abortController?: AbortController
+  ) {
+    const reader = readableStream.getReader();
+    const ac = abortController ?? new AbortController();
+    super({
+      start(controller: ReadableStreamDefaultController<T>) {
+        return pump();
+        function pump(): Promise<T | undefined> {
+          return reader.read().then(({ done, value }) => {
+            // When no more data needs to be consumed, close the stream
+            if (done) {
+              controller.close();
+              return;
+            }
+            // Enqueue the next data chunk into our target stream
+            controller.enqueue(value);
+            return pump();
+          });
+        }
+      },
+    });
+    this._abortController = ac;
+    this._reader = reader;
+  }
+
+  override async cancel(reason?: unknown) {
+    this._abortController.abort(reason);
+    this._reader.releaseLock();
+  }
+
+  get signal() {
+    return this._abortController.signal;
+  }
+}
+
 export class IterableReadableWritableStream extends IterableReadableStream<StreamChunk> {
   modes: Set<StreamMode>;
 
