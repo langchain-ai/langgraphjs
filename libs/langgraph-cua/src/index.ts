@@ -116,18 +116,18 @@ interface CreateCuaParams<
    * @default undefined
    */
   nodeBeforeAction?: (
-    state: CUAState,
+    state: CUAState & StateModifier["State"],
     config: LangGraphRunnableConfig<typeof CUAConfigurable.State>
-  ) => Promise<CUAUpdate>;
+  ) => Promise<CUAUpdate & StateModifier["Update"]>;
 
   /**
    * A custom node to run after the computer action.
    * @default undefined
    */
   nodeAfterAction?: (
-    state: CUAState,
+    state: CUAState & StateModifier["State"],
     config: LangGraphRunnableConfig<typeof CUAConfigurable.State>
-  ) => Promise<CUAUpdate>;
+  ) => Promise<CUAUpdate & StateModifier["Update"]>;
 
   /**
    * Optional state modifier for customizing the agent's state.
