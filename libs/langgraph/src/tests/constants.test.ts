@@ -3,22 +3,22 @@ import {
   Command,
   Send,
   CommandParams,
-  _convertCommandSendTree,
+  _deserializeCommandSendObjectGraph,
 } from "../constants.js";
 
-describe("_convertCommandSendTree", () => {
+describe("_deserializeCommandSendObjectGraph", () => {
   it("handles primitive values", () => {
-    expect(_convertCommandSendTree(null)).toBeNull();
-    expect(_convertCommandSendTree(undefined)).toBeUndefined();
-    expect(_convertCommandSendTree(123)).toBe(123);
-    expect(_convertCommandSendTree("test")).toBe("test");
-    expect(_convertCommandSendTree(true)).toBe(true);
-    expect(_convertCommandSendTree(false)).toBe(false);
+    expect(_deserializeCommandSendObjectGraph(null)).toBeNull();
+    expect(_deserializeCommandSendObjectGraph(undefined)).toBeUndefined();
+    expect(_deserializeCommandSendObjectGraph(123)).toBe(123);
+    expect(_deserializeCommandSendObjectGraph("test")).toBe("test");
+    expect(_deserializeCommandSendObjectGraph(true)).toBe(true);
+    expect(_deserializeCommandSendObjectGraph(false)).toBe(false);
   });
 
   it("handles arrays by mapping each element", () => {
     const input = [1, "test", { key: "value" }];
-    const result = _convertCommandSendTree(input);
+    const result = _deserializeCommandSendObjectGraph(input);
 
     expect(Array.isArray(result)).toBe(true);
     expect(result).toEqual([1, "test", { key: "value" }]);
@@ -26,24 +26,25 @@ describe("_convertCommandSendTree", () => {
 
   it("preserves Command objects", () => {
     const command = new Command({ goto: "next" });
-    const result = _convertCommandSendTree(command);
+    const result = _deserializeCommandSendObjectGraph(command);
 
     expect(result).toBe(command);
   });
 
   it("preserves Send objects", () => {
     const send = new Send("node", { data: "value" });
-    const result = _convertCommandSendTree(send);
+    const result = _deserializeCommandSendObjectGraph(send);
 
     expect(result).toBe(send);
   });
 
-  it("converts CommandParams to Command objects", () => {
+  it("converts serialized Command to Command objects", () => {
     const params: CommandParams<string> = {
+      lg_name: "Command",
       goto: "next",
       update: { value: "test" },
     };
-    const result = _convertCommandSendTree(params);
+    const result = _deserializeCommandSendObjectGraph(params);
 
     expect(result).toBeInstanceOf(Command);
     expect((result as Command).goto).toEqual(["next"]);
@@ -55,7 +56,7 @@ describe("_convertCommandSendTree", () => {
       node: "testNode",
       args: { data: "value" },
     };
-    const result = _convertCommandSendTree(sendInterface);
+    const result = _deserializeCommandSendObjectGraph(sendInterface);
 
     expect(result).toBeInstanceOf(Send);
     expect((result as Send).node).toBe("testNode");
@@ -72,19 +73,19 @@ describe("_convertCommandSendTree", () => {
         },
       },
     };
-    const result = _convertCommandSendTree(nestedObject);
+    const result = _deserializeCommandSendObjectGraph(nestedObject);
 
     expect(result).toEqual(nestedObject);
   });
 
-  it("converts nested CommandParams and SendInterface", () => {
+  it("converts nested serialized Commands and SendInterface", () => {
     const complex = {
-      command: { goto: "next", update: { foo: "bar" } },
-      send: { node: "testNode", args: { data: "value" } },
-      mixed: [1, { goto: "another", update: {} }],
+      command: { lg_name: "Command", goto: "next", update: { foo: "bar" } },
+      send: { lg_name: "Send", node: "testNode", args: { data: "value" } },
+      mixed: [1, { lg_name: "Command", goto: "another", update: {} }],
     };
 
-    const result = _convertCommandSendTree(complex) as {
+    const result = _deserializeCommandSendObjectGraph(complex) as {
       command: Command;
       send: Send;
       mixed: [number, Command];
@@ -106,7 +107,7 @@ describe("_convertCommandSendTree", () => {
 
     // This should not throw
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = _convertCommandSendTree(objA) as any;
+    const result = _deserializeCommandSendObjectGraph(objA) as any;
 
     // Verify structure
     expect(result.name).toBe("A");
@@ -120,7 +121,10 @@ describe("_convertCommandSendTree", () => {
     const arr: (number | object)[] = [1, 2];
     arr.push(arr); // Self-reference in array
 
-    const result = _convertCommandSendTree(arr) as (number | object)[];
+    const result = _deserializeCommandSendObjectGraph(arr) as (
+      | number
+      | object
+    )[];
 
     expect(result[0]).toBe(1);
     expect(result[1]).toBe(2);
@@ -141,7 +145,7 @@ describe("_convertCommandSendTree", () => {
     obj3.selfRef = obj3; // Self-reference
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = _convertCommandSendTree(obj1) as any;
+    const result = _deserializeCommandSendObjectGraph(obj1) as any;
 
     // Verify structure
     expect(result.id).toBe(1);
@@ -153,12 +157,13 @@ describe("_convertCommandSendTree", () => {
     expect(result.ref.ref.selfRef).toBe(result.ref.ref); // Self-reference
   });
 
-  it("properly converts goto arrays in CommandParams", () => {
+  it("properly converts goto arrays in serialized Commands", () => {
     const params: CommandParams<null> = {
+      lg_name: "Command",
       goto: ["nodeA", "nodeB", { node: "nodeC", args: { data: "value" } }],
     };
 
-    const result = _convertCommandSendTree(params) as Command;
+    const result = _deserializeCommandSendObjectGraph(params) as Command;
 
     expect(result).toBeInstanceOf(Command);
     expect(Array.isArray(result.goto)).toBe(true);
