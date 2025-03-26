@@ -40,16 +40,23 @@ Then, create the graph by importing the `createCua` function from the `@langchai
 ```typescript
 import "dotenv/config";
 import { createCua } from "@langchain/langgraph-cua";
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 const cuaGraph = createCua();
 
 // Define the input messages
 const messages = [
-  { role: "system", content: "You're an advanced AI computer use assistant. The browser you are using " +
-      "is already initialized, and visiting google.com.", },
-  { role: "user", content: "I want to contribute to the LangGraph.js project. Please find the GitHub repository, and inspect the read me, " +
-      "along with some of the issues and open pull requests. Then, report back with a plan of action to contribute.", }
+  {
+    role: "system",
+    content:
+      "You're an advanced AI computer use assistant. The browser you are using " +
+      "is already initialized, and visiting google.com.",
+  },
+  {
+    role: "user",
+    content:
+      "I want to contribute to the LangGraph.js project. Please find the GitHub repository, and inspect the read me, " +
+      "along with some of the issues and open pull requests. Then, report back with a plan of action to contribute.",
+  },
 ];
 
 async function main() {
