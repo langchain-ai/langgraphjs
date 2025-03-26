@@ -83,7 +83,7 @@ function registerPlugin(
 
 function setup(
   agentName: string,
-  args: { cwd: string; userPath: string },
+  args: { cwd: string; userPath: string; config?: { shared?: string[] } },
   onResult: (result: { basename: string; contents: Uint8Array }[]) => void,
 ): BuildOptions {
   return {
@@ -99,6 +99,7 @@ function setup(
       "react-dom",
       "@langchain/langgraph-sdk",
       "@langchain/langgraph-sdk/react-ui",
+      ...(args.config?.shared ?? []),
     ],
     plugins: [tailwind(), entrypointPlugin(args), registerPlugin(onResult)],
     globalName: `__LGUI_${agentName}`,
@@ -107,7 +108,7 @@ function setup(
 
 export async function build(
   agentName: string,
-  args: { cwd: string; userPath: string },
+  args: { cwd: string; userPath: string; config?: { shared?: string[] } },
 ) {
   let results: { basename: string; contents: Uint8Array }[] = [];
   await runBuild(setup(agentName, args, (result) => (results = result)));
@@ -116,7 +117,7 @@ export async function build(
 
 export async function watch(
   agentName: string,
-  args: { cwd: string; userPath: string },
+  args: { cwd: string; userPath: string; config?: { shared?: string[] } },
   onResult: (result: { basename: string; contents: Uint8Array }[]) => void,
 ) {
   const ctx = await runContext(setup(agentName, args, onResult));

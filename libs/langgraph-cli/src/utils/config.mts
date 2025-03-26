@@ -10,6 +10,7 @@ const BaseConfigSchema = z.object({
     }),
   ),
   ui: z.record(z.string()).optional(),
+  ui_config: z.object({ shared: z.array(z.string()).optional() }).optional(),
   _INTERNAL_docker_tag: z.string().optional(),
   env: z
     .union([z.array(z.string()), z.record(z.string()), z.string()])

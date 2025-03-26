@@ -10,13 +10,13 @@ const GRAPH_UI: Record<string, { basename: string; contents: Uint8Array }[]> =
 
 export async function registerGraphUi(
   defs: Record<string, string>,
-  options: { cwd: string },
+  options: { cwd: string; config?: { shared?: string[] } },
 ) {
   const result = await Promise.all(
     Object.entries(defs).map(async ([agentName, userPath]) => {
       const ctx = await watch(
         agentName,
-        { cwd: options.cwd, userPath },
+        { cwd: options.cwd, userPath, config: options.config },
         (result) => {
           GRAPH_UI[agentName] = result;
         },
