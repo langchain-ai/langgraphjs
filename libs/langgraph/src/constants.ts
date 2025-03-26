@@ -392,46 +392,73 @@ export function isCommandParams<R = unknown>(
     return false;
   }
 
-  if ("update" in x && "resume" in x && "goto" in x) {
+  if ("update" in x || "resume" in x || "goto" in x) {
     return true;
   }
 
   return false;
 }
 
-function _convertCommandSendTree(
+/**
+ * Reconstructs Command and Send objects from a deeply nested tree of anonymous objects
+ * matching their interfaces.
+ *
+ * This is only exported for testing purposes. It is NOT intended to be used outside of
+ * the Command and Send classes.
+ *
+ * @internal
+ *
+ * @param x - The command send tree to convert.
+ * @param seen - A map of seen objects to avoid infinite loops.
+ * @returns The converted command send tree.
+ */
+export function _convertCommandSendTree(
   x: unknown,
-  seen: Set<unknown> = new Set()
+  seen: Map<object, unknown> = new Map()
 ): unknown {
   if (x !== undefined && x !== null && typeof x === "object") {
+    // If we've already processed this object, return the transformed version
     if (seen.has(x)) {
-      throw new Error("Command send tree contains a cycle");
+      return seen.get(x);
     }
 
-    seen.add(x);
+    let result: unknown;
 
     if (Array.isArray(x)) {
-      return x.map((innerX) => _convertCommandSendTree(innerX, new Set(seen)));
+      // Create the array first, then populate it
+      result = [];
+      // Add to seen map before processing elements to handle self-references
+      seen.set(x, result);
+
+      // Now populate the array
+      x.forEach((item, index) => {
+        (result as unknown[])[index] = _convertCommandSendTree(item, seen);
+      });
+    } else if (isCommand(x) || _isSend(x)) {
+      result = x;
+      seen.set(x, result);
+    } else if (isCommandParams(x)) {
+      result = new Command(x);
+      seen.set(x, result);
+    } else if (_isSendInterface(x)) {
+      result = new Send(x.node, x.args);
+      seen.set(x, result);
+    } else {
+      // Create empty object first
+      result = {};
+      // Add to seen map before processing properties to handle self-references
+      seen.set(x, result);
+
+      // Now populate the object
+      for (const [key, value] of Object.entries(x)) {
+        (result as Record<string, unknown>)[key] = _convertCommandSendTree(
+          value,
+          seen
+        );
+      }
     }
 
-    if (isCommand(x) || _isSend(x)) {
-      return x;
-    }
-
-    if (isCommandParams(x)) {
-      return new Command(x);
-    }
-
-    if (_isSendInterface(x)) {
-      return new Send(x.node, x.args);
-    }
-
-    return Object.fromEntries(
-      Object.entries(x).map(([key, value]) => [
-        key,
-        _convertCommandSendTree(value, seen),
-      ])
-    );
+    return result;
   }
   return x;
 }
