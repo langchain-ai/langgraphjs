@@ -803,7 +803,10 @@ export class Threads {
         };
       }
 
-      const graph = await getGraph(graphId, { checkpointer, store });
+      const graph = await getGraph(graphId, thread.config, {
+        checkpointer,
+        store,
+      });
       const result = await graph.getState(config, { subgraphs });
 
       if (
@@ -843,7 +846,10 @@ export class Threads {
       config.configurable ??= {};
       config.configurable.graph_id ??= graphId;
 
-      const graph = await getGraph(graphId, { checkpointer, store });
+      const graph = await getGraph(graphId, thread.config, {
+        checkpointer,
+        store,
+      });
 
       const updateConfig = structuredClone(config);
       updateConfig.configurable ??= {};
@@ -894,7 +900,10 @@ export class Threads {
       config.configurable ??= {};
       config.configurable.graph_id ??= graphId;
 
-      const graph = await getGraph(graphId, { checkpointer, store });
+      const graph = await getGraph(graphId, thread.config, {
+        checkpointer,
+        store,
+      });
 
       const updateConfig = structuredClone(config);
       updateConfig.configurable ??= {};
@@ -940,7 +949,10 @@ export class Threads {
       const graphId = thread.metadata?.graph_id as string | undefined | null;
       if (graphId == null) return [];
 
-      const graph = await getGraph(graphId, { checkpointer, store });
+      const graph = await getGraph(graphId, thread.config, {
+        checkpointer,
+        store,
+      });
       const before: RunnableConfig | undefined =
         typeof options?.before === "string"
           ? { configurable: { checkpoint_id: options.before } }

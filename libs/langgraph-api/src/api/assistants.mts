@@ -109,9 +109,10 @@ api.get(
     const assistant = await Assistants.get(assistantId);
     const { xray } = c.req.valid("query");
 
-    const graph = getGraph(assistant.graph_id);
+    const config = getRunnableConfig(assistant.config);
+    const graph = await getGraph(assistant.graph_id, config);
     const drawable = await graph.getGraphAsync({
-      ...getRunnableConfig(assistant.config),
+      ...config,
       xray: xray ?? undefined,
     });
     return c.json(drawable.toJSON());
@@ -152,7 +153,9 @@ api.get(
 
     const assistantId = getAssistantId(assistant_id);
     const assistant = await Assistants.get(assistantId);
-    const graph = getGraph(assistant.graph_id);
+
+    const config = getRunnableConfig(assistant.config);
+    const graph = await getGraph(assistant.graph_id, config);
 
     const graphSchema = await getGraphSchema(assistant.graph_id);
     const rootGraphId = Object.keys(graphSchema).find((i) => !i.includes("|"));

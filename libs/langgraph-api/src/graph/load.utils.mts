@@ -23,13 +23,17 @@ export interface GraphSpec {
   exportSymbol: string;
 }
 
+export type CompiledGraphFactory<T extends string> = (config: {
+  configurable?: Record<string, unknown>;
+}) => Promise<CompiledGraph<T>>;
+
 export async function resolveGraph(
   spec: string,
   options: { cwd: string; onlyFilePresence?: false },
 ): Promise<{
   sourceFile: string;
   exportSymbol: string;
-  resolved: CompiledGraph<string>;
+  resolved: CompiledGraph<string> | CompiledGraphFactory<string>;
 }>;
 
 export async function resolveGraph(
@@ -55,7 +59,9 @@ export async function resolveGraph(
   type GraphUnknown =
     | GraphLike
     | Promise<GraphLike>
-    | (() => GraphLike | Promise<GraphLike>)
+    | ((config: {
+        configurable?: Record<string, unknown>;
+      }) => GraphLike | Promise<GraphLike>)
     | undefined;
 
   const isGraph = (graph: GraphLike): graph is Graph<string> => {
@@ -68,13 +74,24 @@ export async function resolveGraph(
   ).then((module) => module[exportSymbol || "default"]);
 
   // obtain the graph, and if not compiled, compile it
-  const resolved: CompiledGraph<string> = await (async () => {
-    if (!graph) throw new Error("Failed to load graph: graph is nullush");
-    const graphLike = typeof graph === "function" ? await graph() : await graph;
+  const resolved: CompiledGraph<string> | CompiledGraphFactory<string> =
+    await (async () => {
+      if (!graph) throw new Error("Failed to load graph: graph is nullush");
 
-    if (isGraph(graphLike)) return graphLike.compile();
-    return graphLike;
-  })();
+      const afterResolve = (graphLike: GraphLike): CompiledGraph<string> => {
+        const graph = isGraph(graphLike) ? graphLike.compile() : graphLike;
+        return graph;
+      };
+
+      if (typeof graph === "function") {
+        return async (config: { configurable?: Record<string, unknown> }) => {
+          const graphLike = await graph(config);
+          return afterResolve(graphLike);
+        };
+      }
+
+      return afterResolve(await graph);
+    })();
 
   return { sourceFile, exportSymbol, resolved };
 }

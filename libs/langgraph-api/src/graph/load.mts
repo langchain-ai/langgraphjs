@@ -6,9 +6,11 @@ import type {
   BaseCheckpointSaver,
   BaseStore,
   CompiledGraph,
+  LangGraphRunnableConfig,
 } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
 import {
+  type CompiledGraphFactory,
   type GraphSchema,
   type GraphSpec,
   resolveGraph,
@@ -18,7 +20,10 @@ import { checkpointer } from "../storage/checkpoint.mjs";
 import { store } from "../storage/store.mjs";
 import { logger } from "../logging.mjs";
 
-export const GRAPHS: Record<string, CompiledGraph<string>> = {};
+export const GRAPHS: Record<
+  string,
+  CompiledGraph<string> | CompiledGraphFactory<string>
+> = {};
 export const GRAPH_SPEC: Record<string, GraphSpec> = {};
 export const GRAPH_SCHEMA: Record<string, Record<string, GraphSchema>> = {};
 
@@ -69,8 +74,9 @@ export async function registerFromEnv(
   );
 }
 
-export function getGraph(
+export async function getGraph(
   graphId: string,
+  config: LangGraphRunnableConfig | undefined,
   options?: {
     checkpointer?: BaseCheckpointSaver | null;
     store?: BaseStore;
@@ -79,9 +85,11 @@ export function getGraph(
   if (!GRAPHS[graphId])
     throw new HTTPException(404, { message: `Graph "${graphId}" not found` });
 
-  // TODO: have a check for the type of graph
+  const compiled =
+    typeof GRAPHS[graphId] === "function"
+      ? await GRAPHS[graphId](config ?? { configurable: {} })
+      : GRAPHS[graphId];
 
-  const compiled = GRAPHS[graphId];
   if (typeof options?.checkpointer !== "undefined") {
     compiled.checkpointer = options?.checkpointer ?? undefined;
   } else {
