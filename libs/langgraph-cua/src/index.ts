@@ -30,7 +30,7 @@ function takeActionOrEnd(
 ): "nodeBeforeAction" | "createVMInstance" | typeof END {
   const lastMessage = state.messages[state.messages.length - 1];
   const toolOutputs = getToolOutputs(lastMessage);
-  if (!lastMessage || !toolOutputs) {
+  if (!lastMessage || !toolOutputs?.length) {
     return END;
   }
 
