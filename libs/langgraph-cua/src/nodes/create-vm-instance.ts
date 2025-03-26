@@ -29,9 +29,13 @@ export async function createVMInstance(
   } else if (environment === "windows") {
     instance = await client.startWindows({ timeoutHours });
   } else if (environment === "web") {
-    // Uncomment once blocked domains are supported
-    const cleanedBlockedDomains = blockedDomains.map((d) => d.replace("https://", "").replace("www.", ""))
-    instance = await client.startBrowser({ timeoutHours, blockedDomains: cleanedBlockedDomains });
+    const cleanedBlockedDomains = blockedDomains.map((d) =>
+      d.replace("https://", "").replace("www.", "")
+    );
+    instance = await client.startBrowser({
+      timeoutHours,
+      blockedDomains: cleanedBlockedDomains,
+    });
   } else {
     throw new Error(
       `Invalid environment. Must be one of 'web', 'ubuntu', or 'windows'. Received: ${environment}`
