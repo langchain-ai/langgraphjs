@@ -116,7 +116,7 @@ interface CreateCuaParams<
    * @default undefined
    */
   nodeBeforeAction?: (
-    state: CUAState,
+    state: CUAState & StateModifier["State"],
     config: LangGraphRunnableConfig<typeof CUAConfigurable.State>
   ) => Promise<CUAUpdate>;
 
@@ -125,7 +125,7 @@ interface CreateCuaParams<
    * @default undefined
    */
   nodeAfterAction?: (
-    state: CUAState,
+    state: CUAState & StateModifier["State"],
     config: LangGraphRunnableConfig<typeof CUAConfigurable.State>
   ) => Promise<CUAUpdate>;
 
