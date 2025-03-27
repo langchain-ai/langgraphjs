@@ -931,3 +931,110 @@ describe("messagesStateReducer", () => {
     expect(deduped[0].content).toEqual("bar2");
   });
 });
+
+describe("createReactAgent with structured responses", () => {
+  it("Basic structured response", async () => {
+    // Define a schema for the structured response
+    const weatherResponseSchema = z.object({
+      temperature: z.number().describe("The temperature in fahrenheit"),
+    });
+
+    const expectedStructuredResponse = { temperature: 75 };
+
+    // Create a fake model that returns tool calls and a structured response
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "Checking the weather",
+          tool_calls: [
+            {
+              name: "get_weather",
+              id: "1",
+              args: {},
+            },
+          ],
+        }),
+        new AIMessage("The weather is nice"),
+      ],
+      structuredResponse: expectedStructuredResponse,
+    });
+
+    // Define a simple weather tool
+    const getWeather = tool(async () => "The weather is sunny and 75°F.", {
+      name: "get_weather",
+      description: "Get the weather",
+      schema: z.object({}),
+    });
+
+    // Test with just the schema
+    const agent1 = createReactAgent({
+      llm,
+      tools: [getWeather],
+      responseFormat: weatherResponseSchema,
+    });
+
+    const result1 = await agent1.invoke({
+      messages: [new HumanMessage("What's the weather?")],
+    });
+
+    // Check agent output
+    expect(result1.structuredResponse).toEqual(expectedStructuredResponse);
+    expect(result1.messages.length).toEqual(4);
+    expect(result1.messages[2].content).toEqual(
+      "The weather is sunny and 75°F."
+    );
+
+    // Check messages sent to model for structured response generation
+    expect(llm.structuredOutputMessages.length).toEqual(1);
+    expect(llm.structuredOutputMessages[0].length).toEqual(4);
+    expect(llm.structuredOutputMessages[0][0].content).toEqual(
+      "What's the weather?"
+    );
+    expect(llm.structuredOutputMessages[0][1].content).toEqual(
+      "Checking the weather"
+    );
+    expect(llm.structuredOutputMessages[0][2].content).toEqual(
+      "The weather is sunny and 75°F."
+    );
+    expect(llm.structuredOutputMessages[0][3].content).toEqual(
+      "The weather is nice"
+    );
+
+    // Test with prompt and schema
+    const agent2 = createReactAgent({
+      llm,
+      tools: [getWeather],
+      responseFormat: {
+        prompt: "Meow",
+        schema: weatherResponseSchema,
+      },
+    });
+
+    const result2 = await agent2.invoke({
+      messages: [new HumanMessage("What's the weather?")],
+    });
+
+    expect(result2.structuredResponse).toEqual(expectedStructuredResponse);
+    expect(result2.messages.length).toEqual(4);
+    expect(result2.messages[2].content).toEqual(
+      "The weather is sunny and 75°F."
+    );
+
+    // Check messages sent to model for structured response generation
+    expect(llm.structuredOutputMessages.length).toEqual(2);
+    expect(llm.structuredOutputMessages[1].length).toEqual(5);
+    expect(llm.structuredOutputMessages[1][0].content).toEqual("Meow");
+    expect(llm.structuredOutputMessages[1][1].content).toEqual(
+      "What's the weather?"
+    );
+    expect(llm.structuredOutputMessages[1][2].content).toEqual(
+      "Checking the weather"
+    );
+    expect(llm.structuredOutputMessages[1][3].content).toEqual(
+      "The weather is sunny and 75°F."
+    );
+    expect(llm.structuredOutputMessages[1][4].content).toEqual(
+      "The weather is nice"
+    );
+  });
+});

@@ -152,11 +152,12 @@ export class Send implements SendInterface {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(node: string, args: any) {
     this.node = node;
-    this.args = _convertCommandSendTree(args);
+    this.args = _deserializeCommandSendObjectGraph(args);
   }
 
   toJSON() {
     return {
+      lg_name: this.lg_name,
       node: this.node,
       args: this.args,
     };
@@ -177,6 +178,14 @@ export type Interrupt = {
 };
 
 export type CommandParams<R> = {
+  /**
+   * A discriminator field used to identify the type of object. Must be populated when serializing.
+   *
+   * Optional because it's not required to specify this when directly constructing a {@link Command}
+   * object.
+   */
+  lg_name?: "Command";
+
   /**
    * Value to resume execution with. To be used together with {@link interrupt}.
    */
@@ -267,7 +276,7 @@ export type CommandParams<R> = {
  * ```
  */
 export class Command<R = unknown> {
-  lg_name = "Command";
+  readonly lg_name = "Command";
 
   lc_direct_tool_output = true;
 
@@ -307,8 +316,8 @@ export class Command<R = unknown> {
     this.update = args.update;
     if (args.goto) {
       this.goto = Array.isArray(args.goto)
-        ? (_convertCommandSendTree(args.goto) as (string | Send)[])
-        : [_convertCommandSendTree(args.goto) as string | Send];
+        ? (_deserializeCommandSendObjectGraph(args.goto) as (string | Send)[])
+        : [_deserializeCommandSendObjectGraph(args.goto) as string | Send];
     }
   }
 
@@ -353,6 +362,7 @@ export class Command<R = unknown> {
       });
     }
     return {
+      lg_name: this.lg_name,
       update: this.update,
       resume: this.resume,
       goto: serializedGoto,
@@ -369,21 +379,6 @@ export class Command<R = unknown> {
  * @returns `true` if the value is a {@link Command}, `false` otherwise.
  */
 export function isCommand(x: unknown): x is Command {
-  // eslint-disable-next-line no-instanceof/no-instanceof
-  return x instanceof Command;
-}
-
-/**
- * A type guard to check if the given value is a {@link CommandParams}.
- *
- * Useful for type narrowing when working with the {@link CommandParams} object.
- *
- * @param x - The value to check.
- * @returns `true` if the value is a {@link CommandParams}, `false` otherwise.
- */
-export function isCommandParams<R = unknown>(
-  x: unknown
-): x is CommandParams<R> {
   if (typeof x !== "object") {
     return false;
   }
@@ -392,46 +387,76 @@ export function isCommandParams<R = unknown>(
     return false;
   }
 
-  if ("update" in x && "resume" in x && "goto" in x) {
+  if ("lg_name" in x && x.lg_name === "Command") {
     return true;
   }
 
   return false;
 }
 
-function _convertCommandSendTree(
+/**
+ * Reconstructs Command and Send objects from a deeply nested tree of anonymous objects
+ * matching their interfaces.
+ *
+ * This is only exported for testing purposes. It is NOT intended to be used outside of
+ * the Command and Send classes.
+ *
+ * @internal
+ *
+ * @param x - The command send tree to convert.
+ * @param seen - A map of seen objects to avoid infinite loops.
+ * @returns The converted command send tree.
+ */
+export function _deserializeCommandSendObjectGraph(
   x: unknown,
-  seen: Set<unknown> = new Set()
+  seen: Map<object, unknown> = new Map()
 ): unknown {
   if (x !== undefined && x !== null && typeof x === "object") {
+    // If we've already processed this object, return the transformed version
     if (seen.has(x)) {
-      throw new Error("Command send tree contains a cycle");
+      return seen.get(x);
     }
 
-    seen.add(x);
+    let result: unknown;
 
     if (Array.isArray(x)) {
-      return x.map((innerX) => _convertCommandSendTree(innerX, new Set(seen)));
+      // Create the array first, then populate it
+      result = [];
+      // Add to seen map before processing elements to handle self-references
+      seen.set(x, result);
+
+      // Now populate the array
+      x.forEach((item, index) => {
+        (result as unknown[])[index] = _deserializeCommandSendObjectGraph(
+          item,
+          seen
+        );
+      });
+      // eslint-disable-next-line no-instanceof/no-instanceof
+    } else if (isCommand(x) && !(x instanceof Command)) {
+      result = new Command(x);
+      seen.set(x, result);
+      // eslint-disable-next-line no-instanceof/no-instanceof
+    } else if (_isSendInterface(x) && !(x instanceof Send)) {
+      result = new Send(x.node, x.args);
+      seen.set(x, result);
+    } else if (isCommand(x) || _isSend(x)) {
+      result = x;
+      seen.set(x, result);
+    } else {
+      // Create empty object first
+      result = {};
+      // Add to seen map before processing properties to handle self-references
+      seen.set(x, result);
+
+      // Now populate the object
+      for (const [key, value] of Object.entries(x)) {
+        (result as Record<string, unknown>)[key] =
+          _deserializeCommandSendObjectGraph(value, seen);
+      }
     }
 
-    if (isCommand(x) || _isSend(x)) {
-      return x;
-    }
-
-    if (isCommandParams(x)) {
-      return new Command(x);
-    }
-
-    if (_isSendInterface(x)) {
-      return new Send(x.node, x.args);
-    }
-
-    return Object.fromEntries(
-      Object.entries(x).map(([key, value]) => [
-        key,
-        _convertCommandSendTree(value, seen),
-      ])
-    );
+    return result;
   }
   return x;
 }

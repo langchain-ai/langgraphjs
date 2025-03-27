@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-cua",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "description": "An implementation of a computer use agent (CUA) using LangGraph",
   "type": "module",
   "engines": {
@@ -32,7 +32,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "scrapybara": "^2.4.2",
+    "scrapybara": "^2.4.4",
     "zod": "^3.23.8"
   },
   "peerDependencies": {

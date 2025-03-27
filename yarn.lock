@@ -1921,7 +1921,7 @@ __metadata:
     openai: ^4.87.3
     prettier: ^2.8.3
     release-it: ^17.6.0
-    scrapybara: ^2.4.2
+    scrapybara: ^2.4.4
     tsx: ^4.7.0
     turbo: latest
     typescript: ^4.9.5 || ^5.4.5
@@ -11703,9 +11703,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"scrapybara@npm:^2.4.2":
-  version: 2.4.2
-  resolution: "scrapybara@npm:2.4.2"
+"scrapybara@npm:^2.4.4":
+  version: 2.4.4
+  resolution: "scrapybara@npm:2.4.4"
   dependencies:
     form-data: ^4.0.0
     formdata-node: ^6.0.3
@@ -11715,7 +11715,7 @@ __metadata:
     url-join: 4.0.1
     zod: ^3.24.0
     zod-to-json-schema: ^3.24.0
-  checksum: f299eb741cc6adac273899bf6ad677d04b3d9963a90c0dc6c0925fd5f81b295d9b542747214f7db9b0b80f80496aa27f0bd305135dfc5719878282fae1f98580
+  checksum: bdcecf6cdee6f3be98dee4627a09b15bedcfb841e6efb6d6dbcdd76ebf3d80d24381366c47f09a3a40d405db3b9eb3046a7917c80c14e359a4b5773d69d8ed1e
   languageName: node
   linkType: hard
 

@@ -515,9 +515,10 @@ describe("RemoteGraph", () => {
       "test_graph_id",
       {
         command: {
+          lg_name: "Command",
           update: { foo: "bar" },
           resume: "bar",
-          goto: ["one", { node: "foo", args: { baz: "qux" } }],
+          goto: ["one", { lg_name: "Send", node: "foo", args: { baz: "qux" } }],
         },
         input: undefined,
         config: expect.anything(),

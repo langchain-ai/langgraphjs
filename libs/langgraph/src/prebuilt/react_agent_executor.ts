@@ -460,9 +460,7 @@ export function createReactAgent<
         "Attempted to generate structured output with no passed response schema. Please contact us for help."
       );
     }
-    // Exclude the last message as there's enough information
-    // for the LLM to generate the structured response
-    const messages = state.messages.slice(0, -1);
+    const messages = [...state.messages];
     let modelWithStructuredOutput;
 
     if (
