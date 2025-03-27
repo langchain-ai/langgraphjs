@@ -5,6 +5,7 @@ import {
   LangGraphRunnableConfig,
   MessagesAnnotation,
 } from "@langchain/langgraph";
+import { Browser, Page } from "playwright-core";
 
 // Copied from the OpenAI example repository
 // https://github.com/openai/openai-cua-sample-app/blob/eb2d58ba77ffd3206d3346d6357093647d29d99c/utils.py#L13
@@ -16,6 +17,8 @@ export const BLOCKED_DOMAINS = [
   "suspiciouspins.com",
   "ilanbigio.com",
 ];
+
+export type Provider = "scrapybara" | "hyperbrowser";
 
 export type CUAEnvironment = "web" | "ubuntu" | "windows";
 
@@ -47,9 +50,26 @@ export const CUAAnnotation = Annotation.Root({
     reducer: (_state, update) => update,
     default: () => undefined,
   }),
+  /**
+   * The state of the browser instance.
+   */
+  browserState: Annotation<
+    { browser: Browser | undefined; currentPage: Page | undefined } | undefined
+  >({
+    reducer: (_state, update) => update,
+    default: () => undefined,
+  }),
 });
 
 export const CUAConfigurable = Annotation.Root({
+  /**
+   * The provider to use for the browser instance.
+   * @default "scrapybara"
+   */
+  provider: Annotation<Provider>({
+    reducer: (_state, update) => update,
+    default: () => "scrapybara",
+  }),
   /**
    * The API key to use for Scrapybara.
    * @default {process.env.SCRAPYBARA_API_KEY}
@@ -57,6 +77,31 @@ export const CUAConfigurable = Annotation.Root({
   scrapybaraApiKey: Annotation<string | undefined>({
     reducer: (_state, update) => update,
     default: () => getEnvironmentVariable("SCRAPYBARA_API_KEY"),
+  }),
+  /**
+   * The API key to use for Hyperbrowser.
+   * @default {process.env.HYPERBROWSER_API_KEY}
+   */
+  hyperbrowserApiKey: Annotation<string | undefined>({
+    reducer: (_state, update) => update,
+    default: () => getEnvironmentVariable("HYPERBROWSER_API_KEY"),
+  }),
+  /**
+   * Parameters to use for configuring the Hyperbrowser session, such as screen dimensions.
+   * For more information on the available parameters, see the [Hyperbrowser API documentation](https://docs.hyperbrowser.ai/sessions/overview/session-parameters).
+   */
+  sessionParams: Annotation<
+    | {
+        screen?: {
+          width: number;
+          height: number;
+        };
+        [key: string]: unknown;
+      }
+    | undefined
+  >({
+    reducer: (_state, update) => update,
+    default: () => undefined,
   }),
   /**
    * The number of hours to keep the virtual machine running before it times out.
@@ -128,9 +173,14 @@ export function getConfigurationWithDefaults(
   config: LangGraphRunnableConfig
 ): typeof CUAConfigurable.State {
   return {
+    provider: config.configurable?.provider ?? "scrapybara",
     scrapybaraApiKey:
       config.configurable?.scrapybaraApiKey ||
       getEnvironmentVariable("SCRAPYBARA_API_KEY"),
+    hyperbrowserApiKey:
+      config.configurable?.hyperbrowserApiKey ||
+      getEnvironmentVariable("HYPERBROWSER_API_KEY"),
+    sessionParams: config.configurable?.sessionParams ?? {},
     timeoutHours: config.configurable?.timeoutHours ?? 1,
     zdrEnabled: config.configurable?.zdrEnabled ?? false,
     environment: config.configurable?.environment ?? "web",

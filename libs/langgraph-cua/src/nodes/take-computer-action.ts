@@ -7,7 +7,8 @@ import {
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { BaseMessageLike } from "@langchain/core/messages";
 import { CUAState, CUAUpdate, getConfigurationWithDefaults } from "../types.js";
-import { getInstance, getToolOutputs } from "../utils.js";
+import { getScrapybaraInstance, getToolOutputs } from "../utils.js";
+import { takeHyperbrowserAction } from "./take-browser-action.js";
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -45,7 +46,7 @@ const isBrowserInstance = (
 ): instance is BrowserInstance =>
   "authenticate" in instance && typeof instance.authenticate === "function";
 
-export async function takeComputerAction(
+export async function takeScrapybaraAction(
   state: CUAState,
   config: LangGraphRunnableConfig
 ): Promise<CUAUpdate> {
@@ -63,7 +64,7 @@ export async function takeComputerAction(
     );
   }
 
-  const instance = await getInstance(state.instanceId, config);
+  const instance = await getScrapybaraInstance(state.instanceId, config);
 
   let { authenticatedId } = state;
   if (
@@ -188,4 +189,18 @@ export async function takeComputerAction(
     streamUrl,
     authenticatedId,
   };
+}
+
+export async function takeComputerAction(
+  state: CUAState,
+  config: LangGraphRunnableConfig
+): Promise<CUAUpdate> {
+  const { provider } = getConfigurationWithDefaults(config);
+  if (provider === "scrapybara") {
+    return takeScrapybaraAction(state, config);
+  } else if (provider === "hyperbrowser") {
+    return takeHyperbrowserAction(state, config);
+  } else {
+    throw new Error(`Unsupported provider: ${provider}`);
+  }
 }
