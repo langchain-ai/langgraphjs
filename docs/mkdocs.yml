@@ -156,6 +156,7 @@ nav:
                     - how-tos/react-memory.ipynb
                     - how-tos/react-system-prompt.ipynb
                     - how-tos/react-human-in-the-loop.ipynb
+                    - how-tos/react-return-structured-output.ipynb
                     - how-tos/react-agent-from-scratch-functional.ipynb
             - LangGraph Platform:
                 - LangGraph Platform: how-tos#langgraph-platform
