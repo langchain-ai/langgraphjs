@@ -2378,3 +2378,73 @@ it("batch update state", async () => {
     })),
   );
 });
+
+it("dynamic graph", async () => {
+  const defaultAssistant = await client.assistants.create({
+    graphId: "dynamic",
+  });
+
+  let updates = await gatherIterator(
+    client.runs.stream(null, defaultAssistant.assistant_id, {
+      input: { messages: ["input"] },
+      streamMode: ["updates"],
+    }),
+  );
+
+  expect
+    .soft(
+      updates
+        .filter((i) => i.event === "updates")
+        .flatMap((i) => Object.keys(i.data)),
+    )
+    .toEqual(expect.arrayContaining(["default"]));
+
+  updates = await gatherIterator(
+    client.runs.stream(null, defaultAssistant.assistant_id, {
+      input: { messages: ["input"] },
+      config: { configurable: { nodeName: "runtime" } },
+      streamMode: ["updates"],
+    }),
+  );
+
+  expect
+    .soft(
+      updates
+        .filter((i) => i.event === "updates")
+        .flatMap((i) => Object.keys(i.data)),
+    )
+    .toEqual(expect.arrayContaining(["runtime"]));
+
+  const configAssistant = await client.assistants.create({
+    graphId: "dynamic",
+    config: { configurable: { nodeName: "assistant" } },
+  });
+
+  let thread = await client.threads.create({ graphId: "dynamic" });
+  updates = await gatherIterator(
+    client.runs.stream(thread.thread_id, configAssistant.assistant_id, {
+      input: { messages: ["input"], configurable: { nodeName: "assistant" } },
+      streamMode: ["updates"],
+    }),
+  );
+
+  expect
+    .soft(
+      updates
+        .filter((i) => i.event === "updates")
+        .flatMap((i) => Object.keys(i.data)),
+    )
+    .toEqual(expect.arrayContaining(["assistant"]));
+
+  thread = await client.threads.get(thread.thread_id);
+
+  // check if we are properly recreating the graph with the
+  // stored configuration inside a thread
+  await client.threads.updateState(thread.thread_id, {
+    values: { messages: "update" },
+    asNode: "assistant",
+  });
+
+  const state = await client.threads.getState(thread.thread_id);
+  expect(state.values.messages).toEqual(["input", "assistant", "update"]);
+});

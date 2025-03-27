@@ -5,7 +5,8 @@
     "nested": "./nested.mts:graph",
     "weather": "./weather.mts:graph",
     "error": "./error.mts:graph",
-    "delay": "./delay.mts:graph"
+    "delay": "./delay.mts:graph",
+    "dynamic": "./dynamic.mts:graph"
   },
   "ui": {
     "agent": "./agent/ui.tsx"

@@ -153,7 +153,7 @@ export async function* streamState(
     throw new Error("Invalid or missing graph_id");
   }
 
-  const graph = getGraph(graphId, {
+  const graph = await getGraph(graphId, kwargs.config, {
     checkpointer: kwargs.temporary ? null : undefined,
   });
 
