@@ -256,7 +256,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
   withStructuredOutput<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     RunOutput extends Record<string, any> = Record<string, any>
-  >(outputSchema: unknown) {
+  >(_: unknown) {
     if (!this.structuredResponse) {
       throw new Error("No structured response provided");
     }
