@@ -32,6 +32,8 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
+    "@hyperbrowser/sdk": "^0.40.0",
+    "playwright-core": "^1.51.1",
     "scrapybara": "^2.4.4",
     "zod": "^3.23.8"
   },

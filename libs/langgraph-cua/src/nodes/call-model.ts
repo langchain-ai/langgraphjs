@@ -92,6 +92,32 @@ const _promptToSysMessage = (prompt: string | SystemMessage | undefined) => {
   return prompt;
 };
 
+const getAvailableTools = (config: LangGraphRunnableConfig) => {
+  const { provider, environment, sessionParams } =
+    getConfigurationWithDefaults(config);
+  if (provider === "scrapybara") {
+    return [
+      {
+        type: "computer_use_preview",
+        display_width: DEFAULT_DISPLAY_WIDTH,
+        display_height: DEFAULT_DISPLAY_HEIGHT,
+        environment: _getOpenAIEnvFromStateEnv(environment),
+      },
+    ];
+  } else if (provider === "hyperbrowser") {
+    return [
+      {
+        type: "computer_use_preview",
+        display_width: sessionParams?.screen?.width ?? DEFAULT_DISPLAY_WIDTH,
+        display_height: sessionParams?.screen?.height ?? DEFAULT_DISPLAY_HEIGHT,
+        environment: "browser",
+      },
+    ];
+  } else {
+    throw new Error(`Invalid provider: ${provider}`);
+  }
+};
+
 /**
  * Invokes the computer preview model with the given messages.
  *
@@ -119,14 +145,7 @@ export async function callModel(
     model: "computer-use-preview",
     useResponsesApi: true,
   })
-    .bindTools([
-      {
-        type: "computer_use_preview",
-        display_width: DEFAULT_DISPLAY_WIDTH,
-        display_height: DEFAULT_DISPLAY_HEIGHT,
-        environment: _getOpenAIEnvFromStateEnv(configuration.environment),
-      },
-    ])
+    .bindTools(getAvailableTools(config))
     .bind({
       truncation: "auto",
       previous_response_id: previousResponseId,
