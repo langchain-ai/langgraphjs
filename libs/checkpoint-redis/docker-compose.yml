@@ -1,0 +1,8 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7.0.15-alpine
+    container_name: langgraphjs-redis-test
+    ports:
+      - "6379:6379"
