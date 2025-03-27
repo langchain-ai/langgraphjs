@@ -715,7 +715,6 @@ export class RedisSaver extends BaseCheckpointSaver {
           if (!value || !Array.isArray(value)) continue;
           // Extract message data based on the expected structure
           for (const message of value) {
-            /* eslint-disable no-instanceof/no-instanceof */
             if (
               (message instanceof HumanMessage ||
                 message instanceof AIMessage) &&

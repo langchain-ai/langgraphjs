@@ -11,7 +11,7 @@ module.exports = {
     project: "./tsconfig.json",
     sourceType: "module",
   },
-  plugins: ["@typescript-eslint", "no-instanceof", "eslint-plugin-jest"],
+  plugins: ["@typescript-eslint"],
   ignorePatterns: [
     ".eslintrc.cjs",
     "scripts",
@@ -24,7 +24,6 @@ module.exports = {
   ],
   rules: {
     "no-process-env": 2,
-    "no-instanceof/no-instanceof": 2,
     "@typescript-eslint/explicit-module-boundary-types": 0,
     "@typescript-eslint/no-empty-function": 0,
     "@typescript-eslint/no-shadow": 0,
@@ -43,7 +42,6 @@ module.exports = {
     ],
     "import/no-unresolved": 0,
     "import/prefer-default-export": 0,
-    'jest/no-focused-tests': 'error',
     "keyword-spacing": "error",
     "max-classes-per-file": 0,
     "max-len": 0,

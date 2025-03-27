@@ -1,11 +1,11 @@
+import { describe, it, expect, beforeEach, jest } from "@jest/globals";
+
 import { RunnableConfig } from "@langchain/core/runnables";
 import { Checkpoint } from "@langchain/langgraph-checkpoint";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
 import { RedisSaver, TRedisClient, TCheckpointRedisOptions } from "../index.js";
 
-// Jest functions need to be imported in ESM
-import { describe, it, expect, beforeEach, jest } from "@jest/globals";
 
 describe("RedisSaver", () => {
   let service: RedisSaver;
@@ -21,25 +21,25 @@ describe("RedisSaver", () => {
       rPush: jest.fn().mockReturnThis(),
       expire: jest.fn().mockReturnThis(),
       del: jest.fn().mockReturnThis(),
-      exec: jest.fn().mockResolvedValue([]),
+      exec: jest.fn<any>().mockResolvedValue([]),
     };
 
     return {
       isOpen: true,
-      connect: jest.fn().mockResolvedValue(undefined),
+      connect: jest.fn<any>().mockResolvedValue(undefined),
       get: jest.fn(),
-      set: jest.fn().mockResolvedValue("OK"),
+      set: jest.fn<any>().mockResolvedValue("OK"),
       lIndex: jest.fn(),
       lRange: jest.fn(),
       hGetAll: jest.fn(),
-      lPush: jest.fn().mockResolvedValue(1),
-      rPush: jest.fn().mockResolvedValue(1),
-      hSet: jest.fn().mockResolvedValue(1),
-      expire: jest.fn().mockResolvedValue(1),
+      lPush: jest.fn<any>().mockResolvedValue(1),
+      rPush: jest.fn<any>().mockResolvedValue(1),
+      hSet: jest.fn<any>().mockResolvedValue(1),
+      expire: jest.fn<any>().mockResolvedValue(1),
       multi: jest.fn(() => multiMock),
-      del: jest.fn().mockResolvedValue(1),
-      disconnect: jest.fn().mockResolvedValue(undefined),
-      quit: jest.fn().mockResolvedValue(undefined),
+      del: jest.fn<any>().mockResolvedValue(1),
+      disconnect: jest.fn<any>().mockResolvedValue(undefined),
+      quit: jest.fn<any>().mockResolvedValue(undefined),
       _multiMock: multiMock, // Store a reference to access in tests
     };
   };
@@ -108,9 +108,9 @@ describe("RedisSaver", () => {
       const executeCommands = (service as any).executeCommands.bind(service);
 
       const commands = [
-        jest.fn().mockResolvedValue("first"),
-        jest.fn().mockResolvedValue("second"),
-        jest.fn().mockResolvedValue("third"),
+        jest.fn<any>().mockResolvedValue("first"),
+        jest.fn<any>().mockResolvedValue("second"),
+        jest.fn<any>().mockResolvedValue("third"),
       ];
 
       await executeCommands(commands);
@@ -520,8 +520,8 @@ describe("RedisSaver", () => {
   describe("ensureConnection", () => {
     beforeEach(() => {
       // Reset the mocks
-      redisClient.disconnect = jest.fn().mockResolvedValue(undefined);
-      redisClient.quit = jest.fn().mockResolvedValue(undefined);
+      redisClient.disconnect = jest.fn<any>().mockResolvedValue(undefined);
+      redisClient.quit = jest.fn<any>().mockResolvedValue(undefined);
     });
 
     it("should do nothing if the client is not open", async () => {
@@ -577,7 +577,7 @@ describe("RedisSaver", () => {
 
       // Add multi capabilities to _multiMock
       redisClient._multiMock.lRange = jest.fn().mockReturnThis();
-      redisClient._multiMock.exec = jest.fn().mockResolvedValue([[]]);
+      redisClient._multiMock.exec = jest.fn<any>().mockResolvedValue([[]]);
     });
 
     it("should return an empty array when no checkpoints are found", async () => {
