@@ -1899,7 +1899,7 @@ __metadata:
   dependencies:
     "@jest/globals": ^29.5.0
     "@langchain/langgraph": "workspace:*"
-    "@langchain/openai": ^0.4.9
+    "@langchain/openai": ^0.5.1
     "@langchain/scripts": ^0.1.3
     "@swc/core": ^1.3.90
     "@swc/jest": ^0.2.29
@@ -1929,7 +1929,7 @@ __metadata:
   peerDependencies:
     "@langchain/core": ^0.3.43
     "@langchain/langgraph": ^0.2.57
-    "@langchain/openai": ">=0.4.9"
+    "@langchain/openai": ">=0.5.1"
   languageName: unknown
   linkType: soft
 
@@ -2128,9 +2128,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/openai@npm:^0.4.9":
-  version: 0.4.9
-  resolution: "@langchain/openai@npm:0.4.9"
+"@langchain/openai@npm:^0.5.1":
+  version: 0.5.1
+  resolution: "@langchain/openai@npm:0.5.1"
   dependencies:
     js-tiktoken: ^1.0.12
     openai: ^4.87.3
@@ -2138,7 +2138,7 @@ __metadata:
     zod-to-json-schema: ^3.22.3
   peerDependencies:
     "@langchain/core": ">=0.3.39 <0.4.0"
-  checksum: 3219e960a459fd4e904a5c446a90fd7ff0c196b76af6f1be68af102280fe15cb766c403a4f09b37fed547819abc1f3143660dad919e2f79c0b3c30dc53ba9b2b
+  checksum: 3ad90242c54b4bd4d286303e535101628704e9c93305218365fbbc72d53913f26642332f0305c0969b7824c2458a331e35300e2bf874b6c1e4ae46849906e67e
   languageName: node
   linkType: hard
 
