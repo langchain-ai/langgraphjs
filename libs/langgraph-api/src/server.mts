@@ -72,6 +72,7 @@ export const StartServerSchema = z.object({
   cwd: z.string(),
   graphs: z.record(z.string()),
   ui: z.record(z.string()).optional(),
+  ui_config: z.object({ shared: z.array(z.string()).optional() }).optional(),
 });
 
 export async function startServer(options: z.infer<typeof StartServerSchema>) {
@@ -96,7 +97,10 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
     app.route("/", api);
 
     logger.info(`Registering UI from ${options.cwd}`);
-    await registerGraphUi(options.ui, { cwd: options.cwd });
+    await registerGraphUi(options.ui, {
+      cwd: options.cwd,
+      config: options.ui_config,
+    });
   }
 
   logger.info(`Starting ${options.nWorkers} workers`);

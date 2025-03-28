@@ -8,7 +8,11 @@ export async function spawnServer(
     nJobsPerWorker: string;
   },
   context: {
-    config: { graphs: Record<string, string>; ui?: Record<string, string> };
+    config: {
+      graphs: Record<string, string>;
+      ui?: Record<string, string>;
+      ui_config?: { shared?: string[] };
+    };
     env: NodeJS.ProcessEnv;
     hostUrl: string;
   },
@@ -53,6 +57,7 @@ For production use, please use LangGraph Cloud.
         host: args.host,
         graphs: context.config.graphs,
         ui: context.config.ui,
+        ui_config: context.config.ui_config,
         cwd: options.projectCwd,
       }),
     ],
