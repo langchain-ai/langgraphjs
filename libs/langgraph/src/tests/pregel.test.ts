@@ -10376,6 +10376,48 @@ graph TD;
       { configurable: { thread_id: "1" } }
     );
   });
+
+  it("Annotation overlap schema", async () => {
+    const stateSchema = Annotation.Root({
+      question: Annotation<string>,
+      answer: Annotation<string>,
+      language: Annotation<string>,
+    });
+
+    const input = Annotation.Root({
+      question: Annotation<string>,
+    });
+
+    const output = Annotation.Root({
+      answer: Annotation<string>,
+    });
+
+    // This should be a valid TypeScript code
+    const graph = new StateGraph({ stateSchema, input, output })
+      .addNode("agent", (state) => {
+        return {
+          answer: "agent",
+          language: state.language,
+        };
+      })
+      .addNode("tool", () => ({ answer: "tool" }))
+      .addEdge("__start__", "agent")
+      .addEdge("agent", "tool")
+      .compile();
+
+    const res = await graph.invoke(
+      { question: "hey" },
+      { configurable: { thread_id: "1" } }
+    );
+
+    expect(res).toEqual({ answer: "tool" });
+
+    // @ts-expect-error `question` is not in the output schema
+    void res.question;
+
+    // @ts-expect-error `language` is not in the output schema
+    void res.language;
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
