@@ -22,6 +22,10 @@ import { PregelScratchpad } from "./pregel/types.js";
  * 2. Otherwise, it throws a `GraphInterrupt` with the provided value
  * 3. The graph can be resumed by passing a `Command` with a `resume` value
  *
+ * Because the `interrupt` function propagates by throwing a special `GraphInterrupt` error,
+ * you should avoid using `try/catch` blocks around the `interrupt` function,
+ * or if you do, ensure that the `GraphInterrupt` error is thrown again within your `catch` block.
+ *
  * @param value - The value to include in the interrupt. This will be available in task.interrupts[].value
  * @returns The `resume` value provided when the graph is re-invoked with a Command
  *
@@ -80,8 +84,7 @@ export function interrupt<I = unknown, R = any>(value: I): R {
         `Resume length mismatch: ${scratchpad.resume.length} !== ${idx}`
       );
     }
-    const v = scratchpad.nullResume;
-    delete scratchpad.nullResume;
+    const v = scratchpad.consumeNullResume();
     scratchpad.resume.push(v);
     const send = conf[CONFIG_KEY_SEND];
     if (send) {

@@ -56,9 +56,7 @@ class TestChannel {
     }
     return false;
   }
-  get() {
-    return this.value;
-  }
+  get() { return this.value; }
 }
 
 // Real channel registry
@@ -134,6 +132,7 @@ const createTestNode = (name, inputChannels, outputChannels, fn) => ({
   bound: {
     invoke: (input) => fn(input),
   },
+
 });
 
 // Test graph setup

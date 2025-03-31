@@ -177,7 +177,10 @@ export function runFuncTests(
           let attempts = 0;
 
           const failingTask = task(
-            { name: "failingTask", retry: { maxAttempts: 3 } },
+            {
+              name: "failingTask",
+              retry: { maxAttempts: 3, logWarning: false },
+            },
             () => {
               attempts += 1;
               if (attempts < 3) {
@@ -800,6 +803,75 @@ export function runFuncTests(
 
         // Verify double() was only called 3 times (cached appropriately)
         expect(counter).toBe(3);
+      });
+
+      it("handles multiple interrupts from tasks", async () => {
+        const addParticipant = task("add-participant", async (name: string) => {
+          const feedback = interrupt(`Hey do you want to add ${name}?`);
+
+          if (feedback === false) {
+            return `The user changed their mind and doesnt want to add ${name}!` as string;
+          }
+
+          if (feedback === true) {
+            return `Added ${name}!` as string;
+          }
+
+          throw new Error("Invalid feedback");
+        });
+
+        const program = entrypoint(
+          {
+            name: "program",
+            checkpointer,
+          },
+          async () => {
+            const first = await addParticipant("James");
+            const second = await addParticipant("Will");
+            return [first, second];
+          }
+        );
+
+        const config = { configurable: { thread_id } };
+
+        let result = await program.invoke([], config);
+        expect(result).toBeUndefined();
+
+        let currTasks = (await program.getState(config)).tasks;
+        expect(currTasks[0].interrupts).toHaveLength(1);
+        expect(currTasks[0].interrupts[0].value).toEqual(
+          "Hey do you want to add James?"
+        );
+        expect(currTasks[0].interrupts[0].resumable).toEqual(true);
+        expect(currTasks[0].interrupts[0].ns!.length).toEqual(2);
+        expect(currTasks[0].interrupts[0].ns![0]).toEqual(
+          expect.stringMatching(/^program:.*$/)
+        );
+        expect(currTasks[0].interrupts[0].ns![1]).toEqual(
+          expect.stringMatching(/^add-participant:.*$/)
+        );
+        expect(currTasks[0].interrupts[0].when).toEqual("during");
+
+        result = await program.invoke(new Command({ resume: true }), config);
+        expect(result).toBeNull();
+
+        currTasks = (await program.getState(config)).tasks;
+        expect(currTasks[0].interrupts).toHaveLength(1);
+        expect(currTasks[0].interrupts[0].value).toEqual(
+          "Hey do you want to add Will?"
+        );
+        expect(currTasks[0].interrupts[0].resumable).toEqual(true);
+        expect(currTasks[0].interrupts[0].ns!.length).toEqual(2);
+        expect(currTasks[0].interrupts[0].ns![0]).toEqual(
+          expect.stringMatching(/^program:.*$/)
+        );
+        expect(currTasks[0].interrupts[0].ns![1]).toEqual(
+          expect.stringMatching(/^add-participant:.*$/)
+        );
+        expect(currTasks[0].interrupts[0].when).toEqual("during");
+
+        result = await program.invoke(new Command({ resume: true }), config);
+        expect(result).toEqual(["Added James!", "Added Will!"]);
       });
     });
   });

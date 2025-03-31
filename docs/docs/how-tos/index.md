@@ -22,6 +22,7 @@ These how-to guides show how to achieve that controllability.
 - [How to create branches for parallel execution](branching.ipynb)
 - [How to create map-reduce branches for parallel execution](map-reduce.ipynb)
 - [How to combine control flow and state updates with Command](command.ipynb)
+- [How to create and control loops with recursion limits](recursion-limit.ipynb)
 
 ### Persistence
 
@@ -126,8 +127,8 @@ See the below guides for how-to implement multi-agent workflows with the [Functi
 
 - [How to add runtime configuration to your graph](configuration.ipynb)
 - [How to add node retries](node-retry-policies.ipynb)
-- [How to let agent return tool results directly](dynamically-returning-directly.ipynb)
-- [How to have agent respond in structured format](respond-in-format.ipynb)
+- [How to let an agent return tool results directly](dynamically-returning-directly.ipynb)
+- [How to have an agent respond in structured format](respond-in-format.ipynb)
 - [How to manage agent steps](managing-agent-steps.ipynb)
 
 ### Prebuilt ReAct Agent
@@ -203,6 +204,13 @@ Streaming the results of your LLM application is vital for ensuring a good user 
 - [How to stream events](/langgraphjs/cloud/how-tos/stream_events)
 - [How to stream in debug mode](/langgraphjs/cloud/how-tos/stream_debug)
 - [How to stream multiple modes](/langgraphjs/cloud/how-tos/stream_multiple)
+
+### Frontend & Generative UI
+
+With LangGraph Platform you can integrate LangGraph agents into your React applications and colocate UI components with your agent code.
+
+- [How to integrate LangGraph into your React application](/langgraphjs/cloud/how-tos/use_stream_react)
+- [How to implement Generative User Interfaces with LangGraph](/langgraphjs/cloud/how-tos/generative_ui_react)
 
 ### Human-in-the-loop
 

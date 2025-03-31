@@ -86,6 +86,7 @@ nav:
                     - how-tos/map-reduce.ipynb
                     - how-tos/branching.ipynb
                     - how-tos/command.ipynb
+                    - how-tos/recursion-limit.ipynb
                 - Persistence:
                     - Persistence: how-tos#persistence
                     - how-tos/persistence.ipynb
@@ -155,6 +156,7 @@ nav:
                     - how-tos/react-memory.ipynb
                     - how-tos/react-system-prompt.ipynb
                     - how-tos/react-human-in-the-loop.ipynb
+                    - how-tos/react-return-structured-output.ipynb
                     - how-tos/react-agent-from-scratch-functional.ipynb
             - LangGraph Platform:
                 - LangGraph Platform: how-tos#langgraph-platform
@@ -198,6 +200,10 @@ nav:
                     - cloud/how-tos/stream_events.md
                     - cloud/how-tos/stream_debug.md
                     - cloud/how-tos/stream_multiple.md
+                - Frontend & Generative UI:
+                    - Frontend & Generative UI: how-tos#frontend-generative-ui
+                    - cloud/how-tos/use_stream_react.md
+                    - cloud/how-tos/generative_ui_react.md
                 - Human-in-the-loop:
                     - Human-in-the-loop: how-tos#human-in-the-loop_1
                     - cloud/how-tos/human_in_the_loop_breakpoint.md
@@ -297,6 +303,7 @@ nav:
     - Resources:
         - Prebuilt Agents: prebuilt.md
         - Adopters: adopters.md
+        - LLMS-txt: llms-txt-overview.md
         - FAQ: concepts/faq.md
         - Troubleshooting:
             - Troubleshooting: troubleshooting/errors/

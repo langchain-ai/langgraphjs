@@ -23,7 +23,7 @@ import {
   FunctionMessageFieldsWithName,
 } from "@langchain/core/messages";
 import { ChatGenerationChunk, ChatResult } from "@langchain/core/outputs";
-import { RunnableConfig } from "@langchain/core/runnables";
+import { RunnableConfig, RunnableLambda } from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
 import {
   MemorySaver,
@@ -152,14 +152,20 @@ export class FakeToolCallingChatModel extends BaseChatModel {
 
   idx: number;
 
-  toolStyle: "openai" | "anthropic" | "bedrock" = "openai";
+  toolStyle: "openai" | "anthropic" | "bedrock" | "google" = "openai";
+
+  structuredResponse?: unknown;
+
+  // Track messages passed to structured output calls
+  structuredOutputMessages: BaseMessage[][] = [];
 
   constructor(
     fields: {
       sleep?: number;
       responses?: BaseMessage[];
       thrownErrorString?: string;
-      toolStyle?: "openai" | "anthropic" | "bedrock";
+      toolStyle?: "openai" | "anthropic" | "bedrock" | "google";
+      structuredResponse?: Record<string, unknown>;
     } & BaseChatModelParams
   ) {
     super(fields);
@@ -168,6 +174,8 @@ export class FakeToolCallingChatModel extends BaseChatModel {
     this.thrownErrorString = fields.thrownErrorString;
     this.idx = 0;
     this.toolStyle = fields.toolStyle ?? this.toolStyle;
+    this.structuredResponse = fields.structuredResponse;
+    this.structuredOutputMessages = [];
   }
 
   _llmType() {
@@ -219,7 +227,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
             name: tool.name,
           },
         });
-      } else if (this.toolStyle === "anthropic") {
+      } else if (["anthropic", "google"].includes(this.toolStyle)) {
         toolDicts.push({
           name: tool.name,
         });
@@ -231,15 +239,39 @@ export class FakeToolCallingChatModel extends BaseChatModel {
         });
       }
     }
-
+    let toolsToBind: BindToolsInput[] = toolDicts;
+    if (this.toolStyle === "google") {
+      toolsToBind = [{ functionDeclarations: toolDicts }];
+    }
     return new FakeToolCallingChatModel({
       sleep: this.sleep,
       responses: this.responses,
       thrownErrorString: this.thrownErrorString,
       toolStyle: this.toolStyle,
     }).bind({
-      tools: toolDicts,
+      tools: toolsToBind,
     } as BaseChatModelCallOptions);
+  }
+
+  withStructuredOutput<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    RunOutput extends Record<string, any> = Record<string, any>
+  >(_: unknown) {
+    if (!this.structuredResponse) {
+      throw new Error("No structured response provided");
+    }
+    // Create a runnable that returns the proper structured format
+    return RunnableLambda.from(async (messages: BaseMessage[]) => {
+      if (this.sleep) {
+        await new Promise((resolve) => setTimeout(resolve, this.sleep));
+      }
+
+      // Store the messages that were sent to generate structured output
+      this.structuredOutputMessages.push([...messages]);
+
+      // Return in the format expected: { raw: BaseMessage, parsed: RunOutput }
+      return this.structuredResponse as RunOutput;
+    });
   }
 }
 

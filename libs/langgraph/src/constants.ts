@@ -1,8 +1,11 @@
+import { PendingWrite } from "@langchain/langgraph-checkpoint";
+
 /** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
 /** Special reserved node name denoting the end of a graph. */
 export const END = "__end__";
 export const INPUT = "__input__";
+export const COPY = "__copy__";
 export const ERROR = "__error__";
 export const CONFIG_KEY_SEND = "__pregel_send";
 /** config key containing function used to call a node (push task) */
@@ -19,8 +22,12 @@ export const CONFIG_KEY_PREVIOUS_STATE = "__pregel_previous";
 export const CONFIG_KEY_CHECKPOINT_ID = "checkpoint_id";
 export const CONFIG_KEY_CHECKPOINT_NS = "checkpoint_ns";
 
+export const CONFIG_KEY_NODE_FINISHED = "__pregel_node_finished";
+
 // this one is part of public API
 export const CONFIG_KEY_CHECKPOINT_MAP = "checkpoint_map";
+
+export const CONFIG_KEY_ABORT_SIGNALS = "__pregel_abort_signals";
 
 /** Special channel reserved for graph interrupts */
 export const INTERRUPT = "__interrupt__";
@@ -139,11 +146,20 @@ export function _isSendInterface(x: unknown): x is SendInterface {
 export class Send implements SendInterface {
   lg_name = "Send";
 
+  public node: string;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(public node: string, public args: any) {}
+  public args: any;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(node: string, args: any) {
+    this.node = node;
+    this.args = _deserializeCommandSendObjectGraph(args);
+  }
 
   toJSON() {
     return {
+      lg_name: this.lg_name,
       node: this.node,
       args: this.args,
     };
@@ -151,8 +167,8 @@ export class Send implements SendInterface {
 }
 
 export function _isSend(x: unknown): x is Send {
-  const operation = x as Send;
-  return operation !== undefined && operation.lg_name === "Send";
+  // eslint-disable-next-line no-instanceof/no-instanceof
+  return x instanceof Send;
 }
 
 export type Interrupt = {
@@ -165,13 +181,22 @@ export type Interrupt = {
 
 export type CommandParams<R> = {
   /**
+   * A discriminator field used to identify the type of object. Must be populated when serializing.
+   *
+   * Optional because it's not required to specify this when directly constructing a {@link Command}
+   * object.
+   */
+  lg_name?: "Command";
+
+  /**
    * Value to resume execution with. To be used together with {@link interrupt}.
    */
   resume?: R;
   /**
    * Graph to send the command to. Supported values are:
    *   - None: the current graph (default)
-   *   - GraphCommand.PARENT: closest parent graph
+   *   - The specific name of the graph to send the command to
+   *   - {@link Command.PARENT}: closest parent graph (only supported when returned from a node in a subgraph)
    */
   graph?: string;
 
@@ -187,7 +212,7 @@ export type CommandParams<R> = {
    *   - `Send` object (to execute a node with the input provided)
    *   - sequence of `Send` objects
    */
-  goto?: string | Send | (string | Send)[];
+  goto?: string | SendInterface | (string | SendInterface)[];
 };
 
 /**
@@ -253,17 +278,37 @@ export type CommandParams<R> = {
  * ```
  */
 export class Command<R = unknown> {
-  lg_name = "Command";
+  readonly lg_name = "Command";
 
   lc_direct_tool_output = true;
 
+  /**
+   * Graph to send the command to. Supported values are:
+   *   - None: the current graph (default)
+   *   - The specific name of the graph to send the command to
+   *   - {@link Command.PARENT}: closest parent graph (only supported when returned from a node in a subgraph)
+   */
   graph?: string;
 
+  /**
+   * Update to apply to the graph's state as a result of executing the node that is returning the command.
+   * Written to the state as if the node had simply returned this value instead of the Command object.
+   */
   update?: Record<string, unknown> | [string, unknown][];
 
+  /**
+   * Value to resume execution with. To be used together with {@link interrupt}.
+   */
   resume?: R;
 
-  goto: string | Send | (string | Send)[] = [];
+  /**
+   * Can be one of the following:
+   *   - name of the node to navigate to next (any node that belongs to the specified `graph`)
+   *   - sequence of node names to navigate to next
+   *   - {@link Send} object (to execute a node with the exact input provided in the {@link Send} object)
+   *   - sequence of {@link Send} objects
+   */
+  goto?: string | Send | (string | Send)[] = [];
 
   static PARENT = "__parent__";
 
@@ -272,11 +317,18 @@ export class Command<R = unknown> {
     this.graph = args.graph;
     this.update = args.update;
     if (args.goto) {
-      this.goto = Array.isArray(args.goto) ? args.goto : [args.goto];
+      this.goto = Array.isArray(args.goto)
+        ? (_deserializeCommandSendObjectGraph(args.goto) as (string | Send)[])
+        : [_deserializeCommandSendObjectGraph(args.goto) as string | Send];
     }
   }
 
-  _updateAsTuples(): [string, unknown][] {
+  /**
+   * Convert the update field to a list of {@link PendingWrite} tuples
+   * @returns List of {@link PendingWrite} tuples of the form `[channelKey, value]`.
+   * @internal
+   */
+  _updateAsTuples(): PendingWrite[] {
     if (
       this.update &&
       typeof this.update === "object" &&
@@ -303,7 +355,7 @@ export class Command<R = unknown> {
     } else if (_isSend(this.goto)) {
       serializedGoto = this.goto.toJSON();
     } else {
-      serializedGoto = this.goto.map((innerGoto) => {
+      serializedGoto = this.goto?.map((innerGoto) => {
         if (typeof innerGoto === "string") {
           return innerGoto;
         } else {
@@ -312,6 +364,7 @@ export class Command<R = unknown> {
       });
     }
     return {
+      lg_name: this.lg_name,
       update: this.update,
       resume: this.resume,
       goto: serializedGoto,
@@ -319,6 +372,93 @@ export class Command<R = unknown> {
   }
 }
 
+/**
+ * A type guard to check if the given value is a {@link Command}.
+ *
+ * Useful for type narrowing when working with the {@link Command} object.
+ *
+ * @param x - The value to check.
+ * @returns `true` if the value is a {@link Command}, `false` otherwise.
+ */
 export function isCommand(x: unknown): x is Command {
-  return typeof x === "object" && !!x && (x as Command).lg_name === "Command";
+  if (typeof x !== "object") {
+    return false;
+  }
+
+  if (x === null || x === undefined) {
+    return false;
+  }
+
+  if ("lg_name" in x && x.lg_name === "Command") {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Reconstructs Command and Send objects from a deeply nested tree of anonymous objects
+ * matching their interfaces.
+ *
+ * This is only exported for testing purposes. It is NOT intended to be used outside of
+ * the Command and Send classes.
+ *
+ * @internal
+ *
+ * @param x - The command send tree to convert.
+ * @param seen - A map of seen objects to avoid infinite loops.
+ * @returns The converted command send tree.
+ */
+export function _deserializeCommandSendObjectGraph(
+  x: unknown,
+  seen: Map<object, unknown> = new Map()
+): unknown {
+  if (x !== undefined && x !== null && typeof x === "object") {
+    // If we've already processed this object, return the transformed version
+    if (seen.has(x)) {
+      return seen.get(x);
+    }
+
+    let result: unknown;
+
+    if (Array.isArray(x)) {
+      // Create the array first, then populate it
+      result = [];
+      // Add to seen map before processing elements to handle self-references
+      seen.set(x, result);
+
+      // Now populate the array
+      x.forEach((item, index) => {
+        (result as unknown[])[index] = _deserializeCommandSendObjectGraph(
+          item,
+          seen
+        );
+      });
+      // eslint-disable-next-line no-instanceof/no-instanceof
+    } else if (isCommand(x) && !(x instanceof Command)) {
+      result = new Command(x);
+      seen.set(x, result);
+      // eslint-disable-next-line no-instanceof/no-instanceof
+    } else if (_isSendInterface(x) && !(x instanceof Send)) {
+      result = new Send(x.node, x.args);
+      seen.set(x, result);
+    } else if (isCommand(x) || _isSend(x)) {
+      result = x;
+      seen.set(x, result);
+    } else {
+      // Create empty object first
+      result = {};
+      // Add to seen map before processing properties to handle self-references
+      seen.set(x, result);
+
+      // Now populate the object
+      for (const [key, value] of Object.entries(x)) {
+        (result as Record<string, unknown>)[key] =
+          _deserializeCommandSendObjectGraph(value, seen);
+      }
+    }
+
+    return result;
+  }
+  return x;
 }

@@ -162,7 +162,11 @@ function _shouldBindTools(
     return true;
   }
 
-  const boundTools = llm.kwargs.tools as BindToolsInput[];
+  let boundTools = llm.kwargs.tools as BindToolsInput[];
+  // google-style
+  if (boundTools.length === 1 && "functionDeclarations" in boundTools[0]) {
+    boundTools = boundTools[0].functionDeclarations;
+  }
   if (tools.length !== boundTools.length) {
     throw new Error(
       "Number of tools in the model.bindTools() and tools passed to createReactAgent must match"
@@ -178,7 +182,7 @@ function _shouldBindTools(
     if ("type" in boundTool && boundTool.type === "function") {
       boundToolName = boundTool.function.name;
     }
-    // Anthropic-style tool
+    // Anthropic- or Google-style tool
     else if ("name" in boundTool) {
       boundToolName = boundTool.name;
     }
@@ -456,9 +460,7 @@ export function createReactAgent<
         "Attempted to generate structured output with no passed response schema. Please contact us for help."
       );
     }
-    // Exclude the last message as there's enough information
-    // for the LLM to generate the structured response
-    const messages = state.messages.slice(0, -1);
+    const messages = [...state.messages];
     let modelWithStructuredOutput;
 
     if (
@@ -485,7 +487,9 @@ export function createReactAgent<
     // TODO: Auto-promote streaming.
     const response = (await modelRunnable.invoke(state, config)) as BaseMessage;
     // add agent name to the AIMessage
+    // TODO: figure out if we can avoid mutating the message directly
     response.name = name;
+    response.lc_kwargs.name = name;
     return { messages: [response] };
   };
 

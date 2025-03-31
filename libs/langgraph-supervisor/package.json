@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-supervisor",
-  "version": "0.0.7",
+  "version": "0.0.9",
   "description": "LangGraph Multi-Agent Supervisor",
   "type": "module",
   "engines": {
@@ -31,10 +31,12 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/core": "^0.3.40",
-    "@langchain/langgraph": "^0.2.50",
     "uuid": "^10.0.0",
     "zod": "^3.23.8"
+  },
+  "peerDependencies": {
+    "@langchain/core": "^0.3.40",
+    "@langchain/langgraph": "^0.2.53"
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",

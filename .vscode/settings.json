@@ -3,7 +3,8 @@
     "agentic",
     "checkpointer",
     "Checkpointers",
-    "Pregel"
+    "Pregel",
+    "Scrapybara"
   ],
   "typescript.tsdk": "node_modules/typescript/lib",
   "python.languageServer": "None"

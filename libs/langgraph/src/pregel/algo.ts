@@ -187,7 +187,7 @@ export function _localWrite(
   writes: [string, any][]
 ) {
   for (const [chan, value] of writes) {
-    if (chan === TASKS && value != null) {
+    if ([PUSH, TASKS].includes(chan) && value != null) {
       if (!_isSend(value)) {
         throw new InvalidUpdateError(
           `Invalid packet type, expected SendProtocol, got ${JSON.stringify(
@@ -449,6 +449,7 @@ export function _prepareNextTasks<
   const tasks:
     | Record<string, PregelExecutableTask<keyof Nn, keyof Cc>>
     | Record<string, PregelTaskDescription> = {};
+
   // Consume pending packets
   for (let i = 0; i < checkpoint.pending_sends.length; i += 1) {
     const task = _prepareSingleTask(
@@ -634,15 +635,11 @@ export function _prepareSingleTask<
                 ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                 [parentNamespace]: checkpoint.id,
               },
-              [CONFIG_KEY_SCRATCHPAD]: _scratchpad(
-                [
-                  ...(pendingWrites || []),
-                  ...(configurable[CONFIG_KEY_SCRATCHPAD]?.resume || []).map(
-                    (v: unknown): CheckpointPendingWrite => [id, RESUME, v]
-                  ),
-                ],
-                id
-              ),
+              [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
+                pendingWrites: pendingWrites ?? [],
+                taskId: id,
+                currentTaskInput: call.input,
+              }),
               [CONFIG_KEY_PREVIOUS_STATE]: checkpoint.channel_values[PREVIOUS],
               checkpoint_id: undefined,
               checkpoint_ns: taskCheckpointNamespace,
@@ -672,7 +669,15 @@ export function _prepareSingleTask<
     if (index >= checkpoint.pending_sends.length) {
       return undefined;
     }
-    const packet = checkpoint.pending_sends[index];
+
+    const packet =
+      _isSendInterface(checkpoint.pending_sends[index]) &&
+      !_isSend(checkpoint.pending_sends[index])
+        ? new Send(
+            checkpoint.pending_sends[index].node,
+            checkpoint.pending_sends[index].args
+          )
+        : checkpoint.pending_sends[index];
     if (!_isSendInterface(packet)) {
       console.warn(
         `Ignoring invalid packet ${JSON.stringify(packet)} in pending sends.`
@@ -705,7 +710,7 @@ export function _prepareSingleTask<
       langgraph_step: step,
       langgraph_node: packet.node,
       langgraph_triggers: triggers,
-      langgraph_path: taskPath,
+      langgraph_path: taskPath.slice(0, 3),
       langgraph_checkpoint_ns: taskCheckpointNamespace,
     };
     if (forExecution) {
@@ -767,19 +772,11 @@ export function _prepareSingleTask<
                   ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                   [parentNamespace]: checkpoint.id,
                 },
-                [CONFIG_KEY_SCRATCHPAD]: _scratchpad(
-                  [
-                    ...(pendingWrites || []),
-                    ...(configurable[CONFIG_KEY_SCRATCHPAD]?.resume || []).map(
-                      (v: unknown): CheckpointPendingWrite => [
-                        taskId,
-                        RESUME,
-                        v,
-                      ]
-                    ),
-                  ],
-                  taskId
-                ),
+                [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
+                  pendingWrites: pendingWrites ?? [],
+                  taskId,
+                  currentTaskInput: packet.args,
+                }),
                 [CONFIG_KEY_PREVIOUS_STATE]:
                   checkpoint.channel_values[PREVIOUS],
                 checkpoint_id: undefined,
@@ -808,6 +805,37 @@ export function _prepareSingleTask<
     if (proc === undefined) {
       return undefined;
     }
+
+    // Check if this task already has successful writes in the pending writes
+    if (pendingWrites?.length) {
+      // Find the task ID for this node/path
+      const checkpointNamespace =
+        parentNamespace === ""
+          ? name
+          : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${name}`;
+
+      const taskId = uuid5(
+        JSON.stringify([
+          checkpointNamespace,
+          step.toString(),
+          name,
+          PULL,
+          name,
+        ]),
+        checkpoint.id
+      );
+
+      // Check if there are successful writes (not ERROR) for this task ID
+      const hasSuccessfulWrites = pendingWrites.some(
+        (w) => w[0] === taskId && w[1] !== ERROR
+      );
+
+      // If task completed successfully, don't include it in next tasks
+      if (hasSuccessfulWrites) {
+        return undefined;
+      }
+    }
+
     const nullVersion = getNullChannelVersion(checkpoint.channel_versions);
     if (nullVersion === undefined) {
       return undefined;
@@ -862,7 +890,6 @@ export function _prepareSingleTask<
             metadata = { ...metadata, ...proc.metadata };
           }
           const writes: [keyof Cc, unknown][] = [];
-          const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
           return {
             name,
             input: val,
@@ -915,21 +942,11 @@ export function _prepareSingleTask<
                     ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
                     [parentNamespace]: checkpoint.id,
                   },
-                  [CONFIG_KEY_SCRATCHPAD]: _scratchpad(
-                    [
-                      ...(pendingWrites || []),
-                      ...(
-                        configurable[CONFIG_KEY_SCRATCHPAD]?.resume || []
-                      ).map(
-                        (v: unknown): CheckpointPendingWrite => [
-                          taskId,
-                          RESUME,
-                          v,
-                        ]
-                      ),
-                    ],
-                    taskId
-                  ),
+                  [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
+                    pendingWrites: pendingWrites ?? [],
+                    taskId,
+                    currentTaskInput: val,
+                  }),
                   [CONFIG_KEY_PREVIOUS_STATE]:
                     checkpoint.channel_values[PREVIOUS],
                   checkpoint_id: undefined,
@@ -1031,11 +1048,20 @@ function _procInput(
   return val;
 }
 
-function _scratchpad(
-  pendingWrites: CheckpointPendingWrite[],
-  taskId: string
-): PregelScratchpad {
-  return {
+function _scratchpad({
+  pendingWrites,
+  taskId,
+  currentTaskInput,
+}: {
+  pendingWrites: CheckpointPendingWrite[];
+  taskId: string;
+  currentTaskInput: unknown;
+}): PregelScratchpad {
+  const nullResume = pendingWrites.find(
+    ([writeTaskId, chan]) => writeTaskId === NULL_TASK_ID && chan === RESUME
+  )?.[2];
+
+  const scratchpad = {
     callCounter: 0,
     interruptCounter: -1,
     resume: pendingWrites
@@ -1043,9 +1069,22 @@ function _scratchpad(
         ([writeTaskId, chan]) => writeTaskId === taskId && chan === RESUME
       )
       .flatMap(([_writeTaskId, _chan, resume]) => resume),
-    nullResume: pendingWrites.find(
-      ([writeTaskId, chan]) => writeTaskId === NULL_TASK_ID && chan === RESUME
-    )?.[2],
+    nullResume,
     subgraphCounter: 0,
+    currentTaskInput,
+    consumeNullResume: () => {
+      if (scratchpad.nullResume) {
+        delete scratchpad.nullResume;
+        pendingWrites.splice(
+          pendingWrites.findIndex(
+            ([writeTaskId, chan]) =>
+              writeTaskId === NULL_TASK_ID && chan === RESUME
+          ),
+          1
+        );
+        return nullResume;
+      }
+    },
   };
+  return scratchpad;
 }

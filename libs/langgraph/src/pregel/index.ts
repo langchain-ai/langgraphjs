@@ -23,7 +23,9 @@ import {
   PendingWrite,
   SCHEDULED,
   uuid5,
+  CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
+import type { StreamEvent } from "@langchain/core/tracers/log_stream";
 import {
   BaseChannel,
   createCheckpoint,
@@ -32,7 +34,7 @@ import {
 } from "../channels/base.js";
 import { PregelNode } from "./read.js";
 import { validateGraph, validateKeys } from "./validate.js";
-import { readChannels } from "./io.js";
+import { mapInput, readChannels } from "./io.js";
 import {
   printStepCheckpoint,
   printStepTasks,
@@ -44,16 +46,19 @@ import {
   CONFIG_KEY_CHECKPOINTER,
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
+  CONFIG_KEY_TASK_ID,
   ERROR,
+  INPUT,
   INTERRUPT,
+  PUSH,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   CHECKPOINT_NAMESPACE_END,
   CONFIG_KEY_STREAM,
-  CONFIG_KEY_TASK_ID,
   Command,
   NULL_TASK_ID,
-  INPUT,
-  PUSH,
+  COPY,
+  END,
+  CONFIG_KEY_NODE_FINISHED,
 } from "../constants.js";
 import {
   PregelExecutableTask,
@@ -82,6 +87,7 @@ import {
 } from "./algo.js";
 import {
   _coerceToDict,
+  combineAbortSignals,
   getNewChannelVersions,
   patchCheckpointMap,
   RetryPolicy,
@@ -104,9 +110,13 @@ import {
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { StreamMessagesHandler } from "./messages.js";
 import { PregelRunner } from "./runner.js";
-import { IterableReadableWritableStream } from "./stream.js";
+import {
+  IterableReadableStreamWithAbortSignal,
+  IterableReadableWritableStream,
+} from "./stream.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
+type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
 
 function isString(value: unknown): value is string {
   return typeof value === "string";
@@ -656,6 +666,7 @@ export class Pregel<
    * @param config - Configuration for preparing the snapshot
    * @param saved - Optional saved checkpoint data
    * @param subgraphCheckpointer - Optional checkpointer for subgraphs
+   * @param applyPendingWrites - Whether to apply pending writes to tasks and then to channels
    * @returns A snapshot of the graph state
    * @internal
    */
@@ -663,10 +674,12 @@ export class Pregel<
     config,
     saved,
     subgraphCheckpointer,
+    applyPendingWrites = false,
   }: {
     config: RunnableConfig;
     saved?: CheckpointTuple;
     subgraphCheckpointer?: BaseCheckpointSaver;
+    applyPendingWrites?: boolean;
   }): Promise<StateSnapshot> {
     if (saved === undefined) {
       return {
@@ -676,14 +689,36 @@ export class Pregel<
         tasks: [],
       };
     }
-    // Pass `skipManaged: true` as managed values should not be returned in get state calls.
-    const { managed } = await this.prepareSpecs(config, { skipManaged: true });
 
+    // Create all channels
+    const { managed } = await this.prepareSpecs(config, {
+      skipManaged: true,
+    });
     const channels = emptyChannels(
       this.channels as Record<string, BaseChannel>,
       saved.checkpoint
     );
 
+    // Apply null writes first (from NULL_TASK_ID)
+    if (saved.pendingWrites?.length) {
+      const nullWrites = saved.pendingWrites
+        .filter(([taskId, _]) => taskId === NULL_TASK_ID)
+        .map(
+          ([_, channel, value]) => [String(channel), value] as [string, unknown]
+        );
+
+      if (nullWrites.length > 0) {
+        _applyWrites(saved.checkpoint, channels, [
+          {
+            name: INPUT,
+            writes: nullWrites as PendingWrite[],
+            triggers: [],
+          },
+        ]);
+      }
+    }
+
+    // Prepare next tasks
     const nextTasks = Object.values(
       _prepareNextTasks(
         saved.checkpoint,
@@ -692,20 +727,24 @@ export class Pregel<
         channels,
         managed,
         saved.config,
-        false,
-        { step: (saved.metadata?.step ?? -1) + 1 }
+        true,
+        { step: (saved.metadata?.step ?? -1) + 1, store: this.store }
       )
     );
+
+    // Find subgraphs
     const subgraphs = await gatherIterator(this.getSubgraphsAsync());
     const parentNamespace = saved.config.configurable?.checkpoint_ns ?? "";
     const taskStates: Record<string, RunnableConfig | StateSnapshot> = {};
+
+    // Prepare task states for subgraphs
     for (const task of nextTasks) {
       const matchingSubgraph = subgraphs.find(([name]) => name === task.name);
       if (!matchingSubgraph) {
         continue;
       }
       // assemble checkpoint_ns for this task
-      let taskNs = `${task.name}${CHECKPOINT_NAMESPACE_END}${task.id}`;
+      let taskNs = `${String(task.name)}${CHECKPOINT_NAMESPACE_END}${task.id}`;
       if (parentNamespace) {
         taskNs = `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${taskNs}`;
       }
@@ -720,40 +759,76 @@ export class Pregel<
         taskStates[task.id] = config;
       } else {
         // get the state of the subgraph
-        const config: RunnableConfig = {
+        const subgraphConfig: RunnableConfig = {
           configurable: {
             [CONFIG_KEY_CHECKPOINTER]: subgraphCheckpointer,
             thread_id: saved.config.configurable?.thread_id,
             checkpoint_ns: taskNs,
           },
         };
-        taskStates[task.id] = await matchingSubgraph[1].getState(config, {
+        const pregel = matchingSubgraph[1];
+        taskStates[task.id] = await pregel.getState(subgraphConfig, {
           subgraphs: true,
         });
       }
     }
-    // apply pending writes
-    const nullWrites = (saved.pendingWrites ?? [])
-      .filter((w) => w[0] === NULL_TASK_ID)
-      .map((w) => w.slice(1)) as PendingWrite<string>[];
-    if (nullWrites.length > 0) {
-      _applyWrites(saved.checkpoint, channels, [
-        {
-          name: INPUT,
-          writes: nullWrites,
-          triggers: [],
-        },
-      ]);
+
+    // Apply pending writes to tasks and then to channels if applyPendingWrites is true
+    if (applyPendingWrites && saved.pendingWrites?.length) {
+      // Map task IDs to task objects for easy lookup
+      const nextTaskById = Object.fromEntries(
+        nextTasks.map((task) => [task.id, task])
+      );
+
+      // Apply pending writes to the appropriate tasks
+      for (const [taskId, channel, value] of saved.pendingWrites) {
+        // Skip special channels and tasks not in nextTasks
+        if ([ERROR, INTERRUPT, SCHEDULED].includes(channel)) {
+          continue;
+        }
+        if (!(taskId in nextTaskById)) {
+          continue;
+        }
+        // Add the write to the task
+        nextTaskById[taskId].writes.push([String(channel), value]);
+      }
+
+      // Apply writes from tasks that have writes
+      const tasksWithWrites = nextTasks.filter(
+        (task) => task.writes.length > 0
+      );
+      if (tasksWithWrites.length > 0) {
+        _applyWrites(
+          saved.checkpoint,
+          channels,
+          tasksWithWrites as unknown as WritesProtocol[]
+        );
+      }
     }
+
+    // Preserve thread_id from the config in metadata
+    let metadata = saved?.metadata;
+    if (metadata && saved?.config?.configurable?.thread_id) {
+      metadata = {
+        ...metadata,
+        thread_id: saved.config.configurable.thread_id as string,
+      } as CheckpointMetadata;
+    }
+
+    // Filter next tasks - only include tasks without writes
+    const nextList = nextTasks
+      .filter((task) => task.writes.length === 0)
+      .map((task) => task.name as string);
+
     // assemble the state snapshot
     return {
       values: readChannels(
         channels,
         this.streamChannelsAsIs as string | string[]
       ),
-      next: nextTasks.map((task) => task.name),
+      next: nextList,
       tasks: tasksWithWrites(nextTasks, saved?.pendingWrites ?? [], taskStates),
-      metadata: saved.metadata,
+      metadata,
       config: patchCheckpointMap(saved.config, saved.metadata),
       createdAt: saved.checkpoint.ts,
       parentConfig: saved.parentConfig,
@@ -811,6 +886,7 @@ export class Pregel<
       config: mergedConfig,
       saved,
       subgraphCheckpointer: options?.subgraphs ? checkpointer : undefined,
+      applyPendingWrites: !config.configurable?.checkpoint_id,
     });
     return snapshot;
   }
@@ -882,6 +958,547 @@ export class Pregel<
   }
 
   /**
+   * Apply updates to the graph state in bulk.
+   * Requires a checkpointer to be configured.
+   *
+   * This method is useful for recreating a thread
+   * from a list of updates, especially if a checkpoint
+   * is created as a result of multiple tasks.
+   *
+   * @internal The API might change in the future.
+   *
+   * @param startConfig - Configuration for the update
+   * @param updates - The list of updates to apply to graph state
+   * @returns Updated configuration
+   * @throws {GraphValueError} If no checkpointer is configured
+   * @throws {InvalidUpdateError} If the update cannot be attributed to a node or an update can be only applied in sequence.
+   */
+  async bulkUpdateState(
+    startConfig: LangGraphRunnableConfig,
+    supersteps: Array<{
+      updates: Array<{
+        values?: Record<string, unknown> | unknown;
+        asNode?: keyof Nodes | string;
+      }>;
+    }>
+  ): Promise<RunnableConfig> {
+    const checkpointer: BaseCheckpointSaver | undefined =
+      startConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
+    if (!checkpointer) {
+      throw new GraphValueError("No checkpointer set");
+    }
+    if (supersteps.length === 0) {
+      throw new Error("No supersteps provided");
+    }
+
+    if (supersteps.some((s) => s.updates.length === 0)) {
+      throw new Error("No updates provided");
+    }
+
+    // delegate to subgraph
+    const checkpointNamespace: string =
+      startConfig.configurable?.checkpoint_ns ?? "";
+    if (
+      checkpointNamespace !== "" &&
+      startConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
+    ) {
+      // remove task_ids from checkpoint_ns
+      const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
+      // find the subgraph with the matching name
+      // eslint-disable-next-line no-unreachable-loop
+      for await (const [, pregel] of this.getSubgraphsAsync(
+        recastNamespace,
+        true
+      )) {
+        return await pregel.bulkUpdateState(
+          patchConfigurable(startConfig, {
+            [CONFIG_KEY_CHECKPOINTER]: checkpointer,
+          }),
+          supersteps
+        );
+      }
+      throw new Error(`Subgraph "${recastNamespace}" not found`);
+    }
+
+    const updateSuperStep = async (
+      inputConfig: LangGraphRunnableConfig,
+      updates: {
+        values?: Record<string, unknown> | unknown;
+        asNode?: keyof Nodes | string;
+      }[]
+    ) => {
+      // get last checkpoint
+      const config = this.config
+        ? mergeConfigs(this.config, inputConfig)
+        : inputConfig;
+      const saved = await checkpointer.getTuple(config);
+      const checkpoint =
+        saved !== undefined
+          ? copyCheckpoint(saved.checkpoint)
+          : emptyCheckpoint();
+      const checkpointPreviousVersions = {
+        ...saved?.checkpoint.channel_versions,
+      };
+      const step = saved?.metadata?.step ?? -1;
+      // merge configurable fields with previous checkpoint config
+      let checkpointConfig = patchConfigurable(config, {
+        checkpoint_ns: config.configurable?.checkpoint_ns ?? "",
+      });
+      let checkpointMetadata = config.metadata ?? {};
+      if (saved?.config.configurable) {
+        checkpointConfig = patchConfigurable(config, saved.config.configurable);
+        checkpointMetadata = {
+          ...saved.metadata,
+          ...checkpointMetadata,
+        };
+      }
+
+      // Find last node that updated the state, if not provided
+      const { values, asNode } = updates[0];
+      if (values == null && asNode === undefined) {
+        if (updates.length > 1) {
+          throw new InvalidUpdateError(
+            `Cannot create empty checkpoint with multiple updates`
+          );
+        }
+
+        const nextConfig = await checkpointer.put(
+          checkpointConfig,
+          createCheckpoint(checkpoint, undefined, step),
+          {
+            source: "update",
+            step: step + 1,
+            writes: {},
+            parents: saved?.metadata?.parents ?? {},
+          },
+          {}
+        );
+        return patchCheckpointMap(
+          nextConfig,
+          saved ? saved.metadata : undefined
+        );
+      }
+
+      // update channels
+      const channels = emptyChannels(
+        this.channels as Record<string, BaseChannel>,
+        checkpoint
+      );
+
+      // Pass `skipManaged: true` as managed values are not used/relevant in update state calls.
+      const { managed } = await this.prepareSpecs(config, {
+        skipManaged: true,
+      });
+
+      if (values === null && asNode === END) {
+        if (updates.length > 1) {
+          throw new InvalidUpdateError(
+            `Cannot apply multiple updates when clearing state`
+          );
+        }
+
+        if (saved) {
+          // tasks for this checkpoint
+          const nextTasks = _prepareNextTasks(
+            checkpoint,
+            saved.pendingWrites || [],
+            this.nodes,
+            channels,
+            managed,
+            saved.config,
+            true,
+            {
+              step: (saved.metadata?.step ?? -1) + 1,
+              checkpointer: this.checkpointer || undefined,
+              store: this.store,
+            }
+          );
+
+          // apply null writes
+          const nullWrites = (saved.pendingWrites || [])
+            .filter((w) => w[0] === NULL_TASK_ID)
+            .map((w) => w.slice(1)) as PendingWrite<string>[];
+          if (nullWrites.length > 0) {
+            _applyWrites(saved.checkpoint, channels, [
+              {
+                name: INPUT,
+                writes: nullWrites,
+                triggers: [],
+              },
+            ]);
+          }
+          // apply writes from tasks that already ran
+          for (const [taskId, k, v] of saved.pendingWrites || []) {
+            if ([ERROR, INTERRUPT, SCHEDULED].includes(k)) {
+              continue;
+            }
+            if (!(taskId in nextTasks)) {
+              continue;
+            }
+            nextTasks[taskId].writes.push([k, v]);
+          }
+          // clear all current tasks
+          _applyWrites(
+            checkpoint,
+            channels,
+            Object.values(nextTasks) as WritesProtocol<string>[]
+          );
+        }
+        // save checkpoint
+        const nextConfig = await checkpointer.put(
+          checkpointConfig,
+          createCheckpoint(checkpoint, undefined, step),
+          {
+            ...checkpointMetadata,
+            source: "update",
+            step: step + 1,
+            writes: {},
+            parents: saved?.metadata?.parents ?? {},
+          },
+          {}
+        );
+        return patchCheckpointMap(
+          nextConfig,
+          saved ? saved.metadata : undefined
+        );
+      }
+      if (values == null && asNode === COPY) {
+        if (updates.length > 1) {
+          throw new InvalidUpdateError(
+            `Cannot copy checkpoint with multiple updates`
+          );
+        }
+
+        const nextConfig = await checkpointer.put(
+          saved?.parentConfig ?? checkpointConfig,
+          createCheckpoint(checkpoint, undefined, step),
+          {
+            source: "fork",
+            step: step + 1,
+            writes: {},
+            parents: saved?.metadata?.parents ?? {},
+          },
+          {}
+        );
+        return patchCheckpointMap(
+          nextConfig,
+          saved ? saved.metadata : undefined
+        );
+      }
+
+      if (asNode === INPUT) {
+        if (updates.length > 1) {
+          throw new InvalidUpdateError(
+            `Cannot apply multiple updates when updating as input`
+          );
+        }
+
+        const inputWrites = await gatherIterator(
+          mapInput(this.inputChannels, values)
+        );
+        if (inputWrites.length === 0) {
+          throw new InvalidUpdateError(
+            `Received no input writes for ${JSON.stringify(
+              this.inputChannels,
+              null,
+              2
+            )}`
+          );
+        }
+
+        // apply to checkpoint
+        _applyWrites(
+          checkpoint,
+          channels,
+          [
+            {
+              name: INPUT,
+              writes: inputWrites as PendingWrite[],
+              triggers: [],
+            },
+          ],
+          checkpointer.getNextVersion.bind(this.checkpointer)
+        );
+
+        // apply input write to channels
+        const nextStep =
+          saved?.metadata?.step != null ? saved.metadata.step + 1 : -1;
+        const nextConfig = await checkpointer.put(
+          checkpointConfig,
+          createCheckpoint(checkpoint, channels, nextStep),
+          {
+            source: "input",
+            step: nextStep,
+            writes: Object.fromEntries(inputWrites),
+            parents: saved?.metadata?.parents ?? {},
+          },
+          getNewChannelVersions(
+            checkpointPreviousVersions,
+            checkpoint.channel_versions
+          )
+        );
+
+        // Store the writes
+        await checkpointer.putWrites(
+          nextConfig,
+          inputWrites as PendingWrite[],
+          uuid5(INPUT, checkpoint.id)
+        );
+
+        return patchCheckpointMap(
+          nextConfig,
+          saved ? saved.metadata : undefined
+        );
+      }
+
+      // apply pending writes, if not on specific checkpoint
+      if (
+        config.configurable?.checkpoint_id === undefined &&
+        saved?.pendingWrites !== undefined &&
+        saved.pendingWrites.length > 0
+      ) {
+        // tasks for this checkpoint
+        const nextTasks = _prepareNextTasks(
+          checkpoint,
+          saved.pendingWrites,
+          this.nodes,
+          channels,
+          managed,
+          saved.config,
+          true,
+          {
+            store: this.store,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            checkpointer: this.checkpointer as any,
+            step: (saved.metadata?.step ?? -1) + 1,
+          }
+        );
+        // apply null writes
+        const nullWrites = (saved.pendingWrites ?? [])
+          .filter((w) => w[0] === NULL_TASK_ID)
+          .map((w) => w.slice(1)) as PendingWrite<string>[];
+        if (nullWrites.length > 0) {
+          _applyWrites(saved.checkpoint, channels, [
+            {
+              name: INPUT,
+              writes: nullWrites,
+              triggers: [],
+            },
+          ]);
+        }
+        // apply writes
+        for (const [tid, k, v] of saved.pendingWrites) {
+          if (
+            [ERROR, INTERRUPT, SCHEDULED].includes(k) ||
+            nextTasks[tid] === undefined
+          ) {
+            continue;
+          }
+          nextTasks[tid].writes.push([k, v]);
+        }
+        const tasks = Object.values(nextTasks).filter((task) => {
+          return task.writes.length > 0;
+        });
+        if (tasks.length > 0) {
+          _applyWrites(checkpoint, channels, tasks as WritesProtocol[]);
+        }
+      }
+      const nonNullVersion = Object.values(checkpoint.versions_seen)
+        .map((seenVersions) => {
+          return Object.values(seenVersions);
+        })
+        .flat()
+        .find((v) => !!v);
+
+      const validUpdates: Array<{
+        values: Record<string, unknown> | unknown;
+        asNode: keyof Nodes | string;
+      }> = [];
+
+      if (updates.length === 1) {
+        // eslint-disable-next-line prefer-const
+        let { values, asNode } = updates[0];
+        if (asNode === undefined && nonNullVersion === undefined) {
+          if (
+            typeof this.inputChannels === "string" &&
+            this.nodes[this.inputChannels] !== undefined
+          ) {
+            asNode = this.inputChannels;
+          }
+        } else if (asNode === undefined) {
+          const lastSeenByNode = Object.entries(checkpoint.versions_seen)
+            .map(([n, seen]) => {
+              return Object.values(seen).map((v) => {
+                return [v, n] as const;
+              });
+            })
+            .flat()
+            .sort(([aNumber], [bNumber]) =>
+              compareChannelVersions(aNumber, bNumber)
+            );
+          // if two nodes updated the state at the same time, it's ambiguous
+          if (lastSeenByNode) {
+            if (lastSeenByNode.length === 1) {
+              // eslint-disable-next-line prefer-destructuring
+              asNode = lastSeenByNode[0][1];
+            } else if (
+              lastSeenByNode[lastSeenByNode.length - 1][0] !==
+              lastSeenByNode[lastSeenByNode.length - 2][0]
+            ) {
+              // eslint-disable-next-line prefer-destructuring
+              asNode = lastSeenByNode[lastSeenByNode.length - 1][1];
+            }
+          }
+        }
+
+        if (asNode === undefined) {
+          throw new InvalidUpdateError(`Ambiguous update, specify "asNode"`);
+        }
+
+        validUpdates.push({ values, asNode });
+      } else {
+        for (const { asNode, values } of updates) {
+          if (asNode == null) {
+            throw new InvalidUpdateError(
+              `"asNode" is required when applying multiple updates`
+            );
+          }
+
+          validUpdates.push({ values, asNode });
+        }
+      }
+
+      const tasks: PregelExecutableTask<keyof Nodes, keyof Channels>[] = [];
+      for (const { asNode, values } of validUpdates) {
+        if (this.nodes[asNode] === undefined) {
+          throw new InvalidUpdateError(
+            `Node "${asNode.toString()}" does not exist`
+          );
+        }
+
+        // run all writers of the chosen node
+        const writers = this.nodes[asNode].getWriters();
+        if (!writers.length) {
+          throw new InvalidUpdateError(
+            `No writers found for node "${asNode.toString()}"`
+          );
+        }
+        tasks.push({
+          name: asNode,
+          input: values,
+          proc:
+            writers.length > 1
+              ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                RunnableSequence.from(writers as any, {
+                  omitSequenceTags: true,
+                })
+              : writers[0],
+          writes: [],
+          triggers: [INTERRUPT],
+          id: uuid5(INTERRUPT, checkpoint.id),
+          writers: [],
+        });
+      }
+
+      for (const task of tasks) {
+        // execute task
+        await task.proc.invoke(
+          task.input,
+          patchConfig<LangGraphRunnableConfig>(
+            {
+              ...config,
+              store: config?.store ?? this.store,
+            },
+            {
+              runName: config.runName ?? `${this.getName()}UpdateState`,
+              configurable: {
+                [CONFIG_KEY_SEND]: (items: [keyof Channels, unknown][]) =>
+                  task.writes.push(...items),
+                [CONFIG_KEY_READ]: (
+                  select_: Array<keyof Channels> | keyof Channels,
+                  fresh_: boolean = false
+                ) =>
+                  _localRead(
+                    step,
+                    checkpoint,
+                    channels,
+                    managed,
+                    // TODO: Why does keyof StrRecord allow number and symbol?
+                    task as PregelExecutableTask<string, string>,
+                    select_ as string | string[],
+                    fresh_
+                  ),
+              },
+            }
+          )
+        );
+      }
+
+      for (const task of tasks) {
+        // channel writes are saved to current checkpoint
+        const channelWrites = task.writes.filter((w) => w[0] !== PUSH);
+        // save task writes
+        if (saved !== undefined && channelWrites.length > 0) {
+          await checkpointer.putWrites(
+            checkpointConfig,
+            channelWrites as PendingWrite[],
+            task.id
+          );
+        }
+      }
+
+      // apply to checkpoint
+      // TODO: Why does keyof StrRecord allow number and symbol?
+      _applyWrites(
+        checkpoint,
+        channels,
+        tasks as PregelExecutableTask<string, string>[],
+        checkpointer.getNextVersion.bind(this.checkpointer)
+      );
+
+      const newVersions = getNewChannelVersions(
+        checkpointPreviousVersions,
+        checkpoint.channel_versions
+      );
+      const nextConfig = await checkpointer.put(
+        checkpointConfig,
+        createCheckpoint(checkpoint, channels, step + 1),
+        {
+          source: "update",
+          step: step + 1,
+          writes: Object.fromEntries(
+            validUpdates.map((update) => [update.asNode, update.values])
+          ),
+          parents: saved?.metadata?.parents ?? {},
+        },
+        newVersions
+      );
+
+      for (const task of tasks) {
+        // push writes are saved to next checkpoint
+        const pushWrites = task.writes.filter((w) => w[0] === PUSH);
+
+        if (pushWrites.length > 0) {
+          await checkpointer.putWrites(
+            nextConfig,
+            pushWrites as PendingWrite[],
+            task.id
+          );
+        }
+      }
+
+      return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
+    };
+
+    let currentConfig = startConfig;
+    for (const { updates } of supersteps) {
+      currentConfig = await updateSuperStep(currentConfig, updates);
+    }
+
+    return currentConfig;
+  }
+
+  /**
    * Updates the state of the graph with new values.
    * Requires a checkpointer to be configured.
    *
@@ -902,367 +1519,9 @@ export class Pregel<
     values: Record<string, unknown> | unknown,
     asNode?: keyof Nodes | string
   ): Promise<RunnableConfig> {
-    const checkpointer: BaseCheckpointSaver | undefined =
-      inputConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
-    if (!checkpointer) {
-      throw new GraphValueError("No checkpointer set");
-    }
-    // delegate to subgraph
-    const checkpointNamespace: string =
-      inputConfig.configurable?.checkpoint_ns ?? "";
-    if (
-      checkpointNamespace !== "" &&
-      inputConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
-    ) {
-      // remove task_ids from checkpoint_ns
-      const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
-      // find the subgraph with the matching name
-      // eslint-disable-next-line no-unreachable-loop
-      for await (const [, pregel] of this.getSubgraphsAsync(
-        recastNamespace,
-        true
-      )) {
-        return await pregel.updateState(
-          patchConfigurable(inputConfig, {
-            [CONFIG_KEY_CHECKPOINTER]: checkpointer,
-          }),
-          values,
-          asNode
-        );
-      }
-      throw new Error(`Subgraph "${recastNamespace}" not found`);
-    }
-    // get last checkpoint
-    const config = this.config
-      ? mergeConfigs(this.config, inputConfig)
-      : inputConfig;
-    const saved = await checkpointer.getTuple(config);
-    const checkpoint =
-      saved !== undefined
-        ? copyCheckpoint(saved.checkpoint)
-        : emptyCheckpoint();
-    const checkpointPreviousVersions = {
-      ...saved?.checkpoint.channel_versions,
-    };
-    const step = saved?.metadata?.step ?? -1;
-    // merge configurable fields with previous checkpoint config
-    let checkpointConfig = patchConfigurable(config, {
-      checkpoint_ns: config.configurable?.checkpoint_ns ?? "",
-    });
-    let checkpointMetadata = config.metadata ?? {};
-    if (saved?.config.configurable) {
-      checkpointConfig = patchConfigurable(config, saved.config.configurable);
-      checkpointMetadata = {
-        ...saved.metadata,
-        ...checkpointMetadata,
-      };
-    }
-
-    // Find last node that updated the state, if not provided
-    if (values == null && asNode === undefined) {
-      const nextConfig = await checkpointer.put(
-        checkpointConfig,
-        createCheckpoint(checkpoint, undefined, step),
-        {
-          source: "update",
-          step: step + 1,
-          writes: {},
-          parents: saved?.metadata?.parents ?? {},
-        },
-        {}
-      );
-      return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
-    }
-
-    // update channels
-    const channels = emptyChannels(
-      this.channels as Record<string, BaseChannel>,
-      checkpoint
-    );
-
-    // Pass `skipManaged: true` as managed values are not used/relevant in update state calls.
-    const { managed } = await this.prepareSpecs(config, { skipManaged: true });
-
-    if (values === null && asNode === "__end__") {
-      if (saved) {
-        // tasks for this checkpoint
-        const nextTasks = _prepareNextTasks(
-          checkpoint,
-          saved.pendingWrites || [],
-          this.nodes,
-          channels,
-          managed,
-          saved.config,
-          true,
-          {
-            step: (saved.metadata?.step ?? -1) + 1,
-            checkpointer: this.checkpointer || undefined,
-            store: this.store,
-          }
-        );
-
-        // apply null writes
-        const nullWrites = (saved.pendingWrites || [])
-          .filter((w) => w[0] === NULL_TASK_ID)
-          .map((w) => w.slice(1)) as PendingWrite<string>[];
-        if (nullWrites.length > 0) {
-          _applyWrites(saved.checkpoint, channels, [
-            {
-              name: INPUT,
-              writes: nullWrites,
-              triggers: [],
-            },
-          ]);
-        }
-        // apply writes from tasks that already ran
-        for (const [taskId, k, v] of saved.pendingWrites || []) {
-          if ([ERROR, INTERRUPT, SCHEDULED].includes(k)) {
-            continue;
-          }
-          if (!(taskId in nextTasks)) {
-            continue;
-          }
-          nextTasks[taskId].writes.push([k, v]);
-        }
-        // clear all current tasks
-        _applyWrites(
-          checkpoint,
-          channels,
-          Object.values(nextTasks) as WritesProtocol<string>[]
-        );
-      }
-      // save checkpoint
-      const nextConfig = await checkpointer.put(
-        checkpointConfig,
-        createCheckpoint(checkpoint, undefined, step),
-        {
-          ...checkpointMetadata,
-          source: "update",
-          step: step + 1,
-          writes: {},
-          parents: saved?.metadata?.parents ?? {},
-        },
-        {}
-      );
-      return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
-    }
-    if (values == null && asNode === "__copy__") {
-      const nextConfig = await checkpointer.put(
-        saved?.parentConfig ?? checkpointConfig,
-        createCheckpoint(checkpoint, undefined, step),
-        {
-          source: "fork",
-          step: step + 1,
-          writes: {},
-          parents: saved?.metadata?.parents ?? {},
-        },
-        {}
-      );
-      return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
-    }
-    // apply pending writes, if not on specific checkpoint
-    if (
-      config.configurable?.checkpoint_id === undefined &&
-      saved?.pendingWrites !== undefined &&
-      saved.pendingWrites.length > 0
-    ) {
-      // tasks for this checkpoint
-      const nextTasks = _prepareNextTasks(
-        checkpoint,
-        saved.pendingWrites,
-        this.nodes,
-        channels,
-        managed,
-        saved.config,
-        true,
-        {
-          store: this.store,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          checkpointer: this.checkpointer as any,
-          step: (saved.metadata?.step ?? -1) + 1,
-        }
-      );
-      // apply null writes
-      const nullWrites = (saved.pendingWrites ?? [])
-        .filter((w) => w[0] === NULL_TASK_ID)
-        .map((w) => w.slice(1)) as PendingWrite<string>[];
-      if (nullWrites.length > 0) {
-        _applyWrites(saved.checkpoint, channels, [
-          {
-            name: INPUT,
-            writes: nullWrites,
-            triggers: [],
-          },
-        ]);
-      }
-      // apply writes
-      for (const [tid, k, v] of saved.pendingWrites) {
-        if (
-          [ERROR, INTERRUPT, SCHEDULED].includes(k) ||
-          nextTasks[tid] === undefined
-        ) {
-          continue;
-        }
-        nextTasks[tid].writes.push([k, v]);
-      }
-      const tasks = Object.values(nextTasks).filter((task) => {
-        return task.writes.length > 0;
-      });
-      if (tasks.length > 0) {
-        _applyWrites(checkpoint, channels, tasks as WritesProtocol[]);
-      }
-    }
-    const nonNullVersion = Object.values(checkpoint.versions_seen)
-      .map((seenVersions) => {
-        return Object.values(seenVersions);
-      })
-      .flat()
-      .find((v) => !!v);
-    if (asNode === undefined && nonNullVersion === undefined) {
-      if (
-        typeof this.inputChannels === "string" &&
-        this.nodes[this.inputChannels] !== undefined
-      ) {
-        asNode = this.inputChannels;
-      }
-    } else if (asNode === undefined) {
-      const lastSeenByNode = Object.entries(checkpoint.versions_seen)
-        .map(([n, seen]) => {
-          return Object.values(seen).map((v) => {
-            return [v, n] as const;
-          });
-        })
-        .flat()
-        .sort(([aNumber], [bNumber]) =>
-          compareChannelVersions(aNumber, bNumber)
-        );
-      // if two nodes updated the state at the same time, it's ambiguous
-      if (lastSeenByNode) {
-        if (lastSeenByNode.length === 1) {
-          // eslint-disable-next-line prefer-destructuring
-          asNode = lastSeenByNode[0][1];
-        } else if (
-          lastSeenByNode[lastSeenByNode.length - 1][0] !==
-          lastSeenByNode[lastSeenByNode.length - 2][0]
-        ) {
-          // eslint-disable-next-line prefer-destructuring
-          asNode = lastSeenByNode[lastSeenByNode.length - 1][1];
-        }
-      }
-    }
-
-    if (asNode === undefined) {
-      throw new InvalidUpdateError(`Ambiguous update, specify "asNode"`);
-    }
-    if (this.nodes[asNode] === undefined) {
-      throw new InvalidUpdateError(
-        `Node "${asNode.toString()}" does not exist`
-      );
-    }
-
-    // run all writers of the chosen node
-    const writers = this.nodes[asNode].getWriters();
-    if (!writers.length) {
-      throw new InvalidUpdateError(
-        `No writers found for node "${asNode.toString()}"`
-      );
-    }
-    const task: PregelExecutableTask<keyof Nodes, keyof Channels> = {
-      name: asNode,
-      input: values,
-      proc:
-        writers.length > 1
-          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            RunnableSequence.from(writers as any, { omitSequenceTags: true })
-          : writers[0],
-      writes: [],
-      triggers: [INTERRUPT],
-      id: uuid5(INTERRUPT, checkpoint.id),
-      writers: [],
-    };
-
-    // execute task
-    await task.proc.invoke(
-      task.input,
-      patchConfig<LangGraphRunnableConfig>(
-        {
-          ...config,
-          store: config?.store ?? this.store,
-        },
-        {
-          runName: config.runName ?? `${this.getName()}UpdateState`,
-          configurable: {
-            [CONFIG_KEY_SEND]: (items: [keyof Channels, unknown][]) =>
-              task.writes.push(...items),
-            [CONFIG_KEY_READ]: (
-              select_: Array<keyof Channels> | keyof Channels,
-              fresh_: boolean = false
-            ) =>
-              _localRead(
-                step,
-                checkpoint,
-                channels,
-                managed,
-                // TODO: Why does keyof StrRecord allow number and symbol?
-                task as PregelExecutableTask<string, string>,
-                select_ as string | string[],
-                fresh_
-              ),
-          },
-        }
-      )
-    );
-
-    // save task writes
-    // channel writes are saved to current checkpoint
-    // push writes are saved to next checkpoint
-    const [channelWrites, pushWrites] = [
-      task.writes.filter((w) => w[0] !== PUSH),
-      task.writes.filter((w) => w[0] === PUSH),
-    ];
-    // save task writes
-    if (saved !== undefined && channelWrites.length > 0) {
-      await checkpointer.putWrites(
-        checkpointConfig,
-        channelWrites as PendingWrite[],
-        task.id
-      );
-    }
-
-    // apply to checkpoint
-    // TODO: Why does keyof StrRecord allow number and symbol?
-    _applyWrites(
-      checkpoint,
-      channels,
-      [task as PregelExecutableTask<string, string>],
-      checkpointer.getNextVersion.bind(this.checkpointer)
-    );
-
-    const newVersions = getNewChannelVersions(
-      checkpointPreviousVersions,
-      checkpoint.channel_versions
-    );
-    const nextConfig = await checkpointer.put(
-      checkpointConfig,
-      createCheckpoint(checkpoint, channels, step + 1),
-      {
-        source: "update",
-        step: step + 1,
-        writes: { [asNode]: values },
-        parents: saved?.metadata?.parents ?? {},
-      },
-      newVersions
-    );
-
-    if (pushWrites.length > 0) {
-      await checkpointer.putWrites(
-        nextConfig,
-        pushWrites as PendingWrite[],
-        task.id
-      );
-    }
-
-    return patchCheckpointMap(nextConfig, saved ? saved.metadata : undefined);
+    return this.bulkUpdateState(inputConfig, [
+      { updates: [{ values, asNode }] },
+    ]);
   }
 
   /**
@@ -1392,11 +1651,66 @@ export class Pregel<
     // There is currently no way in _streamIterator to determine whether this was
     // set by by ensureConfig or manually by the user, so we specify the bound value here
     // and override if it is passed as an explicit param in `options`.
+    const abortController = new AbortController();
+
     const config = {
       recursionLimit: this.config?.recursionLimit,
       ...options,
+      signal: options?.signal
+        ? combineAbortSignals(options.signal, abortController.signal)
+        : abortController.signal,
     };
-    return super.stream(input, config);
+
+    return new IterableReadableStreamWithAbortSignal(
+      await super.stream(input, config),
+      abortController
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  override streamEvents(
+    input: InputType | Command | null,
+    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+      version: "v1" | "v2";
+    },
+    streamOptions?: StreamEventsOptions
+  ): IterableReadableStream<StreamEvent>;
+
+  override streamEvents(
+    input: InputType | Command | null,
+    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+      version: "v1" | "v2";
+      encoding: "text/event-stream";
+    },
+    streamOptions?: StreamEventsOptions
+  ): IterableReadableStream<Uint8Array>;
+
+  override streamEvents(
+    input: InputType | Command | null,
+    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+      version: "v1" | "v2";
+    },
+    streamOptions?: StreamEventsOptions
+  ): IterableReadableStream<StreamEvent | Uint8Array> {
+    const abortController = new AbortController();
+
+    const config = {
+      recursionLimit: this.config?.recursionLimit,
+      // Similar to `stream`, we need to pass the `config.callbacks` here,
+      // otherwise the user-provided callback will get lost in `ensureLangGraphConfig`.
+      callbacks: this.config?.callbacks,
+      ...options,
+      signal: options?.signal
+        ? combineAbortSignals(options.signal, abortController.signal)
+        : abortController.signal,
+    };
+
+    return new IterableReadableStreamWithAbortSignal(
+      super.streamEvents(input, config, streamOptions),
+      abortController
+    );
   }
 
   /**
@@ -1472,6 +1786,28 @@ export class Pregel<
   }
 
   /**
+   * Validates the input for the graph.
+   * @param input - The input to validate
+   * @returns The validated input
+   * @internal
+   */
+  protected async _validateInput(input: PregelInputType) {
+    return input;
+  }
+
+  /**
+   * Validates the configurable options for the graph.
+   * @param config - The configurable options to validate
+   * @returns The validated configurable options
+   * @internal
+   */
+  protected async _validateConfigurable(
+    config: Partial<LangGraphRunnableConfig["configurable"]>
+  ): Promise<LangGraphRunnableConfig["configurable"]> {
+    return config;
+  }
+
+  /**
    * Internal iterator used by stream() to generate state updates.
    * This method handles the core logic of graph execution and streaming.
    *
@@ -1502,6 +1838,7 @@ export class Pregel<
       );
     }
 
+    const validInput = await this._validateInput(input);
     const { runId, ...restConfig } = inputConfig;
     // assign defaults
     const [
@@ -1516,6 +1853,8 @@ export class Pregel<
       store,
       streamModeSingle,
     ] = this._defaults(restConfig);
+
+    config.configurable = await this._validateConfigurable(config.configurable);
 
     const stream = new IterableReadableWritableStream({
       modes: new Set(streamMode),
@@ -1545,13 +1884,13 @@ export class Pregel<
 
     const callbackManager = await getCallbackManagerForConfig(config);
     const runManager = await callbackManager?.handleChainStart(
-      this.toJSON(),
-      _coerceToDict(input, "input"),
-      runId,
-      undefined,
-      undefined,
-      undefined,
-      config?.runName ?? this.getName()
+      this.toJSON(), // chain
+      _coerceToDict(input, "input"), // inputs
+      runId, // run_id
+      undefined, // run_type
+      undefined, // tags
+      undefined, // metadata
+      config?.runName ?? this.getName() // run_name
     );
 
     const { channelSpecs, managed } = await this.prepareSpecs(config);
@@ -1570,7 +1909,7 @@ export class Pregel<
     const createAndRunLoop = async () => {
       try {
         loop = await PregelLoop.initialize({
-          input,
+          input: validInput,
           config,
           checkpointer,
           nodes: this.nodes,
@@ -1588,7 +1927,7 @@ export class Pregel<
 
         const runner = new PregelRunner({
           loop,
-          nodeFinished: config.configurable?.nodeFinished,
+          nodeFinished: config.configurable?.[CONFIG_KEY_NODE_FINISHED],
         });
 
         if (options?.subgraphs) {
@@ -1653,7 +1992,13 @@ export class Pregel<
     } finally {
       await runLoopPromise;
     }
-    await runManager?.handleChainEnd(loop?.output ?? {});
+    await runManager?.handleChainEnd(
+      loop?.output ?? {},
+      runId, // run_id
+      undefined, // run_type
+      undefined, // tags
+      undefined // metadata
+    );
   }
 
   /**
@@ -1718,6 +2063,7 @@ export class Pregel<
               );
             }
           },
+          maxConcurrency: config.maxConcurrency,
           signal: config.signal,
         });
       }

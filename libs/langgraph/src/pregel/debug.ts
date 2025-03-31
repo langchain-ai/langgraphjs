@@ -246,12 +246,13 @@ export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
         interrupts,
       };
     }
+    const taskState = states?.[task.id];
     return {
       id: task.id,
       name: task.name as string,
       path: task.path,
       interrupts,
-      state: states?.[task.id],
+      ...(taskState !== undefined ? { state: taskState } : {}),
     };
   });
 }

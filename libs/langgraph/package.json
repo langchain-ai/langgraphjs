@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph",
-  "version": "0.2.52",
+  "version": "0.2.62",
   "description": "LangGraph",
   "type": "module",
   "engines": {
@@ -31,13 +31,19 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/langgraph-checkpoint": "~0.0.15",
+    "@langchain/langgraph-checkpoint": "~0.0.16",
     "@langchain/langgraph-sdk": "~0.0.32",
     "uuid": "^10.0.0",
     "zod": "^3.23.8"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.36 <0.3.0 || >=0.3.40 < 0.4.0"
+    "@langchain/core": ">=0.2.36 <0.3.0 || >=0.3.40 < 0.4.0",
+    "zod-to-json-schema": "^3.x"
+  },
+  "peerDependenciesMeta": {
+    "zod-to-json-schema": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",
@@ -72,7 +78,7 @@
     "pg": "^8.13.0",
     "prettier": "^2.8.3",
     "release-it": "^17.6.0",
-    "rollup": "^4.34.7",
+    "rollup": "^4.34.9",
     "ts-jest": "^29.1.0",
     "tsx": "^4.7.0",
     "typescript": "^4.9.5 || ^5.4.5",
@@ -128,6 +134,15 @@
       "import": "./remote.js",
       "require": "./remote.cjs"
     },
+    "./zod": {
+      "types": {
+        "import": "./zod.d.ts",
+        "require": "./zod.d.cts",
+        "default": "./zod.d.ts"
+      },
+      "import": "./zod.js",
+      "require": "./zod.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -151,6 +166,10 @@
     "remote.cjs",
     "remote.js",
     "remote.d.ts",
-    "remote.d.cts"
+    "remote.d.cts",
+    "zod.cjs",
+    "zod.js",
+    "zod.d.ts",
+    "zod.d.cts"
   ]
 }

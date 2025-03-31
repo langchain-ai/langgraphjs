@@ -1,6 +1,6 @@
 # 🤖 LangGraph Multi-Agent Swarm 
 
-A Python library for creating swarm-style multi-agent systems using [LangGraph](https://github.com/langchain-ai/langgraphjs). A swarm is a type of [multi-agent](https://langchain-ai.github.io/langgraphjs/concepts/multi_agent) architecture where agents dynamically hand off control to one another based on their specializations. The system remembers which agent was last active, ensuring that on subsequent interactions, the conversation resumes with that agent.
+A JavaScript library for creating swarm-style multi-agent systems using [LangGraph](https://github.com/langchain-ai/langgraphjs). A swarm is a type of [multi-agent](https://langchain-ai.github.io/langgraphjs/concepts/multi_agent) architecture where agents dynamically hand off control to one another based on their specializations. The system remembers which agent was last active, ensuring that on subsequent interactions, the conversation resumes with that agent.
 
 ![Swarm](static/img/swarm.png)
 
@@ -14,13 +14,13 @@ This library is built on top of [LangGraph](https://github.com/langchain-ai/lang
 ## Installation
 
 ```bash
-npm install @langchain/langgraph-swarm
+npm install @langchain/langgraph-swarm @langchain/langgraph @langchain/core
 ```
 
 ## Quickstart
 
 ```bash
-npm install @langchain/langgraph-swarm @langchain/openai
+npm install @langchain/langgraph-swarm @langchain/langgraph @langchain/core @langchain/openai
 
 export OPENAI_API_KEY=<your_api_key>
 ```
@@ -140,10 +140,9 @@ Here is an example of what a custom handoff tool might look like:
 
 ```ts
 import { z } from "zod";
-import { ToolMessage } from "@langchain/core/messages";
+import { BaseMessage, ToolMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
-import { Command } from "@langchain/langgraph";
-import { getContextVariable } from "@langchain/core/context";
+import { Command, getCurrentTaskInput } from "@langchain/langgraph";
 
 const createCustomHandoffTool = ({
   agentName,
@@ -165,10 +164,10 @@ const createCustomHandoffTool = ({
 
       // you can use a different messages state key here, if your agent uses a different schema
       // e.g., "alice_messages" instead of "messages"
-      // NOTE: make sure to call setContextVariable("state") in your graph
       // see this how-to guide for more details: 
-      // https://langchain-ai.github.io/langgraphjs/how-tos/pass-run-time-values-to-tools/#context-variables
-      const lastAgentMessage = getContextVariable("state").messages[-1]
+      // https://langchain-ai.github.io/langgraphjs/how-tos/pass-run-time-values-to-tools/
+      const { messages } = (getCurrentTaskInput() as { messages: BaseMessage[] });
+      const lastAgentMessage = messages[messages.length - 1];
       return new Command({
         goto: agentName,
         graph: Command.PARENT,
