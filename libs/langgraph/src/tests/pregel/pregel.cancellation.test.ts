@@ -1,3 +1,4 @@
+import { beforeAll, describe, expect, it } from "@jest/globals";
 import {
   CompiledStateGraph,
   END,
@@ -6,11 +7,17 @@ import {
   START,
   StateGraph,
 } from "../../index.js";
+import { initializeAsyncLocalStorageSingleton } from "../../setup/async_local_storage.js";
 
 type TestMode =
   | "singleLayer"
-  | "subgraphCalledWithinNode"
+  | "subgraphCalledWithinNodeWithoutConfig"
+  | "subgraphCalledWithinNodeWithConfig"
   | "subgraphCalledAsNode";
+
+beforeAll(() => {
+  initializeAsyncLocalStorageSingleton();
+});
 
 describe("Pregel AbortSignal", () => {
   let oneCount = 0;
@@ -72,10 +79,19 @@ describe("Pregel AbortSignal", () => {
       return graph;
     }
 
-    if (mode === "subgraphCalledWithinNode") {
+    if (mode === "subgraphCalledWithinNodeWithoutConfig") {
       return new StateGraph(MessagesAnnotation)
         .addNode("graph", async () => {
           await graph.invoke({ messages: [] });
+        })
+        .addEdge(START, "graph")
+        .addEdge("graph", END)
+        .compile();
+    }
+    if (mode === "subgraphCalledWithinNodeWithConfig") {
+      return new StateGraph(MessagesAnnotation)
+        .addNode("graph", async (_, config: LangGraphRunnableConfig) => {
+          await graph.invoke({ messages: [] }, config);
         })
         .addEdge(START, "graph")
         .addEdge("graph", END)
@@ -91,7 +107,8 @@ describe("Pregel AbortSignal", () => {
 
   it.each([
     "singleLayerGraph",
-    "subgraphCalledWithinNode",
+    "subgraphCalledWithinNodeWithoutConfig",
+    "subgraphCalledWithinNodeWithConfig",
     "subgraphCalledAsNode",
   ] as TestMode[])(
     "should cancel when external AbortSignal is aborted (%s)",
@@ -124,7 +141,8 @@ describe("Pregel AbortSignal", () => {
 
   it.each([
     "singleLayerGraph",
-    "subgraphCalledWithinNode",
+    "subgraphCalledWithinNodeWithoutConfig",
+    "subgraphCalledWithinNodeWithConfig",
     "subgraphCalledAsNode",
   ] as TestMode[])(
     "should pass AbortSignal into nodes via config when timeout is provided but no external signal is given (%s)",
@@ -156,7 +174,8 @@ describe("Pregel AbortSignal", () => {
 
   it.each([
     "singleLayerGraph",
-    "subgraphCalledWithinNode",
+    "subgraphCalledWithinNodeWithoutConfig",
+    "subgraphCalledWithinNodeWithConfig",
     "subgraphCalledAsNode",
   ] as TestMode[])(
     "should trigger AbortSignal that is passed to node on timeout when both signal and timeout are set on invocation (%s)",
@@ -190,7 +209,8 @@ describe("Pregel AbortSignal", () => {
 
   it.each([
     "singleLayerGraph",
-    "subgraphCalledWithinNode",
+    "subgraphCalledWithinNodeWithoutConfig",
+    "subgraphCalledWithinNodeWithConfig",
     "subgraphCalledAsNode",
   ] as TestMode[])(
     "should trigger AbortSignal that is passed to node when external signal triggered when both signal and timeout are set on invocation (%s)",
