@@ -89,6 +89,7 @@ jobs:
           pnpm install
 
       - name: Build
+        working-directory: libs/langgraph-api
         run: |
           pnpm turbo run build
 
@@ -127,6 +128,7 @@ jobs:
           pnpm install
 
       - name: Build
+        working-directory: libs/langgraph-api
         run: |
           pnpm turbo run build
 
