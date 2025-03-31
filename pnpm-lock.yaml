@@ -249,6 +249,12 @@ importers:
       '@types/react-dom':
         specifier: ^19.0.3
         version: 19.0.3(@types/react@19.0.8)
+      prettier:
+        specifier: ^3.3.3
+        version: 3.4.2
+      vitest:
+        specifier: ^3.0.5
+        version: 3.0.5(@types/node@22.10.5)(lightningcss@1.29.1)
 
 packages:
 

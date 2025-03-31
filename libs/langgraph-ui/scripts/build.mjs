@@ -10,5 +10,4 @@ await $`rm -rf dist`;
 await $`pnpm tsc --outDir dist`;
 
 await $`cp src/render.template.mts dist`;
-await $`rm -rf dist/render.template.mjs`;
-
+await $`rm -rf dist/render.template.mjs dist/render.template.d.mts dist/cli.d.mts`;

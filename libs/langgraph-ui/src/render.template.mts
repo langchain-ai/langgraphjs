@@ -8,7 +8,7 @@ declare global {
       respond: (
         shadowRootId: string,
         component: FunctionComponent | ComponentClass,
-        renderEl: HTMLElement
+        renderEl: HTMLElement,
       ) => void;
     };
   }
@@ -16,7 +16,7 @@ declare global {
 
 // @ts-ignore
 function createRenderer(
-  components: Record<string, FunctionComponent | ComponentClass>
+  components: Record<string, FunctionComponent | ComponentClass>,
 ) {
   return (name: string, shadowRootId: string) => {
     const root = document.getElementById(shadowRootId)!.shadowRoot;

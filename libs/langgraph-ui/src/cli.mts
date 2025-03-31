@@ -34,11 +34,11 @@ await Promise.all(
             files.map(async ({ basename, contents }) => {
               const target = path.join(folder, basename);
               await fs.writeFile(target, contents);
-            })
+            }),
           );
         },
-        (e) => console.error(e)
+        (e) => console.error(e),
       );
     });
-  })
+  }),
 );

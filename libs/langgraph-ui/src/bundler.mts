@@ -13,7 +13,7 @@ import tailwind from "esbuild-plugin-tailwindcss";
 
 const renderTemplate = await fs.promises.readFile(
   url.fileURLToPath(new URL("./render.template.mts", import.meta.url)),
-  "utf-8"
+  "utf-8",
 );
 
 function entrypointPlugin(paths: { cwd: string; userPath: string }): Plugin {
@@ -25,7 +25,7 @@ function entrypointPlugin(paths: { cwd: string; userPath: string }): Plugin {
 
   if (relativeUiPath.startsWith("../")) {
     throw new Error(
-      `UI path must be relative to the project root. Received: "${relativeUiPath}"`
+      `UI path must be relative to the project root. Received: "${relativeUiPath}"`,
     );
   }
 
@@ -53,7 +53,7 @@ function entrypointPlugin(paths: { cwd: string; userPath: string }): Plugin {
 }
 
 function registerPlugin(
-  onEnd: (result: { basename: string; contents: Uint8Array }[]) => void
+  onEnd: (result: { basename: string; contents: Uint8Array }[]) => void,
 ): Plugin {
   const textEncoder = new TextEncoder();
   return {
@@ -68,8 +68,8 @@ function registerPlugin(
             contents = textEncoder.encode(
               item.text.replaceAll(
                 `typeof require !== "undefined" ? require`,
-                `typeof globalThis[Symbol.for("LGUI_REQUIRE")] !== "undefined" ? globalThis[Symbol.for("LGUI_REQUIRE")]`
-              )
+                `typeof globalThis[Symbol.for("LGUI_REQUIRE")] !== "undefined" ? globalThis[Symbol.for("LGUI_REQUIRE")]`,
+              ),
             );
           }
 
@@ -84,7 +84,7 @@ function registerPlugin(
 function setup(
   agentName: string,
   args: { cwd: string; userPath: string; config?: { shared?: string[] } },
-  onResult: (result: { basename: string; contents: Uint8Array }[]) => void
+  onResult: (result: { basename: string; contents: Uint8Array }[]) => void,
 ): BuildOptions {
   return {
     write: false,
@@ -108,7 +108,7 @@ function setup(
 
 export async function build(
   agentName: string,
-  args: { cwd: string; userPath: string; config?: { shared?: string[] } }
+  args: { cwd: string; userPath: string; config?: { shared?: string[] } },
 ) {
   let results: { basename: string; contents: Uint8Array }[] = [];
   await runBuild(setup(agentName, args, (result) => (results = result)));
@@ -118,7 +118,7 @@ export async function build(
 export async function watch(
   agentName: string,
   args: { cwd: string; userPath: string; config?: { shared?: string[] } },
-  onResult: (result: { basename: string; contents: Uint8Array }[]) => void
+  onResult: (result: { basename: string; contents: Uint8Array }[]) => void,
 ) {
   const ctx = await runContext(setup(agentName, args, onResult));
   await ctx.watch();
