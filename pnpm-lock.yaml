@@ -252,6 +252,9 @@ importers:
       prettier:
         specifier: ^3.3.3
         version: 3.4.2
+      typescript:
+        specifier: ^5.5.4
+        version: 5.5.4
       vitest:
         specifier: ^3.0.5
         version: 3.0.5(@types/node@22.10.5)(lightningcss@1.29.1)
