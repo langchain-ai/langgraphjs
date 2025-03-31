@@ -6,7 +6,6 @@ function $(strings, ...rest) {
   return Bun.$(strings, ...rest);
 }
 
-await import("./build.mjs");
 await $`rm -rf tests/graphs/.langgraph_api`;
 
 await Promise.race([
