@@ -38,7 +38,7 @@ jobs:
 
       - name: Check formatting
         run: |
-          pnpm format:check
+          pnpm turbo run format:check
 
   test-cli:
     timeout-minutes: 5
@@ -61,7 +61,7 @@ jobs:
       - name: Run integration tests
         working-directory: libs/langgraph-cli
         run: |
-          pnpm run test
+          pnpm turbo run test
 
   test-parser:
     timeout-minutes: 5
@@ -91,7 +91,7 @@ jobs:
       - name: Run integration tests
         working-directory: libs/langgraph-api
         run: |
-          pnpm run test:parser
+          pnpm turbo run test:parser
 
   test-api:
     timeout-minutes: 5
@@ -125,4 +125,4 @@ jobs:
       - name: Run integration tests
         working-directory: libs/langgraph-api
         run: |
-          pnpm run test:api
+          pnpm turbo run test:api
