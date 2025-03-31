@@ -330,6 +330,9 @@ export async function configToDocker(
     fauxPkgs,
     "python_version" in config ? `RUN ${pipInstall} -e /deps/*` : undefined,
     `ENV LANGSERVE_GRAPHS='${JSON.stringify(config.graphs)}'`,
+    !!config.ui && `ENV LANGGRAPH_UI='${JSON.stringify(config.ui)}'`,
+    !!config.ui_config &&
+      `ENV LANGGRAPH_UI_CONFIG='${JSON.stringify(config.ui_config)}'`,
     !!config.store && `ENV LANGGRAPH_STORE='${JSON.stringify(config.store)}'`,
     !!config.auth && `ENV LANGGRAPH_AUTH='${JSON.stringify(config.auth)}'`,
     !!localDeps.workingDir && `WORKDIR ${localDeps.workingDir}`,
