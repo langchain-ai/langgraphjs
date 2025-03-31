@@ -1,0 +1,5 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`generative ui 1`] = `"<script src="http://localhost:2024/ui/agent/entrypoint.js" onload='__LGUI_agent.render("weather-component", "{{shadowRootId}}")'></script>"`;
+
+exports[`generative ui API 1`] = `"<script src="http://localhost:2024/ui/agent/entrypoint.js" onload='__LGUI_agent.render("weather-component", "{{shadowRootId}}")'></script>"`;

@@ -38,7 +38,7 @@ jobs:
 
       - name: Check formatting
         run: |
-          pnpm format:check
+          pnpm turbo run format:check
 
   test-cli:
     timeout-minutes: 5
@@ -61,7 +61,7 @@ jobs:
       - name: Run integration tests
         working-directory: libs/langgraph-cli
         run: |
-          pnpm run test
+          pnpm turbo run test
 
   test-parser:
     timeout-minutes: 5
@@ -84,9 +84,14 @@ jobs:
           node-version: 20.x
           cache: "pnpm"
 
-      - name: Install dependencies dependencies
+      - name: Install dependencies
         run: |
           pnpm install
+
+      - name: Build
+        working-directory: libs/langgraph-api
+        run: |
+          pnpm turbo run build
 
       - name: Run integration tests
         working-directory: libs/langgraph-api
@@ -118,9 +123,14 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: "pnpm"
 
-      - name: Install dependencies dependencies
+      - name: Install dependencies
         run: |
           pnpm install
+
+      - name: Build
+        working-directory: libs/langgraph-api
+        run: |
+          pnpm turbo run build
 
       - name: Run integration tests
         working-directory: libs/langgraph-api

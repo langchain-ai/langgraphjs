@@ -1,5 +1,4 @@
 // run the server for CLI
-import { spawnServer } from "../src/cli/spawn.mjs";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -17,6 +16,13 @@ if (typeof config.env === "string") {
 } else if (config.env != null) {
   env = config.env;
 }
+
+const { spawnServer } = (
+  process.argv.includes("--dev")
+    ? await import("../src/cli/spawn.mjs")
+    : // @ts-ignore May not exist
+      await import("../dist/cli/spawn.mjs")
+) as typeof import("../src/cli/spawn.mjs");
 
 await spawnServer(
   { port: "2024", nJobsPerWorker: "10", host: "localhost" },

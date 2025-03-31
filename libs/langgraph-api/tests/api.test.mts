@@ -2434,3 +2434,20 @@ it("dynamic graph", async () => {
   const state = await client.threads.getState(thread.thread_id);
   expect(state.values.messages).toEqual(["input", "assistant", "update"]);
 });
+
+it("generative ui", async () => {
+  const ui = await client["~ui"].getComponent("agent", "weather-component");
+  expect(ui).toMatchSnapshot();
+
+  const match = /src="(?<src>[^"]+)"/.exec(ui);
+  const jsFile = match?.groups?.src;
+  if (!jsFile) throw new Error("No JS file found");
+
+  // Used to manually pass runtime dependencies
+  const js = await fetch(jsFile).then((a) => a.text());
+  expect(js).contains(`globalThis[Symbol.for("LGUI_REQUIRE")]`);
+
+  await expect(() =>
+    client["~ui"].getComponent("non-existent", "none"),
+  ).rejects.toThrow();
+});
