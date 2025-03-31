@@ -230,6 +230,12 @@ importers:
 
   libs/langgraph-ui:
     dependencies:
+      '@commander-js/extra-typings':
+        specifier: ^13.0.0
+        version: 13.0.0(commander@13.0.0)
+      commander:
+        specifier: ^13.0.0
+        version: 13.0.0
       esbuild:
         specifier: ^0.25.0
         version: 0.25.0

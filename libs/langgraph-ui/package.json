@@ -28,7 +28,9 @@
   "dependencies": {
     "zod": "^3.23.8",
     "esbuild": "^0.25.0",
-    "esbuild-plugin-tailwindcss": "^2.0.1"
+    "esbuild-plugin-tailwindcss": "^2.0.1",
+    "@commander-js/extra-typings": "^13.0.0",
+    "commander": "^13.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.8",
