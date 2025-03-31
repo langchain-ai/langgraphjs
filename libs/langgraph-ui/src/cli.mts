@@ -5,8 +5,10 @@ import * as path from "node:path";
 
 import { z } from "zod";
 
-const cwd = process.cwd();
+const cmd = process.argv.at(-1);
+if (cmd !== "dev") throw new Error(`Invalid command "${cmd}"`);
 
+const cwd = process.cwd();
 const defs = z
   .record(z.string(), z.string())
   .parse(JSON.parse(process.env.LANGGRAPH_UI || "{}"));
