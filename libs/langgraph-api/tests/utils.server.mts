@@ -20,7 +20,8 @@ if (typeof config.env === "string") {
 const { spawnServer } = (
   process.argv.includes("--dev")
     ? await import("../src/cli/spawn.mjs")
-    : await import("../dist/cli/spawn.mjs")
+    : // @ts-ignore May not exist
+      await import("../dist/cli/spawn.mjs")
 ) as typeof import("../src/cli/spawn.mjs");
 
 await spawnServer(
