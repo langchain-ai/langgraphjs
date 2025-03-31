@@ -2,8 +2,8 @@ import { z } from "zod";
 import { Hono } from "hono";
 import { getMimeType } from "hono/utils/mime";
 import { zValidator } from "@hono/zod-validator";
+import { watch } from "@langchain/langgraph-ui";
 import * as path from "node:path";
-import { watch } from "./bundler.mjs";
 
 const GRAPH_UI: Record<string, { basename: string; contents: Uint8Array }[]> =
   {};
