@@ -3245,6 +3245,7 @@ graph TD;
         .addEdge("__start__", "agent")
         .addConditionalEdges("agent", shouldContinue)
         .addEdge("tools", "agent");
+
       const inputMessage = new HumanMessage({
         id: "foo",
         content: "what is weather in sf",
@@ -3307,6 +3308,7 @@ graph TD;
       const res = await builder.compile().invoke({
         messages: [inputMessage],
       });
+
       expect(res).toEqual({
         messages: expectedOutputMessages,
       });
@@ -10417,6 +10419,39 @@ graph TD;
 
     // @ts-expect-error `language` is not in the output schema
     void res.language;
+  });
+
+  it.only("can goto an interrupt", async () => {
+    const checkpointer = await createCheckpointer();
+    const configurable = { thread_id: "1" };
+
+    const graph = new StateGraph(
+      Annotation.Root({
+        messages: Annotation<string[], string | string[]>({
+          default: () => [],
+          reducer: (a, b) => [...a, ...(Array.isArray(b) ? b : [b])],
+        }),
+      })
+    )
+      .addNode("router", () => new Command({ goto: "interrupt" }), {
+        ends: ["interrupt", END],
+      })
+      .addNode("interrupt", () => ({
+        messages: [`interrupt: ${interrupt("interrupt")}`],
+      }))
+      .addEdge(START, "router")
+      .compile({ checkpointer });
+
+    await graph.invoke(new Command({ goto: "interrupt" }), { configurable });
+    const state = await graph.getState({ configurable });
+
+    expect(state.next).toEqual(["interrupt"]);
+    expect(state.tasks).toMatchObject([
+      {
+        name: "interrupt",
+        interrupts: [{ value: "interrupt", when: "during", resumable: true }],
+      },
+    ]);
   });
 }
 
