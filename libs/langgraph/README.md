@@ -8,6 +8,20 @@
 > [!NOTE]
 > Looking for the Python version? See the [Python repo](https://github.com/langchain-ai/langgraph) and the [Python docs](https://langchain-ai.github.io/langgraph/).
 
+## Quickstart
+
+To quickly get started building a full-stack application with LangGraph, we recommend using the [`create-agent-chat-app`](https://www.npmjs.com/package/create-agent-chat-app) CLI. This will install a chat interface which you can use to interact with your agent, and up to 4 prebuilt agents to include in your application:
+
+```bash
+npx create-agent-chat-app@latest
+```
+
+The CLI will guide you through setting up a full-stack application with LangGraph. It allows you to configure every part of your application and agent, including:
+
+- 🧠 A selection of 4 prebuilt agents to choose from (ReAct, Memory, Research and Retrieval)
+- 🌐 Next.js or Vite for the frontend chat interface
+- 📦 `npm`, `yarn` or `pnpm` for package management
+
 LangGraph — used by Replit, Uber, LinkedIn, GitLab and more — is a low-level orchestration framework for building controllable agents. While langchain provides integrations and composable components to streamline LLM application development, the LangGraph library enables agent orchestration — offering customizable architectures, long-term memory, and human-in-the-loop to reliably handle complex tasks.
 
 ```bash
