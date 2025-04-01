@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as bundler from "./bundler.mjs";
 
-export async function build(options: { output: string }) {
+function getBuildContext(options: { output: string }) {
   const cwd = process.cwd();
   const defs = z
     .record(z.string(), z.string())
@@ -14,8 +14,15 @@ export async function build(options: { output: string }) {
     .parse(JSON.parse(process.env.LANGGRAPH_UI_CONFIG || "{}"));
 
   const fullPath = path.resolve(cwd, options.output);
-  const publicPath = path.resolve(fullPath, "ui");
-  const schemasPath = path.resolve(fullPath, "client.ui.schemas.json");
+  const publicPath = path.resolve(fullPath, "public");
+  const schemasPath = path.resolve(fullPath, "schemas.json");
+
+  return { cwd, defs, config, publicPath, schemasPath };
+}
+
+export async function build(options: { output: string }) {
+  const { cwd, defs, config, publicPath, schemasPath } =
+    getBuildContext(options);
 
   const schemas: Record<string, { assets: string[]; name: string }> = {};
 
@@ -43,18 +50,8 @@ export async function build(options: { output: string }) {
 }
 
 export async function watch(options: { output: string }) {
-  const cwd = process.cwd();
-  const defs = z
-    .record(z.string(), z.string())
-    .parse(JSON.parse(process.env.LANGGRAPH_UI || "{}"));
-
-  const config = z
-    .object({ shared: z.array(z.string()).optional() })
-    .parse(JSON.parse(process.env.LANGGRAPH_UI_CONFIG || "{}"));
-
-  const fullPath = path.resolve(cwd, options.output);
-  const publicPath = path.resolve(fullPath, "public");
-  const schemasPath = path.resolve(fullPath, "schemas.json");
+  const { cwd, defs, config, publicPath, schemasPath } =
+    getBuildContext(options);
 
   const schemas: Record<string, { assets: string[]; name: string }> = {};
   let promiseSeq = Promise.resolve();
