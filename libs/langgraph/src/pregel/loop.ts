@@ -806,6 +806,9 @@ export class PregelLoop {
 
     const { configurable } = this.config;
 
+    // eslint-disable-next-line prefer-destructuring
+    const isResuming = this.isResuming;
+
     // take resume value from parent
     const scratchpad = configurable?.[
       CONFIG_KEY_SCRATCHPAD
@@ -860,7 +863,7 @@ export class PregelLoop {
         this.checkpointerGetNextVersion
       );
     }
-    if (this.isResuming) {
+    if (isResuming) {
       for (const channelName of Object.keys(this.channels)) {
         if (this.checkpoint.channel_versions[channelName] !== undefined) {
           const version = this.checkpoint.channel_versions[channelName];
@@ -923,7 +926,7 @@ export class PregelLoop {
     }
     if (!this.isNested) {
       this.config = patchConfigurable(this.config, {
-        [CONFIG_KEY_RESUMING]: this.isResuming,
+        [CONFIG_KEY_RESUMING]: isResuming,
       });
     }
   }
