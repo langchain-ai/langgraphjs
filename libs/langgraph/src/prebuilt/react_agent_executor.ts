@@ -487,7 +487,9 @@ export function createReactAgent<
     // TODO: Auto-promote streaming.
     const response = (await modelRunnable.invoke(state, config)) as BaseMessage;
     // add agent name to the AIMessage
+    // TODO: figure out if we can avoid mutating the message directly
     response.name = name;
+    response.lc_kwargs.name = name;
     return { messages: [response] };
   };
 
