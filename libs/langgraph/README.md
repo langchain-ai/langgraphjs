@@ -22,6 +22,8 @@ The CLI will guide you through setting up a full-stack application with LangGrap
 - 🌐 Next.js or Vite for the frontend chat interface
 - 📦 `npm`, `yarn` or `pnpm` for package management
 
+<hr />
+
 LangGraph — used by Replit, Uber, LinkedIn, GitLab and more — is a low-level orchestration framework for building controllable agents. While langchain provides integrations and composable components to streamline LLM application development, the LangGraph library enables agent orchestration — offering customizable architectures, long-term memory, and human-in-the-loop to reliably handle complex tasks.
 
 ```bash
