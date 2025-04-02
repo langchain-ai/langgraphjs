@@ -4,6 +4,7 @@ import {
   SystemMessage,
   ToolMessage,
 } from "@langchain/core/messages";
+import { RunnableLambda } from "@langchain/core/runnables";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 import {
@@ -68,6 +69,10 @@ async function conditionallyUpdateToolMessageContent(
   return message;
 }
 
+const conditionallyUpdateToolMessageContentRunnable = RunnableLambda.from(
+  conditionallyUpdateToolMessageContent
+).withConfig({ runName: "conditionally-update-tool-message-content" });
+
 function isUrl(value: string): boolean {
   try {
     new URL(value);
@@ -130,13 +135,12 @@ export async function callModel(
 
   let response: AIMessageChunk;
   if (isLastMessageComputerCallOutput && !configuration.zdrEnabled) {
-    const formattedMessage = await conditionallyUpdateToolMessageContent(
-      lastMessage
-    );
+    const formattedMessage =
+      await conditionallyUpdateToolMessageContentRunnable.invoke(lastMessage);
     response = await model.invoke([formattedMessage]);
   } else {
-    const formattedMessagesPromise = state.messages.map(
-      conditionallyUpdateToolMessageContent
+    const formattedMessagesPromise = state.messages.map((m) =>
+      conditionallyUpdateToolMessageContentRunnable.invoke(m)
     );
     const prompt = _promptToSysMessage(configuration.prompt);
     response = await model.invoke([

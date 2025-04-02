@@ -8,6 +8,7 @@ import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { BaseMessageLike } from "@langchain/core/messages";
 import { CUAState, CUAUpdate, getConfigurationWithDefaults } from "../types.js";
 import { getInstance, getToolOutputs } from "../utils.js";
+import { RunnableLambda } from "@langchain/core/runnables";
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -171,7 +172,12 @@ export async function takeComputerAction(
 
     let screenshotContent = `data:image/png;base64,${computerResponse.base64Image}`;
     if (uploadScreenshot) {
-      screenshotContent = await uploadScreenshot(screenshotContent);
+      const uploadScreenshotRunnable = RunnableLambda.from(
+        uploadScreenshot
+      ).withConfig({ runName: "upload-screenshot" });
+      screenshotContent = await uploadScreenshotRunnable.invoke(
+        screenshotContent
+      );
     }
 
     computerCallToolMsg = {
