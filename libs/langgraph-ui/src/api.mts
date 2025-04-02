@@ -3,29 +3,43 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as bundler from "./bundler.mjs";
 
-function getBuildContext(options: { output: string }) {
-  const cwd = process.cwd();
-  const defs = z
-    .record(z.string(), z.string())
-    .parse(JSON.parse(process.env.LANGGRAPH_UI || "{}"));
+const ConfigSchema = z.object({ shared: z.array(z.string()).optional() });
+const DefsSchema = z.record(z.string(), z.string());
 
-  const config = z
-    .object({ shared: z.array(z.string()).optional() })
-    .parse(JSON.parse(process.env.LANGGRAPH_UI_CONFIG || "{}"));
+type SchemasType = Record<string, { assets: string[]; name: string }>;
+
+interface BuildEnvType {
+  cwd?: string;
+  defs?: z.infer<typeof DefsSchema>;
+  config?: z.infer<typeof ConfigSchema>;
+}
+
+function getBuildEnv(options?: BuildEnvType) {
+  const cwd = options.cwd ?? process.cwd();
+
+  const defs =
+    options.defs ??
+    DefsSchema.parse(JSON.parse(process.env.LANGGRAPH_UI || "{}"));
+
+  const config =
+    options.config ??
+    ConfigSchema.parse(JSON.parse(process.env.LANGGRAPH_UI_CONFIG || "{}"));
+
+  return { cwd, defs, config };
+}
+
+interface BuildOptionsType extends BuildEnvType {
+  output: string;
+}
+
+export async function build(options: BuildOptionsType) {
+  const { cwd, defs, config } = getBuildEnv(options);
 
   const fullPath = path.resolve(cwd, options.output);
   const publicPath = path.resolve(fullPath, "public");
   const schemasPath = path.resolve(fullPath, "schemas.json");
 
-  return { cwd, defs, config, publicPath, schemasPath };
-}
-
-export async function build(options: { output: string }) {
-  const { cwd, defs, config, publicPath, schemasPath } =
-    getBuildContext(options);
-
-  const schemas: Record<string, { assets: string[]; name: string }> = {};
-
+  const schemas: SchemasType = {};
   await Promise.all(
     Object.entries(defs).map(async ([graphId, userPath]) => {
       const folder = path.resolve(publicPath, graphId);
@@ -49,13 +63,39 @@ export async function build(options: { output: string }) {
   });
 }
 
-export async function watch(options: { output: string }) {
-  const { cwd, defs, config, publicPath, schemasPath } =
-    getBuildContext(options);
+type WatchOptionsType = (
+  | { output: string }
+  | {
+      onOutput: (
+        graphId: string,
+        result: { basename: string; contents: Uint8Array }[],
+      ) => void;
+    }
+) &
+  BuildEnvType;
 
-  const schemas: Record<string, { assets: string[]; name: string }> = {};
+export async function watch(options: WatchOptionsType) {
+  const { cwd, config, defs } = getBuildEnv(options);
+
+  if ("onOutput" in options) {
+    await Promise.all(
+      Object.entries(defs).map(async ([graphId, userPath]) => {
+        await bundler.watch(graphId, { cwd, config, userPath }, (files) =>
+          options.onOutput(graphId, files),
+        );
+      }),
+    );
+
+    return;
+  }
+
+  const fullPath = path.resolve(cwd, options.output);
+  const publicPath = path.resolve(fullPath, "public");
+  const schemasPath = path.resolve(fullPath, "schemas.json");
+
   let promiseSeq = Promise.resolve();
 
+  const schemas: SchemasType = {};
   await Promise.all(
     Object.entries(defs).map(async ([graphId, userPath]) => {
       const folder = path.resolve(publicPath, graphId);
