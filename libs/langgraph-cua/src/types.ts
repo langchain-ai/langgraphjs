@@ -1,3 +1,4 @@
+import { CreateSessionParams } from "@hyperbrowser/sdk/types";
 import { SystemMessage } from "@langchain/core/messages";
 import { getEnvironmentVariable } from "@langchain/core/utils/env";
 import {
@@ -5,7 +6,6 @@ import {
   LangGraphRunnableConfig,
   MessagesAnnotation,
 } from "@langchain/langgraph";
-import { Browser, Page } from "playwright-core";
 
 // Copied from the OpenAI example repository
 // https://github.com/openai/openai-cua-sample-app/blob/eb2d58ba77ffd3206d3346d6357093647d29d99c/utils.py#L13
@@ -50,15 +50,6 @@ export const CUAAnnotation = Annotation.Root({
     reducer: (_state, update) => update,
     default: () => undefined,
   }),
-  /**
-   * The state of the browser instance.
-   */
-  browserState: Annotation<
-    { browser: Browser | undefined; currentPage: Page | undefined } | undefined
-  >({
-    reducer: (_state, update) => update,
-    default: () => undefined,
-  }),
 });
 
 export const CUAConfigurable = Annotation.Root({
@@ -90,16 +81,7 @@ export const CUAConfigurable = Annotation.Root({
    * Parameters to use for configuring the Hyperbrowser session, such as screen dimensions.
    * For more information on the available parameters, see the [Hyperbrowser API documentation](https://docs.hyperbrowser.ai/sessions/overview/session-parameters).
    */
-  sessionParams: Annotation<
-    | {
-        screen?: {
-          width: number;
-          height: number;
-        };
-        [key: string]: unknown;
-      }
-    | undefined
-  >({
+  sessionParams: Annotation<CreateSessionParams | undefined>({
     reducer: (_state, update) => update,
     default: () => undefined,
   }),
@@ -180,7 +162,7 @@ export function getConfigurationWithDefaults(
     hyperbrowserApiKey:
       config.configurable?.hyperbrowserApiKey ||
       getEnvironmentVariable("HYPERBROWSER_API_KEY"),
-    sessionParams: config.configurable?.sessionParams ?? {},
+    sessionParams: config.configurable?.sessionParams ?? undefined,
     timeoutHours: config.configurable?.timeoutHours ?? 1,
     zdrEnabled: config.configurable?.zdrEnabled ?? false,
     environment: config.configurable?.environment ?? "web",

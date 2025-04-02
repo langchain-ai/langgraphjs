@@ -7,6 +7,7 @@ import {
   StateGraph,
 } from "@langchain/langgraph";
 import { SystemMessage } from "@langchain/core/messages";
+import { CreateSessionParams } from "@hyperbrowser/sdk/types";
 import { callModel } from "./nodes/call-model.js";
 import { createVMInstance } from "./nodes/create-vm-instance.js";
 import { takeComputerAction } from "./nodes/take-computer-action.js";
@@ -89,7 +90,7 @@ interface CreateCuaParams<
    * For more information on the available parameters, see the [Hyperbrowser API documentation](https://docs.hyperbrowser.ai/sessions/overview/session-parameters).
    * @default undefined
    */
-  sessionParams?: Record<string, unknown>;
+  sessionParams?: CreateSessionParams;
 
   /**
    * The number of hours to keep the virtual machine running before it times out.

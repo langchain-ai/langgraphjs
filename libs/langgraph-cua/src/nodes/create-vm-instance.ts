@@ -1,9 +1,21 @@
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
-import { chromium } from "playwright-core";
+import type { Browser } from "puppeteer-core";
+import { connect } from "puppeteer-core";
 import { UbuntuInstance, BrowserInstance, WindowsInstance } from "scrapybara";
 import { SessionDetail } from "@hyperbrowser/sdk/types";
 import { CUAState, CUAUpdate, getConfigurationWithDefaults } from "../types.js";
 import { getHyperbrowserClient, getScrapybaraClient } from "../utils.js";
+
+export const getActivePage = async (browser: Browser) => {
+  const pages = await browser.pages();
+  for (const page of pages) {
+    const isHidden = await page.evaluate("document.hidden");
+    if (isHidden === false) {
+      return page;
+    }
+  }
+  return pages[0];
+};
 
 async function createHyperbrowserInstance(
   state: CUAState,
@@ -11,7 +23,6 @@ async function createHyperbrowserInstance(
 ): Promise<CUAUpdate> {
   const { hyperbrowserApiKey, sessionParams } =
     getConfigurationWithDefaults(config);
-  let { browserState } = state;
 
   if (!hyperbrowserApiKey) {
     throw new Error(
@@ -22,18 +33,16 @@ async function createHyperbrowserInstance(
   const client = getHyperbrowserClient(hyperbrowserApiKey);
   const session: SessionDetail = await client.sessions.create(sessionParams);
 
-  if (!browserState && session.wsEndpoint) {
-    const browser = await chromium.connectOverCDP(
-      `${session.wsEndpoint}&keepAlive=true`
-    );
-    const currPage = browser.contexts()[0].pages()[0];
-    if (currPage.url() === "about:blank") {
-      await currPage.goto("https://www.google.com");
+  if (session.wsEndpoint) {
+    const browser = await connect({
+      browserWSEndpoint: `${session.wsEndpoint}&keepAlive=true`,
+      defaultViewport: null,
+    });
+    const page = await getActivePage(browser);
+
+    if (page.url() === "about:blank") {
+      await page.goto("https://www.google.com");
     }
-    browserState = {
-      browser,
-      currentPage: currPage,
-    };
   }
 
   if (!state.streamUrl) {
@@ -43,13 +52,11 @@ async function createHyperbrowserInstance(
     return {
       instanceId: session.id,
       streamUrl,
-      browserState,
     };
   }
 
   return {
     instanceId: session.id,
-    browserState,
   };
 }
 

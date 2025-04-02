@@ -1,74 +1,38 @@
-import {
-  BrowserInstance,
-  UbuntuInstance,
-  WindowsInstance,
-  Scrapybara,
-} from "scrapybara";
+import { BrowserInstance, UbuntuInstance, WindowsInstance } from "scrapybara";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
+import { connect } from "puppeteer-core";
 import { BaseMessageLike } from "@langchain/core/messages";
 import { RunnableLambda } from "@langchain/core/runnables";
 import { CUAState, CUAUpdate, getConfigurationWithDefaults } from "../types.js";
-import { getScrapybaraInstance, getToolOutputs } from "../utils.js";
-import { takeHyperbrowserAction } from "./take-browser-action.js";
-
-async function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-// Copied from the OpenAI example repository
-// https://github.com/openai/openai-cua-sample-app/blob/eb2d58ba77ffd3206d3346d6357093647d29d99c/computers/scrapybara.py#L10
-const CUA_KEY_TO_SCRAPYBARA_KEY: Record<string, string> = {
-  "/": "slash",
-  "\\": "backslash",
-  arrowdown: "Down",
-  arrowleft: "Left",
-  arrowright: "Right",
-  arrowup: "Up",
-  backspace: "BackSpace",
-  capslock: "Caps_Lock",
-  cmd: "Meta_L",
-  delete: "Delete",
-  end: "End",
-  enter: "Return",
-  esc: "Escape",
-  home: "Home",
-  insert: "Insert",
-  option: "Alt_L",
-  pagedown: "Page_Down",
-  pageup: "Page_Up",
-  tab: "Tab",
-  win: "Meta_L",
-};
+import {
+  getHyperbrowserInstance,
+  getScrapybaraInstance,
+  getToolOutputs,
+} from "../utils.js";
+import {
+  handleClickAction,
+  handleDoubleClickAction,
+  handleDragAction,
+  handleKeypressAction,
+  handleMoveAction,
+  handleScreenshotAction,
+  handleScrollAction,
+  handleTypeAction,
+  handleWaitAction,
+} from "./handle-action.js";
 
 const isBrowserInstance = (
   instance: UbuntuInstance | BrowserInstance | WindowsInstance
 ): instance is BrowserInstance =>
   "authenticate" in instance && typeof instance.authenticate === "function";
 
-export async function takeScrapybaraAction(
+async function scrapybaraSetup(
+  instanceId: string,
   state: CUAState,
   config: LangGraphRunnableConfig,
-  {
-    uploadScreenshot,
-  }: { uploadScreenshot?: (screenshot: string) => Promise<string> }
-): Promise<CUAUpdate> {
-  if (!state.instanceId) {
-    throw new Error("Can not take computer action without an instance ID.");
-  }
+) {
+  const instance = await getScrapybaraInstance(instanceId, config);
   const { authStateId } = getConfigurationWithDefaults(config);
-
-  const message = state.messages[state.messages.length - 1];
-  const toolOutputs = getToolOutputs(message);
-  if (!toolOutputs?.length) {
-    // This should never happen, but include the check for proper type narrowing.
-    throw new Error(
-      "Can not take computer action without a computer call in the last message."
-    );
-  }
-
-  const instance = await getScrapybaraInstance(state.instanceId, config);
 
   let { authenticatedId } = state;
   if (
@@ -92,78 +56,123 @@ export async function takeScrapybaraAction(
     });
   }
 
+  return {
+    instance,
+    updatedState: {
+      instanceId: instance.id,
+      streamUrl,
+      authenticatedId,
+    },
+  };
+}
+
+async function hyperbrowserSetup(
+  instanceId: string,
+  state: CUAState,
+  config: LangGraphRunnableConfig,
+) {
+  const instance = await getHyperbrowserInstance(instanceId, config);
+  let { streamUrl } = state;
+
+  const browser = await connect({
+    browserWSEndpoint: `${instance.wsEndpoint}&keepAlive=true`,
+    defaultViewport: null,
+  });
+
+  if (!streamUrl) {
+    streamUrl = instance.liveUrl;
+    config.writer?.({
+      streamUrl,
+    });
+  }
+
+  return {
+    instance: browser,
+    updatedState: {
+      instanceId: instance.id,
+      streamUrl,
+    },
+  };
+}
+
+export async function takeComputerAction(
+  state: CUAState,
+  config: LangGraphRunnableConfig,
+  {
+    uploadScreenshot,
+  }: { uploadScreenshot?: (screenshot: string) => Promise<string> }
+): Promise<CUAUpdate> {
+  if (!state.instanceId) {
+    throw new Error("Can not take computer action without an instance ID.");
+  }
+
+  const message = state.messages[state.messages.length - 1];
+  const toolOutputs = getToolOutputs(message);
+  if (!toolOutputs?.length) {
+    // This should never happen, but include the check for proper type narrowing.
+    throw new Error(
+      "Can not take computer action without a computer call in the last message."
+    );
+  }
+  const { provider } = getConfigurationWithDefaults(config);
+
+  const { instance, updatedState } = await (provider === "scrapybara"
+    ? scrapybaraSetup(state.instanceId, state, config)
+    : hyperbrowserSetup(state.instanceId, state, config));
+
   const output = toolOutputs[toolOutputs.length - 1];
   const { action } = output;
   let computerCallToolMsg: BaseMessageLike | undefined;
 
   try {
-    let computerResponse: Scrapybara.ComputerResponse;
+    let responseScreenshot: string;
     switch (action.type) {
       case "click":
-        computerResponse = await instance.computer({
-          action: "click_mouse",
-          button: action.button === "wheel" ? "middle" : action.button,
-          coordinates: [action.x, action.y],
-        });
+        responseScreenshot = await handleClickAction(
+          action,
+          provider,
+          instance
+        );
         break;
       case "double_click":
-        computerResponse = await instance.computer({
-          action: "click_mouse",
-          button: "left",
-          coordinates: [action.x, action.y],
-          numClicks: 2,
-        });
+        responseScreenshot = await handleDoubleClickAction(
+          action,
+          provider,
+          instance
+        );
         break;
       case "drag":
-        computerResponse = await instance.computer({
-          action: "drag_mouse",
-          path: action.path.map(({ x, y }) => [x, y]),
-        });
+        responseScreenshot = await handleDragAction(action, provider, instance);
         break;
-      case "keypress": {
-        const mappedKeys = action.keys
-          .map((k) => k.toLowerCase())
-          .map((key) =>
-            key in CUA_KEY_TO_SCRAPYBARA_KEY
-              ? CUA_KEY_TO_SCRAPYBARA_KEY[key]
-              : key
-          );
-        computerResponse = await instance.computer({
-          action: "press_key",
-          keys: mappedKeys,
-        });
+      case "keypress":
+        responseScreenshot = await handleKeypressAction(
+          action,
+          provider,
+          instance
+        );
         break;
-      }
       case "move":
-        computerResponse = await instance.computer({
-          action: "move_mouse",
-          coordinates: [action.x, action.y],
-        });
+        responseScreenshot = await handleMoveAction(action, provider, instance);
         break;
       case "screenshot":
-        computerResponse = await instance.computer({
-          action: "take_screenshot",
-        });
+        responseScreenshot = await handleScreenshotAction(
+          action,
+          provider,
+          instance
+        );
         break;
       case "wait":
-        await sleep(2000);
-        computerResponse = await instance.computer({
-          action: "take_screenshot",
-        });
+        responseScreenshot = await handleWaitAction(action, provider, instance);
         break;
       case "scroll":
-        computerResponse = await instance.computer({
-          action: "scroll",
-          deltaX: action.scroll_x / 20,
-          deltaY: action.scroll_y / 20,
-          coordinates: [action.x, action.y],
-        });
+        responseScreenshot = await handleScrollAction(
+          action,
+          provider,
+          instance
+        );
         break;
       case "type":
-        computerResponse = await instance.computer({
-          action: "type_text",
-          text: action.text,
-        });
+        responseScreenshot = await handleTypeAction(action, provider, instance);
         break;
       default:
         throw new Error(
@@ -171,7 +180,7 @@ export async function takeScrapybaraAction(
         );
     }
 
-    let screenshotContent = `data:image/png;base64,${computerResponse.base64Image}`;
+    let screenshotContent = `data:image/png;base64,${responseScreenshot}`;
     if (uploadScreenshot) {
       const uploadScreenshotRunnable = RunnableLambda.from(
         uploadScreenshot
@@ -198,23 +207,7 @@ export async function takeScrapybaraAction(
   }
 
   return {
+    ...updatedState,
     messages: computerCallToolMsg ? [computerCallToolMsg] : [],
-    instanceId: instance.id,
-    streamUrl,
-    authenticatedId,
   };
-}
-
-export async function takeComputerAction(
-  state: CUAState,
-  config: LangGraphRunnableConfig
-): Promise<CUAUpdate> {
-  const { provider } = getConfigurationWithDefaults(config);
-  if (provider === "scrapybara") {
-    return takeScrapybaraAction(state, config);
-  } else if (provider === "hyperbrowser") {
-    return takeHyperbrowserAction(state, config);
-  } else {
-    throw new Error(`Unsupported provider: ${provider}`);
-  }
 }
