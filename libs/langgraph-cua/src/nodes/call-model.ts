@@ -1,5 +1,6 @@
 import {
   AIMessageChunk,
+  BaseMessage,
   SystemMessage,
   ToolMessage,
 } from "@langchain/core/messages";
@@ -26,11 +27,45 @@ const _getOpenAIEnvFromStateEnv = (env: CUAEnvironment) => {
   }
 };
 
+/**
+ * Converts an image URL to a base64 string. This is because OpenAI's
+ * computer use API does not support external image URLs, so all requests
+ * must be base64.
+ *
+ * @param imageUrl - The URL of the image to convert.
+ * @returns The base64 string representation of the image.
+ */
 async function imageUrlToBase64(imageUrl: string): Promise<string> {
   const response = await fetch(imageUrl);
   const buffer = await response.arrayBuffer();
   const base64 = Buffer.from(buffer).toString("base64");
   return `data:image/png;base64,${base64}`;
+}
+
+/**
+ * Conditionally updates the content of a tool message if it is a computer call output.
+ * If the message is a tool message with a computer call output type and a URL content,
+ * it converts the URL to a base64 string.
+ *
+ * @param message - The message to update.
+ * @returns The updated message.
+ */
+async function conditionallyUpdateToolMessageContent(
+  message: BaseMessage
+): Promise<BaseMessage> {
+  if (
+    message.getType() === "tool" &&
+    message.additional_kwargs?.type === "computer_call_output" &&
+    typeof message.content === "string" &&
+    isUrl(message.content)
+  ) {
+    return new ToolMessage({
+      ...(message as ToolMessage),
+      content: await imageUrlToBase64(message.content),
+    });
+  }
+
+  return message;
 }
 
 function isUrl(value: string): boolean {
@@ -95,36 +130,14 @@ export async function callModel(
 
   let response: AIMessageChunk;
   if (isLastMessageComputerCallOutput && !configuration.zdrEnabled) {
-    if (
-      lastMessage.getType() === "tool" &&
-      lastMessage.additional_kwargs?.type === "computer_call_output" &&
-      typeof lastMessage.content === "string" &&
-      isUrl(lastMessage.content)
-    ) {
-      response = await model.invoke([
-        new ToolMessage({
-          ...lastMessage,
-          content: await imageUrlToBase64(lastMessage.content),
-        }),
-      ]);
-    } else {
-      response = await model.invoke([lastMessage]);
-    }
+    const formattedMessage = await conditionallyUpdateToolMessageContent(
+      lastMessage
+    );
+    response = await model.invoke([formattedMessage]);
   } else {
-    const formattedMessagesPromise = state.messages.map(async (m) => {
-      if (
-        m.getType() === "tool" &&
-        m.additional_kwargs?.type === "computer_call_output" &&
-        typeof m.content === "string" &&
-        isUrl(m.content)
-      ) {
-        return new ToolMessage({
-          ...(m as ToolMessage),
-          content: await imageUrlToBase64(m.content),
-        });
-      }
-      return m;
-    });
+    const formattedMessagesPromise = state.messages.map(
+      conditionallyUpdateToolMessageContent
+    );
     const prompt = _promptToSysMessage(configuration.prompt);
     response = await model.invoke([
       ...(prompt ? [prompt] : []),
