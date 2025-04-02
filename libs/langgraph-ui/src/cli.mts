@@ -1,46 +1,17 @@
-import { watch } from "./bundler.mjs";
-import * as fs from "node:fs/promises";
-import * as url from "node:url";
-import * as path from "node:path";
+#!/usr/bin/env node
+import { Command } from "@commander-js/extra-typings";
+import * as api from "./api.mjs";
 
-import { z } from "zod";
+const builder = new Command().name("langgraphjs-ui");
 
-const cmd = process.argv.at(-1);
-if (cmd !== "dev") throw new Error(`Invalid command "${cmd}"`);
+builder
+  .command("build")
+  .requiredOption("-o, --output <string>", "Output directory")
+  .action(api.build);
 
-const cwd = process.cwd();
-const defs = z
-  .record(z.string(), z.string())
-  .parse(JSON.parse(process.env.LANGGRAPH_UI || "{}"));
+builder
+  .command("watch")
+  .requiredOption("-o, --output <string>", "Output directory")
+  .action(api.watch);
 
-const config = z
-  .object({ shared: z.array(z.string()).optional() })
-  .parse(JSON.parse(process.env.LANGGRAPH_UI_CONFIG || "{}"));
-
-const UI_DIR = url.fileURLToPath(new URL("../../ui", import.meta.url));
-
-// clear the files in the ui directory
-await fs.rm(UI_DIR, { recursive: true, force: true });
-
-// watch the files in the ui directory
-await Promise.all(
-  Object.entries(defs).map(async ([graphId, userPath]) => {
-    const folder = path.resolve(UI_DIR, graphId);
-    await fs.mkdir(folder, { recursive: true });
-
-    let promiseSeq = Promise.resolve();
-    await watch(graphId, { cwd, userPath, config }, (files) => {
-      promiseSeq = promiseSeq.then(
-        async () => {
-          await Promise.all(
-            files.map(async ({ basename, contents }) => {
-              const target = path.join(folder, basename);
-              await fs.writeFile(target, contents);
-            }),
-          );
-        },
-        (e) => console.error(e),
-      );
-    });
-  }),
-);
+builder.parse();

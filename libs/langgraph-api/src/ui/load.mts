@@ -12,20 +12,12 @@ export async function registerGraphUi(
   defs: Record<string, string>,
   options: { cwd: string; config?: { shared?: string[] } },
 ) {
-  const result = await Promise.all(
-    Object.entries(defs).map(async ([agentName, userPath]) => {
-      const ctx = await watch(
-        agentName,
-        { cwd: options.cwd, userPath, config: options.config },
-        (result) => {
-          GRAPH_UI[agentName] = result;
-        },
-      );
-      return [agentName, ctx] as [string, typeof ctx];
-    }),
-  );
-
-  return Object.fromEntries(result);
+  await watch({
+    defs,
+    cwd: options.cwd,
+    config: options.config,
+    onOutput: (graphId, files) => (GRAPH_UI[graphId] = files),
+  });
 }
 
 export const api = new Hono();
