@@ -6,6 +6,7 @@ import {
 } from "scrapybara";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { BaseMessageLike } from "@langchain/core/messages";
+import { RunnableLambda } from "@langchain/core/runnables";
 import { CUAState, CUAUpdate, getConfigurationWithDefaults } from "../types.js";
 import { getInstance, getToolOutputs } from "../utils.js";
 
@@ -47,7 +48,10 @@ const isBrowserInstance = (
 
 export async function takeComputerAction(
   state: CUAState,
-  config: LangGraphRunnableConfig
+  config: LangGraphRunnableConfig,
+  {
+    uploadScreenshot,
+  }: { uploadScreenshot?: (screenshot: string) => Promise<string> }
 ): Promise<CUAUpdate> {
   if (!state.instanceId) {
     throw new Error("Can not take computer action without an instance ID.");
@@ -166,11 +170,21 @@ export async function takeComputerAction(
         );
     }
 
+    let screenshotContent = `data:image/png;base64,${computerResponse.base64Image}`;
+    if (uploadScreenshot) {
+      const uploadScreenshotRunnable = RunnableLambda.from(
+        uploadScreenshot
+      ).withConfig({ runName: "upload-screenshot" });
+      screenshotContent = await uploadScreenshotRunnable.invoke(
+        screenshotContent
+      );
+    }
+
     computerCallToolMsg = {
       type: "tool",
       tool_call_id: output.call_id,
       additional_kwargs: { type: "computer_call_output" },
-      content: `data:image/png;base64,${computerResponse.base64Image}`,
+      content: screenshotContent,
     };
   } catch (e) {
     console.error(

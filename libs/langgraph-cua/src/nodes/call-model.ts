@@ -1,4 +1,10 @@
-import { AIMessageChunk, SystemMessage } from "@langchain/core/messages";
+import {
+  AIMessageChunk,
+  BaseMessage,
+  SystemMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
+import { RunnableLambda } from "@langchain/core/runnables";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 import {
@@ -21,6 +27,59 @@ const _getOpenAIEnvFromStateEnv = (env: CUAEnvironment) => {
       throw new Error(`Invalid environment: ${env}`);
   }
 };
+
+/**
+ * Converts an image URL to a base64 string. This is because OpenAI's
+ * computer use API does not support external image URLs, so all requests
+ * must be base64.
+ *
+ * @param imageUrl - The URL of the image to convert.
+ * @returns The base64 string representation of the image.
+ */
+async function imageUrlToBase64(imageUrl: string): Promise<string> {
+  const response = await fetch(imageUrl);
+  const buffer = await response.arrayBuffer();
+  const base64 = Buffer.from(buffer).toString("base64");
+  return `data:image/png;base64,${base64}`;
+}
+
+/**
+ * Conditionally updates the content of a tool message if it is a computer call output.
+ * If the message is a tool message with a computer call output type and a URL content,
+ * it converts the URL to a base64 string.
+ *
+ * @param message - The message to update.
+ * @returns The updated message.
+ */
+async function conditionallyUpdateToolMessageContent(
+  message: BaseMessage
+): Promise<BaseMessage> {
+  if (
+    message.getType() === "tool" &&
+    message.additional_kwargs?.type === "computer_call_output" &&
+    typeof message.content === "string" &&
+    isUrl(message.content)
+  ) {
+    return new ToolMessage({
+      ...(message as ToolMessage),
+      content: await imageUrlToBase64(message.content),
+    });
+  }
+
+  return message;
+}
+
+const conditionallyUpdateToolMessageContentRunnable = RunnableLambda.from(
+  conditionallyUpdateToolMessageContent
+).withConfig({ runName: "conditionally-update-tool-message-content" });
+
+function isUrl(value: string): boolean {
+  try {
+    return !!new URL(value);
+  } catch (e) {
+    return false;
+  }
+}
 
 // Scrapybara does not allow for configuring this. Must use a hardcoded value.
 const DEFAULT_DISPLAY_WIDTH = 1024;
@@ -75,12 +134,17 @@ export async function callModel(
 
   let response: AIMessageChunk;
   if (isLastMessageComputerCallOutput && !configuration.zdrEnabled) {
-    response = await model.invoke([lastMessage]);
+    const formattedMessage =
+      await conditionallyUpdateToolMessageContentRunnable.invoke(lastMessage);
+    response = await model.invoke([formattedMessage]);
   } else {
+    const formattedMessagesPromise = state.messages.map((m) =>
+      conditionallyUpdateToolMessageContentRunnable.invoke(m)
+    );
     const prompt = _promptToSysMessage(configuration.prompt);
     response = await model.invoke([
       ...(prompt ? [prompt] : []),
-      ...state.messages,
+      ...(await Promise.all(formattedMessagesPromise)),
     ]);
   }
 
