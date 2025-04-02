@@ -1,4 +1,8 @@
-import { AIMessageChunk, SystemMessage } from "@langchain/core/messages";
+import {
+  AIMessageChunk,
+  SystemMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 import {
@@ -21,6 +25,22 @@ const _getOpenAIEnvFromStateEnv = (env: CUAEnvironment) => {
       throw new Error(`Invalid environment: ${env}`);
   }
 };
+
+async function imageUrlToBase64(imageUrl: string): Promise<string> {
+  const response = await fetch(imageUrl);
+  const buffer = await response.arrayBuffer();
+  const base64 = Buffer.from(buffer).toString("base64");
+  return `data:image/png;base64,${base64}`;
+}
+
+function isUrl(value: string): boolean {
+  try {
+    new URL(value);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
 
 // Scrapybara does not allow for configuring this. Must use a hardcoded value.
 const DEFAULT_DISPLAY_WIDTH = 1024;
@@ -75,12 +95,40 @@ export async function callModel(
 
   let response: AIMessageChunk;
   if (isLastMessageComputerCallOutput && !configuration.zdrEnabled) {
-    response = await model.invoke([lastMessage]);
+    if (
+      lastMessage.getType() === "tool" &&
+      lastMessage.additional_kwargs?.type === "computer_call_output" &&
+      typeof lastMessage.content === "string" &&
+      isUrl(lastMessage.content)
+    ) {
+      response = await model.invoke([
+        new ToolMessage({
+          ...lastMessage,
+          content: await imageUrlToBase64(lastMessage.content),
+        }),
+      ]);
+    } else {
+      response = await model.invoke([lastMessage]);
+    }
   } else {
+    const formattedMessagesPromise = state.messages.map(async (m) => {
+      if (
+        m.getType() === "tool" &&
+        m.additional_kwargs?.type === "computer_call_output" &&
+        typeof m.content === "string" &&
+        isUrl(m.content)
+      ) {
+        return new ToolMessage({
+          ...(m as ToolMessage),
+          content: await imageUrlToBase64(m.content),
+        });
+      }
+      return m;
+    });
     const prompt = _promptToSysMessage(configuration.prompt);
     response = await model.invoke([
       ...(prompt ? [prompt] : []),
-      ...state.messages,
+      ...(await Promise.all(formattedMessagesPromise)),
     ]);
   }
 

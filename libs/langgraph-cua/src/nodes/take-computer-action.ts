@@ -47,7 +47,10 @@ const isBrowserInstance = (
 
 export async function takeComputerAction(
   state: CUAState,
-  config: LangGraphRunnableConfig
+  config: LangGraphRunnableConfig,
+  {
+    uploadScreenshot,
+  }: { uploadScreenshot?: (screenshot: string) => Promise<string> }
 ): Promise<CUAUpdate> {
   if (!state.instanceId) {
     throw new Error("Can not take computer action without an instance ID.");
@@ -166,11 +169,16 @@ export async function takeComputerAction(
         );
     }
 
+    let screenshotContent = `data:image/png;base64,${computerResponse.base64Image}`;
+    if (uploadScreenshot) {
+      screenshotContent = await uploadScreenshot(screenshotContent);
+    }
+
     computerCallToolMsg = {
       type: "tool",
       tool_call_id: output.call_id,
       additional_kwargs: { type: "computer_call_output" },
-      content: `data:image/png;base64,${computerResponse.base64Image}`,
+      content: screenshotContent,
     };
   } catch (e) {
     console.error(
