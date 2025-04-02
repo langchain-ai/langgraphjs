@@ -75,8 +75,7 @@ const conditionallyUpdateToolMessageContentRunnable = RunnableLambda.from(
 
 function isUrl(value: string): boolean {
   try {
-    new URL(value);
-    return true;
+    return !!new URL(value);
   } catch (e) {
     return false;
   }

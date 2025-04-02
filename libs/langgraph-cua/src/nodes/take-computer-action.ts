@@ -6,9 +6,9 @@ import {
 } from "scrapybara";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { BaseMessageLike } from "@langchain/core/messages";
+import { RunnableLambda } from "@langchain/core/runnables";
 import { CUAState, CUAUpdate, getConfigurationWithDefaults } from "../types.js";
 import { getInstance, getToolOutputs } from "../utils.js";
-import { RunnableLambda } from "@langchain/core/runnables";
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
