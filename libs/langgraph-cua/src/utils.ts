@@ -6,7 +6,7 @@ import {
   BrowserInstance,
   WindowsInstance,
 } from "scrapybara";
-import HyperbrowserClient, { Hyperbrowser } from "@hyperbrowser/sdk";
+import { Hyperbrowser } from "@hyperbrowser/sdk";
 import { SessionDetail } from "@hyperbrowser/sdk/types";
 import { getEnvironmentVariable } from "@langchain/core/utils/env";
 import { AIMessage, BaseMessage, ToolMessage } from "@langchain/core/messages";
@@ -18,7 +18,7 @@ import { getConfigurationWithDefaults } from "./types.js";
  * @param {string} apiKey The API key for Hyperbrowser.
  * @returns {HyperbrowserClient} The Hyperbrowser client.
  */
-export function getHyperbrowserClient(apiKey: string) {
+export function getHyperbrowserClient(apiKey: string): Hyperbrowser {
   if (!apiKey) {
     throw new Error(
       "Hyperbrowser API key not provided. Please provide one in the configurable fields, or set it as an environment variable (HYPERBROWSER_API_KEY)"
@@ -137,7 +137,7 @@ export async function stopScrapybaraInstance(
  */
 export async function stopHyperbrowserInstance(
   id: string,
-  client?: HyperbrowserClient
+  client?: Hyperbrowser
 ): Promise<void> {
   let client_ = client;
   if (!client_) {

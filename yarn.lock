@@ -929,15 +929,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hyperbrowser/sdk@npm:^0.40.0":
-  version: 0.40.0
-  resolution: "@hyperbrowser/sdk@npm:0.40.0"
+"@hyperbrowser/sdk@npm:^0.42.0":
+  version: 0.42.0
+  resolution: "@hyperbrowser/sdk@npm:0.42.0"
   dependencies:
     form-data: ^4.0.1
     node-fetch: 2.7.0
     zod: ^3.24.1
     zod-to-json-schema: ^3.24.1
-  checksum: 95f198979a344e5cb70a4adc706257732c88eabbf8461fda4f23aedb4283ab3d76de449270b2b7c7a119187fd4784442a1b9c157b3e99a0869fa8d751fde9963
+  checksum: d2e5f69aa2a25645895b8501f71a7b773b03a8f7d8d82cc325929d8c9df70a6057d600d195b0a0b56ef923dba2d00f0f533cddf87b3c772e4e2f79883c763b35
   languageName: node
   linkType: hard
 
@@ -1909,7 +1909,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-cua@workspace:libs/langgraph-cua"
   dependencies:
-    "@hyperbrowser/sdk": ^0.40.0
+    "@hyperbrowser/sdk": ^0.42.0
     "@jest/globals": ^29.5.0
     "@langchain/langgraph": "workspace:*"
     "@langchain/openai": ^0.5.1

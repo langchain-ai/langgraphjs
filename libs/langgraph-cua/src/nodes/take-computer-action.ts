@@ -29,7 +29,7 @@ const isBrowserInstance = (
 async function scrapybaraSetup(
   instanceId: string,
   state: CUAState,
-  config: LangGraphRunnableConfig,
+  config: LangGraphRunnableConfig
 ) {
   const instance = await getScrapybaraInstance(instanceId, config);
   const { authStateId } = getConfigurationWithDefaults(config);
@@ -69,7 +69,7 @@ async function scrapybaraSetup(
 async function hyperbrowserSetup(
   instanceId: string,
   state: CUAState,
-  config: LangGraphRunnableConfig,
+  config: LangGraphRunnableConfig
 ) {
   const instance = await getHyperbrowserInstance(instanceId, config);
   let { streamUrl } = state;
@@ -125,7 +125,7 @@ export async function takeComputerAction(
   let computerCallToolMsg: BaseMessageLike | undefined;
 
   try {
-    let responseScreenshot: string;
+    let responseScreenshot: string | undefined;
     switch (action.type) {
       case "click":
         responseScreenshot = await handleClickAction(
@@ -178,6 +178,10 @@ export async function takeComputerAction(
         throw new Error(
           `Unknown computer action received: ${JSON.stringify(action, null, 2)}`
         );
+    }
+
+    if (!responseScreenshot) {
+      throw new Error("No screenshot returned from computer action.");
     }
 
     let screenshotContent = `data:image/png;base64,${responseScreenshot}`;

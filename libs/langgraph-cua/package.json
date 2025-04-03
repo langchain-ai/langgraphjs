@@ -32,7 +32,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@hyperbrowser/sdk": "^0.40.0",
+    "@hyperbrowser/sdk": "^0.42.0",
     "puppeteer-core": "^24.5.0",
     "scrapybara": "^2.4.4",
     "zod": "^3.23.8"

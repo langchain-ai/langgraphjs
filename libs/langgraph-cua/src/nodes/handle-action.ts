@@ -95,14 +95,16 @@ export async function handleClickAction(
   switch (provider) {
     case "scrapybara":
       return (
-        await instance.computer({
+        await (
+          instance as UbuntuInstance | BrowserInstance | WindowsInstance
+        ).computer({
           action: "click_mouse",
           button: action.button === "wheel" ? "middle" : action.button,
           coordinates: [action.x, action.y],
         })
       ).base64Image;
     case "hyperbrowser": {
-      const page = await getActivePage(instance);
+      const page = await getActivePage(instance as Browser);
       switch (action.button) {
         case "back":
           await page.goBack({ timeout: 15_000 });
@@ -122,7 +124,7 @@ export async function handleClickAction(
         default:
           throw new Error(`Unknown button: ${action.button}`);
       }
-      return await getHyperbrowserScreenshot(instance);
+      return await getHyperbrowserScreenshot(instance as Browser);
     }
     default:
       throw new Error(`Unknown provider: ${provider}`);
@@ -137,7 +139,9 @@ export async function handleDoubleClickAction(
   switch (provider) {
     case "scrapybara":
       return (
-        await instance.computer({
+        await (
+          instance as UbuntuInstance | BrowserInstance | WindowsInstance
+        ).computer({
           action: "click_mouse",
           button: "left",
           coordinates: [action.x, action.y],
@@ -145,12 +149,12 @@ export async function handleDoubleClickAction(
         })
       ).base64Image;
     case "hyperbrowser": {
-      const page = await getActivePage(instance);
+      const page = await getActivePage(instance as Browser);
       await page.mouse.click(action.x, action.y, {
         button: "left",
         clickCount: 2,
       });
-      return await getHyperbrowserScreenshot(instance);
+      return await getHyperbrowserScreenshot(instance as Browser);
     }
     default:
       throw new Error(`Unknown provider: ${provider}`);
@@ -165,13 +169,15 @@ export async function handleDragAction(
   switch (provider) {
     case "scrapybara":
       return (
-        await instance.computer({
+        await (
+          instance as UbuntuInstance | BrowserInstance | WindowsInstance
+        ).computer({
           action: "drag_mouse",
           path: action.path.map(({ x, y }) => [x, y]),
         })
       ).base64Image;
     case "hyperbrowser": {
-      const page = await getActivePage(instance);
+      const page = await getActivePage(instance as Browser);
       if (action.path.length < 2) {
         throw new Error(
           "Invalid drag path: must contain at least a start and end point"
@@ -187,7 +193,7 @@ export async function handleDragAction(
       }
 
       await page.mouse.up();
-      return await getHyperbrowserScreenshot(instance);
+      return await getHyperbrowserScreenshot(instance as Browser);
     }
     default:
       throw new Error(`Unknown provider: ${provider}`);
@@ -209,14 +215,16 @@ export async function handleKeypressAction(
             : key
         );
       return (
-        await instance.computer({
+        await (
+          instance as UbuntuInstance | BrowserInstance | WindowsInstance
+        ).computer({
           action: "press_key",
           keys: mappedKeys,
         })
       ).base64Image;
     }
     case "hyperbrowser": {
-      const page = await getActivePage(instance);
+      const page = await getActivePage(instance as Browser);
       const mappedKeysHb = action.keys.map((key) =>
         translateKeyToPuppeteerKey(key)
       );
@@ -226,7 +234,7 @@ export async function handleKeypressAction(
       for (const key of [...mappedKeysHb].reverse()) {
         await page.keyboard.up(key);
       }
-      return await getHyperbrowserScreenshot(instance);
+      return await getHyperbrowserScreenshot(instance as Browser);
     }
     default:
       throw new Error(`Unknown provider: ${provider}`);
@@ -241,15 +249,17 @@ export async function handleMoveAction(
   switch (provider) {
     case "scrapybara":
       return (
-        await instance.computer({
+        await (
+          instance as UbuntuInstance | BrowserInstance | WindowsInstance
+        ).computer({
           action: "move_mouse",
           coordinates: [action.x, action.y],
         })
       ).base64Image;
     case "hyperbrowser": {
-      const page = await getActivePage(instance);
+      const page = await getActivePage(instance as Browser);
       await page.mouse.move(action.x, action.y);
-      return await getHyperbrowserScreenshot(instance, 1_000);
+      return await getHyperbrowserScreenshot(instance as Browser, 1_000);
     }
     default:
       throw new Error(`Unknown provider: ${provider}`);
@@ -264,12 +274,14 @@ export async function handleScreenshotAction(
   switch (provider) {
     case "scrapybara":
       return (
-        await instance.computer({
+        await (
+          instance as UbuntuInstance | BrowserInstance | WindowsInstance
+        ).computer({
           action: "take_screenshot",
         })
       ).base64Image;
     case "hyperbrowser":
-      return await getHyperbrowserScreenshot(instance, 0);
+      return await getHyperbrowserScreenshot(instance as Browser, 0);
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }
@@ -284,12 +296,14 @@ export async function handleWaitAction(
     case "scrapybara":
       await sleep(2000);
       return (
-        await instance.computer({
+        await (
+          instance as UbuntuInstance | BrowserInstance | WindowsInstance
+        ).computer({
           action: "take_screenshot",
         })
       ).base64Image;
     case "hyperbrowser":
-      return await getHyperbrowserScreenshot(instance, 2_000);
+      return await getHyperbrowserScreenshot(instance as Browser, 2_000);
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }
@@ -303,7 +317,9 @@ export async function handleScrollAction(
   switch (provider) {
     case "scrapybara":
       return (
-        await instance.computer({
+        await (
+          instance as UbuntuInstance | BrowserInstance | WindowsInstance
+        ).computer({
           action: "scroll",
           deltaX: action.scroll_x / 20,
           deltaY: action.scroll_y / 20,
@@ -311,12 +327,12 @@ export async function handleScrollAction(
         })
       ).base64Image;
     case "hyperbrowser": {
-      const page = await getActivePage(instance);
+      const page = await getActivePage(instance as Browser);
       await page.mouse.move(action.x, action.y);
       await page.evaluate(
         `window.scrollBy(${action.scroll_x}, ${action.scroll_y})`
       );
-      return await getHyperbrowserScreenshot(instance, 1_000);
+      return await getHyperbrowserScreenshot(instance as Browser, 1_000);
     }
     default:
       throw new Error(`Unknown provider: ${provider}`);
@@ -331,15 +347,17 @@ export async function handleTypeAction(
   switch (provider) {
     case "scrapybara":
       return (
-        await instance.computer({
+        await (
+          instance as UbuntuInstance | BrowserInstance | WindowsInstance
+        ).computer({
           action: "type_text",
           text: action.text,
         })
       ).base64Image;
     case "hyperbrowser": {
-      const page = await getActivePage(instance);
+      const page = await getActivePage(instance as Browser);
       await page.keyboard.type(action.text);
-      return await getHyperbrowserScreenshot(instance, 1_000);
+      return await getHyperbrowserScreenshot(instance as Browser, 1_000);
     }
     default:
       throw new Error(`Unknown provider: ${provider}`);
