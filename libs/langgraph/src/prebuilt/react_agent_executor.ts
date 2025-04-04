@@ -17,6 +17,8 @@ import {
   RunnableInterface,
   RunnableLambda,
   RunnableToolLike,
+  RunnableSequence,
+  RunnableBinding,
 } from "@langchain/core/runnables";
 import { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
 import {
@@ -146,27 +148,49 @@ function _getPrompt(
   return _getPromptRunnable(finalPrompt);
 }
 
-function _shouldBindTools(
+function _isBaseChatModel(model: LanguageModelLike): model is BaseChatModel {
+  return (
+    "invoke" in model &&
+    typeof model.invoke === "function" &&
+    "_modelType" in model
+  );
+}
+
+export function _shouldBindTools(
   llm: LanguageModelLike,
   tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[]
 ): boolean {
-  if (!Runnable.isRunnable(llm) || !("kwargs" in llm)) {
+  // If model is a RunnableSequence, find a RunnableBinding or BaseChatModel in its steps
+  let model = llm;
+  if (RunnableSequence.isRunnableSequence(model)) {
+    model =
+      model.steps.find(
+        (step) =>
+          RunnableBinding.isRunnableBinding(step) || _isBaseChatModel(step)
+      ) || model;
+  }
+
+  // If not a RunnableBinding, we should bind tools
+  if (!RunnableBinding.isRunnableBinding(model)) {
     return true;
   }
 
+  // If no tools in kwargs, we should bind tools
   if (
-    !llm.kwargs ||
-    typeof llm.kwargs !== "object" ||
-    !("tools" in llm.kwargs)
+    !model.kwargs ||
+    typeof model.kwargs !== "object" ||
+    !("tools" in model.kwargs)
   ) {
     return true;
   }
 
-  let boundTools = llm.kwargs.tools as BindToolsInput[];
+  let boundTools = model.kwargs.tools as BindToolsInput[];
   // google-style
   if (boundTools.length === 1 && "functionDeclarations" in boundTools[0]) {
     boundTools = boundTools[0].functionDeclarations;
   }
+
+  // Check if tools count matches
   if (tools.length !== boundTools.length) {
     throw new Error(
       "Number of tools in the model.bindTools() and tools passed to createReactAgent must match"
@@ -177,7 +201,8 @@ function _shouldBindTools(
   const boundToolNames = new Set<string>();
 
   for (const boundTool of boundTools) {
-    let boundToolName: string;
+    let boundToolName: string | undefined;
+
     // OpenAI-style tool
     if ("type" in boundTool && boundTool.type === "function") {
       boundToolName = boundTool.function.name;
@@ -195,7 +220,9 @@ function _shouldBindTools(
       continue;
     }
 
-    boundToolNames.add(boundToolName);
+    if (boundToolName) {
+      boundToolNames.add(boundToolName);
+    }
   }
 
   const missingTools = [...toolNames].filter((x) => !boundToolNames.has(x));
@@ -209,20 +236,23 @@ function _shouldBindTools(
   return false;
 }
 
-function _getModel(llm: LanguageModelLike): BaseChatModel {
-  // Get the underlying model from a RunnableBinding or return the model itself
+export function _getModel(llm: LanguageModelLike): BaseChatModel {
+  // If model is a RunnableSequence, find a RunnableBinding or BaseChatModel in its steps
   let model = llm;
-  if (Runnable.isRunnable(llm) && "bound" in llm) {
-    model = llm.bound as BaseChatModel;
+  if (RunnableSequence.isRunnableSequence(model)) {
+    model =
+      model.steps.find(
+        (step) =>
+          RunnableBinding.isRunnableBinding(step) || _isBaseChatModel(step)
+      ) || model;
   }
 
-  if (
-    !(
-      "invoke" in model &&
-      typeof model.invoke === "function" &&
-      "_modelType" in model
-    )
-  ) {
+  // Get the underlying model from a RunnableBinding
+  if (RunnableBinding.isRunnableBinding(model)) {
+    model = model.bound as BaseChatModel;
+  }
+
+  if (!_isBaseChatModel(model)) {
     throw new Error(
       `Expected \`llm\` to be a ChatModel or RunnableBinding (e.g. llm.bind_tools(...)) with invoke() and generate() methods, got ${model.constructor.name}`
     );
