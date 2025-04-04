@@ -29,6 +29,7 @@ import {
   Annotation,
   Command,
   messagesStateReducer,
+  Send,
   StateGraph,
 } from "../index.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
@@ -1036,5 +1037,448 @@ describe("createReactAgent with structured responses", () => {
     expect(llm.structuredOutputMessages[1][4].content).toEqual(
       "The weather is nice"
     );
+  });
+});
+
+describe("ToolNode with Commands", () => {
+  it("can handle tools returning commands with dict input", async () => {
+    // Tool that returns a Command
+    const transferToBob = tool(
+      async (_, config) => {
+        return new Command({
+          update: {
+            messages: [
+              new ToolMessage({
+                content: "Transferred to Bob",
+                tool_call_id: config.toolCall.id,
+                name: "transfer_to_bob",
+              }),
+            ],
+          },
+          goto: "bob",
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "transfer_to_bob",
+        description: "Transfer to Bob",
+        schema: z.object({}),
+      }
+    );
+
+    // Async version of the tool
+    const asyncTransferToBob = tool(
+      async (_, config) => {
+        return new Command({
+          update: {
+            messages: [
+              new ToolMessage({
+                content: "Transferred to Bob",
+                tool_call_id: config.toolCall.id,
+                name: "async_transfer_to_bob",
+              }),
+            ],
+          },
+          goto: "bob",
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "async_transfer_to_bob",
+        description: "Transfer to Bob",
+        schema: z.object({}),
+      }
+    );
+
+    // Basic tool that doesn't return a Command
+    const add = tool(({ a, b }) => `${a + b}`, {
+      name: "add",
+      description: "Add two numbers",
+      schema: z.object({
+        a: z.number(),
+        b: z.number(),
+      }),
+    });
+
+    // Test mixing regular tools and tools returning commands
+
+    // Test with dict input
+    const result = await new ToolNode([add, transferToBob]).invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            { args: { a: 1, b: 2 }, id: "1", name: "add", type: "tool_call" },
+            { args: {}, id: "2", name: "transfer_to_bob", type: "tool_call" },
+          ],
+        }),
+      ],
+    });
+
+    expect(result).toEqual([
+      {
+        messages: [
+          new ToolMessage({
+            content: "3",
+            tool_call_id: "1",
+            name: "add",
+          }),
+        ],
+      },
+      new Command({
+        update: {
+          messages: [
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: "2",
+              name: "transfer_to_bob",
+            }),
+          ],
+        },
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+    ]);
+
+    // Test single tool returning command
+    const singleToolResult = await new ToolNode([transferToBob]).invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [{ args: {}, id: "1", name: "transfer_to_bob" }],
+        }),
+      ],
+    });
+
+    expect(singleToolResult).toEqual([
+      new Command({
+        update: {
+          messages: [
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: "1",
+              name: "transfer_to_bob",
+            }),
+          ],
+        },
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+    ]);
+
+    // Test async tool
+    const asyncToolResult = await new ToolNode([asyncTransferToBob]).invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [{ args: {}, id: "1", name: "async_transfer_to_bob" }],
+        }),
+      ],
+    });
+
+    expect(asyncToolResult).toEqual([
+      new Command({
+        update: {
+          messages: [
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: "1",
+              name: "async_transfer_to_bob",
+            }),
+          ],
+        },
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+    ]);
+
+    // Test multiple commands
+    const multipleCommandsResult = await new ToolNode([
+      transferToBob,
+      asyncTransferToBob,
+    ]).invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            { args: {}, id: "1", name: "transfer_to_bob" },
+            { args: {}, id: "2", name: "async_transfer_to_bob" },
+          ],
+        }),
+      ],
+    });
+
+    expect(multipleCommandsResult).toEqual([
+      new Command({
+        update: {
+          messages: [
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: "1",
+              name: "transfer_to_bob",
+            }),
+          ],
+        },
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+      new Command({
+        update: {
+          messages: [
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: "2",
+              name: "async_transfer_to_bob",
+            }),
+          ],
+        },
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+    ]);
+  });
+
+  it("can handle tools returning commands with array input", async () => {
+    // Tool that returns a Command with array update
+    const transferToBob = tool(
+      async (_, config) => {
+        return new Command({
+          update: [
+            // @ts-expect-error: Command typing needs to be updated properly
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: config.toolCall.id,
+              name: "transfer_to_bob",
+            }),
+          ],
+          goto: "bob",
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "transfer_to_bob",
+        description: "Transfer to Bob",
+        schema: z.object({}),
+      }
+    );
+
+    // Async version of the tool
+    const asyncTransferToBob = tool(
+      async (_, config) => {
+        return new Command({
+          update: [
+            // @ts-expect-error: Command typing needs to be updated properly
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: config.toolCall.id,
+              name: "async_transfer_to_bob",
+            }),
+          ],
+          goto: "bob",
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "async_transfer_to_bob",
+        description: "Transfer to Bob",
+        schema: z.object({}),
+      }
+    );
+
+    // Basic tool that doesn't return a Command
+    const add = tool(({ a, b }) => `${a + b}`, {
+      name: "add",
+      description: "Add two numbers",
+      schema: z.object({
+        a: z.number(),
+        b: z.number(),
+      }),
+    });
+
+    // Test with array input
+    const result = await new ToolNode([add, transferToBob]).invoke([
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          { args: { a: 1, b: 2 }, id: "1", name: "add" },
+          { args: {}, id: "2", name: "transfer_to_bob" },
+        ],
+      }),
+    ]);
+
+    expect(result).toEqual([
+      [
+        new ToolMessage({
+          content: "3",
+          tool_call_id: "1",
+          name: "add",
+        }),
+      ],
+      new Command({
+        update: [
+          // @ts-expect-error: Command typing needs to be updated properly
+          new ToolMessage({
+            content: "Transferred to Bob",
+            tool_call_id: "2",
+            name: "transfer_to_bob",
+          }),
+        ],
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+    ]);
+
+    // Test single tool returning command
+    for (const tool of [transferToBob, asyncTransferToBob]) {
+      const result = await new ToolNode([tool]).invoke([
+        new AIMessage({
+          content: "",
+          tool_calls: [{ args: {}, id: "1", name: tool.name }],
+        }),
+      ]);
+
+      expect(result).toEqual([
+        new Command({
+          update: [
+            // @ts-expect-error: Command typing needs to be updated properly
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: "1",
+              name: tool.name,
+            }),
+          ],
+          goto: "bob",
+          graph: Command.PARENT,
+        }),
+      ]);
+    }
+
+    // Test multiple commands
+    const multipleCommandsResult = await new ToolNode([
+      transferToBob,
+      asyncTransferToBob,
+    ]).invoke([
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          { args: {}, id: "1", name: "transfer_to_bob" },
+          { args: {}, id: "2", name: "async_transfer_to_bob" },
+        ],
+      }),
+    ]);
+
+    expect(multipleCommandsResult).toEqual([
+      new Command({
+        update: [
+          // @ts-expect-error: Command typing needs to be updated properly
+          new ToolMessage({
+            content: "Transferred to Bob",
+            tool_call_id: "1",
+            name: "transfer_to_bob",
+          }),
+        ],
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+      new Command({
+        update: [
+          // @ts-expect-error: Command typing needs to be updated properly
+          new ToolMessage({
+            content: "Transferred to Bob",
+            tool_call_id: "2",
+            name: "async_transfer_to_bob",
+          }),
+        ],
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+    ]);
+  });
+
+  it("should handle parent commands with Send", async () => {
+    // Create tools that return Commands with Send
+    const transferToAlice = tool(
+      async (_, config) => {
+        return new Command({
+          goto: [
+            new Send("alice", {
+              messages: [
+                new ToolMessage({
+                  content: "Transferred to Alice",
+                  name: "transfer_to_alice",
+                  tool_call_id: config.toolCall.id,
+                }),
+              ],
+            }),
+          ],
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "transfer_to_alice",
+        description: "Transfer to Alice",
+        schema: z.object({}),
+      }
+    );
+
+    const transferToBob = tool(
+      async (_, config) => {
+        return new Command({
+          goto: [
+            new Send("bob", {
+              messages: [
+                new ToolMessage({
+                  content: "Transferred to Bob",
+                  name: "transfer_to_bob",
+                  tool_call_id: config.toolCall.id,
+                }),
+              ],
+            }),
+          ],
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "transfer_to_bob",
+        description: "Transfer to Bob",
+        schema: z.object({}),
+      }
+    );
+
+    const result = await new ToolNode([transferToAlice, transferToBob]).invoke([
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          { args: {}, id: "1", name: "transfer_to_alice", type: "tool_call" },
+          { args: {}, id: "2", name: "transfer_to_bob", type: "tool_call" },
+        ],
+      }),
+    ]);
+
+    expect(result).toEqual([
+      new Command({
+        goto: [
+          new Send("alice", {
+            messages: [
+              new ToolMessage({
+                content: "Transferred to Alice",
+                name: "transfer_to_alice",
+                tool_call_id: "1",
+              }),
+            ],
+          }),
+          new Send("bob", {
+            messages: [
+              new ToolMessage({
+                content: "Transferred to Bob",
+                name: "transfer_to_bob",
+                tool_call_id: "2",
+              }),
+            ],
+          }),
+        ],
+        graph: Command.PARENT,
+      }),
+    ]);
   });
 });
