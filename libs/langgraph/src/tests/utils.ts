@@ -154,7 +154,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
 
   toolStyle: "openai" | "anthropic" | "bedrock" | "google" = "openai";
 
-  structuredResponse?: unknown;
+  structuredResponse?: Record<string, unknown>;
 
   // Track messages passed to structured output calls
   structuredOutputMessages: BaseMessage[][] = [];
@@ -210,7 +210,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
     return generation;
   }
 
-  bindTools(tools: BindToolsInput[]) {
+  bindTools(tools: BindToolsInput[], kwargs?: Record<string, unknown>) {
     const toolDicts = [];
     for (const tool of tools) {
       if (!("name" in tool)) {
@@ -243,11 +243,20 @@ export class FakeToolCallingChatModel extends BaseChatModel {
     if (this.toolStyle === "google") {
       toolsToBind = [{ functionDeclarations: toolDicts }];
     }
+
+    // this is a hack for testing purposes only
+    // ideally we should be able to simply return this for all tests
+    if (kwargs?.bindExisting) {
+      return this.bind({
+        tools: toolsToBind,
+      } as BaseChatModelCallOptions);
+    }
     return new FakeToolCallingChatModel({
       sleep: this.sleep,
       responses: this.responses,
       thrownErrorString: this.thrownErrorString,
       toolStyle: this.toolStyle,
+      structuredResponse: this.structuredResponse,
     }).bind({
       tools: toolsToBind,
     } as BaseChatModelCallOptions);

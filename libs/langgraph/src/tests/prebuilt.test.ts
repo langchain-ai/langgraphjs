@@ -13,7 +13,7 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { z } from "zod";
-import { RunnableLambda } from "@langchain/core/runnables";
+import { RunnableLambda, RunnableSequence } from "@langchain/core/runnables";
 import { CallbackManager } from "@langchain/core/callbacks/manager";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import {
@@ -24,6 +24,10 @@ import {
   MemorySaverAssertImmutable,
 } from "./utils.js";
 import { ToolNode, createReactAgent } from "../prebuilt/index.js";
+import {
+  _shouldBindTools,
+  _getModel,
+} from "../prebuilt/react_agent_executor.js";
 // Enable automatic config passing
 import {
   Annotation,
@@ -1036,5 +1040,103 @@ describe("createReactAgent with structured responses", () => {
     expect(llm.structuredOutputMessages[1][4].content).toEqual(
       "The weather is nice"
     );
+  });
+});
+
+describe("_shouldBindTools", () => {
+  it.each(["openai", "anthropic", "google", "bedrock"] as const)(
+    "Should determine when to bind tools - %s style",
+    async (toolStyle) => {
+      const tool1 = tool((input) => `Tool 1: ${input.someVal}`, {
+        name: "tool1",
+        description: "Tool 1 docstring.",
+        schema: z.object({
+          someVal: z.number().describe("Input value"),
+        }),
+      });
+
+      const tool2 = tool((input) => `Tool 2: ${input.someVal}`, {
+        name: "tool2",
+        description: "Tool 2 docstring.",
+        schema: z.object({
+          someVal: z.number().describe("Input value"),
+        }),
+      });
+
+      const model = new FakeToolCallingChatModel({
+        responses: [new AIMessage("test")],
+        toolStyle,
+      });
+
+      // Should bind when a regular model
+      expect(_shouldBindTools(model, [])).toBe(true);
+      expect(_shouldBindTools(model, [tool1])).toBe(true);
+
+      // Should bind when a seq
+      const seq = RunnableSequence.from([
+        model,
+        RunnableLambda.from((message) => message),
+      ]);
+      expect(_shouldBindTools(seq, [])).toBe(true);
+      expect(_shouldBindTools(seq, [tool1])).toBe(true);
+
+      // Should not bind when a model with tools
+      const modelWithTools = model.bindTools([tool1]);
+      expect(_shouldBindTools(modelWithTools, [tool1])).toBe(false);
+
+      // Should not bind when a seq with tools
+      const seqWithTools = RunnableSequence.from([
+        model.bindTools([tool1]),
+        RunnableLambda.from((message) => message),
+      ]);
+      expect(_shouldBindTools(seqWithTools, [tool1])).toBe(false);
+
+      // Should raise on invalid inputs
+      expect(() => _shouldBindTools(model.bindTools([tool1]), [])).toThrow();
+      expect(() =>
+        _shouldBindTools(model.bindTools([tool1]), [tool2])
+      ).toThrow();
+      expect(() =>
+        _shouldBindTools(model.bindTools([tool1]), [tool1, tool2])
+      ).toThrow();
+    }
+  );
+});
+
+describe("_getModel", () => {
+  it("Should extract the model from different inputs", async () => {
+    const model = new FakeToolCallingChatModel({
+      responses: [new AIMessage("test")],
+    });
+    expect(_getModel(model)).toBe(model);
+
+    const tool1 = tool((input) => `Tool 1: ${input.someVal}`, {
+      name: "tool1",
+      description: "Tool 1 docstring.",
+      schema: z.object({
+        someVal: z.number().describe("Input value"),
+      }),
+    });
+
+    const modelWithTools = model.bindTools([tool1], { bindExisting: true });
+    expect(_getModel(modelWithTools)).toBe(model);
+
+    const seq = RunnableSequence.from([
+      model,
+      RunnableLambda.from((message) => message),
+    ]);
+    expect(_getModel(seq)).toBe(model);
+
+    const seqWithTools = RunnableSequence.from([
+      model.bindTools([tool1], { bindExisting: true }),
+      RunnableLambda.from((message) => message),
+    ]);
+    expect(_getModel(seqWithTools)).toBe(model);
+
+    const raisingSeq = RunnableSequence.from([
+      RunnableLambda.from((message) => message),
+      RunnableLambda.from((message) => message),
+    ]);
+    expect(() => _getModel(raisingSeq)).toThrow(Error);
   });
 });
