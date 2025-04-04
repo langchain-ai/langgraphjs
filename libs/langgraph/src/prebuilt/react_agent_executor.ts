@@ -165,7 +165,7 @@ export function _shouldBindTools(
   let model = llm;
   if (RunnableSequence.isRunnableSequence(model)) {
     model =
-      (model as RunnableSequence).steps.find(
+      model.steps.find(
         (step) =>
           RunnableBinding.isRunnableBinding(step) || _isBaseChatModel(step)
       ) || model;
