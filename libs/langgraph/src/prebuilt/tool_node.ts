@@ -9,7 +9,7 @@ import { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
 import { RunnableCallable } from "../utils.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { isGraphInterrupt } from "../errors.js";
-import { END, isCommand } from "../constants.js";
+import { END, isCommand, Command, _isSend, Send } from "../constants.js";
 
 export type ToolNodeOptions = {
   name?: string;
@@ -212,12 +212,42 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
     }
 
     // Handle mixed Command and non-Command outputs
-    const combinedOutputs = outputs.map((output) => {
+    const combinedOutputs: (
+      | { messages: BaseMessage[] }
+      | BaseMessage[]
+      | Command
+    )[] = [];
+    let parentCommand: Command | null = null;
+
+    for (const output of outputs) {
       if (isCommand(output)) {
-        return output;
+        if (
+          output.graph === Command.PARENT &&
+          Array.isArray(output.goto) &&
+          output.goto.every((send) => _isSend(send))
+        ) {
+          if (parentCommand) {
+            (parentCommand.goto as Send[]).push(...(output.goto as Send[]));
+          } else {
+            parentCommand = new Command({
+              graph: Command.PARENT,
+              goto: output.goto,
+            });
+          }
+        } else {
+          combinedOutputs.push(output);
+        }
+      } else {
+        combinedOutputs.push(
+          Array.isArray(input) ? [output] : { messages: [output] }
+        );
       }
-      return Array.isArray(input) ? [output] : { messages: [output] };
-    });
+    }
+
+    if (parentCommand) {
+      combinedOutputs.push(parentCommand);
+    }
+
     return combinedOutputs as T;
   }
 }
