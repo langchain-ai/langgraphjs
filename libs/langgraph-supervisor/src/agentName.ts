@@ -1,5 +1,5 @@
 import { LanguageModelLike } from "@langchain/core/language_models/base";
-import { AIMessage, BaseMessage } from "@langchain/core/messages";
+import { AIMessage, BaseMessage, isAIMessage } from "@langchain/core/messages";
 import {
   RunnableLambda,
   RunnableSequence,
@@ -35,7 +35,7 @@ export function addInlineAgentName(message: BaseMessage): BaseMessage {
    * // AIMessage with content: [{type: "text", text: "<name>assistant</name><content>Hello</content>"}]
    * ```
    */
-  if (!(message._getType() === "ai") || !message.name) {
+  if (!isAIMessage(message) || !message.name) {
     return message;
   }
 

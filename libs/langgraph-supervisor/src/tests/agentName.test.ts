@@ -1,6 +1,6 @@
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
-import { addInlineAgentName, removeInlineAgentName } from "./agentName.js";
+import { addInlineAgentName, removeInlineAgentName } from "../agentName.js";
 
 describe("addInlineAgentName", () => {
   it("should return non-AI messages unchanged", () => {
