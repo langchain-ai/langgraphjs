@@ -1,10 +1,6 @@
 import { LanguageModelLike } from "@langchain/core/language_models/base";
 import { AIMessage, BaseMessage, isAIMessage } from "@langchain/core/messages";
-import {
-  RunnableLambda,
-  RunnableSequence,
-  Runnable,
-} from "@langchain/core/runnables";
+import { RunnableLambda, RunnableSequence } from "@langchain/core/runnables";
 
 const NAME_PATTERN = /<name>(.*?)<\/name>/s;
 const CONTENT_PATTERN = /<content>(.*?)<\/content>/s;
@@ -135,7 +131,7 @@ export function removeInlineAgentName(message: BaseMessage): BaseMessage {
 export function withAgentName(
   model: LanguageModelLike,
   agentNameMode: AgentNameMode
-): Runnable<BaseMessage[], BaseMessage> {
+): LanguageModelLike {
   /**
    * Attach formatted agent names to the messages passed to and from a language model.
    *
