@@ -24,10 +24,10 @@ export function addInlineAgentName(message: BaseMessage): BaseMessage {
    * Examples:
    *
    * ```typescript
-   * addInlineAgentName(new AIMessage("Hello", { name: "assistant" }))
+   * addInlineAgentName(new AIMessage({ content: "Hello", name: "assistant" }))
    * // AIMessage with content: "<name>assistant</name><content>Hello</content>"
    *
-   * addInlineAgentName(new AIMessage([{type: "text", text: "Hello"}], { name: "assistant" }))
+   * addInlineAgentName(new AIMessage({ content: [{type: "text", text: "Hello"}], name: "assistant" }))
    * // AIMessage with content: [{type: "text", text: "<name>assistant</name><content>Hello</content>"}]
    * ```
    */
@@ -36,9 +36,7 @@ export function addInlineAgentName(message: BaseMessage): BaseMessage {
   }
 
   const formattedMessage = new AIMessage({
-    content: message.content,
-    name: message.name,
-    additional_kwargs: message.additional_kwargs,
+    ...message,
   });
 
   if (_isContentBlocksContent(formattedMessage.content)) {
@@ -70,10 +68,10 @@ export function removeInlineAgentName(message: BaseMessage): BaseMessage {
    * Examples:
    *
    * ```typescript
-   * removeInlineAgentName(new AIMessage("<name>assistant</name><content>Hello</content>", { name: "assistant" }))
+   * removeInlineAgentName(new AIMessage({ content: "<name>assistant</name><content>Hello</content>", name: "assistant" }))
    * // AIMessage with content: "Hello"
    *
-   * removeInlineAgentName(new AIMessage([{type: "text", text: "<name>assistant</name><content>Hello</content>"}], { name: "assistant" }))
+   * removeInlineAgentName(new AIMessage({ content: [{type: "text", text: "<name>assistant</name><content>Hello</content>"}], name: "assistant" }))
    * // AIMessage with content: [{type: "text", text: "Hello"}]
    * ```
    */
