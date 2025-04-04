@@ -18,9 +18,9 @@ import {
   BindToolsInput,
 } from "@langchain/core/language_models/chat_models";
 import { createHandoffTool, createHandoffBackMessages } from "./handoff.js";
+import { withAgentName, AgentNameMode } from "./agentName.js";
 
 type OutputMode = "full_history" | "last_message";
-type AgentNameMode = "inline";
 const PROVIDERS_WITH_PARALLEL_TOOL_CALLS_PARAM = new Set(["ChatOpenAI"]);
 
 // type guards
@@ -51,24 +51,6 @@ function isChatModelWithParallelToolCallsParam(
   llm: ChatModelWithBindTools
 ): llm is ChatModelWithParallelToolCallsParam {
   return llm.bindTools.length >= 2;
-}
-
-/**
- * Modify an LLM to include agent names in message content
- */
-function withAgentName(
-  llm: LanguageModelLike,
-  mode: AgentNameMode
-): LanguageModelLike {
-  if (mode === "inline") {
-    // Here we would implement the logic to add agent names inline
-    // This would depend on how the llm processes messages
-    // Implementation would vary based on the LLM's interface
-    // This is a placeholder for the actual implementation
-    return llm;
-  }
-
-  throw new Error(`Unsupported agent name mode: ${mode}`);
 }
 
 const makeCallAgent = (

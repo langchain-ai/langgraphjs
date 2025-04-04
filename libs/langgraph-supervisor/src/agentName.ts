@@ -1,3 +1,4 @@
+import { LanguageModelLike } from "@langchain/core/language_models/base";
 import { AIMessage, BaseMessage } from "@langchain/core/messages";
 import {
   RunnableLambda,
@@ -132,7 +133,7 @@ export function removeInlineAgentName(message: BaseMessage): BaseMessage {
 }
 
 export function withAgentName(
-  model: Runnable<BaseMessage[], BaseMessage>,
+  model: LanguageModelLike,
   agentNameMode: AgentNameMode
 ): Runnable<BaseMessage[], BaseMessage> {
   /**
