@@ -397,7 +397,9 @@ it("stream events with a tool with a custom tag", async () => {
         ],
       ]);
 
-      const modelWithConfig = model.withConfig({
+      const modelWithConfig = new FakeToolCallingChatModel({
+        responses: [new AIMessage("foo")],
+      }).withConfig({
         runName: "Get Items LLM",
         tags: ["tool_llm"],
       });
