@@ -156,7 +156,6 @@ function _isBaseChatModel(model: LanguageModelLike): model is BaseChatModel {
   );
 }
 
-// Exported for testing purposes
 export function _shouldBindTools(
   llm: LanguageModelLike,
   tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[]
@@ -237,7 +236,6 @@ export function _shouldBindTools(
   return false;
 }
 
-// Exported for testing purposes
 export function _getModel(llm: LanguageModelLike): BaseChatModel {
   // If model is a RunnableSequence, find a RunnableBinding or BaseChatModel in its steps
   let model = llm;
