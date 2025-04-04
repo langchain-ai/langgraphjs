@@ -75,7 +75,7 @@ export function removeInlineAgentName(message: BaseMessage): BaseMessage {
    * // AIMessage with content: [{type: "text", text: "Hello"}]
    * ```
    */
-  if (!(message._getType() === "ai") || !message.content) {
+  if (!isAIMessage(message) || !message.content) {
     return message;
   }
 
@@ -105,9 +105,7 @@ export function removeInlineAgentName(message: BaseMessage): BaseMessage {
   const parsedContent = contentMatch[1];
 
   const parsedMessage = new AIMessage({
-    content: "",
-    name: message.name,
-    additional_kwargs: message.additional_kwargs,
+    ...message
   });
 
   if (isContentBlocksContent) {
