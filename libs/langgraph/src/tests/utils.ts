@@ -193,7 +193,8 @@ export class FakeToolCallingChatModel extends BaseChatModel {
     if (this.sleep !== undefined) {
       await new Promise((resolve) => setTimeout(resolve, this.sleep));
     }
-    const msg = this.responses?.[this.idx] ?? messages[this.idx];
+    const responses = this.responses?.length ? this.responses : messages;
+    const msg = responses[this.idx % responses.length];
     const generation: ChatResult = {
       generations: [
         {
@@ -210,7 +211,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
     return generation;
   }
 
-  bindTools(tools: BindToolsInput[], kwargs?: Record<string, unknown>) {
+  bindTools(tools: BindToolsInput[]) {
     const toolDicts = [];
     for (const tool of tools) {
       if (!("name" in tool)) {
@@ -243,21 +244,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
     if (this.toolStyle === "google") {
       toolsToBind = [{ functionDeclarations: toolDicts }];
     }
-
-    // this is a hack for testing purposes only
-    // ideally we should be able to simply return this for all tests
-    if (kwargs?.bindExisting) {
-      return this.bind({
-        tools: toolsToBind,
-      } as BaseChatModelCallOptions);
-    }
-    return new FakeToolCallingChatModel({
-      sleep: this.sleep,
-      responses: this.responses,
-      thrownErrorString: this.thrownErrorString,
-      toolStyle: this.toolStyle,
-      structuredResponse: this.structuredResponse,
-    }).bind({
+    return this.bind({
       tools: toolsToBind,
     } as BaseChatModelCallOptions);
   }

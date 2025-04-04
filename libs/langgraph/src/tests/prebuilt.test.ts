@@ -1118,7 +1118,7 @@ describe("_getModel", () => {
       }),
     });
 
-    const modelWithTools = model.bindTools([tool1], { bindExisting: true });
+    const modelWithTools = model.bindTools([tool1]);
     expect(_getModel(modelWithTools)).toBe(model);
 
     const seq = RunnableSequence.from([
@@ -1128,7 +1128,7 @@ describe("_getModel", () => {
     expect(_getModel(seq)).toBe(model);
 
     const seqWithTools = RunnableSequence.from([
-      model.bindTools([tool1], { bindExisting: true }),
+      model.bindTools([tool1]),
       RunnableLambda.from((message) => message),
     ]);
     expect(_getModel(seqWithTools)).toBe(model);
