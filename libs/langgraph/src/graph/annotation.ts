@@ -4,9 +4,11 @@ import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { LastValue } from "../channels/last_value.js";
 import {
   isConfiguredManagedValue,
+  ManagedValue,
   ManagedValueSpec,
   type ConfiguredManagedValue,
 } from "../managed/base.js";
+import { StrRecord } from "../pregel/types.js";
 
 export type SingleReducer<ValueType, UpdateType = ValueType> =
   | {
@@ -40,13 +42,17 @@ type ExtractUpdateType<C> = C extends BaseChannel
   ? ReturnType<C>["UpdateType"]
   : C extends ConfiguredManagedValue<infer V>
   ? V
+  : C extends ManagedValue<infer V>
+  ? V
   : never;
 
 export type StateType<SD extends StateDefinition> = {
   [key in keyof SD]: ExtractValueType<SD[key]>;
 };
 
-export type UpdateType<SD extends StateDefinition> = {
+export type UpdateType<
+  SD extends StateDefinition | StrRecord<string, BaseChannel | ManagedValueSpec>
+> = {
   [key in keyof SD]?: ExtractUpdateType<SD[key]>;
 };
 
