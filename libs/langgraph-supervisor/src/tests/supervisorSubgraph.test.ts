@@ -16,9 +16,9 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
-import { createSupervisor } from "./supervisor.js";
+import { createSupervisor } from "../supervisor.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 describe("Supervisor", () => {
   it("should be drawable as subgraph", async () => {

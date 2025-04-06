@@ -18,6 +18,7 @@ import {
   BindToolsInput,
 } from "@langchain/core/language_models/chat_models";
 import { createHandoffTool, createHandoffBackMessages } from "./handoff.js";
+import { withAgentName, AgentNameMode } from "./agentName.js";
 
 type OutputMode = "full_history" | "last_message";
 const PROVIDERS_WITH_PARALLEL_TOOL_CALLS_PARAM = new Set(["ChatOpenAI"]);
@@ -98,6 +99,7 @@ export type CreateSupervisorParams<
   outputMode?: OutputMode;
   addHandoffBackMessages?: boolean;
   supervisorName?: string;
+  includeAgentName?: AgentNameMode;
 };
 
 /**
@@ -119,6 +121,10 @@ export type CreateSupervisorParams<
  * @param addHandoffBackMessages Whether to add a pair of (AIMessage, ToolMessage) to the message history
  *   when returning control to the supervisor to indicate that a handoff has occurred
  * @param supervisorName Name of the supervisor node
+ * @param includeAgentName Use to specify how to expose the agent name to the underlying supervisor LLM.
+ *   - undefined: Relies on the LLM provider using the name attribute on the AI message. Currently, only OpenAI supports this.
+ *   - "inline": Add the agent name directly into the content field of the AI message using XML-style tags.
+ *     Example: "How can I help you" -> "<name>agent_name</name><content>How can I help you?</content>"
  */
 const createSupervisor = <
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -132,6 +138,7 @@ const createSupervisor = <
   outputMode = "last_message",
   addHandoffBackMessages = true,
   supervisorName = "supervisor",
+  includeAgentName,
 }: CreateSupervisorParams<AnnotationRootT>): StateGraph<
   AnnotationRootT["spec"],
   AnnotationRootT["State"],
@@ -174,6 +181,11 @@ const createSupervisor = <
     } else {
       supervisorLLM = llm.bindTools(allTools);
     }
+  }
+
+  // Apply agent name handling if specified
+  if (includeAgentName) {
+    supervisorLLM = withAgentName(supervisorLLM, includeAgentName);
   }
 
   const schema = stateSchema ?? createReactAgentAnnotation();
