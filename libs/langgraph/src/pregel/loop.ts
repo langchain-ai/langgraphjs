@@ -822,11 +822,9 @@ export class PregelLoop {
       const hasGoto =
         !!this.input.goto &&
         (!Array.isArray(this.input.goto) || this.input.goto.length > 0);
-
       if (hasResume && this.checkpointer == null) {
         throw new Error("Cannot use Command(resume=...) without checkpointer");
       }
-
       if (hasResume && (hasUpdate || hasGoto)) {
         throw new Error(
           "Cannot use Command(resume=...) with Command(update=...) or Command(goto=...)"
@@ -873,10 +871,8 @@ export class PregelLoop {
         this.checkpointerGetNextVersion
       );
     }
-
     const isCommandUpdateOrGoto =
       isCommand(this.input) && nullWrites.length > 0;
-
     if (this.isResuming || isCommandUpdateOrGoto) {
       for (const channelName of Object.keys(this.channels)) {
         if (this.checkpoint.channel_versions[channelName] !== undefined) {
@@ -896,7 +892,6 @@ export class PregelLoop {
       );
       this._emit(valuesOutput);
     }
-
     if (this.isResuming) {
       this.input = INPUT_RESUMING;
     } else if (isCommandUpdateOrGoto) {

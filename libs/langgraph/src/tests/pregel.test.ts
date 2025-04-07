@@ -3245,7 +3245,6 @@ graph TD;
         .addEdge("__start__", "agent")
         .addConditionalEdges("agent", shouldContinue)
         .addEdge("tools", "agent");
-
       const inputMessage = new HumanMessage({
         id: "foo",
         content: "what is weather in sf",
@@ -3308,7 +3307,6 @@ graph TD;
       const res = await builder.compile().invoke({
         messages: [inputMessage],
       });
-
       expect(res).toEqual({
         messages: expectedOutputMessages,
       });
