@@ -232,14 +232,15 @@ export class PregelLoop {
       configHasResumingFlag && this.config.configurable?.[CONFIG_KEY_RESUMING];
     const inputIsNullOrUndefined =
       this.input === null || this.input === undefined;
-    const inputIsCommand = isCommand(this.input);
+    const inputIsCommandResuming =
+      isCommand(this.input) && this.input.resume != null;
     const inputIsResuming = this.input === INPUT_RESUMING;
 
     return (
       hasChannelVersions &&
       (configIsResuming ||
         inputIsNullOrUndefined ||
-        inputIsCommand ||
+        inputIsCommandResuming ||
         inputIsResuming)
     );
   }
@@ -806,9 +807,6 @@ export class PregelLoop {
 
     const { configurable } = this.config;
 
-    // eslint-disable-next-line prefer-destructuring
-    const isResuming = this.isResuming;
-
     // take resume value from parent
     const scratchpad = configurable?.[
       CONFIG_KEY_SCRATCHPAD
@@ -819,8 +817,20 @@ export class PregelLoop {
     }
 
     if (isCommand(this.input)) {
-      if (this.input.resume != null && this.checkpointer == null) {
+      const hasResume = this.input.resume != null;
+      const hasUpdate = this.input.update != null;
+      const hasGoto =
+        !!this.input.goto &&
+        (!Array.isArray(this.input.goto) || this.input.goto.length > 0);
+
+      if (hasResume && this.checkpointer == null) {
         throw new Error("Cannot use Command(resume=...) without checkpointer");
+      }
+
+      if (hasResume && (hasUpdate || hasGoto)) {
+        throw new Error(
+          "Cannot use Command(resume=...) with Command(update=...) or Command(goto=...)"
+        );
       }
 
       const writes: { [key: string]: PendingWrite[] } = {};
@@ -863,7 +873,11 @@ export class PregelLoop {
         this.checkpointerGetNextVersion
       );
     }
-    if (isResuming) {
+
+    const isCommandUpdateOrGoto =
+      isCommand(this.input) && nullWrites.length > 0;
+
+    if (this.isResuming || isCommandUpdateOrGoto) {
       for (const channelName of Object.keys(this.channels)) {
         if (this.checkpoint.channel_versions[channelName] !== undefined) {
           const version = this.checkpoint.channel_versions[channelName];
@@ -881,7 +895,16 @@ export class PregelLoop {
         )
       );
       this._emit(valuesOutput);
+    }
+
+    if (this.isResuming) {
       this.input = INPUT_RESUMING;
+    } else if (isCommandUpdateOrGoto) {
+      // we need to create a new checkpoint for Command(update=...) or Command(goto=...)
+      // in case the result of Command(goto=...) is an interrupt.
+      // If not done, the checkpoint containing the interrupt will be lost.
+      await this._putCheckpoint({ source: "input", writes: {} });
+      this.input = INPUT_DONE;
     } else {
       // map inputs to channel updates
       const inputWrites = await gatherIterator(mapInput(inputKeys, this.input));
@@ -926,7 +949,7 @@ export class PregelLoop {
     }
     if (!this.isNested) {
       this.config = patchConfigurable(this.config, {
-        [CONFIG_KEY_RESUMING]: isResuming,
+        [CONFIG_KEY_RESUMING]: this.isResuming,
       });
     }
   }

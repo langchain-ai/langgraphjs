@@ -10421,7 +10421,7 @@ graph TD;
     void res.language;
   });
 
-  it.only("can goto an interrupt", async () => {
+  it("can goto an interrupt", async () => {
     const checkpointer = await createCheckpointer();
     const configurable = { thread_id: "1" };
 
@@ -10433,7 +10433,7 @@ graph TD;
         }),
       })
     )
-      .addNode("router", () => new Command({ goto: "interrupt" }), {
+      .addNode("router", () => new Command({ goto: END }), {
         ends: ["interrupt", END],
       })
       .addNode("interrupt", () => ({
@@ -10442,16 +10442,34 @@ graph TD;
       .addEdge(START, "router")
       .compile({ checkpointer });
 
-    await graph.invoke(new Command({ goto: "interrupt" }), { configurable });
-    const state = await graph.getState({ configurable });
+    await graph.invoke({ messages: ["input"] }, { configurable });
+    let state = await graph.getState({ configurable });
+
+    expect(state.next).toEqual([]);
+    expect(state.values).toEqual({ messages: ["input"] });
+
+    await graph.invoke(
+      new Command({ goto: "interrupt", update: { messages: ["update"] } }),
+      { configurable }
+    );
+    state = await graph.getState({ configurable });
 
     expect(state.next).toEqual(["interrupt"]);
+    expect(state.values).toEqual({ messages: ["input", "update"] });
     expect(state.tasks).toMatchObject([
       {
         name: "interrupt",
         interrupts: [{ value: "interrupt", when: "during", resumable: true }],
       },
     ]);
+
+    await graph.invoke(new Command({ resume: "resume" }), { configurable });
+    state = await graph.getState({ configurable });
+
+    expect(state.next).toEqual([]);
+    expect(state.values).toEqual({
+      messages: ["input", "update", "interrupt: resume"],
+    });
   });
 }
 
