@@ -96,7 +96,7 @@ const worker = async (run: Run, attempt: number, abortSignal: AbortSignal) => {
     await Runs.setStatus(run.run_id, "error");
   } finally {
     if (temporary) {
-      await Threads.delete(run.thread_id);
+      await Threads.delete(run.thread_id, undefined);
     } else {
       await Threads.setStatus(run.thread_id, { checkpoint, exception });
     }

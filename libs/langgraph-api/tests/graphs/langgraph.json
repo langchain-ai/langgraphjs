@@ -11,6 +11,9 @@
   "ui": {
     "agent": "./agent/ui.tsx"
   },
+  "auth": {
+    "path": "./auth.mts:auth"
+  },
   "env": {
     "LANGGRAPH_CONFIG": "{\"agent\": {\"configurable\": {\"model_name\": \"openai\"}}}"
   }

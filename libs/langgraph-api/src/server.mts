@@ -16,6 +16,7 @@ import { queue } from "./queue.mjs";
 import { logger, requestLogger } from "./logging.mjs";
 import { checkpointer } from "./storage/checkpoint.mjs";
 import { store as graphStore } from "./storage/store.mjs";
+import { auth, loadAuth } from "./auth.mjs";
 
 const app = new Hono();
 
@@ -36,6 +37,7 @@ app.use(async (c, next) => {
 
 app.use(cors());
 app.use(requestLogger());
+app.use(auth());
 
 app.route("/", assistants);
 app.route("/", runs);
@@ -71,6 +73,12 @@ export const StartServerSchema = z.object({
   host: z.string(),
   cwd: z.string(),
   graphs: z.record(z.string()),
+  auth: z
+    .object({
+      path: z.string().optional(),
+      disable_studio_auth: z.boolean().default(false),
+    })
+    .optional(),
   ui: z.record(z.string()).optional(),
   ui_config: z.object({ shared: z.array(z.string()).optional() }).optional(),
 });
@@ -90,6 +98,11 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
 
   logger.info(`Registering graphs from ${options.cwd}`);
   await registerFromEnv(options.graphs, { cwd: options.cwd });
+
+  if (options.auth?.path) {
+    logger.info(`Loading auth from ${options.auth.path}`);
+    await loadAuth(options.auth, { cwd: options.cwd });
+  }
 
   if (options.ui) {
     logger.info(`Loading UI`);

@@ -16,7 +16,8 @@
     "format:check": "turbo run format:check"
   },
   "resolutions": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "@langchain/langgraph-sdk": "http://localhost:3123/1744070075397/@langchain/langgraph-sdk"
   },
   "keywords": [],
   "devDependencies": {

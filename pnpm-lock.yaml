@@ -6,6 +6,7 @@ settings:
 
 overrides:
   esbuild: ^0.25.0
+  '@langchain/langgraph-sdk': http://localhost:3123/1744070075397/@langchain/langgraph-sdk
 
 importers:
 
@@ -125,8 +126,8 @@ importers:
         version: 3.24.1
     devDependencies:
       '@langchain/langgraph-sdk':
-        specifier: ^0.0.60
-        version: 0.0.60(@langchain/core@0.3.42)
+        specifier: http://localhost:3123/1744070075397/@langchain/langgraph-sdk
+        version: http://localhost:3123/1744070075397/@langchain/langgraph-sdk(@langchain/core@0.3.42)
       '@types/babel__code-frame':
         specifier: ^7.0.6
         version: 7.0.6
@@ -483,8 +484,9 @@ packages:
     peerDependencies:
       '@langchain/core': '>=0.2.31 <0.4.0'
 
-  '@langchain/langgraph-sdk@0.0.60':
-    resolution: {integrity: sha512-7ndeAdw1afVY72HpKEGw7AyuDlD7U3e4jxaJflxA+PXaFPiE0d/hQYvlPT84YmvqNzJN605hv7YcrOju2573bQ==}
+  '@langchain/langgraph-sdk@http://localhost:3123/1744070075397/@langchain/langgraph-sdk':
+    resolution: {tarball: http://localhost:3123/1744070075397/@langchain/langgraph-sdk}
+    version: 0.0.62
     peerDependencies:
       '@langchain/core': '>=0.2.31 <0.4.0'
       react: ^18 || ^19
@@ -1849,7 +1851,7 @@ snapshots:
       '@langchain/core': 0.3.42
       uuid: 10.0.0
 
-  '@langchain/langgraph-sdk@0.0.60(@langchain/core@0.3.42)':
+  '@langchain/langgraph-sdk@http://localhost:3123/1744070075397/@langchain/langgraph-sdk(@langchain/core@0.3.42)':
     dependencies:
       '@types/json-schema': 7.0.15
       p-queue: 6.6.2
@@ -1862,7 +1864,7 @@ snapshots:
     dependencies:
       '@langchain/core': 0.3.42
       '@langchain/langgraph-checkpoint': 0.0.16(@langchain/core@0.3.42)
-      '@langchain/langgraph-sdk': 0.0.60(@langchain/core@0.3.42)
+      '@langchain/langgraph-sdk': http://localhost:3123/1744070075397/@langchain/langgraph-sdk(@langchain/core@0.3.42)
       uuid: 10.0.0
       zod: 3.24.1
     transitivePeerDependencies:

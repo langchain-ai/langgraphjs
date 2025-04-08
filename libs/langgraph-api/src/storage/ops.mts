@@ -13,6 +13,7 @@ import { logger } from "../logging.mjs";
 import { serializeError } from "../utils/serde.mjs";
 import { FileSystemPersistence } from "./persist.mjs";
 import { getLangGraphCommand, type RunCommand } from "../command.mjs";
+import { type AuthContext, handleAuthEvent, isAuthMatching } from "../auth.mjs";
 
 export type Metadata = Record<string, unknown>;
 
@@ -53,6 +54,8 @@ export interface RunnableConfig {
   };
 
   metadata?: LangGraphRunnableConfig["metadata"];
+
+  [key: string]: unknown;
 }
 
 interface Assistant {
@@ -280,12 +283,22 @@ const isJsonbContained = (
 };
 
 export class Assistants {
-  static async *search(options: {
-    graph_id?: string;
-    metadata?: Metadata;
-    limit: number;
-    offset: number;
-  }) {
+  static async *search(
+    options: {
+      graph_id?: string;
+      metadata?: Metadata;
+      limit: number;
+      offset: number;
+    },
+    auth: AuthContext,
+  ) {
+    const filters = await handleAuthEvent(auth, "assistants:search", {
+      graph_id: options.graph_id,
+      metadata: options.metadata,
+      limit: options.limit,
+      offset: options.offset,
+    });
+
     yield* conn.withGenerator(async function* (STORE) {
       let filtered = Object.values(STORE.assistants)
         .filter((assistant) => {
@@ -300,6 +313,10 @@ export class Assistants {
             options.metadata != null &&
             !isJsonbContained(assistant["metadata"], options.metadata)
           ) {
+            return false;
+          }
+
+          if (!isAuthMatching(assistant["metadata"], filters)) {
             return false;
           }
 
@@ -320,17 +337,27 @@ export class Assistants {
     });
   }
 
-  static async get(assistantId: string): Promise<Assistant> {
+  static async get(
+    assistant_id: string,
+    auth: AuthContext,
+  ): Promise<Assistant> {
+    const filters = await handleAuthEvent(auth, "assistants:read", {
+      assistant_id,
+    });
+
     return conn.with((STORE) => {
-      const result = STORE.assistants[assistantId];
+      const result = STORE.assistants[assistant_id];
       if (result == null)
         throw new HTTPException(404, { message: "Assistant not found" });
+      if (!isAuthMatching(result["metadata"], filters)) {
+        throw new HTTPException(404, { message: "Assistant not found" });
+      }
       return { ...result, name: result.name ?? result.graph_id };
     });
   }
 
   static async put(
-    assistantId: string,
+    assistant_id: string,
     options: {
       config: RunnableConfig;
       graph_id: string;
@@ -338,19 +365,36 @@ export class Assistants {
       if_exists: OnConflictBehavior;
       name?: string;
     },
+    auth: AuthContext,
   ): Promise<Assistant> {
+    const filters = await handleAuthEvent(auth, "assistants:create", {
+      assistant_id,
+      config: options.config,
+      graph_id: options.graph_id,
+      metadata: options.metadata,
+      if_exists: options.if_exists,
+      name: options.name,
+    });
+
     return conn.with((STORE) => {
-      if (STORE.assistants[assistantId] != null) {
+      if (STORE.assistants[assistant_id] != null) {
+        const existingAssistant = STORE.assistants[assistant_id];
+
+        if (!isAuthMatching(existingAssistant?.metadata, filters)) {
+          throw new HTTPException(409, { message: "Assistant already exists" });
+        }
+
         if (options.if_exists === "raise") {
           throw new HTTPException(409, { message: "Assistant already exists" });
         }
-        return STORE.assistants[assistantId];
+
+        return existingAssistant;
       }
 
       const now = new Date();
 
-      STORE.assistants[assistantId] ??= {
-        assistant_id: assistantId,
+      STORE.assistants[assistant_id] ??= {
+        assistant_id: assistant_id,
         version: 1,
         config: options.config ?? {},
         created_at: now,
@@ -361,7 +405,7 @@ export class Assistants {
       };
 
       STORE.assistant_versions.push({
-        assistant_id: assistantId,
+        assistant_id: assistant_id,
         version: 1,
         graph_id: options.graph_id,
         config: options.config ?? {},
@@ -370,23 +414,37 @@ export class Assistants {
         name: options.name || options.graph_id,
       });
 
-      return STORE.assistants[assistantId];
+      return STORE.assistants[assistant_id];
     });
   }
 
   static async patch(
     assistantId: string,
-    options?: {
+    options: {
       config?: RunnableConfig;
       graph_id?: string;
       metadata?: Metadata;
       name?: string;
     },
+    auth: AuthContext,
   ): Promise<Assistant> {
+    const filters = await handleAuthEvent(auth, "assistants:update", {
+      assistant_id: assistantId,
+      graph_id: options?.graph_id,
+      config: options?.config,
+      metadata: options?.metadata,
+      name: options?.name,
+    });
+
     return conn.with((STORE) => {
       const assistant = STORE.assistants[assistantId];
-      if (!assistant)
+      if (!assistant) {
         throw new HTTPException(404, { message: "Assistant not found" });
+      }
+
+      if (!isAuthMatching(assistant["metadata"], filters)) {
+        throw new HTTPException(404, { message: "Assistant not found" });
+      }
 
       const now = new Date();
 
@@ -440,21 +498,33 @@ export class Assistants {
     });
   }
 
-  static async delete(assistantId: string): Promise<string[]> {
-    return conn.with((STORE) => {
-      const assistant = STORE.assistants[assistantId];
-      if (!assistant)
-        throw new HTTPException(404, { message: "Assistant not found" });
+  static async delete(
+    assistant_id: string,
+    auth: AuthContext,
+  ): Promise<string[]> {
+    const filters = await handleAuthEvent(auth, "assistants:delete", {
+      assistant_id,
+    });
 
-      delete STORE.assistants[assistantId];
+    return conn.with((STORE) => {
+      const assistant = STORE.assistants[assistant_id];
+      if (!assistant) {
+        throw new HTTPException(404, { message: "Assistant not found" });
+      }
+
+      if (!isAuthMatching(assistant["metadata"], filters)) {
+        throw new HTTPException(404, { message: "Assistant not found" });
+      }
+
+      delete STORE.assistants[assistant_id];
 
       // Cascade delete for assistant versions and crons
       STORE.assistant_versions = STORE.assistant_versions.filter(
-        (v) => v["assistant_id"] !== assistantId,
+        (v) => v["assistant_id"] !== assistant_id,
       );
 
       for (const run of Object.values(STORE.runs)) {
-        if (run["assistant_id"] === assistantId) {
+        if (run["assistant_id"] === assistant_id) {
           delete STORE.runs[run["run_id"]];
         }
       }
@@ -464,16 +534,27 @@ export class Assistants {
   }
 
   static async setLatest(
-    assistantId: string,
+    assistant_id: string,
     version: number,
+    auth: AuthContext,
   ): Promise<Assistant> {
+    const filters = await handleAuthEvent(auth, "assistants:update", {
+      assistant_id,
+      version,
+    });
+
     return conn.with((STORE) => {
-      const assistant = STORE.assistants[assistantId];
-      if (!assistant)
+      const assistant = STORE.assistants[assistant_id];
+      if (!assistant) {
         throw new HTTPException(404, { message: "Assistant not found" });
+      }
+
+      if (!isAuthMatching(assistant["metadata"], filters)) {
+        throw new HTTPException(404, { message: "Assistant not found" });
+      }
 
       const assistantVersion = STORE.assistant_versions.find(
-        (v) => v["assistant_id"] === assistantId && v["version"] === version,
+        (v) => v["assistant_id"] === assistant_id && v["version"] === version,
       );
 
       if (!assistantVersion)
@@ -482,7 +563,7 @@ export class Assistants {
         });
 
       const now = new Date();
-      STORE.assistants[assistantId] = {
+      STORE.assistants[assistant_id] = {
         ...assistant,
         config: assistantVersion["config"],
         metadata: assistantVersion["metadata"],
@@ -491,27 +572,36 @@ export class Assistants {
         updated_at: now,
       };
 
-      return STORE.assistants[assistantId];
+      return STORE.assistants[assistant_id];
     });
   }
 
   static async getVersions(
-    assistantId: string,
+    assistant_id: string,
     options: {
       limit: number;
       offset: number;
       metadata?: Metadata;
     },
+    auth: AuthContext,
   ) {
+    const filters = await handleAuthEvent(auth, "assistants:read", {
+      assistant_id,
+    });
+
     return conn.with((STORE) => {
       const versions = STORE.assistant_versions
         .filter((version) => {
-          if (version["assistant_id"] !== assistantId) return false;
+          if (version["assistant_id"] !== assistant_id) return false;
 
           if (
             options.metadata != null &&
             !isJsonbContained(version["metadata"], options.metadata)
           ) {
+            return false;
+          }
+
+          if (!isAuthMatching(version["metadata"], filters)) {
             return false;
           }
 
@@ -580,13 +670,24 @@ export interface ThreadState {
 }
 
 export class Threads {
-  static async *search(options: {
-    metadata?: Metadata;
-    status?: ThreadStatus;
-    values?: Record<string, unknown>;
-    limit: number;
-    offset: number;
-  }): AsyncGenerator<Thread> {
+  static async *search(
+    options: {
+      metadata?: Metadata;
+      status?: ThreadStatus;
+      values?: Record<string, unknown>;
+      limit: number;
+      offset: number;
+    },
+    auth: AuthContext,
+  ): AsyncGenerator<Thread> {
+    const filters = await handleAuthEvent(auth, "threads:search", {
+      metadata: options.metadata,
+      status: options.status,
+      values: options.values,
+      limit: options.limit,
+      offset: options.offset,
+    });
+
     yield* conn.withGenerator(async function* (STORE) {
       const filtered = Object.values(STORE.threads)
         .filter((thread) => {
@@ -606,6 +707,8 @@ export class Threads {
           if (options.status != null && thread["status"] !== options.status)
             return false;
 
+          if (!isAuthMatching(thread["metadata"], filters)) return false;
+
           return true;
         })
         .sort((a, b) => b["created_at"].getTime() - a["created_at"].getTime());
@@ -619,37 +722,63 @@ export class Threads {
     });
   }
 
-  static async get(threadId: string): Promise<Thread> {
+  // TODO: make this accept `undefined`
+  static async get(thread_id: string, auth: AuthContext): Promise<Thread> {
+    const filters = await handleAuthEvent(auth, "threads:read", {
+      thread_id,
+    });
+
     return conn.with((STORE) => {
-      const result = STORE.threads[threadId];
-      if (result == null)
+      const result = STORE.threads[thread_id];
+      if (result == null) {
         throw new HTTPException(404, {
-          message: `Thread with ID ${threadId} not found`,
+          message: `Thread with ID ${thread_id} not found`,
         });
+      }
+
+      if (!isAuthMatching(result["metadata"], filters)) {
+        throw new HTTPException(404, {
+          message: `Thread with ID ${thread_id} not found`,
+        });
+      }
 
       return result;
     });
   }
 
   static async put(
-    threadId: string,
-    options?: {
+    thread_id: string,
+    options: {
       metadata?: Metadata;
       if_exists: OnConflictBehavior;
     },
+    auth: AuthContext,
   ): Promise<Thread> {
+    const filters = await handleAuthEvent(auth, "threads:create", {
+      thread_id,
+      metadata: options.metadata,
+      if_exists: options.if_exists,
+    });
+
     return conn.with((STORE) => {
       const now = new Date();
 
-      if (STORE.threads[threadId] != null) {
+      if (STORE.threads[thread_id] != null) {
+        const existingThread = STORE.threads[thread_id];
+
+        if (!isAuthMatching(existingThread["metadata"], filters)) {
+          throw new HTTPException(409, { message: "Thread already exists" });
+        }
+
         if (options?.if_exists === "raise") {
           throw new HTTPException(409, { message: "Thread already exists" });
         }
-        return STORE.threads[threadId];
+
+        return existingThread;
       }
 
-      STORE.threads[threadId] ??= {
-        thread_id: threadId,
+      STORE.threads[thread_id] ??= {
+        thread_id: thread_id,
         created_at: now,
         updated_at: now,
         metadata: options?.metadata ?? {},
@@ -658,20 +787,32 @@ export class Threads {
         values: undefined,
       };
 
-      return STORE.threads[threadId];
+      return STORE.threads[thread_id];
     });
   }
 
   static async patch(
     threadId: string,
-    options?: {
+    options: {
       metadata?: Metadata;
     },
+    auth: AuthContext,
   ): Promise<Thread> {
+    const filters = await handleAuthEvent(auth, "threads:update", {
+      thread_id: threadId,
+      metadata: options.metadata,
+    });
+
     return conn.with((STORE) => {
       const thread = STORE.threads[threadId];
-      if (!thread)
+      if (!thread) {
         throw new HTTPException(404, { message: "Thread not found" });
+      }
+
+      if (!isAuthMatching(thread["metadata"], filters)) {
+        // TODO: is this correct status code?
+        throw new HTTPException(404, { message: "Thread not found" });
+      }
 
       const now = new Date();
       if (options?.metadata != null) {
@@ -735,31 +876,50 @@ export class Threads {
     });
   }
 
-  static async delete(threadId: string): Promise<string[]> {
-    return conn.with((STORE) => {
-      const thread = STORE.threads[threadId];
-      if (!thread)
-        throw new HTTPException(404, {
-          message: `Thread with ID ${threadId} not found`,
-        });
+  static async delete(thread_id: string, auth: AuthContext): Promise<string[]> {
+    const filters = await handleAuthEvent(auth, "threads:delete", {
+      thread_id,
+    });
 
-      delete STORE.threads[threadId];
+    return conn.with((STORE) => {
+      const thread = STORE.threads[thread_id];
+      if (!thread) {
+        throw new HTTPException(404, {
+          message: `Thread with ID ${thread_id} not found`,
+        });
+      }
+
+      if (!isAuthMatching(thread["metadata"], filters)) {
+        throw new HTTPException(404, {
+          message: `Thread with ID ${thread_id} not found`,
+        });
+      }
+
+      delete STORE.threads[thread_id];
       for (const run of Object.values(STORE.runs)) {
-        if (run["thread_id"] === threadId) {
+        if (run["thread_id"] === thread_id) {
           delete STORE.runs[run["run_id"]];
         }
       }
-      checkpointer.delete(threadId, null);
+      checkpointer.delete(thread_id, null);
 
       return [thread.thread_id];
     });
   }
 
-  static async copy(threadId: string): Promise<Thread> {
+  static async copy(thread_id: string, auth: AuthContext): Promise<Thread> {
+    const filters = await handleAuthEvent(auth, "threads:read", {
+      thread_id,
+    });
+
     return conn.with((STORE) => {
-      const thread = STORE.threads[threadId];
+      const thread = STORE.threads[thread_id];
       if (!thread)
         throw new HTTPException(409, { message: "Thread not found" });
+
+      if (!isAuthMatching(thread["metadata"], filters)) {
+        throw new HTTPException(409, { message: "Thread not found" });
+      }
 
       const newThreadId = uuid4();
       const now = new Date();
@@ -772,7 +932,7 @@ export class Threads {
         status: "idle",
       };
 
-      checkpointer.copy(threadId, newThreadId);
+      checkpointer.copy(thread_id, newThreadId);
       return STORE.threads[newThreadId];
     });
   }
@@ -780,13 +940,12 @@ export class Threads {
   static State = class {
     static async get(
       config: RunnableConfig,
-      options: {
-        subgraphs?: boolean;
-      },
+      options: { subgraphs?: boolean },
+      auth: AuthContext,
     ): Promise<LangGraphStateSnapshot> {
       const subgraphs = options.subgraphs ?? false;
       const threadId = config.configurable?.thread_id;
-      const thread = threadId ? await Threads.get(threadId) : undefined;
+      const thread = threadId ? await Threads.get(threadId, auth) : undefined;
 
       const metadata = thread?.metadata ?? {};
       const graphId = metadata?.graph_id as string | undefined | null;
@@ -821,19 +980,28 @@ export class Threads {
 
     static async post(
       config: RunnableConfig,
-      values?:
+      values:
         | Record<string, unknown>[]
         | Record<string, unknown>
         | null
         | undefined,
-      asNode?: string | undefined,
+      asNode: string | undefined,
+      auth: AuthContext,
     ) {
       const threadId = config.configurable?.thread_id;
-      const thread = threadId ? await Threads.get(threadId) : undefined;
+      const filters = await handleAuthEvent(auth, "threads:update", {
+        thread_id: threadId,
+      });
+
+      const thread = threadId ? await Threads.get(threadId, auth) : undefined;
       if (!thread)
         throw new HTTPException(404, {
           message: `Thread ${threadId} not found`,
         });
+
+      if (!isAuthMatching(thread["metadata"], filters)) {
+        throw new HTTPException(403);
+      }
 
       const graphId = thread.metadata?.graph_id as string | undefined | null;
 
@@ -856,7 +1024,7 @@ export class Threads {
       updateConfig.configurable.checkpoint_ns ??= "";
 
       const nextConfig = await graph.updateState(updateConfig, values, asNode);
-      const state = await Threads.State.get(config, { subgraphs: false });
+      const state = await Threads.State.get(config, { subgraphs: false }, auth);
 
       // update thread values
       await conn.with(async (STORE) => {
@@ -885,11 +1053,21 @@ export class Threads {
           as_node?: string | undefined;
         }>;
       }>,
+      auth: AuthContext,
     ) {
       const threadId = config.configurable?.thread_id;
       if (!threadId) return [];
 
-      const thread = await Threads.get(threadId);
+      const filters = await handleAuthEvent(auth, "threads:update", {
+        thread_id: threadId,
+      });
+
+      const thread = await Threads.get(threadId, auth);
+
+      if (!isAuthMatching(thread["metadata"], filters)) {
+        throw new HTTPException(403);
+      }
+
       const graphId = thread.metadata?.graph_id as string | undefined | null;
       if (graphId == null) {
         throw new HTTPException(400, {
@@ -919,7 +1097,7 @@ export class Threads {
           })),
         })),
       );
-      const state = await Threads.State.get(config, { subgraphs: false });
+      const state = await Threads.State.get(config, { subgraphs: false }, auth);
 
       // update thread values
       await conn.with(async (STORE) => {
@@ -936,16 +1114,23 @@ export class Threads {
 
     static async list(
       config: RunnableConfig,
-      options?: {
+      options: {
         limit?: number;
         before?: string | RunnableConfig;
         metadata?: Metadata;
       },
+      auth: AuthContext,
     ) {
       const threadId = config.configurable?.thread_id;
       if (!threadId) return [];
 
-      const thread = await Threads.get(threadId);
+      const filters = await handleAuthEvent(auth, "threads:read", {
+        thread_id: threadId,
+      });
+
+      const thread = await Threads.get(threadId, auth);
+      if (!isAuthMatching(thread["metadata"], filters)) return [];
+
       const graphId = thread.metadata?.graph_id as string | undefined | null;
       if (graphId == null) return [];
 
@@ -1020,7 +1205,7 @@ export class Runs {
     runId: string,
     assistantId: string,
     kwargs: RunKwargs,
-    options?: {
+    options: {
       threadId?: string;
       userId?: string;
       status?: RunStatus;
@@ -1030,6 +1215,7 @@ export class Runs {
       ifNotExists?: IfNotExists;
       afterSeconds?: number;
     },
+    auth: AuthContext,
   ): Promise<Run[]> {
     return conn.with(async (STORE) => {
       const assistant = STORE.assistants[assistantId];
@@ -1048,9 +1234,29 @@ export class Runs {
       const metadata = options?.metadata ?? {};
       const config: RunnableConfig = kwargs.config ?? {};
 
+      const filters = await handleAuthEvent(auth, "threads:create_run", {
+        thread_id: threadId,
+        assistant_id: assistantId,
+        run_id: runId,
+        status: status,
+        metadata: metadata,
+        prevent_insert_if_inflight: options?.preventInsertInInflight,
+        multitask_strategy: multitaskStrategy,
+        if_not_exists: ifNotExists,
+        after_seconds: afterSeconds,
+        kwargs,
+      });
+
       const existingThread = Object.values(STORE.threads).find(
         (thread) => thread.thread_id === threadId,
       );
+
+      if (
+        existingThread &&
+        !isAuthMatching(existingThread["metadata"], filters)
+      ) {
+        throw new HTTPException(403);
+      }
 
       const now = new Date();
 
@@ -1163,37 +1369,65 @@ export class Runs {
 
   static async get(
     runId: string,
-    threadId: string | undefined,
+    thread_id: string | undefined,
+    auth: AuthContext,
   ): Promise<Run | null> {
+    const filters = await handleAuthEvent(auth, "threads:read", {
+      thread_id,
+    });
+
     return conn.with(async (STORE) => {
       const run = STORE.runs[runId];
       if (
         !run ||
         run.run_id !== runId ||
-        (threadId != null && run.thread_id !== threadId)
+        (thread_id != null && run.thread_id !== thread_id)
       )
         return null;
+
+      if (filters != null) {
+        const thread = STORE.threads[run.thread_id];
+        if (!isAuthMatching(thread["metadata"], filters)) return null;
+      }
+
       return run;
     });
   }
 
   static async delete(
-    runId: string,
-    threadId: string | undefined,
+    run_id: string,
+    thread_id: string | undefined,
+    auth: AuthContext,
   ): Promise<string | null> {
-    return conn.with(async (STORE) => {
-      const run = STORE.runs[runId];
-      if (!run || (threadId != null && run.thread_id !== threadId))
-        throw new Error("Run not found");
+    const filters = await handleAuthEvent(auth, "threads:delete", {
+      run_id,
+      thread_id,
+    });
 
-      if (threadId != null) checkpointer.delete(threadId, runId);
-      delete STORE.runs[runId];
+    return conn.with(async (STORE) => {
+      const run = STORE.runs[run_id];
+      if (!run || (thread_id != null && run.thread_id !== thread_id))
+        throw new HTTPException(404, { message: "Run not found" });
+
+      if (filters != null) {
+        const thread = STORE.threads[run.thread_id];
+        if (!isAuthMatching(thread["metadata"], filters)) {
+          throw new HTTPException(404, { message: "Run not found" });
+        }
+      }
+
+      if (thread_id != null) checkpointer.delete(thread_id, run_id);
+      delete STORE.runs[run_id];
       return run.run_id;
     });
   }
 
-  static async wait(runId: string, threadId: string | undefined) {
-    const runStream = Runs.Stream.join(runId, threadId);
+  static async wait(
+    runId: string,
+    threadId: string | undefined,
+    auth: AuthContext,
+  ) {
+    const runStream = Runs.Stream.join(runId, threadId, undefined, auth);
 
     const lastChunk = new Promise(async (resolve, reject) => {
       try {
@@ -1215,14 +1449,14 @@ export class Runs {
     return lastChunk;
   }
 
-  static async join(runId: string, threadId: string) {
+  static async join(runId: string, threadId: string, auth: AuthContext) {
     // check if thread exists
-    await Threads.get(threadId);
+    await Threads.get(threadId, auth);
 
-    const lastChunk = await Runs.wait(runId, threadId);
+    const lastChunk = await Runs.wait(runId, threadId, auth);
     if (lastChunk != null) return lastChunk;
 
-    const thread = await Threads.get(threadId);
+    const thread = await Threads.get(threadId, auth);
     return thread.values;
   }
 
@@ -1232,16 +1466,29 @@ export class Runs {
     options: {
       action?: "interrupt" | "rollback";
     },
+    auth: AuthContext,
   ) {
     return conn.with(async (STORE) => {
       const action = options.action ?? "interrupt";
       const promises: Promise<unknown>[] = [];
+
+      const filters = await handleAuthEvent(auth, "threads:update", {
+        thread_id: threadId,
+        action,
+        metadata: { run_ids: runIds, status: "pending" },
+      });
 
       let foundRunsCount = 0;
 
       for (const runId of runIds) {
         const run = STORE.runs[runId];
         if (!run || (threadId != null && run.thread_id !== threadId)) continue;
+
+        if (filters != null) {
+          const thread = STORE.threads[run.thread_id];
+          if (!isAuthMatching(thread["metadata"], filters)) continue;
+        }
+
         foundRunsCount += 1;
 
         // send cancellation message
@@ -1261,7 +1508,7 @@ export class Runs {
               },
             );
 
-            promises.push(Runs.delete(runId, threadId));
+            promises.push(Runs.delete(runId, threadId, auth));
           }
         } else {
           logger.warn("Attempted to cancel non-pending run.", {
@@ -1287,13 +1534,20 @@ export class Runs {
 
   static async search(
     threadId: string,
-    options?: {
+    options: {
       limit?: number | null;
       offset?: number | null;
       status?: string | null;
       metadata?: Metadata | null;
     },
+    auth: AuthContext,
   ) {
+    const filters = await handleAuthEvent(auth, "threads:search", {
+      thread_id: threadId,
+      metadata: options.metadata,
+      status: options.status,
+    });
+
     return conn.with(async (STORE) => {
       const runs = Object.values(STORE.runs).filter((run) => {
         if (run.thread_id !== threadId) return false;
@@ -1304,6 +1558,11 @@ export class Runs {
           !isJsonbContained(run.metadata, options.metadata)
         )
           return false;
+
+        if (filters != null) {
+          const thread = STORE.threads[run.thread_id];
+          if (!isAuthMatching(thread["metadata"], filters)) return false;
+        }
         return true;
       });
 
@@ -1324,44 +1583,61 @@ export class Runs {
     static async *join(
       runId: string,
       threadId: string | undefined,
-      options?: {
-        ignore404?: boolean;
-        cancelOnDisconnect?: AbortSignal;
-      },
-    ): AsyncGenerator<{ event: string; data: unknown }> {
-      // TODO: what if we're joining an already completed run? Should we check before?
-      const signal = options?.cancelOnDisconnect;
-      const queue = StreamManager.getQueue(runId, { ifNotFound: "create" });
-
-      while (!signal?.aborted) {
-        try {
-          const message = await queue.get({ timeout: 500, signal });
-          if (message.topic === `run:${runId}:control`) {
-            if (message.data === "done") break;
-          } else {
-            const streamTopic = message.topic.substring(
-              `run:${runId}:stream:`.length,
-            );
-
-            yield { event: streamTopic, data: message.data };
+      options:
+        | {
+            ignore404?: boolean;
+            cancelOnDisconnect?: AbortSignal;
           }
-        } catch (error) {
-          if (error instanceof AbortError) break;
+        | undefined,
+      auth: AuthContext,
+    ): AsyncGenerator<{ event: string; data: unknown }> {
+      yield* conn.withGenerator(async function* (STORE) {
+        // TODO: what if we're joining an already completed run? Should we check before?
+        const signal = options?.cancelOnDisconnect;
+        const queue = StreamManager.getQueue(runId, { ifNotFound: "create" });
 
-          const run = await Runs.get(runId, threadId);
-          if (run == null) {
-            if (!options?.ignore404)
-              yield { event: "error", data: "Run not found" };
-            break;
-          } else if (run.status !== "pending") {
-            break;
+        const filters = await handleAuthEvent(auth, "threads:read", {
+          thread_id: threadId,
+        });
+
+        // TODO: consolidate into a single function
+        if (filters != null && threadId != null) {
+          const thread = STORE.threads[threadId];
+          if (!isAuthMatching(thread["metadata"], filters)) {
+            throw new HTTPException(404, { message: "Thread not found" });
           }
         }
-      }
 
-      if (signal?.aborted && threadId != null) {
-        await Runs.cancel(threadId, [runId], { action: "interrupt" });
-      }
+        while (!signal?.aborted) {
+          try {
+            const message = await queue.get({ timeout: 500, signal });
+            if (message.topic === `run:${runId}:control`) {
+              if (message.data === "done") break;
+            } else {
+              const streamTopic = message.topic.substring(
+                `run:${runId}:stream:`.length,
+              );
+
+              yield { event: streamTopic, data: message.data };
+            }
+          } catch (error) {
+            if (error instanceof AbortError) break;
+
+            const run = await Runs.get(runId, threadId, auth);
+            if (run == null) {
+              if (!options?.ignore404)
+                yield { event: "error", data: "Run not found" };
+              break;
+            } else if (run.status !== "pending") {
+              break;
+            }
+          }
+        }
+
+        if (signal?.aborted && threadId != null) {
+          await Runs.cancel(threadId, [runId], { action: "interrupt" }, auth);
+        }
+      });
     }
 
     static async publish(runId: string, topic: string, data: unknown) {
