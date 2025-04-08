@@ -1,9 +1,14 @@
-import type { Auth, ResourceActionType } from "@langchain/langgraph-sdk/auth";
+import type {
+  Auth,
+  ResourceActionType,
+  HTTPException as AuthHTTPException,
+} from "@langchain/langgraph-sdk/auth";
 import type { MiddlewareHandler } from "hono";
 import * as url from "node:url";
 import * as path from "path";
 
 import { HTTPException } from "hono/http-exception";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 let CUSTOM_AUTH: Auth | undefined;
 
@@ -11,7 +16,18 @@ export type AuthFilters =
   | Record<string, string | { $eq?: string; $contains?: string }>
   | undefined;
 
-export type AuthContext = Record<string, unknown> | undefined;
+export type AuthContext =
+  | {
+      user: {
+        identity: string;
+        permissions: string[];
+        display_name: string;
+        is_authenticated: boolean;
+        [key: string]: unknown;
+      };
+      scopes: string[];
+    }
+  | undefined;
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -22,10 +38,10 @@ declare module "hono" {
 export const handleAuthEvent = async <T extends keyof ResourceActionType>(
   context: AuthContext,
   key: T,
-  data: ResourceActionType[T],
-): Promise<AuthFilters | undefined> => {
+  value: ResourceActionType[T],
+): Promise<[AuthFilters | undefined, value: ResourceActionType[T]]> => {
   // find filters and execute them
-  if (!CUSTOM_AUTH) return undefined;
+  if (!CUSTOM_AUTH) return [undefined, value];
   const handlers = CUSTOM_AUTH["~handlerCache"];
 
   const [resource, action] = key.split(":");
@@ -33,10 +49,17 @@ export const handleAuthEvent = async <T extends keyof ResourceActionType>(
     (priority) => handlers.callbacks?.[priority],
   );
   const handler = cbKey ? handlers.callbacks?.[cbKey] : undefined;
-  if (!handler) return undefined;
+  if (!handler) return [undefined, value];
 
-  const result = await handler({ resource, action, data, context });
-  if (result == null || result == true) return undefined;
+  if (!context) throw new HTTPException(403);
+  const result = await handler({
+    resource,
+    action,
+    value,
+    permissions: context.scopes,
+    user: context.user,
+  });
+  if (result == null || result == true) return [undefined, value];
   if (result === false) throw new HTTPException(403);
 
   if (typeof result !== "object") {
@@ -45,7 +68,7 @@ export const handleAuthEvent = async <T extends keyof ResourceActionType>(
     });
   }
 
-  return result as AuthFilters;
+  return [result as AuthFilters, value];
 };
 
 export function isAuthMatching(
@@ -73,6 +96,15 @@ export function isAuthMatching(
   return true;
 }
 
+const isHTTPAuthException = (error: unknown): error is AuthHTTPException => {
+  return (
+    typeof error === "object" &&
+    error != null &&
+    "status" in error &&
+    "headers" in error
+  );
+};
+
 export const auth = (): MiddlewareHandler => {
   return async (c, next) => {
     if (!CUSTOM_AUTH) return next();
@@ -81,16 +113,64 @@ export const auth = (): MiddlewareHandler => {
     const handlers = CUSTOM_AUTH["~handlerCache"];
     if (!handlers.authenticate) return next();
 
-    c.set("auth", await handlers.authenticate(c.req.raw));
-    return next();
+    try {
+      const response = await handlers.authenticate(c.req.raw);
+
+      // normalize auth response
+      const { scopes, user } = (() => {
+        if (typeof response === "string") {
+          return {
+            scopes: [],
+            user: {
+              permissions: [],
+              identity: response,
+              display_name: response,
+              is_authenticated: true,
+            },
+          };
+        }
+
+        if ("identity" in response && typeof response.identity === "string") {
+          const scopes =
+            "permissions" in response && Array.isArray(response.permissions)
+              ? response.permissions
+              : [];
+
+          return {
+            scopes,
+            user: {
+              ...response,
+              permissions: scopes,
+              is_authenticated: response.is_authenticated ?? true,
+              display_name: response.display_name ?? response.identity,
+            },
+          };
+        }
+
+        throw new Error(
+          "Invalid auth response received. Make sure to either return a `string` or an object with `identity` property.",
+        );
+      })();
+
+      c.set("auth", { scopes, user });
+      return next();
+    } catch (error) {
+      if (isHTTPAuthException(error)) {
+        throw new HTTPException(error.status as ContentfulStatusCode, {
+          message: error.message,
+          res: new Response(error.message || "Unauthorized", {
+            status: error.status,
+            headers: error.headers,
+          }),
+        });
+      }
+      throw error;
+    }
   };
 };
 
 export async function loadAuth(
-  auth: {
-    path?: string;
-    disable_studio_auth?: boolean;
-  },
+  auth: { path?: string; disable_studio_auth?: boolean },
   options: { cwd: string },
 ) {
   if (!auth.path) return;
