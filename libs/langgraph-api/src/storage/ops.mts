@@ -54,8 +54,6 @@ export interface RunnableConfig {
   };
 
   metadata?: LangGraphRunnableConfig["metadata"];
-
-  [key: string]: unknown;
 }
 
 interface Assistant {
