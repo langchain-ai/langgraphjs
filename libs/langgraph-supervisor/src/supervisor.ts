@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { LanguageModelLike } from "@langchain/core/language_models/base";
 import { StructuredToolInterface, DynamicTool } from "@langchain/core/tools";
 import { RunnableToolLike } from "@langchain/core/runnables";
@@ -83,7 +84,9 @@ const makeCallAgent = (
 
 export type CreateSupervisorParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  AnnotationRootT extends AnnotationRoot<any>
+  AnnotationRootT extends AnnotationRoot<any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  StructuredResponseFormat extends Record<string, any> = Record<string, any>
 > = {
   agents: CompiledStateGraph<
     AnnotationRootT["State"],
@@ -95,6 +98,13 @@ export type CreateSupervisorParams<
   llm: LanguageModelLike;
   tools?: (StructuredToolInterface | RunnableToolLike | DynamicTool)[];
   prompt?: CreateReactAgentParams["prompt"];
+  responseFormat?:
+    | z.ZodType<StructuredResponseFormat>
+    | {
+        prompt: string;
+        schema: z.ZodType<StructuredResponseFormat> | Record<string, unknown>;
+      }
+    | Record<string, unknown>;
   stateSchema?: AnnotationRootT;
   outputMode?: OutputMode;
   addHandoffBackMessages?: boolean;
@@ -113,6 +123,22 @@ export type CreateSupervisorParams<
  *   - SystemMessage: this is added to the beginning of the list of messages in state["messages"]
  *   - Function: This function should take in full graph state and the output is then passed to the language model
  *   - Runnable: This runnable should take in full graph state and the output is then passed to the language model
+ * @param responseFormat An optional schema for the final supervisor output.
+ *
+ * If provided, output will be formatted to match the given schema and returned in the 'structuredResponse' state key.
+ * If not provided, `structuredResponse` will not be present in the output state.
+ *
+ * Can be passed in as:
+ *   - Zod schema
+ *   - JSON schema
+ *   - [prompt, schema], where schema is one of the above.
+ *        The prompt will be used together with the model that is being used to generate the structured response.
+ *
+ * @remarks
+ * **Important**: `responseFormat` requires the model to support `.withStructuredOutput()`.
+ *
+ * **Note**: The graph will make a separate call to the LLM to generate the structured response after the agent loop is finished.
+ * This is not the only strategy to get structured responses, see more options in [this guide](https://langchain-ai.github.io/langgraph/how-tos/react-agent-structured-output/).
  * @param stateSchema State schema to use for the supervisor graph
  * @param outputMode Mode for adding managed agents' outputs to the message history in the multi-agent workflow.
  *   Can be one of:
@@ -128,18 +154,24 @@ export type CreateSupervisorParams<
  */
 const createSupervisor = <
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  AnnotationRootT extends AnnotationRoot<any> = typeof MessagesAnnotation
+  AnnotationRootT extends AnnotationRoot<any> = typeof MessagesAnnotation,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  StructuredResponseFormat extends Record<string, any> = Record<string, any>
 >({
   agents,
   llm,
   tools,
   prompt,
+  responseFormat,
   stateSchema,
   outputMode = "last_message",
   addHandoffBackMessages = true,
   supervisorName = "supervisor",
   includeAgentName,
-}: CreateSupervisorParams<AnnotationRootT>): StateGraph<
+}: CreateSupervisorParams<
+  AnnotationRootT,
+  StructuredResponseFormat
+>): StateGraph<
   AnnotationRootT["spec"],
   AnnotationRootT["State"],
   AnnotationRootT["Update"],
@@ -194,6 +226,7 @@ const createSupervisor = <
     llm: supervisorLLM,
     tools: allTools,
     prompt,
+    responseFormat,
     stateSchema: schema,
   });
 
