@@ -37,13 +37,6 @@ app.use(async (c, next) => {
 
 app.use(cors());
 app.use(requestLogger());
-app.use(auth());
-
-app.route("/", assistants);
-app.route("/", runs);
-app.route("/", threads);
-app.route("/", store);
-
 app.get("/info", (c) => c.json({ flags: { assistants: true, crons: false } }));
 
 app.post(
@@ -66,6 +59,12 @@ app.post(
     return c.json({ ok: true });
   },
 );
+
+app.use(auth());
+app.route("/", assistants);
+app.route("/", runs);
+app.route("/", threads);
+app.route("/", store);
 
 export const StartServerSchema = z.object({
   port: z.number(),

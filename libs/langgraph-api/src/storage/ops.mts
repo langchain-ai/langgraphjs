@@ -314,6 +314,8 @@ export class Assistants {
             return false;
           }
 
+          console.log(assistant)
+
           if (!isAuthMatching(assistant["metadata"], filters)) {
             return false;
           }
@@ -919,10 +921,10 @@ export class Threads {
     return conn.with((STORE) => {
       const thread = STORE.threads[thread_id];
       if (!thread)
-        throw new HTTPException(409, { message: "Thread not found" });
+        throw new HTTPException(404, { message: "Thread not found" });
 
       if (!isAuthMatching(thread["metadata"], filters)) {
-        throw new HTTPException(409, { message: "Thread not found" });
+        throw new HTTPException(404, { message: "Thread not found" });
       }
 
       const newThreadId = uuid4();
@@ -1274,7 +1276,11 @@ export class Runs {
         const thread: Thread = {
           thread_id: threadId,
           status: "busy",
-          metadata: { graph_id: assistant.graph_id, assistant_id: assistantId },
+          metadata: {
+            graph_id: assistant.graph_id,
+            assistant_id: assistantId,
+            ...metadata,
+          },
           config: Object.assign({}, assistant.config, config, {
             configurable: Object.assign(
               {},
@@ -1436,7 +1442,12 @@ export class Runs {
     threadId: string | undefined,
     auth: AuthContext,
   ) {
-    const runStream = Runs.Stream.join(runId, threadId, undefined, auth);
+    const runStream = Runs.Stream.join(
+      runId,
+      threadId,
+      { ignore404: threadId == null },
+      auth,
+    );
 
     const lastChunk = new Promise(async (resolve, reject) => {
       try {
@@ -1592,12 +1603,10 @@ export class Runs {
     static async *join(
       runId: string,
       threadId: string | undefined,
-      options:
-        | {
-            ignore404?: boolean;
-            cancelOnDisconnect?: AbortSignal;
-          }
-        | undefined,
+      options: {
+        ignore404?: boolean;
+        cancelOnDisconnect?: AbortSignal;
+      },
       auth: AuthContext,
     ): AsyncGenerator<{ event: string; data: unknown }> {
       yield* conn.withGenerator(async function* (STORE) {
@@ -1613,7 +1622,8 @@ export class Runs {
         if (filters != null && threadId != null) {
           const thread = STORE.threads[threadId];
           if (!isAuthMatching(thread["metadata"], filters)) {
-            throw new HTTPException(404, { message: "Thread not found" });
+            yield { event: "error", data: "Thread not found" };
+            return;
           }
         }
 

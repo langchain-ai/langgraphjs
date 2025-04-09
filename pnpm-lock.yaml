@@ -6,7 +6,6 @@ settings:
 
 overrides:
   esbuild: ^0.25.0
-  '@langchain/langgraph-sdk': http://localhost:3123/1744070075397/@langchain/langgraph-sdk
 
 importers:
 
@@ -126,8 +125,8 @@ importers:
         version: 3.24.1
     devDependencies:
       '@langchain/langgraph-sdk':
-        specifier: http://localhost:3123/1744070075397/@langchain/langgraph-sdk
-        version: http://localhost:3123/1744070075397/@langchain/langgraph-sdk(@langchain/core@0.3.42)
+        specifier: ^0.0.65
+        version: 0.0.65(@langchain/core@0.3.42)
       '@types/babel__code-frame':
         specifier: ^7.0.6
         version: 7.0.6
@@ -143,6 +142,9 @@ importers:
       '@types/uuid':
         specifier: ^10.0.0
         version: 10.0.0
+      jose:
+        specifier: ^6.0.10
+        version: 6.0.10
       postgres:
         specifier: ^3.4.5
         version: 3.4.5
@@ -484,9 +486,8 @@ packages:
     peerDependencies:
       '@langchain/core': '>=0.2.31 <0.4.0'
 
-  '@langchain/langgraph-sdk@http://localhost:3123/1744070075397/@langchain/langgraph-sdk':
-    resolution: {tarball: http://localhost:3123/1744070075397/@langchain/langgraph-sdk}
-    version: 0.0.62
+  '@langchain/langgraph-sdk@0.0.65':
+    resolution: {integrity: sha512-Zn1FhiKr/mYa1+W5NcuCPWmdTtJS4UZYu+YVEjxgESd0aMX19FTkqjaSV6tFDcRqHHwlIgHloCSqHLkYWF/Zug==}
     peerDependencies:
       '@langchain/core': '>=0.2.31 <0.4.0'
       react: ^18 || ^19
@@ -1101,6 +1102,9 @@ packages:
   jiti@2.4.2:
     resolution: {integrity: sha512-rg9zJN+G4n2nfJl5MW3BMygZX56zKPNVEYYqq7adpmMh4Jn2QNEwhvQlFy6jPVdcod7txZtKHWnyZiA3a0zP7A==}
     hasBin: true
+
+  jose@6.0.10:
+    resolution: {integrity: sha512-skIAxZqcMkOrSwjJvplIPYrlXGpxTPnro2/QWTDCxAdWQrSTV5/KqspMWmi5WAx5+ULswASJiZ0a+1B/Lxt9cw==}
 
   js-tiktoken@1.0.16:
     resolution: {integrity: sha512-nUVdO5k/M9llWpiaZlBBDdtmr6qWXwSD6fgaDu2zM8UP+OXxx9V37lFkI6w0/1IuaDx7WffZ37oYd9KvcWKElg==}
@@ -1851,7 +1855,7 @@ snapshots:
       '@langchain/core': 0.3.42
       uuid: 10.0.0
 
-  '@langchain/langgraph-sdk@http://localhost:3123/1744070075397/@langchain/langgraph-sdk(@langchain/core@0.3.42)':
+  '@langchain/langgraph-sdk@0.0.65(@langchain/core@0.3.42)':
     dependencies:
       '@types/json-schema': 7.0.15
       p-queue: 6.6.2
@@ -1864,7 +1868,7 @@ snapshots:
     dependencies:
       '@langchain/core': 0.3.42
       '@langchain/langgraph-checkpoint': 0.0.16(@langchain/core@0.3.42)
-      '@langchain/langgraph-sdk': http://localhost:3123/1744070075397/@langchain/langgraph-sdk(@langchain/core@0.3.42)
+      '@langchain/langgraph-sdk': 0.0.65(@langchain/core@0.3.42)
       uuid: 10.0.0
       zod: 3.24.1
     transitivePeerDependencies:
@@ -2397,6 +2401,8 @@ snapshots:
       '@pkgjs/parseargs': 0.11.0
 
   jiti@2.4.2: {}
+
+  jose@6.0.10: {}
 
   js-tiktoken@1.0.16:
     dependencies:

@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, beforeAll } from "vitest";
 import { Client, type FeedbackStreamEvent } from "@langchain/langgraph-sdk";
-import { findLast, gatherIterator } from "./utils.mjs";
+import { findLast, gatherIterator, truncate } from "./utils.mjs";
 import type {
   BaseMessageFields,
   BaseMessageLike,
@@ -15,11 +15,7 @@ const client = new Client<any>({ apiUrl: API_URL });
 
 // Passed to all invocation requests as the graph now requires this field to be present
 // in `configurable` due to a new `SharedValue` field requiring it.
-const globalConfig = {
-  configurable: {
-    user_id: "123",
-  },
-};
+const globalConfig = { configurable: { user_id: "123" } };
 
 // TODO: this is not exported anywhere in JS
 // we should support only the flattened one
@@ -32,38 +28,9 @@ interface AgentState {
   sharedStateValue?: string | null;
 }
 
-const truncate = async (
-  options:
-    | {
-        runs?: boolean;
-        threads?: boolean;
-        assistants?: boolean;
-        store?: boolean;
-        checkpoint?: boolean;
-      }
-    | "all",
-) => {
-  const flags =
-    options === "all"
-      ? {
-          runs: true,
-          threads: true,
-          assistants: true,
-          store: true,
-          checkpoint: true,
-        }
-      : options;
-
-  await fetch(`${API_URL}/internal/truncate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(flags),
-  });
-};
-
 const IS_MEMORY = true;
 
-beforeAll(() => truncate("all"));
+beforeAll(() => truncate(API_URL, "all"));
 
 describe("assistants", () => {
   it("create read update delete", async () => {
@@ -305,7 +272,7 @@ describe("assistants", () => {
 });
 
 describe("threads crud", () => {
-  beforeEach(() => truncate({ threads: true }));
+  beforeEach(() => truncate(API_URL, { threads: true }));
 
   it("create, read, update, delete thread", async () => {
     const metadata = { name: "test_thread" };
@@ -608,7 +575,7 @@ describe("threads copy", () => {
 });
 
 describe("runs", () => {
-  beforeAll(async () => truncate({ store: true, threads: true }));
+  beforeAll(async () => truncate(API_URL, { store: true, threads: true }));
 
   it.concurrent("list runs", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
@@ -1108,7 +1075,7 @@ describe("runs", () => {
 });
 
 describe("shared state", () => {
-  beforeEach(() => truncate({ store: true }));
+  beforeEach(() => truncate(API_URL, { store: true }));
 
   it("should share state between runs with the same thread ID", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
@@ -1232,7 +1199,7 @@ describe("shared state", () => {
 });
 
 describe("StoreClient", () => {
-  beforeEach(async () => truncate({ store: true }));
+  beforeEach(async () => truncate(API_URL, { store: true }));
 
   it("Should be able to use the store client methods", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });

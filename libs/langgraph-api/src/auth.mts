@@ -35,40 +35,64 @@ declare module "hono" {
   }
 }
 
+const isHTTPAuthException = (error: unknown): error is AuthHTTPException => {
+  return (
+    typeof error === "object" &&
+    error != null &&
+    "status" in error &&
+    "headers" in error
+  );
+};
+
+const convertError = (error: unknown) => {
+  if (isHTTPAuthException(error)) {
+    throw new HTTPException(error.status as ContentfulStatusCode, {
+      message: error.message,
+      res: new Response(error.message || "Unauthorized", {
+        status: error.status,
+        headers: error.headers,
+      }),
+    });
+  }
+  throw error;
+};
+
 export const handleAuthEvent = async <T extends keyof ResourceActionType>(
   context: AuthContext,
-  key: T,
+  action: T,
   value: ResourceActionType[T],
 ): Promise<[AuthFilters | undefined, value: ResourceActionType[T]]> => {
   // find filters and execute them
   if (!CUSTOM_AUTH) return [undefined, value];
   const handlers = CUSTOM_AUTH["~handlerCache"];
 
-  const [resource, action] = key.split(":");
-  const cbKey = [`${resource}:${action}`, resource, `*:${action}`, "*"].find(
+  const [resource, op] = action.split(":");
+  const cbKey = [`${resource}:${op}`, resource, `*:${op}`, "*"].find(
     (priority) => handlers.callbacks?.[priority],
   );
   const handler = cbKey ? handlers.callbacks?.[cbKey] : undefined;
-  if (!handler) return [undefined, value];
-
-  if (!context) throw new HTTPException(403);
-  const result = await handler({
-    resource,
-    action,
-    value,
-    permissions: context.scopes,
-    user: context.user,
-  });
-  if (result == null || result == true) return [undefined, value];
-  if (result === false) throw new HTTPException(403);
-
-  if (typeof result !== "object") {
-    throw new HTTPException(500, {
-      message: `Auth handler returned invalid result. Expected fitler object, null, undefined or boolean. Got "${typeof result}" instead.`,
+  if (!handler || !context) return [undefined, value];
+  try {
+    const result = await handler({
+      resource,
+      action: action,
+      value,
+      permissions: context.scopes,
+      user: context.user,
     });
-  }
+    if (result == null || result == true) return [undefined, value];
+    if (result === false) throw new HTTPException(403);
 
-  return [result as AuthFilters, value];
+    if (typeof result !== "object") {
+      throw new HTTPException(500, {
+        message: `Auth handler returned invalid result. Expected fitler object, null, undefined or boolean. Got "${typeof result}" instead.`,
+      });
+    }
+
+    return [result as AuthFilters, value];
+  } catch (error) {
+    throw convertError(error);
+  }
 };
 
 export function isAuthMatching(
@@ -95,15 +119,6 @@ export function isAuthMatching(
 
   return true;
 }
-
-const isHTTPAuthException = (error: unknown): error is AuthHTTPException => {
-  return (
-    typeof error === "object" &&
-    error != null &&
-    "status" in error &&
-    "headers" in error
-  );
-};
 
 export const auth = (): MiddlewareHandler => {
   return async (c, next) => {
@@ -155,16 +170,7 @@ export const auth = (): MiddlewareHandler => {
       c.set("auth", { scopes, user });
       return next();
     } catch (error) {
-      if (isHTTPAuthException(error)) {
-        throw new HTTPException(error.status as ContentfulStatusCode, {
-          message: error.message,
-          res: new Response(error.message || "Unauthorized", {
-            status: error.status,
-            headers: error.headers,
-          }),
-        });
-      }
-      throw error;
+      throw convertError(error);
     }
   };
 };
