@@ -14,14 +14,14 @@ import {
 } from "../utils/hono.mjs";
 import { logError, logger } from "../logging.mjs";
 import { v4 as uuid4 } from "uuid";
-import type { AuthContext } from "../auth.mjs";
+import type { AuthContext } from "../auth/index.mjs";
 
 const api = new Hono();
 
 const createValidRun = async (
   threadId: string | undefined,
   payload: z.infer<typeof schemas.RunCreate>,
-  auth: AuthContext,
+  auth: AuthContext | undefined,
 ): Promise<Run> => {
   const { assistant_id: assistantId, ...run } = payload;
   const runId = uuid4();

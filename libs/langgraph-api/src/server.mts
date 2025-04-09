@@ -16,7 +16,8 @@ import { queue } from "./queue.mjs";
 import { logger, requestLogger } from "./logging.mjs";
 import { checkpointer } from "./storage/checkpoint.mjs";
 import { store as graphStore } from "./storage/store.mjs";
-import { auth, loadAuth } from "./auth.mjs";
+import { auth } from "./auth/custom.mjs";
+import { registerAuth } from "./auth/index.mjs";
 
 const app = new Hono();
 
@@ -100,7 +101,7 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
 
   if (options.auth?.path) {
     logger.info(`Loading auth from ${options.auth.path}`);
-    await loadAuth(options.auth, { cwd: options.cwd });
+    await registerAuth(options.auth, { cwd: options.cwd });
   }
 
   if (options.ui) {

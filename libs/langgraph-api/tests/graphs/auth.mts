@@ -92,13 +92,7 @@ export const auth = new Auth()
   .on("assistants:search", (params) => ({ owner: params.user.identity }))
   .on(["threads", "assistants"], ({ action, value, user }) => {
     const filters = { owner: user.identity };
-    if (
-      action === "threads:create_run" ||
-      action === "threads:update" ||
-      action === "threads:create" ||
-      action === "assistants:create" ||
-      action === "assistants:update"
-    ) {
+    if (action === "create" || action === "update" || action === "create_run") {
       value.metadata ??= {};
       value.metadata["owner"] = user.identity;
     }
