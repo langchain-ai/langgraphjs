@@ -85,3 +85,35 @@ export interface SessionPendingWrite {
 
   checkpointId: string;
 }
+
+/**
+ * Transformed task write operation
+ * Represents a structured format of a pending write operation
+ * for better sorting and processing
+ */
+export interface TransformedTaskWrite {
+  /**
+   * Task identifier
+   */
+  taskId: string;
+
+  /**
+   * Channel name
+   */
+  channel: string;
+
+  /**
+   * Write value
+   */
+  value: unknown;
+
+  /**
+   * Task path (checkpoint namespace)
+   */
+  taskPath: string;
+
+  /**
+   * Write index
+   */
+  writeIdx: number;
+}

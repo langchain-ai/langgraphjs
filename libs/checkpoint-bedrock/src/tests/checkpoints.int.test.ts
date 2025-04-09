@@ -48,10 +48,7 @@ const checkpoint2: Checkpoint = {
 
 let bedrockSavers: BedrockSessionSaver[] = [];
 
-describe.each([
-  { schema: undefined, description: "the default schema" },
-  { schema: "custom_schema", description: "a custom schema" },
-])("PostgresSaver with $description", ({ schema }) => {
+describe("Bedrock with $description", () => {
   let bedrockSaver: BedrockSessionSaver;
   let sessionId: string;
 

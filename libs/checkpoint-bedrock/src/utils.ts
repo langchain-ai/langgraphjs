@@ -18,6 +18,7 @@ import {
   BedrockSessionContentBlock,
   SessionCheckpoint,
   SessionPendingWrite,
+  TransformedTaskWrite,
 } from "./models.js";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { threadId } from "worker_threads";
@@ -265,31 +266,39 @@ export async function processWritesInvocationContentBlocks(
 /**
  * Transform pending task writes
  * @param pendingWrites - The pending writes to transform
- * @returns Array of transformed writes
+ * @returns Array of transformed writes sorted by task_path (checkpointNs), taskId, and writeIdx
  */
 export function transformPendingTaskWrites(
-  pendingWrites: SessionPendingWrite[]
-): [string, string, unknown][] {
-  // Group writes by task ID
-  const writesByTaskId = new Map<string, SessionPendingWrite[]>();
+  pendingWrites: SessionPendingWrite[],
+): TransformedTaskWrite[] {
+  // Import TASKS constant from langgraph
+  const TASKS = '__pregel_tasks';
 
-  for (const write of pendingWrites) {
-    if (!writesByTaskId.has(write.taskId)) {
-      writesByTaskId.set(write.taskId, []);
-    }
-    writesByTaskId.get(write.taskId)!.push(write);
-  }
+  // Filter writes to only include TASKS channel
+  const taskWrites = pendingWrites.filter(write => write.channel === TASKS);
 
-  // Sort writes by write index
-  const result: [string, string, unknown][] = [];
+  // Transform to structured format with all required fields
+  const result: TransformedTaskWrite[] = taskWrites.map(write => ({
+    taskId: write.taskId,
+    channel: write.channel,
+    value: write.value,
+    taskPath: write.checkpointNs, // Using checkpointNs as task_path equivalent
+    writeIdx: write.writeIdx,
+  }));
 
-  for (const [taskId, writes] of writesByTaskId.entries()) {
-    writes.sort((a, b) => a.writeIdx - b.writeIdx);
+  // Sort by task_path (checkpointNs), taskId, and writeIdx
+  result.sort((a, b) => {
+    // Compare task_path (checkpointNs)
+    if (a.taskPath < b.taskPath) return -1;
+    if (a.taskPath > b.taskPath) return 1;
 
-    for (const write of writes) {
-      result.push([taskId, write.channel, write.value]);
-    }
-  }
+    // Compare taskId
+    if (a.taskId < b.taskId) return -1;
+    if (a.taskId > b.taskId) return 1;
+
+    // Compare writeIdx
+    return a.writeIdx - b.writeIdx;
+  });
 
   return result;
 }
@@ -349,7 +358,7 @@ export async function constructCheckpointTuple(
   checkpointNs: string,
   sessionCheckpoint: SessionCheckpoint,
   pendingWriteOps: SessionPendingWrite[],
-  sends: [string, string, unknown][],
+  sends: TransformedTaskWrite[],
   serde: SerializerProtocol
 ): Promise<CheckpointTuple> {
   const checkpoint = JSON.parse(sessionCheckpoint.checkpoint);
@@ -368,12 +377,12 @@ export async function constructCheckpointTuple(
 
   const parentConfig = sessionCheckpoint.parentCheckpointId
     ? {
-        configurable: {
-          thread_id: threadId,
-          checkpoint_ns: checkpointNs,
-          checkpoint_id: sessionCheckpoint.parentCheckpointId,
-        },
-      }
+      configurable: {
+        thread_id: threadId,
+        checkpoint_ns: checkpointNs,
+        checkpoint_id: sessionCheckpoint.parentCheckpointId,
+      },
+    }
     : undefined;
 
   const pendingWrites = pendingWriteOps.map(
@@ -387,7 +396,7 @@ export async function constructCheckpointTuple(
       ...checkpoint,
       pending_sends: await Promise.all(
         sends.map(
-          async ([, , value]) => await deserializeData(serde, String(value))
+          async (send) => await deserializeData(serde, String(send.value))
         )
       ),
       channel_values: await deserializeData(
@@ -411,9 +420,9 @@ export function isConflictException(
 ): error is ConflictException {
   return Boolean(
     error &&
-      typeof error === "object" &&
-      "name" in error &&
-      error.name === "ConflictException"
+    typeof error === "object" &&
+    "name" in error &&
+    error.name === "ConflictException"
   );
 }
 
@@ -427,8 +436,8 @@ export function isResourceNotFoundException(
 ): error is ResourceNotFoundException {
   return Boolean(
     error &&
-      typeof error === "object" &&
-      "name" in error &&
-      error.name === "ResourceNotFoundException"
+    typeof error === "object" &&
+    "name" in error &&
+    error.name === "ResourceNotFoundException"
   );
 }
