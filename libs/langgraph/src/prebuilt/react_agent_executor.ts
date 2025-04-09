@@ -345,14 +345,20 @@ export type CreateReactAgentParams<
   /**
    * An optional schema for the final agent output.
    *
-   * If provided, output will be formatted to match the given schema and returned in the 'structured_response' state key.
-   * If not provided, `structured_response` will not be present in the output state.
+   * If provided, output will be formatted to match the given schema and returned in the 'structuredResponse' state key.
+   * If not provided, `structuredResponse` will not be present in the output state.
    *
    * Can be passed in as:
    *   - Zod schema
-   *   - Dictionary object
-   *   - [prompt, schema], where schema is one of the above.
+   *   - JSON schema
+   *   - { prompt, schema }, where schema is one of the above.
    *        The prompt will be used together with the model that is being used to generate the structured response.
+   *
+   * @remarks
+   * **Important**: `responseFormat` requires the model to support `.withStructuredOutput()`.
+   *
+   * **Note**: The graph will make a separate call to the LLM to generate the structured response after the agent loop is finished.
+   * This is not the only strategy to get structured responses, see more options in [this guide](https://langchain-ai.github.io/langgraph/how-tos/react-agent-structured-output/).
    */
   responseFormat?:
     | z.ZodType<StructuredResponseType>
