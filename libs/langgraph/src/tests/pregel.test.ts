@@ -10418,6 +10418,57 @@ graph TD;
     // @ts-expect-error `language` is not in the output schema
     void res.language;
   });
+
+  it("can goto an interrupt", async () => {
+    const checkpointer = await createCheckpointer();
+    const configurable = { thread_id: "1" };
+
+    const graph = new StateGraph(
+      Annotation.Root({
+        messages: Annotation<string[], string | string[]>({
+          default: () => [],
+          reducer: (a, b) => [...a, ...(Array.isArray(b) ? b : [b])],
+        }),
+      })
+    )
+      .addNode("router", () => new Command({ goto: END }), {
+        ends: ["interrupt", END],
+      })
+      .addNode("interrupt", () => ({
+        messages: [`interrupt: ${interrupt("interrupt")}`],
+      }))
+      .addEdge(START, "router")
+      .compile({ checkpointer });
+
+    await graph.invoke({ messages: ["input"] }, { configurable });
+    let state = await graph.getState({ configurable });
+
+    expect(state.next).toEqual([]);
+    expect(state.values).toEqual({ messages: ["input"] });
+
+    await graph.invoke(
+      new Command({ goto: "interrupt", update: { messages: ["update"] } }),
+      { configurable }
+    );
+    state = await graph.getState({ configurable });
+
+    expect(state.next).toEqual(["interrupt"]);
+    expect(state.values).toEqual({ messages: ["input", "update"] });
+    expect(state.tasks).toMatchObject([
+      {
+        name: "interrupt",
+        interrupts: [{ value: "interrupt", when: "during", resumable: true }],
+      },
+    ]);
+
+    await graph.invoke(new Command({ resume: "resume" }), { configurable });
+    state = await graph.getState({ configurable });
+
+    expect(state.next).toEqual([]);
+    expect(state.values).toEqual({
+      messages: ["input", "update", "interrupt: resume"],
+    });
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
