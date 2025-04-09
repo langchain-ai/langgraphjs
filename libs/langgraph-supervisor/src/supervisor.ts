@@ -131,7 +131,7 @@ export type CreateSupervisorParams<
  * Can be passed in as:
  *   - Zod schema
  *   - JSON schema
- *   - [prompt, schema], where schema is one of the above.
+ *   - { prompt, schema }, where schema is one of the above.
  *        The prompt will be used together with the model that is being used to generate the structured response.
  *
  * @remarks
