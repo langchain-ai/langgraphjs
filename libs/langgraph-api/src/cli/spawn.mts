@@ -12,6 +12,7 @@ export async function spawnServer(
       graphs: Record<string, string>;
       ui?: Record<string, string>;
       ui_config?: { shared?: string[] };
+      auth?: { path?: string; disable_studio_auth?: boolean };
     };
     env: NodeJS.ProcessEnv;
     hostUrl: string;
@@ -56,6 +57,7 @@ For production use, please use LangGraph Cloud.
         nWorkers: Number.parseInt(args.nJobsPerWorker, 10),
         host: args.host,
         graphs: context.config.graphs,
+        auth: context.config.auth,
         ui: context.config.ui,
         ui_config: context.config.ui_config,
         cwd: options.projectCwd,

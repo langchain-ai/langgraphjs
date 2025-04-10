@@ -5,7 +5,11 @@ import { dirname, resolve } from "node:path";
 import { parse } from "dotenv";
 
 const configPath = fileURLToPath(
-  new URL("./graphs/langgraph.json", import.meta.url),
+  new URL(
+    process.argv.findLast((arg) => arg.endsWith(".json")) ??
+      "./graphs/langgraph.json",
+    import.meta.url,
+  ),
 );
 const config = JSON.parse(await readFile(configPath, "utf-8"));
 

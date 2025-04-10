@@ -50,6 +50,7 @@ export const AssistantPatch = z
   .object({
     graph_id: z.string().describe("The graph to use.").optional(),
     config: AssistantConfig.optional(),
+    name: z.string().optional(),
     metadata: z
       .object({})
       .catchall(z.any())

@@ -31,7 +31,7 @@ export const NAMESPACE_GRAPH = uuid.parse(
   "6ba7b821-9dad-11d1-80b4-00c04fd430c8",
 );
 
-const ConfigSchema = z.record(z.unknown());
+const ConfigSchema = z.record(z.record(z.unknown()));
 
 export const getAssistantId = (graphId: string) => {
   if (graphId in GRAPHS) return uuid.v5(graphId, NAMESPACE_GRAPH);
@@ -61,13 +61,17 @@ export async function registerFromEnv(
       GRAPHS[graphId] = resolved;
       GRAPH_SPEC[graphId] = spec;
 
-      await Assistants.put(uuid.v5(graphId, NAMESPACE_GRAPH), {
-        graph_id: graphId,
-        metadata: { created_by: "system" },
-        config: config ?? {},
-        if_exists: "do_nothing",
-        name: graphId,
-      });
+      await Assistants.put(
+        uuid.v5(graphId, NAMESPACE_GRAPH),
+        {
+          graph_id: graphId,
+          metadata: { created_by: "system" },
+          config: config ?? {},
+          if_exists: "do_nothing",
+          name: graphId,
+        },
+        undefined,
+      );
 
       return resolved;
     }),

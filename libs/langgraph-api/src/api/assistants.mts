@@ -9,71 +9,7 @@ import { getAssistantId, getGraph, getGraphSchema } from "../graph/load.mjs";
 import { Assistants } from "../storage/ops.mjs";
 import * as schemas from "../schemas.mjs";
 import { HTTPException } from "hono/http-exception";
-
 const api = new Hono();
-
-api.post(
-  "/assistants",
-  zValidator("json", schemas.AssistantCreate),
-  async (c) => {
-    // Create Assistant
-    const payload = c.req.valid("json");
-    const assistant = await Assistants.put(payload.assistant_id ?? uuid(), {
-      config: payload.config ?? {},
-      graph_id: payload.graph_id,
-      metadata: payload.metadata ?? {},
-      if_exists: payload.if_exists ?? "raise",
-      name: payload.name ?? "Untitled",
-    });
-
-    return c.json(assistant);
-  },
-);
-
-api.post(
-  "/assistants/search",
-  zValidator("json", schemas.AssistantSearchRequest),
-  async (c) => {
-    // Search Assistants
-    const payload = c.req.valid("json");
-    const result: unknown[] = [];
-
-    for await (const item of Assistants.search({
-      graph_id: payload.graph_id,
-      metadata: payload.metadata,
-      limit: payload.limit ?? 10,
-      offset: payload.offset ?? 0,
-    })) {
-      result.push(item);
-    }
-
-    return c.json(result);
-  },
-);
-
-api.get("/assistants/:assistant_id", async (c) => {
-  // Get Assistant
-  const assistantId = getAssistantId(c.req.param("assistant_id"));
-  return c.json(await Assistants.get(assistantId));
-});
-
-api.delete("/assistants/:assistant_id", async (c) => {
-  // Delete Assistant
-  const assistantId = getAssistantId(c.req.param("assistant_id"));
-  return c.json(await Assistants.delete(assistantId));
-});
-
-api.patch(
-  "/assistants/:assistant_id",
-  zValidator("json", schemas.AssistantPatch),
-  async (c) => {
-    // Patch Assistant
-    const assistantId = getAssistantId(c.req.param("assistant_id"));
-    const payload = c.req.valid("json");
-
-    return c.json(await Assistants.patch(assistantId, payload));
-  },
-);
 
 const RunnableConfigSchema = z.object({
   tags: z.array(z.string()).optional(),
@@ -100,13 +36,83 @@ const getRunnableConfig = (
   };
 };
 
+api.post(
+  "/assistants",
+  zValidator("json", schemas.AssistantCreate),
+  async (c) => {
+    // Create Assistant
+    const payload = c.req.valid("json");
+    const assistant = await Assistants.put(
+      payload.assistant_id ?? uuid(),
+      {
+        config: payload.config ?? {},
+        graph_id: payload.graph_id,
+        metadata: payload.metadata ?? {},
+        if_exists: payload.if_exists ?? "raise",
+        name: payload.name ?? "Untitled",
+      },
+      c.var.auth,
+    );
+
+    return c.json(assistant);
+  },
+);
+
+api.post(
+  "/assistants/search",
+  zValidator("json", schemas.AssistantSearchRequest),
+  async (c) => {
+    // Search Assistants
+    const payload = c.req.valid("json");
+    const result: unknown[] = [];
+
+    for await (const item of Assistants.search(
+      {
+        graph_id: payload.graph_id,
+        metadata: payload.metadata,
+        limit: payload.limit ?? 10,
+        offset: payload.offset ?? 0,
+      },
+      c.var.auth,
+    )) {
+      result.push(item);
+    }
+
+    return c.json(result);
+  },
+);
+
+api.get("/assistants/:assistant_id", async (c) => {
+  // Get Assistant
+  const assistantId = getAssistantId(c.req.param("assistant_id"));
+  return c.json(await Assistants.get(assistantId, c.var.auth));
+});
+
+api.delete("/assistants/:assistant_id", async (c) => {
+  // Delete Assistant
+  const assistantId = getAssistantId(c.req.param("assistant_id"));
+  return c.json(await Assistants.delete(assistantId, c.var.auth));
+});
+
+api.patch(
+  "/assistants/:assistant_id",
+  zValidator("json", schemas.AssistantPatch),
+  async (c) => {
+    // Patch Assistant
+    const assistantId = getAssistantId(c.req.param("assistant_id"));
+    const payload = c.req.valid("json");
+
+    return c.json(await Assistants.patch(assistantId, payload, c.var.auth));
+  },
+);
+
 api.get(
   "/assistants/:assistant_id/graph",
   zValidator("query", z.object({ xray: schemas.coercedBoolean.optional() })),
   async (c) => {
     // Get Assistant Graph
     const assistantId = getAssistantId(c.req.param("assistant_id"));
-    const assistant = await Assistants.get(assistantId);
+    const assistant = await Assistants.get(assistantId, c.var.auth);
     const { xray } = c.req.valid("query");
 
     const config = getRunnableConfig(assistant.config);
@@ -122,7 +128,7 @@ api.get(
 api.get("/assistants/:assistant_id/schemas", async (c) => {
   // Get Assistant Schemas
   const assistantId = getAssistantId(c.req.param("assistant_id"));
-  const assistant = await Assistants.get(assistantId);
+  const assistant = await Assistants.get(assistantId, c.var.auth);
 
   const graphSchema = await getGraphSchema(assistant.graph_id);
   const rootGraphId = Object.keys(graphSchema).find((i) => !i.includes("|"));
@@ -152,7 +158,7 @@ api.get(
     const { recurse } = c.req.valid("query");
 
     const assistantId = getAssistantId(assistant_id);
-    const assistant = await Assistants.get(assistantId);
+    const assistant = await Assistants.get(assistantId, c.var.auth);
 
     const config = getRunnableConfig(assistant.config);
     const graph = await getGraph(assistant.graph_id, config);
@@ -188,7 +194,7 @@ api.post(
     // Set Latest Assistant Version
     const assistantId = getAssistantId(c.req.param("assistant_id"));
     const { version } = c.req.valid("json");
-    return c.json(await Assistants.setLatest(assistantId, version));
+    return c.json(await Assistants.setLatest(assistantId, version, c.var.auth));
   },
 );
 
@@ -206,13 +212,19 @@ api.post(
     // Get Assistant Versions
     const assistantId = getAssistantId(c.req.param("assistant_id"));
     const { limit, offset, metadata } = c.req.valid("json");
-    return c.json(
-      await Assistants.getVersions(assistantId, {
-        limit,
-        offset,
-        metadata,
-      }),
+    const versions = await Assistants.getVersions(
+      assistantId,
+      { limit, offset, metadata },
+      c.var.auth,
     );
+
+    if (!versions?.length) {
+      throw new HTTPException(404, {
+        message: `Assistant "${assistantId}" not found.`,
+      });
+    }
+
+    return c.json(versions);
   },
 );
 

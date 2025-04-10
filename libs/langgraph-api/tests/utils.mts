@@ -15,3 +15,33 @@ export function findLast<T, S extends T>(
   }
   return undefined;
 }
+
+export async function truncate(
+  apiUrl: string,
+  options:
+    | {
+        runs?: boolean;
+        threads?: boolean;
+        assistants?: boolean;
+        store?: boolean;
+        checkpoint?: boolean;
+      }
+    | "all",
+) {
+  const flags =
+    options === "all"
+      ? {
+          runs: true,
+          threads: true,
+          assistants: true,
+          store: true,
+          checkpoint: true,
+        }
+      : options;
+
+  await fetch(`${apiUrl}/internal/truncate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(flags),
+  });
+}

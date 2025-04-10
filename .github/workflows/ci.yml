@@ -135,4 +135,42 @@ jobs:
       - name: Run integration tests
         working-directory: libs/langgraph-api
         run: |
-          pnpm run test:api
+          pnpm run test:api ./tests/api.test.mts
+
+  test-auth:
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false # Allow all tests to run even if one fails
+      matrix:
+        node-version:
+          - "20.x"
+          - "22.x"
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.2.0
+      - uses: actions/setup-node@v4
+        name: actions/setup-node@v4 for ${{ matrix.node-version }}
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: |
+          pnpm install
+
+      - name: Build
+        working-directory: libs/langgraph-api
+        run: |
+          pnpm turbo run build
+
+      - name: Run integration tests
+        working-directory: libs/langgraph-api
+        run: |
+          pnpm run test:api -c ./graphs/langgraph.auth.json ./tests/auth.test.mts
