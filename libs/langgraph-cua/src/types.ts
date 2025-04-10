@@ -1,3 +1,4 @@
+import { CreateSessionParams } from "@hyperbrowser/sdk/types";
 import { SystemMessage } from "@langchain/core/messages";
 import { getEnvironmentVariable } from "@langchain/core/utils/env";
 import {
@@ -16,6 +17,8 @@ export const BLOCKED_DOMAINS = [
   "suspiciouspins.com",
   "ilanbigio.com",
 ];
+
+export type Provider = "scrapybara" | "hyperbrowser";
 
 export type CUAEnvironment = "web" | "ubuntu" | "windows";
 
@@ -51,12 +54,36 @@ export const CUAAnnotation = Annotation.Root({
 
 export const CUAConfigurable = Annotation.Root({
   /**
+   * The provider to use for the browser instance.
+   * @default "scrapybara"
+   */
+  provider: Annotation<Provider>({
+    reducer: (_state, update) => update,
+    default: () => "scrapybara",
+  }),
+  /**
    * The API key to use for Scrapybara.
    * @default {process.env.SCRAPYBARA_API_KEY}
    */
   scrapybaraApiKey: Annotation<string | undefined>({
     reducer: (_state, update) => update,
     default: () => getEnvironmentVariable("SCRAPYBARA_API_KEY"),
+  }),
+  /**
+   * The API key to use for Hyperbrowser.
+   * @default {process.env.HYPERBROWSER_API_KEY}
+   */
+  hyperbrowserApiKey: Annotation<string | undefined>({
+    reducer: (_state, update) => update,
+    default: () => getEnvironmentVariable("HYPERBROWSER_API_KEY"),
+  }),
+  /**
+   * Parameters to use for configuring the Hyperbrowser session, such as screen dimensions.
+   * For more information on the available parameters, see the [Hyperbrowser API documentation](https://docs.hyperbrowser.ai/sessions/overview/session-parameters).
+   */
+  sessionParams: Annotation<CreateSessionParams | undefined>({
+    reducer: (_state, update) => update,
+    default: () => undefined,
   }),
   /**
    * The number of hours to keep the virtual machine running before it times out.
@@ -128,9 +155,14 @@ export function getConfigurationWithDefaults(
   config: LangGraphRunnableConfig
 ): typeof CUAConfigurable.State {
   return {
+    provider: config.configurable?.provider ?? "scrapybara",
     scrapybaraApiKey:
       config.configurable?.scrapybaraApiKey ||
       getEnvironmentVariable("SCRAPYBARA_API_KEY"),
+    hyperbrowserApiKey:
+      config.configurable?.hyperbrowserApiKey ||
+      getEnvironmentVariable("HYPERBROWSER_API_KEY"),
+    sessionParams: config.configurable?.sessionParams ?? undefined,
     timeoutHours: config.configurable?.timeoutHours ?? 1,
     zdrEnabled: config.configurable?.zdrEnabled ?? false,
     environment: config.configurable?.environment ?? "web",
