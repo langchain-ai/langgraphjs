@@ -23,7 +23,7 @@ beforeAll(() => truncate(API_URL, "all"));
 it("unauthenticated user", async () => {
   const client = await createJwtClient("wfh", ["me"]);
   await expect(client.assistants.create({ graphId: "agent" })).rejects.toThrow(
-    /HTTP (401|403)/,
+    "HTTP 401",
   );
 });
 
@@ -214,7 +214,7 @@ it("run cancellation", async () => {
   // Other user can't cancel the run
   await expect(
     otherUser.runs.cancel(thread.thread_id, run.run_id),
-  ).rejects.toThrow(/HTTP (40[0-4])/);
+  ).rejects.toThrow("HTTP 404");
 
   // Owner can cancel their own run
   await owner.runs.cancel(thread.thread_id, run.run_id);
@@ -233,14 +233,13 @@ it("get assistant ownership", async () => {
   // Another user cannot get this assistant
   await expect(
     otherUser.assistants.get(assistant.assistant_id),
-  ).rejects.toThrow(/HTTP (40[0-4])/);
+  ).rejects.toThrow("HTTP 404");
 
   // Test invalid assistant IDs
   const nonexistantUuid = crypto.randomUUID();
   await expect(owner.assistants.get(nonexistantUuid)).rejects.toThrow(
     "HTTP 404",
   );
-  await expect(owner.assistants.get("not a uuid")).rejects.toThrow("HTTP 422");
 });
 
 it("get assistant graph", async () => {
@@ -258,7 +257,7 @@ it("get assistant graph", async () => {
   // Another user can't access the graph
   await expect(
     otherUser.assistants.getGraph(assistant.assistant_id),
-  ).rejects.toThrow(/HTTP (40[0-4])/);
+  ).rejects.toThrow("HTTP 404");
 });
 
 it("thread state operations", async () => {

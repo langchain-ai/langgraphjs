@@ -33,7 +33,7 @@ async function callModel(
 ): Promise<typeof AgentState.Update> {
   let userId: string | undefined;
 
-  if (process.env.LANGGRAPH_AUTH) {
+  if (config.configurable?.langgraph_auth_user != null) {
     const user = config.configurable?.langgraph_auth_user as
       | { identity: string }
       | undefined;

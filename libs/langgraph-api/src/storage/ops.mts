@@ -929,10 +929,10 @@ export class Threads {
     return conn.with((STORE) => {
       const thread = STORE.threads[thread_id];
       if (!thread)
-        throw new HTTPException(404, { message: "Thread not found" });
+        throw new HTTPException(409, { message: "Thread not found" });
 
       if (!isAuthMatching(thread["metadata"], filters)) {
-        throw new HTTPException(404, { message: "Thread not found" });
+        throw new HTTPException(409, { message: "Thread not found" });
       }
 
       const newThreadId = uuid4();
@@ -1274,7 +1274,7 @@ export class Runs {
         existingThread &&
         !isAuthMatching(existingThread["metadata"], filters)
       ) {
-        throw new HTTPException(403);
+        throw new HTTPException(404);
       }
 
       const now = new Date();
@@ -1634,7 +1634,10 @@ export class Runs {
         if (filters != null && threadId != null) {
           const thread = STORE.threads[threadId];
           if (!isAuthMatching(thread["metadata"], filters)) {
-            yield { event: "error", data: "Thread not found" };
+            yield {
+              event: "error",
+              data: { error: "Error", message: "404: Thread not found" },
+            };
             return;
           }
         }

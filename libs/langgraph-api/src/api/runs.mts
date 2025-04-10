@@ -21,9 +21,13 @@ const api = new Hono();
 const createValidRun = async (
   threadId: string | undefined,
   payload: z.infer<typeof schemas.RunCreate>,
-  auth: AuthContext | undefined,
+  kwargs: {
+    auth: AuthContext | undefined;
+    headers: Headers | undefined;
+  },
 ): Promise<Run> => {
   const { assistant_id: assistantId, ...run } = payload;
+  const { auth, headers } = kwargs;
   const runId = uuid4();
 
   const streamMode = Array.isArray(payload.stream_mode)
@@ -46,6 +50,32 @@ const createValidRun = async (
   if (run.checkpoint) {
     config.configurable ??= {};
     Object.assign(config.configurable, run.checkpoint);
+  }
+
+  if (headers) {
+    for (const [rawKey, value] of headers.entries()) {
+      const key = rawKey.toLowerCase();
+      if (key.startsWith("x-")) {
+        if (["x-api-key", "x-tenant-id", "x-service-key"].includes(key)) {
+          continue;
+        }
+
+        config.configurable ??= {};
+        config.configurable[key] = value;
+      } else if (key === "user-agent") {
+        config.configurable ??= {};
+        config.configurable[key] = value;
+      }
+    }
+  }
+
+  let userId: string | undefined;
+  if (auth) {
+    userId = auth.user.identity ?? auth.user.id;
+    config.configurable ??= {};
+    config.configurable["langgraph_auth_user"] = auth.user;
+    config.configurable["langgraph_auth_user_id"] = userId;
+    config.configurable["langgraph_auth_permissions"] = auth.scopes;
   }
 
   let feedbackKeys =
@@ -74,6 +104,7 @@ const createValidRun = async (
     },
     {
       threadId,
+      userId,
       metadata: run.metadata,
       status: "pending",
       multitaskStrategy,
@@ -159,7 +190,10 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
   // Stream Stateless Run
   const payload = c.req.valid("json");
 
-  const run = await createValidRun(undefined, payload, c.var.auth);
+  const run = await createValidRun(undefined, payload, {
+    auth: c.var.auth,
+    headers: c.req.raw.headers,
+  });
   return streamSSE(c, async (stream) => {
     const cancelOnDisconnect =
       payload.on_disconnect === "cancel"
@@ -184,14 +218,20 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
 api.post("/runs/wait", zValidator("json", schemas.RunCreate), async (c) => {
   // Wait Stateless Run
   const payload = c.req.valid("json");
-  const run = await createValidRun(undefined, payload, c.var.auth);
+  const run = await createValidRun(undefined, payload, {
+    auth: c.var.auth,
+    headers: c.req.raw.headers,
+  });
   return waitKeepAlive(c, Runs.wait(run.run_id, undefined, c.var.auth));
 });
 
 api.post("/runs", zValidator("json", schemas.RunCreate), async (c) => {
   // Create Stateless Run
   const payload = c.req.valid("json");
-  const run = await createValidRun(undefined, payload, c.var.auth);
+  const run = await createValidRun(undefined, payload, {
+    auth: c.var.auth,
+    headers: c.req.raw.headers,
+  });
   return jsonExtra(c, run);
 });
 
@@ -202,7 +242,12 @@ api.post(
     // Batch Runs
     const payload = c.req.valid("json");
     const runs = await Promise.all(
-      payload.map((run) => createValidRun(undefined, run, c.var.auth)),
+      payload.map((run) =>
+        createValidRun(undefined, run, {
+          auth: c.var.auth,
+          headers: c.req.raw.headers,
+        }),
+      ),
     );
     return jsonExtra(c, runs);
   },
@@ -243,7 +288,10 @@ api.post(
     const { thread_id } = c.req.valid("param");
     const payload = c.req.valid("json");
 
-    const run = await createValidRun(thread_id, payload, c.var.auth);
+    const run = await createValidRun(thread_id, payload, {
+      auth: c.var.auth,
+      headers: c.req.raw.headers,
+    });
     return jsonExtra(c, run);
   },
 );
@@ -257,7 +305,10 @@ api.post(
     const { thread_id } = c.req.valid("param");
     const payload = c.req.valid("json");
 
-    const run = await createValidRun(thread_id, payload, c.var.auth);
+    const run = await createValidRun(thread_id, payload, {
+      auth: c.var.auth,
+      headers: c.req.raw.headers,
+    });
     return streamSSE(c, async (stream) => {
       const cancelOnDisconnect =
         payload.on_disconnect === "cancel"
@@ -289,7 +340,10 @@ api.post(
     const { thread_id } = c.req.valid("param");
     const payload = c.req.valid("json");
 
-    const run = await createValidRun(thread_id, payload, c.var.auth);
+    const run = await createValidRun(thread_id, payload, {
+      auth: c.var.auth,
+      headers: c.req.raw.headers,
+    });
     return waitKeepAlive(c, Runs.join(run.run_id, thread_id, c.var.auth));
   },
 );
@@ -307,6 +361,7 @@ api.get(
       Threads.get(thread_id, c.var.auth),
     ]);
 
+    if (run == null) throw new HTTPException(404, { message: "Run not found" });
     return jsonExtra(c, run);
   },
 );

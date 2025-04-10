@@ -212,13 +212,19 @@ api.post(
     // Get Assistant Versions
     const assistantId = getAssistantId(c.req.param("assistant_id"));
     const { limit, offset, metadata } = c.req.valid("json");
-    return c.json(
-      await Assistants.getVersions(
-        assistantId,
-        { limit, offset, metadata },
-        c.var.auth,
-      ),
+    const versions = await Assistants.getVersions(
+      assistantId,
+      { limit, offset, metadata },
+      c.var.auth,
     );
+
+    if (!versions?.length) {
+      throw new HTTPException(404, {
+        message: `Assistant "${assistantId}" not found.`,
+      });
+    }
+
+    return c.json(versions);
   },
 );
 
