@@ -43,11 +43,12 @@ export function isAuthMatching(
 
 export const handleAuthEvent = async <T extends keyof AuthEventValueMap>(
   context: AuthContext | undefined,
-  action: T,
+  event: T,
   value: AuthEventValueMap[T],
 ): Promise<[AuthFilters | undefined, value: AuthEventValueMap[T]]> => {
+  const [resource, action] = event.split(":");
   const result = await authorize({
-    resource: action,
+    resource,
     action,
     context,
     value,

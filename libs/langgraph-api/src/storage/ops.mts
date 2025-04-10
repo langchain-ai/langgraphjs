@@ -315,8 +315,6 @@ export class Assistants {
             return false;
           }
 
-          console.log(assistant);
-
           if (!isAuthMatching(assistant["metadata"], filters)) {
             return false;
           }
