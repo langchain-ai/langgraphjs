@@ -143,7 +143,6 @@ jobs:
       fail-fast: false # Allow all tests to run even if one fails
       matrix:
         node-version:
-          - "18.x"
           - "20.x"
           - "22.x"
         os:
