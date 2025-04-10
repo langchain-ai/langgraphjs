@@ -1,8 +1,9 @@
 import { Auth, HTTPException } from "@langchain/langgraph-sdk/auth";
-import { verify } from "hono/jwt";
+import { JWTPayload, jwtVerify } from "jose";
 
-const SECRET_KEY =
-  "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7";
+const SECRET_KEY = new TextEncoder().encode(
+  "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7",
+);
 const ALGORITHM = "HS256";
 
 const USERS_DB: Record<
@@ -51,14 +52,13 @@ export const auth = new Auth()
       throw exc;
     }
 
-    let payload: Awaited<ReturnType<typeof verify>> | undefined;
-
+    let payload: JWTPayload | undefined;
     try {
-      payload = await verify(
-        authorization.split(" ")[1],
-        SECRET_KEY,
-        ALGORITHM,
-      );
+      const token = authorization.split(" ")[1];
+      const result = await jwtVerify(token, SECRET_KEY, {
+        algorithms: [ALGORITHM],
+      });
+      payload = result.payload;
     } catch (error) {
       throw new HTTPException(401, {
         message: "Failed to verify JWT token",

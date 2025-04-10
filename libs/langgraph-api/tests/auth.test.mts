@@ -1,17 +1,22 @@
 import { Client } from "@langchain/langgraph-sdk";
 import { beforeAll, expect, it } from "vitest";
 import { gatherIterator, truncate } from "./utils.mjs";
-import { sign } from "hono/jwt";
+import { SignJWT } from "jose";
 
 const API_URL = "http://localhost:2024";
 const config = { configurable: { user_id: "123" } };
 
-const SECRET_KEY =
-  "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7";
+const SECRET_KEY = new TextEncoder().encode(
+  "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7",
+);
 const ALGORITHM = "HS256";
 
 const createJwtClient = async (sub: string, scopes: string[] = []) => {
-  const accessToken = await sign({ sub, scopes }, SECRET_KEY, ALGORITHM);
+  const accessToken = await new SignJWT({ sub, scopes })
+    .setProtectedHeader({ alg: ALGORITHM })
+    .setIssuedAt()
+    .setExpirationTime("10s")
+    .sign(SECRET_KEY);
   return new Client({
     apiUrl: API_URL,
     defaultHeaders: { Authorization: `Bearer ${accessToken}` },
