@@ -11,7 +11,7 @@ While often used interchangeably, these terms represent distinct security concep
 - [**Authentication**](#authentication) ("AuthN") verifies _who_ you are. This runs as middleware for every request.
 - [**Authorization**](#authorization) ("AuthZ") determines _what you can do_. This validates the user's privileges and roles on a per-resource basis.
 
-In LangGraph Platform, authentication is handled by your [`authenticate()`](TODO) handler, and authorization is handled by your [`on()`](TODO) handlers.
+In LangGraph Platform, authentication is handled by your [`authenticate()`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#authenticate) handler, and authorization is handled by your [`on()`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#on) handlers.
 
 ### Default Security Models
 
@@ -84,21 +84,21 @@ sequenceDiagram
     LG-->>Client: 8. Return resources
 ```
 
-Your [`authenticate()`](TODO) handler in LangGraph handles steps 4-6, while your [`on()`](TODO) handlers implement step 7.
+Your [`authenticate()`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#authenticate) handler in LangGraph handles steps 4-6, while your [`on()`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#on) handlers implement step 7.
 
 ## Authentication
 
-Authentication in LangGraph runs as middleware on every request. Your [`authenticate()`](TODO) handler receives request information and should:
+Authentication in LangGraph runs as middleware on every request. Your [`authenticate()`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#authenticate) handler receives request information and should:
 
 1. Validate the credentials
-2. Return [user info](TODO) containing the user's identity and user information if valid
-3. Raise an [HTTP error](TODO) or an error if invalid
+2. Return user information containing the user's identity and user information if valid
+3. Raise an [`HTTPException`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#class-httpexception) or an error if invalid
 
 ```typescript
 import { Auth, HTTPException } from "@langchain/langgraph-sdk/auth";
 
+// (1) Validate the credentials
 const isValidKey = (key: string) => {
-  // TODO: Implement key validation logic
   return true;
 };
 
@@ -106,9 +106,11 @@ export const auth = new Auth().authenticate(async (request: Request) => {
   const apiKey = request.headers.get("x-api-key");
 
   if (!apiKey || !isValidKey(apiKey)) {
+    // (3) Raise an HTTPException
     throw new HTTPException(401, { message: "Invalid API key" });
   }
 
+  // (2) Return user information containing the user's identity and user information if valid
   return {
     // required, unique user identifier
     identity: "user-123",
@@ -126,24 +128,24 @@ export const auth = new Auth().authenticate(async (request: Request) => {
 
 The returned user information is available:
 
-- To your authorization handlers via [`user`](TODO)
+- To your authorization handlers via `user` property in [`on()`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#on) callback.
 - In your application via `config["configuration"]["langgraph_auth_user"]`
 
 ??? info "`Request` input parameter"
 
-    The [`authenticate()`](TODO) handler accepts a [Request](https://developer.mozilla.org/en-US/docs/Web/API/Request/Request) instance as an argument, but the `Request` object may not include the request body.
+    The [`authenticate()`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#authenticate) handler accepts a [Request](https://developer.mozilla.org/en-US/docs/Web/API/Request/Request) instance as an argument, but the `Request` object may not include the request body.
 
     You can still use the `Request` instance to extract other fields such as headers, query parameters etc.
 
 ## Authorization
 
-After authentication, LangGraph calls your [`on()`](TODO) handlers to control access to specific resources (e.g., threads, assistants, crons). These handlers can:
+After authentication, LangGraph calls your [`on()`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#on) handlers to control access to specific resources (e.g., threads, assistants, crons). These handlers can:
 
 1. Add metadata to be saved during resource creation by mutating the `value["metadata"]` object directly. See the [supported actions table](#supported-actions) for the list of types the value can take for each action.
-2. Filter resources by metadata during search/list or read operations by returning a [filter dictionary](#filter-operations).
+2. Filter resources by metadata during search/list or read operations by returning a [filter object](#filter-operations).
 3. Raise an HTTP error if access is denied.
 
-If you want to just implement simple user-scoped access control, you can use a single [`on()`](TODO) handler for all resources and actions. If you want to have different control depending on the resource and action, you can use [resource-specific handlers](#resource-specific-handlers). See the [Supported Resources](#supported-resources) section for a full list of the resources that support access control.
+If you want to just implement simple user-scoped access control, you can use a single [`on()`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#on) handler for all resources and actions. If you want to have different control depending on the resource and action, you can use [resource-specific handlers](#resource-specific-handlers). See the [Supported Resources](#supported-resources) section for a full list of the resources that support access control.
 
 ```typescript
 import { Auth, HTTPException } from "@langchain/langgraph-sdk/auth";
@@ -173,7 +175,7 @@ export const auth = new Auth()
 
 ### Resource-Specific Handlers {#resource-specific-handlers}
 
-You can register handlers for specific resources and actions by chaining the resource and action names together with the [`on()`](TODO) method.
+You can register handlers for specific resources and actions by chaining the resource and action names together with the [`on()`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#on) method.
 When a request is made, the most specific handler that matches that resource and action is called. Below is an example of how to register handlers for specific resources and actions. For the following setup:
 
 1. Authenticated users are able to create threads, read thread, create runs on threads
@@ -273,14 +275,21 @@ Notice that we are mixing global and resource-specific handlers in the above exa
 
 ### Filter Operations {#filter-operations}
 
-Authorization handlers can return `None`, a boolean, or a filter dictionary.
+Authorization handlers can return `None`, a boolean, or a filter object.
 
 - `null`, `void` and `true` mean "authorize access to all underling resources"
 - `False` means "deny access to all underling resources (raises a 403 error)"
-- A metadata filter dictionary will restrict access to resources
+- A metadata filter object will restrict access to resources. Supports exact matches and operators.
 
-A dictionary with multiple keys is treated using a logical `AND` filter. For example, `{"owner": org_id, "allowed_users": {"$contains": user_id}}` will only match resources with metadata whose "owner" is `org_id` and whose "allowed_users" list contains `user_id`.
-See the reference [here](TODO) for more information.
+???+ info "Filter object syntax"
+
+    The following operators are supported:
+
+    - Exact match shorthand: `{"field": "value"}`
+    - Exact match: `{"field": {"$eq": "value"}}`
+    - Contains: `{"field": {"$contains": "value"}}`
+
+    A metadata filter object with multiple keys is treated using a logical `AND` filter. For example, `{"owner": org_id, "allowed_users": {"$contains": user_id}}` will only match resources with metadata whose "owner" is `org_id` and whose "allowed_users" list contains `user_id`.
 
 ## Common Access Patterns
 
@@ -355,24 +364,24 @@ The most specific matching handler will be used. For example, `on("threads:creat
 
 #### Supported action events {#supported-actions}
 
-| Resource       | Event                | Description                | Value Type                 |
-| -------------- | -------------------- | -------------------------- | -------------------------- |
-| **Threads**    | `threads:create`     | Thread creation            | [`ThreadsCreate`](TODO)    |
-|                | `threads:read`       | Thread retrieval           | [`ThreadsRead`](TODO)      |
-|                | `threads:update`     | Thread updates             | [`ThreadsUpdate`](TODO)    |
-|                | `threads:delete`     | Thread deletion            | [`ThreadsDelete`](TODO)    |
-|                | `threads:search`     | Listing threads            | [`ThreadsSearch`](TODO)    |
-|                | `threads:create_run` | Creating or updating a run | [`RunsCreate`](TODO)       |
-| **Assistants** | `assistants:create`  | Assistant creation         | [`AssistantsCreate`](TODO) |
-|                | `assistants:read`    | Assistant retrieval        | [`AssistantsRead`](TODO)   |
-|                | `assistants:update`  | Assistant updates          | [`AssistantsUpdate`](TODO) |
-|                | `assistants:delete`  | Assistant deletion         | [`AssistantsDelete`](TODO) |
-|                | `assistants:search`  | Listing assistants         | [`AssistantsSearch`](TODO) |
-| **Crons**      | `crons:create`       | Cron job creation          | [`CronsCreate`](TODO)      |
-|                | `crons:read`         | Cron job retrieval         | [`CronsRead`](TODO)        |
-|                | `crons:update`       | Cron job updates           | [`CronsUpdate`](TODO)      |
-|                | `crons:delete`       | Cron job deletion          | [`CronsDelete`](TODO)      |
-|                | `crons:search`       | Listing cron jobs          | [`CronsSearch`](TODO)      |
+| Resource       | Event                | Description                | Value Type                                                                                                         |
+| -------------- | -------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Threads**    | `threads:create`     | Thread creation            | [`ThreadsCreate`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#threadscreate)       |
+|                | `threads:read`       | Thread retrieval           | [`ThreadsRead`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#threadsread)           |
+|                | `threads:update`     | Thread updates             | [`ThreadsUpdate`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#threadsupdate)       |
+|                | `threads:delete`     | Thread deletion            | [`ThreadsDelete`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#threadsdelete)       |
+|                | `threads:search`     | Listing threads            | [`ThreadsSearch`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#threadssearch)       |
+|                | `threads:create_run` | Creating or updating a run | [`RunsCreate`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#threadscreate_run)      |
+| **Assistants** | `assistants:create`  | Assistant creation         | [`AssistantsCreate`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#assistantscreate) |
+|                | `assistants:read`    | Assistant retrieval        | [`AssistantsRead`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#assistantsread)     |
+|                | `assistants:update`  | Assistant updates          | [`AssistantsUpdate`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#assistantsupdate) |
+|                | `assistants:delete`  | Assistant deletion         | [`AssistantsDelete`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#assistantsdelete) |
+|                | `assistants:search`  | Listing assistants         | [`AssistantsSearch`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#assistantssearch) |
+| **Crons**      | `crons:create`       | Cron job creation          | [`CronsCreate`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#cronscreate)           |
+|                | `crons:read`         | Cron job retrieval         | [`CronsRead`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#cronsread)               |
+|                | `crons:update`       | Cron job updates           | [`CronsUpdate`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#cronsupdate)           |
+|                | `crons:delete`       | Cron job deletion          | [`CronsDelete`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#cronsdelete)           |
+|                | `crons:search`       | Listing cron jobs          | [`CronsSearch`](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/#cronssearch)           |
 
 ???+ note "About Runs"
 
