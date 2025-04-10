@@ -212,9 +212,9 @@ describe("assistants", () => {
     ]);
 
     await client.assistants.delete(assistant.assistant_id);
-    expect(
-      await client.assistants.getVersions(assistant.assistant_id),
-    ).toMatchObject([]);
+    await expect(
+      client.assistants.getVersions(assistant.assistant_id),
+    ).rejects.toThrow("HTTP 404");
   });
 
   it("set latest version", async () => {
