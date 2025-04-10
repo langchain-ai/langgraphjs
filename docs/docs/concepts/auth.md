@@ -162,8 +162,8 @@ export const auth = new Auth()
     // If the operation supports metadata, add the user identity
     // as metadata to the resource.
     if ("metadata" in value) {
-      metadata ??= {};
-      metadata.owner = user.identity;
+      value.metadata ??= {};
+      value.metadata.owner = user.identity;
     }
 
     // Return filters to restrict access
