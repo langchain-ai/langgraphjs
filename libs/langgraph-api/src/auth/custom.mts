@@ -4,6 +4,8 @@ import type { MiddlewareHandler } from "hono";
 import {
   authorize,
   authenticate,
+  isAuthRegistered,
+  isStudioAuthDisabled,
   type AuthContext,
   type AuthFilters,
 } from "./index.mjs";
@@ -57,9 +59,30 @@ export const handleAuthEvent = async <T extends keyof AuthEventValueMap>(
   ];
 };
 
+const STUDIO_USER = {
+  display_name: "langgraph-studio-user",
+  identity: "langgraph-studio-user",
+  permissions: [],
+  is_authenticated: true,
+};
+
 export const auth = (): MiddlewareHandler => {
   return async (c, next) => {
-    c.set("auth", await authenticate(c.req.raw));
+    if (!isAuthRegistered()) return next();
+
+    if (
+      !isStudioAuthDisabled() &&
+      c.req.header("x-auth-scheme") === "langsmith"
+    ) {
+      c.set("auth", {
+        user: STUDIO_USER,
+        scopes: STUDIO_USER.permissions.slice(),
+      });
+      return next();
+    }
+
+    const auth = await authenticate(c.req.raw);
+    c.set("auth", auth);
     return next();
   };
 };

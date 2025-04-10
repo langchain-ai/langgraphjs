@@ -8,6 +8,10 @@ import * as url from "node:url";
 import * as path from "path";
 
 let CUSTOM_AUTH: Auth | undefined;
+let DISABLE_STUDIO_AUTH = false;
+
+export const isAuthRegistered = () => CUSTOM_AUTH != null;
+export const isStudioAuthDisabled = () => DISABLE_STUDIO_AUTH;
 
 export type AuthFilters =
   | Record<string, string | { $eq?: string; $contains?: string }>
@@ -164,4 +168,5 @@ export async function registerAuth(
     throw new Error(`Auth must be an instance of Auth: ${auth.path}`);
 
   CUSTOM_AUTH = module;
+  DISABLE_STUDIO_AUTH = auth.disable_studio_auth ?? false;
 }
