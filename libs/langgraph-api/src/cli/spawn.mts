@@ -13,6 +13,23 @@ export async function spawnServer(
       ui?: Record<string, string>;
       ui_config?: { shared?: string[] };
       auth?: { path?: string; disable_studio_auth?: boolean };
+      http?: {
+        app?: string;
+        disable_assistants?: boolean;
+        disable_threads?: boolean;
+        disable_runs?: boolean;
+        disable_store?: boolean;
+        disable_meta?: boolean;
+        cors?: {
+          allow_origins?: string[];
+          allow_methods?: string[];
+          allow_headers?: string[];
+          allow_credentials?: boolean;
+          allow_origin_regex?: string;
+          expose_headers?: string[];
+          max_age?: number;
+        };
+      };
     };
     env: NodeJS.ProcessEnv;
     hostUrl: string;
@@ -61,6 +78,7 @@ For production use, please use LangGraph Cloud.
         ui: context.config.ui,
         ui_config: context.config.ui_config,
         cwd: options.projectCwd,
+        http: context.config.http,
       }),
     ],
     {

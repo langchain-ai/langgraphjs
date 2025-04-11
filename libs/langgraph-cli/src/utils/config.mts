@@ -32,6 +32,27 @@ const BaseConfigSchema = z.object({
       disable_studio_auth: z.boolean().default(false),
     })
     .optional(),
+  http: z
+    .object({
+      app: z.string().optional(),
+      disable_assistants: z.boolean().default(false),
+      disable_threads: z.boolean().default(false),
+      disable_runs: z.boolean().default(false),
+      disable_store: z.boolean().default(false),
+      disable_meta: z.boolean().default(false),
+      cors: z
+        .object({
+          allow_origins: z.array(z.string()).optional(),
+          allow_methods: z.array(z.string()).optional(),
+          allow_headers: z.array(z.string()).optional(),
+          allow_credentials: z.boolean().optional(),
+          allow_origin_regex: z.string().optional(),
+          expose_headers: z.array(z.string()).optional(),
+          max_age: z.number().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 const DEFAULT_PYTHON_VERSION = "3.11" as const;
