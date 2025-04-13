@@ -250,6 +250,13 @@
     }
 
     document$.subscribe(function() {
+      const jobLink = document.getElementById("js_job_link");
+      if (jobLink) {
+        jobLink.addEventListener("click", (e) => {
+            gtag("event", "jsJobLink", { href: e.target.href });
+        });
+      }
+
       const copyButtons = document.querySelectorAll('button[data-md-type="copy"]')
 
       for (const btn of copyButtons) {
