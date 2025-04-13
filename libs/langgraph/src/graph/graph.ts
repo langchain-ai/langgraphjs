@@ -169,7 +169,7 @@ export type AddNodeOptions = {
 };
 
 export class Graph<
-  N extends string = typeof END,
+  N extends string = typeof START | typeof END,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   RunInput = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

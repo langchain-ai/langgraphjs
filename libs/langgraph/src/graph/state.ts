@@ -52,6 +52,12 @@ import type { RetryPolicy } from "../pregel/utils/index.js";
 import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
+import {
+  AnyZodObject,
+  getChannelsFromZod,
+  isAnyZodObject,
+  ZodToStateDefinition,
+} from "./zod/state.js";
 
 const ROOT = "__root__";
 
@@ -100,6 +106,20 @@ export type StateGraphArgsWithInputOutputSchemas<
   input: AnnotationRoot<SD>;
   output: AnnotationRoot<O>;
 };
+
+type ZodStateGraphArgsWithStateSchema<
+  SD extends AnyZodObject,
+  I extends SDZod,
+  O extends SDZod
+> = { state: SD; input?: I; output?: O };
+
+type SDZod = StateDefinition | AnyZodObject;
+
+type ToStateDefinition<T> = T extends AnyZodObject
+  ? ZodToStateDefinition<T>
+  : T extends StateDefinition
+  ? T
+  : never;
 
 /**
  * A graph whose nodes communicate by reading and writing to a shared state.
@@ -164,14 +184,14 @@ export type StateGraphArgsWithInputOutputSchemas<
  * ```
  */
 export class StateGraph<
-  SD extends StateDefinition | unknown,
-  S = SD extends StateDefinition ? StateType<SD> : SD,
-  U = SD extends StateDefinition ? UpdateType<SD> : Partial<S>,
+  SD extends SDZod | unknown,
+  S = SD extends SDZod ? StateType<ToStateDefinition<SD>> : SD,
+  U = SD extends SDZod ? UpdateType<ToStateDefinition<SD>> : Partial<S>,
   N extends string = typeof START,
-  I extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition,
-  O extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition,
-  C extends StateDefinition = StateDefinition
-> extends Graph<N, S, U, StateGraphNodeSpec<S, U>, C> {
+  I extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
+  O extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
+  C extends SDZod = StateDefinition
+> extends Graph<N, S, U, StateGraphNodeSpec<S, U>, ToStateDefinition<C>> {
   channels: Record<string, BaseChannel | ManagedValueSpec> = {};
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
@@ -181,10 +201,19 @@ export class StateGraph<
   _schemaDefinition: StateDefinition;
 
   /** @internal */
+  _schemaRuntimeDefinition: AnyZodObject | undefined;
+
+  /** @internal */
   _inputDefinition: I;
 
   /** @internal */
+  _inputRuntimeDefinition: AnyZodObject | undefined;
+
+  /** @internal */
   _outputDefinition: O;
+
+  /** @internal */
+  _outputRuntimeDefinition: AnyZodObject | undefined;
 
   /**
    * Map schemas to managed values
@@ -197,20 +226,82 @@ export class StateGraph<
 
   constructor(
     fields: SD extends StateDefinition
+      ? StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
+      : never,
+    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+  );
+
+  constructor(
+    fields: SD extends StateDefinition
       ?
           | SD
           | AnnotationRoot<SD>
           | StateGraphArgs<S>
-          | StateGraphArgsWithStateSchema<SD, I, O>
-          | StateGraphArgsWithInputOutputSchemas<SD, O>
+          | StateGraphArgsWithStateSchema<
+              SD,
+              ToStateDefinition<I>,
+              ToStateDefinition<O>
+            >
       : StateGraphArgs<S>,
-    configSchema?: AnnotationRoot<C>
+    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+  );
+
+  constructor(
+    fields: SD extends AnyZodObject
+      ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
+      : never,
+    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+  );
+
+  constructor(
+    fields: SD extends AnyZodObject
+      ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
+      : SD extends StateDefinition
+      ?
+          | SD
+          | AnnotationRoot<SD>
+          | StateGraphArgs<S>
+          | StateGraphArgsWithStateSchema<
+              SD,
+              ToStateDefinition<I>,
+              ToStateDefinition<O>
+            >
+          | StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
+      : StateGraphArgs<S>,
+    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   ) {
     super();
-    if (
+
+    if (isZodStateGraphArgsWithStateSchema(fields)) {
+      const stateDef = getChannelsFromZod(fields.state);
+      const inputDef =
+        fields.input != null ? getChannelsFromZod(fields.input) : stateDef;
+      const outputDef =
+        fields.output != null ? getChannelsFromZod(fields.output) : stateDef;
+
+      this._schemaDefinition = stateDef;
+      this._schemaRuntimeDefinition = fields.state;
+
+      this._inputDefinition = inputDef as I;
+      this._inputRuntimeDefinition = fields.input ?? fields.state.partial();
+
+      this._outputDefinition = outputDef as O;
+      this._outputRuntimeDefinition = fields.output ?? fields.state;
+    } else if (isAnyZodObject(fields)) {
+      const stateDef = getChannelsFromZod(fields);
+
+      this._schemaDefinition = stateDef;
+      this._schemaRuntimeDefinition = fields;
+
+      this._inputDefinition = stateDef as I;
+      this._inputRuntimeDefinition = fields.partial();
+
+      this._outputDefinition = stateDef as O;
+      this._outputRuntimeDefinition = fields;
+    } else if (
       isStateGraphArgsWithInputOutputSchemas<
         SD extends StateDefinition ? SD : never,
-        O
+        O extends StateDefinition ? O : never
       >(fields)
     ) {
       this._schemaDefinition = fields.input.spec;
@@ -231,12 +322,25 @@ export class StateGraph<
     } else {
       throw new Error("Invalid StateGraph input.");
     }
-    this._inputDefinition = this._inputDefinition ?? this._schemaDefinition;
-    this._outputDefinition = this._outputDefinition ?? this._schemaDefinition;
+
+    this._inputDefinition ??= this._schemaDefinition as I;
+    this._outputDefinition ??= this._schemaDefinition as O;
+
     this._addSchema(this._schemaDefinition);
     this._addSchema(this._inputDefinition);
     this._addSchema(this._outputDefinition);
-    this._configSchema = configSchema?.spec;
+
+    this._configSchema = (() => {
+      if (configSchema != null && "spec" in configSchema) {
+        return configSchema.spec as C;
+      }
+
+      if (isAnyZodObject(configSchema)) {
+        return configSchema.passthrough() as C;
+      }
+
+      return configSchema;
+    })();
   }
 
   get allEdges(): Set<[string, string]> {
@@ -248,7 +352,7 @@ export class StateGraph<
     ]);
   }
 
-  _addSchema(stateDefinition: StateDefinition) {
+  _addSchema(stateDefinition: SDZod) {
     if (this._schemaDefinitions.has(stateDefinition)) {
       return;
     }
@@ -284,7 +388,7 @@ export class StateGraph<
       NodeInput,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       U extends object ? U & Record<string, any> : U,
-      LangGraphRunnableConfig<StateType<C>>
+      LangGraphRunnableConfig<StateType<ToStateDefinition<C>>>
     >,
     options?: StateGraphAddNodeOptions
   ): StateGraph<SD, S, U, N | K, I, O, C> {
@@ -495,10 +599,17 @@ export class CompiledStateGraph<
   S,
   U,
   N extends string = typeof START,
-  I extends StateDefinition = StateDefinition,
-  O extends StateDefinition = StateDefinition,
-  C extends StateDefinition = StateDefinition
-> extends CompiledGraph<N, S, U, StateType<C>, UpdateType<I>, StateType<O>> {
+  I extends SDZod = StateDefinition,
+  O extends SDZod = StateDefinition,
+  C extends SDZod = StateDefinition
+> extends CompiledGraph<
+  N,
+  S,
+  U,
+  StateType<ToStateDefinition<C>>,
+  UpdateType<ToStateDefinition<I>>,
+  StateType<ToStateDefinition<O>>
+> {
   declare builder: StateGraph<unknown, S, U, N, I, O, C>;
 
   attachNode(key: typeof START, node?: never): void;
@@ -746,6 +857,22 @@ export class CompiledStateGraph<
       this.nodes[end as N].triggers.push(channelName);
     }
   }
+
+  protected async _validateInput(
+    input: UpdateType<ToStateDefinition<I>>
+  ): Promise<UpdateType<ToStateDefinition<I>>> {
+    const inputSchema = this.builder._inputRuntimeDefinition;
+    if (isAnyZodObject(inputSchema)) return inputSchema.parse(input);
+    return input;
+  }
+
+  protected async _validateConfigurable(
+    config: Partial<LangGraphRunnableConfig["configurable"]>
+  ): Promise<LangGraphRunnableConfig["configurable"]> {
+    const configSchema = this.builder._configSchema;
+    if (isAnyZodObject(configSchema)) configSchema.parse(config);
+    return config;
+  }
 }
 
 function isStateDefinition(obj: unknown): obj is StateDefinition {
@@ -809,6 +936,30 @@ function isStateGraphArgsWithInputOutputSchemas<
   );
 }
 
+function isZodStateGraphArgsWithStateSchema<
+  SD extends AnyZodObject,
+  I extends AnyZodObject,
+  O extends AnyZodObject
+>(value: unknown): value is ZodStateGraphArgsWithStateSchema<SD, I, O> {
+  if (typeof value !== "object" || value == null) {
+    return false;
+  }
+
+  if (!("state" in value) || !isAnyZodObject(value.state)) {
+    return false;
+  }
+
+  if ("input" in value && !isAnyZodObject(value.input)) {
+    return false;
+  }
+
+  if ("output" in value && !isAnyZodObject(value.output)) {
+    return false;
+  }
+
+  return true;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function _controlBranch(value: any): (string | Send)[] {
   if (_isSend(value)) {
@@ -817,20 +968,24 @@ function _controlBranch(value: any): (string | Send)[] {
   const commands = [];
   if (isCommand(value)) {
     commands.push(value);
-  } else if (Array.isArray(value) && value.every(isCommand)) {
-    commands.push(...value);
-  } else {
-    return [];
+  } else if (Array.isArray(value)) {
+    commands.push(...value.filter(isCommand));
   }
   const destinations: (string | Send)[] = [];
+
   for (const command of commands) {
     if (command.graph === Command.PARENT) {
       throw new ParentCommand(command);
     }
-    if (_isSend(command.goto) || typeof command.goto === "string") {
+
+    if (_isSend(command.goto)) {
+      destinations.push(command.goto);
+    } else if (typeof command.goto === "string") {
       destinations.push(command.goto);
     } else {
-      destinations.push(...command.goto);
+      if (Array.isArray(command.goto)) {
+        destinations.push(...command.goto);
+      }
     }
   }
   return destinations;

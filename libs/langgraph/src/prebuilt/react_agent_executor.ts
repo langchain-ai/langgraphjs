@@ -17,6 +17,8 @@ import {
   RunnableInterface,
   RunnableLambda,
   RunnableToolLike,
+  RunnableSequence,
+  RunnableBinding,
 } from "@langchain/core/runnables";
 import { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
 import {
@@ -146,27 +148,49 @@ function _getPrompt(
   return _getPromptRunnable(finalPrompt);
 }
 
-function _shouldBindTools(
+function _isBaseChatModel(model: LanguageModelLike): model is BaseChatModel {
+  return (
+    "invoke" in model &&
+    typeof model.invoke === "function" &&
+    "_modelType" in model
+  );
+}
+
+export function _shouldBindTools(
   llm: LanguageModelLike,
   tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[]
 ): boolean {
-  if (!Runnable.isRunnable(llm) || !("kwargs" in llm)) {
+  // If model is a RunnableSequence, find a RunnableBinding or BaseChatModel in its steps
+  let model = llm;
+  if (RunnableSequence.isRunnableSequence(model)) {
+    model =
+      model.steps.find(
+        (step) =>
+          RunnableBinding.isRunnableBinding(step) || _isBaseChatModel(step)
+      ) || model;
+  }
+
+  // If not a RunnableBinding, we should bind tools
+  if (!RunnableBinding.isRunnableBinding(model)) {
     return true;
   }
 
+  // If no tools in kwargs, we should bind tools
   if (
-    !llm.kwargs ||
-    typeof llm.kwargs !== "object" ||
-    !("tools" in llm.kwargs)
+    !model.kwargs ||
+    typeof model.kwargs !== "object" ||
+    !("tools" in model.kwargs)
   ) {
     return true;
   }
 
-  let boundTools = llm.kwargs.tools as BindToolsInput[];
+  let boundTools = model.kwargs.tools as BindToolsInput[];
   // google-style
   if (boundTools.length === 1 && "functionDeclarations" in boundTools[0]) {
     boundTools = boundTools[0].functionDeclarations;
   }
+
+  // Check if tools count matches
   if (tools.length !== boundTools.length) {
     throw new Error(
       "Number of tools in the model.bindTools() and tools passed to createReactAgent must match"
@@ -177,7 +201,8 @@ function _shouldBindTools(
   const boundToolNames = new Set<string>();
 
   for (const boundTool of boundTools) {
-    let boundToolName: string;
+    let boundToolName: string | undefined;
+
     // OpenAI-style tool
     if ("type" in boundTool && boundTool.type === "function") {
       boundToolName = boundTool.function.name;
@@ -195,7 +220,9 @@ function _shouldBindTools(
       continue;
     }
 
-    boundToolNames.add(boundToolName);
+    if (boundToolName) {
+      boundToolNames.add(boundToolName);
+    }
   }
 
   const missingTools = [...toolNames].filter((x) => !boundToolNames.has(x));
@@ -209,20 +236,23 @@ function _shouldBindTools(
   return false;
 }
 
-function _getModel(llm: LanguageModelLike): BaseChatModel {
-  // Get the underlying model from a RunnableBinding or return the model itself
+export function _getModel(llm: LanguageModelLike): BaseChatModel {
+  // If model is a RunnableSequence, find a RunnableBinding or BaseChatModel in its steps
   let model = llm;
-  if (Runnable.isRunnable(llm) && "bound" in llm) {
-    model = llm.bound as BaseChatModel;
+  if (RunnableSequence.isRunnableSequence(model)) {
+    model =
+      model.steps.find(
+        (step) =>
+          RunnableBinding.isRunnableBinding(step) || _isBaseChatModel(step)
+      ) || model;
   }
 
-  if (
-    !(
-      "invoke" in model &&
-      typeof model.invoke === "function" &&
-      "_modelType" in model
-    )
-  ) {
+  // Get the underlying model from a RunnableBinding
+  if (RunnableBinding.isRunnableBinding(model)) {
+    model = model.bound as BaseChatModel;
+  }
+
+  if (!_isBaseChatModel(model)) {
     throw new Error(
       `Expected \`llm\` to be a ChatModel or RunnableBinding (e.g. llm.bind_tools(...)) with invoke() and generate() methods, got ${model.constructor.name}`
     );
@@ -315,14 +345,20 @@ export type CreateReactAgentParams<
   /**
    * An optional schema for the final agent output.
    *
-   * If provided, output will be formatted to match the given schema and returned in the 'structured_response' state key.
-   * If not provided, `structured_response` will not be present in the output state.
+   * If provided, output will be formatted to match the given schema and returned in the 'structuredResponse' state key.
+   * If not provided, `structuredResponse` will not be present in the output state.
    *
    * Can be passed in as:
    *   - Zod schema
-   *   - Dictionary object
-   *   - [prompt, schema], where schema is one of the above.
+   *   - JSON schema
+   *   - { prompt, schema }, where schema is one of the above.
    *        The prompt will be used together with the model that is being used to generate the structured response.
+   *
+   * @remarks
+   * **Important**: `responseFormat` requires the model to support `.withStructuredOutput()`.
+   *
+   * **Note**: The graph will make a separate call to the LLM to generate the structured response after the agent loop is finished.
+   * This is not the only strategy to get structured responses, see more options in [this guide](https://langchain-ai.github.io/langgraph/how-tos/react-agent-structured-output/).
    */
   responseFormat?:
     | z.ZodType<StructuredResponseType>
@@ -460,9 +496,7 @@ export function createReactAgent<
         "Attempted to generate structured output with no passed response schema. Please contact us for help."
       );
     }
-    // Exclude the last message as there's enough information
-    // for the LLM to generate the structured response
-    const messages = state.messages.slice(0, -1);
+    const messages = [...state.messages];
     let modelWithStructuredOutput;
 
     if (
@@ -489,7 +523,9 @@ export function createReactAgent<
     // TODO: Auto-promote streaming.
     const response = (await modelRunnable.invoke(state, config)) as BaseMessage;
     // add agent name to the AIMessage
+    // TODO: figure out if we can avoid mutating the message directly
     response.name = name;
+    response.lc_kwargs.name = name;
     return { messages: [response] };
   };
 

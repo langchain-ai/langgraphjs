@@ -127,8 +127,8 @@ See the below guides for how-to implement multi-agent workflows with the [Functi
 
 - [How to add runtime configuration to your graph](configuration.ipynb)
 - [How to add node retries](node-retry-policies.ipynb)
-- [How to let agent return tool results directly](dynamically-returning-directly.ipynb)
-- [How to have agent respond in structured format](respond-in-format.ipynb)
+- [How to let an agent return tool results directly](dynamically-returning-directly.ipynb)
+- [How to have an agent respond in structured format](respond-in-format.ipynb)
 - [How to manage agent steps](managing-agent-steps.ipynb)
 
 ### Prebuilt ReAct Agent
@@ -172,6 +172,10 @@ LangGraph applications can be deployed using LangGraph Cloud, which provides a r
 - [How to deploy to LangGraph cloud](/langgraphjs/cloud/deployment/cloud)
 - [How to deploy to a self-hosted environment](./deploy-self-hosted.md)
 - [How to interact with the deployment using RemoteGraph](./use-remote-graph.md)
+
+### Authentication & Access Control
+
+- [How to add custom authentication](./auth/custom_auth.md)
 
 ### Assistants
 

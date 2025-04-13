@@ -141,8 +141,8 @@ See the below guides for how-to implement multi-agent workflows with the [Functi
 
 - [How to add runtime configuration to your graph](https://langchain-ai.github.io/langgraphjs/how-tos/configuration/)
 - [How to add node retries](https://langchain-ai.github.io/langgraphjs/how-tos/node-retry-policies/)
-- [How to let agent return tool results directly](https://langchain-ai.github.io/langgraphjs/how-tos/dynamically-returning-directly/)
-- [How to have agent respond in structured format](https://langchain-ai.github.io/langgraphjs/how-tos/respond-in-format/)
+- [How to let an agent return tool results directly](https://langchain-ai.github.io/langgraphjs/how-tos/dynamically-returning-directly/)
+- [How to have an agent respond in structured format](https://langchain-ai.github.io/langgraphjs/how-tos/respond-in-format/)
 - [How to manage agent steps](https://langchain-ai.github.io/langgraphjs/how-tos/managing-agent-steps/)
 
 ### Prebuilt ReAct Agent

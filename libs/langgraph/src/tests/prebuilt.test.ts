@@ -13,7 +13,7 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { z } from "zod";
-import { RunnableLambda } from "@langchain/core/runnables";
+import { RunnableLambda, RunnableSequence } from "@langchain/core/runnables";
 import { CallbackManager } from "@langchain/core/callbacks/manager";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import {
@@ -24,11 +24,16 @@ import {
   MemorySaverAssertImmutable,
 } from "./utils.js";
 import { ToolNode, createReactAgent } from "../prebuilt/index.js";
+import {
+  _shouldBindTools,
+  _getModel,
+} from "../prebuilt/react_agent_executor.js";
 // Enable automatic config passing
 import {
   Annotation,
   Command,
   messagesStateReducer,
+  Send,
   StateGraph,
 } from "../index.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
@@ -929,5 +934,653 @@ describe("messagesStateReducer", () => {
     );
     expect(deduped.length).toEqual(1);
     expect(deduped[0].content).toEqual("bar2");
+  });
+});
+
+describe("createReactAgent with structured responses", () => {
+  it("Basic structured response", async () => {
+    // Define a schema for the structured response
+    const weatherResponseSchema = z.object({
+      temperature: z.number().describe("The temperature in fahrenheit"),
+    });
+
+    const expectedStructuredResponse = { temperature: 75 };
+
+    // Create a fake model that returns tool calls and a structured response
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "Checking the weather",
+          tool_calls: [
+            {
+              name: "get_weather",
+              id: "1",
+              args: {},
+            },
+          ],
+        }),
+        new AIMessage("The weather is nice"),
+      ],
+      structuredResponse: expectedStructuredResponse,
+    });
+
+    // Define a simple weather tool
+    const getWeather = tool(async () => "The weather is sunny and 75°F.", {
+      name: "get_weather",
+      description: "Get the weather",
+      schema: z.object({}),
+    });
+
+    // Test with just the schema
+    const agent1 = createReactAgent({
+      llm,
+      tools: [getWeather],
+      responseFormat: weatherResponseSchema,
+    });
+
+    const result1 = await agent1.invoke({
+      messages: [new HumanMessage("What's the weather?")],
+    });
+
+    // Check agent output
+    expect(result1.structuredResponse).toEqual(expectedStructuredResponse);
+    expect(result1.messages.length).toEqual(4);
+    expect(result1.messages[2].content).toEqual(
+      "The weather is sunny and 75°F."
+    );
+
+    // Check messages sent to model for structured response generation
+    expect(llm.structuredOutputMessages.length).toEqual(1);
+    expect(llm.structuredOutputMessages[0].length).toEqual(4);
+    expect(llm.structuredOutputMessages[0][0].content).toEqual(
+      "What's the weather?"
+    );
+    expect(llm.structuredOutputMessages[0][1].content).toEqual(
+      "Checking the weather"
+    );
+    expect(llm.structuredOutputMessages[0][2].content).toEqual(
+      "The weather is sunny and 75°F."
+    );
+    expect(llm.structuredOutputMessages[0][3].content).toEqual(
+      "The weather is nice"
+    );
+
+    // Test with prompt and schema
+    const agent2 = createReactAgent({
+      llm,
+      tools: [getWeather],
+      responseFormat: {
+        prompt: "Meow",
+        schema: weatherResponseSchema,
+      },
+    });
+
+    const result2 = await agent2.invoke({
+      messages: [new HumanMessage("What's the weather?")],
+    });
+
+    expect(result2.structuredResponse).toEqual(expectedStructuredResponse);
+    expect(result2.messages.length).toEqual(4);
+    expect(result2.messages[2].content).toEqual(
+      "The weather is sunny and 75°F."
+    );
+
+    // Check messages sent to model for structured response generation
+    expect(llm.structuredOutputMessages.length).toEqual(2);
+    expect(llm.structuredOutputMessages[1].length).toEqual(5);
+    expect(llm.structuredOutputMessages[1][0].content).toEqual("Meow");
+    expect(llm.structuredOutputMessages[1][1].content).toEqual(
+      "What's the weather?"
+    );
+    expect(llm.structuredOutputMessages[1][2].content).toEqual(
+      "Checking the weather"
+    );
+    expect(llm.structuredOutputMessages[1][3].content).toEqual(
+      "The weather is sunny and 75°F."
+    );
+    expect(llm.structuredOutputMessages[1][4].content).toEqual(
+      "The weather is nice"
+    );
+  });
+});
+
+describe("_shouldBindTools", () => {
+  it.each(["openai", "anthropic", "google", "bedrock"] as const)(
+    "Should determine when to bind tools - %s style",
+    async (toolStyle) => {
+      const tool1 = tool((input) => `Tool 1: ${input.someVal}`, {
+        name: "tool1",
+        description: "Tool 1 docstring.",
+        schema: z.object({
+          someVal: z.number().describe("Input value"),
+        }),
+      });
+
+      const tool2 = tool((input) => `Tool 2: ${input.someVal}`, {
+        name: "tool2",
+        description: "Tool 2 docstring.",
+        schema: z.object({
+          someVal: z.number().describe("Input value"),
+        }),
+      });
+
+      const model = new FakeToolCallingChatModel({
+        responses: [new AIMessage("test")],
+        toolStyle,
+      });
+
+      // Should bind when a regular model
+      expect(_shouldBindTools(model, [])).toBe(true);
+      expect(_shouldBindTools(model, [tool1])).toBe(true);
+
+      // Should bind when a seq
+      const seq = RunnableSequence.from([
+        model,
+        RunnableLambda.from((message) => message),
+      ]);
+      expect(_shouldBindTools(seq, [])).toBe(true);
+      expect(_shouldBindTools(seq, [tool1])).toBe(true);
+
+      // Should not bind when a model with tools
+      const modelWithTools = model.bindTools([tool1]);
+      expect(_shouldBindTools(modelWithTools, [tool1])).toBe(false);
+
+      // Should not bind when a seq with tools
+      const seqWithTools = RunnableSequence.from([
+        model.bindTools([tool1]),
+        RunnableLambda.from((message) => message),
+      ]);
+      expect(_shouldBindTools(seqWithTools, [tool1])).toBe(false);
+
+      // Should raise on invalid inputs
+      expect(() => _shouldBindTools(model.bindTools([tool1]), [])).toThrow();
+      expect(() =>
+        _shouldBindTools(model.bindTools([tool1]), [tool2])
+      ).toThrow();
+      expect(() =>
+        _shouldBindTools(model.bindTools([tool1]), [tool1, tool2])
+      ).toThrow();
+    }
+  );
+});
+
+describe("_getModel", () => {
+  it("Should extract the model from different inputs", async () => {
+    const model = new FakeToolCallingChatModel({
+      responses: [new AIMessage("test")],
+    });
+    expect(_getModel(model)).toBe(model);
+
+    const tool1 = tool((input) => `Tool 1: ${input.someVal}`, {
+      name: "tool1",
+      description: "Tool 1 docstring.",
+      schema: z.object({
+        someVal: z.number().describe("Input value"),
+      }),
+    });
+
+    const modelWithTools = model.bindTools([tool1]);
+    expect(_getModel(modelWithTools)).toBe(model);
+
+    const seq = RunnableSequence.from([
+      model,
+      RunnableLambda.from((message) => message),
+    ]);
+    expect(_getModel(seq)).toBe(model);
+
+    const seqWithTools = RunnableSequence.from([
+      model.bindTools([tool1]),
+      RunnableLambda.from((message) => message),
+    ]);
+    expect(_getModel(seqWithTools)).toBe(model);
+
+    const raisingSeq = RunnableSequence.from([
+      RunnableLambda.from((message) => message),
+      RunnableLambda.from((message) => message),
+    ]);
+    expect(() => _getModel(raisingSeq)).toThrow(Error);
+  });
+});
+
+describe("ToolNode with Commands", () => {
+  it("can handle tools returning commands with dict input", async () => {
+    // Tool that returns a Command
+    const transferToBob = tool(
+      async (_, config) => {
+        return new Command({
+          update: {
+            messages: [
+              new ToolMessage({
+                content: "Transferred to Bob",
+                tool_call_id: config.toolCall.id,
+                name: "transfer_to_bob",
+              }),
+            ],
+          },
+          goto: "bob",
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "transfer_to_bob",
+        description: "Transfer to Bob",
+        schema: z.object({}),
+      }
+    );
+
+    // Async version of the tool
+    const asyncTransferToBob = tool(
+      async (_, config) => {
+        return new Command({
+          update: {
+            messages: [
+              new ToolMessage({
+                content: "Transferred to Bob",
+                tool_call_id: config.toolCall.id,
+                name: "async_transfer_to_bob",
+              }),
+            ],
+          },
+          goto: "bob",
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "async_transfer_to_bob",
+        description: "Transfer to Bob",
+        schema: z.object({}),
+      }
+    );
+
+    // Basic tool that doesn't return a Command
+    const add = tool(({ a, b }) => `${a + b}`, {
+      name: "add",
+      description: "Add two numbers",
+      schema: z.object({
+        a: z.number(),
+        b: z.number(),
+      }),
+    });
+
+    // Test mixing regular tools and tools returning commands
+
+    // Test with dict input
+    const result = await new ToolNode([add, transferToBob]).invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            { args: { a: 1, b: 2 }, id: "1", name: "add", type: "tool_call" },
+            { args: {}, id: "2", name: "transfer_to_bob", type: "tool_call" },
+          ],
+        }),
+      ],
+    });
+
+    expect(result).toEqual([
+      {
+        messages: [
+          new ToolMessage({
+            content: "3",
+            tool_call_id: "1",
+            name: "add",
+          }),
+        ],
+      },
+      new Command({
+        update: {
+          messages: [
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: "2",
+              name: "transfer_to_bob",
+            }),
+          ],
+        },
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+    ]);
+
+    // Test single tool returning command
+    const singleToolResult = await new ToolNode([transferToBob]).invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [{ args: {}, id: "1", name: "transfer_to_bob" }],
+        }),
+      ],
+    });
+
+    expect(singleToolResult).toEqual([
+      new Command({
+        update: {
+          messages: [
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: "1",
+              name: "transfer_to_bob",
+            }),
+          ],
+        },
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+    ]);
+
+    // Test async tool
+    const asyncToolResult = await new ToolNode([asyncTransferToBob]).invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [{ args: {}, id: "1", name: "async_transfer_to_bob" }],
+        }),
+      ],
+    });
+
+    expect(asyncToolResult).toEqual([
+      new Command({
+        update: {
+          messages: [
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: "1",
+              name: "async_transfer_to_bob",
+            }),
+          ],
+        },
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+    ]);
+
+    // Test multiple commands
+    const multipleCommandsResult = await new ToolNode([
+      transferToBob,
+      asyncTransferToBob,
+    ]).invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            { args: {}, id: "1", name: "transfer_to_bob" },
+            { args: {}, id: "2", name: "async_transfer_to_bob" },
+          ],
+        }),
+      ],
+    });
+
+    expect(multipleCommandsResult).toEqual([
+      new Command({
+        update: {
+          messages: [
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: "1",
+              name: "transfer_to_bob",
+            }),
+          ],
+        },
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+      new Command({
+        update: {
+          messages: [
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: "2",
+              name: "async_transfer_to_bob",
+            }),
+          ],
+        },
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+    ]);
+  });
+
+  it("can handle tools returning commands with array input", async () => {
+    // Tool that returns a Command with array update
+    const transferToBob = tool(
+      async (_, config) => {
+        return new Command({
+          update: [
+            // @ts-expect-error: Command typing needs to be updated properly
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: config.toolCall.id,
+              name: "transfer_to_bob",
+            }),
+          ],
+          goto: "bob",
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "transfer_to_bob",
+        description: "Transfer to Bob",
+        schema: z.object({}),
+      }
+    );
+
+    // Async version of the tool
+    const asyncTransferToBob = tool(
+      async (_, config) => {
+        return new Command({
+          update: [
+            // @ts-expect-error: Command typing needs to be updated properly
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: config.toolCall.id,
+              name: "async_transfer_to_bob",
+            }),
+          ],
+          goto: "bob",
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "async_transfer_to_bob",
+        description: "Transfer to Bob",
+        schema: z.object({}),
+      }
+    );
+
+    // Basic tool that doesn't return a Command
+    const add = tool(({ a, b }) => `${a + b}`, {
+      name: "add",
+      description: "Add two numbers",
+      schema: z.object({
+        a: z.number(),
+        b: z.number(),
+      }),
+    });
+
+    // Test with array input
+    const result = await new ToolNode([add, transferToBob]).invoke([
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          { args: { a: 1, b: 2 }, id: "1", name: "add" },
+          { args: {}, id: "2", name: "transfer_to_bob" },
+        ],
+      }),
+    ]);
+
+    expect(result).toEqual([
+      [
+        new ToolMessage({
+          content: "3",
+          tool_call_id: "1",
+          name: "add",
+        }),
+      ],
+      new Command({
+        update: [
+          // @ts-expect-error: Command typing needs to be updated properly
+          new ToolMessage({
+            content: "Transferred to Bob",
+            tool_call_id: "2",
+            name: "transfer_to_bob",
+          }),
+        ],
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+    ]);
+
+    // Test single tool returning command
+    for (const tool of [transferToBob, asyncTransferToBob]) {
+      const result = await new ToolNode([tool]).invoke([
+        new AIMessage({
+          content: "",
+          tool_calls: [{ args: {}, id: "1", name: tool.name }],
+        }),
+      ]);
+
+      expect(result).toEqual([
+        new Command({
+          update: [
+            // @ts-expect-error: Command typing needs to be updated properly
+            new ToolMessage({
+              content: "Transferred to Bob",
+              tool_call_id: "1",
+              name: tool.name,
+            }),
+          ],
+          goto: "bob",
+          graph: Command.PARENT,
+        }),
+      ]);
+    }
+
+    // Test multiple commands
+    const multipleCommandsResult = await new ToolNode([
+      transferToBob,
+      asyncTransferToBob,
+    ]).invoke([
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          { args: {}, id: "1", name: "transfer_to_bob" },
+          { args: {}, id: "2", name: "async_transfer_to_bob" },
+        ],
+      }),
+    ]);
+
+    expect(multipleCommandsResult).toEqual([
+      new Command({
+        update: [
+          // @ts-expect-error: Command typing needs to be updated properly
+          new ToolMessage({
+            content: "Transferred to Bob",
+            tool_call_id: "1",
+            name: "transfer_to_bob",
+          }),
+        ],
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+      new Command({
+        update: [
+          // @ts-expect-error: Command typing needs to be updated properly
+          new ToolMessage({
+            content: "Transferred to Bob",
+            tool_call_id: "2",
+            name: "async_transfer_to_bob",
+          }),
+        ],
+        goto: "bob",
+        graph: Command.PARENT,
+      }),
+    ]);
+  });
+
+  it("should handle parent commands with Send", async () => {
+    // Create tools that return Commands with Send
+    const transferToAlice = tool(
+      async (_, config) => {
+        return new Command({
+          goto: [
+            new Send("alice", {
+              messages: [
+                new ToolMessage({
+                  content: "Transferred to Alice",
+                  name: "transfer_to_alice",
+                  tool_call_id: config.toolCall.id,
+                }),
+              ],
+            }),
+          ],
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "transfer_to_alice",
+        description: "Transfer to Alice",
+        schema: z.object({}),
+      }
+    );
+
+    const transferToBob = tool(
+      async (_, config) => {
+        return new Command({
+          goto: [
+            new Send("bob", {
+              messages: [
+                new ToolMessage({
+                  content: "Transferred to Bob",
+                  name: "transfer_to_bob",
+                  tool_call_id: config.toolCall.id,
+                }),
+              ],
+            }),
+          ],
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "transfer_to_bob",
+        description: "Transfer to Bob",
+        schema: z.object({}),
+      }
+    );
+
+    const result = await new ToolNode([transferToAlice, transferToBob]).invoke([
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          { args: {}, id: "1", name: "transfer_to_alice", type: "tool_call" },
+          { args: {}, id: "2", name: "transfer_to_bob", type: "tool_call" },
+        ],
+      }),
+    ]);
+
+    expect(result).toEqual([
+      new Command({
+        goto: [
+          new Send("alice", {
+            messages: [
+              new ToolMessage({
+                content: "Transferred to Alice",
+                name: "transfer_to_alice",
+                tool_call_id: "1",
+              }),
+            ],
+          }),
+          new Send("bob", {
+            messages: [
+              new ToolMessage({
+                content: "Transferred to Bob",
+                name: "transfer_to_bob",
+                tool_call_id: "2",
+              }),
+            ],
+          }),
+        ],
+        graph: Command.PARENT,
+      }),
+    ]);
   });
 });

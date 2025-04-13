@@ -1,4 +1,4 @@
-import Database, { Database as DatabaseType } from "better-sqlite3";
+import Database, { Database as DatabaseType, Statement } from "better-sqlite3";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import {
   BaseCheckpointSaver,
@@ -63,10 +63,64 @@ const validCheckpointMetadataKeys = validateKeys<
   typeof checkpointMetadataKeys
 >(checkpointMetadataKeys);
 
+function prepareSql(db: DatabaseType, checkpoint_id: boolean) {
+  const sql = `
+  SELECT
+    thread_id,
+    checkpoint_ns,
+    checkpoint_id,
+    parent_checkpoint_id,
+    type,
+    checkpoint,
+    metadata,
+    (
+      SELECT
+        json_group_array(
+          json_object(
+            'task_id', pw.task_id,
+            'channel', pw.channel,
+            'type', pw.type,
+            'value', CAST(pw.value AS TEXT)
+          )
+        )
+      FROM writes as pw
+      WHERE pw.thread_id = checkpoints.thread_id
+        AND pw.checkpoint_ns = checkpoints.checkpoint_ns
+        AND pw.checkpoint_id = checkpoints.checkpoint_id
+    ) as pending_writes,
+    (
+      SELECT
+        json_group_array(
+          json_object(
+            'type', ps.type,
+            'value', CAST(ps.value AS TEXT)
+          )
+        )
+      FROM writes as ps
+      WHERE ps.thread_id = checkpoints.thread_id
+        AND ps.checkpoint_ns = checkpoints.checkpoint_ns
+        AND ps.checkpoint_id = checkpoints.parent_checkpoint_id
+        AND ps.channel = '${TASKS}'
+      ORDER BY ps.idx
+    ) as pending_sends
+  FROM checkpoints
+  WHERE thread_id = ? AND checkpoint_ns = ? ${
+    checkpoint_id
+      ? "AND checkpoint_id = ?"
+      : "ORDER BY checkpoint_id DESC LIMIT 1"
+  }`;
+
+  return db.prepare(sql);
+}
+
 export class SqliteSaver extends BaseCheckpointSaver {
   db: DatabaseType;
 
   protected isSetup: boolean;
+
+  protected withoutCheckpoint: Statement;
+
+  protected withCheckpoint: Statement;
 
   constructor(db: DatabaseType, serde?: SerializerProtocol) {
     super(serde);
@@ -108,6 +162,9 @@ CREATE TABLE IF NOT EXISTS writes (
   PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
 );`);
 
+    this.withoutCheckpoint = prepareSql(this.db, false);
+    this.withCheckpoint = prepareSql(this.db, true);
+
     this.isSetup = true;
   }
 
@@ -118,57 +175,14 @@ CREATE TABLE IF NOT EXISTS writes (
       checkpoint_ns = "",
       checkpoint_id,
     } = config.configurable ?? {};
-    const sql = `
-      SELECT
-        thread_id,
-        checkpoint_ns,
-        checkpoint_id,
-        parent_checkpoint_id,
-        type,
-        checkpoint,
-        metadata,
-        (
-          SELECT
-            json_group_array(
-              json_object(
-                'task_id', pw.task_id,
-                'channel', pw.channel,
-                'type', pw.type,
-                'value', CAST(pw.value AS TEXT)
-              )
-            )
-          FROM writes as pw
-          WHERE pw.thread_id = checkpoints.thread_id
-            AND pw.checkpoint_ns = checkpoints.checkpoint_ns
-            AND pw.checkpoint_id = checkpoints.checkpoint_id
-        ) as pending_writes,
-        (
-          SELECT
-            json_group_array(
-              json_object(
-                'type', ps.type,
-                'value', CAST(ps.value AS TEXT)
-              )
-            )
-          FROM writes as ps
-          WHERE ps.thread_id = checkpoints.thread_id
-            AND ps.checkpoint_ns = checkpoints.checkpoint_ns
-            AND ps.checkpoint_id = checkpoints.parent_checkpoint_id
-            AND ps.channel = '${TASKS}'
-          ORDER BY ps.idx
-        ) as pending_sends
-      FROM checkpoints
-      WHERE thread_id = ? AND checkpoint_ns = ? ${
-        checkpoint_id
-          ? "AND checkpoint_id = ?"
-          : "ORDER BY checkpoint_id DESC LIMIT 1"
-      }`;
 
     const args = [thread_id, checkpoint_ns];
     if (checkpoint_id) {
       args.push(checkpoint_id);
     }
-    const row = this.db.prepare(sql).get(...args) as CheckpointRow;
+    const row = (
+      checkpoint_id ? this.withCheckpoint : this.withoutCheckpoint
+    ).get(...args) as CheckpointRow;
     if (row === undefined) {
       return undefined;
     }
