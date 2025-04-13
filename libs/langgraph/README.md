@@ -56,6 +56,20 @@ const result = await agent.invoke(
 );
 ```
 
+## Full-stack Quickstart
+
+Get started quickly by building a full-stack LangGraph application using the [`create-agent-chat-app`](https://www.npmjs.com/package/create-agent-chat-app) CLI:
+
+```bash
+npx create-agent-chat-app@latest
+```
+
+The CLI sets up a chat interface and helps you configure your application, including:
+
+- 🧠 Choice of 4 prebuilt agents (ReAct, Memory, Research, Retrieval)
+- 🌐 Frontend framework (Next.js or Vite)
+- 📦 Package manager (`npm`, `yarn`, or `pnpm`)
+
 ## Why use LangGraph?
 
 LangGraph is built for developers who want to build powerful, adaptable AI agents. Developers choose LangGraph for:

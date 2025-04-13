@@ -134,6 +134,13 @@ interface CreateCuaParams<
    * @default undefined
    */
   stateModifier?: StateModifier;
+  /**
+   * A custom function to handle uploading screenshots to an external
+   * store, instead of saving them as base64 in state.
+   * Must accept a base64 string and return a URL.
+   * @default undefined
+   */
+  uploadScreenshot?: (screenshot: string) => Promise<string>;
 }
 
 /**
@@ -154,6 +161,7 @@ export function createCua<
   prompt,
   nodeBeforeAction,
   nodeAfterAction,
+  uploadScreenshot,
   stateModifier,
 }: CreateCuaParams<StateModifier> = {}) {
   // Validate timeout_hours is within acceptable range
@@ -174,7 +182,9 @@ export function createCua<
     .addNode("createVMInstance", createVMInstance)
     .addNode("nodeBeforeAction", nodeBefore)
     .addNode("nodeAfterAction", nodeAfter)
-    .addNode("takeComputerAction", takeComputerAction)
+    .addNode("takeComputerAction", (state, config) =>
+      takeComputerAction(state, config, { uploadScreenshot })
+    )
     .addEdge(START, "callModel")
     .addConditionalEdges("callModel", takeActionOrEnd, [
       "createVMInstance",

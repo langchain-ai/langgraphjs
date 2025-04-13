@@ -215,6 +215,23 @@ By using state modifiers, you can:
 - Customize the default behavior of the agent
 - Implement domain-specific functionality
 
+### Screenshot Upload
+
+The `uploadScreenshot` parameter allows you to upload screenshots to a storage service (e.g., an image hosting service) and return the URL. This is useful, because storing screenshots in the state object can quickly consume your LangGraph server's disk space.
+
+```typescript
+import { createCua } from "@langgraph/cua";
+
+const cuaGraph = createCua({
+  uploadScreenshot: async (base64Screenshot) => {
+    // Upload screenshot to storage service
+    const publicImageUrl = await uploadToS3(base64Screenshot);
+    return publicImageUrl;
+  },
+});
+```
+
+
 ## Auth States
 
 LangGraph CUA integrates with Scrapybara's [auth states API](https://docs.scrapybara.com/auth-states) to persist browser authentication sessions. This allows you to authenticate once (e.g., logging into Amazon) and reuse that session in future runs.

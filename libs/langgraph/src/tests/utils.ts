@@ -154,7 +154,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
 
   toolStyle: "openai" | "anthropic" | "bedrock" | "google" = "openai";
 
-  structuredResponse?: unknown;
+  structuredResponse?: Record<string, unknown>;
 
   // Track messages passed to structured output calls
   structuredOutputMessages: BaseMessage[][] = [];
@@ -193,7 +193,8 @@ export class FakeToolCallingChatModel extends BaseChatModel {
     if (this.sleep !== undefined) {
       await new Promise((resolve) => setTimeout(resolve, this.sleep));
     }
-    const msg = this.responses?.[this.idx] ?? messages[this.idx];
+    const responses = this.responses?.length ? this.responses : messages;
+    const msg = responses[this.idx % responses.length];
     const generation: ChatResult = {
       generations: [
         {
@@ -243,12 +244,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
     if (this.toolStyle === "google") {
       toolsToBind = [{ functionDeclarations: toolDicts }];
     }
-    return new FakeToolCallingChatModel({
-      sleep: this.sleep,
-      responses: this.responses,
-      thrownErrorString: this.thrownErrorString,
-      toolStyle: this.toolStyle,
-    }).bind({
+    return this.bind({
       tools: toolsToBind,
     } as BaseChatModelCallOptions);
   }
