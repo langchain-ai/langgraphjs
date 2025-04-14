@@ -3,7 +3,7 @@
 > [!TIP]
 > Looking for the Python version? [Check out the repo here](https://github.com/langchain-ai/langgraph-cua-py).
 
-A TypeScript library for creating computer use agent (CUA) systems using [LangGraph.js](https://github.com/langchain-ai/langgraphjs). A CUA is a type of agent which has the ability to interact with a computer to preform tasks.
+A TypeScript library for creating computer use agent (CUA) systems using [LangGraph.js](https://github.com/langchain-ai/langgraphjs). A CUA is a type of agent which has the ability to interact with a computer to perform tasks.
 
 Short demo video:
 <video src="https://github.com/user-attachments/assets/7fd0ab05-fecc-46f5-961b-6624cb254ac2" controls></video>
