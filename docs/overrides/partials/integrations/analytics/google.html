@@ -252,6 +252,12 @@
     document$.subscribe(function() {
       const jobLink = document.getElementById("js_job_link");
       if (jobLink) {
+        const jobUrl = new URL(jobLink.href);
+        const pageLocation = new URL(document.location.href);
+        pageLocation.search = "";
+        jobUrl.searchParams.set("utm_source", pageLocation.toString());
+        jobUrl.searchParams.set("utm_campaign", "langgraphjs_docs");
+        jobLink.href = jobUrl.toString();
         jobLink.addEventListener("click", (e) => {
             gtag("event", "jsJobLink", { href: e.target.href });
         });
