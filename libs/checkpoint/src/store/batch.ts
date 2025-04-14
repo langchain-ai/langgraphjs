@@ -16,6 +16,7 @@ import {
  */
 const extractStore = (input: BaseStore | AsyncBatchedStore): BaseStore => {
   if ("lg_name" in input && input.lg_name === "AsyncBatchedStore") {
+    // @ts-expect-error is a protected property
     return input.store;
   }
   return input;
@@ -24,7 +25,7 @@ const extractStore = (input: BaseStore | AsyncBatchedStore): BaseStore => {
 export class AsyncBatchedStore extends BaseStore {
   lg_name = "AsyncBatchedStore";
 
-  store: BaseStore;
+  protected store: BaseStore;
 
   private queue: Map<
     number,

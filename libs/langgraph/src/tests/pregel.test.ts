@@ -8524,7 +8524,7 @@ graph TD;
       });
     });
 
-    it("should throw a specific error when buildContext tries to access config.store inside a subgraph", async () => {
+    it("should not throw when you try to access config.store inside a subgraph", async () => {
       const MinimalAnnotatedState = Annotation.Root({
         query: Annotation<string>(),
       });
