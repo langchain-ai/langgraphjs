@@ -8523,6 +8523,66 @@ graph TD;
         uniqueStrings: ["foo", "bar", "baz"],
       });
     });
+
+    it("should not throw when you try to access config.store inside a subgraph", async () => {
+      const MinimalAnnotatedState = Annotation.Root({
+        query: Annotation<string>(),
+      });
+      type MinimalState = typeof MinimalAnnotatedState.State;
+      type MinimalUpdate = typeof MinimalAnnotatedState.Update;
+
+      async function nodeCallingBuildContext(
+        state: MinimalState,
+        config?: LangGraphRunnableConfig
+      ): Promise<MinimalUpdate> {
+        console.log("Attempting to call buildContext with config");
+
+        if (!config?.store) {
+          throw new Error("Store is required.");
+        }
+
+        await config.store.search(["namespace"], {
+          query: state.query,
+        });
+        console.log("buildContext succeeded, context:");
+        return {};
+      }
+
+      const checkpointer = await createCheckpointer();
+      const store = new InMemoryStore();
+
+      const reasoningWorkflow = new StateGraph(MinimalAnnotatedState)
+        .addNode("initial_reasoning_minimal", nodeCallingBuildContext)
+        .addEdge(START, "initial_reasoning_minimal")
+        .addEdge("initial_reasoning_minimal", END);
+
+      const minimalReasoningGraph = reasoningWorkflow.compile({
+        store,
+        checkpointer,
+      });
+
+      const mainWorkflow = new StateGraph(MinimalAnnotatedState)
+        .addNode("reasoning_subgraph", minimalReasoningGraph)
+        .addEdge(START, "reasoning_subgraph")
+        .addEdge("reasoning_subgraph", END);
+
+      const minimalMainGraph = mainWorkflow.compile({ store, checkpointer });
+
+      const config = {
+        configurable: {
+          thread_id: "1",
+        },
+      };
+
+      // Expect the invocation to pass
+      const result = await minimalMainGraph.invoke(
+        {
+          query: "test",
+        },
+        config
+      );
+      expect(result).toBeDefined();
+    });
   });
 
   it("should work with streamMode messages and custom from within a subgraph", async () => {
