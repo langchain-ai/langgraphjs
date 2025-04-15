@@ -1,4 +1,4 @@
-import { type Run, Runs, Threads } from "./storage/ops.mjs";
+import { type Run, type RunStatus, Runs, Threads } from "./storage/ops.mjs";
 import {
   type StreamCheckpoint,
   type StreamTaskResult,
@@ -6,6 +6,7 @@ import {
 } from "./stream.mjs";
 import { logError, logger } from "./logging.mjs";
 import { serializeError } from "./utils/serde.mjs";
+import { callWebhook } from "./webhook.mjs";
 
 const MAX_RETRY_ATTEMPTS = 3;
 
@@ -23,10 +24,13 @@ export const queue = async () => {
 
 const worker = async (run: Run, attempt: number, abortSignal: AbortSignal) => {
   const startedAt = new Date();
+  let endedAt: Date | undefined = undefined;
   let checkpoint: StreamCheckpoint | undefined = undefined;
   let exception: Error | undefined = undefined;
+  let status: RunStatus | undefined = undefined;
 
   const temporary = run.kwargs.temporary;
+  const webhook = run.kwargs.webhook as string | undefined;
 
   logger.info("Starting background run", {
     run_id: run.run_id,
@@ -68,7 +72,7 @@ const worker = async (run: Run, attempt: number, abortSignal: AbortSignal) => {
       throw error;
     }
 
-    const endedAt = new Date();
+    endedAt = new Date();
     logger.info("Background run succeeded", {
       run_id: run.run_id,
       run_attempt: attempt,
@@ -77,9 +81,11 @@ const worker = async (run: Run, attempt: number, abortSignal: AbortSignal) => {
       run_ended_at: endedAt,
       run_exec_ms: endedAt.valueOf() - startedAt.valueOf(),
     });
-    await Runs.setStatus(run.run_id, "success");
+
+    status = "success";
+    await Runs.setStatus(run.run_id, status);
   } catch (error) {
-    const endedAt = new Date();
+    endedAt = new Date();
     if (error instanceof Error) exception = error;
 
     logError(error, {
@@ -93,12 +99,26 @@ const worker = async (run: Run, attempt: number, abortSignal: AbortSignal) => {
         run_exec_ms: endedAt.valueOf() - startedAt.valueOf(),
       },
     });
+
+    status = "error";
     await Runs.setStatus(run.run_id, "error");
   } finally {
     if (temporary) {
       await Threads.delete(run.thread_id, undefined);
     } else {
       await Threads.setStatus(run.thread_id, { checkpoint, exception });
+    }
+
+    if (webhook) {
+      await callWebhook({
+        checkpoint,
+        status,
+        exception,
+        run,
+        webhook,
+        run_started_at: startedAt,
+        run_ended_at: endedAt,
+      });
     }
   }
 };

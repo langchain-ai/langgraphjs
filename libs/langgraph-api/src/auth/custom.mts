@@ -12,7 +12,7 @@ import {
 
 declare module "hono" {
   interface ContextVariableMap {
-    auth: AuthContext | undefined;
+    auth?: AuthContext | undefined;
   }
 }
 
