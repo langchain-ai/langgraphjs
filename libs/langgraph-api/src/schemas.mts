@@ -98,7 +98,7 @@ export const CronCreate = z
       .describe("Metadata for the run.")
       .optional(),
     config: AssistantConfig.optional(),
-    webhook: z.string().url().optional(),
+    webhook: z.string().optional(),
     interrupt_before: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
     interrupt_after: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
     multitask_strategy: z
@@ -188,7 +188,7 @@ export const RunCreate = z
       .describe("Metadata for the run.")
       .optional(),
     config: AssistantConfig.optional(),
-    webhook: z.string().url().optional(),
+    webhook: z.string().optional(),
     interrupt_before: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
     interrupt_after: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
     on_disconnect: z

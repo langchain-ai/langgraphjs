@@ -2418,3 +2418,90 @@ it("generative ui", async () => {
     client["~ui"].getComponent("non-existent", "none"),
   ).rejects.toThrow();
 });
+
+it("custom routes", async () => {
+  const fetcher = async (...args: Parameters<typeof fetch>) => {
+    const res = await fetch(...args);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return { json: await res.json(), headers: res.headers };
+  };
+
+  let res = await fetcher(new URL("/custom/my-route?aCoolParam=13", API_URL), {
+    headers: { "x-custom-input": "hey" },
+  });
+  expect(res.json).toEqual({ foo: "bar" });
+  expect(res.headers.get("x-custom-output")).toEqual("hey");
+  expect(res.headers.get("x-js-middleware")).toEqual("true");
+
+  res = await fetcher(new URL("/runs/afakeroute", API_URL));
+  expect(res.json).toEqual({ foo: "afakeroute" });
+
+  await expect(() =>
+    fetcher(new URL("/does/not/exist", API_URL)),
+  ).rejects.toThrow("404");
+
+  await expect(() =>
+    fetcher(new URL("/custom/error", API_URL)),
+  ).rejects.toThrow("400");
+
+  if (!IS_MEMORY) {
+    await expect(() =>
+      fetcher(new URL("/__langgraph_check", API_URL), { method: "OPTIONS" }),
+    ).rejects.toThrow("404");
+  }
+
+  const stream = await fetch(new URL("/custom/streaming", API_URL));
+  const reader = stream.body?.getReader();
+  if (!reader) throw new Error("No reader");
+
+  const chunks: string[] = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(new TextDecoder().decode(value));
+  }
+
+  expect(chunks.length).toBeGreaterThanOrEqual(4); // Must actually stream
+  expect(chunks.join("")).toEqual("Count: 0\nCount: 1\nCount: 2\nCount: 3\n");
+
+  const thread = await client.threads.create();
+  await client.runs.wait(thread.thread_id, "agent_simple", {
+    input: { messages: [{ role: "human", content: "foo" }] },
+    webhook: "/custom/webhook",
+  });
+
+  await expect
+    .poll(() => fetcher(new URL("/custom/webhook-payload", API_URL)), {
+      interval: 500,
+      timeout: 3000,
+    })
+    .toMatchObject({ json: { status: "success" } });
+
+  // check if custom middleware is applied even for python routes
+  res = await fetcher(new URL("/info", API_URL));
+  expect(res.headers.get("x-js-middleware")).toEqual("true");
+
+  // ... and if we can intercept a request targeted for Python API
+  res = await fetcher(new URL("/info?interrupt", API_URL));
+  expect(res.json).toEqual({ status: "interrupted" });
+});
+
+it("custom routes - mutate request body", async () => {
+  const client = new Client<any>({
+    apiUrl: API_URL,
+    defaultHeaders: {
+      "x-configurable-header": "extra-client",
+    },
+  });
+
+  const thread = await client.threads.create();
+  const res = await client.runs.wait(thread.thread_id, "agent_simple", {
+    input: { messages: [{ role: "human", content: "input" }] },
+  });
+
+  expect(res).toEqual({
+    messages: expect.arrayContaining([
+      expect.objectContaining({ content: "end: extra-client" }),
+    ]),
+  });
+});

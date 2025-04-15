@@ -41,6 +41,12 @@ async function callModel(
     userId = user?.identity;
   }
 
+  if (config.configurable?.["x-configurable-header"] != null) {
+    return {
+      messages: [`end: ${config.configurable?.["x-configurable-header"]}`],
+    };
+  }
+
   const model = getStableModel(config.configurable?.thread_id ?? "$");
   const existing = await config.store?.get([userId ?? "ALL"], "key_one");
   if (!existing) {
@@ -49,8 +55,7 @@ async function callModel(
   }
 
   const response = await model.invoke(state.messages);
-  const result: typeof AgentState.Update = { messages: [response] };
-  return result;
+  return { messages: [response] };
 }
 
 async function callTool(

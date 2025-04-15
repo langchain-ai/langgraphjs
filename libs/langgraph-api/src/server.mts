@@ -20,6 +20,7 @@ import { auth } from "./auth/custom.mjs";
 import { registerAuth } from "./auth/index.mjs";
 import { registerHttp } from "./http/custom.mjs";
 import { cors, ensureContentType } from "./http/middleware.mjs";
+import { bindLoopbackFetch } from "./webhook.mjs";
 
 export const StartServerSchema = z.object({
   port: z.number(),
@@ -128,6 +129,9 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
     });
     app.route("/", api);
   }
+
+  // Loopback fetch used by webhooks
+  bindLoopbackFetch(app);
 
   logger.info(`Starting ${options.nWorkers} workers`);
   for (let i = 0; i < options.nWorkers; i++) queue();
