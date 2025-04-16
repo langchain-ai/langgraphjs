@@ -2505,3 +2505,20 @@ it("custom routes - mutate request body", async () => {
     ]),
   });
 });
+
+it("custom routes - langgraph", async () => {
+  const fetcher = async (...args: Parameters<typeof fetch>) => {
+    const res = await fetch(...args);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return { json: await res.json(), headers: res.headers };
+  };
+
+  const res = await fetcher(new URL("/custom/client", API_URL));
+  expect(res.json).toEqual({
+    result: {
+      messages: expect.arrayContaining([
+        expect.objectContaining({ content: "input" }),
+      ]),
+    },
+  });
+});

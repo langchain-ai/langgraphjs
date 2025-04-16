@@ -1,11 +1,14 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { streamText } from "hono/streaming";
+import { Client } from "@langchain/langgraph-sdk";
 
 let WEBHOOK_PAYLOAD: Record<string, unknown>;
 
 export const app = new Hono<{
-  Variables: { body: string | ArrayBuffer | ReadableStream | null };
+  Variables: {
+    body: string | ArrayBuffer | ReadableStream | null;
+  };
 }>()
   .use(async (c, next) => {
     if (c.req.query("interrupt") != null) {
@@ -33,6 +36,13 @@ export const app = new Hono<{
     }
 
     await next();
+  })
+  .get("/custom/client", async (c) => {
+    const result = await new Client().runs.wait(null, "agent_simple", {
+      input: { messages: [{ role: "human", content: "input" }] },
+    });
+
+    return c.json({ result });
   })
   .get("/custom/my-route", (c) =>
     c.json(

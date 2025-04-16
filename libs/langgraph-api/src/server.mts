@@ -20,7 +20,7 @@ import { auth } from "./auth/custom.mjs";
 import { registerAuth } from "./auth/index.mjs";
 import { registerHttp } from "./http/custom.mjs";
 import { cors, ensureContentType } from "./http/middleware.mjs";
-import { bindLoopbackFetch } from "./webhook.mjs";
+import { bindLoopbackFetch } from "./loopback.mjs";
 
 export const StartServerSchema = z.object({
   port: z.number(),
@@ -77,6 +77,9 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
 
   const app = new Hono();
 
+  // Loopback fetch used by webhooks and custom routes
+  bindLoopbackFetch(app);
+
   if (options.auth?.path) {
     logger.info(`Loading auth from ${options.auth.path}`);
     await registerAuth(options.auth, { cwd: options.cwd });
@@ -129,9 +132,6 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
     });
     app.route("/", api);
   }
-
-  // Loopback fetch used by webhooks
-  bindLoopbackFetch(app);
 
   logger.info(`Starting ${options.nWorkers} workers`);
   for (let i = 0; i < options.nWorkers; i++) queue();
