@@ -20,7 +20,7 @@ import { auth } from "./auth/custom.mjs";
 import { registerAuth } from "./auth/index.mjs";
 import { registerHttp } from "./http/custom.mjs";
 import { cors, ensureContentType } from "./http/middleware.mjs";
-import { bindLoopbackFetch } from "./webhook.mjs";
+import { bindLoopbackFetch } from "./loopback.mjs";
 
 export const StartServerSchema = z.object({
   port: z.number(),
