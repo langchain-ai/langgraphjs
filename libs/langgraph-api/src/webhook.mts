@@ -1,7 +1,7 @@
 import type { Run } from "./storage/ops.mjs";
 import type { StreamCheckpoint } from "./stream.mjs";
 import { serializeError } from "./utils/serde.mjs";
-import { LOOPBACK_FETCH } from "./loopback.mjs";
+import { getLoopbackFetch } from "./loopback.mjs";
 
 export async function callWebhook(result: {
   checkpoint: StreamCheckpoint | undefined;
@@ -25,7 +25,10 @@ export async function callWebhook(result: {
   };
 
   if (result.webhook.startsWith("/")) {
-    await LOOPBACK_FETCH?.(result.webhook, {
+    const fetch = getLoopbackFetch();
+    if (!fetch) throw new Error("Loopback fetch is not bound");
+
+    await fetch(result.webhook, {
       method: "POST",
       body: JSON.stringify(payload),
     });

@@ -1,10 +1,16 @@
 import { Hono } from "hono";
 
-export let LOOPBACK_FETCH:
-  | ((url: string, init?: RequestInit) => Promise<Response> | undefined)
-  | undefined;
+const fetchSmb = Symbol.for("langgraph_api:fetch");
+const global = globalThis as unknown as {
+  [fetchSmb]?: (url: string, init?: RequestInit) => Promise<Response>;
+};
+
+export function getLoopbackFetch() {
+  if (!global[fetchSmb]) throw new Error("Loopback fetch is not bound");
+  return global[fetchSmb];
+}
 
 export const bindLoopbackFetch = (app: Hono) => {
-  LOOPBACK_FETCH = async (url: string, init?: RequestInit) =>
+  global[fetchSmb] = async (url: string, init?: RequestInit) =>
     app.request(url, init);
 };
