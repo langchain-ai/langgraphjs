@@ -14,6 +14,12 @@ Starting from an **existing** LangGraph Platform application, add the following 
 npm create langgraph
 ```
 
+Make sure to install `hono` as a dependency.
+
+```bash
+npm install hono
+```
+
 Once you have a LangGraph project, add the following app code:
 
 ```typescript
