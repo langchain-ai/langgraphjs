@@ -2,7 +2,13 @@
 
 When deploying agents on the LangGraph platform, you can add custom middleware to your server to handle cross-cutting concerns like logging request metrics, injecting or checking headers, and enforcing security policies without modifying core server logic. This works the same way as [adding custom routes](./custom_routes.md) - you just need to provide your own [`Hono`](https://hono.dev/) app.
 
-Adding middleware lets you intercept and modify requests and responses globally across your deployment, whether they're hitting your custom endpoints or the built-in LangGraph Platform APIs.
+Adding middleware lets you intercept and modify requests globally across your deployment, whether they're hitting your custom endpoints or the built-in LangGraph Platform APIs.
+
+??? warning "Requests only for built-in LangGraph Platform APIs"
+
+    Currently only intercepting and modifying requests are supported at the moment.
+
+    You can still add custom headers to responses, but modifying response headers or response body of a built-in LangGraph Platform endpoint is not yet supported.
 
 ## Create app
 
