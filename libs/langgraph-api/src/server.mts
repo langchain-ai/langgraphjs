@@ -80,22 +80,6 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
   // Loopback fetch used by webhooks and custom routes
   bindLoopbackFetch(app);
 
-  if (options.auth?.path) {
-    logger.info(`Loading auth from ${options.auth.path}`);
-    await registerAuth(options.auth, { cwd: options.cwd });
-    app.use(auth());
-  }
-
-  if (options.http?.app) {
-    logger.info(`Loading HTTP app from ${options.http.app}`);
-    const { api } = await registerHttp(options.http.app, { cwd: options.cwd });
-    app.route("/", api);
-  }
-
-  app.use(cors(options.http?.cors));
-  app.use(requestLogger());
-  app.use(ensureContentType());
-
   app.post(
     "/internal/truncate",
     zValidator(
@@ -116,6 +100,22 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
       return c.json({ ok: true });
     },
   );
+
+  if (options.auth?.path) {
+    logger.info(`Loading auth from ${options.auth.path}`);
+    await registerAuth(options.auth, { cwd: options.cwd });
+    app.use(auth());
+  }
+
+  if (options.http?.app) {
+    logger.info(`Loading HTTP app from ${options.http.app}`);
+    const { api } = await registerHttp(options.http.app, { cwd: options.cwd });
+    app.route("/", api);
+  }
+
+  app.use(cors(options.http?.cors));
+  app.use(requestLogger());
+  app.use(ensureContentType());
 
   if (!options.http?.disable_meta) app.route("/", meta);
   if (!options.http?.disable_assistants) app.route("/", assistants);
