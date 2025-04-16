@@ -4,7 +4,7 @@ When deploying agents on the LangGraph platform, you can add custom middleware t
 
 Adding middleware lets you intercept and modify requests globally across your deployment, whether they're hitting your custom endpoints or the built-in LangGraph Platform APIs.
 
-??? warning "Requests only for built-in LangGraph Platform APIs"
+???+ warning "Requests only for built-in LangGraph Platform APIs"
 
     Currently only intercepting and modifying requests are supported at the moment.
 
