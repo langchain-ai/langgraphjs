@@ -2847,14 +2847,11 @@ graph TD;
       });
 
       const toolTwoNode = (
-        s: typeof StateAnnotation.State,
-        config: RunnableConfig
+        s: typeof StateAnnotation.State
       ): Partial<typeof StateAnnotation.State> => {
         toolTwoNodeCount += 1;
         const answer: string =
-          s.market === "DE"
-            ? interrupt("Just because...", config)
-            : " all good";
+          s.market === "DE" ? interrupt("Just because...") : " all good";
         return { my_key: answer };
       };
 
@@ -3117,11 +3114,8 @@ graph TD;
         answer: Annotation<string>,
       });
 
-      const generate = async (
-        state: typeof StateAnnotation.State,
-        config: RunnableConfig
-      ) => {
-        const response = await llm.invoke(state.question, config);
+      const generate = async (state: typeof StateAnnotation.State) => {
+        const response = await llm.invoke(state.question);
         return { answer: response.content as string };
       };
 
@@ -9531,8 +9525,8 @@ graph TD;
 
   it("should interrupt and resume with Command inside a subgraph", async () => {
     const subgraph = new StateGraph(MessagesAnnotation)
-      .addNode("one", (_, config) => {
-        const interruptValue = interrupt("<INTERRUPTED>", config);
+      .addNode("one", (_) => {
+        const interruptValue = interrupt("<INTERRUPTED>");
         if (interruptValue !== "<RESUMED>") {
           throw new Error("Expected interrupt to return <RESUMED>");
         }
@@ -9739,12 +9733,9 @@ graph TD;
       }),
     });
 
-    const nodeOne = (
-      _: typeof GraphAnnotation.State,
-      config: RunnableConfig
-    ) => {
-      const answer = interrupt({ value: 1 }, config);
-      const answer2 = interrupt({ value: 2 }, config);
+    const nodeOne = (_: typeof GraphAnnotation.State) => {
+      const answer = interrupt({ value: 1 });
+      const answer2 = interrupt({ value: 2 });
       return { myKey: answer + " " + answer2 };
     };
 
