@@ -20,8 +20,6 @@ export default defineConfig({
             enabled: process.env.BROWSER_TEST === "true",
             instances: [{ browser: "chromium" }],
           },
-          // its fine if test fails, we just want to run it
-          // dont exit on error
         },
         plugins: [nodePolyfills()],
       },
