@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it } from "vitest";
 import { PregelNode } from "../pregel/read.js";
 import { GraphValidationError, validateGraph } from "../pregel/validate.js";
 import { LastValue } from "../channels/last_value.js";

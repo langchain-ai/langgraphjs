@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { jest } from "@jest/globals";
+import { describe, test, expect, vi } from "vitest";
 import { Client } from "@langchain/langgraph-sdk";
 import { RemoteGraph } from "../pregel/remote.js";
 import { gatherIterator } from "../utils.js";
@@ -38,7 +38,7 @@ describe("RemoteGraph", () => {
 
   test("getGraph", async () => {
     const client = new Client({});
-    jest.spyOn((client as any).assistants, "getGraph").mockResolvedValue({
+    vi.spyOn((client as any).assistants, "getGraph").mockResolvedValue({
       nodes: [
         { id: "__start__", type: "schema", data: "__start__" },
         { id: "__end__", type: "schema", data: "__end__" },
@@ -92,7 +92,7 @@ describe("RemoteGraph", () => {
 
   test("getSubgraphs", async () => {
     const client = new Client({});
-    jest.spyOn((client as any).assistants, "getSubgraphs").mockResolvedValue({
+    vi.spyOn((client as any).assistants, "getSubgraphs").mockResolvedValue({
       namespace_1: {
         graph_id: "test_graph_id_2",
         input_schema: {},
@@ -130,7 +130,7 @@ describe("RemoteGraph", () => {
 
   test("getState", async () => {
     const client = new Client({});
-    jest.spyOn((client as any).threads, "getState").mockResolvedValue({
+    vi.spyOn((client as any).threads, "getState").mockResolvedValue({
       values: { messages: [{ type: "human", content: "hello" }] },
       next: undefined,
       checkpoint: {
@@ -174,7 +174,7 @@ describe("RemoteGraph", () => {
 
   test("getStateHistory", async () => {
     const client = new Client({});
-    jest.spyOn((client as any).threads, "getHistory").mockResolvedValue([
+    vi.spyOn((client as any).threads, "getHistory").mockResolvedValue([
       {
         values: { messages: [{ type: "human", content: "hello" }] },
         next: undefined,
@@ -222,7 +222,7 @@ describe("RemoteGraph", () => {
 
   test("updateState", async () => {
     const client = new Client({});
-    jest.spyOn((client as any).threads, "updateState").mockResolvedValue({
+    vi.spyOn((client as any).threads, "updateState").mockResolvedValue({
       checkpoint: {
         thread_id: "thread_1",
         checkpoint_ns: "ns",
@@ -252,9 +252,8 @@ describe("RemoteGraph", () => {
 
   test("stream", async () => {
     const client = new Client({});
-    jest
-      .spyOn((client as any).runs, "stream")
-      .mockImplementation(async function* () {
+    vi.spyOn((client as any).runs, "stream").mockImplementation(
+      async function* () {
         const chunks = [
           { event: "values", data: { chunk: "data1" } },
           { event: "values", data: { chunk: "data2" } },
@@ -265,7 +264,8 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      });
+      }
+    );
 
     const remotePregel = new RemoteGraph({
       client,
@@ -295,9 +295,8 @@ describe("RemoteGraph", () => {
       { chunk: "data3" },
     ]);
 
-    jest
-      .spyOn((client as any).runs, "stream")
-      .mockImplementation(async function* () {
+    vi.spyOn((client as any).runs, "stream").mockImplementation(
+      async function* () {
         const chunks = [
           { event: "updates", data: { chunk: "data3" } },
           { event: "updates", data: { chunk: "data4" } },
@@ -306,7 +305,8 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      });
+      }
+    );
 
     // default stream_mode is updates
     error = undefined;
@@ -389,9 +389,8 @@ describe("RemoteGraph", () => {
       [[], { chunk: "data4" }],
     ]);
 
-    jest
-      .spyOn((client as any).runs, "stream")
-      .mockImplementation(async function* () {
+    vi.spyOn((client as any).runs, "stream").mockImplementation(
+      async function* () {
         const chunks = [
           { event: "updates|my|subgraph", data: { chunk: "data3" } },
           { event: "updates|hello|subgraph", data: { chunk: "data4" } },
@@ -400,7 +399,8 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      });
+      }
+    );
 
     // subgraphs + list modes
     parts = [];
@@ -446,9 +446,8 @@ describe("RemoteGraph", () => {
 
   test("invoke", async () => {
     const client = new Client({});
-    jest
-      .spyOn((client as any).runs, "stream")
-      .mockImplementation(async function* () {
+    vi.spyOn((client as any).runs, "stream").mockImplementation(
+      async function* () {
         const chunks = [
           { event: "values", data: { chunk: "data1" } },
           { event: "values", data: { chunk: "data2" } },
@@ -460,7 +459,8 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      });
+      }
+    );
 
     const remotePregel = new RemoteGraph({
       client,
@@ -478,9 +478,8 @@ describe("RemoteGraph", () => {
   test("invoke with a Command serializes properly", async () => {
     const client = new Client({});
     let streamArgs;
-    jest
-      .spyOn((client as any).runs, "stream")
-      .mockImplementation(async function* (...args) {
+    vi.spyOn((client as any).runs, "stream").mockImplementation(
+      async function* (...args) {
         streamArgs = args;
         const chunks = [
           { event: "values", data: { chunk: "data1" } },
@@ -493,7 +492,8 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      });
+      }
+    );
 
     const remotePregel = new RemoteGraph({
       client,
