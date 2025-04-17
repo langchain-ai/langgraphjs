@@ -7,6 +7,7 @@ import { watch } from "chokidar";
 import { z } from "zod";
 import open from "open";
 
+import { startCloudflareTunnel, type CloudflareTunnel } from "./cloudflare.mjs";
 import { createIpcServer } from "./utils/ipc/server.mjs";
 import { getProjectPath } from "./utils/project.mjs";
 import { getConfig } from "../utils/config.mjs";
@@ -25,6 +26,10 @@ builder
   .option("--no-browser", "disable auto-opening the browser")
   .option("-n, --n-jobs-per-worker <number>", "number of workers to run", "10")
   .option("-c, --config <path>", "path to configuration file", process.cwd())
+  .option(
+    "--tunnel",
+    "use Cloudflare Tunnel to expose the server to the internet",
+  )
   .allowExcessArguments()
   .allowUnknownOption()
   .exitOverride((error) => gracefulExit(error.exitCode))
@@ -35,6 +40,7 @@ builder
       port: command.opts().port !== "2024",
       host: command.opts().host !== "localhost",
       n_jobs_per_worker: command.opts().nJobsPerWorker !== "10",
+      tunnel: Boolean(command.opts().tunnel),
     })),
   )
   .action(async (options, { args }) => {
@@ -49,13 +55,23 @@ builder
 
       let hasOpenedFlag = false;
       let child: ChildProcess | undefined = undefined;
+      let tunnel: CloudflareTunnel | undefined = undefined;
+
       let hostUrl = "https://smith.langchain.com";
 
-      server.on("data", (data) => {
+      server.on("data", async (data) => {
         const response = z.object({ queryParams: z.string() }).parse(data);
         if (options.browser && !hasOpenedFlag) {
           hasOpenedFlag = true;
-          open(`${hostUrl}/studio${response.queryParams}`);
+
+          const queryParams = new URLSearchParams(response.queryParams);
+          const tunnelUrl = await tunnel?.tunnelUrl;
+          if (tunnelUrl) queryParams.set("baseUrl", tunnelUrl);
+
+          let queryParamsStr = queryParams.toString();
+          if (queryParamsStr) queryParamsStr = `?${queryParams.toString()}`;
+
+          open(`${hostUrl}/studio${queryParamsStr}`);
         }
       });
 
@@ -129,6 +145,8 @@ builder
       const launchServer = async () => {
         const { config, env, hostUrl } = await prepareContext();
         if (child != null) child.kill();
+        if (tunnel != null) tunnel.child.kill();
+        if (options.tunnel) tunnel = await startCloudflareTunnel(options.port);
 
         if ("python_version" in config) {
           logger.warn(
