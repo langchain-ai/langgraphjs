@@ -1,4 +1,4 @@
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 import { AnyValue } from "../channels/any_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { LastValue } from "../channels/last_value.js";

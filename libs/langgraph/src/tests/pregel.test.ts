@@ -8,12 +8,13 @@
 import {
   it,
   expect,
-  jest,
+  vi,
   describe,
+  beforeAll,
   beforeEach,
   test,
   afterAll,
-} from "@jest/globals";
+} from "vitest";
 import {
   RunnableConfig,
   RunnableLambda,
@@ -1155,7 +1156,7 @@ export function runPregelTests(
   });
 
   it("can invoke pregel with a single process", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
@@ -1182,7 +1183,7 @@ export function runPregelTests(
   });
 
   it("can invoke graph with a single process", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const graph = new Graph()
       .addNode("add_one", addOne)
@@ -1194,7 +1195,7 @@ export function runPregelTests(
   });
 
   it("should process input and produce output with implicit channels", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
@@ -1216,7 +1217,7 @@ export function runPregelTests(
   });
 
   it("should process input and write kwargs correctly", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(
@@ -1261,7 +1262,7 @@ export function runPregelTests(
   );
 
   it("should invoke single process in out objects", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
@@ -1282,7 +1283,7 @@ export function runPregelTests(
   });
 
   it("should process input and output as objects", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
@@ -1300,7 +1301,7 @@ export function runPregelTests(
     expect(await app.invoke({ input: 2 })).toEqual({ output: 3 });
   });
   it("should invoke two processes and get correct output", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -1341,7 +1342,7 @@ export function runPregelTests(
   });
 
   it("should process two processes with object input and output", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["inbox"]));
@@ -1462,7 +1463,7 @@ export function runPregelTests(
   });
 
   it("should process batch with two processes and delays", async () => {
-    const addOneWithDelay = jest.fn(
+    const addOneWithDelay = vi.fn(
       (inp: number): Promise<number> =>
         new Promise((resolve) => {
           setTimeout(() => resolve(inp + 1), inp * 100);
@@ -1500,7 +1501,7 @@ export function runPregelTests(
   });
 
   it("should process batch with two processes and delays with graph", async () => {
-    const addOneWithDelay = jest.fn(
+    const addOneWithDelay = vi.fn(
       (inp: number): Promise<number> =>
         new Promise((resolve) => {
           setTimeout(() => resolve(inp + 1), inp * 100);
@@ -1520,7 +1521,7 @@ export function runPregelTests(
 
   it("should invoke two processes with input/output and interrupt", async () => {
     const checkpointer = await createCheckpointer();
-    const addOne = jest.fn((x: number) => {
+    const addOne = vi.fn((x: number) => {
       return x + 1;
     });
     const one = Channel.subscribeTo("input")
@@ -1818,7 +1819,7 @@ export function runPregelTests(
 
   it("should batch many processes with input and output", async () => {
     const testSize = 100;
-    const addOne = jest.fn((x: number) => x + 1);
+    const addOne = vi.fn((x: number) => x + 1);
 
     const channels: Record<string, LastValue<number>> = {
       input: new LastValue<number>(),
@@ -1862,7 +1863,7 @@ export function runPregelTests(
   });
 
   it("should raise InvalidUpdateError when the same LastValue channel is updated twice in one iteration", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -1885,7 +1886,7 @@ export function runPregelTests(
   });
 
   it("should fail to process two processes in an invalid way", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -1909,7 +1910,7 @@ export function runPregelTests(
   });
 
   it("should process two inputs to two outputs validly", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -2132,7 +2133,7 @@ graph TD;
   });
 
   it("should handle checkpoints correctly", async () => {
-    const inputPlusTotal = jest.fn(
+    const inputPlusTotal = vi.fn(
       (x: { total: number; input: number }): number => (x.total ?? 0) + x.input
     );
     const raiseIfAbove10 = (input: number): number => {
@@ -2200,8 +2201,8 @@ graph TD;
   });
 
   it("should process two inputs joined into one topic and produce two outputs", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
-    const add10Each = jest.fn((x: number[]): number[] =>
+    const addOne = vi.fn((x: number): number => x + 1);
+    const add10Each = vi.fn((x: number[]): number[] =>
       x.map((y) => y + 10).sort()
     );
 
@@ -2249,8 +2250,8 @@ graph TD;
   });
 
   it("should invoke join then call other app", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
-    const add10Each = jest.fn((x: number[]): number[] => x.map((y) => y + 10));
+    const addOne = vi.fn((x: number): number => x + 1);
+    const add10Each = vi.fn((x: number[]): number[] => x.map((y) => y + 10));
 
     const innerApp = new Pregel({
       nodes: {
@@ -2310,7 +2311,7 @@ graph TD;
   });
 
   it("should handle two processes with one input and two outputs", async () => {
-    const addOne = jest.fn((x: number) => x + 1);
+    const addOne = vi.fn((x: number) => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -2347,7 +2348,7 @@ graph TD;
   });
 
   it("should finish executing without output", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["between"]));
@@ -2370,7 +2371,7 @@ graph TD;
   });
 
   it("should throw an error when no input channel is provided", () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("between")
       .pipe(addOne)
@@ -2654,7 +2655,7 @@ graph TD;
 
       // call method / assertions
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const neverCalled = jest.fn((_: any) => {
+      const neverCalled = vi.fn((_: any) => {
         throw new Error("This should never be called");
       });
 
@@ -2713,7 +2714,7 @@ graph TD;
 
       // call method / assertions
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const neverCalled = jest.fn((_: any) => {
+      const neverCalled = vi.fn((_: any) => {
         throw new Error("This should never be called");
       });
 
@@ -2777,7 +2778,7 @@ graph TD;
     });
 
     it("In one fan out state graph waiting edge", async () => {
-      const sortedAdd = jest.fn((x: string[], y: string[]): string[] =>
+      const sortedAdd = vi.fn((x: string[], y: string[]): string[] =>
         [...x, ...y].sort()
       );
 
@@ -2846,11 +2847,14 @@ graph TD;
       });
 
       const toolTwoNode = (
-        s: typeof StateAnnotation.State
+        s: typeof StateAnnotation.State,
+        config: RunnableConfig
       ): Partial<typeof StateAnnotation.State> => {
         toolTwoNodeCount += 1;
         const answer: string =
-          s.market === "DE" ? interrupt("Just because...") : " all good";
+          s.market === "DE"
+            ? interrupt("Just because...", config)
+            : " all good";
         return { my_key: answer };
       };
 
@@ -3027,7 +3031,7 @@ graph TD;
     it("Should log a warning if a NodeInterrupt is thrown in a conditional edge", async () => {
       // Mock console.warn
       const originalWarn = console.warn;
-      console.warn = jest.fn();
+      console.warn = vi.fn();
 
       const GraphAnnotation = Annotation.Root({
         count: Annotation<number>({ reducer: (a, b) => a + b }),
@@ -3113,8 +3117,11 @@ graph TD;
         answer: Annotation<string>,
       });
 
-      const generate = async (state: typeof StateAnnotation.State) => {
-        const response = await llm.invoke(state.question);
+      const generate = async (
+        state: typeof StateAnnotation.State,
+        config: RunnableConfig
+      ) => {
+        const response = await llm.invoke(state.question, config);
         return { answer: response.content as string };
       };
 
@@ -7187,8 +7194,8 @@ graph TD;
     it("invoke join then call other pregel", async () => {
       const checkpointer = await createCheckpointer();
 
-      const addOne = jest.fn((x: number) => x + 1);
-      const add10Each = jest.fn((x: number[]) => x.map((y) => y + 10));
+      const addOne = vi.fn((x: number) => x + 1);
+      const add10Each = vi.fn((x: number[]) => x.map((y) => y + 10));
 
       const innerApp = new Pregel({
         nodes: {
@@ -9524,8 +9531,8 @@ graph TD;
 
   it("should interrupt and resume with Command inside a subgraph", async () => {
     const subgraph = new StateGraph(MessagesAnnotation)
-      .addNode("one", (_) => {
-        const interruptValue = interrupt("<INTERRUPTED>");
+      .addNode("one", (_, config) => {
+        const interruptValue = interrupt("<INTERRUPTED>", config);
         if (interruptValue !== "<RESUMED>") {
           throw new Error("Expected interrupt to return <RESUMED>");
         }
@@ -9732,9 +9739,12 @@ graph TD;
       }),
     });
 
-    const nodeOne = (_: typeof GraphAnnotation.State) => {
-      const answer = interrupt({ value: 1 });
-      const answer2 = interrupt({ value: 2 });
+    const nodeOne = (
+      _: typeof GraphAnnotation.State,
+      config: RunnableConfig
+    ) => {
+      const answer = interrupt({ value: 1 }, config);
+      const answer2 = interrupt({ value: 2 }, config);
       return { myKey: answer + " " + answer2 };
     };
 
