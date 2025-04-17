@@ -1,6 +1,6 @@
 /* eslint-disable no-process-env */
 
-import { it, beforeAll, describe, expect } from "@jest/globals";
+import { it, beforeAll, describe, expect } from "vitest";
 import { Tool } from "@langchain/core/tools";
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage } from "@langchain/core/messages";

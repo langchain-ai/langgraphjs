@@ -1,4 +1,4 @@
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { Command, END, START } from "../../constants.js";

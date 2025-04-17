@@ -1,4 +1,4 @@
-import { it, expect, describe, afterAll } from "@jest/globals";
+import { it, expect, describe, beforeAll, afterAll } from "vitest";
 import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { MemorySaverAssertImmutable } from "./utils.js";
 import { gatherIterator } from "../utils.js";

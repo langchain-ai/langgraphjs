@@ -1,7 +1,7 @@
 /* eslint-disable no-promise-executor-return */
 /* eslint-disable import/no-extraneous-dependencies */
 import assert from "node:assert";
-import { expect, it } from "@jest/globals";
+import { expect, it } from "vitest";
 import { v4 as uuidv4 } from "uuid";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import {

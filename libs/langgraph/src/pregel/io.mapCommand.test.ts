@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it } from "vitest";
 import { Command, Send } from "../constants.js";
 import { mapCommand } from "./io.js";
 import { InvalidUpdateError } from "../errors.js";

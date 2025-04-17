@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "@jest/globals";
+import { describe, it, expect, beforeEach, beforeAll } from "vitest";
 import { v4 as uuidv4 } from "uuid";
 import {
   Annotation,
