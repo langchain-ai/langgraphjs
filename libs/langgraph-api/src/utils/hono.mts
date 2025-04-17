@@ -4,10 +4,8 @@ import { stream } from "hono/streaming";
 import { StreamingApi } from "hono/utils/stream";
 
 export function jsonExtra<T>(c: Context, object: T) {
-  return new Response(serialiseAsDict(object), {
-    ...c.res,
-    headers: { ...c.res.headers, "Content-Type": "application/json" },
-  });
+  c.header("Content-Type", "application/json");
+  return c.body(serialiseAsDict(object));
 }
 
 export function waitKeepAlive(c: Context, promise: Promise<unknown>) {
