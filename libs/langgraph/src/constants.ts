@@ -445,6 +445,9 @@ export function _deserializeCommandSendObjectGraph(
     } else if (isCommand(x) || _isSend(x)) {
       result = x;
       seen.set(x, result);
+    } else if ("lc_serializable" in x && x.lc_serializable) {
+      result = x;
+      seen.set(x, result);
     } else {
       // Create empty object first
       result = {};
