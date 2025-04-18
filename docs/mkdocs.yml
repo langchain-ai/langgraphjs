@@ -221,6 +221,10 @@ nav:
                     - cloud/how-tos/webhooks.md
                 - Cron Jobs:
                     - cloud/how-tos/cron_jobs.md
+                - Modifying the API:
+                    - Modifying the API: how-tos#modifying-the-api
+                    - how-tos/http/custom_middleware.md
+                    - how-tos/http/custom_routes.md
                 - LangGraph Studio:
                     - LangGraph Studio: how-tos#langgraph-studio
                     - cloud/how-tos/test_deployment.md
