@@ -177,6 +177,11 @@ LangGraph applications can be deployed using LangGraph Cloud, which provides a r
 
 - [How to add custom authentication](./auth/custom_auth.md)
 
+### Modifying the API
+
+- [How to add custom routes](./http/custom_routes.md)
+- [How to add custom middleware](./http/custom_middleware.md)
+
 ### Assistants
 
 [Assistants](../concepts/assistants.md) are a configured instance of a template.
