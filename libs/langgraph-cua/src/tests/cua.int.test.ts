@@ -1,7 +1,7 @@
 import { test, expect } from "@jest/globals";
 import { ChatOpenAI } from "@langchain/openai";
 import { createCua } from "../index.js";
-import { stopInstance } from "../utils.js";
+import { stopScrapybaraInstance, stopHyperbrowserInstance } from "../utils.js";
 
 test.skip("Can invoke the computer preview model", async () => {
   const model = new ChatOpenAI({
@@ -38,7 +38,7 @@ test.skip("Can invoke the computer preview model", async () => {
   expect(response).toBeDefined();
 });
 
-test("It can use the agent to interact with the browser", async () => {
+test("It can use the agent to interact with the browser using Scrapybara", async () => {
   let instanceId: string | undefined;
   const cuaGraph = createCua();
   try {
@@ -111,7 +111,85 @@ test("It can use the agent to interact with the browser", async () => {
   } finally {
     if (instanceId) {
       console.log("Stopping instance with ID", instanceId);
-      await stopInstance(instanceId);
+      await stopScrapybaraInstance(instanceId);
+    }
+  }
+});
+
+test("It can use the agent to interact with the browser using Hyperbrowser", async () => {
+  let instanceId: string | undefined;
+  const cuaGraph = createCua({ provider: "hyperbrowser" });
+  try {
+    const stream = await cuaGraph.stream(
+      {
+        messages: [
+          {
+            role: "system",
+            content:
+              "You're an advanced AI computer use assistant. The browser you are using is already initialized, and visiting google.com.",
+          },
+          {
+            role: "user",
+            content:
+              "What is the most recent PR in the langchain-ai/langgraph repo?",
+          },
+        ],
+      },
+      {
+        streamMode: "updates",
+      }
+    );
+
+    for await (const update of stream) {
+      if (update.createVMInstance) {
+        instanceId = update.createVMInstance.instanceId;
+        console.log("----CREATE VM INSTANCE----\n", {
+          VMInstance: {
+            instanceId,
+            streamUrl: update.createVMInstance.streamUrl,
+          },
+        });
+      }
+
+      if (update.takeComputerAction) {
+        if (update.takeComputerAction?.messages?.[0]) {
+          const message = update.takeComputerAction.messages[0];
+          console.log("----TAKE COMPUTER ACTION----\n", {
+            ToolMessage: {
+              type: message.additional_kwargs?.type,
+              tool_call_id: message.tool_call_id,
+              content: `${message.content.slice(0, 50)}...`,
+            },
+          });
+        }
+      }
+
+      if (update.callModel) {
+        if (update.callModel?.messages) {
+          const message = update.callModel.messages;
+          const allOutputs = message.additional_kwargs?.tool_outputs;
+          if (allOutputs?.length) {
+            const output = allOutputs[allOutputs.length - 1];
+            console.log("----CALL MODEL----\n", {
+              ComputerCall: {
+                ...output.action,
+                call_id: output.call_id,
+              },
+            });
+            continue;
+          }
+          console.log("----CALL MODEL----\n", {
+            AIMessage: {
+              content: message.content,
+            },
+          });
+        }
+      }
+    }
+  } finally {
+    if (instanceId) {
+      console.log("Stopping instance with ID", instanceId);
+      await stopHyperbrowserInstance(instanceId);
     }
   }
 });
