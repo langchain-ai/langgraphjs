@@ -1,4 +1,5 @@
 import { describe, it, expect } from "@jest/globals";
+import { AIMessage } from "@langchain/core/messages";
 import {
   Command,
   Send,
@@ -172,5 +173,14 @@ describe("_deserializeCommandSendObjectGraph", () => {
     expect(goto[0]).toBe("nodeA");
     expect(goto[1]).toBe("nodeB");
     expect(goto[2]).toBeInstanceOf(Send);
+  });
+
+  it("avoid unfurling Serializable objects", () => {
+    const message = new AIMessage("first");
+    const send = new Send("map-reduce", { messages: [message] });
+    expect(send.args.messages[0]).toBe(message);
+
+    const command = new Command({ goto: [send] });
+    expect((command.goto as Send[])[0].args.messages[0]).toBe(message);
   });
 });
