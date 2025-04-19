@@ -1,5 +1,5 @@
 import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
-import { describe, it, expect, beforeAll } from "@jest/globals";
+import { describe, it, expect, beforeEach, beforeAll } from "vitest";
 import { task, entrypoint, getPreviousState } from "../func/index.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { Command, PREVIOUS, START } from "../constants.js";
