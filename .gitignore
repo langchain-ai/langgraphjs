@@ -21,3 +21,4 @@ dist-cjs
 **/dist-cjs
 tmp/
 __pycache__
+.DS_Store
