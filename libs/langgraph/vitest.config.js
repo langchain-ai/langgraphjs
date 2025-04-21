@@ -10,11 +10,13 @@ export default defineConfig({
           exclude: ["**/*.int.test.ts", ...configDefaults.exclude],
           name: "unit",
           environment: "node",
+          globals: true,
         },
       },
       {
         test: {
           exclude: ["**/*.int.test.ts", ...configDefaults.exclude],
+          globals: true,
           browser: {
             provider: "playwright",
             enabled: process.env.BROWSER_TEST === "true",
