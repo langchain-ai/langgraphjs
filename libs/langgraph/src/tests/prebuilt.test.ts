@@ -59,6 +59,9 @@ class SearchAPI extends StructuredTool {
   schema = searchSchema;
 
   async _call(input: z.infer<typeof searchSchema>) {
+    if (input?.query === "error") {
+      throw new Error("Error");
+    }
     return `result for ${input?.query}`;
   }
 }
@@ -786,6 +789,34 @@ describe("createReactAgent with ToolNode", () => {
       new _AnyIdAIMessage("result"),
     ];
     expect(result.messages).toEqual(expected);
+  });
+  it("Should work with ToolNode with handleToolErrors set to false", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            {
+              name: "search_api",
+              id: "tool_abcd123",
+              args: { query: "error" },
+            },
+          ],
+        }),
+      ],
+    });
+    const toolNode = new ToolNode([new SearchAPI()], {
+      handleToolErrors: false,
+    });
+    const agentNoErrorHandling = createReactAgent({
+      llm,
+      tools: toolNode,
+    });
+    await expect(
+      agentNoErrorHandling.invoke({
+        messages: [new HumanMessage("Hello Input!")],
+      })
+    ).rejects.toThrow();
   });
 });
 
