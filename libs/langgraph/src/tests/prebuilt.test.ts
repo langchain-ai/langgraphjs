@@ -59,6 +59,9 @@ class SearchAPI extends StructuredTool {
   schema = searchSchema;
 
   async _call(input: z.infer<typeof searchSchema>) {
+    if (input?.query === "error") {
+      throw new Error("Error");
+    }
     return `result for ${input?.query}`;
   }
 }
@@ -738,6 +741,82 @@ describe("createReactAgent with legacy messageModifier", () => {
       new _AnyIdAIMessage("result2"),
     ];
     expect(result.messages).toEqual(expected);
+  });
+});
+
+describe("createReactAgent with ToolNode", () => {
+  it("Should work with ToolNode", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            {
+              name: "search_api",
+              id: "tool_abcd123",
+              args: { query: "foo" },
+            },
+          ],
+        }),
+        new AIMessage("result"),
+      ],
+    });
+    const toolNode = new ToolNode([new SearchAPI()]);
+    const agent = createReactAgent({
+      llm,
+      tools: toolNode,
+    });
+    const result = await agent.invoke({
+      messages: [new HumanMessage("Hello Input!")],
+    });
+    const expected = [
+      new _AnyIdHumanMessage("Hello Input!"),
+      new _AnyIdAIMessage({
+        content: "",
+        tool_calls: [
+          {
+            name: "search_api",
+            id: "tool_abcd123",
+            args: { query: "foo" },
+          },
+        ],
+      }),
+      new _AnyIdToolMessage({
+        name: "search_api",
+        content: "result for foo",
+        tool_call_id: "tool_abcd123",
+      }),
+      new _AnyIdAIMessage("result"),
+    ];
+    expect(result.messages).toEqual(expected);
+  });
+  it("Should work with ToolNode with handleToolErrors set to false", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            {
+              name: "search_api",
+              id: "tool_abcd123",
+              args: { query: "error" },
+            },
+          ],
+        }),
+      ],
+    });
+    const toolNode = new ToolNode([new SearchAPI()], {
+      handleToolErrors: false,
+    });
+    const agentNoErrorHandling = createReactAgent({
+      llm,
+      tools: toolNode,
+    });
+    await expect(
+      agentNoErrorHandling.invoke({
+        messages: [new HumanMessage("Hello Input!")],
+      })
+    ).rejects.toThrow();
   });
 });
 
