@@ -313,10 +313,7 @@ export const ThreadSearchRequest = z
       .enum(["thread_id", "status", "created_at", "updated_at"])
       .describe("Sort by field.")
       .optional(),
-    sort_order: z
-      .enum(["asc", "desc"])
-      .describe("Sort order.")
-      .optional(),
+    sort_order: z.enum(["asc", "desc"]).describe("Sort order.").optional(),
   })
   .describe("Payload for listing threads.");
 
