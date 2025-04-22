@@ -61,7 +61,7 @@
     "@langchain/core": "^0.3.42",
     "@langchain/langgraph": "^0.2.57",
     "@langchain/langgraph-checkpoint": "^0.0.16",
-    "@langchain/langgraph-sdk": "^0.0.67",
+    "@langchain/langgraph-sdk": "^0.0.70",
     "typescript": "^5.5.4"
   },
   "peerDependenciesMeta": {
@@ -70,7 +70,7 @@
     }
   },
   "devDependencies": {
-    "@langchain/langgraph-sdk": "^0.0.67",
+    "@langchain/langgraph-sdk": "^0.0.70",
     "@types/babel__code-frame": "^7.0.6",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",

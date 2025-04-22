@@ -1,14 +1,14 @@
-import { describe, expect, it, beforeEach, beforeAll } from "vitest";
-import { Client, type FeedbackStreamEvent } from "@langchain/langgraph-sdk";
-import { findLast, gatherIterator, truncate } from "./utils.mjs";
 import type {
   BaseMessageFields,
   BaseMessageLike,
   MessageType,
 } from "@langchain/core/messages";
+import { Client, type FeedbackStreamEvent } from "@langchain/langgraph-sdk";
 import { RemoteGraph } from "@langchain/langgraph/remote";
-import postgres from "postgres";
 import { randomUUID } from "crypto";
+import postgres from "postgres";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { findLast, gatherIterator, truncate } from "./utils.mjs";
 
 const API_URL = "http://localhost:2024";
 const client = new Client<any>({ apiUrl: API_URL });
@@ -338,6 +338,23 @@ describe("threads crud", () => {
     search = await client.threads.search({ offset: 1, limit: 1 });
     expect(search.length).toBe(1);
     expect(createThreadResponse.thread_id).toBe(search[0].thread_id);
+
+    // test sorting
+    search = await client.threads.search({
+      sortBy: "created_at",
+      sortOrder: "asc",
+    });
+    expect(search.length).toBe(2);
+    expect(search[0].thread_id).toBe(createThreadResponse.thread_id);
+    expect(search[1].thread_id).toBe(create.thread_id);
+
+    search = await client.threads.search({
+      sortBy: "created_at",
+      sortOrder: "desc",
+    });
+    expect(search.length).toBe(2);
+    expect(search[0].thread_id).toBe(create.thread_id);
+    expect(search[1].thread_id).toBe(createThreadResponse.thread_id);
   });
 });
 
