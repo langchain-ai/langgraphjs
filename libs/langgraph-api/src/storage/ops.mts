@@ -723,27 +723,27 @@ export class Threads {
         .sort((a, b) => {
           const sortBy = options.sort_by ?? "created_at";
           const sortOrder = options.sort_order ?? "desc";
-          
+
           if (sortBy === "created_at" || sortBy === "updated_at") {
             const aTime = a[sortBy].getTime();
             const bTime = b[sortBy].getTime();
             return sortOrder === "desc" ? bTime - aTime : aTime - bTime;
           }
-          
+
           if (sortBy === "thread_id" || sortBy === "status") {
             const aVal = a[sortBy];
             const bVal = b[sortBy];
-            return sortOrder === "desc" 
+            return sortOrder === "desc"
               ? bVal.localeCompare(aVal)
               : aVal.localeCompare(bVal);
           }
-          
+
           return 0;
         });
 
       // Calculate total count before pagination
       const total = filtered.length;
-      
+
       for (const thread of filtered.slice(
         options.offset,
         options.offset + options.limit,
