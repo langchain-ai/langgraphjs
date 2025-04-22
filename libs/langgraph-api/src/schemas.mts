@@ -309,6 +309,14 @@ export const ThreadSearchRequest = z
       .gte(0)
       .describe("Offset to start from.")
       .optional(),
+    sort_by: z
+      .enum(["thread_id", "status", "created_at", "updated_at"])
+      .describe("Sort by field.")
+      .optional(),
+    sort_order: z
+      .enum(["asc", "desc"])
+      .describe("Sort order.")
+      .optional(),
   })
   .describe("Payload for listing threads.");
 

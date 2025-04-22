@@ -1,20 +1,20 @@
 import type {
-  StateSnapshot as LangGraphStateSnapshot,
   CheckpointMetadata as LangGraphCheckpointMetadata,
   LangGraphRunnableConfig,
+  StateSnapshot as LangGraphStateSnapshot,
 } from "@langchain/langgraph";
 
 import { HTTPException } from "hono/http-exception";
 import { v4 as uuid4, v5 as uuid5 } from "uuid";
-import { getGraph, NAMESPACE_GRAPH } from "../graph/load.mjs";
-import { checkpointer } from "./checkpoint.mjs";
-import { store } from "./store.mjs";
-import { logger } from "../logging.mjs";
-import { serializeError } from "../utils/serde.mjs";
-import { FileSystemPersistence } from "./persist.mjs";
-import { getLangGraphCommand, type RunCommand } from "../command.mjs";
 import { handleAuthEvent, isAuthMatching } from "../auth/custom.mjs";
 import type { AuthContext } from "../auth/index.mjs";
+import { getLangGraphCommand, type RunCommand } from "../command.mjs";
+import { getGraph, NAMESPACE_GRAPH } from "../graph/load.mjs";
+import { logger } from "../logging.mjs";
+import { serializeError } from "../utils/serde.mjs";
+import { checkpointer } from "./checkpoint.mjs";
+import { FileSystemPersistence } from "./persist.mjs";
+import { store } from "./store.mjs";
 
 export type Metadata = Record<string, unknown>;
 
@@ -684,9 +684,11 @@ export class Threads {
       values?: Record<string, unknown>;
       limit: number;
       offset: number;
+      sort_by?: "thread_id" | "status" | "created_at" | "updated_at";
+      sort_order?: "asc" | "desc";
     },
     auth: AuthContext | undefined,
-  ): AsyncGenerator<Thread> {
+  ): AsyncGenerator<{ thread: Thread; total: number }> {
     const [filters] = await handleAuthEvent(auth, "threads:search", {
       metadata: options.metadata,
       status: options.status,
@@ -718,13 +720,35 @@ export class Threads {
 
           return true;
         })
-        .sort((a, b) => b["created_at"].getTime() - a["created_at"].getTime());
+        .sort((a, b) => {
+          const sortBy = options.sort_by ?? "created_at";
+          const sortOrder = options.sort_order ?? "desc";
+          
+          if (sortBy === "created_at" || sortBy === "updated_at") {
+            const aTime = a[sortBy].getTime();
+            const bTime = b[sortBy].getTime();
+            return sortOrder === "desc" ? bTime - aTime : aTime - bTime;
+          }
+          
+          if (sortBy === "thread_id" || sortBy === "status") {
+            const aVal = a[sortBy];
+            const bVal = b[sortBy];
+            return sortOrder === "desc" 
+              ? bVal.localeCompare(aVal)
+              : aVal.localeCompare(bVal);
+          }
+          
+          return 0;
+        });
 
+      // Calculate total count before pagination
+      const total = filtered.length;
+      
       for (const thread of filtered.slice(
         options.offset,
         options.offset + options.limit,
       )) {
-        yield thread;
+        yield { thread, total };
       }
     });
   }
