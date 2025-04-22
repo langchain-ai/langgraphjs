@@ -741,6 +741,54 @@ describe("createReactAgent with legacy messageModifier", () => {
   });
 });
 
+describe("createReactAgent with ToolNode", () => {
+  it("Should work with ToolNode", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            {
+              name: "search_api",
+              id: "tool_abcd123",
+              args: { query: "foo" },
+            },
+          ],
+        }),
+        new AIMessage("result"),
+      ],
+    });
+    const toolNode = new ToolNode([new SearchAPI()]);
+    const agent = createReactAgent({
+      llm,
+      tools: toolNode,
+    });
+    const result = await agent.invoke({
+      messages: [new HumanMessage("Hello Input!")],
+    });
+    const expected = [
+      new _AnyIdHumanMessage("Hello Input!"),
+      new _AnyIdAIMessage({
+        content: "",
+        tool_calls: [
+          {
+            name: "search_api",
+            id: "tool_abcd123",
+            args: { query: "foo" },
+          },
+        ],
+      }),
+      new _AnyIdToolMessage({
+        name: "search_api",
+        content: "result for foo",
+        tool_call_id: "tool_abcd123",
+      }),
+      new _AnyIdAIMessage("result"),
+    ];
+    expect(result.messages).toEqual(expected);
+  });
+});
+
 describe("ToolNode", () => {
   it("Should support graceful error handling", async () => {
     const toolNode = new ToolNode([new SearchAPI()]);

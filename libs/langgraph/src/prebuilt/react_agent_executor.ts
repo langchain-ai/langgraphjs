@@ -446,10 +446,13 @@ export function createReactAgent<
   } = params;
 
   let toolClasses: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
+  let toolNode: ToolNode;
   if (!Array.isArray(tools)) {
     toolClasses = tools.tools;
+    toolNode = tools;
   } else {
     toolClasses = tools;
+    toolNode = new ToolNode(tools);
   }
 
   let modelWithTools: LanguageModelLike;
@@ -533,7 +536,7 @@ export function createReactAgent<
     stateSchema ?? createReactAgentAnnotation<StructuredResponseFormat>()
   )
     .addNode("agent", callModel)
-    .addNode("tools", new ToolNode(toolClasses))
+    .addNode("tools", toolNode)
     .addEdge(START, "agent");
 
   if (responseFormat !== undefined) {
