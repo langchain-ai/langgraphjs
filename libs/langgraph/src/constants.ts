@@ -28,7 +28,8 @@ export const SELF = "__self__";
 export const TASKS = "__pregel_tasks";
 export const PUSH = "__pregel_push";
 export const PULL = "__pregel_pull";
-
+export const NODE_FINISHED = "__pregel_node_finished";
+// holds an async callback to be called when a node is finished
 export const TASK_NAMESPACE = "6ba7b831-9dad-11d1-80b4-00c04fd430c8";
 export const NULL_TASK_ID = "00000000-0000-0000-0000-000000000000";
 

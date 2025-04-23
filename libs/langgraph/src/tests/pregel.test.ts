@@ -96,6 +96,7 @@ import {
   PULL,
   PUSH,
   Send,
+  NODE_FINISHED,
 } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
@@ -6448,8 +6449,10 @@ graph TD;
       });
 
       const grandchild1 = async (
-        state: typeof GrandchildStateAnnotation.State
+        state: typeof GrandchildStateAnnotation.State,
+        config: RunnableConfig
       ) => {
+        expect(config.configurable?.[NODE_FINISHED]).toBeDefined();
         return {
           myKey: state.myKey + " here",
         };
@@ -6490,18 +6493,29 @@ graph TD;
         .addEdge("child", "parent2");
 
       const app = graph.compile({ checkpointer });
+      // Check nodes executed
+      let nodeCount = 0;
+      const nodeFinished = async () => {
+        nodeCount += 1;
+      };
 
       // test invoke w/ nested interrupt
-      const config = { configurable: { thread_id: "1" } };
+      const config = {
+        configurable: { thread_id: "1", [NODE_FINISHED]: nodeFinished },
+      };
       expect(await app.invoke({ myKey: "my value" }, config)).toEqual({
         myKey: "hi my value",
       });
       expect(await app.invoke(null, config)).toEqual({
         myKey: "hi my value here and there and back again",
       });
+      // parent1, (child, child1, grandchild1, grandchild2), parent2
+      expect(nodeCount).toEqual(6);
 
       // test stream updates w/ nested interrupt
-      const config2 = { configurable: { thread_id: "2" } };
+      const config2 = {
+        configurable: { thread_id: "2", [NODE_FINISHED]: nodeFinished },
+      };
       expect(
         await gatherIterator(app.stream({ myKey: "my value" }, config2))
       ).toEqual([{ parent1: { myKey: "hi my value" } }]);
@@ -6512,7 +6526,7 @@ graph TD;
 
       // test stream values w/ nested interrupt
       const config3 = {
-        configurable: { thread_id: "3" },
+        configurable: { thread_id: "3", [NODE_FINISHED]: nodeFinished },
         streamMode: "values" as const,
       };
       expect(

@@ -55,6 +55,8 @@ import {
   INPUT,
   RESUME,
   PUSH,
+  NODE_FINISHED,
+  TAG_HIDDEN,
 } from "../constants.js";
 import {
   PregelExecutableTask,
@@ -1286,6 +1288,7 @@ export class Pregel<
             }
           );
           // Timeouts will be thrown
+          // TODO: Handle the onNodeEnd stuff here
           for await (const { task, error } of taskStream) {
             if (error !== undefined) {
               if (isGraphBubbleUp(error)) {
@@ -1308,6 +1311,14 @@ export class Pregel<
                 throw error;
               }
             } else {
+              if (config.configurable?.[NODE_FINISHED]) {
+                if (
+                  task.config === null ||
+                  !task.config?.tags?.includes(TAG_HIDDEN)
+                ) {
+                  await config.configurable[NODE_FINISHED](task.name as string);
+                }
+              }
               loop.putWrites(task.id, task.writes);
             }
           }

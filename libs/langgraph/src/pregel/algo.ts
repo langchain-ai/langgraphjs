@@ -46,6 +46,7 @@ import {
   NULL_TASK_ID,
   CONFIG_KEY_SCRATCHPAD,
   CONFIG_KEY_WRITES,
+  NODE_FINISHED,
 } from "../constants.js";
 import { PregelExecutableTask, PregelTaskDescription } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
@@ -641,6 +642,7 @@ export function _prepareSingleTask<
                   ...(configurable[CONFIG_KEY_WRITES] || []),
                 ].filter((w) => w[0] === NULL_TASK_ID || w[0] === taskId),
                 [CONFIG_KEY_SCRATCHPAD]: {},
+                [NODE_FINISHED]: configurable[NODE_FINISHED],
                 checkpoint_id: undefined,
                 checkpoint_ns: taskCheckpointNamespace,
               },
@@ -774,6 +776,7 @@ export function _prepareSingleTask<
                     ...(configurable[CONFIG_KEY_WRITES] || []),
                   ].filter((w) => w[0] === NULL_TASK_ID || w[0] === taskId),
                   [CONFIG_KEY_SCRATCHPAD]: {},
+                  [NODE_FINISHED]: configurable[NODE_FINISHED],
                   checkpoint_id: undefined,
                   checkpoint_ns: taskCheckpointNamespace,
                 },
