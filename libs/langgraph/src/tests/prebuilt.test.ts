@@ -823,7 +823,7 @@ describe("createReactAgent with ToolNode", () => {
   });
   it("should work with interrupt()", async () => {
     const toolWithInterrupt = tool(
-      async (input) => {
+      async (_) => {
         const value = interrupt("Please review.");
         return value;
       },
@@ -1731,7 +1731,7 @@ describe("ToolNode with Commands", () => {
 describe("ToolNode should raise GraphInterrupt", () => {
   it("should raise GraphInterrupt", async () => {
     const toolWithInterrupt = tool(
-      async (input) => {
+      async (_) => {
         throw new GraphInterrupt();
       },
       {
