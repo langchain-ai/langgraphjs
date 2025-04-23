@@ -32,6 +32,9 @@ import {
 import {
   Annotation,
   Command,
+  GraphInterrupt,
+  interrupt,
+  MemorySaver,
   messagesStateReducer,
   Send,
   StateGraph,
@@ -817,6 +820,68 @@ describe("createReactAgent with ToolNode", () => {
         messages: [new HumanMessage("Hello Input!")],
       })
     ).rejects.toThrow();
+  });
+  it("should work with interrupt()", async () => {
+    const toolWithInterrupt = tool(
+      async (_) => {
+        const value = interrupt("Please review.");
+        return value;
+      },
+      {
+        name: "tool_with_interrupt",
+        description: "A tool that returns an interrupt",
+        schema: z.object({}),
+      }
+    );
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "",
+          tool_calls: [{ name: "tool_with_interrupt", args: {}, id: "testid" }],
+        }),
+        new AIMessage("Final response"),
+      ],
+    });
+
+    // base case (ensure that GraphInterrupt is raised under the hood)
+    const agent = createReactAgent({
+      llm,
+      tools: [toolWithInterrupt],
+      checkpointer: new MemorySaver(),
+    });
+    const res = await agent.invoke(
+      { messages: [new HumanMessage("Hello Input!")] },
+      { configurable: { thread_id: "1" } }
+    );
+    // only 2 messages before the interrupt
+    expect(res.messages.length).toEqual(2);
+    const resResume = await agent.invoke(new Command({ resume: "Approved." }), {
+      configurable: { thread_id: "1" },
+    });
+    expect(resResume.messages.length).toEqual(4);
+    expect(resResume.messages[2].content).toEqual("Approved.");
+
+    // confirm that it works with disabled tool error handling as well
+    const toolNodeNoErrorHandling = new ToolNode([toolWithInterrupt], {
+      handleToolErrors: false,
+    });
+    const agentNoErrorHandling = createReactAgent({
+      llm,
+      tools: toolNodeNoErrorHandling,
+      checkpointer: new MemorySaver(),
+    });
+    const resNoErrorHandling = await agentNoErrorHandling.invoke(
+      { messages: [new HumanMessage("Hello Input!")] },
+      { configurable: { thread_id: "1" } }
+    );
+    // only 2 messages before the interrupt
+    expect(resNoErrorHandling.messages.length).toEqual(2);
+    const resNoErrorHandlingResume = await agentNoErrorHandling.invoke(
+      new Command({ resume: "Approved." }),
+      { configurable: { thread_id: "1" } }
+    );
+    expect(resNoErrorHandlingResume.messages.length).toEqual(4);
+    expect(resNoErrorHandlingResume.messages[2].content).toEqual("Approved.");
   });
 });
 
@@ -1661,5 +1726,32 @@ describe("ToolNode with Commands", () => {
         graph: Command.PARENT,
       }),
     ]);
+  });
+});
+describe("ToolNode should raise GraphInterrupt", () => {
+  it("should raise GraphInterrupt", async () => {
+    const toolWithInterrupt = tool(
+      async (_) => {
+        throw new GraphInterrupt();
+      },
+      {
+        name: "tool_with_interrupt",
+        description: "A tool that returns an interrupt",
+        schema: z.object({}),
+      }
+    );
+    const toolNode = new ToolNode([toolWithInterrupt]);
+    await expect(
+      toolNode.invoke({
+        messages: [
+          new AIMessage({
+            content: "",
+            tool_calls: [
+              { name: "tool_with_interrupt", args: {}, id: "testid" },
+            ],
+          }),
+        ],
+      })
+    ).rejects.toThrow(GraphInterrupt);
   });
 });
