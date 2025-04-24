@@ -23,12 +23,7 @@ import {
   FunctionMessageFieldsWithName,
 } from "@langchain/core/messages";
 import { ChatGenerationChunk, ChatResult } from "@langchain/core/outputs";
-import {
-  Runnable,
-  RunnableBinding,
-  RunnableConfig,
-  RunnableLambda,
-} from "@langchain/core/runnables";
+import { RunnableConfig, RunnableLambda } from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
 import {
   MemorySaver,
@@ -297,9 +292,9 @@ export class FakeConfigurableModel extends BaseChatModel {
   }
 
   async _generate(
-    messages: BaseMessage[],
+    _messages: BaseMessage[],
     _options: this["ParsedCallOptions"],
-    runManager?: CallbackManagerForLLMRun
+    _runManager?: CallbackManagerForLLMRun
   ): Promise<ChatResult> {
     throw new Error("Not implemented");
   }

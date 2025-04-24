@@ -173,7 +173,7 @@ function _isConfigurableModel(model: any): model is ConfigurableModelInterface {
 
 export async function _shouldBindTools(
   llm: LanguageModelLike,
-  tools: BindToolsInput[]
+  tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[]
 ): Promise<boolean> {
   // If model is a RunnableSequence, find a RunnableBinding or BaseChatModel in its steps
   let model = llm;
