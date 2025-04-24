@@ -156,18 +156,39 @@ function _isBaseChatModel(model: LanguageModelLike): model is BaseChatModel {
   );
 }
 
-export function _shouldBindTools(
+interface ConfigurableModelInterface {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  _queuedMethodOperations: Record<string, any>;
+  _model: () => Promise<BaseChatModel>;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function _isConfigurableModel(model: any): model is ConfigurableModelInterface {
+  return (
+    "_queuedMethodOperations" in model &&
+    "_model" in model &&
+    typeof model._model === "function"
+  );
+}
+
+export async function _shouldBindTools(
   llm: LanguageModelLike,
   tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[]
-): boolean {
+): Promise<boolean> {
   // If model is a RunnableSequence, find a RunnableBinding or BaseChatModel in its steps
   let model = llm;
   if (RunnableSequence.isRunnableSequence(model)) {
     model =
       model.steps.find(
         (step) =>
-          RunnableBinding.isRunnableBinding(step) || _isBaseChatModel(step)
+          RunnableBinding.isRunnableBinding(step) ||
+          _isBaseChatModel(step) ||
+          _isConfigurableModel(step)
       ) || model;
+  }
+
+  if (_isConfigurableModel(model)) {
+    model = await model._model();
   }
 
   // If not a RunnableBinding, we should bind tools
@@ -236,15 +257,23 @@ export function _shouldBindTools(
   return false;
 }
 
-export function _getModel(llm: LanguageModelLike): BaseChatModel {
+export async function _getModel(
+  llm: LanguageModelLike | ConfigurableModelInterface
+): Promise<BaseChatModel> {
   // If model is a RunnableSequence, find a RunnableBinding or BaseChatModel in its steps
   let model = llm;
   if (RunnableSequence.isRunnableSequence(model)) {
     model =
       model.steps.find(
         (step) =>
-          RunnableBinding.isRunnableBinding(step) || _isBaseChatModel(step)
+          RunnableBinding.isRunnableBinding(step) ||
+          _isBaseChatModel(step) ||
+          _isConfigurableModel(step)
       ) || model;
+  }
+
+  if (_isConfigurableModel(model)) {
+    model = await model._model();
   }
 
   // Get the underlying model from a RunnableBinding
@@ -455,19 +484,30 @@ export function createReactAgent<
     toolNode = new ToolNode(tools);
   }
 
-  let modelWithTools: LanguageModelLike;
-  if (_shouldBindTools(llm, toolClasses)) {
-    if (!("bindTools" in llm) || typeof llm.bindTools !== "function") {
-      throw new Error(`llm ${llm} must define bindTools method.`);
-    }
-    modelWithTools = llm.bindTools(toolClasses);
-  } else {
-    modelWithTools = llm;
-  }
+  let cachedModelRunnable: Runnable | null = null;
 
-  const modelRunnable = (
-    _getPrompt(prompt, stateModifier, messageModifier) as Runnable
-  ).pipe(modelWithTools);
+  const getModelRunnable = async (llm: LanguageModelLike) => {
+    if (cachedModelRunnable) {
+      return cachedModelRunnable;
+    }
+
+    let modelWithTools: LanguageModelLike;
+    if (await _shouldBindTools(llm, toolClasses)) {
+      if (!("bindTools" in llm) || typeof llm.bindTools !== "function") {
+        throw new Error(`llm ${llm} must define bindTools method.`);
+      }
+      modelWithTools = llm.bindTools(toolClasses);
+    } else {
+      modelWithTools = llm;
+    }
+
+    const modelRunnable = (
+      _getPrompt(prompt, stateModifier, messageModifier) as Runnable
+    ).pipe(modelWithTools);
+
+    cachedModelRunnable = modelRunnable;
+    return modelRunnable;
+  };
 
   // If any of the tools are configured to return_directly after running,
   // our graph needs to check if these were called
@@ -508,11 +548,14 @@ export function createReactAgent<
       "schema" in responseFormat
     ) {
       const { prompt, schema } = responseFormat;
-      modelWithStructuredOutput = _getModel(llm).withStructuredOutput(schema);
+      modelWithStructuredOutput = (await _getModel(llm)).withStructuredOutput(
+        schema
+      );
       messages.unshift(new SystemMessage({ content: prompt }));
     } else {
-      modelWithStructuredOutput =
-        _getModel(llm).withStructuredOutput(responseFormat);
+      modelWithStructuredOutput = (await _getModel(llm)).withStructuredOutput(
+        responseFormat
+      );
     }
 
     const response = await modelWithStructuredOutput.invoke(messages, config);
@@ -523,6 +566,9 @@ export function createReactAgent<
     state: AgentState<StructuredResponseFormat>,
     config?: RunnableConfig
   ) => {
+    // NOTE: we're dynamically creating the model runnable here
+    // to ensure that we can validate ConfigurableModel properly
+    const modelRunnable = await getModelRunnable(llm);
     // TODO: Auto-promote streaming.
     const response = (await modelRunnable.invoke(state, config)) as BaseMessage;
     // add agent name to the AIMessage

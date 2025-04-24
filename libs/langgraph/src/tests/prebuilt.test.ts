@@ -20,6 +20,7 @@ import {
   _AnyIdAIMessage,
   _AnyIdHumanMessage,
   _AnyIdToolMessage,
+  FakeConfigurableModel,
   FakeToolCallingChatModel,
   MemorySaverAssertImmutable,
 } from "./utils.js";
@@ -474,20 +475,26 @@ describe("createReactAgent with bound tools", () => {
       }
 
       // Test mismatching tool lengths
-      expect(() => {
-        createReactAgent({
+      await expect(async () => {
+        const agent = createReactAgent({
           llm: llm.bindTools([tool1]),
           tools: [tool1, tool2],
         });
-      }).toThrow();
+        await agent.invoke({
+          messages: [new HumanMessage("Hello Input!")],
+        });
+      }).rejects.toThrow();
 
       // Test missing bound tools
-      expect(() => {
-        createReactAgent({
+      await expect(async () => {
+        const agent = createReactAgent({
           llm: llm.bindTools([tool1]),
           tools: [tool2],
         });
-      }).toThrow();
+        await agent.invoke({
+          messages: [new HumanMessage("Hello Input!")],
+        });
+      }).rejects.toThrow();
     }
   );
 });
@@ -1214,36 +1221,88 @@ describe("_shouldBindTools", () => {
       });
 
       // Should bind when a regular model
-      expect(_shouldBindTools(model, [])).toBe(true);
-      expect(_shouldBindTools(model, [tool1])).toBe(true);
+      expect(await _shouldBindTools(model, [])).toBe(true);
+      expect(await _shouldBindTools(model, [tool1])).toBe(true);
 
       // Should bind when a seq
       const seq = RunnableSequence.from([
         model,
         RunnableLambda.from((message) => message),
       ]);
-      expect(_shouldBindTools(seq, [])).toBe(true);
-      expect(_shouldBindTools(seq, [tool1])).toBe(true);
+      expect(await _shouldBindTools(seq, [])).toBe(true);
+      expect(await _shouldBindTools(seq, [tool1])).toBe(true);
 
       // Should not bind when a model with tools
       const modelWithTools = model.bindTools([tool1]);
-      expect(_shouldBindTools(modelWithTools, [tool1])).toBe(false);
+      expect(await _shouldBindTools(modelWithTools, [tool1])).toBe(false);
 
       // Should not bind when a seq with tools
       const seqWithTools = RunnableSequence.from([
         model.bindTools([tool1]),
         RunnableLambda.from((message) => message),
       ]);
-      expect(_shouldBindTools(seqWithTools, [tool1])).toBe(false);
+      expect(await _shouldBindTools(seqWithTools, [tool1])).toBe(false);
 
       // Should raise on invalid inputs
-      expect(() => _shouldBindTools(model.bindTools([tool1]), [])).toThrow();
-      expect(() =>
-        _shouldBindTools(model.bindTools([tool1]), [tool2])
-      ).toThrow();
-      expect(() =>
-        _shouldBindTools(model.bindTools([tool1]), [tool1, tool2])
-      ).toThrow();
+      await expect(
+        async () => await _shouldBindTools(model.bindTools([tool1]), [])
+      ).rejects.toThrow();
+      await expect(
+        async () => await _shouldBindTools(model.bindTools([tool1]), [tool2])
+      ).rejects.toThrow();
+      await expect(
+        async () =>
+          await _shouldBindTools(model.bindTools([tool1]), [tool1, tool2])
+      ).rejects.toThrow();
+
+      // test configurable model
+      const configurableModel = new FakeConfigurableModel({
+        model,
+      });
+
+      // Should bind when a regular model
+      expect(await _shouldBindTools(configurableModel, [])).toBe(true);
+      expect(await _shouldBindTools(configurableModel, [tool1])).toBe(true);
+
+      // Should bind when a seq
+      const configurableSeq = RunnableSequence.from([
+        configurableModel,
+        RunnableLambda.from((message) => message),
+      ]);
+      expect(await _shouldBindTools(configurableSeq, [])).toBe(true);
+      expect(await _shouldBindTools(configurableSeq, [tool1])).toBe(true);
+
+      // Should not bind when a model with tools
+      const configurableModelWithTools = configurableModel.bindTools([tool1]);
+      expect(await _shouldBindTools(configurableModelWithTools, [tool1])).toBe(
+        false
+      );
+
+      // Should not bind when a seq with tools
+      const configurableSeqWithTools = RunnableSequence.from([
+        configurableModel.bindTools([tool1]),
+        RunnableLambda.from((message) => message),
+      ]);
+      expect(await _shouldBindTools(configurableSeqWithTools, [tool1])).toBe(
+        false
+      );
+
+      // Should raise on invalid inputs
+      await expect(
+        async () =>
+          await _shouldBindTools(configurableModel.bindTools([tool1]), [])
+      ).rejects.toThrow();
+      await expect(
+        async () =>
+          await _shouldBindTools(configurableModel.bindTools([tool1]), [tool2])
+      ).rejects.toThrow();
+      await expect(
+        async () =>
+          await _shouldBindTools(configurableModel.bindTools([tool1]), [
+            tool1,
+            tool2,
+          ])
+      ).rejects.toThrow();
     }
   );
 });
@@ -1253,7 +1312,7 @@ describe("_getModel", () => {
     const model = new FakeToolCallingChatModel({
       responses: [new AIMessage("test")],
     });
-    expect(_getModel(model)).toBe(model);
+    expect(await _getModel(model)).toBe(model);
 
     const tool1 = tool((input) => `Tool 1: ${input.someVal}`, {
       name: "tool1",
@@ -1264,25 +1323,57 @@ describe("_getModel", () => {
     });
 
     const modelWithTools = model.bindTools([tool1]);
-    expect(_getModel(modelWithTools)).toBe(model);
+    expect(await _getModel(modelWithTools)).toBe(model);
 
     const seq = RunnableSequence.from([
       model,
       RunnableLambda.from((message) => message),
     ]);
-    expect(_getModel(seq)).toBe(model);
+    expect(await _getModel(seq)).toBe(model);
 
     const seqWithTools = RunnableSequence.from([
       model.bindTools([tool1]),
       RunnableLambda.from((message) => message),
     ]);
-    expect(_getModel(seqWithTools)).toBe(model);
+    expect(await _getModel(seqWithTools)).toBe(model);
 
     const raisingSeq = RunnableSequence.from([
       RunnableLambda.from((message) => message),
       RunnableLambda.from((message) => message),
     ]);
-    expect(() => _getModel(raisingSeq)).toThrow(Error);
+    await expect(async () => await _getModel(raisingSeq)).rejects.toThrow(
+      Error
+    );
+
+    // test configurable model
+    const configurableModel = new FakeConfigurableModel({
+      model,
+    });
+
+    expect(await _getModel(configurableModel)).toBe(model);
+    expect(await _getModel(configurableModel.bindTools([tool1]))).toBe(model);
+
+    const configurableSeq = RunnableSequence.from([
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      configurableModel as any,
+      RunnableLambda.from((message) => message),
+    ]);
+    expect(await _getModel(configurableSeq)).toBe(model);
+
+    const configurableSeqWithTools = RunnableSequence.from([
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      configurableModel.bindTools([tool1]) as any,
+      RunnableLambda.from((message) => message),
+    ]);
+    expect(await _getModel(configurableSeqWithTools)).toBe(model);
+
+    const raisingConfigurableSeq = RunnableSequence.from([
+      RunnableLambda.from((message) => message),
+      RunnableLambda.from((message) => message),
+    ]);
+    await expect(
+      async () => await _getModel(raisingConfigurableSeq)
+    ).rejects.toThrow(Error);
   });
 });
 
