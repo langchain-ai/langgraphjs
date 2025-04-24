@@ -63,7 +63,7 @@ plugins:
   - open-in-new-tab
 
 nav:
-  - Home:
+  - LangGraph:
     - Introduction: index.md
     - Get started:
         - Learn the basics: tutorials/quickstart.ipynb
