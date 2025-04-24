@@ -21,6 +21,7 @@ import { registerAuth } from "./auth/index.mjs";
 import { registerHttp } from "./http/custom.mjs";
 import { cors, ensureContentType } from "./http/middleware.mjs";
 import { bindLoopbackFetch } from "./loopback.mjs";
+import { checkLangGraphSemver } from "./semver/index.mjs";
 
 export const StartServerSchema = z.object({
   port: z.number(),
@@ -60,6 +61,20 @@ export const StartServerSchema = z.object({
 });
 
 export async function startServer(options: z.infer<typeof StartServerSchema>) {
+  const semver = await checkLangGraphSemver();
+  const invalidPackages = semver.filter((s) => !s.satisfies);
+  if (invalidPackages.length > 0) {
+    logger.warn(
+      `Some LangGraph.js dependencies are not up to date. Please make sure to update them to the required version.`,
+      Object.fromEntries(
+        invalidPackages.map(({ name, version, required }) => [
+          name,
+          { version, required },
+        ]),
+      ),
+    );
+  }
+
   logger.info(`Initializing storage...`);
   const callbacks = await Promise.all([
     opsConn.initialize(options.cwd),

@@ -1,0 +1,49 @@
+import * as url from "node:url";
+import * as fs from "node:fs/promises";
+import * as semver from "semver";
+
+const packageJsonPath = url.fileURLToPath(
+  new URL("../../package.json", import.meta.url),
+);
+
+export async function checkSemver(
+  packages: { name: string; version: string }[],
+): Promise<
+  { name: string; version: string; required: string; satisfies: boolean }[]
+> {
+  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf-8"));
+  const peerDependencies: Record<string, string> =
+    packageJson.peerDependencies ?? {};
+
+  return packages.flatMap((pkg) => {
+    const required = peerDependencies[pkg.name];
+    if (!required) return [];
+
+    const satisfies = semver.satisfies(pkg.version, required);
+    return { ...pkg, required, satisfies };
+  });
+}
+
+export async function checkLangGraphSemver() {
+  const resolveVersion = async (name: string) => {
+    let version = "0.0.0";
+    try {
+      const pkgJson = await import(`${name}/package.json`);
+      version = pkgJson.version || version;
+    } catch {
+      // pass
+    }
+    return { name, version };
+  };
+
+  const validate = [
+    "@langchain/core",
+    "@langchain/langgraph",
+    "@langchain/langgraph-checkpoint",
+  ];
+
+  const resolved = await Promise.all(
+    validate.map((name) => resolveVersion(name)),
+  );
+  return checkSemver(resolved);
+}

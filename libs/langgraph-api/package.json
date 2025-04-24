@@ -18,7 +18,12 @@
     "./auth": {
       "types": "./dist/auth/index.d.ts",
       "default": "./dist/auth/index.mjs"
-    }
+    },
+    "./semver": {
+      "types": "./dist/semver/index.d.ts",
+      "default": "./dist/semver/index.mjs"
+    },
+    "./package.json": "./package.json"
   },
   "repository": {
     "type": "git",
@@ -37,10 +42,10 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "@langchain/langgraph-ui": "workspace:*",
     "@babel/code-frame": "^7.26.2",
     "@hono/node-server": "^1.12.0",
     "@hono/zod-validator": "^0.2.2",
+    "@langchain/langgraph-ui": "workspace:*",
     "@types/json-schema": "^7.0.15",
     "@typescript/vfs": "^1.6.0",
     "dedent": "^1.5.3",
@@ -49,6 +54,7 @@
     "hono": "^4.5.4",
     "langsmith": "^0.2.15",
     "open": "^10.1.0",
+    "semver": "^7.7.1",
     "stacktrace-parser": "^0.1.10",
     "superjson": "^2.2.2",
     "tsx": "^4.19.3",
@@ -70,13 +76,15 @@
     }
   },
   "devDependencies": {
+    "typescript": "^5.5.4",
     "@langchain/langgraph-sdk": "^0.0.70",
     "@types/babel__code-frame": "^7.0.6",
+    "@types/node": "^22.2.0",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
-    "@types/node": "^22.2.0",
-    "jose": "^6.0.10",
+    "@types/semver": "^7.7.0",
     "@types/uuid": "^10.0.0",
+    "jose": "^6.0.10",
     "postgres": "^3.4.5",
     "prettier": "^3.3.3",
     "vitest": "^3.0.5"
