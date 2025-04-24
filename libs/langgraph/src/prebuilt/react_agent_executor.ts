@@ -156,6 +156,21 @@ function _isBaseChatModel(model: LanguageModelLike): model is BaseChatModel {
   );
 }
 
+interface ConfigurableModelInterface {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  _queuedMethodOperations: Record<string, any>;
+  _model: () => Promise<BaseChatModel>;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function _isConfigurableModel(model: any): model is ConfigurableModelInterface {
+  return (
+    "_queuedMethodOperations" in model &&
+    "_model" in model &&
+    typeof model._model === "function"
+  );
+}
+
 export async function _shouldBindTools(
   llm: LanguageModelLike,
   tools: BindToolsInput[]
@@ -240,21 +255,6 @@ export async function _shouldBindTools(
   }
 
   return false;
-}
-
-interface ConfigurableModelInterface {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _queuedMethodOperations: Record<string, any>;
-  _model: () => Promise<BaseChatModel>;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function _isConfigurableModel(model: any): model is ConfigurableModelInterface {
-  return (
-    "_queuedMethodOperations" in model &&
-    "_model" in model &&
-    typeof model._model === "function"
-  );
 }
 
 export async function _getModel(
