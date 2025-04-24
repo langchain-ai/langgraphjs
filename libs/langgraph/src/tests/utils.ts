@@ -23,7 +23,12 @@ import {
   FunctionMessageFieldsWithName,
 } from "@langchain/core/messages";
 import { ChatGenerationChunk, ChatResult } from "@langchain/core/outputs";
-import { RunnableConfig, RunnableLambda } from "@langchain/core/runnables";
+import {
+  Runnable,
+  RunnableBinding,
+  RunnableConfig,
+  RunnableLambda,
+} from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
 import {
   MemorySaver,
@@ -36,6 +41,7 @@ import { BaseTracer, Run } from "@langchain/core/tracers/base";
 import {
   BaseLanguageModelCallOptions,
   BaseLanguageModelInput,
+  LanguageModelLike,
 } from "@langchain/core/language_models/base";
 import { Pregel, PregelInputType, PregelOutputType } from "../pregel/index.js";
 import { StrRecord } from "../pregel/algo.js";
@@ -268,6 +274,46 @@ export class FakeToolCallingChatModel extends BaseChatModel {
       // Return in the format expected: { raw: BaseMessage, parsed: RunOutput }
       return this.structuredResponse as RunOutput;
     });
+  }
+}
+
+export class FakeConfigurableModel extends BaseChatModel {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  _queuedMethodOperations: Record<string, any> = {};
+
+  _chatModel: LanguageModelLike;
+
+  constructor(
+    fields: {
+      model: LanguageModelLike;
+    } & BaseChatModelParams
+  ) {
+    super(fields);
+    this._chatModel = fields.model;
+  }
+
+  _llmType() {
+    return "fake_configurable";
+  }
+
+  async _generate(
+    messages: BaseMessage[],
+    _options: this["ParsedCallOptions"],
+    runManager?: CallbackManagerForLLMRun
+  ): Promise<ChatResult> {
+    throw new Error("Not implemented");
+  }
+
+  async _model() {
+    return this._chatModel;
+  }
+
+  bindTools(tools: BindToolsInput[]) {
+    const modelWithTools = new FakeConfigurableModel({
+      model: (this._chatModel as FakeToolCallingChatModel).bindTools(tools),
+    });
+    modelWithTools._queuedMethodOperations.bindTools = tools;
+    return modelWithTools;
   }
 }
 
