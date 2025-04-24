@@ -484,7 +484,13 @@ export function createReactAgent<
     toolNode = new ToolNode(tools);
   }
 
+  let cachedModelRunnable: Runnable | null = null;
+
   const getModelRunnable = async (llm: LanguageModelLike) => {
+    if (cachedModelRunnable) {
+      return cachedModelRunnable;
+    }
+
     let modelWithTools: LanguageModelLike;
     if (await _shouldBindTools(llm, toolClasses)) {
       if (!("bindTools" in llm) || typeof llm.bindTools !== "function") {
@@ -498,6 +504,8 @@ export function createReactAgent<
     const modelRunnable = (
       _getPrompt(prompt, stateModifier, messageModifier) as Runnable
     ).pipe(modelWithTools);
+
+    cachedModelRunnable = modelRunnable;
     return modelRunnable;
   };
 
