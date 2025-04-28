@@ -156,31 +156,29 @@ class Queue {
       return this.buffer.shift()!;
     }
 
+    let timeout: NodeJS.Timeout | undefined = undefined;
+    let resolver: (() => void) | undefined = undefined;
+
+    const clean = new AbortController();
+
     return await new Promise<void>((resolve, reject) => {
-      let listener: (() => void) | undefined = undefined;
+      timeout = setTimeout(() => reject(new TimeoutError()), options.timeout);
+      resolver = resolve;
 
-      const timer = setTimeout(() => {
-        this.listeners = this.listeners.filter((l) => l !== listener);
-        reject(new TimeoutError());
-      }, options.timeout);
+      options.signal?.addEventListener(
+        "abort",
+        () => reject(new AbortError()),
+        { signal: clean.signal },
+      );
 
-      listener = () => {
-        this.listeners = this.listeners.filter((l) => l !== listener);
-        clearTimeout(timer);
-        resolve();
-      };
-
-      // TODO: make sure we're not leaking callback here
-      if (options.signal != null) {
-        options.signal.addEventListener("abort", () => {
-          this.listeners = this.listeners.filter((l) => l !== listener);
-          clearTimeout(timer);
-          reject(new AbortError());
-        });
-      }
-
-      this.listeners.push(listener);
-    }).then(() => this.buffer.shift()!);
+      this.listeners.push(resolver);
+    })
+      .then(() => this.buffer.shift()!)
+      .finally(() => {
+        this.listeners = this.listeners.filter((l) => l !== resolver);
+        clearTimeout(timeout);
+        clean.abort();
+      });
   }
 }
 

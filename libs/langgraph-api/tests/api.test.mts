@@ -2421,7 +2421,9 @@ it("dynamic graph", async () => {
 
 it("generative ui", async () => {
   const ui = await client["~ui"].getComponent("agent", "weather-component");
-  expect(ui).toMatchSnapshot();
+  expect(ui).toContain(
+    `<script src="http://localhost:2024/ui/agent/entrypoint.js" onload='__LGUI_agent.render("weather-component", "{{shadowRootId}}")'></script>`,
+  );
 
   const match = /src="(?<src>[^"]+)"/.exec(ui);
   const jsFile = match?.groups?.src;

@@ -71,7 +71,7 @@ importers:
         specifier: ^0.2.57
         version: 0.2.57(@langchain/core@0.3.42)
       '@langchain/langgraph-checkpoint':
-        specifier: ^0.0.16
+        specifier: ~0.0.16
         version: 0.0.16(@langchain/core@0.3.42)
       '@langchain/langgraph-ui':
         specifier: workspace:*
