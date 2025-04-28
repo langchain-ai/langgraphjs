@@ -178,7 +178,7 @@ As noted in the [Anthropic blog](https://www.anthropic.com/research/building-eff
 
     https://smith.langchain.com/public/a0281fca-3a71-46de-beee-791468607b75/r
 
-=== "Functional API (beta)"
+=== "Functional API"
 
     ```ts
     import { task, entrypoint } from "@langchain/langgraph";
@@ -324,7 +324,7 @@ With parallelization, LLMs work simultaneously on a task:
 
     See our documentation on parallelization [here](https://langchain-ai.github.io/langgraphjs/how-tos/branching/).
 
-=== "Functional API (beta)"
+=== "Functional API"
 
     ```ts
     import { task, entrypoint } from "@langchain/langgraph";
@@ -521,7 +521,7 @@ Routing classifies an input and directs it to a followup task. As noted in the [
 
     [Here](https://langchain-ai.github.io/langgraphjs/tutorials/rag/langgraph_adaptive_rag_local/) is RAG workflow that routes questions. See our video [here](https://www.youtube.com/watch?v=bq1Plo2RhYI).
 
-=== "Functional API (beta)"
+=== "Functional API"
 
     ```ts
     import { z } from "zod";
@@ -759,7 +759,7 @@ With orchestrator-worker, an orchestrator breaks down a task and delegates each 
 
     [Here](https://github.com/langchain-ai/report-mAIstro) is a project that uses orchestrator-worker for report planning and writing. See our video [here](https://www.youtube.com/watch?v=wSxZ7yFbbas).
 
-=== "Functional API (beta)"
+=== "Functional API"
 
     ```ts
     import { z } from "zod";
@@ -939,7 +939,7 @@ In the evaluator-optimizer workflow, one LLM call generates a response while ano
 
     [Here](https://langchain-ai.github.io/langgraphjs/tutorials/rag/langgraph_adaptive_rag_local/) is a RAG workflow that grades answers for hallucinations or errors. See our video [here](https://www.youtube.com/watch?v=bq1Plo2RhYI).
 
-=== "Functional API (beta)"
+=== "Functional API"
 
     ```ts
     import { z } from "zod";
@@ -1151,7 +1151,7 @@ const llmWithTools = llm.bindTools(tools);
 
     [Here](https://github.com/langchain-ai/memory-agent) is a project that uses a tool calling agent to create / store long-term memories.
 
-=== "Functional API (beta)"
+=== "Functional API"
 
     ```ts
     import { task, entrypoint, addMessages } from "@langchain/langgraph";
