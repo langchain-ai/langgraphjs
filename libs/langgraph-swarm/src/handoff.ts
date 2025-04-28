@@ -15,7 +15,7 @@ import {
 } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
-const WHITESPACE_RE = /\s+/;
+const WHITESPACE_RE = /\s+/g;
 const METADATA_KEY_HANDOFF_DESTINATION = "__handoff_destination";
 
 function _normalizeAgentName(agentName: string): string {
