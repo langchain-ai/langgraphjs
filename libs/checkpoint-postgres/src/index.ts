@@ -252,7 +252,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
       pending_sends: [],
     };
     if ("channel_values" in serialized) {
-      serialized.channel_values = undefined;
+      delete serialized.channel_values;
     }
     return serialized;
   }
