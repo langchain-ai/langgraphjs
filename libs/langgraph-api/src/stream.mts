@@ -13,6 +13,7 @@ import {
 } from "./utils/runnableConfig.mjs";
 import { BaseMessageChunk, isBaseMessage } from "@langchain/core/messages";
 import { getLangGraphCommand } from "./command.mjs";
+import { checkLangGraphSemver } from "./semver/index.mjs";
 
 type LangGraphStreamMode = Pregel<any, any>["streamMode"][number];
 
@@ -137,6 +138,8 @@ function preprocessDebugCheckpoint(payload: DebugCheckpoint): StreamCheckpoint {
   return result as StreamCheckpoint;
 }
 
+let LANGGRAPH_VERSION: { name: string; version: string } | undefined;
+
 export async function* streamState(
   run: Run,
   attempt: number = 1,
@@ -180,11 +183,15 @@ export async function* streamState(
     data: { run_id: run.run_id, attempt },
   };
 
+  if (!LANGGRAPH_VERSION) {
+    const version = await checkLangGraphSemver();
+    LANGGRAPH_VERSION = version.find((v) => v.name === "@langchain/langgraph");
+  }
+
   const metadata = {
     ...kwargs.config?.metadata,
     run_attempt: attempt,
-    // TODO: get langgraph version from NPM / load.hooks.mjs
-    langgraph_version: "0.2.35",
+    langgraph_version: LANGGRAPH_VERSION?.version ?? "0.0.0",
     langgraph_plan: "developer",
     langgraph_host: "self-hosted",
     langgraph_api_url: process.env.LANGGRAPH_API_URL ?? undefined,
