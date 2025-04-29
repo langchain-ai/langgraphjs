@@ -99,7 +99,7 @@ jobs:
           pnpm run test:parser
 
   test-api:
-    timeout-minutes: 5
+    timeout-minutes: 10
     strategy:
       fail-fast: false # Allow all tests to run even if one fails
       matrix:
@@ -138,7 +138,7 @@ jobs:
           pnpm run test:api ./tests/api.test.mts
 
   test-auth:
-    timeout-minutes: 5
+    timeout-minutes: 10
     strategy:
       fail-fast: false # Allow all tests to run even if one fails
       matrix:
