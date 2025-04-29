@@ -29,7 +29,19 @@ export async function checkLangGraphSemver() {
     let version = "0.0.0";
     try {
       const pkgJson = await import(`${name}/package.json`);
-      version = pkgJson.version || version;
+      if (pkgJson == null || typeof pkgJson !== "object") {
+        return { name, version };
+      }
+
+      if (
+        "default" in pkgJson &&
+        typeof pkgJson.default === "object" &&
+        pkgJson.default != null
+      ) {
+        version = pkgJson.default.version || version;
+      } else if ("version" in pkgJson) {
+        version = pkgJson.version || version;
+      }
     } catch {
       // pass
     }
