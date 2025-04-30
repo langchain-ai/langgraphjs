@@ -222,7 +222,10 @@ export class StateGraph<
   _schemaDefinitions = new Map();
 
   /** @internal Used only for typing. */
-  _configSchema: C | undefined;
+  _configSchema: ToStateDefinition<C> | undefined;
+
+  /** @internal */
+  _configRuntimeSchema: AnyZodObject | undefined;
 
   constructor(
     fields: SD extends StateDefinition
@@ -330,17 +333,9 @@ export class StateGraph<
     this._addSchema(this._inputDefinition);
     this._addSchema(this._outputDefinition);
 
-    this._configSchema = (() => {
-      if (configSchema != null && "spec" in configSchema) {
-        return configSchema.spec as C;
-      }
-
-      if (isAnyZodObject(configSchema)) {
-        return configSchema.passthrough() as C;
-      }
-
-      return configSchema;
-    })();
+    if (isAnyZodObject(configSchema)) {
+      this._configRuntimeSchema = configSchema.passthrough();
+    }
   }
 
   get allEdges(): Set<[string, string]> {
@@ -869,7 +864,7 @@ export class CompiledStateGraph<
   protected async _validateConfigurable(
     config: Partial<LangGraphRunnableConfig["configurable"]>
   ): Promise<LangGraphRunnableConfig["configurable"]> {
-    const configSchema = this.builder._configSchema;
+    const configSchema = this.builder._configRuntimeSchema;
     if (isAnyZodObject(configSchema)) configSchema.parse(config);
     return config;
   }
