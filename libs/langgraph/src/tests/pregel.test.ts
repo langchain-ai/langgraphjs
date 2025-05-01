@@ -10393,7 +10393,9 @@ graph TD;
       )
     ).rejects.toBeDefined();
 
-    expect(getConfigTypeSchema(graph.builder._configRuntimeSchema!)).toStrictEqual({
+    expect(
+      getConfigTypeSchema(graph.builder._configRuntimeSchema!)
+    ).toStrictEqual({
       $schema: "http://json-schema.org/draft-07/schema#",
       additionalProperties: false,
       properties: {
