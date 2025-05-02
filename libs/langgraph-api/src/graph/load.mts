@@ -2,7 +2,9 @@ import { z } from "zod";
 
 import * as uuid from "uuid";
 import { Assistants } from "../storage/ops.mjs";
+import type { JSONSchema7 } from "json-schema";
 import type {
+  Pregel,
   BaseCheckpointSaver,
   BaseStore,
   CompiledGraph,
@@ -103,6 +105,33 @@ export async function getGraph(
   compiled.store = options?.store ?? store;
 
   return compiled;
+}
+
+export async function getRuntimeGraphSchema(
+  graph: Pregel<any, any, any, any, any>,
+): Promise<GraphSchema | undefined> {
+  try {
+    const {
+      getInputTypeSchema,
+      getOutputTypeSchema,
+      getStateTypeSchema,
+      getConfigTypeSchema,
+    } = await import("@langchain/langgraph/zod/schema");
+
+    const result = {
+      input: getInputTypeSchema(graph) as JSONSchema7 | undefined,
+      output: getOutputTypeSchema(graph) as JSONSchema7 | undefined,
+      state: getStateTypeSchema(graph) as JSONSchema7 | undefined,
+      config: getConfigTypeSchema(graph) as JSONSchema7 | undefined,
+    };
+
+    if (Object.values(result).every((i) => i == null)) return undefined;
+    return result;
+  } catch {
+    // ignore
+  }
+
+  return undefined;
 }
 
 export async function getGraphSchema(graphId: string) {

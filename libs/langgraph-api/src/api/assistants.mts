@@ -4,7 +4,12 @@ import { zValidator } from "@hono/zod-validator";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
 
-import { getAssistantId, getGraph, getGraphSchema } from "../graph/load.mjs";
+import {
+  getAssistantId,
+  getGraph,
+  getGraphSchema,
+  getRuntimeGraphSchema,
+} from "../graph/load.mjs";
 
 import { Assistants } from "../storage/ops.mjs";
 import * as schemas from "../schemas.mjs";
@@ -125,25 +130,41 @@ api.get(
   },
 );
 
-api.get("/assistants/:assistant_id/schemas", async (c) => {
-  // Get Assistant Schemas
-  const assistantId = getAssistantId(c.req.param("assistant_id"));
-  const assistant = await Assistants.get(assistantId, c.var.auth);
+api.get(
+  "/assistants/:assistant_id/schemas",
+  zValidator("json", z.object({ config: RunnableConfigSchema.optional() })),
+  async (c) => {
+    // Get Assistant Schemas
+    const json = c.req.valid("json");
+    const assistantId = getAssistantId(c.req.param("assistant_id"));
+    const assistant = await Assistants.get(assistantId, c.var.auth);
 
-  const graphSchema = await getGraphSchema(assistant.graph_id);
-  const rootGraphId = Object.keys(graphSchema).find((i) => !i.includes("|"));
+    const config = getRunnableConfig(json.config);
+    const graph = await getGraph(assistant.graph_id, config);
 
-  if (!rootGraphId) throw new Error("Failed to find root graph");
-  const rootGraphSchema = graphSchema[rootGraphId];
+    const schema = await (async () => {
+      const runtimeSchema = await getRuntimeGraphSchema(graph);
+      if (runtimeSchema) return runtimeSchema;
 
-  return c.json({
-    graph_id: assistant.graph_id,
-    input_schema: rootGraphSchema.input,
-    output_schema: rootGraphSchema.output,
-    state_schema: rootGraphSchema.state,
-    config_schema: rootGraphSchema.config,
-  });
-});
+      const graphSchema = await getGraphSchema(assistant.graph_id);
+      const rootGraphId = Object.keys(graphSchema).find(
+        (i) => !i.includes("|"),
+      );
+
+      if (!rootGraphId)
+        throw new HTTPException(404, { message: "Failed to find root graph" });
+      return graphSchema[rootGraphId];
+    })();
+
+    return c.json({
+      graph_id: assistant.graph_id,
+      input_schema: schema.input,
+      output_schema: schema.output,
+      state_schema: schema.state,
+      config_schema: schema.config,
+    });
+  },
+);
 
 api.get(
   "/assistants/:assistant_id/subgraphs/:namespace?",
@@ -163,12 +184,6 @@ api.get(
     const config = getRunnableConfig(assistant.config);
     const graph = await getGraph(assistant.graph_id, config);
 
-    const graphSchema = await getGraphSchema(assistant.graph_id);
-    const rootGraphId = Object.keys(graphSchema).find((i) => !i.includes("|"));
-    if (!rootGraphId) {
-      throw new HTTPException(404, { message: "Failed to find root graph" });
-    }
-
     const result: Array<[name: string, schema: Record<string, any>]> = [];
     const subgraphsGenerator =
       "getSubgraphsAsync" in graph
@@ -176,11 +191,28 @@ api.get(
         : // @ts-expect-error older versions of langgraph don't have getSubgraphsAsync
           graph.getSubgraphs.bind(graph);
 
-    for await (const [ns] of subgraphsGenerator(namespace, recurse)) {
-      result.push([
-        ns,
-        graphSchema[`${rootGraphId}|${ns}`] || graphSchema[rootGraphId],
-      ]);
+    let graphSchemaPromise: ReturnType<typeof getGraphSchema> | undefined;
+    for await (const [ns, subgraph] of subgraphsGenerator(namespace, recurse)) {
+      const schema = await (async () => {
+        const runtimeSchema = await getRuntimeGraphSchema(subgraph);
+        if (runtimeSchema) return runtimeSchema;
+
+        graphSchemaPromise ??= getGraphSchema(assistant.graph_id);
+        const graphSchema = await graphSchemaPromise;
+
+        const rootGraphId = Object.keys(graphSchema).find(
+          (i) => !i.includes("|"),
+        );
+        if (!rootGraphId) {
+          throw new HTTPException(404, {
+            message: "Failed to find root graph",
+          });
+        }
+
+        return graphSchema[`${rootGraphId}|${ns}`] || graphSchema[rootGraphId];
+      })();
+
+      result.push([ns, schema]);
     }
 
     return c.json(Object.fromEntries(result));
