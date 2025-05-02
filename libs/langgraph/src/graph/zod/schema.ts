@@ -134,9 +134,7 @@ export function getInputTypeSchema(graph: GraphWithZodLike) {
 export function getOutputTypeSchema(graph: GraphWithZodLike) {
   const schemaDef = graph.builder._outputRuntimeDefinition;
   if (!schemaDef) return undefined;
-  return toJsonSchema(
-    applyPlugin(schemaDef, { jsonSchemaExtra: true })
-  );
+  return toJsonSchema(applyPlugin(schemaDef, { jsonSchemaExtra: true }));
 }
 
 export function getConfigTypeSchema(graph: GraphWithZodLike) {
