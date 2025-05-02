@@ -5,6 +5,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
+    "declaration": true,
     "module": "NodeNext",
     "allowJs": true,
     "jsx": "react-jsx",

@@ -1,27 +1,13 @@
-import { Worker } from "node:worker_threads";
-import * as fs from "node:fs/promises";
 import type { CompiledGraph, Graph } from "@langchain/langgraph";
-import * as path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 import * as uuid from "uuid";
-import type { JSONSchema7 } from "json-schema";
+import * as path from "node:path";
+import * as fs from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 
 export const GRAPHS: Record<string, CompiledGraph<string>> = {};
 export const NAMESPACE_GRAPH = uuid.parse(
   "6ba7b821-9dad-11d1-80b4-00c04fd430c8",
 );
-
-export interface GraphSchema {
-  state: JSONSchema7 | undefined;
-  input: JSONSchema7 | undefined;
-  output: JSONSchema7 | undefined;
-  config: JSONSchema7 | undefined;
-}
-
-export interface GraphSpec {
-  sourceFile: string;
-  exportSymbol: string;
-}
 
 export type CompiledGraphFactory<T extends string> = (config: {
   configurable?: Record<string, unknown>;
@@ -51,7 +37,7 @@ export async function resolveGraph(
   // validate file exists
   await fs.stat(sourceFile);
   if (options?.onlyFilePresence) {
-    return { sourceFile: userFile, exportSymbol, resolved: undefined };
+    return { sourceFile, exportSymbol, resolved: undefined };
   }
 
   type GraphLike = CompiledGraph<string> | Graph<string>;
@@ -94,53 +80,4 @@ export async function resolveGraph(
     })();
 
   return { sourceFile, exportSymbol, resolved };
-}
-
-export async function runGraphSchemaWorker(
-  spec: GraphSpec,
-  options?: { mainThread?: boolean },
-) {
-  let SCHEMA_RESOLVE_TIMEOUT_MS = 30_000;
-  try {
-    const envTimeout = Number.parseInt(
-      process.env.LANGGRAPH_SCHEMA_RESOLVE_TIMEOUT_MS ?? "0",
-      10,
-    );
-    if (!Number.isNaN(envTimeout) && envTimeout > 0) {
-      SCHEMA_RESOLVE_TIMEOUT_MS = envTimeout;
-    }
-  } catch {
-    // ignore
-  }
-
-  if (options?.mainThread) {
-    const { SubgraphExtractor } = await import("./parser/parser.mjs");
-    return SubgraphExtractor.extractSchemas(
-      spec.sourceFile,
-      spec.exportSymbol,
-      { strict: false },
-    );
-  }
-
-  return await new Promise<Record<string, GraphSchema>>((resolve, reject) => {
-    const worker = new Worker(
-      fileURLToPath(new URL("./parser/parser.worker.mjs", import.meta.url)),
-      { argv: process.argv.slice(-1) },
-    );
-
-    // Set a timeout to reject if the worker takes too long
-    const timeoutId = setTimeout(() => {
-      worker.terminate();
-      reject(new Error("Schema extract worker timed out"));
-    }, SCHEMA_RESOLVE_TIMEOUT_MS);
-
-    worker.on("message", (result) => {
-      worker.terminate();
-      clearTimeout(timeoutId);
-      resolve(result);
-    });
-
-    worker.on("error", reject);
-    worker.postMessage(spec);
-  });
 }

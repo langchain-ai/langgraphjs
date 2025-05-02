@@ -2,22 +2,16 @@ import { z } from "zod";
 
 import * as uuid from "uuid";
 import { Assistants } from "../storage/ops.mjs";
-import type { JSONSchema7 } from "json-schema";
 import type {
-  Pregel,
   BaseCheckpointSaver,
   BaseStore,
   CompiledGraph,
   LangGraphRunnableConfig,
 } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
-import {
-  type CompiledGraphFactory,
-  type GraphSchema,
-  type GraphSpec,
-  resolveGraph,
-  runGraphSchemaWorker,
-} from "./load.utils.mjs";
+import { type CompiledGraphFactory, resolveGraph } from "./load.utils.mjs";
+import type { GraphSchema, GraphSpec } from "./parser/index.mjs";
+import { getStaticGraphSchema } from "./parser/index.mjs";
 import { checkpointer } from "../storage/checkpoint.mjs";
 import { store } from "../storage/store.mjs";
 import { logger } from "../logging.mjs";
@@ -107,42 +101,30 @@ export async function getGraph(
   return compiled;
 }
 
-export async function getRuntimeGraphSchema(
-  graph: Pregel<any, any, any, any, any>,
-): Promise<GraphSchema | undefined> {
-  try {
-    const {
-      getInputTypeSchema,
-      getOutputTypeSchema,
-      getStateTypeSchema,
-      getConfigTypeSchema,
-    } = await import("@langchain/langgraph/zod/schema");
-
-    const result = {
-      input: getInputTypeSchema(graph) as JSONSchema7 | undefined,
-      output: getOutputTypeSchema(graph) as JSONSchema7 | undefined,
-      state: getStateTypeSchema(graph) as JSONSchema7 | undefined,
-      config: getConfigTypeSchema(graph) as JSONSchema7 | undefined,
-    };
-
-    if (Object.values(result).every((i) => i == null)) return undefined;
-    return result;
-  } catch {
-    // ignore
-  }
-
-  return undefined;
-}
-
-export async function getGraphSchema(graphId: string) {
+export async function getCachedStaticGraphSchema(graphId: string) {
   if (!GRAPH_SPEC[graphId])
     throw new HTTPException(404, {
       message: `Spec for "${graphId}" not found`,
     });
 
-  if (!GRAPH_SCHEMA[graphId] || true) {
+  if (!GRAPH_SCHEMA[graphId]) {
+    let timeoutMs = 30_000;
     try {
-      GRAPH_SCHEMA[graphId] = await runGraphSchemaWorker(GRAPH_SPEC[graphId]);
+      const envTimeout = Number.parseInt(
+        process.env.LANGGRAPH_SCHEMA_RESOLVE_TIMEOUT_MS ?? "0",
+        10,
+      );
+      if (!Number.isNaN(envTimeout) && envTimeout > 0) {
+        timeoutMs = envTimeout;
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      GRAPH_SCHEMA[graphId] = await getStaticGraphSchema(GRAPH_SPEC[graphId], {
+        timeoutMs,
+      });
     } catch (error) {
       throw new Error(`Failed to extract schema for "${graphId}"`, {
         cause: error,

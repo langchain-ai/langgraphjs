@@ -4,6 +4,14 @@ import * as path from "node:path";
 import dedent from "dedent";
 import { buildGenerator } from "./schema/types.mjs";
 import { fileURLToPath } from "node:url";
+import type { JSONSchema7 } from "json-schema";
+
+interface GraphSchema {
+  state: JSONSchema7 | undefined;
+  input: JSONSchema7 | undefined;
+  output: JSONSchema7 | undefined;
+  config: JSONSchema7 | undefined;
+}
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -249,7 +257,7 @@ export class SubgraphExtractor {
       ),
     ].join("\n\n");
 
-    const inferFilePath = "__langraph__infer.mts";
+    const inferFilePath = "__langgraph__infer.mts";
     const inferContents = [
       ...typeExports.map(
         ({ typeName }) =>
@@ -351,7 +359,7 @@ export class SubgraphExtractor {
         },
     name: string,
     options?: { strict?: boolean },
-  ) {
+  ): Record<string, GraphSchema> {
     const dirname =
       typeof target === "string" ? path.dirname(target) : __dirname;
 
@@ -441,7 +449,7 @@ export class SubgraphExtractor {
     }
 
     const extract = ts.createProgram({
-      rootNames: [path.resolve(dirname, "./__langraph__infer.mts")],
+      rootNames: [path.resolve(dirname, "./__langgraph__infer.mts")],
       options: compilerOptions,
       host,
     });
@@ -463,9 +471,9 @@ export class SubgraphExtractor {
       exports.map(({ typeName, graphName }) => [
         graphName,
         {
+          state: trySymbol(schemaGenerator, `${typeName}__update`),
           input: trySymbol(schemaGenerator, `${typeName}__input`),
           output: trySymbol(schemaGenerator, `${typeName}__output`),
-          state: trySymbol(schemaGenerator, `${typeName}__update`),
           config: trySymbol(schemaGenerator, `${typeName}__config`),
         },
       ]),

@@ -7,9 +7,9 @@ import { z } from "zod";
 import {
   getAssistantId,
   getGraph,
-  getGraphSchema,
-  getRuntimeGraphSchema,
+  getCachedStaticGraphSchema,
 } from "../graph/load.mjs";
+import { getRuntimeGraphSchema } from "../graph/parser/index.mjs";
 
 import { Assistants } from "../storage/ops.mjs";
 import * as schemas from "../schemas.mjs";
@@ -146,7 +146,7 @@ api.get(
       const runtimeSchema = await getRuntimeGraphSchema(graph);
       if (runtimeSchema) return runtimeSchema;
 
-      const graphSchema = await getGraphSchema(assistant.graph_id);
+      const graphSchema = await getCachedStaticGraphSchema(assistant.graph_id);
       const rootGraphId = Object.keys(graphSchema).find(
         (i) => !i.includes("|"),
       );
@@ -191,13 +191,16 @@ api.get(
         : // @ts-expect-error older versions of langgraph don't have getSubgraphsAsync
           graph.getSubgraphs.bind(graph);
 
-    let graphSchemaPromise: ReturnType<typeof getGraphSchema> | undefined;
+    let graphSchemaPromise:
+      | ReturnType<typeof getCachedStaticGraphSchema>
+      | undefined;
+
     for await (const [ns, subgraph] of subgraphsGenerator(namespace, recurse)) {
       const schema = await (async () => {
         const runtimeSchema = await getRuntimeGraphSchema(subgraph);
         if (runtimeSchema) return runtimeSchema;
 
-        graphSchemaPromise ??= getGraphSchema(assistant.graph_id);
+        graphSchemaPromise ??= getCachedStaticGraphSchema(assistant.graph_id);
         const graphSchema = await graphSchemaPromise;
 
         const rootGraphId = Object.keys(graphSchema).find(
