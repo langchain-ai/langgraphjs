@@ -18,6 +18,7 @@ export const config = {
     prebuilt: "prebuilt/index",
     remote: "remote",
     zod: "graph/zod/index",
+    "zod/schema": "graph/zod/schema",
   },
   tsConfigPath: resolve("./tsconfig.json"),
   cjsSource: "./dist-cjs",

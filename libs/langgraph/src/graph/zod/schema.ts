@@ -1,17 +1,34 @@
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import { zodToJsonSchema as _zodToJsonSchema } from "zod-to-json-schema";
 import { getMeta } from "./state.js";
 
-const UPDATE_TYPE_CACHE = new WeakMap<z.AnyZodObject, z.AnyZodObject>();
-const CONFIG_TYPE_CACHE = new WeakMap<z.AnyZodObject, z.AnyZodObject>();
-
+const TYPE_CACHE: Record<string, WeakMap<z.AnyZodObject, z.AnyZodObject>> = {};
 const DESCRIPTION_PREFIX = "lg:";
 
 function applyPlugin(
   schema: z.AnyZodObject,
-  actions: { reducer?: boolean; jsonSchemaExtra?: boolean }
+  actions: {
+    /** Apply .langgraph.reducer calls */
+    reducer?: boolean;
+
+    /** Apply .langgraph.metadata() calls  */
+    jsonSchemaExtra?: boolean;
+
+    /** Apply .partial() */
+    partial?: boolean;
+  }
 ) {
-  return z.object({
+  const cacheKey = [
+    `reducer:${actions.reducer ?? false}`,
+    `jsonSchemaExtra:${actions.jsonSchemaExtra ?? false}`,
+    `partial:${actions.partial ?? false}`,
+  ].join("|");
+
+  TYPE_CACHE[cacheKey] ??= new WeakMap();
+  const cache = TYPE_CACHE[cacheKey];
+
+  if (cache.has(schema)) return cache.get(schema)!;
+  let shape = z.object({
     ...Object.fromEntries(
       Object.entries(schema.shape as Record<string, z.ZodTypeAny>).map(
         ([key, input]): [string, z.ZodTypeAny] => {
@@ -34,6 +51,20 @@ function applyPlugin(
       )
     ),
   });
+
+  if (actions.partial) shape = shape.partial();
+  cache.set(schema, shape);
+  return shape;
+}
+
+// Using a subset of types to avoid circular type import
+interface GraphWithZodLike {
+  builder: {
+    _schemaRuntimeDefinition: z.AnyZodObject | undefined;
+    _inputRuntimeDefinition: z.AnyZodObject | undefined;
+    _outputRuntimeDefinition: z.AnyZodObject | undefined;
+    _configRuntimeSchema: z.AnyZodObject | undefined;
+  };
 }
 
 function applyExtraFromDescription(schema: unknown): unknown {
@@ -65,35 +96,51 @@ function applyExtraFromDescription(schema: unknown): unknown {
   return schema;
 }
 
-export function getUpdateTypeSchema(shape: z.AnyZodObject) {
-  const updateShape = (() => {
-    if (UPDATE_TYPE_CACHE.has(shape)) UPDATE_TYPE_CACHE.get(shape);
+function toJsonSchema(schema: z.ZodType) {
+  return applyExtraFromDescription(_zodToJsonSchema(schema));
+}
 
-    const newShape = applyPlugin(shape, {
+export function getStateTypeSchema(graph: GraphWithZodLike) {
+  const schemaDef = graph.builder._schemaRuntimeDefinition;
+  if (!schemaDef) return undefined;
+  return toJsonSchema(schemaDef);
+}
+
+export function getUpdateTypeSchema(graph: GraphWithZodLike) {
+  const schemaDef = graph.builder._schemaRuntimeDefinition;
+  if (!schemaDef) return undefined;
+
+  return toJsonSchema(
+    applyPlugin(schemaDef, {
       reducer: true,
       jsonSchemaExtra: true,
-    }).partial();
-
-    UPDATE_TYPE_CACHE.set(shape, newShape);
-    return newShape;
-  })();
-
-  const schema = zodToJsonSchema(updateShape);
-  return applyExtraFromDescription(schema);
+      partial: true,
+    })
+  );
 }
 
-export function getConfigTypeSchema(shape: z.AnyZodObject) {
-  const configShape = (() => {
-    if (CONFIG_TYPE_CACHE.has(shape)) CONFIG_TYPE_CACHE.get(shape);
-    const newShape = applyPlugin(shape, { jsonSchemaExtra: true });
-    CONFIG_TYPE_CACHE.set(shape, newShape);
-    return newShape;
-  })();
-
-  const schema = zodToJsonSchema(configShape);
-  return applyExtraFromDescription(schema);
+export function getInputTypeSchema(graph: GraphWithZodLike) {
+  const schemaDef = graph.builder._inputRuntimeDefinition;
+  if (!schemaDef) return undefined;
+  return toJsonSchema(
+    applyPlugin(schemaDef, {
+      reducer: true,
+      jsonSchemaExtra: true,
+      partial: true,
+    })
+  );
 }
 
-export function getStateTypeSchema(schema: z.AnyZodObject) {
-  return zodToJsonSchema(schema);
+export function getOutputTypeSchema(graph: GraphWithZodLike) {
+  const schemaDef = graph.builder._outputRuntimeDefinition;
+  if (!schemaDef) return undefined;
+  return toJsonSchema(
+    applyPlugin(schemaDef, { jsonSchemaExtra: true })
+  );
+}
+
+export function getConfigTypeSchema(graph: GraphWithZodLike) {
+  const configDef = graph.builder._configRuntimeSchema;
+  if (!configDef) return undefined;
+  return toJsonSchema(applyPlugin(configDef, { jsonSchemaExtra: true }));
 }
