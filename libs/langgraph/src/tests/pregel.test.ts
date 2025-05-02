@@ -10617,12 +10617,15 @@ graph TD;
       },
     ]);
 
-    await graph.invoke(new Command({ resume: "resume" }), { configurable });
+    await graph.invoke(
+      new Command({ resume: "resume", update: { messages: ["update: resume"] } }),
+      { configurable }
+    );
     state = await graph.getState({ configurable });
 
     expect(state.next).toEqual([]);
     expect(state.values).toEqual({
-      messages: ["input", "update", "interrupt: resume"],
+      messages: ["input", "update", "update: resume", "interrupt: resume"],
     });
   });
 }

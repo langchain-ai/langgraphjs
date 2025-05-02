@@ -818,17 +818,8 @@ export class PregelLoop {
 
     if (isCommand(this.input)) {
       const hasResume = this.input.resume != null;
-      const hasUpdate = this.input.update != null;
-      const hasGoto =
-        !!this.input.goto &&
-        (!Array.isArray(this.input.goto) || this.input.goto.length > 0);
       if (hasResume && this.checkpointer == null) {
         throw new Error("Cannot use Command(resume=...) without checkpointer");
-      }
-      if (hasResume && (hasUpdate || hasGoto)) {
-        throw new Error(
-          "Cannot use Command(resume=...) with Command(update=...) or Command(goto=...)"
-        );
       }
 
       const writes: { [key: string]: PendingWrite[] } = {};
