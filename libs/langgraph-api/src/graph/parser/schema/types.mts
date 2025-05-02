@@ -15,11 +15,9 @@
 
 import * as ts from "typescript";
 import * as vm from "node:vm";
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
 import type { JSONSchema7, JSONSchema7TypeName } from "json-schema";
-import dedent from "dedent";
 
 const REGEX_FILE_NAME_OR_SPACE = /(\bimport\(".*?"\)|".*?")\.| /g;
 const REGEX_TJS_JSDOC = /^-([\w]+)\s+(\S|\S[\s\S]*\S)\s*$/g;
@@ -2013,127 +2011,4 @@ export function buildGenerator(
     typeChecker,
     settings,
   );
-}
-
-export async function extractGraphSchema(
-  id: string,
-  userPath: string,
-  exportName: string,
-) {
-  const filePath = path.resolve(process.cwd(), userPath);
-  const parentPath = path.dirname(filePath);
-
-  const typePath = path.resolve(parentPath, `__$0${id}.mts`);
-  const importPath = path.relative(parentPath, filePath);
-
-  try {
-    await fs.writeFile(
-      typePath,
-      dedent`
-        import { ${exportName} as __graph } from "./${importPath}";
-        import type { BaseMessage } from "@langchain/core/messages";
-        import type {
-          StateType,
-          UpdateType,
-          StateDefinition,
-        } from "@langchain/langgraph";
-
-        type Wrap<T> = (a: T) => void;
-        type MatchBaseMessage<T> = T extends BaseMessage ? BaseMessage : never;
-        type MatchBaseMessageArray<T> =
-          T extends Array<infer C>
-            ? Wrap<MatchBaseMessage<C>> extends Wrap<BaseMessage>
-              ? BaseMessage[]
-              : never
-            : never;
-
-        type Defactorify<T> = T extends (...args: any[]) => infer R
-          ? Awaited<R>
-          : Awaited<T>;
-
-        type Inspect<T> = T extends unknown
-          ? {
-              [K in keyof T]: 0 extends 1 & T[K]
-                ? T[K]
-                : Wrap<MatchBaseMessageArray<T[K]>> extends Wrap<BaseMessage[]>
-                  ? BaseMessage[]
-                  : Wrap<MatchBaseMessage<T[K]>> extends Wrap<BaseMessage>
-                    ? BaseMessage
-                    : Inspect<T[K]>;
-            }
-          : never;
-
-        type ReflectCompiled<T> = T extends { RunInput: infer S; RunOutput: infer U }
-          ? { state: S; update: U }
-          : never;
-
-        type Reflect<T> =
-          Defactorify<T> extends infer DT
-            ? DT extends {
-                compile(...args: any[]): infer Compiled;
-              }
-              ? ReflectCompiled<Compiled>
-              : ReflectCompiled<DT>
-            : never;
-
-        type __reflect = Reflect<typeof __graph>;
-        export type __state = Inspect<__reflect["state"]>;
-        export type __update = Inspect<__reflect["update"]>;
-
-        type BuilderReflectCompiled<T> = T extends {
-          builder: {
-            _inputDefinition: infer I extends StateDefinition;
-            _outputDefinition: infer O extends StateDefinition;
-            _configSchema?: infer C extends StateDefinition | undefined;
-          };
-        }
-          ? { input: UpdateType<I>; output: StateType<O>; config: UpdateType<C> }
-          : never;
-
-        type BuilderReflect<T> =
-          Defactorify<T> extends infer DT
-            ? DT extends {
-                compile(...args: any[]): infer Compiled;
-              }
-              ? BuilderReflectCompiled<Compiled>
-              : BuilderReflectCompiled<DT>
-            : never;
-
-        type __builder = BuilderReflect<typeof __graph>;
-        type FilterAny<T> = 0 extends 1 & T ? never : T;
-        export type __input = Inspect<FilterAny<__builder["input"]>>;
-        export type __output = Inspect<FilterAny<__builder["output"]>>;
-        export type __config = Inspect<FilterAny<__builder["config"]>>;
-      `,
-    );
-    const program = ts.createProgram([typePath], {
-      noEmit: true,
-      strict: true,
-      allowUnusedLabels: true,
-    });
-
-    const schema = buildGenerator(program);
-
-    const trySymbol = (schema: JsonSchemaGenerator | null, symbol: string) => {
-      try {
-        return schema?.getSchemaForSymbol(symbol) ?? undefined;
-      } catch (e) {
-        console.error(
-          `Failed to obtain symbol "${symbol}":`,
-          (e as Error)?.message,
-        );
-      }
-      return undefined;
-    };
-
-    return {
-      state: trySymbol(schema, "__state"),
-      update: trySymbol(schema, "__update"),
-      input: trySymbol(schema, "__input"),
-      output: trySymbol(schema, "__output"),
-      config: trySymbol(schema, "__config"),
-    };
-  } finally {
-    await fs.unlink(typePath);
-  }
 }
