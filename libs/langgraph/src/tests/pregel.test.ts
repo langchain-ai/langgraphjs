@@ -105,6 +105,8 @@ import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_stora
 import { interrupt } from "../interrupt.js";
 import {
   getConfigTypeSchema,
+  getInputTypeSchema,
+  getOutputTypeSchema,
   getStateTypeSchema,
   getUpdateTypeSchema,
 } from "../graph/zod/schema.js";
@@ -10294,9 +10296,7 @@ graph TD;
       items: ["default", "a", "b", "c", "d"],
     });
 
-    expect(
-      getStateTypeSchema(graph.builder._schemaRuntimeDefinition!)
-    ).toStrictEqual({
+    expect(getStateTypeSchema(graph)).toStrictEqual({
       type: "object",
       properties: {
         foo: { type: "string" },
@@ -10311,9 +10311,7 @@ graph TD;
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
-    expect(
-      getUpdateTypeSchema(graph.builder._schemaRuntimeDefinition!)
-    ).toStrictEqual({
+    expect(getUpdateTypeSchema(graph)).toStrictEqual({
       type: "object",
       properties: {
         foo: { type: "string" },
@@ -10333,6 +10331,12 @@ graph TD;
     const state = z.object({
       hey: z.string(),
       counter: z.number().gt(0),
+      messages: z
+        .array(z.string())
+        .langgraph.reducer(
+          (a, b) => (Array.isArray(b) ? [...a, ...b] : [...a, b]),
+          z.union([z.string(), z.array(z.string())])
+        ),
     });
 
     const input = state.pick({ counter: true });
@@ -10355,6 +10359,56 @@ graph TD;
     await expect(
       graph.invoke({ counter: -1 }, { configurable: { thread_id: "1" } })
     ).rejects.toBeDefined();
+
+    expect(getInputTypeSchema(graph)).toStrictEqual({
+      type: "object",
+      properties: {
+        counter: { type: "number", exclusiveMinimum: 0 },
+      },
+      additionalProperties: false,
+      $schema: "http://json-schema.org/draft-07/schema#",
+    });
+
+    expect(getOutputTypeSchema(graph)).toStrictEqual({
+      type: "object",
+      properties: {
+        hey: { type: "string" },
+      },
+      required: ["hey"],
+      additionalProperties: false,
+      $schema: "http://json-schema.org/draft-07/schema#",
+    });
+
+    expect(getStateTypeSchema(graph)).toStrictEqual({
+      type: "object",
+      properties: {
+        hey: { type: "string" },
+        counter: { type: "number", exclusiveMinimum: 0 },
+        messages: {
+          type: "array",
+          items: { type: "string" },
+        },
+      },
+      required: ["hey", "counter", "messages"],
+      additionalProperties: false,
+      $schema: "http://json-schema.org/draft-07/schema#",
+    });
+
+    expect(getUpdateTypeSchema(graph)).toStrictEqual({
+      type: "object",
+      properties: {
+        hey: { type: "string" },
+        counter: { type: "number", exclusiveMinimum: 0 },
+        messages: {
+          anyOf: [
+            { type: "string" },
+            { type: "array", items: { type: "string" } },
+          ],
+        },
+      },
+      additionalProperties: false,
+      $schema: "http://json-schema.org/draft-07/schema#",
+    });
   });
 
   it("zod schema - config", async () => {
@@ -10393,9 +10447,7 @@ graph TD;
       )
     ).rejects.toBeDefined();
 
-    expect(
-      getConfigTypeSchema(graph.builder._configRuntimeSchema!)
-    ).toStrictEqual({
+    expect(getConfigTypeSchema(graph)).toStrictEqual({
       $schema: "http://json-schema.org/draft-07/schema#",
       additionalProperties: false,
       properties: {
@@ -10437,6 +10489,48 @@ graph TD;
       { question: "hey" },
       { configurable: { thread_id: "1" } }
     );
+
+    expect(getInputTypeSchema(graph)).toStrictEqual({
+      type: "object",
+      properties: {
+        question: { type: "string" },
+      },
+      additionalProperties: false,
+      $schema: "http://json-schema.org/draft-07/schema#",
+    });
+
+    expect(getOutputTypeSchema(graph)).toStrictEqual({
+      type: "object",
+      properties: {
+        answer: { type: "string" },
+      },
+      required: ["answer"],
+      additionalProperties: false,
+      $schema: "http://json-schema.org/draft-07/schema#",
+    });
+
+    expect(getStateTypeSchema(graph)).toStrictEqual({
+      type: "object",
+      properties: {
+        question: { type: "string" },
+        answer: { type: "string" },
+        language: { type: "string" },
+      },
+      required: ["question", "answer", "language"],
+      additionalProperties: false,
+      $schema: "http://json-schema.org/draft-07/schema#",
+    });
+
+    expect(getUpdateTypeSchema(graph)).toStrictEqual({
+      type: "object",
+      properties: {
+        question: { type: "string" },
+        answer: { type: "string" },
+        language: { type: "string" },
+      },
+      additionalProperties: false,
+      $schema: "http://json-schema.org/draft-07/schema#",
+    });
   });
 
   it("Annotation overlap schema", async () => {

@@ -143,6 +143,15 @@
       "import": "./zod.js",
       "require": "./zod.cjs"
     },
+    "./zod/schema": {
+      "types": {
+        "import": "./zod/schema.d.ts",
+        "require": "./zod/schema.d.cts",
+        "default": "./zod/schema.d.ts"
+      },
+      "import": "./zod/schema.js",
+      "require": "./zod/schema.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -170,6 +179,10 @@
     "zod.cjs",
     "zod.js",
     "zod.d.ts",
-    "zod.d.cts"
+    "zod.d.cts",
+    "zod/schema.cjs",
+    "zod/schema.js",
+    "zod/schema.d.ts",
+    "zod/schema.d.cts"
   ]
 }
