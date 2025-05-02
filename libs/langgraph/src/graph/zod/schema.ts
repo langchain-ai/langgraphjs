@@ -67,6 +67,21 @@ interface GraphWithZodLike {
   };
 }
 
+function isGraphWithZodLike(graph: unknown): graph is GraphWithZodLike {
+  if (!graph || typeof graph !== "object") return false;
+  if (
+    !("builder" in graph) ||
+    typeof graph.builder !== "object" ||
+    graph.builder == null
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+type JsonSchema = ReturnType<typeof _zodToJsonSchema>;
+
 function applyExtraFromDescription(schema: unknown): unknown {
   if (Array.isArray(schema)) {
     return schema.map(applyExtraFromDescription);
@@ -93,20 +108,22 @@ function applyExtraFromDescription(schema: unknown): unknown {
     return output;
   }
 
-  return schema;
+  return schema as JsonSchema;
 }
 
-function toJsonSchema(schema: z.ZodType) {
-  return applyExtraFromDescription(_zodToJsonSchema(schema));
+function toJsonSchema(schema: z.ZodType): JsonSchema {
+  return applyExtraFromDescription(_zodToJsonSchema(schema)) as JsonSchema;
 }
 
-export function getStateTypeSchema(graph: GraphWithZodLike) {
+export function getStateTypeSchema(graph: unknown): JsonSchema | undefined {
+  if (!isGraphWithZodLike(graph)) return undefined;
   const schemaDef = graph.builder._schemaRuntimeDefinition;
   if (!schemaDef) return undefined;
   return toJsonSchema(schemaDef);
 }
 
-export function getUpdateTypeSchema(graph: GraphWithZodLike) {
+export function getUpdateTypeSchema(graph: unknown): JsonSchema | undefined {
+  if (!isGraphWithZodLike(graph)) return undefined;
   const schemaDef = graph.builder._schemaRuntimeDefinition;
   if (!schemaDef) return undefined;
 
@@ -119,7 +136,8 @@ export function getUpdateTypeSchema(graph: GraphWithZodLike) {
   );
 }
 
-export function getInputTypeSchema(graph: GraphWithZodLike) {
+export function getInputTypeSchema(graph: unknown): JsonSchema | undefined {
+  if (!isGraphWithZodLike(graph)) return undefined;
   const schemaDef = graph.builder._inputRuntimeDefinition;
   if (!schemaDef) return undefined;
   return toJsonSchema(
@@ -131,13 +149,15 @@ export function getInputTypeSchema(graph: GraphWithZodLike) {
   );
 }
 
-export function getOutputTypeSchema(graph: GraphWithZodLike) {
+export function getOutputTypeSchema(graph: unknown): JsonSchema | undefined {
+  if (!isGraphWithZodLike(graph)) return undefined;
   const schemaDef = graph.builder._outputRuntimeDefinition;
   if (!schemaDef) return undefined;
   return toJsonSchema(applyPlugin(schemaDef, { jsonSchemaExtra: true }));
 }
 
-export function getConfigTypeSchema(graph: GraphWithZodLike) {
+export function getConfigTypeSchema(graph: unknown): JsonSchema | undefined {
+  if (!isGraphWithZodLike(graph)) return undefined;
   const configDef = graph.builder._configRuntimeSchema;
   if (!configDef) return undefined;
   return toJsonSchema(applyPlugin(configDef, { jsonSchemaExtra: true }));
