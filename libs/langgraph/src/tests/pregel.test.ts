@@ -10618,7 +10618,10 @@ graph TD;
     ]);
 
     await graph.invoke(
-      new Command({ resume: "resume", update: { messages: ["update: resume"] } }),
+      new Command({
+        resume: "resume",
+        update: { messages: ["update: resume"] },
+      }),
       { configurable }
     );
     state = await graph.getState({ configurable });
