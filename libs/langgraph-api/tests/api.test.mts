@@ -2592,3 +2592,42 @@ it("custom routes - langgraph", async () => {
     },
   });
 });
+
+it("resumable streams", { timeout: 10_000 }, async () => {
+  const assistant = await client.assistants.create({ graphId: "agent" });
+  const thread = await client.threads.create();
+
+  const [monitor, stream] = ReadableStream.from(
+    client.runs.stream(thread.thread_id, assistant.assistant_id, {
+      input: {
+        messages: [{ role: "human", content: "input" }],
+        sleep: { steps: 3, ms: 1000 },
+      },
+      streamMode: ["values", "custom"],
+      config: globalConfig,
+    }),
+  ).tee();
+
+  const metadata = await new Promise<{ run_id: string; thread_id: string }>(
+    async (resolve, reject) => {
+      for await (const chunk of monitor)
+        if (chunk.event === "metadata") resolve(chunk.data);
+      setTimeout(() => reject(new Error("Timeout waiting for metadata")), 1000);
+    },
+  );
+
+  const [join, source] = await Promise.all([
+    new Promise((resolve) => setTimeout(resolve, 1500)).then(() =>
+      gatherIterator(
+        new Client<any>({
+          apiUrl: API_URL,
+          // TODO: expose the `lastEventId` option
+          defaultHeaders: { "Last-Event-Id": "0" },
+        }).runs.joinStream(thread.thread_id, metadata.run_id),
+      ),
+    ),
+    gatherIterator(stream),
+  ]);
+
+  expect(join).toEqual(source);
+});

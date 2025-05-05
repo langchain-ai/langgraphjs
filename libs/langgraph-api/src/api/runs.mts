@@ -204,7 +204,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
       for await (const { event, data } of Runs.Stream.join(
         run.run_id,
         undefined,
-        { cancelOnDisconnect, ignore404: true },
+        { cancelOnDisconnect, lastEventId: "0", ignore404: true },
         c.var.auth,
       )) {
         await stream.writeSSE({ data: serialiseAsDict(data), event });
@@ -319,7 +319,7 @@ api.post(
         for await (const { event, data } of Runs.Stream.join(
           run.run_id,
           thread_id,
-          { cancelOnDisconnect },
+          { cancelOnDisconnect, lastEventId: "0" },
           c.var.auth,
         )) {
           await stream.writeSSE({ data: serialiseAsDict(data), event });
@@ -407,6 +407,8 @@ api.get(
     // Stream Run Http
     const { thread_id, run_id } = c.req.valid("param");
     const { cancel_on_disconnect } = c.req.valid("query");
+    const lastEventId = c.req.header("Last-Event-ID") || undefined;
+
     return streamSSE(c, async (stream) => {
       const signal = cancel_on_disconnect
         ? getDisconnectAbortSignal(c, stream)
@@ -415,7 +417,7 @@ api.get(
       for await (const { event, data } of Runs.Stream.join(
         run_id,
         thread_id,
-        { cancelOnDisconnect: signal },
+        { cancelOnDisconnect: signal, lastEventId },
         c.var.auth,
       )) {
         await stream.writeSSE({ data: serialiseAsDict(data), event });

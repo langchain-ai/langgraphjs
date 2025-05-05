@@ -22,7 +22,7 @@ const GraphAnnotationOutput = Annotation.Root({
   interrupt: Annotation<boolean>(),
   keyOne: Annotation<string | null>(),
   keyTwo: Annotation<string | null>(),
-  sleep: Annotation<number | null>(),
+  sleep: Annotation<number | { steps: number; ms: number } | null>(),
 });
 
 const GraphAnnotationInput = Annotation.Root({
@@ -90,11 +90,22 @@ const agentNode = async (
   state: typeof GraphAnnotationInput.State,
   config: LangGraphRunnableConfig,
 ) => {
+  console.log("state.sleep", state.sleep);
+
   if (state.interrupt) interrupt("i want to interrupt");
 
   if (state.sleep != null && state.messages.at(-1)?.getType() === "human") {
     const sleep = state.sleep;
-    await new Promise((resolve) => setTimeout(resolve, sleep * 1000));
+
+    if (typeof sleep === "number") {
+      await new Promise((resolve) => setTimeout(resolve, sleep * 1000));
+    } else {
+      const { steps, ms } = sleep;
+      for (let step = 0; step < steps; step++) {
+        config.writer?.({ type: "sleep", step });
+        await new Promise((resolve) => setTimeout(resolve, ms));
+      }
+    }
   }
 
   const model = getModel(config.configurable?.thread_id ?? "$");

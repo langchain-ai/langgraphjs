@@ -135,33 +135,105 @@ export const conn = new FileSystemPersistence<Store>(
 class TimeoutError extends Error {}
 class AbortError extends Error {}
 
+// ID generator related by time, inspired by Redis Streams
+class MessageIdGenerator {
+  lastTimeMs: number = 0;
+  lastSequence: number = 1;
+
+  generate() {
+    const nextTimeMs = Math.max(Date.now(), this.lastTimeMs);
+
+    if (nextTimeMs === this.lastTimeMs) {
+      this.lastSequence += 1;
+    } else {
+      this.lastTimeMs = nextTimeMs;
+      this.lastSequence = 1;
+    }
+
+    return `${this.lastTimeMs}-${this.lastSequence}`;
+  }
+}
+
+function isGreater(a: string, b: string) {
+  const getSegments = (id: string) => {
+    const [time, sequence] = id.split("-");
+    return [Number.parseInt(time), Number.parseInt(sequence || "1")];
+  };
+
+  const [aTime, aSequence] = getSegments(a);
+  const [bTime, bSequence] = getSegments(b);
+  return aTime > bTime || (aTime === bTime && aSequence > bSequence);
+}
+
 interface Message {
   topic: `run:${string}:stream:${string}`;
   data: unknown;
 }
 
 class Queue {
-  private buffer: Message[] = [];
-  private listeners: (() => void)[] = [];
+  private log: [id: string, message: Message][] = [];
+  private listeners: ((index: number) => void)[] = [];
+  private generator = new MessageIdGenerator();
 
   push(item: Message) {
-    this.buffer.push(item);
-    for (const listener of this.listeners) {
-      listener();
-    }
+    const id = this.generator.generate();
+    const newLen = this.log.push([id, item]);
+    for (const listener of this.listeners) listener(newLen - 1);
+    return id;
   }
 
-  async get(options: { timeout: number; signal?: AbortSignal }) {
-    if (this.buffer.length > 0) {
-      return this.buffer.shift()!;
-    }
+  async get(options: {
+    timeout: number;
+    lastEventId?: string;
+    signal?: AbortSignal;
+  }): Promise<[id: string, message: Message]> {
+    // Why this is important?
+    // Basically I want to not lost events, that have been
+    // pushed before we've been able to attach the listener.
+
+    // The default behaviour should be to NOT return all events
+    // if no lastEventId is provided: which means.
+
+    // I basically want `tail -f` for subsequent events
+    // Join events: ["0", tail]
+
+    // Redis: Implement TTL for each stream object
+    // Redis land: XREAD
+
+    /**
+     * <create run>
+     * push: (id 0)
+     * push: (id 1)
+     * <A: create stream>
+     * <B: join stream>
+     * get(A): (id 0)
+     * get(A): (id 1)
+     * <C: join stream>
+     * push: (id 2)
+     * get(A): (id 2)
+     * get(B): (id 2)
+     * get(C): (id 2)
+     * <D: join stream id: "0">
+     * get(D): (id 0)
+     * get(D): (id 1)
+     * get(D): (id 2)
+     */
+
+    const lastEventId = options.lastEventId;
+    const startIdx = lastEventId
+      ? this.log.findIndex(([id]) => isGreater(id, lastEventId))
+      : -1;
+
+    // Generator stores internal state of the read head index,
+    if (startIdx >= 0) return this.log[startIdx];
 
     let timeout: NodeJS.Timeout | undefined = undefined;
-    let resolver: (() => void) | undefined = undefined;
+    let resolver: ((idx: number) => void) | undefined = undefined;
 
     const clean = new AbortController();
 
-    return await new Promise<void>((resolve, reject) => {
+    // listen to new item
+    return await new Promise<number>((resolve, reject) => {
       timeout = setTimeout(() => reject(new TimeoutError()), options.timeout);
       resolver = resolve;
 
@@ -173,7 +245,7 @@ class Queue {
 
       this.listeners.push(resolver);
     })
-      .then(() => this.buffer.shift()!)
+      .then((idx) => this.log[idx])
       .finally(() => {
         this.listeners = this.listeners.filter((l) => l !== resolver);
         clearTimeout(timeout);
@@ -1488,7 +1560,7 @@ export class Runs {
     const runStream = Runs.Stream.join(
       runId,
       threadId,
-      { ignore404: threadId == null },
+      { ignore404: threadId == null, lastEventId: undefined },
       auth,
     );
 
@@ -1659,6 +1731,7 @@ export class Runs {
       options: {
         ignore404?: boolean;
         cancelOnDisconnect?: AbortSignal;
+        lastEventId: string | undefined;
       },
       auth: AuthContext | undefined,
     ): AsyncGenerator<{ event: string; data: unknown }> {
@@ -1683,9 +1756,17 @@ export class Runs {
           }
         }
 
+        let lastEventId = options?.lastEventId;
         while (!signal?.aborted) {
           try {
-            const message = await queue.get({ timeout: 500, signal });
+            const [id, message] = await queue.get({
+              timeout: 500,
+              signal,
+              lastEventId,
+            });
+
+            lastEventId = id;
+
             if (message.topic === `run:${runId}:control`) {
               if (message.data === "done") break;
             } else {
