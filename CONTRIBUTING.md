@@ -78,7 +78,7 @@ Full example: `yarn release @langchain/langgraph --bump-deps --tag beta`.
 This project uses the following tools, which are worth getting familiar
 with if you plan to contribute:
 
-- **[yarn](https://yarnpkg.com/) (v3.4.1)** - dependency management
+- **[yarn](https://yarnpkg.com/) (v4.9.1)** - dependency management
 - **[eslint](https://eslint.org/)** - enforcing standard lint rules
 - **[prettier](https://prettier.io/)** - enforcing standard code formatting
 - **[jest](https://jestjs.io/)** - testing code
