@@ -30,7 +30,7 @@ export async function getStaticGraphSchema(
 
   return await new Promise<Record<string, GraphSchema>>((resolve, reject) => {
     const worker = new Worker(
-      fileURLToPath(new URL("./parser/parser.worker.mjs", import.meta.url)),
+      fileURLToPath(new URL("./parser.worker.mjs", import.meta.url)),
       { argv: process.argv.slice(-1) },
     );
 
