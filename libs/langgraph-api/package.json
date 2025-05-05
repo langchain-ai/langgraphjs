@@ -12,16 +12,20 @@
   ],
   "exports": {
     ".": {
-      "types": "./dist/cli/spawn.d.ts",
+      "types": "./dist/cli/spawn.d.mts",
       "default": "./dist/cli/spawn.mjs"
     },
     "./auth": {
-      "types": "./dist/auth/index.d.ts",
+      "types": "./dist/auth/index.d.mts",
       "default": "./dist/auth/index.mjs"
     },
     "./semver": {
-      "types": "./dist/semver/index.d.ts",
+      "types": "./dist/semver/index.d.mts",
       "default": "./dist/semver/index.mjs"
+    },
+    "./schema": {
+      "types": "./dist/graph/parser/index.d.mts",
+      "default": "./dist/graph/parser/index.mjs"
     },
     "./package.json": "./package.json"
   },
