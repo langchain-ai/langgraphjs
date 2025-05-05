@@ -4,14 +4,19 @@ import type {
   UpdateType,
   StateDefinition,
 } from "@langchain/langgraph";
-import type { Graph } from "@langchain/langgraph";
-import type { Pregel } from "@langchain/langgraph/pregel";
 
 // @ts-expect-error
-type AnyPregel = Pregel<any, any>;
+type AnyPregel = {
+  lg_is_pregel: boolean;
+  stream: (...args: any[]) => any;
+  invoke: (...args: any[]) => any;
+};
 
 // @ts-expect-error
-type AnyGraph = Graph<any, any, any, any, any>;
+type AnyGraph = {
+  compiled: boolean;
+  compile: (...args: any[]) => any;
+};
 
 type Wrap<T> = (a: T) => void;
 type MatchBaseMessage<T> = T extends BaseMessage ? BaseMessage : never;
