@@ -90,8 +90,6 @@ const agentNode = async (
   state: typeof GraphAnnotationInput.State,
   config: LangGraphRunnableConfig,
 ) => {
-  console.log("state.sleep", state.sleep);
-
   if (state.interrupt) interrupt("i want to interrupt");
 
   if (state.sleep != null && state.messages.at(-1)?.getType() === "human") {
