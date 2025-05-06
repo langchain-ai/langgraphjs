@@ -10420,10 +10420,11 @@ graph TD;
       prompt: z
         .string()
         .min(1)
-        .langgraph.metadata({
+        .langgraph.jsonSchemaExtra({
           langgraph_nodes: ["agent"],
           langgraph_type: "prompt",
-        }),
+        })
+        .langgraph.metadata({ random: "hello" }),
     });
 
     const graph = new StateGraph(schema, config)
@@ -10455,6 +10456,7 @@ graph TD;
           type: "string",
           langgraph_nodes: ["agent"],
           langgraph_type: "prompt",
+          metadata: { random: "hello" },
           minLength: 1,
         },
       },

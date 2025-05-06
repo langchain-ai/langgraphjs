@@ -9,7 +9,9 @@ interface ZodLangGraphTypes<T extends z.ZodTypeAny, Output> {
     options?: z.ZodType<Input>
   ): z.ZodType<Output, z.ZodEffectsDef<T>, Input>;
 
-  metadata(payload: {
+  metadata(payload: Record<string, unknown>): T;
+
+  jsonSchemaExtra(payload: {
     langgraph_nodes?: string[];
     langgraph_type?: "prompt";
 
@@ -45,10 +47,18 @@ try {
           type Output = z.infer<typeof zodThis>;
 
           return {
-            metadata(jsonSchemaExtra: Meta<Output, Output>["jsonSchemaExtra"]) {
+            jsonSchemaExtra(
+              jsonSchemaExtra: Meta<Output, Output>["jsonSchemaExtra"]
+            ) {
               extendMeta(zodThis, (meta) => ({ ...meta, jsonSchemaExtra }));
               return zodThis;
             },
+
+            metadata(metadata: Meta<Output, Output>["metadata"]) {
+              extendMeta(zodThis, (meta) => ({ ...meta, metadata }));
+              return zodThis;
+            },
+
             reducer<Input>(
               fn: (a: Output, arg: Input) => Output,
               schema?: z.ZodType<Input>

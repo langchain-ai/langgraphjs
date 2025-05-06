@@ -11,8 +11,8 @@ function applyPlugin(
     /** Apply .langgraph.reducer calls */
     reducer?: boolean;
 
-    /** Apply .langgraph.metadata() calls  */
-    jsonSchemaExtra?: boolean;
+    /** Apply .langgraph.jsonSchemaExtra() and .langgraph.metadata() calls  */
+    extra?: boolean;
 
     /** Apply .partial() */
     partial?: boolean;
@@ -20,7 +20,7 @@ function applyPlugin(
 ) {
   const cacheKey = [
     `reducer:${actions.reducer ?? false}`,
-    `jsonSchemaExtra:${actions.jsonSchemaExtra ?? false}`,
+    `extra:${actions.extra ?? false}`,
     `partial:${actions.partial ?? false}`,
   ].join("|");
 
@@ -35,9 +35,10 @@ function applyPlugin(
           const meta = getMeta(input);
           let output = actions.reducer ? meta?.reducer?.schema ?? input : input;
 
-          if (actions.jsonSchemaExtra) {
+          if (actions.extra) {
             const strMeta = JSON.stringify({
               ...meta?.jsonSchemaExtra,
+              metadata: meta?.metadata ?? meta?.jsonSchemaExtra?.metadata,
               description: output.description ?? input.description,
             });
 
@@ -138,11 +139,7 @@ export function getUpdateTypeSchema(graph: unknown): JsonSchema | undefined {
   if (!schemaDef) return undefined;
 
   return toJsonSchema(
-    applyPlugin(schemaDef, {
-      reducer: true,
-      jsonSchemaExtra: true,
-      partial: true,
-    })
+    applyPlugin(schemaDef, { reducer: true, extra: true, partial: true })
   );
 }
 
@@ -156,11 +153,7 @@ export function getInputTypeSchema(graph: unknown): JsonSchema | undefined {
   const schemaDef = graph.builder._inputRuntimeDefinition;
   if (!schemaDef) return undefined;
   return toJsonSchema(
-    applyPlugin(schemaDef, {
-      reducer: true,
-      jsonSchemaExtra: true,
-      partial: true,
-    })
+    applyPlugin(schemaDef, { reducer: true, extra: true, partial: true })
   );
 }
 
@@ -173,7 +166,7 @@ export function getOutputTypeSchema(graph: unknown): JsonSchema | undefined {
   if (!isGraphWithZodLike(graph)) return undefined;
   const schemaDef = graph.builder._outputRuntimeDefinition;
   if (!schemaDef) return undefined;
-  return toJsonSchema(applyPlugin(schemaDef, { jsonSchemaExtra: true }));
+  return toJsonSchema(applyPlugin(schemaDef, { extra: true }));
 }
 
 /**
@@ -185,5 +178,5 @@ export function getConfigTypeSchema(graph: unknown): JsonSchema | undefined {
   if (!isGraphWithZodLike(graph)) return undefined;
   const configDef = graph.builder._configRuntimeSchema;
   if (!configDef) return undefined;
-  return toJsonSchema(applyPlugin(configDef, { jsonSchemaExtra: true }));
+  return toJsonSchema(applyPlugin(configDef, { extra: true }));
 }

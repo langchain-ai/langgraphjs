@@ -13,6 +13,7 @@ export interface Meta<ValueType, UpdateType = ValueType> {
 
     [key: string]: unknown;
   };
+  metadata?: Record<string, unknown>;
   reducer?: {
     schema?: z.ZodType<UpdateType>;
     fn: (a: ValueType, b: UpdateType) => ValueType;
