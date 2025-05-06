@@ -135,51 +135,18 @@ export const conn = new FileSystemPersistence<Store>(
 class TimeoutError extends Error {}
 class AbortError extends Error {}
 
-// ID generator related by time, inspired by Redis Streams
-class MessageIdGenerator {
-  lastTimeMs: number = 0;
-  lastSequence: number = 1;
-
-  generate() {
-    const nextTimeMs = Math.max(Date.now(), this.lastTimeMs);
-
-    if (nextTimeMs === this.lastTimeMs) {
-      this.lastSequence += 1;
-    } else {
-      this.lastTimeMs = nextTimeMs;
-      this.lastSequence = 1;
-    }
-
-    return `${this.lastTimeMs}-${this.lastSequence}`;
-  }
-}
-
-function isGreater(a: string, b: string) {
-  const getSegments = (id: string) => {
-    const [time, sequence] = id.split("-");
-    return [Number.parseInt(time), Number.parseInt(sequence || "1")];
-  };
-
-  const [aTime, aSequence] = getSegments(a);
-  const [bTime, bSequence] = getSegments(b);
-  return aTime > bTime || (aTime === bTime && aSequence > bSequence);
-}
-
 interface Message {
   topic: `run:${string}:stream:${string}`;
   data: unknown;
 }
 
 class Queue {
-  private log: [id: string, message: Message][] = [];
+  private log: Message[] = [];
   private listeners: ((index: number) => void)[] = [];
-  private generator = new MessageIdGenerator();
 
   push(item: Message) {
-    const id = this.generator.generate();
-    const newLen = this.log.push([id, item]);
+    const newLen = this.log.push(item);
     for (const listener of this.listeners) listener(newLen - 1);
-    return id;
   }
 
   async get(options: {
@@ -188,12 +155,19 @@ class Queue {
     signal?: AbortSignal;
   }): Promise<[id: string, message: Message]> {
     const lastEventId = options.lastEventId;
-    const startIdx = lastEventId
-      ? this.log.findIndex(([id]) => isGreater(id, lastEventId))
-      : -1;
 
     // Generator stores internal state of the read head index,
-    if (startIdx >= 0) return this.log[startIdx];
+    let targetId = lastEventId != null ? +lastEventId + 1 : null;
+    if (
+      targetId == null ||
+      isNaN(targetId) ||
+      targetId < 0 ||
+      targetId >= this.log.length
+    ) {
+      targetId = null;
+    }
+
+    if (targetId != null) return [String(targetId), this.log[targetId]];
 
     let timeout: NodeJS.Timeout | undefined = undefined;
     let resolver: ((idx: number) => void) | undefined = undefined;
@@ -213,7 +187,7 @@ class Queue {
 
       this.listeners.push(resolver);
     })
-      .then((idx) => this.log[idx])
+      .then((idx) => [String(idx), this.log[idx]] as [string, Message])
       .finally(() => {
         this.listeners = this.listeners.filter((l) => l !== resolver);
         clearTimeout(timeout);
