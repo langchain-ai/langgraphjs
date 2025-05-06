@@ -187,38 +187,6 @@ class Queue {
     lastEventId?: string;
     signal?: AbortSignal;
   }): Promise<[id: string, message: Message]> {
-    // Why this is important?
-    // Basically I want to not lost events, that have been
-    // pushed before we've been able to attach the listener.
-
-    // The default behaviour should be to NOT return all events
-    // if no lastEventId is provided: which means.
-
-    // I basically want `tail -f` for subsequent events
-    // Join events: ["0", tail]
-
-    // Redis: Implement TTL for each stream object
-    // Redis land: XREAD
-
-    /**
-     * <create run>
-     * push: (id 0)
-     * push: (id 1)
-     * <A: create stream>
-     * <B: join stream>
-     * get(A): (id 0)
-     * get(A): (id 1)
-     * <C: join stream>
-     * push: (id 2)
-     * get(A): (id 2)
-     * get(B): (id 2)
-     * get(C): (id 2)
-     * <D: join stream id: "0">
-     * get(D): (id 0)
-     * get(D): (id 1)
-     * get(D): (id 2)
-     */
-
     const lastEventId = options.lastEventId;
     const startIdx = lastEventId
       ? this.log.findIndex(([id]) => isGreater(id, lastEventId))
@@ -1734,7 +1702,7 @@ export class Runs {
         lastEventId: string | undefined;
       },
       auth: AuthContext | undefined,
-    ): AsyncGenerator<{ event: string; data: unknown }> {
+    ): AsyncGenerator<{ id?: string; event: string; data: unknown }> {
       yield* conn.withGenerator(async function* (STORE) {
         // TODO: what if we're joining an already completed run? Should we check before?
         const signal = options?.cancelOnDisconnect;
@@ -1774,7 +1742,7 @@ export class Runs {
                 `run:${runId}:stream:`.length,
               );
 
-              yield { event: streamTopic, data: message.data };
+              yield { id, event: streamTopic, data: message.data };
             }
           } catch (error) {
             if (error instanceof AbortError) break;
