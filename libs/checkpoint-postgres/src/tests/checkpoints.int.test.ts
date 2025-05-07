@@ -1,12 +1,13 @@
 /* eslint-disable no-process-env */
 import { describe, it, expect, beforeEach, afterAll } from "@jest/globals";
-import {
+import type {
   Checkpoint,
   CheckpointTuple,
-  uuid6,
 } from "@langchain/langgraph-checkpoint";
+import { uuid6 } from "@langchain/langgraph-checkpoint";
 import pg from "pg";
 import { PostgresSaver } from "../index.js"; // Adjust the import path as needed
+import { getMigrations } from "../migrations.js";
 
 const { Pool } = pg;
 
@@ -61,6 +62,8 @@ describe.each([
 ])("PostgresSaver with $description", ({ schema }) => {
   let postgresSaver: PostgresSaver;
 
+  let currentDbConnectionString: string;
+
   beforeEach(async () => {
     const pool = new Pool({
       connectionString: TEST_POSTGRES_URL,
@@ -73,12 +76,13 @@ describe.each([
     try {
       // Create a new database
       await pool.query(`CREATE DATABASE ${dbName}`);
-      console.log(`Created database: ${dbName}`);
+      console.log(`✅ Created database: ${dbName}`);
 
       // Connect to the new database
       const dbConnectionString = `${TEST_POSTGRES_URL?.split("/")
         .slice(0, -1)
         .join("/")}/${dbName}`;
+      currentDbConnectionString = dbConnectionString;
       postgresSaver = PostgresSaver.fromConnString(dbConnectionString, {
         schema,
       });
@@ -106,10 +110,220 @@ describe.each([
 
       for (const row of result.rows) {
         const dbName = row.datname;
-        await pool.query(`DROP DATABASE ${dbName}`);
-        console.log(`Dropped database: ${dbName}`);
+        await pool.query(`DROP DATABASE ${dbName} WITH (FORCE)`);
+        console.log(`🗑️  Dropped database: ${dbName}`);
       }
     } finally {
+      await pool.end();
+    }
+  });
+
+  it("should properly initialize and setup the database", async () => {
+    // Verify that the database is properly initialized
+    const pool = new Pool({
+      connectionString: currentDbConnectionString,
+    });
+    const client = await pool.connect();
+    const currentSchema = schema ?? "public";
+    try {
+      // Check if the schema exists
+      const schemaResult = await client.query(
+        `
+        SELECT schema_name
+        FROM information_schema.schemata
+        WHERE schema_name = $1
+      `,
+        [currentSchema]
+      );
+      expect(schemaResult.rows.length).toBe(1);
+
+      // Check if the required tables exist
+      const tablesQuery = `
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = $1
+        AND table_name IN ('checkpoints', 'checkpoint_blobs', 'checkpoint_writes', 'checkpoint_migrations')
+      `;
+      const tablesResult = await client.query(tablesQuery, [currentSchema]);
+      expect(tablesResult.rows.length).toBe(4);
+
+      // Verify table structures
+      const checkpointsColumns = await client.query(
+        `
+        SELECT column_name, data_type, is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'checkpoints'
+        ORDER BY ordinal_position
+      `,
+        [currentSchema]
+      );
+
+      expect(checkpointsColumns.rows).toEqual([
+        {
+          column_name: "thread_id",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: null,
+        },
+        {
+          column_name: "checkpoint_ns",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: "''::text",
+        },
+        {
+          column_name: "checkpoint_id",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: null,
+        },
+        {
+          column_name: "parent_checkpoint_id",
+          data_type: "text",
+          is_nullable: "YES",
+          column_default: null,
+        },
+        {
+          column_name: "type",
+          data_type: "text",
+          is_nullable: "YES",
+          column_default: null,
+        },
+        {
+          column_name: "checkpoint",
+          data_type: "jsonb",
+          is_nullable: "NO",
+          column_default: null,
+        },
+        {
+          column_name: "metadata",
+          data_type: "jsonb",
+          is_nullable: "NO",
+          column_default: "'{}'::jsonb",
+        },
+      ]);
+
+      const checkpointBlobsColumns = await client.query(
+        `
+        SELECT column_name, data_type, is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'checkpoint_blobs'
+        ORDER BY ordinal_position
+      `,
+        [currentSchema]
+      );
+
+      expect(checkpointBlobsColumns.rows).toEqual([
+        {
+          column_name: "thread_id",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: null,
+        },
+        {
+          column_name: "checkpoint_ns",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: "''::text",
+        },
+        {
+          column_name: "channel",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: null,
+        },
+        {
+          column_name: "version",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: null,
+        },
+        {
+          column_name: "type",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: null,
+        },
+        {
+          column_name: "blob",
+          data_type: "bytea",
+          is_nullable: "YES",
+          column_default: null,
+        },
+      ]);
+
+      const checkpointWritesColumns = await client.query(
+        `
+        SELECT column_name, data_type, is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'checkpoint_writes'
+        ORDER BY ordinal_position
+      `,
+        [currentSchema]
+      );
+
+      expect(checkpointWritesColumns.rows).toEqual([
+        {
+          column_name: "thread_id",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: null,
+        },
+        {
+          column_name: "checkpoint_ns",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: "''::text",
+        },
+        {
+          column_name: "checkpoint_id",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: null,
+        },
+        {
+          column_name: "task_id",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: null,
+        },
+        {
+          column_name: "idx",
+          data_type: "integer",
+          is_nullable: "NO",
+          column_default: null,
+        },
+        {
+          column_name: "channel",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: null,
+        },
+        {
+          column_name: "type",
+          data_type: "text",
+          is_nullable: "YES",
+          column_default: null,
+        },
+        {
+          column_name: "blob",
+          data_type: "bytea",
+          is_nullable: "NO",
+          column_default: null,
+        },
+      ]);
+
+      // Verify migrations table has correct number of entries
+      const migrationsResult = await client.query(`
+        SELECT COUNT(*) as count
+        FROM ${schema ? `${schema}.` : ""}checkpoint_migrations
+      `);
+      const MIGRATIONS = getMigrations(currentSchema);
+      expect(Number.parseInt(migrationsResult.rows[0].count, 10)).toBe(
+        MIGRATIONS.length
+      );
+    } finally {
+      client.release();
       await pool.end();
     }
   });

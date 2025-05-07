@@ -92,3 +92,12 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
   `,
   };
 };
+
+export const tableExistsSQL = (schema: string, table: string) => {
+  const tableWithoutSchema = table.split(".")[1];
+  return `SELECT EXISTS (
+  SELECT FROM information_schema.tables 
+  WHERE  table_schema = '${schema}'
+  AND    table_name   = '${tableWithoutSchema}'
+  );`;
+};
