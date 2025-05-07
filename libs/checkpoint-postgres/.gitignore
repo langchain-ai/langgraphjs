@@ -5,5 +5,3 @@ index.d.cts
 node_modules
 dist
 .yarn
-.env
-.DS_Store
