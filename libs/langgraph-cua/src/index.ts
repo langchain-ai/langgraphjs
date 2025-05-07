@@ -7,6 +7,7 @@ import {
   StateGraph,
 } from "@langchain/langgraph";
 import { SystemMessage } from "@langchain/core/messages";
+import { CreateSessionParams } from "@hyperbrowser/sdk/types";
 import { callModel } from "./nodes/call-model.js";
 import { createVMInstance } from "./nodes/create-vm-instance.js";
 import { takeComputerAction } from "./nodes/take-computer-action.js";
@@ -15,6 +16,7 @@ import {
   CUAAnnotation,
   CUAConfigurable,
   CUAUpdate,
+  Provider,
 } from "./types.js";
 import { getToolOutputs, isComputerCallToolMessage } from "./utils.js";
 
@@ -64,11 +66,31 @@ interface CreateCuaParams<
   StateModifier extends AnnotationRoot<any> = typeof CUAAnnotation
 > {
   /**
+   * The provider to use for the browser instance.
+   * @default "scrapybara"
+   */
+  provider?: Provider;
+
+  /**
    * The API key to use for Scrapybara.
    * This can be provided in the configuration, or set as an environment variable (SCRAPYBARA_API_KEY).
    * @default process.env.SCRAPYBARA_API_KEY
    */
   scrapybaraApiKey?: string;
+
+  /**
+   * The API key to use for Hyperbrowser.
+   * This can be provided in the configuration, or set as an environment variable (HYPERBROWSER_API_KEY).
+   * @default process.env.HYPERBROWSER_API_KEY
+   */
+  hyperbrowserApiKey?: string;
+
+  /**
+   * Parameters to use for configuring the Hyperbrowser session, such as proxy usage, screen dimensions, etc.
+   * For more information on the available parameters, see the [Hyperbrowser API documentation](https://docs.hyperbrowser.ai/sessions/overview/session-parameters).
+   * @default undefined
+   */
+  sessionParams?: CreateSessionParams;
 
   /**
    * The number of hours to keep the virtual machine running before it times out.
@@ -152,7 +174,10 @@ export function createCua<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   StateModifier extends AnnotationRoot<any> = typeof CUAAnnotation
 >({
+  provider = "scrapybara",
   scrapybaraApiKey,
+  hyperbrowserApiKey,
+  sessionParams,
   timeoutHours = 1.0,
   zdrEnabled = false,
   recursionLimit = 100,
@@ -205,7 +230,10 @@ export function createCua<
   // Configure the graph with the provided parameters
   const configuredGraph = cuaGraph.withConfig({
     configurable: {
+      provider,
       scrapybaraApiKey,
+      hyperbrowserApiKey,
+      sessionParams,
       timeoutHours,
       zdrEnabled,
       authStateId,

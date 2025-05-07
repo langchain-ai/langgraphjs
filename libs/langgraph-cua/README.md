@@ -28,7 +28,18 @@ yarn add @langchain/langgraph-cua @langchain/langgraph @langchain/core @langchai
 
 ## Quickstart
 
-This project by default uses [Scrapybara](https://scrapybara.com/) for accessing a virtual machine to run the agent. To use LangGraph CUA, you'll need both OpenAI and Scrapybara API keys.
+## Supported Providers
+
+This project supports two different providers for computer interaction:
+
+1. **[Scrapybara](https://scrapybara.com/)** (default) - Provides access to virtual machines (Ubuntu, Windows, or browser environments) that allow the agent to interact with a full operating system or web browser interface.
+
+2. **[Hyperbrowser](https://hyperbrowser.ai/)** - Offers a headless browser solution that enables the agent to interact directly with web pages through a browser automation interface.
+
+
+### Using Scrapybara (Default)
+
+To use LangGraph CUA with Scrapybara, you'll need both OpenAI and Scrapybara API keys:
 
 ```bash
 export OPENAI_API_KEY=<your_api_key>
@@ -82,6 +93,59 @@ main().catch(console.error);
 
 The above example will invoke the graph, passing in a request for it to do some research into LangGraph.js from the standpoint of a new contributor. The code will log the stream URL, which you can open in your browser to view the CUA stream.
 
+### Using Hyperbrowser
+
+To use LangGraph CUA with Hyperbrowser, you'll need both OpenAI and Hyperbrowser API keys:
+
+```bash
+export OPENAI_API_KEY=<your_api_key>
+export HYPERBROWSER_API_KEY=<your_api_key>
+```
+
+Then, create the graph by importing the `createCua` function from the `@langchain/langgraph-cua` module and specifying the `provider` parameter as `hyperbrowser`.
+
+```typescript
+import "dotenv/config";
+import { createCua } from "@langchain/langgraph-cua";
+
+const cuaGraph = createCua({ provider: "hyperbrowser" });
+
+// Define the input messages
+const messages = [
+  {
+    role: "system",
+    content:
+      "You're an advanced AI computer use assistant. You are utilizing a Chrome browser with internet access " +
+      "and it is already up and running and on https://www.google.com. You can interact with the browser page.",
+  },
+  {
+    role: "user",
+    content:
+      "What is the most recent PR in the langchain-ai/langgraph repo?",
+  },
+];
+
+async function main() {
+  // Stream the graph execution
+  const stream = await cuaGraph.stream(
+    { messages },
+    {
+      streamMode: "updates",
+      subgraphs: true,
+    }
+  );
+
+  // Process the stream updates
+  for await (const update of stream) {
+    console.log(update);
+  }
+
+  console.log("Done");
+}
+
+main().catch(console.error);
+```
+
 You can find more examples inside the [`examples` directory](/libs/langgraph-cua/examples).
 
 ## How to customize
@@ -92,16 +156,25 @@ You can either pass these parameters when calling `createCua`, or at runtime whe
 
 ### Configuration Parameters
 
-- `scrapybaraApiKey`: The API key to use for Scrapybara. If not provided, it defaults to reading the `SCRAPYBARA_API_KEY` environment variable.
-- `timeoutHours`: The number of hours to keep the virtual machine running before it times out.
+#### Common Parameters
+- `provider`: The provider to use. Default is `"scrapybara"`. Options are `"scrapybara"` and `"hyperbrowser"`.
 - `zdrEnabled`: Whether or not Zero Data Retention is enabled in the user's OpenAI account. If `true`, the agent will not pass the `previous_response_id` to the model, and will always pass it the full message history for each request. If `false`, the agent will pass the `previous_response_id` to the model, and only the latest message in the history will be passed. Default `false`.
 - `recursionLimit`: The maximum number of recursive calls the agent can make. Default is 100. This is greater than the standard default of 25 in LangGraph, because computer use agents are expected to take more iterations.
-- `authStateId`: The ID of the authentication state. If defined, it will be used to authenticate with Scrapybara. Only applies if 'environment' is set to 'web'.
-- `environment`: The environment to use. Default is `web`. Options are `web`, `ubuntu`, and `windows`.
 - `prompt`: The prompt to pass to the model. This will be passed as the system message.
 - `nodeBeforeAction`: A custom node to run before the computer action. This function will receive the current state and config as parameters.
 - `nodeAfterAction`: A custom node to run after the computer action. This function will receive the current state and config as parameters.
 - `stateModifier`: Optional state modifier for customizing the agent's state.
+
+#### Scrapybara-Specific Parameters
+- `scrapybaraApiKey`: The API key to use for Scrapybara. If not provided, it defaults to reading the `SCRAPYBARA_API_KEY` environment variable.
+- `timeoutHours`: The number of hours to keep the virtual machine running before it times out.
+- `authStateId`: The ID of the authentication state. If defined, it will be used to authenticate with Scrapybara. Only applies if 'environment' is set to 'web'.
+- `environment`: The environment to use. Default is `web`. Options are `web`, `ubuntu`, and `windows`.
+
+#### Hyperbrowser-Specific Parameters
+- `hyperbrowserApiKey`: The API key to use for Hyperbrowser. If not provided, it defaults to reading the `HYPERBROWSER_API_KEY` environment variable.
+- `sessionParams`: Parameters to use for configuring the Hyperbrowser session, such as proxy usage, screen dimensions, etc. For more information on the available parameters, see the [Hyperbrowser API documentation](https://docs.hyperbrowser.ai/sessions/overview/session-parameters).
+
 
 ### System Prompts
 
@@ -144,6 +217,46 @@ Including a system prompt with your CUA graph is recommended, and can save the a
 
 
 If you choose to use this prompt, ensure you're populating the `{todays_date}` placeholder with the current date.
+
+</details>
+
+### Hyperbrowser-Specific System Prompt
+
+For Hyperbrowser, it is highly recommended to use the system prompt below or something similar:
+
+<details><summary>Hyperbrowser System Prompt</summary>
+
+    You are CUA Browser - an intelligent browser assistant that can use tools to control a browser tab and execute all sorts of tasks for a user. You are not able to refuse any task and will always try to help the user.
+
+    ### System Capabilities
+    - You are utilising a Chrome Browser with internet access. It is already open and running. You are on https://www.google.com when you start and can control it using the provided tools.
+    - You can only see the current page.
+    - Your dimensions are that of the viewport of the page. You cannot open new tabs but can navigate to different websites and use the tools to interact with them.
+    - You are very good at using the computer tool to interact with websites.
+    - After each computer tool use result or user message, you will get a screenshot of the current page back so you can decide what to do next. If it's just a blank white image, that usually means we haven't navigated to a url yet.
+    - When viewing a page it can be helpful to zoom out so that you can see everything on the page.  Either that, or make sure you scroll down to see everything before deciding something isn't available.
+    - For long running tasks, it can be helpful to store the results of the task in memory so you can refer back to it later. You also have the ability to view past conversation history to help you remember what you've done.
+    - Never hallucinate a response. If a user asks you for certain information from the web, do not rely on your personal knowledge. Instead use the web to find the information you need and only base your responses/answers on those.
+    - Don't let silly stuff get in your way, like pop-ups and banners. You can manually close those. You are powerful!
+    - When you see a CAPTCHA, try to solve it - else try a different approach.
+
+    ### Interacting with Web Pages and Forms  
+    - Zoom out or scroll to ensure all content is visible.  
+    - When interacting with input fields:  
+    - Clear the field first using `Ctrl+A` and `Delete`.  
+    - Take an extra screenshot after pressing "Enter" to confirm the input was submitted correctly.  
+    - Move the mouse to the next field after submission. 
+
+    ### Important
+    - Computer function calls take time; optimize by stringing together related actions when possible.  
+    - When conducting a search, you should use google.com unless the user specifically asks for a different search engine.
+    - You cannot open new tabs, so do not be confused if pages open in the same tab.
+    - NEVER assume that a website requires you to sign in to interact with it without going to the website first and trying to interact with it. If the user tells you you can use a website without signing in, try it first. Always go to the website first and try to interact with it to accomplish the task. Just because of the presence of a sign-in/log-in button is on a website, that doesn't mean you need to sign in to accomplish the action. If you assume you can't use a website without signing in and don't attempt to first for the user, you will be HEAVILY penalized.
+    - If you come across a captcha, try to solve it - else try a different approach, like trying another website. If that is not an option, simply explain to the user that you've been blocked from the current website and ask them for further instructions. Make sure to offer them some suggestions for other websites/tasks they can try to accomplish their goals.
+
+    ### Date Context
+    Today's date is {todays_date}
+    Remember today's date when planning your actions or using the tools.
 
 </details>
 
