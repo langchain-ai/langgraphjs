@@ -47,7 +47,7 @@
     "release-it": "^19.0.2",
     "semver": "^7.6.3",
     "tslab": "^1.0.21",
-    "tsx": "^4.7.0",
+    "tsx": "^4.19.3",
     "turbo": "canary",
     "typedoc": "^0.25.13",
     "typescript": "^4.9.5 || ^5.4.5"
