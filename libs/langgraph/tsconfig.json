@@ -5,6 +5,7 @@
     "rootDir": "./src",
     "target": "ES2021",
     "lib": ["ES2021", "ES2022.Object", "ES2022.Error", "DOM"],
+    "types": ["vitest/globals"],
     "module": "ES2020",
     "moduleResolution": "nodenext",
     "esModuleInterop": true,
@@ -19,6 +20,6 @@
     "strict": true,
     "sourceMap": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "docs"]
 }

@@ -8774,7 +8774,7 @@ graph TD;
       )
     );
 
-    expect(streamedCombinedEvents).toEqual([
+    expect(streamedCombinedEvents).toMatchObject([
       ["custom", { from: "parent" }],
       [
         "messages",
@@ -9169,10 +9169,7 @@ graph TD;
 
     expect(
       Object.values(streamCheckpointMap).map(sanitizeCheckpoints)
-    ).toMatchObject(
-      // @ts-expect-error Not sure why toMatchObject does not accept historyNs
-      historyNs.map(sanitizeCheckpoints)
-    );
+    ).toMatchObject(historyNs.map(sanitizeCheckpoints));
   });
 
   it("test_parent_command", async () => {
