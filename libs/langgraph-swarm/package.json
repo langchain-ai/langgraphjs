@@ -61,7 +61,7 @@
     "jest-environment-node": "^29.6.4",
     "prettier": "^2.8.3",
     "release-it": "^19.0.2",
-    "tsx": "^4.7.0",
+    "tsx": "^4.19.3",
     "turbo": "latest",
     "typescript": "^4.9.5 || ^5.4.5"
   },
