@@ -3,7 +3,7 @@ import {
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
-import { Channel, Pregel } from "../pregel/index.js";
+import { Pregel } from "../pregel/index.js";
 import { PregelNode } from "../pregel/read.js";
 import {
   CONFIG_KEY_PREVIOUS_STATE,
@@ -30,8 +30,6 @@ import {
   isGeneratorFunction,
 } from "../utils.js";
 import { ChannelWrite, PASSTHROUGH } from "../pregel/write.js";
-
-const ROOT = "__root__";
 
 /**
  * Options for the {@link task} function
@@ -143,7 +141,6 @@ export interface EntrypointFunction {
     Record<string, PregelNode<InputT, EntrypointReturnT<OutputT>>>,
     {
       [START]: EphemeralValue<InputT>;
-      [ROOT]: EphemeralValue<InputT>;
       [END]: LastValue<EntrypointReturnT<OutputT>>;
       [PREVIOUS]: LastValue<EntrypointFinalSaveT<OutputT>>;
     },
@@ -352,27 +349,10 @@ export const entrypoint = function entrypoint<InputT, OutputT>(
     },
   });
 
-  const channelName = `${START}:${name}`;
-
-  const startNode = Channel.subscribeTo(START, { tags: [TAG_HIDDEN] });
-  startNode.writers.push(
-    new ChannelWrite(
-      [
-        {
-          channel: ROOT,
-          value: PASSTHROUGH,
-          mapper: new RunnableCallable({ func: (value: unknown) => value }),
-        },
-        { channel: channelName, value: START },
-      ],
-      [TAG_HIDDEN]
-    )
-  );
-
   const entrypointNode = new PregelNode<InputT, EntrypointReturnT<OutputT>>({
     bound,
-    triggers: [channelName],
-    channels: [ROOT],
+    triggers: [START],
+    channels: [START],
     writers: [
       new ChannelWrite(
         [
@@ -388,7 +368,6 @@ export const entrypoint = function entrypoint<InputT, OutputT>(
     Record<string, PregelNode<InputT, EntrypointReturnT<OutputT>>>, // node types
     {
       [START]: EphemeralValue<InputT>;
-      [ROOT]: EphemeralValue<InputT>;
       [END]: LastValue<EntrypointReturnT<OutputT>>;
       [PREVIOUS]: LastValue<EntrypointFinalSaveT<OutputT>>;
     }, // channel types
@@ -399,13 +378,10 @@ export const entrypoint = function entrypoint<InputT, OutputT>(
     name,
     checkpointer,
     nodes: {
-      [START]: startNode,
       [name]: entrypointNode,
     },
     channels: {
       [START]: new EphemeralValue<InputT>(),
-      [ROOT]: new EphemeralValue<InputT>(),
-      [channelName]: new EphemeralValue<InputT>(),
       [END]: new LastValue<EntrypointReturnT<OutputT>>(),
       [PREVIOUS]: new LastValue<EntrypointFinalSaveT<OutputT>>(),
     },

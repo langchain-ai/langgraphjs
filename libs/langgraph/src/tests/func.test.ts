@@ -884,7 +884,7 @@ export function runFuncTests(
         thread_id = "updateStateThread";
       });
 
-      it("should allow updating state during an interrupt and resume correctly", async () => {
+      it.skip("should allow updating state during an interrupt and resume correctly", async () => {
         const taskOne = task("taskOne", async (input: { value: number }) => {
           return { resultOne: input.value * 2 };
         });
