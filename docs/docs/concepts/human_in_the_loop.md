@@ -148,7 +148,7 @@ To use `interrupt` in your graph, you need to:
 
 There are typically three different **actions** that you can do with a human-in-the-loop workflow:
 
-1. **Approve or Reject**: Pause the graph before a critical step, such as an API call, to review and approve the action. If the action is rejected, you can prevent the graph from executing the step, and potentially take an alternative action. This pattern often involve **routing** the graph based on the human's input.
+1. **Approve or Reject**: Pause the graph before a critical step, such as an API call, to review and approve the action. If the action is rejected, you can prevent the graph from executing the step, and potentially take an alternative action. This pattern often involves **routing** the graph based on the human's input.
 
 2. **Edit Graph State**: Pause the graph to review and edit the graph state. This is useful for correcting mistakes or updating the state with additional information. This pattern often involves **updating** the state with the human's input.
 
@@ -455,7 +455,7 @@ By leveraging `Command`, you can resume graph execution, handle user inputs, and
 
 ## Using with `invoke`
 
-When you use `stream` to run the graph, you will receive an `Interrupt` event that let you know the `interrupt` was triggered.
+When you use `stream` to run the graph, you will receive an `Interrupt` event that lets you know the `interrupt` was triggered.
 
 `invoke` does not return the interrupt information. To access this information, you must use the [getState](/langgraphjs/reference/classes/langgraph.CompiledStateGraph.html#getState) method to retrieve the graph state after calling `invoke`.
 
