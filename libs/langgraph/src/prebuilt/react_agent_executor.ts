@@ -4,11 +4,15 @@ import {
 } from "@langchain/core/language_models/chat_models";
 import { LanguageModelLike } from "@langchain/core/language_models/base";
 import {
+  AIMessage,
   BaseMessage,
   BaseMessageLike,
   isAIMessage,
+  isAIMessageChunk,
   isBaseMessage,
+  isBaseMessageChunk,
   isToolMessage,
+  MessageContent,
   SystemMessage,
 } from "@langchain/core/messages";
 import {
@@ -394,8 +398,69 @@ export type CreateReactAgentParams<
     | StructuredResponseSchemaAndPrompt<StructuredResponseType>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     | Record<string, any>;
+  /**
+   * An optional name for the agent.
+   */
   name?: string;
+  /**
+   * Use to specify how to expose the agent name to the underlying supervisor LLM.
+
+      - undefined: Relies on the LLM provider {@link AIMessage#name}. Currently, only OpenAI supports this.
+      - `"inline"`: Add the agent name directly into the content field of the {@link AIMessage} using XML-style tags.
+          Example: `"How can I help you"` -> `"<name>agent_name</name><content>How can I help you?</content>"`
+   */
+  includeAgentName?: "inline" | undefined;
 };
+
+function _handleMessageName(
+  message: BaseMessageLike,
+  includeAgentName?: "inline"
+) {
+  const isAI =
+    isBaseMessage(message) &&
+    (isAIMessage(message) ||
+      (isBaseMessageChunk(message) && isAIMessageChunk(message)));
+
+  if (!isAI || includeAgentName !== "inline" || !message.name) {
+    return message;
+  }
+
+  const { name } = message;
+
+  if (typeof message.content === "string") {
+    return new AIMessage({
+      ...message.lc_kwargs,
+      content: `<name>${name}</name><content>${message.content}</content>`,
+      name: undefined,
+    });
+  }
+
+  const updatedContent = [];
+
+  for (const contentBlock of message.content) {
+    if (typeof contentBlock === "string") {
+      updatedContent.push(
+        `<name>${name}</name><content>${contentBlock}</content>`
+      );
+    } else if (
+      typeof contentBlock === "object" &&
+      "type" in contentBlock &&
+      contentBlock.type === "text"
+    ) {
+      updatedContent.push({
+        ...contentBlock,
+        text: `<name>${name}</name><content>${contentBlock.text}</content>`,
+      });
+    } else {
+      updatedContent.push(contentBlock);
+    }
+  }
+  return new AIMessage({
+    ...message.lc_kwargs,
+    content: updatedContent as MessageContent,
+    name: undefined,
+  });
+}
 
 /**
  * Creates a StateGraph agent that relies on a chat model utilizing tool calling.
@@ -472,6 +537,7 @@ export function createReactAgent<
     store,
     responseFormat,
     name,
+    includeAgentName,
   } = params;
 
   let toolClasses: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
@@ -501,9 +567,22 @@ export function createReactAgent<
       modelWithTools = llm;
     }
 
-    const modelRunnable = (
-      _getPrompt(prompt, stateModifier, messageModifier) as Runnable
-    ).pipe(modelWithTools);
+    const nameRunnable = new RunnableLambda({
+      func: (messages: BaseMessageLike[]) =>
+        messages.map((message) =>
+          _handleMessageName(message, includeAgentName)
+        ),
+    });
+
+    const promptRunnable = _getPrompt(
+      prompt,
+      stateModifier,
+      messageModifier
+    ) as Runnable;
+
+    const modelRunnable = promptRunnable
+      .pipe(nameRunnable)
+      .pipe(modelWithTools);
 
     cachedModelRunnable = modelRunnable;
     return modelRunnable;
