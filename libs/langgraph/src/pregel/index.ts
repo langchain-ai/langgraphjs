@@ -1318,7 +1318,10 @@ export class Pregel<
       if (updates.length === 1) {
         // eslint-disable-next-line prefer-const
         let { values, asNode } = updates[0];
-        if (asNode === undefined && nonNullVersion === undefined) {
+        if (asNode === undefined && Object.keys(this.nodes).length === 1) {
+          // if only one node, use it
+          [asNode] = Object.keys(this.nodes);
+        } else if (asNode === undefined && nonNullVersion === undefined) {
           if (
             typeof this.inputChannels === "string" &&
             this.nodes[this.inputChannels] !== undefined
