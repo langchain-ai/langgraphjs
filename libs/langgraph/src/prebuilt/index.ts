@@ -25,3 +25,5 @@ export type {
   HumanInterrupt,
   HumanResponse,
 } from "./interrupt.js";
+export { withAgentName } from "./agentName.js";
+export type { AgentNameMode } from "./agentName.js";

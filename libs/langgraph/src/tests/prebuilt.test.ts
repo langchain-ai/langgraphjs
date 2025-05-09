@@ -1,7 +1,7 @@
 /* eslint-disable no-process-env */
 /* eslint-disable no-param-reassign */
 /* eslint-disable no-return-assign */
-import { beforeAll, describe, expect, it } from "@jest/globals";
+import { beforeAll, describe, expect, it, jest } from "@jest/globals";
 import { StructuredTool, tool } from "@langchain/core/tools";
 
 import {
@@ -497,6 +497,158 @@ describe("createReactAgent with bound tools", () => {
       }).rejects.toThrow();
     }
   );
+});
+
+describe("createReactAgent agent name options", () => {
+  it("Can use inline agent name", async () => {
+    const responses = [
+      new AIMessage("Hello, how can I help?"),
+      new AIMessage("Hmm, I'm not sure about that."),
+    ];
+    const llm = new FakeToolCallingChatModel({ responses });
+    const invokeSpy = jest.spyOn(llm, "invoke");
+    const agent = createReactAgent({
+      llm,
+      tools: [new SearchAPI()],
+      includeAgentName: "inline",
+      name: "test agent",
+    });
+
+    const messages = [new HumanMessage("Hello!")];
+    const result1 = await agent.invoke({ messages });
+    const outputMessage1 = result1.messages.at(-1) as AIMessage;
+    messages.push(outputMessage1);
+
+    expect(outputMessage1.name).toBe("test agent");
+    expect(outputMessage1.content).toBe("Hello, how can I help?");
+
+    const result2 = await agent.invoke({ messages });
+    const outputMessage2 = result2.messages.at(-1) as AIMessage;
+
+    expect(invokeSpy).toHaveBeenLastCalledWith(
+      [
+        messages[0],
+        new _AnyIdAIMessage({
+          // no name on input message
+          name: undefined,
+          // xml formatting on input message
+          content:
+            "<name>test agent</name><content>Hello, how can I help?</content>",
+        }),
+      ],
+      expect.objectContaining({})
+    );
+
+    // name applied on returned output
+    expect(outputMessage2.name).toBe("test agent");
+
+    // no xml formatting on returned output
+    expect(outputMessage2.content).toBe("Hmm, I'm not sure about that.");
+  });
+
+  it("Can use inline agent name with content blocks", async () => {
+    const responses = [
+      new AIMessage({
+        content: [{ type: "text", text: "Hello, how can I help?" }],
+      }),
+      new AIMessage({
+        content: [{ type: "text", text: "Hmm, I'm not sure about that." }],
+      }),
+    ];
+    const llm = new FakeToolCallingChatModel({ responses });
+    const invokeSpy = jest.spyOn(llm, "invoke");
+
+    const agent = createReactAgent({
+      llm,
+      tools: [new SearchAPI()],
+      includeAgentName: "inline",
+      name: "test agent",
+    });
+
+    const messages = [new HumanMessage("Hello!")];
+    const result1 = await agent.invoke({ messages });
+    const outputMessage1 = result1.messages.at(-1) as AIMessage;
+    messages.push(outputMessage1);
+
+    expect(outputMessage1.name).toBe("test agent");
+    expect(outputMessage1.content).toEqual([
+      { type: "text", text: "Hello, how can I help?" },
+    ]);
+
+    const result2 = await agent.invoke({ messages });
+    const outputMessage2 = result2.messages.at(-1) as AIMessage;
+
+    expect(invokeSpy).toHaveBeenLastCalledWith(
+      [
+        messages[0],
+        new _AnyIdAIMessage({
+          // no name on input message
+          name: undefined,
+          // xml formatting on input message
+          content: [
+            {
+              type: "text",
+              text: "<name>test agent</name><content>Hello, how can I help?</content>",
+            },
+          ],
+        }),
+      ],
+      expect.objectContaining({})
+    );
+
+    // name applied on returned output
+    expect(outputMessage2.name).toBe("test agent");
+
+    // no xml formatting on returned output
+    expect(outputMessage2.content).toEqual([
+      { type: "text", text: "Hmm, I'm not sure about that." },
+    ]);
+  });
+
+  it("Sets name when includeAgentName is undefined", async () => {
+    const responses = [
+      new AIMessage("Hello, how can I help?"),
+      new AIMessage("Hmm, I'm not sure about that."),
+    ];
+    const llm = new FakeToolCallingChatModel({ responses });
+    const invokeSpy = jest.spyOn(llm, "invoke");
+    const agent = createReactAgent({
+      llm,
+      tools: [new SearchAPI()],
+      // includeAgentName: undefined
+      name: "test agent",
+    });
+
+    const messages = [new HumanMessage("Hello!")];
+    const result1 = await agent.invoke({ messages });
+    const outputMessage1 = result1.messages.at(-1) as AIMessage;
+    messages.push(outputMessage1);
+
+    expect(outputMessage1.name).toBe("test agent");
+    expect(outputMessage1.content).toBe("Hello, how can I help?");
+
+    const result2 = await agent.invoke({ messages });
+    const outputMessage2 = result2.messages.at(-1) as AIMessage;
+
+    expect(invokeSpy).toHaveBeenLastCalledWith(
+      [
+        messages[0],
+        new _AnyIdAIMessage({
+          // name is set to "test agent"
+          name: "test agent",
+          // no xml formatting on input message
+          content: "Hello, how can I help?",
+        }),
+      ],
+      expect.objectContaining({})
+    );
+
+    // name applied on returned output
+    expect(outputMessage2.name).toBe("test agent");
+
+    // no xml formatting on returned output
+    expect(outputMessage2.content).toBe("Hmm, I'm not sure about that.");
+  });
 });
 
 describe("createReactAgent with legacy messageModifier", () => {
