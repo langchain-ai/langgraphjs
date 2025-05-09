@@ -3,13 +3,14 @@ import {
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
-import { Pregel } from "../pregel/index.js";
+import { Channel, Pregel } from "../pregel/index.js";
 import { PregelNode } from "../pregel/read.js";
 import {
   CONFIG_KEY_PREVIOUS_STATE,
   END,
   PREVIOUS,
   START,
+  TAG_HIDDEN,
 } from "../constants.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { call, getRunnableForEntrypoint } from "../pregel/call.js";
@@ -23,7 +24,14 @@ import {
   TaskFunc,
 } from "./types.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
-import { isAsyncGeneratorFunction, isGeneratorFunction } from "../utils.js";
+import {
+  RunnableCallable,
+  isAsyncGeneratorFunction,
+  isGeneratorFunction,
+} from "../utils.js";
+import { ChannelWrite, PASSTHROUGH } from "../pregel/write.js";
+
+const ROOT = "__root__";
 
 /**
  * Options for the {@link task} function
@@ -135,6 +143,7 @@ export interface EntrypointFunction {
     Record<string, PregelNode<InputT, EntrypointReturnT<OutputT>>>,
     {
       [START]: EphemeralValue<InputT>;
+      [ROOT]: EphemeralValue<InputT>;
       [END]: LastValue<EntrypointReturnT<OutputT>>;
       [PREVIOUS]: LastValue<EntrypointFinalSaveT<OutputT>>;
     },
@@ -315,10 +324,71 @@ export const entrypoint = function entrypoint<InputT, OutputT>(
   const streamMode = "updates";
   const bound = getRunnableForEntrypoint(name, func);
 
+  // Helper to check if a value is an EntrypointFinal
+  function isEntrypointFinal(
+    value: unknown
+  ): value is EntrypointFinal<unknown, unknown> {
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      "__lg_type" in value &&
+      value.__lg_type === "__pregel_final"
+    );
+  }
+
+  // Helper function to pluck the return value from EntrypointFinal or passthrough
+  const pluckReturnValue = new RunnableCallable({
+    name: "pluckReturnValue",
+    func: (value: unknown) => {
+      return isEntrypointFinal(value) ? value.value : value;
+    },
+  });
+
+  // Helper function to pluck the save value from EntrypointFinal or passthrough
+  const pluckSaveValue = new RunnableCallable({
+    name: "pluckSaveValue",
+    func: (value: unknown) => {
+      return isEntrypointFinal(value) ? value.save : value;
+    },
+  });
+
+  const channelName = `${START}:${name}`;
+
+  const startNode = Channel.subscribeTo(START, { tags: [TAG_HIDDEN] });
+  startNode.writers.push(
+    new ChannelWrite(
+      [
+        {
+          channel: ROOT,
+          value: PASSTHROUGH,
+          mapper: new RunnableCallable({ func: (value: unknown) => value }),
+        },
+        { channel: channelName, value: START },
+      ],
+      [TAG_HIDDEN]
+    )
+  );
+
+  const entrypointNode = new PregelNode<InputT, EntrypointReturnT<OutputT>>({
+    bound,
+    triggers: [channelName],
+    channels: [ROOT],
+    writers: [
+      new ChannelWrite(
+        [
+          { channel: END, value: PASSTHROUGH, mapper: pluckReturnValue },
+          { channel: PREVIOUS, value: PASSTHROUGH, mapper: pluckSaveValue },
+        ],
+        [TAG_HIDDEN]
+      ),
+    ],
+  });
+
   return new Pregel<
     Record<string, PregelNode<InputT, EntrypointReturnT<OutputT>>>, // node types
     {
       [START]: EphemeralValue<InputT>;
+      [ROOT]: EphemeralValue<InputT>;
       [END]: LastValue<EntrypointReturnT<OutputT>>;
       [PREVIOUS]: LastValue<EntrypointFinalSaveT<OutputT>>;
     }, // channel types
@@ -329,15 +399,13 @@ export const entrypoint = function entrypoint<InputT, OutputT>(
     name,
     checkpointer,
     nodes: {
-      [name]: new PregelNode<InputT, EntrypointReturnT<OutputT>>({
-        bound,
-        triggers: [START],
-        channels: [START],
-        writers: [],
-      }),
+      [START]: startNode,
+      [name]: entrypointNode,
     },
     channels: {
       [START]: new EphemeralValue<InputT>(),
+      [ROOT]: new EphemeralValue<InputT>(),
+      [channelName]: new EphemeralValue<InputT>(),
       [END]: new LastValue<EntrypointReturnT<OutputT>>(),
       [PREVIOUS]: new LastValue<EntrypointFinalSaveT<OutputT>>(),
     },
