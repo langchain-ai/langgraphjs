@@ -502,6 +502,70 @@ export function runFuncTests(
           },
         ]);
       });
+
+      it("stores previous returned value in state, allows updating state", async () => {
+        // equivalent to `test_entrypoint_stateful` in python tests
+        const previousStates: unknown[] = [];
+
+        const graph = entrypoint(
+          { name: "graph", checkpointer },
+          async (inputs: Record<string, string>) => {
+            const previous = getPreviousState<unknown>();
+            previousStates.push(previous);
+            return {
+              previous,
+              current: inputs,
+            };
+          }
+        );
+
+        const config = {
+          configurable: { thread_id },
+        };
+
+        await graph.updateState(config, {
+          a: -1,
+        });
+
+        expect(await graph.invoke({ a: "1" }, config)).toEqual({
+          current: { a: "1" },
+          previous: { a: -1 },
+        });
+
+        expect(await graph.invoke({ a: "2" }, config)).toEqual({
+          current: { a: "2" },
+          previous: { current: { a: "1" }, previous: { a: -1 } },
+        });
+
+        expect(await graph.invoke({ a: "3" }, config)).toEqual({
+          current: { a: "3" },
+          previous: {
+            current: { a: "2" },
+            previous: { current: { a: "1" }, previous: { a: -1 } },
+          },
+        });
+
+        await graph.updateState(config, {
+          a: 3,
+        });
+
+        expect(await graph.invoke({ a: "4" }, config)).toEqual({
+          current: { a: "4" },
+          previous: {
+            a: 3,
+          },
+        });
+
+        expect(previousStates).toEqual([
+          { a: -1 },
+          { current: { a: "1" }, previous: { a: -1 } },
+          {
+            current: { a: "2" },
+            previous: { current: { a: "1" }, previous: { a: -1 } },
+          },
+          { a: 3 },
+        ]);
+      });
     });
 
     describe("interrupt handling", () => {
@@ -872,106 +936,6 @@ export function runFuncTests(
 
         result = await program.invoke(new Command({ resume: true }), config);
         expect(result).toEqual(["Added James!", "Added Will!"]);
-      });
-    });
-
-    describe("updateState functionality", () => {
-      let checkpointer: BaseCheckpointSaver;
-      let thread_id: string;
-
-      beforeEach(async () => {
-        checkpointer = await createCheckpointer();
-        thread_id = "updateStateThread";
-      });
-
-      it.skip("should allow updating state during an interrupt and resume correctly", async () => {
-        const taskOne = task("taskOne", async (input: { value: number }) => {
-          return { resultOne: input.value * 2 };
-        });
-
-        const taskTwo = task(
-          "taskTwo",
-          async (input: { intermediate: number; extra?: string }) => {
-            return {
-              finalResult:
-                input.intermediate + (input.extra === "added" ? 100 : 10),
-            };
-          }
-        );
-
-        let runCount = 0;
-        let firstExtra: string | undefined;
-        let secondExtra: string | undefined;
-
-        const graph = entrypoint(
-          { name: "updateStateGraph", checkpointer },
-          async ({ value, extra }: { value: number; extra?: string }) => {
-            runCount += 1;
-
-            const resOne = await taskOne({ value });
-            // The value from interrupt will be the input to taskTwo's 'intermediate'
-            const interruptedValue = await interrupt(resOne.resultOne);
-            if (runCount === 1) {
-              firstExtra = extra;
-            } else if (runCount === 2) {
-              // We will update 'extra' via updateState, so secondExtra should be different than firstExtra
-              secondExtra = extra;
-            }
-
-            const resTwo = await taskTwo({
-              intermediate: interruptedValue as number,
-              extra,
-            });
-
-            return resTwo;
-          }
-        );
-
-        const config = { configurable: { thread_id } };
-
-        // Initial invocation - should interrupt
-        const initialInvoke = await graph.invoke({ value: 5 }, config);
-        expect(initialInvoke).toBeUndefined(); // Graph is interrupted
-
-        const interruptedState = await graph.getState(config);
-
-        expect(
-          interruptedState.tasks.find((t) => (t.interrupts?.length ?? 0) > 0)
-            ?.interrupts?.[0].value
-        ).toEqual(10);
-
-        const next = interruptedState.next[0];
-        const interruptedValues = interruptedState.values;
-
-        console.log("next", next);
-        console.log(
-          "interruptedValues",
-          JSON.stringify(interruptedValues, null, 2)
-        );
-
-        // Update the state
-        await graph.updateState(config, {
-          ...interruptedValues,
-          extra: "added",
-        });
-
-        // Resume execution
-        // The value passed to resume (20) will be what `interruptedValue` becomes.
-        const finalValues = await graph.invoke(
-          new Command({ resume: 20 }),
-          config
-        );
-
-        // taskTwo expected: { intermediate: 20, extra: "added" (from updated state) }
-        // finalResult should be 20 + 100 = 120
-        expect(finalValues).toEqual({ finalResult: 120 });
-
-        // make sure we were called the right number of times
-        expect(runCount).toEqual(2);
-
-        // make sure the extra value was updated as expected
-        expect(firstExtra).toBeUndefined();
-        expect(secondExtra).toEqual("added");
       });
     });
   });
