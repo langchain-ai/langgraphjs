@@ -277,8 +277,8 @@ Notice that we are mixing global and resource-specific handlers in the above exa
 
 Authorization handlers can return `None`, a boolean, or a filter object.
 
-- `null`, `void` and `true` mean "authorize access to all underling resources"
-- `False` means "deny access to all underling resources (raises a 403 error)"
+- `null`, `void` and `true` mean "authorize access to all underlying resources"
+- `False` means "deny access to all underlying resources (raises a 403 error)"
 - A metadata filter object will restrict access to resources. Supports exact matches and operators.
 
 ???+ info "Filter object syntax"
