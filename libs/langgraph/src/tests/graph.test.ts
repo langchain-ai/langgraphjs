@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 import { StateGraph } from "../graph/state.js";
 import { END, START } from "../web.js";
 import { Annotation } from "../graph/annotation.js";

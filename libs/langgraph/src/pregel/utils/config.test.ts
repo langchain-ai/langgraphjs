@@ -1,4 +1,4 @@
-import { jest } from "@jest/globals";
+import { describe, beforeEach, afterAll, it, expect, vi } from "vitest";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { BaseStore } from "@langchain/langgraph-checkpoint";
 import {
@@ -21,7 +21,7 @@ describe("ensureLangGraphConfig", () => {
 
   beforeEach(() => {
     // Reset the mock before each test
-    AsyncLocalStorageProviderSingleton.getRunnableConfig = jest.fn();
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi.fn();
   });
 
   afterAll(() => {
@@ -32,7 +32,7 @@ describe("ensureLangGraphConfig", () => {
 
   it("should return a default config when no arguments provided", () => {
     // Mock the AsyncLocalStorage to return undefined
-    AsyncLocalStorageProviderSingleton.getRunnableConfig = jest
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
       .mockReturnValue(undefined);
 
@@ -49,7 +49,7 @@ describe("ensureLangGraphConfig", () => {
 
   it("should merge multiple configs, with later configs taking precedence", () => {
     // Mock the AsyncLocalStorage to return undefined
-    AsyncLocalStorageProviderSingleton.getRunnableConfig = jest
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
       .mockReturnValue(undefined);
 
@@ -86,7 +86,7 @@ describe("ensureLangGraphConfig", () => {
       configurable: { storageOption: "value" },
     };
 
-    AsyncLocalStorageProviderSingleton.getRunnableConfig = jest
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
       .mockReturnValue(asyncLocalStorageConfig);
 
@@ -102,7 +102,7 @@ describe("ensureLangGraphConfig", () => {
   });
 
   it("should handle undefined config values", () => {
-    AsyncLocalStorageProviderSingleton.getRunnableConfig = jest
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
       .mockReturnValue(undefined);
 
@@ -119,7 +119,7 @@ describe("ensureLangGraphConfig", () => {
   });
 
   it("should copy scalar values to metadata from configurable", () => {
-    AsyncLocalStorageProviderSingleton.getRunnableConfig = jest
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
       .mockReturnValue(undefined);
 
@@ -144,7 +144,7 @@ describe("ensureLangGraphConfig", () => {
   });
 
   it("should not overwrite existing metadata values with configurable values", () => {
-    AsyncLocalStorageProviderSingleton.getRunnableConfig = jest
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
       .mockReturnValue(undefined);
 
@@ -168,7 +168,7 @@ describe("getStore, getWriter, getConfig", () => {
 
   beforeEach(() => {
     // Reset the mock before each test
-    AsyncLocalStorageProviderSingleton.getRunnableConfig = jest.fn();
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi.fn();
   });
 
   afterAll(() => {
@@ -179,7 +179,7 @@ describe("getStore, getWriter, getConfig", () => {
 
   it("getStore should return store from config", () => {
     const mockStore = {} as BaseStore;
-    AsyncLocalStorageProviderSingleton.getRunnableConfig = jest
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
       .mockReturnValue({
         store: mockStore,
@@ -192,7 +192,7 @@ describe("getStore, getWriter, getConfig", () => {
 
   it("getWriter should return writer from configurable", () => {
     const mockWriter = () => {};
-    AsyncLocalStorageProviderSingleton.getRunnableConfig = jest
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
       .mockReturnValue({
         configurable: {
@@ -207,7 +207,7 @@ describe("getStore, getWriter, getConfig", () => {
 
   it("getConfig should return the full config", () => {
     const mockConfig = { key: "value" };
-    AsyncLocalStorageProviderSingleton.getRunnableConfig = jest
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
       .mockReturnValue(mockConfig);
 
