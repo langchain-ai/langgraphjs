@@ -2,6 +2,9 @@
 {% if config.extra.analytics %}
   {% set property = config.extra.analytics.property | d("", true) %}
 {% endif %}
+{% if config.extra.shared_analytics %}
+  {% set shared_property = config.extra.shared_analytics.property | d("", true) %}
+{% endif %}
 
 <!-- Integrate with Google Analytics 4 -->
 <script id="__analytics">
@@ -202,6 +205,7 @@
     /* Initialize GA */
     gtag("js", new Date());
     gtag("config", "{{ property }}");
+    gtag("config", "{{ shared_property }}");
 
     var script = document.createElement("script")
     script.async = true
