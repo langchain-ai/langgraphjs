@@ -4,22 +4,11 @@ import {
   RunnableSequence,
 } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
-import {
-  CONFIG_KEY_CALL,
-  END,
-  PREVIOUS,
-  RETURN,
-  TAG_HIDDEN,
-} from "../constants.js";
+import { CONFIG_KEY_CALL, RETURN, TAG_HIDDEN } from "../constants.js";
 import { ChannelWrite, PASSTHROUGH } from "./write.js";
 import { RetryPolicy } from "./utils/index.js";
 import { RunnableCallable, type RunnableCallableArgs } from "../utils.js";
-import {
-  EntrypointFunc,
-  EntrypointReturnT,
-  isEntrypointFinal,
-  TaskFunc,
-} from "../func/types.js";
+import { EntrypointFunc, EntrypointReturnT, TaskFunc } from "../func/types.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 
 /**
@@ -59,39 +48,7 @@ export function getRunnableForEntrypoint<InputT, OutputT>(
     recurse: false,
   });
 
-  return new RunnableSequence<InputT, EntrypointReturnT<OutputT>>({
-    name,
-    first: run,
-    middle: [
-      new ChannelWrite(
-        [
-          {
-            channel: END,
-            value: PASSTHROUGH,
-            mapper: new RunnableCallable({
-              func: (value) => (isEntrypointFinal(value) ? value.value : value),
-            }),
-          },
-        ],
-        [TAG_HIDDEN]
-      ),
-      new ChannelWrite([
-        {
-          channel: PREVIOUS,
-          value: PASSTHROUGH,
-          mapper: new RunnableCallable({
-            func: (value) => {
-              return isEntrypointFinal(value) ? value.save : value;
-            },
-          }),
-        },
-      ]),
-    ],
-    last: new RunnableCallable({
-      func: (final: EntrypointReturnT<typeof func>) =>
-        isEntrypointFinal(final) ? final.value : final,
-    }),
-  });
+  return run;
 }
 
 export type CallWrapperOptions<ArgsT extends unknown[], OutputT> = {

@@ -78,7 +78,7 @@ export class Branch<
     } else {
       this.condition = _coerceToRunnable(options.path).withConfig({
         runName: `Branch`,
-      });
+      } as CallOptions);
     }
     this.ends = Array.isArray(options.pathMap)
       ? options.pathMap.reduce((acc, n) => {
