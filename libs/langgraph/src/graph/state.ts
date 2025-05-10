@@ -857,6 +857,12 @@ export class CompiledStateGraph<
     input: UpdateType<ToStateDefinition<I>>
   ): Promise<UpdateType<ToStateDefinition<I>>> {
     const inputSchema = this.builder._inputRuntimeDefinition;
+    if (isCommand(input)) {
+      const parsedInput = input;
+      if (input.update && isAnyZodObject(inputSchema))
+        parsedInput.update = inputSchema.parse(input.update);
+      return parsedInput;
+    }
     if (isAnyZodObject(inputSchema)) return inputSchema.parse(input);
     return input;
   }

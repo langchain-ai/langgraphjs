@@ -9588,6 +9588,78 @@ graph TD;
     expect(result.messages).toHaveLength(1);
   });
 
+  it("should interrupt and resume with Command inside a subgraph and Zod schema", async () => {
+    const schema = z.object({
+      foo: z.string(),
+      items: z
+        .array(z.string())
+        .default(() => [])
+        .langgraph.reducer(
+          // eslint-disable-next-line no-nested-ternary
+          (a, b) => a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+          z.union([z.string(), z.array(z.string())])
+        ),
+    });
+
+    const subgraph = new StateGraph(schema)
+      .addNode("subnode", (_) => {
+        const interruptValue = interrupt("<INTERRUPTED>");
+        if (interruptValue !== "<RESUMED>") {
+          throw new Error("Expected interrupt to return <RESUMED>");
+        }
+        return {
+          foo: "subgraph",
+          items: ["sub"],
+        };
+      })
+      .addEdge(START, "subnode")
+      .compile();
+    let enterred = 0;
+    const graph = new StateGraph(schema)
+      .addNode("one", () => {
+        enterred += 1;
+        return { foo: "start", items: ["one"] };
+      })
+      .addNode("subgraph", subgraph)
+      .addNode("two", (state) => {
+        if (state.items.length < 2) {
+          throw new Error(
+            `Expected at least 2 items, got ${state.items.length}`
+          );
+        }
+        return { foo: "done", items: ["two"] };
+      })
+      .addEdge(START, "one")
+      .addEdge("one", "subgraph")
+      .addEdge("subgraph", "two")
+      .addEdge("two", END)
+      .compile({ checkpointer: await createCheckpointer() });
+
+    const config = {
+      configurable: { thread_id: "test_subgraph_interrupt_resume_zod" },
+    };
+
+    await graph.invoke({ foo: "input", items: ["zero"] }, config);
+
+    const currTasks = (await graph.getState(config)).tasks;
+    expect(currTasks[0].interrupts).toHaveLength(1);
+
+    // Resume with `Command`
+    const result = await graph.invoke(
+      new Command({ resume: "<RESUMED>" }),
+      config
+    );
+
+    expect(enterred).toBe(1);
+    const currTasksAfterCmd = (await graph.getState(config)).tasks;
+    expect(currTasksAfterCmd).toHaveLength(0);
+
+    expect(result.foo).toBe("done");
+    // Since we return the full ["zero", "one", "sub"], it gets
+    // appended to the existing ["zero", "one"], causing the expected "duplication"
+    expect(result.items).toEqual(["zero", "one", "zero", "one", "sub", "two"]);
+  });
+
   it("should be able to invoke a single node on a graph", async () => {
     const graph = new StateGraph(MessagesAnnotation)
       .addNode("one", (state) => {
