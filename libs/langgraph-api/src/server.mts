@@ -116,6 +116,9 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
     },
   );
 
+  app.use(cors(options.http?.cors));
+  app.use(requestLogger());
+
   if (options.auth?.path) {
     logger.info(`Loading auth from ${options.auth.path}`);
     await registerAuth(options.auth, { cwd: options.cwd });
@@ -128,8 +131,6 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
     app.route("/", api);
   }
 
-  app.use(cors(options.http?.cors));
-  app.use(requestLogger());
   app.use(ensureContentType());
 
   if (!options.http?.disable_meta) app.route("/", meta);
