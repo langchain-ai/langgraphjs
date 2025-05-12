@@ -1,4 +1,3 @@
-import { describe, expect, it, jest } from "@jest/globals";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { CONFIG_KEY_READ } from "../constants.js";
 import { LastValue } from "../channels/last_value.js";
@@ -8,7 +7,7 @@ import { ChannelWrite } from "./write.js";
 describe("ChannelRead", () => {
   it("should read a single channel value", async () => {
     // Setup mock read function
-    const mockRead = jest
+    const mockRead = vi
       .fn<(channel: string | string[]) => "test_value" | null>()
       .mockImplementation((channel: string | string[]) => {
         if (channel === "test_channel") {
@@ -35,7 +34,7 @@ describe("ChannelRead", () => {
 
   it("should read multiple channel values", async () => {
     // Setup mock read function
-    const mockRead = jest
+    const mockRead = vi
       .fn<
         (
           channels: string | string[]
@@ -72,7 +71,7 @@ describe("ChannelRead", () => {
 
   it("should apply a mapper function to the channel value", async () => {
     // Setup mock read function
-    const mockRead = jest.fn().mockImplementation(() => "test_value");
+    const mockRead = vi.fn().mockImplementation(() => "test_value");
 
     const config: RunnableConfig = {
       configurable: {

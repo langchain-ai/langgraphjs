@@ -1,4 +1,3 @@
-import { describe, expect, it, jest } from "@jest/globals";
 import { RunnableConfig, RunnablePassthrough } from "@langchain/core/runnables";
 import { ChannelWrite, PASSTHROUGH, SKIP_WRITE } from "./write.js";
 import { CONFIG_KEY_SEND, Send, TASKS } from "../constants.js";
@@ -10,7 +9,7 @@ describe("ChannelWrite", () => {
     const writes: Array<[string, string]> = [];
 
     // Mock config with send function
-    const mockSend = jest
+    const mockSend = vi
       .fn<(values: Array<[string, string]>) => void>()
       .mockImplementation((values) => {
         writes.push(...values);
@@ -42,7 +41,7 @@ describe("ChannelWrite", () => {
     const writes: Array<[string, string]> = [];
 
     // Mock config with send function
-    const mockSend = jest
+    const mockSend = vi
       .fn<(values: Array<[string, string]>) => void>()
       .mockImplementation((values) => {
         writes.push(...values);
@@ -75,7 +74,7 @@ describe("ChannelWrite", () => {
     const writes: Array<[string, string]> = [];
 
     // Mock config with send function
-    const mockSend = jest
+    const mockSend = vi
       .fn<(values: Array<[string, string]>) => void>()
       .mockImplementation((values) => {
         writes.push(...values);
@@ -102,7 +101,7 @@ describe("ChannelWrite", () => {
     const writes: Array<[string, string]> = [];
 
     // Mock config with send function
-    const mockSend = jest
+    const mockSend = vi
       .fn<(values: Array<[string, string]>) => void>()
       .mockImplementation((values) => {
         writes.push(...values);
@@ -136,7 +135,7 @@ describe("ChannelWrite", () => {
     const writes: Array<[string, string]> = [];
 
     // Mock config with send function
-    const mockSend = jest
+    const mockSend = vi
       .fn<(values: Array<[string, string]>) => void>()
       .mockImplementation((values) => {
         writes.push(...values);
@@ -171,7 +170,7 @@ describe("ChannelWrite", () => {
     const writes: Array<[string, Send]> = [];
 
     // Mock config with send function
-    const mockSend = jest
+    const mockSend = vi
       .fn<(values: Array<[string, Send]>) => void>()
       .mockImplementation((values) => {
         writes.push(...values);
@@ -203,7 +202,7 @@ describe("ChannelWrite", () => {
     // Mock config with send function
     const config: RunnableConfig = {
       configurable: {
-        [CONFIG_KEY_SEND]: jest.fn(),
+        [CONFIG_KEY_SEND]: vi.fn(),
       },
     };
 

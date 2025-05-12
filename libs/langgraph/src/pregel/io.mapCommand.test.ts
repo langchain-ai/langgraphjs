@@ -1,4 +1,3 @@
-import { describe, expect, it } from "@jest/globals";
 import { Command, Send } from "../constants.js";
 import { mapCommand } from "./io.js";
 import { InvalidUpdateError } from "../errors.js";

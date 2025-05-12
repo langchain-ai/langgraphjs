@@ -1,4 +1,3 @@
-import { describe, expect, it, jest } from "@jest/globals";
 import { PregelRunner } from "./runner.js";
 import { PregelLoop } from "./loop.js";
 
@@ -26,7 +25,7 @@ describe("PregelRunner", () => {
         isNested: false,
       } as unknown as PregelLoop;
 
-      const timeoutSpy = jest.spyOn(AbortSignal, "timeout");
+      const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
       const runner = new PregelRunner({ loop: mockLoop });
 
       try {
@@ -44,7 +43,7 @@ describe("PregelRunner", () => {
   describe("onStepWrite callback", () => {
     it("should call onStepWrite with the step number and writes", async () => {
       // Create a minimal implementation
-      const mockOnStepWrite = jest.fn();
+      const mockOnStepWrite = vi.fn();
       const mockLoop = {
         config: {
           configurable: {

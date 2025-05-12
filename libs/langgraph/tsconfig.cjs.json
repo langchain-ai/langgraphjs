@@ -4,5 +4,6 @@
     "module": "commonjs",
     "declaration": false
   },
+  "include": ["src/**/*.ts", "src/**/*.cts"],
   "exclude": ["node_modules", "dist", "docs", "**/tests"]
 }
