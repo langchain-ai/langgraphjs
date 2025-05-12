@@ -6,7 +6,7 @@ import { MessagesAnnotation } from "@langchain/langgraph";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { createSupervisor } from "../supervisor.js";
 import { FakeToolCallingChatModel } from "./utils.js";
-import { withAgentName, AgentNameMode } from "../agentName.js";
+import { withAgentName, AgentNameMode } from "../index.js";
 
 describe("Test supervisor basic workflow", () => {
   // Define the test cases
