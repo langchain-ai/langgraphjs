@@ -9188,8 +9188,8 @@ graph TD;
       }
     );
     const subgraph = new StateGraph(MessagesAnnotation)
-      .addNode("bob", getUserName)
-      .addEdge("__start__", "bob")
+      .addNode("tool", getUserName)
+      .addEdge("__start__", "tool")
       .compile();
 
     const CustomParentStateAnnotation = Annotation.Root({
@@ -9295,11 +9295,9 @@ graph TD;
       .addNode("init", async () => {
         return { user_name: "Woof" };
       })
-      .addNode("foo", async () => {})
-      .addNode("tool", getUserName, { ends: ["foo", "__end__"] })
+      .addNode("tool", getUserName, { ends: ["__end__"] })
       .addEdge("__start__", "init")
       .addEdge("init", "tool")
-      .addEdge("foo", "tool")
       .compile();
 
     const checkpointer = await createCheckpointer();
@@ -9364,6 +9362,7 @@ graph TD;
       tasks: [],
       metadata: {
         source: "loop",
+        thread_id: "1",
         writes: {
           bob: {
             messages: [
