@@ -9267,6 +9267,133 @@ graph TD;
     });
   });
 
+  it("test_parent_command with goto with double updates", async () => {
+    const CustomStateAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      user_name: Annotation<string>({
+        // Reducer is necessary because using Command.PARENT causes two updates
+        reducer: (_, b) => b,
+      }),
+    });
+
+    const getUserName = tool(
+      async () => {
+        return [
+          new Command({
+            update: { user_name: "Meow" },
+            goto: "bob",
+            graph: Command.PARENT,
+          }),
+        ];
+      },
+      {
+        name: "get_user_name",
+        schema: z.object({}),
+      }
+    );
+    const subgraph = new StateGraph(CustomStateAnnotation)
+      .addNode("init", async () => {
+        return { user_name: "Woof" };
+      })
+      .addNode("tool", getUserName, { ends: ["__end__"] })
+      .addEdge("__start__", "init")
+      .addEdge("init", "tool")
+      .compile();
+
+    const checkpointer = await createCheckpointer();
+
+    const graph = new StateGraph(CustomStateAnnotation)
+      .addNode("init", async () => {
+        return {};
+      })
+      .addNode("alice", subgraph)
+      .addNode("bob", async (state) => {
+        if (state.user_name !== "Meow") {
+          throw new Error("failed to update state from child");
+        }
+        return { messages: [{ role: "assistant", content: "bob" }] };
+      })
+      .addEdge("__start__", "init")
+      .addConditionalEdges("init", async () => "alice")
+      .addEdge("alice", "bob")
+      .compile({ checkpointer });
+
+    const config = {
+      configurable: {
+        thread_id: "1",
+      },
+    };
+
+    const res = await graph.invoke(
+      {
+        messages: [{ role: "user", content: "get user name" }],
+      },
+      config
+    );
+    console.log(res);
+
+    expect(res).toEqual({
+      messages: [
+        new _AnyIdHumanMessage({
+          content: "get user name",
+        }),
+        new _AnyIdAIMessage({
+          content: "bob",
+        }),
+      ],
+      user_name: "Meow",
+    });
+
+    const state = await graph.getState(config);
+
+    expect(state).toEqual({
+      values: {
+        messages: [
+          new _AnyIdHumanMessage({
+            content: "get user name",
+          }),
+          new _AnyIdAIMessage({
+            content: "bob",
+          }),
+        ],
+        user_name: "Meow",
+      },
+      next: [],
+      tasks: [],
+      metadata: {
+        source: "loop",
+        thread_id: "1",
+        writes: {
+          bob: {
+            messages: [
+              {
+                role: "assistant",
+                content: "bob",
+              },
+            ],
+          },
+        },
+        step: 3,
+        parents: {},
+      },
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_id: expect.any(String),
+          checkpoint_ns: "",
+        },
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+    });
+  });
+
   it("test_parent_command from grandchild graph", async () => {
     const CustomStateAnnotation = Annotation.Root({
       ...MessagesAnnotation.spec,
