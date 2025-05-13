@@ -13,13 +13,17 @@ import {
   createReactAgent,
   createReactAgentAnnotation,
   CreateReactAgentParams,
+  withAgentName,
+  AgentNameMode,
 } from "@langchain/langgraph/prebuilt";
 import {
   BaseChatModel,
   BindToolsInput,
 } from "@langchain/core/language_models/chat_models";
 import { createHandoffTool, createHandoffBackMessages } from "./handoff.js";
-import { withAgentName, AgentNameMode } from "./agentName.js";
+
+export type { AgentNameMode };
+export { withAgentName };
 
 type OutputMode = "full_history" | "last_message";
 const PROVIDERS_WITH_PARALLEL_TOOL_CALLS_PARAM = new Set(["ChatOpenAI"]);

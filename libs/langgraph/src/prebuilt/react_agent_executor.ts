@@ -39,6 +39,7 @@ import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { Annotation } from "../graph/annotation.js";
 import { Messages, messagesStateReducer } from "../graph/message.js";
 import { END, START } from "../constants.js";
+import { withAgentName } from "./agentName.js";
 
 export interface AgentState<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -394,7 +395,18 @@ export type CreateReactAgentParams<
     | StructuredResponseSchemaAndPrompt<StructuredResponseType>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     | Record<string, any>;
+  /**
+   * An optional name for the agent.
+   */
   name?: string;
+  /**
+   * Use to specify how to expose the agent name to the underlying supervisor LLM.
+
+      - undefined: Relies on the LLM provider {@link AIMessage#name}. Currently, only OpenAI supports this.
+      - `"inline"`: Add the agent name directly into the content field of the {@link AIMessage} using XML-style tags.
+          Example: `"How can I help you"` -> `"<name>agent_name</name><content>How can I help you?</content>"`
+   */
+  includeAgentName?: "inline" | undefined;
 };
 
 /**
@@ -472,6 +484,7 @@ export function createReactAgent<
     store,
     responseFormat,
     name,
+    includeAgentName,
   } = params;
 
   let toolClasses: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
@@ -501,9 +514,16 @@ export function createReactAgent<
       modelWithTools = llm;
     }
 
-    const modelRunnable = (
-      _getPrompt(prompt, stateModifier, messageModifier) as Runnable
-    ).pipe(modelWithTools);
+    const promptRunnable = _getPrompt(
+      prompt,
+      stateModifier,
+      messageModifier
+    ) as Runnable;
+
+    const modelRunnable =
+      includeAgentName === "inline"
+        ? promptRunnable.pipe(withAgentName(modelWithTools, includeAgentName))
+        : promptRunnable.pipe(modelWithTools);
 
     cachedModelRunnable = modelRunnable;
     return modelRunnable;
