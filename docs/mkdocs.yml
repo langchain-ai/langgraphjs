@@ -184,6 +184,7 @@ nav:
                     - cloud/how-tos/assistant_versioning.md
                 - Threads:
                     - Threads: how-tos#threads
+                    - cloud/how-tos/use_threads.md
                     - cloud/how-tos/copy_threads.md
                     - cloud/how-tos/check_thread_status.md
                 - Runs:
