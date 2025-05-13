@@ -36,7 +36,7 @@
   },
   "peerDependencies": {
     "@langchain/core": "^0.3.40",
-    "@langchain/langgraph": "^0.2.63"
+    "@langchain/langgraph": "^0.2.72"
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",
