@@ -1039,6 +1039,19 @@ export class Threads {
         throw new HTTPException(403);
       }
 
+      // do a check if there are no pending runs
+      await conn.with(async (STORE) => {
+        if (
+          Object.values(STORE.runs).some(
+            (run) =>
+              run.thread_id === threadId &&
+              (run.status === "pending" || run.status === "running"),
+          )
+        ) {
+          throw new HTTPException(409, { message: "Thread is busy" });
+        }
+      });
+
       const graphId = thread.metadata?.graph_id as string | undefined | null;
 
       if (graphId == null) {
@@ -1511,7 +1524,7 @@ export class Runs {
     if (lastChunk != null) return lastChunk;
 
     const thread = await Threads.get(threadId, auth);
-    return thread.values;
+    return thread.values ?? null;
   }
 
   static async cancel(
@@ -1553,6 +1566,12 @@ export class Runs {
           if (control || action !== "rollback") {
             run.status = "interrupted";
             run.updated_at = new Date();
+
+            const thread = STORE.threads[run.thread_id];
+            if (thread) {
+              thread.status = "idle";
+              thread.updated_at = new Date();
+            }
           } else {
             logger.info(
               "Eagerly deleting unscheduled run with rollback action",
