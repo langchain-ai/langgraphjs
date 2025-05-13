@@ -356,6 +356,57 @@ describe("threads crud", () => {
     expect(search[0].thread_id).toBe(create.thread_id);
     expect(search[1].thread_id).toBe(createThreadResponse.thread_id);
   });
+
+  it.concurrent("update state while run in flight", { retry: 0 }, async () => {
+    const thread = await client.threads.create();
+    const run = await client.runs.create(thread.thread_id, "agent_simple", {
+      input: { messages: [{ role: "human", content: "foo" }] },
+      afterSeconds: 2,
+    });
+
+    // make sure that the run has been created
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Attempt to update state while run is in flight - should fail
+    await expect(() =>
+      client.threads.updateState(thread.thread_id, {
+        values: {
+          messages: [
+            { type: "ai", content: "One must imagine Sisyphus happy." },
+          ],
+        },
+        asNode: "agent",
+      }),
+    ).rejects.toThrow("HTTP 409");
+
+    // Cancel the run
+    await client.runs.cancel(thread.thread_id, run.run_id);
+
+    // Verify Sisyphus is not in state
+    const state = await client.threads.getState(thread.thread_id);
+    expect(JSON.stringify(state)).not.toContain("Sisyphus");
+
+    // Join the run and verify it was interrupted
+    await client.runs.join(thread.thread_id, run.run_id);
+    const runState = await client.runs.get(thread.thread_id, run.run_id);
+    expect(runState.status).toBe("interrupted");
+
+    // Verify thread is idle
+    const threadState = await client.threads.get(thread.thread_id);
+    expect(threadState.status).toBe("idle");
+
+    // Now update state should work
+    await client.threads.updateState(thread.thread_id, {
+      values: {
+        messages: [{ type: "ai", content: "One must imagine Sisyphus happy." }],
+      },
+      asNode: "agent",
+    });
+
+    // Verify Sisyphus is now in state
+    const finalState = await client.threads.getState(thread.thread_id);
+    expect(JSON.stringify(finalState)).toContain("Sisyphus");
+  });
 });
 
 describe("threads copy", () => {
