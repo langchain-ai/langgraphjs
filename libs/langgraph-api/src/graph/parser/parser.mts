@@ -22,6 +22,11 @@ const OVERRIDE_RESOLVE = [
   new RegExp(`^@langchain\/langgraph-checkpoint(\/.+)?$`),
 ];
 
+const INFER_TEMPLATE_PATH = path.resolve(
+  __dirname,
+  "./schema/types.template.mts",
+);
+
 const compilerOptions = {
   noEmit: true,
   strict: true,
@@ -224,9 +229,11 @@ export class SubgraphExtractor {
   };
 
   public getAugmentedSourceFile = (
+    suffix: string,
     name: string,
   ): {
-    files: [filePath: string, contents: string][];
+    inferFile: { fileName: string; contents: string };
+    sourceFile: { fileName: string; contents: string };
     exports: { typeName: string; valueName: string; graphName: string }[];
   } => {
     const vars = this.getSubgraphsVariables(name);
@@ -248,7 +255,7 @@ export class SubgraphExtractor {
       });
     }
 
-    const sourceFilePath = "__langgraph__source.mts";
+    const sourceFilePath = `__langgraph__source_${suffix}.mts`;
     const sourceContents = [
       this.getText(this.sourceFile),
       ...typeExports.map(
@@ -257,11 +264,11 @@ export class SubgraphExtractor {
       ),
     ].join("\n\n");
 
-    const inferFilePath = "__langgraph__infer.mts";
+    const inferFilePath = `__langgraph__infer_${suffix}.mts`;
     const inferContents = [
       ...typeExports.map(
         ({ typeName }) =>
-          `import type { ${typeName}} from "./__langgraph__source.mts"`,
+          `import type { ${typeName}} from "./__langgraph__source_${suffix}.mts"`,
       ),
       this.inferFile.getText(this.inferFile),
 
@@ -282,10 +289,8 @@ export class SubgraphExtractor {
     ].join("\n\n");
 
     return {
-      files: [
-        [sourceFilePath, sourceContents],
-        [inferFilePath, inferContents],
-      ],
+      inferFile: { fileName: inferFilePath, contents: inferContents },
+      sourceFile: { fileName: sourceFilePath, contents: sourceContents },
       exports: typeExports,
     };
   };
@@ -351,21 +356,49 @@ export class SubgraphExtractor {
   }
 
   static extractSchemas(
-    target:
-      | string
-      | {
-          contents: string;
-          files?: [fileName: string, contents: string][];
-        },
-    name: string,
+    target: {
+      sourceFile:
+        | string
+        | {
+            name: string;
+            contents: string;
+            main?: boolean;
+          }[];
+      exportSymbol: string;
+    }[],
     options?: { strict?: boolean },
-  ): Record<string, GraphSchema> {
-    const dirname =
-      typeof target === "string" ? path.dirname(target) : __dirname;
+  ): Record<string, GraphSchema>[] {
+    if (!target.length) throw new Error("No graphs found");
+
+    function getCommonPath(a: string, b: string) {
+      const aSeg = path.normalize(a).split(path.sep);
+      const bSeg = path.normalize(b).split(path.sep);
+
+      const maxIter = Math.min(aSeg.length, bSeg.length);
+      const result: string[] = [];
+      for (let i = 0; i < maxIter; ++i) {
+        if (aSeg[i] !== bSeg[i]) break;
+        result.push(aSeg[i]);
+      }
+      return result.join(path.sep);
+    }
+
+    const isTestTarget = (
+      check: typeof target,
+    ): check is { sourceFile: string; exportSymbol: string }[] => {
+      return check.every((x) => typeof x.sourceFile === "string");
+    };
+
+    const projectDirname = isTestTarget(target)
+      ? target.reduce<string>((acc, item) => {
+          if (!acc) return path.dirname(item.sourceFile);
+          return getCommonPath(acc, path.dirname(item.sourceFile));
+        }, "")
+      : __dirname;
 
     // This API is not well made for Windows, ensure that the paths are UNIX slashes
     const fsMap = new Map<string, string>();
-    const system = vfs.createFSBackedSystem(fsMap, dirname, ts);
+    const system = vfs.createFSBackedSystem(fsMap, projectDirname, ts);
 
     // TODO: investigate if we should create a PR in @typescript/vfs
     const oldReadFile = system.readFile.bind(system);
@@ -380,24 +413,28 @@ export class SubgraphExtractor {
     const vfsHost = vfs.createVirtualCompilerHost(system, compilerOptions, ts);
     const host = vfsHost.compilerHost;
 
-    const targetPath =
-      typeof target === "string"
-        ? target
-        : path.resolve(dirname, "./__langgraph__target.mts");
+    const targetPaths: { sourceFile: string; exportSymbol: string }[] = [];
+    for (const item of target) {
+      if (typeof item.sourceFile === "string") {
+        targetPaths.push({ ...item, sourceFile: item.sourceFile });
+      } else {
+        for (const { name, contents, main } of item.sourceFile ?? []) {
+          fsMap.set(vfsPath(path.resolve(projectDirname, name)), contents);
 
-    const inferTemplatePath = path.resolve(
-      __dirname,
-      "./schema/types.template.mts",
-    );
-
-    if (typeof target !== "string") {
-      fsMap.set(vfsPath(targetPath), target.contents);
-      for (const [name, contents] of target.files ?? []) {
-        fsMap.set(vfsPath(path.resolve(dirname, name)), contents);
+          if (main) {
+            targetPaths.push({
+              ...item,
+              sourceFile: path.resolve(projectDirname, name),
+            });
+          }
+        }
       }
     }
 
-    const moduleCache = ts.createModuleResolutionCache(dirname, (x) => x);
+    const moduleCache = ts.createModuleResolutionCache(
+      projectDirname,
+      (x) => x,
+    );
     host.resolveModuleNameLiterals = (
       entries,
       containingFile,
@@ -414,7 +451,10 @@ export class SubgraphExtractor {
           // check if we're not already importing from node_modules
           if (!containingFile.split(path.sep).includes("node_modules")) {
             // Doesn't matter if the file exists, only used to nudge `ts.resolveModuleName`
-            targetFile = path.resolve(dirname, "__langgraph__resolve.mts");
+            targetFile = path.resolve(
+              projectDirname,
+              "__langgraph__resolve.mts",
+            );
           }
         }
 
@@ -431,25 +471,49 @@ export class SubgraphExtractor {
       });
 
     const research = ts.createProgram({
-      rootNames: [inferTemplatePath, targetPath],
+      rootNames: [INFER_TEMPLATE_PATH, ...targetPaths.map((i) => i.sourceFile)],
       options: compilerOptions,
       host,
     });
 
-    const extractor = new SubgraphExtractor(
-      research,
-      research.getSourceFile(targetPath)!,
-      research.getSourceFile(inferTemplatePath)!,
-      options,
-    );
+    const researchTargets: {
+      rootName: string;
+      exports: {
+        typeName: string;
+        valueName: string;
+        graphName: string;
+      }[];
+    }[] = [];
 
-    const { files, exports } = extractor.getAugmentedSourceFile(name);
-    for (const [name, source] of files) {
-      system.writeFile(vfsPath(path.resolve(dirname, name)), source);
+    for (const targetPath of targetPaths) {
+      const extractor = new SubgraphExtractor(
+        research,
+        research.getSourceFile(targetPath.sourceFile)!,
+        research.getSourceFile(INFER_TEMPLATE_PATH)!,
+        options,
+      );
+
+      const { sourceFile, inferFile, exports } =
+        extractor.getAugmentedSourceFile(
+          path.basename(targetPath.sourceFile),
+          targetPath.exportSymbol,
+        );
+
+      for (const { fileName, contents } of [sourceFile, inferFile]) {
+        system.writeFile(
+          vfsPath(path.resolve(projectDirname, fileName)),
+          contents,
+        );
+      }
+
+      researchTargets.push({
+        rootName: path.resolve(projectDirname, inferFile.fileName),
+        exports,
+      });
     }
 
     const extract = ts.createProgram({
-      rootNames: [path.resolve(dirname, "./__langgraph__infer.mts")],
+      rootNames: researchTargets.map((i) => i.rootName),
       options: compilerOptions,
       host,
     });
@@ -467,16 +531,18 @@ export class SubgraphExtractor {
       return undefined;
     };
 
-    return Object.fromEntries(
-      exports.map(({ typeName, graphName }) => [
-        graphName,
-        {
-          state: trySymbol(schemaGenerator, `${typeName}__update`),
-          input: trySymbol(schemaGenerator, `${typeName}__input`),
-          output: trySymbol(schemaGenerator, `${typeName}__output`),
-          config: trySymbol(schemaGenerator, `${typeName}__config`),
-        },
-      ]),
+    return researchTargets.map(({ exports }) =>
+      Object.fromEntries(
+        exports.map(({ typeName, graphName }) => [
+          graphName,
+          {
+            state: trySymbol(schemaGenerator, `${typeName}__update`),
+            input: trySymbol(schemaGenerator, `${typeName}__input`),
+            output: trySymbol(schemaGenerator, `${typeName}__output`),
+            config: trySymbol(schemaGenerator, `${typeName}__config`),
+          },
+        ]),
+      ),
     );
   }
 }
