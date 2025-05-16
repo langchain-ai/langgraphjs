@@ -8,6 +8,7 @@ import {
   CompiledStateGraph,
   AnnotationRoot,
   MessagesAnnotation,
+  LangGraphRunnableConfig,
 } from "@langchain/langgraph";
 import {
   createReactAgent,
@@ -71,8 +72,11 @@ const makeCallAgent = (
     );
   }
 
-  return async (state: Record<string, unknown>) => {
-    const output = await agent.invoke(state);
+  return async (
+    state: Record<string, unknown>,
+    config: LangGraphRunnableConfig
+  ) => {
+    const output = await agent.invoke(state, config);
     let { messages } = output;
 
     if (outputMode === "last_message") {

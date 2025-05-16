@@ -9,6 +9,7 @@ import {
 } from "@langchain/langgraph";
 
 const WHITESPACE_RE = /\s+/;
+const METADATA_KEY_IS_HANDOFF_BACK = "__is_handoff_back";
 
 function _normalizeAgentName(agentName: string): string {
   /**
@@ -47,7 +48,7 @@ const createHandoffTool = ({ agentName }: { agentName: string }) => {
       return new Command({
         goto: agentName,
         graph: Command.PARENT,
-        update: { messages: state.messages.concat(toolMessage) },
+        update: { ...state, messages: state.messages.concat(toolMessage) },
       });
     },
     {
@@ -75,13 +76,123 @@ function createHandoffBackMessages(
       content: `Transferring back to ${supervisorName}`,
       tool_calls: toolCalls,
       name: agentName,
+      response_metadata: { [METADATA_KEY_IS_HANDOFF_BACK]: true },
     }),
     new ToolMessage({
       content: `Successfully transferred back to ${supervisorName}`,
       name: toolName,
       tool_call_id: toolCallId,
+      response_metadata: { [METADATA_KEY_IS_HANDOFF_BACK]: true },
     }),
   ];
 }
 
-export { createHandoffTool, createHandoffBackMessages };
+/**
+ * Check if a value is an AIMessage
+ * This avoids using instanceof which is not allowed by the linter
+ */
+function isAIMessage(value: unknown): value is AIMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "ai"
+  );
+}
+
+/**
+ * Check if response metadata has the handoff back flag
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function hasHandoffBackFlag(metadata: Record<string, any>): boolean {
+  if (!metadata || typeof metadata !== "object") return false;
+  return (
+    METADATA_KEY_IS_HANDOFF_BACK in metadata &&
+    metadata[METADATA_KEY_IS_HANDOFF_BACK]
+  );
+}
+
+/**
+ * Create a tool the supervisor can use to forward a worker message by name.
+ *
+ * This helps avoid information loss any time the supervisor rewrites a worker query
+ * to the user and also can save some tokens.
+ *
+ * @param supervisorName - The name of the supervisor node (used for namespacing the tool)
+ * @returns The 'forward_message' tool
+ */
+function createForwardMessageTool(supervisorName = "supervisor") {
+  const toolName = "forward_message";
+  const description =
+    "Forwards the latest message from the specified agent to the user " +
+    "without any changes. Use this to preserve information fidelity, avoid " +
+    "misinterpretation of questions or responses, and save time.";
+
+  const forwardMessageTool = tool(
+    async ({ from_agent }, config) => {
+      // inject the current agent state
+      const state =
+        getCurrentTaskInput() as (typeof MessagesAnnotation)["State"];
+
+      // Find the latest message from the specified agent that isn't a handoff back message
+      // We need to search in reverse order to find the most recent message
+      const targetMessage = state.messages
+        .slice()
+        .reverse()
+        .find(
+          (msg) =>
+            isAIMessage(msg) &&
+            msg.name?.toLowerCase() === from_agent.toLowerCase() &&
+            !hasHandoffBackFlag(msg.response_metadata)
+        );
+
+      if (!targetMessage) {
+        // If no message is found, return an error message
+        const foundNames = new Set(
+          state.messages
+            .filter((msg): msg is AIMessage => isAIMessage(msg) && !!msg.name)
+            .map((msg) => msg.name)
+        );
+
+        const toolMessage = new ToolMessage({
+          content: `Could not find message from source agent ${from_agent}. Found names: ${[
+            ...foundNames,
+          ].join(", ")}`,
+          name: toolName,
+          tool_call_id: config.toolCall.id,
+        });
+
+        return toolMessage;
+      }
+
+      // Create a new message with the content from the target message
+      const forwardedMessage = new AIMessage({
+        content: targetMessage.content,
+        name: supervisorName,
+      });
+
+      return new Command({
+        graph: Command.PARENT,
+        goto: "__end__", // This does nothing
+        update: { ...state, messages: [forwardedMessage] },
+      });
+    },
+    {
+      name: toolName,
+      schema: z.object({
+        from_agent: z
+          .string()
+          .describe("The name of the agent whose message you want to forward"),
+      }),
+      description,
+    }
+  );
+
+  return forwardMessageTool;
+}
+
+export {
+  createHandoffTool,
+  createHandoffBackMessages,
+  createForwardMessageTool,
+};
