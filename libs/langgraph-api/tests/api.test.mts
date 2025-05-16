@@ -2621,7 +2621,7 @@ it("resumable streams", { timeout: 10_000 }, async () => {
       ]);
 
       return gatherIterator(
-        client.runs.joinStream(thread_id, run_id, { lastEventId: "0" }),
+        client.runs.joinStream(thread_id, run_id, { lastEventId: "-1" }),
       );
     })(),
 
