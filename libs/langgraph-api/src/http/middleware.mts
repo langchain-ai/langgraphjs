@@ -14,7 +14,11 @@ export const cors = (
       }
     | undefined,
 ): MiddlewareHandler => {
-  if (cors == null) return honoCors();
+  if (cors == null)
+    return honoCors({
+      origin: "*",
+      exposeHeaders: ["content-location"],
+    });
 
   const originRegex = cors.allow_origin_regex
     ? new RegExp(cors.allow_origin_regex)
