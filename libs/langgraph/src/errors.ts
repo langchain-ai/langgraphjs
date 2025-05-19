@@ -1,7 +1,14 @@
 import { Command, Interrupt } from "./constants.js";
 
+// When editing, make sure to update the index found here:
+// https://langchain-ai.github.io/langgraphjs/troubleshooting/errors/
 export type BaseLangGraphErrorFields = {
-  lc_error_code?: string;
+  lc_error_code?:
+    | "GRAPH_RECURSION_LIMIT"
+    | "INVALID_CONCURRENT_GRAPH_UPDATE"
+    | "INVALID_GRAPH_NODE_RETURN_VALUE"
+    | "MULTIPLE_SUBGRAPHS"
+    | "UNREACHABLE_NODE";
 };
 
 // TODO: Merge with base LangChain error class when we drop support for core@0.2.0
@@ -11,7 +18,7 @@ export class BaseLangGraphError extends Error {
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
     let finalMessage = message ?? "";
     if (fields?.lc_error_code) {
-      finalMessage = `${finalMessage}\n\nTroubleshooting URL: https://js.langchain.com/docs/troubleshooting/errors/${fields.lc_error_code}/\n`;
+      finalMessage = `${finalMessage}\n\nTroubleshooting URL: https://langchain-ai.github.io/langgraphjs/troubleshooting/errors/${fields.lc_error_code}/\n`;
     }
     super(finalMessage);
     this.lc_error_code = fields?.lc_error_code;
