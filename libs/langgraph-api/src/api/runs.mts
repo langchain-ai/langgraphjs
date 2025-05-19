@@ -204,7 +204,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
       for await (const { event, data } of Runs.Stream.join(
         run.run_id,
         undefined,
-        { cancelOnDisconnect, lastEventId: "0", ignore404: true },
+        { cancelOnDisconnect, lastEventId: "-1", ignore404: true },
         c.var.auth,
       )) {
         await stream.writeSSE({ data: serialiseAsDict(data), event });
@@ -356,7 +356,7 @@ api.post(
         for await (const { id, event, data } of Runs.Stream.join(
           run.run_id,
           thread_id,
-          { cancelOnDisconnect, lastEventId: "0" },
+          { cancelOnDisconnect, lastEventId: "-1" },
           c.var.auth,
         )) {
           await stream.writeSSE({ id, data: serialiseAsDict(data), event });

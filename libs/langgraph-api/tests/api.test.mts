@@ -1451,7 +1451,11 @@ describe("subgraphs", () => {
 
     expect(lastMessageBeforeInterrupt?.content).toBe("SF");
     expect(chunks).toEqual([
-      { event: "metadata", data: { run_id: expect.any(String), attempt: 1 } },
+      {
+        event: "metadata",
+        data: { run_id: expect.any(String), attempt: 1 },
+        id: "0",
+      },
       {
         event: "values",
         data: {
@@ -1465,6 +1469,7 @@ describe("subgraphs", () => {
             },
           ],
         },
+        id: "1",
       },
       {
         event: "values",
@@ -1480,6 +1485,7 @@ describe("subgraphs", () => {
           ],
           route: "weather",
         },
+        id: "2",
       },
     ]);
 
