@@ -41,7 +41,7 @@ export class DynamicBarrierValue<Value> extends BaseChannel<
 
   fromCheckpoint(checkpoint?: [Value[] | undefined, Value[]]) {
     const empty = new DynamicBarrierValue<Value>();
-    if (checkpoint) {
+    if (typeof checkpoint !== "undefined") {
       empty.names = new Set(checkpoint[0]);
       empty.seen = new Set(checkpoint[1]);
     }

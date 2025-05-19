@@ -37,7 +37,7 @@ export class BinaryOperatorAggregate<
       this.operator,
       this.initialValueFactory
     );
-    if (checkpoint) {
+    if (typeof checkpoint !== "undefined") {
       empty.value = checkpoint;
     }
     return empty as this;

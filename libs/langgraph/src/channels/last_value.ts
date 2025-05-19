@@ -17,7 +17,7 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
 
   fromCheckpoint(checkpoint?: Value) {
     const empty = new LastValue<Value>();
-    if (checkpoint) {
+    if (typeof checkpoint !== "undefined") {
       empty.value = [checkpoint];
     }
 
