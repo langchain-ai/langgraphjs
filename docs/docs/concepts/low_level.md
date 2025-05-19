@@ -354,29 +354,35 @@ graph.addConditionalEdges("nodeA", routingFunction, {
 
 The entry point is the first node(s) that are run when the graph starts. You can use the [`addEdge`](/langgraphjs/reference/classes/langgraph.StateGraph.html#addEdge) method from the virtual [`START`](/langgraphjs/reference/variables/langgraph.START.html) node to the first node to execute to specify where to enter the graph.
 
-```typescript
+```typescript hl_lines="4"
 import { START } from "@langchain/langgraph";
 
-graph.addEdge(START, "nodeA");
+const graph = new StateGraph(...)
+  .addEdge(START, "nodeA")
+  .compile();
 ```
 
 ### Conditional Entry Point
 
 A conditional entry point lets you start at different nodes depending on custom logic. You can use [`addConditionalEdges`](/langgraphjs/reference/classes/langgraph.StateGraph.html#addConditionalEdges) from the virtual [`START`](/langgraphjs/reference/variables/langgraph.START.html) node to accomplish this.
 
-```typescript
+```typescript hl_lines="4"
 import { START } from "@langchain/langgraph";
 
-graph.addConditionalEdges(START, routingFunction);
+const graph = new StateGraph(...)
+  .addConditionalEdges(START, routingFunction)
+  .compile();
 ```
 
 You can optionally provide an object that maps the `routingFunction`'s output to the name of the next node.
 
-```typescript
-graph.addConditionalEdges(START, routingFunction, {
-  true: "nodeB",
-  false: "nodeC",
-});
+```typescript hl_lines="2-5"
+const graph = new StateGraph(...)
+  .addConditionalEdges(START, routingFunction, {
+    true: "nodeB",
+    false: "nodeC",
+  })
+  .compile();
 ```
 
 ## `Send`
@@ -385,14 +391,16 @@ By default, `Nodes` and `Edges` are defined ahead of time and operate on the sam
 
 To support this design pattern, LangGraph supports returning [`Send`](/langgraphjs/reference/classes/langgraph.Send.html) objects from conditional edges. `Send` takes two arguments: first is the name of the node, and second is the state to pass to that node.
 
-```typescript
+```typescript hl_lines="8"
 const continueToJokes = (state: { subjects: string[] }) => {
   return state.subjects.map(
     (subject) => new Send("generate_joke", { subject })
   );
 };
 
-graph.addConditionalEdges("nodeA", continueToJokes);
+const graph = new StateGraph(...)
+  .addConditionalEdges("nodeA", continueToJokes)
+  .compile();
 ```
 
 ## `Command`
@@ -614,14 +622,16 @@ There are two ways to add subgraphs to a parent graph:
 
 - add a node with a function that invokes the subgraph: this is useful when the parent graph and the subgraph have different state schemas and you need to transform state before or after calling the subgraph
 
-```ts
+```ts hl_lines="8"
 const subgraph = subgraphBuilder.compile();
 
 const callSubgraph = async (state: typeof StateAnnotation.State) => {
   return subgraph.invoke({ subgraph_key: state.parent_key });
 };
 
-builder.addNode("subgraph", callSubgraph);
+const builder = new StateGraph(...)
+  .addNode("subgraph", callSubgraph)
+  .compile();
 ```
 
 Let's take a look at examples for each.
