@@ -21,7 +21,7 @@ export class AnyValue<Value> extends BaseChannel<Value, Value, Value> {
 
   fromCheckpoint(checkpoint?: Value) {
     const empty = new AnyValue<Value>();
-    if (checkpoint) {
+    if (typeof checkpoint !== "undefined") {
       empty.value = [checkpoint];
     }
     return empty as this;

@@ -10830,6 +10830,32 @@ graph TD;
       messages: ["input", "update", "update: resume", "interrupt: resume"],
     });
   });
+
+  it("persist a falsy value", async () => {
+    const checkpointer = await createCheckpointer();
+
+    const builder = new StateGraph(
+      Annotation.Root({
+        ...MessagesAnnotation.spec,
+        number: Annotation<number>,
+        boolean: Annotation<boolean>,
+        string: Annotation<string>,
+      })
+    )
+      .addNode("node", (state) => state)
+      .addEdge("__start__", "node");
+
+    const graph = builder.compile({ checkpointer });
+
+    const input = { number: 0, boolean: false, string: "" };
+    const config = { configurable: { thread_id: "thread_id" } };
+
+    await gatherIterator(graph.stream(input, config));
+
+    expect(await graph.getState(config)).toMatchObject({
+      values: { number: 0, boolean: false, string: "" },
+    });
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
