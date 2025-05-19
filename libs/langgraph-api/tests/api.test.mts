@@ -1586,6 +1586,7 @@ describe("subgraphs", () => {
       {
         event: "metadata",
         data: { run_id: expect.any(String), attempt: 1 },
+        id: "0",
       },
       {
         event: "values",
@@ -1601,6 +1602,7 @@ describe("subgraphs", () => {
           ],
           route: "weather",
         },
+        id: "1",
       },
       {
         event: expect.stringMatching(/^values\|weather_graph:/),
@@ -1616,6 +1618,7 @@ describe("subgraphs", () => {
           ],
           city: "San Francisco",
         },
+        id: "2",
       },
       {
         event: expect.stringMatching(/^updates\|weather_graph:/),
@@ -1634,6 +1637,7 @@ describe("subgraphs", () => {
             ],
           },
         },
+        id: "3",
       },
       {
         event: expect.stringMatching(/^values\|weather_graph:/),
@@ -1658,6 +1662,7 @@ describe("subgraphs", () => {
           ],
           city: "San Francisco",
         },
+        id: "4",
       },
       {
         event: "updates",
@@ -1683,6 +1688,7 @@ describe("subgraphs", () => {
             ],
           },
         },
+        id: "5",
       },
       {
         event: "values",
@@ -1707,6 +1713,7 @@ describe("subgraphs", () => {
           ],
           route: "weather",
         },
+        id: "6",
       },
     ]);
 
