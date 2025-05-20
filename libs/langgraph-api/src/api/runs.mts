@@ -101,6 +101,7 @@ const createValidRun = async (
       temporary:
         threadId == null && (run.on_completion ?? "delete") === "delete",
       subgraphs: run.stream_subgraphs ?? false,
+      resumable: run.stream_resumable ?? false,
     },
     {
       threadId,
@@ -194,6 +195,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
     auth: c.var.auth,
     headers: c.req.raw.headers,
   });
+
   return streamSSE(c, async (stream) => {
     const cancelOnDisconnect =
       payload.on_disconnect === "cancel"
@@ -204,7 +206,11 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
       for await (const { event, data } of Runs.Stream.join(
         run.run_id,
         undefined,
-        { cancelOnDisconnect, lastEventId: "-1", ignore404: true },
+        {
+          cancelOnDisconnect,
+          lastEventId: run.kwargs.resumable ? "-1" : undefined,
+          ignore404: true,
+        },
         c.var.auth,
       )) {
         await stream.writeSSE({ data: serialiseAsDict(data), event });
@@ -345,6 +351,7 @@ api.post(
       auth: c.var.auth,
       headers: c.req.raw.headers,
     });
+
     c.header("Content-Location", `/threads/${thread_id}/runs/${run.run_id}`);
     return streamSSE(c, async (stream) => {
       const cancelOnDisconnect =
@@ -356,7 +363,10 @@ api.post(
         for await (const { id, event, data } of Runs.Stream.join(
           run.run_id,
           thread_id,
-          { cancelOnDisconnect, lastEventId: "-1" },
+          {
+            cancelOnDisconnect,
+            lastEventId: run.kwargs.resumable ? "-1" : undefined,
+          },
           c.var.auth,
         )) {
           await stream.writeSSE({ id, data: serialiseAsDict(data), event });

@@ -2620,6 +2620,7 @@ it("resumable streams", { timeout: 10_000 }, async () => {
       messages: [{ role: "human", content: "input" }],
       sleep: { steps: 3, ms: 1000 },
     },
+    streamResumable: true,
     streamMode: ["values", "custom"],
     config: globalConfig,
 

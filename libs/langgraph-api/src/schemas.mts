@@ -223,6 +223,7 @@ export const RunCreate = z
       ])
       .optional(),
     stream_subgraphs: z.boolean().optional(),
+    stream_resumable: z.boolean().optional(),
     after_seconds: z.number().optional(),
     if_not_exists: z.enum(["reject", "create"]).optional(),
     on_completion: z.enum(["delete", "keep"]).optional(),

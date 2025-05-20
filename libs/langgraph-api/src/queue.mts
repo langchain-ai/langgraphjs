@@ -58,6 +58,9 @@ const worker = async (run: Run, attempt: number, abortSignal: AbortSignal) => {
       throw new Error(`Run ${run.run_id} exceeded max attempts`);
     }
 
+    const runId = run.run_id;
+    const resumable = run.kwargs?.resumable ?? false;
+
     try {
       const stream = streamState(run, attempt, {
         signal: abortSignal,
@@ -65,10 +68,15 @@ const worker = async (run: Run, attempt: number, abortSignal: AbortSignal) => {
       });
 
       for await (const { event, data } of stream) {
-        await Runs.Stream.publish(run.run_id, event, data);
+        await Runs.Stream.publish({ runId, resumable, event, data });
       }
     } catch (error) {
-      await Runs.Stream.publish(run.run_id, "error", serializeError(error));
+      await Runs.Stream.publish({
+        runId,
+        resumable,
+        event: "error",
+        data: serializeError(error),
+      });
       throw error;
     }
 

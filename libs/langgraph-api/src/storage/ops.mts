@@ -90,6 +90,8 @@ export interface RunKwargs {
   config?: RunnableConfig;
 
   subgraphs?: boolean;
+  resumable?: boolean;
+
   temporary?: boolean;
 
   // TODO: implement webhook
@@ -142,11 +144,19 @@ interface Message {
 
 class Queue {
   private log: Message[] = [];
-  private listeners: ((index: number) => void)[] = [];
+  private listeners: ((idx: number) => void)[] = [];
+
+  private nextId = 0;
+  private resumable = false;
+
+  constructor(options: { resumable: boolean }) {
+    this.resumable = options.resumable;
+  }
 
   push(item: Message) {
-    const newLen = this.log.push(item);
-    for (const listener of this.listeners) listener(newLen - 1);
+    this.log.push(item);
+    for (const listener of this.listeners) listener(this.nextId);
+    this.nextId += 1;
   }
 
   async get(options: {
@@ -154,20 +164,28 @@ class Queue {
     lastEventId?: string;
     signal?: AbortSignal;
   }): Promise<[id: string, message: Message]> {
-    const lastEventId = options.lastEventId;
+    if (this.resumable) {
+      const lastEventId = options.lastEventId;
 
-    // Generator stores internal state of the read head index,
-    let targetId = lastEventId != null ? +lastEventId + 1 : null;
-    if (
-      targetId == null ||
-      isNaN(targetId) ||
-      targetId < 0 ||
-      targetId >= this.log.length
-    ) {
-      targetId = null;
+      // Generator stores internal state of the read head index,
+      let targetId = lastEventId != null ? +lastEventId + 1 : null;
+      if (
+        targetId == null ||
+        isNaN(targetId) ||
+        targetId < 0 ||
+        targetId >= this.log.length
+      ) {
+        targetId = null;
+      }
+
+      if (targetId != null) return [String(targetId), this.log[targetId]];
+    } else {
+      if (this.log.length) {
+        const nextId = this.nextId - this.log.length;
+        const nextItem = this.log.shift()!;
+        return [String(nextId), nextItem];
+      }
     }
-
-    if (targetId != null) return [String(targetId), this.log[targetId]];
 
     let timeout: NodeJS.Timeout | undefined = undefined;
     let resolver: ((idx: number) => void) | undefined = undefined;
@@ -187,7 +205,15 @@ class Queue {
 
       this.listeners.push(resolver);
     })
-      .then((idx) => [String(idx), this.log[idx]] as [string, Message])
+      .then((idx) => {
+        if (this.resumable) {
+          return [String(idx), this.log[idx]] as [string, Message];
+        }
+
+        const nextId = this.nextId - this.log.length;
+        const nextItem = this.log.shift()!;
+        return [String(nextId), nextItem] as [string, Message];
+      })
       .finally(() => {
         this.listeners = this.listeners.filter((l) => l !== resolver);
         clearTimeout(timeout);
@@ -206,17 +232,12 @@ class StreamManagerImpl {
   readers: Record<string, Queue> = {};
   control: Record<string, CancellationAbortController> = {};
 
-  getQueue(runId: string, options: { ifNotFound: "create" }): Queue;
-
-  getQueue(runId: string, options: { ifNotFound: "ignore" }): Queue | undefined;
-
-  getQueue(runId: string, options: { ifNotFound: "create" | "ignore" }) {
+  getQueue(
+    runId: string,
+    options: { ifNotFound: "create"; resumable: boolean },
+  ): Queue {
     if (this.readers[runId] == null) {
-      if (options?.ifNotFound === "create") {
-        this.readers[runId] = new Queue();
-      } else {
-        return undefined;
-      }
+      this.readers[runId] = new Queue(options);
     }
 
     return this.readers[runId];
@@ -1680,7 +1701,10 @@ export class Runs {
       yield* conn.withGenerator(async function* (STORE) {
         // TODO: what if we're joining an already completed run? Should we check before?
         const signal = options?.cancelOnDisconnect;
-        const queue = StreamManager.getQueue(runId, { ifNotFound: "create" });
+        const queue = StreamManager.getQueue(runId, {
+          ifNotFound: "create",
+          resumable: options.lastEventId != null,
+        });
 
         const [filters] = await handleAuthEvent(auth, "threads:read", {
           thread_id: threadId,
@@ -1738,9 +1762,20 @@ export class Runs {
       });
     }
 
-    static async publish(runId: string, topic: string, data: unknown) {
-      const queue = StreamManager.getQueue(runId, { ifNotFound: "create" });
-      queue.push({ topic: `run:${runId}:stream:${topic}`, data });
+    static async publish(payload: {
+      runId: string;
+      event: string;
+      data: unknown;
+      resumable: boolean;
+    }) {
+      const queue = StreamManager.getQueue(payload.runId, {
+        ifNotFound: "create",
+        resumable: payload.resumable,
+      });
+      queue.push({
+        topic: `run:${payload.runId}:stream:${payload.event}`,
+        data: payload.data,
+      });
     }
   };
 }
