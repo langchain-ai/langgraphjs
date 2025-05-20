@@ -243,13 +243,18 @@ export class SubgraphExtractor {
       graphName: string;
     };
 
+    const typeSuffix = suffix.replace(/[^a-zA-Z0-9]/g, "_");
     const typeExports: TypeExport[] = [
-      { typeName: `__langgraph__${name}`, valueName: name, graphName: name },
+      {
+        typeName: `__langgraph__${name}_${typeSuffix}`,
+        valueName: name,
+        graphName: name,
+      },
     ];
 
     for (const { subgraph, node, namespace } of vars) {
       typeExports.push({
-        typeName: `__langgraph__${namespace.join("_")}_${node}`,
+        typeName: `__langgraph__${namespace.join("_")}_${node}_${typeSuffix}`,
         valueName: subgraph.name,
         graphName: [...namespace, node].join("|"),
       });

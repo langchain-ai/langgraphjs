@@ -935,3 +935,69 @@ test.concurrent("nested", () => {
     expect.arrayContaining(["graph", "graph|gp_two", "graph|gp_two|p_two"]),
   );
 });
+
+test.concurrent("overlapping parallel schema inference", () => {
+  const schemas = SubgraphExtractor.extractSchemas([
+    {
+      exportSymbol: "graph",
+      sourceFile: [
+        {
+          name: "graph1.mts",
+          main: true,
+          contents: dedent`
+            import { Annotation, StateGraph, END, START } from "@langchain/langgraph";
+            export const graph = new StateGraph(
+              Annotation.Root({ messages: Annotation<string[]>({ reducer: (a, b) => a.concat(b) }) }),
+              Annotation.Root({ graph1: Annotation<string> })
+            )
+              .addNode("child", (state) => state)
+              .addEdge(START, "child")
+              .addEdge("child", END)
+              .compile();
+          `,
+        },
+      ],
+    },
+    {
+      exportSymbol: "graph",
+      sourceFile: [
+        {
+          name: "graph2.mts",
+          main: true,
+          contents: dedent`
+            import { Annotation, StateGraph, END, START } from "@langchain/langgraph";
+            export const graph = new StateGraph(
+              Annotation.Root({ messages: Annotation<string[]>({ reducer: (a, b) => a.concat(b) }) }),
+              Annotation.Root({ graph2: Annotation<string> })
+            )
+              .addNode("child", (state) => state)
+              .addEdge(START, "child")
+              .addEdge("child", END)
+              .compile();
+          `,
+        },
+      ],
+    },
+  ]);
+
+  expect(schemas).toMatchObject([
+    {
+      graph: {
+        config: {
+          type: "object",
+          $schema: "http://json-schema.org/draft-07/schema#",
+          properties: { graph1: { type: "string" } },
+        },
+      },
+    },
+    {
+      graph: {
+        config: {
+          type: "object",
+          $schema: "http://json-schema.org/draft-07/schema#",
+          properties: { graph2: { type: "string" } },
+        },
+      },
+    },
+  ]);
+});
