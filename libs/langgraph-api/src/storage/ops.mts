@@ -90,6 +90,8 @@ export interface RunKwargs {
   config?: RunnableConfig;
 
   subgraphs?: boolean;
+  resumable?: boolean;
+
   temporary?: boolean;
 
   // TODO: implement webhook
@@ -141,27 +143,57 @@ interface Message {
 }
 
 class Queue {
-  private buffer: Message[] = [];
-  private listeners: (() => void)[] = [];
+  private log: Message[] = [];
+  private listeners: ((idx: number) => void)[] = [];
 
-  push(item: Message) {
-    this.buffer.push(item);
-    for (const listener of this.listeners) {
-      listener();
-    }
+  private nextId = 0;
+  private resumable = false;
+
+  constructor(options: { resumable: boolean }) {
+    this.resumable = options.resumable;
   }
 
-  async get(options: { timeout: number; signal?: AbortSignal }) {
-    if (this.buffer.length > 0) {
-      return this.buffer.shift()!;
+  push(item: Message) {
+    this.log.push(item);
+    for (const listener of this.listeners) listener(this.nextId);
+    this.nextId += 1;
+  }
+
+  async get(options: {
+    timeout: number;
+    lastEventId?: string;
+    signal?: AbortSignal;
+  }): Promise<[id: string, message: Message]> {
+    if (this.resumable) {
+      const lastEventId = options.lastEventId;
+
+      // Generator stores internal state of the read head index,
+      let targetId = lastEventId != null ? +lastEventId + 1 : null;
+      if (
+        targetId == null ||
+        isNaN(targetId) ||
+        targetId < 0 ||
+        targetId >= this.log.length
+      ) {
+        targetId = null;
+      }
+
+      if (targetId != null) return [String(targetId), this.log[targetId]];
+    } else {
+      if (this.log.length) {
+        const nextId = this.nextId - this.log.length;
+        const nextItem = this.log.shift()!;
+        return [String(nextId), nextItem];
+      }
     }
 
     let timeout: NodeJS.Timeout | undefined = undefined;
-    let resolver: (() => void) | undefined = undefined;
+    let resolver: ((idx: number) => void) | undefined = undefined;
 
     const clean = new AbortController();
 
-    return await new Promise<void>((resolve, reject) => {
+    // listen to new item
+    return await new Promise<number>((resolve, reject) => {
       timeout = setTimeout(() => reject(new TimeoutError()), options.timeout);
       resolver = resolve;
 
@@ -173,7 +205,15 @@ class Queue {
 
       this.listeners.push(resolver);
     })
-      .then(() => this.buffer.shift()!)
+      .then((idx) => {
+        if (this.resumable) {
+          return [String(idx), this.log[idx]] as [string, Message];
+        }
+
+        const nextId = this.nextId - this.log.length;
+        const nextItem = this.log.shift()!;
+        return [String(nextId), nextItem] as [string, Message];
+      })
       .finally(() => {
         this.listeners = this.listeners.filter((l) => l !== resolver);
         clearTimeout(timeout);
@@ -192,17 +232,12 @@ class StreamManagerImpl {
   readers: Record<string, Queue> = {};
   control: Record<string, CancellationAbortController> = {};
 
-  getQueue(runId: string, options: { ifNotFound: "create" }): Queue;
-
-  getQueue(runId: string, options: { ifNotFound: "ignore" }): Queue | undefined;
-
-  getQueue(runId: string, options: { ifNotFound: "create" | "ignore" }) {
+  getQueue(
+    runId: string,
+    options: { ifNotFound: "create"; resumable: boolean },
+  ): Queue {
     if (this.readers[runId] == null) {
-      if (options?.ifNotFound === "create") {
-        this.readers[runId] = new Queue();
-      } else {
-        return undefined;
-      }
+      this.readers[runId] = new Queue(options);
     }
 
     return this.readers[runId];
@@ -1488,7 +1523,7 @@ export class Runs {
     const runStream = Runs.Stream.join(
       runId,
       threadId,
-      { ignore404: threadId == null },
+      { ignore404: threadId == null, lastEventId: undefined },
       auth,
     );
 
@@ -1659,13 +1694,17 @@ export class Runs {
       options: {
         ignore404?: boolean;
         cancelOnDisconnect?: AbortSignal;
+        lastEventId: string | undefined;
       },
       auth: AuthContext | undefined,
-    ): AsyncGenerator<{ event: string; data: unknown }> {
+    ): AsyncGenerator<{ id?: string; event: string; data: unknown }> {
       yield* conn.withGenerator(async function* (STORE) {
         // TODO: what if we're joining an already completed run? Should we check before?
         const signal = options?.cancelOnDisconnect;
-        const queue = StreamManager.getQueue(runId, { ifNotFound: "create" });
+        const queue = StreamManager.getQueue(runId, {
+          ifNotFound: "create",
+          resumable: options.lastEventId != null,
+        });
 
         const [filters] = await handleAuthEvent(auth, "threads:read", {
           thread_id: threadId,
@@ -1683,9 +1722,17 @@ export class Runs {
           }
         }
 
+        let lastEventId = options?.lastEventId;
         while (!signal?.aborted) {
           try {
-            const message = await queue.get({ timeout: 500, signal });
+            const [id, message] = await queue.get({
+              timeout: 500,
+              signal,
+              lastEventId,
+            });
+
+            lastEventId = id;
+
             if (message.topic === `run:${runId}:control`) {
               if (message.data === "done") break;
             } else {
@@ -1693,7 +1740,7 @@ export class Runs {
                 `run:${runId}:stream:`.length,
               );
 
-              yield { event: streamTopic, data: message.data };
+              yield { id, event: streamTopic, data: message.data };
             }
           } catch (error) {
             if (error instanceof AbortError) break;
@@ -1715,9 +1762,20 @@ export class Runs {
       });
     }
 
-    static async publish(runId: string, topic: string, data: unknown) {
-      const queue = StreamManager.getQueue(runId, { ifNotFound: "create" });
-      queue.push({ topic: `run:${runId}:stream:${topic}`, data });
+    static async publish(payload: {
+      runId: string;
+      event: string;
+      data: unknown;
+      resumable: boolean;
+    }) {
+      const queue = StreamManager.getQueue(payload.runId, {
+        ifNotFound: "create",
+        resumable: payload.resumable,
+      });
+      queue.push({
+        topic: `run:${payload.runId}:stream:${payload.event}`,
+        data: payload.data,
+      });
     }
   };
 }

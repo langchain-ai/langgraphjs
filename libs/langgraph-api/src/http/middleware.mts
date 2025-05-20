@@ -14,7 +14,12 @@ export const cors = (
       }
     | undefined,
 ): MiddlewareHandler => {
-  if (cors == null) return honoCors();
+  if (cors == null) {
+    return honoCors({
+      origin: "*",
+      exposeHeaders: ["content-location"],
+    });
+  }
 
   const originRegex = cors.allow_origin_regex
     ? new RegExp(cors.allow_origin_regex)
@@ -27,6 +32,18 @@ export const cors = (
         return undefined;
       }
     : (cors.allow_origins ?? []);
+
+  if (
+    !!cors.expose_headers?.length &&
+    cors.expose_headers.some(
+      (i) => i.toLocaleLowerCase() === "content-location",
+    )
+  ) {
+    console.warn(
+      "Adding missing `Content-Location` header in `cors.expose_headers`.",
+    );
+    cors.expose_headers.push("content-location");
+  }
 
   // TODO: handle `cors.allow_credentials`
   return honoCors({
