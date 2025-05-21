@@ -4,6 +4,7 @@ import { BaseMessage, BaseMessageLike } from "@langchain/core/messages";
 import { z } from "zod";
 import { Annotation } from "./annotation.js";
 import { Messages, messagesStateReducer } from "./message.js";
+import { withLangGraph } from "./zod/state.js";
 
 /**
  * Prebuilt state annotation that combines returned messages.
@@ -101,15 +102,14 @@ export const MessagesAnnotation = Annotation.Root({
  * ```
  */
 export const MessagesZodState = z.object({
-  // TODO: add validations for BaseMessageLike
-  messages: z
-    .custom<BaseMessageLike | BaseMessageLike[]>()
-    .default(() => [])
-    .langgraph.reducer(
-      messagesStateReducer,
-      z.union([
+  messages: withLangGraph(z.custom<BaseMessage[]>(), {
+    reducer: {
+      schema: z.union([
         z.custom<BaseMessageLike>(),
         z.array(z.custom<BaseMessageLike>()),
-      ])
-    ),
+      ]),
+      fn: messagesStateReducer,
+    },
+    default: () => [],
+  }),
 });
