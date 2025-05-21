@@ -435,7 +435,7 @@ export class StateGraph<
         ? Array.isArray(args[0])
           ? args[0]
           : Object.entries(args[0])
-        : [[args[0], args[1]]]
+        : [[args[0], args[1], args[2]]]
     ) as [
       K,
       NodeAction<NodeInput, U, C>,
