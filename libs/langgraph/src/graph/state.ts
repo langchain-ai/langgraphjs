@@ -484,7 +484,11 @@ export class StateGraph<
   }
 
   addSequence<K extends string>(
-    nodes: [key: K, action: NodeAction<S, U, C>][]
+    nodes: [
+      key: K,
+      action: NodeAction<S, U, C>,
+      options?: StateGraphAddNodeOptions
+    ][]
   ): StateGraph<SD, S, U, N | K, I, O, C>;
 
   addSequence<K extends string>(
@@ -493,7 +497,7 @@ export class StateGraph<
 
   addSequence<K extends string>(
     nodes:
-      | [key: K, action: NodeAction<S, U, C>][]
+      | [key: K, action: NodeAction<S, U, C>, options?: StateGraphAddNodeOptions][]
       | Record<K, NodeAction<S, U, C>>
   ): StateGraph<SD, S, U, N | K, I, O, C> {
     const parsedNodes = Array.isArray(nodes)
@@ -505,7 +509,7 @@ export class StateGraph<
     }
 
     let previousNode: N | undefined;
-    for (const [key, action] of parsedNodes) {
+    for (const [key, action, options] of parsedNodes) {
       if (key in this.nodes) {
         throw new Error(
           `Node names must be unique: node with the name "${key}" already exists.`
@@ -513,7 +517,7 @@ export class StateGraph<
       }
 
       const validKey = key as unknown as N;
-      this.addNode(validKey, action);
+      this.addNode(validKey, action, options);
       if (previousNode != null) {
         this.addEdge(previousNode, validKey);
       }

@@ -79,4 +79,27 @@ describe("State", () => {
       testval: ["hello", "hi!"],
     });
   });
+
+  it("should support addSequence", async () => {
+    const stateGraph = new StateGraph(
+      Annotation.Root({
+        messages: Annotation<string[]>({
+          default: () => [],
+          reducer: (left, right) => [...left, ...right],
+        }),
+      })
+    );
+
+    const graph = stateGraph
+      .addSequence({
+        node1: () => ({ messages: ["from node1"] }),
+        node2: () => ({ messages: ["from node2"] }),
+        node3: () => ({ messages: ["from node3"] }),
+      })
+      .addEdge(START, "node1")
+      .compile();
+
+    const result = await graph.invoke({ messages: [] });
+    expect(result.messages).toEqual(["from node1", "from node2", "from node3"]);
+  });
 });
