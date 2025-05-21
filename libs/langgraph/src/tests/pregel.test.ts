@@ -10982,6 +10982,51 @@ graph TD;
       ]);
     });
   });
+
+  it("test_concurrent_emit_sends", async () => {
+    const State = Annotation.Root({
+      foo: Annotation<string[]>({
+        default: () => [],
+        reducer: (a, b) => [...a, ...b],
+      }),
+    });
+
+    const node = <T extends string>(
+      name: T
+    ): [T, (state: typeof State.State | number) => typeof State.Update] => [
+      name,
+      (state) => {
+        if (typeof state === "number") return { foo: [`${name}|${state}`] };
+        return { foo: [name] };
+      },
+    ];
+
+    const graph = new StateGraph(State)
+      .addNode([node("1"), node("1.1"), node("2"), node("3"), node("3.1")])
+      .addEdge("__start__", "1")
+      .addEdge("__start__", "1.1")
+      .addConditionalEdges("1", () => [
+        new Send("2", 1),
+        new Send("2", 2),
+        "3.1",
+      ])
+      .addConditionalEdges("1.1", () => [new Send("2", 3), new Send("2", 4)])
+      .addConditionalEdges("2", () => "3")
+      .compile();
+
+    const result = await graph.invoke({ foo: ["0"] });
+    expect(result.foo).toEqual([
+      "0",
+      "1",
+      "1.1",
+      "3.1",
+      "2|1",
+      "2|2",
+      "2|3",
+      "2|4",
+      "3",
+    ]);
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
