@@ -1,8 +1,8 @@
 import { describe, it, expect } from "@jest/globals";
+import { z } from "zod";
 import { StateGraph } from "../graph/state.js";
 import { END, START } from "../constants.js";
 import "../graph/zod/plugin.js";
-import { z } from "zod";
 
 describe("StateGraph with Zod schemas", () => {
   it("should accept Zod schema as input in addNode", async () => {
@@ -20,15 +20,19 @@ describe("StateGraph with Zod schemas", () => {
     type NodeInput = z.infer<typeof nodeInputSchema>;
 
     const graph = new StateGraph(stateSchema)
-      .addNode("process", (input: NodeInput) => {
-        // input should be typed according to the node's input schema
-        expect(input.messages).toBeDefined();
-        // @ts-expect-error count is not in the node's input schema, but we still want to check that it's not in the input
-        expect(input.count).toBeUndefined();
-        return { messages: [...input.messages, "processed"] };
-      }, {
-        input: nodeInputSchema,
-      })
+      .addNode(
+        "process",
+        (input: NodeInput) => {
+          // input should be typed according to the node's input schema
+          expect(input.messages).toBeDefined();
+          // @ts-expect-error count is not in the node's input schema, but we still want to check that it's not in the input
+          expect(input.count).toBeUndefined();
+          return { messages: [...input.messages, "processed"] };
+        },
+        {
+          input: nodeInputSchema,
+        }
+      )
       .addEdge(START, "process")
       .addEdge("process", END)
       .compile();
@@ -62,4 +66,4 @@ describe("StateGraph with Zod schemas", () => {
       count: 1,
     });
   });
-}); 
+});
