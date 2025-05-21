@@ -1,7 +1,7 @@
 /* eslint-disable no-process-env */
 /* eslint-disable no-param-reassign */
 /* eslint-disable no-return-assign */
-import { beforeAll, describe, expect, it, jest } from "@jest/globals";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { StructuredTool, tool } from "@langchain/core/tools";
 
 import {
@@ -44,11 +44,13 @@ import { MessagesAnnotation } from "../graph/messages_annotation.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
-  process.env.LANGCHAIN_TRACING_V2 = "false";
-  process.env.LANGCHAIN_ENDPOINT = "";
-  process.env.LANGCHAIN_ENDPOINT = "";
-  process.env.LANGCHAIN_API_KEY = "";
-  process.env.LANGCHAIN_PROJECT = "";
+  if (typeof process !== "undefined") {
+    process.env.LANGCHAIN_TRACING_V2 = "false";
+    process.env.LANGCHAIN_ENDPOINT = "";
+    process.env.LANGCHAIN_ENDPOINT = "";
+    process.env.LANGCHAIN_API_KEY = "";
+    process.env.LANGCHAIN_PROJECT = "";
+  }
 });
 
 const searchSchema = z.object({
@@ -506,7 +508,7 @@ describe("createReactAgent agent name options", () => {
       new AIMessage("Hmm, I'm not sure about that."),
     ];
     const llm = new FakeToolCallingChatModel({ responses });
-    const invokeSpy = jest.spyOn(llm, "invoke");
+    const invokeSpy = vi.spyOn(llm, "invoke");
     const agent = createReactAgent({
       llm,
       tools: [new SearchAPI()],
@@ -556,7 +558,7 @@ describe("createReactAgent agent name options", () => {
       }),
     ];
     const llm = new FakeToolCallingChatModel({ responses });
-    const invokeSpy = jest.spyOn(llm, "invoke");
+    const invokeSpy = vi.spyOn(llm, "invoke");
 
     const agent = createReactAgent({
       llm,
@@ -611,7 +613,7 @@ describe("createReactAgent agent name options", () => {
       new AIMessage("Hmm, I'm not sure about that."),
     ];
     const llm = new FakeToolCallingChatModel({ responses });
-    const invokeSpy = jest.spyOn(llm, "invoke");
+    const invokeSpy = vi.spyOn(llm, "invoke");
     const agent = createReactAgent({
       llm,
       tools: [new SearchAPI()],

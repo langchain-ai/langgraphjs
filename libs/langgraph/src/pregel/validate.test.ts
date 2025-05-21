@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it } from "vitest";
 import { type All } from "@langchain/langgraph-checkpoint";
 import {
   GraphValidationError,

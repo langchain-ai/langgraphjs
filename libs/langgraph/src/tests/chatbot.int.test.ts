@@ -1,4 +1,4 @@
-import { beforeAll, describe, it } from "@jest/globals";
+import { beforeAll, describe, it } from "vitest";
 import { ChatOpenAI } from "@langchain/openai";
 import {
   BaseMessage,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it } from "vitest";
 import { Runnable } from "@langchain/core/runnables";
 import { isPregelLike, findSubgraphPregel } from "./subgraph.js";
 

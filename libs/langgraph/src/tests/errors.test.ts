@@ -1,5 +1,5 @@
 /* eslint-disable prefer-template */
-import { it, expect } from "@jest/globals";
+import { it, expect } from "vitest";
 import {
   Annotation,
   END,

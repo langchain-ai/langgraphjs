@@ -1,4 +1,4 @@
-import { test, expect } from "@jest/globals";
+import { test, expect } from "vitest";
 import { createReactAgent } from "../prebuilt/index.js";
 import { FakeSearchTool, FakeToolCallingChatModel } from "./utils.js";
 import { Annotation, StateGraph } from "../web.js";
@@ -78,7 +78,6 @@ test("graph with subgraphs", async () => {
 
   const graph = app.getGraph({ xray: true });
   const mermaid = graph.drawMermaid();
-  console.log(mermaid);
   expect(mermaid).toEqual(`%%{init: {'flowchart': {'curve': 'linear'}}}%%
 graph TD;
 \t__start__([<p>__start__</p>]):::first

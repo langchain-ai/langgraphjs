@@ -1,7 +1,7 @@
 /* eslint-disable no-promise-executor-return */
 /* eslint-disable import/no-extraneous-dependencies */
 import assert from "node:assert";
-import { expect, it } from "@jest/globals";
+import { expect, it } from "vitest";
 import { v4 as uuidv4 } from "uuid";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import {
@@ -128,7 +128,6 @@ export class FakeChatModel extends BaseChatModel {
         text: content,
       });
 
-      yield chunk;
       await runManager?.handleLLMNewToken(
         content,
         undefined,
@@ -137,6 +136,12 @@ export class FakeChatModel extends BaseChatModel {
         undefined,
         { chunk }
       );
+
+      // TODO: workaround for the issue found in Node 18.x
+      // where @langchain/core/utils/stream AsyncGeneratorWithSetup
+      // does for some reason not yield the first chunk to the consumer
+      // and instead the LLM token callback is seen first.
+      yield chunk;
 
       isFirstChunk = false;
     }

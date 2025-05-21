@@ -1,4 +1,4 @@
-import { describe, expect, it, jest } from "@jest/globals";
+import { describe, expect, it, vi } from "vitest";
 import { wrap, tasksWithWrites, _readChannels } from "./debug.js";
 import { BaseChannel } from "../channels/base.js";
 import { LastValue } from "../channels/last_value.js";
@@ -43,15 +43,15 @@ describe("_readChannels", () => {
       lg_is_channel: true,
       ValueType: "" as string,
       UpdateType: [] as unknown[],
-      get: jest.fn<() => string>().mockImplementation(() => {
+      get: vi.fn<() => string>().mockImplementation(() => {
         throw new EmptyChannelError("Empty channel");
       }),
-      update: jest.fn<(values: unknown[]) => boolean>().mockReturnValue(true),
-      checkpoint: jest.fn<() => unknown>(),
-      fromCheckpoint: jest
+      update: vi.fn<(values: unknown[]) => boolean>().mockReturnValue(true),
+      checkpoint: vi.fn<() => unknown>(),
+      fromCheckpoint: vi
         .fn<(checkpoint?: unknown) => BaseChannel<string>>()
         .mockReturnThis(),
-      consume: jest.fn<() => boolean>().mockReturnValue(false),
+      consume: vi.fn<() => boolean>().mockReturnValue(false),
     };
 
     const channels = {
@@ -73,15 +73,15 @@ describe("_readChannels", () => {
       lg_is_channel: true,
       ValueType: "" as string,
       UpdateType: [] as unknown[],
-      get: jest.fn<() => string>().mockImplementation(() => {
+      get: vi.fn<() => string>().mockImplementation(() => {
         throw new Error("Other error");
       }),
-      update: jest.fn<(values: unknown[]) => boolean>().mockReturnValue(true),
-      checkpoint: jest.fn<() => unknown>(),
-      fromCheckpoint: jest
+      update: vi.fn<(values: unknown[]) => boolean>().mockReturnValue(true),
+      checkpoint: vi.fn<() => unknown>(),
+      fromCheckpoint: vi
         .fn<(checkpoint?: unknown) => BaseChannel<string>>()
         .mockReturnThis(),
-      consume: jest.fn<() => boolean>().mockReturnValue(false),
+      consume: vi.fn<() => boolean>().mockReturnValue(false),
     };
 
     const channels = {

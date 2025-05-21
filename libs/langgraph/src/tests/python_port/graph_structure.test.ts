@@ -1,4 +1,4 @@
-import { describe, it, expect, jest } from "@jest/globals";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { RunnablePassthrough } from "@langchain/core/runnables";
 import { StateGraph } from "../../graph/state.js";
@@ -759,8 +759,8 @@ describe("Graph Structure Tests (Python port)", () => {
    * Port of test_invoke_two_processes_two_in_join_two_out from test_pregel_async_graph_structure.py
    */
   it("should process two inputs joined into one topic and produce two outputs", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
-    const add10Each = jest.fn((x: number[]): number[] =>
+    const addOne = vi.fn((x: number): number => x + 1);
+    const add10Each = vi.fn((x: number[]): number[] =>
       x.map((y) => y + 10).sort()
     );
 
@@ -814,8 +814,8 @@ describe("Graph Structure Tests (Python port)", () => {
    * Port of test_invoke_join_then_call_other_pregel from test_pregel_async_graph_structure.py
    */
   it("should invoke join then call other app", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
-    const add10Each = jest.fn((x: number[]): number[] => x.map((y) => y + 10));
+    const addOne = vi.fn((x: number): number => x + 1);
+    const add10Each = vi.fn((x: number[]): number[] => x.map((y) => y + 10));
 
     const innerApp = new Pregel({
       nodes: {
@@ -878,7 +878,7 @@ describe("Graph Structure Tests (Python port)", () => {
    * Port of test_invoke_two_processes_one_in_two_out from test_pregel_async_graph_structure.py
    */
   it("should handle two processes with one input and two outputs", async () => {
-    const addOne = jest.fn((x: number) => x + 1);
+    const addOne = vi.fn((x: number) => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -918,7 +918,7 @@ describe("Graph Structure Tests (Python port)", () => {
    * Port of test_invoke_two_processes_no_out from test_pregel_async_graph_structure.py
    */
   it("should finish executing without output", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["between"]));
