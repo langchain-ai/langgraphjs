@@ -121,6 +121,12 @@ type ToStateDefinition<T> = T extends AnyZodObject
   ? T
   : never;
 
+type NodeAction<S, U, C extends SDZod> = RunnableLike<
+  S,
+  U extends object ? U & Record<string, any> : U, // eslint-disable-line @typescript-eslint/no-explicit-any
+  LangGraphRunnableConfig<StateType<ToStateDefinition<C>>>
+>;
+
 /**
  * A graph whose nodes communicate by reading and writing to a shared state.
  * Each node takes a defined `State` as input and returns a `Partial<State>`.
@@ -379,12 +385,7 @@ export class StateGraph<
 
   override addNode<K extends string, NodeInput = S>(
     key: K,
-    action: RunnableLike<
-      NodeInput,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      U extends object ? U & Record<string, any> : U,
-      LangGraphRunnableConfig<StateType<ToStateDefinition<C>>>
-    >,
+    action: NodeAction<NodeInput, U, C>,
     options?: StateGraphAddNodeOptions
   ): StateGraph<SD, S, U, N | K, I, O, C> {
     if (key in this.channels) {
@@ -480,6 +481,47 @@ export class StateGraph<
     this.waitingEdges.add([startKey, endKey]);
 
     return this;
+  }
+
+  addSequence<K extends string>(
+    nodes: [key: K, action: NodeAction<S, U, C>][]
+  ): StateGraph<SD, S, U, N | K, I, O, C>;
+
+  addSequence<K extends string>(
+    nodes: Record<K, NodeAction<S, U, C>>
+  ): StateGraph<SD, S, U, N | K, I, O, C>;
+
+  addSequence<K extends string>(
+    nodes:
+      | [key: K, action: NodeAction<S, U, C>][]
+      | Record<K, NodeAction<S, U, C>>
+  ): StateGraph<SD, S, U, N | K, I, O, C> {
+    const parsedNodes = Array.isArray(nodes)
+      ? nodes
+      : (Object.entries(nodes) as [K, NodeAction<S, U, C>][]);
+
+    if (parsedNodes.length === 0) {
+      throw new Error("Sequence requires at least one node.");
+    }
+
+    let previousNode: N | undefined;
+    for (const [key, action] of parsedNodes) {
+      if (key in this.nodes) {
+        throw new Error(
+          `Node names must be unique: node with the name "${key}" already exists.`
+        );
+      }
+
+      const validKey = key as unknown as N;
+      this.addNode(validKey, action);
+      if (previousNode != null) {
+        this.addEdge(previousNode, validKey);
+      }
+
+      previousNode = validKey;
+    }
+
+    return this as StateGraph<SD, S, U, N | K, I, O, C>;
   }
 
   override compile({

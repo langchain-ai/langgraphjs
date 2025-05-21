@@ -59,6 +59,7 @@ import {
 } from "./utils.js";
 import { gatherIterator } from "../utils.js";
 import { LastValue } from "../channels/last_value.js";
+import { EphemeralValue } from "../channels/ephemeral_value.js";
 import {
   Annotation,
   Graph,
@@ -145,6 +146,37 @@ export function runPregelTests(
   });
 
   describe("Channel", () => {
+    it("obtain correct channel values from checkpointer", async () => {
+      const checkpointer = await createCheckpointer();
+      const chain = Channel.subscribeTo("input").pipe(
+        Channel.writeTo(["output"])
+      );
+      const app = new Pregel({
+        nodes: { one: chain },
+        channels: {
+          ephemeral: new EphemeralValue(),
+          input: new LastValue<number>(),
+          output: new LastValue<number>(),
+        },
+        inputChannels: ["input", "ephemeral"],
+        outputChannels: "output",
+        checkpointer,
+      });
+
+      const input = { input: 1, ephemeral: "meow" };
+      const config = { configurable: { thread_id: "1" } };
+      await app.invoke(input, config);
+      const state = await app.getState(config);
+
+      expect(state.values.output).toBe(1);
+
+      const checkpoint = await checkpointer.get(config);
+      expect(checkpoint?.channel_values).toEqual({
+        input: 1,
+        output: 1,
+      });
+    });
+
     describe("writeTo", () => {
       it("should return a ChannelWrite instance with the expected writes", () => {
         // call method / assertions
@@ -10820,6 +10852,134 @@ graph TD;
 
     expect(await graph.getState(config)).toMatchObject({
       values: { number: 0, boolean: false, string: "" },
+    });
+  });
+
+  describe("add sequence", () => {
+    const State = Annotation.Root({
+      foo: Annotation<string[]>({
+        default: () => [],
+        reducer: (a, b) => [...a, ...b],
+      }),
+      bar: Annotation<string>(),
+    });
+
+    const step1 = (): typeof State.Update => ({
+      foo: ["step1"],
+      bar: "baz",
+    });
+
+    const step2 = (): typeof State.Update => ({
+      foo: ["step2"],
+    });
+
+    it("should raise error if less than 1 step", () => {
+      expect(() => new StateGraph(State).addSequence([])).toThrow();
+    });
+
+    it("should raise error if duplicate step names", () => {
+      expect(() => {
+        new StateGraph(State).addSequence([
+          ["foo", step1],
+          ["foo", step1],
+        ]);
+      }).toThrow();
+    });
+
+    it("should work with dictionary", async () => {
+      const graph = new StateGraph(State)
+        .addSequence({ step1, step2 })
+        .addEdge("__start__", "step1")
+        .compile();
+
+      const result = await graph.invoke({ foo: [] });
+      expect(result).toEqual({ foo: ["step1", "step2"], bar: "baz" });
+
+      const streamChunks = await gatherIterator(graph.stream({ foo: [] }));
+      expect(streamChunks).toEqual([
+        { step1: { foo: ["step1"], bar: "baz" } },
+        { step2: { foo: ["step2"] } },
+      ]);
+    });
+
+    it("should work with list of tuples", async () => {
+      const graph = new StateGraph(State)
+        .addSequence([
+          ["meow1", step1],
+          ["meow2", step2],
+        ])
+        .addEdge("__start__", "meow1")
+        .compile();
+
+      const result = await graph.invoke({ foo: [] });
+      expect(result).toEqual({ foo: ["step1", "step2"], bar: "baz" });
+
+      const streamChunks = await gatherIterator(graph.stream({ foo: [] }));
+      expect(streamChunks).toEqual([
+        { meow1: { foo: ["step1"], bar: "baz" } },
+        { meow2: { foo: ["step2"] } },
+      ]);
+    });
+
+    it("should work with two sequences", async () => {
+      const a = () => ({ foo: ["a"] });
+      const b = () => ({ foo: ["b"] });
+
+      const graph = new StateGraph(State)
+        .addSequence({ a })
+        .addSequence({ b })
+        .addEdge("__start__", "a")
+        .addEdge("a", "b")
+        .compile();
+
+      const result = await graph.invoke({ foo: [] });
+      expect(result).toEqual({ foo: ["a", "b"] });
+
+      const streamChunks = await gatherIterator(graph.stream({ foo: [] }));
+      expect(streamChunks).toEqual([
+        { a: { foo: ["a"] } },
+        { b: { foo: ["b"] } },
+      ]);
+    });
+
+    it("should work with mixed nodes and sequences", async () => {
+      const a = () => ({ foo: ["a"] });
+      const b = () => ({ foo: ["b"] });
+      const c = () => ({ foo: ["c"] });
+      const d = () => ({ foo: ["d"] });
+      const e = () => ({ foo: ["e"] });
+
+      const foo = (state: typeof State.State) => {
+        if (state.foo[0] === "a") {
+          return "d";
+        }
+        return "c";
+      };
+
+      const graph = new StateGraph(State)
+        .addSequence({ a, b })
+        .addConditionalEdges("b", foo)
+        .addNode("c", c)
+        .addSequence([
+          ["d", d],
+          ["e", e],
+        ])
+        .addEdge("__start__", "a")
+        .compile();
+
+      const result1 = await graph.invoke({ foo: [] });
+      expect(result1).toEqual({ foo: ["a", "b", "d", "e"] });
+
+      const result2 = await graph.invoke({ foo: ["start"] });
+      expect(result2).toEqual({ foo: ["start", "a", "b", "c"] });
+
+      const streamChunks = await gatherIterator(graph.stream({ foo: [] }));
+      expect(streamChunks).toEqual([
+        { a: { foo: ["a"] } },
+        { b: { foo: ["b"] } },
+        { d: { foo: ["d"] } },
+        { e: { foo: ["e"] } },
+      ]);
     });
   });
 }
