@@ -1,8 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
 import { z } from "zod";
 import { StateGraph } from "../graph/state.js";
-import { END, START } from "../constants.js";
-import "../graph/zod/plugin.js";
+import { END, START } from "../web.js";
 
 describe("StateGraph with Zod schemas", () => {
   it("should accept Zod schema as input in addNode", async () => {
