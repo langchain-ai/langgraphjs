@@ -497,7 +497,11 @@ export class StateGraph<
 
   addSequence<K extends string>(
     nodes:
-      | [key: K, action: NodeAction<S, U, C>, options?: StateGraphAddNodeOptions][]
+      | [
+          key: K,
+          action: NodeAction<S, U, C>,
+          options?: StateGraphAddNodeOptions
+        ][]
       | Record<K, NodeAction<S, U, C>>
   ): StateGraph<SD, S, U, N | K, I, O, C> {
     const parsedNodes = Array.isArray(nodes)
