@@ -8813,7 +8813,6 @@ graph TD;
           },
         ],
       ],
-      ["custom", { from: "subgraph", content: "1" }],
       [
         "messages",
         [
@@ -8835,6 +8834,7 @@ graph TD;
           },
         ],
       ],
+      ["custom", { from: "subgraph", content: "1" }],
       [
         "messages",
         [
