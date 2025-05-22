@@ -84,9 +84,9 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
 
 export type StateGraphAddNodeOptions = {
   retryPolicy?: RetryPolicy;
-  // TODO: Fix generic typing
+  // TODO: Fix generic typing for annotations
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  input?: AnnotationRoot<any>;
+  input?: AnnotationRoot<any> | AnyZodObject;
 } & AddNodeOptions;
 
 export type StateGraphArgsWithStateSchema<
@@ -474,8 +474,16 @@ export class StateGraph<
         throw new Error(`Node \`${key}\` is reserved.`);
       }
 
+      let inputSpec = this._schemaDefinition;
       if (options?.input !== undefined) {
-        this._addSchema(options.input.spec);
+        if (isAnyZodObject(options.input)) {
+          inputSpec = getChannelsFromZod(options.input);
+        } else if (options.input.spec !== undefined) {
+          inputSpec = options.input.spec;
+        }
+      }
+      if (inputSpec !== undefined) {
+        this._addSchema(inputSpec);
       }
 
       let runnable;
@@ -494,7 +502,7 @@ export class StateGraph<
         runnable: runnable as unknown as Runnable<S, U>,
         retryPolicy: options?.retryPolicy,
         metadata: options?.metadata,
-        input: options?.input?.spec ?? this._schemaDefinition,
+        input: inputSpec ?? this._schemaDefinition,
         subgraphs: isPregelLike(runnable)
           ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
             [runnable as any]
