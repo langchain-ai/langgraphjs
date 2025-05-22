@@ -20,9 +20,13 @@ export interface Meta<ValueType, UpdateType = ValueType> {
   default?: () => ValueType;
 }
 
-export type AnyZodObject = z.ZodObject<z.ZodRawShape>;
+type RawZodObject = z.ZodObject<z.ZodRawShape>;
 
-function isZodType(value: unknown): value is z.ZodType {
+export type AnyZodObject =
+  | RawZodObject
+  | z.ZodIntersection<RawZodObject, RawZodObject>;
+
+export function isZodType(value: unknown): value is z.ZodType {
   return (
     typeof value === "object" &&
     value != null &&
@@ -48,11 +52,46 @@ export function isZodDefault(
  * @internal
  */
 export function isAnyZodObject(value: unknown): value is AnyZodObject {
-  return (
-    isZodType(value) &&
-    "partial" in value &&
-    typeof value.partial === "function"
-  );
+  if (isZodObject(value)) {
+    return true;
+  }
+  if (isZodObjectIntersection(value)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * @internal
+ */
+export function isZodObject(
+  value: unknown
+): value is z.ZodObject<z.ZodRawShape> {
+  if (!isZodType(value)) return false;
+  if ("partial" in value && typeof value.partial === "function") {
+    return true;
+  }
+  return true;
+}
+
+/**
+ * @internal
+ */
+export function isZodObjectIntersection(
+  value: unknown
+): value is z.ZodIntersection<RawZodObject, RawZodObject> {
+  if (!isZodType(value)) return false;
+  const maybeDef = (value as { _def?: unknown })._def;
+  if (
+    !maybeDef ||
+    typeof maybeDef !== "object" ||
+    !("left" in maybeDef) ||
+    !("right" in maybeDef)
+  ) {
+    return false;
+  }
+  const { left, right } = maybeDef as { left: unknown; right: unknown };
+  return isAnyZodObject(left) && isAnyZodObject(right);
 }
 
 export function withLangGraph<ValueType, UpdateType = ValueType>(
@@ -92,33 +131,52 @@ export function extendMeta<ValueType, UpdateType = ValueType>(
   META_MAP.set(schema, newMeta);
 }
 
-export type ZodToStateDefinition<T extends AnyZodObject> = {
-  [key in keyof T["shape"]]: T["shape"][key] extends z.ZodType<
-    infer V,
-    z.ZodTypeDef,
-    infer U
-  >
-    ? BaseChannel<V, U>
+export type ZodToStateDefinition<T extends AnyZodObject> =
+  // Handle ZodObject
+  T extends z.ZodObject<infer Shape>
+    ? {
+        [K in keyof Shape]: Shape[K] extends z.ZodType<
+          infer V,
+          z.ZodTypeDef,
+          infer U
+        >
+          ? BaseChannel<V, U>
+          : never;
+      }
+    : // Handle ZodIntersection of two ZodObjects
+    T extends z.ZodIntersection<infer Left, infer Right>
+    ? ZodToStateDefinition<Left> & ZodToStateDefinition<Right>
     : never;
-};
 
-export function getChannelsFromZod<T extends z.ZodRawShape>(
-  schema: z.ZodObject<T>
-): ZodToStateDefinition<z.ZodObject<T>> {
-  const channels = {} as Record<string, BaseChannel>;
-  for (const key in schema.shape) {
-    if (Object.prototype.hasOwnProperty.call(schema.shape, key)) {
-      const keySchema = schema.shape[key];
-      const meta = getMeta(keySchema);
-      if (meta?.reducer) {
-        channels[key] = new BinaryOperatorAggregate<z.infer<T[typeof key]>>(
-          meta.reducer.fn,
-          meta.default
-        );
-      } else {
-        channels[key] = new LastValue();
+export function getChannelsFromZod<T extends AnyZodObject>(
+  schema: T
+): ZodToStateDefinition<T> {
+  // Handle ZodObject
+  if (isZodObject(schema)) {
+    const channels = {} as Record<string, BaseChannel>;
+    for (const key in schema.shape) {
+      if (Object.prototype.hasOwnProperty.call(schema.shape, key)) {
+        const keySchema = schema.shape[key];
+        const meta = getMeta(keySchema);
+        if (meta?.reducer) {
+          type ValueType = z.infer<T>[typeof key];
+          channels[key] = new BinaryOperatorAggregate<ValueType>(
+            meta.reducer.fn,
+            meta.default
+          );
+        } else {
+          channels[key] = new LastValue();
+        }
       }
     }
+    return channels as ZodToStateDefinition<T>;
   }
-  return channels as ZodToStateDefinition<z.ZodObject<T>>;
+  // Handle ZodIntersection of two ZodObjects
+  if (isZodObjectIntersection(schema)) {
+    // Recursively extract channels from both sides and merge
+    const left = getChannelsFromZod(schema._def.left as AnyZodObject);
+    const right = getChannelsFromZod(schema._def.right as AnyZodObject);
+    return { ...left, ...right } as ZodToStateDefinition<T>;
+  }
+  return {} as ZodToStateDefinition<T>;
 }

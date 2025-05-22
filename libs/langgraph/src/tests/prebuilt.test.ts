@@ -7,6 +7,7 @@ import { StructuredTool, tool } from "@langchain/core/tools";
 import {
   AIMessage,
   BaseMessage,
+  BaseMessageLike,
   HumanMessage,
   RemoveMessage,
   SystemMessage,
@@ -44,6 +45,7 @@ import {
   MessagesAnnotation,
   MessagesZodState,
 } from "../graph/messages_annotation.js";
+import { withLangGraph } from "../graph/zod/state.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -1292,6 +1294,41 @@ describe("MessagesZodState", () => {
     expect(result.messages.length).toEqual(2);
     expect(result.messages[0].content).toEqual("updated");
     expect(result.messages[1].content).toEqual("message 2");
+  });
+
+  it("should handle intersection with additional fields", async () => {
+    const schema = z.object({
+      messages: withLangGraph(z.custom<BaseMessage[]>(), {
+        reducer: {
+          schema: z.union([
+            z.custom<BaseMessageLike>(),
+            z.array(z.custom<BaseMessageLike>()),
+          ]),
+          fn: messagesStateReducer,
+        },
+        default: () => [],
+      }),
+      count: z.number(),
+    });
+
+    type State = z.infer<typeof schema>;
+
+    const graph = new StateGraph(schema)
+      .addNode("process", ({ messages, count }: State) => ({
+        messages: [...messages, new HumanMessage(`count: ${count}`)],
+        count: count + 1,
+      }))
+      .addEdge("__start__", "process")
+      .compile();
+
+    const result = await graph.invoke({
+      messages: [new HumanMessage("start")],
+      count: 0,
+    });
+
+    expect(result.messages.length).toEqual(2);
+    expect(result.messages[1].content).toEqual("count: 0");
+    expect(result.count).toEqual(1);
   });
 });
 
