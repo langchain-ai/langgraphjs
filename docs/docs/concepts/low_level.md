@@ -255,12 +255,18 @@ const StateWithDocuments = Annotation.Root({
 
 Just like `MessagesAnnotation`, there is a prebuilt Zod schema called `MessagesZodSchema` that provides the same functionality, but uses Zod for defining the state instead of the `Annotation` API.
 
+You can use `MessagesZodSchema` in place of `MessagesAnnotation`, and use Zod to tack on additional state beyond just messages.
+
 ```typescript
 import { MessagesZodSchema, StateGraph } from "@langchain/langgraph";
 
 import { z } from "zod";
 
-const graph = new StateGraph(MessagesZodSchema)
+const StateWithMessages = MessagesZodSchema.and(
+  z.object({ counter: z.array(z.string()) })
+);
+
+const graph = new StateGraph(StateWithMessages)
   .addNode(...)
   ...
 ```

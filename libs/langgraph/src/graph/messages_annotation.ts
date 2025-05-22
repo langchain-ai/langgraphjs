@@ -86,6 +86,19 @@ export const MessagesAnnotation = Annotation.Root({
  *     default: () => [],
  *   }),
  * });
+ *
+ * You can also expand this schema to include other fields and retain the core messages field using native zod methods like `z.intersection()` or `.and()`
+ * @example
+ * ```ts
+ * import { MessagesZodState, StateGraph } from "@langchain/langgraph";
+ *
+ * const schema = MessagesZodState.and(
+ *   z.object({ count: z.number() }),
+ * );
+ *
+ * const graph = new StateGraph(schema)
+ *  .addNode(...)
+ *  ...
  * ```
  */
 export const MessagesZodState = z.object({
