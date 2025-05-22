@@ -53,7 +53,7 @@ jobs:
       - name: Run integration tests
         working-directory: libs/langgraph-cli
         run: |
-          yarn turbo run test
+          yarn run -T turbo run test
 
   test-parser:
     timeout-minutes: 5
@@ -78,7 +78,7 @@ jobs:
       - name: Build
         working-directory: libs/langgraph-api
         run: |
-          yarn turbo run build
+          yarn run -T turbo run build
 
       - name: Run integration tests
         working-directory: libs/langgraph-api
@@ -113,7 +113,7 @@ jobs:
       - name: Build
         working-directory: libs/langgraph-api
         run: |
-          yarn turbo run build
+          yarn run -T turbo run build
 
       - name: Run integration tests
         working-directory: libs/langgraph-api
@@ -147,7 +147,7 @@ jobs:
       - name: Build
         working-directory: libs/langgraph-api
         run: |
-          yarn turbo run build
+          yarn run -T turbo run build
 
       - name: Run integration tests
         working-directory: libs/langgraph-api
