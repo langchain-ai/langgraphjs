@@ -70,6 +70,7 @@ export const MessagesAnnotation = Annotation.Root({
  * ```ts
  * import { BaseMessage } from "@langchain/core/messages";
  * import { Annotation, StateGraph, messagesStateReducer } from "@langchain/langgraph";
+ * import "@langchain/langgraph/zod";
  *
  * const schema = z.object({
  *   messages: z
