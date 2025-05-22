@@ -40,7 +40,10 @@ import {
   Send,
   StateGraph,
 } from "../index.js";
-import { MessagesAnnotation } from "../graph/messages_annotation.js";
+import {
+  MessagesAnnotation,
+  MessagesZodState,
+} from "../graph/messages_annotation.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -1204,6 +1207,91 @@ describe("MessagesAnnotation", () => {
 
     expect(res.messages.length).toEqual(1);
     expect(res2.messages.length).toEqual(1);
+  });
+});
+
+describe("MessagesZodState", () => {
+  it("should assign ids properly and avoid duping added messages", async () => {
+    const childGraph = new StateGraph(MessagesZodState)
+      .addNode("duper", ({ messages }: z.infer<typeof MessagesZodState>) => ({
+        messages,
+      }))
+      .addNode("duper2", ({ messages }: z.infer<typeof MessagesZodState>) => ({
+        messages,
+      }))
+      .addEdge("__start__", "duper")
+      .addEdge("duper", "duper2")
+      .compile({ interruptBefore: ["duper2"] });
+    const graph = new StateGraph(MessagesZodState)
+      .addNode("duper", childGraph)
+      .addNode("duper2", ({ messages }: z.infer<typeof MessagesZodState>) => ({
+        messages,
+      }))
+      .addEdge("__start__", "duper")
+      .addEdge("duper", "duper2")
+      .compile({ checkpointer: new MemorySaverAssertImmutable() });
+    const res = await graph.invoke(
+      { messages: [new HumanMessage("should be only one")] },
+      { configurable: { thread_id: "1" } }
+    );
+    expect(res.messages.length).toEqual(1);
+
+    // FIXME (!): `null` isn't acceptable input as initial state for a graph run. Handling the special case of `null` doesn't propagate a message back to invoke.
+    // const res2 = await graph.invoke(null, {
+    //   configurable: { thread_id: "1" },
+    // });
+    // expect(res2.messages.length).toEqual(1);
+  });
+
+  it("should handle message reducers correctly", async () => {
+    const graph = new StateGraph(MessagesZodState)
+      .addNode("add", ({ messages }: z.infer<typeof MessagesZodState>) => ({
+        messages: [...messages, new HumanMessage("new message")],
+      }))
+      .addNode("remove", ({ messages }: z.infer<typeof MessagesZodState>) => {
+        return {
+          messages: [new RemoveMessage({ id: messages[0].id ?? "" })],
+        };
+      })
+      .addEdge("__start__", "add")
+      .addEdge("add", "remove")
+      .compile();
+
+    const result = await graph.invoke({
+      messages: [new HumanMessage({ id: "test-id", content: "original" })],
+    });
+
+    expect(result.messages.length).toEqual(1);
+  });
+
+  it("should handle array updates correctly", async () => {
+    const graph = new StateGraph(MessagesZodState)
+      .addNode("add", () => ({
+        messages: [
+          new HumanMessage({ id: "msg1", content: "message 1" }),
+          new HumanMessage({ id: "msg2", content: "message 2" }),
+        ],
+      }))
+      .addNode("update", ({ messages }: z.infer<typeof MessagesZodState>) => {
+        const firstMessageId = messages[0]?.id;
+        if (!firstMessageId) {
+          throw new Error("No message ID found");
+        }
+        return {
+          messages: [
+            new HumanMessage({ id: firstMessageId, content: "updated" }),
+          ],
+        };
+      })
+      .addEdge("__start__", "add")
+      .addEdge("add", "update")
+      .compile();
+
+    const result = await graph.invoke({ messages: [] });
+
+    expect(result.messages.length).toEqual(2);
+    expect(result.messages[0].content).toEqual("updated");
+    expect(result.messages[1].content).toEqual("message 2");
   });
 });
 

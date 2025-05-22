@@ -102,12 +102,12 @@ const node3 = async (state: typeof OverallStateAnnotation.State) => {
 // but this is a special case where they must be specified explicitly in order
 // to avoid a type error.
 const graph = new StateGraph<
-  typeof OverallStateAnnotation["spec"],
-  StateType<typeof OverallStateAnnotation["spec"]>,
-  UpdateType<typeof OutputStateAnnotation["spec"]>,
+  (typeof OverallStateAnnotation)["spec"],
+  StateType<(typeof OverallStateAnnotation)["spec"]>,
+  UpdateType<(typeof OutputStateAnnotation)["spec"]>,
   typeof START,
-  typeof InputStateAnnotation["spec"],
-  typeof OutputStateAnnotation["spec"]
+  (typeof InputStateAnnotation)["spec"],
+  (typeof OutputStateAnnotation)["spec"]
 >({
   input: InputStateAnnotation,
   output: OutputStateAnnotation,
@@ -251,6 +251,22 @@ const StateWithDocuments = Annotation.Root({
 });
 ```
 
+#### MessagesZodState
+
+Just like `MessagesAnnotation`, there is a prebuilt Zod schema called `MessagesZodSchema` that provides the same functionality, but uses Zod for defining the state instead of the `Annotation` API.
+
+```typescript
+import { MessagesZodSchema, StateGraph } from "@langchain/langgraph";
+
+import { z } from "zod";
+
+const graph = new StateGraph(MessagesZodSchema)
+  .addNode(...)
+  ...
+```
+
+For more on defining graph state using Zod, see the [defining graph state how-to](/langgraphjs/how-tos/define-state/#using-zod).
+
 ## Nodes
 
 In LangGraph, nodes are typically JavaScript/TypeScript functions (sync or `async`) where the **first** positional argument is the [state](#state), and (optionally), the **second** positional argument is a "config", containing optional [configurable parameters](#configuration) (such as a `thread_id`).
@@ -348,7 +364,7 @@ graph.addConditionalEdges("nodeA", routingFunction, {
 ```
 
 !!! tip
-    Use [`Command`](#command) instead of conditional edges if you want to combine state updates and routing in a single function.
+Use [`Command`](#command) instead of conditional edges if you want to combine state updates and routing in a single function.
 
 ### Entry Point
 
@@ -406,7 +422,7 @@ const graph = new StateGraph(...)
 ## `Command`
 
 !!! tip Compatibility
-    This functionality requires `@langchain/langgraph>=0.2.31`.
+This functionality requires `@langchain/langgraph>=0.2.31`.
 
 It can be convenient to combine control flow (edges) and state updates (nodes). For example, you might want to BOTH perform state updates AND decide which node to go to next in the SAME node rather than use a conditional edge. LangGraph provides a way to do so by returning a [`Command`](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.Command.html) object from node functions:
 
@@ -416,7 +432,6 @@ import { StateGraph, Annotation, Command } from "@langchain/langgraph";
 const StateAnnotation = Annotation.Root({
   foo: Annotation<string>,
 });
-
 
 const myNode = (state: typeof StateAnnotation.State) => {
   return new Command({
@@ -507,7 +522,7 @@ const lookupUserInfo = tool(async (input, config) => {
 ```
 
 !!! important
-    You MUST include `messages` (or any state key used for the message history) in `Command.update` when returning `Command` from a tool and the list of messages in `messages` MUST contain a `ToolMessage`. This is necessary for the resulting message history to be valid (LLM providers require AI messages with tool calls to be followed by the tool result messages).
+You MUST include `messages` (or any state key used for the message history) in `Command.update` when returning `Command` from a tool and the list of messages in `messages` MUST contain a `ToolMessage`. This is necessary for the resulting message history to be valid (LLM providers require AI messages with tool calls to be followed by the tool result messages).
 
 If you are using tools that update state via `Command`, we recommend using prebuilt [`ToolNode`](/langgraphjs/reference/classes/langgraph_prebuilt.ToolNode.html) which automatically handles tools returning `Command` objects and propagates them to the graph state. If you're writing a custom node that calls tools, you would need to manually propagate `Command` objects returned by the tools as the update from node.
 

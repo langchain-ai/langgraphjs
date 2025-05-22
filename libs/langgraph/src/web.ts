@@ -81,5 +81,8 @@ export {
   type TaskOptions,
 } from "./func/index.js";
 
-export { MessagesAnnotation } from "./graph/messages_annotation.js";
+export {
+  MessagesAnnotation,
+  MessagesZodState,
+} from "./graph/messages_annotation.js";
 export { type LangGraphRunnableConfig } from "./pregel/runnable_types.js";
