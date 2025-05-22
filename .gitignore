@@ -7,3 +7,9 @@ __pycache__
 .langgraph_api
 .uv
 .turbo
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions

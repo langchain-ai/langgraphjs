@@ -26,18 +26,18 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "zod": "^3.23.8",
+    "@commander-js/extra-typings": "^13.0.0",
+    "commander": "^13.0.0",
     "esbuild": "^0.25.0",
     "esbuild-plugin-tailwindcss": "^2.0.1",
-    "@commander-js/extra-typings": "^13.0.0",
-    "commander": "^13.0.0"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/react": "^19.0.8",
     "@types/node": "^22.2.0",
+    "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "prettier": "^3.3.3",
-    "vitest": "^3.0.5",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^3.0.5"
   }
 }

@@ -80,7 +80,6 @@
     }
   },
   "devDependencies": {
-    "typescript": "^5.5.4",
     "@langchain/langgraph-sdk": "^0.0.77",
     "@types/babel__code-frame": "^7.0.6",
     "@types/node": "^22.2.0",
@@ -91,6 +90,7 @@
     "jose": "^6.0.10",
     "postgres": "^3.4.5",
     "prettier": "^3.3.3",
+    "typescript": "^5.5.4",
     "vitest": "^3.0.5"
   }
 }
