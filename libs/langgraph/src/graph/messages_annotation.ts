@@ -68,25 +68,23 @@ export const MessagesAnnotation = Annotation.Root({
  *
  * @example
  * ```ts
- * import { BaseMessage } from "@langchain/core/messages";
- * import { Annotation, StateGraph, messagesStateReducer } from "@langchain/langgraph";
+ * import { z } from "zod";
+ * import type { BaseMessage, BaseMessageLike } from "@langchain/core/messages";
+ * import { StateGraph, messagesStateReducer } from "@langchain/langgraph";
  * import "@langchain/langgraph/zod";
  *
- * const schema = z.object({
+ * const AgentState = z.object({
  *   messages: z
- *     .array(z.string())
+ *     .custom<BaseMessage[]>()
  *     .default(() => [])
  *     .langgraph.reducer(
  *        messagesStateReducer,
- *        z.union([z.string(), z.array(z.string())])
+ *        z.custom<BaseMessageLike | BaseMessageLike[]>()
  *     ),
  * });
- * export const StateAnnotation = Annotation.Root({
- *   messages: Annotation<BaseMessage[]>({
- *     reducer: messagesStateReducer,
- *     default: () => [],
- *   }),
- * });
+ * const graph = new StateGraph(AgentState)
+ *   .addNode(...)
+ *   ...
  * ```
  */
 export const MessagesZodState = z.object({
