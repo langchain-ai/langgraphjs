@@ -383,67 +383,127 @@ export class StateGraph<
     }
   }
 
+  override addNode<K extends string>(
+    nodes:
+      | Record<K, NodeAction<S, U, C>>
+      | [
+          key: K,
+          action: NodeAction<S, U, C>,
+          options?: StateGraphAddNodeOptions
+        ][]
+  ): StateGraph<SD, S, U, N | K, I, O, C>;
+
   override addNode<K extends string, NodeInput = S>(
     key: K,
     action: NodeAction<NodeInput, U, C>,
     options?: StateGraphAddNodeOptions
+  ): StateGraph<SD, S, U, N | K, I, O, C>;
+
+  override addNode<K extends string, NodeInput = S>(
+    ...args:
+      | [
+          key: K,
+          action: NodeAction<NodeInput, U, C>,
+          options?: StateGraphAddNodeOptions
+        ]
+      | [
+          nodes:
+            | Record<K, NodeAction<NodeInput, U, C>>
+            | [
+                key: K,
+                action: NodeAction<NodeInput, U, C>,
+                options?: StateGraphAddNodeOptions
+              ][]
+        ]
   ): StateGraph<SD, S, U, N | K, I, O, C> {
-    if (key in this.channels) {
-      throw new Error(
-        `${key} is already being used as a state attribute (a.k.a. a channel), cannot also be used as a node name.`
-      );
+    function isMultipleNodes(
+      args: unknown[]
+    ): args is [
+      nodes:
+        | Record<K, NodeAction<NodeInput, U, C>>
+        | [
+            key: K,
+            action: NodeAction<NodeInput, U, C>,
+            options?: AddNodeOptions
+          ][]
+    ] {
+      return args.length >= 1 && typeof args[0] !== "string";
     }
 
-    for (const reservedChar of [
-      CHECKPOINT_NAMESPACE_SEPARATOR,
-      CHECKPOINT_NAMESPACE_END,
-    ]) {
-      if (key.includes(reservedChar)) {
+    const nodes = (
+      isMultipleNodes(args) // eslint-disable-line no-nested-ternary
+        ? Array.isArray(args[0])
+          ? args[0]
+          : Object.entries(args[0])
+        : [[args[0], args[1], args[2]]]
+    ) as [
+      K,
+      NodeAction<NodeInput, U, C>,
+      StateGraphAddNodeOptions | undefined
+    ][];
+
+    if (nodes.length === 0) {
+      throw new Error("No nodes provided in `addNode`");
+    }
+
+    for (const [key, action, options] of nodes) {
+      if (key in this.channels) {
         throw new Error(
-          `"${reservedChar}" is a reserved character and is not allowed in node names.`
+          `${key} is already being used as a state attribute (a.k.a. a channel), cannot also be used as a node name.`
         );
       }
-    }
-    this.warnIfCompiled(
-      `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
-    );
 
-    if (key in this.nodes) {
-      throw new Error(`Node \`${key}\` already present.`);
-    }
-    if (key === END || key === START) {
-      throw new Error(`Node \`${key}\` is reserved.`);
-    }
+      for (const reservedChar of [
+        CHECKPOINT_NAMESPACE_SEPARATOR,
+        CHECKPOINT_NAMESPACE_END,
+      ]) {
+        if (key.includes(reservedChar)) {
+          throw new Error(
+            `"${reservedChar}" is a reserved character and is not allowed in node names.`
+          );
+        }
+      }
+      this.warnIfCompiled(
+        `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
+      );
 
-    if (options?.input !== undefined) {
-      this._addSchema(options.input.spec);
-    }
+      if (key in this.nodes) {
+        throw new Error(`Node \`${key}\` already present.`);
+      }
+      if (key === END || key === START) {
+        throw new Error(`Node \`${key}\` is reserved.`);
+      }
 
-    let runnable;
-    if (Runnable.isRunnable(action)) {
-      runnable = action;
-    } else if (typeof action === "function") {
-      runnable = new RunnableCallable({
-        func: action,
-        name: key,
-        trace: false,
-      });
-    } else {
-      runnable = _coerceToRunnable(action);
-    }
-    const nodeSpec: StateGraphNodeSpec<S, U> = {
-      runnable: runnable as unknown as Runnable<S, U>,
-      retryPolicy: options?.retryPolicy,
-      metadata: options?.metadata,
-      input: options?.input?.spec ?? this._schemaDefinition,
-      subgraphs: isPregelLike(runnable)
-        ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          [runnable as any]
-        : options?.subgraphs,
-      ends: options?.ends,
-    };
+      if (options?.input !== undefined) {
+        this._addSchema(options.input.spec);
+      }
 
-    this.nodes[key as unknown as N] = nodeSpec;
+      let runnable;
+      if (Runnable.isRunnable(action)) {
+        runnable = action;
+      } else if (typeof action === "function") {
+        runnable = new RunnableCallable({
+          func: action,
+          name: key,
+          trace: false,
+        });
+      } else {
+        runnable = _coerceToRunnable(action);
+      }
+      const nodeSpec: StateGraphNodeSpec<S, U> = {
+        runnable: runnable as unknown as Runnable<S, U>,
+        retryPolicy: options?.retryPolicy,
+        metadata: options?.metadata,
+        input: options?.input?.spec ?? this._schemaDefinition,
+        subgraphs: isPregelLike(runnable)
+          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            [runnable as any]
+          : options?.subgraphs,
+        ends: options?.ends,
+      };
+
+      this.nodes[key as unknown as N] = nodeSpec;
+    }
 
     return this as StateGraph<SD, S, U, N | K, I, O, C>;
   }

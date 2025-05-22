@@ -59,6 +59,12 @@ export type BranchPathReturnValue =
   | (string | Send)[]
   | Promise<string | Send | (string | Send)[]>;
 
+type NodeAction<S, U, C extends StateDefinition> = RunnableLike<
+  S,
+  U extends object ? U & Record<string, any> : U, // eslint-disable-line @typescript-eslint/no-explicit-any
+  LangGraphRunnableConfig<StateType<C>>
+>;
+
 export class Branch<
   IO,
   N extends string,
@@ -207,48 +213,100 @@ export class Graph<
     return this.edges;
   }
 
+  addNode<K extends string>(
+    nodes:
+      | Record<K, NodeAction<RunInput, RunOutput, C>>
+      | [
+          key: K,
+          action: NodeAction<RunInput, RunOutput, C>,
+          options?: AddNodeOptions
+        ][]
+  ): Graph<N | K, RunInput, RunOutput>;
+
   addNode<K extends string, NodeInput = RunInput>(
     key: K,
-    action: RunnableLike<
-      NodeInput,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      RunOutput extends object ? RunOutput & Record<string, any> : RunOutput,
-      LangGraphRunnableConfig<StateType<C>>
-    >,
+    action: NodeAction<NodeInput, RunOutput, C>,
     options?: AddNodeOptions
+  ): Graph<N | K, RunInput, RunOutput>;
+
+  addNode<K extends string, NodeInput = RunInput>(
+    ...args:
+      | [
+          key: K,
+          action: NodeAction<NodeInput, RunOutput, C>,
+          options?: AddNodeOptions
+        ]
+      | [
+          nodes:
+            | Record<K, NodeAction<NodeInput, RunOutput, C>>
+            | [
+                key: K,
+                action: NodeAction<NodeInput, RunOutput, C>,
+                options?: AddNodeOptions
+              ][]
+        ]
   ): Graph<N | K, RunInput, RunOutput> {
-    for (const reservedChar of [
-      CHECKPOINT_NAMESPACE_SEPARATOR,
-      CHECKPOINT_NAMESPACE_END,
-    ]) {
-      if (key.includes(reservedChar)) {
-        throw new Error(
-          `"${reservedChar}" is a reserved character and is not allowed in node names.`
-        );
+    function isMutlipleNodes(
+      args: unknown[]
+    ): args is [
+      nodes:
+        | Record<K, NodeAction<NodeInput, RunOutput, C>>
+        | [
+            key: K,
+            action: NodeAction<NodeInput, RunOutput, C>,
+            options?: AddNodeOptions
+          ][],
+      options?: AddNodeOptions
+    ] {
+      return args.length >= 1 && typeof args[0] !== "string";
+    }
+
+    const nodes = (
+      isMutlipleNodes(args) // eslint-disable-line no-nested-ternary
+        ? Array.isArray(args[0])
+          ? args[0]
+          : Object.entries(args[0])
+        : [[args[0], args[1], args[2]]]
+    ) as [K, NodeAction<NodeInput, RunOutput, C>, AddNodeOptions][];
+
+    if (nodes.length === 0) {
+      throw new Error("No nodes provided in `addNode`");
+    }
+
+    for (const [key, action, options] of nodes) {
+      for (const reservedChar of [
+        CHECKPOINT_NAMESPACE_SEPARATOR,
+        CHECKPOINT_NAMESPACE_END,
+      ]) {
+        if (key.includes(reservedChar)) {
+          throw new Error(
+            `"${reservedChar}" is a reserved character and is not allowed in node names.`
+          );
+        }
       }
-    }
-    this.warnIfCompiled(
-      `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
-    );
+      this.warnIfCompiled(
+        `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
+      );
 
-    if (key in this.nodes) {
-      throw new Error(`Node \`${key}\` already present.`);
-    }
-    if (key === END) {
-      throw new Error(`Node \`${key}\` is reserved.`);
-    }
+      if (key in this.nodes) {
+        throw new Error(`Node \`${key}\` already present.`);
+      }
+      if (key === END) {
+        throw new Error(`Node \`${key}\` is reserved.`);
+      }
 
-    const runnable = _coerceToRunnable<RunInput, RunOutput>(
-      // Account for arbitrary state due to Send API
-      action as RunnableLike<RunInput, RunOutput>
-    );
+      const runnable = _coerceToRunnable<RunInput, RunOutput>(
+        // Account for arbitrary state due to Send API
+        action as RunnableLike<RunInput, RunOutput>
+      );
 
-    this.nodes[key as unknown as N] = {
-      runnable,
-      metadata: options?.metadata,
-      subgraphs: isPregelLike(runnable) ? [runnable] : options?.subgraphs,
-      ends: options?.ends,
-    } as NodeSpecType;
+      this.nodes[key as unknown as N] = {
+        runnable,
+        metadata: options?.metadata,
+        subgraphs: isPregelLike(runnable) ? [runnable] : options?.subgraphs,
+        ends: options?.ends,
+      } as NodeSpecType;
+    }
 
     return this as Graph<N | K, RunInput, RunOutput, NodeSpecType>;
   }
