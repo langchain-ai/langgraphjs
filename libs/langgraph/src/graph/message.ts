@@ -5,6 +5,8 @@ import {
 } from "@langchain/core/messages";
 import { v4 } from "uuid";
 import { StateGraph } from "./state.js";
+import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import type { StreamMessagesHandler } from "../pregel/messages.js";
 
 export type Messages =
   | Array<BaseMessage | BaseMessageLike>
@@ -84,4 +86,56 @@ export class MessageGraph extends StateGraph<
       },
     });
   }
+}
+
+export function pushMessage(
+  message: BaseMessage | BaseMessageLike,
+  config: LangGraphRunnableConfig,
+  options?: { stateKey?: string | null }
+) {
+  let stateKey: string | undefined = options?.stateKey ?? "messages";
+  if (options?.stateKey === null) {
+    stateKey = undefined;
+  }
+
+  // coerce to message
+  const validMessage = coerceMessageLikeToMessage(message);
+  if (!validMessage.id) throw new Error("Message ID is required.");
+
+  const callbacks = (() => {
+    if (Array.isArray(config.callbacks)) {
+      return config.callbacks;
+    }
+
+    if (typeof config.callbacks !== "undefined") {
+      return config.callbacks.handlers;
+    }
+
+    return [];
+  })();
+
+  const messagesHandler = callbacks.find(
+    (cb): cb is StreamMessagesHandler =>
+      "name" in cb && cb.name === "StreamMessagesHandler"
+  );
+
+  if (messagesHandler) {
+    const metadata = config.metadata ?? {};
+    const namespace = (
+      (metadata.langgraph_checkpoint_ns ?? "") as string
+    ).split("|");
+
+    messagesHandler._emit(
+      [namespace, metadata],
+      validMessage,
+      undefined,
+      false
+    );
+  }
+
+  if (stateKey) {
+    config.configurable?.__pregel_send?.([[stateKey, validMessage]]);
+  }
+
+  return validMessage;
 }
