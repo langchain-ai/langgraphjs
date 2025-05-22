@@ -54,7 +54,12 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     this.streamFn = streamFn;
   }
 
-  _emit(meta: Meta, message: BaseMessage, runId: string, dedupe = false) {
+  _emit(
+    meta: Meta,
+    message: BaseMessage,
+    runId: string | undefined,
+    dedupe = false
+  ) {
     if (
       dedupe &&
       message.id !== undefined &&
@@ -64,20 +69,23 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     }
 
     let messageId = message.id;
-    if (isToolMessage(message)) {
-      // Distinguish tool messages by tool call ID.
-      messageId ??= `run-${runId}-tool-${message.tool_call_id}`;
-    } else {
-      // For instance in ChatAnthropic, the first chunk has an message ID
-      // but the subsequent chunks do not. To avoid clients seeing two messages
-      // we rename the message ID if it's being auto-set to `run-${runId}`
-      // (see https://github.com/langchain-ai/langchainjs/pull/6646).
-      if (messageId == null || messageId === `run-${runId}`) {
-        messageId =
-          this.stableMessageIdMap[runId] ?? messageId ?? `run-${runId}`;
-      }
 
-      this.stableMessageIdMap[runId] ??= messageId;
+    if (runId != null) {
+      if (isToolMessage(message)) {
+        // Distinguish tool messages by tool call ID.
+        messageId ??= `run-${runId}-tool-${message.tool_call_id}`;
+      } else {
+        // For instance in ChatAnthropic, the first chunk has an message ID
+        // but the subsequent chunks do not. To avoid clients seeing two messages
+        // we rename the message ID if it's being auto-set to `run-${runId}`
+        // (see https://github.com/langchain-ai/langchainjs/pull/6646).
+        if (messageId == null || messageId === `run-${runId}`) {
+          messageId =
+            this.stableMessageIdMap[runId] ?? messageId ?? `run-${runId}`;
+        }
+
+        this.stableMessageIdMap[runId] ??= messageId;
+      }
     }
 
     if (messageId !== message.id) {
