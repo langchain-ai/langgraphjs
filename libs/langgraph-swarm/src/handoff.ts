@@ -28,6 +28,7 @@ function _normalizeAgentName(agentName: string): string {
 interface CreateHandoffToolParams {
   agentName: string;
   description?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   updateState?: (state: any) => Record<string, any>;
 }
 
