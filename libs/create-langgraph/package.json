@@ -17,7 +17,7 @@
     "cli": "tsx src/cli.mts",
     "cli:watch": "tsx watch src/cli.mts",
     "build": "npx -y bun scripts/build.mjs",
-    "prepack": "pnpm run build",
+    "prepack": "yarn run build",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

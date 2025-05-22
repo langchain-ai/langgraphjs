@@ -20,7 +20,7 @@
   "scripts": {
     "clean": "npx -y bun scripts/clean.mjs",
     "build": "npx -y bun scripts/build.mjs",
-    "prepack": "pnpm run build",
+    "prepack": "yarn run build",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

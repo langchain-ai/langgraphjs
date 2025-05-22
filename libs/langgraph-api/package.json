@@ -37,7 +37,7 @@
     "clean": "npx -y bun scripts/clean.mjs",
     "build": "npx -y bun scripts/build.mjs",
     "dev": "tsx ./tests/utils.server.mts --dev",
-    "prepack": "pnpm run build",
+    "prepack": "yarn run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:parser": "vitest run ./tests/parser.test.mts --testTimeout 15000",
