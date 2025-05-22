@@ -25,12 +25,12 @@ If you notice this happening, please just let us know.
 To get started, you will need to install the dependencies for the project. To do so, run:
 
 ```bash
-pnpm install
+yarn install
 ```
 
 To build the project, run:
 
 ```bash
-pnpm build
+yarn build
 ```
 

@@ -9,10 +9,10 @@ const { values, positionals } = parseArgs({
 
 await $`rm -rf tests/graphs/.langgraph_api`;
 await Promise.race([
-  $`pnpm tsx ./tests/utils.server.mts ${values.config}`,
+  $`yarn tsx ./tests/utils.server.mts ${values.config}`,
   (async () => {
     await $`bun x wait-port -t 24000 localhost:2024`;
-    await $`pnpm vitest run ${positionals}`;
+    await $`yarn vitest run ${positionals}`;
     process.exit(0);
   })(),
 ]);

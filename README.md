@@ -20,19 +20,19 @@ cd langgraphjs-api
 2. Install dependencies:
 
 ```bash
-pnpm install
+yarn install
 ```
 
 3. Build the project:
 
 ```bash
-pnpm run build
+yarn run build
 ```
 
 4. Run tests:
 
 ```bash
-pnpm test
+yarn test
 ```
 
 ## Contributing

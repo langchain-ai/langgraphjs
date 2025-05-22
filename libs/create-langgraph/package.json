@@ -4,9 +4,7 @@
   "description": "",
   "license": "MIT",
   "main": "dist/cli.mjs",
-  "bin": {
-    "create-langgraph": "dist/cli.mjs"
-  },
+  "bin": "dist/cli.mjs",
   "files": [
     "dist"
   ],
@@ -19,7 +17,7 @@
     "cli": "tsx src/cli.mts",
     "cli:watch": "tsx watch src/cli.mts",
     "build": "npx -y bun scripts/build.mjs",
-    "prepack": "pnpm run build",
+    "prepack": "yarn run build",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -35,8 +33,8 @@
     "@types/node": "^22.2.0",
     "prettier": "^3.3.3",
     "tsx": "^4.19.3",
-    "vitest": "^3.0.5",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^3.0.5"
   },
   "keywords": []
 }

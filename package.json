@@ -1,13 +1,16 @@
 {
   "name": "langgraphjs-api",
   "private": true,
-  "packageManager": "pnpm@10.2.0",
+  "packageManager": "yarn@3.5.1",
   "author": "LangChain",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git@github.com:langchain-ai/langgraphjs-api.git"
   },
+  "workspaces": [
+    "libs/*"
+  ],
   "scripts": {
     "clean": "turbo run clean",
     "test": "turbo run test",

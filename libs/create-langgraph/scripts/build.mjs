@@ -7,4 +7,4 @@ function $(strings, ...rest) {
 }
 
 await $`rm -rf dist`;
-await $`pnpm tsc --outDir dist`;
+await $`yarn tsc --outDir dist`;
