@@ -1,6 +1,6 @@
 /* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
 
-import { BaseMessage, BaseMessageLike } from "@langchain/core/messages";
+import { BaseMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { Annotation } from "./annotation.js";
 import { Messages, messagesStateReducer } from "./message.js";
