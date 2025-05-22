@@ -34,7 +34,10 @@ describe("StateGraph with Zod schemas", () => {
           expect(input.query).toBeDefined();
           // @ts-expect-error count is not in the node's input schema, but we still want to check that it's not in the input
           expect(input.count).toBeUndefined();
-          return { messages: [...input.messages, "processed"] };
+          return {
+            messages: [...input.messages, "processed"],
+            query: "Not in the output",
+          };
         },
         { input: processNodeInputSchema }
       )
