@@ -19,6 +19,7 @@ import {
   RunnableToolLike,
   RunnableSequence,
   RunnableBinding,
+  type RunnableLike,
 } from "@langchain/core/runnables";
 import { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
 import {
@@ -30,7 +31,7 @@ import { z } from "zod";
 
 import {
   StateGraph,
-  CompiledStateGraph,
+  type CompiledStateGraph,
   AnnotationRoot,
 } from "../graph/index.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
@@ -327,6 +328,27 @@ export const createReactAgentAnnotation = <
     structuredResponse: Annotation<T>,
   });
 
+type WithStateGraphNodes<K extends string, Graph> = Graph extends StateGraph<
+  infer SD,
+  infer S,
+  infer U,
+  infer N,
+  infer I,
+  infer O,
+  infer C
+>
+  ? StateGraph<SD, S, U, N | K, I, O, C>
+  : never;
+
+const PreHookAnnotation = Annotation.Root({
+  llmInputMessages: Annotation<BaseMessage[], Messages>({
+    reducer: messagesStateReducer,
+    default: () => [],
+  }),
+});
+
+type PreHookAnnotation = typeof PreHookAnnotation;
+
 export type CreateReactAgentParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   A extends AnnotationRoot<any> = AnnotationRoot<any>,
@@ -407,6 +429,26 @@ export type CreateReactAgentParams<
           Example: `"How can I help you"` -> `"<name>agent_name</name><content>How can I help you?</content>"`
    */
   includeAgentName?: "inline" | undefined;
+
+  /**
+   * An optional node to add before the `agent` node (i.e., the node that calls the LLM).
+   * Useful for managing long message histories (e.g., message trimming, summarization, etc.).
+   */
+  preModelHook?: RunnableLike<
+    A["State"] & PreHookAnnotation["State"],
+    A["Update"] & PreHookAnnotation["Update"],
+    LangGraphRunnableConfig
+  >;
+
+  /**
+   * An optional node to add after the `agent` node (i.e., the node that calls the LLM).
+   * Useful for implementing human-in-the-loop, guardrails, validation, or other post-processing.
+   */
+  postModelHook?: RunnableLike<
+    A["State"],
+    A["Update"],
+    LangGraphRunnableConfig
+  >;
 };
 
 /**
@@ -483,6 +525,8 @@ export function createReactAgent<
     interruptAfter,
     store,
     responseFormat,
+    preModelHook,
+    postModelHook,
     name,
     includeAgentName,
   } = params;
@@ -537,18 +581,15 @@ export function createReactAgent<
       .map((tool) => tool.name)
   );
 
-  const shouldContinue = (state: AgentState<StructuredResponseFormat>) => {
-    const { messages } = state;
-    const lastMessage = messages[messages.length - 1];
-    if (
-      isAIMessage(lastMessage) &&
-      (!lastMessage.tool_calls || lastMessage.tool_calls.length === 0)
-    ) {
-      return responseFormat != null ? "generate_structured_response" : END;
-    } else {
-      return "continue";
+  function getModelInputState(
+    state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"]
+  ): Omit<AgentState<StructuredResponseFormat>, "llmInputMessages"> {
+    const { messages, llmInputMessages, ...rest } = state;
+    if (llmInputMessages != null && llmInputMessages.length > 0) {
+      return { messages: llmInputMessages, ...rest };
     }
-  };
+    return { messages, ...rest };
+  }
 
   const generateStructuredResponse = async (
     state: AgentState<StructuredResponseFormat>,
@@ -583,14 +624,17 @@ export function createReactAgent<
   };
 
   const callModel = async (
-    state: AgentState<StructuredResponseFormat>,
+    state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"],
     config?: RunnableConfig
   ) => {
     // NOTE: we're dynamically creating the model runnable here
     // to ensure that we can validate ConfigurableModel properly
     const modelRunnable = await getModelRunnable(llm);
     // TODO: Auto-promote streaming.
-    const response = (await modelRunnable.invoke(state, config)) as BaseMessage;
+    const response = (await modelRunnable.invoke(
+      getModelInputState(state),
+      config
+    )) as BaseMessage;
     // add agent name to the AIMessage
     // TODO: figure out if we can avoid mutating the message directly
     response.name = name;
@@ -598,51 +642,141 @@ export function createReactAgent<
     return { messages: [response] };
   };
 
-  const workflow = new StateGraph(
-    stateSchema ?? createReactAgentAnnotation<StructuredResponseFormat>()
-  )
-    .addNode("agent", callModel)
-    .addNode("tools", toolNode)
-    .addEdge(START, "agent");
+  const schema =
+    stateSchema ?? createReactAgentAnnotation<StructuredResponseFormat>();
+
+  const workflow = new StateGraph(schema).addNode("tools", toolNode);
+
+  const allNodeWorkflows = workflow as WithStateGraphNodes<
+    | "pre_model_hook"
+    | "post_model_hook"
+    | "generate_structured_response"
+    | "agent",
+    typeof workflow
+  >;
+
+  let entrypoint: "agent" | "pre_model_hook" = "agent";
+  let inputSchema: AnnotationRoot<(typeof schema)["spec"]> | undefined;
+  if (preModelHook != null) {
+    allNodeWorkflows
+      .addNode("pre_model_hook", preModelHook)
+      .addEdge("pre_model_hook", "agent");
+    entrypoint = "pre_model_hook";
+
+    inputSchema = new AnnotationRoot({
+      ...schema.spec,
+      ...PreHookAnnotation.spec,
+    });
+  } else {
+    entrypoint = "agent";
+  }
+
+  allNodeWorkflows
+    .addNode("agent", callModel, { input: inputSchema })
+    .addEdge(START, entrypoint);
+
+  if (postModelHook != null) {
+    allNodeWorkflows
+      .addNode("post_model_hook", postModelHook)
+      .addEdge("agent", "post_model_hook")
+      .addConditionalEdges(
+        "post_model_hook",
+        (state) => {
+          const { messages } = state;
+          const lastMessage = messages[messages.length - 1];
+
+          if (isAIMessage(lastMessage) && lastMessage.tool_calls?.length) {
+            return "tools" as const;
+          }
+
+          if (isToolMessage(lastMessage)) {
+            return "entrypoint" as const;
+          }
+
+          if (responseFormat != null) {
+            return "generate_structured_response" as const;
+          }
+
+          return END;
+        },
+        {
+          tools: "tools",
+          entrypoint,
+          generate_structured_response:
+            responseFormat != null ? "generate_structured_response" : END,
+          [END]: END,
+        }
+      );
+  }
 
   if (responseFormat !== undefined) {
     workflow
       .addNode("generate_structured_response", generateStructuredResponse)
-      .addEdge("generate_structured_response", END)
-      .addConditionalEdges("agent", shouldContinue, {
-        continue: "tools",
-        [END]: END,
-        generate_structured_response: "generate_structured_response",
-      });
-  } else {
-    workflow.addConditionalEdges("agent", shouldContinue, {
-      continue: "tools",
-      [END]: END,
-    });
+      .addEdge("generate_structured_response", END);
   }
 
-  const routeToolResponses = (state: AgentState<StructuredResponseFormat>) => {
-    // Check the last consecutive tool calls
-    for (let i = state.messages.length - 1; i >= 0; i -= 1) {
-      const message = state.messages[i];
-      if (!isToolMessage(message)) {
-        break;
-      }
-      // Check if this tool is configured to return directly
-      if (message.name !== undefined && shouldReturnDirect.has(message.name)) {
+  allNodeWorkflows.addConditionalEdges(
+    "agent",
+    (state) => {
+      const { messages } = state;
+      const lastMessage = messages[messages.length - 1];
+
+      // if there's no function call, we finish
+      if (!isAIMessage(lastMessage) || !lastMessage.tool_calls?.length) {
+        if (postModelHook != null) {
+          return "post_model_hook" as const;
+        }
+
+        if (responseFormat != null) {
+          return "generate_structured_response" as const;
+        }
+
         return END;
       }
+
+      // there are function calls, we continue
+      if (postModelHook != null) {
+        return "post_model_hook" as const;
+      }
+
+      return "tools" as const;
+    },
+    {
+      tools: "tools",
+      post_model_hook: postModelHook != null ? "post_model_hook" : END,
+      generate_structured_response:
+        responseFormat != null ? "generate_structured_response" : END,
+      [END]: END,
     }
-    return "agent";
-  };
+  );
 
   if (shouldReturnDirect.size > 0) {
-    workflow.addConditionalEdges("tools", routeToolResponses, ["agent", END]);
+    allNodeWorkflows.addConditionalEdges(
+      "tools",
+      (state) => {
+        // Check the last consecutive tool calls
+        for (let i = state.messages.length - 1; i >= 0; i -= 1) {
+          const message = state.messages[i];
+          if (!isToolMessage(message)) break;
+
+          // Check if this tool is configured to return directly
+          if (
+            message.name !== undefined &&
+            shouldReturnDirect.has(message.name)
+          ) {
+            return END;
+          }
+        }
+
+        return "agent" as const;
+      },
+      ["agent", END]
+    );
   } else {
-    workflow.addEdge("tools", "agent");
+    allNodeWorkflows.addEdge("tools", "agent");
   }
 
-  return workflow.compile({
+  return allNodeWorkflows.compile({
     checkpointer: checkpointer ?? checkpointSaver,
     interruptBefore,
     interruptAfter,

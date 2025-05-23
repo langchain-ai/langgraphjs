@@ -37,6 +37,7 @@ import {
   interrupt,
   MemorySaver,
   messagesStateReducer,
+  REMOVE_ALL_MESSAGES,
   Send,
   StateGraph,
 } from "../index.js";
@@ -44,6 +45,7 @@ import {
   MessagesAnnotation,
   MessagesZodState,
 } from "../graph/messages_annotation.js";
+import { gatherIterator } from "../utils.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -1046,6 +1048,222 @@ describe("createReactAgent with ToolNode", () => {
     );
     expect(resNoErrorHandlingResume.messages.length).toEqual(4);
     expect(resNoErrorHandlingResume.messages[2].content).toEqual("Approved.");
+  });
+});
+
+describe("createReactAgent with hooks", () => {
+  it("preModelHook", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [new AIMessage({ id: "0", content: "Hello!" })],
+    });
+    const llmSpy = vi.spyOn(llm, "_generate");
+
+    // Test `llm_input_messages`
+    let agent = createReactAgent({
+      llm,
+      tools: [],
+      preModelHook: () => ({
+        llmInputMessages: [
+          new HumanMessage({ id: "human", content: "pre-hook" }),
+        ],
+      }),
+    });
+
+    expect("pre_model_hook" in agent.nodes).toBe(true);
+    expect(await agent.invoke({ messages: [new HumanMessage("hi?")] })).toEqual(
+      {
+        messages: [
+          new _AnyIdHumanMessage("hi?"),
+          new AIMessage({ id: "0", content: "Hello!" }),
+        ],
+      }
+    );
+
+    expect(llmSpy).toHaveBeenCalledWith(
+      [new HumanMessage({ id: "human", content: "pre-hook" })],
+      expect.anything(),
+      undefined
+    );
+
+    // Test `messages`
+    agent = createReactAgent({
+      llm,
+      tools: [],
+      preModelHook: () => ({
+        messages: [
+          new RemoveMessage({ id: REMOVE_ALL_MESSAGES }),
+          new HumanMessage("Hello!"),
+        ],
+      }),
+    });
+
+    expect("pre_model_hook" in agent.nodes).toBe(true);
+    expect(await agent.invoke({ messages: [new HumanMessage("hi?")] })).toEqual(
+      {
+        messages: [
+          new _AnyIdHumanMessage("Hello!"),
+          new AIMessage({ id: "0", content: "Hello!" }),
+        ],
+      }
+    );
+  });
+
+  it("postModelHook", async () => {
+    const FlagAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      flag: Annotation<boolean>,
+    });
+
+    const llm = new FakeToolCallingChatModel({
+      responses: [new AIMessage({ id: "1", content: "hi?" })],
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools: [],
+      postModelHook: () => ({ flag: true }),
+      stateSchema: FlagAnnotation,
+    });
+
+    expect("post_model_hook" in agent.nodes).toBe(true);
+    expect(
+      await agent.invoke({
+        messages: [new HumanMessage("hi?")],
+        flag: false,
+      })
+    ).toMatchObject({ flag: true });
+
+    expect(
+      await gatherIterator(
+        agent.stream({
+          messages: [new HumanMessage("hi?")],
+          flag: false,
+        })
+      )
+    ).toMatchObject([
+      {
+        agent: {
+          messages: [new AIMessage({ id: "1", content: "hi?" })],
+        },
+      },
+      { post_model_hook: { flag: true } },
+    ]);
+  });
+
+  it("postModelHook + structured response", async () => {
+    const weatherResponseSchema = z.object({
+      temperature: z.number().describe("The temperature in fahrenheit"),
+    });
+
+    const FlagAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      flag: Annotation<boolean>,
+      structuredResponse: Annotation<z.infer<typeof weatherResponseSchema>>,
+    });
+
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          id: "1",
+          content: "What's the weather?",
+          tool_calls: [
+            {
+              name: "get_weather",
+              args: {},
+              id: "1",
+              type: "tool_call",
+            },
+          ],
+        }),
+        new AIMessage({ id: "3", content: "The weather is nice" }),
+      ],
+      structuredResponse: { temperature: 75 },
+    });
+
+    const getWeather = tool(async () => "The weather is sunny and 75°F.", {
+      name: "get_weather",
+      description: "Get the weather",
+      schema: z.object({}),
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools: [getWeather],
+      responseFormat: weatherResponseSchema,
+      postModelHook: () => ({ flag: true }),
+      stateSchema: FlagAnnotation,
+    });
+
+    expect("post_model_hook" in agent.nodes).toBe(true);
+    expect("generate_structured_response" in agent.nodes).toBe(true);
+
+    const response = await agent.invoke({
+      messages: [new HumanMessage({ id: "0", content: "What's the weather?" })],
+      flag: false,
+    });
+
+    expect(response).toMatchObject({
+      flag: true,
+      structuredResponse: { temperature: 75 },
+    });
+
+    expect(
+      await gatherIterator(
+        agent.stream({
+          messages: [
+            new HumanMessage({ id: "0", content: "What's the weather?" }),
+          ],
+          flag: false,
+        })
+      )
+    ).toEqual([
+      {
+        agent: {
+          messages: [
+            new AIMessage({
+              content: "What's the weather?",
+              id: "1",
+              tool_calls: [
+                {
+                  name: "get_weather",
+                  args: {},
+                  id: "1",
+                  type: "tool_call",
+                },
+              ],
+            }),
+          ],
+        },
+      },
+      { post_model_hook: { flag: true } },
+      {
+        tools: {
+          messages: [
+            new _AnyIdToolMessage({
+              content: "The weather is sunny and 75°F.",
+              name: "get_weather",
+              tool_call_id: "1",
+            }),
+          ],
+        },
+      },
+      {
+        agent: {
+          messages: [
+            new AIMessage({
+              content: "The weather is nice",
+              id: "3",
+            }),
+          ],
+        },
+      },
+      { post_model_hook: { flag: true } },
+      {
+        generate_structured_response: {
+          structuredResponse: { temperature: 75 },
+        },
+      },
+    ]);
   });
 });
 
