@@ -850,9 +850,11 @@ export class CompiledStateGraph<
       );
       const isSingleInput =
         Object.keys(inputValues).length === 1 && ROOT in inputValues;
+      const branchChannel = `branch:to:${key}` as string | N;
       this.channels[key] = new EphemeralValue(false);
+      this.channels[branchChannel] = new EphemeralValue(false);
       this.nodes[key] = new PregelNode<S, U>({
-        triggers: [],
+        triggers: [branchChannel],
         // read state keys
         channels: isSingleInput ? Object.keys(inputValues) : inputValues,
         // publish to this channel and state keys
@@ -914,7 +916,7 @@ export class CompiledStateGraph<
 
   attachBranch(
     start: N | typeof START,
-    name: string,
+    _: string,
     branch: Branch<S, N>,
     options: { withReader?: boolean } = { withReader: true }
   ): void {
@@ -927,7 +929,7 @@ export class CompiledStateGraph<
 
       const writes: (ChannelWriteEntry | Send)[] = filteredPackets.map((p) => {
         if (_isSend(p)) return p;
-        return { channel: `branch:${start}:${name}:${p}`, value: start };
+        return { channel: `branch:to:${p}`, value: start };
       });
       await ChannelWrite.doWrite(
         { ...config, tags: (config.tags ?? []).concat([TAG_HIDDEN]) },
@@ -949,18 +951,6 @@ export class CompiledStateGraph<
           : undefined
       )
     );
-
-    // attach branch subscribers
-    const ends = branch.ends
-      ? Object.values(branch.ends)
-      : Object.keys(this.builder.nodes);
-    for (const end of ends) {
-      if (end === END) continue;
-      const channelName = `branch:${start}:${name}:${end}`;
-      (this.channels as Record<string, BaseChannel>)[channelName] =
-        new EphemeralValue(false);
-      this.nodes[end as N].triggers.push(channelName);
-    }
   }
 
   protected async _validateInput(

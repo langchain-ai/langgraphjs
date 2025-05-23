@@ -14,7 +14,6 @@ import {
   NULL_TASK_ID,
   RESUME,
   RETURN,
-  SELF,
   TAG_HIDDEN,
   TASKS,
 } from "../constants.js";
@@ -87,7 +86,7 @@ export function* mapCommand(
       if (_isSend(send)) {
         yield [NULL_TASK_ID, TASKS, send];
       } else if (typeof send === "string") {
-        yield [NULL_TASK_ID, `branch:__start__:${SELF}:${send}`, "__start__"];
+        yield [NULL_TASK_ID, `branch:to:${send}`, "__start__"];
       } else {
         throw new Error(
           `In Command.send, expected Send or string, got ${typeof send}`
