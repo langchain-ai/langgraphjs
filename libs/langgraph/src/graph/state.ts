@@ -851,19 +851,13 @@ export class CompiledStateGraph<
       const isSingleInput =
         Object.keys(inputValues).length === 1 && ROOT in inputValues;
       const branchChannel = `branch:to:${key}` as string | N;
-      this.channels[key] = new EphemeralValue(false);
       this.channels[branchChannel] = new EphemeralValue(false);
       this.nodes[key] = new PregelNode<S, U>({
         triggers: [branchChannel],
         // read state keys
         channels: isSingleInput ? Object.keys(inputValues) : inputValues,
-        // publish to this channel and state keys
-        writers: [
-          new ChannelWrite(
-            stateWriteEntries.concat({ channel: key, value: key }),
-            [TAG_HIDDEN]
-          ),
-        ],
+        // publish to state keys
+        writers: [new ChannelWrite(stateWriteEntries, [TAG_HIDDEN])],
         mapper: isSingleInput
           ? undefined
           : // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -882,10 +876,15 @@ export class CompiledStateGraph<
   }
 
   attachEdge(start: N | N[] | "__start__", end: N | "__end__"): void {
-    if (end === END) {
-      return;
-    }
-    if (Array.isArray(start)) {
+    if (end === END) return;
+    if (typeof start === "string") {
+      this.nodes[start].writers.push(
+        new ChannelWrite(
+          [{ channel: `branch:to:${end}`, value: null }],
+          [TAG_HIDDEN]
+        )
+      );
+    } else if (Array.isArray(start)) {
       const channelName = `join:${start.join("+")}:${end}`;
       // register channel
       (this.channels as Record<string, BaseChannel>)[channelName] =
@@ -898,19 +897,6 @@ export class CompiledStateGraph<
           new ChannelWrite([{ channel: channelName, value: s }], [TAG_HIDDEN])
         );
       }
-    } else if (start === START) {
-      const channelName = `${START}:${end}`;
-      // register channel
-      (this.channels as Record<string, BaseChannel>)[channelName] =
-        new EphemeralValue();
-      // subscribe to channel
-      this.nodes[end].triggers.push(channelName);
-      // publish to channel
-      this.nodes[START].writers.push(
-        new ChannelWrite([{ channel: channelName, value: START }], [TAG_HIDDEN])
-      );
-    } else {
-      this.nodes[end].triggers.push(start);
     }
   }
 
