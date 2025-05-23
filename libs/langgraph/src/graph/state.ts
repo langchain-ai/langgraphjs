@@ -923,17 +923,11 @@ export class CompiledStateGraph<
       config: LangGraphRunnableConfig
     ) => {
       const filteredPackets = packets.filter((p) => p !== END);
-      if (!filteredPackets.length) {
-        return;
-      }
+      if (!filteredPackets.length) return;
+
       const writes: (ChannelWriteEntry | Send)[] = filteredPackets.map((p) => {
-        if (_isSend(p)) {
-          return p;
-        }
-        return {
-          channel: `branch:${start}:${name}:${p}`,
-          value: start,
-        };
+        if (_isSend(p)) return p;
+        return { channel: `branch:${start}:${name}:${p}`, value: start };
       });
       await ChannelWrite.doWrite(
         { ...config, tags: (config.tags ?? []).concat([TAG_HIDDEN]) },
@@ -961,9 +955,7 @@ export class CompiledStateGraph<
       ? Object.values(branch.ends)
       : Object.keys(this.builder.nodes);
     for (const end of ends) {
-      if (end === END) {
-        continue;
-      }
+      if (end === END) continue;
       const channelName = `branch:${start}:${name}:${end}`;
       (this.channels as Record<string, BaseChannel>)[channelName] =
         new EphemeralValue(false);
