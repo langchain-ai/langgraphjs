@@ -4926,7 +4926,7 @@ graph TD;
           id: anyStringSame("task2"),
           name: "tool_two_slow",
           input: { my_key: "value prepared", market: "DE" },
-          triggers: ["branch:prepare:condition:tool_two_slow"],
+          triggers: ["branch:to:tool_two_slow"],
           interrupts: [],
         },
       },
