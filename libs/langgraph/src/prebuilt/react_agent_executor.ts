@@ -669,7 +669,7 @@ export function createReactAgent<
       .addEdge("pre_model_hook", "agent");
     entrypoint = "pre_model_hook";
 
-    inputSchema = new AnnotationRoot({
+    inputSchema = Annotation.Root({
       ...schema.spec,
       ...PreHookAnnotation.spec,
     });
