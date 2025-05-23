@@ -16,8 +16,8 @@ test("prebuilt agent", async () => {
   expect(mermaid).toEqual(`%%{init: {'flowchart': {'curve': 'linear'}}}%%
 graph TD;
 \t__start__([<p>__start__</p>]):::first
-\tagent(agent)
 \ttools(tools)
+\tagent(agent)
 \t__end__([<p>__end__</p>]):::last
 \t__start__ --> agent;
 \ttools --> agent;
