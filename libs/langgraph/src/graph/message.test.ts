@@ -6,7 +6,11 @@ import {
   RemoveMessage,
   BaseMessage,
 } from "@langchain/core/messages";
-import { messagesStateReducer, pushMessage } from "./message.js";
+import {
+  messagesStateReducer,
+  pushMessage,
+  REMOVE_ALL_MESSAGES,
+} from "./message.js";
 import { START } from "../constants.js";
 import { StateGraph } from "../graph/state.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
@@ -157,6 +161,39 @@ describe("messagesStateReducer", () => {
       new AIMessage({ id: "2", content: "Hi there!" }),
     ];
     expect(result).toEqual(expected);
+  });
+
+  it("should remove all messages", () => {
+    // simple removal
+    expect(
+      messagesStateReducer(
+        [new HumanMessage("Hello"), new AIMessage("Hi there!")],
+        [new RemoveMessage({ id: REMOVE_ALL_MESSAGES })]
+      )
+    ).toEqual([]);
+
+    // removal and update (i.e. overwriting)
+    expect(
+      messagesStateReducer(
+        [new HumanMessage("Hello"), new AIMessage("Hi there!")],
+        [
+          new RemoveMessage({ id: REMOVE_ALL_MESSAGES }),
+          new HumanMessage({ id: "1", content: "Updated hello" }),
+        ]
+      )
+    ).toEqual([new HumanMessage({ id: "1", content: "Updated hello" })]);
+
+    // test removing preceding messages in the right list
+    expect(
+      messagesStateReducer(
+        [new HumanMessage("Hello"), new AIMessage("Hi there!")],
+        [
+          new HumanMessage("Updated hello"),
+          new RemoveMessage({ id: REMOVE_ALL_MESSAGES }),
+          new HumanMessage({ id: "1", content: "Updated hi there" }),
+        ]
+      )
+    ).toEqual([new HumanMessage({ id: "1", content: "Updated hi there" })]);
   });
 });
 
