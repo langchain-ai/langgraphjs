@@ -6,6 +6,7 @@ export {
   MessageGraph,
   messagesStateReducer,
   messagesStateReducer as addMessages,
+  REMOVE_ALL_MESSAGES,
   type Messages,
   Annotation,
   type StateType,
