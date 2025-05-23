@@ -70,19 +70,19 @@ export class Branch<
   N extends string,
   CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
 > {
-  condition: Runnable<IO, BranchPathReturnValue, CallOptions>;
+  path: Runnable<IO, BranchPathReturnValue, CallOptions>;
 
   ends?: Record<string, N | typeof END>;
 
   constructor(options: Omit<BranchOptions<IO, N, CallOptions>, "source">) {
     if (Runnable.isRunnable(options.path)) {
-      this.condition = options.path as Runnable<
+      this.path = options.path as Runnable<
         IO,
         BranchPathReturnValue,
         CallOptions
       >;
     } else {
-      this.condition = _coerceToRunnable(options.path).withConfig({
+      this.path = _coerceToRunnable(options.path).withConfig({
         runName: `Branch`,
       } as CallOptions);
     }
@@ -134,7 +134,7 @@ export class Branch<
     reader?: (config: CallOptions) => IO
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<Runnable | any> {
-    let result = await this.condition.invoke(
+    let result = await this.path.invoke(
       reader ? reader(config) : input,
       config
     );
@@ -373,13 +373,8 @@ export class Graph<
       RunInput,
       N,
       LangGraphRunnableConfig<StateType<C>>
-    > = typeof source === "object"
-      ? source
-      : {
-          source,
-          path: path!,
-          pathMap,
-        };
+    > = typeof source === "object" ? source : { source, path: path!, pathMap };
+
     this.warnIfCompiled(
       "Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
@@ -405,9 +400,7 @@ export class Graph<
       );
     }
     // save it
-    if (!this.branches[options.source]) {
-      this.branches[options.source] = {};
-    }
+    this.branches[options.source] ??= {};
     this.branches[options.source][name] = new Branch(options);
     return this;
   }
@@ -494,6 +487,8 @@ export class Graph<
     for (const [start] of Object.entries(this.branches)) {
       allSources.add(start);
     }
+
+    // validate sources
     for (const source of allSources) {
       if (source !== START && !(source in this.nodes)) {
         throw new Error(`Found edge starting at unknown node \`${source}\``);
@@ -504,7 +499,7 @@ export class Graph<
     const allTargets = new Set([...this.allEdges].map(([_, target]) => target));
     for (const [start, branches] of Object.entries(this.branches)) {
       for (const branch of Object.values(branches)) {
-        if (branch.ends) {
+        if (branch.ends != null) {
           for (const end of Object.values(branch.ends)) {
             allTargets.add(end);
           }
