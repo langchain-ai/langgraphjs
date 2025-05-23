@@ -96,7 +96,7 @@ it("stream events for a multi-node graph", async () => {
     {
       event: "on_chain_start",
       data: { input: { messages: [] } },
-      name: "ChannelWrite<__start__:testnode>",
+      name: "ChannelWrite<branch:to:testnode>",
       tags: ["langsmith:hidden"],
       run_id: expect.any(String),
       metadata: expect.objectContaining({
@@ -109,7 +109,7 @@ it("stream events for a multi-node graph", async () => {
       event: "on_chain_end",
       data: { output: { messages: [] }, input: { messages: [] } },
       run_id: expect.any(String),
-      name: "ChannelWrite<__start__:testnode>",
+      name: "ChannelWrite<branch:to:testnode>",
       tags: ["langsmith:hidden"],
       metadata: expect.objectContaining({
         langgraph_node: "__start__",
@@ -147,7 +147,7 @@ it("stream events for a multi-node graph", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
       }),
     },
     {
@@ -163,7 +163,7 @@ it("stream events for a multi-node graph", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -179,7 +179,7 @@ it("stream events for a multi-node graph", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -198,7 +198,7 @@ it("stream events for a multi-node graph", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -210,13 +210,13 @@ it("stream events for a multi-node graph", async () => {
           messages: [new _AnyIdAIMessage("hey!")],
         },
       },
-      name: "ChannelWrite<...,testnode>",
+      name: "ChannelWrite<...>",
       tags: ["langsmith:hidden"],
       run_id: expect.any(String),
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
       }),
     },
     {
@@ -228,12 +228,12 @@ it("stream events for a multi-node graph", async () => {
         },
       },
       run_id: expect.any(String),
-      name: "ChannelWrite<...,testnode>",
+      name: "ChannelWrite<...>",
       tags: ["langsmith:hidden"],
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
       }),
     },
     {
@@ -249,7 +249,7 @@ it("stream events for a multi-node graph", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
       }),
     },
     {
@@ -265,7 +265,7 @@ it("stream events for a multi-node graph", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -281,7 +281,7 @@ it("stream events for a multi-node graph", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -300,7 +300,7 @@ it("stream events for a multi-node graph", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -319,7 +319,7 @@ it("stream events for a multi-node graph", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
       }),
     },
     {
@@ -336,7 +336,7 @@ it("stream events for a multi-node graph", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
       }),
     },
     {
@@ -520,7 +520,7 @@ it("Should respect .withConfig", async () => {
     {
       event: "on_chain_start",
       data: { input: { messages: [] } },
-      name: "ChannelWrite<__start__:testnode>",
+      name: "ChannelWrite<branch:to:testnode>",
       tags: ["langsmith:hidden"],
       run_id: expect.any(String),
       metadata: expect.objectContaining({
@@ -533,7 +533,7 @@ it("Should respect .withConfig", async () => {
       event: "on_chain_end",
       data: { output: { messages: [] }, input: { messages: [] } },
       run_id: expect.any(String),
-      name: "ChannelWrite<__start__:testnode>",
+      name: "ChannelWrite<branch:to:testnode>",
       tags: ["langsmith:hidden"],
       metadata: expect.objectContaining({
         langgraph_node: "__start__",
@@ -571,7 +571,7 @@ it("Should respect .withConfig", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
       }),
     },
     {
@@ -587,7 +587,7 @@ it("Should respect .withConfig", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -603,7 +603,7 @@ it("Should respect .withConfig", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -622,7 +622,7 @@ it("Should respect .withConfig", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -634,13 +634,13 @@ it("Should respect .withConfig", async () => {
           messages: [new _AnyIdAIMessage("hey!")],
         },
       },
-      name: "ChannelWrite<...,testnode>",
+      name: "ChannelWrite<...>",
       tags: ["langsmith:hidden"],
       run_id: expect.any(String),
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
       }),
     },
     {
@@ -652,12 +652,12 @@ it("Should respect .withConfig", async () => {
         },
       },
       run_id: expect.any(String),
-      name: "ChannelWrite<...,testnode>",
+      name: "ChannelWrite<...>",
       tags: ["langsmith:hidden"],
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
       }),
     },
     {
@@ -673,7 +673,7 @@ it("Should respect .withConfig", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
       }),
     },
     {
@@ -689,7 +689,7 @@ it("Should respect .withConfig", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -705,7 +705,7 @@ it("Should respect .withConfig", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -724,7 +724,7 @@ it("Should respect .withConfig", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
         ls_model_type: "chat",
         ls_stop: undefined,
       }),
@@ -743,7 +743,7 @@ it("Should respect .withConfig", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
       }),
     },
     {
@@ -760,7 +760,7 @@ it("Should respect .withConfig", async () => {
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
         langgraph_step: 1,
-        langgraph_triggers: ["__start__:testnode"],
+        langgraph_triggers: ["branch:to:testnode"],
       }),
     },
     {

@@ -4857,7 +4857,7 @@ graph TD;
           id: anyStringSame("task1"),
           name: "prepare",
           input: { my_key: "value", market: "DE" },
-          triggers: ["__start__:prepare"],
+          triggers: ["branch:to:prepare"],
           interrupts: [],
         },
       },
@@ -4995,7 +4995,7 @@ graph TD;
           id: anyStringSame("task3"),
           name: "finish",
           input: { my_key: "value prepared slow", market: "DE" },
-          triggers: ["tool_two_slow"],
+          triggers: ["branch:to:finish"],
           interrupts: [],
         },
       },
@@ -8676,7 +8676,7 @@ graph TD;
         {
           langgraph_step: 1,
           langgraph_node: "p_one",
-          langgraph_triggers: ["__start__:p_one"],
+          langgraph_triggers: ["branch:to:p_one"],
           langgraph_path: [PULL, "p_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
           __pregel_task_id: expect.any(String),
@@ -8692,7 +8692,7 @@ graph TD;
         {
           langgraph_step: 1,
           langgraph_node: "c_one",
-          langgraph_triggers: ["__start__:c_one"],
+          langgraph_triggers: ["branch:to:c_one"],
           langgraph_path: [PULL, "c_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
           __pregel_task_id: expect.any(String),
@@ -8708,7 +8708,7 @@ graph TD;
         {
           langgraph_step: 1,
           langgraph_node: "c_one",
-          langgraph_triggers: ["__start__:c_one"],
+          langgraph_triggers: ["branch:to:c_one"],
           langgraph_path: [PULL, "c_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
           __pregel_task_id: expect.any(String),
@@ -8724,7 +8724,7 @@ graph TD;
         {
           langgraph_step: 2,
           langgraph_node: "c_two",
-          langgraph_triggers: ["c_one"],
+          langgraph_triggers: ["branch:to:c_two"],
           langgraph_path: [PULL, "c_two"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
           __pregel_task_id: expect.any(String),
@@ -8743,7 +8743,7 @@ graph TD;
         {
           langgraph_step: 2,
           langgraph_node: "c_two",
-          langgraph_triggers: ["c_one"],
+          langgraph_triggers: ["branch:to:c_two"],
           langgraph_path: [PULL, "c_two"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
           __pregel_task_id: expect.any(String),
@@ -8761,7 +8761,7 @@ graph TD;
         {
           langgraph_step: 3,
           langgraph_node: "p_three",
-          langgraph_triggers: ["p_two"],
+          langgraph_triggers: ["branch:to:p_three"],
           langgraph_path: [PULL, "p_three"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
           __pregel_task_id: expect.any(String),
@@ -8799,7 +8799,7 @@ graph TD;
           {
             langgraph_step: 1,
             langgraph_node: "p_one",
-            langgraph_triggers: ["__start__:p_one"],
+            langgraph_triggers: ["branch:to:p_one"],
             langgraph_path: [PULL, "p_one"],
             langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
             __pregel_task_id: expect.any(String),
@@ -8816,7 +8816,7 @@ graph TD;
           {
             langgraph_step: 1,
             langgraph_node: "c_one",
-            langgraph_triggers: ["__start__:c_one"],
+            langgraph_triggers: ["branch:to:c_one"],
             langgraph_path: [PULL, "c_one"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_one:.*/),
@@ -8834,7 +8834,7 @@ graph TD;
           {
             langgraph_step: 1,
             langgraph_node: "c_one",
-            langgraph_triggers: ["__start__:c_one"],
+            langgraph_triggers: ["branch:to:c_one"],
             langgraph_path: [PULL, "c_one"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_one:.*/),
@@ -8852,7 +8852,7 @@ graph TD;
           {
             langgraph_step: 2,
             langgraph_node: "c_two",
-            langgraph_triggers: ["c_one"],
+            langgraph_triggers: ["branch:to:c_two"],
             langgraph_path: [PULL, "c_two"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_two:.*/),
@@ -8874,7 +8874,7 @@ graph TD;
           {
             langgraph_step: 2,
             langgraph_node: "c_two",
-            langgraph_triggers: ["c_one"],
+            langgraph_triggers: ["branch:to:c_two"],
             langgraph_path: [PULL, "c_two"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_two:.*/),
@@ -8894,7 +8894,7 @@ graph TD;
           {
             langgraph_step: 3,
             langgraph_node: "p_three",
-            langgraph_triggers: ["p_two"],
+            langgraph_triggers: ["branch:to:p_three"],
             langgraph_path: [PULL, "p_three"],
             langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
             __pregel_task_id: expect.any(String),
