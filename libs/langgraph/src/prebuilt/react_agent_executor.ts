@@ -655,6 +655,12 @@ export function createReactAgent<
     typeof workflow
   >;
 
+  const conditionalMap = <T extends string>(map: Record<string, T | null>) => {
+    return Object.fromEntries(
+      Object.entries(map).filter(([_, v]) => v != null) as [string, T][]
+    );
+  };
+
   let entrypoint: "agent" | "pre_model_hook" = "agent";
   let inputSchema: AnnotationRoot<(typeof schema)["spec"]> | undefined;
   if (preModelHook != null) {
@@ -699,13 +705,13 @@ export function createReactAgent<
 
           return END;
         },
-        {
+        conditionalMap({
           tools: "tools",
           entrypoint,
           generate_structured_response:
-            responseFormat != null ? "generate_structured_response" : END,
+            responseFormat != null ? "generate_structured_response" : null,
           [END]: END,
-        }
+        })
       );
   }
 
@@ -739,15 +745,15 @@ export function createReactAgent<
         return "post_model_hook" as const;
       }
 
-      return "tools" as const;
+      return "continue" as const;
     },
-    {
-      tools: "tools",
-      post_model_hook: postModelHook != null ? "post_model_hook" : END,
+    conditionalMap({
+      continue: "tools",
+      post_model_hook: postModelHook != null ? "post_model_hook" : null,
       generate_structured_response:
-        responseFormat != null ? "generate_structured_response" : END,
+        responseFormat != null ? "generate_structured_response" : null,
       [END]: END,
-    }
+    })
   );
 
   if (shouldReturnDirect.size > 0) {
