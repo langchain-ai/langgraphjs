@@ -14,7 +14,6 @@ import {
   NULL_TASK_ID,
   RESUME,
   RETURN,
-  SELF,
   TAG_HIDDEN,
   TASKS,
 } from "../constants.js";
