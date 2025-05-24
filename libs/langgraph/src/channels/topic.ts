@@ -77,4 +77,8 @@ export class Topic<Value> extends BaseChannel<
   public checkpoint(): [Value[], Value[]] {
     return [[...this.seen], this.values];
   }
+
+  isAvailable(): boolean {
+    return this.values.length !== 0;
+  }
 }

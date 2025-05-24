@@ -861,7 +861,8 @@ export function runPregelTests(
         checkpoint,
         channels,
         [{ name: "foo", writes: pendingWrites, triggers: [] }],
-        increment
+        increment,
+        undefined
       ); // contains side effects
 
       expect(channels.channel1.get()).toBe("channel1valueUpdated!");
@@ -904,9 +905,13 @@ export function runPregelTests(
 
       // call method / assertions
       expect(() => {
-        _applyWrites(checkpoint, channels, [
-          { name: "foo", writes: pendingWrites, triggers: [] },
-        ]); // contains side effects
+        _applyWrites(
+          checkpoint,
+          channels,
+          [{ name: "foo", writes: pendingWrites, triggers: [] }],
+          undefined,
+          undefined
+        ); // contains side effects
       }).toThrow(InvalidUpdateError);
     });
   });
@@ -2867,6 +2872,235 @@ graph TD;
         answer: "doc1,doc2,doc3,doc4",
       });
     });
+
+    it.each([
+      [true], // waiting edge: true
+      [false], // waiting edge: false
+    ])(
+      "in_one_fan_out_state_graph_defer_node (waiting edge: %s)",
+      async (waitingEdge) => {
+        const sortedAdd = vi.fn((x: string[], y: string[]): string[] =>
+          [...x, ...y].sort()
+        );
+
+        const StateAnnotation = Annotation.Root({
+          query: Annotation<string>,
+          answer: Annotation<string>,
+          docs: Annotation<string[]>({ reducer: sortedAdd }),
+        });
+
+        const builder = new StateGraph(StateAnnotation)
+          .addNode("rewrite_query", (state) => ({
+            query: `query: ${state.query}`,
+          }))
+          .addNode("analyzer_one", (state) => ({
+            query: `analyzed: ${state.query}`,
+          }))
+          .addNode("retriever_one", () => ({ docs: ["doc1", "doc2"] }))
+          .addNode("retriever_two", async () => {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            return { docs: ["doc3", "doc4"] };
+          })
+          .addNode("qa", (state) => ({ answer: state.docs?.join(",") }), {
+            defer: true,
+          })
+          .addEdge(START, "rewrite_query")
+          .addEdge("rewrite_query", "retriever_one")
+          .addEdge("retriever_one", "analyzer_one")
+          .addEdge("rewrite_query", "retriever_two");
+
+        if (waitingEdge) {
+          builder.addEdge(["retriever_one", "retriever_two"], "qa");
+        } else {
+          builder.addEdge("retriever_one", "qa").addEdge("retriever_two", "qa");
+        }
+        builder.addEdge("qa", END);
+
+        const app = builder.compile();
+        expect(await app.invoke({ query: "what is weather in sf" })).toEqual({
+          query: "analyzed: query: what is weather in sf",
+          docs: ["doc1", "doc2", "doc3", "doc4"],
+          answer: "doc1,doc2,doc3,doc4",
+        });
+
+        expect(
+          await gatherIterator(app.stream({ query: "what is weather in sf" }))
+        ).toEqual([
+          { rewrite_query: { query: "query: what is weather in sf" } },
+          { retriever_one: { docs: ["doc1", "doc2"] } },
+          { retriever_two: { docs: ["doc3", "doc4"] } },
+          {
+            analyzer_one: { query: "analyzed: query: what is weather in sf" },
+          },
+          { qa: { answer: "doc1,doc2,doc3,doc4" } },
+        ]);
+
+        expect(
+          await gatherIterator(
+            app.stream(
+              { query: "what is weather in sf" },
+              { streamMode: "debug" }
+            )
+          )
+        ).toMatchObject([
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 1,
+            payload: {
+              id: expect.any(String),
+              name: "rewrite_query",
+              input: { query: "what is weather in sf" },
+              triggers: ["branch:to:rewrite_query"],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 1,
+            payload: {
+              id: expect.any(String),
+              name: "rewrite_query",
+              result: [["query", "query: what is weather in sf"]],
+              interrupts: [],
+            },
+          },
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 2,
+            payload: {
+              id: expect.any(String),
+              name: "retriever_one",
+              input: { query: "query: what is weather in sf" },
+              triggers: ["branch:to:retriever_one"],
+            },
+          },
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 2,
+            payload: {
+              id: expect.any(String),
+              name: "retriever_two",
+              input: { query: "query: what is weather in sf" },
+              triggers: ["branch:to:retriever_two"],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 2,
+            payload: {
+              id: expect.any(String),
+              name: "retriever_one",
+              result: [["docs", ["doc1", "doc2"]]],
+              interrupts: [],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 2,
+            payload: {
+              id: expect.any(String),
+              name: "retriever_two",
+              result: [["docs", ["doc3", "doc4"]]],
+              interrupts: [],
+            },
+          },
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 3,
+            payload: {
+              id: expect.any(String),
+              name: "analyzer_one",
+              input: {
+                query: "query: what is weather in sf",
+                docs: ["doc1", "doc2", "doc3", "doc4"],
+              },
+              triggers: ["branch:to:analyzer_one"],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 3,
+            payload: {
+              id: expect.any(String),
+              name: "analyzer_one",
+              result: [["query", "analyzed: query: what is weather in sf"]],
+              interrupts: [],
+            },
+          },
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 4,
+            payload: {
+              id: expect.any(String),
+              name: "qa",
+              input: {
+                query: "analyzed: query: what is weather in sf",
+                docs: ["doc1", "doc2", "doc3", "doc4"],
+              },
+              triggers: waitingEdge
+                ? ["join:retriever_one+retriever_two:qa"]
+                : ["branch:to:qa"],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 4,
+            payload: {
+              id: expect.any(String),
+              name: "qa",
+              result: [["answer", "doc1,doc2,doc3,doc4"]],
+              interrupts: [],
+            },
+          },
+        ]);
+
+        const checkpointer = new MemorySaverAssertImmutable();
+        const config = { configurable: { thread_id: "2" } };
+        const appWithInterrupt = builder.compile({
+          interruptBefore: ["qa"],
+          checkpointer,
+        });
+
+        expect(
+          await gatherIterator(
+            appWithInterrupt.stream({ query: "what is weather in sf" }, config)
+          )
+        ).toEqual([
+          { rewrite_query: { query: "query: what is weather in sf" } },
+          { retriever_one: { docs: ["doc1", "doc2"] } },
+          { retriever_two: { docs: ["doc3", "doc4"] } },
+          { analyzer_one: { query: "analyzed: query: what is weather in sf" } },
+          { __interrupt__: [] },
+        ]);
+
+        await appWithInterrupt.updateState(config, { docs: ["doc5"] });
+
+        expect(await appWithInterrupt.getState(config)).toMatchObject({
+          values: {
+            query: "analyzed: query: what is weather in sf",
+            docs: ["doc1", "doc2", "doc3", "doc4", "doc5"],
+          },
+          next: ["qa"],
+          config: { configurable: { thread_id: "2" } },
+          createdAt: expect.any(String),
+          metadata: {
+            source: "update",
+            step: 4,
+            writes: { analyzer_one: { docs: ["doc5"] } },
+            thread_id: "2",
+          },
+        });
+      }
+    );
 
     it("should handle dynamic interrupt", async () => {
       const checkpointer = await createCheckpointer();
