@@ -1,0 +1,14 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "test:api": {
+      "cache": false,
+      "dependsOn": ["^build", "build"]
+    },
+    "test:parser": {
+      "cache": false,
+      "dependsOn": ["^build", "build"]
+    }
+  }
+}

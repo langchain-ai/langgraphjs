@@ -1,0 +1,60 @@
+{
+  "name": "@langchain/langgraph-cli",
+  "version": "0.0.37",
+  "type": "module",
+  "engines": {
+    "node": "^18.19.0 || >=20.16.0"
+  },
+  "license": "MIT",
+  "main": "./dist/server.mjs",
+  "types": "./dist/server.d.mts",
+  "bin": {
+    "langgraphjs": "dist/cli/cli.mjs"
+  },
+  "files": [
+    "dist/"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:langchain-ai/langgraphjs-api.git"
+  },
+  "scripts": {
+    "clean": "npx -y bun scripts/clean.mjs",
+    "build": "npx -y bun scripts/build.mjs",
+    "prepack": "yarn run build",
+    "typecheck": "tsc --noEmit",
+    "cli": "tsx src/cli/cli.mts",
+    "cli:watch": "tsx watch src/cli/cli.mts",
+    "test": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@babel/code-frame": "^7.26.2",
+    "@commander-js/extra-typings": "^13.0.0",
+    "@langchain/langgraph-api": "workspace:*",
+    "chokidar": "^4.0.3",
+    "commander": "^13.0.0",
+    "dedent": "^1.5.3",
+    "dotenv": "^16.4.7",
+    "execa": "^9.5.2",
+    "exit-hook": "^4.0.0",
+    "extract-zip": "^2.0.1",
+    "langsmith": "^0.2.15",
+    "open": "^10.1.0",
+    "stacktrace-parser": "^0.1.10",
+    "tar": "^7.4.3",
+    "winston": "^3.17.0",
+    "winston-console-format": "^1.0.8",
+    "yaml": "^2.7.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/babel__code-frame": "^7.0.6",
+    "@types/node": "^22.2.0",
+    "prettier": "^3.3.3",
+    "tsx": "^4.19.3",
+    "typescript": "^5.5.4",
+    "vitest": "^3.0.5"
+  }
+}
