@@ -102,6 +102,7 @@ export type PregelLoopInitializeParams = {
   interruptBefore: string[] | All;
   manager?: CallbackManagerForChainRun;
   debug: boolean;
+  triggerToNodes: Record<string, string[]>;
 };
 
 type PregelLoopParams = {
@@ -131,6 +132,7 @@ type PregelLoopParams = {
   interruptAfter: string[] | All;
   interruptBefore: string[] | All;
   debug: boolean;
+  triggerToNodes: Record<string, string[]>;
 };
 
 function createDuplexStream(...streams: IterableReadableWritableStream[]) {
@@ -223,6 +225,8 @@ export class PregelLoop {
 
   debug: boolean = false;
 
+  triggerToNodes: Record<string, string[]>;
+
   get isResuming() {
     const hasChannelVersions =
       Object.keys(this.checkpoint.channel_versions).length !== 0;
@@ -280,6 +284,7 @@ export class PregelLoop {
     this.interruptAfter = params.interruptAfter;
     this.interruptBefore = params.interruptBefore;
     this.debug = params.debug;
+    this.triggerToNodes = params.triggerToNodes;
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
@@ -410,6 +415,7 @@ export class PregelLoop {
       interruptAfter: params.interruptAfter,
       interruptBefore: params.interruptBefore,
       debug: params.debug,
+      triggerToNodes: params.triggerToNodes,
     });
   }
 
@@ -556,7 +562,8 @@ export class PregelLoop {
         this.checkpoint,
         this.channels,
         Object.values(this.tasks),
-        this.checkpointerGetNextVersion
+        this.checkpointerGetNextVersion,
+        this.triggerToNodes
       );
       for (const [key, values] of Object.entries(managedValueWrites)) {
         await this.updateManagedValues(key, values);
@@ -708,7 +715,8 @@ export class PregelLoop {
           this.checkpoint,
           this.channels,
           Object.values(this.tasks),
-          this.checkpointerGetNextVersion
+          this.checkpointerGetNextVersion,
+          this.triggerToNodes
         );
         for (const [key, values] of Object.entries(managedValueWrites)) {
           await this.updateManagedValues(key, values);
@@ -859,7 +867,8 @@ export class PregelLoop {
             triggers: [],
           },
         ],
-        this.checkpointerGetNextVersion
+        this.checkpointerGetNextVersion,
+        this.triggerToNodes
       );
     }
     const isCommandUpdateOrGoto =
@@ -915,7 +924,8 @@ export class PregelLoop {
               triggers: [],
             },
           ]),
-          this.checkpointerGetNextVersion
+          this.checkpointerGetNextVersion,
+          this.triggerToNodes
         );
         // save input checkpoint
         await this._putCheckpoint({

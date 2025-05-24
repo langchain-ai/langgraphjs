@@ -73,4 +73,8 @@ export class BinaryOperatorAggregate<
     }
     return this.value;
   }
+
+  isAvailable(): boolean {
+    return this.value !== undefined;
+  }
 }

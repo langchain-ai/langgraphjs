@@ -57,4 +57,8 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
     }
     return this.value[0];
   }
+
+  isAvailable(): boolean {
+    return this.value.length !== 0;
+  }
 }
