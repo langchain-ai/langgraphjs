@@ -1084,6 +1084,8 @@ function _scratchpad({
         );
         return nullResume;
       }
+
+      return undefined;
     },
   };
   return scratchpad;
