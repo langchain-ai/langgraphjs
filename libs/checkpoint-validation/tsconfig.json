@@ -7,7 +7,7 @@
     "lib": ["ES2021", "ES2022.Object", "DOM"],
     "types": ["node", "jest"],
     "module": "ES2022",
-    "moduleResolution": "NodeNext",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "declaration": true,
     "noImplicitReturns": true,
