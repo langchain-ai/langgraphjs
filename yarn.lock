@@ -15578,7 +15578,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"typescript@npm:^4.9.5 || ^5.4.5, typescript@npm:^5.2.2, typescript@npm:^5.4.5":
+"typescript@npm:^4.9.5 || ^5.4.5, typescript@npm:^5.2.2, typescript@npm:^5.4.5, typescript@npm:^5.5.4":
   version: 5.8.3
   resolution: "typescript@npm:5.8.3"
   bin:
@@ -15588,7 +15588,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"typescript@patch:typescript@^4.9.5 || ^5.4.5#~builtin<compat/typescript>, typescript@patch:typescript@^5.2.2#~builtin<compat/typescript>, typescript@patch:typescript@^5.4.5#~builtin<compat/typescript>":
+"typescript@patch:typescript@^4.9.5 || ^5.4.5#~builtin<compat/typescript>, typescript@patch:typescript@^5.2.2#~builtin<compat/typescript>, typescript@patch:typescript@^5.4.5#~builtin<compat/typescript>, typescript@patch:typescript@^5.5.4#~builtin<compat/typescript>":
   version: 5.8.3
   resolution: "typescript@patch:typescript@npm%3A5.8.3#~builtin<compat/typescript>::version=5.8.3&hash=77c9e2"
   bin:
