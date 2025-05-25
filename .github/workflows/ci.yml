@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "yarn"
@@ -46,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "yarn"
@@ -63,7 +63,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "yarn"
@@ -93,7 +93,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: "yarn"
@@ -101,6 +101,56 @@ jobs:
         run: yarn install --immutable
       - name: Test
         run: yarn run test
+
+  test-api:
+    name: API Integration Tests
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false # Allow all tests to run even if one fails
+      matrix:
+        node-version: [18.x, 20.x, "22.4.1"]
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        name: actions/setup-node@v4 for ${{ matrix.node-version }}
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run integration tests
+        run: yarn turbo run @langchain/langgraph-api#test:api -- api.int.test.mts
+
+  test-api-auth:
+    name: API Integration Tests w/ Auth
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false # Allow all tests to run even if one fails
+      matrix:
+        node-version: [20.x, "22.4.1"]
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        name: actions/setup-node@v4 for ${{ matrix.node-version }}
+        with:
+          node-version: ${{ matrix.node-version }}w
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run integration tests
+        run: yarn turbo run @langchain/langgraph-api#test:api -- -c ./graphs/langgraph.auth.json auth.int.test.mts
 
   check-readmes-synced:
     # This checks that the repo README.md is identical to the libs/langgraph/README.md
