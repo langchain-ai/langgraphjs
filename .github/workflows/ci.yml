@@ -125,7 +125,7 @@ jobs:
         run: yarn install --immutable
 
       - name: Run integration tests
-        run: yarn turbo run @langchain/langgraph-api#test:api -- api.int.test.mts
+        run: yarn turbo run @langchain/langgraph-api#test:int:api
 
   test-api-auth:
     name: API Integration Tests w/ Auth
@@ -150,7 +150,7 @@ jobs:
         run: yarn install --immutable
 
       - name: Run integration tests
-        run: yarn turbo run @langchain/langgraph-api#test:api -- -c ./graphs/langgraph.auth.json auth.int.test.mts
+        run: yarn turbo run @langchain/langgraph-api#test:int:auth
 
   check-readmes-synced:
     # This checks that the repo README.md is identical to the libs/langgraph/README.md

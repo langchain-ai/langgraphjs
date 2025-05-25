@@ -40,7 +40,8 @@
     "prepack": "yarn run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest --exclude '**/*.int.test.mts'",
-    "test:api": "npx -y bun scripts/test.mjs",
+    "test:int:api": "npx -y bun scripts/test.mjs api.int.test.mts",
+    "test:int:auth": "npx -y bun scripts/test.mjs -c ./graphs/langgraph.auth.json auth.int.test.mts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
