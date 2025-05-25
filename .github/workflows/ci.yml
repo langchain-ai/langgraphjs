@@ -143,7 +143,7 @@ jobs:
       - uses: actions/setup-node@v4
         name: actions/setup-node@v4 for ${{ matrix.node-version }}
         with:
-          node-version: ${{ matrix.node-version }}w
+          node-version: ${{ matrix.node-version }}
           cache: "yarn"
 
       - name: Install dependencies
