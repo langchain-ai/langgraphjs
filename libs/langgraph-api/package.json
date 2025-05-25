@@ -39,8 +39,7 @@
     "dev": "tsx ./tests/utils.server.mts --dev",
     "prepack": "yarn run build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest",
-    "test:parser": "vitest run ./tests/parser.test.mts --testTimeout 15000",
+    "test": "vitest --exclude '**/*.int.test.mts'",
     "test:api": "npx -y bun scripts/test.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

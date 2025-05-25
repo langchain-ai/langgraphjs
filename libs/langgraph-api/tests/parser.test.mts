@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { SubgraphExtractor } from "../src/graph/parser/parser.mjs";
 import dedent from "dedent";
 
-test.concurrent("graph factories", () => {
+test("graph factories", { timeout: 15_000 }, () => {
   const MessagesSchema = {
     type: "object",
     properties: {
@@ -76,8 +76,8 @@ test.concurrent("graph factories", () => {
   }
 });
 
-describe.concurrent("subgraphs", () => {
-  test.concurrent(`basic`, () => {
+describe("subgraphs", () => {
+  test(`basic`, () => {
     const testCases = [
       "subgraph",
       "(state) => subgraph.invoke(state)",
@@ -202,7 +202,7 @@ describe.concurrent("subgraphs", () => {
     }
   });
 
-  test.concurrent("nested subgraphs", () => {
+  test("nested subgraphs", () => {
     const schemas = SubgraphExtractor.extractSchemas([
       {
         sourceFile: [
@@ -328,7 +328,7 @@ describe.concurrent("subgraphs", () => {
     });
   });
 
-  test.concurrent("multiple subgraphs within a single node", () => {
+  test("multiple subgraphs within a single node", () => {
     expect(() => {
       SubgraphExtractor.extractSchemas(
         [
@@ -395,7 +395,7 @@ describe.concurrent("subgraphs", () => {
     );
   });
 
-  test.concurrent("imported subgraphs", () => {
+  test("imported subgraphs", () => {
     const schemas = SubgraphExtractor.extractSchemas([
       {
         sourceFile: [
@@ -534,7 +534,7 @@ describe.concurrent("subgraphs", () => {
     });
   });
 
-  test.concurrent("imported uncompiled subgraphs", () => {
+  test("imported uncompiled subgraphs", () => {
     const schemas = SubgraphExtractor.extractSchemas([
       {
         sourceFile: [
@@ -672,7 +672,7 @@ describe.concurrent("subgraphs", () => {
     });
   });
 
-  test.concurrent("indirect", () => {
+  test("indirect", () => {
     const schemas = SubgraphExtractor.extractSchemas([
       {
         sourceFile: [
@@ -793,7 +793,7 @@ describe.concurrent("subgraphs", () => {
   });
 });
 
-test.concurrent("weather", () => {
+test("weather", { timeout: 15_000 }, () => {
   const schemas = SubgraphExtractor.extractSchemas([
     {
       sourceFile: [
@@ -871,7 +871,7 @@ test.concurrent("weather", () => {
   );
 });
 
-test.concurrent("nested", () => {
+test("nested", { timeout: 15_000 }, () => {
   const schemas = SubgraphExtractor.extractSchemas([
     {
       sourceFile: [
@@ -936,7 +936,7 @@ test.concurrent("nested", () => {
   );
 });
 
-test.concurrent("overlapping parallel schema inference", () => {
+test("overlapping parallel schema inference", { timeout: 15_000 }, () => {
   const schemas = SubgraphExtractor.extractSchemas([
     {
       exportSymbol: "graph",
