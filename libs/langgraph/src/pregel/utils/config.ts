@@ -104,25 +104,52 @@ export function ensureLangGraphConfig(
  *
  * @returns a reference to the {@link BaseStore} that was set when the graph was initialized
  */
-export function getStore(): BaseStore | undefined {
-  const config: LangGraphRunnableConfig =
-    AsyncLocalStorageProviderSingleton.getRunnableConfig();
-  return config?.store;
+export function getStore(
+  config?: LangGraphRunnableConfig
+): BaseStore | undefined {
+  const runConfig: LangGraphRunnableConfig =
+    config ?? AsyncLocalStorageProviderSingleton.getRunnableConfig();
+
+  if (runConfig === undefined) {
+    throw new Error(
+      [
+        "Config not retrievable. This is likely because you are running in an environment without support for AsyncLocalStorage.",
+        "If you're running `getStore` in such environment, pass the `config` from the node function directly.",
+      ].join("\n")
+    );
+  }
+
+  return runConfig?.store;
 }
 
 /**
- * A helper utility function that returns the {@link LangGraphRunnableConfig#writer} if "custom" stream mode is enabled, otherwise undefined
+ * A helper utility function that returns the {@link LangGraphRunnableConfig#writer} if "custom" stream mode is enabled, otherwise undefined.
  *
  * @returns a reference to the {@link LangGraphRunnableConfig#writer} if "custom" stream mode is enabled, otherwise undefined
  */
-export function getWriter(): ((chunk: unknown) => void) | undefined {
-  const config: LangGraphRunnableConfig =
-    AsyncLocalStorageProviderSingleton.getRunnableConfig();
-  return config?.configurable?.writer;
+export function getWriter(
+  config?: LangGraphRunnableConfig
+): ((chunk: unknown) => void) | undefined {
+  const runConfig: LangGraphRunnableConfig =
+    config ?? AsyncLocalStorageProviderSingleton.getRunnableConfig();
+
+  if (runConfig === undefined) {
+    throw new Error(
+      [
+        "Config not retrievable. This is likely because you are running in an environment without support for AsyncLocalStorage.",
+        "If you're running `getWriter` in such environment, pass the `config` from the node function directly.",
+      ].join("\n")
+    );
+  }
+
+  return runConfig?.configurable?.writer;
 }
 
 /**
- * A helper utility function that returns the {@link LangGraphRunnableConfig} that was set when the graph was initialized
+ * A helper utility function that returns the {@link LangGraphRunnableConfig} that was set when the graph was initialized.
+ *
+ * Note: This only works when running in an environment that supports node:async_hooks and AsyncLocalStorage. If you're running this in a
+ * web environment, access the LangGraphRunnableConfig from the node function directly.
  *
  * @returns the {@link LangGraphRunnableConfig} that was set when the graph was initialized
  */
@@ -135,22 +162,29 @@ export function getConfig(): LangGraphRunnableConfig {
  *
  * @returns the input for the currently executing task
  */
-export function getCurrentTaskInput<T = unknown>(): T {
-  const config: LangGraphRunnableConfig =
-    AsyncLocalStorageProviderSingleton.getRunnableConfig();
-  if (config === undefined) {
+export function getCurrentTaskInput<T = unknown>(
+  config?: LangGraphRunnableConfig
+): T {
+  const runConfig: LangGraphRunnableConfig =
+    config ?? AsyncLocalStorageProviderSingleton.getRunnableConfig();
+
+  if (runConfig === undefined) {
     throw new Error(
-      "Config not retrievable. This is likely because you are running in an environment without support for AsyncLocalStorage."
+      [
+        "Config not retrievable. This is likely because you are running in an environment without support for AsyncLocalStorage.",
+        "If you're running `getCurrentTaskInput` in such environment, pass the `config` from the node function directly.",
+      ].join("\n")
     );
   }
 
   if (
-    config.configurable?.[CONFIG_KEY_SCRATCHPAD]?.currentTaskInput === undefined
+    runConfig.configurable?.[CONFIG_KEY_SCRATCHPAD]?.currentTaskInput ===
+    undefined
   ) {
     throw new Error("BUG: internal scratchpad not initialized.");
   }
 
-  return config!.configurable![CONFIG_KEY_SCRATCHPAD]!.currentTaskInput as T;
+  return runConfig!.configurable![CONFIG_KEY_SCRATCHPAD]!.currentTaskInput as T;
 }
 
 export function recastCheckpointNamespace(namespace: string): string {
