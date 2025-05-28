@@ -329,7 +329,9 @@ export class StateGraph<
       const spec = _getChannels(fields.channels);
       this._schemaDefinition = spec;
     } else {
-      throw new Error("Invalid StateGraph input.");
+      throw new Error(
+        "Invalid StateGraph input. Make sure to pass a valid Annotation.Root or Zod schema."
+      );
     }
 
     this._inputDefinition ??= this._schemaDefinition as I;
