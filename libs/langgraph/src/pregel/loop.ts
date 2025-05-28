@@ -15,6 +15,7 @@ import {
   WRITES_IDX_MAP,
   BaseCache,
   CacheFullKey,
+  CacheNamespace,
 } from "@langchain/langgraph-checkpoint";
 
 import {
@@ -150,6 +151,58 @@ function createDuplexStream(...streams: IterableReadableWritableStream[]) {
   });
 }
 
+class AsyncBatchedCache extends BaseCache<PendingWrite<string>[]> {
+  protected cache: BaseCache<PendingWrite<string>[]>;
+
+  private queue: Promise<unknown> = Promise.resolve();
+
+  constructor(cache: BaseCache<unknown>) {
+    super();
+    this.cache = cache as BaseCache<PendingWrite<string>[]>;
+  }
+
+  async get(keys: CacheFullKey[]) {
+    return this.enqueueOperation("get", keys);
+  }
+
+  async set(
+    pairs: {
+      key: CacheFullKey;
+      value: PendingWrite<string>[];
+      ttl?: number;
+    }[]
+  ) {
+    return this.enqueueOperation("set", pairs);
+  }
+
+  async clear(namespaces: CacheNamespace[]) {
+    return this.enqueueOperation("clear", namespaces);
+  }
+
+  async stop() {
+    await this.queue;
+  }
+
+  private enqueueOperation<Type extends "get" | "set" | "clear">(
+    type: Type,
+    ...args: Parameters<(typeof this.cache)[Type]>
+  ) {
+    const newPromise = this.queue.then(() => {
+      // @ts-expect-error Tuple type warning
+      return this.cache[type](...args) as Promise<
+        ReturnType<(typeof this.cache)[Type]>
+      >;
+    });
+
+    this.queue = newPromise.then(
+      () => void 0,
+      () => void 0
+    );
+
+    return newPromise;
+  }
+}
+
 export class PregelLoop {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   protected input?: any | Command;
@@ -217,7 +270,7 @@ export class PregelLoop {
 
   store?: AsyncBatchedStore;
 
-  cache?: BaseCache<PendingWrite<string>[]>;
+  cache?: AsyncBatchedCache;
 
   manager?: CallbackManagerForChainRun;
 
@@ -280,7 +333,7 @@ export class PregelLoop {
     this.nodes = params.nodes;
     this.skipDoneTasks = params.skipDoneTasks;
     this.store = params.store;
-    this.cache = params.cache;
+    this.cache = params.cache ? new AsyncBatchedCache(params.cache) : undefined;
     this.stream = params.stream;
     this.checkpointNamespace = params.checkpointNamespace;
     this.prevCheckpointConfig = params.prevCheckpointConfig;
@@ -387,6 +440,7 @@ export class PregelLoop {
     const store = params.store
       ? new AsyncBatchedStore(params.store)
       : undefined;
+
     if (store) {
       // Start the store. This is a batch store, so it will run continuously
       store.start();
@@ -512,8 +566,7 @@ export class PregelLoop {
       return;
     }
 
-    // TODO: when should we await the promise for cache write?
-    this.cache.set([
+    void this.cache.set([
       {
         key: [task.cache_key.ns, task.cache_key.key],
         value: task.writes,

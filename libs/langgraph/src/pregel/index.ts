@@ -1959,6 +1959,7 @@ export class Pregel<
           // Call `.stop()` again incase it was not called in the loop, e.g due to an error.
           if (loop) {
             await loop.store?.stop();
+            await loop.cache?.stop();
           }
           await Promise.all([
             ...(loop?.checkpointerPromises ?? []),
