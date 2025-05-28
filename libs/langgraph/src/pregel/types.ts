@@ -6,12 +6,13 @@ import type {
   BaseCheckpointSaver,
   BaseStore,
   CheckpointListOptions,
+  BaseCache,
 } from "@langchain/langgraph-checkpoint";
 import { Graph as DrawableGraph } from "@langchain/core/runnables/graph";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
-import { RetryPolicy } from "./utils/index.js";
+import { CachePolicy, RetryPolicy } from "./utils/index.js";
 import { Interrupt } from "../constants.js";
 import { type ManagedValueSpec } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
@@ -147,6 +148,11 @@ export interface PregelOptions<
    * threads. Useful for implementing long-term memory patterns.
    */
   store?: BaseStore;
+
+  /**
+   * Optional cache for the graph, useful for caching tasks.
+   */
+  cache?: BaseCache;
 }
 
 /**
@@ -304,6 +310,11 @@ export type PregelParams<
    * Memory store to use for SharedValues.
    */
   store?: BaseStore;
+
+  /**
+   * Memory store to use for SharedValues.
+   */
+  cache?: BaseCache;
 };
 
 export interface PregelTaskDescription {
@@ -313,6 +324,12 @@ export interface PregelTaskDescription {
   readonly interrupts: Interrupt[];
   readonly state?: LangGraphRunnableConfig | StateSnapshot;
   readonly path?: TaskPath;
+}
+
+interface CacheKey {
+  ns: string[];
+  key: string;
+  ttl?: number;
 }
 
 export interface PregelExecutableTask<
@@ -327,6 +344,7 @@ export interface PregelExecutableTask<
   readonly config?: LangGraphRunnableConfig;
   readonly triggers: Array<string>;
   readonly retry_policy?: RetryPolicy;
+  readonly cache_key?: CacheKey;
   readonly id: string;
   readonly path?: TaskPath;
   readonly subgraphs?: Runnable[];
@@ -453,6 +471,7 @@ export type CallOptions = {
   func: (...args: unknown[]) => unknown | Promise<unknown>;
   name: string;
   input: unknown;
+  cache?: CachePolicy;
   retry?: RetryPolicy;
   callbacks?: unknown;
 };
@@ -466,16 +485,18 @@ export class Call {
 
   retry?: RetryPolicy;
 
+  cache?: CachePolicy;
+
   callbacks?: unknown;
 
   readonly __lg_type = "call";
 
-  constructor({ func, name, input, retry, callbacks }: CallOptions) {
+  constructor({ func, name, input, retry, cache, callbacks }: CallOptions) {
     this.func = func;
     this.name = name;
     this.input = input;
     this.retry = retry;
-
+    this.cache = cache;
     this.callbacks = callbacks;
   }
 }

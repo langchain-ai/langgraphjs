@@ -21,10 +21,10 @@
     "lint": "yarn lint:eslint && yarn lint:dpdm",
     "lint:fix": "yarn lint:eslint --fix && yarn lint:dpdm",
     "prepack": "yarn build",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest --testPathIgnorePatterns=\\.int\\.test.ts --testTimeout 30000 --maxWorkers=50%",
-    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch --testPathIgnorePatterns=\\.int\\.test.ts",
-    "test:single": "NODE_OPTIONS=--experimental-vm-modules yarn run jest --config jest.config.cjs --testTimeout 100000",
-    "test:int": "NODE_OPTIONS=--experimental-vm-modules jest --testPathPattern=\\.int\\.test.ts --testTimeout 100000 --maxWorkers=50%",
+    "test": "vitest",
+    "test:watch": "vitest watch",
+    "test:single": "vitest run",
+    "test:int": "vitest run --mode int",
     "format": "prettier --config .prettierrc --write \"src\"",
     "format:check": "prettier --config .prettierrc --check \"src\""
   },
@@ -61,7 +61,8 @@
     "rollup": "^4.37.0",
     "ts-jest": "^29.1.0",
     "tsx": "^4.19.3",
-    "typescript": "^4.9.5 || ^5.4.5"
+    "typescript": "^4.9.5 || ^5.4.5",
+    "vitest": "^3.1.2"
   },
   "publishConfig": {
     "access": "public",

@@ -6,6 +6,7 @@ import {
 } from "@langchain/core/runnables";
 import {
   All,
+  type BaseCache,
   BaseCheckpointSaver,
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
@@ -48,7 +49,7 @@ import {
   StateType,
   UpdateType,
 } from "./annotation.js";
-import type { RetryPolicy } from "../pregel/utils/index.js";
+import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
 import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
@@ -80,10 +81,12 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
 > & {
   input?: StateDefinition;
   retryPolicy?: RetryPolicy;
+  cachePolicy?: CachePolicy;
 };
 
 export type StateGraphAddNodeOptions = {
   retryPolicy?: RetryPolicy;
+  cachePolicy?: CachePolicy | boolean;
   // TODO: Fix generic typing for annotations
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   input?: AnnotationRoot<any> | AnyZodObject;
@@ -498,9 +501,16 @@ export class StateGraph<
       } else {
         runnable = _coerceToRunnable(action);
       }
+
+      let cachePolicy = options?.cachePolicy;
+      if (typeof cachePolicy === "boolean") {
+        cachePolicy = cachePolicy ? {} : undefined;
+      }
+
       const nodeSpec: StateGraphNodeSpec<S, U> = {
         runnable: runnable as unknown as Runnable<S, U>,
         retryPolicy: options?.retryPolicy,
+        cachePolicy,
         metadata: options?.metadata,
         input: inputSpec ?? this._schemaDefinition,
         subgraphs: isPregelLike(runnable)
@@ -603,12 +613,14 @@ export class StateGraph<
   override compile({
     checkpointer,
     store,
+    cache,
     interruptBefore,
     interruptAfter,
     name,
   }: {
     checkpointer?: BaseCheckpointSaver | false;
     store?: BaseStore;
+    cache?: BaseCache;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
     name?: string;
@@ -647,6 +659,7 @@ export class StateGraph<
       streamChannels,
       streamMode: "updates",
       store,
+      cache,
       name,
     });
 
@@ -869,6 +882,7 @@ export class CompiledStateGraph<
         bound: node?.runnable,
         metadata: node?.metadata,
         retryPolicy: node?.retryPolicy,
+        cachePolicy: node?.cachePolicy,
         subgraphs: node?.subgraphs,
         ends: node?.ends,
       });

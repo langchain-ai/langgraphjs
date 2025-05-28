@@ -6,6 +6,7 @@ import {
   PregelScratchpad,
 } from "./types.js";
 import {
+  CachePolicy,
   combineAbortSignals,
   patchConfigurable,
   RetryPolicy,
@@ -436,7 +437,11 @@ async function call(
   func: (...args: unknown[]) => unknown | Promise<unknown>,
   name: string,
   input: unknown,
-  options: { retry?: RetryPolicy; callbacks?: unknown } = {}
+  options: {
+    retry?: RetryPolicy;
+    cache?: CachePolicy;
+    callbacks?: unknown;
+  } = {}
 ): Promise<unknown> {
   // Schedule PUSH tasks, collect promises
   const scratchpad = task.config?.configurable?.[CONFIG_KEY_SCRATCHPAD] as
@@ -457,6 +462,7 @@ async function call(
     func,
     name,
     input,
+    cache: options.cache,
     retry: options.retry,
     callbacks: options.callbacks,
   });

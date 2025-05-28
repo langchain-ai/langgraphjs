@@ -51,6 +51,7 @@ import {
   NO_WRITES,
   CONFIG_KEY_PREVIOUS_STATE,
   PREVIOUS,
+  CACHE_NS_WRITES,
 } from "../constants.js";
 import {
   Call,
@@ -648,10 +649,18 @@ export function _prepareSingleTask<
         ),
         triggers,
         retry_policy: call.retry,
+        cache_key: call.cache
+          ? {
+              // TODO: add xxh3_128 hex digest
+              key: (call.cache.keyFunc ?? JSON.stringify)([call.input]),
+              ns: [CACHE_NS_WRITES, call.name ?? "__dynamic__"],
+              ttl: call.cache.ttl,
+            }
+          : undefined,
         id,
         path: taskPath.slice(0, 3) as VariadicTaskPath,
         writers: [],
-      };
+      } satisfies PregelExecutableTask<keyof Nn, keyof Cc>;
       return task;
     } else {
       return {
@@ -786,10 +795,19 @@ export function _prepareSingleTask<
           ),
           triggers,
           retry_policy: proc.retryPolicy,
+          cache_key: proc.cachePolicy
+            ? {
+                key: (proc.cachePolicy.keyFunc ?? JSON.stringify)([
+                  packet.args,
+                ]),
+                ns: [CACHE_NS_WRITES, proc.name ?? "__dynamic__", packet.node],
+                ttl: proc.cachePolicy.ttl,
+              }
+            : undefined,
           id: taskId,
           path: taskPath,
           writers: proc.getWriters(),
-        };
+        } satisfies PregelExecutableTask<keyof Nn, keyof Cc>;
       }
     } else {
       return {
@@ -797,7 +815,7 @@ export function _prepareSingleTask<
         name: packet.node,
         interrupts: [],
         path: taskPath,
-      };
+      } satisfies PregelTaskDescription;
     }
   } else if (taskPath[0] === PULL) {
     const name = taskPath[1].toString();
@@ -956,13 +974,25 @@ export function _prepareSingleTask<
             ),
             triggers,
             retry_policy: proc.retryPolicy,
+            cache_key: proc.cachePolicy
+              ? {
+                  key: (proc.cachePolicy.keyFunc ?? JSON.stringify)([val]),
+                  ns: [CACHE_NS_WRITES, proc.name ?? "__dynamic__", name],
+                  ttl: proc.cachePolicy.ttl,
+                }
+              : undefined,
             id: taskId,
             path: taskPath,
             writers: proc.getWriters(),
-          };
+          } satisfies PregelExecutableTask<keyof Nn, keyof Cc>;
         }
       } else {
-        return { id: taskId, name, interrupts: [], path: taskPath };
+        return {
+          id: taskId,
+          name,
+          interrupts: [],
+          path: taskPath,
+        } satisfies PregelTaskDescription;
       }
     }
   }
