@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   postgres:
-    image: postgres:latest
+    image: pgvector/pgvector:pg16
     container_name: langgraphjs-postgres-test
     volumes:
       - ./tmp/integration_tests/pgvector:/var/lib/postgresql/data
