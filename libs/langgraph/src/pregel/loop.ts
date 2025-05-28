@@ -497,7 +497,6 @@ export class PregelLoop {
       this._outputWrites(taskId, writesCopy);
     }
 
-    // TODO: put writes to the cache
     if (!writes.length || !this.cache || !this.tasks) {
       return;
     }

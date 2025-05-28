@@ -37,6 +37,7 @@ import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
 import {
   BaseCheckpointSaver,
   BaseStore,
+  CacheFullKey,
   Checkpoint,
   CheckpointMetadata,
   CheckpointTuple,
@@ -2872,16 +2873,35 @@ graph TD;
     });
 
     it.each([
-      [{ cachePolicy: true }], // cachePolicy is true
-      [{ cachePolicy: false }], // cachePolicy is false
+      [{ cachePolicy: true, slowCache: false }],
+      [{ cachePolicy: true, slowCache: true }],
+      [{ cachePolicy: false, slowCache: false }],
     ])(
       "in one fan out state graph waiting edge multiple (%s)",
-      async ({ cachePolicy }) => {
+      async ({ cachePolicy, slowCache }) => {
         const sortedAdd = vi.fn((x: string[], y: string[]): string[] =>
           [...x, ...y].sort()
         );
 
-        const cache = new InMemoryCache();
+        class SlowInMemoryCache extends InMemoryCache {
+          async get(keys: CacheFullKey[]) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            return super.get(keys);
+          }
+
+          async set(
+            pairs: {
+              key: CacheFullKey;
+              value: unknown;
+              ttl?: number;
+            }[]
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            return super.set(pairs);
+          }
+        }
+
+        const cache = slowCache ? new SlowInMemoryCache() : new InMemoryCache();
         const State = Annotation.Root({
           query: Annotation<string>,
           answer: Annotation<string>,

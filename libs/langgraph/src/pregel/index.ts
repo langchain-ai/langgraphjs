@@ -2110,7 +2110,6 @@ export class Pregel<
   }
 
   async clearCache(): Promise<void> {
-    // TODO: implement clear cache
     await this.cache?.clear([]);
   }
 }
