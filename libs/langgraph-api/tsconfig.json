@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "module": "NodeNext",
+    "allowJs": true,
+    "jsx": "react-jsx",
+    "noUnusedLocals": true,
+    "outDir": "dist"
+  },
+  "exclude": ["scripts/*", "dist/*"]
+}

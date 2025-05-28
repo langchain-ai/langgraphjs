@@ -1,0 +1,14 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "test:int:api": {
+      "cache": false,
+      "dependsOn": ["^build", "build"]
+    },
+    "test:int:auth": {
+      "cache": false,
+      "dependsOn": ["^build", "build"]
+    }
+  }
+}

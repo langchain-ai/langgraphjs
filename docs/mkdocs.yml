@@ -56,7 +56,7 @@ plugins:
       # One level of globbing is intentional
       source: "../libs/*/*.d.ts"
       output_dir: "./reference"
-      tsconfig: "../tsconfig.json"
+      tsconfig: "../tsconfig.docs.json"
       options: "typedoc.json"
       name: "API Reference"
       title_link: "/" # optional, default: '/'

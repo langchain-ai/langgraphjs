@@ -24,6 +24,9 @@
   ],
   "exclude": [
     "node_modules",
+    "libs/langgraph-api",
+    "libs/langgraph-ui",
+    "libs/langgraph-cli",
     "**/dist/",
     "environment_tests",
     "examples/web_browsing/labeling.ts",

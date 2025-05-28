@@ -39,6 +39,7 @@
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",
+    "@langchain/core": "^0.3.42",
     "@langchain/langgraph": "workspace:*",
     "@langchain/openai": "^0.4.4",
     "@langchain/scripts": "^0.1.3",

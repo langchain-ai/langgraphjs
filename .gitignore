@@ -1,9 +1,13 @@
-index.cjs
-index.js
-index.d.ts
 node_modules
 dist
 coverage/
+.env
+.DS_Store
+.venv
+__pycache__
+.langgraph_api
+.uv
+.turbo
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
@@ -15,10 +19,7 @@ coverage/
 **/.turbo
 **/.eslintcache
 
-.env
 .ipynb_checkpoints
 dist-cjs
 **/dist-cjs
 tmp/
-__pycache__
-.DS_Store
