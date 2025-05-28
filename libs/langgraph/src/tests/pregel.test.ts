@@ -58,6 +58,7 @@ import {
   FakeChatModel,
   FakeTracer,
   MemorySaverAssertImmutable,
+  SlowInMemoryCache,
 } from "./utils.js";
 import { gatherIterator } from "../utils.js";
 import { LastValue } from "../channels/last_value.js";
@@ -2882,24 +2883,6 @@ graph TD;
         const sortedAdd = vi.fn((x: string[], y: string[]): string[] =>
           [...x, ...y].sort()
         );
-
-        class SlowInMemoryCache extends InMemoryCache {
-          async get(keys: CacheFullKey[]) {
-            await new Promise((resolve) => setTimeout(resolve, 50));
-            return super.get(keys);
-          }
-
-          async set(
-            pairs: {
-              key: CacheFullKey;
-              value: unknown;
-              ttl?: number;
-            }[]
-          ) {
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            return super.set(pairs);
-          }
-        }
 
         const cache = slowCache ? new SlowInMemoryCache() : new InMemoryCache();
         const State = Annotation.Root({

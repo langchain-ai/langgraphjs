@@ -7,7 +7,7 @@ import { task, entrypoint, getPreviousState } from "../func/index.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { Command, PREVIOUS, START } from "../constants.js";
 import { interrupt } from "../interrupt.js";
-import { MemorySaverAssertImmutable } from "./utils.js";
+import { MemorySaverAssertImmutable, SlowInMemoryCache } from "./utils.js";
 import { Annotation, StateGraph } from "../graph/index.js";
 import { gatherIterator } from "../utils.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
@@ -943,103 +943,109 @@ export function runFuncTests(
         expect(result).toEqual(["Added James!", "Added Will!"]);
       });
 
-      it("mutliple interrupts with cache", async () => {
-        const checkpointer = await createCheckpointer();
-        const cache = new InMemoryCache();
-        let counter = 0;
+      it.each([[{ slowCache: false }], [{ slowCache: true }]])(
+        "mutliple interrupts with cache (%s)",
+        async ({ slowCache }) => {
+          const checkpointer = await createCheckpointer();
+          const cache = slowCache
+            ? new SlowInMemoryCache()
+            : new InMemoryCache();
 
-        const double = task({ name: "double", cache: true }, (x: number) => {
-          counter += 1;
-          return 2 * x;
-        });
+          let counter = 0;
 
-        const graph = entrypoint(
-          {
-            name: "graph",
-            checkpointer,
-            cache,
-          },
-          async () => {
-            const values: [double: number, interrupt: unknown][] = [];
+          const double = task({ name: "double", cache: true }, (x: number) => {
+            counter += 1;
+            return 2 * x;
+          });
 
-            for (const idx of [1, 1, 2, 2, 3, 3]) {
-              const first = await double(idx);
-              const second = interrupt({ a: "boo" });
-              values.push([first, second]);
+          const graph = entrypoint(
+            {
+              name: "graph",
+              checkpointer,
+              cache,
+            },
+            async () => {
+              const values: [double: number, interrupt: unknown][] = [];
+
+              for (const idx of [1, 1, 2, 2, 3, 3]) {
+                const first = await double(idx);
+                const second = interrupt({ a: "boo" });
+                values.push([first, second]);
+              }
+
+              return { values };
             }
+          );
 
-            return { values };
-          }
-        );
+          let config = { configurable: { thread_id: "1" } };
 
-        let config = { configurable: { thread_id: "1" } };
+          await graph.invoke({}, config);
+          await graph.invoke(new Command({ resume: "a" }), config);
+          await graph.invoke(new Command({ resume: "b" }), config);
+          await graph.invoke(new Command({ resume: "c" }), config);
+          await graph.invoke(new Command({ resume: "d" }), config);
+          await graph.invoke(new Command({ resume: "e" }), config);
+          let result = await graph.invoke(new Command({ resume: "f" }), config);
 
-        await graph.invoke({}, config);
-        await graph.invoke(new Command({ resume: "a" }), config);
-        await graph.invoke(new Command({ resume: "b" }), config);
-        await graph.invoke(new Command({ resume: "c" }), config);
-        await graph.invoke(new Command({ resume: "d" }), config);
-        await graph.invoke(new Command({ resume: "e" }), config);
-        let result = await graph.invoke(new Command({ resume: "f" }), config);
+          expect(result).toEqual({
+            values: [
+              [2, "a"],
+              [2, "b"],
+              [4, "c"],
+              [4, "d"],
+              [6, "e"],
+              [6, "f"],
+            ],
+          });
+          expect(counter).toBe(3);
 
-        expect(result).toEqual({
-          values: [
-            [2, "a"],
-            [2, "b"],
-            [4, "c"],
-            [4, "d"],
-            [6, "e"],
-            [6, "f"],
-          ],
-        });
-        expect(counter).toBe(3);
+          config = { configurable: { thread_id: "2" } };
 
-        config = { configurable: { thread_id: "2" } };
+          await graph.invoke({}, config);
+          await graph.invoke(new Command({ resume: "a" }), config);
+          await graph.invoke(new Command({ resume: "b" }), config);
+          await graph.invoke(new Command({ resume: "c" }), config);
+          await graph.invoke(new Command({ resume: "d" }), config);
+          await graph.invoke(new Command({ resume: "e" }), config);
+          result = await graph.invoke(new Command({ resume: "f" }), config);
 
-        await graph.invoke({}, config);
-        await graph.invoke(new Command({ resume: "a" }), config);
-        await graph.invoke(new Command({ resume: "b" }), config);
-        await graph.invoke(new Command({ resume: "c" }), config);
-        await graph.invoke(new Command({ resume: "d" }), config);
-        await graph.invoke(new Command({ resume: "e" }), config);
-        result = await graph.invoke(new Command({ resume: "f" }), config);
+          expect(result).toEqual({
+            values: [
+              [2, "a"],
+              [2, "b"],
+              [4, "c"],
+              [4, "d"],
+              [6, "e"],
+              [6, "f"],
+            ],
+          });
+          expect(counter).toBe(3);
 
-        expect(result).toEqual({
-          values: [
-            [2, "a"],
-            [2, "b"],
-            [4, "c"],
-            [4, "d"],
-            [6, "e"],
-            [6, "f"],
-          ],
-        });
-        expect(counter).toBe(3);
+          await graph.clearCache();
 
-        await graph.clearCache();
+          config = { configurable: { thread_id: "3" } };
+          await graph.invoke({}, config);
+          await graph.invoke(new Command({ resume: "a" }), config);
+          await graph.invoke(new Command({ resume: "b" }), config);
+          await graph.invoke(new Command({ resume: "c" }), config);
+          await graph.invoke(new Command({ resume: "d" }), config);
+          await graph.invoke(new Command({ resume: "e" }), config);
+          result = await graph.invoke(new Command({ resume: "f" }), config);
 
-        config = { configurable: { thread_id: "3" } };
-        await graph.invoke({}, config);
-        await graph.invoke(new Command({ resume: "a" }), config);
-        await graph.invoke(new Command({ resume: "b" }), config);
-        await graph.invoke(new Command({ resume: "c" }), config);
-        await graph.invoke(new Command({ resume: "d" }), config);
-        await graph.invoke(new Command({ resume: "e" }), config);
-        result = await graph.invoke(new Command({ resume: "f" }), config);
+          expect(result).toEqual({
+            values: [
+              [2, "a"],
+              [2, "b"],
+              [4, "c"],
+              [4, "d"],
+              [6, "e"],
+              [6, "f"],
+            ],
+          });
 
-        expect(result).toEqual({
-          values: [
-            [2, "a"],
-            [2, "b"],
-            [4, "c"],
-            [4, "d"],
-            [6, "e"],
-            [6, "f"],
-          ],
-        });
-
-        expect(counter).toBe(6);
-      });
+          expect(counter).toBe(6);
+        }
+      );
     });
   });
 }
