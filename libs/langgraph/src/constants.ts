@@ -81,10 +81,13 @@ export const RESERVED = [
 export const CHECKPOINT_NAMESPACE_SEPARATOR = "|";
 export const CHECKPOINT_NAMESPACE_END = ":";
 
-export interface SendInterface {
-  node: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  args: any;
+// eslint-disable-next-line @typescript-eslint/ban-types
+type AnyString = string & {};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface SendInterface<Node extends string = string, Args = any> {
+  node: Node;
+  args: Args;
 }
 
 export function _isSendInterface(x: unknown): x is SendInterface {
@@ -143,26 +146,23 @@ export function _isSendInterface(x: unknown): x is SendInterface {
  * // { subjects: ["cats", "dogs"], jokes: [`Joke about cats`, `Joke about dogs`] }
  * ```
  */
-export class Send implements SendInterface {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class Send<Node extends string = string, Args = any>
+  implements SendInterface<Node, Args>
+{
   lg_name = "Send";
 
-  public node: string;
+  public node: Node;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public args: any;
+  public args: Args;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(node: string, args: any) {
+  constructor(node: Node, args: Args) {
     this.node = node;
-    this.args = _deserializeCommandSendObjectGraph(args);
+    this.args = _deserializeCommandSendObjectGraph(args) as Args;
   }
 
   toJSON() {
-    return {
-      lg_name: this.lg_name,
-      node: this.node,
-      args: this.args,
-    };
+    return { lg_name: this.lg_name, node: this.node, args: this.args };
   }
 }
 
@@ -180,7 +180,11 @@ export type Interrupt = {
   ns?: string[];
 };
 
-export type CommandParams<R> = {
+export type CommandParams<
+  Resume = unknown,
+  Nodes extends string = string,
+  Update = unknown
+> = {
   /**
    * A discriminator field used to identify the type of object. Must be populated when serializing.
    *
@@ -192,7 +196,7 @@ export type CommandParams<R> = {
   /**
    * Value to resume execution with. To be used together with {@link interrupt}.
    */
-  resume?: R;
+  resume?: Resume;
   /**
    * Graph to send the command to. Supported values are:
    *   - None: the current graph (default)
@@ -213,7 +217,10 @@ export type CommandParams<R> = {
    *   - `Send` object (to execute a node with the input provided)
    *   - sequence of `Send` objects
    */
-  goto?: string | SendInterface | (string | SendInterface)[];
+  goto?:
+    | Nodes
+    | SendInterface<Nodes, Update>
+    | (Nodes | SendInterface<Nodes, Update>)[];
 };
 
 /**
@@ -278,7 +285,11 @@ export type CommandParams<R> = {
  * // { foo: 'a|c' } and { foo: 'a|b' }
  * ```
  */
-export class Command<R = unknown> {
+export class Command<
+  Resume = unknown,
+  Nodes extends string = string,
+  Update = unknown
+> {
   readonly lg_name = "Command";
 
   lc_direct_tool_output = true;
@@ -300,7 +311,7 @@ export class Command<R = unknown> {
   /**
    * Value to resume execution with. To be used together with {@link interrupt}.
    */
-  resume?: R;
+  resume?: Resume;
 
   /**
    * Can be one of the following:
@@ -309,18 +320,20 @@ export class Command<R = unknown> {
    *   - {@link Send} object (to execute a node with the exact input provided in the {@link Send} object)
    *   - sequence of {@link Send} objects
    */
-  goto?: string | Send | (string | Send)[] = [];
+  goto?: Nodes | Send<Nodes, Update> | (Nodes | Send<Nodes, Update>)[] = [];
 
   static PARENT = "__parent__";
 
-  constructor(args: CommandParams<R>) {
+  constructor(args: CommandParams<Resume, Nodes | AnyString, Update>) {
     this.resume = args.resume;
     this.graph = args.graph;
     this.update = args.update;
     if (args.goto) {
+      type ValidArg = Nodes | Send<Nodes, Update>;
+
       this.goto = Array.isArray(args.goto)
-        ? (_deserializeCommandSendObjectGraph(args.goto) as (string | Send)[])
-        : [_deserializeCommandSendObjectGraph(args.goto) as string | Send];
+        ? (_deserializeCommandSendObjectGraph(args.goto) as ValidArg[])
+        : [_deserializeCommandSendObjectGraph(args.goto) as ValidArg];
     }
   }
 
