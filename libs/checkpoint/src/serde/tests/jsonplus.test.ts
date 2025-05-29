@@ -1,4 +1,4 @@
-import { it, expect } from "@jest/globals";
+import { it, expect } from "vitest";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { uuid6 } from "../../id.js";
 import { JsonPlusSerializer } from "../jsonplus.js";

@@ -1,4 +1,5 @@
 import {
+  BaseCache,
   BaseCheckpointSaver,
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
@@ -14,7 +15,7 @@ import {
 } from "../constants.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { call, getRunnableForEntrypoint } from "../pregel/call.js";
-import { RetryPolicy } from "../pregel/utils/index.js";
+import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
 import { LastValue } from "../channels/last_value.js";
 import {
   EntrypointFinal,
@@ -44,6 +45,11 @@ export type TaskOptions = {
    * the task should be retried if it fails.
    */
   retry?: RetryPolicy;
+
+  /**
+   * The cache policy for the task. Configures how the task should be cached.
+   */
+  cache?: CachePolicy | boolean;
 };
 
 /**
@@ -96,17 +102,28 @@ export function task<ArgsT extends unknown[], OutputT>(
   optionsOrName: TaskOptions | string,
   func: TaskFunc<ArgsT, OutputT>
 ): (...args: ArgsT) => Promise<OutputT> {
-  const { name, retry } =
-    typeof optionsOrName === "string"
-      ? { name: optionsOrName, retry: undefined }
-      : optionsOrName;
+  const {
+    name,
+    retry,
+    cache: userCache,
+  } = typeof optionsOrName === "string"
+    ? { name: optionsOrName, retry: undefined, cache: undefined }
+    : optionsOrName;
   if (isAsyncGeneratorFunction(func) || isGeneratorFunction(func)) {
     throw new Error(
       "Generators are disallowed as tasks. For streaming responses, use config.write."
     );
   }
+
+  let cache: CachePolicy | undefined;
+  if (typeof userCache === "boolean") {
+    cache = userCache ? {} : undefined;
+  } else {
+    cache = userCache;
+  }
+
   return (...args: ArgsT) => {
-    return call({ func, name, retry }, ...args);
+    return call({ func, name, retry, cache }, ...args);
   };
 }
 
@@ -128,6 +145,11 @@ export type EntrypointOptions = {
    * The store for the {@link entrypoint}. Used to persist data across workflow runs.
    */
   store?: BaseStore;
+
+  /**
+   * The cache for the {@link entrypoint}. Used to cache values between workflow runs.
+   */
+  cache?: BaseCache;
 };
 
 /**
@@ -309,7 +331,7 @@ export const entrypoint = function entrypoint<InputT, OutputT>(
   optionsOrName: EntrypointOptions | string,
   func: EntrypointFunc<InputT, OutputT>
 ) {
-  const { name, checkpointer, store } =
+  const { name, checkpointer, store, cache } =
     typeof optionsOrName === "string"
       ? { name: optionsOrName, checkpointer: undefined, store: undefined }
       : optionsOrName;
@@ -390,6 +412,7 @@ export const entrypoint = function entrypoint<InputT, OutputT>(
     streamChannels: END,
     streamMode,
     store,
+    cache,
   });
 } as EntrypointFunction;
 

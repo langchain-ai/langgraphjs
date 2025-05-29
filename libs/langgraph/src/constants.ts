@@ -7,6 +7,10 @@ export const END = "__end__";
 export const INPUT = "__input__";
 export const COPY = "__copy__";
 export const ERROR = "__error__";
+
+/** Special reserved cache namespaces */
+export const CACHE_NS_WRITES = "__pregel_ns_writes";
+
 export const CONFIG_KEY_SEND = "__pregel_send";
 /** config key containing function used to call a node (push task) */
 export const CONFIG_KEY_CALL = "__pregel_call";

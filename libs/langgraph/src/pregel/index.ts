@@ -24,6 +24,7 @@ import {
   SCHEDULED,
   uuid5,
   CheckpointMetadata,
+  BaseCache,
 } from "@langchain/langgraph-checkpoint";
 import type { StreamEvent } from "@langchain/core/tracers/log_stream";
 import {
@@ -457,6 +458,11 @@ export class Pregel<
   triggerToNodes: Record<string, string[]> = {};
 
   /**
+   * Optional cache for the graph, useful for caching tasks.
+   */
+  cache?: BaseCache;
+
+  /**
    * Constructor for Pregel - meant for internal use only.
    *
    * @internal
@@ -484,6 +490,7 @@ export class Pregel<
     this.retryPolicy = fields.retryPolicy;
     this.config = fields.config;
     this.store = fields.store;
+    this.cache = fields.cache;
     this.name = fields.name;
 
     if (this.autoValidate) {
@@ -1588,7 +1595,8 @@ export class Pregel<
     All | string[], // interrupt after
     BaseCheckpointSaver | undefined,
     BaseStore | undefined,
-    boolean
+    boolean,
+    BaseCache | undefined
   ] {
     const {
       debug,
@@ -1647,6 +1655,7 @@ export class Pregel<
       defaultCheckpointer = this.checkpointer;
     }
     const defaultStore: BaseStore | undefined = config.store ?? this.store;
+    const defaultCache: BaseCache | undefined = config.cache ?? this.cache;
 
     return [
       defaultDebug,
@@ -1659,6 +1668,7 @@ export class Pregel<
       defaultCheckpointer,
       defaultStore,
       streamModeSingle,
+      defaultCache,
     ];
   }
 
@@ -1888,6 +1898,7 @@ export class Pregel<
       checkpointer,
       store,
       streamModeSingle,
+      cache,
     ] = this._defaults(restConfig);
 
     config.configurable = await this._validateConfigurable(config.configurable);
@@ -1954,6 +1965,7 @@ export class Pregel<
           outputKeys,
           streamKeys: this.streamChannelsAsIs as string | string[],
           store,
+          cache: cache as BaseCache<PendingWrite<string>[]>,
           stream,
           interruptAfter,
           interruptBefore,
@@ -1981,6 +1993,7 @@ export class Pregel<
           // Call `.stop()` again incase it was not called in the loop, e.g due to an error.
           if (loop) {
             await loop.store?.stop();
+            await loop.cache?.stop();
           }
           await Promise.all([
             ...(loop?.checkpointerPromises ?? []),
@@ -2074,10 +2087,12 @@ export class Pregel<
     let tickError;
     try {
       while (
-        await loop.tick({
-          inputKeys: this.inputChannels as string | string[],
-        })
+        await loop.tick({ inputKeys: this.inputChannels as string | string[] })
       ) {
+        for (const { task } of await loop._matchCachedWrites()) {
+          loop._outputWrites(task.id, task.writes, true);
+        }
+
         if (debug) {
           printStepCheckpoint(
             loop.checkpointMetadata.step,
@@ -2127,5 +2142,9 @@ export class Pregel<
         await loop.finishAndHandleError();
       }
     }
+  }
+
+  async clearCache(): Promise<void> {
+    await this.cache?.clear([]);
   }
 }

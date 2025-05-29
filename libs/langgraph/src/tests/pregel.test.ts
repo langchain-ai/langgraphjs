@@ -40,6 +40,7 @@ import {
   Checkpoint,
   CheckpointMetadata,
   CheckpointTuple,
+  InMemoryCache,
   InMemoryStore,
   PendingWrite,
   uuid5,
@@ -56,6 +57,7 @@ import {
   FakeChatModel,
   FakeTracer,
   MemorySaverAssertImmutable,
+  SlowInMemoryCache,
 } from "./utils.js";
 import { gatherIterator } from "../utils.js";
 import { LastValue } from "../channels/last_value.js";
@@ -490,6 +492,7 @@ export function runPregelTests(
           checkpointer,
           undefined,
           true,
+          undefined,
         ];
 
         const expectedDefaults2 = [
@@ -503,6 +506,7 @@ export function runPregelTests(
           checkpointer,
           undefined,
           true,
+          undefined,
         ];
 
         expect(pregel._defaults(config1)).toEqual(expectedDefaults1);
@@ -3099,6 +3103,141 @@ graph TD;
             thread_id: "2",
           },
         });
+      }
+    );
+
+    it.each([
+      [{ cachePolicy: true, slowCache: false }],
+      [{ cachePolicy: true, slowCache: true }],
+      [{ cachePolicy: false, slowCache: false }],
+    ])(
+      "in one fan out state graph waiting edge multiple (%s)",
+      async ({ cachePolicy, slowCache }) => {
+        const sortedAdd = vi.fn((x: string[], y: string[]): string[] =>
+          [...x, ...y].sort()
+        );
+
+        const cache = slowCache ? new SlowInMemoryCache() : new InMemoryCache();
+        const State = Annotation.Root({
+          query: Annotation<string>,
+          answer: Annotation<string>,
+          docs: Annotation<string[]>({ reducer: sortedAdd }),
+        });
+
+        let rewriteQueryCount = 0;
+        const graph = new StateGraph(State)
+          .addNode(
+            "rewrite_query",
+            (state) => {
+              rewriteQueryCount += 1;
+              return { query: `query: ${state.query}` };
+            },
+            { cachePolicy }
+          )
+          .addNode("analyzer_one", (state) => ({
+            query: `analyzed: ${state.query}`,
+          }))
+          .addNode("retriever_one", () => ({ docs: ["doc1", "doc2"] }))
+          .addNode("retriever_two", async () => {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            return { docs: ["doc3", "doc4"] };
+          })
+          .addNode("qa", (state) => ({ answer: state.docs.join(",") }))
+          .addNode("decider", () => ({}))
+
+          .addEdge(START, "rewrite_query")
+          .addEdge("rewrite_query", "analyzer_one")
+          .addEdge("analyzer_one", "retriever_one")
+          .addEdge("rewrite_query", "retriever_two")
+          .addEdge(["retriever_one", "retriever_two"], "decider")
+
+          .addConditionalEdges(
+            "decider",
+            (state) => {
+              if (state.query.split("analyzed").length - 1 > 1) return "qa";
+              return "rewrite_query";
+            },
+            ["qa", "rewrite_query"]
+          )
+          .compile({ cache });
+
+        expect(await graph.invoke({ query: "what is weather in sf" })).toEqual({
+          query: "analyzed: query: analyzed: query: what is weather in sf",
+          answer: "doc1,doc1,doc2,doc2,doc3,doc3,doc4,doc4",
+          docs: [
+            "doc1",
+            "doc1",
+            "doc2",
+            "doc2",
+            "doc3",
+            "doc3",
+            "doc4",
+            "doc4",
+          ],
+        });
+
+        expect(
+          await gatherIterator(graph.stream({ query: "what is weather in sf" }))
+        ).toEqual([
+          cachePolicy
+            ? {
+                rewrite_query: { query: "query: what is weather in sf" },
+                __metadata__: { cached: true },
+              }
+            : { rewrite_query: { query: "query: what is weather in sf" } },
+          {
+            analyzer_one: { query: "analyzed: query: what is weather in sf" },
+          },
+          { retriever_two: { docs: ["doc3", "doc4"] } },
+          { retriever_one: { docs: ["doc1", "doc2"] } },
+          { decider: {} },
+          cachePolicy
+            ? {
+                rewrite_query: {
+                  query: "query: analyzed: query: what is weather in sf",
+                },
+                __metadata__: { cached: true },
+              }
+            : {
+                rewrite_query: {
+                  query: "query: analyzed: query: what is weather in sf",
+                },
+              },
+          {
+            analyzer_one: {
+              query: "analyzed: query: analyzed: query: what is weather in sf",
+            },
+          },
+          { retriever_two: { docs: ["doc3", "doc4"] } },
+          { retriever_one: { docs: ["doc1", "doc2"] } },
+          { decider: {} },
+          { qa: { answer: "doc1,doc1,doc2,doc2,doc3,doc3,doc4,doc4" } },
+        ]);
+
+        expect(rewriteQueryCount).toBe(cachePolicy ? 2 : 4);
+
+        if (cachePolicy) {
+          await graph.clearCache();
+
+          expect(
+            await graph.invoke({ query: "what is weather in sf" })
+          ).toEqual({
+            query: "analyzed: query: analyzed: query: what is weather in sf",
+            answer: "doc1,doc1,doc2,doc2,doc3,doc3,doc4,doc4",
+            docs: [
+              "doc1",
+              "doc1",
+              "doc2",
+              "doc2",
+              "doc3",
+              "doc3",
+              "doc4",
+              "doc4",
+            ],
+          });
+
+          expect(rewriteQueryCount).toBe(4);
+        }
       }
     );
 

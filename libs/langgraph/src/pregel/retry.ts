@@ -79,14 +79,8 @@ export async function _runWithRetry<
   let result;
 
   let { config } = pregelTask;
-  if (configurable) {
-    config = patchConfigurable(config, configurable);
-  }
-
-  config = {
-    ...config,
-    signal,
-  };
+  if (configurable) config = patchConfigurable(config, configurable);
+  config = { ...config, signal };
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
