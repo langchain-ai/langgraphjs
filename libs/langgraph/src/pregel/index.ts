@@ -1696,7 +1696,8 @@ export class Pregel<
         TStreamMode,
         TSubgraphs,
         StreamUpdatesType,
-        StreamValuesType
+        StreamValuesType,
+        keyof Nodes
       >
     >
   > {
@@ -1721,7 +1722,8 @@ export class Pregel<
           TStreamMode,
           TSubgraphs,
           StreamUpdatesType,
-          StreamValuesType
+          StreamValuesType,
+          keyof Nodes
         >
       >,
       abortController

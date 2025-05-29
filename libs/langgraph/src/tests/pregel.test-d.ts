@@ -30,7 +30,7 @@ it("state graph", async () => {
   const input = { foo: "bar" };
 
   expectTypeOf(await gatherIterator(graph.stream(input))).toExtend<
-    Record<string, { foo?: string[] | string | undefined }>[]
+    Record<"one" | "two" | "three", { foo?: string[] | string }>[]
   >();
 
   expectTypeOf(
@@ -55,12 +55,12 @@ it("state graph", async () => {
 
   expectTypeOf(
     await gatherIterator(graph.stream(input, { streamMode: "updates" }))
-  ).toExtend<Record<string, { foo?: string[] | string | undefined }>[]>();
+  ).toExtend<Record<"one" | "two" | "three", { foo?: string[] | string }>[]>();
 
   expectTypeOf(
     await gatherIterator(graph.stream(input, { streamMode: ["updates"] }))
   ).toExtend<
-    ["updates", Record<string, { foo?: string[] | string | undefined }>][]
+    ["updates", Record<"one" | "two" | "three", { foo?: string[] | string }>][]
   >();
 
   expectTypeOf(
@@ -71,7 +71,7 @@ it("state graph", async () => {
     [
       string[],
       "updates",
-      Record<string, { foo?: string[] | string | undefined }>
+      Record<"one" | "two" | "three", { foo?: string[] | string }>
     ][]
   >();
 
@@ -81,7 +81,10 @@ it("state graph", async () => {
     )
   ).toExtend<
     (
-      | ["updates", { foo?: string[] | string | undefined }]
+      | [
+          "updates",
+          Record<"one" | "two" | "three", { foo?: string[] | string }>
+        ]
       | ["values", { foo: string[] }]
     )[]
   >();
@@ -98,7 +101,7 @@ it("state graph", async () => {
       | [
           string[],
           "updates",
-          Record<string, { foo?: string[] | string | undefined }>
+          Record<"one" | "two" | "three", { foo?: string[] | string }>
         ]
       | [string[], "values", { foo: string[] }]
     )[]
@@ -116,7 +119,10 @@ it("state graph", async () => {
     )
   ).toExtend<
     (
-      | ["updates", { foo?: string[] | string | undefined }]
+      | [
+          "updates",
+          Record<"one" | "two" | "three", { foo?: string[] | string }>
+        ]
       | ["values", { foo: string[] }]
       | ["debug", Record<string, any>]
       | ["messages", [BaseMessage, Record<string, any>]]
@@ -136,7 +142,11 @@ it("state graph", async () => {
     )
   ).toExtend<
     (
-      | [string[], "updates", { foo?: string[] | string | undefined }]
+      | [
+          string[],
+          "updates",
+          Record<"one" | "two" | "three", { foo?: string[] | string }>
+        ]
       | [string[], "values", { foo: string[] }]
       | [string[], "debug", Record<string, any>]
       | [string[], "messages", [BaseMessage, Record<string, any>]]

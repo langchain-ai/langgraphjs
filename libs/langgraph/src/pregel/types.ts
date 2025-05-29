@@ -43,7 +43,8 @@ export type StreamOutputMap<
   TStreamMode extends StreamMode | StreamMode[] | undefined,
   TStreamSubgraphs extends boolean,
   StreamUpdates,
-  StreamValues
+  StreamValues,
+  Nodes
 > = (
   undefined extends TStreamMode
     ? []
@@ -58,14 +59,21 @@ export type StreamOutputMap<
   ? [TStreamSubgraphs] extends [true]
     ? {
         values: [string[], "values", StreamValues];
-        updates: [string[], "updates", Record<string, StreamUpdates>];
+        updates: [
+          string[],
+          "updates",
+          Record<Nodes extends string ? Nodes : string, StreamUpdates>
+        ];
         messages: [string[], "messages", StreamMessageOutput];
         custom: [string[], "custom", StreamCustomOutput];
         debug: [string[], "debug", StreamDebugOutput];
       }[Multiple]
     : {
         values: ["values", StreamValues];
-        updates: ["updates", Record<string, StreamUpdates>];
+        updates: [
+          "updates",
+          Record<Nodes extends string ? Nodes : string, StreamUpdates>
+        ];
         messages: ["messages", StreamMessageOutput];
         custom: ["custom", StreamCustomOutput];
         debug: ["debug", StreamDebugOutput];
@@ -76,14 +84,18 @@ export type StreamOutputMap<
   ? [TStreamSubgraphs] extends [true]
     ? {
         values: [string[], StreamValues];
-        updates: [string[], Record<string, StreamUpdates>];
+        updates: [
+          string[],
+          "updates",
+          Record<Nodes extends string ? Nodes : string, StreamUpdates>
+        ];
         messages: [string[], StreamMessageOutput];
         custom: [string[], StreamCustomOutput];
         debug: [string[], StreamDebugOutput];
       }[Single]
     : {
         values: StreamValues;
-        updates: Record<string, StreamUpdates>;
+        updates: Record<Nodes extends string ? Nodes : string, StreamUpdates>;
         messages: StreamMessageOutput;
         custom: StreamCustomOutput;
         debug: StreamDebugOutput;
