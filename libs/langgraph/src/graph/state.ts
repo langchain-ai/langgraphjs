@@ -247,8 +247,7 @@ export class StateGraph<
     fields: SD extends StateDefinition
       ? StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
       : never,
-    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>,
-    options?: { nodes?: N[] }
+    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
