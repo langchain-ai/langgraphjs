@@ -127,6 +127,9 @@ type NodeAction<S, U, C extends SDZod> = RunnableLike<
   LangGraphRunnableConfig<StateType<ToStateDefinition<C>>>
 >;
 
+const PartialStateSchema = Symbol.for("langgraph.state.partial");
+type PartialStateSchema = typeof PartialStateSchema;
+
 /**
  * A graph whose nodes communicate by reading and writing to a shared state.
  * Each node takes a defined `State` as input and returns a `Partial<State>`.
@@ -213,7 +216,7 @@ export class StateGraph<
   _inputDefinition: I;
 
   /** @internal */
-  _inputRuntimeDefinition: AnyZodObject | undefined;
+  _inputRuntimeDefinition: AnyZodObject | PartialStateSchema | undefined;
 
   /** @internal */
   _outputDefinition: O;
@@ -292,7 +295,7 @@ export class StateGraph<
       this._schemaRuntimeDefinition = fields.state;
 
       this._inputDefinition = inputDef as I;
-      this._inputRuntimeDefinition = fields.input ?? fields.state.partial();
+      this._inputRuntimeDefinition = fields.input ?? PartialStateSchema;
 
       this._outputDefinition = outputDef as O;
       this._outputRuntimeDefinition = fields.output ?? fields.state;
@@ -303,7 +306,7 @@ export class StateGraph<
       this._schemaRuntimeDefinition = fields;
 
       this._inputDefinition = stateDef as I;
-      this._inputRuntimeDefinition = fields.partial();
+      this._inputRuntimeDefinition = PartialStateSchema;
 
       this._outputDefinition = stateDef as O;
       this._outputRuntimeDefinition = fields;
@@ -944,7 +947,11 @@ export class CompiledStateGraph<
   protected async _validateInput(
     input: UpdateType<ToStateDefinition<I>>
   ): Promise<UpdateType<ToStateDefinition<I>>> {
-    const inputSchema = this.builder._inputRuntimeDefinition;
+    let inputSchema = this.builder._inputRuntimeDefinition;
+    if (inputSchema === PartialStateSchema) {
+      inputSchema = this.builder._schemaRuntimeDefinition?.partial();
+    }
+
     if (isCommand(input)) {
       const parsedInput = input;
       if (input.update && isAnyZodObject(inputSchema))
