@@ -144,10 +144,12 @@ export function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
     return signals[0];
   }
 
-  if ("any" in AbortSignal) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (AbortSignal as any).any(signals);
-  }
+  // AbortSignal.any() does seem to suffer from memory leaks
+  // @see https://github.com/nodejs/node/issues/55328
+  // if ("any" in AbortSignal) {
+  //   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  //   return (AbortSignal as any).any(signals);
+  // }
   const combinedController = new AbortController();
   const listener = () => {
     combinedController.abort();

@@ -25,7 +25,10 @@ import {
   PASSTHROUGH,
 } from "../pregel/write.js";
 import { ChannelRead, PregelNode } from "../pregel/read.js";
-import { NamedBarrierValue } from "../channels/named_barrier_value.js";
+import {
+  NamedBarrierValue,
+  NamedBarrierValueAfterFinish,
+} from "../channels/named_barrier_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { RunnableCallable } from "../utils.js";
 import {
@@ -59,6 +62,7 @@ import {
   isAnyZodObject,
   ZodToStateDefinition,
 } from "./zod/state.js";
+import { LastValueAfterFinish } from "../channels/last_value.js";
 
 const ROOT = "__root__";
 
@@ -129,6 +133,9 @@ type NodeAction<S, U, C extends SDZod> = RunnableLike<
   U extends object ? U & Record<string, any> : U, // eslint-disable-line @typescript-eslint/no-explicit-any
   LangGraphRunnableConfig<StateType<ToStateDefinition<C>>>
 >;
+
+const PartialStateSchema = Symbol.for("langgraph.state.partial");
+type PartialStateSchema = typeof PartialStateSchema;
 
 /**
  * A graph whose nodes communicate by reading and writing to a shared state.
@@ -216,7 +223,7 @@ export class StateGraph<
   _inputDefinition: I;
 
   /** @internal */
-  _inputRuntimeDefinition: AnyZodObject | undefined;
+  _inputRuntimeDefinition: AnyZodObject | PartialStateSchema | undefined;
 
   /** @internal */
   _outputDefinition: O;
@@ -295,7 +302,7 @@ export class StateGraph<
       this._schemaRuntimeDefinition = fields.state;
 
       this._inputDefinition = inputDef as I;
-      this._inputRuntimeDefinition = fields.input ?? fields.state.partial();
+      this._inputRuntimeDefinition = fields.input ?? PartialStateSchema;
 
       this._outputDefinition = outputDef as O;
       this._outputRuntimeDefinition = fields.output ?? fields.state;
@@ -306,7 +313,7 @@ export class StateGraph<
       this._schemaRuntimeDefinition = fields;
 
       this._inputDefinition = stateDef as I;
-      this._inputRuntimeDefinition = fields.partial();
+      this._inputRuntimeDefinition = PartialStateSchema;
 
       this._outputDefinition = stateDef as O;
       this._outputRuntimeDefinition = fields;
@@ -332,7 +339,9 @@ export class StateGraph<
       const spec = _getChannels(fields.channels);
       this._schemaDefinition = spec;
     } else {
-      throw new Error("Invalid StateGraph input.");
+      throw new Error(
+        "Invalid StateGraph input. Make sure to pass a valid Annotation.Root or Zod schema."
+      );
     }
 
     this._inputDefinition ??= this._schemaDefinition as I;
@@ -518,6 +527,7 @@ export class StateGraph<
             [runnable as any]
           : options?.subgraphs,
         ends: options?.ends,
+        defer: options?.defer,
       };
 
       this.nodes[key as unknown as N] = nodeSpec;
@@ -864,7 +874,9 @@ export class CompiledStateGraph<
       const isSingleInput =
         Object.keys(inputValues).length === 1 && ROOT in inputValues;
       const branchChannel = `branch:to:${key}` as string | N;
-      this.channels[branchChannel] = new EphemeralValue(false);
+      this.channels[branchChannel] = node?.defer
+        ? new LastValueAfterFinish()
+        : new EphemeralValue(false);
       this.nodes[key] = new PregelNode<S, U>({
         triggers: [branchChannel],
         // read state keys
@@ -889,26 +901,30 @@ export class CompiledStateGraph<
     }
   }
 
-  attachEdge(start: N | N[] | "__start__", end: N | "__end__"): void {
+  attachEdge(starts: N | N[] | "__start__", end: N | "__end__"): void {
     if (end === END) return;
-    if (typeof start === "string") {
-      this.nodes[start].writers.push(
+    if (typeof starts === "string") {
+      this.nodes[starts].writers.push(
         new ChannelWrite(
           [{ channel: `branch:to:${end}`, value: null }],
           [TAG_HIDDEN]
         )
       );
-    } else if (Array.isArray(start)) {
-      const channelName = `join:${start.join("+")}:${end}`;
+    } else if (Array.isArray(starts)) {
+      const channelName = `join:${starts.join("+")}:${end}`;
       // register channel
-      (this.channels as Record<string, BaseChannel>)[channelName] =
-        new NamedBarrierValue(new Set(start));
+      this.channels[channelName as string | N] = this.builder.nodes[end].defer
+        ? new NamedBarrierValueAfterFinish(new Set(starts))
+        : new NamedBarrierValue(new Set(starts));
       // subscribe to channel
       this.nodes[end].triggers.push(channelName);
       // publish to channel
-      for (const s of start) {
-        this.nodes[s].writers.push(
-          new ChannelWrite([{ channel: channelName, value: s }], [TAG_HIDDEN])
+      for (const start of starts) {
+        this.nodes[start].writers.push(
+          new ChannelWrite(
+            [{ channel: channelName, value: start }],
+            [TAG_HIDDEN]
+          )
         );
       }
     }
@@ -929,7 +945,7 @@ export class CompiledStateGraph<
 
       const writes: (ChannelWriteEntry | Send)[] = filteredPackets.map((p) => {
         if (_isSend(p)) return p;
-        return { channel: `branch:to:${p}`, value: start };
+        return { channel: p === END ? p : `branch:to:${p}`, value: start };
       });
       await ChannelWrite.doWrite(
         { ...config, tags: (config.tags ?? []).concat([TAG_HIDDEN]) },
@@ -956,7 +972,11 @@ export class CompiledStateGraph<
   protected async _validateInput(
     input: UpdateType<ToStateDefinition<I>>
   ): Promise<UpdateType<ToStateDefinition<I>>> {
-    const inputSchema = this.builder._inputRuntimeDefinition;
+    let inputSchema = this.builder._inputRuntimeDefinition;
+    if (inputSchema === PartialStateSchema) {
+      inputSchema = this.builder._schemaRuntimeDefinition?.partial();
+    }
+
     if (isCommand(input)) {
       const parsedInput = input;
       if (input.update && isAnyZodObject(inputSchema))

@@ -2,6 +2,14 @@ import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import { StateGraph } from "../graph/state.js";
 import { END, START } from "../constants.js";
+import { _AnyIdAIMessage, _AnyIdHumanMessage } from "./utils.js";
+import {
+  getOutputTypeSchema,
+  getInputTypeSchema,
+  getUpdateTypeSchema,
+  getStateTypeSchema,
+} from "../graph/zod/schema.js";
+import { MessagesZodState } from "../graph/messages_annotation.js";
 
 describe("StateGraph with Zod schemas", () => {
   it("should accept Zod schema as input in addNode", async () => {
@@ -75,6 +83,65 @@ describe("StateGraph with Zod schemas", () => {
     expect(result).toEqual({
       messages: ["hello", "processed"],
       count: 1,
+    });
+  });
+
+  it("should accept Zod messages schema & return tagged JSON schema", async () => {
+    const schema = MessagesZodState.extend({ count: z.number() });
+
+    const graph = new StateGraph(schema)
+      .addNode("agent", () => ({
+        messages: [{ type: "ai", content: "agent" }],
+      }))
+      .addNode("tool", () => ({
+        messages: [{ type: "ai", content: "tool" }],
+      }))
+      .addEdge("__start__", "agent")
+      .addEdge("agent", "tool")
+      .compile();
+
+    expect(
+      await graph.invoke({
+        messages: [{ type: "human", content: "hello" }],
+      })
+    ).toMatchObject({
+      messages: [
+        new _AnyIdHumanMessage("hello"),
+        new _AnyIdAIMessage("agent"),
+        new _AnyIdAIMessage("tool"),
+      ],
+    });
+
+    expect.soft(getStateTypeSchema(graph)).toMatchObject({
+      $schema: "http://json-schema.org/draft-07/schema#",
+      properties: {
+        messages: { langgraph_type: "messages" },
+        count: { type: "number" },
+      },
+    });
+
+    expect.soft(getUpdateTypeSchema(graph)).toMatchObject({
+      $schema: "http://json-schema.org/draft-07/schema#",
+      properties: {
+        messages: { langgraph_type: "messages" },
+        count: { type: "number" },
+      },
+    });
+
+    expect.soft(getInputTypeSchema(graph)).toMatchObject({
+      $schema: "http://json-schema.org/draft-07/schema#",
+      properties: {
+        messages: { langgraph_type: "messages" },
+        count: { type: "number" },
+      },
+    });
+
+    expect.soft(getOutputTypeSchema(graph)).toMatchObject({
+      $schema: "http://json-schema.org/draft-07/schema#",
+      properties: {
+        messages: { langgraph_type: "messages" },
+        count: { type: "number" },
+      },
     });
   });
 });

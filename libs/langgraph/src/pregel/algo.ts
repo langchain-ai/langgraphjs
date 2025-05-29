@@ -159,7 +159,13 @@ export function _localRead<Cc extends Record<string, BaseChannel>>(
     const newCheckpoint = createCheckpoint(checkpoint, localChannels as Cc, -1);
     const newChannels = emptyChannels(localChannels as Cc, newCheckpoint);
 
-    _applyWrites(copyCheckpoint(newCheckpoint), newChannels, [task]);
+    _applyWrites(
+      copyCheckpoint(newCheckpoint),
+      newChannels,
+      [task],
+      undefined,
+      undefined
+    );
     values = readChannels({ ...channels, ...newChannels }, select);
   } else {
     values = readChannels(channels, select);
@@ -222,7 +228,8 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   channels: Cc,
   tasks: WritesProtocol<keyof Cc>[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getNextVersion?: (version: any, channel: BaseChannel) => any
+  getNextVersion: ((version: any, channel: BaseChannel) => any) | undefined,
+  triggerToNodes: Record<string, string[]> | undefined
 ): Record<string, PendingWriteValue[]> {
   // Sort tasks by first 3 path elements for deterministic order
   // Later path parts (like task IDs) are ignored for sorting
@@ -248,11 +255,10 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   const onlyChannels = Object.fromEntries(
     Object.entries(channels).filter(([_, value]) => isBaseChannel(value))
   ) as Cc;
+
   // Update seen versions
   for (const task of tasks) {
-    if (checkpoint.versions_seen[task.name] === undefined) {
-      checkpoint.versions_seen[task.name] = {};
-    }
+    checkpoint.versions_seen[task.name] ??= {};
     for (const chan of task.triggers) {
       if (chan in checkpoint.channel_versions) {
         checkpoint.versions_seen[task.name][chan] =
@@ -309,17 +315,11 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
           args: (val as Send).args,
         });
       } else if (chan in onlyChannels) {
-        if (chan in pendingWriteValuesByChannel) {
-          pendingWriteValuesByChannel[chan].push(val);
-        } else {
-          pendingWriteValuesByChannel[chan] = [val];
-        }
+        pendingWriteValuesByChannel[chan] ??= [];
+        pendingWriteValuesByChannel[chan].push(val);
       } else {
-        if (chan in pendingWritesByManaged) {
-          pendingWritesByManaged[chan].push(val);
-        } else {
-          pendingWritesByManaged[chan] = [val];
-        }
+        pendingWritesByManaged[chan] ??= [];
+        pendingWritesByManaged[chan].push(val);
       }
     }
   }
@@ -358,21 +358,53 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
           maxVersion,
           onlyChannels[chan]
         );
+
+        // unavailable channels can't trigger tasks, so don't add them
+        if (onlyChannels[chan].isAvailable()) {
+          updatedChannels.add(chan);
+        }
       }
-      updatedChannels.add(chan);
     }
   }
 
   // Channels that weren't updated in this step are notified of a new step
   if (bumpStep) {
     for (const chan of Object.keys(onlyChannels)) {
-      if (!updatedChannels.has(chan)) {
+      if (onlyChannels[chan].isAvailable() && !updatedChannels.has(chan)) {
         const updated = onlyChannels[chan].update([]);
         if (updated && getNextVersion !== undefined) {
           checkpoint.channel_versions[chan] = getNextVersion(
             maxVersion,
             onlyChannels[chan]
           );
+
+          // unavailable channels can't trigger tasks, so don't add them
+          if (onlyChannels[chan].isAvailable()) {
+            updatedChannels.add(chan);
+          }
+        }
+      }
+    }
+  }
+
+  // If this is (tentatively) the last superstep, notify all channels of finish
+  if (
+    bumpStep &&
+    checkpoint.pending_sends.length === 0 &&
+    !Object.keys(triggerToNodes ?? {}).some((channel) =>
+      updatedChannels.has(channel)
+    )
+  ) {
+    for (const chan of Object.keys(onlyChannels)) {
+      if (onlyChannels[chan].finish() && getNextVersion !== undefined) {
+        checkpoint.channel_versions[chan] = getNextVersion(
+          maxVersion,
+          onlyChannels[chan]
+        );
+
+        // unavailable channels can't trigger tasks, so don't add them
+        if (onlyChannels[chan].isAvailable()) {
+          updatedChannels.add(chan);
         }
       }
     }

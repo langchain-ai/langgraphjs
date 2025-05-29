@@ -455,6 +455,8 @@ export class Pregel<
    */
   store?: BaseStore;
 
+  triggerToNodes: Record<string, string[]> = {};
+
   /**
    * Optional cache for the graph, useful for caching tasks.
    */
@@ -543,6 +545,13 @@ export class Pregel<
       interruptAfterNodes: this.interruptAfter,
       interruptBeforeNodes: this.interruptBefore,
     });
+
+    for (const [name, node] of Object.entries(this.nodes)) {
+      for (const trigger of node.triggers) {
+        this.triggerToNodes[trigger] ??= [];
+        this.triggerToNodes[trigger].push(name);
+      }
+    }
 
     return this;
   }
@@ -715,13 +724,19 @@ export class Pregel<
         );
 
       if (nullWrites.length > 0) {
-        _applyWrites(saved.checkpoint, channels, [
-          {
-            name: INPUT,
-            writes: nullWrites as PendingWrite[],
-            triggers: [],
-          },
-        ]);
+        _applyWrites(
+          saved.checkpoint,
+          channels,
+          [
+            {
+              name: INPUT,
+              writes: nullWrites as PendingWrite[],
+              triggers: [],
+            },
+          ],
+          undefined,
+          this.triggerToNodes
+        );
       }
     }
 
@@ -808,7 +823,9 @@ export class Pregel<
         _applyWrites(
           saved.checkpoint,
           channels,
-          tasksWithWrites as unknown as WritesProtocol[]
+          tasksWithWrites as unknown as WritesProtocol[],
+          undefined,
+          this.triggerToNodes
         );
       }
     }
@@ -1126,13 +1143,19 @@ export class Pregel<
             .filter((w) => w[0] === NULL_TASK_ID)
             .map((w) => w.slice(1)) as PendingWrite<string>[];
           if (nullWrites.length > 0) {
-            _applyWrites(saved.checkpoint, channels, [
-              {
-                name: INPUT,
-                writes: nullWrites,
-                triggers: [],
-              },
-            ]);
+            _applyWrites(
+              saved.checkpoint,
+              channels,
+              [
+                {
+                  name: INPUT,
+                  writes: nullWrites,
+                  triggers: [],
+                },
+              ],
+              undefined,
+              this.triggerToNodes
+            );
           }
           // apply writes from tasks that already ran
           for (const [taskId, k, v] of saved.pendingWrites || []) {
@@ -1148,7 +1171,9 @@ export class Pregel<
           _applyWrites(
             checkpoint,
             channels,
-            Object.values(nextTasks) as WritesProtocol<string>[]
+            Object.values(nextTasks) as WritesProtocol<string>[],
+            undefined,
+            this.triggerToNodes
           );
         }
         // save checkpoint
@@ -1224,7 +1249,8 @@ export class Pregel<
               triggers: [],
             },
           ],
-          checkpointer.getNextVersion.bind(this.checkpointer)
+          checkpointer.getNextVersion.bind(this.checkpointer),
+          this.triggerToNodes
         );
 
         // apply input write to channels
@@ -1285,13 +1311,13 @@ export class Pregel<
           .filter((w) => w[0] === NULL_TASK_ID)
           .map((w) => w.slice(1)) as PendingWrite<string>[];
         if (nullWrites.length > 0) {
-          _applyWrites(saved.checkpoint, channels, [
-            {
-              name: INPUT,
-              writes: nullWrites,
-              triggers: [],
-            },
-          ]);
+          _applyWrites(
+            saved.checkpoint,
+            channels,
+            [{ name: INPUT, writes: nullWrites, triggers: [] }],
+            undefined,
+            this.triggerToNodes
+          );
         }
         // apply writes
         for (const [tid, k, v] of saved.pendingWrites) {
@@ -1307,7 +1333,13 @@ export class Pregel<
           return task.writes.length > 0;
         });
         if (tasks.length > 0) {
-          _applyWrites(checkpoint, channels, tasks as WritesProtocol[]);
+          _applyWrites(
+            checkpoint,
+            channels,
+            tasks as WritesProtocol[],
+            undefined,
+            this.triggerToNodes
+          );
         }
       }
       const nonNullVersion = Object.values(checkpoint.versions_seen)
@@ -1463,7 +1495,8 @@ export class Pregel<
         checkpoint,
         channels,
         tasks as PregelExecutableTask<string, string>[],
-        checkpointer.getNextVersion.bind(this.checkpointer)
+        checkpointer.getNextVersion.bind(this.checkpointer),
+        this.triggerToNodes
       );
 
       const newVersions = getNewChannelVersions(
@@ -1938,6 +1971,7 @@ export class Pregel<
           interruptBefore,
           manager: runManager,
           debug: this.debug,
+          triggerToNodes: this.triggerToNodes,
         });
 
         const runner = new PregelRunner({
