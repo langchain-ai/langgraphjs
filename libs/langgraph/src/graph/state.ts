@@ -262,16 +262,14 @@ export class StateGraph<
               ToStateDefinition<O>
             >
       : StateGraphArgs<S>,
-    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>,
-    options?: { nodes?: N[] }
+    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
     fields: SD extends AnyZodObject
       ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
       : never,
-    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>,
-    options?: { nodes?: N[] }
+    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
@@ -289,8 +287,7 @@ export class StateGraph<
             >
           | StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
       : StateGraphArgs<S>,
-    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>,
-    _options?: { nodes?: N[] }
+    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   ) {
     super();
 
