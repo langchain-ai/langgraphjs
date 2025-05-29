@@ -73,6 +73,7 @@ import {
   SingleChannelSubscriptionOptions,
   MultipleChannelSubscriptionOptions,
   GetStateOptions,
+  type StreamOutputMap,
 } from "./types.js";
 import {
   GraphRecursionError,
@@ -118,10 +119,6 @@ import {
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
-
-function isString(value: unknown): value is string {
-  return typeof value === "string";
-}
 
 /**
  * Utility class for working with channels in the Pregel system.
@@ -202,7 +199,7 @@ export class Channel {
 
     let channelMappingOrArray: string[] | Record<string, string>;
 
-    if (isString(channels)) {
+    if (typeof channels === "string") {
       if (key) {
         channelMappingOrArray = { [key]: channels };
       } else {
@@ -285,6 +282,40 @@ export class Channel {
 
 export type { PregelInputType, PregelOutputType, PregelOptions };
 
+// This is a workaround to allow Pregel to override `invoke` / `stream` and `withConfig`
+// without having to adhere to the types in the `Runnable` class (thanks to `any`).
+// Alternatively we could mark those methods with @ts-ignore / @ts-expect-error,
+// but these do not get carried over when building via `tsc`.
+class PartialRunnable<
+  RunInput,
+  RunOutput,
+  CallOptions extends RunnableConfig
+> extends Runnable<RunInput, RunOutput, CallOptions> {
+  lc_namespace = ["langgraph", "pregel"];
+
+  override invoke(
+    _input: RunInput,
+    _options?: Partial<CallOptions>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<any> {
+    throw new Error("Not implemented");
+  }
+
+  // Overriden by `Pregel`
+  override withConfig(_config: CallOptions): typeof this {
+    return super.withConfig(_config) as typeof this;
+  }
+
+  // Overriden by `Pregel`
+  override stream(
+    input: RunInput,
+    options?: Partial<CallOptions>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<IterableReadableStream<any>> {
+    return super.stream(input, options);
+  }
+}
+
 /**
  * The Pregel class is the core runtime engine of LangGraph, implementing a message-passing graph computation model
  * inspired by [Google's Pregel system](https://research.google/pubs/pregel-a-system-for-large-scale-graph-processing/).
@@ -350,9 +381,11 @@ export class Pregel<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
     InputType = PregelInputType,
-    OutputType = PregelOutputType
+    OutputType = PregelOutputType,
+    StreamUpdatesType = InputType,
+    StreamValuesType = OutputType
   >
-  extends Runnable<
+  extends PartialRunnable<
     InputType | Command | null,
     OutputType,
     PregelOptions<Nodes, Channels, ConfigurableFieldType>
@@ -517,8 +550,6 @@ export class Pregel<
    * @param config - The configuration to merge with the current configuration
    * @returns A new Pregel instance with the merged configuration
    */
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-ignore Remove ignore when we remove support for 0.2 versions of core
   override withConfig(config: RunnableConfig): typeof this {
     const mergedConfig = mergeConfigs(this.config, config);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1688,10 +1719,31 @@ export class Pregel<
    * @param options - Configuration options for streaming
    * @returns An async iterable stream of graph state updates
    */
-  override async stream(
+  override async stream<
+    TStreamMode extends StreamMode | StreamMode[] | undefined,
+    TSubgraphs extends boolean
+  >(
     input: InputType | Command | null,
-    options?: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>>
-  ): Promise<IterableReadableStream<PregelOutputType>> {
+    options?: Partial<
+      PregelOptions<
+        Nodes,
+        Channels,
+        ConfigurableFieldType,
+        TStreamMode,
+        TSubgraphs
+      >
+    >
+  ): Promise<
+    IterableReadableStream<
+      StreamOutputMap<
+        TStreamMode,
+        TSubgraphs,
+        StreamUpdatesType,
+        StreamValuesType,
+        keyof Nodes
+      >
+    >
+  > {
     // The ensureConfig method called internally defaults recursionLimit to 25 if not
     // passed directly in `options`.
     // There is currently no way in _streamIterator to determine whether this was
@@ -1708,7 +1760,15 @@ export class Pregel<
     };
 
     return new IterableReadableStreamWithAbortSignal(
-      await super.stream(input, config),
+      (await super.stream(input, config)) as IterableReadableStream<
+        StreamOutputMap<
+          TStreamMode,
+          TSubgraphs,
+          StreamUpdatesType,
+          StreamValuesType,
+          keyof Nodes
+        >
+      >,
       abortController
     );
   }
@@ -2072,7 +2132,7 @@ export class Pregel<
       chunks.push(chunk);
     }
     if (streamMode === "values") {
-      return chunks[chunks.length - 1];
+      return chunks[chunks.length - 1] as OutputType;
     }
     return chunks as OutputType;
   }
