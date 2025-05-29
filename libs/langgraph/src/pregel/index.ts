@@ -72,6 +72,7 @@ import {
   SingleChannelSubscriptionOptions,
   MultipleChannelSubscriptionOptions,
   GetStateOptions,
+  type StreamOutputMap,
 } from "./types.js";
 import {
   GraphRecursionError,
@@ -117,10 +118,6 @@ import {
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
-
-function isString(value: unknown): value is string {
-  return typeof value === "string";
-}
 
 /**
  * Utility class for working with channels in the Pregel system.
@@ -201,7 +198,7 @@ export class Channel {
 
     let channelMappingOrArray: string[] | Record<string, string>;
 
-    if (isString(channels)) {
+    if (typeof channels === "string") {
       if (key) {
         channelMappingOrArray = { [key]: channels };
       } else {
@@ -349,7 +346,9 @@ export class Pregel<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
     InputType = PregelInputType,
-    OutputType = PregelOutputType
+    OutputType = PregelOutputType,
+    StreamUpdatesType = InputType,
+    StreamValuesType = OutputType
   >
   extends Runnable<
     InputType | Command | null,
@@ -1645,10 +1644,31 @@ export class Pregel<
    * @param options - Configuration options for streaming
    * @returns An async iterable stream of graph state updates
    */
-  override async stream(
+  // @ts-expect-error Return type of `stream()` differs from `invoke()`, which is expected.
+  override async stream<
+    TStreamMode extends StreamMode | StreamMode[] | undefined,
+    TSubgraphs extends boolean
+  >(
     input: InputType | Command | null,
-    options?: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>>
-  ): Promise<IterableReadableStream<PregelOutputType>> {
+    options?: Partial<
+      PregelOptions<
+        Nodes,
+        Channels,
+        ConfigurableFieldType,
+        TStreamMode,
+        TSubgraphs
+      >
+    >
+  ): Promise<
+    IterableReadableStream<
+      StreamOutputMap<
+        TStreamMode,
+        TSubgraphs,
+        StreamUpdatesType,
+        StreamValuesType
+      >
+    >
+  > {
     // The ensureConfig method called internally defaults recursionLimit to 25 if not
     // passed directly in `options`.
     // There is currently no way in _streamIterator to determine whether this was
@@ -1665,7 +1685,14 @@ export class Pregel<
     };
 
     return new IterableReadableStreamWithAbortSignal(
-      await super.stream(input, config),
+      (await super.stream(input, config)) as IterableReadableStream<
+        StreamOutputMap<
+          TStreamMode,
+          TSubgraphs,
+          StreamUpdatesType,
+          StreamValuesType
+        >
+      >,
       abortController
     );
   }
@@ -2025,7 +2052,7 @@ export class Pregel<
       chunks.push(chunk);
     }
     if (streamMode === "values") {
-      return chunks[chunks.length - 1];
+      return chunks[chunks.length - 1] as OutputType;
     }
     return chunks as OutputType;
   }

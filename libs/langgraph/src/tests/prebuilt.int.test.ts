@@ -208,9 +208,7 @@ describe("createReactAgent", () => {
     });
 
     const stream = await reactAgent.stream(
-      {
-        messages: [new HumanMessage("What's the weather like in SF?")],
-      },
+      { messages: [new HumanMessage("What's the weather like in SF?")] },
       { configurable: { thread_id: "foo" }, streamMode: "values" }
     );
     const fullResponse = [];
@@ -226,7 +224,7 @@ describe("createReactAgent", () => {
 
     const lastMessage = endState.messages[endState.messages.length - 1];
     expect(lastMessage._getType()).toBe("ai");
-    expect(lastMessage.content.toLowerCase()).toContain("not too cold");
+    expect(lastMessage.text.toLowerCase()).toContain("not too cold");
     const stream2 = await reactAgent.stream(
       {
         messages: [new HumanMessage("What about NYC?")],
@@ -245,6 +243,6 @@ describe("createReactAgent", () => {
 
     const lastMessage2 = endState.messages[endState.messages.length - 1];
     expect(lastMessage2._getType()).toBe("ai");
-    expect(lastMessage2.content.toLowerCase()).toContain("not too cold");
+    expect(lastMessage2.text.toLowerCase()).toContain("not too cold");
   });
 });

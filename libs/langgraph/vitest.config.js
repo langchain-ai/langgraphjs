@@ -45,6 +45,8 @@ export default defineConfig((env) => {
       ...common.test,
       name: "unit",
       environment: "node",
+      include: ["**/*.test-d.ts", ...configDefaults.include],
+      typecheck: { enabled: true },
     },
   };
 });

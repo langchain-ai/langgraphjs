@@ -579,6 +579,7 @@ export async function dumpDebugStream<
   console.log(`invoking ${graph.name} with arguments ${JSON.stringify(input)}`);
   const stream = await graph.stream(input, {
     ...config,
+    subgraphs: true,
     streamMode: ["updates", "debug", "values"],
   });
 

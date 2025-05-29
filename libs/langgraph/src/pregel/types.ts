@@ -9,6 +9,7 @@ import type {
 } from "@langchain/langgraph-checkpoint";
 import { Graph as DrawableGraph } from "@langchain/core/runnables/graph";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
+import type { BaseMessage } from "@langchain/core/messages";
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
 import { RetryPolicy } from "./utils/index.js";
@@ -27,6 +28,68 @@ export type PregelInputType = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PregelOutputType = any;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type StreamMessageOutput = [BaseMessage, Record<string, any>];
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type StreamCustomOutput = any;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type StreamDebugOutput = Record<string, any>;
+
+type DefaultStreamMode = "updates";
+
+export type StreamOutputMap<
+  TStreamMode extends StreamMode | StreamMode[] | undefined,
+  TStreamSubgraphs extends boolean,
+  StreamUpdates,
+  StreamValues
+> = (
+  undefined extends TStreamMode
+    ? []
+    : StreamMode | StreamMode[] extends TStreamMode
+    ? TStreamMode extends StreamMode[]
+      ? TStreamMode[number]
+      : TStreamMode
+    : TStreamMode extends StreamMode[]
+    ? TStreamMode[number]
+    : []
+) extends infer Multiple extends StreamMode
+  ? [TStreamSubgraphs] extends [true]
+    ? {
+        values: [string[], "values", StreamValues];
+        updates: [string[], "updates", Record<string, StreamUpdates>];
+        messages: [string[], "messages", StreamMessageOutput];
+        custom: [string[], "custom", StreamCustomOutput];
+        debug: [string[], "debug", StreamDebugOutput];
+      }[Multiple]
+    : {
+        values: ["values", StreamValues];
+        updates: ["updates", Record<string, StreamUpdates>];
+        messages: ["messages", StreamMessageOutput];
+        custom: ["custom", StreamCustomOutput];
+        debug: ["debug", StreamDebugOutput];
+      }[Multiple]
+  : (
+      undefined extends TStreamMode ? DefaultStreamMode : TStreamMode
+    ) extends infer Single extends StreamMode
+  ? [TStreamSubgraphs] extends [true]
+    ? {
+        values: [string[], StreamValues];
+        updates: [string[], Record<string, StreamUpdates>];
+        messages: [string[], StreamMessageOutput];
+        custom: [string[], StreamCustomOutput];
+        debug: [string[], StreamDebugOutput];
+      }[Single]
+    : {
+        values: StreamValues;
+        updates: Record<string, StreamUpdates>;
+        messages: StreamMessageOutput;
+        custom: StreamCustomOutput;
+        debug: StreamDebugOutput;
+      }[Single]
+  : never;
+
 /**
  * Configuration options for executing a Pregel graph.
  * These options control how the graph executes, what data is streamed, and how interrupts are handled.
@@ -39,7 +102,12 @@ export interface PregelOptions<
   Nodes extends StrRecord<string, PregelNode>,
   Channels extends StrRecord<string, BaseChannel | ManagedValueSpec>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType extends Record<string, any> = Record<string, any>
+  ConfigurableFieldType extends Record<string, any> = Record<string, any>,
+  TStreamMode extends StreamMode | StreamMode[] | undefined =
+    | StreamMode
+    | StreamMode[]
+    | undefined,
+  TSubgraphs extends boolean = boolean
 > extends RunnableConfig<ConfigurableFieldType> {
   /**
    * Controls what information is streamed during graph execution.
@@ -63,7 +131,7 @@ export interface PregelOptions<
    *
    * @default ["values"]
    */
-  streamMode?: StreamMode | StreamMode[];
+  streamMode?: TStreamMode;
 
   /**
    * Specifies which channel keys to retrieve from the checkpoint when resuming execution.
@@ -140,7 +208,7 @@ export interface PregelOptions<
    *
    * @default false
    */
-  subgraphs?: boolean;
+  subgraphs?: TSubgraphs;
 
   /**
    * A shared value store that allows you to store and retrieve state across

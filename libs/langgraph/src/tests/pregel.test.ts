@@ -8663,7 +8663,7 @@ graph TD;
     const graph = parent.compile({});
     const config = {};
 
-    const streamedEvents: StateSnapshot[] = await gatherIterator(
+    const streamedEvents = await gatherIterator(
       graph.stream({ messages: [] }, { ...config, streamMode: "messages" })
     );
 
@@ -8783,7 +8783,7 @@ graph TD;
       { content: "1", from: "subgraph" },
     ]);
 
-    const streamedCombinedEvents: StateSnapshot[] = await gatherIterator(
+    const streamedCombinedEvents = await gatherIterator(
       graph.stream(
         { messages: [] },
         { ...config, streamMode: ["custom", "messages"] }
