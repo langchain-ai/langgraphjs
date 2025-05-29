@@ -1745,6 +1745,53 @@ export class PostgresStore extends BaseStore {
       client.release();
     }
   }
+
+  /**
+   * Search for items in the store with basic options.
+   * Provides a simple interface for common search operations.
+   * 
+   * @param namespacePrefix - Namespace prefix to search within
+   * @param options - Search options including filters, query, and pagination
+   * @returns Promise resolving to array of matching items with scores
+   * 
+   * @example
+   * ```typescript
+   * // Simple text search
+   * const results = await store.search(["documents"], {
+   *   query: "TypeScript tutorial"
+   * });
+   * 
+   * // Filtered search
+   * const results = await store.search(["users"], {
+   *   filter: { status: "active", role: "admin" },
+   *   limit: 20
+   * });
+   * 
+   * // Search with advanced operators
+   * const results = await store.search(["products"], {
+   *   filter: { 
+   *     price: { $lt: 100 },
+   *     category: { $in: ["electronics", "gadgets"] }
+   *   }
+   * });
+   * ```
+   */
+  async search(
+    namespacePrefix: string[],
+    options: SearchOptions = {}
+  ): Promise<SearchItem[]> {
+    // If vector search is configured and query is provided, use vector search
+    if (this.indexConfig && options.query) {
+      return this.vectorSearch(namespacePrefix, options.query, {
+        filter: options.filter,
+        limit: options.limit,
+        offset: options.offset,
+      });
+    }
+
+    // Otherwise use advanced search (handles text search + filtering)
+    return this.searchAdvanced(namespacePrefix, options);
+  }
 }
 
 export default PostgresStore;
