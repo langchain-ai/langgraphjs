@@ -88,13 +88,13 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
   cachePolicy?: CachePolicy;
 };
 
-export type StateGraphAddNodeOptions = {
+export type StateGraphAddNodeOptions<Nodes extends string = string> = {
   retryPolicy?: RetryPolicy;
   cachePolicy?: CachePolicy | boolean;
   // TODO: Fix generic typing for annotations
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   input?: AnnotationRoot<any> | AnyZodObject;
-} & AddNodeOptions;
+} & AddNodeOptions<Nodes>;
 
 export type StateGraphArgsWithStateSchema<
   SD extends StateDefinition,
@@ -446,7 +446,12 @@ export class StateGraph<
       isMultipleNodes(args) // eslint-disable-line no-nested-ternary
         ? Array.isArray(args[0])
           ? args[0]
-          : Object.entries(args[0])
+          : Object.entries(args[0]).map(([key, action]) => [
+              key,
+              action,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (action as any)[Symbol.for("langgraph.state.node")] ?? undefined,
+            ])
         : [[args[0], args[1], args[2]]]
     ) as [
       K,
@@ -594,7 +599,12 @@ export class StateGraph<
   ): StateGraph<SD, S, U, N | K, I, O, C> {
     const parsedNodes = Array.isArray(nodes)
       ? nodes
-      : (Object.entries(nodes) as [K, NodeAction<S, U, C>][]);
+      : (Object.entries(nodes).map(([key, action]) => [
+          key,
+          action,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (action as any)[Symbol.for("langgraph.state.node")] ?? undefined,
+        ]) as [K, NodeAction<S, U, C>, StateGraphAddNodeOptions | undefined][]);
 
     if (parsedNodes.length === 0) {
       throw new Error("Sequence requires at least one node.");
@@ -1124,4 +1134,42 @@ function _getControlBranch() {
   return new Branch({
     path: CONTROL_BRANCH_PATH,
   });
+}
+
+type TypedNodeAction<SD extends StateDefinition, Nodes extends string> = (
+  state: StateType<SD>,
+  config: LangGraphRunnableConfig
+) => UpdateType<SD> | Command<unknown, UpdateType<SD>, Nodes>;
+
+export function typedNode<SD extends SDZod, Nodes extends string>(
+  _state: SD extends StateDefinition ? AnnotationRoot<SD> : never,
+  _options?: { nodes?: Nodes[] }
+): (
+  func: TypedNodeAction<ToStateDefinition<SD>, Nodes>,
+  options?: StateGraphAddNodeOptions<Nodes>
+) => TypedNodeAction<ToStateDefinition<SD>, Nodes>;
+
+export function typedNode<SD extends SDZod, Nodes extends string>(
+  _state: SD extends AnyZodObject ? SD : never,
+  _options?: { nodes?: Nodes[] }
+): (
+  func: TypedNodeAction<ToStateDefinition<SD>, Nodes>,
+  options?: StateGraphAddNodeOptions<Nodes>
+) => TypedNodeAction<ToStateDefinition<SD>, Nodes>;
+
+export function typedNode<SD extends SDZod, Nodes extends string>(
+  _state: SD extends AnyZodObject
+    ? SD
+    : SD extends StateDefinition
+    ? AnnotationRoot<SD>
+    : never,
+  _options?: { nodes?: Nodes[] }
+) {
+  return (
+    func: TypedNodeAction<ToStateDefinition<SD>, Nodes>,
+    options?: StateGraphAddNodeOptions<Nodes>
+  ) => {
+    Object.assign(func, { [Symbol.for("langgraph.state.node")]: options });
+    return func;
+  };
 }
