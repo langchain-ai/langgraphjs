@@ -52,6 +52,8 @@ describe("_readChannels", () => {
         .fn<(checkpoint?: unknown) => BaseChannel<string>>()
         .mockReturnThis(),
       consume: vi.fn<() => boolean>().mockReturnValue(false),
+      finish: vi.fn<() => boolean>().mockReturnValue(false),
+      isAvailable: vi.fn<() => boolean>().mockReturnValue(false),
     };
 
     const channels = {
@@ -82,6 +84,10 @@ describe("_readChannels", () => {
         .fn<(checkpoint?: unknown) => BaseChannel<string>>()
         .mockReturnThis(),
       consume: vi.fn<() => boolean>().mockReturnValue(false),
+      finish: vi.fn<() => boolean>().mockReturnValue(false),
+      isAvailable: vi.fn<() => boolean>().mockImplementation(() => {
+        throw new Error("Other error");
+      }),
     };
 
     const channels = {

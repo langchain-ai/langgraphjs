@@ -24,7 +24,10 @@ import {
   PASSTHROUGH,
 } from "../pregel/write.js";
 import { ChannelRead, PregelNode } from "../pregel/read.js";
-import { NamedBarrierValue } from "../channels/named_barrier_value.js";
+import {
+  NamedBarrierValue,
+  NamedBarrierValueAfterFinish,
+} from "../channels/named_barrier_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { RunnableCallable } from "../utils.js";
 import {
@@ -58,6 +61,7 @@ import {
   isAnyZodObject,
   ZodToStateDefinition,
 } from "./zod/state.js";
+import { LastValueAfterFinish } from "../channels/last_value.js";
 
 const ROOT = "__root__";
 
@@ -513,6 +517,7 @@ export class StateGraph<
             [runnable as any]
           : options?.subgraphs,
         ends: options?.ends,
+        defer: options?.defer,
       };
 
       this.nodes[key as unknown as N] = nodeSpec;
@@ -856,7 +861,9 @@ export class CompiledStateGraph<
       const isSingleInput =
         Object.keys(inputValues).length === 1 && ROOT in inputValues;
       const branchChannel = `branch:to:${key}` as string | N;
-      this.channels[branchChannel] = new EphemeralValue(false);
+      this.channels[branchChannel] = node?.defer
+        ? new LastValueAfterFinish()
+        : new EphemeralValue(false);
       this.nodes[key] = new PregelNode<S, U>({
         triggers: [branchChannel],
         // read state keys
@@ -880,26 +887,30 @@ export class CompiledStateGraph<
     }
   }
 
-  attachEdge(start: N | N[] | "__start__", end: N | "__end__"): void {
+  attachEdge(starts: N | N[] | "__start__", end: N | "__end__"): void {
     if (end === END) return;
-    if (typeof start === "string") {
-      this.nodes[start].writers.push(
+    if (typeof starts === "string") {
+      this.nodes[starts].writers.push(
         new ChannelWrite(
           [{ channel: `branch:to:${end}`, value: null }],
           [TAG_HIDDEN]
         )
       );
-    } else if (Array.isArray(start)) {
-      const channelName = `join:${start.join("+")}:${end}`;
+    } else if (Array.isArray(starts)) {
+      const channelName = `join:${starts.join("+")}:${end}`;
       // register channel
-      (this.channels as Record<string, BaseChannel>)[channelName] =
-        new NamedBarrierValue(new Set(start));
+      this.channels[channelName as string | N] = this.builder.nodes[end].defer
+        ? new NamedBarrierValueAfterFinish(new Set(starts))
+        : new NamedBarrierValue(new Set(starts));
       // subscribe to channel
       this.nodes[end].triggers.push(channelName);
       // publish to channel
-      for (const s of start) {
-        this.nodes[s].writers.push(
-          new ChannelWrite([{ channel: channelName, value: s }], [TAG_HIDDEN])
+      for (const start of starts) {
+        this.nodes[start].writers.push(
+          new ChannelWrite(
+            [{ channel: channelName, value: start }],
+            [TAG_HIDDEN]
+          )
         );
       }
     }
@@ -920,7 +931,7 @@ export class CompiledStateGraph<
 
       const writes: (ChannelWriteEntry | Send)[] = filteredPackets.map((p) => {
         if (_isSend(p)) return p;
-        return { channel: `branch:to:${p}`, value: start };
+        return { channel: p === END ? p : `branch:to:${p}`, value: start };
       });
       await ChannelWrite.doWrite(
         { ...config, tags: (config.tags ?? []).concat([TAG_HIDDEN]) },
