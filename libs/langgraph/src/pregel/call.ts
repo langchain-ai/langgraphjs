@@ -6,7 +6,7 @@ import {
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { CONFIG_KEY_CALL, RETURN, TAG_HIDDEN } from "../constants.js";
 import { ChannelWrite, PASSTHROUGH } from "./write.js";
-import { RetryPolicy } from "./utils/index.js";
+import { CachePolicy, RetryPolicy } from "./utils/index.js";
 import { RunnableCallable, type RunnableCallableArgs } from "../utils.js";
 import { EntrypointFunc, EntrypointReturnT, TaskFunc } from "../func/types.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
@@ -55,10 +55,11 @@ export type CallWrapperOptions<ArgsT extends unknown[], OutputT> = {
   func: TaskFunc<ArgsT, OutputT>;
   name: string;
   retry?: RetryPolicy;
+  cache?: CachePolicy;
 };
 
 export function call<ArgsT extends unknown[], OutputT>(
-  { func, name, retry }: CallWrapperOptions<ArgsT, OutputT>,
+  { func, name, cache, retry }: CallWrapperOptions<ArgsT, OutputT>,
   ...args: ArgsT
 ): Promise<OutputT> {
   const config =
@@ -66,6 +67,7 @@ export function call<ArgsT extends unknown[], OutputT>(
   if (typeof config.configurable?.[CONFIG_KEY_CALL] === "function") {
     return config.configurable[CONFIG_KEY_CALL](func, name, args, {
       retry,
+      cache,
       callbacks: config.callbacks,
     });
   }

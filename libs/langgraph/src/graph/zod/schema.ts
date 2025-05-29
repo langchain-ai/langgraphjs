@@ -5,6 +5,9 @@ import { getMeta } from "./state.js";
 const TYPE_CACHE: Record<string, WeakMap<z.AnyZodObject, z.AnyZodObject>> = {};
 const DESCRIPTION_PREFIX = "lg:";
 
+const PartialStateSchema = Symbol.for("langgraph.state.partial");
+type PartialStateSchema = typeof PartialStateSchema;
+
 function applyPlugin(
   schema: z.AnyZodObject,
   actions: {
@@ -61,7 +64,7 @@ function applyPlugin(
 interface GraphWithZodLike {
   builder: {
     _schemaRuntimeDefinition: z.AnyZodObject | undefined;
-    _inputRuntimeDefinition: z.AnyZodObject | undefined;
+    _inputRuntimeDefinition: z.AnyZodObject | PartialStateSchema | undefined;
     _outputRuntimeDefinition: z.AnyZodObject | undefined;
     _configRuntimeSchema: z.AnyZodObject | undefined;
   };
@@ -124,7 +127,7 @@ export function getStateTypeSchema(graph: unknown): JsonSchema | undefined {
   if (!isGraphWithZodLike(graph)) return undefined;
   const schemaDef = graph.builder._schemaRuntimeDefinition;
   if (!schemaDef) return undefined;
-  return toJsonSchema(schemaDef);
+  return toJsonSchema(applyPlugin(schemaDef, { jsonSchemaExtra: true }));
 }
 
 /**
@@ -153,7 +156,12 @@ export function getUpdateTypeSchema(graph: unknown): JsonSchema | undefined {
  */
 export function getInputTypeSchema(graph: unknown): JsonSchema | undefined {
   if (!isGraphWithZodLike(graph)) return undefined;
-  const schemaDef = graph.builder._inputRuntimeDefinition;
+  let schemaDef = graph.builder._inputRuntimeDefinition;
+  if (schemaDef === PartialStateSchema) {
+    // No need to pass `.partial()` here, that's being done by `applyPlugin`
+    schemaDef = graph.builder._schemaRuntimeDefinition;
+  }
+
   if (!schemaDef) return undefined;
   return toJsonSchema(
     applyPlugin(schemaDef, {

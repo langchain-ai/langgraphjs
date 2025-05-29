@@ -9,7 +9,7 @@ const META_MAP = new WeakMap<z.ZodType, Meta<any, any>>();
 export interface Meta<ValueType, UpdateType = ValueType> {
   jsonSchemaExtra?: {
     langgraph_nodes?: string[];
-    langgraph_type?: "prompt";
+    langgraph_type?: "prompt" | "messages";
 
     [key: string]: unknown;
   };

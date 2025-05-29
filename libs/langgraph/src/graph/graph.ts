@@ -165,6 +165,7 @@ export type NodeSpec<RunInput, RunOutput> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subgraphs?: Pregel<any, any>[];
   ends?: string[];
+  defer?: boolean;
 };
 
 export type AddNodeOptions<Nodes extends string = string> = {
@@ -172,6 +173,7 @@ export type AddNodeOptions<Nodes extends string = string> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subgraphs?: Pregel<any, any>[];
   ends?: Nodes[];
+  defer?: boolean;
 };
 
 export class Graph<
