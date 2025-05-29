@@ -149,7 +149,8 @@ export interface EntrypointFunction {
     EntrypointReturnT<OutputT>,
     // Because the update type is an return type union of tasks + entrypoint,
     // thus we can't type it properly.
-    any // eslint-disable-line @typescript-eslint/no-explicit-any
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    Awaited<EntrypointReturnT<OutputT>>
   >;
 
   /**

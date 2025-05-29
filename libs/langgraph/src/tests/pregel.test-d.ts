@@ -5,6 +5,13 @@ import { StateGraph } from "../graph/state.js";
 import { Annotation } from "../graph/annotation.js";
 import { gatherIterator } from "../utils.js";
 import { StreamMode } from "../pregel/types.js";
+import { task, entrypoint } from "../func/index.js";
+import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+
+beforeAll(() => {
+  // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
+  initializeAsyncLocalStorageSingleton();
+});
 
 it("state graph", async () => {
   const state = Annotation.Root({
@@ -28,6 +35,8 @@ it("state graph", async () => {
     .compile();
 
   const input = { foo: "bar" };
+
+  expectTypeOf(await graph.invoke(input)).toExtend<{ foo: string[] }>();
 
   expectTypeOf(await gatherIterator(graph.stream(input))).toExtend<
     Record<"one" | "two" | "three", { foo?: string[] | string }>[]
@@ -152,5 +161,60 @@ it("state graph", async () => {
       | [string[], "messages", [BaseMessage, Record<string, any>]]
       | [string[], "custom", any]
     )[]
+  >();
+});
+
+it("functional", async () => {
+  const one = task("one", (input: string) => ({ one: `one(${input})` }));
+  const two = task("two", (input: string) => ({ two: `two(${input})` }));
+  const three = task("three", (input: string) => ({
+    three: `three(${input})`,
+  }));
+
+  const graph = entrypoint("graph", async (query: { input: string }) => {
+    return {
+      foo: [
+        await one(query.input),
+        await two(query.input),
+        await three(query.input),
+      ],
+    };
+  });
+
+  const input = { input: "test" };
+
+  type UpdateType = Record<string, any>;
+  type ValueType = {
+    foo: ({ one: string } | { two: string } | { three: string })[];
+  };
+
+  expectTypeOf(await graph.invoke(input)).toExtend<ValueType>();
+  expectTypeOf(await gatherIterator(graph.stream(input))).toExtend<
+    UpdateType[]
+  >();
+
+  expectTypeOf(
+    await gatherIterator(graph.stream(input, { streamMode: "values" }))
+  ).toExtend<ValueType[]>();
+
+  expectTypeOf(
+    await gatherIterator(graph.stream(input, { streamMode: ["values"] }))
+  ).toExtend<["values", ValueType][]>();
+
+  expectTypeOf(
+    await gatherIterator(
+      graph.stream(input, { streamMode: ["updates", "values"] })
+    )
+  ).toExtend<(["updates", UpdateType] | ["values", ValueType])[]>();
+
+  expectTypeOf(
+    await gatherIterator(
+      graph.stream(input, {
+        streamMode: ["updates", "values"],
+        subgraphs: true,
+      })
+    )
+  ).toExtend<
+    ([string[], "updates", UpdateType] | [string[], "values", ValueType])[]
   >();
 });
