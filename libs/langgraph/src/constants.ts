@@ -81,9 +81,6 @@ export const RESERVED = [
 export const CHECKPOINT_NAMESPACE_SEPARATOR = "|";
 export const CHECKPOINT_NAMESPACE_END = ":";
 
-// eslint-disable-next-line @typescript-eslint/ban-types
-type AnyString = string & {};
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface SendInterface<Node extends string = string, Args = any> {
   node: Node;
@@ -182,8 +179,8 @@ export type Interrupt = {
 
 export type CommandParams<
   Resume = unknown,
-  Nodes extends string = string,
-  Update = unknown
+  Update extends Record<string, unknown> = Record<string, unknown>,
+  Nodes extends string = string
 > = {
   /**
    * A discriminator field used to identify the type of object. Must be populated when serializing.
@@ -208,7 +205,7 @@ export type CommandParams<
   /**
    * Update to apply to the graph's state.
    */
-  update?: Record<string, unknown> | [string, unknown][];
+  update?: Update | [string, unknown][];
 
   /**
    * Can be one of the following:
@@ -219,8 +216,8 @@ export type CommandParams<
    */
   goto?:
     | Nodes
-    | SendInterface<Nodes, Update>
-    | (Nodes | SendInterface<Nodes, Update>)[];
+    | SendInterface<Nodes> // eslint-disable-line @typescript-eslint/no-explicit-any
+    | (Nodes | SendInterface<Nodes>)[]; // eslint-disable-line @typescript-eslint/no-explicit-any
 };
 
 /**
@@ -287,8 +284,8 @@ export type CommandParams<
  */
 export class Command<
   Resume = unknown,
-  Nodes extends string = string,
-  Update = unknown
+  Update extends Record<string, unknown> = Record<string, unknown>,
+  Nodes extends string = string
 > {
   readonly lg_name = "Command";
 
@@ -306,7 +303,7 @@ export class Command<
    * Update to apply to the graph's state as a result of executing the node that is returning the command.
    * Written to the state as if the node had simply returned this value instead of the Command object.
    */
-  update?: Record<string, unknown> | [string, unknown][];
+  update?: Update | [string, unknown][];
 
   /**
    * Value to resume execution with. To be used together with {@link interrupt}.
@@ -320,11 +317,11 @@ export class Command<
    *   - {@link Send} object (to execute a node with the exact input provided in the {@link Send} object)
    *   - sequence of {@link Send} objects
    */
-  goto?: Nodes | Send<Nodes, Update> | (Nodes | Send<Nodes, Update>)[] = [];
+  goto?: Nodes | Send<Nodes> | (Nodes | Send<Nodes>)[] = [];
 
   static PARENT = "__parent__";
 
-  constructor(args: CommandParams<Resume, Nodes | AnyString, Update>) {
+  constructor(args: CommandParams<Resume, Update, Nodes>) {
     this.resume = args.resume;
     this.graph = args.graph;
     this.update = args.update;
