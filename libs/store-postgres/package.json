@@ -1,7 +1,7 @@
 {
   "name": "@langchain/langgraph-store-postgres",
-  "version": "0.0.6",
-  "description": "LangGraph",
+  "version": "0.0.1",
+  "description": "LangGraph Postgres Store",
   "type": "module",
   "engines": {
     "node": ">=18"
