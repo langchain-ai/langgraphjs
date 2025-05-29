@@ -30,7 +30,7 @@ it("state graph", async () => {
   const input = { foo: "bar" };
 
   expectTypeOf(await gatherIterator(graph.stream(input))).toExtend<
-    { foo?: string[] | string | undefined }[]
+    Record<string, { foo?: string[] | string | undefined }>[]
   >();
 
   expectTypeOf(
