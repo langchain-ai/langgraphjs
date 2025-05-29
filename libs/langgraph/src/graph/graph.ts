@@ -167,11 +167,11 @@ export type NodeSpec<RunInput, RunOutput> = {
   ends?: string[];
 };
 
-export type AddNodeOptions = {
+export type AddNodeOptions<Nodes extends string = string> = {
   metadata?: Record<string, unknown>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subgraphs?: Pregel<any, any>[];
-  ends?: string[];
+  ends?: Nodes[];
 };
 
 export class Graph<
