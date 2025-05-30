@@ -382,7 +382,7 @@ export class Pregel<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
     InputType = PregelInputType,
-    OutputType = PregelOutputType & { [INTERRUPT]?: Interrupt[] },
+    OutputType = PregelOutputType,
     StreamUpdatesType = InputType,
     StreamValuesType = OutputType
   >
