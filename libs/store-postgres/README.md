@@ -607,13 +607,15 @@ const results = await store.hybridSearch(["docs"], "machine learning", {
 
 ### Example Usage
 
-See the [HNSW Vector Search Example](./examples/hnsw-vector-search.ts) for a comprehensive demonstration of vector search capabilities including:
+The library includes integration tests demonstrating vector search capabilities:
 
-- HNSW vs IVFFlat performance comparison
-- Different distance metrics
-- Advanced filtering
-- Hybrid search
+- Vector search with different distance metrics (cosine, L2, inner product)
+- HNSW and IVFFlat index performance comparison
+- Advanced filtering with vector search
+- Hybrid search combining text and vector similarity
 - Performance optimization techniques
+
+To see these examples, refer to the test files in the `src/tests` directory, specifically `vector-search.int.test.ts` and `hybrid-search.int.test.ts`.
 
 ## Performance Optimizations
 
