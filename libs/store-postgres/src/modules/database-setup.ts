@@ -27,7 +27,10 @@ export class DatabaseSetup {
       try {
         await client.query(`CREATE EXTENSION IF NOT EXISTS vector`);
       } catch (error) {
-        console.warn("pgvector extension not available. Vector search disabled.", error);
+        console.warn(
+          "pgvector extension not available. Vector search disabled.",
+          error
+        );
       }
     }
   }
@@ -90,10 +93,14 @@ export class DatabaseSetup {
   private async createVectorIndexes(client: pg.PoolClient): Promise<void> {
     if (!this.core.indexConfig) return;
 
-    const { indexType = 'hnsw', distanceMetric = 'cosine', createAllMetricIndexes = false } = this.core.indexConfig;
-    
-    const metricsToIndex: DistanceMetric[] = createAllMetricIndexes 
-      ? ['cosine', 'l2', 'inner_product']
+    const {
+      indexType = "hnsw",
+      distanceMetric = "cosine",
+      createAllMetricIndexes = false,
+    } = this.core.indexConfig;
+
+    const metricsToIndex: DistanceMetric[] = createAllMetricIndexes
+      ? ["cosine", "l2", "inner_product"]
       : [distanceMetric];
 
     for (const metric of metricsToIndex) {
@@ -109,33 +116,33 @@ export class DatabaseSetup {
     if (!this.core.indexConfig) return;
 
     let metricSuffix: string;
-    if (metric === 'cosine') {
-      metricSuffix = 'cosine';
-    } else if (metric === 'l2') {
-      metricSuffix = 'l2';
+    if (metric === "cosine") {
+      metricSuffix = "cosine";
+    } else if (metric === "l2") {
+      metricSuffix = "l2";
     } else {
-      metricSuffix = 'ip';
+      metricSuffix = "ip";
     }
     const indexName = `idx_store_vectors_embedding_${metricSuffix}_${indexType}`;
-    
+
     const operatorClass = {
-      'cosine': 'vector_cosine_ops',
-      'l2': 'vector_l2_ops',
-      'inner_product': 'vector_ip_ops'
+      cosine: "vector_cosine_ops",
+      l2: "vector_l2_ops",
+      inner_product: "vector_ip_ops",
     }[metric];
 
-    if (indexType === 'hnsw') {
+    if (indexType === "hnsw") {
       const m = this.core.indexConfig.hnsw?.m || 16;
       const efConstruction = this.core.indexConfig.hnsw?.efConstruction || 200;
-      
+
       await client.query(`
         CREATE INDEX IF NOT EXISTS ${indexName}
         ON ${this.core.schema}.store_vectors USING hnsw (embedding ${operatorClass})
         WITH (m = ${m}, ef_construction = ${efConstruction})
       `);
-    } else if (indexType === 'ivfflat') {
+    } else if (indexType === "ivfflat") {
       const lists = this.core.indexConfig.ivfflat?.lists || 100;
-      
+
       await client.query(`
         CREATE INDEX IF NOT EXISTS ${indexName}
         ON ${this.core.schema}.store_vectors USING ivfflat (embedding ${operatorClass})
@@ -165,4 +172,4 @@ export class DatabaseSetup {
       FOR EACH ROW EXECUTE FUNCTION ${this.core.schema}.update_updated_at_column()
     `);
   }
-} 
+}

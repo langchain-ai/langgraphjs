@@ -1,5 +1,12 @@
 /* eslint-disable no-process-env */
-import { describe, it, expect, beforeEach, afterAll, jest } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterAll,
+  jest,
+} from "@jest/globals";
 import pg from "pg";
 import { PostgresStore } from "../index.js";
 
@@ -38,7 +45,7 @@ describeIf("PostgresStore", () => {
 
     // Create a unique database for each test
     dbName = `lg_store_test_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    
+
     const pool = new Pool({ connectionString: TEST_POSTGRES_URL });
     try {
       await pool.query(`CREATE DATABASE ${dbName}`);
@@ -47,10 +54,12 @@ describeIf("PostgresStore", () => {
     }
 
     // Connect to the test database
-    const testDbUrl = `${TEST_POSTGRES_URL.split("/").slice(0, -1).join("/")}/${dbName}`;
+    const testDbUrl = `${TEST_POSTGRES_URL.split("/")
+      .slice(0, -1)
+      .join("/")}/${dbName}`;
     store = PostgresStore.fromConnectionString(testDbUrl);
     testStores.push(store);
-    
+
     await store.setup();
   });
 
@@ -62,12 +71,12 @@ describeIf("PostgresStore", () => {
       } catch (error: unknown) {
         // Silently ignore "pool already ended" errors during cleanup
         const errorStr = String(error);
-        if (!errorStr.includes('Called end on pool more than once')) {
+        if (!errorStr.includes("Called end on pool more than once")) {
           console.warn("Error closing store:", error);
         }
       }
     });
-    
+
     await Promise.all(cleanupPromises);
     testStores = [];
 
@@ -105,7 +114,7 @@ describeIf("PostgresStore", () => {
 
       // Retrieve the item
       const item = await store.get(namespace, key);
-      
+
       expect(item).toBeDefined();
       expect(item?.namespace).toEqual(namespace);
       expect(item?.key).toBe(key);
@@ -126,7 +135,7 @@ describeIf("PostgresStore", () => {
 
       // Store an item
       await store.put(namespace, key, value);
-      
+
       // Verify it exists
       let item = await store.get(namespace, key);
       expect(item).toBeDefined();
@@ -147,13 +156,13 @@ describeIf("PostgresStore", () => {
 
       // Store original item
       await store.put(namespace, key, originalValue);
-      
+
       const originalItem = await store.get(namespace, key);
       expect(originalItem?.value).toEqual(originalValue);
 
       // Update the item
       await store.put(namespace, key, updatedValue);
-      
+
       const updatedItem = await store.get(namespace, key);
       expect(updatedItem?.value).toEqual(updatedValue);
       expect(updatedItem?.updatedAt.getTime()).toBeGreaterThan(
@@ -172,14 +181,14 @@ describeIf("PostgresStore", () => {
         array: [1, 2, 3, "four"],
         nested: {
           deep: {
-            value: "nested data"
-          }
-        }
+            value: "nested data",
+          },
+        },
       };
 
       await store.put(namespace, key, complexValue);
       const retrieved = await store.get(namespace, key);
-      
+
       expect(retrieved?.value).toEqual(complexValue);
     });
   });
@@ -187,48 +196,66 @@ describeIf("PostgresStore", () => {
   describe("Error Handling", () => {
     it("should validate namespace format", async () => {
       // Empty namespace
-      await expect(store.put([], "key", { data: "test" }))
-        .rejects.toThrow("Namespace cannot be empty");
+      await expect(store.put([], "key", { data: "test" })).rejects.toThrow(
+        "Namespace cannot be empty"
+      );
 
       // Namespace with periods
-      await expect(store.put(["invalid.namespace"], "key", { data: "test" }))
-        .rejects.toThrow("Namespace labels cannot contain periods");
+      await expect(
+        store.put(["invalid.namespace"], "key", { data: "test" })
+      ).rejects.toThrow("Namespace labels cannot contain periods");
 
       // Empty namespace label
-      await expect(store.put(["valid", ""], "key", { data: "test" }))
-        .rejects.toThrow("Namespace labels cannot be empty strings");
+      await expect(
+        store.put(["valid", ""], "key", { data: "test" })
+      ).rejects.toThrow("Namespace labels cannot be empty strings");
 
       // Reserved namespace
-      await expect(store.put(["langgraph"], "key", { data: "test" }))
-        .rejects.toThrow("Root label for namespace cannot be \"langgraph\"");
+      await expect(
+        store.put(["langgraph"], "key", { data: "test" })
+      ).rejects.toThrow('Root label for namespace cannot be "langgraph"');
 
       // Non-string namespace label
-      await expect(store.put(["valid", 123 as unknown as string], "key", { data: "test" }))
-        .rejects.toThrow("Namespace labels must be strings");
+      await expect(
+        store.put(["valid", 123 as unknown as string], "key", { data: "test" })
+      ).rejects.toThrow("Namespace labels must be strings");
     });
 
     it("should handle database connection errors gracefully", async () => {
       const invalidStore = new PostgresStore({
-        connectionOptions: "postgresql://invalid:invalid@localhost:9999/invalid"
+        connectionOptions:
+          "postgresql://invalid:invalid@localhost:9999/invalid",
       });
 
       await expect(invalidStore.setup()).rejects.toThrow();
     });
 
     it("should handle malformed connection strings", async () => {
-      expect(() => new PostgresStore({
-        connectionOptions: "not-a-valid-connection-string"
-      })).not.toThrow(); // Constructor should not throw, but setup should fail
+      expect(
+        () =>
+          new PostgresStore({
+            connectionOptions: "not-a-valid-connection-string",
+          })
+      ).not.toThrow(); // Constructor should not throw, but setup should fail
     });
   });
 
   it("should search items with filters", async () => {
     const namespace = ["search", "test"];
-    
+
     // Store multiple items
-    await store.put(namespace, "item1", { type: "document", title: "First Doc" });
-    await store.put(namespace, "item2", { type: "document", title: "Second Doc" });
-    await store.put(namespace, "item3", { type: "image", title: "First Image" });
+    await store.put(namespace, "item1", {
+      type: "document",
+      title: "First Doc",
+    });
+    await store.put(namespace, "item2", {
+      type: "document",
+      title: "Second Doc",
+    });
+    await store.put(namespace, "item3", {
+      type: "image",
+      title: "First Image",
+    });
 
     // Search by type
     const results = await store.search(namespace, {
@@ -241,19 +268,19 @@ describeIf("PostgresStore", () => {
 
   it("should search items with text query", async () => {
     const namespace = ["search", "text"];
-    
+
     // Store items with different content
-    await store.put(namespace, "doc1", { 
-      title: "JavaScript Guide", 
-      content: "Learn JavaScript programming" 
+    await store.put(namespace, "doc1", {
+      title: "JavaScript Guide",
+      content: "Learn JavaScript programming",
     });
-    await store.put(namespace, "doc2", { 
-      title: "Python Tutorial", 
-      content: "Learn Python programming" 
+    await store.put(namespace, "doc2", {
+      title: "Python Tutorial",
+      content: "Learn Python programming",
     });
-    await store.put(namespace, "doc3", { 
-      title: "Database Design", 
-      content: "Learn database concepts" 
+    await store.put(namespace, "doc3", {
+      title: "Database Design",
+      content: "Learn database concepts",
     });
 
     // Search for programming-related content
@@ -262,9 +289,11 @@ describeIf("PostgresStore", () => {
     });
 
     expect(results.length).toBeGreaterThan(0);
-    expect(results.every((item) => 
-      JSON.stringify(item.value).toLowerCase().includes("programming")
-    )).toBe(true);
+    expect(
+      results.every((item) =>
+        JSON.stringify(item.value).toLowerCase().includes("programming")
+      )
+    ).toBe(true);
   });
 
   it("should list namespaces", async () => {
@@ -275,7 +304,7 @@ describeIf("PostgresStore", () => {
 
     // List all namespaces
     const namespaces = await store.listNamespaces();
-    
+
     expect(namespaces.length).toBeGreaterThan(0);
     expect(namespaces).toContainEqual(["docs", "v1"]);
     expect(namespaces).toContainEqual(["docs", "v2"]);
@@ -292,7 +321,7 @@ describeIf("PostgresStore", () => {
     const namespaces = await store.listNamespaces({
       prefix: ["docs"],
     });
-    
+
     expect(namespaces.length).toBe(2);
     expect(namespaces).toContainEqual(["docs", "v1"]);
     expect(namespaces).toContainEqual(["docs", "v2"]);
@@ -307,13 +336,13 @@ describeIf("PostgresStore", () => {
     ];
 
     const results = await store.batch(operations);
-    
+
     expect(results).toHaveLength(3);
     expect(results[0]).toBeUndefined(); // put result
     expect(results[1]).toBeUndefined(); // put result
     expect(results[2]).toBeDefined(); // get result
     const getResult = results[2];
-    if (getResult && typeof getResult === 'object' && 'value' in getResult) {
+    if (getResult && typeof getResult === "object" && "value" in getResult) {
       expect(getResult.value).toEqual({ data: "first" });
     }
   });
@@ -341,7 +370,9 @@ describeIf("PostgresStore", () => {
 
         try {
           // Put an item with default TTL
-          await storeWithTtl.putAdvanced(["test"], "ttl-item", { data: "expires" });
+          await storeWithTtl.putAdvanced(["test"], "ttl-item", {
+            data: "expires",
+          });
 
           // Item should exist immediately
           const item = await storeWithTtl.get(["test"], "ttl-item");
@@ -349,7 +380,12 @@ describeIf("PostgresStore", () => {
           expect(item?.value).toEqual({ data: "expires" });
 
           // Put an item with custom TTL
-          await storeWithTtl.putAdvanced(["test"], "custom-ttl", { data: "custom" }, { ttl: 2 });
+          await storeWithTtl.putAdvanced(
+            ["test"],
+            "custom-ttl",
+            { data: "custom" },
+            { ttl: 2 }
+          );
 
           const customItem = await storeWithTtl.get(["test"], "custom-ttl");
           expect(customItem).toBeTruthy();
@@ -381,11 +417,13 @@ describeIf("PostgresStore", () => {
         testStores.push(storeWithTtl);
 
         try {
-          await storeWithTtl.putAdvanced(["test"], "refresh-item", { data: "refresh test" });
-          
+          await storeWithTtl.putAdvanced(["test"], "refresh-item", {
+            data: "refresh test",
+          });
+
           const item1 = await storeWithTtl.get(["test"], "refresh-item");
           expect(item1).toBeTruthy();
-          
+
           // Read again to trigger TTL refresh
           const item2 = await storeWithTtl.get(["test"], "refresh-item");
           expect(item2).toBeTruthy();
@@ -399,33 +437,33 @@ describeIf("PostgresStore", () => {
     describe("Advanced Filtering", () => {
       beforeEach(async () => {
         // Set up test data for advanced filtering
-        await store.put(["products"], "item1", { 
-          price: 100, 
-          category: "electronics", 
+        await store.put(["products"], "item1", {
+          price: 100,
+          category: "electronics",
           inStock: true,
           rating: 4.5,
-          tags: ["popular", "new"]
+          tags: ["popular", "new"],
         });
-        await store.put(["products"], "item2", { 
-          price: 200, 
-          category: "electronics", 
+        await store.put(["products"], "item2", {
+          price: 200,
+          category: "electronics",
           inStock: false,
           rating: 3.8,
-          tags: ["expensive"]
+          tags: ["expensive"],
         });
-        await store.put(["products"], "item3", { 
-          price: 50, 
-          category: "books", 
+        await store.put(["products"], "item3", {
+          price: 50,
+          category: "books",
           inStock: true,
           rating: 4.9,
-          tags: ["bestseller", "popular"]
+          tags: ["bestseller", "popular"],
         });
-        await store.put(["products"], "item4", { 
-          price: 150, 
-          category: "clothing", 
+        await store.put(["products"], "item4", {
+          price: 150,
+          category: "clothing",
           inStock: true,
           rating: 4.2,
-          tags: ["fashion", "new"]
+          tags: ["fashion", "new"],
         });
       });
 
@@ -435,7 +473,11 @@ describeIf("PostgresStore", () => {
           filter: { price: { $gt: 100 } },
         });
         expect(expensiveItems).toHaveLength(2);
-        expect(expensiveItems.every(item => (item.value as unknown as ProductItem).price > 100)).toBe(true);
+        expect(
+          expensiveItems.every(
+            (item) => (item.value as unknown as ProductItem).price > 100
+          )
+        ).toBe(true);
 
         // Test $gte operator
         const expensiveOrEqual = await store.searchAdvanced(["products"], {
@@ -469,7 +511,12 @@ describeIf("PostgresStore", () => {
           filter: { category: { $nin: ["clothing"] } },
         });
         expect(notClothing).toHaveLength(3);
-        expect(notClothing.every(item => (item.value as unknown as ProductItem).category !== "clothing")).toBe(true);
+        expect(
+          notClothing.every(
+            (item) =>
+              (item.value as unknown as ProductItem).category !== "clothing"
+          )
+        ).toBe(true);
       });
 
       it("should support existence operators", async () => {
@@ -480,9 +527,12 @@ describeIf("PostgresStore", () => {
         expect(itemsWithStock).toHaveLength(4);
 
         // Test $exists false
-        const itemsWithoutDescription = await store.searchAdvanced(["products"], {
-          filter: { description: { $exists: false } },
-        });
+        const itemsWithoutDescription = await store.searchAdvanced(
+          ["products"],
+          {
+            filter: { description: { $exists: false } },
+          }
+        );
         expect(itemsWithoutDescription).toHaveLength(4); // None have description
       });
 
@@ -498,7 +548,12 @@ describeIf("PostgresStore", () => {
           filter: { category: { $ne: "electronics" } },
         });
         expect(notElectronics).toHaveLength(2);
-        expect(notElectronics.every(item => (item.value as unknown as ProductItem).category !== "electronics")).toBe(true);
+        expect(
+          notElectronics.every(
+            (item) =>
+              (item.value as unknown as ProductItem).category !== "electronics"
+          )
+        ).toBe(true);
       });
 
       it("should support complex filter combinations", async () => {
@@ -507,53 +562,57 @@ describeIf("PostgresStore", () => {
           filter: {
             category: { $eq: "electronics" },
             inStock: { $eq: true },
-            price: { $gte: 50, $lte: 150 }
+            price: { $gte: 50, $lte: 150 },
           },
         });
         expect(inStockElectronics).toHaveLength(1);
-        expect((inStockElectronics[0].value as unknown as ProductItem).price).toBe(100);
+        expect(
+          (inStockElectronics[0].value as unknown as ProductItem).price
+        ).toBe(100);
 
         // Test with rating filter
         const highRatedInStock = await store.searchAdvanced(["products"], {
           filter: {
             inStock: true,
-            rating: { $gte: 4.0 }
+            rating: { $gte: 4.0 },
           },
         });
         expect(highRatedInStock.length).toBeGreaterThan(0);
-        expect(highRatedInStock.every(item => {
-          const product = item.value as unknown as ProductItem;
-          return product.inStock && product.rating >= 4.0;
-        })).toBe(true);
+        expect(
+          highRatedInStock.every((item) => {
+            const product = item.value as unknown as ProductItem;
+            return product.inStock && product.rating >= 4.0;
+          })
+        ).toBe(true);
       });
     });
 
     describe("Enhanced Search", () => {
       beforeEach(async () => {
         // Set up test data with searchable content
-        await store.put(["docs"], "doc1", { 
-          title: "JavaScript Programming Guide", 
+        await store.put(["docs"], "doc1", {
+          title: "JavaScript Programming Guide",
           content: "Learn JavaScript programming with examples and tutorials",
           category: "programming",
-          difficulty: "beginner"
+          difficulty: "beginner",
         });
-        await store.put(["docs"], "doc2", { 
-          title: "Python Development", 
+        await store.put(["docs"], "doc2", {
+          title: "Python Development",
           content: "Python programming language guide and best practices",
-          category: "programming", 
-          difficulty: "intermediate"
+          category: "programming",
+          difficulty: "intermediate",
         });
-        await store.put(["docs"], "doc3", { 
-          title: "Web Development with JavaScript", 
+        await store.put(["docs"], "doc3", {
+          title: "Web Development with JavaScript",
           content: "Modern web development using JavaScript frameworks",
           category: "web",
-          difficulty: "advanced"
+          difficulty: "advanced",
         });
-        await store.put(["docs"], "doc4", { 
-          title: "Database Design Principles", 
+        await store.put(["docs"], "doc4", {
+          title: "Database Design Principles",
           content: "Learn database concepts and SQL optimization",
           category: "database",
-          difficulty: "intermediate"
+          difficulty: "intermediate",
         });
       });
 
@@ -565,14 +624,18 @@ describeIf("PostgresStore", () => {
         });
 
         expect(searchResults.length).toBeGreaterThan(0);
-        
+
         // Results should have scores
-        const resultsWithScores = searchResults.filter(item => item.score !== undefined);
+        const resultsWithScores = searchResults.filter(
+          (item) => item.score !== undefined
+        );
         expect(resultsWithScores.length).toBeGreaterThan(0);
 
         // Results should be ordered by relevance (score)
         for (let i = 1; i < resultsWithScores.length; i += 1) {
-          expect(resultsWithScores[i - 1].score).toBeGreaterThanOrEqual(resultsWithScores[i].score!);
+          expect(resultsWithScores[i - 1].score).toBeGreaterThanOrEqual(
+            resultsWithScores[i].score!
+          );
         }
       });
 
@@ -584,7 +647,11 @@ describeIf("PostgresStore", () => {
         });
 
         expect(programmingResults.length).toBeGreaterThan(0);
-        expect(programmingResults.every(item => item.value.category === "programming")).toBe(true);
+        expect(
+          programmingResults.every(
+            (item) => item.value.category === "programming"
+          )
+        ).toBe(true);
       });
 
       it("should handle search with pagination and scoring", async () => {
@@ -602,11 +669,11 @@ describeIf("PostgresStore", () => {
 
         expect(page1.length).toBeGreaterThan(0);
         expect(page1.length).toBeLessThanOrEqual(2);
-        
+
         // Ensure no overlap in results
-        const page1Keys = page1.map(item => item.key);
-        const page2Keys = page2.map(item => item.key);
-        const overlap = page1Keys.filter(key => page2Keys.includes(key));
+        const page1Keys = page1.map((item) => item.key);
+        const page2Keys = page2.map((item) => item.key);
+        const overlap = page1Keys.filter((key) => page2Keys.includes(key));
         expect(overlap).toHaveLength(0);
       });
     });
@@ -626,7 +693,9 @@ describeIf("PostgresStore", () => {
         expect(stats.oldestItem).toBeInstanceOf(Date);
         expect(stats.newestItem).toBeInstanceOf(Date);
         if (stats.newestItem && stats.oldestItem) {
-          expect(stats.newestItem.getTime()).toBeGreaterThanOrEqual(stats.oldestItem.getTime());
+          expect(stats.newestItem.getTime()).toBeGreaterThanOrEqual(
+            stats.oldestItem.getTime()
+          );
         }
       });
 
@@ -634,17 +703,20 @@ describeIf("PostgresStore", () => {
         // Create a fresh store for this test
         const emptyDbName = `lg_store_empty_${Date.now()}`;
         const pool = new Pool({ connectionString: TEST_POSTGRES_URL });
-        
+
         try {
           await pool.query(`CREATE DATABASE ${emptyDbName}`);
         } finally {
           await pool.end();
         }
 
-        const emptyTestDbUrl = `${TEST_POSTGRES_URL!.split("/").slice(0, -1).join("/")}/${emptyDbName}`;
+        const emptyTestDbUrl = `${TEST_POSTGRES_URL!
+          .split("/")
+          .slice(0, -1)
+          .join("/")}/${emptyDbName}`;
         const emptyStore = PostgresStore.fromConnectionString(emptyTestDbUrl);
         testStores.push(emptyStore);
-        
+
         await emptyStore.setup();
 
         const stats = await emptyStore.getStats();
@@ -665,22 +737,26 @@ describeIf("PostgresStore", () => {
         return texts.map((text, index) => {
           const embedding = new Array(dims).fill(0);
           for (let i = 0; i < dims; i += 1) {
-            embedding[i] = Math.sin((text.charCodeAt(i % text.length) + index) * 0.1);
+            embedding[i] = Math.sin(
+              (text.charCodeAt(i % text.length) + index) * 0.1
+            );
           }
           return embedding;
         });
       };
-      
+
       mockFn.calls = [] as string[][];
       mockFn.toHaveBeenCalled = () => mockFn.calls.length > 0;
-      
+
       return mockFn;
     };
 
     describe("Vector Search Configuration", () => {
       it("should support vector search configuration", async () => {
         if (!process.env.TEST_POSTGRES_URL) {
-          console.log("Skipping vector search test - no TEST_POSTGRES_URL provided");
+          console.log(
+            "Skipping vector search test - no TEST_POSTGRES_URL provided"
+          );
           return;
         }
 
@@ -692,8 +768,8 @@ describeIf("PostgresStore", () => {
           index: {
             dims: 384,
             embed: mockEmbedding,
-            fields: ["content", "title"]
-          }
+            fields: ["content", "title"],
+          },
         });
 
         await vectorStore.setup();
@@ -701,27 +777,19 @@ describeIf("PostgresStore", () => {
 
         try {
           // Put items with vector indexing
-          await vectorStore.put(
-            ["docs"], 
-            "doc1", 
-            { 
-              title: "Machine Learning Basics", 
-              content: "Introduction to neural networks and deep learning" 
-            }
-          );
+          await vectorStore.put(["docs"], "doc1", {
+            title: "Machine Learning Basics",
+            content: "Introduction to neural networks and deep learning",
+          });
 
-          await vectorStore.put(
-            ["docs"], 
-            "doc2", 
-            { 
-              title: "Data Science Guide", 
-              content: "Statistical analysis and data visualization techniques" 
-            }
-          );
+          await vectorStore.put(["docs"], "doc2", {
+            title: "Data Science Guide",
+            content: "Statistical analysis and data visualization techniques",
+          });
 
           // Test vector search
           const results = await vectorStore.vectorSearch(
-            ["docs"], 
+            ["docs"],
             "artificial intelligence",
             { limit: 5 }
           );
@@ -732,14 +800,13 @@ describeIf("PostgresStore", () => {
 
           // Test hybrid search
           const hybridResults = await vectorStore.hybridSearch(
-            ["docs"], 
+            ["docs"],
             "machine learning",
             { vectorWeight: 0.7, limit: 5 }
           );
 
           expect(hybridResults).toBeDefined();
           expect(Array.isArray(hybridResults)).toBe(true);
-
         } finally {
           await vectorStore.stop();
         }
@@ -758,8 +825,8 @@ describeIf("PostgresStore", () => {
           schema: "test_no_vector",
           index: {
             dims: 128,
-            embed: mockEmbedding
-          }
+            embed: mockEmbedding,
+          },
         });
 
         // Setup should not fail even if pgvector is not available
@@ -773,7 +840,9 @@ describeIf("PostgresStore", () => {
     describe("Distance Metrics", () => {
       it("should handle different distance metrics", async () => {
         if (!process.env.TEST_POSTGRES_URL) {
-          console.log("Skipping distance metrics test - no TEST_POSTGRES_URL provided");
+          console.log(
+            "Skipping distance metrics test - no TEST_POSTGRES_URL provided"
+          );
           return;
         }
 
@@ -784,33 +853,35 @@ describeIf("PostgresStore", () => {
           schema: "test_metrics",
           index: {
             dims: 128,
-            embed: mockEmbedding
-          }
+            embed: mockEmbedding,
+          },
         });
 
         await vectorStore.setup();
         testStores.push(vectorStore);
 
         try {
-          await vectorStore.put(["test"], "item1", { text: "sample content for testing" });
+          await vectorStore.put(["test"], "item1", {
+            text: "sample content for testing",
+          });
 
           // Test different distance metrics
           const cosineResults = await vectorStore.vectorSearch(
-            ["test"], 
+            ["test"],
             "query text",
-            { distanceMetric: 'cosine' }
+            { distanceMetric: "cosine" }
           );
 
           const l2Results = await vectorStore.vectorSearch(
-            ["test"], 
+            ["test"],
             "query text",
-            { distanceMetric: 'l2' }
+            { distanceMetric: "l2" }
           );
 
           const ipResults = await vectorStore.vectorSearch(
-            ["test"], 
+            ["test"],
             "query text",
-            { distanceMetric: 'inner_product' }
+            { distanceMetric: "inner_product" }
           );
 
           expect(cosineResults).toBeDefined();
@@ -821,7 +892,6 @@ describeIf("PostgresStore", () => {
           expect(cosineResults.length).toBeGreaterThanOrEqual(0);
           expect(l2Results.length).toBeGreaterThanOrEqual(0);
           expect(ipResults.length).toBeGreaterThanOrEqual(0);
-
         } finally {
           await vectorStore.stop();
         }
@@ -839,33 +909,38 @@ describeIf("PostgresStore", () => {
           schema: "test_threshold",
           index: {
             dims: 64,
-            embed: mockEmbedding
-          }
+            embed: mockEmbedding,
+          },
         });
 
         await vectorStore.setup();
         testStores.push(vectorStore);
 
         try {
-          await vectorStore.put(["test"], "item1", { text: "very different content" });
-          await vectorStore.put(["test"], "item2", { text: "similar query content" });
+          await vectorStore.put(["test"], "item1", {
+            text: "very different content",
+          });
+          await vectorStore.put(["test"], "item2", {
+            text: "similar query content",
+          });
 
           // High threshold should return fewer results
           const highThresholdResults = await vectorStore.vectorSearch(
-            ["test"], 
+            ["test"],
             "query content",
             { similarityThreshold: 0.9 }
           );
 
           // Low threshold should return more results
           const lowThresholdResults = await vectorStore.vectorSearch(
-            ["test"], 
+            ["test"],
             "query content",
             { similarityThreshold: 0.1 }
           );
 
-          expect(lowThresholdResults.length).toBeGreaterThanOrEqual(highThresholdResults.length);
-
+          expect(lowThresholdResults.length).toBeGreaterThanOrEqual(
+            highThresholdResults.length
+          );
         } finally {
           await vectorStore.stop();
         }
@@ -875,7 +950,9 @@ describeIf("PostgresStore", () => {
     describe("Text Extraction", () => {
       it("should extract text from JSON paths correctly", async () => {
         if (!process.env.TEST_POSTGRES_URL) {
-          console.log("Skipping text extraction test - no TEST_POSTGRES_URL provided");
+          console.log(
+            "Skipping text extraction test - no TEST_POSTGRES_URL provided"
+          );
           return;
         }
 
@@ -886,8 +963,13 @@ describeIf("PostgresStore", () => {
           index: {
             dims: 128,
             embed: mockEmbedding,
-            fields: ["title", "content.sections[*].text", "tags[*]", "metadata.author"]
-          }
+            fields: [
+              "title",
+              "content.sections[*].text",
+              "tags[*]",
+              "metadata.author",
+            ],
+          },
         });
 
         await vectorStore.setup();
@@ -898,33 +980,38 @@ describeIf("PostgresStore", () => {
           content: {
             sections: [
               { text: "Section 1 content" },
-              { text: "Section 2 content" }
-            ]
+              { text: "Section 2 content" },
+            ],
           },
           tags: ["ai", "ml", "nlp"],
           metadata: {
             author: "Test Author",
-            version: 1
-          }
+            version: 1,
+          },
         };
 
         // Test that vector indexing works with complex JSON paths
         await vectorStore.put(["test"], "doc1", testObj);
-        
+
         // Verify the document was stored correctly
         const retrieved = await vectorStore.get(["test"], "doc1");
         expect(retrieved).toBeDefined();
         expect(retrieved?.value).toEqual(testObj);
-        
+
         // Test that we can search and find the document (proves text extraction worked)
-        const searchResults = await vectorStore.vectorSearch(["test"], "Test Document");
+        const searchResults = await vectorStore.vectorSearch(
+          ["test"],
+          "Test Document"
+        );
         expect(searchResults.length).toBeGreaterThan(0);
         expect(searchResults[0].key).toBe("doc1");
       });
 
       it("should handle edge cases in text extraction", async () => {
         if (!process.env.TEST_POSTGRES_URL) {
-          console.log("Skipping edge case test - no TEST_POSTGRES_URL provided");
+          console.log(
+            "Skipping edge case test - no TEST_POSTGRES_URL provided"
+          );
           return;
         }
 
@@ -935,8 +1022,8 @@ describeIf("PostgresStore", () => {
           index: {
             dims: 128,
             embed: mockEmbedding,
-            fields: ["field2", "nested.validField", "filledArray[*]"]
-          }
+            fields: ["field2", "nested.validField", "filledArray[*]"],
+          },
         });
 
         await vectorStore.setup();
@@ -948,11 +1035,11 @@ describeIf("PostgresStore", () => {
           field2: "valid text content",
           nested: {
             nullField: null,
-            validField: "nested value for search"
+            validField: "nested value for search",
           },
           emptyArray: [],
           filledArray: ["item1", "item2"],
-          mixedArray: ["string", 123, null, { nested: "object" }]
+          mixedArray: ["string", 123, null, { nested: "object" }],
         };
 
         await vectorStore.put(["test"], "edge_case_doc", objWithNulls);
@@ -960,9 +1047,12 @@ describeIf("PostgresStore", () => {
         // Verify document was stored
         const retrieved = await vectorStore.get(["test"], "edge_case_doc");
         expect(retrieved).toBeDefined();
-        
+
         // Test search works (proves text extraction handled edge cases)
-        const searchResults = await vectorStore.vectorSearch(["test"], "valid text content");
+        const searchResults = await vectorStore.vectorSearch(
+          ["test"],
+          "valid text content"
+        );
         expect(searchResults.length).toBeGreaterThan(0);
       });
     });
@@ -981,8 +1071,8 @@ describeIf("PostgresStore", () => {
           index: {
             dims: 256,
             embed: mockEmbedding,
-            fields: ["content", "title"]
-          }
+            fields: ["content", "title"],
+          },
         });
 
         await vectorStore.setup();
@@ -992,17 +1082,19 @@ describeIf("PostgresStore", () => {
           // Add documents with varying relevance
           await vectorStore.put(["docs"], "doc1", {
             title: "Machine Learning Guide",
-            content: "Comprehensive guide to machine learning algorithms and techniques"
+            content:
+              "Comprehensive guide to machine learning algorithms and techniques",
           });
 
           await vectorStore.put(["docs"], "doc2", {
-            title: "Data Science Handbook", 
-            content: "Statistical methods and data analysis for scientists"
+            title: "Data Science Handbook",
+            content: "Statistical methods and data analysis for scientists",
           });
 
           await vectorStore.put(["docs"], "doc3", {
             title: "AI Research Paper",
-            content: "Latest research in artificial intelligence and neural networks"
+            content:
+              "Latest research in artificial intelligence and neural networks",
           });
 
           // Test hybrid search with different weights
@@ -1014,7 +1106,7 @@ describeIf("PostgresStore", () => {
 
           const textHeavy = await vectorStore.hybridSearch(
             ["docs"],
-            "machine learning algorithms", 
+            "machine learning algorithms",
             { vectorWeight: 0.1, limit: 10 }
           );
 
@@ -1034,10 +1126,15 @@ describeIf("PostgresStore", () => {
           expect(balanced.length).toBeGreaterThan(0);
 
           // Results should have scores
-          expect(vectorHeavy.every(item => typeof item.score === 'number')).toBe(true);
-          expect(textHeavy.every(item => typeof item.score === 'number')).toBe(true);
-          expect(balanced.every(item => typeof item.score === 'number')).toBe(true);
-
+          expect(
+            vectorHeavy.every((item) => typeof item.score === "number")
+          ).toBe(true);
+          expect(
+            textHeavy.every((item) => typeof item.score === "number")
+          ).toBe(true);
+          expect(balanced.every((item) => typeof item.score === "number")).toBe(
+            true
+          );
         } finally {
           await vectorStore.stop();
         }
@@ -1061,15 +1158,15 @@ describeIf("PostgresStore", () => {
           index: {
             dims: 384,
             embed: mockEmbedding,
-            fields: ["content"]
-          }
+            fields: ["content"],
+          },
         });
 
         await store.setup();
         testStores.push(store);
 
         await store.put(["test"], "doc1", {
-          content: "This should fail due to dimension mismatch"
+          content: "This should fail due to dimension mismatch",
         });
 
         // This should work fine since we're not doing vector search
@@ -1079,7 +1176,9 @@ describeIf("PostgresStore", () => {
 
       it("should handle embedding generation failures gracefully", async () => {
         if (!process.env.TEST_POSTGRES_URL) {
-          console.log("Skipping embedding failure test - no TEST_POSTGRES_URL provided");
+          console.log(
+            "Skipping embedding failure test - no TEST_POSTGRES_URL provided"
+          );
           return;
         }
 
@@ -1092,15 +1191,16 @@ describeIf("PostgresStore", () => {
           schema: "test_embedding_error",
           index: {
             dims: 128,
-            embed: failingEmbedding
-          }
+            embed: failingEmbedding,
+          },
         });
 
         await vectorStore.setup();
         testStores.push(vectorStore);
 
-        await expect(vectorStore.put(["test"], "item1", { text: "test content" }))
-          .rejects.toThrow("Embedding generation failed");
+        await expect(
+          vectorStore.put(["test"], "item1", { text: "test content" })
+        ).rejects.toThrow("Embedding generation failed");
       });
     });
   });
@@ -1113,15 +1213,17 @@ describeIf("PostgresStore", () => {
         return texts.map((text, index) => {
           const embedding = new Array(dims).fill(0);
           for (let i = 0; i < dims; i += 1) {
-            embedding[i] = Math.sin((text.charCodeAt(i % text.length) + index) * 0.1);
+            embedding[i] = Math.sin(
+              (text.charCodeAt(i % text.length) + index) * 0.1
+            );
           }
           return embedding;
         });
       };
-      
+
       mockFn.calls = [] as string[][];
       mockFn.toHaveBeenCalled = () => mockFn.calls.length > 0;
-      
+
       return mockFn;
     };
 
@@ -1132,15 +1234,15 @@ describeIf("PostgresStore", () => {
         content: "Complete guide to JavaScript programming",
         category: "programming",
         difficulty: "beginner",
-        tags: ["javascript", "web", "tutorial"]
+        tags: ["javascript", "web", "tutorial"],
       });
 
       await store.put(["docs"], "doc2", {
         title: "TypeScript Handbook",
         content: "Advanced TypeScript programming techniques",
-        category: "programming", 
+        category: "programming",
         difficulty: "intermediate",
-        tags: ["typescript", "javascript", "types"]
+        tags: ["typescript", "javascript", "types"],
       });
 
       await store.put(["docs"], "doc3", {
@@ -1148,7 +1250,7 @@ describeIf("PostgresStore", () => {
         content: "Introduction to Python programming language",
         category: "programming",
         difficulty: "beginner",
-        tags: ["python", "basics"]
+        tags: ["python", "basics"],
       });
 
       await store.put(["recipes"], "recipe1", {
@@ -1156,7 +1258,7 @@ describeIf("PostgresStore", () => {
         content: "Delicious chocolate cake recipe with detailed instructions",
         category: "dessert",
         difficulty: "easy",
-        tags: ["chocolate", "cake", "baking"]
+        tags: ["chocolate", "cake", "baking"],
       });
     };
 
@@ -1167,78 +1269,91 @@ describeIf("PostgresStore", () => {
 
       it("should perform basic search with no options", async () => {
         const results = await store.search(["docs"]);
-        
+
         expect(Array.isArray(results)).toBe(true);
         expect(results.length).toBeGreaterThan(0);
-        expect(results.every(item => item.namespace[0] === "docs")).toBe(true);
+        expect(results.every((item) => item.namespace[0] === "docs")).toBe(
+          true
+        );
       });
 
       it("should search with simple filter", async () => {
         const results = await store.search(["docs"], {
-          filter: { category: "programming" }
+          filter: { category: "programming" },
         });
 
         expect(results.length).toBe(3);
-        expect(results.every(item => item.value.category === "programming")).toBe(true);
+        expect(
+          results.every((item) => item.value.category === "programming")
+        ).toBe(true);
       });
 
       it("should search with advanced filter operators", async () => {
         const results = await store.search(["docs"], {
-          filter: { 
-            difficulty: { $eq: "beginner" }
-          }
+          filter: {
+            difficulty: { $eq: "beginner" },
+          },
         });
 
         expect(results.length).toBe(2);
-        expect(results.every(item => item.value.difficulty === "beginner")).toBe(true);
+        expect(
+          results.every((item) => item.value.difficulty === "beginner")
+        ).toBe(true);
       });
 
       it("should search with multiple filter conditions", async () => {
         const results = await store.search(["docs"], {
           filter: {
             category: "programming",
-            difficulty: { $ne: "advanced" }
-          }
+            difficulty: { $ne: "advanced" },
+          },
         });
 
         expect(results.length).toBeGreaterThan(0);
-        expect(results.every(item => 
-          item.value.category === "programming" && 
-          item.value.difficulty !== "advanced"
-        )).toBe(true);
+        expect(
+          results.every(
+            (item) =>
+              item.value.category === "programming" &&
+              item.value.difficulty !== "advanced"
+          )
+        ).toBe(true);
       });
 
       it("should search with $in operator", async () => {
         const results = await store.search(["docs"], {
           filter: {
-            difficulty: { $in: ["beginner", "intermediate"] }
-          }
+            difficulty: { $in: ["beginner", "intermediate"] },
+          },
         });
 
         expect(results.length).toBe(3);
-        expect(results.every(item => 
-          ["beginner", "intermediate"].includes((item.value as unknown as DocumentItem).difficulty)
-        )).toBe(true);
+        expect(
+          results.every((item) =>
+            ["beginner", "intermediate"].includes(
+              (item.value as unknown as DocumentItem).difficulty
+            )
+          )
+        ).toBe(true);
       });
 
       it("should apply limit and offset", async () => {
         const page1 = await store.search(["docs"], {
           limit: 2,
-          offset: 0
+          offset: 0,
         });
 
         const page2 = await store.search(["docs"], {
           limit: 2,
-          offset: 2
+          offset: 2,
         });
 
         expect(page1.length).toBeLessThanOrEqual(2);
         expect(page2.length).toBeGreaterThanOrEqual(0);
 
         // Ensure no overlap
-        const page1Keys = page1.map(item => item.key);
-        const page2Keys = page2.map(item => item.key);
-        const overlap = page1Keys.filter(key => page2Keys.includes(key));
+        const page1Keys = page1.map((item) => item.key);
+        const page2Keys = page2.map((item) => item.key);
+        const overlap = page1Keys.filter((key) => page2Keys.includes(key));
         expect(overlap).toHaveLength(0);
       });
 
@@ -1248,8 +1363,12 @@ describeIf("PostgresStore", () => {
 
         expect(docsResults.length).toBe(3);
         expect(recipesResults.length).toBe(1);
-        expect(docsResults.every(item => item.namespace[0] === "docs")).toBe(true);
-        expect(recipesResults.every(item => item.namespace[0] === "recipes")).toBe(true);
+        expect(docsResults.every((item) => item.namespace[0] === "docs")).toBe(
+          true
+        );
+        expect(
+          recipesResults.every((item) => item.namespace[0] === "recipes")
+        ).toBe(true);
       });
 
       it("should return empty array for non-existent namespace", async () => {
@@ -1265,14 +1384,15 @@ describeIf("PostgresStore", () => {
 
       it("should perform text search with query", async () => {
         const results = await store.search(["docs"], {
-          query: "JavaScript programming"
+          query: "JavaScript programming",
         });
 
         expect(results.length).toBeGreaterThan(0);
         // Should find documents containing JavaScript
-        const hasJavaScript = results.some(item => 
-          item.value.title.includes("JavaScript") || 
-          item.value.content.includes("JavaScript")
+        const hasJavaScript = results.some(
+          (item) =>
+            item.value.title.includes("JavaScript") ||
+            item.value.content.includes("JavaScript")
         );
         expect(hasJavaScript).toBe(true);
       });
@@ -1280,22 +1400,24 @@ describeIf("PostgresStore", () => {
       it("should combine text search with filters", async () => {
         const results = await store.search(["docs"], {
           query: "programming",
-          filter: { difficulty: "beginner" }
+          filter: { difficulty: "beginner" },
         });
 
         expect(results.length).toBeGreaterThan(0);
-        expect(results.every(item => item.value.difficulty === "beginner")).toBe(true);
+        expect(
+          results.every((item) => item.value.difficulty === "beginner")
+        ).toBe(true);
       });
 
       it("should return results with scores when query is provided", async () => {
         const results = await store.search(["docs"], {
-          query: "TypeScript"
+          query: "TypeScript",
         });
 
         expect(results.length).toBeGreaterThan(0);
         // Some results should have scores
-        const resultsWithScores = results.filter(item => 
-          item.score !== undefined && item.score !== null
+        const resultsWithScores = results.filter(
+          (item) => item.score !== undefined && item.score !== null
         );
         expect(resultsWithScores.length).toBeGreaterThan(0);
       });
@@ -1304,7 +1426,9 @@ describeIf("PostgresStore", () => {
     describe("Vector Search Integration", () => {
       it("should delegate to vectorSearch when index config and query are present", async () => {
         if (!process.env.TEST_POSTGRES_URL) {
-          console.log("Skipping vector search delegation test - no TEST_POSTGRES_URL provided");
+          console.log(
+            "Skipping vector search delegation test - no TEST_POSTGRES_URL provided"
+          );
           return;
         }
 
@@ -1315,8 +1439,8 @@ describeIf("PostgresStore", () => {
           index: {
             dims: 384,
             embed: mockEmbedding,
-            fields: ["content", "title"]
-          }
+            fields: ["content", "title"],
+          },
         });
 
         await vectorStore.setup();
@@ -1325,21 +1449,25 @@ describeIf("PostgresStore", () => {
         await setupSearchTestData(vectorStore);
 
         // Spy on vectorSearch method
-        const vectorSearchSpy = jest.spyOn(vectorStore, 'vectorSearch');
-        const searchAdvancedSpy = jest.spyOn(vectorStore, 'searchAdvanced');
+        const vectorSearchSpy = jest.spyOn(vectorStore, "vectorSearch");
+        const searchAdvancedSpy = jest.spyOn(vectorStore, "searchAdvanced");
 
         // Call search with query - should delegate to vectorSearch
         const results = await vectorStore.search(["docs"], {
           query: "JavaScript programming",
           filter: { category: "programming" },
-          limit: 5
+          limit: 5,
         });
 
-        expect(vectorSearchSpy).toHaveBeenCalledWith(["docs"], "JavaScript programming", {
-          filter: { category: "programming" },
-          limit: 5,
-          offset: undefined
-        });
+        expect(vectorSearchSpy).toHaveBeenCalledWith(
+          ["docs"],
+          "JavaScript programming",
+          {
+            filter: { category: "programming" },
+            limit: 5,
+            offset: undefined,
+          }
+        );
         expect(searchAdvancedSpy).not.toHaveBeenCalled();
         expect(results).toBeDefined();
         expect(Array.isArray(results)).toBe(true);
@@ -1350,7 +1478,9 @@ describeIf("PostgresStore", () => {
 
       it("should pass through vector search options correctly", async () => {
         if (!process.env.TEST_POSTGRES_URL) {
-          console.log("Skipping vector search options test - no TEST_POSTGRES_URL provided");
+          console.log(
+            "Skipping vector search options test - no TEST_POSTGRES_URL provided"
+          );
           return;
         }
 
@@ -1361,8 +1491,8 @@ describeIf("PostgresStore", () => {
           index: {
             dims: 256,
             embed: mockEmbedding,
-            fields: ["content"]
-          }
+            fields: ["content"],
+          },
         });
 
         await vectorStore.setup();
@@ -1370,20 +1500,24 @@ describeIf("PostgresStore", () => {
 
         await setupSearchTestData(vectorStore);
 
-        const vectorSearchSpy = jest.spyOn(vectorStore, 'vectorSearch');
+        const vectorSearchSpy = jest.spyOn(vectorStore, "vectorSearch");
 
         await vectorStore.search(["docs"], {
           query: "programming guide",
           filter: { difficulty: { $ne: "advanced" } },
           limit: 3,
-          offset: 1
+          offset: 1,
         });
 
-        expect(vectorSearchSpy).toHaveBeenCalledWith(["docs"], "programming guide", {
-          filter: { difficulty: { $ne: "advanced" } },
-          limit: 3,
-          offset: 1
-        });
+        expect(vectorSearchSpy).toHaveBeenCalledWith(
+          ["docs"],
+          "programming guide",
+          {
+            filter: { difficulty: { $ne: "advanced" } },
+            limit: 3,
+            offset: 1,
+          }
+        );
 
         vectorSearchSpy.mockRestore();
       });
@@ -1395,16 +1529,16 @@ describeIf("PostgresStore", () => {
       });
 
       it("should delegate to searchAdvanced when no vector config", async () => {
-        const searchAdvancedSpy = jest.spyOn(store, 'searchAdvanced');
+        const searchAdvancedSpy = jest.spyOn(store, "searchAdvanced");
 
         const results = await store.search(["docs"], {
           query: "programming",
-          filter: { category: "programming" }
+          filter: { category: "programming" },
         });
 
         expect(searchAdvancedSpy).toHaveBeenCalledWith(["docs"], {
           query: "programming",
-          filter: { category: "programming" }
+          filter: { category: "programming" },
         });
         expect(results).toBeDefined();
         expect(Array.isArray(results)).toBe(true);
@@ -1413,16 +1547,16 @@ describeIf("PostgresStore", () => {
       });
 
       it("should delegate to searchAdvanced when no query provided", async () => {
-        const searchAdvancedSpy = jest.spyOn(store, 'searchAdvanced');
+        const searchAdvancedSpy = jest.spyOn(store, "searchAdvanced");
 
         const results = await store.search(["docs"], {
           filter: { difficulty: "beginner" },
-          limit: 5
+          limit: 5,
         });
 
         expect(searchAdvancedSpy).toHaveBeenCalledWith(["docs"], {
           filter: { difficulty: "beginner" },
-          limit: 5
+          limit: 5,
         });
         expect(results).toBeDefined();
 
@@ -1430,14 +1564,14 @@ describeIf("PostgresStore", () => {
       });
 
       it("should pass all options to searchAdvanced", async () => {
-        const searchAdvancedSpy = jest.spyOn(store, 'searchAdvanced');
+        const searchAdvancedSpy = jest.spyOn(store, "searchAdvanced");
 
         const searchOptions = {
           filter: { category: "programming" },
           query: "TypeScript",
           limit: 10,
           offset: 2,
-          refreshTtl: true
+          refreshTtl: true,
         };
 
         await store.search(["docs"], searchOptions);
@@ -1460,10 +1594,13 @@ describeIf("PostgresStore", () => {
       });
 
       it("should validate namespace format in search", async () => {
-        await expect(store.search([])).rejects.toThrow("Namespace cannot be empty");
-        
-        await expect(store.search(["invalid.namespace"]))
-          .rejects.toThrow("Namespace labels cannot contain periods");
+        await expect(store.search([])).rejects.toThrow(
+          "Namespace cannot be empty"
+        );
+
+        await expect(store.search(["invalid.namespace"])).rejects.toThrow(
+          "Namespace labels cannot contain periods"
+        );
       });
 
       it("should handle search with complex nested filters", async () => {
@@ -1473,16 +1610,21 @@ describeIf("PostgresStore", () => {
           filter: {
             category: "programming",
             difficulty: { $in: ["beginner", "intermediate"] },
-            title: { $ne: "Advanced Guide" }
-          }
+            title: { $ne: "Advanced Guide" },
+          },
         });
 
         expect(Array.isArray(results)).toBe(true);
-        expect(results.every(item => 
-          item.value.category === "programming" &&
-          ["beginner", "intermediate"].includes((item.value as unknown as DocumentItem).difficulty) &&
-          item.value.title !== "Advanced Guide"
-        )).toBe(true);
+        expect(
+          results.every(
+            (item) =>
+              item.value.category === "programming" &&
+              ["beginner", "intermediate"].includes(
+                (item.value as unknown as DocumentItem).difficulty
+              ) &&
+              item.value.title !== "Advanced Guide"
+          )
+        ).toBe(true);
       });
 
       it("should handle search with zero limit", async () => {
@@ -1491,9 +1633,9 @@ describeIf("PostgresStore", () => {
       });
 
       it("should handle search with large offset", async () => {
-        const results = await store.search(["docs"], { 
-          limit: 10, 
-          offset: 1000 
+        const results = await store.search(["docs"], {
+          limit: 10,
+          offset: 1000,
         });
         expect(Array.isArray(results)).toBe(true);
         expect(results.length).toBe(0);
@@ -1508,52 +1650,54 @@ describeIf("PostgresStore", () => {
       it("should return consistent results for identical queries", async () => {
         const searchOptions = {
           filter: { category: "programming" },
-          limit: 10
+          limit: 10,
         };
 
         const results1 = await store.search(["docs"], searchOptions);
         const results2 = await store.search(["docs"], searchOptions);
 
         expect(results1.length).toBe(results2.length);
-        expect(results1.map(r => r.key).sort()).toEqual(
-          results2.map(r => r.key).sort()
+        expect(results1.map((r) => r.key).sort()).toEqual(
+          results2.map((r) => r.key).sort()
         );
       });
 
       it("should handle concurrent search requests", async () => {
-        const searchPromises = Array.from({ length: 5 }, (_, i) => 
+        const searchPromises = Array.from({ length: 5 }, (_, i) =>
           store.search(["docs"], {
             filter: { category: "programming" },
             limit: 2,
-            offset: i
+            offset: i,
           })
         );
 
         const results = await Promise.all(searchPromises);
-        
+
         expect(results).toHaveLength(5);
-        expect(results.every(result => Array.isArray(result))).toBe(true);
+        expect(results.every((result) => Array.isArray(result))).toBe(true);
       });
 
       it("should maintain search result ordering", async () => {
         const results = await store.search(["docs"], {
           query: "programming guide",
-          limit: 10
+          limit: 10,
         });
 
         if (results.length > 1) {
           // Results should be ordered by relevance/score or creation time
-          expect(results.every((item, index) => {
-            if (index === 0) return true;
-            const prev = results[index - 1];
-            // Either both have scores or neither do
-            if (item.score !== undefined && prev.score !== undefined) {
-              return prev.score >= item.score;
-            }
-            return true;
-          })).toBe(true);
+          expect(
+            results.every((item, index) => {
+              if (index === 0) return true;
+              const prev = results[index - 1];
+              // Either both have scores or neither do
+              if (item.score !== undefined && prev.score !== undefined) {
+                return prev.score >= item.score;
+              }
+              return true;
+            })
+          ).toBe(true);
         }
       });
     });
   });
-}); 
+});

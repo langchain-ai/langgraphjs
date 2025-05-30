@@ -30,4 +30,4 @@ export function validateNamespace(namespace: string[]): void {
       `Root label for namespace cannot be "langgraph". Got: ${namespace}`
     );
   }
-} 
+}

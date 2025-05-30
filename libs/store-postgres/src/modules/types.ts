@@ -12,8 +12,8 @@ export interface Embeddings {
 
 export type EmbeddingsFunc = (texts: string[]) => Promise<number[][]>;
 export type AEmbeddingsFunc = (texts: string[]) => Promise<number[][]>;
-export type VectorIndexType = 'ivfflat' | 'hnsw';
-export type DistanceMetric = 'cosine' | 'l2' | 'inner_product';
+export type VectorIndexType = "ivfflat" | "hnsw";
+export type DistanceMetric = "cosine" | "l2" | "inner_product";
 
 export interface HNSWConfig {
   /**
@@ -22,14 +22,14 @@ export interface HNSWConfig {
    * @default 16
    */
   m?: number;
-  
+
   /**
    * Size of the dynamic candidate list during construction.
    * Higher values improve index quality but increase build time.
    * @default 200
    */
   efConstruction?: number;
-  
+
   /**
    * Size of the dynamic candidate list during search.
    * Higher values improve recall but increase search time.
@@ -46,7 +46,7 @@ export interface IVFFlatConfig {
    * @default 100
    */
   lists?: number;
-  
+
   /**
    * Number of probes to use during search.
    * Higher values improve recall but increase search time.
@@ -60,19 +60,19 @@ export interface IndexConfig {
    * Number of dimensions in the embedding vectors.
    */
   dims: number;
-  
+
   /**
    * Embedding function to generate embeddings from text.
    * Can be a LangChain Embeddings instance, function, or provider string.
    */
   embed: Embeddings | EmbeddingsFunc | AEmbeddingsFunc | string;
-  
+
   /**
    * Fields to extract text from for embedding generation.
    * Uses JSON path syntax. Defaults to ["$"] (entire document).
    */
   fields?: string[];
-  
+
   /**
    * Vector index type to use.
    * - 'hnsw': Hierarchical Navigable Small World (best for most use cases)
@@ -80,25 +80,25 @@ export interface IndexConfig {
    * @default 'hnsw'
    */
   indexType?: VectorIndexType;
-  
+
   /**
    * Distance metric for vector similarity.
    * @default 'cosine'
    */
   distanceMetric?: DistanceMetric;
-  
+
   /**
    * HNSW-specific configuration parameters.
    * Only used when indexType is 'hnsw'.
    */
   hnsw?: HNSWConfig;
-  
+
   /**
    * IVFFlat-specific configuration parameters.
    * Only used when indexType is 'ivfflat'.
    */
   ivfflat?: IVFFlatConfig;
-  
+
   /**
    * Whether to create indexes for all distance metrics.
    * If false, only creates index for the specified distanceMetric.
@@ -112,13 +112,13 @@ export interface TTLConfig {
    * Default TTL in minutes for new items.
    */
   defaultTtl?: number;
-  
+
   /**
    * Whether to refresh TTL on read operations by default.
    * @default true
    */
   refreshOnRead?: boolean;
-  
+
   /**
    * Interval in minutes between TTL sweep operations.
    * @default 60
@@ -150,24 +150,24 @@ export interface SearchOptions {
    * Filter conditions with support for advanced operators.
    */
   filter?: Record<string, string | number | boolean | null | FilterOperators>;
-  
+
   /**
    * Natural language search query.
    */
   query?: string;
-  
+
   /**
    * Maximum number of results to return.
    * @default 10
    */
   limit?: number;
-  
+
   /**
    * Number of results to skip for pagination.
    * @default 0
    */
   offset?: number;
-  
+
   /**
    * Whether to refresh TTL for returned items.
    */
@@ -179,7 +179,7 @@ export interface PutOptions {
    * TTL in minutes for this item.
    */
   ttl?: number;
-  
+
   /**
    * Whether to index this item for search.
    * @default true
@@ -190,11 +190,11 @@ export interface PutOptions {
 export interface PostgresStoreConfig {
   /**
    * PostgreSQL connection string or connection configuration object.
-   * 
+   *
    * @example
    * // Connection string
    * "postgresql://user:password@localhost:5432/database"
-   * 
+   *
    * // Configuration object
    * {
    *   host: "localhost",
@@ -228,4 +228,4 @@ export interface PostgresStoreConfig {
    * If provided, enables vector similarity search using pgvector extension.
    */
   index?: IndexConfig;
-} 
+}

@@ -11,7 +11,8 @@ export class TTLManager {
   start(): void {
     if (this.sweepInterval) return; // Already running
 
-    const intervalMs = (this.core.ttlConfig?.sweepIntervalMinutes || 60) * 60 * 1000;
+    const intervalMs =
+      (this.core.ttlConfig?.sweepIntervalMinutes || 60) * 60 * 1000;
     this.sweepInterval = setInterval(() => {
       this.sweepExpiredItems().catch((error) => {
         console.error("Error during TTL sweep:", error);
@@ -35,4 +36,4 @@ export class TTLManager {
       return result.rowCount || 0;
     });
   }
-} 
+}
