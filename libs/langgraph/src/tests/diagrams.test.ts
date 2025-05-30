@@ -16,12 +16,12 @@ test("prebuilt agent", async () => {
   expect(mermaid).toEqual(`%%{init: {'flowchart': {'curve': 'linear'}}}%%
 graph TD;
 \t__start__([<p>__start__</p>]):::first
-\tagent(agent)
 \ttools(tools)
+\tagent(agent)
 \t__end__([<p>__end__</p>]):::last
 \t__start__ --> agent;
 \ttools --> agent;
-\tagent -. &nbsp;continue&nbsp; .-> tools;
+\tagent -.-> tools;
 \tagent -.-> __end__;
 \tclassDef default fill:#f2f0ff,line-height:1.2;
 \tclassDef first fill-opacity:0;
