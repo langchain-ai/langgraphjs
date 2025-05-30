@@ -61,6 +61,7 @@ import {
   END,
   CONFIG_KEY_NODE_FINISHED,
   Interrupt,
+  isInterrupted,
 } from "../constants.js";
 import {
   PregelExecutableTask,
@@ -2133,21 +2134,12 @@ export class Pregel<
 
     let latest: OutputType | undefined;
 
-    const isInterruptValues = (
-      values: unknown
-    ): values is { [INTERRUPT]: Interrupt[] } => {
-      if (!values || typeof values !== "object") return false;
-      if (!(INTERRUPT in values)) return false;
-      return Array.isArray(values[INTERRUPT]);
-    };
-
     for await (const chunk of stream) {
       if (streamMode === "values") {
-        const values = chunk as OutputType;
-        if (isInterruptValues(values)) {
-          interruptChunks.push(values[INTERRUPT]);
+        if (isInterrupted(chunk)) {
+          interruptChunks.push(chunk[INTERRUPT]);
         } else {
-          latest = values;
+          latest = chunk as OutputType;
         }
       } else {
         chunks.push(chunk);
