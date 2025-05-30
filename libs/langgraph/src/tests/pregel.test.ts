@@ -1589,7 +1589,7 @@ export function runPregelTests(
     const thread2 = { configurable: { thread_id: "2" } };
 
     // start execution, stop at inbox
-    expect(await app.invoke(2, thread1)).toBeUndefined();
+    expect(await app.invoke(2, thread1)).toEqual({ __interrupt__: [] });
 
     // inbox == 3
     let checkpoint = await checkpointer.get(thread1);
@@ -1599,7 +1599,7 @@ export function runPregelTests(
     expect(await app.invoke(null, thread1)).toBe(4);
 
     // start execution again, stop at inbox
-    expect(await app.invoke(20, thread1)).toBeUndefined();
+    expect(await app.invoke(20, thread1)).toEqual({ __interrupt__: [] });
 
     // inbox == 21
     checkpoint = await checkpointer.get(thread1);
@@ -1607,11 +1607,11 @@ export function runPregelTests(
     expect(checkpoint?.channel_values.inbox).toBe(21);
 
     // send a new value in, interrupting the previous execution
-    expect(await app.invoke(3, thread1)).toBeUndefined();
+    expect(await app.invoke(3, thread1)).toEqual({ __interrupt__: [] });
     expect(await app.invoke(null, thread1)).toBe(5);
 
     // start execution again, stopping at inbox
-    expect(await app.invoke(20, thread2)).toBeUndefined();
+    expect(await app.invoke(20, thread2)).toEqual({ __interrupt__: [] });
 
     // inbox == 21
     let snapshot = await app.getState(thread2);
@@ -3275,6 +3275,14 @@ graph TD;
       expect(result).toEqual({
         my_key: "value",
         market: "DE",
+        __interrupt__: [
+          {
+            value: "Just because...",
+            resumable: true,
+            when: "during",
+            ns: [expect.stringMatching(/^tool_two:/)],
+          },
+        ],
       });
       expect(toolTwoNodeCount).toBe(1); // interrupts aren't retried
       expect(tracer.runs.length).toBe(1);
@@ -3302,6 +3310,14 @@ graph TD;
       ).toEqual({
         my_key: "value ⛰️",
         market: "DE",
+        __interrupt__: [
+          {
+            value: "Just because...",
+            resumable: true,
+            when: "during",
+            ns: [expect.stringMatching(/^tool_two:/)],
+          },
+        ],
       });
 
       const toolTwoCheckpointer = toolTwo.checkpointer as BaseCheckpointSaver;
@@ -3409,6 +3425,12 @@ graph TD;
       // Return state at interrupt time
       expect(await graph.invoke({ hello: "world" }, thread)).toEqual({
         hello: "again",
+        __interrupt__: [
+          {
+            value: "I am bad",
+            when: "during",
+          },
+        ],
       });
 
       expect(awhileReturns).toBe(1);
@@ -3417,6 +3439,12 @@ graph TD;
       // Invoking a graph with no more tasks should return the final value
       expect(await graph.invoke(null, thread)).toEqual({
         hello: "again",
+        __interrupt__: [
+          {
+            value: "I am bad",
+            when: "during",
+          },
+        ],
       });
 
       expect(awhileReturns).toBe(1);
@@ -5502,7 +5530,8 @@ graph TD;
         { my_key: "value ⛰️", market: "DE" },
         thread1
       )
-    ).toEqual({ my_key: "value ⛰️", market: "DE" });
+    ).toEqual({ my_key: "value ⛰️", market: "DE", __interrupt__: [] });
+
     const toolTwoCheckpointer =
       toolTwoWithCheckpointer.checkpointer as BaseCheckpointSaver;
     expect(
@@ -5579,6 +5608,7 @@ graph TD;
     ).toEqual({
       my_key: "value",
       market: "US",
+      __interrupt__: [],
     });
     expect(await toolTwoWithCheckpointer.getState(thread2)).toEqual({
       values: { my_key: "value", market: "US" },
@@ -5636,6 +5666,7 @@ graph TD;
     ).toEqual({
       my_key: "value",
       market: "US",
+      __interrupt__: [],
     });
     expect(await toolTwoWithCheckpointer.getState(thread3)).toEqual({
       values: { my_key: "value", market: "US" },
@@ -5933,6 +5964,7 @@ graph TD;
       ).toEqual({
         my_key: "value ⛰️",
         market: "DE",
+        __interrupt__: [],
       });
 
       const checkpoints = [];
@@ -6003,6 +6035,7 @@ graph TD;
       ).toEqual({
         my_key: "value",
         market: "US",
+        __interrupt__: [],
       });
 
       expect(await toolTwo.getState(thread2)).toMatchObject({
@@ -6041,6 +6074,7 @@ graph TD;
       ).toEqual({
         my_key: "value",
         market: "US",
+        __interrupt__: [],
       });
 
       expect(await toolTwo.getState(thread3)).toMatchObject({
@@ -6793,6 +6827,7 @@ graph TD;
       const config1 = { configurable: { thread_id: "1" } };
       expect(await app.invoke({ myKey: "" }, config1)).toEqual({
         myKey: " and parallel",
+        __interrupt__: [],
       });
 
       expect(await app.invoke(null, config1)).toEqual({
@@ -6834,7 +6869,11 @@ graph TD;
       };
       expect(
         await gatherIterator(await app.stream({ myKey: "" }, config3))
-      ).toEqual([{ myKey: "" }, { myKey: " and parallel" }]);
+      ).toEqual([
+        { myKey: "" },
+        { myKey: " and parallel" },
+        { __interrupt__: [] },
+      ]);
       expect(await gatherIterator(await app.stream(null, config3))).toEqual([
         { myKey: "" },
         { myKey: "got here and there and parallel" },
@@ -6852,11 +6891,12 @@ graph TD;
       };
       expect(
         await gatherIterator(appBefore.stream({ myKey: "" }, config4))
-      ).toEqual([{ myKey: "" }]);
+      ).toEqual([{ myKey: "" }, { __interrupt__: [] }]);
       // while we're waiting for the node w/ interrupt inside to finish
       expect(await gatherIterator(appBefore.stream(null, config4))).toEqual([
         { myKey: "" },
         { myKey: " and parallel" },
+        { __interrupt__: [] },
       ]);
       expect(await gatherIterator(appBefore.stream(null, config4))).toEqual([
         { myKey: "" },
@@ -6875,10 +6915,15 @@ graph TD;
       };
       expect(
         await gatherIterator(appAfter.stream({ myKey: "" }, config5))
-      ).toEqual([{ myKey: "" }, { myKey: " and parallel" }]);
+      ).toEqual([
+        { myKey: "" },
+        { myKey: " and parallel" },
+        { __interrupt__: [] },
+      ]);
       expect(await gatherIterator(appAfter.stream(null, config5))).toEqual([
         { myKey: "" },
         { myKey: "got here and there and parallel" },
+        { __interrupt__: [] },
       ]);
       expect(await gatherIterator(appAfter.stream(null, config5))).toEqual([
         { myKey: "got here and there and parallel" },
@@ -6949,6 +6994,7 @@ graph TD;
       const config = { configurable: { thread_id: "1" } };
       expect(await app.invoke({ myKey: "my value" }, config)).toEqual({
         myKey: "hi my value",
+        __interrupt__: [],
       });
       expect(await app.invoke(null, config)).toEqual({
         myKey: "hi my value here and there and back again",
@@ -6971,7 +7017,12 @@ graph TD;
       };
       expect(
         await gatherIterator(app.stream({ myKey: "my value" }, config3))
-      ).toEqual([{ myKey: "my value" }, { myKey: "hi my value" }]);
+      ).toEqual([
+        { myKey: "my value" },
+        { myKey: "hi my value" },
+        { __interrupt__: [] },
+      ]);
+
       expect(await gatherIterator(app.stream(null, config3))).toEqual([
         { myKey: "hi my value" },
         { myKey: "hi my value here and there" },
@@ -8504,6 +8555,7 @@ graph TD;
       ).toEqual({
         subjects: ["cats", "dogs"],
         jokes: [],
+        __interrupt__: [],
       });
       await awaitAllCallbacks();
       expect(tracer.runs.length).toEqual(1);
@@ -10285,7 +10337,11 @@ graph TD;
       },
     };
 
-    expect(await graph.invoke({ foo: "abc" }, config)).toEqual({ foo: "abc" });
+    expect(await graph.invoke({ foo: "abc" }, config)).toEqual({
+      foo: "abc",
+      __interrupt__: [],
+    });
+
     const result = await graph.invoke(
       new Command({ update: { foo: "def" } }),
       config
@@ -10387,7 +10443,7 @@ graph TD;
     });
 
     // TODO: should ideally throw here when no checkpointer is provided
-    expect(await graph.invoke("a")).toBeUndefined();
+    expect(await graph.invoke("a")).toEqual({ __interrupt__: [] });
 
     await expect(() =>
       graph.invoke(new Command({ resume: "hello" }))

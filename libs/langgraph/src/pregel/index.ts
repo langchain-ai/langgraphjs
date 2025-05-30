@@ -60,6 +60,7 @@ import {
   COPY,
   END,
   CONFIG_KEY_NODE_FINISHED,
+  Interrupt,
 } from "../constants.js";
 import {
   PregelExecutableTask,
@@ -381,7 +382,7 @@ export class Pregel<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
     InputType = PregelInputType,
-    OutputType = PregelOutputType,
+    OutputType = PregelOutputType & { [INTERRUPT]?: Interrupt[] },
     StreamUpdatesType = InputType,
     StreamValuesType = OutputType
   >
@@ -2128,11 +2129,41 @@ export class Pregel<
     };
     const chunks = [];
     const stream = await this.stream(input, config);
+    const interruptChunks: Interrupt[][] = [];
+
+    let latest: OutputType | undefined;
+
+    const isInterruptValues = (
+      values: unknown
+    ): values is { [INTERRUPT]: Interrupt[] } => {
+      if (!values || typeof values !== "object") return false;
+      if (!(INTERRUPT in values)) return false;
+      return Array.isArray(values[INTERRUPT]);
+    };
+
     for await (const chunk of stream) {
-      chunks.push(chunk);
+      if (streamMode === "values") {
+        const values = chunk as OutputType;
+        if (isInterruptValues(values)) {
+          interruptChunks.push(values[INTERRUPT]);
+        } else {
+          latest = values;
+        }
+      } else {
+        chunks.push(chunk);
+      }
     }
+
     if (streamMode === "values") {
-      return chunks[chunks.length - 1] as OutputType;
+      if (interruptChunks.length > 0) {
+        const interrupts = interruptChunks.flat(1);
+        if (latest == null) return { [INTERRUPT]: interrupts } as OutputType;
+        if (typeof latest === "object") {
+          return { ...latest, [INTERRUPT]: interrupts };
+        }
+      }
+
+      return latest as OutputType;
     }
     return chunks as OutputType;
   }

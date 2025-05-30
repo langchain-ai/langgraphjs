@@ -1445,12 +1445,7 @@ describe("Graph Structure Tests (Python port)", () => {
 
     // Test stream with interrupt
     const interruptedStreamResults = await gatherIterator(
-      await appWithInterrupt.stream(
-        {
-          query: "what is weather in sf",
-        },
-        config
-      )
+      appWithInterrupt.stream({ query: "what is weather in sf" }, config)
     );
 
     expect(interruptedStreamResults).toEqual([
@@ -1463,7 +1458,7 @@ describe("Graph Structure Tests (Python port)", () => {
 
     // Resume from interrupt
     const resumedResults = await gatherIterator(
-      await appWithInterrupt.stream(null, config)
+      appWithInterrupt.stream(null, config)
     );
 
     expect(resumedResults).toEqual([{ qa: { answer: "doc1,doc2,doc3,doc4" } }]);
@@ -1582,9 +1577,7 @@ describe("Graph Structure Tests (Python port)", () => {
 
     // Test stream
     const streamResults = await gatherIterator(
-      await app.stream({
-        query: "what is weather in sf",
-      })
+      app.stream({ query: "what is weather in sf" })
     );
 
     expect(streamResults).toEqual([
@@ -1607,12 +1600,7 @@ describe("Graph Structure Tests (Python port)", () => {
 
     // Test stream with interrupt
     const interruptedStreamResults = await gatherIterator(
-      await appWithInterrupt.stream(
-        {
-          query: "what is weather in sf",
-        },
-        config
-      )
+      appWithInterrupt.stream({ query: "what is weather in sf" }, config)
     );
 
     expect(interruptedStreamResults).toEqual([
@@ -1626,7 +1614,7 @@ describe("Graph Structure Tests (Python port)", () => {
 
     // Resume from interrupt
     const resumedResults = await gatherIterator(
-      await appWithInterrupt.stream(null, config)
+      appWithInterrupt.stream(null, config)
     );
 
     expect(resumedResults).toEqual([{ qa: { answer: "doc1,doc2,doc3,doc4" } }]);
@@ -2200,6 +2188,7 @@ describe("Graph Structure Tests (Python port)", () => {
     );
     expect(invokeResult1).toEqual({
       my_key: "hi my value",
+      __interrupt__: [],
     });
 
     const invokeResult2 = await app.invoke(null, { ...config1, debug: true });
@@ -2254,6 +2243,7 @@ describe("Graph Structure Tests (Python port)", () => {
     expect(streamValuesResults1).toEqual([
       { my_key: "my value" },
       { my_key: "hi my value" },
+      { __interrupt__: [] },
     ]);
 
     const streamValuesResults2 = await gatherIterator(
