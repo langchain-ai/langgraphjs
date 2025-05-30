@@ -692,25 +692,19 @@ export function createReactAgent<
           const lastMessage = messages[messages.length - 1];
 
           if (isAIMessage(lastMessage) && lastMessage.tool_calls?.length) {
-            return "tools" as const;
+            return "tools";
           }
 
-          if (isToolMessage(lastMessage)) {
-            return "entrypoint" as const;
-          }
-
-          if (responseFormat != null) {
-            return "generate_structured_response" as const;
-          }
-
+          if (isToolMessage(lastMessage)) return entrypoint;
+          if (responseFormat != null) return "generate_structured_response";
           return END;
         },
         conditionalMap({
           tools: "tools",
-          entrypoint,
+          [entrypoint]: entrypoint,
           generate_structured_response:
             responseFormat != null ? "generate_structured_response" : null,
-          [END]: END,
+          [END]: responseFormat != null ? null : END,
         })
       );
   }
@@ -721,40 +715,30 @@ export function createReactAgent<
       .addEdge("generate_structured_response", END);
   }
 
-  allNodeWorkflows.addConditionalEdges(
-    "agent",
-    (state) => {
-      const { messages } = state;
-      const lastMessage = messages[messages.length - 1];
+  if (postModelHook == null) {
+    allNodeWorkflows.addConditionalEdges(
+      "agent",
+      (state) => {
+        const { messages } = state;
+        const lastMessage = messages[messages.length - 1];
 
-      // if there's no function call, we finish
-      if (!isAIMessage(lastMessage) || !lastMessage.tool_calls?.length) {
-        if (postModelHook != null) {
-          return "post_model_hook" as const;
+        // if there's no function call, we finish
+        if (!isAIMessage(lastMessage) || !lastMessage.tool_calls?.length) {
+          if (responseFormat != null) return "generate_structured_response";
+          return END;
         }
 
-        if (responseFormat != null) {
-          return "generate_structured_response" as const;
-        }
-
-        return END;
-      }
-
-      // there are function calls, we continue
-      if (postModelHook != null) {
-        return "post_model_hook" as const;
-      }
-
-      return "continue" as const;
-    },
-    conditionalMap({
-      continue: "tools",
-      post_model_hook: postModelHook != null ? "post_model_hook" : null,
-      generate_structured_response:
-        responseFormat != null ? "generate_structured_response" : null,
-      [END]: END,
-    })
-  );
+        // there are function calls, we continue
+        return "tools";
+      },
+      conditionalMap({
+        tools: "tools",
+        generate_structured_response:
+          responseFormat != null ? "generate_structured_response" : null,
+        [END]: responseFormat != null ? null : END,
+      })
+    );
+  }
 
   if (shouldReturnDirect.size > 0) {
     allNodeWorkflows.addConditionalEdges(
@@ -774,12 +758,12 @@ export function createReactAgent<
           }
         }
 
-        return "agent" as const;
+        return entrypoint;
       },
-      ["agent", END]
+      conditionalMap({ [entrypoint]: entrypoint, [END]: END })
     );
   } else {
-    allNodeWorkflows.addEdge("tools", "agent");
+    allNodeWorkflows.addEdge("tools", entrypoint);
   }
 
   return allNodeWorkflows.compile({

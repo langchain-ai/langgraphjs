@@ -1278,7 +1278,7 @@ describe("createReactAgent with hooks", () => {
         structure: [
           "__start__ --> agent",
           "agent -.-> __end__",
-          "agent -.[continue].-> tools",
+          "agent -.-> tools",
           "tools --> agent",
         ],
       },
@@ -1299,7 +1299,7 @@ describe("createReactAgent with hooks", () => {
         structure: [
           "__start__ --> agent",
           "agent -.-> __end__",
-          "agent -.[continue].-> tools",
+          "agent -.-> tools",
           "tools --> agent",
         ],
       },
@@ -1307,7 +1307,7 @@ describe("createReactAgent with hooks", () => {
 
     [
       {
-        name: "pre model hook + tools",
+        name: "pre + tools",
         graph: createReactAgent({
           llm: new FakeToolCallingChatModel({}),
           tools: [
@@ -1322,7 +1322,7 @@ describe("createReactAgent with hooks", () => {
         structure: [
           "__start__ --> pre_model_hook",
           "agent -.-> __end__",
-          "agent -.[continue].-> tools",
+          "agent -.-> tools",
           "pre_model_hook --> agent",
           "tools --> pre_model_hook",
         ],
@@ -1331,7 +1331,7 @@ describe("createReactAgent with hooks", () => {
 
     [
       {
-        name: "tools + post model hook",
+        name: "tools + post",
         graph: createReactAgent({
           llm: new FakeToolCallingChatModel({}),
           tools: [
@@ -1352,7 +1352,7 @@ describe("createReactAgent with hooks", () => {
           "agent --> post_model_hook",
           "tools --> agent",
           "post_model_hook -.-> tools",
-          "post_model_hook -.[entrypoint].-> agent",
+          "post_model_hook -.-> agent",
           "post_model_hook -.-> __end__",
         ],
       },
@@ -1378,7 +1378,7 @@ describe("createReactAgent with hooks", () => {
           "__start__ --> agent",
           "generate_structured_response --> __end__",
           "tools --> agent",
-          "agent -.[continue].-> tools",
+          "agent -.-> tools",
           "agent -.-> generate_structured_response",
         ],
       },
@@ -1386,7 +1386,7 @@ describe("createReactAgent with hooks", () => {
 
     [
       {
-        name: "pre model hook + tools + response format",
+        name: "pre + tools + response format",
         graph: createReactAgent({
           llm: new FakeToolCallingChatModel({}),
           tools: [
@@ -1404,18 +1404,17 @@ describe("createReactAgent with hooks", () => {
         structure: [
           "__start__ --> pre_model_hook",
           "pre_model_hook --> agent",
+          "agent -.-> tools",
+          "agent -.-> generate_structured_response",
           "generate_structured_response --> __end__",
           "tools --> pre_model_hook",
-          "post_model_hook -.-> tools",
-          "post_model_hook -.[entrypoint].-> pre_model_hook",
-          "post_model_hook -.-> generate_structured_response",
         ],
       },
     ],
 
     [
       {
-        name: "tools + post model hook + response format",
+        name: "tools + post + response format",
         graph: createReactAgent({
           llm: new FakeToolCallingChatModel({}),
           tools: [
@@ -1440,7 +1439,7 @@ describe("createReactAgent with hooks", () => {
           "generate_structured_response --> __end__",
           "tools --> agent",
           "post_model_hook -.-> tools",
-          "post_model_hook -.[entrypoint].-> agent",
+          "post_model_hook -.-> agent",
           "post_model_hook -.-> generate_structured_response",
         ],
       },
@@ -1448,7 +1447,7 @@ describe("createReactAgent with hooks", () => {
 
     [
       {
-        name: "pre model hook + tools + post model hook",
+        name: "pre + tools + post",
         graph: createReactAgent({
           llm: new FakeToolCallingChatModel({}),
           tools: [
@@ -1458,6 +1457,7 @@ describe("createReactAgent with hooks", () => {
               schema: z.object({}),
             }),
           ],
+          preModelHook: () => ({ messages: [] }),
           postModelHook: () => ({ flag: true }),
           stateSchema: Annotation.Root({
             ...MessagesAnnotation.spec,
@@ -1470,7 +1470,7 @@ describe("createReactAgent with hooks", () => {
           "agent --> post_model_hook",
           "tools --> pre_model_hook",
           "post_model_hook -.-> tools",
-          "post_model_hook -.[entrypoint].-> pre_model_hook",
+          "post_model_hook -.-> pre_model_hook",
           "post_model_hook -.-> __end__",
         ],
       },
@@ -1478,7 +1478,7 @@ describe("createReactAgent with hooks", () => {
 
     [
       {
-        name: "pre model hook + tools + post model hook + response format",
+        name: "pre + tools + post + response format",
         graph: createReactAgent({
           llm: new FakeToolCallingChatModel({}),
           tools: [
@@ -1505,12 +1505,12 @@ describe("createReactAgent with hooks", () => {
           "generate_structured_response --> __end__",
           "tools --> pre_model_hook",
           "post_model_hook -.-> tools",
-          "post_model_hook -.[entrypoint].-> pre_model_hook",
+          "post_model_hook -.-> pre_model_hook",
           "post_model_hook -.-> generate_structured_response",
         ],
       },
     ],
-  ])("graph structure $name", async ({ graph, structure }) => {
+  ])("mermaid $name", async ({ graph, structure }) => {
     expect(getReadableMermaid(await graph.getGraphAsync()).sort()).toEqual(
       structure.sort()
     );

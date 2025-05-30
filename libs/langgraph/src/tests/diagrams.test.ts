@@ -21,7 +21,7 @@ graph TD;
 \t__end__([<p>__end__</p>]):::last
 \t__start__ --> agent;
 \ttools --> agent;
-\tagent -. &nbsp;continue&nbsp; .-> tools;
+\tagent -.-> tools;
 \tagent -.-> __end__;
 \tclassDef default fill:#f2f0ff,line-height:1.2;
 \tclassDef first fill-opacity:0;
