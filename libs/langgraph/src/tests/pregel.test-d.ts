@@ -10,7 +10,7 @@ import { gatherIterator } from "../utils.js";
 import { StreamMode } from "../pregel/types.js";
 import { task, entrypoint } from "../func/index.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
-import type { Interrupt } from "../constants.js";
+import { INTERRUPT, isInterrupted } from "../constants.js";
 
 beforeAll(() => {
   // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
@@ -40,16 +40,15 @@ it("state graph annotation", async () => {
 
   const input = { foo: "bar" };
 
-  expectTypeOf(await graph.invoke(input)).toExtend<{
-    foo: string[];
-    __interrupt__?: Interrupt[];
-  }>();
+  const values = await graph.invoke(input);
+  expectTypeOf(values).toExtend<{ foo: string[] }>();
+
+  if (isInterrupted<string>(values)) {
+    expectTypeOf(values[INTERRUPT][0].value).toExtend<string | undefined>();
+  }
 
   expectTypeOf(await gatherIterator(graph.stream(input))).toExtend<
-    (
-      | Record<"one" | "two" | "three", { foo?: string[] | string }>
-      | { __interrupt__: Interrupt[] }
-    )[]
+    Record<"one" | "two" | "three", { foo?: string[] | string }>[]
   >();
 
   expectTypeOf(
@@ -74,25 +73,12 @@ it("state graph annotation", async () => {
 
   expectTypeOf(
     await gatherIterator(graph.stream(input, { streamMode: "updates" }))
-  ).toExtend<
-    (
-      | Record<"one" | "two" | "three", { foo?: string[] | string }>
-      | { __interrupt__: Interrupt[] }
-    )[]
-  >();
+  ).toExtend<Record<"one" | "two" | "three", { foo?: string[] | string }>[]>();
 
   expectTypeOf(
     await gatherIterator(graph.stream(input, { streamMode: ["updates"] }))
   ).toExtend<
-    (
-      | [
-          "updates",
-          (
-            | Record<"one" | "two" | "three", { foo?: string[] | string }>
-            | { __interrupt__: Interrupt[] }
-          )
-        ]
-    )[]
+    ["updates", Record<"one" | "two" | "three", { foo?: string[] | string }>][]
   >();
 
   expectTypeOf(
@@ -103,10 +89,7 @@ it("state graph annotation", async () => {
     [
       string[],
       "updates",
-      (
-        | Record<"one" | "two" | "three", { foo?: string[] | string }>
-        | { __interrupt__: Interrupt[] }
-      )
+      Record<"one" | "two" | "three", { foo?: string[] | string }>
     ][]
   >();
 
@@ -118,12 +101,9 @@ it("state graph annotation", async () => {
     (
       | [
           "updates",
-          (
-            | Record<"one" | "two" | "three", { foo?: string[] | string }>
-            | { __interrupt__: Interrupt[] }
-          )
+          Record<"one" | "two" | "three", { foo?: string[] | string }>
         ]
-      | ["values", { foo: string[]; __interrupt__?: Interrupt[] }]
+      | ["values", { foo: string[] }]
     )[]
   >();
 
@@ -139,12 +119,9 @@ it("state graph annotation", async () => {
       | [
           string[],
           "updates",
-          (
-            | Record<"one" | "two" | "three", { foo?: string[] | string }>
-            | { __interrupt__: Interrupt[] }
-          )
+          Record<"one" | "two" | "three", { foo?: string[] | string }>
         ]
-      | [string[], "values", { foo: string[]; __interrupt__?: Interrupt[] }]
+      | [string[], "values", { foo: string[] }]
     )[]
   >();
 
@@ -162,12 +139,9 @@ it("state graph annotation", async () => {
     (
       | [
           "updates",
-          (
-            | Record<"one" | "two" | "three", { foo?: string[] | string }>
-            | { __interrupt__: Interrupt[] }
-          )
+          Record<"one" | "two" | "three", { foo?: string[] | string }>
         ]
-      | ["values", { foo: string[]; __interrupt__?: Interrupt[] }]
+      | ["values", { foo: string[] }]
       | ["debug", Record<string, any>]
       | ["messages", [BaseMessage, Record<string, any>]]
       | ["custom", any]
@@ -189,12 +163,9 @@ it("state graph annotation", async () => {
       | [
           string[],
           "updates",
-          (
-            | Record<"one" | "two" | "three", { foo?: string[] | string }>
-            | { __interrupt__: Interrupt[] }
-          )
+          Record<"one" | "two" | "three", { foo?: string[] | string }>
         ]
-      | [string[], "values", { foo: string[]; __interrupt__?: Interrupt[] }]
+      | [string[], "values", { foo: string[] }]
       | [string[], "debug", Record<string, any>]
       | [string[], "messages", [BaseMessage, Record<string, any>]]
       | [string[], "custom", any]
@@ -220,16 +191,15 @@ it("state graph zod", async () => {
 
   const input = { foo: "bar" };
 
-  expectTypeOf(await graph.invoke(input)).toExtend<{
-    foo: string[];
-    __interrupt__?: Interrupt[];
-  }>();
+  const values = await graph.invoke(input);
+  expectTypeOf(values).toExtend<{ foo: string[] }>();
+
+  if (isInterrupted<string>(values)) {
+    expectTypeOf(values[INTERRUPT][0].value).toExtend<string | undefined>();
+  }
 
   expectTypeOf(await gatherIterator(graph.stream(input))).toExtend<
-    (
-      | Record<"one" | "two" | "three", { foo?: string[] | string }>
-      | { __interrupt__: Interrupt[] }
-    )[]
+    Record<"one" | "two" | "three", { foo?: string[] | string }>[]
   >();
 
   expectTypeOf(
@@ -254,23 +224,12 @@ it("state graph zod", async () => {
 
   expectTypeOf(
     await gatherIterator(graph.stream(input, { streamMode: "updates" }))
-  ).toExtend<
-    (
-      | Record<"one" | "two" | "three", { foo?: string[] | string }>
-      | { __interrupt__: Interrupt[] }
-    )[]
-  >();
+  ).toExtend<Record<"one" | "two" | "three", { foo?: string[] | string }>[]>();
 
   expectTypeOf(
     await gatherIterator(graph.stream(input, { streamMode: ["updates"] }))
   ).toExtend<
-    [
-      "updates",
-      (
-        | Record<"one" | "two" | "three", { foo?: string[] | string }>
-        | { __interrupt__: Interrupt[] }
-      )
-    ][]
+    ["updates", Record<"one" | "two" | "three", { foo?: string[] | string }>][]
   >();
 
   expectTypeOf(
@@ -281,10 +240,7 @@ it("state graph zod", async () => {
     [
       string[],
       "updates",
-      (
-        | Record<"one" | "two" | "three", { foo?: string[] | string }>
-        | { __interrupt__: Interrupt[] }
-      )
+      Record<"one" | "two" | "three", { foo?: string[] | string }>
     ][]
   >();
 
@@ -296,12 +252,9 @@ it("state graph zod", async () => {
     (
       | [
           "updates",
-          (
-            | Record<"one" | "two" | "three", { foo?: string[] | string }>
-            | { __interrupt__: Interrupt[] }
-          )
+          Record<"one" | "two" | "three", { foo?: string[] | string }>
         ]
-      | ["values", { foo: string[]; __interrupt__?: Interrupt[] }]
+      | ["values", { foo: string[] }]
     )[]
   >();
 
@@ -317,12 +270,9 @@ it("state graph zod", async () => {
       | [
           string[],
           "updates",
-          (
-            | Record<"one" | "two" | "three", { foo?: string[] | string }>
-            | { __interrupt__: Interrupt[] }
-          )
+          Record<"one" | "two" | "three", { foo?: string[] | string }>
         ]
-      | [string[], "values", { foo: string[]; __interrupt__?: Interrupt[] }]
+      | [string[], "values", { foo: string[] }]
     )[]
   >();
 
@@ -340,12 +290,9 @@ it("state graph zod", async () => {
     (
       | [
           "updates",
-          (
-            | Record<"one" | "two" | "three", { foo?: string[] | string }>
-            | { __interrupt__: Interrupt[] }
-          )
+          Record<"one" | "two" | "three", { foo?: string[] | string }>
         ]
-      | ["values", { foo: string[]; __interrupt__?: Interrupt[] }]
+      | ["values", { foo: string[] }]
       | ["debug", Record<string, any>]
       | ["messages", [BaseMessage, Record<string, any>]]
       | ["custom", any]
@@ -367,12 +314,9 @@ it("state graph zod", async () => {
       | [
           string[],
           "updates",
-          (
-            | Record<"one" | "two" | "three", { foo?: string[] | string }>
-            | { __interrupt__: Interrupt[] }
-          )
+          Record<"one" | "two" | "three", { foo?: string[] | string }>
         ]
-      | [string[], "values", { foo: string[]; __interrupt__?: Interrupt[] }]
+      | [string[], "values", { foo: string[] }]
       | [string[], "debug", Record<string, any>]
       | [string[], "messages", [BaseMessage, Record<string, any>]]
       | [string[], "custom", any]
@@ -399,10 +343,10 @@ it("functional", async () => {
 
   const input = { input: "test" };
 
-  type UpdateType = Record<string, any> | { __interrupt__: Interrupt[] };
+  type UpdateType = Record<string, any>;
   type ValueType = {
     foo: ({ one: string } | { two: string } | { three: string })[];
-  } & { __interrupt__?: Interrupt[] };
+  };
 
   expectTypeOf(await graph.invoke(input)).toExtend<ValueType>();
   expectTypeOf(await gatherIterator(graph.stream(input))).toExtend<

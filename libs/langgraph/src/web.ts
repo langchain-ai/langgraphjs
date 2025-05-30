@@ -49,6 +49,8 @@ export {
   isCommand,
   START,
   END,
+  INTERRUPT,
+  isInterrupted,
   type Interrupt,
 } from "./constants.js";
 export {
