@@ -40,14 +40,6 @@ type StreamDebugOutput = Record<string, any>;
 
 type DefaultStreamMode = "updates";
 
-type StreamValuesType<StreamValues> = StreamValues extends object
-  ? StreamValues & { __interrupt__?: Interrupt[] }
-  : StreamValues;
-
-type StreamUpdateType<StreamUpdates, Nodes> = {
-  [key in Nodes extends string ? Nodes : string]: StreamUpdates;
-} & { __interrupt__?: Interrupt[] };
-
 export type StreamOutputMap<
   TStreamMode extends StreamMode | StreamMode[] | undefined,
   TStreamSubgraphs extends boolean,
@@ -67,15 +59,22 @@ export type StreamOutputMap<
 ) extends infer Multiple extends StreamMode
   ? [TStreamSubgraphs] extends [true]
     ? {
-        values: [string[], "values", StreamValuesType<StreamValues>];
-        updates: [string[], "updates", StreamUpdateType<StreamUpdates, Nodes>];
+        values: [string[], "values", StreamValues];
+        updates: [
+          string[],
+          "updates",
+          Record<Nodes extends string ? Nodes : string, StreamUpdates>
+        ];
         messages: [string[], "messages", StreamMessageOutput];
         custom: [string[], "custom", StreamCustomOutput];
         debug: [string[], "debug", StreamDebugOutput];
       }[Multiple]
     : {
-        values: ["values", StreamValuesType<StreamValues>];
-        updates: ["updates", StreamUpdateType<StreamUpdates, Nodes>];
+        values: ["values", StreamValues];
+        updates: [
+          "updates",
+          Record<Nodes extends string ? Nodes : string, StreamUpdates>
+        ];
         messages: ["messages", StreamMessageOutput];
         custom: ["custom", StreamCustomOutput];
         debug: ["debug", StreamDebugOutput];
@@ -85,15 +84,18 @@ export type StreamOutputMap<
     ) extends infer Single extends StreamMode
   ? [TStreamSubgraphs] extends [true]
     ? {
-        values: [string[], StreamValuesType<StreamValues>];
-        updates: [string[], StreamUpdateType<StreamUpdates, Nodes>];
+        values: [string[], StreamValues];
+        updates: [
+          string[],
+          Record<Nodes extends string ? Nodes : string, StreamUpdates>
+        ];
         messages: [string[], StreamMessageOutput];
         custom: [string[], StreamCustomOutput];
         debug: [string[], StreamDebugOutput];
       }[Single]
     : {
-        values: StreamValuesType<StreamValues>;
-        updates: StreamUpdateType<StreamUpdates, Nodes>;
+        values: StreamValues;
+        updates: Record<Nodes extends string ? Nodes : string, StreamUpdates>;
         messages: StreamMessageOutput;
         custom: StreamCustomOutput;
         debug: StreamDebugOutput;
