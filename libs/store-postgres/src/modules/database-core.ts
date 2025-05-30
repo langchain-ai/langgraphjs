@@ -26,7 +26,9 @@ export class DatabaseCore {
     this.indexConfig = indexConfig;
   }
 
-  async withClient<T>(operation: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+  async withClient<T>(
+    operation: (client: pg.PoolClient) => Promise<T>
+  ): Promise<T> {
     const client = await this.pool.connect();
     try {
       return await operation(client);
@@ -41,16 +43,23 @@ export class DatabaseCore {
     return new Date(Date.now() + effectiveTtl * 60 * 1000);
   }
 
-  async refreshTtl(client: pg.PoolClient, namespacePath: string, key: string): Promise<void> {
+  async refreshTtl(
+    client: pg.PoolClient,
+    namespacePath: string,
+    key: string
+  ): Promise<void> {
     if (!this.ttlConfig?.refreshOnRead) return;
 
     const expiresAt = this.calculateExpiresAt();
     if (expiresAt) {
-      await client.query(`
+      await client.query(
+        `
         UPDATE ${this.schema}.store 
         SET expires_at = $3, updated_at = CURRENT_TIMESTAMP
         WHERE namespace_path = $1 AND key = $2
-      `, [namespacePath, key, expiresAt]);
+      `,
+        [namespacePath, key, expiresAt]
+      );
     }
   }
-} 
+}

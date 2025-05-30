@@ -17,10 +17,13 @@ export class VectorOperations {
     if (!this.core.indexConfig) return;
 
     // Delete existing vectors for this item
-    await client.query(`
+    await client.query(
+      `
       DELETE FROM ${this.core.schema}.store_vectors 
       WHERE namespace_path = $1 AND key = $2
-    `, [namespacePath, key]);
+    `,
+      [namespacePath, key]
+    );
 
     const fields = this.core.indexConfig.fields || ["$"];
     const textsToEmbed: { fieldPath: string; text: string }[] = [];
@@ -30,7 +33,8 @@ export class VectorOperations {
       const extractedTexts = this.extractTextAtPath(value, fieldPath);
       extractedTexts.forEach((text, i) => {
         if (text?.trim()) {
-          const actualFieldPath = extractedTexts.length > 1 ? `${fieldPath}[${i}]` : fieldPath;
+          const actualFieldPath =
+            extractedTexts.length > 1 ? `${fieldPath}[${i}]` : fieldPath;
           textsToEmbed.push({ fieldPath: actualFieldPath, text: text.trim() });
         }
       });
@@ -39,20 +43,23 @@ export class VectorOperations {
     if (textsToEmbed.length === 0) return;
 
     // Generate embeddings
-    const texts = textsToEmbed.map(item => item.text);
+    const texts = textsToEmbed.map((item) => item.text);
     const embeddings = await this.generateEmbeddings(texts);
 
     // Insert vectors
     for (let i = 0; i < textsToEmbed.length; i += 1) {
       const { fieldPath, text } = textsToEmbed[i];
       const embedding = embeddings[i];
-      
+
       if (embedding?.length === this.core.indexConfig.dims) {
-        await client.query(`
+        await client.query(
+          `
           INSERT INTO ${this.core.schema}.store_vectors 
           (namespace_path, key, field_path, text_content, embedding)
           VALUES ($1, $2, $3, $4, $5)
-        `, [namespacePath, key, fieldPath, text, `[${embedding.join(',')}]`]);
+        `,
+          [namespacePath, key, fieldPath, text, `[${embedding.join(",")}]`]
+        );
       }
     }
   }
@@ -64,16 +71,18 @@ export class VectorOperations {
 
     const { embed } = this.core.indexConfig;
 
-    if (typeof embed === 'string') {
-      throw new Error(`Provider string embeddings not yet implemented: ${embed}`);
+    if (typeof embed === "string") {
+      throw new Error(
+        `Provider string embeddings not yet implemented: ${embed}`
+      );
     }
 
-    if (typeof embed === 'function') {
+    if (typeof embed === "function") {
       return await embed(texts);
     }
 
     // LangChain Embeddings interface
-    if (embed && typeof embed === 'object' && 'embedDocuments' in embed) {
+    if (embed && typeof embed === "object" && "embedDocuments" in embed) {
       return await (embed as Embeddings).embedDocuments(texts);
     }
 
@@ -87,21 +96,23 @@ export class VectorOperations {
 
     const { embed } = this.core.indexConfig;
 
-    if (typeof embed === 'string') {
-      throw new Error(`Provider string embeddings not yet implemented: ${embed}`);
+    if (typeof embed === "string") {
+      throw new Error(
+        `Provider string embeddings not yet implemented: ${embed}`
+      );
     }
 
-    if (typeof embed === 'function') {
+    if (typeof embed === "function") {
       const embeddings = await embed([text]);
       return embeddings[0] || [];
     }
 
     // LangChain Embeddings interface
-    if (embed && typeof embed === 'object' && 'embedQuery' in embed) {
+    if (embed && typeof embed === "object" && "embedQuery" in embed) {
       return await (embed as Embeddings).embedQuery(text);
     }
 
-    if (embed && typeof embed === 'object' && 'embedDocuments' in embed) {
+    if (embed && typeof embed === "object" && "embedDocuments" in embed) {
       const embeddings = await (embed as Embeddings).embedDocuments([text]);
       return embeddings[0] || [];
     }
@@ -114,37 +125,39 @@ export class VectorOperations {
       return [JSON.stringify(obj)];
     }
 
-    const parts = path.split('.');
+    const parts = path.split(".");
     let current = obj;
     const results: string[] = [];
 
     try {
       for (let i = 0; i < parts.length; i += 1) {
         const part = parts[i];
-        
-        if (part.includes('[')) {
-          const [field, arrayPart] = part.split('[');
-          const arrayIndex = arrayPart.replace(']', '');
-          
-          if (field && typeof current === 'object' && current !== null) {
+
+        if (part.includes("[")) {
+          const [field, arrayPart] = part.split("[");
+          const arrayIndex = arrayPart.replace("]", "");
+
+          if (field && typeof current === "object" && current !== null) {
             current = (current as Record<string, unknown>)[field];
           }
-          
-          if (arrayIndex === '*') {
+
+          if (arrayIndex === "*") {
             if (Array.isArray(current)) {
-              const remainingPath = parts.slice(i + 1).join('.');
-              
+              const remainingPath = parts.slice(i + 1).join(".");
+
               if (remainingPath) {
                 for (const item of current) {
                   if (item != null) {
-                    results.push(...this.extractTextAtPath(item, remainingPath));
+                    results.push(
+                      ...this.extractTextAtPath(item, remainingPath)
+                    );
                   }
                 }
               } else {
                 for (const item of current) {
-                  if (typeof item === 'string') {
+                  if (typeof item === "string") {
                     results.push(item);
-                  } else if (typeof item === 'object' && item !== null) {
+                  } else if (typeof item === "object" && item !== null) {
                     results.push(JSON.stringify(item));
                   } else if (item != null) {
                     results.push(String(item));
@@ -153,26 +166,30 @@ export class VectorOperations {
               }
             }
             return results;
-          } else if (arrayIndex === '-1') {
+          } else if (arrayIndex === "-1") {
             if (Array.isArray(current) && current.length > 0) {
               current = current[current.length - 1];
             }
           } else {
             const index = parseInt(arrayIndex, 10);
-            if (Array.isArray(current) && index >= 0 && index < current.length) {
+            if (
+              Array.isArray(current) &&
+              index >= 0 &&
+              index < current.length
+            ) {
               current = current[index];
             }
           }
-        } else if (typeof current === 'object' && current !== null) {
+        } else if (typeof current === "object" && current !== null) {
           current = (current as Record<string, unknown>)[part];
         }
-        
+
         if (current == null) return [];
       }
 
-      if (typeof current === 'string') {
+      if (typeof current === "string") {
         results.push(current);
-      } else if (typeof current === 'object' && current !== null) {
+      } else if (typeof current === "object" && current !== null) {
         results.push(JSON.stringify(current));
       } else {
         results.push(String(current));
@@ -183,4 +200,4 @@ export class VectorOperations {
 
     return results;
   }
-} 
+}

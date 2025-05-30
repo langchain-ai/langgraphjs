@@ -18,9 +18,12 @@ export class SearchOperations {
     private vectorOps: VectorOperations
   ) {}
 
-  async executeSearch(client: pg.PoolClient, operation: SearchOperation): Promise<Item[]> {
+  async executeSearch(
+    client: pg.PoolClient,
+    operation: SearchOperation
+  ): Promise<Item[]> {
     validateNamespace(operation.namespacePrefix);
-    
+
     const namespacePath = operation.namespacePrefix.join(":");
     const { filter, limit = 10, offset = 0, query } = operation;
 
@@ -35,13 +38,17 @@ export class SearchOperations {
       WHERE namespace_path LIKE $1
         AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
     `;
-    
+
     const params: unknown[] = [`${namespacePath}%`];
     let paramIndex = 2;
 
     // Add filter conditions using advanced filtering
     if (filter && Object.keys(filter).length > 0) {
-      const { conditions, newParamIndex } = QueryBuilder.buildFilterConditions(filter, params, paramIndex);
+      const { conditions, newParamIndex } = QueryBuilder.buildFilterConditions(
+        filter,
+        params,
+        paramIndex
+      );
       if (conditions.length > 0) {
         sqlQuery += ` AND (${conditions.join(" AND ")})`;
         paramIndex = newParamIndex;
@@ -55,11 +62,13 @@ export class SearchOperations {
       paramIndex += 1;
     }
 
-    sqlQuery += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    sqlQuery += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${
+      paramIndex + 1
+    }`;
     params.push(limit, offset);
 
     const result = await client.query(sqlQuery, params);
-    
+
     return result.rows.map((row) => ({
       namespace: row.namespace_path.split(":"),
       key: row.key,
@@ -69,19 +78,24 @@ export class SearchOperations {
     }));
   }
 
-  async executeVectorSearch(client: pg.PoolClient, operation: SearchOperation): Promise<Item[]> {
+  async executeVectorSearch(
+    client: pg.PoolClient,
+    operation: SearchOperation
+  ): Promise<Item[]> {
     if (!this.core.indexConfig || !operation.query) return [];
 
     validateNamespace(operation.namespacePrefix);
-    
+
     const namespacePath = operation.namespacePrefix.join(":");
     const { filter, limit = 10, offset = 0, query } = operation;
 
     // Generate query embedding
     const queryEmbedding = await this.vectorOps.generateQueryEmbedding(query);
-    
+
     if (queryEmbedding.length !== this.core.indexConfig.dims) {
-      throw new Error(`Query embedding dimension mismatch: expected ${this.core.indexConfig.dims}, got ${queryEmbedding.length}`);
+      throw new Error(
+        `Query embedding dimension mismatch: expected ${this.core.indexConfig.dims}, got ${queryEmbedding.length}`
+      );
     }
 
     let sqlQuery = `
@@ -97,17 +111,24 @@ export class SearchOperations {
       WHERE s.namespace_path LIKE $1
         AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
     `;
-    
-    const params: unknown[] = [`${namespacePath}%`, `[${queryEmbedding.join(',')}]`];
+
+    const params: unknown[] = [
+      `${namespacePath}%`,
+      `[${queryEmbedding.join(",")}]`,
+    ];
     let paramIndex = 3;
 
     // Add filter conditions
     if (filter && Object.keys(filter).length > 0) {
-      const { conditions, newParamIndex } = QueryBuilder.buildFilterConditions(filter, params, paramIndex);
+      const { conditions, newParamIndex } = QueryBuilder.buildFilterConditions(
+        filter,
+        params,
+        paramIndex
+      );
       if (conditions.length > 0) {
         // Adjust conditions to use 's.' prefix for store table columns
-        const adjustedConditions = conditions.map((condition: string) => 
-          condition.replace(/value ->/g, 's.value ->')
+        const adjustedConditions = conditions.map((condition: string) =>
+          condition.replace(/value ->/g, "s.value ->")
         );
         sqlQuery += ` AND (${adjustedConditions.join(" AND ")})`;
         paramIndex = newParamIndex;
@@ -122,7 +143,7 @@ export class SearchOperations {
     params.push(limit, offset);
 
     const result = await client.query(sqlQuery, params);
-    
+
     return result.rows.map((row) => ({
       namespace: row.namespace_path.split(":"),
       key: row.key,
@@ -133,10 +154,13 @@ export class SearchOperations {
     }));
   }
 
-  async searchAdvanced(namespacePrefix: string[], options: SearchOptions = {}): Promise<SearchItem[]> {
+  async searchAdvanced(
+    namespacePrefix: string[],
+    options: SearchOptions = {}
+  ): Promise<SearchItem[]> {
     return this.core.withClient(async (client) => {
       validateNamespace(namespacePrefix);
-      
+
       const namespacePath = namespacePrefix.join(":");
       const { filter, limit = 10, offset = 0, query, refreshTtl } = options;
 
@@ -156,13 +180,14 @@ export class SearchOperations {
         WHERE namespace_path LIKE $1
           AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
       `;
-      
+
       const params: unknown[] = [`${namespacePath}%`, query || null];
       let paramIndex = 3;
 
       // Add filter conditions using advanced filtering
       if (filter && Object.keys(filter).length > 0) {
-        const { conditions, newParamIndex } = QueryBuilder.buildFilterConditions(filter, params, paramIndex);
+        const { conditions, newParamIndex } =
+          QueryBuilder.buildFilterConditions(filter, params, paramIndex);
         if (conditions.length > 0) {
           sqlQuery += ` AND (${conditions.join(" AND ")})`;
           paramIndex = newParamIndex;
@@ -185,12 +210,12 @@ export class SearchOperations {
       } else {
         sqlQuery += ` ORDER BY updated_at DESC`;
       }
-      
+
       sqlQuery += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
       params.push(limit, offset);
 
       const result = await client.query(sqlQuery, params);
-      
+
       const items: SearchItem[] = result.rows.map((row) => ({
         namespace: row.namespace_path.split(":"),
         key: row.key,
@@ -203,7 +228,11 @@ export class SearchOperations {
       // Refresh TTL for returned items if requested
       if (refreshTtl || this.core.ttlConfig?.refreshOnRead) {
         for (const item of items) {
-          await this.core.refreshTtl(client, item.namespace.join(":"), item.key);
+          await this.core.refreshTtl(
+            client,
+            item.namespace.join(":"),
+            item.key
+          );
         }
       }
 
@@ -219,48 +248,54 @@ export class SearchOperations {
       limit?: number;
       offset?: number;
       similarityThreshold?: number;
-      distanceMetric?: 'cosine' | 'l2' | 'inner_product';
+      distanceMetric?: "cosine" | "l2" | "inner_product";
     } = {}
   ): Promise<SearchItem[]> {
     if (!this.core.indexConfig) {
-      throw new Error("Vector search not configured. Please provide an IndexConfig when creating the store.");
+      throw new Error(
+        "Vector search not configured. Please provide an IndexConfig when creating the store."
+      );
     }
 
     return this.core.withClient(async (client) => {
       validateNamespace(namespacePrefix);
-      
+
       const namespacePath = namespacePrefix.join(":");
-      const { 
-        filter, 
-        limit = 10, 
-        offset = 0, 
+      const {
+        filter,
+        limit = 10,
+        offset = 0,
         similarityThreshold = 0.0,
-        distanceMetric = 'cosine'
+        distanceMetric = "cosine",
       } = options;
 
       // Generate query embedding
       const queryEmbedding = await this.vectorOps.generateQueryEmbedding(query);
-      
+
       if (queryEmbedding.length !== this.core.indexConfig!.dims) {
-        throw new Error(`Query embedding dimension mismatch: expected ${this.core.indexConfig!.dims}, got ${queryEmbedding.length}`);
+        throw new Error(
+          `Query embedding dimension mismatch: expected ${
+            this.core.indexConfig!.dims
+          }, got ${queryEmbedding.length}`
+        );
       }
 
       // Choose distance operator based on metric
       let distanceOp: string;
       let scoreTransform: string;
       switch (distanceMetric) {
-        case 'l2':
-          distanceOp = '<->';
-          scoreTransform = '1 / (1 + MIN(v.embedding <-> $2))'; // Convert L2 distance to similarity
+        case "l2":
+          distanceOp = "<->";
+          scoreTransform = "1 / (1 + MIN(v.embedding <-> $2))"; // Convert L2 distance to similarity
           break;
-        case 'inner_product':
-          distanceOp = '<#>';
-          scoreTransform = 'MIN(v.embedding <#> $2)'; // Inner product (higher is better)
+        case "inner_product":
+          distanceOp = "<#>";
+          scoreTransform = "MIN(v.embedding <#> $2)"; // Inner product (higher is better)
           break;
-        case 'cosine':
+        case "cosine":
         default:
-          distanceOp = '<=>';
-          scoreTransform = '1 - MIN(v.embedding <=> $2)'; // Convert cosine distance to similarity
+          distanceOp = "<=>";
+          scoreTransform = "1 - MIN(v.embedding <=> $2)"; // Convert cosine distance to similarity
           break;
       }
 
@@ -277,34 +312,43 @@ export class SearchOperations {
         WHERE s.namespace_path LIKE $1
           AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
       `;
-      
-      const params: unknown[] = [`${namespacePath}%`, `[${queryEmbedding.join(',')}]`];
+
+      const params: unknown[] = [
+        `${namespacePath}%`,
+        `[${queryEmbedding.join(",")}]`,
+      ];
       let paramIndex = 3;
 
       // Add similarity threshold
       if (similarityThreshold > 0) {
-        if (distanceMetric === 'inner_product') {
+        if (distanceMetric === "inner_product") {
           sqlQuery += ` AND v.embedding <#> $2 >= $${paramIndex}`;
         } else {
           sqlQuery += ` AND v.embedding ${distanceOp} $2 <= $${paramIndex}`;
         }
-        params.push(distanceMetric === 'cosine' ? 1 - similarityThreshold : similarityThreshold);
+        params.push(
+          distanceMetric === "cosine"
+            ? 1 - similarityThreshold
+            : similarityThreshold
+        );
         paramIndex += 1;
       }
 
       // Add filter conditions
       if (filter && Object.keys(filter).length > 0) {
-        const { conditions, newParamIndex } = QueryBuilder.buildFilterConditions(filter, params, paramIndex);
+        const { conditions, newParamIndex } =
+          QueryBuilder.buildFilterConditions(filter, params, paramIndex);
         if (conditions.length > 0) {
-          const adjustedConditions = conditions.map((condition: string) => 
-            condition.replace(/value ->/g, 's.value ->')
+          const adjustedConditions = conditions.map((condition: string) =>
+            condition.replace(/value ->/g, "s.value ->")
           );
           sqlQuery += ` AND (${adjustedConditions.join(" AND ")})`;
           paramIndex = newParamIndex;
         }
       }
 
-      const orderDirection = distanceMetric === 'inner_product' ? 'DESC' : 'ASC';
+      const orderDirection =
+        distanceMetric === "inner_product" ? "DESC" : "ASC";
       sqlQuery += ` 
         GROUP BY s.namespace_path, s.key, s.value, s.created_at, s.updated_at
         ORDER BY similarity_score ${orderDirection}
@@ -313,7 +357,7 @@ export class SearchOperations {
       params.push(limit, offset);
 
       const result = await client.query(sqlQuery, params);
-      
+
       return result.rows.map((row) => ({
         namespace: row.namespace_path.split(":"),
         key: row.key,
@@ -337,26 +381,32 @@ export class SearchOperations {
     } = {}
   ): Promise<SearchItem[]> {
     if (!this.core.indexConfig) {
-      throw new Error("Vector search not configured. Please provide an IndexConfig when creating the store.");
+      throw new Error(
+        "Vector search not configured. Please provide an IndexConfig when creating the store."
+      );
     }
 
     return this.core.withClient(async (client) => {
       validateNamespace(namespacePrefix);
-      
+
       const namespacePath = namespacePrefix.join(":");
-      const { 
-        filter, 
-        limit = 10, 
-        offset = 0, 
+      const {
+        filter,
+        limit = 10,
+        offset = 0,
         vectorWeight = 0.7,
-        similarityThreshold = 0.0
+        similarityThreshold = 0.0,
       } = options;
 
       // Generate query embedding
       const queryEmbedding = await this.vectorOps.generateQueryEmbedding(query);
-      
+
       if (queryEmbedding.length !== this.core.indexConfig!.dims) {
-        throw new Error(`Query embedding dimension mismatch: expected ${this.core.indexConfig!.dims}, got ${queryEmbedding.length}`);
+        throw new Error(
+          `Query embedding dimension mismatch: expected ${
+            this.core.indexConfig!.dims
+          }, got ${queryEmbedding.length}`
+        );
       }
 
       let sqlQuery = `
@@ -379,22 +429,23 @@ export class SearchOperations {
             OR v.embedding <=> $2 <= $5
           )
       `;
-      
+
       const params: unknown[] = [
-        `${namespacePath}%`, 
-        `[${queryEmbedding.join(',')}]`,
+        `${namespacePath}%`,
+        `[${queryEmbedding.join(",")}]`,
         vectorWeight,
         query,
-        1 - similarityThreshold
+        1 - similarityThreshold,
       ];
       let paramIndex = 6;
 
       // Add filter conditions
       if (filter && Object.keys(filter).length > 0) {
-        const { conditions, newParamIndex } = QueryBuilder.buildFilterConditions(filter, params, paramIndex);
+        const { conditions, newParamIndex } =
+          QueryBuilder.buildFilterConditions(filter, params, paramIndex);
         if (conditions.length > 0) {
-          const adjustedConditions = conditions.map((condition: string) => 
-            condition.replace(/value ->/g, 's.value ->')
+          const adjustedConditions = conditions.map((condition: string) =>
+            condition.replace(/value ->/g, "s.value ->")
           );
           sqlQuery += ` AND (${adjustedConditions.join(" AND ")})`;
           paramIndex = newParamIndex;
@@ -409,7 +460,7 @@ export class SearchOperations {
       params.push(limit, offset);
 
       const result = await client.query(sqlQuery, params);
-      
+
       return result.rows.map((row) => ({
         namespace: row.namespace_path.split(":"),
         key: row.key,
@@ -420,4 +471,4 @@ export class SearchOperations {
       }));
     });
   }
-} 
+}
