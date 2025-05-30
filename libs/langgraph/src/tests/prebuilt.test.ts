@@ -1510,7 +1510,7 @@ describe("createReactAgent with hooks", () => {
         ],
       },
     ],
-  ])("graph structure $name", async ({ name, graph, structure }) => {
+  ])("graph structure $name", async ({ graph, structure }) => {
     expect(getReadableMermaid(await graph.getGraphAsync()).sort()).toEqual(
       structure.sort()
     );
