@@ -186,4 +186,52 @@ describe("PostgresStore Search (integration)", () => {
     // Then
     expect(results).toEqual([]);
   });
+
+  it("should support text search mode", async () => {
+    // When
+    const results = await store.search(["docs"], {
+      query: "JavaScript",
+      mode: "text"
+    });
+
+    // Then
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.some(item => 
+      item.value.title.includes("JavaScript") || 
+      item.value.content.includes("JavaScript")
+    )).toBe(true);
+  });
+
+  it("should perform full-text search with auto mode defaulting to text", async () => {
+    // When
+    const results = await store.search(["docs"], {
+      query: "programming",
+      mode: "auto"
+    });
+
+    // Then
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.some(item => 
+      item.value.title.includes("programming") || 
+      item.value.content.includes("programming") ||
+      item.value.category === "programming"
+    )).toBe(true);
+  });
+
+  it("should combine filtering with text search", async () => {
+    // When
+    const results = await store.search(["docs"], {
+      query: "guide",
+      filter: { difficulty: "beginner" },
+      mode: "text"
+    });
+
+    // Then
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every(item => item.value.difficulty === "beginner")).toBe(true);
+    expect(results.some(item => 
+      item.value.title.toLowerCase().includes("guide") || 
+      item.value.content.toLowerCase().includes("guide")
+    )).toBe(true);
+  });
 });

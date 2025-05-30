@@ -174,4 +174,45 @@ describe("PostgresStore Vector Search (integration)", () => {
     expect(searchResults.length).toBeGreaterThan(0);
     expect(searchResults[0].key).toBe("doc1");
   });
+
+  it("should support vector mode in unified search method", async () => {
+    // Given
+    await store.put(["unified"], "doc1", {
+      title: "Neural Networks",
+      content: "Deep learning architectures and applications"
+    });
+
+    // When
+    const results = await store.search(["unified"], {
+      query: "artificial intelligence",
+      mode: "vector",
+      similarityThreshold: 0.1
+    });
+
+    // Then
+    expect(results).toBeDefined();
+    expect(Array.isArray(results)).toBe(true);
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].score).toBeDefined();
+    expect(mockEmbedding.toHaveBeenCalled()).toBe(true);
+  });
+
+  it("should use vector search by default when in auto mode with vector config", async () => {
+    // Given
+    await store.put(["auto"], "doc1", {
+      title: "Machine Learning",
+      content: "Algorithms for pattern recognition"
+    });
+
+    // When
+    const results = await store.search(["auto"], {
+      query: "data science techniques",
+      mode: "auto"
+    });
+
+    // Then
+    expect(results).toBeDefined();
+    expect(Array.isArray(results)).toBe(true);
+    expect(mockEmbedding.calls[mockEmbedding.calls.length-1]).toContain("data science techniques");
+  });
 });
