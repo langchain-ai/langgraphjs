@@ -59,6 +59,7 @@ import { isPregelLike } from "../pregel/utils/subgraph.js";
 import {
   AnyZodObject,
   getChannelsFromZod,
+  applyZodPlugin,
   isAnyZodObject,
   ZodToStateDefinition,
 } from "./zod/state.js";
@@ -982,18 +983,27 @@ export class CompiledStateGraph<
   protected async _validateInput(
     input: UpdateType<ToStateDefinition<I>>
   ): Promise<UpdateType<ToStateDefinition<I>>> {
-    let inputSchema = this.builder._inputRuntimeDefinition;
-    if (inputSchema === PartialStateSchema) {
-      inputSchema = this.builder._schemaRuntimeDefinition?.partial();
-    }
+    const schema = (() => {
+      const input = this.builder._inputRuntimeDefinition;
+      const schema = this.builder._schemaRuntimeDefinition;
+
+      const apply = (schema: AnyZodObject | undefined) => {
+        if (schema == null) return undefined;
+        return applyZodPlugin(schema, { reducer: true });
+      };
+
+      if (isAnyZodObject(input)) return apply(input);
+      if (input === PartialStateSchema) return apply(schema)?.partial();
+      return undefined;
+    })();
 
     if (isCommand(input)) {
       const parsedInput = input;
-      if (input.update && isAnyZodObject(inputSchema))
-        parsedInput.update = inputSchema.parse(input.update);
+      if (input.update && schema != null)
+        parsedInput.update = schema.parse(input.update);
       return parsedInput;
     }
-    if (isAnyZodObject(inputSchema)) return inputSchema.parse(input);
+    if (schema != null) return schema.parse(input);
     return input;
   }
 

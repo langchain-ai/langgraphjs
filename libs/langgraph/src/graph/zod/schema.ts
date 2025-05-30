@@ -1,64 +1,10 @@
-import { z } from "zod";
+import type { z } from "zod";
 import { zodToJsonSchema as _zodToJsonSchema } from "zod-to-json-schema";
-import { getMeta } from "./state.js";
-
-const TYPE_CACHE: Record<string, WeakMap<z.AnyZodObject, z.AnyZodObject>> = {};
-const DESCRIPTION_PREFIX = "lg:";
+import { applyZodPlugin, applyExtraFromDescription } from "./state.js";
 
 const PartialStateSchema = Symbol.for("langgraph.state.partial");
 type PartialStateSchema = typeof PartialStateSchema;
-
-function applyPlugin(
-  schema: z.AnyZodObject,
-  actions: {
-    /** Apply .langgraph.reducer calls */
-    reducer?: boolean;
-
-    /** Apply .langgraph.metadata() calls  */
-    jsonSchemaExtra?: boolean;
-
-    /** Apply .partial() */
-    partial?: boolean;
-  }
-) {
-  const cacheKey = [
-    `reducer:${actions.reducer ?? false}`,
-    `jsonSchemaExtra:${actions.jsonSchemaExtra ?? false}`,
-    `partial:${actions.partial ?? false}`,
-  ].join("|");
-
-  TYPE_CACHE[cacheKey] ??= new WeakMap();
-  const cache = TYPE_CACHE[cacheKey];
-
-  if (cache.has(schema)) return cache.get(schema)!;
-  let shape = z.object({
-    ...Object.fromEntries(
-      Object.entries(schema.shape as Record<string, z.ZodTypeAny>).map(
-        ([key, input]): [string, z.ZodTypeAny] => {
-          const meta = getMeta(input);
-          let output = actions.reducer ? meta?.reducer?.schema ?? input : input;
-
-          if (actions.jsonSchemaExtra) {
-            const strMeta = JSON.stringify({
-              ...meta?.jsonSchemaExtra,
-              description: output.description ?? input.description,
-            });
-
-            if (strMeta !== "{}") {
-              output = output.describe(`${DESCRIPTION_PREFIX}${strMeta}`);
-            }
-          }
-
-          return [key, output];
-        }
-      )
-    ),
-  });
-
-  if (actions.partial) shape = shape.partial();
-  cache.set(schema, shape);
-  return shape;
-}
+type JsonSchema = ReturnType<typeof _zodToJsonSchema>;
 
 // Using a subset of types to avoid circular type import
 interface GraphWithZodLike {
@@ -83,37 +29,6 @@ function isGraphWithZodLike(graph: unknown): graph is GraphWithZodLike {
   return true;
 }
 
-type JsonSchema = ReturnType<typeof _zodToJsonSchema>;
-
-function applyExtraFromDescription(schema: unknown): unknown {
-  if (Array.isArray(schema)) {
-    return schema.map(applyExtraFromDescription);
-  }
-
-  if (typeof schema === "object" && schema != null) {
-    const output = Object.fromEntries(
-      Object.entries(schema).map(([key, value]) => [
-        key,
-        applyExtraFromDescription(value),
-      ])
-    );
-
-    if (
-      "description" in output &&
-      typeof output.description === "string" &&
-      output.description.startsWith(DESCRIPTION_PREFIX)
-    ) {
-      const strMeta = output.description.slice(DESCRIPTION_PREFIX.length);
-      delete output.description;
-      Object.assign(output, JSON.parse(strMeta));
-    }
-
-    return output;
-  }
-
-  return schema as JsonSchema;
-}
-
 function toJsonSchema(schema: z.ZodType): JsonSchema {
   return applyExtraFromDescription(_zodToJsonSchema(schema)) as JsonSchema;
 }
@@ -127,7 +42,7 @@ export function getStateTypeSchema(graph: unknown): JsonSchema | undefined {
   if (!isGraphWithZodLike(graph)) return undefined;
   const schemaDef = graph.builder._schemaRuntimeDefinition;
   if (!schemaDef) return undefined;
-  return toJsonSchema(applyPlugin(schemaDef, { jsonSchemaExtra: true }));
+  return toJsonSchema(applyZodPlugin(schemaDef, { jsonSchemaExtra: true }));
 }
 
 /**
@@ -141,7 +56,7 @@ export function getUpdateTypeSchema(graph: unknown): JsonSchema | undefined {
   if (!schemaDef) return undefined;
 
   return toJsonSchema(
-    applyPlugin(schemaDef, {
+    applyZodPlugin(schemaDef, {
       reducer: true,
       jsonSchemaExtra: true,
       partial: true,
@@ -164,7 +79,7 @@ export function getInputTypeSchema(graph: unknown): JsonSchema | undefined {
 
   if (!schemaDef) return undefined;
   return toJsonSchema(
-    applyPlugin(schemaDef, {
+    applyZodPlugin(schemaDef, {
       reducer: true,
       jsonSchemaExtra: true,
       partial: true,
@@ -181,7 +96,7 @@ export function getOutputTypeSchema(graph: unknown): JsonSchema | undefined {
   if (!isGraphWithZodLike(graph)) return undefined;
   const schemaDef = graph.builder._outputRuntimeDefinition;
   if (!schemaDef) return undefined;
-  return toJsonSchema(applyPlugin(schemaDef, { jsonSchemaExtra: true }));
+  return toJsonSchema(applyZodPlugin(schemaDef, { jsonSchemaExtra: true }));
 }
 
 /**
@@ -193,5 +108,5 @@ export function getConfigTypeSchema(graph: unknown): JsonSchema | undefined {
   if (!isGraphWithZodLike(graph)) return undefined;
   const configDef = graph.builder._configRuntimeSchema;
   if (!configDef) return undefined;
-  return toJsonSchema(applyPlugin(configDef, { jsonSchemaExtra: true }));
+  return toJsonSchema(applyZodPlugin(configDef, { jsonSchemaExtra: true }));
 }
