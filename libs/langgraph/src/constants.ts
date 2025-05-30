@@ -7,6 +7,10 @@ export const END = "__end__";
 export const INPUT = "__input__";
 export const COPY = "__copy__";
 export const ERROR = "__error__";
+
+/** Special reserved cache namespaces */
+export const CACHE_NS_WRITES = "__pregel_ns_writes";
+
 export const CONFIG_KEY_SEND = "__pregel_send";
 /** config key containing function used to call a node (push task) */
 export const CONFIG_KEY_CALL = "__pregel_call";
@@ -81,10 +85,10 @@ export const RESERVED = [
 export const CHECKPOINT_NAMESPACE_SEPARATOR = "|";
 export const CHECKPOINT_NAMESPACE_END = ":";
 
-export interface SendInterface {
-  node: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  args: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface SendInterface<Node extends string = string, Args = any> {
+  node: Node;
+  args: Args;
 }
 
 export function _isSendInterface(x: unknown): x is SendInterface {
@@ -143,26 +147,23 @@ export function _isSendInterface(x: unknown): x is SendInterface {
  * // { subjects: ["cats", "dogs"], jokes: [`Joke about cats`, `Joke about dogs`] }
  * ```
  */
-export class Send implements SendInterface {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class Send<Node extends string = string, Args = any>
+  implements SendInterface<Node, Args>
+{
   lg_name = "Send";
 
-  public node: string;
+  public node: Node;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public args: any;
+  public args: Args;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(node: string, args: any) {
+  constructor(node: Node, args: Args) {
     this.node = node;
-    this.args = _deserializeCommandSendObjectGraph(args);
+    this.args = _deserializeCommandSendObjectGraph(args) as Args;
   }
 
   toJSON() {
-    return {
-      lg_name: this.lg_name,
-      node: this.node,
-      args: this.args,
-    };
+    return { lg_name: this.lg_name, node: this.node, args: this.args };
   }
 }
 
@@ -180,7 +181,11 @@ export type Interrupt = {
   ns?: string[];
 };
 
-export type CommandParams<R> = {
+export type CommandParams<
+  Resume = unknown,
+  Update extends Record<string, unknown> = Record<string, unknown>,
+  Nodes extends string = string
+> = {
   /**
    * A discriminator field used to identify the type of object. Must be populated when serializing.
    *
@@ -192,7 +197,7 @@ export type CommandParams<R> = {
   /**
    * Value to resume execution with. To be used together with {@link interrupt}.
    */
-  resume?: R;
+  resume?: Resume;
   /**
    * Graph to send the command to. Supported values are:
    *   - None: the current graph (default)
@@ -204,7 +209,7 @@ export type CommandParams<R> = {
   /**
    * Update to apply to the graph's state.
    */
-  update?: Record<string, unknown> | [string, unknown][];
+  update?: Update | [string, unknown][];
 
   /**
    * Can be one of the following:
@@ -213,7 +218,10 @@ export type CommandParams<R> = {
    *   - `Send` object (to execute a node with the input provided)
    *   - sequence of `Send` objects
    */
-  goto?: string | SendInterface | (string | SendInterface)[];
+  goto?:
+    | Nodes
+    | SendInterface<Nodes> // eslint-disable-line @typescript-eslint/no-explicit-any
+    | (Nodes | SendInterface<Nodes>)[]; // eslint-disable-line @typescript-eslint/no-explicit-any
 };
 
 /**
@@ -278,7 +286,11 @@ export type CommandParams<R> = {
  * // { foo: 'a|c' } and { foo: 'a|b' }
  * ```
  */
-export class Command<R = unknown> {
+export class Command<
+  Resume = unknown,
+  Update extends Record<string, unknown> = Record<string, unknown>,
+  Nodes extends string = string
+> {
   readonly lg_name = "Command";
 
   lc_direct_tool_output = true;
@@ -295,12 +307,12 @@ export class Command<R = unknown> {
    * Update to apply to the graph's state as a result of executing the node that is returning the command.
    * Written to the state as if the node had simply returned this value instead of the Command object.
    */
-  update?: Record<string, unknown> | [string, unknown][];
+  update?: Update | [string, unknown][];
 
   /**
    * Value to resume execution with. To be used together with {@link interrupt}.
    */
-  resume?: R;
+  resume?: Resume;
 
   /**
    * Can be one of the following:
@@ -309,18 +321,20 @@ export class Command<R = unknown> {
    *   - {@link Send} object (to execute a node with the exact input provided in the {@link Send} object)
    *   - sequence of {@link Send} objects
    */
-  goto?: string | Send | (string | Send)[] = [];
+  goto?: Nodes | Send<Nodes> | (Nodes | Send<Nodes>)[] = [];
 
   static PARENT = "__parent__";
 
-  constructor(args: CommandParams<R>) {
+  constructor(args: CommandParams<Resume, Update, Nodes>) {
     this.resume = args.resume;
     this.graph = args.graph;
     this.update = args.update;
     if (args.goto) {
+      type ValidArg = Nodes | Send<Nodes, Update>;
+
       this.goto = Array.isArray(args.goto)
-        ? (_deserializeCommandSendObjectGraph(args.goto) as (string | Send)[])
-        : [_deserializeCommandSendObjectGraph(args.goto) as string | Send];
+        ? (_deserializeCommandSendObjectGraph(args.goto) as ValidArg[])
+        : [_deserializeCommandSendObjectGraph(args.goto) as ValidArg];
     }
   }
 

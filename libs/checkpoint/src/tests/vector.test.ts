@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "@jest/globals";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Embeddings, EmbeddingsParams } from "@langchain/core/embeddings";
 import { InMemoryStore } from "../store/memory.js";
 

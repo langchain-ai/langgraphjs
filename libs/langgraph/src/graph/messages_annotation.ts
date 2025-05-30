@@ -93,6 +93,9 @@ export const MessagesZodState = z.object({
       schema: z.custom<Messages>(),
       fn: messagesStateReducer,
     },
+    jsonSchemaExtra: {
+      langgraph_type: "messages",
+    },
     default: () => [],
   }),
 });

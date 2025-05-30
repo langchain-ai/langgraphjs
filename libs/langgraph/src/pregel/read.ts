@@ -11,7 +11,7 @@ import {
 import { CONFIG_KEY_READ } from "../constants.js";
 import { ChannelWrite } from "./write.js";
 import { RunnableCallable } from "../utils.js";
-import type { RetryPolicy } from "./utils/index.js";
+import type { CachePolicy, RetryPolicy } from "./utils/index.js";
 
 export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -83,6 +83,7 @@ interface PregelNodeArgs<RunInput, RunOutput>
   config?: RunnableConfig;
   metadata?: Record<string, unknown>;
   retryPolicy?: RetryPolicy;
+  cachePolicy?: CachePolicy;
   subgraphs?: Runnable[];
   ends?: string[];
 }
@@ -119,6 +120,8 @@ export class PregelNode<
 
   retryPolicy?: RetryPolicy;
 
+  cachePolicy?: CachePolicy;
+
   subgraphs?: Runnable[];
 
   ends?: string[];
@@ -133,6 +136,7 @@ export class PregelNode<
       kwargs,
       metadata,
       retryPolicy,
+      cachePolicy,
       tags,
       subgraphs,
       ends,
@@ -162,6 +166,7 @@ export class PregelNode<
     this.metadata = metadata ?? this.metadata;
     this.tags = mergedTags;
     this.retryPolicy = retryPolicy;
+    this.cachePolicy = cachePolicy;
     this.subgraphs = subgraphs;
     this.ends = ends;
   }
@@ -233,6 +238,7 @@ export class PregelNode<
       kwargs: this.kwargs,
       config: this.config,
       retryPolicy: this.retryPolicy,
+      cachePolicy: this.cachePolicy,
     });
   }
 
@@ -252,6 +258,7 @@ export class PregelNode<
         config: this.config,
         kwargs: this.kwargs,
         retryPolicy: this.retryPolicy,
+        cachePolicy: this.cachePolicy,
       });
     } else if (this.bound === defaultRunnableBound) {
       return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
@@ -263,6 +270,7 @@ export class PregelNode<
         config: this.config,
         kwargs: this.kwargs,
         retryPolicy: this.retryPolicy,
+        cachePolicy: this.cachePolicy,
       });
     } else {
       return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
@@ -274,6 +282,7 @@ export class PregelNode<
         config: this.config,
         kwargs: this.kwargs,
         retryPolicy: this.retryPolicy,
+        cachePolicy: this.cachePolicy,
       });
     }
   }

@@ -1,5 +1,4 @@
 import { configDefaults, defineConfig } from "vitest/config";
-import { nodePolyfills } from "vite-plugin-node-polyfills";
 
 export default defineConfig((env) => {
   /** @type {import("vitest/config").UserConfigExport} */
@@ -26,27 +25,11 @@ export default defineConfig((env) => {
     };
   }
 
-  if (env.mode === "browser") {
-    return {
-      test: {
-        ...common.test,
-        browser: {
-          provider: "playwright",
-          enabled: true,
-          instances: [{ browser: "chromium" }],
-        },
-      },
-      plugins: [nodePolyfills()],
-    };
-  }
-
   return {
     test: {
       ...common.test,
       name: "unit",
       environment: "node",
-      include: ["**/*.test-d.ts", ...configDefaults.include],
-      typecheck: { enabled: true },
     },
   };
 });

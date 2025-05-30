@@ -9,7 +9,7 @@ const META_MAP = new WeakMap<z.ZodType, Meta<any, any>>();
 export interface Meta<ValueType, UpdateType = ValueType> {
   jsonSchemaExtra?: {
     langgraph_nodes?: string[];
-    langgraph_type?: "prompt";
+    langgraph_type?: "prompt" | "messages";
 
     [key: string]: unknown;
   };
@@ -121,4 +121,104 @@ export function getChannelsFromZod<T extends z.ZodRawShape>(
     }
   }
   return channels as ZodToStateDefinition<z.ZodObject<T>>;
+}
+
+const ZOD_TYPE_CACHE: Record<
+  string,
+  WeakMap<z.AnyZodObject, z.AnyZodObject>
+> = {};
+
+const ZOD_DESCRIPTION_PREFIX = "lg:";
+
+export function applyZodPlugin(
+  schema: z.AnyZodObject,
+  actions: {
+    /** Apply .langgraph.reducer calls */
+    reducer?: boolean;
+
+    /** Apply .langgraph.metadata() calls  */
+    jsonSchemaExtra?: boolean;
+
+    /** Apply .partial() */
+    partial?: boolean;
+  }
+) {
+  const cacheKey = [
+    `reducer:${actions.reducer ?? false}`,
+    `jsonSchemaExtra:${actions.jsonSchemaExtra ?? false}`,
+    `partial:${actions.partial ?? false}`,
+  ].join("|");
+
+  ZOD_TYPE_CACHE[cacheKey] ??= new WeakMap();
+  const cache = ZOD_TYPE_CACHE[cacheKey];
+
+  if (cache.has(schema)) return cache.get(schema)!;
+
+  let shape = schema.extend({
+    ...Object.fromEntries(
+      Object.entries(schema.shape as Record<string, z.ZodTypeAny>).map(
+        ([key, input]): [string, z.ZodTypeAny] => {
+          const meta = getMeta(input);
+          let output = actions.reducer ? meta?.reducer?.schema ?? input : input;
+
+          if (actions.jsonSchemaExtra) {
+            const strMeta = JSON.stringify({
+              ...meta?.jsonSchemaExtra,
+              description: output.description ?? input.description,
+            });
+
+            if (strMeta !== "{}") {
+              output = output.describe(`${ZOD_DESCRIPTION_PREFIX}${strMeta}`);
+            }
+          }
+
+          return [key, output];
+        }
+      )
+    ),
+  });
+
+  // using zObject.extend() will set `unknownKeys` to `passthrough`
+  // which trips up `zod-to-json-schema`
+  if (
+    "_def" in shape &&
+    shape._def != null &&
+    typeof shape._def === "object" &&
+    "unknownKeys" in shape._def
+  ) {
+    shape._def.unknownKeys = "strip";
+  }
+
+  if (actions.partial) shape = shape.partial();
+  cache.set(schema, shape);
+  return shape;
+}
+
+export function applyExtraFromDescription(schema: unknown): unknown {
+  if (Array.isArray(schema)) {
+    return schema.map(applyExtraFromDescription);
+  }
+
+  if (typeof schema === "object" && schema != null) {
+    const output = Object.fromEntries(
+      Object.entries(schema).map(([key, value]) => [
+        key,
+        applyExtraFromDescription(value),
+      ])
+    );
+
+    if (
+      "description" in output &&
+      typeof output.description === "string" &&
+      output.description.startsWith(ZOD_DESCRIPTION_PREFIX)
+    ) {
+      const strMeta = output.description.slice(ZOD_DESCRIPTION_PREFIX.length);
+      delete output.description;
+      Object.assign(output, JSON.parse(strMeta));
+    }
+
+    return output;
+  }
+
+  return schema;
 }

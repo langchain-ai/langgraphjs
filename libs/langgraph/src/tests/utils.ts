@@ -30,6 +30,8 @@ import {
   Checkpoint,
   CheckpointMetadata,
   PendingWrite,
+  CacheFullKey,
+  InMemoryCache,
 } from "@langchain/langgraph-checkpoint";
 import { z } from "zod";
 import { BaseTracer, Run } from "@langchain/core/tracers/base";
@@ -357,6 +359,24 @@ export class MemorySaverAssertImmutable extends MemorySaver {
   }
 }
 
+export class SlowInMemoryCache extends InMemoryCache {
+  async get(keys: CacheFullKey[]) {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    return super.get(keys);
+  }
+
+  async set(
+    pairs: {
+      key: CacheFullKey;
+      value: unknown;
+      ttl?: number;
+    }[]
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return super.set(pairs);
+  }
+}
+
 export class MemorySaverAssertImmutableSlow extends MemorySaverAssertImmutable {
   async put(
     config: RunnableConfig,
@@ -579,6 +599,7 @@ export async function dumpDebugStream<
   console.log(`invoking ${graph.name} with arguments ${JSON.stringify(input)}`);
   const stream = await graph.stream(input, {
     ...config,
+    subgraphs: true,
     streamMode: ["updates", "debug", "values"],
   });
 

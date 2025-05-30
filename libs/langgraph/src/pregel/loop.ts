@@ -13,6 +13,9 @@ import {
   BaseStore,
   AsyncBatchedStore,
   WRITES_IDX_MAP,
+  BaseCache,
+  CacheFullKey,
+  CacheNamespace,
 } from "@langchain/langgraph-checkpoint";
 
 import {
@@ -98,10 +101,12 @@ export type PregelLoopInitializeParams = {
   managed: ManagedValueMapping;
   stream: IterableReadableWritableStream;
   store?: BaseStore;
+  cache?: BaseCache<PendingWrite<string>[]>;
   interruptAfter: string[] | All;
   interruptBefore: string[] | All;
   manager?: CallbackManagerForChainRun;
   debug: boolean;
+  triggerToNodes: Record<string, string[]>;
 };
 
 type PregelLoopParams = {
@@ -127,10 +132,12 @@ type PregelLoopParams = {
   manager?: CallbackManagerForChainRun;
   stream: IterableReadableWritableStream;
   store?: AsyncBatchedStore;
+  cache?: BaseCache<PendingWrite<string>[]>;
   prevCheckpointConfig: RunnableConfig | undefined;
   interruptAfter: string[] | All;
   interruptBefore: string[] | All;
   debug: boolean;
+  triggerToNodes: Record<string, string[]>;
 };
 
 function createDuplexStream(...streams: IterableReadableWritableStream[]) {
@@ -144,6 +151,58 @@ function createDuplexStream(...streams: IterableReadableWritableStream[]) {
     },
     modes: new Set(streams.flatMap((s) => Array.from(s.modes))),
   });
+}
+
+class AsyncBatchedCache extends BaseCache<PendingWrite<string>[]> {
+  protected cache: BaseCache<PendingWrite<string>[]>;
+
+  private queue: Promise<unknown> = Promise.resolve();
+
+  constructor(cache: BaseCache<unknown>) {
+    super();
+    this.cache = cache as BaseCache<PendingWrite<string>[]>;
+  }
+
+  async get(keys: CacheFullKey[]) {
+    return this.enqueueOperation("get", keys);
+  }
+
+  async set(
+    pairs: {
+      key: CacheFullKey;
+      value: PendingWrite<string>[];
+      ttl?: number;
+    }[]
+  ) {
+    return this.enqueueOperation("set", pairs);
+  }
+
+  async clear(namespaces: CacheNamespace[]) {
+    return this.enqueueOperation("clear", namespaces);
+  }
+
+  async stop() {
+    await this.queue;
+  }
+
+  private enqueueOperation<Type extends "get" | "set" | "clear">(
+    type: Type,
+    ...args: Parameters<(typeof this.cache)[Type]>
+  ) {
+    const newPromise = this.queue.then(() => {
+      // @ts-expect-error Tuple type warning
+      return this.cache[type](...args) as Promise<
+        ReturnType<(typeof this.cache)[Type]>
+      >;
+    });
+
+    this.queue = newPromise.then(
+      () => void 0,
+      () => void 0
+    );
+
+    return newPromise;
+  }
 }
 
 export class PregelLoop {
@@ -213,6 +272,8 @@ export class PregelLoop {
 
   store?: AsyncBatchedStore;
 
+  cache?: AsyncBatchedCache;
+
   manager?: CallbackManagerForChainRun;
 
   interruptAfter: string[] | All;
@@ -222,6 +283,8 @@ export class PregelLoop {
   toInterrupt: PregelExecutableTask<string, string>[] = [];
 
   debug: boolean = false;
+
+  triggerToNodes: Record<string, string[]>;
 
   get isResuming() {
     const hasChannelVersions =
@@ -274,12 +337,14 @@ export class PregelLoop {
     this.nodes = params.nodes;
     this.skipDoneTasks = params.skipDoneTasks;
     this.store = params.store;
+    this.cache = params.cache ? new AsyncBatchedCache(params.cache) : undefined;
     this.stream = params.stream;
     this.checkpointNamespace = params.checkpointNamespace;
     this.prevCheckpointConfig = params.prevCheckpointConfig;
     this.interruptAfter = params.interruptAfter;
     this.interruptBefore = params.interruptBefore;
     this.debug = params.debug;
+    this.triggerToNodes = params.triggerToNodes;
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
@@ -380,6 +445,7 @@ export class PregelLoop {
     const store = params.store
       ? new AsyncBatchedStore(params.store)
       : undefined;
+
     if (store) {
       // Start the store. This is a batch store, so it will run continuously
       store.start();
@@ -407,9 +473,11 @@ export class PregelLoop {
       nodes: params.nodes,
       stream,
       store,
+      cache: params.cache,
       interruptAfter: params.interruptAfter,
       interruptBefore: params.interruptBefore,
       debug: params.debug,
+      triggerToNodes: params.triggerToNodes,
     });
   }
 
@@ -488,6 +556,29 @@ export class PregelLoop {
     if (this.tasks) {
       this._outputWrites(taskId, writesCopy);
     }
+
+    if (!writes.length || !this.cache || !this.tasks) {
+      return;
+    }
+
+    // only cache tasks with a cache key
+    const task = this.tasks[taskId];
+    if (task == null || task.cache_key == null) {
+      return;
+    }
+
+    // only cache successful tasks
+    if (writes[0][0] === ERROR || writes[0][0] === INTERRUPT) {
+      return;
+    }
+
+    void this.cache.set([
+      {
+        key: [task.cache_key.ns, task.cache_key.key],
+        value: task.writes,
+        ttl: task.cache_key.ttl,
+      },
+    ]);
   }
 
   _outputWrites(taskId: string, writes: [string, unknown][], cached = false) {
@@ -526,6 +617,43 @@ export class PregelLoop {
     }
   }
 
+  async _matchCachedWrites() {
+    if (!this.cache) return [];
+
+    const matched: {
+      task: PregelExecutableTask<string, string>;
+      result: unknown;
+    }[] = [];
+
+    const serializeKey = ([ns, key]: CacheFullKey) => {
+      return `ns:${ns.join(",")}|key:${key}`;
+    };
+
+    const keys: CacheFullKey[] = [];
+    const keyMap: Record<string, PregelExecutableTask<string, string>> = {};
+
+    for (const task of Object.values(this.tasks)) {
+      if (task.cache_key != null && !task.writes.length) {
+        keys.push([task.cache_key.ns, task.cache_key.key]);
+        keyMap[serializeKey([task.cache_key.ns, task.cache_key.key])] = task;
+      }
+    }
+
+    if (keys.length === 0) return [];
+    const cache = await this.cache.get(keys);
+
+    for (const { key, value } of cache) {
+      const task = keyMap[serializeKey(key)];
+      if (task != null) {
+        // update the task with the cached writes
+        task.writes.push(...value);
+        matched.push({ task, result: value });
+      }
+    }
+
+    return matched;
+  }
+
   /**
    * Execute a single iteration of the Pregel loop.
    * Returns true if more iterations are needed.
@@ -556,7 +684,8 @@ export class PregelLoop {
         this.checkpoint,
         this.channels,
         Object.values(this.tasks),
-        this.checkpointerGetNextVersion
+        this.checkpointerGetNextVersion,
+        this.triggerToNodes
       );
       for (const [key, values] of Object.entries(managedValueWrites)) {
         await this.updateManagedValues(key, values);
@@ -680,6 +809,7 @@ export class PregelLoop {
       this.status = "interrupt_before";
       throw new GraphInterrupt();
     }
+
     // Produce debug output
     const debugOutput = await gatherIterator(
       prefixGenerator(
@@ -708,7 +838,8 @@ export class PregelLoop {
           this.checkpoint,
           this.channels,
           Object.values(this.tasks),
-          this.checkpointerGetNextVersion
+          this.checkpointerGetNextVersion,
+          this.triggerToNodes
         );
         for (const [key, values] of Object.entries(managedValueWrites)) {
           await this.updateManagedValues(key, values);
@@ -740,11 +871,11 @@ export class PregelLoop {
     return suppress;
   }
 
-  acceptPush(
+  async acceptPush(
     task: PregelExecutableTask<string, string>,
     writeIdx: number,
     call?: Call
-  ): PregelExecutableTask<string, string> | void {
+  ): Promise<PregelExecutableTask<string, string> | void> {
     if (
       this.interruptAfter?.length > 0 &&
       shouldInterrupt(this.checkpoint, this.interruptAfter, [task])
@@ -770,28 +901,32 @@ export class PregelLoop {
         stream: this.stream,
       }
     );
-    if (pushed) {
-      if (
-        this.interruptBefore?.length > 0 &&
-        shouldInterrupt(this.checkpoint, this.interruptBefore, [pushed])
-      ) {
-        this.toInterrupt.push(pushed);
-        return;
-      }
-      this._emit(
-        gatherIteratorSync(
-          prefixGenerator(mapDebugTasks(this.step, [pushed]), "debug")
-        )
-      );
-      if (this.debug) {
-        printStepTasks(this.step, [pushed]);
-      }
-      this.tasks[pushed.id] = pushed;
-      if (this.skipDoneTasks) {
-        this._matchWrites({ [pushed.id]: pushed });
-      }
-      return pushed;
+
+    if (!pushed) return;
+    if (
+      this.interruptBefore?.length > 0 &&
+      shouldInterrupt(this.checkpoint, this.interruptBefore, [pushed])
+    ) {
+      this.toInterrupt.push(pushed);
+      return;
     }
+
+    this._emit(
+      gatherIteratorSync(
+        prefixGenerator(mapDebugTasks(this.step, [pushed]), "debug")
+      )
+    );
+
+    if (this.debug) printStepTasks(this.step, [pushed]);
+    this.tasks[pushed.id] = pushed;
+    if (this.skipDoneTasks) this._matchWrites({ [pushed.id]: pushed });
+
+    const tasks = await this._matchCachedWrites();
+    for (const { task } of tasks) {
+      this._outputWrites(task.id, task.writes, true);
+    }
+
+    return pushed;
   }
 
   protected _suppressInterrupt(e?: Error): boolean {
@@ -859,7 +994,8 @@ export class PregelLoop {
             triggers: [],
           },
         ],
-        this.checkpointerGetNextVersion
+        this.checkpointerGetNextVersion,
+        this.triggerToNodes
       );
     }
     const isCommandUpdateOrGoto =
@@ -915,7 +1051,8 @@ export class PregelLoop {
               triggers: [],
             },
           ]),
-          this.checkpointerGetNextVersion
+          this.checkpointerGetNextVersion,
+          this.triggerToNodes
         );
         // save input checkpoint
         await this._putCheckpoint({
