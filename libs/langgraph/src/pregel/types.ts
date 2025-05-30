@@ -13,9 +13,9 @@ import { IterableReadableStream } from "@langchain/core/utils/stream";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
+import type { Interrupt } from "../constants.js";
+import type { ManagedValueSpec } from "../managed/base.js";
 import { CachePolicy, RetryPolicy } from "./utils/index.js";
-import { Interrupt } from "../constants.js";
-import { type ManagedValueSpec } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 
 /**
@@ -40,6 +40,14 @@ type StreamDebugOutput = Record<string, any>;
 
 type DefaultStreamMode = "updates";
 
+type StreamValuesType<StreamValues> = StreamValues extends object
+  ? StreamValues & { __interrupt__?: Interrupt[] }
+  : StreamValues;
+
+type StreamUpdateType<StreamUpdates, Nodes> = {
+  [key in Nodes extends string ? Nodes : string]: StreamUpdates;
+} & { __interrupt__?: Interrupt[] };
+
 export type StreamOutputMap<
   TStreamMode extends StreamMode | StreamMode[] | undefined,
   TStreamSubgraphs extends boolean,
@@ -59,22 +67,15 @@ export type StreamOutputMap<
 ) extends infer Multiple extends StreamMode
   ? [TStreamSubgraphs] extends [true]
     ? {
-        values: [string[], "values", StreamValues];
-        updates: [
-          string[],
-          "updates",
-          Record<Nodes extends string ? Nodes : string, StreamUpdates>
-        ];
+        values: [string[], "values", StreamValuesType<StreamValues>];
+        updates: [string[], "updates", StreamUpdateType<StreamUpdates, Nodes>];
         messages: [string[], "messages", StreamMessageOutput];
         custom: [string[], "custom", StreamCustomOutput];
         debug: [string[], "debug", StreamDebugOutput];
       }[Multiple]
     : {
-        values: ["values", StreamValues];
-        updates: [
-          "updates",
-          Record<Nodes extends string ? Nodes : string, StreamUpdates>
-        ];
+        values: ["values", StreamValuesType<StreamValues>];
+        updates: ["updates", StreamUpdateType<StreamUpdates, Nodes>];
         messages: ["messages", StreamMessageOutput];
         custom: ["custom", StreamCustomOutput];
         debug: ["debug", StreamDebugOutput];
@@ -84,19 +85,15 @@ export type StreamOutputMap<
     ) extends infer Single extends StreamMode
   ? [TStreamSubgraphs] extends [true]
     ? {
-        values: [string[], StreamValues];
-        updates: [
-          string[],
-          "updates",
-          Record<Nodes extends string ? Nodes : string, StreamUpdates>
-        ];
+        values: [string[], StreamValuesType<StreamValues>];
+        updates: [string[], StreamUpdateType<StreamUpdates, Nodes>];
         messages: [string[], StreamMessageOutput];
         custom: [string[], StreamCustomOutput];
         debug: [string[], StreamDebugOutput];
       }[Single]
     : {
-        values: StreamValues;
-        updates: Record<Nodes extends string ? Nodes : string, StreamUpdates>;
+        values: StreamValuesType<StreamValues>;
+        updates: StreamUpdateType<StreamUpdates, Nodes>;
         messages: StreamMessageOutput;
         custom: StreamCustomOutput;
         debug: StreamDebugOutput;
