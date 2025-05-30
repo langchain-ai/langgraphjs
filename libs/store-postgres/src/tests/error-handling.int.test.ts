@@ -68,4 +68,46 @@ describe("PostgresStore Error Handling (integration)", () => {
         })
     ).not.toThrow(); // Constructor should not throw, but setup should fail
   });
+
+  it("should throw error when using vector search mode without vector configuration", async () => {
+    // When/Then
+    await expect(
+      store.search(["docs"], {
+        query: "test query",
+        mode: "vector"
+      })
+    ).rejects.toThrow(/Vector search requested but not configured/);
+  });
+
+  it("should throw error when using hybrid search mode without vector configuration", async () => {
+    // When/Then
+    await expect(
+      store.search(["docs"], {
+        query: "test query",
+        mode: "hybrid"
+      })
+    ).rejects.toThrow(/Hybrid search requested but vector search not configured/);
+  });
+
+  it("should throw error when using vectorSearch directly without vector configuration", async () => {
+    // When/Then
+    await expect(
+      store.vectorSearch(["docs"], "test query")
+    ).rejects.toThrow(/Vector search not configured/);
+  });
+
+  it("should throw error when using hybridSearch directly without vector configuration", async () => {
+    // When/Then
+    await expect(
+      store.hybridSearch(["docs"], "test query")
+    ).rejects.toThrow(/Vector search not configured/);
+  });
+
+  it("should handle unknown search mode", async () => {
+    // When/Then
+    await expect(
+      // @ts-expect-error Testing invalid mode
+      store.search(["docs"], { query: "test", mode: "invalid-mode" })
+    ).rejects.toThrow(/Unknown search mode/);
+  });
 });

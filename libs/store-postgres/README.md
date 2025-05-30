@@ -136,13 +136,29 @@ const published = await store.search(["docs"], {
 
 // Full-text search
 const results = await store.search(["docs"], {
-  query: "tutorial programming"
+  query: "tutorial programming",
+  mode: "text"
+});
+
+// Vector similarity search (if configured with embeddings)
+const semanticResults = await store.search(["docs"], {
+  query: "how to build machine learning models",
+  mode: "vector",
+  similarityThreshold: 0.7
+});
+
+// Hybrid search (combining vector and text search)
+const hybridResults = await store.search(["docs"], {
+  query: "javascript frameworks",
+  mode: "hybrid", 
+  vectorWeight: 0.6  // 60% vector similarity, 40% text relevance
 });
 
 // Combined filtering and search
 const publishedArticles = await store.search(["docs"], {
   filter: { type: "article", status: "published" },
   query: "javascript",
+  mode: "auto",  // Automatically selects vector if available, otherwise text
   limit: 10,
   offset: 0
 });
@@ -647,10 +663,20 @@ Delete an item.
 Search for items within a namespace prefix.
 
 **SearchOptions:**
-- `filter?: Record<string, any>` - Filter by exact field matches
-- `query?: string` - Full-text search query
+- `filter?: Record<string, any>` - Filter by exact field matches or complex operators
+- `query?: string` - Search query text
+- `mode?: "text" | "vector" | "hybrid" | "auto"` - Search mode (default: "auto")
+- `similarityThreshold?: number` - Minimum similarity for vector searches
+- `distanceMetric?: "cosine" | "l2" | "inner_product"` - Distance metric for vector search
+- `vectorWeight?: number` - Weight for vector vs text in hybrid search (0.0-1.0)
 - `limit?: number` - Maximum results (default: 10)
 - `offset?: number` - Skip results for pagination (default: 0)
+
+##### `vectorSearch(namespacePrefix: string[], query: string, options?): Promise<Item[]>`
+Perform vector similarity search using embeddings.
+
+##### `hybridSearch(namespacePrefix: string[], query: string, options?): Promise<Item[]>`
+Perform combined vector and text search.
 
 ##### `listNamespaces(options?: ListNamespacesOptions): Promise<string[][]>`
 List and filter namespaces.

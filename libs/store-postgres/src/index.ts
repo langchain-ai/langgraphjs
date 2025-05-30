@@ -241,14 +241,12 @@ export class PostgresStore extends BaseStore {
 
   /**
    * Enhanced search with advanced filtering and similarity scoring.
+   * @private Internal method used by search.
    */
-  async searchAdvanced(
+  private async searchAdvancedInternal(
     namespacePrefix: string[],
     options: SearchOptions = {}
   ): Promise<SearchItem[]> {
-    if (!this.isSetup && this.ensureTables) {
-      await this.setup();
-    }
     return this.searchOps.searchAdvanced(namespacePrefix, options);
   }
 
@@ -304,7 +302,12 @@ export class PostgresStore extends BaseStore {
   }
 
   /**
-   * Enhanced vector similarity search with advanced options.
+   * Performs vector similarity search using embeddings.
+   * 
+   * @param namespacePrefix - The namespace prefix to search within
+   * @param query - The text query to embed and search for similar items
+   * @param options - Search options including filter, similarity threshold, and distance metric
+   * @returns Promise resolving to an array of search results with similarity scores
    */
   async vectorSearch(
     namespacePrefix: string[],
@@ -320,11 +323,23 @@ export class PostgresStore extends BaseStore {
     if (!this.isSetup && this.ensureTables) {
       await this.setup();
     }
+    
+    if (!this.core.indexConfig) {
+      throw new Error(
+        "Vector search not configured. Please provide an IndexConfig when creating the store."
+      );
+    }
+    
     return this.searchOps.vectorSearch(namespacePrefix, query, options);
   }
 
   /**
-   * Hybrid search combining vector similarity and text search.
+   * Performs hybrid search combining vector similarity and text search.
+   * 
+   * @param namespacePrefix - The namespace prefix to search within
+   * @param query - The text query to search for
+   * @param options - Search options including filter, vector weight, and similarity threshold
+   * @returns Promise resolving to an array of search results with combined similarity scores
    */
   async hybridSearch(
     namespacePrefix: string[],
@@ -340,14 +355,21 @@ export class PostgresStore extends BaseStore {
     if (!this.isSetup && this.ensureTables) {
       await this.setup();
     }
+    
+    if (!this.core.indexConfig) {
+      throw new Error(
+        "Vector search not configured. Please provide an IndexConfig when creating the store."
+      );
+    }
+    
     return this.searchOps.hybridSearch(namespacePrefix, query, options);
   }
 
   /**
-   * Search for items in the store with basic options.
+   * Search for items in the store with support for text search, vector search, and filtering.
    *
    * @param namespacePrefix - The namespace prefix to search within
-   * @param options - Search options including filters, query, pagination
+   * @param options - Search options including search mode, filters, query text, and pagination
    * @returns Promise resolving to an array of search results with optional similarity scores
    *
    * @example
@@ -355,38 +377,88 @@ export class PostgresStore extends BaseStore {
    * // Basic text search
    * const results = await store.search(["documents"], {
    *   query: "machine learning",
-   *   limit: 10
+   *   mode: "text"
+   * });
+   *
+   * // Vector search
+   * const results = await store.search(["documents"], {
+   *   query: "machine learning",
+   *   mode: "vector",
+   *   similarityThreshold: 0.7
+   * });
+   *
+   * // Hybrid search (combining vector and text)
+   * const results = await store.search(["documents"], {
+   *   query: "machine learning",
+   *   mode: "hybrid",
+   *   vectorWeight: 0.7
    * });
    *
    * // Filtered search
    * const results = await store.search(["products"], {
-   *   filter: { category: "electronics", price: { $lt: 100 } },
-   *   limit: 20
-   * });
-   *
-   * // Advanced search with operators
-   * const results = await store.search(["users"], {
-   *   filter: {
-   *     age: { $gte: 18, $lt: 65 },
-   *     status: { $in: ["active", "pending"] }
-   *   }
+   *   filter: { category: "electronics", price: { $lt: 100 } }
    * });
    * ```
    */
   async search(
     namespacePrefix: string[],
-    options: SearchOptions = {}
+    options: SearchOptions & {
+      mode?: "text" | "vector" | "hybrid" | "auto";
+      similarityThreshold?: number;
+      distanceMetric?: "cosine" | "l2" | "inner_product";
+      vectorWeight?: number;
+    } = {}
   ): Promise<SearchItem[]> {
-    // If vector search is configured and query is provided, use vector search
-    if (this.core.indexConfig && options.query) {
-      return this.vectorSearch(namespacePrefix, options.query, {
-        filter: options.filter,
-        limit: options.limit,
-        offset: options.offset,
-      });
+    if (!this.isSetup && this.ensureTables) {
+      await this.setup();
     }
 
-    // Otherwise use advanced search (handles text search + filtering)
-    return this.searchAdvanced(namespacePrefix, options);
+    const { mode = "auto", query, ...restOptions } = options;
+    
+    // No query provided - just do metadata filtering
+    if (!query) {
+      return this.searchAdvancedInternal(namespacePrefix, restOptions);
+    }
+    
+    const hasVectorSearch = Boolean(this.core.indexConfig);
+    
+    // Determine search mode based on configuration and options
+    let effectiveMode = mode;
+    if (mode === "auto") {
+      effectiveMode = hasVectorSearch ? "vector" : "text";
+    }
+    
+    // Execute appropriate search based on mode
+    switch (effectiveMode) {
+      case "vector":
+        if (!hasVectorSearch) {
+          throw new Error(
+            "Vector search requested but not configured. Please provide an IndexConfig when creating the store."
+          );
+        }
+        return this.vectorSearch(namespacePrefix, query, {
+          ...restOptions,
+          similarityThreshold: options.similarityThreshold,
+          distanceMetric: options.distanceMetric
+        });
+        
+      case "hybrid":
+        if (!hasVectorSearch) {
+          throw new Error(
+            "Hybrid search requested but vector search not configured. Please provide an IndexConfig when creating the store."
+          );
+        }
+        return this.hybridSearch(namespacePrefix, query, {
+          ...restOptions,
+          vectorWeight: options.vectorWeight,
+          similarityThreshold: options.similarityThreshold
+        });
+        
+      case "text":
+        return this.searchAdvancedInternal(namespacePrefix, { query, ...restOptions });
+        
+      default:
+        throw new Error(`Unknown search mode: ${mode}`);
+    }
   }
 }
