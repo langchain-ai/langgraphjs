@@ -1237,10 +1237,10 @@ describe("MessagesZodState", () => {
     expect(res.messages.length).toEqual(1);
 
     // FIXME (!): `null` isn't acceptable input as initial state for a graph run. Handling the special case of `null` doesn't propagate a message back to invoke.
-    // const res2 = await graph.invoke(null, {
-    //   configurable: { thread_id: "1" },
-    // });
-    // expect(res2.messages.length).toEqual(1);
+    const res2 = await graph.invoke(null, {
+      configurable: { thread_id: "1" },
+    });
+    expect(res2.messages.length).toEqual(1);
   });
 
   it("should handle message reducers correctly", async () => {
