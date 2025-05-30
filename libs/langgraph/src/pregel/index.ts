@@ -484,7 +484,7 @@ export class Pregel<
   config?: LangGraphRunnableConfig;
 
   /**
-   * Optional long-term memory store for the graph, allows for persistance & retrieval of data across threads
+   * Optional long-term memory store for the graph, allows for persistence & retrieval of data across threads
    */
   store?: BaseStore;
 

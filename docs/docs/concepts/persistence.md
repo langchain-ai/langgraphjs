@@ -1,6 +1,6 @@
 # Persistence
 
-LangGraph has a built-in persistence layer, implemented through checkpointers. When you compile graph with a checkpointer, the checkpointer saves a `checkpoint` of the graph state at every super-step. Those checkpoints are saved to a `thread`, which can be accessed after graph execution. Because `threads` allow access to graph's state after execution, several powerful capabilities including human-in-the-loop, memory, time travel, and fault-tolerance are all possible. See [this how-to guide](/langgraphjs/how-tos/persistence) for an end-to-end example on how to add and use checkpointers with your graph. Below, we'll discuss each of these concepts in more detail. 
+LangGraph has a built-in persistence layer, implemented through checkpointers. When you compile graph with a checkpointer, the checkpointer saves a `checkpoint` of the graph state at every super-step. Those checkpoints are saved to a `thread`, which can be accessed after graph execution. Because `threads` allow access to graph's state after execution, several powerful capabilities including human-in-the-loop, memory, time travel, and fault-tolerance are all possible. See [this how-to guide](/langgraphjs/how-tos/persistence) for an end-to-end example of how to add and use checkpointers with your graph. Below, we'll discuss each of these concepts in more detail. 
 
 ![Checkpoints](img/persistence/checkpoints.jpg)
 
@@ -221,7 +221,7 @@ import { InMemoryStore } from "@langchain/langgraph";
 const inMemoryStore = new InMemoryStore();
 ```
 
-Memories are namespaced by a `tuple`, which in this specific example will be `[<user_id>, "memories"]`. The namespace can be any length and represent anything, does not have be user specific.
+Memories are namespaced by a `tuple`, which in this specific example will be `[<user_id>, "memories"]`. The namespace can be any length and represent anything, does not have to be user specific.
 
 ```ts
 const userId = "1";
@@ -263,7 +263,7 @@ The attributes a retrieved memory has are:
 - `created_at`: Timestamp for when this memory was created
 - `updated_at`: Timestamp for when this memory was updated
 
-With this all in place, we use the `inMemoryStore` in LangGraph. The `inMemoryStore` works hand-in-hand with the checkpointer: the checkpointer saves state to threads, as discussed above, and the the `inMemoryStore` allows us to store arbitrary information for access *across* threads. We compile the graph with both the checkpointer and the `inMemoryStore` as follows. 
+With this all in place, we use the `inMemoryStore` in LangGraph. The `inMemoryStore` works hand-in-hand with the checkpointer: the checkpointer saves state to threads, as discussed above, and the `inMemoryStore` allows us to store arbitrary information for access *across* threads. We compile the graph with both the checkpointer and the `inMemoryStore` as follows. 
 
 ```ts
 import { MemorySaver } from "@langchain/langgraph";
@@ -329,7 +329,7 @@ const updateMemory = async (
 };
 ```
 
-As we showed above, we can also access the store in any node and use `search` to get memories. Recall the the memories are returned as a list of objects that can be converted to a dictionary.
+As we showed above, we can also access the store in any node and use `search` to get memories. Recall that the memories are returned as a list of objects that can be converted to a dictionary.
 
 ```ts
 const memories = inMemoryStore.search(namespaceForMemory);
@@ -417,7 +417,7 @@ First, checkpointers facilitate [human-in-the-loop workflows](/langgraphjs/conce
 
 ### Memory
 
-Second, checkpointers allow for ["memory"](/langgraphjs/concepts/agentic_concepts#memory) between interactions.  In the case of repeated human interactions (like conversations) any follow up messages can be sent to that thread, which will retain its memory of previous ones. See [this how-to guide](/langgraphjs/how-tos/manage-conversation-history) for an end-to-end example on how to add and manage conversation memory using checkpointers.
+Second, checkpointers allow for ["memory"](/langgraphjs/concepts/agentic_concepts#memory) between interactions.  In the case of repeated human interactions (like conversations) any follow up messages can be sent to that thread, which will retain its memory of previous ones. See [this how-to guide](/langgraphjs/how-tos/manage-conversation-history) for an end-to-end example of how to add and manage conversation memory using checkpointers.
 
 ### Time Travel
 

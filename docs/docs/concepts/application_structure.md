@@ -31,7 +31,7 @@ Below are examples of directory structures for Python and JavaScript application
     ├── src # all project code lies within here
     │   ├── utils # optional utilities for your graph
     │   │   ├── tools.ts # tools for your graph
-    │   │   ├── nodes.ts # node functions for you graph
+    │   │   ├── nodes.ts # node functions for your graph
     │   │   └── state.ts # state definition of your graph
     │   └── agent.ts # code for constructing your graph
     ├── package.json # package dependencies
@@ -47,7 +47,7 @@ Below are examples of directory structures for Python and JavaScript application
     │   ├── utils # utilities for your graph
     │   │   ├── __init__.py
     │   │   ├── tools.py # tools for your graph
-    │   │   ├── nodes.py # node functions for you graph
+    │   │   ├── nodes.py # node functions for your graph
     │   │   └── state.py # state definition of your graph
     │   ├── requirements.txt # package dependencies
     │   ├── __init__.py
@@ -64,7 +64,7 @@ Below are examples of directory structures for Python and JavaScript application
     │   ├── utils # utilities for your graph
     │   │   ├── __init__.py
     │   │   ├── tools.py # tools for your graph
-    │   │   ├── nodes.py # node functions for you graph
+    │   │   ├── nodes.py # node functions for your graph
     │   │   └── state.py # state definition of your graph
     │   ├── __init__.py
     │   └── agent.py # code for constructing your graph
