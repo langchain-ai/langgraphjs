@@ -342,6 +342,14 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
     expect(result1).toEqual({
       my_key: "value",
       market: "DE",
+      __interrupt__: [
+        {
+          value: "Just because...",
+          resumable: true,
+          when: "during",
+          ns: [expect.stringMatching(/^tool_two:.*$/)],
+        },
+      ],
     });
 
     expect(toolTwoNodeCount).toBe(1);
@@ -500,6 +508,17 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
     expect(result1).toEqual({
       my_key: "value",
       market: "DE",
+      __interrupt__: [
+        {
+          value: "Just because...",
+          resumable: true,
+          when: "during",
+          ns: [
+            expect.stringMatching(/^tool_two:.*$/),
+            expect.stringMatching(/^do:.*$/),
+          ],
+        },
+      ],
     });
 
     expect(toolTwoNodeCount).toBe(1);
@@ -660,13 +679,33 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
 
     // First invocation - writes from "awhile" are applied to last chunk
     const result1 = await graph.invoke({ hello: "world" }, thread);
-    expect(result1).toEqual({ hello: "world again" });
+    expect(result1).toEqual({
+      hello: "world again",
+      __interrupt__: [
+        {
+          value: "I am bad",
+          resumable: true,
+          when: "during",
+          ns: [expect.stringMatching(/^bad:.*$/)],
+        },
+      ],
+    });
     expect(innerTaskCancelled).toBe(false);
     expect(awhileCount).toBe(1);
 
     // Second invocation with debug mode
     const result2 = await graph.invoke(null, thread);
-    expect(result2).toEqual({ hello: "world again" });
+    expect(result2).toEqual({
+      hello: "world again",
+      __interrupt__: [
+        {
+          value: "I am bad",
+          resumable: true,
+          when: "during",
+          ns: [expect.stringMatching(/^bad:.*$/)],
+        },
+      ],
+    });
     expect(innerTaskCancelled).toBe(false);
     expect(awhileCount).toBe(1);
 

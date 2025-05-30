@@ -816,6 +816,14 @@ describe("Checkpoint Tests (Python port)", () => {
     expect(result1).toEqual({
       my_key: "value one",
       market: "DE",
+      __interrupt__: [
+        {
+          value: "Just because...",
+          resumable: true,
+          when: "during",
+          ns: [expect.stringMatching(/^tool_two:/)],
+        },
+      ],
     });
 
     expect(tool_two_node_count).toBe(1);
@@ -860,9 +868,7 @@ describe("Checkpoint Tests (Python port)", () => {
 
     // Assert that we got the expected outputs including an interrupt
     expect(results1).toEqual([
-      {
-        tool_one: { my_key: " one" },
-      },
+      { tool_one: { my_key: " one" } },
       {
         __interrupt__: [
           expect.objectContaining({
@@ -909,6 +915,14 @@ describe("Checkpoint Tests (Python port)", () => {
     expect(result3).toEqual({
       my_key: "value ⛰️ one",
       market: "DE",
+      __interrupt__: [
+        {
+          value: "Just because...",
+          resumable: true,
+          when: "during",
+          ns: [expect.stringMatching(/^tool_two:/)],
+        },
+      ],
     });
 
     // Check the state

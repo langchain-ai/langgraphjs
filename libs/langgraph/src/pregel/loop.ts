@@ -859,13 +859,10 @@ export class PregelLoop {
       }
 
       // Emit INTERRUPT event
+      const interrupts = { [INTERRUPT]: (error as GraphInterrupt).interrupts };
       this._emit([
-        [
-          "updates",
-          {
-            [INTERRUPT]: (error as GraphInterrupt).interrupts,
-          },
-        ],
+        ["updates", interrupts],
+        ["values", interrupts],
       ]);
     }
     return suppress;

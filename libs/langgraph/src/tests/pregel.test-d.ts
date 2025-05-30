@@ -10,6 +10,7 @@ import { gatherIterator } from "../utils.js";
 import { StreamMode } from "../pregel/types.js";
 import { task, entrypoint } from "../func/index.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { INTERRUPT, isInterrupted } from "../constants.js";
 
 beforeAll(() => {
   // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
@@ -39,7 +40,12 @@ it("state graph annotation", async () => {
 
   const input = { foo: "bar" };
 
-  expectTypeOf(await graph.invoke(input)).toExtend<{ foo: string[] }>();
+  const values = await graph.invoke(input);
+  expectTypeOf(values).toExtend<{ foo: string[] }>();
+
+  if (isInterrupted<string>(values)) {
+    expectTypeOf(values[INTERRUPT][0].value).toExtend<string | undefined>();
+  }
 
   expectTypeOf(await gatherIterator(graph.stream(input))).toExtend<
     Record<"one" | "two" | "three", { foo?: string[] | string }>[]
@@ -185,7 +191,12 @@ it("state graph zod", async () => {
 
   const input = { foo: "bar" };
 
-  expectTypeOf(await graph.invoke(input)).toExtend<{ foo: string[] }>();
+  const values = await graph.invoke(input);
+  expectTypeOf(values).toExtend<{ foo: string[] }>();
+
+  if (isInterrupted<string>(values)) {
+    expectTypeOf(values[INTERRUPT][0].value).toExtend<string | undefined>();
+  }
 
   expectTypeOf(await gatherIterator(graph.stream(input))).toExtend<
     Record<"one" | "two" | "three", { foo?: string[] | string }>[]

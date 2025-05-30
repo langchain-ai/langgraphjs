@@ -688,7 +688,19 @@ export function runFuncTests(
         // ideally the withCheckpointer = false case would throw an error here, see https://github.com/langchain-ai/langgraphjs/issues/796
         const firstRun = await graph.invoke("the correct ", config);
 
-        expect(firstRun).toBeUndefined();
+        expect(firstRun).toEqual({
+          __interrupt__: [
+            {
+              ns: [
+                expect.stringMatching(/^interruptGraph:/),
+                expect.stringMatching(/^interruptTask:/),
+              ],
+              resumable: true,
+              value: "Please provide input",
+              when: "during",
+            },
+          ],
+        });
         expect(taskCallCount).toBe(1);
         expect(graphCallCount).toBe(1);
 
@@ -741,7 +753,16 @@ export function runFuncTests(
 
         // First run, interrupted at bar
         const firstRun = await graph.invoke({ a: "" }, config);
-        expect(firstRun).toBeUndefined();
+        expect(firstRun).toEqual({
+          __interrupt__: [
+            {
+              ns: [expect.stringMatching(/^interruptGraph:/)],
+              resumable: true,
+              value: "Provide value for bar:",
+              when: "during",
+            },
+          ],
+        });
 
         // Resume with an answer
         const result = await graph.invoke(
@@ -780,7 +801,19 @@ export function runFuncTests(
 
         // First run, interrupted at bar
         const firstRun = await graph.invoke({ a: "" }, config);
-        expect(firstRun).toBeUndefined();
+        expect(firstRun).toEqual({
+          __interrupt__: [
+            {
+              ns: [
+                expect.stringMatching(/^interruptGraph:/),
+                expect.stringMatching(/^bar:/),
+              ],
+              resumable: true,
+              value: "Provide value for bar:",
+              when: "during",
+            },
+          ],
+        });
 
         // Resume with an answer
         const result = await graph.invoke(
@@ -809,7 +842,16 @@ export function runFuncTests(
 
         // First run should interrupt
         const firstRun = await graph.invoke({ a: 5 }, config);
-        expect(firstRun).toBeUndefined();
+        expect(firstRun).toEqual({
+          __interrupt__: [
+            {
+              ns: [expect.stringMatching(/^falsyGraph:/)],
+              resumable: true,
+              value: "test",
+              when: "during",
+            },
+          ],
+        });
 
         // Resume with answer
         const result = await graph.invoke(
@@ -844,7 +886,16 @@ export function runFuncTests(
 
         // First run should interrupt
         const firstRun = await graph.invoke([], config);
-        expect(firstRun).toBeUndefined();
+        expect(firstRun).toEqual({
+          __interrupt__: [
+            {
+              ns: [expect.stringMatching(/^graph:/)],
+              resumable: true,
+              value: { a: "boo1" },
+              when: "during",
+            },
+          ],
+        });
 
         // Resume with first answer
         const secondRun = await graph.invoke(
@@ -853,7 +904,16 @@ export function runFuncTests(
         );
 
         // TODO: make this return something other than null when we figure out a interrupt return value
-        expect(secondRun).toBeNull();
+        expect(secondRun).toEqual({
+          __interrupt__: [
+            {
+              ns: [expect.stringMatching(/^graph:/)],
+              resumable: true,
+              value: { a: "boo2" },
+              when: "during",
+            },
+          ],
+        });
 
         // Resume with second answer
         const thirdRun = await graph.invoke(
@@ -861,7 +921,16 @@ export function runFuncTests(
           config
         );
 
-        expect(thirdRun).toBeNull();
+        expect(thirdRun).toEqual({
+          __interrupt__: [
+            {
+              ns: [expect.stringMatching(/^graph:/)],
+              resumable: true,
+              value: { a: "boo3" },
+              when: "during",
+            },
+          ],
+        });
 
         // Resume with final answer and get result
         const result = await graph.invoke(new Command({ resume: "c" }), config);
@@ -904,7 +973,19 @@ export function runFuncTests(
         const config = { configurable: { thread_id } };
 
         let result = await program.invoke([], config);
-        expect(result).toBeUndefined();
+        expect(result).toEqual({
+          __interrupt__: [
+            {
+              ns: [
+                expect.stringMatching(/^program:/),
+                expect.stringMatching(/^add-participant:/),
+              ],
+              resumable: true,
+              value: "Hey do you want to add James?",
+              when: "during",
+            },
+          ],
+        });
 
         let currTasks = (await program.getState(config)).tasks;
         expect(currTasks[0].interrupts).toHaveLength(1);
@@ -922,7 +1003,19 @@ export function runFuncTests(
         expect(currTasks[0].interrupts[0].when).toEqual("during");
 
         result = await program.invoke(new Command({ resume: true }), config);
-        expect(result).toBeNull();
+        expect(result).toEqual({
+          __interrupt__: [
+            {
+              ns: [
+                expect.stringMatching(/^program:/),
+                expect.stringMatching(/^add-participant:/),
+              ],
+              resumable: true,
+              value: "Hey do you want to add Will?",
+              when: "during",
+            },
+          ],
+        });
 
         currTasks = (await program.getState(config)).tasks;
         expect(currTasks[0].interrupts).toHaveLength(1);
