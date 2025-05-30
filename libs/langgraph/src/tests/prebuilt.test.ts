@@ -1213,34 +1213,27 @@ describe("MessagesAnnotation", () => {
 describe("MessagesZodState", () => {
   it("should assign ids properly and avoid duping added messages", async () => {
     const childGraph = new StateGraph(MessagesZodState)
-      .addNode("duper", ({ messages }: z.infer<typeof MessagesZodState>) => ({
-        messages,
-      }))
-      .addNode("duper2", ({ messages }: z.infer<typeof MessagesZodState>) => ({
-        messages,
-      }))
+      .addNode("duper", ({ messages }) => ({ messages }))
+      .addNode("duper2", () => ({ messages: [new AIMessage("duper2")] }))
       .addEdge("__start__", "duper")
       .addEdge("duper", "duper2")
       .compile({ interruptBefore: ["duper2"] });
+
     const graph = new StateGraph(MessagesZodState)
       .addNode("duper", childGraph)
-      .addNode("duper2", ({ messages }: z.infer<typeof MessagesZodState>) => ({
-        messages,
-      }))
+      .addNode("duper2", ({ messages }) => ({ messages }))
       .addEdge("__start__", "duper")
       .addEdge("duper", "duper2")
       .compile({ checkpointer: new MemorySaverAssertImmutable() });
+
     const res = await graph.invoke(
       { messages: [new HumanMessage("should be only one")] },
       { configurable: { thread_id: "1" } }
     );
     expect(res.messages.length).toEqual(1);
 
-    // FIXME (!): `null` isn't acceptable input as initial state for a graph run. Handling the special case of `null` doesn't propagate a message back to invoke.
-    const res2 = await graph.invoke(null, {
-      configurable: { thread_id: "1" },
-    });
-    expect(res2.messages.length).toEqual(1);
+    const res2 = await graph.invoke(null, { configurable: { thread_id: "1" } });
+    expect(res2.messages.length).toEqual(2);
   });
 
   it("should handle message reducers correctly", async () => {
