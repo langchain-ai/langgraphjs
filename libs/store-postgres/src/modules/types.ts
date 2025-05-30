@@ -63,9 +63,9 @@ export interface IndexConfig {
 
   /**
    * Embedding function to generate embeddings from text.
-   * Can be a LangChain Embeddings instance, function, or provider string.
+   * Can be a LangChain Embeddings instance or a function.
    */
-  embed: Embeddings | EmbeddingsFunc | AEmbeddingsFunc | string;
+  embed: Embeddings | EmbeddingsFunc | AEmbeddingsFunc;
 
   /**
    * Fields to extract text from for embedding generation.

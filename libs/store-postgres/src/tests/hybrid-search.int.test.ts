@@ -121,4 +121,51 @@ describe("PostgresStore Hybrid Search (integration)", () => {
       ).toBe(true);
     }
   });
+  
+  it("should support hybrid mode in unified search method", async () => {
+    // When
+    const results = await store.search(["docs"], {
+      query: "machine learning algorithms",
+      mode: "hybrid",
+      vectorWeight: 0.7,
+      limit: 10
+    });
+
+    // Then
+    expect(results).toBeDefined();
+    expect(Array.isArray(results)).toBe(true);
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((item) => typeof item.score === "number")).toBe(true);
+    expect(mockEmbedding.toHaveBeenCalled()).toBe(true);
+  });
+  
+  it("should pass appropriate parameters through to hybrid search", async () => {
+    // When
+    const vectorWeight = 0.65;
+    const similarityThreshold = 0.25;
+    
+    const results = await store.search(["docs"], {
+      query: "neural networks research",
+      mode: "hybrid",
+      vectorWeight,
+      similarityThreshold,
+      limit: 5
+    });
+
+    // Then
+    expect(results).toBeDefined();
+    
+    // Verify direct method works with same parameters
+    const directResults = await store.hybridSearch(["docs"], "neural networks research", { 
+      vectorWeight,
+      similarityThreshold,
+      limit: 5
+    });
+    
+    // Both should have similar result structure
+    expect(results.length).toBe(directResults.length);
+    if (results.length > 0 && directResults.length > 0) {
+      expect(typeof results[0].score).toBe(typeof directResults[0].score);
+    }
+  });
 });

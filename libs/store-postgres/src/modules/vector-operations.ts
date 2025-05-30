@@ -71,12 +71,6 @@ export class VectorOperations {
 
     const { embed } = this.core.indexConfig;
 
-    if (typeof embed === "string") {
-      throw new Error(
-        `Provider string embeddings not yet implemented: ${embed}`
-      );
-    }
-
     if (typeof embed === "function") {
       return await embed(texts);
     }
@@ -95,12 +89,6 @@ export class VectorOperations {
     }
 
     const { embed } = this.core.indexConfig;
-
-    if (typeof embed === "string") {
-      throw new Error(
-        `Provider string embeddings not yet implemented: ${embed}`
-      );
-    }
 
     if (typeof embed === "function") {
       const embeddings = await embed([text]);
