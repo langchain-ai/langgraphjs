@@ -2246,7 +2246,7 @@ __metadata:
     zod: ^3.23.8
   peerDependencies:
     "@langchain/core": ^0.3.43
-    "@langchain/langgraph": ^0.2.57
+    "@langchain/langgraph": ^0.2.57 || ^0.3.0
     "@langchain/openai": ">=0.5.1"
   languageName: unknown
   linkType: soft
