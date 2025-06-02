@@ -260,7 +260,7 @@ Use MongoDB-style operators for complex queries:
 
 ```typescript
 // Comparison operators
-const results = await store.searchAdvanced(["products"], {
+const results = await store.textSearch(["products"], {
   filter: {
     price: { $gt: 100, $lt: 500 }, // Price between 100 and 500
     category: { $in: ["electronics", "books"] }, // Category is electronics or books
@@ -270,7 +270,7 @@ const results = await store.searchAdvanced(["products"], {
 });
 
 // Complex nested queries
-const complexResults = await store.searchAdvanced(["users"], {
+const complexResults = await store.textSearch(["users"], {
   filter: {
     "profile.age": { $gte: 18 }, // Nested field access
     "preferences.notifications": { $ne: false }, // Not equal to false
@@ -296,7 +296,7 @@ const complexResults = await store.searchAdvanced(["users"], {
 Perform full-text search with relevance scoring:
 
 ```typescript
-const searchResults = await store.searchAdvanced(["documents"], {
+const searchResults = await store.textSearch(["documents"], {
   query: "machine learning algorithms", // Full-text search query
   filter: {
     category: "research",
