@@ -12,7 +12,6 @@ As LangGraph.js continues to evolve and improve, breaking changes are sometimes 
 - Added support for [deferred nodes](/langgraphjs/how-tos/defer-node-execution/).
 - Added support for `preModelHook` and `postModelHook` in `createReactAgent`.
 - Added support for `addSequence` and shorthand object syntax for `addNode`.
-- Added `typedNode()` utility to nodes with proper parameter and return types.
 - Added `pushMessage()` method to allow manually pushing messages to `"messages"` stream mode.
 - Added `isInterrupted()` method to check if the state contains an interrupt.
 - Numerous bugfixes.
