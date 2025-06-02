@@ -28,10 +28,30 @@ export class SearchOperations {
     const { filter, limit = 10, offset = 0, query } = operation;
 
     // If vector search is configured and query is provided, use vector similarity search
-    if (this.core.indexConfig && query) {
+    if (query && this.core.indexConfig) {
       return this.executeVectorSearch(client, operation);
     }
 
+    // If query is provided but no vector search, use text search for better results
+    if (query && !this.core.indexConfig) {
+      const results = await this.textSearch(operation.namespacePrefix, {
+        query,
+        filter,
+        limit,
+        offset,
+      });
+
+      // Convert SearchItem[] to Item[] for consistent return type
+      return results.map((item) => ({
+        namespace: item.namespace,
+        key: item.key,
+        value: item.value,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      }));
+    }
+
+    // Basic metadata search without query
     let sqlQuery = `
       SELECT namespace_path, key, value, created_at, updated_at
       FROM ${this.core.schema}.store
@@ -53,13 +73,6 @@ export class SearchOperations {
         sqlQuery += ` AND (${conditions.join(" AND ")})`;
         paramIndex = newParamIndex;
       }
-    }
-
-    // Add text search if query is provided but no vector search
-    if (query && !this.core.indexConfig) {
-      sqlQuery += ` AND to_tsvector('english', value::text) @@ plainto_tsquery('english', $${paramIndex})`;
-      params.push(query);
-      paramIndex += 1;
     }
 
     sqlQuery += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${
@@ -154,7 +167,7 @@ export class SearchOperations {
     }));
   }
 
-  async searchAdvanced(
+  async textSearch(
     namespacePrefix: string[],
     options: SearchOptions = {}
   ): Promise<SearchItem[]> {

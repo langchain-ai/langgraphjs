@@ -32,10 +32,11 @@ export class VectorOperations {
     for (const fieldPath of fields) {
       const extractedTexts = this.extractTextAtPath(value, fieldPath);
       extractedTexts.forEach((text, i) => {
-        if (text?.trim()) {
+        const trimmedText = text?.trim();
+        if (trimmedText) {
           const actualFieldPath =
             extractedTexts.length > 1 ? `${fieldPath}[${i}]` : fieldPath;
-          textsToEmbed.push({ fieldPath: actualFieldPath, text: text.trim() });
+          textsToEmbed.push({ fieldPath: actualFieldPath, text: trimmedText });
         }
       });
     }
