@@ -3,6 +3,8 @@ import os
 import re
 from typing import Any, Dict
 
+from bs4 import BeautifulSoup
+from mkdocs.config.defaults import MkDocsConfig
 from mkdocs.structure.files import Files, File
 from mkdocs.structure.pages import Page
 
@@ -103,6 +105,53 @@ def _highlight_code_blocks(markdown: str) -> str:
     # Replace all code blocks in the markdown
     markdown = code_block_pattern.sub(replace_highlight_comments, markdown)
     return markdown
+
+
+def _inject_gtm(html: str) -> str:
+    """Inject Google Tag Manager code into the HTML.
+
+    Code to inject Google Tag Manager noscript tag immediately after <body>.
+
+    This is done via hooks rather than via a template because the MkDocs material
+    theme does not seem to allow placing the code immediately after the <body> tag
+    without modifying the template files directly.
+
+    Args:
+        html: The HTML content to modify.
+
+    Returns:
+        The modified HTML content with GTM code injected.
+    """
+    # Code was copied from Google Tag Manager setup instructions.
+    gtm_code = """
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-MVSV6HPQ"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+"""
+    soup = BeautifulSoup(html, "html.parser")
+    body = soup.body
+    if body:
+        # Insert the GTM code as raw HTML at the top of <body>
+        body.insert(0, BeautifulSoup(gtm_code, "html.parser"))
+        return str(soup)
+    else:
+        return html  # fallback if no <body> found
+
+
+def on_post_page(output: str, page: Page, config: MkDocsConfig) -> str:
+    """Inject Google Tag Manager noscript tag immediately after <body>.
+
+    Args:
+        output: The HTML output of the page.
+        page: The page instance.
+        config: The MkDocs configuration object.
+
+    Returns:
+        modified HTML output with GTM code injected.
+    """
+    return _inject_gtm(output)
+
 
 
 def _on_page_markdown_with_config(
