@@ -222,11 +222,11 @@ export class FakeToolCallingChatModel extends BaseChatModel {
 
   bindTools(tools: BindToolsInput[]) {
     const toolDicts = [];
+    const serverTools = [];
     for (const tool of tools) {
       if (!("name" in tool)) {
-        throw new TypeError(
-          "Only tools with a name property are supported by FakeToolCallingModel.bindTools"
-        );
+        serverTools.push(tool);
+        continue;
       }
 
       // NOTE: this is a simplified tool spec for testing purposes only
@@ -254,7 +254,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
       toolsToBind = [{ functionDeclarations: toolDicts }];
     }
     return this.bind({
-      tools: toolsToBind,
+      tools: [...toolsToBind, ...serverTools],
     } as BaseChatModelCallOptions);
   }
 
