@@ -12,6 +12,7 @@ export {
   type StateGraphArgs,
   StateGraph,
   CompiledStateGraph,
+  typedNode,
 } from "./state.js";
 export {
   MessageGraph,
