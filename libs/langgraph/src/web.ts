@@ -4,6 +4,7 @@ export {
   StateGraph,
   CompiledStateGraph,
   MessageGraph,
+  typedNode,
   messagesStateReducer,
   messagesStateReducer as addMessages,
   REMOVE_ALL_MESSAGES,
