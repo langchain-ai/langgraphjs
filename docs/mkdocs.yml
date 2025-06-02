@@ -87,6 +87,7 @@ nav:
                     - how-tos/branching.ipynb
                     - how-tos/command.ipynb
                     - how-tos/recursion-limit.ipynb
+                    - how-tos/defer-node-execution.ipynb
                 - Persistence:
                     - Persistence: how-tos#persistence
                     - how-tos/persistence.ipynb
@@ -147,6 +148,7 @@ nav:
                     - Other: how-tos#other
                     - how-tos/configuration.ipynb
                     - how-tos/node-retry-policies.ipynb
+                    - how-tos/node-caching.ipynb
                     - how-tos/dynamically-returning-directly.ipynb
                     - how-tos/respond-in-format.ipynb
                     - how-tos/managing-agent-steps.ipynb
@@ -404,6 +406,7 @@ markdown_extensions:
   - github-callouts
 extra_css:
   - css/mkdocstrings.css
+  - css/agent_graph_widget.css
 hooks:
   - _scripts/notebook_hooks.py
 extra:
