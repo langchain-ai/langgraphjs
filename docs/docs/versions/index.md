@@ -8,7 +8,7 @@ As LangGraph.js continues to evolve and improve, breaking changes are sometimes 
 
 - (Breaking) Interrupts are now properly propagated in `"values"` stream mode and in `.invoke()`.
 - (Breaking) Return type of `.stream()` is now strictly typed.
-- Added support for [node / task caching](/langgraphjs/how-tos/node-cache/).
+- Added support for [node / task caching](/langgraphjs/how-tos/node-caching/).
 - Added support for [deferred nodes](/langgraphjs/how-tos/defer-node-execution/).
 - Added support for `preModelHook` and `postModelHook` in `createReactAgent`.
 - Added support for `addSequence` and shorthand object syntax for `addNode`.
