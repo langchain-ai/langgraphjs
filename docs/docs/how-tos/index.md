@@ -21,9 +21,9 @@ These how-to guides show how to achieve that controllability.
 
 - [How to create branches for parallel execution](branching.ipynb)
 - [How to create map-reduce branches for parallel execution](map-reduce.ipynb)
+- [How to defer node execution](defer-node-execution.ipynb)
 - [How to combine control flow and state updates with Command](command.ipynb)
 - [How to create and control loops with recursion limits](recursion-limit.ipynb)
-- [How to defer node execution](defer-node-execution.ipynb)
 
 ### Persistence
 
