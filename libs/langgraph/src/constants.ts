@@ -172,14 +172,38 @@ export function _isSend(x: unknown): x is Send {
   return x instanceof Send;
 }
 
-export type Interrupt = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  value?: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Interrupt<Value = any> = {
+  value?: Value;
   // eslint-disable-next-line @typescript-eslint/ban-types
   when: "during" | (string & {});
   resumable?: boolean;
   ns?: string[];
 };
+
+/**
+ * Checks if the given graph invoke / stream chunk contains interrupt.
+ *
+ * @example
+ * ```ts
+ * import { INTERRUPT, isInterrupted } from "@langchain/langgraph";
+ *
+ * const values = await graph.invoke({ foo: "bar" });
+ * if (isInterrupted<string>(values)) {
+ *   const interrupt = values[INTERRUPT][0].value;
+ * }
+ * ```
+ *
+ * @param values - The values to check.
+ * @returns `true` if the values contain an interrupt, `false` otherwise.
+ */
+export function isInterrupted<Value = unknown>(
+  values: unknown
+): values is { [INTERRUPT]: Interrupt<Value>[] } {
+  if (!values || typeof values !== "object") return false;
+  if (!(INTERRUPT in values)) return false;
+  return Array.isArray(values[INTERRUPT]);
+}
 
 export type CommandParams<
   Resume = unknown,

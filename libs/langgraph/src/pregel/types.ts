@@ -13,9 +13,9 @@ import { IterableReadableStream } from "@langchain/core/utils/stream";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
+import type { Interrupt } from "../constants.js";
+import type { ManagedValueSpec } from "../managed/base.js";
 import { CachePolicy, RetryPolicy } from "./utils/index.js";
-import { Interrupt } from "../constants.js";
-import { type ManagedValueSpec } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 
 /**
@@ -87,7 +87,6 @@ export type StreamOutputMap<
         values: [string[], StreamValues];
         updates: [
           string[],
-          "updates",
           Record<Nodes extends string ? Nodes : string, StreamUpdates>
         ];
         messages: [string[], StreamMessageOutput];

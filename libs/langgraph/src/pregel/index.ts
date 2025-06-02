@@ -60,6 +60,8 @@ import {
   COPY,
   END,
   CONFIG_KEY_NODE_FINISHED,
+  Interrupt,
+  isInterrupted,
 } from "../constants.js";
 import {
   PregelExecutableTask,
@@ -484,7 +486,7 @@ export class Pregel<
   config?: LangGraphRunnableConfig;
 
   /**
-   * Optional long-term memory store for the graph, allows for persistance & retrieval of data across threads
+   * Optional long-term memory store for the graph, allows for persistence & retrieval of data across threads
    */
   store?: BaseStore;
 
@@ -2128,11 +2130,32 @@ export class Pregel<
     };
     const chunks = [];
     const stream = await this.stream(input, config);
+    const interruptChunks: Interrupt[][] = [];
+
+    let latest: OutputType | undefined;
+
     for await (const chunk of stream) {
-      chunks.push(chunk);
+      if (streamMode === "values") {
+        if (isInterrupted(chunk)) {
+          interruptChunks.push(chunk[INTERRUPT]);
+        } else {
+          latest = chunk as OutputType;
+        }
+      } else {
+        chunks.push(chunk);
+      }
     }
+
     if (streamMode === "values") {
-      return chunks[chunks.length - 1] as OutputType;
+      if (interruptChunks.length > 0) {
+        const interrupts = interruptChunks.flat(1);
+        if (latest == null) return { [INTERRUPT]: interrupts } as OutputType;
+        if (typeof latest === "object") {
+          return { ...latest, [INTERRUPT]: interrupts };
+        }
+      }
+
+      return latest as OutputType;
     }
     return chunks as OutputType;
   }

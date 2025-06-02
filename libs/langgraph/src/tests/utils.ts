@@ -4,6 +4,7 @@ import assert from "node:assert";
 import { expect, it } from "vitest";
 import { v4 as uuidv4 } from "uuid";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
+import { Graph as DrawableGraph } from "@langchain/core/runnables/graph";
 import {
   BaseChatModel,
   BaseChatModelParams,
@@ -669,4 +670,18 @@ export async function dumpDebugStream<
   console.log();
   console.log(`final state: ${JSON.stringify(graphState.values, null, 2)}`);
   return invokeReturnValue as ReturnType<typeof graph.invoke>;
+}
+
+export function getReadableMermaid(graph: DrawableGraph) {
+  const mermaid = graph.drawMermaid({ withStyles: false });
+  return mermaid
+    .replace(/\s*&nbsp;(.*)&nbsp;\s*/g, "[$1]")
+    .split("\n")
+    .slice(1)
+    .map((i) => {
+      const res = i.trim();
+      if (res.endsWith(";")) return res.slice(0, -1);
+      return res;
+    })
+    .filter(Boolean);
 }

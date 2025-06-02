@@ -22,6 +22,7 @@ import {
   _AnyIdToolMessage,
   FakeConfigurableModel,
   FakeToolCallingChatModel,
+  getReadableMermaid,
   MemorySaverAssertImmutable,
 } from "./utils.js";
 import { ToolNode, createReactAgent } from "../prebuilt/index.js";
@@ -37,6 +38,7 @@ import {
   interrupt,
   MemorySaver,
   messagesStateReducer,
+  REMOVE_ALL_MESSAGES,
   Send,
   StateGraph,
 } from "../index.js";
@@ -44,6 +46,7 @@ import {
   MessagesAnnotation,
   MessagesZodState,
 } from "../graph/messages_annotation.js";
+import { gatherIterator } from "../utils.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -1049,6 +1052,471 @@ describe("createReactAgent with ToolNode", () => {
   });
 });
 
+describe("createReactAgent with hooks", () => {
+  it("preModelHook", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [new AIMessage({ id: "0", content: "Hello!" })],
+    });
+    const llmSpy = vi.spyOn(llm, "_generate");
+
+    // Test `llm_input_messages`
+    let agent = createReactAgent({
+      llm,
+      tools: [],
+      preModelHook: () => ({
+        llmInputMessages: [
+          new HumanMessage({ id: "human", content: "pre-hook" }),
+        ],
+      }),
+    });
+
+    expect("pre_model_hook" in agent.nodes).toBe(true);
+    expect(await agent.invoke({ messages: [new HumanMessage("hi?")] })).toEqual(
+      {
+        messages: [
+          new _AnyIdHumanMessage("hi?"),
+          new AIMessage({ id: "0", content: "Hello!" }),
+        ],
+      }
+    );
+
+    expect(llmSpy).toHaveBeenCalledWith(
+      [new HumanMessage({ id: "human", content: "pre-hook" })],
+      expect.anything(),
+      undefined
+    );
+
+    // Test `messages`
+    agent = createReactAgent({
+      llm,
+      tools: [],
+      preModelHook: () => ({
+        messages: [
+          new RemoveMessage({ id: REMOVE_ALL_MESSAGES }),
+          new HumanMessage("Hello!"),
+        ],
+      }),
+    });
+
+    expect("pre_model_hook" in agent.nodes).toBe(true);
+    expect(await agent.invoke({ messages: [new HumanMessage("hi?")] })).toEqual(
+      {
+        messages: [
+          new _AnyIdHumanMessage("Hello!"),
+          new AIMessage({ id: "0", content: "Hello!" }),
+        ],
+      }
+    );
+  });
+
+  it("postModelHook", async () => {
+    const FlagAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      flag: Annotation<boolean>,
+    });
+
+    const llm = new FakeToolCallingChatModel({
+      responses: [new AIMessage({ id: "1", content: "hi?" })],
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools: [],
+      postModelHook: () => ({ flag: true }),
+      stateSchema: FlagAnnotation,
+    });
+
+    expect("post_model_hook" in agent.nodes).toBe(true);
+    expect(
+      await agent.invoke({
+        messages: [new HumanMessage("hi?")],
+        flag: false,
+      })
+    ).toMatchObject({ flag: true });
+
+    expect(
+      await gatherIterator(
+        agent.stream({
+          messages: [new HumanMessage("hi?")],
+          flag: false,
+        })
+      )
+    ).toMatchObject([
+      {
+        agent: {
+          messages: [new AIMessage({ id: "1", content: "hi?" })],
+        },
+      },
+      { post_model_hook: { flag: true } },
+    ]);
+  });
+
+  it("postModelHook + structured response", async () => {
+    const weatherResponseSchema = z.object({
+      temperature: z.number().describe("The temperature in fahrenheit"),
+    });
+
+    const FlagAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      flag: Annotation<boolean>,
+      structuredResponse: Annotation<z.infer<typeof weatherResponseSchema>>,
+    });
+
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          id: "1",
+          content: "What's the weather?",
+          tool_calls: [
+            {
+              name: "get_weather",
+              args: {},
+              id: "1",
+              type: "tool_call",
+            },
+          ],
+        }),
+        new AIMessage({ id: "3", content: "The weather is nice" }),
+      ],
+      structuredResponse: { temperature: 75 },
+    });
+
+    const getWeather = tool(async () => "The weather is sunny and 75°F.", {
+      name: "get_weather",
+      description: "Get the weather",
+      schema: z.object({}),
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools: [getWeather],
+      responseFormat: weatherResponseSchema,
+      postModelHook: () => ({ flag: true }),
+      stateSchema: FlagAnnotation,
+    });
+
+    expect("post_model_hook" in agent.nodes).toBe(true);
+    expect("generate_structured_response" in agent.nodes).toBe(true);
+
+    const response = await agent.invoke({
+      messages: [new HumanMessage({ id: "0", content: "What's the weather?" })],
+      flag: false,
+    });
+
+    expect(response).toMatchObject({
+      flag: true,
+      structuredResponse: { temperature: 75 },
+    });
+
+    expect(
+      await gatherIterator(
+        agent.stream({
+          messages: [
+            new HumanMessage({ id: "0", content: "What's the weather?" }),
+          ],
+          flag: false,
+        })
+      )
+    ).toEqual([
+      {
+        agent: {
+          messages: [
+            new AIMessage({
+              content: "What's the weather?",
+              id: "1",
+              tool_calls: [
+                {
+                  name: "get_weather",
+                  args: {},
+                  id: "1",
+                  type: "tool_call",
+                },
+              ],
+            }),
+          ],
+        },
+      },
+      { post_model_hook: { flag: true } },
+      {
+        tools: {
+          messages: [
+            new _AnyIdToolMessage({
+              content: "The weather is sunny and 75°F.",
+              name: "get_weather",
+              tool_call_id: "1",
+            }),
+          ],
+        },
+      },
+      {
+        agent: {
+          messages: [
+            new AIMessage({
+              content: "The weather is nice",
+              id: "3",
+            }),
+          ],
+        },
+      },
+      { post_model_hook: { flag: true } },
+      {
+        generate_structured_response: {
+          structuredResponse: { temperature: 75 },
+        },
+      },
+    ]);
+  });
+
+  it.each([
+    [
+      {
+        name: "no tools",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [],
+        }),
+        structure: [
+          "__start__ --> agent",
+          "agent -.-> __end__",
+          "agent -.-> tools",
+          "tools --> agent",
+        ],
+      },
+    ],
+    [
+      {
+        name: "tools",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+        }),
+        structure: [
+          "__start__ --> agent",
+          "agent -.-> __end__",
+          "agent -.-> tools",
+          "tools --> agent",
+        ],
+      },
+    ],
+
+    [
+      {
+        name: "pre + tools",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+          preModelHook: () => ({ messages: [] }),
+        }),
+        structure: [
+          "__start__ --> pre_model_hook",
+          "agent -.-> __end__",
+          "agent -.-> tools",
+          "pre_model_hook --> agent",
+          "tools --> pre_model_hook",
+        ],
+      },
+    ],
+
+    [
+      {
+        name: "tools + post",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+          postModelHook: () => ({ flag: true }),
+          stateSchema: Annotation.Root({
+            ...MessagesAnnotation.spec,
+            flag: Annotation<boolean>,
+          }),
+        }),
+        structure: [
+          "__start__ --> agent",
+          "agent --> post_model_hook",
+          "tools --> agent",
+          "post_model_hook -.-> tools",
+          "post_model_hook -.-> agent",
+          "post_model_hook -.-> __end__",
+        ],
+      },
+    ],
+
+    [
+      {
+        name: "tools + response format",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+          responseFormat: z.object({
+            temperature: z.number().describe("The temperature in fahrenheit"),
+          }),
+        }),
+        structure: [
+          "__start__ --> agent",
+          "generate_structured_response --> __end__",
+          "tools --> agent",
+          "agent -.-> tools",
+          "agent -.-> generate_structured_response",
+        ],
+      },
+    ],
+
+    [
+      {
+        name: "pre + tools + response format",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+          preModelHook: () => ({ messages: [] }),
+          responseFormat: z.object({
+            temperature: z.number().describe("The temperature in fahrenheit"),
+          }),
+        }),
+        structure: [
+          "__start__ --> pre_model_hook",
+          "pre_model_hook --> agent",
+          "agent -.-> tools",
+          "agent -.-> generate_structured_response",
+          "generate_structured_response --> __end__",
+          "tools --> pre_model_hook",
+        ],
+      },
+    ],
+
+    [
+      {
+        name: "tools + post + response format",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+          responseFormat: z.object({
+            temperature: z.number().describe("The temperature in fahrenheit"),
+          }),
+          postModelHook: () => ({ flag: true }),
+          stateSchema: Annotation.Root({
+            ...MessagesAnnotation.spec,
+            flag: Annotation<boolean>,
+          }),
+        }),
+        structure: [
+          "__start__ --> agent",
+          "agent --> post_model_hook",
+          "generate_structured_response --> __end__",
+          "tools --> agent",
+          "post_model_hook -.-> tools",
+          "post_model_hook -.-> agent",
+          "post_model_hook -.-> generate_structured_response",
+        ],
+      },
+    ],
+
+    [
+      {
+        name: "pre + tools + post",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+          preModelHook: () => ({ messages: [] }),
+          postModelHook: () => ({ flag: true }),
+          stateSchema: Annotation.Root({
+            ...MessagesAnnotation.spec,
+            flag: Annotation<boolean>,
+          }),
+        }),
+        structure: [
+          "__start__ --> pre_model_hook",
+          "pre_model_hook --> agent",
+          "agent --> post_model_hook",
+          "tools --> pre_model_hook",
+          "post_model_hook -.-> tools",
+          "post_model_hook -.-> pre_model_hook",
+          "post_model_hook -.-> __end__",
+        ],
+      },
+    ],
+
+    [
+      {
+        name: "pre + tools + post + response format",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+          responseFormat: z.object({
+            temperature: z.number().describe("The temperature in fahrenheit"),
+          }),
+          preModelHook: () => ({ messages: [] }),
+          postModelHook: () => ({ flag: true }),
+          stateSchema: Annotation.Root({
+            ...MessagesAnnotation.spec,
+            flag: Annotation<boolean>,
+          }),
+        }),
+        structure: [
+          "__start__ --> pre_model_hook",
+          "pre_model_hook --> agent",
+          "agent --> post_model_hook",
+          "generate_structured_response --> __end__",
+          "tools --> pre_model_hook",
+          "post_model_hook -.-> tools",
+          "post_model_hook -.-> pre_model_hook",
+          "post_model_hook -.-> generate_structured_response",
+        ],
+      },
+    ],
+  ])("mermaid $name", async ({ graph, structure }) => {
+    expect(getReadableMermaid(await graph.getGraphAsync()).sort()).toEqual(
+      structure.sort()
+    );
+  });
+});
+
 describe("ToolNode", () => {
   it("Should support graceful error handling", async () => {
     const toolNode = new ToolNode([new SearchAPI()]);
@@ -1213,34 +1681,27 @@ describe("MessagesAnnotation", () => {
 describe("MessagesZodState", () => {
   it("should assign ids properly and avoid duping added messages", async () => {
     const childGraph = new StateGraph(MessagesZodState)
-      .addNode("duper", ({ messages }: z.infer<typeof MessagesZodState>) => ({
-        messages,
-      }))
-      .addNode("duper2", ({ messages }: z.infer<typeof MessagesZodState>) => ({
-        messages,
-      }))
+      .addNode("duper", ({ messages }) => ({ messages }))
+      .addNode("duper2", () => ({ messages: [new AIMessage("duper2")] }))
       .addEdge("__start__", "duper")
       .addEdge("duper", "duper2")
       .compile({ interruptBefore: ["duper2"] });
+
     const graph = new StateGraph(MessagesZodState)
       .addNode("duper", childGraph)
-      .addNode("duper2", ({ messages }: z.infer<typeof MessagesZodState>) => ({
-        messages,
-      }))
+      .addNode("duper2", ({ messages }) => ({ messages }))
       .addEdge("__start__", "duper")
       .addEdge("duper", "duper2")
       .compile({ checkpointer: new MemorySaverAssertImmutable() });
+
     const res = await graph.invoke(
       { messages: [new HumanMessage("should be only one")] },
       { configurable: { thread_id: "1" } }
     );
     expect(res.messages.length).toEqual(1);
 
-    // FIXME (!): `null` isn't acceptable input as initial state for a graph run. Handling the special case of `null` doesn't propagate a message back to invoke.
-    // const res2 = await graph.invoke(null, {
-    //   configurable: { thread_id: "1" },
-    // });
-    // expect(res2.messages.length).toEqual(1);
+    const res2 = await graph.invoke(null, { configurable: { thread_id: "1" } });
+    expect(res2.messages.length).toEqual(2);
   });
 
   it("should handle message reducers correctly", async () => {

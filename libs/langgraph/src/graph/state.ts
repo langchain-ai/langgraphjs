@@ -983,6 +983,8 @@ export class CompiledStateGraph<
   protected async _validateInput(
     input: UpdateType<ToStateDefinition<I>>
   ): Promise<UpdateType<ToStateDefinition<I>>> {
+    if (input == null) return input;
+
     const schema = (() => {
       const input = this.builder._inputRuntimeDefinition;
       const schema = this.builder._schemaRuntimeDefinition;
@@ -1003,6 +1005,7 @@ export class CompiledStateGraph<
         parsedInput.update = schema.parse(input.update);
       return parsedInput;
     }
+
     if (schema != null) return schema.parse(input);
     return input;
   }
