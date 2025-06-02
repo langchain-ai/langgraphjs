@@ -406,6 +406,7 @@ markdown_extensions:
   - github-callouts
 extra_css:
   - css/mkdocstrings.css
+  - css/agent_graph_widget.css
 hooks:
   - _scripts/notebook_hooks.py
 extra:
