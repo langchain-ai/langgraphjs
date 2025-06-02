@@ -3,6 +3,7 @@ import os
 import re
 from typing import Any, Dict
 
+from bs4 import BeautifulSoup
 from mkdocs.config.defaults import MkDocsConfig
 from mkdocs.structure.files import Files, File
 from mkdocs.structure.pages import Page
