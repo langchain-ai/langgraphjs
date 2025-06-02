@@ -125,6 +125,13 @@ function _getPromptRunnable(prompt?: Prompt): RunnableInterface {
   return promptRunnable;
 }
 
+type ServerTool = Record<string, unknown>;
+type ClientTool = StructuredToolInterface | DynamicTool | RunnableToolLike;
+
+function isClientTool(tool: ClientTool | ServerTool): tool is ClientTool {
+  return Runnable.isRunnable(tool);
+}
+
 function _getPrompt(
   prompt?: Prompt,
   stateModifier?: CreateReactAgentParams["stateModifier"],
@@ -175,7 +182,7 @@ function _isConfigurableModel(model: any): model is ConfigurableModelInterface {
 
 export async function _shouldBindTools(
   llm: LanguageModelLike,
-  tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[]
+  tools: (ClientTool | ServerTool)[]
 ): Promise<boolean> {
   // If model is a RunnableSequence, find a RunnableBinding or BaseChatModel in its steps
   let model = llm;
@@ -220,7 +227,10 @@ export async function _shouldBindTools(
     );
   }
 
-  const toolNames = new Set(tools.map((tool) => tool.name));
+  const toolNames = new Set<string>(
+    tools.flatMap((tool) => (isClientTool(tool) ? tool.name : []))
+  );
+
   const boundToolNames = new Set<string>();
 
   for (const boundTool of boundTools) {
@@ -230,7 +240,7 @@ export async function _shouldBindTools(
     if ("type" in boundTool && boundTool.type === "function") {
       boundToolName = boundTool.function.name;
     }
-    // Anthropic- or Google-style tool
+    // Anthropic or Google-style tool
     else if ("name" in boundTool) {
       boundToolName = boundTool.name;
     }
@@ -357,14 +367,15 @@ export type CreateReactAgentParams<
 > = {
   /** The chat model that can utilize OpenAI-style tool calling. */
   llm: LanguageModelLike;
+
   /** A list of tools or a ToolNode. */
-  tools:
-    | ToolNode
-    | (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
+  tools: ToolNode | (ServerTool | ClientTool)[];
+
   /**
    * @deprecated Use prompt instead.
    */
   messageModifier?: MessageModifier;
+
   /**
    * @deprecated Use prompt instead.
    */
@@ -531,14 +542,15 @@ export function createReactAgent<
     includeAgentName,
   } = params;
 
-  let toolClasses: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
+  let toolClasses: (ClientTool | ServerTool)[];
+
   let toolNode: ToolNode;
   if (!Array.isArray(tools)) {
     toolClasses = tools.tools;
     toolNode = tools;
   } else {
     toolClasses = tools;
-    toolNode = new ToolNode(tools);
+    toolNode = new ToolNode(toolClasses.filter(isClientTool));
   }
 
   let cachedModelRunnable: Runnable | null = null;
@@ -577,6 +589,7 @@ export function createReactAgent<
   // our graph needs to check if these were called
   const shouldReturnDirect = new Set(
     toolClasses
+      .filter(isClientTool)
       .filter((tool) => "returnDirect" in tool && tool.returnDirect)
       .map((tool) => tool.name)
   );

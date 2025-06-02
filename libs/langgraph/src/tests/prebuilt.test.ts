@@ -2008,6 +2008,33 @@ describe("_shouldBindTools", () => {
       ).rejects.toThrow();
     }
   );
+
+  it("should handle bindTool with server tools", async () => {
+    const tool1 = tool((input) => `Tool 1: ${input.someVal}`, {
+      name: "tool1",
+      description: "Tool 1 docstring.",
+      schema: z.object({ someVal: z.number().describe("Input value") }),
+    });
+
+    const server = { type: "web_search_preview" };
+
+    const model = new FakeToolCallingChatModel({
+      responses: [new AIMessage("test")],
+    });
+
+    expect(await _shouldBindTools(model, [tool1, server])).toBe(true);
+    expect(
+      await _shouldBindTools(model.bindTools([tool1, server]), [tool1, server])
+    ).toBe(false);
+
+    await expect(
+      _shouldBindTools(model.bindTools([tool1]), [tool1, server])
+    ).rejects.toThrow();
+
+    await expect(
+      _shouldBindTools(model.bindTools([server]), [tool1, server])
+    ).rejects.toThrow();
+  });
 });
 
 describe("_getModel", () => {
