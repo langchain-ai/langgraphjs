@@ -8,3 +8,4 @@ mkdocs-rss-plugin
 mkdocs-typedoc
 markdown-include
 markdown-callouts
+beautifulsoup4
