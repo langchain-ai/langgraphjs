@@ -1,5 +1,6 @@
 import logging
 import os
+import posixpath
 import re
 from typing import Any, Dict
 
@@ -12,6 +13,26 @@ logger = logging.getLogger(__name__)
 logging.basicConfig()
 logger.setLevel(logging.INFO)
 DISABLED = os.getenv("DISABLE_NOTEBOOK_CONVERT") in ("1", "true", "True")
+
+REDIRECT_MAP = {
+    # cloud redirects
+    "cloud/index.md": "index.md",
+    "cloud/how-tos/index.md": "concepts/langgraph_platform",
+    "cloud/concepts/api.md": "concepts/langgraph_server.md",
+    "cloud/concepts/cloud.md": "concepts/langgraph_cloud.md",
+    "cloud/faq/studio.md": "concepts/langgraph_studio.md#studio-faqs",
+    "cloud/how-tos/human_in_the_loop_edit_state.md": "cloud/how-tos/add-human-in-the-loop.md",
+    "cloud/how-tos/human_in_the_loop_user_input.md": "cloud/how-tos/add-human-in-the-loop.md",
+    # cloud streaming redirects
+    "cloud/how-tos/stream_values.md": "cloud/how-tos/streaming.md#stream-graph-state",
+    "cloud/how-tos/stream_updates.md": "cloud/how-tos/streaming.md#stream-graph-state",
+    "cloud/how-tos/stream_messages.md": "cloud/how-tos/streaming.md#messages",
+    "cloud/how-tos/stream_events.md": "cloud/how-tos/streaming.md#stream-events",
+    "cloud/how-tos/stream_debug.md": "cloud/how-tos/streaming.md#debug",
+    "cloud/how-tos/stream_multiple.md": "cloud/how-tos/streaming.md#stream-multiple-modes",
+    # assistant redirects
+    "cloud/how-tos/assistant_versioning.md": "cloud/how-tos/configuration_cloud.md",
+}
 
 
 class NotebookFile(File):
@@ -135,3 +156,57 @@ def on_page_markdown(markdown: str, page: Page, **kwargs: Dict[str, Any]):
         **kwargs,
     )
 
+
+# redirects
+
+HTML_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Redirecting...</title>
+    <link rel="canonical" href="{url}">
+    <meta name="robots" content="noindex">
+    <script>var anchor=window.location.hash.substr(1);location.href="{url}"+(anchor?"#"+anchor:"")</script>
+    <meta http-equiv="refresh" content="0; url={url}">
+</head>
+<body>
+Redirecting...
+</body>
+</html>
+"""
+
+
+def _write_html(site_dir, old_path, new_path):
+    """Write an HTML file in the site_dir with a meta redirect to the new page"""
+    # Determine all relevant paths
+    old_path_abs = os.path.join(site_dir, old_path)
+    old_dir_abs = os.path.dirname(old_path_abs)
+
+    # Create parent directories if they don't exist
+    if not os.path.exists(old_dir_abs):
+        os.makedirs(old_dir_abs)
+
+    # Write the HTML redirect file in place of the old file
+    content = HTML_TEMPLATE.format(url=new_path)
+    with open(old_path_abs, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+# Create HTML files for redirects after site dir has been built
+def on_post_build(config):
+    use_directory_urls = config.get("use_directory_urls")
+    for page_old, page_new in REDIRECT_MAP.items():
+        page_old = page_old.replace(".ipynb", ".md")
+        page_new = page_new.replace(".ipynb", ".md")
+        page_new_before_hash, hash, suffix = page_new.partition("#")
+        old_html_path = File(page_old, "", "", use_directory_urls).dest_path.replace(
+            os.sep, "/"
+        )
+        new_html_path = File(page_new_before_hash, "", "", True).url
+        new_html_path = (
+            posixpath.relpath(new_html_path, start=posixpath.dirname(old_html_path))
+            + hash
+            + suffix
+        )
+        _write_html(config["site_dir"], old_html_path, new_html_path)
