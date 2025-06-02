@@ -23,6 +23,7 @@ These how-to guides show how to achieve that controllability.
 - [How to create map-reduce branches for parallel execution](map-reduce.ipynb)
 - [How to combine control flow and state updates with Command](command.ipynb)
 - [How to create and control loops with recursion limits](recursion-limit.ipynb)
+- [How to defer node execution](defer-node-execution.ipynb)
 
 ### Persistence
 
@@ -127,6 +128,7 @@ See the below guides for how-to implement multi-agent workflows with the [Functi
 
 - [How to add runtime configuration to your graph](configuration.ipynb)
 - [How to add node retries](node-retry-policies.ipynb)
+- [How to cache expensive nodes](node-caching.ipynb)
 - [How to let an agent return tool results directly](dynamically-returning-directly.ipynb)
 - [How to have an agent respond in structured format](respond-in-format.ipynb)
 - [How to manage agent steps](managing-agent-steps.ipynb)

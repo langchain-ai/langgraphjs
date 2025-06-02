@@ -6,12 +6,15 @@ As LangGraph.js continues to evolve and improve, breaking changes are sometimes 
 
 ### v0.3.0 (Latest)
 
-- (Breaking) Interrupts are now properly propagated in in `"values"` stream mode and in `.invoke()`.
-- (Breaking) Return type of `.stream()` is strictly typed.
-- Added support for node / task caching.
-- Added support for deferred nodes.
+- (Breaking) Interrupts are now properly propagated in `"values"` stream mode and in `.invoke()`.
+- (Breaking) Return type of `.stream()` is now strictly typed.
+- Added support for [node / task caching](/langgraphjs/how-tos/node-cache/).
+- Added support for [deferred nodes](/langgraphjs/how-tos/defer-node-execution/).
 - Added support for `preModelHook` and `postModelHook` in `createReactAgent`.
-- Improved Zod schema support.
+- Added support for `addSequence` and shorthand object syntax for `addNode`.
+- Added `typedNode()` utility to nodes with proper parameter and return types.
+- Added `pushMessage()` method to allow manually pushing messages to `"messages"` stream mode.
+- Added `isInterrupted()` method to check if the state contains an interrupt.
 - Numerous bugfixes.
 
 ### v0.2.0
@@ -38,7 +41,7 @@ When upgrading LangGraph.js, please refer to the specific version sections below
 
 ### Upgrading to v0.3.0
 
-- If a node is interrupted, it will now be present in the `"values"` stream mode and in `.invoke()` under the `__interrupts` key, which you might need to handle appropriately.
+- If a node is interrupted, it will now be present in the `"values"` stream mode and in `.invoke()` under the `__interrupts` key. You can use the `isInterrupted()` method to check if the state contains an interrupt and handle it appropriately.
 - The return type of `.stream()` is no longer `IterableReadableStream<any>`, which means you may need to fix any type errors.
 
 ### Upgrading to v0.2.0
