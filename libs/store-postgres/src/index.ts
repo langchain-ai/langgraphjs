@@ -243,11 +243,11 @@ export class PostgresStore extends BaseStore {
    * Enhanced search with advanced filtering and similarity scoring.
    * @private Internal method used by search.
    */
-  private async searchAdvancedInternal(
+  private async textSearch(
     namespacePrefix: string[],
     options: SearchOptions = {}
   ): Promise<SearchItem[]> {
-    return this.searchOps.searchAdvanced(namespacePrefix, options);
+    return this.searchOps.textSearch(namespacePrefix, options);
   }
 
   /**
@@ -417,7 +417,7 @@ export class PostgresStore extends BaseStore {
     
     // No query provided - just do metadata filtering
     if (!query) {
-      return this.searchAdvancedInternal(namespacePrefix, restOptions);
+      return this.textSearch(namespacePrefix, restOptions);
     }
     
     const hasVectorSearch = Boolean(this.core.indexConfig);
@@ -455,7 +455,7 @@ export class PostgresStore extends BaseStore {
         });
         
       case "text":
-        return this.searchAdvancedInternal(namespacePrefix, { query, ...restOptions });
+        return this.textSearch(namespacePrefix, { query, ...restOptions });
         
       default:
         throw new Error(`Unknown search mode: ${mode}`);
