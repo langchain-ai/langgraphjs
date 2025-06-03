@@ -58,14 +58,15 @@ import {
 import { MessagesAnnotation } from "@langchain/langgraph";
 
 const myTool = tool(
-  async (input: {
-    // This will be populated by an LLM
-    toolArg: string,
-  },
-  // access static data that is passed at agent invocation
-  // highlight-next-line
-  config: LangGraphRunnableConfig
-) => {
+  async (
+    input: {
+      // This will be populated by an LLM
+      toolArg: string;
+    },
+    // access static data that is passed at agent invocation
+    // highlight-next-line
+    config: LangGraphRunnableConfig
+  ) => {
     // Fetch the current agent state
     // highlight-next-line
     const state = getCurrentTaskInput() as typeof MessagesAnnotation.State;
@@ -134,9 +135,9 @@ const agent = createReactAgent({
   tools,
 });
 
-const response = await agent.invoke(
-  { messages: [ { role: "user", content: "what's 3 + 5 and 4 * 7?" } ] }
-);
+const response = await agent.invoke({
+  messages: [{ role: "user", content: "what's 3 + 5 and 4 * 7?" }],
+});
 ```
 
 ## Return tool results directly
@@ -161,7 +162,7 @@ const add = tool(
     }),
     description: "Add two numbers.",
     // highlight-next-line
-    returnDirect: true
+    returnDirect: true,
   }
 );
 
@@ -171,9 +172,9 @@ const agent = createReactAgent({
   tools: [add],
 });
 
-const response = await agent.invoke(
-  { messages: [ { role: "user", content: "what's 3 + 5?" } ] }
-);
+const response = await agent.invoke({
+  messages: [{ role: "user", content: "what's 3 + 5?" }],
+});
 ```
 
 ## Force tool use
@@ -197,7 +198,7 @@ const greet = tool(
     }),
     description: "Greet user.",
     // highlight-next-line
-    returnDirect: true
+    returnDirect: true,
   }
 );
 
@@ -211,7 +212,7 @@ const agent = createReactAgent({
 });
 
 const response = await agent.invoke({
-  messages: "Hi, I am Bob"
+  messages: "Hi, I am Bob",
 });
 ```
 
@@ -311,7 +312,25 @@ By default, the agent will catch all exceptions raised during tool calls and wil
 
 ## Prebuilt tools
 
-LangChain supports a wide range of prebuilt tool integrations for interacting with APIs, databases, file systems, web data, and more. These tools extend the functionality of agents and enable rapid development.
+You can use prebuilt tools from model providers by passing a dictionary with tool specs to the `tools` parameter of `createReactAgent`. For example, to use the `web_search_preview` tool from OpenAI:
+
+```ts
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { initChatModel } from "langchain/chat_models/universal";
+
+const llm = await initChatModel("openai:gpt-4o-mini");
+
+const agent = createReactAgent({
+  llm,
+  tools: [{ type: "web_search_preview" }],
+});
+
+const response = await agent.invoke({
+  messages: ["What was a positive news story from today?"],
+});
+```
+
+Additionally, LangChain supports a wide range of prebuilt tool integrations for interacting with APIs, databases, file systems, web data, and more. These tools extend the functionality of agents and enable rapid development.
 
 You can browse the full list of available integrations in the [LangChain integrations directory](https://js.langchain.com/docs/integrations/tools/).
 
@@ -324,4 +343,3 @@ Some commonly used tool categories include:
 - **APIs**: Discord, Gmail, and others
 
 These integrations can be configured and added to your agents using the same `tools` parameter shown in the examples above.
-

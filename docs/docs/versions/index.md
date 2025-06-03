@@ -4,7 +4,19 @@ As LangGraph.js continues to evolve and improve, breaking changes are sometimes 
 
 ## Version History
 
-### v0.2.0 (Latest)
+### v0.3.0 (Latest)
+
+- (Breaking) Interrupts are now properly propagated in `"values"` stream mode and in `.invoke()`.
+- (Breaking) Return type of `.stream()` is now strictly typed.
+- Added support for [node / task caching](/langgraphjs/how-tos/node-caching/).
+- Added support for [deferred nodes](/langgraphjs/how-tos/defer-node-execution/).
+- Added support for `preModelHook` and `postModelHook` in `createReactAgent`.
+- Added support for `addSequence` and shorthand object syntax for `addNode`.
+- Added `pushMessage()` method to allow manually pushing messages to `"messages"` stream mode.
+- Added `isInterrupted()` method to check if the state contains an interrupt.
+- Numerous bugfixes.
+
+### v0.2.0
 
 - (Breaking) [`@langchain/core`](https://www.npmjs.com/package/@langchain/core) is now a peer dependency and requires explicit installation.
 - Added support for [dynamic breakpoints](/langgraphjs/how-tos/dynamic_breakpoints/).
@@ -25,6 +37,11 @@ As LangGraph.js continues to evolve and improve, breaking changes are sometimes 
 ## Upgrading
 
 When upgrading LangGraph.js, please refer to the specific version sections below for detailed instructions on how to adapt your code to the latest changes.
+
+### Upgrading to v0.3.0
+
+- If a node is interrupted, it will now be present in the `"values"` stream mode and in `.invoke()` under the `__interrupts` key. You can use the `isInterrupted()` method to check if the state contains an interrupt and handle it appropriately.
+- The return type of `.stream()` is no longer `IterableReadableStream<any>`, which means you may need to fix any type errors.
 
 ### Upgrading to v0.2.0
 

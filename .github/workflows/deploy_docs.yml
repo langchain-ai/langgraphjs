@@ -29,7 +29,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: 3.12
 
@@ -69,7 +69,7 @@ jobs:
 
       - name: Configure GitHub Pages
         if: github.ref == 'refs/heads/main'
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v5
 
       - name: Upload Pages Artifact
         if: github.ref == 'refs/heads/main'
