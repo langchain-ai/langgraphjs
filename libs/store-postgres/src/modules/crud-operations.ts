@@ -135,6 +135,16 @@ export class CrudOperations {
         `,
           [namespacePath, key, JSON.stringify(value), expiresAt]
         );
+
+        if (this.core.indexConfig) {
+          await this.vectorOps.indexItemVectors(
+            client,
+            namespacePath,
+            key,
+            value
+          );
+        }
+        
       }
     });
   }
