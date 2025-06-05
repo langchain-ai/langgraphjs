@@ -1046,10 +1046,13 @@ export function runFuncTests(
 
           let counter = 0;
 
-          const double = task({ name: "double", cache: true }, (x: number) => {
-            counter += 1;
-            return 2 * x;
-          });
+          const double = task(
+            { name: "double", cachePolicy: { ttl: 1000 } },
+            (x: number) => {
+              counter += 1;
+              return 2 * x;
+            }
+          );
 
           const graph = entrypoint(
             {
