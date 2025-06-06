@@ -14,8 +14,13 @@ it("Annotation.Root", async () => {
     foo: Annotation<string>,
   });
 
+  const config = Annotation.Root({
+    random: Annotation<number>,
+  });
+
   const node = typedNode(StateAnnotation, {
     nodes: ["nodeA", "nodeB", "nodeC"],
+    config,
   });
 
   const nodeA = node(
@@ -38,7 +43,7 @@ it("Annotation.Root", async () => {
   );
   const nodeC = node(async (state) => ({ foo: `${state.foo}|c` }));
 
-  const graph = new StateGraph(StateAnnotation)
+  const graph = new StateGraph(StateAnnotation, config)
     .addNode({ nodeA, nodeB, nodeC })
     .addEdge(START, "nodeA")
     .compile();
@@ -54,8 +59,11 @@ it("Zod", async () => {
     foo: z.string(),
   });
 
+  const config = z.object({ random: z.number() });
+
   const node = typedNode(StateAnnotation, {
     nodes: ["nodeA", "nodeB", "nodeC"],
+    config,
   });
 
   const nodeA = node(
@@ -77,8 +85,7 @@ it("Zod", async () => {
   });
 
   const nodeC = node((state) => ({ foo: `${state.foo}|c` }));
-
-  const graph = new StateGraph(StateAnnotation)
+  const graph = new StateGraph(StateAnnotation, config)
     .addNode({ nodeA, nodeB, nodeC })
     .addEdge(START, "nodeA")
     .compile();

@@ -1151,39 +1151,58 @@ function _getControlBranch() {
 
 type TypedNodeAction<
   SD extends StateDefinition,
-  Nodes extends string
+  Nodes extends string,
+  C extends StateDefinition = StateDefinition
 > = RunnableLike<
   StateType<SD>,
   UpdateType<SD> | Command<unknown, UpdateType<SD>, Nodes>,
-  LangGraphRunnableConfig
+  LangGraphRunnableConfig<StateType<C>>
 >;
 
-export function typedNode<SD extends SDZod, Nodes extends string>(
+export function typedNode<
+  SD extends SDZod,
+  Nodes extends string,
+  C extends SDZod = StateDefinition
+>(
   _state: SD extends StateDefinition ? AnnotationRoot<SD> : never,
-  _options?: { nodes?: Nodes[] }
+  _options?: {
+    nodes?: Nodes[];
+    config?: C extends StateDefinition ? AnnotationRoot<C> : never;
+  }
 ): (
-  func: TypedNodeAction<ToStateDefinition<SD>, Nodes>,
+  func: TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>,
   options?: StateGraphAddNodeOptions<Nodes>
-) => TypedNodeAction<ToStateDefinition<SD>, Nodes>;
+) => TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>;
 
-export function typedNode<SD extends SDZod, Nodes extends string>(
+export function typedNode<
+  SD extends SDZod,
+  Nodes extends string,
+  C extends SDZod = StateDefinition
+>(
   _state: SD extends AnyZodObject ? SD : never,
-  _options?: { nodes?: Nodes[] }
+  _options?: {
+    nodes?: Nodes[];
+    config?: C extends AnyZodObject ? C : never;
+  }
 ): (
-  func: TypedNodeAction<ToStateDefinition<SD>, Nodes>,
+  func: TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>,
   options?: StateGraphAddNodeOptions<Nodes>
-) => TypedNodeAction<ToStateDefinition<SD>, Nodes>;
+) => TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>;
 
-export function typedNode<SD extends SDZod, Nodes extends string>(
+export function typedNode<
+  SD extends SDZod,
+  Nodes extends string,
+  C extends SDZod = StateDefinition
+>(
   _state: SD extends AnyZodObject
     ? SD
     : SD extends StateDefinition
     ? AnnotationRoot<SD>
     : never,
-  _options?: { nodes?: Nodes[] }
+  _options?: { nodes?: Nodes[]; config?: AnnotationRoot<ToStateDefinition<C>> }
 ) {
   return (
-    func: TypedNodeAction<ToStateDefinition<SD>, Nodes>,
+    func: TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>,
     options?: StateGraphAddNodeOptions<Nodes>
   ) => {
     Object.assign(func, { [Symbol.for("langgraph.state.node")]: options });
