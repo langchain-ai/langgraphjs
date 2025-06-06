@@ -12,10 +12,51 @@ if (!TEST_POSTGRES_URL) {
 
 let testStores: PostgresStore[] = [];
 
+// Helper for mock embedding
+const createMockEmbedding = (dims: number) => {
+  // Create fixed vectors that will ensure different search results
+  const TITLE_VECTOR = new Array(dims).fill(0);
+  TITLE_VECTOR[0] = 1.0; // Only first dimension is 1.0
+
+  const CONTENT_VECTOR = new Array(dims).fill(0);
+  CONTENT_VECTOR[dims - 1] = 1.0; // Only last dimension is 1.0
+
+  // Empty vector will not match anything
+  const EMPTY_VECTOR = new Array(dims).fill(0);
+
+  const mockFn = async (texts: string[]): Promise<number[][]> => {
+    mockFn.calls.push(texts);
+
+    return texts.map((text) => {
+      // Exact matching for testing purposes
+      if (text === "Combined Options Test") {
+        return [...TITLE_VECTOR]; // Clone to avoid mutation
+      } else if (text === "Testing both TTL and indexing options") {
+        return [...CONTENT_VECTOR]; // Clone to avoid mutation
+      } else if (text === "combined options") {
+        return [...TITLE_VECTOR]; // Clone to avoid mutation
+      } else if (text === "testing both") {
+        return [...CONTENT_VECTOR]; // Clone to avoid mutation
+      } else {
+        return [...EMPTY_VECTOR]; // Clone to avoid mutation
+      }
+    });
+  };
+
+  mockFn.calls = [] as string[][];
+  mockFn.toHaveBeenCalled = () => mockFn.calls.length > 0;
+  return mockFn;
+};
+
 describe("PostgresStore CRUD Operations (integration)", () => {
   let store: PostgresStore;
+  let storeWithVectors: PostgresStore;
   let dbName: string;
   let dbConnectionString: string;
+  let mockEmbedding: ((texts: string[]) => Promise<number[][]>) & {
+    calls: string[][];
+    toHaveBeenCalled: () => boolean;
+  };
 
   beforeEach(async () => {
     dbName = `crud_test_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
@@ -28,9 +69,25 @@ describe("PostgresStore CRUD Operations (integration)", () => {
     dbConnectionString = `${TEST_POSTGRES_URL.split("/")
       .slice(0, -1)
       .join("/")}/${dbName}`;
+
+    // Regular store without vector indexing
     store = PostgresStore.fromConnectionString(dbConnectionString);
     testStores.push(store);
     await store.setup();
+
+    // Store with vector indexing
+    mockEmbedding = createMockEmbedding(128);
+    storeWithVectors = new PostgresStore({
+      connectionOptions: dbConnectionString,
+      schema: "test_vectors",
+      index: {
+        dims: 128,
+        embed: mockEmbedding,
+        fields: ["content", "title"],
+      },
+    });
+    testStores.push(storeWithVectors);
+    await storeWithVectors.setup();
   });
 
   afterAll(async () => {
@@ -201,5 +258,137 @@ describe("PostgresStore CRUD Operations (integration)", () => {
     await expect(store.put(namespace, key, value)).rejects.toThrow(
       'Root label for namespace cannot be "langgraph"'
     );
+  });
+
+  it("should support TTL options", async () => {
+    // Given
+    const namespace = ["ttl", "custom"];
+    const key = "tempItem";
+    const value = { data: "temporary data" };
+
+    // When
+    await store.put(namespace, key, value, undefined, { ttl: 5 }); // 5 minutes TTL
+    const item = await store.get(namespace, key);
+
+    // Then
+    expect(item).toBeDefined();
+    expect(item?.value).toEqual(value);
+  });
+
+  it("should support index: false to disable vector indexing", async () => {
+    // Given
+    const mockCallsBefore = mockEmbedding.calls.length;
+    const namespace = ["vectors", "no-index"];
+    const key = "doc1";
+    const value = {
+      title: "Test Document",
+      content: "This content should not be indexed",
+    };
+
+    // When
+    await storeWithVectors.put(namespace, key, value, false); // Disable indexing
+
+    // Then - embedding function should not be called
+    expect(mockEmbedding.calls.length).toBe(mockCallsBefore);
+
+    // When - search for this item
+    const results = await storeWithVectors.vectorSearch(
+      namespace,
+      "test document"
+    );
+
+    // Then - item should not be found via vector search
+    expect(results.length).toBe(0);
+  });
+
+  it("should support specific fields to index", async () => {
+    // Given
+    const mockCallsBefore = mockEmbedding.calls.length;
+    const namespace = ["vectors", "selective"];
+    const key = "doc1";
+    const value = {
+      title: "Indexed Title",
+      content: "Not indexed content",
+      summary: "Indexed summary",
+      metadata: {
+        author: "Test Author",
+      },
+    };
+
+    // When
+    await storeWithVectors.put(
+      namespace,
+      key,
+      value,
+      ["title", "summary"] // Only index these fields
+    );
+
+    // Then - embedding function should be called
+    expect(mockEmbedding.calls.length).toBe(mockCallsBefore + 1);
+
+    // Check that only specified fields were used
+    const embedCalls = mockEmbedding.calls[mockCallsBefore];
+    expect(embedCalls).toContain("Indexed Title");
+    expect(embedCalls).toContain("Indexed summary");
+    expect(embedCalls).not.toContain("Not indexed content");
+
+    // When - search for indexed content
+    const results = await storeWithVectors.vectorSearch(
+      namespace,
+      "indexed summary"
+    );
+
+    // Then - item should be found
+    expect(results.length).toBeGreaterThan(0);
+  });
+
+  it("should support both TTL and indexing options", async () => {
+    // Given
+    const mockCallsBefore = mockEmbedding.calls.length;
+    const namespace = ["vectors", "combined"];
+    const key = "doc1";
+    const value = {
+      title: "Combined Options Test",
+      content: "Testing both TTL and indexing options",
+    };
+
+    // When
+    await storeWithVectors.put(
+      namespace,
+      key,
+      value,
+      ["title"], // Only index the title field
+      { ttl: 10 } // 10 minutes TTL
+    );
+
+    // Then - item should be retrievable
+    const item = await storeWithVectors.get(namespace, key);
+    expect(item).toBeDefined();
+    expect(item?.value).toEqual(value);
+
+    // Check that only the title was indexed by examining mock embedding calls
+    expect(mockEmbedding.calls.length).toBe(mockCallsBefore + 1);
+    const indexingCall = mockEmbedding.calls[mockCallsBefore];
+
+    // Verify only title was sent to embedding function
+    expect(indexingCall).toContain("Combined Options Test"); // Title should be indexed
+    expect(indexingCall).not.toContain("Testing both TTL and indexing options"); // Content should not be indexed
+
+    // Query the database directly to check what's in the vector table
+    const pool = new Pool({ connectionString: dbConnectionString });
+    try {
+      const vectorResult = await pool.query(
+        `SELECT field_path, text_content FROM test_vectors.store_vectors 
+         WHERE namespace_path = $1 AND key = $2`,
+        [namespace.join(":"), key]
+      );
+
+      // Should only have indexed the title field
+      expect(vectorResult.rows.length).toBe(1);
+      expect(vectorResult.rows[0].field_path).toBe("title");
+      expect(vectorResult.rows[0].text_content).toBe("Combined Options Test");
+    } finally {
+      await pool.end();
+    }
   });
 });

@@ -12,9 +12,11 @@ export class VectorOperations {
     client: pg.PoolClient,
     namespacePath: string,
     key: string,
-    value: Record<string, unknown>
+    value: Record<string, unknown>,
+    index?: string[] | false
   ): Promise<void> {
-    if (!this.core.indexConfig) return;
+    // Early exit if vector indexing is not configured or explicitly disabled
+    if (!this.core.indexConfig || index === false) return;
 
     // Delete existing vectors for this item
     await client.query(
@@ -25,7 +27,8 @@ export class VectorOperations {
       [namespacePath, key]
     );
 
-    const fields = this.core.indexConfig.fields || ["$"];
+    // Use provided index fields if specified, otherwise use the configured default
+    const fields = index || this.core.indexConfig.fields || ["$"];
     const textsToEmbed: { fieldPath: string; text: string }[] = [];
 
     // Extract text from configured fields

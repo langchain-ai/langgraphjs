@@ -239,13 +239,14 @@ const store = new PostgresStore({
 await store.setup();
 
 // Put item with default TTL
-await store.putAdvanced(["cache"], "temp-data", { value: "expires in 60 minutes" });
+await store.put(["cache"], "temp-data", { value: "expires in 60 minutes" });
 
 // Put item with custom TTL
-await store.putAdvanced(
+await store.put(
   ["cache"], 
   "short-lived", 
   { value: "expires in 5 minutes" },
+  undefined, // Use default indexing
   { ttl: 5 }
 );
 
@@ -459,6 +460,60 @@ const store = new PostgresStore({
 });
 ```
 
+### Selective Vector Indexing
+
+Control which fields get indexed on a per-document basis:
+
+```typescript
+// Store document with default field indexing
+await store.put(
+  ["documents"], 
+  "doc1", 
+  {
+    title: "Introduction to LangGraph",
+    content: "LangGraph is a framework for building...",
+    metadata: { author: "Example Author" }
+  }
+);
+
+// Store document with only title and summary indexed
+await store.put(
+  ["documents"], 
+  "doc2", 
+  {
+    title: "Advanced LangGraph Concepts",
+    content: "This document covers advanced topics...",
+    summary: "A guide to advanced LangGraph usage",
+    metadata: { author: "Example Author" }
+  },
+  ["title", "summary"] // Only index these fields
+);
+
+// Store document without vector indexing
+await store.put(
+  ["documents"], 
+  "doc3", 
+  {
+    title: "Private Document",
+    content: "Should not be found via vector search"
+  },
+  false // Disable vector indexing entirely
+);
+
+// Store document with custom TTL and selective indexing
+await store.put(
+  ["documents"], 
+  "doc4", 
+  {
+    title: "Temporary Guide",
+    content: "This guide explains temporary concepts...",
+    summary: "A short-lived explanation"
+  },
+  ["title", "summary"], // Only index these fields
+  { ttl: 60 } // Expires in 60 minutes
+);
+```
+
 ### Vector Similarity Search
 
 #### Basic Vector Search
@@ -476,6 +531,27 @@ const results = await store.vectorSearch(
 
 console.log(results.map(r => ({ key: r.key, score: r.score })));
 ```
+
+#### Search Behavior with Selective Indexing
+
+When using selective indexing, search results will reflect your indexing choices:
+
+```typescript
+// Search query about "advanced concepts"
+const results = await store.vectorSearch(["documents"], "advanced concepts");
+
+// Will find documents where:
+// - All fields were indexed (doc1)
+// - Title or summary were indexed and contain related content (doc2, doc4)
+// - Will NOT find doc3 (vector indexing disabled)
+// - Will NOT match content field in doc2/doc4 even if semantically relevant
+```
+
+This selective indexing approach allows for:
+- Privacy control (keeping sensitive content out of vector search)
+- Performance optimization (indexing only the most important fields)
+- Storage efficiency (reducing vector storage for large documents)
+- Targeted search experiences (prioritizing titles/summaries over full content)
 
 #### Distance Metrics
 
@@ -653,8 +729,19 @@ Initialize the store by creating necessary tables and indexes. Must be called be
 ##### `get(namespace: string[], key: string): Promise<Item | null>`
 Retrieve a single item by namespace and key.
 
-##### `put(namespace: string[], key: string, value: Record<string, any>): Promise<void>`
-Store or update an item.
+##### `put(namespace: string[], key: string, value: Record<string, unknown>, index?: false | string[], options?: { ttl?: number }): Promise<void>`
+Store or update an item, with optional control over vector indexing and TTL.
+
+**Parameters:**
+- `namespace: string[]` - Hierarchical namespace
+- `key: string` - Unique identifier within the namespace
+- `value: Record<string, unknown>` - Data to store
+- `index?: false | string[]` - Optional indexing control:
+  - `undefined`: Uses store's default field configuration
+  - `false`: Disables vector indexing for this item
+  - `string[]`: List of specific fields to index (e.g., `["title", "summary"]`)
+- `options?: { ttl?: number }` - Additional options:
+  - `ttl?: number` - Time-to-live in minutes for this item
 
 ##### `delete(namespace: string[], key: string): Promise<void>`
 Delete an item.
