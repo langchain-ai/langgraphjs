@@ -81,8 +81,8 @@ export class CrudOperations {
         VALUES ($1, $2, $3, $4)
         ON CONFLICT (namespace_path, key)
         DO UPDATE SET 
-          value = EXCLUDED.value,
-          expires_at = EXCLUDED.expires_at,
+          value = $3,
+          expires_at = $4,
           updated_at = CURRENT_TIMESTAMP
       `,
         [namespacePath, key, JSON.stringify(value), expiresAt]
