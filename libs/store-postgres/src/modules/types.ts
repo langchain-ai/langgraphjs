@@ -179,12 +179,6 @@ export interface PutOptions {
    * TTL in minutes for this item.
    */
   ttl?: number;
-
-  /**
-   * Whether to index this item for search.
-   * @default true
-   */
-  index?: boolean;
 }
 
 export interface PostgresStoreConfig {
