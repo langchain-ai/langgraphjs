@@ -45,7 +45,7 @@ export type StreamOutputMap<
   TStreamSubgraphs extends boolean,
   StreamUpdates,
   StreamValues,
-  Nodes
+  Nodes = string
 > = (
   undefined extends TStreamMode
     ? []
