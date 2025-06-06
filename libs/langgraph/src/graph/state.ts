@@ -1149,10 +1149,14 @@ function _getControlBranch() {
   });
 }
 
-type TypedNodeAction<SD extends StateDefinition, Nodes extends string> = (
-  state: StateType<SD>,
-  config: LangGraphRunnableConfig
-) => UpdateType<SD> | Command<unknown, UpdateType<SD>, Nodes>;
+type TypedNodeAction<
+  SD extends StateDefinition,
+  Nodes extends string
+> = RunnableLike<
+  StateType<SD>,
+  UpdateType<SD> | Command<unknown, UpdateType<SD>, Nodes>,
+  LangGraphRunnableConfig
+>;
 
 export function typedNode<SD extends SDZod, Nodes extends string>(
   _state: SD extends StateDefinition ? AnnotationRoot<SD> : never,

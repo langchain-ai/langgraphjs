@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Command } from "../constants.js";
+import { Command, START } from "../constants.js";
 import { Annotation } from "../graph/annotation.js";
 import {
   MessagesAnnotation,
@@ -29,17 +29,18 @@ it("Annotation.Root", async () => {
     { ends: ["nodeB", "nodeC"] }
   );
 
-  const nodeB = node(() => {
-    return new Command({
-      goto: "nodeC",
-      update: { foo: "123" },
-    });
-  });
-  const nodeC = node((state) => ({ foo: `${state.foo}|c` }));
+  const nodeB = node(
+    () =>
+      new Command({
+        goto: "nodeC",
+        update: { messages: [{ type: "user", content: "test" }] },
+      })
+  );
+  const nodeC = node(async (state) => ({ foo: `${state.foo}|c` }));
 
   const graph = new StateGraph(StateAnnotation)
     .addNode({ nodeA, nodeB, nodeC })
-    .addEdge("__start__", "nodeA")
+    .addEdge(START, "nodeA")
     .compile();
 
   expect(await graph.invoke({ foo: "foo" })).toEqual({
@@ -79,7 +80,7 @@ it("Zod", async () => {
 
   const graph = new StateGraph(StateAnnotation)
     .addNode({ nodeA, nodeB, nodeC })
-    .addEdge("__start__", "nodeA")
+    .addEdge(START, "nodeA")
     .compile();
 
   expect(await graph.invoke({ foo: "foo" })).toEqual({
