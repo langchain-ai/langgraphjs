@@ -215,4 +215,57 @@ describe("PostgresStore Vector Search (integration)", () => {
     expect(Array.isArray(results)).toBe(true);
     expect(mockEmbedding.calls[mockEmbedding.calls.length-1]).toContain("data science techniques");
   });
+
+  it("should honor index: false parameter when putting items", async () => {
+    // Given
+    const mockCallsBefore = mockEmbedding.calls.length;
+    
+    // When - put with index: false
+    await store.put(
+      ["no-index"], 
+      "doc1", 
+      {
+        title: "Not Indexed Document",
+        content: "This content should not be indexed for vector search"
+      },
+      false // Disable indexing
+    );
+    
+    // Then - embedding function should not be called
+    expect(mockEmbedding.calls.length).toBe(mockCallsBefore);
+    
+    // When - search for this item
+    const results = await store.vectorSearch(["no-index"], "not indexed content");
+    
+    // Then - item should not be found via vector search
+    expect(results.length).toBe(0);
+  });
+
+  it("should respect specific fields to index using index array parameter", async () => {
+    // Given
+    const mockCallsBefore = mockEmbedding.calls.length;
+    
+    // When - put with specific fields to index
+    await store.put(
+      ["selective-index"], 
+      "doc1", 
+      {
+        title: "Selective Indexing Test",
+        content: "Main content here",
+        summary: "Summary text here",
+        author: "Test Author"
+      },
+      ["title", "summary"] // Only index title and summary fields
+    );
+    
+    // Then - embedding function should be called for title and summary only
+    expect(mockEmbedding.calls.length).toBe(mockCallsBefore + 1);
+    expect(mockEmbedding.calls[mockCallsBefore]).toContain("Selective Indexing Test");
+    expect(mockEmbedding.calls[mockCallsBefore]).toContain("Summary text here");
+    expect(mockEmbedding.calls[mockCallsBefore]).not.toContain("Main content here");
+    
+    // Verify with search
+    const results = await store.vectorSearch(["selective-index"], "summary text");
+    expect(results.length).toBeGreaterThan(0);
+  });
 });

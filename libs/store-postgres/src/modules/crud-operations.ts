@@ -56,12 +56,12 @@ export class CrudOperations {
 
   async executePut(
     client: pg.PoolClient,
-    operation: PutOperation
+    operation: PutOperation & { options?: PutOptions }
   ): Promise<void> {
     validateNamespace(operation.namespace);
+    const { namespace, key, value, options, index } = operation;
 
-    const namespacePath = operation.namespace.join(":");
-    const { key, value } = operation;
+    const namespacePath = namespace.join(":");
 
     if (value === null) {
       // Delete operation
@@ -73,8 +73,7 @@ export class CrudOperations {
         [namespacePath, key]
       );
     } else {
-      // Insert or update operation
-      const expiresAt = this.core.calculateExpiresAt();
+      const expiresAt = this.core.calculateExpiresAt(options?.ttl);
 
       await client.query(
         `
@@ -86,66 +85,19 @@ export class CrudOperations {
           expires_at = EXCLUDED.expires_at,
           updated_at = CURRENT_TIMESTAMP
       `,
-        [namespacePath, key, value, expiresAt]
+        [namespacePath, key, JSON.stringify(value), expiresAt]
       );
 
       // Handle vector indexing if configured
-      if (this.core.indexConfig) {
+      if (this.core.indexConfig && index !== false) {
         await this.vectorOps.indexItemVectors(
           client,
           namespacePath,
           key,
-          value
+          value,
+          index // Pass the index parameter to control which fields get indexed
         );
       }
     }
-  }
-
-  async putAdvanced(
-    namespace: string[],
-    key: string,
-    value: Record<string, unknown> | null,
-    options: PutOptions = {}
-  ): Promise<void> {
-    await this.core.withClient(async (client) => {
-      validateNamespace(namespace);
-
-      const namespacePath = namespace.join(":");
-
-      if (value === null) {
-        await client.query(
-          `
-          DELETE FROM ${this.core.schema}.store
-          WHERE namespace_path = $1 AND key = $2
-        `,
-          [namespacePath, key]
-        );
-      } else {
-        const expiresAt = this.core.calculateExpiresAt(options.ttl);
-
-        await client.query(
-          `
-          INSERT INTO ${this.core.schema}.store (namespace_path, key, value, expires_at)
-          VALUES ($1, $2, $3, $4)
-          ON CONFLICT (namespace_path, key)
-          DO UPDATE SET 
-            value = EXCLUDED.value,
-            expires_at = EXCLUDED.expires_at,
-            updated_at = CURRENT_TIMESTAMP
-        `,
-          [namespacePath, key, JSON.stringify(value), expiresAt]
-        );
-
-        if (this.core.indexConfig) {
-          await this.vectorOps.indexItemVectors(
-            client,
-            namespacePath,
-            key,
-            value
-          );
-        }
-        
-      }
-    });
   }
 }

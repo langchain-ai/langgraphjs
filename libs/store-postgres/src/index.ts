@@ -4,6 +4,9 @@ import {
   type Operation,
   type OperationResults,
   type ListNamespacesOperation,
+  type PutOperation,
+  type Item,
+  type MatchCondition,
 } from "@langchain/langgraph-checkpoint";
 
 // Import types
@@ -31,7 +34,7 @@ const { Pool } = pg;
  * PostgreSQL implementation of the BaseStore interface.
  * This is now a lightweight orchestrator that delegates to specialized modules.
  */
-export class PostgresStore extends BaseStore {
+export class PostgresStore implements BaseStore {
   private core: DatabaseCore;
 
   private dbSetup: DatabaseSetup;
@@ -51,8 +54,6 @@ export class PostgresStore extends BaseStore {
   private ensureTables: boolean;
 
   constructor(config: PostgresStoreConfig) {
-    super();
-
     // Create connection pool
     const pool =
       typeof config.connectionOptions === "string"
@@ -74,6 +75,107 @@ export class PostgresStore extends BaseStore {
     this.ttlManager = new TTLManager(this.core);
 
     this.ensureTables = config.ensureTables ?? true;
+  }
+
+  /**
+   * Get an item by namespace and key.
+   */
+  async get(namespace: string[], key: string): Promise<Item | null> {
+    if (!this.isSetup && this.ensureTables) {
+      await this.setup();
+    }
+
+    return this.core.withClient(async (client) => {
+      return this.crudOps.executeGet(client, { namespace, key });
+    });
+  }
+
+  /**
+   * Put an item with optional indexing configuration and TTL.
+   */
+  async put(
+    namespace: string[],
+    key: string,
+    value: Record<string, unknown>,
+    index?: false | string[],
+    options?: { ttl?: number }
+  ): Promise<void> {
+    if (!this.isSetup && this.ensureTables) {
+      await this.setup();
+    }
+
+    return this.core.withClient(async (client) => {
+      const operation: PutOperation & { options?: { ttl?: number } } = {
+        namespace,
+        key,
+        value,
+        index,
+        options
+      };
+
+      await this.crudOps.executePut(client, operation);
+    });
+  }
+
+  /**
+   * Delete an item by namespace and key.
+   */
+  async delete(namespace: string[], key: string): Promise<void> {
+    if (!this.isSetup && this.ensureTables) {
+      await this.setup();
+    }
+
+    return this.core.withClient(async (client) => {
+      const operation: PutOperation = { namespace, key, value: null };
+      await this.crudOps.executePut(client, operation);
+    });
+  }
+
+  /**
+   * List namespaces with optional filtering.
+   */
+  async listNamespaces(
+    options: {
+      prefix?: string[];
+      suffix?: string[];
+      maxDepth?: number;
+      limit?: number;
+      offset?: number;
+    } = {}
+  ): Promise<string[][]> {
+    if (!this.isSetup && this.ensureTables) {
+      await this.setup();
+    }
+
+    const { prefix, suffix, maxDepth, limit = 100, offset = 0 } = options;
+
+    // Convert options to match conditions format
+    const matchConditions: MatchCondition[] = [];
+
+    if (prefix) {
+      matchConditions.push({
+        matchType: "prefix",
+        path: prefix,
+      });
+    }
+
+    if (suffix) {
+      matchConditions.push({
+        matchType: "suffix",
+        path: suffix,
+      });
+    }
+
+    const operation: ListNamespacesOperation = {
+      matchConditions,
+      maxDepth,
+      limit,
+      offset,
+    };
+
+    return this.core.withClient(async (client) => {
+      return this.executeListNamespaces(client, operation);
+    });
   }
 
   /**
@@ -251,18 +353,28 @@ export class PostgresStore extends BaseStore {
   }
 
   /**
-   * Put an item with advanced options including TTL.
+   * Put an item with advanced options like TTL.
    */
   async putAdvanced(
     namespace: string[],
     key: string,
     value: Record<string, unknown> | null,
+    index?: false | string[],
     options: PutOptions = {}
   ): Promise<void> {
     if (!this.isSetup && this.ensureTables) {
       await this.setup();
     }
-    return this.crudOps.putAdvanced(namespace, key, value, options);
+    return this.core.withClient(async (client) => {
+      const operation: PutOperation & { options: PutOptions } = {
+        namespace,
+        key,
+        value,
+        index,
+        options,
+      };
+      return this.crudOps.executePut(client, operation);
+    });
   }
 
   /**
@@ -303,7 +415,7 @@ export class PostgresStore extends BaseStore {
 
   /**
    * Performs vector similarity search using embeddings.
-   * 
+   *
    * @param namespacePrefix - The namespace prefix to search within
    * @param query - The text query to embed and search for similar items
    * @param options - Search options including filter, similarity threshold, and distance metric
@@ -323,19 +435,19 @@ export class PostgresStore extends BaseStore {
     if (!this.isSetup && this.ensureTables) {
       await this.setup();
     }
-    
+
     if (!this.core.indexConfig) {
       throw new Error(
         "Vector search not configured. Please provide an IndexConfig when creating the store."
       );
     }
-    
+
     return this.searchOps.vectorSearch(namespacePrefix, query, options);
   }
 
   /**
    * Performs hybrid search combining vector similarity and text search.
-   * 
+   *
    * @param namespacePrefix - The namespace prefix to search within
    * @param query - The text query to search for
    * @param options - Search options including filter, vector weight, and similarity threshold
@@ -355,13 +467,13 @@ export class PostgresStore extends BaseStore {
     if (!this.isSetup && this.ensureTables) {
       await this.setup();
     }
-    
+
     if (!this.core.indexConfig) {
       throw new Error(
         "Vector search not configured. Please provide an IndexConfig when creating the store."
       );
     }
-    
+
     return this.searchOps.hybridSearch(namespacePrefix, query, options);
   }
 
@@ -414,20 +526,20 @@ export class PostgresStore extends BaseStore {
     }
 
     const { mode = "auto", query, ...restOptions } = options;
-    
+
     // No query provided - just do metadata filtering
     if (!query) {
       return this.textSearch(namespacePrefix, restOptions);
     }
-    
+
     const hasVectorSearch = Boolean(this.core.indexConfig);
-    
+
     // Determine search mode based on configuration and options
     let effectiveMode = mode;
     if (mode === "auto") {
       effectiveMode = hasVectorSearch ? "vector" : "text";
     }
-    
+
     // Execute appropriate search based on mode
     switch (effectiveMode) {
       case "vector":
@@ -439,9 +551,9 @@ export class PostgresStore extends BaseStore {
         return this.vectorSearch(namespacePrefix, query, {
           ...restOptions,
           similarityThreshold: options.similarityThreshold,
-          distanceMetric: options.distanceMetric
+          distanceMetric: options.distanceMetric,
         });
-        
+
       case "hybrid":
         if (!hasVectorSearch) {
           throw new Error(
@@ -451,12 +563,12 @@ export class PostgresStore extends BaseStore {
         return this.hybridSearch(namespacePrefix, query, {
           ...restOptions,
           vectorWeight: options.vectorWeight,
-          similarityThreshold: options.similarityThreshold
+          similarityThreshold: options.similarityThreshold,
         });
-        
+
       case "text":
         return this.textSearch(namespacePrefix, { query, ...restOptions });
-        
+
       default:
         throw new Error(`Unknown search mode: ${mode}`);
     }
