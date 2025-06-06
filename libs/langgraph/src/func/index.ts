@@ -35,7 +35,7 @@ import { ChannelWrite, PASSTHROUGH } from "../pregel/write.js";
 /**
  * Options for the {@link task} function
  */
-export type TaskOptions = {
+export interface TaskOptions {
   /**
    * The name of the task, analogous to the node name in {@link StateGraph}.
    */
@@ -49,8 +49,8 @@ export type TaskOptions = {
   /**
    * The cache policy for the task. Configures how the task should be cached.
    */
-  cache?: CachePolicy | boolean;
-};
+  cachePolicy?: CachePolicy;
+}
 
 /**
  * Define a LangGraph task using the `task` function.
@@ -102,24 +102,29 @@ export function task<ArgsT extends unknown[], OutputT>(
   optionsOrName: TaskOptions | string,
   func: TaskFunc<ArgsT, OutputT>
 ): (...args: ArgsT) => Promise<OutputT> {
-  const {
-    name,
-    retry,
-    cache: userCache,
-  } = typeof optionsOrName === "string"
-    ? { name: optionsOrName, retry: undefined, cache: undefined }
-    : optionsOrName;
+  const options =
+    typeof optionsOrName === "string"
+      ? { name: optionsOrName, retry: undefined, cachePolicy: undefined }
+      : optionsOrName;
+
+  const { name, retry } = options;
   if (isAsyncGeneratorFunction(func) || isGeneratorFunction(func)) {
     throw new Error(
       "Generators are disallowed as tasks. For streaming responses, use config.write."
     );
   }
 
+  const cachePolicy =
+    options.cachePolicy ??
+    // `cache` was mistakingly used as an alias for `cachePolicy` in v0.3.x,
+    // TODO: remove in 1.x
+    ("cache" in options ? (options.cache as CachePolicy) : undefined);
+
   let cache: CachePolicy | undefined;
-  if (typeof userCache === "boolean") {
-    cache = userCache ? {} : undefined;
+  if (typeof cachePolicy === "boolean") {
+    cache = cachePolicy ? {} : undefined;
   } else {
-    cache = userCache;
+    cache = cachePolicy;
   }
 
   return (...args: ArgsT) => {
