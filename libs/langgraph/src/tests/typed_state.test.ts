@@ -35,11 +35,7 @@ it("Annotation.Root", async () => {
   );
 
   const nodeB = node(
-    () =>
-      new Command({
-        goto: "nodeC",
-        update: { messages: [{ type: "user", content: "test" }] },
-      })
+    () => new Command({ goto: "nodeC", update: { foo: "123" } })
   );
   const nodeC = node(async (state) => ({ foo: `${state.foo}|c` }));
 
@@ -58,7 +54,6 @@ it("Zod", async () => {
   const StateAnnotation = MessagesZodState.extend({
     foo: z.string(),
   });
-
   const config = z.object({ random: z.number() });
 
   const node = typedNode(StateAnnotation, {
@@ -90,7 +85,9 @@ it("Zod", async () => {
     .addEdge(START, "nodeA")
     .compile();
 
-  expect(await graph.invoke({ foo: "foo" })).toEqual({
+  expect(
+    await graph.invoke({ foo: "foo" }, { configurable: { random: 123 } })
+  ).toEqual({
     messages: [new _AnyIdHumanMessage("a")],
     foo: "123|c",
   });
