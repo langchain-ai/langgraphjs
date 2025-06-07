@@ -100,6 +100,7 @@ import {
   Send,
   START,
   TAG_NOSTREAM,
+  isInterrupted,
 } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
@@ -11455,6 +11456,49 @@ graph TD;
       "2|4",
       "3",
     ]);
+  });
+
+  it("resume multiple interrupts", async () => {
+    const checkpointer = await createCheckpointer();
+    const config = { configurable: { thread_id: "1" } };
+
+    const graph = new StateGraph(
+      Annotation.Root({
+        inputs: Annotation<("a" | "b" | "c")[]>,
+        outputs: Annotation<string[]>({
+          default: () => [],
+          reducer: (a, b) => [...a, ...b],
+        }),
+      })
+    )
+      .addNode({
+        a: () => ({ outputs: [interrupt<string>("a")] }),
+        b: () => ({ outputs: [interrupt<string>("b")] }),
+        c: () => ({ outputs: [interrupt<string>("c")] }),
+      })
+      .addNode(
+        "cleanup",
+        (state) => {
+          expect(state.outputs).toHaveLength(state.inputs.length);
+          return {};
+        },
+        { defer: true }
+      )
+      .addConditionalEdges(
+        START,
+        (state) => state.inputs.map((prompt) => new Send(prompt, state)),
+        ["a", "b", "c"]
+      )
+      .addEdge(["a", "b", "c"], "cleanup")
+      .compile({ checkpointer });
+
+    const values = await graph.invoke({ inputs: ["a", "b", "c"] }, config);
+    const state = await graph.getState(config);
+
+    if (!isInterrupted(values)) throw new Error("Graph was not interrupted");
+    expect(values[INTERRUPT]).toEqual(state.tasks.flatMap((t) => t.interrupts));
+
+    // TODO: add tests for multiple resumes after we have a stable ID for interrupts
   });
 }
 

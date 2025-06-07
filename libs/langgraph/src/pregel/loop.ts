@@ -590,19 +590,27 @@ export class PregelLoop {
       ) {
         return;
       }
-      if (
-        writes.length > 0 &&
-        writes[0][0] !== ERROR &&
-        writes[0][0] !== INTERRUPT
-      ) {
-        this._emit(
-          gatherIteratorSync(
-            prefixGenerator(
-              mapOutputUpdates(this.outputKeys, [[task, writes]], cached),
-              "updates"
+
+      if (writes.length > 0) {
+        if (writes[0][0] === INTERRUPT) {
+          const interruptWrites = writes
+            .filter((w) => w[0] === INTERRUPT)
+            .flatMap((w) => w[1] as string[]);
+
+          this._emit([
+            ["updates", { [INTERRUPT]: interruptWrites }],
+            ["values", { [INTERRUPT]: interruptWrites }],
+          ]);
+        } else if (writes[0][0] !== ERROR) {
+          this._emit(
+            gatherIteratorSync(
+              prefixGenerator(
+                mapOutputUpdates(this.outputKeys, [[task, writes]], cached),
+                "updates"
+              )
             )
-          )
-        );
+          );
+        }
       }
       if (!cached) {
         this._emit(
@@ -859,11 +867,12 @@ export class PregelLoop {
       }
 
       // Emit INTERRUPT event
-      const interrupts = { [INTERRUPT]: (error as GraphInterrupt).interrupts };
-      this._emit([
-        ["updates", interrupts],
-        ["values", interrupts],
-      ]);
+      if (isGraphInterrupt(error) && !error.interrupts.length) {
+        this._emit([
+          ["updates", { [INTERRUPT]: [] }],
+          ["values", { [INTERRUPT]: [] }],
+        ]);
+      }
     }
     return suppress;
   }
@@ -948,6 +957,7 @@ export class PregelLoop {
       this.putWrites(NULL_TASK_ID, [[RESUME, scratchpad.nullResume]]);
     }
 
+    // map command to writes
     if (isCommand(this.input)) {
       const hasResume = this.input.resume != null;
       if (hasResume && this.checkpointer == null) {

@@ -20,6 +20,7 @@ export const CONFIG_KEY_RESUMING = "__pregel_resuming";
 export const CONFIG_KEY_TASK_ID = "__pregel_task_id";
 export const CONFIG_KEY_STREAM = "__pregel_stream";
 export const CONFIG_KEY_RESUME_VALUE = "__pregel_resume_value";
+export const CONFIG_KEY_RESUME_MAP = "__pregel_resume_map";
 export const CONFIG_KEY_SCRATCHPAD = "__pregel_scratchpad";
 /** config key containing state from previous invocation of graph for the given thread */
 export const CONFIG_KEY_PREVIOUS_STATE = "__pregel_previous";
