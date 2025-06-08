@@ -88,7 +88,7 @@ export const MessagesAnnotation = Annotation.Root({
  * ```
  */
 export const MessagesZodState = z.object({
-  messages: withLangGraph(z.custom<BaseMessage[]>(), {
+  messages: withLangGraph<BaseMessage[], Messages>(z.custom<BaseMessage[]>(), {
     reducer: {
       schema: z.custom<Messages>(),
       fn: messagesStateReducer,
