@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Command } from "../constants.js";
+import { Command, START } from "../constants.js";
 import { Annotation } from "../graph/annotation.js";
 import {
   MessagesAnnotation,
@@ -14,8 +14,13 @@ it("Annotation.Root", async () => {
     foo: Annotation<string>,
   });
 
+  const config = Annotation.Root({
+    random: Annotation<number>,
+  });
+
   const node = typedNode(StateAnnotation, {
     nodes: ["nodeA", "nodeB", "nodeC"],
+    config,
   });
 
   const nodeA = node(
@@ -29,17 +34,14 @@ it("Annotation.Root", async () => {
     { ends: ["nodeB", "nodeC"] }
   );
 
-  const nodeB = node(() => {
-    return new Command({
-      goto: "nodeC",
-      update: { foo: "123" },
-    });
-  });
-  const nodeC = node((state) => ({ foo: `${state.foo}|c` }));
+  const nodeB = node(
+    () => new Command({ goto: "nodeC", update: { foo: "123" } })
+  );
+  const nodeC = node(async (state) => ({ foo: `${state.foo}|c` }));
 
-  const graph = new StateGraph(StateAnnotation)
+  const graph = new StateGraph(StateAnnotation, config)
     .addNode({ nodeA, nodeB, nodeC })
-    .addEdge("__start__", "nodeA")
+    .addEdge(START, "nodeA")
     .compile();
 
   expect(await graph.invoke({ foo: "foo" })).toEqual({
@@ -52,9 +54,11 @@ it("Zod", async () => {
   const StateAnnotation = MessagesZodState.extend({
     foo: z.string(),
   });
+  const config = z.object({ random: z.number() });
 
   const node = typedNode(StateAnnotation, {
     nodes: ["nodeA", "nodeB", "nodeC"],
+    config,
   });
 
   const nodeA = node(
@@ -76,13 +80,14 @@ it("Zod", async () => {
   });
 
   const nodeC = node((state) => ({ foo: `${state.foo}|c` }));
-
-  const graph = new StateGraph(StateAnnotation)
+  const graph = new StateGraph(StateAnnotation, config)
     .addNode({ nodeA, nodeB, nodeC })
-    .addEdge("__start__", "nodeA")
+    .addEdge(START, "nodeA")
     .compile();
 
-  expect(await graph.invoke({ foo: "foo" })).toEqual({
+  expect(
+    await graph.invoke({ foo: "foo" }, { configurable: { random: 123 } })
+  ).toEqual({
     messages: [new _AnyIdHumanMessage("a")],
     foo: "123|c",
   });

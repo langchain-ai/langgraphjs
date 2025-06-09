@@ -253,14 +253,14 @@ const StateWithDocuments = Annotation.Root({
 
 #### MessagesZodState
 
-Just like `MessagesAnnotation`, there is a prebuilt Zod schema called `MessagesZodSchema` that provides the same functionality, but uses Zod for defining the state instead of the `Annotation` API.
+Just like `MessagesAnnotation`, there is a prebuilt Zod schema called `MessagesZodState` that provides the same functionality, but uses Zod for defining the state instead of the `Annotation` API.
 
 ```typescript
-import { MessagesZodSchema, StateGraph } from "@langchain/langgraph";
+import { MessagesZodState, StateGraph } from "@langchain/langgraph";
 
 import { z } from "zod";
 
-const graph = new StateGraph(MessagesZodSchema)
+const graph = new StateGraph(MessagesZodState)
   .addNode(...)
   ...
 ```

@@ -20,6 +20,7 @@ export {
 export type {
   StateSnapshot,
   StreamMode,
+  StreamOutputMap,
   PregelParams,
   PregelOptions,
   SingleChannelSubscriptionOptions,
