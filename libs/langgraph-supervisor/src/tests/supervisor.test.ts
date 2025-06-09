@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { LanguageModelLike } from "@langchain/core/language_models/base";
 import { tool } from "@langchain/core/tools";
-import { HumanMessage, AIMessage } from "@langchain/core/messages";
+import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
 import { MessagesAnnotation } from "@langchain/langgraph";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { createSupervisor } from "../supervisor.js";
 import { FakeToolCallingChatModel } from "./utils.js";
 import { withAgentName, AgentNameMode } from "../index.js";
+import { createForwardMessageTool } from "../handoff.js";
 
 describe("Test supervisor basic workflow", () => {
   // Define the test cases
@@ -305,4 +306,172 @@ describe("Test supervisor basic workflow", () => {
       );
     }
   );
+});
+
+describe("Test supervisor message forwarding", () => {
+  it("should forward a message to a specific agent and receive the correct response", async () => {
+    // Define the echo tool
+    const echoTool = tool(async (args) => args.text, {
+      name: "echo_tool",
+      description: "Echo the input text.",
+      schema: z.object({
+        text: z.string(),
+      }),
+    });
+
+    // Agent that simply echoes the message
+    const echoModel = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "Echo: test forwarding!",
+        }),
+      ],
+    });
+
+    const echoAgent = createReactAgent({
+      llm: echoModel,
+      tools: [echoTool],
+      name: "echo_agent",
+      prompt: "You are an echo agent that repeats input.",
+    });
+
+    // Define supervisor messages
+    const supervisorMessages = [
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          {
+            name: "transfer_to_echo_agent",
+            args: {},
+            id: "call_gyQSgJQm5jJtPcF5ITe8GGGF",
+            type: "tool_call",
+          },
+        ],
+      }),
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          {
+            name: "forward_message",
+            args: { from_agent: "echo_agent" },
+            id: "abcd123",
+            type: "tool_call",
+          },
+        ],
+      }),
+    ];
+
+    // Create supervisor model with mocked responses
+    const supervisorModel = new FakeToolCallingChatModel({
+      responses: supervisorMessages,
+    });
+
+    // Create forward message tool
+    const forwardingTool = createForwardMessageTool("supervisor");
+
+    // Create supervisor workflow
+    const workflow = createSupervisor({
+      agents: [echoAgent],
+      llm: supervisorModel,
+      tools: [forwardingTool],
+      prompt: "You are a team supervisor managing an echo agent.",
+    });
+
+    const app = workflow.compile();
+    expect(app).toBeDefined();
+
+    const result = await app.invoke({
+      messages: [
+        new HumanMessage({
+          content: "Scooby-dooby-doo",
+        }),
+      ],
+    });
+
+    expect(result).toBeDefined();
+    const resultObj = result as (typeof MessagesAnnotation)["State"];
+    expect(resultObj.messages).toBeDefined();
+
+    // Helper function to get tool calls from a message
+    const getToolCalls = (msg: BaseMessage) => {
+      const toolCalls =
+        "tool_calls" in msg
+          ? (msg.tool_calls as Array<Record<string, unknown>>) || []
+          : undefined;
+      if (!toolCalls || !Array.isArray(toolCalls)) return null;
+
+      return toolCalls
+        .filter((tc) => tc.type === "tool_call")
+        .map((tc) => ({
+          name: tc.name,
+          args: tc.args,
+        }));
+    };
+
+    // Extract details from received messages
+    const received = resultObj.messages.map((msg: BaseMessage) => ({
+      name: msg.name,
+      content: msg.content,
+      tool_calls: getToolCalls(msg),
+      type: msg._getType(),
+    }));
+
+    // Define expected message sequence
+    const expected = [
+      {
+        name: undefined,
+        content: "Scooby-dooby-doo",
+        tool_calls: null,
+        type: "human",
+      },
+      {
+        name: "supervisor",
+        content: "",
+        tool_calls: [
+          {
+            name: "transfer_to_echo_agent",
+            args: {},
+          },
+        ],
+        type: "ai",
+      },
+      {
+        name: "transfer_to_echo_agent",
+        content: "Successfully transferred to echo_agent",
+        tool_calls: null,
+        type: "tool",
+      },
+      {
+        name: "echo_agent",
+        content: "Echo: test forwarding!",
+        tool_calls: [],
+        type: "ai",
+      },
+      {
+        name: "echo_agent",
+        content: "Transferring back to supervisor",
+        tool_calls: [
+          {
+            name: "transfer_back_to_supervisor",
+            args: {},
+          },
+        ],
+        type: "ai",
+      },
+      {
+        name: "transfer_back_to_supervisor",
+        content: "Successfully transferred back to supervisor",
+        tool_calls: null,
+        type: "tool",
+      },
+      {
+        name: "supervisor",
+        content: "Echo: test forwarding!",
+        tool_calls: [],
+        type: "ai",
+      },
+    ];
+
+    expect(received).toEqual(expected);
+  });
 });
