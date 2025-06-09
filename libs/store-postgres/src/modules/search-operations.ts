@@ -360,8 +360,7 @@ export class SearchOperations {
         }
       }
 
-      const orderDirection =
-        distanceMetric === "inner_product" ? "DESC" : "ASC";
+      const orderDirection = "DESC"; // From most similar to least similar
       sqlQuery += ` 
         GROUP BY s.namespace_path, s.key, s.value, s.created_at, s.updated_at
         ORDER BY similarity_score ${orderDirection}
