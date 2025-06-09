@@ -3,7 +3,7 @@ import { logger as honoLogger } from "hono/logger";
 import { consoleFormat } from "winston-console-format";
 import type { MiddlewareHandler } from "hono";
 import { parse as stacktraceParser } from "stacktrace-parser";
-import { readFileSync } from "fs";
+import { readFileSync } from "node:fs";
 import { codeFrameColumns } from "@babel/code-frame";
 import path from "node:path";
 

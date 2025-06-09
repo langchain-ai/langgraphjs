@@ -5,7 +5,7 @@ import type {
 import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import * as url from "node:url";
-import * as path from "path";
+import * as path from "node:path";
 
 let CUSTOM_AUTH: Auth | undefined;
 let DISABLE_STUDIO_AUTH = false;
