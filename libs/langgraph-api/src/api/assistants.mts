@@ -1,19 +1,19 @@
-import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
+import { Hono } from "hono";
 
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
 
 import {
   getAssistantId,
-  getGraph,
   getCachedStaticGraphSchema,
+  getGraph,
 } from "../graph/load.mjs";
 import { getRuntimeGraphSchema } from "../graph/parser/index.mjs";
 
-import { Assistants } from "../storage/ops.mjs";
-import * as schemas from "../schemas.mjs";
 import { HTTPException } from "hono/http-exception";
+import * as schemas from "../schemas.mjs";
+import { Assistants } from "../storage/ops.mjs";
 const api = new Hono();
 
 const RunnableConfigSchema = z.object({
@@ -71,6 +71,7 @@ api.post(
     const payload = c.req.valid("json");
     const result: unknown[] = [];
 
+    let total = 0;
     for await (const item of Assistants.search(
       {
         graph_id: payload.graph_id,
@@ -80,9 +81,13 @@ api.post(
       },
       c.var.auth,
     )) {
-      result.push(item);
+      result.push(item.assistant);
+      if (total === 0) {
+        total = item.total;
+      }
     }
 
+    c.res.headers.set("X-Pagination-Total", total.toString());
     return c.json(result);
   },
 );

@@ -17,7 +17,7 @@ export const cors = (
   if (cors == null) {
     return honoCors({
       origin: "*",
-      exposeHeaders: ["content-location"],
+      exposeHeaders: ["content-location", "x-pagination-total"],
     });
   }
 
@@ -33,16 +33,21 @@ export const cors = (
       }
     : (cors.allow_origins ?? []);
 
-  if (
-    !!cors.expose_headers?.length &&
-    cors.expose_headers.some(
-      (i) => i.toLocaleLowerCase() === "content-location",
-    )
-  ) {
-    console.warn(
-      "Adding missing `Content-Location` header in `cors.expose_headers`.",
-    );
-    cors.expose_headers.push("content-location");
+  if (cors.expose_headers?.length) {
+    const headersSet = new Set(cors.expose_headers.map((h) => h.toLowerCase()));
+
+    if (!headersSet.has("content-location")) {
+      console.warn(
+        "Adding missing `Content-Location` header in `cors.expose_headers`.",
+      );
+      cors.expose_headers.push("content-location");
+    }
+    if (!headersSet.has("x-pagination-total")) {
+      console.warn(
+        "Adding missing `X-Pagination-Total` header in `cors.expose_headers`.",
+      );
+      cors.expose_headers.push("x-pagination-total");
+    }
   }
 
   // TODO: handle `cors.allow_credentials`
