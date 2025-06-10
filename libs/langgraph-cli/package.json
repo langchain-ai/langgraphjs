@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-cli",
-  "version": "0.0.38",
+  "version": "0.0.39",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
@@ -32,7 +32,7 @@
   "dependencies": {
     "@babel/code-frame": "^7.26.2",
     "@commander-js/extra-typings": "^13.0.0",
-    "@langchain/langgraph-api": "workspace:*",
+    "@langchain/langgraph-api": "file:/Users/arjun/Desktop/langgraphjs-api/libs/langgraph-api/package.tgz",
     "chokidar": "^4.0.3",
     "commander": "^13.0.0",
     "dedent": "^1.5.3",
