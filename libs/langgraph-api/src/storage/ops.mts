@@ -323,7 +323,7 @@ export class Assistants {
       offset: number;
     },
     auth: AuthContext | undefined,
-  ) {
+  ): AsyncGenerator<{ assistant: Assistant; total: number }> {
     const [filters] = await handleAuthEvent(auth, "assistants:search", {
       graph_id: options.graph_id,
       metadata: options.metadata,
@@ -360,11 +360,20 @@ export class Assistants {
           return bCreatedAt - aCreatedAt;
         });
 
+      // Calculate total count before pagination
+      const total = filtered.length;
+
       for (const assistant of filtered.slice(
         options.offset,
         options.offset + options.limit,
       )) {
-        yield { ...assistant, name: assistant.name ?? assistant.graph_id };
+        yield {
+          assistant: {
+            ...assistant,
+            name: assistant.name ?? assistant.graph_id,
+          },
+          total,
+        };
       }
     });
   }
