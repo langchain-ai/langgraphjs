@@ -24,8 +24,7 @@ api.get("/info", (c) => {
     return undefined;
   })();
   return c.json({
-    flags: { assistants: true, crons: false, langsmith: !!langsmithTracing },
-    env,
+    flags: { assistants: true, crons: false, langsmith: !!langsmithTracing, },
   });
 });
 
