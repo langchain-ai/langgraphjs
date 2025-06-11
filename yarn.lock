@@ -2166,7 +2166,7 @@ __metadata:
     typescript: ^4.9.5 || ^5.4.5
     uuid: ^10.0.0
     yargs: ^17.7.2
-    zod: ^3.25.32
+    zod: ^3.23.8
   peerDependencies:
     "@langchain/core": ">=0.2.31 <0.4.0"
     "@langchain/langgraph-checkpoint": ~0.0.15
@@ -2243,7 +2243,7 @@ __metadata:
     tsx: ^4.19.3
     turbo: latest
     typescript: ^4.9.5 || ^5.4.5
-    zod: ^3.25.32
+    zod: ^3.23.8
   peerDependencies:
     "@langchain/core": ^0.3.43
     "@langchain/langgraph": ^0.2.57 || ^0.3.0
@@ -2296,7 +2296,7 @@ __metadata:
     uuid: ^10.0.0
     zod: ^3.25.32
   peerDependencies:
-    "@langchain/core": ^0.3.40
+    "@langchain/core": ^0.3.58
     "@langchain/langgraph": ^0.2.72 || ^0.3.0
   languageName: unknown
   linkType: soft
@@ -2331,7 +2331,7 @@ __metadata:
     tsx: ^4.19.3
     turbo: latest
     typescript: ^4.9.5 || ^5.4.5
-    zod: ^3.25.32
+    zod: ^3.23.8
   peerDependencies:
     "@langchain/core": ^0.3.40
     "@langchain/langgraph": ^0.2.53 || ^0.3.0
@@ -2383,7 +2383,7 @@ __metadata:
     zod: ^3.25.32
     zod-to-json-schema: ^3.22.4
   peerDependencies:
-    "@langchain/core": ">=0.2.36 <0.3.0 || >=0.3.40 < 0.4.0"
+    "@langchain/core": ">=0.3.58 < 0.4.0"
     zod-to-json-schema: ^3.x
   peerDependenciesMeta:
     zod-to-json-schema:
@@ -7608,8 +7608,8 @@ __metadata:
     tslab: ^1.0.22
     tsx: ^4.19.3
     uuid: ^10.0.0
-    zod: ^3.25.32
-    zod-to-json-schema: ^3.24.5
+    zod: ^3.23.8
+    zod-to-json-schema: ^3.23.2
   languageName: unknown
   linkType: soft
 
@@ -14824,7 +14824,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod-to-json-schema@npm:^3.22.3, zod-to-json-schema@npm:^3.22.4, zod-to-json-schema@npm:^3.22.5, zod-to-json-schema@npm:^3.24.0, zod-to-json-schema@npm:^3.24.5":
+"zod-to-json-schema@npm:^3.22.3, zod-to-json-schema@npm:^3.22.4, zod-to-json-schema@npm:^3.22.5, zod-to-json-schema@npm:^3.23.2, zod-to-json-schema@npm:^3.24.0":
   version: 3.24.5
   resolution: "zod-to-json-schema@npm:3.24.5"
   peerDependencies:
