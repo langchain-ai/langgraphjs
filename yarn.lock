@@ -1977,9 +1977,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@portal:/Users/hunter/Projects/github/langchain-ai/langchainjs/langchain-core::locator=langgraph%40workspace%3A.":
-  version: 0.0.0-use.local
-  resolution: "@langchain/core@portal:/Users/hunter/Projects/github/langchain-ai/langchainjs/langchain-core::locator=langgraph%40workspace%3A."
+"@langchain/core@npm:^0.3.40":
+  version: 0.3.57
+  resolution: "@langchain/core@npm:0.3.57"
   dependencies:
     "@cfworker/json-schema": ^4.0.2
     ansi-styles: ^5.0.0
@@ -1991,10 +1991,11 @@ __metadata:
     p-queue: ^6.6.2
     p-retry: 4
     uuid: ^10.0.0
-    zod: ^3.25.32
+    zod: ^3.22.4
     zod-to-json-schema: ^3.22.3
+  checksum: 5a497553209a3fe0c2a31b23c9586f586ea8b0785cb437a0b7140c308be80f0caa4397c45a4d7f0a1b7056f3509b03663f6c714217b75c20cce0a2df4fb3c105
   languageName: node
-  linkType: soft
+  linkType: hard
 
 "@langchain/groq@npm:^0.1.3":
   version: 0.1.3
@@ -14832,7 +14833,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.25.58":
+"zod@npm:^3.22.3, zod@npm:^3.22.4, zod@npm:^3.23.8, zod@npm:^3.24.0, zod@npm:^3.25.32":
   version: 3.25.58
   resolution: "zod@npm:3.25.58"
   checksum: c81143cb96a3bab0035e387bbde11fa21963c61d3e9ae48b0a7a30232d4b15a23cdcf4cd6009b1c9de989f431c2a82066f5cbdcb79315ea9ebf1c6efc050aac1
