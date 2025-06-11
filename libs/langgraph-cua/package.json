@@ -32,7 +32,8 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "scrapybara": "^2.4.4"
+    "scrapybara": "^2.4.4",
+    "zod": "^3.23.8"
   },
   "peerDependencies": {
     "@langchain/core": "^0.3.43",
@@ -66,8 +67,7 @@
     "release-it": "^19.0.2",
     "tsx": "^4.19.3",
     "turbo": "latest",
-    "typescript": "^4.9.5 || ^5.4.5",
-    "zod": "^3.25.32"
+    "typescript": "^4.9.5 || ^5.4.5"
   },
   "publishConfig": {
     "access": "public",
