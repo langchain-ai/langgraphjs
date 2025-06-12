@@ -1,4 +1,3 @@
-import { globalRegistry } from "zod/v4";
 import {
   InferInteropZodOutput,
   InteropZodObject,
@@ -222,7 +221,6 @@ export class SchemaMetaRegistry {
           outputSchema = outputSchema.describe(
             `${META_EXTRAS_DESCRIPTION_PREFIX}${strExtras}`
           );
-          console.log(globalRegistry.get(outputSchema));
         }
         return [key, outputSchema];
       });

@@ -116,7 +116,6 @@ import {
   getUpdateTypeSchema,
 } from "../graph/zod/schema.js";
 import "../graph/zod/plugin.js";
-import { registry } from "../graph/zod/zod-registry.js";
 import { withLangGraph } from "../graph/zod/meta.js";
 
 expect.extend({

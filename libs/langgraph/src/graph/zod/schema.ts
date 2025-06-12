@@ -63,7 +63,6 @@ function applyJsonSchemaExtrasFromDescription<T>(schema: T): unknown {
 }
 
 function toJsonSchema(schema: InteropZodObject): JSONSchema {
-  console.log(interopToJsonSchema(schema));
   return applyJsonSchemaExtrasFromDescription(
     interopToJsonSchema(schema)
   ) as JSONSchema;

@@ -14,7 +14,6 @@ import {
   type InteropZodObject,
   interopParse,
   interopZodObjectPartial,
-  interopZodObjectPassthrough,
   isInteropZodObject,
 } from "@langchain/core/utils/types";
 import { BaseChannel, isBaseChannel } from "../channels/base.js";
@@ -365,7 +364,7 @@ export class StateGraph<
     this._addSchema(this._outputDefinition);
 
     if (isInteropZodObject(configSchema)) {
-      this._configRuntimeSchema = interopZodObjectPassthrough(configSchema);
+      this._configRuntimeSchema = configSchema;
     }
   }
 
