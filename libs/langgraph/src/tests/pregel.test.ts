@@ -10223,17 +10223,15 @@ graph TD;
     it("with zod v4 schemas", async () => {
       const schema = z4.object({
         foo: z4.string(),
-        items: z4
-          .array(z4.string())
-          .default(() => [])
-          .register(registry, {
-            reducer: {
-              schema: z4.union([z4.string(), z4.array(z4.string())]),
-              fn: (a, b) =>
-                // eslint-disable-next-line no-nested-ternary
-                a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
-            },
-          }),
+        items: withLangGraph(z4.array(z4.string()), {
+          reducer: {
+            schema: z4.union([z4.string(), z4.array(z4.string())]),
+            fn: (a, b) =>
+              // eslint-disable-next-line no-nested-ternary
+              a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+          },
+          default: (): string[] => [],
+        }),
       });
 
       const subgraph = new StateGraph(schema)
@@ -11052,17 +11050,15 @@ graph TD;
       it("with zod v4", async () => {
         const schema = z4.object({
           foo: z4.string(),
-          items: withLangGraph(
-            z4.array(z4.string()).default(() => ["default"]),
-            {
-              reducer: {
-                fn: (a, b) =>
-                  // eslint-disable-next-line no-nested-ternary
-                  a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
-                schema: z4.union([z4.string(), z4.array(z4.string())]),
-              },
-            }
-          ),
+          items: withLangGraph(z4.array(z4.string()), {
+            reducer: {
+              fn: (a, b) =>
+                // eslint-disable-next-line no-nested-ternary
+                a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+              schema: z4.union([z4.string(), z4.array(z4.string())]),
+            },
+            default: () => ["default"],
+          }),
         });
         const graph = new StateGraph(schema)
           .addNode("agent", () => ({ foo: "agent", items: ["a", "b"] }))
