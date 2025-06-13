@@ -9,8 +9,10 @@
   "description": "TSC Tests for the things exported by the langchain package",
   "main": "./index.mjs",
   "scripts": {
-    "build": "tsc -m nodenext main.ts",
-    "test": "node ./main.js"
+    "build": "tsc -m nodenext src/*.ts --outDir dist",
+    "test": "npm run test:tsc && npm run test:zod",
+    "test:tsc": "node dist/main.js",
+    "test:zod": "node dist/zod.js"
   },
   "author": "LangChain",
   "license": "MIT",
@@ -19,6 +21,7 @@
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@types/node": "^18.15.11",
-    "typescript": "5.5.4"
+    "typescript": "5.5.4",
+    "zod": "^3.25.32"
   }
 }
