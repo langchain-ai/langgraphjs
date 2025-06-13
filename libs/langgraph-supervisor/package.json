@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-supervisor",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "description": "LangGraph Multi-Agent Supervisor",
   "type": "module",
   "engines": {
