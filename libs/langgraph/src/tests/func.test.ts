@@ -945,6 +945,7 @@ export function runFuncTests(
 
       it("handles multiple interrupts from tasks", async () => {
         const addParticipant = task("add-participant", async (name: string) => {
+          console.log("addParticipant", name);
           const feedback = interrupt(`Hey do you want to add ${name}?`);
 
           if (feedback === false) {
@@ -972,7 +973,10 @@ export function runFuncTests(
 
         const config = { configurable: { thread_id } };
 
+        console.log("program.invoke");
         let result = await program.invoke([], config);
+        console.log("program.invoke.finish");
+        console.dir(result, { depth: null });
         expect(result).toEqual({
           __interrupt__: [
             {
