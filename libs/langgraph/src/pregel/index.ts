@@ -118,6 +118,7 @@ import {
   IterableReadableStreamWithAbortSignal,
   IterableReadableWritableStream,
 } from "./stream.js";
+import { Callbacks } from "@langchain/core/callbacks/manager";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
@@ -1804,15 +1805,38 @@ export class Pregel<
   ): IterableReadableStream<StreamEvent | Uint8Array> {
     const abortController = new AbortController();
 
+    const combineCallbacks = (callback1?: Callbacks, callback2?: Callbacks): Callbacks | undefined => {
+      if (!callback1 && !callback2) {
+        return undefined;
+      }
+
+      if (!callback1) {
+        return callback2;
+      }
+
+      if (!callback2) {
+        return callback1;
+      }
+      if (Array.isArray(callback1) && Array.isArray(callback2)) {
+        return [...callback1, ...callback2];
+      }
+      if (Array.isArray(callback1)) {
+        return [...callback1, callback2] as Callbacks;
+      }
+      if (Array.isArray(callback2)) {
+        return [callback1, ...callback2];
+      }
+      return [callback1, callback2] as Callbacks;
+    };
+
     const config = {
       recursionLimit: this.config?.recursionLimit,
       ...options,
       // Similar to `stream`, we need to pass the `config.callbacks` here,
       // otherwise the user-provided callback will get lost in `ensureLangGraphConfig`.
-      callbacks: [
-        ...(this.config?.callbacks ?? []),
-        ...(options?.callbacks ?? []),
-      ],
+
+      // extend the callbacks with the ones from the config
+      callbacks: combineCallbacks(this.config?.callbacks, options?.callbacks),
       signal: options?.signal
         ? combineAbortSignals(options.signal, abortController.signal)
         : abortController.signal,
