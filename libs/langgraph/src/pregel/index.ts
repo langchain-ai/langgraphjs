@@ -1809,7 +1809,10 @@ export class Pregel<
       ...options,
       // Similar to `stream`, we need to pass the `config.callbacks` here,
       // otherwise the user-provided callback will get lost in `ensureLangGraphConfig`.
-      callbacks: [...(this.config?.callbacks ?? []), ...(options?.callbacks ?? [])],
+      callbacks: [
+        ...(this.config?.callbacks ?? []),
+        ...(options?.callbacks ?? []),
+      ],
       signal: options?.signal
         ? combineAbortSignals(options.signal, abortController.signal)
         : abortController.signal,
