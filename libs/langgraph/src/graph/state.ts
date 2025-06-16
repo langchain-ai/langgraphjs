@@ -10,6 +10,12 @@ import {
   BaseCheckpointSaver,
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
+import {
+  type InteropZodObject,
+  interopParse,
+  interopZodObjectPartial,
+  isInteropZodObject,
+} from "@langchain/core/utils/types";
 import { BaseChannel, isBaseChannel } from "../channels/base.js";
 import {
   CompiledGraph,
@@ -56,14 +62,12 @@ import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
 import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
-import {
-  AnyZodObject,
-  getChannelsFromZod,
-  applyZodPlugin,
-  isAnyZodObject,
-  ZodToStateDefinition,
-} from "./zod/state.js";
 import { LastValueAfterFinish } from "../channels/last_value.js";
+import {
+  type SchemaMetaRegistry,
+  InteropZodToStateDefinition,
+  schemaMetaRegistry,
+} from "./zod/meta.js";
 
 const ROOT = "__root__";
 
@@ -94,7 +98,7 @@ export type StateGraphAddNodeOptions<Nodes extends string = string> = {
   cachePolicy?: CachePolicy | boolean;
   // TODO: Fix generic typing for annotations
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  input?: AnnotationRoot<any> | AnyZodObject;
+  input?: AnnotationRoot<any> | InteropZodObject;
 } & AddNodeOptions<Nodes>;
 
 export type StateGraphArgsWithStateSchema<
@@ -116,15 +120,15 @@ export type StateGraphArgsWithInputOutputSchemas<
 };
 
 type ZodStateGraphArgsWithStateSchema<
-  SD extends AnyZodObject,
+  SD extends InteropZodObject,
   I extends SDZod,
   O extends SDZod
 > = { state: SD; input?: I; output?: O };
 
-type SDZod = StateDefinition | AnyZodObject;
+type SDZod = StateDefinition | InteropZodObject;
 
-type ToStateDefinition<T> = T extends AnyZodObject
-  ? ZodToStateDefinition<T>
+type ToStateDefinition<T> = T extends InteropZodObject
+  ? InteropZodToStateDefinition<T>
   : T extends StateDefinition
   ? T
   : never;
@@ -218,19 +222,19 @@ export class StateGraph<
   _schemaDefinition: StateDefinition;
 
   /** @internal */
-  _schemaRuntimeDefinition: AnyZodObject | undefined;
+  _schemaRuntimeDefinition: InteropZodObject | undefined;
 
   /** @internal */
   _inputDefinition: I;
 
   /** @internal */
-  _inputRuntimeDefinition: AnyZodObject | PartialStateSchema | undefined;
+  _inputRuntimeDefinition: InteropZodObject | PartialStateSchema | undefined;
 
   /** @internal */
   _outputDefinition: O;
 
   /** @internal */
-  _outputRuntimeDefinition: AnyZodObject | undefined;
+  _outputRuntimeDefinition: InteropZodObject | undefined;
 
   /**
    * Map schemas to managed values
@@ -238,11 +242,14 @@ export class StateGraph<
    */
   _schemaDefinitions = new Map();
 
+  /** @internal */
+  _metaRegistry: SchemaMetaRegistry = schemaMetaRegistry;
+
   /** @internal Used only for typing. */
   _configSchema: ToStateDefinition<C> | undefined;
 
   /** @internal */
-  _configRuntimeSchema: AnyZodObject | undefined;
+  _configRuntimeSchema: InteropZodObject | undefined;
 
   constructor(
     fields: SD extends StateDefinition
@@ -267,14 +274,14 @@ export class StateGraph<
   );
 
   constructor(
-    fields: SD extends AnyZodObject
+    fields: SD extends InteropZodObject
       ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
       : never,
     configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
-    fields: SD extends AnyZodObject
+    fields: SD extends InteropZodObject
       ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
       : SD extends StateDefinition
       ?
@@ -293,11 +300,15 @@ export class StateGraph<
     super();
 
     if (isZodStateGraphArgsWithStateSchema(fields)) {
-      const stateDef = getChannelsFromZod(fields.state);
+      const stateDef = this._metaRegistry.getChannelsForSchema(fields.state);
       const inputDef =
-        fields.input != null ? getChannelsFromZod(fields.input) : stateDef;
+        fields.input != null
+          ? this._metaRegistry.getChannelsForSchema(fields.input)
+          : stateDef;
       const outputDef =
-        fields.output != null ? getChannelsFromZod(fields.output) : stateDef;
+        fields.output != null
+          ? this._metaRegistry.getChannelsForSchema(fields.output)
+          : stateDef;
 
       this._schemaDefinition = stateDef;
       this._schemaRuntimeDefinition = fields.state;
@@ -307,8 +318,8 @@ export class StateGraph<
 
       this._outputDefinition = outputDef as O;
       this._outputRuntimeDefinition = fields.output ?? fields.state;
-    } else if (isAnyZodObject(fields)) {
-      const stateDef = getChannelsFromZod(fields);
+    } else if (isInteropZodObject(fields)) {
+      const stateDef = this._metaRegistry.getChannelsForSchema(fields);
 
       this._schemaDefinition = stateDef;
       this._schemaRuntimeDefinition = fields;
@@ -352,8 +363,8 @@ export class StateGraph<
     this._addSchema(this._inputDefinition);
     this._addSchema(this._outputDefinition);
 
-    if (isAnyZodObject(configSchema)) {
-      this._configRuntimeSchema = configSchema.passthrough();
+    if (isInteropZodObject(configSchema)) {
+      this._configRuntimeSchema = configSchema;
     }
   }
 
@@ -494,8 +505,8 @@ export class StateGraph<
 
       let inputSpec = this._schemaDefinition;
       if (options?.input !== undefined) {
-        if (isAnyZodObject(options.input)) {
-          inputSpec = getChannelsFromZod(options.input);
+        if (isInteropZodObject(options.input)) {
+          inputSpec = this._metaRegistry.getChannelsForSchema(options.input);
         } else if (options.input.spec !== undefined) {
           inputSpec = options.input.spec;
         }
@@ -759,6 +770,9 @@ export class CompiledStateGraph<
 > {
   declare builder: StateGraph<unknown, S, U, N, I, O, C>;
 
+  /** @internal */
+  _metaRegistry: SchemaMetaRegistry = schemaMetaRegistry;
+
   attachNode(key: typeof START, node?: never): void;
 
   attachNode(key: N, node: StateGraphNodeSpec<S, U>): void;
@@ -989,24 +1003,27 @@ export class CompiledStateGraph<
       const input = this.builder._inputRuntimeDefinition;
       const schema = this.builder._schemaRuntimeDefinition;
 
-      const apply = (schema: AnyZodObject | undefined) => {
+      const apply = (schema: InteropZodObject | undefined) => {
         if (schema == null) return undefined;
-        return applyZodPlugin(schema, { reducer: true });
+        return this._metaRegistry.getExtendedChannelSchemas(schema, {
+          withReducerSchema: true,
+        });
       };
 
-      if (isAnyZodObject(input)) return apply(input);
-      if (input === PartialStateSchema) return apply(schema)?.partial();
+      if (isInteropZodObject(input)) return apply(input);
+      if (input === PartialStateSchema) {
+        return interopZodObjectPartial(apply(schema)!);
+      }
       return undefined;
     })();
 
     if (isCommand(input)) {
       const parsedInput = input;
       if (input.update && schema != null)
-        parsedInput.update = schema.parse(input.update);
+        parsedInput.update = interopParse(schema, input.update);
       return parsedInput;
     }
-
-    if (schema != null) return schema.parse(input);
+    if (schema != null) return interopParse(schema, input);
     return input;
   }
 
@@ -1014,7 +1031,7 @@ export class CompiledStateGraph<
     config: Partial<LangGraphRunnableConfig["configurable"]>
   ): Promise<LangGraphRunnableConfig["configurable"]> {
     const configSchema = this.builder._configRuntimeSchema;
-    if (isAnyZodObject(configSchema)) configSchema.parse(config);
+    if (isInteropZodObject(configSchema)) interopParse(configSchema, config);
     return config;
   }
 }
@@ -1081,23 +1098,23 @@ function isStateGraphArgsWithInputOutputSchemas<
 }
 
 function isZodStateGraphArgsWithStateSchema<
-  SD extends AnyZodObject,
-  I extends AnyZodObject,
-  O extends AnyZodObject
+  SD extends InteropZodObject,
+  I extends InteropZodObject,
+  O extends InteropZodObject
 >(value: unknown): value is ZodStateGraphArgsWithStateSchema<SD, I, O> {
   if (typeof value !== "object" || value == null) {
     return false;
   }
 
-  if (!("state" in value) || !isAnyZodObject(value.state)) {
+  if (!("state" in value) || !isInteropZodObject(value.state)) {
     return false;
   }
 
-  if ("input" in value && !isAnyZodObject(value.input)) {
+  if ("input" in value && !isInteropZodObject(value.input)) {
     return false;
   }
 
-  if ("output" in value && !isAnyZodObject(value.output)) {
+  if ("output" in value && !isInteropZodObject(value.output)) {
     return false;
   }
 
@@ -1179,10 +1196,10 @@ export function typedNode<
   Nodes extends string,
   C extends SDZod = StateDefinition
 >(
-  _state: SD extends AnyZodObject ? SD : never,
+  _state: SD extends InteropZodObject ? SD : never,
   _options?: {
     nodes?: Nodes[];
-    config?: C extends AnyZodObject ? C : never;
+    config?: C extends InteropZodObject ? C : never;
   }
 ): (
   func: TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>,
@@ -1194,7 +1211,7 @@ export function typedNode<
   Nodes extends string,
   C extends SDZod = StateDefinition
 >(
-  _state: SD extends AnyZodObject
+  _state: SD extends InteropZodObject
     ? SD
     : SD extends StateDefinition
     ? AnnotationRoot<SD>

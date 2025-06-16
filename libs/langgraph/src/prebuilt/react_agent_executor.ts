@@ -22,12 +22,12 @@ import {
   type RunnableLike,
 } from "@langchain/core/runnables";
 import { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
+import { InteropZodType } from "@langchain/core/utils/types";
 import {
   All,
   BaseCheckpointSaver,
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
-import { z } from "zod";
 
 import {
   StateGraph,
@@ -60,7 +60,7 @@ export type N = typeof START | "agent" | "tools";
 export type StructuredResponseSchemaAndPrompt<StructuredResponseType> = {
   prompt: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  schema: z.ZodType<StructuredResponseType> | Record<string, any>;
+  schema: InteropZodType<StructuredResponseType> | Record<string, any>;
 };
 
 function _convertMessageModifierToPrompt(
@@ -424,7 +424,7 @@ export type CreateReactAgentParams<
    * This is not the only strategy to get structured responses, see more options in [this guide](https://langchain-ai.github.io/langgraph/how-tos/react-agent-structured-output/).
    */
   responseFormat?:
-    | z.ZodType<StructuredResponseType>
+    | InteropZodType<StructuredResponseType>
     | StructuredResponseSchemaAndPrompt<StructuredResponseType>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     | Record<string, any>;

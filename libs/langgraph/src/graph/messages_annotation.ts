@@ -4,7 +4,7 @@ import { BaseMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { Annotation } from "./annotation.js";
 import { Messages, messagesStateReducer } from "./message.js";
-import { withLangGraph } from "./zod/state.js";
+import { withLangGraph } from "./zod/meta.js";
 
 /**
  * Prebuilt state annotation that combines returned messages.

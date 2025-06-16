@@ -1706,10 +1706,10 @@ describe("MessagesZodState", () => {
 
   it("should handle message reducers correctly", async () => {
     const graph = new StateGraph(MessagesZodState)
-      .addNode("add", ({ messages }: z.infer<typeof MessagesZodState>) => ({
+      .addNode("add", ({ messages }) => ({
         messages: [...messages, new HumanMessage("new message")],
       }))
-      .addNode("remove", ({ messages }: z.infer<typeof MessagesZodState>) => {
+      .addNode("remove", ({ messages }) => {
         return {
           messages: [new RemoveMessage({ id: messages[0].id ?? "" })],
         };
@@ -1733,7 +1733,7 @@ describe("MessagesZodState", () => {
           new HumanMessage({ id: "msg2", content: "message 2" }),
         ],
       }))
-      .addNode("update", ({ messages }: z.infer<typeof MessagesZodState>) => {
+      .addNode("update", ({ messages }) => {
         const firstMessageId = messages[0]?.id;
         if (!firstMessageId) {
           throw new Error("No message ID found");
