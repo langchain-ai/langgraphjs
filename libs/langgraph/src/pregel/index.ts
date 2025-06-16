@@ -1808,7 +1808,7 @@ export class Pregel<
       recursionLimit: this.config?.recursionLimit,
       // Similar to `stream`, we need to pass the `config.callbacks` here,
       // otherwise the user-provided callback will get lost in `ensureLangGraphConfig`.
-      callbacks: this.config?.callbacks,
+      callbacks: [...(this.config?.callbacks ?? []), ...(options?.callbacks ?? [])],
       ...options,
       signal: options?.signal
         ? combineAbortSignals(options.signal, abortController.signal)
