@@ -1805,7 +1805,10 @@ export class Pregel<
   ): IterableReadableStream<StreamEvent | Uint8Array> {
     const abortController = new AbortController();
 
-    const combineCallbacks = (callback1?: Callbacks, callback2?: Callbacks): Callbacks | undefined => {
+    const combineCallbacks = (
+      callback1?: Callbacks,
+      callback2?: Callbacks
+    ): Callbacks | undefined => {
       if (!callback1 && !callback2) {
         return undefined;
       }
