@@ -1,10 +1,10 @@
+import { Callbacks } from "@langchain/core/callbacks/manager";
 import { RunnableConfig } from "@langchain/core/runnables";
 import type {
   ChannelVersions,
   CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
 import { CONFIG_KEY_CHECKPOINT_MAP } from "../../constants.js";
-import { Callbacks } from "@langchain/core/callbacks/manager";
 
 export function getNullChannelVersion(currentVersions: ChannelVersions) {
   const versionValues = Object.values(currentVersions);
