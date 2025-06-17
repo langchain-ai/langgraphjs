@@ -1806,7 +1806,7 @@ export class Pregel<
     const abortController = new AbortController();
 
     const config = {
-      recursionLimit: this.config?.recursionLimit,
+      recursionLimit: options?.recursionLimit ?? this.config?.recursionLimit,
       ...options,
       // Similar to `stream`, we need to pass the `config.callbacks` here,
       // otherwise the user-provided callback will get lost in `ensureLangGraphConfig`.
