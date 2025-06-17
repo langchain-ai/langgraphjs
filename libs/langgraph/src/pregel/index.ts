@@ -52,6 +52,7 @@ import {
   isInterrupted,
   NULL_TASK_ID,
   PUSH,
+  CONFIG_KEY_CHECKPOINT_DURING,
 } from "../constants.js";
 import {
   GraphRecursionError,
@@ -1622,6 +1623,8 @@ export class Pregel<
    * - checkpointer
    * - store
    * - whether stream mode is single
+   * - node cache
+   * - whether checkpoint during is enabled
    * @internal
    */
   _defaults(config: PregelOptions<Nodes, Channels>): [
@@ -1632,10 +1635,11 @@ export class Pregel<
     LangGraphRunnableConfig, // config without pregel keys
     All | string[], // interrupt before
     All | string[], // interrupt after
-    BaseCheckpointSaver | undefined,
-    BaseStore | undefined,
-    boolean,
-    BaseCache | undefined
+    BaseCheckpointSaver | undefined, // checkpointer
+    BaseStore | undefined, // store
+    boolean, // stream mode single
+    BaseCache | undefined, // node cache
+    boolean // checkpoint during
   ] {
     const {
       debug,
@@ -1695,6 +1699,10 @@ export class Pregel<
     }
     const defaultStore: BaseStore | undefined = config.store ?? this.store;
     const defaultCache: BaseCache | undefined = config.cache ?? this.cache;
+    const defaultCheckpointDuring =
+      config.checkpointDuring ??
+      config?.configurable?.[CONFIG_KEY_CHECKPOINT_DURING] ??
+      true;
 
     return [
       defaultDebug,
@@ -1708,6 +1716,7 @@ export class Pregel<
       defaultStore,
       streamModeSingle,
       defaultCache,
+      defaultCheckpointDuring,
     ];
   }
 
@@ -1969,6 +1978,7 @@ export class Pregel<
       store,
       streamModeSingle,
       cache,
+      checkpointDuring,
     ] = this._defaults(restConfig);
 
     config.configurable = await this._validateConfigurable(config.configurable);
@@ -2042,6 +2052,7 @@ export class Pregel<
           manager: runManager,
           debug: this.debug,
           triggerToNodes: this.triggerToNodes,
+          checkpointDuring,
         });
 
         const runner = new PregelRunner({

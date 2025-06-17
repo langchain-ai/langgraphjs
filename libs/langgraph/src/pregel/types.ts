@@ -223,6 +223,12 @@ export interface PregelOptions<
   subgraphs?: TSubgraphs;
 
   /**
+   * Whether to checkpoint intermediate steps, defaults to `true`.
+   * If `false`, only the final checkpoint is saved.
+   */
+  checkpointDuring?: boolean;
+
+  /**
    * A shared value store that allows you to store and retrieve state across
    * threads. Useful for implementing long-term memory patterns.
    */

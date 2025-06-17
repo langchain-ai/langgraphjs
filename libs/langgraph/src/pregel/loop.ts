@@ -47,6 +47,8 @@ import {
   PUSH,
   CONFIG_KEY_SCRATCHPAD,
   CONFIG_KEY_CHECKPOINT_NS,
+  CHECKPOINT_NAMESPACE_END,
+  CONFIG_KEY_CHECKPOINT_ID,
 } from "../constants.js";
 import {
   _applyWrites,
@@ -104,6 +106,7 @@ export type PregelLoopInitializeParams = {
   cache?: BaseCache<PendingWrite<string>[]>;
   interruptAfter: string[] | All;
   interruptBefore: string[] | All;
+  checkpointDuring: boolean;
   manager?: CallbackManagerForChainRun;
   debug: boolean;
   triggerToNodes: Record<string, string[]>;
@@ -136,6 +139,7 @@ type PregelLoopParams = {
   prevCheckpointConfig: RunnableConfig | undefined;
   interruptAfter: string[] | All;
   interruptBefore: string[] | All;
+  checkpointDuring: boolean;
   debug: boolean;
   triggerToNodes: Record<string, string[]>;
 };
@@ -227,6 +231,8 @@ export class PregelLoop {
 
   protected checkpoint: Checkpoint;
 
+  protected checkpointIdSaved: string | undefined;
+
   protected checkpointConfig: RunnableConfig;
 
   checkpointMetadata: CheckpointMetadata;
@@ -240,6 +246,8 @@ export class PregelLoop {
   step: number;
 
   protected stop: number;
+
+  protected checkpointDuring: boolean;
 
   protected outputKeys: string | string[];
 
@@ -343,6 +351,7 @@ export class PregelLoop {
     this.prevCheckpointConfig = params.prevCheckpointConfig;
     this.interruptAfter = params.interruptAfter;
     this.interruptBefore = params.interruptBefore;
+    this.checkpointDuring = params.checkpointDuring;
     this.debug = params.debug;
     this.triggerToNodes = params.triggerToNodes;
   }
@@ -476,6 +485,7 @@ export class PregelLoop {
       cache: params.cache,
       interruptAfter: params.interruptAfter,
       interruptBefore: params.interruptBefore,
+      checkpointDuring: params.checkpointDuring,
       debug: params.debug,
       triggerToNodes: params.triggerToNodes,
     });
@@ -525,6 +535,7 @@ export class PregelLoop {
         new Map(writesCopy.map((w) => [w[0], w])).values()
       );
     }
+
     // save writes
     for (const [c, v] of writesCopy) {
       const idx = this.checkpointPendingWrites.findIndex(
@@ -549,6 +560,7 @@ export class PregelLoop {
       writesCopy,
       taskId
     );
+
     if (putWritePromise !== undefined) {
       this.checkpointerPromises.push(putWritePromise);
     }
@@ -824,6 +836,22 @@ export class PregelLoop {
   }
 
   async finishAndHandleError(error?: Error) {
+    // persist current checkpoint and writes
+    if (
+      !this.checkpointDuring &&
+      // if it's a top graph
+      (!this.isNested ||
+        // or a nested graph with error or interrupt
+        error !== undefined ||
+        // or a nested graph with checkpointer: true
+        this.checkpointNamespace.some((part) =>
+          part.includes(CHECKPOINT_NAMESPACE_END)
+        ))
+    ) {
+      this._putCheckpoint(this.checkpointMetadata);
+      this._flushPendingWrites();
+    }
+
     const suppress = this._suppressInterrupt(error);
     if (suppress || error === undefined) {
       this.output = readChannels(this.channels, this.outputKeys);
@@ -962,9 +990,7 @@ export class PregelLoop {
         this.input,
         this.checkpointPendingWrites
       )) {
-        if (writes[tid] === undefined) {
-          writes[tid] = [];
-        }
+        writes[tid] ??= [];
         writes[tid].push([key, value]);
       }
       if (Object.keys(writes).length === 0) {
@@ -1083,34 +1109,42 @@ export class PregelLoop {
     }
   }
 
-  protected async _putCheckpoint(
+  protected _putCheckpoint(
     inputMetadata: Omit<CheckpointMetadata, "step" | "parents">
   ) {
-    // Assign step
-    const metadata = {
-      ...inputMetadata,
-      step: this.step,
-      parents: this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] ?? {},
-    };
+    const exiting = this.checkpointMetadata === inputMetadata;
+
+    if (!exiting) {
+      this.checkpointMetadata = {
+        ...inputMetadata,
+        step: this.step,
+        parents: this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] ?? {},
+      };
+    }
+
+    const doCheckpoint =
+      this.checkpointer != null && (this.checkpointDuring || exiting);
+
+    // create new checkpoint
+    this.checkpoint = createCheckpoint(
+      this.checkpoint,
+      doCheckpoint ? this.channels : undefined,
+      this.step,
+      exiting ? { id: this.checkpoint.id } : undefined
+    );
+
     // Bail if no checkpointer
-    if (this.checkpointer !== undefined) {
+    if (doCheckpoint) {
       // store the previous checkpoint config for debug events
       this.prevCheckpointConfig = this.checkpointConfig?.configurable
         ?.checkpoint_id
         ? this.checkpointConfig
         : undefined;
 
-      // create new checkpoint
-      this.checkpointMetadata = metadata;
       // child graphs keep at most one checkpoint per parent checkpoint
       // this is achieved by writing child checkpoints as progress is made
       // (so that error recovery / resuming from interrupt don't lose work)
       // but doing so always with an id equal to that of the parent checkpoint
-      this.checkpoint = createCheckpoint(
-        this.checkpoint,
-        this.channels,
-        this.step
-      );
       this.checkpointConfig = {
         ...this.checkpointConfig,
         configurable: {
@@ -1141,7 +1175,36 @@ export class PregelLoop {
         },
       };
     }
-    this.step += 1;
+
+    if (!exiting) {
+      // increment step
+      this.step += 1;
+    }
+  }
+
+  protected _flushPendingWrites() {
+    if (this.checkpointer == null) return;
+    if (this.checkpointPendingWrites.length === 0) return;
+
+    // patch config
+    const config = patchConfigurable(this.checkpointConfig, {
+      [CONFIG_KEY_CHECKPOINT_NS]: this.config.configurable?.checkpoint_ns ?? "",
+      [CONFIG_KEY_CHECKPOINT_ID]: this.checkpoint.id,
+    });
+
+    // group writes by task id
+    const byTask: Record<string, PendingWrite<string>[]> = {};
+    for (const [tid, key, value] of this.checkpointPendingWrites) {
+      byTask[tid] ??= [];
+      byTask[tid].push([key, value]);
+    }
+
+    // submit writes to checkpointer
+    for (const [tid, ws] of Object.entries(byTask)) {
+      this.checkpointerPromises.push(
+        this.checkpointer.putWrites(config, ws, tid)
+      );
+    }
   }
 
   protected _matchWrites(
