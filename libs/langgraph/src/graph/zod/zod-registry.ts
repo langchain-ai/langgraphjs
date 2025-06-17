@@ -1,3 +1,4 @@
+import type * as core from "zod/v4/core";
 import { getInteropZodDefaultGetter } from "@langchain/core/utils/types";
 import { $ZodType, $ZodRegistry, $replace } from "zod/v4/core";
 import { SchemaMeta, SchemaMetaRegistry, schemaMetaRegistry } from "./meta.js";
@@ -43,6 +44,32 @@ export class LanggraphZodMetaRegistry<
       }
     }
     return super.add(schema, ..._meta);
+  }
+}
+
+// Augment the zod/v4 module nudging the `register` method
+// to use the user provided input schema if specified.
+declare module "zod/v4" {
+  export interface ZodType<
+    out Output = unknown,
+    out Input = unknown,
+    out Internals extends core.$ZodTypeInternals<
+      Output,
+      Input
+    > = core.$ZodTypeInternals<Output, Input>
+  > extends core.$ZodType<Output, Input, Internals> {
+    register<
+      R extends LanggraphZodMetaRegistry,
+      TOutput = core.output<this>,
+      TInput = core.input<this>,
+      TInternals extends core.$ZodTypeInternals<
+        TOutput,
+        TInput
+      > = core.$ZodTypeInternals<TOutput, TInput>
+    >(
+      registry: R,
+      meta: SchemaMeta<TOutput, TInput>
+    ): ZodType<TOutput, TInput, TInternals>;
   }
 }
 
