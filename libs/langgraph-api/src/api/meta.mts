@@ -1,6 +1,21 @@
 import { Hono } from "hono";
+import * as fs from "node:fs/promises";
+import * as url from "node:url";
 
 const api = new Hono();
+
+// Get the version using the same pattern as semver/index.mts
+const packageJsonPath = url.fileURLToPath(
+  new URL("../../package.json", import.meta.url),
+);
+
+let version: string;
+try {
+  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf-8"));
+  version = packageJson.version;
+} catch {
+  console.warn("Could not determine version of langgraph-api");
+}
 
 // read env variable
 const env = process.env;
@@ -24,7 +39,14 @@ api.get("/info", (c) => {
     return undefined;
   })();
   return c.json({
-    flags: { assistants: true, crons: false, langsmith: !!langsmithTracing },
+    version,
+    context: "js",
+    flags: {
+      assistants: true,
+      crons: false,
+      langsmith: !!langsmithTracing,
+      langsmith_tracing_replicas: true,
+    },
   });
 });
 

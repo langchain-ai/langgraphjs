@@ -1,19 +1,20 @@
-import type { Run, RunnableConfig, Checkpoint } from "./storage/ops.mjs";
-import { getGraph } from "./graph/load.mjs";
-import { Client as LangSmithClient } from "langsmith";
+import { BaseMessageChunk, isBaseMessage } from "@langchain/core/messages";
+import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import {
   type CheckpointMetadata,
   type Interrupt,
   type StateSnapshot,
 } from "@langchain/langgraph";
 import type { Pregel } from "@langchain/langgraph/pregel";
+import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
+import { getLangGraphCommand } from "./command.mjs";
+import { getGraph } from "./graph/load.mjs";
+import { checkLangGraphSemver } from "./semver/index.mjs";
+import type { Checkpoint, Run, RunnableConfig } from "./storage/ops.mjs";
 import {
   runnableConfigToCheckpoint,
   taskRunnableConfigToCheckpoint,
 } from "./utils/runnableConfig.mjs";
-import { BaseMessageChunk, isBaseMessage } from "@langchain/core/messages";
-import { getLangGraphCommand } from "./command.mjs";
-import { checkLangGraphSemver } from "./semver/index.mjs";
 
 type LangGraphStreamMode = Pregel<any, any>["streamMode"][number];
 
@@ -197,6 +198,21 @@ export async function* streamState(
     langgraph_api_url: process.env.LANGGRAPH_API_URL ?? undefined,
   };
 
+  const tracer = run.kwargs?.config?.configurable?.langsmith_project
+    ? new LangChainTracer({
+        replicas: [
+          [
+            run.kwargs?.config?.configurable?.langsmith_project as string,
+            {
+              reference_example_id:
+                run.kwargs?.config?.configurable?.langsmith_example_id,
+            },
+          ],
+          [getDefaultProjectName(), undefined],
+        ],
+      })
+    : undefined;
+
   const events = graph.streamEvents(
     kwargs.command != null
       ? getLangGraphCommand(kwargs.command)
@@ -216,6 +232,7 @@ export async function* streamState(
       runId: run.run_id,
       streamMode: [...libStreamMode],
       signal: options?.signal,
+      ...(tracer && { callbacks: [tracer] }),
     },
   );
 

@@ -382,23 +382,23 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:^0.3.42":
-  version: 0.3.57
-  resolution: "@langchain/core@npm:0.3.57"
+"@langchain/core@npm:^0.3.59":
+  version: 0.3.59
+  resolution: "@langchain/core@npm:0.3.59"
   dependencies:
     "@cfworker/json-schema": ^4.0.2
     ansi-styles: ^5.0.0
     camelcase: 6
     decamelize: 1.2.0
     js-tiktoken: ^1.0.12
-    langsmith: ^0.3.29
+    langsmith: ^0.3.33
     mustache: ^4.2.0
     p-queue: ^6.6.2
     p-retry: 4
     uuid: ^10.0.0
-    zod: ^3.22.4
+    zod: ^3.25.32
     zod-to-json-schema: ^3.22.3
-  checksum: 5a497553209a3fe0c2a31b23c9586f586ea8b0785cb437a0b7140c308be80f0caa4397c45a4d7f0a1b7056f3509b03663f6c714217b75c20cce0a2df4fb3c105
+  checksum: 7ad68340baaa45dbdb94393345b23680fb57633aea3a3f766a96329b8521acd54197f68faa6ee8c12249d8bd5737f5cb37cc508df62dbfe4bf00b20af1cef8fa
   languageName: node
   linkType: hard
 
@@ -409,7 +409,7 @@ __metadata:
     "@babel/code-frame": ^7.26.2
     "@hono/node-server": ^1.12.0
     "@hono/zod-validator": ^0.2.2
-    "@langchain/core": ^0.3.42
+    "@langchain/core": ^0.3.59
     "@langchain/langgraph": ^0.2.57
     "@langchain/langgraph-checkpoint": ~0.0.16
     "@langchain/langgraph-sdk": ^0.0.77
@@ -427,7 +427,7 @@ __metadata:
     exit-hook: ^4.0.0
     hono: ^4.5.4
     jose: ^6.0.10
-    langsmith: ^0.2.15
+    langsmith: ^0.3.33
     open: ^10.1.0
     postgres: ^3.4.5
     prettier: ^3.3.3
@@ -442,7 +442,7 @@ __metadata:
     winston-console-format: ^1.0.8
     zod: ^3.23.8
   peerDependencies:
-    "@langchain/core": ^0.3.42
+    "@langchain/core": ^0.3.59
     "@langchain/langgraph": ^0.2.57 || ^0.3.0
     "@langchain/langgraph-checkpoint": ~0.0.16
     "@langchain/langgraph-sdk": ~0.0.70
@@ -2228,9 +2228,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"langsmith@npm:^0.3.29":
-  version: 0.3.29
-  resolution: "langsmith@npm:0.3.29"
+"langsmith@npm:^0.3.33":
+  version: 0.3.33
+  resolution: "langsmith@npm:0.3.33"
   dependencies:
     "@types/uuid": ^10.0.0
     chalk: ^4.1.2
@@ -2244,7 +2244,7 @@ __metadata:
   peerDependenciesMeta:
     openai:
       optional: true
-  checksum: 5e714752d40bd90525436d2d977ed0e750031f946dbc6c5549a1d7ceb5546b48dfcc23a1fb1b758f18d954fe53e6089b7ca600c60f2f72d854aa24d5ff0a41fa
+  checksum: 45970dbc711d3c84b1603d26291b9164ca6daf6d802f151af6c3ccdbfb84068be390366dbb15319a158ccf50e7e9f161c55abe84bce2730f93962888b33e6269
   languageName: node
   linkType: hard
 
@@ -3807,9 +3807,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.22.4, zod@npm:^3.23.8":
-  version: 3.25.20
-  resolution: "zod@npm:3.25.20"
-  checksum: fce59e8727a1403b52158ea3b92f3cec23556dc014174ccabe49910fb4d59f0031df3a687a5941885dd26dc5d263ef976c5c07099e07b68c208f0049ef9f05a5
+"zod@npm:^3.23.8, zod@npm:^3.25.32":
+  version: 3.25.67
+  resolution: "zod@npm:3.25.67"
+  checksum: 56ab904d33b1cd00041ce64ae05b0628fcbfeb7e707fa31cd498a97b540135e4dfe685200c9c62aea307695ee132870b4bc34f035228ea728aa75cc96a4954cb
   languageName: node
   linkType: hard

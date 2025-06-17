@@ -175,6 +175,11 @@ export const CommandSchema = z.object({
   resume: z.unknown().optional(),
 });
 
+export const LangsmithTracer = z.object({
+  project_name: z.string().optional(),
+  example_id: z.string().optional(),
+});
+
 export const RunCreate = z
   .object({
     assistant_id: z.union([z.string().uuid(), z.string()]),
@@ -228,6 +233,7 @@ export const RunCreate = z
     if_not_exists: z.enum(["reject", "create"]).optional(),
     on_completion: z.enum(["delete", "keep"]).optional(),
     feedback_keys: z.array(z.string()).optional(),
+    langsmith_tracer: LangsmithTracer.optional(),
   })
   .describe("Payload for creating a stateful run.");
 
