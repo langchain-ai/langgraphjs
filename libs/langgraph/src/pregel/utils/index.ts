@@ -1,3 +1,4 @@
+import { Callbacks } from "@langchain/core/callbacks/manager";
 import { RunnableConfig } from "@langchain/core/runnables";
 import type {
   ChannelVersions,
@@ -164,3 +165,36 @@ export function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
 
   return combinedController.signal;
 }
+
+/**
+ * Combine multiple callbacks into a single callback.
+ * @param callback1 - The first callback to combine.
+ * @param callback2 - The second callback to combine.
+ * @returns A single callback that is a combination of the input callbacks.
+ */
+export const combineCallbacks = (
+  callback1?: Callbacks,
+  callback2?: Callbacks
+): Callbacks | undefined => {
+  if (!callback1 && !callback2) {
+    return undefined;
+  }
+
+  if (!callback1) {
+    return callback2;
+  }
+
+  if (!callback2) {
+    return callback1;
+  }
+  if (Array.isArray(callback1) && Array.isArray(callback2)) {
+    return [...callback1, ...callback2];
+  }
+  if (Array.isArray(callback1)) {
+    return [...callback1, callback2] as Callbacks;
+  }
+  if (Array.isArray(callback2)) {
+    return [callback1, ...callback2];
+  }
+  return [callback1, callback2] as Callbacks;
+};
