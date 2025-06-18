@@ -4554,7 +4554,6 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
-              result: {},
             },
           ],
           metadata: {
