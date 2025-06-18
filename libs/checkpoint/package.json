@@ -21,9 +21,8 @@
     "lint": "yarn lint:eslint && yarn lint:dpdm",
     "lint:fix": "yarn lint:eslint --fix && yarn lint:dpdm",
     "prepack": "yarn build",
-    "test": "vitest",
+    "test": "vitest run",
     "test:watch": "vitest watch",
-    "test:single": "vitest run",
     "test:int": "vitest run --mode int",
     "format": "prettier --config .prettierrc --write \"src\"",
     "format:check": "prettier --config .prettierrc --check \"src\""

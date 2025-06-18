@@ -220,7 +220,7 @@ const response = await agent.invoke({
 
     Forcing tool usage without stopping conditions can create infinite loops. Use one of the following safeguards:
 
-    - Mark the tool with [`returnRirect: True`](#return-tool-results-directly) to end the loop after execution.
+    - Mark the tool with [`returnDirect: True`](#return-tool-results-directly) to end the loop after execution.
     - Set [`recursionLimit`](../concepts/low_level.md#recursion-limit) to restrict the number of execution steps.
 
 ## Handle tool errors
