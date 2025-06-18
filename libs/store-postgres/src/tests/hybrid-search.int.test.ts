@@ -19,7 +19,9 @@ const createMockEmbedding = (dims: number) => {
     return texts.map((text, index) => {
       const embedding = new Array(dims).fill(0);
       for (let i = 0; i < dims; i += 1) {
-        embedding[i] = Math.sin((text.charCodeAt(i % text.length) + index) * 0.1);
+        embedding[i] = Math.sin(
+          (text.charCodeAt(i % text.length) + index) * 0.1
+        );
       }
       return embedding;
     });
@@ -33,7 +35,10 @@ describe("PostgresStore Hybrid Search (integration)", () => {
   let store: PostgresStore;
   let dbName: string;
   let dbConnectionString: string;
-  let mockEmbedding: ((texts: string[]) => Promise<number[][]>) & { calls: string[][]; toHaveBeenCalled: () => boolean };
+  let mockEmbedding: ((texts: string[]) => Promise<number[][]>) & {
+    calls: string[][];
+    toHaveBeenCalled: () => boolean;
+  };
 
   beforeEach(async () => {
     dbName = `hybrid_test_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
@@ -43,7 +48,9 @@ describe("PostgresStore Hybrid Search (integration)", () => {
     } finally {
       await pool.end();
     }
-    dbConnectionString = `${TEST_POSTGRES_URL.split("/").slice(0, -1).join("/")}/${dbName}`;
+    dbConnectionString = `${TEST_POSTGRES_URL.split("/")
+      .slice(0, -1)
+      .join("/")}/${dbName}`;
     mockEmbedding = createMockEmbedding(128);
     store = new PostgresStore({
       connectionOptions: dbConnectionString,
@@ -59,7 +66,8 @@ describe("PostgresStore Hybrid Search (integration)", () => {
     // Add documents
     await store.put(["docs"], "doc1", {
       title: "Machine Learning Guide",
-      content: "Comprehensive guide to machine learning algorithms and techniques",
+      content:
+        "Comprehensive guide to machine learning algorithms and techniques",
     });
     await store.put(["docs"], "doc2", {
       title: "Data Science Handbook",
@@ -76,7 +84,9 @@ describe("PostgresStore Hybrid Search (integration)", () => {
     testStores = [];
     const pool = new Pool({ connectionString: TEST_POSTGRES_URL });
     try {
-      const result = await pool.query(`SELECT datname FROM pg_database WHERE datname LIKE 'hybrid_test_%'`);
+      const result = await pool.query(
+        `SELECT datname FROM pg_database WHERE datname LIKE 'hybrid_test_%'`
+      );
       for (const row of result.rows) {
         await pool.query(`DROP DATABASE ${row.datname} WITH (FORCE)`);
       }
@@ -87,9 +97,21 @@ describe("PostgresStore Hybrid Search (integration)", () => {
 
   it("should combine vector and text search effectively", async () => {
     // When
-    const vectorHeavy = await store.hybridSearch(["docs"], "machine learning algorithms", { vectorWeight: 0.9, limit: 10 });
-    const textHeavy = await store.hybridSearch(["docs"], "machine learning algorithms", { vectorWeight: 0.1, limit: 10 });
-    const balanced = await store.hybridSearch(["docs"], "machine learning algorithms", { vectorWeight: 0.5, limit: 10 });
+    const vectorHeavy = await store.hybridSearch(
+      ["docs"],
+      "machine learning algorithms",
+      { vectorWeight: 0.9, limit: 10 }
+    );
+    const textHeavy = await store.hybridSearch(
+      ["docs"],
+      "machine learning algorithms",
+      { vectorWeight: 0.1, limit: 10 }
+    );
+    const balanced = await store.hybridSearch(
+      ["docs"],
+      "machine learning algorithms",
+      { vectorWeight: 0.5, limit: 10 }
+    );
 
     // Then
     expect(vectorHeavy).toBeDefined();
@@ -98,14 +120,22 @@ describe("PostgresStore Hybrid Search (integration)", () => {
     expect(vectorHeavy.length).toBeGreaterThan(0);
     expect(textHeavy.length).toBeGreaterThan(0);
     expect(balanced.length).toBeGreaterThan(0);
-    expect(vectorHeavy.every((item) => typeof item.score === "number")).toBe(true);
-    expect(textHeavy.every((item) => typeof item.score === "number")).toBe(true);
+    expect(vectorHeavy.every((item) => typeof item.score === "number")).toBe(
+      true
+    );
+    expect(textHeavy.every((item) => typeof item.score === "number")).toBe(
+      true
+    );
     expect(balanced.every((item) => typeof item.score === "number")).toBe(true);
   });
 
   it("should maintain result ordering by score", async () => {
     // When
-    const results = await store.hybridSearch(["docs"], "machine learning algorithms", { vectorWeight: 0.5, limit: 10 });
+    const results = await store.hybridSearch(
+      ["docs"],
+      "machine learning algorithms",
+      { vectorWeight: 0.5, limit: 10 }
+    );
 
     // Then
     if (results.length > 1) {
@@ -121,14 +151,14 @@ describe("PostgresStore Hybrid Search (integration)", () => {
       ).toBe(true);
     }
   });
-  
+
   it("should support hybrid mode in unified search method", async () => {
     // When
     const results = await store.search(["docs"], {
       query: "machine learning algorithms",
       mode: "hybrid",
       vectorWeight: 0.7,
-      limit: 10
+      limit: 10,
     });
 
     // Then
@@ -138,30 +168,34 @@ describe("PostgresStore Hybrid Search (integration)", () => {
     expect(results.every((item) => typeof item.score === "number")).toBe(true);
     expect(mockEmbedding.toHaveBeenCalled()).toBe(true);
   });
-  
+
   it("should pass appropriate parameters through to hybrid search", async () => {
     // When
     const vectorWeight = 0.65;
     const similarityThreshold = 0.25;
-    
+
     const results = await store.search(["docs"], {
       query: "neural networks research",
       mode: "hybrid",
       vectorWeight,
       similarityThreshold,
-      limit: 5
+      limit: 5,
     });
 
     // Then
     expect(results).toBeDefined();
-    
+
     // Verify direct method works with same parameters
-    const directResults = await store.hybridSearch(["docs"], "neural networks research", { 
-      vectorWeight,
-      similarityThreshold,
-      limit: 5
-    });
-    
+    const directResults = await store.hybridSearch(
+      ["docs"],
+      "neural networks research",
+      {
+        vectorWeight,
+        similarityThreshold,
+        limit: 5,
+      }
+    );
+
     // Both should have similar result structure
     expect(results.length).toBe(directResults.length);
     if (results.length > 0 && directResults.length > 0) {
