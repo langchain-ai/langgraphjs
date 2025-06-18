@@ -110,7 +110,7 @@ export class PostgresStore implements BaseStore {
         key,
         value,
         index,
-        options
+        options,
       };
 
       await this.crudOps.executePut(client, operation);
