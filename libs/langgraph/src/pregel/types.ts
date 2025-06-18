@@ -403,6 +403,7 @@ export interface PregelTaskDescription {
   readonly interrupts: Interrupt[];
   readonly state?: LangGraphRunnableConfig | StateSnapshot;
   readonly path?: TaskPath;
+  readonly result?: unknown;
 }
 
 interface CacheKey {
