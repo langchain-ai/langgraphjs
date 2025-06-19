@@ -3,6 +3,7 @@ import { wrap, tasksWithWrites, _readChannels } from "./debug.js";
 import { BaseChannel } from "../channels/base.js";
 import { LastValue } from "../channels/last_value.js";
 import { EmptyChannelError } from "../errors.js";
+import { ERROR, INTERRUPT, PULL } from "../constants.js";
 
 describe("wrap", () => {
   it("should wrap text with color codes", () => {
@@ -107,24 +108,27 @@ describe("tasksWithWrites", () => {
       {
         id: "task1",
         name: "Task 1",
-        path: ["PULL", "Task 1"] as ["PULL", string],
+        path: [PULL, "Task 1"] as [typeof PULL, string],
         interrupts: [],
       },
       {
         id: "task2",
         name: "Task 2",
-        path: ["PULL", "Task 2"] as ["PULL", string],
+        path: [PULL, "Task 2"] as [typeof PULL, string],
         interrupts: [],
       },
     ];
 
     const pendingWrites: Array<[string, string, unknown]> = [];
 
-    const result = tasksWithWrites(tasks, pendingWrites);
+    const result = tasksWithWrites(tasks, pendingWrites, undefined, [
+      "Task 1",
+      "Task 2",
+    ]);
 
     expect(result).toEqual([
-      { id: "task1", name: "Task 1", path: ["PULL", "Task 1"], interrupts: [] },
-      { id: "task2", name: "Task 2", path: ["PULL", "Task 2"], interrupts: [] },
+      { id: "task1", name: "Task 1", path: [PULL, "Task 1"], interrupts: [] },
+      { id: "task2", name: "Task 2", path: [PULL, "Task 2"], interrupts: [] },
     ]);
   });
 
@@ -133,32 +137,35 @@ describe("tasksWithWrites", () => {
       {
         id: "task1",
         name: "Task 1",
-        path: ["PULL", "Task 1"] as ["PULL", string],
+        path: [PULL, "Task 1"] as [typeof PULL, string],
         interrupts: [],
       },
       {
         id: "task2",
         name: "Task 2",
-        path: ["PULL", "Task 2"] as ["PULL", string],
+        path: [PULL, "Task 2"] as [typeof PULL, string],
         interrupts: [],
       },
     ];
 
     const pendingWrites: Array<[string, string, unknown]> = [
-      ["task1", "__error__", { message: "Test error" }],
+      ["task1", ERROR, { message: "Test error" }],
     ];
 
-    const result = tasksWithWrites(tasks, pendingWrites);
+    const result = tasksWithWrites(tasks, pendingWrites, undefined, [
+      "Task 1",
+      "Task 2",
+    ]);
 
     expect(result).toEqual([
       {
         id: "task1",
         name: "Task 1",
-        path: ["PULL", "Task 1"],
+        path: [PULL, "Task 1"],
         error: { message: "Test error" },
         interrupts: [],
       },
-      { id: "task2", name: "Task 2", path: ["PULL", "Task 2"], interrupts: [] },
+      { id: "task2", name: "Task 2", path: [PULL, "Task 2"], interrupts: [] },
     ]);
   });
 
@@ -167,13 +174,13 @@ describe("tasksWithWrites", () => {
       {
         id: "task1",
         name: "Task 1",
-        path: ["PULL", "Task 1"] as ["PULL", string],
+        path: [PULL, "Task 1"] as [typeof PULL, string],
         interrupts: [],
       },
       {
         id: "task2",
         name: "Task 2",
-        path: ["PULL", "Task 2"] as ["PULL", string],
+        path: [PULL, "Task 2"] as [typeof PULL, string],
         interrupts: [],
       },
     ];
@@ -184,17 +191,20 @@ describe("tasksWithWrites", () => {
       task1: { configurable: { key: "value" } },
     };
 
-    const result = tasksWithWrites(tasks, pendingWrites, states);
+    const result = tasksWithWrites(tasks, pendingWrites, states, [
+      "Task 1",
+      "Task 2",
+    ]);
 
     expect(result).toEqual([
       {
         id: "task1",
         name: "Task 1",
-        path: ["PULL", "Task 1"],
+        path: [PULL, "Task 1"],
         interrupts: [],
         state: { configurable: { key: "value" } },
       },
-      { id: "task2", name: "Task 2", path: ["PULL", "Task 2"], interrupts: [] },
+      { id: "task2", name: "Task 2", path: [PULL, "Task 2"], interrupts: [] },
     ]);
   });
 
@@ -203,23 +213,80 @@ describe("tasksWithWrites", () => {
       {
         id: "task1",
         name: "Task 1",
-        path: ["PULL", "Task 1"] as ["PULL", string],
+        path: [PULL, "Task 1"] as [typeof PULL, string],
         interrupts: [],
       },
     ];
 
     const pendingWrites: Array<[string, string, unknown]> = [
-      ["task1", "__interrupt__", { value: "Interrupted", when: "during" }],
+      ["task1", INTERRUPT, { value: "Interrupted", when: "during" }],
     ];
 
-    const result = tasksWithWrites(tasks, pendingWrites);
+    const result = tasksWithWrites(tasks, pendingWrites, undefined, ["task1"]);
 
     expect(result).toEqual([
       {
         id: "task1",
         name: "Task 1",
-        path: ["PULL", "Task 1"],
+        path: [PULL, "Task 1"],
         interrupts: [{ value: "Interrupted", when: "during" }],
+      },
+    ]);
+  });
+
+  it("should include results", () => {
+    const tasks = [
+      {
+        id: "task1",
+        name: "Task 1",
+        path: [PULL, "Task 1"] as [typeof PULL, string],
+        interrupts: [],
+      },
+      {
+        id: "task2",
+        name: "Task 2",
+        path: [PULL, "Task 2"] as [typeof PULL, string],
+        interrupts: [],
+      },
+      {
+        id: "task3",
+        name: "Task 3",
+        path: [PULL, "Task 3"] as [typeof PULL, string],
+        interrupts: [],
+      },
+    ];
+
+    const pendingWrites: Array<[string, string, unknown]> = [
+      ["task1", "Task 1", "Result"],
+      ["task2", "Task 2", "Result 2"],
+    ];
+
+    const result = tasksWithWrites(tasks, pendingWrites, undefined, [
+      "Task 1",
+      "Task 2",
+    ]);
+
+    expect(result).toEqual([
+      {
+        id: "task1",
+        name: "Task 1",
+        path: [PULL, "Task 1"],
+        interrupts: [],
+        result: { "Task 1": "Result" },
+      },
+      {
+        id: "task2",
+        name: "Task 2",
+        path: [PULL, "Task 2"],
+        interrupts: [],
+        result: { "Task 2": "Result 2" },
+      },
+      {
+        id: "task3",
+        name: "Task 3",
+        path: [PULL, "Task 3"],
+        interrupts: [],
+        result: undefined,
       },
     ]);
   });
