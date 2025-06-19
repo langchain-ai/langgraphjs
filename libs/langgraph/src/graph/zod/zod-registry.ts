@@ -9,6 +9,7 @@ import {
   type SchemaMetaRegistry,
   schemaMetaRegistry,
 } from "./meta.js";
+import { StateGraph } from "../state.js";
 
 /**
  * A Zod v4-compatible meta registry that extends the base registry.
@@ -76,10 +77,7 @@ declare module "zod/v4" {
     >(
       registry: R,
       meta: SchemaMeta<TOutput, TInput>
-    ): ReducedZodChannel<
-      ZodType<TOutput, TInput, TInternals>,
-      ZodType<TOutput, TInput, TInternals>
-    >;
+    ): ReducedZodChannel<this, ZodType<TOutput, TInput, TInternals>>;
   }
 }
 
