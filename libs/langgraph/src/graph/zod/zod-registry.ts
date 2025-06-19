@@ -1,9 +1,14 @@
 // @ts-expect-error If zod/v4 is not imported, the module augmentation will fail in build
-import type { ZodType } from "zod/v4"; // eslint-disable-line @typescript-eslint/no-unused-vars
+import { z, type ZodType } from "zod/v4"; // eslint-disable-line @typescript-eslint/no-unused-vars
 import type * as core from "zod/v4/core";
 import { getInteropZodDefaultGetter } from "@langchain/core/utils/types";
 import { $ZodType, $ZodRegistry, $replace } from "zod/v4/core";
-import { SchemaMeta, SchemaMetaRegistry, schemaMetaRegistry } from "./meta.js";
+import {
+  type ReducedZodChannel,
+  type SchemaMeta,
+  type SchemaMetaRegistry,
+  schemaMetaRegistry,
+} from "./meta.js";
 
 /**
  * A Zod v4-compatible meta registry that extends the base registry.
@@ -71,7 +76,10 @@ declare module "zod/v4" {
     >(
       registry: R,
       meta: SchemaMeta<TOutput, TInput>
-    ): ZodType<TOutput, TInput, TInternals>;
+    ): ReducedZodChannel<
+      ZodType<TOutput, TInput, TInternals>,
+      ZodType<TOutput, TInput, TInternals>
+    >;
   }
 }
 
