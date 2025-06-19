@@ -9,7 +9,6 @@ import {
   type SchemaMetaRegistry,
   schemaMetaRegistry,
 } from "./meta.js";
-import { StateGraph } from "../state.js";
 
 /**
  * A Zod v4-compatible meta registry that extends the base registry.
