@@ -1267,7 +1267,7 @@ export class Pregel<
 
         // We want to both clone a checkpoint and update state in one go.
         // Reuse the same task ID if possible.
-        if (Array.isArray(values)) {
+        if (Array.isArray(values) && values.length > 0) {
           // figure out the task IDs for the next update checkpoint
           const nextTasks = _prepareNextTasks(
             nextCheckpoint,
