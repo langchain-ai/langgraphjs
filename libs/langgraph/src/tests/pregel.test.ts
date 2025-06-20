@@ -1660,6 +1660,7 @@ export function runPregelTests(
             name: "two",
             interrupts: [],
             path: [PULL, "two"],
+            result: { output: 5 },
           },
         ],
         next: ["two"],
@@ -1688,6 +1689,7 @@ export function runPregelTests(
             name: "one",
             interrupts: [],
             path: [PULL, "one"],
+            result: { inbox: 4 },
           },
         ],
         next: ["one"],
@@ -1744,6 +1746,7 @@ export function runPregelTests(
             name: "one",
             interrupts: [],
             path: [PULL, "one"],
+            result: { inbox: 21 },
           },
         ],
         next: ["one"],
@@ -1793,6 +1796,7 @@ export function runPregelTests(
             name: "two",
             interrupts: [],
             path: [PULL, "two"],
+            result: { output: 4 },
           },
         ],
         next: ["two"],
@@ -1821,6 +1825,7 @@ export function runPregelTests(
             name: "one",
             interrupts: [],
             path: [PULL, "one"],
+            result: { inbox: 3 },
           },
         ],
         next: ["one"],
@@ -3583,22 +3588,14 @@ graph TD;
 
     it("State graph packets", async () => {
       const AgentState = Annotation.Root({
-        messages: Annotation({
-          reducer: messagesStateReducer,
-        }),
+        messages: Annotation({ reducer: messagesStateReducer }),
       });
-      const searchApi = tool(
-        async ({ query }) => {
-          return `result for ${query}`;
-        },
-        {
-          name: "search_api",
-          schema: z3.object({
-            query: z3.string(),
-          }),
-          description: "Searches the API for the query",
-        }
-      );
+
+      const searchApi = tool(({ query }) => `result for ${query}`, {
+        name: "search_api",
+        schema: z3.object({ query: z3.string() }),
+        description: "Searches the API for the query",
+      });
 
       const toolsByName = { [searchApi.name]: searchApi };
       const model = new FakeChatModel({
@@ -3641,9 +3638,7 @@ graph TD;
       });
 
       const agent = async (state: typeof AgentState.State) => {
-        return {
-          messages: await model.invoke(state.messages),
-        };
+        return { messages: await model.invoke(state.messages) };
       };
 
       const shouldContinue = async (state: typeof AgentState.State) => {
@@ -3652,13 +3647,12 @@ graph TD;
         const toolCalls = (
           state.messages[state.messages.length - 1] as AIMessage
         ).tool_calls;
+
         if (toolCalls?.length) {
-          return toolCalls.map((toolCall) => {
-            return new Send("tools", toolCall);
-          });
-        } else {
-          return "__end__";
+          return toolCalls.map((toolCall) => new Send("tools", toolCall));
         }
+
+        return "__end__";
       };
 
       const toolsNode = async (toolCall: ToolCall) => {
@@ -3683,10 +3677,12 @@ graph TD;
         .addEdge("__start__", "agent")
         .addConditionalEdges("agent", shouldContinue)
         .addEdge("tools", "agent");
+
       const inputMessage = new HumanMessage({
         id: "foo",
         content: "what is weather in sf",
       });
+
       const expectedOutputMessages = [
         inputMessage,
         new AIMessage({
@@ -3742,56 +3738,43 @@ graph TD;
           content: "answer",
         }),
       ];
-      const res = await builder.compile().invoke({
-        messages: [inputMessage],
-      });
-      expect(res).toEqual({
-        messages: expectedOutputMessages,
-      });
+
+      const res = await builder.compile().invoke({ messages: [inputMessage] });
+      expect(res).toEqual({ messages: expectedOutputMessages });
 
       const stream = await builder.compile().stream({
         messages: [inputMessage],
       });
       let chunks = await gatherIterator(stream);
+
       const nodeOrder = ["agent", "tools", "agent", "tools", "tools", "agent"];
       expect(nodeOrder.length).toEqual(chunks.length);
       expect(chunks).toEqual(
         // The input message is not streamed back
-        expectedOutputMessages.slice(1).map((message, i) => {
-          return {
-            [nodeOrder[i]]: { messages: message },
-          };
-        })
+        expectedOutputMessages.slice(1).map((message, i) => ({
+          [nodeOrder[i]]: { messages: message },
+        }))
       );
 
       const appWithInterrupt = builder.compile({
         checkpointer: await createCheckpointer(),
         interruptAfter: ["agent"],
       });
+
       const config = { configurable: { thread_id: "1" } };
       chunks = await gatherIterator(
-        appWithInterrupt.stream(
-          {
-            messages: [inputMessage],
-          },
-          config
-        )
+        appWithInterrupt.stream({ messages: [inputMessage] }, config)
       );
       expect(chunks).toEqual([
-        {
-          agent: {
-            messages: expectedOutputMessages[1],
-          },
-        },
+        { agent: { messages: expectedOutputMessages[1] } },
         { [INTERRUPT]: [] },
       ]);
       const appWithInterruptState = await appWithInterrupt.getState(config);
       const appWithInterruptCheckpointer =
         appWithInterrupt.checkpointer as BaseCheckpointSaver;
+
       expect(appWithInterruptState).toEqual({
-        values: {
-          messages: expectedOutputMessages.slice(0, 2),
-        },
+        values: { messages: expectedOutputMessages.slice(0, 2) },
         tasks: [
           {
             id: expect.any(String),
@@ -4440,15 +4423,8 @@ graph TD;
       const config: RunnableConfig = {
         configurable: { thread_id: "102" },
       };
-      const res = await app.invoke(
-        {
-          messages: ["initial input"],
-        },
-        config
-      );
-      expect(res).toEqual({
-        reducerField: "should not be wiped",
-      });
+      const res = await app.invoke({ messages: ["initial input"] }, config);
+      expect(res).toEqual({ reducerField: "should not be wiped" });
       const history = await gatherIterator(app.getStateHistory(config));
       expect(history).toEqual([
         {
@@ -4497,6 +4473,10 @@ graph TD;
               name: "wipeFields",
               path: [PULL, "wipeFields"],
               interrupts: [],
+              result: {
+                reducerField: undefined,
+                test: undefined,
+              },
             },
           ],
           metadata: {
@@ -4528,9 +4508,7 @@ graph TD;
           },
         },
         {
-          values: {
-            reducerField: "",
-          },
+          values: { reducerField: "" },
           next: ["updateTest"],
           tasks: [
             {
@@ -4538,6 +4516,10 @@ graph TD;
               name: "updateTest",
               path: [PULL, "updateTest"],
               interrupts: [],
+              result: {
+                reducerField: "should not be wiped",
+                test: "test",
+              },
             },
           ],
           metadata: {
@@ -4564,9 +4546,7 @@ graph TD;
           },
         },
         {
-          values: {
-            reducerField: "",
-          },
+          values: { reducerField: "" },
           next: ["__start__"],
           tasks: [
             {
@@ -4580,9 +4560,7 @@ graph TD;
             thread_id: "102",
             source: "input",
             writes: {
-              __start__: {
-                messages: ["initial input"],
-              },
+              __start__: { messages: ["initial input"] },
             },
             step: -1,
             parents: {},
@@ -7034,55 +7012,44 @@ graph TD;
 
     it("nested graph state", async () => {
       const checkpointer = await createCheckpointer();
-
-      const InnerStateAnnotation = Annotation.Root({
-        myKey: Annotation<string>,
-        myOtherKey: Annotation<string>,
-      });
-      const inner1 = async (state: typeof InnerStateAnnotation.State) => {
-        return {
-          myKey: state.myKey + " here",
-          myOtherKey: state.myKey,
-        };
-      };
-      const inner2 = async (state: typeof InnerStateAnnotation.State) => {
-        return {
-          myKey: state.myKey + " and there",
-          myOtherKey: state.myKey,
-        };
-      };
-      const inner = new StateGraph(InnerStateAnnotation)
-        .addNode("inner1", inner1)
-        .addNode("inner2", inner2)
+      const inner = new StateGraph(
+        Annotation.Root({
+          myKey: Annotation<string>,
+          myOtherKey: Annotation<string>,
+        })
+      )
+        .addNode({
+          inner1: (state) => ({
+            myKey: state.myKey + " here",
+            myOtherKey: state.myKey,
+          }),
+          inner2: (state) => ({
+            myKey: state.myKey + " and there",
+            myOtherKey: state.myKey,
+          }),
+        })
         .addEdge("__start__", "inner1")
         .addEdge("inner1", "inner2");
 
-      const StateAnnotation = Annotation.Root({
-        myKey: Annotation<string>,
-        otherParentKey: Annotation<string>,
-      });
-      const outer1 = async (state: typeof StateAnnotation.State) => {
-        return { myKey: "hi " + state.myKey };
-      };
-      const outer2 = async (state: typeof StateAnnotation.State) => {
-        return { myKey: state.myKey + " and back again" };
-      };
-      const graph = new StateGraph(StateAnnotation)
-        .addNode("outer1", outer1)
-        .addNode("inner", inner.compile({ interruptBefore: ["inner2"] }))
-        .addNode("outer2", outer2)
+      const app = new StateGraph(
+        Annotation.Root({
+          myKey: Annotation<string>,
+          otherParentKey: Annotation<string>,
+        })
+      )
+        .addNode({
+          outer1: (state) => ({ myKey: "hi " + state.myKey }),
+          outer2: (state) => ({ myKey: state.myKey + " and back again" }),
+          inner: inner.compile({ interruptBefore: ["inner2"] }),
+        })
         .addEdge("__start__", "outer1")
         .addEdge("outer1", "inner")
-        .addEdge("inner", "outer2");
+        .addEdge("inner", "outer2")
+        .compile({ checkpointer });
 
-      const app = graph.compile({ checkpointer });
       const config = { configurable: { thread_id: "1" } };
-      await app.invoke(
-        {
-          myKey: "my value",
-        },
-        config
-      );
+      await app.invoke({ myKey: "my value" }, config);
+
       // test state w/ nested subgraph state (right after interrupt)
       // first getState without subgraph state
       expect(await app.getState(config)).toEqual({
@@ -7125,6 +7092,7 @@ graph TD;
           },
         },
       });
+
       // now, getState with subgraphs state
       expect(await app.getState(config, { subgraphs: true })).toEqual({
         values: { myKey: "hi my value" },
@@ -7260,6 +7228,7 @@ graph TD;
               name: "outer1",
               interrupts: [],
               path: [PULL, "outer1"],
+              result: { myKey: "hi my value" },
             },
           ],
           next: ["outer1"],
@@ -7294,6 +7263,7 @@ graph TD;
               name: "__start__",
               interrupts: [],
               path: [PULL, "__start__"],
+              result: { myKey: "my value" },
             },
           ],
           next: ["__start__"],
@@ -7314,11 +7284,13 @@ graph TD;
           createdAt: expect.any(String),
         },
       ]);
+
       // get_state_history for a subgraph returns its checkpoints
-      const childHistory = await gatherIterator(
-        app.getStateHistory(history[0].tasks[0].state as RunnableConfig)
-      );
-      expect(childHistory).toEqual([
+      expect(
+        await gatherIterator(
+          app.getStateHistory(history[0].tasks[0].state as RunnableConfig)
+        )
+      ).toEqual([
         {
           values: { myKey: "hi my value here", myOtherKey: "hi my value" },
           next: ["inner2"],
@@ -7395,6 +7367,10 @@ graph TD;
               name: "inner1",
               path: [PULL, "inner1"],
               interrupts: [],
+              result: {
+                myKey: "hi my value here",
+                myOtherKey: "hi my value",
+              },
             },
           ],
         },
@@ -7427,6 +7403,7 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              result: { myKey: "hi my value" },
             },
           ],
         },
@@ -7504,6 +7481,7 @@ graph TD;
               name: "outer2",
               path: [PULL, "outer2"],
               interrupts: [],
+              result: { myKey: "hi my value here and there and back again" },
             },
           ],
           next: ["outer2"],
@@ -7544,6 +7522,9 @@ graph TD;
                   checkpoint_ns: expect.any(String),
                 },
               },
+              result: {
+                myKey: "hi my value here and there",
+              },
             },
           ],
           next: ["inner"],
@@ -7578,6 +7559,7 @@ graph TD;
               name: "outer1",
               path: [PULL, "outer1"],
               interrupts: [],
+              result: { myKey: "hi my value" },
             },
           ],
           next: ["outer1"],
@@ -7612,6 +7594,7 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              result: { myKey: "my value" },
             },
           ],
           next: ["__start__"],
@@ -8056,6 +8039,7 @@ graph TD;
           },
         },
       });
+
       // get outer graph history
       const outerHistory = await gatherIterator(app.getStateHistory(config));
       expect(outerHistory).toEqual([
@@ -8119,6 +8103,7 @@ graph TD;
               name: "parent2",
               path: [PULL, "parent2"],
               interrupts: [],
+              result: { myKey: "hi my value here and there and back again" },
             },
           ],
         },
@@ -8136,6 +8121,7 @@ graph TD;
                   checkpoint_ns: expect.stringContaining("child"),
                 },
               },
+              result: { myKey: "hi my value here and there" },
             },
           ],
           next: ["child"],
@@ -8193,6 +8179,7 @@ graph TD;
               name: "parent1",
               path: [PULL, "parent1"],
               interrupts: [],
+              result: { myKey: "hi my value" },
             },
           ],
         },
@@ -8220,10 +8207,12 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              result: { myKey: "my value" },
             },
           ],
         },
       ]);
+
       // get child graph history
       const childHistory = await gatherIterator(
         app.getStateHistory(outerHistory[2].tasks[0].state as RunnableConfig)
@@ -8300,6 +8289,7 @@ graph TD;
                   checkpoint_ns: expect.stringContaining("child:"),
                 },
               },
+              result: { myKey: "hi my value here and there" },
             },
           ],
         },
@@ -8330,6 +8320,7 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              result: { myKey: "hi my value" },
             },
           ],
         },
@@ -8407,6 +8398,7 @@ graph TD;
               name: "grandchild2",
               path: [PULL, "grandchild2"],
               interrupts: [],
+              result: { myKey: "hi my value here and there" },
             },
           ],
         },
@@ -8446,6 +8438,7 @@ graph TD;
               name: "grandchild1",
               path: [PULL, "grandchild1"],
               interrupts: [],
+              result: { myKey: "hi my value here" },
             },
           ],
         },
@@ -8478,6 +8471,7 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              result: { myKey: "hi my value" },
             },
           ],
         },
@@ -8505,31 +8499,19 @@ graph TD;
           default: () => [],
         }),
       });
-      const continueToJokes = async (
-        state: typeof OverallStateAnnotation.State
-      ) => {
-        return state.subjects.map(
-          (s) => new Send("generateJoke", { subject: s })
-        );
-      };
 
       const JokeStateAnnotation = Annotation.Root({
         subject: Annotation<string>,
       });
-
-      const edit = async (state: typeof JokeStateAnnotation.State) => {
-        const { subject } = state;
-        return { subject: `${subject} - hohoho` };
-      };
 
       // subgraph
       const subgraph = new StateGraph({
         input: JokeStateAnnotation,
         output: OverallStateAnnotation,
       })
-        .addNode("edit", edit)
-        .addNode("generate", async (state) => {
-          return { jokes: [`Joke about ${state.subject}`] };
+        .addNode({
+          edit: ({ subject }) => ({ subject: `${subject} - hohoho` }),
+          generate: (state) => ({ jokes: [`Joke about ${state.subject}`] }),
         })
         .addEdge("__start__", "edit")
         .addEdge("edit", "generate");
@@ -8540,7 +8522,9 @@ graph TD;
           "generateJoke",
           subgraph.compile({ interruptBefore: ["generate"] })
         )
-        .addConditionalEdges("__start__", continueToJokes);
+        .addConditionalEdges("__start__", (state) =>
+          state.subjects.map((s) => new Send("generateJoke", { subject: s }))
+        );
 
       const graph = builder.compile({ checkpointer });
       const config = { configurable: { thread_id: "1" } };
@@ -8549,9 +8533,7 @@ graph TD;
       // invoke and pause at nested interrupt
       expect(
         await graph.invoke(
-          {
-            subjects: ["cats", "dogs"],
-          },
+          { subjects: ["cats", "dogs"] },
           { ...config, callbacks: [tracer] }
         )
       ).toEqual({
@@ -8559,6 +8541,7 @@ graph TD;
         jokes: [],
         __interrupt__: [],
       });
+
       await awaitAllCallbacks();
       expect(tracer.runs.length).toEqual(1);
 
@@ -8616,6 +8599,7 @@ graph TD;
           },
         },
       });
+
       // check state of each of the inner tasks
       expect(
         await graph.getState(outerState.tasks[0].state as RunnableConfig)
@@ -8711,12 +8695,8 @@ graph TD;
       expect(results).toHaveLength(2);
       expect(results).toEqual(
         expect.arrayContaining([
-          {
-            generateJoke: { jokes: ["Joke about cats - hohoho"] },
-          },
-          {
-            generateJoke: { jokes: ["Joke about turtles - hohoho"] },
-          },
+          { generateJoke: { jokes: ["Joke about cats - hohoho"] } },
+          { generateJoke: { jokes: ["Joke about turtles - hohoho"] } },
         ])
       );
 
@@ -8812,6 +8792,7 @@ graph TD;
                   checkpoint_ns: expect.stringContaining("generateJoke:"),
                 },
               },
+              result: { jokes: ["Joke about cats - hohoho"] },
             },
             {
               id: expect.any(String),
@@ -8824,6 +8805,7 @@ graph TD;
                   checkpoint_ns: expect.stringContaining("generateJoke:"),
                 },
               },
+              result: { jokes: ["Joke about turtles - hohoho"] },
             },
           ],
           next: ["generateJoke", "generateJoke"],
@@ -8858,6 +8840,7 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              result: { subjects: ["cats", "dogs"] },
             },
           ],
           next: ["__start__"],
@@ -9435,12 +9418,17 @@ graph TD;
       return checkpoints.map((checkpoint) => {
         const clone = { ...checkpoint };
         delete clone.createdAt;
+
         if (clone.metadata) {
-          clone.metadata = {
-            ...clone.metadata,
-            ...{ thread_id: "1" },
-          };
+          clone.metadata = { ...clone.metadata, ...{ thread_id: "1" } };
         }
+
+        // debug stream events will not have result
+        clone.tasks = clone.tasks.map((task) => ({
+          ...task,
+          result: undefined,
+        }));
+
         return clone;
       });
     }
@@ -9592,6 +9580,12 @@ graph TD;
             ...{ thread_id: "1" },
           };
         }
+
+        // debug stream events will not have result of tasks
+        clone.tasks = clone.tasks.map((task) => ({
+          ...task,
+          result: undefined,
+        }));
 
         return clone;
       });

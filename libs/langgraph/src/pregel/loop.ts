@@ -764,7 +764,8 @@ export class PregelLoop {
               this.checkpointMetadata,
               Object.values(this.tasks),
               this.checkpointPendingWrites,
-              this.prevCheckpointConfig
+              this.prevCheckpointConfig,
+              this.outputKeys
             ),
             "debug"
           )
