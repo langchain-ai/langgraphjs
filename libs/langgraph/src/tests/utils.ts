@@ -1,6 +1,5 @@
 /* eslint-disable no-promise-executor-return */
 /* eslint-disable import/no-extraneous-dependencies */
-import assert from "node:assert";
 import { expect, it } from "vitest";
 import { v4 as uuidv4 } from "uuid";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
@@ -334,11 +333,10 @@ export class MemorySaverAssertImmutable extends MemorySaver {
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
     const thread_id = config.configurable?.thread_id;
-    if (!this.storageForCopies[thread_id]) {
-      this.storageForCopies[thread_id] = {};
-    }
+    this.storageForCopies[thread_id] ??= {};
+
     // assert checkpoint hasn't been modified since last written
-    const saved = await super.get(config);
+    const saved = await this.get(config);
     if (saved) {
       const savedId = saved.id;
       if (this.storageForCopies[thread_id][savedId]) {
@@ -346,10 +344,11 @@ export class MemorySaverAssertImmutable extends MemorySaver {
           "json",
           this.storageForCopies[thread_id][savedId]
         );
-        assert(
-          JSON.stringify(saved) === JSON.stringify(loaded),
-          "Checkpoint has been modified since last written"
-        );
+
+        expect(
+          saved,
+          `Checkpoint [${savedId}] has been modified since last written`
+        ).toEqual(loaded);
       }
     }
     const [, serializedCheckpoint] = this.serde.dumpsTyped(checkpoint);
