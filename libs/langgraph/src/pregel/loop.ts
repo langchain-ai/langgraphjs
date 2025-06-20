@@ -259,6 +259,8 @@ export class PregelLoop {
 
   protected prevCheckpointConfig: RunnableConfig | undefined;
 
+  protected prevCheckpoint: Checkpoint | undefined;
+
   status:
     | "pending"
     | "done"
@@ -525,9 +527,7 @@ export class PregelLoop {
    */
   putWrites(taskId: string, writes: PendingWrite<string>[]) {
     let writesCopy = writes;
-    if (writesCopy.length === 0) {
-      return;
-    }
+    if (writesCopy.length === 0) return;
 
     // deduplicate writes to special channels, last write wins
     if (writesCopy.every(([key]) => key in WRITES_IDX_MAP)) {
@@ -536,16 +536,14 @@ export class PregelLoop {
       );
     }
 
+    // remove existing writes for this task
+    this.checkpointPendingWrites = this.checkpointPendingWrites.filter(
+      (w) => w[0] !== taskId
+    );
+
     // save writes
     for (const [c, v] of writesCopy) {
-      const idx = this.checkpointPendingWrites.findIndex(
-        (w) => w[0] === taskId && w[1] === c
-      );
-      if (c in WRITES_IDX_MAP && idx !== -1) {
-        this.checkpointPendingWrites[idx] = [taskId, c, v];
-      } else {
-        this.checkpointPendingWrites.push([taskId, c, v]);
-      }
+      this.checkpointPendingWrites.push([taskId, c, v]);
     }
 
     const putWritePromise = this.checkpointer?.putWrites(
@@ -1114,27 +1112,10 @@ export class PregelLoop {
   ) {
     const exiting = this.checkpointMetadata === inputMetadata;
 
-    if (!exiting) {
-      this.checkpointMetadata = {
-        ...inputMetadata,
-        step: this.step,
-        parents: this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] ?? {},
-      };
-    }
-
     const doCheckpoint =
       this.checkpointer != null && (this.checkpointDuring || exiting);
 
-    // create new checkpoint
-    this.checkpoint = createCheckpoint(
-      this.checkpoint,
-      doCheckpoint ? this.channels : undefined,
-      this.step,
-      exiting ? { id: this.checkpoint.id } : undefined
-    );
-
-    // Bail if no checkpointer
-    if (doCheckpoint) {
+    const storeCheckpoint = (checkpoint: Checkpoint) => {
       // store the previous checkpoint config for debug events
       this.prevCheckpointConfig = this.checkpointConfig?.configurable
         ?.checkpoint_id
@@ -1163,7 +1144,7 @@ export class PregelLoop {
       // ensuring checkpointers receive checkpoints in order
       void this._checkpointerPutAfterPrevious({
         config: { ...this.checkpointConfig },
-        checkpoint: copyCheckpoint(this.checkpoint),
+        checkpoint: copyCheckpoint(checkpoint),
         metadata: { ...this.checkpointMetadata },
         newVersions,
       });
@@ -1174,7 +1155,45 @@ export class PregelLoop {
           checkpoint_id: this.checkpoint.id,
         },
       };
+    };
+
+    // We need to retroactively store the previous checkpoint
+    // if it turns out that pending sends are scheduled.
+    // TODO: remove when `pending_sends` is removed from checkpoints
+    if (
+      !exiting &&
+      !this.checkpointDuring &&
+      this.checkpointer != null &&
+      this.prevCheckpoint != null &&
+      this.checkpoint.pending_sends.length > 0
+    ) {
+      storeCheckpoint(this.prevCheckpoint);
     }
+
+    if (!exiting) {
+      this.checkpointMetadata = {
+        ...inputMetadata,
+        step: this.step,
+        parents: this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] ?? {},
+      };
+    }
+
+    // Store previous checkpoint in case pending_sends are scheduled
+    // for next checkpoint.
+    if (!this.checkpointDuring) {
+      this.prevCheckpoint = this.checkpoint;
+    }
+
+    // create new checkpoint
+    this.checkpoint = createCheckpoint(
+      this.checkpoint,
+      doCheckpoint ? this.channels : undefined,
+      this.step,
+      exiting ? { id: this.checkpoint.id } : undefined
+    );
+
+    // Bail if no checkpointer
+    if (doCheckpoint) storeCheckpoint(this.checkpoint);
 
     if (!exiting) {
       // increment step

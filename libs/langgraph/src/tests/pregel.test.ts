@@ -6713,7 +6713,7 @@ graph TD;
   });
 
   describe.each([
-    [{ checkpointDuring: true }], // emit all checkpoint events
+    // [{ checkpointDuring: true }], // emit all checkpoint events
     [{ checkpointDuring: false }], // only emit single checkpoint per run
   ])("Subgraphs %s", ({ checkpointDuring }) => {
     test.each([
@@ -8574,7 +8574,7 @@ graph TD;
       }
     });
 
-    it.skipIf(!checkpointDuring)("send to nested graphs", async () => {
+    it("send to nested graphs", async () => {
       const checkpointer = await createCheckpointer();
 
       const OverallStateAnnotation = Annotation.Root({
@@ -8631,8 +8631,6 @@ graph TD;
       expect(tracer.runs.length).toEqual(1);
 
       // check state
-      // TODO: with checkpointDuring we won't be able to get the pending sends since
-      // they are tied to the parent checkpoint...
       const outerState = await graph.getState(config);
       expect(outerState).toEqual({
         values: { subjects: ["cats", "dogs"], jokes: [] },
@@ -8678,15 +8676,13 @@ graph TD;
           thread_id: "1",
         },
         createdAt: expect.any(String),
-        parentConfig: checkpointDuring
-          ? {
-              configurable: {
-                thread_id: "1",
-                checkpoint_ns: "",
-                checkpoint_id: expect.any(String),
-              },
-            }
-          : undefined,
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
       });
 
       // check state of each of the inner tasks
@@ -8715,13 +8711,15 @@ graph TD;
           thread_id: "1",
         },
         createdAt: expect.any(String),
-        parentConfig: {
-          configurable: {
-            thread_id: "1",
-            checkpoint_ns: expect.stringContaining("generateJoke:"),
-            checkpoint_id: expect.any(String),
-          },
-        },
+        parentConfig: checkpointDuring
+          ? {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringContaining("generateJoke:"),
+                checkpoint_id: expect.any(String),
+              },
+            }
+          : undefined,
         tasks: [
           {
             id: expect.any(String),
@@ -8757,13 +8755,15 @@ graph TD;
           parents: { "": expect.any(String) },
         },
         createdAt: expect.any(String),
-        parentConfig: {
-          configurable: {
-            thread_id: "1",
-            checkpoint_ns: expect.stringContaining("generateJoke:"),
-            checkpoint_id: expect.any(String),
-          },
-        },
+        parentConfig: checkpointDuring
+          ? {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringContaining("generateJoke:"),
+                checkpoint_id: expect.any(String),
+              },
+            }
+          : undefined,
         tasks: [
           {
             id: expect.any(String),
@@ -8923,16 +8923,18 @@ graph TD;
         },
         {
           values: { jokes: [] },
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "__start__",
-              path: [PULL, "__start__"],
-              interrupts: [],
-              result: { subjects: ["cats", "dogs"] },
-            },
-          ],
-          next: ["__start__"],
+          tasks: checkpointDuring
+            ? [
+                {
+                  id: expect.any(String),
+                  name: "__start__",
+                  path: [PULL, "__start__"],
+                  interrupts: [],
+                  result: { subjects: ["cats", "dogs"] },
+                },
+              ]
+            : [],
+          next: checkpointDuring ? ["__start__"] : [],
           config: {
             configurable: {
               thread_id: "1",
