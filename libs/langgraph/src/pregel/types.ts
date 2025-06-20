@@ -379,7 +379,7 @@ export type PregelParams<
   /**
    * The {@link BaseCheckpointSaver | checkpointer} to use for the graph run.
    */
-  checkpointer?: BaseCheckpointSaver | false;
+  checkpointer?: BaseCheckpointSaver | boolean;
 
   /**
    * The default retry policy for this graph. For defaults, see {@link RetryPolicy}.

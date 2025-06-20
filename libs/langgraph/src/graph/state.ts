@@ -650,7 +650,7 @@ export class StateGraph<
     interruptAfter,
     name,
   }: {
-    checkpointer?: BaseCheckpointSaver | false;
+    checkpointer?: BaseCheckpointSaver | boolean;
     store?: BaseStore;
     cache?: BaseCache;
     interruptBefore?: N[] | All;

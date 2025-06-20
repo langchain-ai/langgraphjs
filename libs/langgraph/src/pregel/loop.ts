@@ -840,10 +840,10 @@ export class PregelLoop {
       // if it's a top graph
       (!this.isNested ||
         // or a nested graph with error or interrupt
-        error !== undefined ||
+        typeof error !== "undefined" ||
         // or a nested graph with checkpointer: true
-        this.checkpointNamespace.some((part) =>
-          part.includes(CHECKPOINT_NAMESPACE_END)
+        this.checkpointNamespace.every(
+          (part) => !part.includes(CHECKPOINT_NAMESPACE_END)
         ))
     ) {
       this._putCheckpoint(this.checkpointMetadata);
