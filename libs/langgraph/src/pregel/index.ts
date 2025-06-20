@@ -1090,6 +1090,7 @@ export class Pregel<
       updates: {
         values?: Record<string, unknown> | unknown;
         asNode?: keyof Nodes | string;
+        taskId?: string;
       }[]
     ) => {
       // get last checkpoint
@@ -1105,6 +1106,7 @@ export class Pregel<
         ...saved?.checkpoint.channel_versions,
       };
       const step = saved?.metadata?.step ?? -1;
+
       // merge configurable fields with previous checkpoint config
       let checkpointConfig = patchConfigurable(config, {
         checkpoint_ns: config.configurable?.checkpoint_ns ?? "",
@@ -1238,16 +1240,22 @@ export class Pregel<
           saved ? saved.metadata : undefined
         );
       }
-      if (values == null && asNode === COPY) {
+
+      if (asNode === COPY) {
         if (updates.length > 1) {
           throw new InvalidUpdateError(
             `Cannot copy checkpoint with multiple updates`
           );
         }
 
+        if (saved == null) {
+          throw new InvalidUpdateError(`Cannot copy a non-existent checkpoint`);
+        }
+
+        const nextCheckpoint = createCheckpoint(checkpoint, undefined, step);
         const nextConfig = await checkpointer.put(
           saved?.parentConfig ?? checkpointConfig,
-          createCheckpoint(checkpoint, undefined, step),
+          nextCheckpoint,
           {
             source: "fork",
             step: step + 1,
@@ -1256,10 +1264,52 @@ export class Pregel<
           },
           {}
         );
-        return patchCheckpointMap(
-          nextConfig,
-          saved ? saved.metadata : undefined
-        );
+
+        // We want to both clone a checkpoint and update state in one go.
+        // Reuse the same task ID if possible.
+        if (Array.isArray(values)) {
+          // figure out the task IDs for the next update checkpoint
+          const nextTasks = _prepareNextTasks(
+            nextCheckpoint,
+            saved.pendingWrites,
+            this.nodes,
+            channels,
+            managed,
+            nextConfig,
+            false,
+            { step: step + 2 }
+          );
+
+          const tasksGroupBy = Object.values(nextTasks).reduce<
+            Record<string, { id: string }[]>
+          >((acc, { name, id }) => {
+            acc[name] ??= [];
+            acc[name].push({ id });
+            return acc;
+          }, {});
+
+          const userGroupBy = values.reduce<
+            Record<
+              string,
+              { values: unknown; asNode: string; taskId?: string }[]
+            >
+          >((acc, item) => {
+            acc[item.asNode] ??= [];
+
+            const targetIdx = acc[item.asNode].length;
+            const taskId = tasksGroupBy[item.asNode]?.[targetIdx]?.id;
+            acc[item.asNode].push({ ...item, taskId });
+
+            return acc;
+          }, {});
+
+          return updateSuperStep(
+            patchCheckpointMap(nextConfig, saved.metadata),
+            Object.values(userGroupBy).flat()
+          );
+        }
+
+        return patchCheckpointMap(nextConfig, saved.metadata);
       }
 
       if (asNode === INPUT) {
@@ -1396,11 +1446,12 @@ export class Pregel<
       const validUpdates: Array<{
         values: Record<string, unknown> | unknown;
         asNode: keyof Nodes | string;
+        taskId?: string;
       }> = [];
 
       if (updates.length === 1) {
         // eslint-disable-next-line prefer-const
-        let { values, asNode } = updates[0];
+        let { values, asNode, taskId } = updates[0];
         if (asNode === undefined && Object.keys(this.nodes).length === 1) {
           // if only one node, use it
           [asNode] = Object.keys(this.nodes);
@@ -1441,21 +1492,21 @@ export class Pregel<
           throw new InvalidUpdateError(`Ambiguous update, specify "asNode"`);
         }
 
-        validUpdates.push({ values, asNode });
+        validUpdates.push({ values, asNode, taskId });
       } else {
-        for (const { asNode, values } of updates) {
+        for (const { asNode, values, taskId } of updates) {
           if (asNode == null) {
             throw new InvalidUpdateError(
               `"asNode" is required when applying multiple updates`
             );
           }
 
-          validUpdates.push({ values, asNode });
+          validUpdates.push({ values, asNode, taskId });
         }
       }
 
       const tasks: PregelExecutableTask<keyof Nodes, keyof Channels>[] = [];
-      for (const { asNode, values } of validUpdates) {
+      for (const { asNode, values, taskId } of validUpdates) {
         if (this.nodes[asNode] === undefined) {
           throw new InvalidUpdateError(
             `Node "${asNode.toString()}" does not exist`
@@ -1481,7 +1532,7 @@ export class Pregel<
               : writers[0],
           writes: [],
           triggers: [INTERRUPT],
-          id: uuid5(INTERRUPT, checkpoint.id),
+          id: taskId ?? uuid5(INTERRUPT, checkpoint.id),
           writers: [],
         });
       }
