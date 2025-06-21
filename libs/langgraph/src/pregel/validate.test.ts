@@ -148,7 +148,7 @@ describe("validateGraph", () => {
         inputChannels,
         outputChannels,
       })
-    ).toThrow("Subcribed channel 'nonexistent' not in channels");
+    ).toThrow("Subscribed channel 'nonexistent' not in channels");
   });
 
   it("should throw when a singular input channel is not subscribed by any node", () => {
