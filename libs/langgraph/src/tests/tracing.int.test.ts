@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-process-env */
 
-import { test } from "@jest/globals";
+import { test } from "vitest";
 import { pull } from "langchain/hub";
 import { ChatOpenAI } from "@langchain/openai";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
@@ -250,7 +250,7 @@ test.skip("Can nest an agent executor", async () => {
   );
 
   for await (const output of await streamResults) {
-    if (!output?.__end__) {
+    if (!("__end__" in output)) {
       console.log(output);
       console.log("----");
     }
@@ -368,7 +368,7 @@ test.skip("Can nest a graph within a graph", async () => {
   );
 
   for await (const output of await streamResults) {
-    if (!output?.__end__) {
+    if (!("__end__" in output)) {
       console.log(output);
       console.log("----");
     }

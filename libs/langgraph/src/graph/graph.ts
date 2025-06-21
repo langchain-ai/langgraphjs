@@ -59,26 +59,32 @@ export type BranchPathReturnValue =
   | (string | Send)[]
   | Promise<string | Send | (string | Send)[]>;
 
+type NodeAction<S, U, C extends StateDefinition> = RunnableLike<
+  S,
+  U extends object ? U & Record<string, any> : U, // eslint-disable-line @typescript-eslint/no-explicit-any
+  LangGraphRunnableConfig<StateType<C>>
+>;
+
 export class Branch<
   IO,
   N extends string,
   CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
 > {
-  condition: Runnable<IO, BranchPathReturnValue, CallOptions>;
+  path: Runnable<IO, BranchPathReturnValue, CallOptions>;
 
   ends?: Record<string, N | typeof END>;
 
   constructor(options: Omit<BranchOptions<IO, N, CallOptions>, "source">) {
     if (Runnable.isRunnable(options.path)) {
-      this.condition = options.path as Runnable<
+      this.path = options.path as Runnable<
         IO,
         BranchPathReturnValue,
         CallOptions
       >;
     } else {
-      this.condition = _coerceToRunnable(options.path).withConfig({
+      this.path = _coerceToRunnable(options.path).withConfig({
         runName: `Branch`,
-      });
+      } as CallOptions);
     }
     this.ends = Array.isArray(options.pathMap)
       ? options.pathMap.reduce((acc, n) => {
@@ -128,7 +134,7 @@ export class Branch<
     reader?: (config: CallOptions) => IO
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<Runnable | any> {
-    let result = await this.condition.invoke(
+    let result = await this.path.invoke(
       reader ? reader(config) : input,
       config
     );
@@ -159,13 +165,15 @@ export type NodeSpec<RunInput, RunOutput> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subgraphs?: Pregel<any, any>[];
   ends?: string[];
+  defer?: boolean;
 };
 
-export type AddNodeOptions = {
+export type AddNodeOptions<Nodes extends string = string> = {
   metadata?: Record<string, unknown>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subgraphs?: Pregel<any, any>[];
-  ends?: string[];
+  ends?: Nodes[];
+  defer?: boolean;
 };
 
 export class Graph<
@@ -207,48 +215,100 @@ export class Graph<
     return this.edges;
   }
 
+  addNode<K extends string>(
+    nodes:
+      | Record<K, NodeAction<RunInput, RunOutput, C>>
+      | [
+          key: K,
+          action: NodeAction<RunInput, RunOutput, C>,
+          options?: AddNodeOptions
+        ][]
+  ): Graph<N | K, RunInput, RunOutput>;
+
   addNode<K extends string, NodeInput = RunInput>(
     key: K,
-    action: RunnableLike<
-      NodeInput,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      RunOutput extends object ? RunOutput & Record<string, any> : RunOutput,
-      LangGraphRunnableConfig<StateType<C>>
-    >,
+    action: NodeAction<NodeInput, RunOutput, C>,
     options?: AddNodeOptions
+  ): Graph<N | K, RunInput, RunOutput>;
+
+  addNode<K extends string, NodeInput = RunInput>(
+    ...args:
+      | [
+          key: K,
+          action: NodeAction<NodeInput, RunOutput, C>,
+          options?: AddNodeOptions
+        ]
+      | [
+          nodes:
+            | Record<K, NodeAction<NodeInput, RunOutput, C>>
+            | [
+                key: K,
+                action: NodeAction<NodeInput, RunOutput, C>,
+                options?: AddNodeOptions
+              ][]
+        ]
   ): Graph<N | K, RunInput, RunOutput> {
-    for (const reservedChar of [
-      CHECKPOINT_NAMESPACE_SEPARATOR,
-      CHECKPOINT_NAMESPACE_END,
-    ]) {
-      if (key.includes(reservedChar)) {
-        throw new Error(
-          `"${reservedChar}" is a reserved character and is not allowed in node names.`
-        );
+    function isMutlipleNodes(
+      args: unknown[]
+    ): args is [
+      nodes:
+        | Record<K, NodeAction<NodeInput, RunOutput, C>>
+        | [
+            key: K,
+            action: NodeAction<NodeInput, RunOutput, C>,
+            options?: AddNodeOptions
+          ][],
+      options?: AddNodeOptions
+    ] {
+      return args.length >= 1 && typeof args[0] !== "string";
+    }
+
+    const nodes = (
+      isMutlipleNodes(args) // eslint-disable-line no-nested-ternary
+        ? Array.isArray(args[0])
+          ? args[0]
+          : Object.entries(args[0])
+        : [[args[0], args[1], args[2]]]
+    ) as [K, NodeAction<NodeInput, RunOutput, C>, AddNodeOptions][];
+
+    if (nodes.length === 0) {
+      throw new Error("No nodes provided in `addNode`");
+    }
+
+    for (const [key, action, options] of nodes) {
+      for (const reservedChar of [
+        CHECKPOINT_NAMESPACE_SEPARATOR,
+        CHECKPOINT_NAMESPACE_END,
+      ]) {
+        if (key.includes(reservedChar)) {
+          throw new Error(
+            `"${reservedChar}" is a reserved character and is not allowed in node names.`
+          );
+        }
       }
-    }
-    this.warnIfCompiled(
-      `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
-    );
+      this.warnIfCompiled(
+        `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
+      );
 
-    if (key in this.nodes) {
-      throw new Error(`Node \`${key}\` already present.`);
-    }
-    if (key === END) {
-      throw new Error(`Node \`${key}\` is reserved.`);
-    }
+      if (key in this.nodes) {
+        throw new Error(`Node \`${key}\` already present.`);
+      }
+      if (key === END) {
+        throw new Error(`Node \`${key}\` is reserved.`);
+      }
 
-    const runnable = _coerceToRunnable<RunInput, RunOutput>(
-      // Account for arbitrary state due to Send API
-      action as RunnableLike<RunInput, RunOutput>
-    );
+      const runnable = _coerceToRunnable<RunInput, RunOutput>(
+        // Account for arbitrary state due to Send API
+        action as RunnableLike<RunInput, RunOutput>
+      );
 
-    this.nodes[key as unknown as N] = {
-      runnable,
-      metadata: options?.metadata,
-      subgraphs: isPregelLike(runnable) ? [runnable] : options?.subgraphs,
-      ends: options?.ends,
-    } as NodeSpecType;
+      this.nodes[key as unknown as N] = {
+        runnable,
+        metadata: options?.metadata,
+        subgraphs: isPregelLike(runnable) ? [runnable] : options?.subgraphs,
+        ends: options?.ends,
+      } as NodeSpecType;
+    }
 
     return this as Graph<N | K, RunInput, RunOutput, NodeSpecType>;
   }
@@ -315,13 +375,8 @@ export class Graph<
       RunInput,
       N,
       LangGraphRunnableConfig<StateType<C>>
-    > = typeof source === "object"
-      ? source
-      : {
-          source,
-          path: path!,
-          pathMap,
-        };
+    > = typeof source === "object" ? source : { source, path: path!, pathMap };
+
     this.warnIfCompiled(
       "Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
@@ -347,9 +402,7 @@ export class Graph<
       );
     }
     // save it
-    if (!this.branches[options.source]) {
-      this.branches[options.source] = {};
-    }
+    this.branches[options.source] ??= {};
     this.branches[options.source][name] = new Branch(options);
     return this;
   }
@@ -436,6 +489,8 @@ export class Graph<
     for (const [start] of Object.entries(this.branches)) {
       allSources.add(start);
     }
+
+    // validate sources
     for (const source of allSources) {
       if (source !== START && !(source in this.nodes)) {
         throw new Error(`Found edge starting at unknown node \`${source}\``);
@@ -446,7 +501,7 @@ export class Graph<
     const allTargets = new Set([...this.allEdges].map(([_, target]) => target));
     for (const [start, branches] of Object.entries(this.branches)) {
       for (const branch of Object.values(branches)) {
-        if (branch.ends) {
+        if (branch.ends != null) {
           for (const end of Object.values(branch.ends)) {
             allTargets.add(end);
           }

@@ -6,14 +6,13 @@ import {
   PregelScratchpad,
 } from "./types.js";
 import {
+  CachePolicy,
   combineAbortSignals,
   patchConfigurable,
   RetryPolicy,
 } from "./utils/index.js";
 import {
-  CONFIG_KEY_SEND,
   CONFIG_KEY_SCRATCHPAD,
-  PUSH,
   ERROR,
   INTERRUPT,
   RESUME,
@@ -26,6 +25,27 @@ import {
 import { GraphBubbleUp, isGraphBubbleUp, isGraphInterrupt } from "../errors.js";
 import { _runWithRetry, SettledPregelTask } from "./retry.js";
 import { PregelLoop } from "./loop.js";
+
+const PROMISE_ADDED_SYMBOL = Symbol.for("promiseAdded");
+
+function createPromiseBarrier() {
+  const barrier: {
+    next: () => void;
+    wait: Promise<unknown>;
+  } = {
+    next: () => void 0,
+    wait: Promise.resolve(PROMISE_ADDED_SYMBOL),
+  };
+
+  function waitHandler(resolve: (value: typeof PROMISE_ADDED_SYMBOL) => void) {
+    barrier.next = () => {
+      barrier.wait = new Promise(waitHandler);
+      resolve(PROMISE_ADDED_SYMBOL);
+    };
+  }
+  barrier.wait = new Promise(waitHandler);
+  return barrier;
+}
 
 /**
  * Options for the {@link PregelRunner#tick} method.
@@ -251,24 +271,7 @@ export class PregelRunner {
   ): AsyncGenerator<SettledPregelTask> {
     const { retryPolicy, maxConcurrency, signals } = options ?? {};
 
-    const promiseAddedSymbol = Symbol.for("promiseAdded");
-
-    let addedPromiseSignal: () => void;
-
-    let addedPromiseWait: Promise<typeof promiseAddedSymbol>;
-    function waitHandler(resolve: (value: unknown) => void) {
-      addedPromiseSignal = () => {
-        addedPromiseWait = new Promise(waitHandler) as Promise<
-          typeof promiseAddedSymbol
-        >;
-        resolve(promiseAddedSymbol);
-      };
-    }
-
-    addedPromiseWait = new Promise(waitHandler) as Promise<
-      typeof promiseAddedSymbol
-    >;
-
+    const barrier = createPromiseBarrier();
     const executingTasksMap: Record<
       string,
       Promise<{
@@ -278,142 +281,16 @@ export class PregelRunner {
       }>
     > = {};
 
-    function writer(
-      runner: PregelRunner,
-      task: PregelExecutableTask<string, string>,
-      writes: Array<[string, unknown]>,
-      { calls }: { calls?: Call[] } = {}
-    ): Array<Promise<unknown> | undefined> {
-      if (writes.every(([channel]) => channel !== PUSH)) {
-        return task.config?.configurable?.[CONFIG_KEY_SEND]?.(writes) ?? [];
-      }
-
-      // Schedule PUSH tasks, collect promises
-      const scratchpad = task.config?.configurable?.[CONFIG_KEY_SCRATCHPAD] as
-        | PregelScratchpad<unknown>
-        | undefined;
-
-      if (!scratchpad) {
-        throw new Error(
-          `BUG: No scratchpad found on task ${task.name}__${task.id}`
-        );
-      }
-
-      const rtn: Record<number, Promise<unknown> | undefined> = {};
-
-      for (const [idx, write] of writes.entries()) {
-        const [channel] = write;
-        if (channel !== PUSH) {
-          continue;
-        }
-
-        const wcall = calls?.[idx];
-        const cnt = scratchpad.callCounter;
-        scratchpad.callCounter += 1;
-
-        if (wcall == null) {
-          throw new Error("BUG: No call found");
-        }
-
-        const nextTask = runner.loop.acceptPush(task, cnt, wcall);
-
-        if (!nextTask) {
-          continue;
-        }
-
-        // Check if this task is already running
-        const existingPromise = executingTasksMap[nextTask.id];
-
-        if (existingPromise !== undefined) {
-          // If the parent task was retried, the next task might already be running
-          rtn[idx] = existingPromise;
-        } else if (nextTask.writes.length > 0) {
-          // If it already ran, return the result
-          const returns = nextTask.writes.filter(([c]) => c === RETURN);
-          const errors = nextTask.writes.filter(([c]) => c === ERROR);
-
-          if (returns.length > 0) {
-            // Task completed successfully
-            if (returns.length === 1) {
-              rtn[idx] = Promise.resolve(returns[0][1]);
-            } else {
-              // should be unreachable
-              throw new Error(
-                `BUG: multiple returns found for task ${nextTask.name}__${nextTask.id}`
-              );
-            }
-          } else if (errors.length > 0) {
-            if (errors.length === 1) {
-              const errorValue = errors[0][1];
-              // Task failed
-              const error =
-                // eslint-disable-next-line no-instanceof/no-instanceof
-                errorValue instanceof Error
-                  ? errorValue
-                  : new Error(String(errorValue));
-
-              rtn[idx] = Promise.reject(error);
-            } else {
-              // the only way this should happen is if the task executes multiple times and writes aren't cleared
-              throw new Error(
-                `BUG: multiple errors found for task ${nextTask.name}__${nextTask.id}`
-              );
-            }
-          }
-        } else {
-          // Schedule the next task with retry
-          const prom = _runWithRetry<string, string>(nextTask, retryPolicy, {
-            [CONFIG_KEY_SEND]: writer.bind(null, runner, nextTask),
-            // eslint-disable-next-line @typescript-eslint/no-use-before-define
-            [CONFIG_KEY_CALL]: call.bind(null, runner, nextTask),
-          });
-
-          executingTasksMap[nextTask.id] = prom;
-          addedPromiseSignal();
-
-          rtn[idx] = prom.then(({ result, error }) => {
-            if (error) {
-              return Promise.reject(error);
-            }
-
-            return result;
-          });
-        }
-      }
-
-      return Object.values(rtn);
-    }
-
-    function call(
-      runner: PregelRunner,
-      task: PregelExecutableTask<string, string>,
-      func: (...args: unknown[]) => unknown | Promise<unknown>,
-      name: string,
-      input: unknown,
-      options: { retry?: RetryPolicy; callbacks?: unknown } = {}
-    ) {
-      const result = writer(runner, task, [[PUSH, null]], {
-        calls: [
-          new Call({
-            func,
-            name,
-            input,
-            retry: options.retry,
-            callbacks: options.callbacks,
-          }),
-        ],
-      });
-
-      // eslint-disable-next-line no-instanceof/no-instanceof
-      if (result !== undefined) {
-        if (result.length === 1) {
-          return result[0];
-        }
-        return Promise.all(result);
-      }
-
-      return Promise.resolve();
-    }
+    const thisCall = {
+      executingTasksMap,
+      barrier,
+      retryPolicy,
+      scheduleTask: async (
+        task: PregelExecutableTask<string, string>,
+        writeIdx: number,
+        call?: Call
+      ) => this.loop.acceptPush(task, writeIdx, call),
+    };
 
     if (signals?.composedAbortSignal?.aborted) {
       // note: don't use throwIfAborted here because it throws a DOMException,
@@ -458,10 +335,7 @@ export class PregelRunner {
         executingTasksMap[task.id] = _runWithRetry(
           task,
           retryPolicy,
-          {
-            [CONFIG_KEY_SEND]: writer?.bind(null, this, task),
-            [CONFIG_KEY_CALL]: call?.bind(null, this, task),
-          },
+          { [CONFIG_KEY_CALL]: call?.bind(thisCall, this, task) },
           signals?.composedAbortSignal
         ).catch((error) => {
           return {
@@ -475,10 +349,10 @@ export class PregelRunner {
       const settledTask = await Promise.race([
         ...Object.values(executingTasksMap),
         ...(abortPromise ? [abortPromise] : []),
-        addedPromiseWait,
+        barrier.wait,
       ]);
 
-      if (settledTask === promiseAddedSymbol) {
+      if (settledTask === PROMISE_ADDED_SYMBOL) {
         continue;
       }
 
@@ -531,5 +405,125 @@ export class PregelRunner {
       // Save task writes to checkpointer
       this.loop.putWrites(task.id, task.writes);
     }
+  }
+}
+
+async function call(
+  this: {
+    executingTasksMap: Record<
+      string,
+      Promise<{
+        task: PregelExecutableTask<string, string>;
+        result?: unknown;
+        error?: Error;
+      }>
+    >;
+
+    barrier: {
+      next: () => void;
+      wait: Promise<unknown>;
+    };
+
+    retryPolicy?: RetryPolicy;
+
+    scheduleTask: (
+      task: PregelExecutableTask<string, string>,
+      writeIdx: number,
+      call?: Call
+    ) => Promise<PregelExecutableTask<string, string> | void>;
+  },
+  runner: PregelRunner,
+  task: PregelExecutableTask<string, string>,
+  func: (...args: unknown[]) => unknown | Promise<unknown>,
+  name: string,
+  input: unknown,
+  options: {
+    retry?: RetryPolicy;
+    cache?: CachePolicy;
+    callbacks?: unknown;
+  } = {}
+): Promise<unknown> {
+  // Schedule PUSH tasks, collect promises
+  const scratchpad = task.config?.configurable?.[CONFIG_KEY_SCRATCHPAD] as
+    | PregelScratchpad<unknown>
+    | undefined;
+
+  if (!scratchpad) {
+    throw new Error(
+      `BUG: No scratchpad found on task ${task.name}__${task.id}`
+    );
+  }
+
+  const cnt = scratchpad.callCounter;
+  scratchpad.callCounter += 1;
+
+  // schedule the next task, if the callback returns one
+  const wcall = new Call({
+    func,
+    name,
+    input,
+    cache: options.cache,
+    retry: options.retry,
+    callbacks: options.callbacks,
+  });
+  const nextTask = await this.scheduleTask(task, cnt, wcall);
+  if (!nextTask) return undefined;
+
+  // Check if this task is already running
+  const existingPromise = this.executingTasksMap[nextTask.id];
+
+  if (existingPromise !== undefined) {
+    // If the parent task was retried, the next task might already be running
+    return existingPromise;
+  }
+
+  if (nextTask.writes.length > 0) {
+    // If it already ran, return the result
+    const returns = nextTask.writes.filter(([c]) => c === RETURN);
+    const errors = nextTask.writes.filter(([c]) => c === ERROR);
+
+    if (returns.length > 0) {
+      // Task completed successfully
+      if (returns.length === 1) return Promise.resolve(returns[0][1]);
+
+      // should be unreachable
+      throw new Error(
+        `BUG: multiple returns found for task ${nextTask.name}__${nextTask.id}`
+      );
+    }
+
+    if (errors.length > 0) {
+      // Task failed
+      if (errors.length === 1) {
+        const errorValue = errors[0][1];
+        const error =
+          // eslint-disable-next-line no-instanceof/no-instanceof
+          errorValue instanceof Error
+            ? errorValue
+            : new Error(String(errorValue));
+
+        return Promise.reject(error);
+      }
+
+      // the only way this should happen is if the task executes multiple times and writes aren't cleared
+      throw new Error(
+        `BUG: multiple errors found for task ${nextTask.name}__${nextTask.id}`
+      );
+    }
+
+    return undefined;
+  } else {
+    // Schedule the next task with retry
+    const prom = _runWithRetry<string, string>(nextTask, options.retry, {
+      [CONFIG_KEY_CALL]: call.bind(this, runner, nextTask),
+    });
+
+    this.executingTasksMap[nextTask.id] = prom;
+    this.barrier.next();
+
+    return prom.then(({ result, error }) => {
+      if (error) return Promise.reject(error);
+      return result;
+    });
   }
 }

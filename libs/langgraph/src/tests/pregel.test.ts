@@ -8,12 +8,13 @@
 import {
   it,
   expect,
-  jest,
+  vi,
   describe,
+  beforeAll,
   beforeEach,
   test,
   afterAll,
-} from "@jest/globals";
+} from "vitest";
 import {
   RunnableConfig,
   RunnableLambda,
@@ -23,7 +24,8 @@ import { AgentAction, AgentFinish } from "@langchain/core/agents";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { FakeStreamingLLM } from "@langchain/core/utils/testing";
 import { tool, Tool } from "@langchain/core/tools";
-import { z } from "zod";
+import { z as z3 } from "zod/v3";
+import { z as z4 } from "zod/v4";
 import {
   AIMessage,
   BaseMessage,
@@ -39,6 +41,7 @@ import {
   Checkpoint,
   CheckpointMetadata,
   CheckpointTuple,
+  InMemoryCache,
   InMemoryStore,
   PendingWrite,
   uuid5,
@@ -55,9 +58,11 @@ import {
   FakeChatModel,
   FakeTracer,
   MemorySaverAssertImmutable,
+  SlowInMemoryCache,
 } from "./utils.js";
 import { gatherIterator } from "../utils.js";
 import { LastValue } from "../channels/last_value.js";
+import { EphemeralValue } from "../channels/ephemeral_value.js";
 import {
   Annotation,
   Graph,
@@ -105,10 +110,13 @@ import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_stora
 import { interrupt } from "../interrupt.js";
 import {
   getConfigTypeSchema,
+  getInputTypeSchema,
+  getOutputTypeSchema,
   getStateTypeSchema,
   getUpdateTypeSchema,
 } from "../graph/zod/schema.js";
 import "../graph/zod/plugin.js";
+import { withLangGraph } from "../graph/zod/meta.js";
 
 expect.extend({
   toHaveKeyStartingWith(received: object, prefix: string) {
@@ -142,6 +150,37 @@ export function runPregelTests(
   });
 
   describe("Channel", () => {
+    it("obtain correct channel values from checkpointer", async () => {
+      const checkpointer = await createCheckpointer();
+      const chain = Channel.subscribeTo("input").pipe(
+        Channel.writeTo(["output"])
+      );
+      const app = new Pregel({
+        nodes: { one: chain },
+        channels: {
+          ephemeral: new EphemeralValue(),
+          input: new LastValue<number>(),
+          output: new LastValue<number>(),
+        },
+        inputChannels: ["input", "ephemeral"],
+        outputChannels: "output",
+        checkpointer,
+      });
+
+      const input = { input: 1, ephemeral: "meow" };
+      const config = { configurable: { thread_id: "1" } };
+      await app.invoke(input, config);
+      const state = await app.getState(config);
+
+      expect(state.values.output).toBe(1);
+
+      const checkpoint = await checkpointer.get(config);
+      expect(checkpoint?.channel_values).toEqual({
+        input: 1,
+        output: 1,
+      });
+    });
+
     describe("writeTo", () => {
       it("should return a ChannelWrite instance with the expected writes", () => {
         // call method / assertions
@@ -455,6 +494,7 @@ export function runPregelTests(
           checkpointer,
           undefined,
           true,
+          undefined,
         ];
 
         const expectedDefaults2 = [
@@ -468,6 +508,7 @@ export function runPregelTests(
           checkpointer,
           undefined,
           true,
+          undefined,
         ];
 
         expect(pregel._defaults(config1)).toEqual(expectedDefaults1);
@@ -826,7 +867,8 @@ export function runPregelTests(
         checkpoint,
         channels,
         [{ name: "foo", writes: pendingWrites, triggers: [] }],
-        increment
+        increment,
+        undefined
       ); // contains side effects
 
       expect(channels.channel1.get()).toBe("channel1valueUpdated!");
@@ -869,9 +911,13 @@ export function runPregelTests(
 
       // call method / assertions
       expect(() => {
-        _applyWrites(checkpoint, channels, [
-          { name: "foo", writes: pendingWrites, triggers: [] },
-        ]); // contains side effects
+        _applyWrites(
+          checkpoint,
+          channels,
+          [{ name: "foo", writes: pendingWrites, triggers: [] }],
+          undefined,
+          undefined
+        ); // contains side effects
       }).toThrow(InvalidUpdateError);
     });
   });
@@ -1153,7 +1199,7 @@ export function runPregelTests(
   });
 
   it("can invoke pregel with a single process", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
@@ -1180,7 +1226,7 @@ export function runPregelTests(
   });
 
   it("can invoke graph with a single process", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const graph = new Graph()
       .addNode("add_one", addOne)
@@ -1192,7 +1238,7 @@ export function runPregelTests(
   });
 
   it("should process input and produce output with implicit channels", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
@@ -1214,7 +1260,7 @@ export function runPregelTests(
   });
 
   it("should process input and write kwargs correctly", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(
@@ -1259,7 +1305,7 @@ export function runPregelTests(
   );
 
   it("should invoke single process in out objects", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
@@ -1280,7 +1326,7 @@ export function runPregelTests(
   });
 
   it("should process input and output as objects", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
@@ -1298,7 +1344,7 @@ export function runPregelTests(
     expect(await app.invoke({ input: 2 })).toEqual({ output: 3 });
   });
   it("should invoke two processes and get correct output", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -1339,7 +1385,7 @@ export function runPregelTests(
   });
 
   it("should process two processes with object input and output", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["inbox"]));
@@ -1460,7 +1506,7 @@ export function runPregelTests(
   });
 
   it("should process batch with two processes and delays", async () => {
-    const addOneWithDelay = jest.fn(
+    const addOneWithDelay = vi.fn(
       (inp: number): Promise<number> =>
         new Promise((resolve) => {
           setTimeout(() => resolve(inp + 1), inp * 100);
@@ -1498,7 +1544,7 @@ export function runPregelTests(
   });
 
   it("should process batch with two processes and delays with graph", async () => {
-    const addOneWithDelay = jest.fn(
+    const addOneWithDelay = vi.fn(
       (inp: number): Promise<number> =>
         new Promise((resolve) => {
           setTimeout(() => resolve(inp + 1), inp * 100);
@@ -1518,7 +1564,7 @@ export function runPregelTests(
 
   it("should invoke two processes with input/output and interrupt", async () => {
     const checkpointer = await createCheckpointer();
-    const addOne = jest.fn((x: number) => {
+    const addOne = vi.fn((x: number) => {
       return x + 1;
     });
     const one = Channel.subscribeTo("input")
@@ -1545,7 +1591,7 @@ export function runPregelTests(
     const thread2 = { configurable: { thread_id: "2" } };
 
     // start execution, stop at inbox
-    expect(await app.invoke(2, thread1)).toBeUndefined();
+    expect(await app.invoke(2, thread1)).toEqual({ __interrupt__: [] });
 
     // inbox == 3
     let checkpoint = await checkpointer.get(thread1);
@@ -1555,7 +1601,7 @@ export function runPregelTests(
     expect(await app.invoke(null, thread1)).toBe(4);
 
     // start execution again, stop at inbox
-    expect(await app.invoke(20, thread1)).toBeUndefined();
+    expect(await app.invoke(20, thread1)).toEqual({ __interrupt__: [] });
 
     // inbox == 21
     checkpoint = await checkpointer.get(thread1);
@@ -1563,11 +1609,11 @@ export function runPregelTests(
     expect(checkpoint?.channel_values.inbox).toBe(21);
 
     // send a new value in, interrupting the previous execution
-    expect(await app.invoke(3, thread1)).toBeUndefined();
+    expect(await app.invoke(3, thread1)).toEqual({ __interrupt__: [] });
     expect(await app.invoke(null, thread1)).toBe(5);
 
     // start execution again, stopping at inbox
-    expect(await app.invoke(20, thread2)).toBeUndefined();
+    expect(await app.invoke(20, thread2)).toEqual({ __interrupt__: [] });
 
     // inbox == 21
     let snapshot = await app.getState(thread2);
@@ -1614,6 +1660,7 @@ export function runPregelTests(
             name: "two",
             interrupts: [],
             path: [PULL, "two"],
+            result: { output: 5 },
           },
         ],
         next: ["two"],
@@ -1642,6 +1689,7 @@ export function runPregelTests(
             name: "one",
             interrupts: [],
             path: [PULL, "one"],
+            result: { inbox: 4 },
           },
         ],
         next: ["one"],
@@ -1698,6 +1746,7 @@ export function runPregelTests(
             name: "one",
             interrupts: [],
             path: [PULL, "one"],
+            result: { inbox: 21 },
           },
         ],
         next: ["one"],
@@ -1747,6 +1796,7 @@ export function runPregelTests(
             name: "two",
             interrupts: [],
             path: [PULL, "two"],
+            result: { output: 4 },
           },
         ],
         next: ["two"],
@@ -1775,6 +1825,7 @@ export function runPregelTests(
             name: "one",
             interrupts: [],
             path: [PULL, "one"],
+            result: { inbox: 3 },
           },
         ],
         next: ["one"],
@@ -1816,7 +1867,7 @@ export function runPregelTests(
 
   it("should batch many processes with input and output", async () => {
     const testSize = 100;
-    const addOne = jest.fn((x: number) => x + 1);
+    const addOne = vi.fn((x: number) => x + 1);
 
     const channels: Record<string, LastValue<number>> = {
       input: new LastValue<number>(),
@@ -1860,7 +1911,7 @@ export function runPregelTests(
   });
 
   it("should raise InvalidUpdateError when the same LastValue channel is updated twice in one iteration", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -1883,7 +1934,7 @@ export function runPregelTests(
   });
 
   it("should fail to process two processes in an invalid way", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -1907,7 +1958,7 @@ export function runPregelTests(
   });
 
   it("should process two inputs to two outputs validly", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -2130,7 +2181,7 @@ graph TD;
   });
 
   it("should handle checkpoints correctly", async () => {
-    const inputPlusTotal = jest.fn(
+    const inputPlusTotal = vi.fn(
       (x: { total: number; input: number }): number => (x.total ?? 0) + x.input
     );
     const raiseIfAbove10 = (input: number): number => {
@@ -2198,8 +2249,8 @@ graph TD;
   });
 
   it("should process two inputs joined into one topic and produce two outputs", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
-    const add10Each = jest.fn((x: number[]): number[] =>
+    const addOne = vi.fn((x: number): number => x + 1);
+    const add10Each = vi.fn((x: number[]): number[] =>
       x.map((y) => y + 10).sort()
     );
 
@@ -2247,8 +2298,8 @@ graph TD;
   });
 
   it("should invoke join then call other app", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
-    const add10Each = jest.fn((x: number[]): number[] => x.map((y) => y + 10));
+    const addOne = vi.fn((x: number): number => x + 1);
+    const add10Each = vi.fn((x: number[]): number[] => x.map((y) => y + 10));
 
     const innerApp = new Pregel({
       nodes: {
@@ -2308,7 +2359,7 @@ graph TD;
   });
 
   it("should handle two processes with one input and two outputs", async () => {
-    const addOne = jest.fn((x: number) => x + 1);
+    const addOne = vi.fn((x: number) => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -2345,7 +2396,7 @@ graph TD;
   });
 
   it("should finish executing without output", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["between"]));
@@ -2368,7 +2419,7 @@ graph TD;
   });
 
   it("should throw an error when no input channel is provided", () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("between")
       .pipe(addOne)
@@ -2392,9 +2443,9 @@ graph TD;
 
       description = "A simple API that returns the input string.";
 
-      schema = z
+      schema = z3
         .object({
-          input: z.string().optional(),
+          input: z3.string().optional(),
         })
         .transform((data) => data.input);
 
@@ -2652,7 +2703,7 @@ graph TD;
 
       // call method / assertions
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const neverCalled = jest.fn((_: any) => {
+      const neverCalled = vi.fn((_: any) => {
         throw new Error("This should never be called");
       });
 
@@ -2711,7 +2762,7 @@ graph TD;
 
       // call method / assertions
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const neverCalled = jest.fn((_: any) => {
+      const neverCalled = vi.fn((_: any) => {
         throw new Error("This should never be called");
       });
 
@@ -2775,7 +2826,7 @@ graph TD;
     });
 
     it("In one fan out state graph waiting edge", async () => {
-      const sortedAdd = jest.fn((x: string[], y: string[]): string[] =>
+      const sortedAdd = vi.fn((x: string[], y: string[]): string[] =>
         [...x, ...y].sort()
       );
 
@@ -2833,6 +2884,370 @@ graph TD;
       });
     });
 
+    it.each([
+      [true], // waiting edge: true
+      [false], // waiting edge: false
+    ])(
+      "in_one_fan_out_state_graph_defer_node (waiting edge: %s)",
+      async (waitingEdge) => {
+        const sortedAdd = vi.fn((x: string[], y: string[]): string[] =>
+          [...x, ...y].sort()
+        );
+
+        const StateAnnotation = Annotation.Root({
+          query: Annotation<string>,
+          answer: Annotation<string>,
+          docs: Annotation<string[]>({ reducer: sortedAdd }),
+        });
+
+        const builder = new StateGraph(StateAnnotation)
+          .addNode("rewrite_query", (state) => ({
+            query: `query: ${state.query}`,
+          }))
+          .addNode("analyzer_one", (state) => ({
+            query: `analyzed: ${state.query}`,
+          }))
+          .addNode("retriever_one", () => ({ docs: ["doc1", "doc2"] }))
+          .addNode("retriever_two", async () => {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            return { docs: ["doc3", "doc4"] };
+          })
+          .addNode("qa", (state) => ({ answer: state.docs?.join(",") }), {
+            defer: true,
+          })
+          .addEdge(START, "rewrite_query")
+          .addEdge("rewrite_query", "retriever_one")
+          .addEdge("retriever_one", "analyzer_one")
+          .addEdge("rewrite_query", "retriever_two");
+
+        if (waitingEdge) {
+          builder.addEdge(["retriever_one", "retriever_two"], "qa");
+        } else {
+          builder.addEdge("retriever_one", "qa").addEdge("retriever_two", "qa");
+        }
+        builder.addEdge("qa", END);
+
+        const app = builder.compile();
+        expect(await app.invoke({ query: "what is weather in sf" })).toEqual({
+          query: "analyzed: query: what is weather in sf",
+          docs: ["doc1", "doc2", "doc3", "doc4"],
+          answer: "doc1,doc2,doc3,doc4",
+        });
+
+        expect(
+          await gatherIterator(app.stream({ query: "what is weather in sf" }))
+        ).toEqual([
+          { rewrite_query: { query: "query: what is weather in sf" } },
+          { retriever_one: { docs: ["doc1", "doc2"] } },
+          { retriever_two: { docs: ["doc3", "doc4"] } },
+          {
+            analyzer_one: { query: "analyzed: query: what is weather in sf" },
+          },
+          { qa: { answer: "doc1,doc2,doc3,doc4" } },
+        ]);
+
+        expect(
+          await gatherIterator(
+            app.stream(
+              { query: "what is weather in sf" },
+              { streamMode: "debug" }
+            )
+          )
+        ).toMatchObject([
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 1,
+            payload: {
+              id: expect.any(String),
+              name: "rewrite_query",
+              input: { query: "what is weather in sf" },
+              triggers: ["branch:to:rewrite_query"],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 1,
+            payload: {
+              id: expect.any(String),
+              name: "rewrite_query",
+              result: [["query", "query: what is weather in sf"]],
+              interrupts: [],
+            },
+          },
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 2,
+            payload: {
+              id: expect.any(String),
+              name: "retriever_one",
+              input: { query: "query: what is weather in sf" },
+              triggers: ["branch:to:retriever_one"],
+            },
+          },
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 2,
+            payload: {
+              id: expect.any(String),
+              name: "retriever_two",
+              input: { query: "query: what is weather in sf" },
+              triggers: ["branch:to:retriever_two"],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 2,
+            payload: {
+              id: expect.any(String),
+              name: "retriever_one",
+              result: [["docs", ["doc1", "doc2"]]],
+              interrupts: [],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 2,
+            payload: {
+              id: expect.any(String),
+              name: "retriever_two",
+              result: [["docs", ["doc3", "doc4"]]],
+              interrupts: [],
+            },
+          },
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 3,
+            payload: {
+              id: expect.any(String),
+              name: "analyzer_one",
+              input: {
+                query: "query: what is weather in sf",
+                docs: ["doc1", "doc2", "doc3", "doc4"],
+              },
+              triggers: ["branch:to:analyzer_one"],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 3,
+            payload: {
+              id: expect.any(String),
+              name: "analyzer_one",
+              result: [["query", "analyzed: query: what is weather in sf"]],
+              interrupts: [],
+            },
+          },
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 4,
+            payload: {
+              id: expect.any(String),
+              name: "qa",
+              input: {
+                query: "analyzed: query: what is weather in sf",
+                docs: ["doc1", "doc2", "doc3", "doc4"],
+              },
+              triggers: waitingEdge
+                ? ["join:retriever_one+retriever_two:qa"]
+                : ["branch:to:qa"],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 4,
+            payload: {
+              id: expect.any(String),
+              name: "qa",
+              result: [["answer", "doc1,doc2,doc3,doc4"]],
+              interrupts: [],
+            },
+          },
+        ]);
+
+        const checkpointer = new MemorySaverAssertImmutable();
+        const config = { configurable: { thread_id: "2" } };
+        const appWithInterrupt = builder.compile({
+          interruptBefore: ["qa"],
+          checkpointer,
+        });
+
+        expect(
+          await gatherIterator(
+            appWithInterrupt.stream({ query: "what is weather in sf" }, config)
+          )
+        ).toEqual([
+          { rewrite_query: { query: "query: what is weather in sf" } },
+          { retriever_one: { docs: ["doc1", "doc2"] } },
+          { retriever_two: { docs: ["doc3", "doc4"] } },
+          { analyzer_one: { query: "analyzed: query: what is weather in sf" } },
+          { __interrupt__: [] },
+        ]);
+
+        await appWithInterrupt.updateState(config, { docs: ["doc5"] });
+
+        expect(await appWithInterrupt.getState(config)).toMatchObject({
+          values: {
+            query: "analyzed: query: what is weather in sf",
+            docs: ["doc1", "doc2", "doc3", "doc4", "doc5"],
+          },
+          next: ["qa"],
+          config: { configurable: { thread_id: "2" } },
+          createdAt: expect.any(String),
+          metadata: {
+            source: "update",
+            step: 4,
+            writes: { analyzer_one: { docs: ["doc5"] } },
+            thread_id: "2",
+          },
+        });
+      }
+    );
+
+    it.each([
+      [{ cachePolicy: true, slowCache: false }],
+      [{ cachePolicy: true, slowCache: true }],
+      [{ cachePolicy: false, slowCache: false }],
+    ])(
+      "in one fan out state graph waiting edge multiple (%s)",
+      async ({ cachePolicy, slowCache }) => {
+        const sortedAdd = vi.fn((x: string[], y: string[]): string[] =>
+          [...x, ...y].sort()
+        );
+
+        const cache = slowCache ? new SlowInMemoryCache() : new InMemoryCache();
+        const State = Annotation.Root({
+          query: Annotation<string>,
+          answer: Annotation<string>,
+          docs: Annotation<string[]>({ reducer: sortedAdd }),
+        });
+
+        let rewriteQueryCount = 0;
+        const graph = new StateGraph(State)
+          .addNode(
+            "rewrite_query",
+            (state) => {
+              rewriteQueryCount += 1;
+              return { query: `query: ${state.query}` };
+            },
+            { cachePolicy }
+          )
+          .addNode("analyzer_one", (state) => ({
+            query: `analyzed: ${state.query}`,
+          }))
+          .addNode("retriever_one", () => ({ docs: ["doc1", "doc2"] }))
+          .addNode("retriever_two", async () => {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            return { docs: ["doc3", "doc4"] };
+          })
+          .addNode("qa", (state) => ({ answer: state.docs.join(",") }))
+          .addNode("decider", () => ({}))
+
+          .addEdge(START, "rewrite_query")
+          .addEdge("rewrite_query", "analyzer_one")
+          .addEdge("analyzer_one", "retriever_one")
+          .addEdge("rewrite_query", "retriever_two")
+          .addEdge(["retriever_one", "retriever_two"], "decider")
+
+          .addConditionalEdges(
+            "decider",
+            (state) => {
+              if (state.query.split("analyzed").length - 1 > 1) return "qa";
+              return "rewrite_query";
+            },
+            ["qa", "rewrite_query"]
+          )
+          .compile({ cache });
+
+        expect(await graph.invoke({ query: "what is weather in sf" })).toEqual({
+          query: "analyzed: query: analyzed: query: what is weather in sf",
+          answer: "doc1,doc1,doc2,doc2,doc3,doc3,doc4,doc4",
+          docs: [
+            "doc1",
+            "doc1",
+            "doc2",
+            "doc2",
+            "doc3",
+            "doc3",
+            "doc4",
+            "doc4",
+          ],
+        });
+
+        expect(
+          await gatherIterator(graph.stream({ query: "what is weather in sf" }))
+        ).toEqual([
+          cachePolicy
+            ? {
+                rewrite_query: { query: "query: what is weather in sf" },
+                __metadata__: { cached: true },
+              }
+            : { rewrite_query: { query: "query: what is weather in sf" } },
+          {
+            analyzer_one: { query: "analyzed: query: what is weather in sf" },
+          },
+          { retriever_two: { docs: ["doc3", "doc4"] } },
+          { retriever_one: { docs: ["doc1", "doc2"] } },
+          { decider: {} },
+          cachePolicy
+            ? {
+                rewrite_query: {
+                  query: "query: analyzed: query: what is weather in sf",
+                },
+                __metadata__: { cached: true },
+              }
+            : {
+                rewrite_query: {
+                  query: "query: analyzed: query: what is weather in sf",
+                },
+              },
+          {
+            analyzer_one: {
+              query: "analyzed: query: analyzed: query: what is weather in sf",
+            },
+          },
+          { retriever_two: { docs: ["doc3", "doc4"] } },
+          { retriever_one: { docs: ["doc1", "doc2"] } },
+          { decider: {} },
+          { qa: { answer: "doc1,doc1,doc2,doc2,doc3,doc3,doc4,doc4" } },
+        ]);
+
+        expect(rewriteQueryCount).toBe(cachePolicy ? 2 : 4);
+
+        if (cachePolicy) {
+          await graph.clearCache();
+
+          expect(
+            await graph.invoke({ query: "what is weather in sf" })
+          ).toEqual({
+            query: "analyzed: query: analyzed: query: what is weather in sf",
+            answer: "doc1,doc1,doc2,doc2,doc3,doc3,doc4,doc4",
+            docs: [
+              "doc1",
+              "doc1",
+              "doc2",
+              "doc2",
+              "doc3",
+              "doc3",
+              "doc4",
+              "doc4",
+            ],
+          });
+
+          expect(rewriteQueryCount).toBe(4);
+        }
+      }
+    );
+
     it("should handle dynamic interrupt", async () => {
       const checkpointer = await createCheckpointer();
 
@@ -2867,6 +3282,14 @@ graph TD;
       expect(result).toEqual({
         my_key: "value",
         market: "DE",
+        __interrupt__: [
+          {
+            value: "Just because...",
+            resumable: true,
+            when: "during",
+            ns: [expect.stringMatching(/^tool_two:/)],
+          },
+        ],
       });
       expect(toolTwoNodeCount).toBe(1); // interrupts aren't retried
       expect(tracer.runs.length).toBe(1);
@@ -2894,6 +3317,14 @@ graph TD;
       ).toEqual({
         my_key: "value ⛰️",
         market: "DE",
+        __interrupt__: [
+          {
+            value: "Just because...",
+            resumable: true,
+            when: "during",
+            ns: [expect.stringMatching(/^tool_two:/)],
+          },
+        ],
       });
 
       const toolTwoCheckpointer = toolTwo.checkpointer as BaseCheckpointSaver;
@@ -3001,6 +3432,12 @@ graph TD;
       // Return state at interrupt time
       expect(await graph.invoke({ hello: "world" }, thread)).toEqual({
         hello: "again",
+        __interrupt__: [
+          {
+            value: "I am bad",
+            when: "during",
+          },
+        ],
       });
 
       expect(awhileReturns).toBe(1);
@@ -3009,6 +3446,12 @@ graph TD;
       // Invoking a graph with no more tasks should return the final value
       expect(await graph.invoke(null, thread)).toEqual({
         hello: "again",
+        __interrupt__: [
+          {
+            value: "I am bad",
+            when: "during",
+          },
+        ],
       });
 
       expect(awhileReturns).toBe(1);
@@ -3025,7 +3468,7 @@ graph TD;
     it("Should log a warning if a NodeInterrupt is thrown in a conditional edge", async () => {
       // Mock console.warn
       const originalWarn = console.warn;
-      console.warn = jest.fn();
+      console.warn = vi.fn();
 
       const GraphAnnotation = Annotation.Root({
         count: Annotation<number>({ reducer: (a, b) => a + b }),
@@ -3145,22 +3588,14 @@ graph TD;
 
     it("State graph packets", async () => {
       const AgentState = Annotation.Root({
-        messages: Annotation({
-          reducer: messagesStateReducer,
-        }),
+        messages: Annotation({ reducer: messagesStateReducer }),
       });
-      const searchApi = tool(
-        async ({ query }) => {
-          return `result for ${query}`;
-        },
-        {
-          name: "search_api",
-          schema: z.object({
-            query: z.string(),
-          }),
-          description: "Searches the API for the query",
-        }
-      );
+
+      const searchApi = tool(({ query }) => `result for ${query}`, {
+        name: "search_api",
+        schema: z3.object({ query: z3.string() }),
+        description: "Searches the API for the query",
+      });
 
       const toolsByName = { [searchApi.name]: searchApi };
       const model = new FakeChatModel({
@@ -3203,9 +3638,7 @@ graph TD;
       });
 
       const agent = async (state: typeof AgentState.State) => {
-        return {
-          messages: await model.invoke(state.messages),
-        };
+        return { messages: await model.invoke(state.messages) };
       };
 
       const shouldContinue = async (state: typeof AgentState.State) => {
@@ -3214,13 +3647,12 @@ graph TD;
         const toolCalls = (
           state.messages[state.messages.length - 1] as AIMessage
         ).tool_calls;
+
         if (toolCalls?.length) {
-          return toolCalls.map((toolCall) => {
-            return new Send("tools", toolCall);
-          });
-        } else {
-          return "__end__";
+          return toolCalls.map((toolCall) => new Send("tools", toolCall));
         }
+
+        return "__end__";
       };
 
       const toolsNode = async (toolCall: ToolCall) => {
@@ -3245,10 +3677,12 @@ graph TD;
         .addEdge("__start__", "agent")
         .addConditionalEdges("agent", shouldContinue)
         .addEdge("tools", "agent");
+
       const inputMessage = new HumanMessage({
         id: "foo",
         content: "what is weather in sf",
       });
+
       const expectedOutputMessages = [
         inputMessage,
         new AIMessage({
@@ -3304,56 +3738,43 @@ graph TD;
           content: "answer",
         }),
       ];
-      const res = await builder.compile().invoke({
-        messages: [inputMessage],
-      });
-      expect(res).toEqual({
-        messages: expectedOutputMessages,
-      });
+
+      const res = await builder.compile().invoke({ messages: [inputMessage] });
+      expect(res).toEqual({ messages: expectedOutputMessages });
 
       const stream = await builder.compile().stream({
         messages: [inputMessage],
       });
       let chunks = await gatherIterator(stream);
+
       const nodeOrder = ["agent", "tools", "agent", "tools", "tools", "agent"];
       expect(nodeOrder.length).toEqual(chunks.length);
       expect(chunks).toEqual(
         // The input message is not streamed back
-        expectedOutputMessages.slice(1).map((message, i) => {
-          return {
-            [nodeOrder[i]]: { messages: message },
-          };
-        })
+        expectedOutputMessages.slice(1).map((message, i) => ({
+          [nodeOrder[i]]: { messages: message },
+        }))
       );
 
       const appWithInterrupt = builder.compile({
         checkpointer: await createCheckpointer(),
         interruptAfter: ["agent"],
       });
+
       const config = { configurable: { thread_id: "1" } };
       chunks = await gatherIterator(
-        appWithInterrupt.stream(
-          {
-            messages: [inputMessage],
-          },
-          config
-        )
+        appWithInterrupt.stream({ messages: [inputMessage] }, config)
       );
       expect(chunks).toEqual([
-        {
-          agent: {
-            messages: expectedOutputMessages[1],
-          },
-        },
+        { agent: { messages: expectedOutputMessages[1] } },
         { [INTERRUPT]: [] },
       ]);
       const appWithInterruptState = await appWithInterrupt.getState(config);
       const appWithInterruptCheckpointer =
         appWithInterrupt.checkpointer as BaseCheckpointSaver;
+
       expect(appWithInterruptState).toEqual({
-        values: {
-          messages: expectedOutputMessages.slice(0, 2),
-        },
+        values: { messages: expectedOutputMessages.slice(0, 2) },
         tasks: [
           {
             id: expect.any(String),
@@ -4002,15 +4423,8 @@ graph TD;
       const config: RunnableConfig = {
         configurable: { thread_id: "102" },
       };
-      const res = await app.invoke(
-        {
-          messages: ["initial input"],
-        },
-        config
-      );
-      expect(res).toEqual({
-        reducerField: "should not be wiped",
-      });
+      const res = await app.invoke({ messages: ["initial input"] }, config);
+      expect(res).toEqual({ reducerField: "should not be wiped" });
       const history = await gatherIterator(app.getStateHistory(config));
       expect(history).toEqual([
         {
@@ -4059,6 +4473,10 @@ graph TD;
               name: "wipeFields",
               path: [PULL, "wipeFields"],
               interrupts: [],
+              result: {
+                reducerField: undefined,
+                test: undefined,
+              },
             },
           ],
           metadata: {
@@ -4090,9 +4508,7 @@ graph TD;
           },
         },
         {
-          values: {
-            reducerField: "",
-          },
+          values: { reducerField: "" },
           next: ["updateTest"],
           tasks: [
             {
@@ -4100,6 +4516,10 @@ graph TD;
               name: "updateTest",
               path: [PULL, "updateTest"],
               interrupts: [],
+              result: {
+                reducerField: "should not be wiped",
+                test: "test",
+              },
             },
           ],
           metadata: {
@@ -4126,9 +4546,7 @@ graph TD;
           },
         },
         {
-          values: {
-            reducerField: "",
-          },
+          values: { reducerField: "" },
           next: ["__start__"],
           tasks: [
             {
@@ -4142,9 +4560,7 @@ graph TD;
             thread_id: "102",
             source: "input",
             writes: {
-              __start__: {
-                messages: ["initial input"],
-              },
+              __start__: { messages: ["initial input"] },
             },
             step: -1,
             parents: {},
@@ -4388,9 +4804,9 @@ graph TD;
 
       description = "A simple API that returns the input string.";
 
-      schema = z
+      schema = z3
         .object({
-          input: z.string().optional(),
+          input: z3.string().optional(),
         })
         .transform((data) => data.input);
 
@@ -4822,7 +5238,7 @@ graph TD;
           id: anyStringSame("task1"),
           name: "prepare",
           input: { my_key: "value", market: "DE" },
-          triggers: ["__start__:prepare"],
+          triggers: ["branch:to:prepare"],
           interrupts: [],
         },
       },
@@ -4891,7 +5307,7 @@ graph TD;
           id: anyStringSame("task2"),
           name: "tool_two_slow",
           input: { my_key: "value prepared", market: "DE" },
-          triggers: ["branch:prepare:condition:tool_two_slow"],
+          triggers: ["branch:to:tool_two_slow"],
           interrupts: [],
         },
       },
@@ -4960,7 +5376,7 @@ graph TD;
           id: anyStringSame("task3"),
           name: "finish",
           input: { my_key: "value prepared slow", market: "DE" },
-          triggers: ["tool_two_slow"],
+          triggers: ["branch:to:finish"],
           interrupts: [],
         },
       },
@@ -5094,7 +5510,8 @@ graph TD;
         { my_key: "value ⛰️", market: "DE" },
         thread1
       )
-    ).toEqual({ my_key: "value ⛰️", market: "DE" });
+    ).toEqual({ my_key: "value ⛰️", market: "DE", __interrupt__: [] });
+
     const toolTwoCheckpointer =
       toolTwoWithCheckpointer.checkpointer as BaseCheckpointSaver;
     expect(
@@ -5171,6 +5588,7 @@ graph TD;
     ).toEqual({
       my_key: "value",
       market: "US",
+      __interrupt__: [],
     });
     expect(await toolTwoWithCheckpointer.getState(thread2)).toEqual({
       values: { my_key: "value", market: "US" },
@@ -5228,6 +5646,7 @@ graph TD;
     ).toEqual({
       my_key: "value",
       market: "US",
+      __interrupt__: [],
     });
     expect(await toolTwoWithCheckpointer.getState(thread3)).toEqual({
       values: { my_key: "value", market: "US" },
@@ -5525,6 +5944,7 @@ graph TD;
       ).toEqual({
         my_key: "value ⛰️",
         market: "DE",
+        __interrupt__: [],
       });
 
       const checkpoints = [];
@@ -5595,6 +6015,7 @@ graph TD;
       ).toEqual({
         my_key: "value",
         market: "US",
+        __interrupt__: [],
       });
 
       expect(await toolTwo.getState(thread2)).toMatchObject({
@@ -5633,6 +6054,7 @@ graph TD;
       ).toEqual({
         my_key: "value",
         market: "US",
+        __interrupt__: [],
       });
 
       expect(await toolTwo.getState(thread3)).toMatchObject({
@@ -6385,6 +6807,7 @@ graph TD;
       const config1 = { configurable: { thread_id: "1" } };
       expect(await app.invoke({ myKey: "" }, config1)).toEqual({
         myKey: " and parallel",
+        __interrupt__: [],
       });
 
       expect(await app.invoke(null, config1)).toEqual({
@@ -6426,7 +6849,11 @@ graph TD;
       };
       expect(
         await gatherIterator(await app.stream({ myKey: "" }, config3))
-      ).toEqual([{ myKey: "" }, { myKey: " and parallel" }]);
+      ).toEqual([
+        { myKey: "" },
+        { myKey: " and parallel" },
+        { __interrupt__: [] },
+      ]);
       expect(await gatherIterator(await app.stream(null, config3))).toEqual([
         { myKey: "" },
         { myKey: "got here and there and parallel" },
@@ -6444,11 +6871,12 @@ graph TD;
       };
       expect(
         await gatherIterator(appBefore.stream({ myKey: "" }, config4))
-      ).toEqual([{ myKey: "" }]);
+      ).toEqual([{ myKey: "" }, { __interrupt__: [] }]);
       // while we're waiting for the node w/ interrupt inside to finish
       expect(await gatherIterator(appBefore.stream(null, config4))).toEqual([
         { myKey: "" },
         { myKey: " and parallel" },
+        { __interrupt__: [] },
       ]);
       expect(await gatherIterator(appBefore.stream(null, config4))).toEqual([
         { myKey: "" },
@@ -6467,10 +6895,15 @@ graph TD;
       };
       expect(
         await gatherIterator(appAfter.stream({ myKey: "" }, config5))
-      ).toEqual([{ myKey: "" }, { myKey: " and parallel" }]);
+      ).toEqual([
+        { myKey: "" },
+        { myKey: " and parallel" },
+        { __interrupt__: [] },
+      ]);
       expect(await gatherIterator(appAfter.stream(null, config5))).toEqual([
         { myKey: "" },
         { myKey: "got here and there and parallel" },
+        { __interrupt__: [] },
       ]);
       expect(await gatherIterator(appAfter.stream(null, config5))).toEqual([
         { myKey: "got here and there and parallel" },
@@ -6541,6 +6974,7 @@ graph TD;
       const config = { configurable: { thread_id: "1" } };
       expect(await app.invoke({ myKey: "my value" }, config)).toEqual({
         myKey: "hi my value",
+        __interrupt__: [],
       });
       expect(await app.invoke(null, config)).toEqual({
         myKey: "hi my value here and there and back again",
@@ -6563,7 +6997,12 @@ graph TD;
       };
       expect(
         await gatherIterator(app.stream({ myKey: "my value" }, config3))
-      ).toEqual([{ myKey: "my value" }, { myKey: "hi my value" }]);
+      ).toEqual([
+        { myKey: "my value" },
+        { myKey: "hi my value" },
+        { __interrupt__: [] },
+      ]);
+
       expect(await gatherIterator(app.stream(null, config3))).toEqual([
         { myKey: "hi my value" },
         { myKey: "hi my value here and there" },
@@ -6573,55 +7012,44 @@ graph TD;
 
     it("nested graph state", async () => {
       const checkpointer = await createCheckpointer();
-
-      const InnerStateAnnotation = Annotation.Root({
-        myKey: Annotation<string>,
-        myOtherKey: Annotation<string>,
-      });
-      const inner1 = async (state: typeof InnerStateAnnotation.State) => {
-        return {
-          myKey: state.myKey + " here",
-          myOtherKey: state.myKey,
-        };
-      };
-      const inner2 = async (state: typeof InnerStateAnnotation.State) => {
-        return {
-          myKey: state.myKey + " and there",
-          myOtherKey: state.myKey,
-        };
-      };
-      const inner = new StateGraph(InnerStateAnnotation)
-        .addNode("inner1", inner1)
-        .addNode("inner2", inner2)
+      const inner = new StateGraph(
+        Annotation.Root({
+          myKey: Annotation<string>,
+          myOtherKey: Annotation<string>,
+        })
+      )
+        .addNode({
+          inner1: (state) => ({
+            myKey: state.myKey + " here",
+            myOtherKey: state.myKey,
+          }),
+          inner2: (state) => ({
+            myKey: state.myKey + " and there",
+            myOtherKey: state.myKey,
+          }),
+        })
         .addEdge("__start__", "inner1")
         .addEdge("inner1", "inner2");
 
-      const StateAnnotation = Annotation.Root({
-        myKey: Annotation<string>,
-        otherParentKey: Annotation<string>,
-      });
-      const outer1 = async (state: typeof StateAnnotation.State) => {
-        return { myKey: "hi " + state.myKey };
-      };
-      const outer2 = async (state: typeof StateAnnotation.State) => {
-        return { myKey: state.myKey + " and back again" };
-      };
-      const graph = new StateGraph(StateAnnotation)
-        .addNode("outer1", outer1)
-        .addNode("inner", inner.compile({ interruptBefore: ["inner2"] }))
-        .addNode("outer2", outer2)
+      const app = new StateGraph(
+        Annotation.Root({
+          myKey: Annotation<string>,
+          otherParentKey: Annotation<string>,
+        })
+      )
+        .addNode({
+          outer1: (state) => ({ myKey: "hi " + state.myKey }),
+          outer2: (state) => ({ myKey: state.myKey + " and back again" }),
+          inner: inner.compile({ interruptBefore: ["inner2"] }),
+        })
         .addEdge("__start__", "outer1")
         .addEdge("outer1", "inner")
-        .addEdge("inner", "outer2");
+        .addEdge("inner", "outer2")
+        .compile({ checkpointer });
 
-      const app = graph.compile({ checkpointer });
       const config = { configurable: { thread_id: "1" } };
-      await app.invoke(
-        {
-          myKey: "my value",
-        },
-        config
-      );
+      await app.invoke({ myKey: "my value" }, config);
+
       // test state w/ nested subgraph state (right after interrupt)
       // first getState without subgraph state
       expect(await app.getState(config)).toEqual({
@@ -6664,6 +7092,7 @@ graph TD;
           },
         },
       });
+
       // now, getState with subgraphs state
       expect(await app.getState(config, { subgraphs: true })).toEqual({
         values: { myKey: "hi my value" },
@@ -6799,6 +7228,7 @@ graph TD;
               name: "outer1",
               interrupts: [],
               path: [PULL, "outer1"],
+              result: { myKey: "hi my value" },
             },
           ],
           next: ["outer1"],
@@ -6833,6 +7263,7 @@ graph TD;
               name: "__start__",
               interrupts: [],
               path: [PULL, "__start__"],
+              result: { myKey: "my value" },
             },
           ],
           next: ["__start__"],
@@ -6853,11 +7284,13 @@ graph TD;
           createdAt: expect.any(String),
         },
       ]);
+
       // get_state_history for a subgraph returns its checkpoints
-      const childHistory = await gatherIterator(
-        app.getStateHistory(history[0].tasks[0].state as RunnableConfig)
-      );
-      expect(childHistory).toEqual([
+      expect(
+        await gatherIterator(
+          app.getStateHistory(history[0].tasks[0].state as RunnableConfig)
+        )
+      ).toEqual([
         {
           values: { myKey: "hi my value here", myOtherKey: "hi my value" },
           next: ["inner2"],
@@ -6934,6 +7367,10 @@ graph TD;
               name: "inner1",
               path: [PULL, "inner1"],
               interrupts: [],
+              result: {
+                myKey: "hi my value here",
+                myOtherKey: "hi my value",
+              },
             },
           ],
         },
@@ -6966,6 +7403,7 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              result: { myKey: "hi my value" },
             },
           ],
         },
@@ -7043,6 +7481,7 @@ graph TD;
               name: "outer2",
               path: [PULL, "outer2"],
               interrupts: [],
+              result: { myKey: "hi my value here and there and back again" },
             },
           ],
           next: ["outer2"],
@@ -7083,6 +7522,9 @@ graph TD;
                   checkpoint_ns: expect.any(String),
                 },
               },
+              result: {
+                myKey: "hi my value here and there",
+              },
             },
           ],
           next: ["inner"],
@@ -7117,6 +7559,7 @@ graph TD;
               name: "outer1",
               path: [PULL, "outer1"],
               interrupts: [],
+              result: { myKey: "hi my value" },
             },
           ],
           next: ["outer1"],
@@ -7151,6 +7594,7 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              result: { myKey: "my value" },
             },
           ],
           next: ["__start__"],
@@ -7185,8 +7629,8 @@ graph TD;
     it("invoke join then call other pregel", async () => {
       const checkpointer = await createCheckpointer();
 
-      const addOne = jest.fn((x: number) => x + 1);
-      const add10Each = jest.fn((x: number[]) => x.map((y) => y + 10));
+      const addOne = vi.fn((x: number) => x + 1);
+      const add10Each = vi.fn((x: number[]) => x.map((y) => y + 10));
 
       const innerApp = new Pregel({
         nodes: {
@@ -7595,6 +8039,7 @@ graph TD;
           },
         },
       });
+
       // get outer graph history
       const outerHistory = await gatherIterator(app.getStateHistory(config));
       expect(outerHistory).toEqual([
@@ -7658,6 +8103,7 @@ graph TD;
               name: "parent2",
               path: [PULL, "parent2"],
               interrupts: [],
+              result: { myKey: "hi my value here and there and back again" },
             },
           ],
         },
@@ -7675,6 +8121,7 @@ graph TD;
                   checkpoint_ns: expect.stringContaining("child"),
                 },
               },
+              result: { myKey: "hi my value here and there" },
             },
           ],
           next: ["child"],
@@ -7732,6 +8179,7 @@ graph TD;
               name: "parent1",
               path: [PULL, "parent1"],
               interrupts: [],
+              result: { myKey: "hi my value" },
             },
           ],
         },
@@ -7759,10 +8207,12 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              result: { myKey: "my value" },
             },
           ],
         },
       ]);
+
       // get child graph history
       const childHistory = await gatherIterator(
         app.getStateHistory(outerHistory[2].tasks[0].state as RunnableConfig)
@@ -7839,6 +8289,7 @@ graph TD;
                   checkpoint_ns: expect.stringContaining("child:"),
                 },
               },
+              result: { myKey: "hi my value here and there" },
             },
           ],
         },
@@ -7869,6 +8320,7 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              result: { myKey: "hi my value" },
             },
           ],
         },
@@ -7946,6 +8398,7 @@ graph TD;
               name: "grandchild2",
               path: [PULL, "grandchild2"],
               interrupts: [],
+              result: { myKey: "hi my value here and there" },
             },
           ],
         },
@@ -7985,6 +8438,7 @@ graph TD;
               name: "grandchild1",
               path: [PULL, "grandchild1"],
               interrupts: [],
+              result: { myKey: "hi my value here" },
             },
           ],
         },
@@ -8017,6 +8471,7 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              result: { myKey: "hi my value" },
             },
           ],
         },
@@ -8044,31 +8499,19 @@ graph TD;
           default: () => [],
         }),
       });
-      const continueToJokes = async (
-        state: typeof OverallStateAnnotation.State
-      ) => {
-        return state.subjects.map(
-          (s) => new Send("generateJoke", { subject: s })
-        );
-      };
 
       const JokeStateAnnotation = Annotation.Root({
         subject: Annotation<string>,
       });
-
-      const edit = async (state: typeof JokeStateAnnotation.State) => {
-        const { subject } = state;
-        return { subject: `${subject} - hohoho` };
-      };
 
       // subgraph
       const subgraph = new StateGraph({
         input: JokeStateAnnotation,
         output: OverallStateAnnotation,
       })
-        .addNode("edit", edit)
-        .addNode("generate", async (state) => {
-          return { jokes: [`Joke about ${state.subject}`] };
+        .addNode({
+          edit: ({ subject }) => ({ subject: `${subject} - hohoho` }),
+          generate: (state) => ({ jokes: [`Joke about ${state.subject}`] }),
         })
         .addEdge("__start__", "edit")
         .addEdge("edit", "generate");
@@ -8079,7 +8522,9 @@ graph TD;
           "generateJoke",
           subgraph.compile({ interruptBefore: ["generate"] })
         )
-        .addConditionalEdges("__start__", continueToJokes);
+        .addConditionalEdges("__start__", (state) =>
+          state.subjects.map((s) => new Send("generateJoke", { subject: s }))
+        );
 
       const graph = builder.compile({ checkpointer });
       const config = { configurable: { thread_id: "1" } };
@@ -8088,15 +8533,15 @@ graph TD;
       // invoke and pause at nested interrupt
       expect(
         await graph.invoke(
-          {
-            subjects: ["cats", "dogs"],
-          },
+          { subjects: ["cats", "dogs"] },
           { ...config, callbacks: [tracer] }
         )
       ).toEqual({
         subjects: ["cats", "dogs"],
         jokes: [],
+        __interrupt__: [],
       });
+
       await awaitAllCallbacks();
       expect(tracer.runs.length).toEqual(1);
 
@@ -8154,6 +8599,7 @@ graph TD;
           },
         },
       });
+
       // check state of each of the inner tasks
       expect(
         await graph.getState(outerState.tasks[0].state as RunnableConfig)
@@ -8249,12 +8695,8 @@ graph TD;
       expect(results).toHaveLength(2);
       expect(results).toEqual(
         expect.arrayContaining([
-          {
-            generateJoke: { jokes: ["Joke about cats - hohoho"] },
-          },
-          {
-            generateJoke: { jokes: ["Joke about turtles - hohoho"] },
-          },
+          { generateJoke: { jokes: ["Joke about cats - hohoho"] } },
+          { generateJoke: { jokes: ["Joke about turtles - hohoho"] } },
         ])
       );
 
@@ -8350,6 +8792,7 @@ graph TD;
                   checkpoint_ns: expect.stringContaining("generateJoke:"),
                 },
               },
+              result: { jokes: ["Joke about cats - hohoho"] },
             },
             {
               id: expect.any(String),
@@ -8362,6 +8805,7 @@ graph TD;
                   checkpoint_ns: expect.stringContaining("generateJoke:"),
                 },
               },
+              result: { jokes: ["Joke about turtles - hohoho"] },
             },
           ],
           next: ["generateJoke", "generateJoke"],
@@ -8396,6 +8840,7 @@ graph TD;
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              result: { subjects: ["cats", "dogs"] },
             },
           ],
           next: ["__start__"],
@@ -8535,8 +8980,6 @@ graph TD;
         state: MinimalState,
         config?: LangGraphRunnableConfig
       ): Promise<MinimalUpdate> {
-        console.log("Attempting to call buildContext with config");
-
         if (!config?.store) {
           throw new Error("Store is required.");
         }
@@ -8544,7 +8987,6 @@ graph TD;
         await config.store.search(["namespace"], {
           query: state.query,
         });
-        console.log("buildContext succeeded, context:");
         return {};
       }
 
@@ -8594,16 +9036,14 @@ graph TD;
         const model = new FakeChatModel({
           responses: [new AIMessage("1"), new AIMessage("2")],
         }).withConfig({ tags: ["c_two_chat_model"] });
+
         const stream = await model.stream("yo", {
           ...config,
           runName: "c_two_chat_model_stream",
         });
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
         for await (const chunk of stream) {
-          config.writer?.({
-            content: chunk.content,
-            from: "subgraph",
-          });
+          config.writer?.({ content: chunk.content, from: "subgraph" });
         }
         return { messages: [await model.invoke("hey", config)] };
       })
@@ -8616,18 +9056,12 @@ graph TD;
         const toolExecutor = RunnableLambda.from(async () => {
           return [new ToolMessage({ content: "q", tool_call_id: "test" })];
         });
-        config.writer?.({
-          from: "parent",
-        });
-        return {
-          messages: await toolExecutor.invoke({}, config),
-        };
+        config.writer?.({ from: "parent" });
+        return { messages: await toolExecutor.invoke({}, config) };
       })
       .addNode("p_two", child.compile())
       .addNode("p_three", async (_, config) => {
-        const model = new FakeChatModel({
-          responses: [new AIMessage("x")],
-        });
+        const model = new FakeChatModel({ responses: [new AIMessage("x")] });
         await model.invoke("hey", config);
         return { messages: [] };
       })
@@ -8639,7 +9073,7 @@ graph TD;
     const graph = parent.compile({});
     const config = {};
 
-    const streamedEvents: StateSnapshot[] = await gatherIterator(
+    const streamedEvents = await gatherIterator(
       graph.stream({ messages: [] }, { ...config, streamMode: "messages" })
     );
 
@@ -8652,7 +9086,7 @@ graph TD;
         {
           langgraph_step: 1,
           langgraph_node: "p_one",
-          langgraph_triggers: ["__start__:p_one"],
+          langgraph_triggers: ["branch:to:p_one"],
           langgraph_path: [PULL, "p_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
           __pregel_task_id: expect.any(String),
@@ -8668,7 +9102,7 @@ graph TD;
         {
           langgraph_step: 1,
           langgraph_node: "c_one",
-          langgraph_triggers: ["__start__:c_one"],
+          langgraph_triggers: ["branch:to:c_one"],
           langgraph_path: [PULL, "c_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
           __pregel_task_id: expect.any(String),
@@ -8684,7 +9118,7 @@ graph TD;
         {
           langgraph_step: 1,
           langgraph_node: "c_one",
-          langgraph_triggers: ["__start__:c_one"],
+          langgraph_triggers: ["branch:to:c_one"],
           langgraph_path: [PULL, "c_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
           __pregel_task_id: expect.any(String),
@@ -8700,7 +9134,7 @@ graph TD;
         {
           langgraph_step: 2,
           langgraph_node: "c_two",
-          langgraph_triggers: ["c_one"],
+          langgraph_triggers: ["branch:to:c_two"],
           langgraph_path: [PULL, "c_two"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
           __pregel_task_id: expect.any(String),
@@ -8719,7 +9153,7 @@ graph TD;
         {
           langgraph_step: 2,
           langgraph_node: "c_two",
-          langgraph_triggers: ["c_one"],
+          langgraph_triggers: ["branch:to:c_two"],
           langgraph_path: [PULL, "c_two"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
           __pregel_task_id: expect.any(String),
@@ -8737,7 +9171,7 @@ graph TD;
         {
           langgraph_step: 3,
           langgraph_node: "p_three",
-          langgraph_triggers: ["p_two"],
+          langgraph_triggers: ["branch:to:p_three"],
           langgraph_path: [PULL, "p_three"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
           __pregel_task_id: expect.any(String),
@@ -8755,35 +9189,27 @@ graph TD;
     );
 
     expect(streamedCustomEvents).toEqual([
-      {
-        from: "parent",
-      },
-      {
-        content: "1",
-        from: "subgraph",
-      },
+      { from: "parent" },
+      { content: "1", from: "subgraph" },
     ]);
 
-    const streamedCombinedEvents: StateSnapshot[] = await gatherIterator(
+    const streamedCombinedEvents = await gatherIterator(
       graph.stream(
         { messages: [] },
         { ...config, streamMode: ["custom", "messages"] }
       )
     );
 
-    expect(streamedCombinedEvents).toEqual([
+    expect(streamedCombinedEvents).toMatchObject([
       ["custom", { from: "parent" }],
       [
         "messages",
         [
-          new _AnyIdToolMessage({
-            tool_call_id: "test",
-            content: "q",
-          }),
+          new _AnyIdToolMessage({ tool_call_id: "test", content: "q" }),
           {
             langgraph_step: 1,
             langgraph_node: "p_one",
-            langgraph_triggers: ["__start__:p_one"],
+            langgraph_triggers: ["branch:to:p_one"],
             langgraph_path: [PULL, "p_one"],
             langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
             __pregel_task_id: expect.any(String),
@@ -8796,13 +9222,11 @@ graph TD;
       [
         "messages",
         [
-          new _AnyIdHumanMessage({
-            content: "f",
-          }),
+          new _AnyIdHumanMessage({ content: "f" }),
           {
             langgraph_step: 1,
             langgraph_node: "c_one",
-            langgraph_triggers: ["__start__:c_one"],
+            langgraph_triggers: ["branch:to:c_one"],
             langgraph_path: [PULL, "c_one"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_one:.*/),
@@ -8816,13 +9240,11 @@ graph TD;
       [
         "messages",
         [
-          new _AnyIdAIMessage({
-            content: "b",
-          }),
+          new _AnyIdAIMessage({ content: "b" }),
           {
             langgraph_step: 1,
             langgraph_node: "c_one",
-            langgraph_triggers: ["__start__:c_one"],
+            langgraph_triggers: ["branch:to:c_one"],
             langgraph_path: [PULL, "c_one"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_one:.*/),
@@ -8836,13 +9258,11 @@ graph TD;
       [
         "messages",
         [
-          new _AnyIdAIMessageChunk({
-            content: "1",
-          }),
+          new _AnyIdAIMessageChunk({ content: "1" }),
           {
             langgraph_step: 2,
             langgraph_node: "c_two",
-            langgraph_triggers: ["c_one"],
+            langgraph_triggers: ["branch:to:c_two"],
             langgraph_path: [PULL, "c_two"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_two:.*/),
@@ -8860,13 +9280,11 @@ graph TD;
       [
         "messages",
         [
-          new _AnyIdAIMessageChunk({
-            content: "2",
-          }),
+          new _AnyIdAIMessageChunk({ content: "2" }),
           {
             langgraph_step: 2,
             langgraph_node: "c_two",
-            langgraph_triggers: ["c_one"],
+            langgraph_triggers: ["branch:to:c_two"],
             langgraph_path: [PULL, "c_two"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_two:.*/),
@@ -8882,13 +9300,11 @@ graph TD;
       [
         "messages",
         [
-          new _AnyIdAIMessageChunk({
-            content: "x",
-          }),
+          new _AnyIdAIMessageChunk({ content: "x" }),
           {
             langgraph_step: 3,
             langgraph_node: "p_three",
-            langgraph_triggers: ["p_two"],
+            langgraph_triggers: ["branch:to:p_three"],
             langgraph_path: [PULL, "p_three"],
             langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
             __pregel_task_id: expect.any(String),
@@ -9002,12 +9418,17 @@ graph TD;
       return checkpoints.map((checkpoint) => {
         const clone = { ...checkpoint };
         delete clone.createdAt;
+
         if (clone.metadata) {
-          clone.metadata = {
-            ...clone.metadata,
-            ...{ thread_id: "1" },
-          };
+          clone.metadata = { ...clone.metadata, ...{ thread_id: "1" } };
         }
+
+        // debug stream events will not have result
+        clone.tasks = clone.tasks.map((task) => ({
+          ...task,
+          result: undefined,
+        }));
+
         return clone;
       });
     }
@@ -9160,16 +9581,19 @@ graph TD;
           };
         }
 
+        // debug stream events will not have result of tasks
+        clone.tasks = clone.tasks.map((task) => ({
+          ...task,
+          result: undefined,
+        }));
+
         return clone;
       });
     }
 
     expect(
       Object.values(streamCheckpointMap).map(sanitizeCheckpoints)
-    ).toMatchObject(
-      // @ts-expect-error Not sure why toMatchObject does not accept historyNs
-      historyNs.map(sanitizeCheckpoints)
-    );
+    ).toMatchObject(historyNs.map(sanitizeCheckpoints));
   });
 
   it("test_parent_command", async () => {
@@ -9182,7 +9606,7 @@ graph TD;
       },
       {
         name: "get_user_name",
-        schema: z.object({}),
+        schema: z3.object({}),
       }
     );
     const subgraph = new StateGraph(MessagesAnnotation)
@@ -9265,6 +9689,130 @@ graph TD;
     });
   });
 
+  it("test_parent_command with goto with double updates", async () => {
+    const CustomStateAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      user_name: Annotation<string>({
+        // Reducer is necessary because using Command.PARENT causes two updates
+        reducer: (_, b) => b,
+      }),
+    });
+
+    const getUserName = tool(
+      async () => {
+        return [
+          new Command({
+            update: { user_name: "Meow" },
+            goto: "bob",
+            graph: Command.PARENT,
+          }),
+        ];
+      },
+      {
+        name: "get_user_name",
+        schema: z3.object({}),
+      }
+    );
+    const subgraph = new StateGraph(CustomStateAnnotation)
+      .addNode("init", async () => {
+        return { user_name: "Woof" };
+      })
+      .addNode("tool", getUserName, { ends: ["__end__"] })
+      .addEdge("__start__", "init")
+      .addEdge("init", "tool")
+      .compile();
+
+    const checkpointer = await createCheckpointer();
+
+    const graph = new StateGraph(CustomStateAnnotation)
+      .addNode("init", async () => {
+        return {};
+      })
+      .addNode("alice", subgraph)
+      .addNode("bob", async (state) => {
+        if (state.user_name !== "Meow") {
+          throw new Error("failed to update state from child");
+        }
+        return { messages: [{ role: "assistant", content: "bob" }] };
+      })
+      .addEdge("__start__", "init")
+      .addConditionalEdges("init", async () => "alice")
+      .addEdge("alice", "bob")
+      .compile({ checkpointer });
+
+    const config = {
+      configurable: {
+        thread_id: "1",
+      },
+    };
+
+    const res = await graph.invoke(
+      { messages: [{ role: "user", content: "get user name" }] },
+      config
+    );
+
+    expect(res).toEqual({
+      messages: [
+        new _AnyIdHumanMessage({
+          content: "get user name",
+        }),
+        new _AnyIdAIMessage({
+          content: "bob",
+        }),
+      ],
+      user_name: "Meow",
+    });
+
+    const state = await graph.getState(config);
+
+    expect(state).toEqual({
+      values: {
+        messages: [
+          new _AnyIdHumanMessage({
+            content: "get user name",
+          }),
+          new _AnyIdAIMessage({
+            content: "bob",
+          }),
+        ],
+        user_name: "Meow",
+      },
+      next: [],
+      tasks: [],
+      metadata: {
+        source: "loop",
+        thread_id: "1",
+        writes: {
+          bob: {
+            messages: [
+              {
+                role: "assistant",
+                content: "bob",
+              },
+            ],
+          },
+        },
+        step: 3,
+        parents: {},
+      },
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_id: expect.any(String),
+          checkpoint_ns: "",
+        },
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+    });
+  });
+
   it("test_parent_command from grandchild graph", async () => {
     const CustomStateAnnotation = Annotation.Root({
       ...MessagesAnnotation.spec,
@@ -9284,7 +9832,7 @@ graph TD;
       },
       {
         name: "get_user_name",
-        schema: z.object({}),
+        schema: z3.object({}),
       }
     );
 
@@ -9586,6 +10134,166 @@ graph TD;
     expect(result.messages).toHaveLength(1);
   });
 
+  describe("should interrupt and resume with Command inside a subgraph and usable zod schema", async () => {
+    it("with zod v3 schemas", async () => {
+      const schema = z3.object({
+        foo: z3.string(),
+        items: z3
+          .array(z3.string())
+          .default(() => [])
+          .langgraph.reducer(
+            // eslint-disable-next-line no-nested-ternary
+            (a, b) => a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+            z3.union([z3.string(), z3.array(z3.string())])
+          ),
+      });
+
+      const subgraph = new StateGraph(schema)
+        .addNode("subnode", (_) => {
+          const interruptValue = interrupt("<INTERRUPTED>");
+          if (interruptValue !== "<RESUMED>") {
+            throw new Error("Expected interrupt to return <RESUMED>");
+          }
+          return {
+            foo: "subgraph",
+            items: ["sub"],
+          };
+        })
+        .addEdge(START, "subnode")
+        .compile();
+      let enterred = 0;
+      const graph = new StateGraph(schema)
+        .addNode("one", () => {
+          enterred += 1;
+          return { foo: "start", items: ["one"] };
+        })
+        .addNode("subgraph", subgraph)
+        .addNode("two", (state) => {
+          if (state.items.length < 2) {
+            throw new Error(
+              `Expected at least 2 items, got ${state.items.length}`
+            );
+          }
+          return { foo: "done", items: ["two"] };
+        })
+        .addEdge(START, "one")
+        .addEdge("one", "subgraph")
+        .addEdge("subgraph", "two")
+        .addEdge("two", END)
+        .compile({ checkpointer: await createCheckpointer() });
+
+      const config = {
+        configurable: { thread_id: "test_subgraph_interrupt_resume_zod" },
+      };
+
+      await graph.invoke({ foo: "input", items: ["zero"] }, config);
+
+      const currTasks = (await graph.getState(config)).tasks;
+      expect(currTasks[0].interrupts).toHaveLength(1);
+
+      // Resume with `Command`
+      const result = await graph.invoke(
+        new Command({ resume: "<RESUMED>" }),
+        config
+      );
+
+      expect(enterred).toBe(1);
+      const currTasksAfterCmd = (await graph.getState(config)).tasks;
+      expect(currTasksAfterCmd).toHaveLength(0);
+
+      expect(result.foo).toBe("done");
+      // Since we return the full ["zero", "one", "sub"], it gets
+      // appended to the existing ["zero", "one"], causing the expected "duplication"
+      expect(result.items).toEqual([
+        "zero",
+        "one",
+        "zero",
+        "one",
+        "sub",
+        "two",
+      ]);
+    });
+    it("with zod v4 schemas", async () => {
+      const schema = z4.object({
+        foo: z4.string(),
+        items: withLangGraph(z4.array(z4.string()), {
+          reducer: {
+            schema: z4.union([z4.string(), z4.array(z4.string())]),
+            fn: (a, b) =>
+              // eslint-disable-next-line no-nested-ternary
+              a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+          },
+          default: (): string[] => [],
+        }),
+      });
+
+      const subgraph = new StateGraph(schema)
+        .addNode("subnode", (_) => {
+          const interruptValue = interrupt("<INTERRUPTED>");
+          if (interruptValue !== "<RESUMED>") {
+            throw new Error("Expected interrupt to return <RESUMED>");
+          }
+          return {
+            foo: "subgraph",
+            items: ["sub"],
+          };
+        })
+        .addEdge(START, "subnode")
+        .compile();
+      let enterred = 0;
+      const graph = new StateGraph(schema)
+        .addNode("one", () => {
+          enterred += 1;
+          return { foo: "start", items: ["one"] };
+        })
+        .addNode("subgraph", subgraph)
+        .addNode("two", (state) => {
+          if (state.items.length < 2) {
+            throw new Error(
+              `Expected at least 2 items, got ${state.items.length}`
+            );
+          }
+          return { foo: "done", items: ["two"] };
+        })
+        .addEdge(START, "one")
+        .addEdge("one", "subgraph")
+        .addEdge("subgraph", "two")
+        .addEdge("two", END)
+        .compile({ checkpointer: await createCheckpointer() });
+
+      const config = {
+        configurable: { thread_id: "test_subgraph_interrupt_resume_zod" },
+      };
+
+      await graph.invoke({ foo: "input", items: ["zero"] }, config);
+
+      const currTasks = (await graph.getState(config)).tasks;
+      expect(currTasks[0].interrupts).toHaveLength(1);
+
+      // Resume with `Command`
+      const result = await graph.invoke(
+        new Command({ resume: "<RESUMED>" }),
+        config
+      );
+
+      expect(enterred).toBe(1);
+      const currTasksAfterCmd = (await graph.getState(config)).tasks;
+      expect(currTasksAfterCmd).toHaveLength(0);
+
+      expect(result.foo).toBe("done");
+      // Since we return the full ["zero", "one", "sub"], it gets
+      // appended to the existing ["zero", "one"], causing the expected "duplication"
+      expect(result.items).toEqual([
+        "zero",
+        "one",
+        "zero",
+        "one",
+        "sub",
+        "two",
+      ]);
+    });
+  });
+
   it("should be able to invoke a single node on a graph", async () => {
     const graph = new StateGraph(MessagesAnnotation)
       .addNode("one", (state) => {
@@ -9713,7 +10421,11 @@ graph TD;
       },
     };
 
-    expect(await graph.invoke({ foo: "abc" }, config)).toEqual({ foo: "abc" });
+    expect(await graph.invoke({ foo: "abc" }, config)).toEqual({
+      foo: "abc",
+      __interrupt__: [],
+    });
+
     const result = await graph.invoke(
       new Command({ update: { foo: "def" } }),
       config
@@ -9815,7 +10527,7 @@ graph TD;
     });
 
     // TODO: should ideally throw here when no checkpointer is provided
-    expect(await graph.invoke("a")).toBeUndefined();
+    expect(await graph.invoke("a")).toEqual({ __interrupt__: [] });
 
     await expect(() =>
       graph.invoke(new Command({ resume: "hello" }))
@@ -10263,178 +10975,436 @@ graph TD;
     expect(newHistory.map(mapSnapshot)).toMatchObject(history.map(mapSnapshot));
   });
 
-  it("zod schema", async () => {
-    const schema = z.object({
-      foo: z.string(),
-      items: z
-        .array(z.string())
-        .default(() => ["default"])
-        .langgraph.reducer(
-          // eslint-disable-next-line no-nested-ternary
-          (a, b) => a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
-          z.union([z.string(), z.array(z.string())])
-        ),
-    });
-
-    const graph = new StateGraph(schema)
-      .addNode("agent", () => ({ foo: "agent", items: ["a", "b"] }))
-      .addNode("tool", () => ({ foo: "tool", items: ["c", "d"] }))
-      .addEdge("__start__", "agent")
-      .addEdge("agent", "tool")
-      .compile();
-
-    const state = await graph.invoke(
-      { foo: "input" },
-      { configurable: { thread_id: "1" } }
-    );
-
-    expect(graph.builder._schemaRuntimeDefinition).toBeDefined();
-    expect(state).toEqual({
-      foo: "tool",
-      items: ["default", "a", "b", "c", "d"],
-    });
-
-    expect(
-      getStateTypeSchema(graph.builder._schemaRuntimeDefinition!)
-    ).toStrictEqual({
-      type: "object",
-      properties: {
-        foo: { type: "string" },
-        items: {
-          type: "array",
-          items: { type: "string" },
-          default: ["default"],
+  describe("with zod schemas", () => {
+    describe("basic usage", () => {
+      const expectedStateSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          foo: { type: "string" },
+          items: {
+            type: "array",
+            items: { type: "string" },
+            default: ["default"],
+          },
         },
-      },
-      required: ["foo"],
-      additionalProperties: false,
-      $schema: "http://json-schema.org/draft-07/schema#",
-    });
-
-    expect(
-      getUpdateTypeSchema(graph.builder._schemaRuntimeDefinition!)
-    ).toStrictEqual({
-      type: "object",
-      properties: {
-        foo: { type: "string" },
-        items: {
-          anyOf: [
-            { type: "string" },
-            { type: "array", items: { type: "string" } },
-          ],
+        required: ["foo"],
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+      const expectedUpdateSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          foo: { type: "string" },
+          items: {
+            anyOf: [
+              { type: "string" },
+              { type: "array", items: { type: "string" } },
+            ],
+          },
         },
-      },
-      additionalProperties: false,
-      $schema: "http://json-schema.org/draft-07/schema#",
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+
+      it("with zod v3", async () => {
+        const schema = z3.object({
+          foo: z3.string(),
+          items: z3
+            .array(z3.string())
+            .default(() => ["default"])
+            .langgraph.reducer(
+              // eslint-disable-next-line no-nested-ternary
+              (a, b) => a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+              z3.union([z3.string(), z3.array(z3.string())])
+            ),
+        });
+
+        const graph = new StateGraph(schema)
+          .addNode("agent", () => ({ foo: "agent", items: ["a", "b"] }))
+          .addNode("tool", () => ({ foo: "tool", items: ["c", "d"] }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        const state = await graph.invoke(
+          { foo: "input" },
+          { configurable: { thread_id: "1" } }
+        );
+
+        expect(graph.builder._schemaRuntimeDefinition).toBeDefined();
+        expect(state).toEqual({
+          foo: "tool",
+          items: ["default", "a", "b", "c", "d"],
+        });
+
+        expect(getStateTypeSchema(graph)).toStrictEqual(expectedStateSchema);
+        expect(getUpdateTypeSchema(graph)).toStrictEqual(expectedUpdateSchema);
+      });
+      it("with zod v4", async () => {
+        const schema = z4.object({
+          foo: z4.string(),
+          items: withLangGraph(z4.array(z4.string()), {
+            reducer: {
+              fn: (a, b) =>
+                // eslint-disable-next-line no-nested-ternary
+                a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+              schema: z4.union([z4.string(), z4.array(z4.string())]),
+            },
+            default: () => ["default"],
+          }),
+        });
+        const graph = new StateGraph(schema)
+          .addNode("agent", () => ({ foo: "agent", items: ["a", "b"] }))
+          .addNode("tool", () => ({ foo: "tool", items: ["c", "d"] }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        const state = await graph.invoke(
+          { foo: "input" },
+          { configurable: { thread_id: "1" } }
+        );
+
+        expect(graph.builder._schemaRuntimeDefinition).toBeDefined();
+        expect(state).toEqual({
+          foo: "tool",
+          items: ["default", "a", "b", "c", "d"],
+        });
+
+        // todo: investigate why zod tries to make items required (even though it has a default)
+        // expect(getStateTypeSchema(graph)).toStrictEqual(expectedStateSchema);
+        expect(getUpdateTypeSchema(graph)).toStrictEqual(expectedUpdateSchema);
+      });
     });
-  });
 
-  it("zod schema - input / output", async () => {
-    const state = z.object({
-      hey: z.string(),
-      counter: z.number().gt(0),
-    });
-
-    const input = state.pick({ counter: true });
-    const output = state.pick({ hey: true });
-
-    const graph = new StateGraph({ state, input, output })
-      .addNode("agent", () => ({ hey: "agent", counter: 1 }))
-      .addNode("tool", () => ({ hey: "tool", counter: 2 }))
-      .addEdge("__start__", "agent")
-      .addEdge("agent", "tool")
-      .compile();
-
-    const value = await graph.invoke(
-      { counter: 123 },
-      { configurable: { thread_id: "1" } }
-    );
-
-    expect(value).toEqual({ hey: "tool" });
-
-    await expect(
-      graph.invoke({ counter: -1 }, { configurable: { thread_id: "1" } })
-    ).rejects.toBeDefined();
-  });
-
-  it("zod schema - config", async () => {
-    const schema = z.object({
-      foo: z.string(),
-    });
-
-    const config = z.object({
-      prompt: z
-        .string()
-        .min(1)
-        .langgraph.metadata({
-          langgraph_nodes: ["agent"],
-          langgraph_type: "prompt",
-        }),
-    });
-
-    const graph = new StateGraph(schema, config)
-      .addNode("agent", () => ({ foo: "agent" }))
-      .addNode("tool", () => ({ foo: "tool" }))
-      .addEdge("__start__", "agent")
-      .addEdge("agent", "tool")
-      .compile();
-
-    expect(
-      await graph.invoke(
-        { foo: "input" },
-        { configurable: { thread_id: "1", prompt: "user input" } }
-      )
-    ).toEqual({ foo: "tool" });
-
-    await expect(
-      graph.invoke(
-        { foo: "input" },
-        { configurable: { thread_id: "1", prompt: "" } }
-      )
-    ).rejects.toBeDefined();
-
-    expect(getConfigTypeSchema(graph.builder._configSchema!)).toStrictEqual({
-      $schema: "http://json-schema.org/draft-07/schema#",
-      additionalProperties: false,
-      properties: {
-        prompt: {
-          type: "string",
-          langgraph_nodes: ["agent"],
-          langgraph_type: "prompt",
-          minLength: 1,
+    describe("input / output", () => {
+      const expectedInputSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          counter: { type: "number", exclusiveMinimum: 0 },
         },
-      },
-      required: ["prompt"],
-      type: "object",
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+      const expectedOutputSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          hey: { type: "string" },
+        },
+        required: ["hey"],
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+      const expectedStateSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          hey: { type: "string" },
+          counter: { type: "number", exclusiveMinimum: 0 },
+          messages: {
+            type: "array",
+            items: { type: "string" },
+          },
+        },
+        required: ["hey", "counter", "messages"],
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+      const expectedUpdateSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          hey: { type: "string" },
+          counter: { type: "number", exclusiveMinimum: 0 },
+          messages: {
+            anyOf: [
+              { type: "string" },
+              { type: "array", items: { type: "string" } },
+            ],
+          },
+        },
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+
+      it("with zod v3", async () => {
+        const state = z3.object({
+          hey: z3.string(),
+          counter: z3.number().gt(0),
+          messages: z3
+            .array(z3.string())
+            .langgraph.reducer(
+              (a, b) => (Array.isArray(b) ? [...a, ...b] : [...a, b]),
+              z3.union([z3.string(), z3.array(z3.string())])
+            ),
+        });
+
+        const input = state.pick({ counter: true });
+        const output = state.pick({ hey: true });
+
+        const graph = new StateGraph({ state, input, output })
+          .addNode("agent", () => ({ hey: "agent", counter: 1 }))
+          .addNode("tool", () => ({ hey: "tool", counter: 2 }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        const value = await graph.invoke(
+          { counter: 123 },
+          { configurable: { thread_id: "1" } }
+        );
+
+        expect(value).toEqual({ hey: "tool" });
+
+        await expect(
+          graph.invoke({ counter: -1 }, { configurable: { thread_id: "1" } })
+        ).rejects.toBeDefined();
+
+        expect(getInputTypeSchema(graph)).toStrictEqual(expectedInputSchema);
+        expect(getOutputTypeSchema(graph)).toStrictEqual(expectedOutputSchema);
+        expect(getStateTypeSchema(graph)).toStrictEqual(expectedStateSchema);
+        expect(getUpdateTypeSchema(graph)).toStrictEqual(expectedUpdateSchema);
+      });
+      it("with zod v4", async () => {
+        const state = z4.object({
+          hey: z4.string(),
+          counter: z4.number().gt(0),
+          messages: withLangGraph(z4.array(z4.string()), {
+            reducer: {
+              schema: z4.union([z4.string(), z4.array(z4.string())]),
+              fn: (a, b) =>
+                // eslint-disable-next-line no-nested-ternary
+                a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+            },
+            default: () => ["default"],
+          }),
+        });
+
+        const input = state.pick({ counter: true });
+        const output = state.pick({ hey: true });
+
+        const graph = new StateGraph({ state, input, output })
+          .addNode("agent", () => ({ hey: "agent", counter: 1 }))
+          .addNode("tool", () => ({ hey: "tool", counter: 2 }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        const value = await graph.invoke(
+          { counter: 123 },
+          { configurable: { thread_id: "1" } }
+        );
+
+        expect(value).toEqual({ hey: "tool" });
+
+        await expect(
+          graph.invoke({ counter: -1 }, { configurable: { thread_id: "1" } })
+        ).rejects.toBeDefined();
+
+        expect(getInputTypeSchema(graph)).toStrictEqual(expectedInputSchema);
+        expect(getOutputTypeSchema(graph)).toStrictEqual(expectedOutputSchema);
+        expect(getStateTypeSchema(graph)).toStrictEqual(expectedStateSchema);
+        expect(getUpdateTypeSchema(graph)).toStrictEqual(expectedUpdateSchema);
+      });
     });
-  });
 
-  it("zod overlap schema", async () => {
-    const state = z.object({
-      question: z.string(),
-      answer: z.string(),
-      language: z.string(),
+    describe("config", () => {
+      const expectedConfigSchema = expect.objectContaining({
+        additionalProperties: false,
+        properties: {
+          prompt: {
+            type: "string",
+            langgraph_nodes: ["agent"],
+            langgraph_type: "prompt",
+            minLength: 1,
+          },
+        },
+        required: ["prompt"],
+        type: "object",
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+
+      it("with zod v3", async () => {
+        const schema = z3.object({
+          foo: z3.string(),
+        });
+
+        const config = z3.object({
+          prompt: z3
+            .string()
+            .min(1)
+            .langgraph.metadata({
+              langgraph_nodes: ["agent"],
+              langgraph_type: "prompt",
+            }),
+        });
+
+        const graph = new StateGraph(schema, config)
+          .addNode("agent", () => ({ foo: "agent" }))
+          .addNode("tool", () => ({ foo: "tool" }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        expect(
+          await graph.invoke(
+            { foo: "input" },
+            { configurable: { thread_id: "1", prompt: "user input" } }
+          )
+        ).toEqual({ foo: "tool" });
+
+        await expect(
+          graph.invoke(
+            { foo: "input" },
+            { configurable: { thread_id: "1", prompt: "" } }
+          )
+        ).rejects.toBeDefined();
+
+        expect(getConfigTypeSchema(graph)).toStrictEqual(expectedConfigSchema);
+      });
+      it("with zod v4", async () => {
+        const schema = z4.object({
+          foo: z4.string(),
+        });
+
+        const config = z4.object({
+          prompt: withLangGraph(z4.string().min(1), {
+            jsonSchemaExtra: {
+              langgraph_nodes: ["agent"],
+              langgraph_type: "prompt",
+            },
+          }),
+        });
+
+        const graph = new StateGraph(schema, config)
+          .addNode("agent", () => ({ foo: "agent" }))
+          .addNode("tool", () => ({ foo: "tool" }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        expect(
+          await graph.invoke(
+            { foo: "input" },
+            { configurable: { thread_id: "1", prompt: "user input" } }
+          )
+        ).toEqual({ foo: "tool" });
+
+        await expect(
+          graph.invoke(
+            { foo: "input" },
+            { configurable: { thread_id: "1", prompt: "" } }
+          )
+        ).rejects.toBeDefined();
+
+        expect(getConfigTypeSchema(graph)).toStrictEqual(expectedConfigSchema);
+      });
     });
 
-    const input = state.pick({ question: true });
-    const output = state.pick({ answer: true });
+    describe("overlap schema", () => {
+      const expectedInputSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          question: { type: "string" },
+        },
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+      const expectedOutputSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          answer: { type: "string" },
+        },
+        required: ["answer"],
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+      const expectedStateSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          question: { type: "string" },
+          answer: { type: "string" },
+          language: { type: "string" },
+        },
+        required: ["question", "answer", "language"],
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+      const expectedUpdateSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          question: { type: "string" },
+          answer: { type: "string" },
+          language: { type: "string" },
+        },
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
 
-    const graph = new StateGraph({ state, input, output })
-      .addNode("agent", (state) => {
-        return {
-          answer: "agent",
-          language: state.language,
-        };
-      })
-      .addNode("tool", () => ({ answer: "tool" }))
-      .addEdge("__start__", "agent")
-      .addEdge("agent", "tool")
-      .compile();
+      it("with zod v3", async () => {
+        const state = z3.object({
+          question: z3.string(),
+          answer: z3.string(),
+          language: z3.string(),
+        });
 
-    await graph.invoke(
-      { question: "hey" },
-      { configurable: { thread_id: "1" } }
-    );
+        const input = state.pick({ question: true });
+        const output = state.pick({ answer: true });
+
+        const graph = new StateGraph({ state, input, output })
+          .addNode("agent", (state) => {
+            return {
+              answer: "agent",
+              language: state.language,
+            };
+          })
+          .addNode("tool", () => ({ answer: "tool" }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        await graph.invoke(
+          { question: "hey" },
+          { configurable: { thread_id: "1" } }
+        );
+
+        expect(getInputTypeSchema(graph)).toStrictEqual(expectedInputSchema);
+        expect(getOutputTypeSchema(graph)).toStrictEqual(expectedOutputSchema);
+        expect(getStateTypeSchema(graph)).toStrictEqual(expectedStateSchema);
+        expect(getUpdateTypeSchema(graph)).toStrictEqual(expectedUpdateSchema);
+      });
+      it("with zod v4", async () => {
+        const state = z4.object({
+          question: z4.string(),
+          answer: z4.string(),
+          language: z4.string(),
+        });
+
+        const input = state.pick({ question: true });
+
+        const output = state.pick({ answer: true });
+
+        const graph = new StateGraph({ state, input, output })
+          .addNode("agent", (state) => {
+            return {
+              answer: "agent",
+              language: state.language,
+            };
+          })
+          .addNode("tool", () => ({ answer: "tool" }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        await graph.invoke(
+          { question: "hey" },
+          { configurable: { thread_id: "1" } }
+        );
+
+        expect(getInputTypeSchema(graph)).toStrictEqual(expectedInputSchema);
+        expect(getOutputTypeSchema(graph)).toStrictEqual(expectedOutputSchema);
+        expect(getStateTypeSchema(graph)).toStrictEqual(expectedStateSchema);
+        expect(getUpdateTypeSchema(graph)).toStrictEqual(expectedUpdateSchema);
+      });
+    });
   });
 
   it("Annotation overlap schema", async () => {
@@ -10521,13 +11491,218 @@ graph TD;
       },
     ]);
 
-    await graph.invoke(new Command({ resume: "resume" }), { configurable });
+    await graph.invoke(
+      new Command({
+        resume: "resume",
+        update: { messages: ["update: resume"] },
+      }),
+      { configurable }
+    );
     state = await graph.getState({ configurable });
 
     expect(state.next).toEqual([]);
     expect(state.values).toEqual({
-      messages: ["input", "update", "interrupt: resume"],
+      messages: ["input", "update", "update: resume", "interrupt: resume"],
     });
+  });
+
+  it("persist a falsy value", async () => {
+    const checkpointer = await createCheckpointer();
+
+    const builder = new StateGraph(
+      Annotation.Root({
+        ...MessagesAnnotation.spec,
+        number: Annotation<number>,
+        boolean: Annotation<boolean>,
+        string: Annotation<string>,
+      })
+    )
+      .addNode("node", (state) => state)
+      .addEdge("__start__", "node");
+
+    const graph = builder.compile({ checkpointer });
+
+    const input = { number: 0, boolean: false, string: "" };
+    const config = { configurable: { thread_id: "thread_id" } };
+
+    await gatherIterator(graph.stream(input, config));
+
+    expect(await graph.getState(config)).toMatchObject({
+      values: { number: 0, boolean: false, string: "" },
+    });
+  });
+
+  describe("add sequence", () => {
+    const State = Annotation.Root({
+      foo: Annotation<string[]>({
+        default: () => [],
+        reducer: (a, b) => [...a, ...b],
+      }),
+      bar: Annotation<string>(),
+    });
+
+    const step1 = (): typeof State.Update => ({
+      foo: ["step1"],
+      bar: "baz",
+    });
+
+    const step2 = (): typeof State.Update => ({
+      foo: ["step2"],
+    });
+
+    it("should raise error if less than 1 step", () => {
+      expect(() => new StateGraph(State).addSequence([])).toThrow();
+    });
+
+    it("should raise error if duplicate step names", () => {
+      expect(() => {
+        new StateGraph(State).addSequence([
+          ["foo", step1],
+          ["foo", step1],
+        ]);
+      }).toThrow();
+    });
+
+    it("should work with dictionary", async () => {
+      const graph = new StateGraph(State)
+        .addSequence({ step1, step2 })
+        .addEdge("__start__", "step1")
+        .compile();
+
+      const result = await graph.invoke({ foo: [] });
+      expect(result).toEqual({ foo: ["step1", "step2"], bar: "baz" });
+
+      const streamChunks = await gatherIterator(graph.stream({ foo: [] }));
+      expect(streamChunks).toEqual([
+        { step1: { foo: ["step1"], bar: "baz" } },
+        { step2: { foo: ["step2"] } },
+      ]);
+    });
+
+    it("should work with list of tuples", async () => {
+      const graph = new StateGraph(State)
+        .addSequence([
+          ["meow1", step1],
+          ["meow2", step2],
+        ])
+        .addEdge("__start__", "meow1")
+        .compile();
+
+      const result = await graph.invoke({ foo: [] });
+      expect(result).toEqual({ foo: ["step1", "step2"], bar: "baz" });
+
+      const streamChunks = await gatherIterator(graph.stream({ foo: [] }));
+      expect(streamChunks).toEqual([
+        { meow1: { foo: ["step1"], bar: "baz" } },
+        { meow2: { foo: ["step2"] } },
+      ]);
+    });
+
+    it("should work with two sequences", async () => {
+      const a = () => ({ foo: ["a"] });
+      const b = () => ({ foo: ["b"] });
+
+      const graph = new StateGraph(State)
+        .addSequence({ a })
+        .addSequence({ b })
+        .addEdge("__start__", "a")
+        .addEdge("a", "b")
+        .compile();
+
+      const result = await graph.invoke({ foo: [] });
+      expect(result).toEqual({ foo: ["a", "b"] });
+
+      const streamChunks = await gatherIterator(graph.stream({ foo: [] }));
+      expect(streamChunks).toEqual([
+        { a: { foo: ["a"] } },
+        { b: { foo: ["b"] } },
+      ]);
+    });
+
+    it("should work with mixed nodes and sequences", async () => {
+      const a = () => ({ foo: ["a"] });
+      const b = () => ({ foo: ["b"] });
+      const c = () => ({ foo: ["c"] });
+      const d = () => ({ foo: ["d"] });
+      const e = () => ({ foo: ["e"] });
+
+      const foo = (state: typeof State.State) => {
+        if (state.foo[0] === "a") {
+          return "d";
+        }
+        return "c";
+      };
+
+      const graph = new StateGraph(State)
+        .addSequence({ a, b })
+        .addConditionalEdges("b", foo)
+        .addNode("c", c)
+        .addSequence([
+          ["d", d],
+          ["e", e],
+        ])
+        .addEdge("__start__", "a")
+        .compile();
+
+      const result1 = await graph.invoke({ foo: [] });
+      expect(result1).toEqual({ foo: ["a", "b", "d", "e"] });
+
+      const result2 = await graph.invoke({ foo: ["start"] });
+      expect(result2).toEqual({ foo: ["start", "a", "b", "c"] });
+
+      const streamChunks = await gatherIterator(graph.stream({ foo: [] }));
+      expect(streamChunks).toEqual([
+        { a: { foo: ["a"] } },
+        { b: { foo: ["b"] } },
+        { d: { foo: ["d"] } },
+        { e: { foo: ["e"] } },
+      ]);
+    });
+  });
+
+  it("test_concurrent_emit_sends", async () => {
+    const State = Annotation.Root({
+      foo: Annotation<string[]>({
+        default: () => [],
+        reducer: (a, b) => [...a, ...b],
+      }),
+    });
+
+    const node = <T extends string>(
+      name: T
+    ): [T, (state: typeof State.State | number) => typeof State.Update] => [
+      name,
+      (state) => {
+        if (typeof state === "number") return { foo: [`${name}|${state}`] };
+        return { foo: [name] };
+      },
+    ];
+
+    const graph = new StateGraph(State)
+      .addNode([node("1"), node("1.1"), node("2"), node("3"), node("3.1")])
+      .addEdge("__start__", "1")
+      .addEdge("__start__", "1.1")
+      .addConditionalEdges("1", () => [
+        new Send("2", 1),
+        new Send("2", 2),
+        "3.1",
+      ])
+      .addConditionalEdges("1.1", () => [new Send("2", 3), new Send("2", 4)])
+      .addConditionalEdges("2", () => "3")
+      .compile();
+
+    const result = await graph.invoke({ foo: ["0"] });
+    expect(result.foo).toEqual([
+      "0",
+      "1",
+      "1.1",
+      "3.1",
+      "2|1",
+      "2|2",
+      "2|3",
+      "2|4",
+      "3",
+    ]);
   });
 }
 

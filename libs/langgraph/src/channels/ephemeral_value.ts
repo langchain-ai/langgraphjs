@@ -20,7 +20,7 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
 
   fromCheckpoint(checkpoint?: Value) {
     const empty = new EphemeralValue<Value>(this.guard);
-    if (checkpoint) {
+    if (typeof checkpoint !== "undefined") {
       empty.value = [checkpoint];
     }
     return empty as this;
@@ -56,5 +56,9 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
       throw new EmptyChannelError();
     }
     return this.value[0];
+  }
+
+  isAvailable(): boolean {
+    return this.value.length !== 0;
   }
 }

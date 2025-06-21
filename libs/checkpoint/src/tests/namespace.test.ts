@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "@jest/globals";
+import { describe, it, expect, beforeEach } from "vitest";
 import { InMemoryStore } from "../store/memory.js";
 import { InvalidNamespaceError } from "../store/base.js";
 

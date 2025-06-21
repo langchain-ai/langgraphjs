@@ -38,7 +38,7 @@ export class Topic<Value> extends BaseChannel<
       unique: this.unique,
       accumulate: this.accumulate,
     });
-    if (checkpoint) {
+    if (typeof checkpoint !== "undefined") {
       empty.seen = new Set(checkpoint[0]);
       // eslint-disable-next-line prefer-destructuring
       empty.values = checkpoint[1];
@@ -76,5 +76,9 @@ export class Topic<Value> extends BaseChannel<
 
   public checkpoint(): [Value[], Value[]] {
     return [[...this.seen], this.values];
+  }
+
+  isAvailable(): boolean {
+    return this.values.length !== 0;
   }
 }

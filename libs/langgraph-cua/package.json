@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-cua",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "An implementation of a computer use agent (CUA) using LangGraph",
   "type": "module",
   "engines": {
@@ -37,7 +37,7 @@
   },
   "peerDependencies": {
     "@langchain/core": "^0.3.43",
-    "@langchain/langgraph": "^0.2.57",
+    "@langchain/langgraph": "^0.2.57 || ^0.3.0",
     "@langchain/openai": ">=0.5.1"
   },
   "devDependencies": {
@@ -64,8 +64,8 @@
     "jest-environment-node": "^29.6.4",
     "openai": "^4.87.3",
     "prettier": "^2.8.3",
-    "release-it": "^17.6.0",
-    "tsx": "^4.7.0",
+    "release-it": "^19.0.2",
+    "tsx": "^4.19.3",
     "turbo": "latest",
     "typescript": "^4.9.5 || ^5.4.5"
   },

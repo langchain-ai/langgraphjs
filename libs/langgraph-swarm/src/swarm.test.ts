@@ -24,7 +24,7 @@ class FakeChatModel extends FakeStreamingChatModel {
     super(fields);
     this.idx = 0;
     this.sleep = fields.sleep ?? this.sleep;
-    this.responses = fields.responses;
+    this.responses = fields.responses ?? [];
     this.thrownErrorString = fields.thrownErrorString;
   }
 

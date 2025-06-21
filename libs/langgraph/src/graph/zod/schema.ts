@@ -1,99 +1,177 @@
-import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
-import { getMeta } from "./state.js";
+import {
+  type JSONSchema,
+  toJsonSchema as interopToJsonSchema,
+} from "@langchain/core/utils/json_schema";
+import { InteropZodObject } from "@langchain/core/utils/types";
+import {
+  META_EXTRAS_DESCRIPTION_PREFIX,
+  SchemaMetaRegistry,
+  schemaMetaRegistry,
+} from "./meta.js";
 
-const UPDATE_TYPE_CACHE = new WeakMap<z.AnyZodObject, z.AnyZodObject>();
-const CONFIG_TYPE_CACHE = new WeakMap<z.AnyZodObject, z.AnyZodObject>();
+const PartialStateSchema = Symbol.for("langgraph.state.partial");
+type PartialStateSchema = typeof PartialStateSchema;
 
-const DESCRIPTION_PREFIX = "lg:";
-
-function applyPlugin(
-  schema: z.AnyZodObject,
-  actions: { reducer?: boolean; jsonSchemaExtra?: boolean }
-) {
-  return z.object({
-    ...Object.fromEntries(
-      Object.entries(schema.shape as Record<string, z.ZodTypeAny>).map(
-        ([key, input]): [string, z.ZodTypeAny] => {
-          const meta = getMeta(input);
-          let output = actions.reducer ? meta?.reducer?.schema ?? input : input;
-
-          if (actions.jsonSchemaExtra) {
-            const strMeta = JSON.stringify({
-              ...meta?.jsonSchemaExtra,
-              description: output.description ?? input.description,
-            });
-
-            if (strMeta !== "{}") {
-              output = output.describe(`${DESCRIPTION_PREFIX}${strMeta}`);
-            }
-          }
-
-          return [key, output];
-        }
-      )
-    ),
-  });
+interface GraphWithZodLike {
+  builder: {
+    _schemaRuntimeDefinition: InteropZodObject | undefined;
+    _inputRuntimeDefinition: InteropZodObject | PartialStateSchema | undefined;
+    _outputRuntimeDefinition: InteropZodObject | undefined;
+    _configRuntimeSchema: InteropZodObject | undefined;
+  };
 }
 
-function applyExtraFromDescription(schema: unknown): unknown {
-  if (Array.isArray(schema)) {
-    return schema.map(applyExtraFromDescription);
+function isGraphWithZodLike(graph: unknown): graph is GraphWithZodLike {
+  if (!graph || typeof graph !== "object") return false;
+  if (
+    !("builder" in graph) ||
+    typeof graph.builder !== "object" ||
+    graph.builder == null
+  ) {
+    return false;
   }
+  return true;
+}
 
+function applyJsonSchemaExtrasFromDescription<T>(schema: T): unknown {
+  if (Array.isArray(schema)) {
+    return schema.map(applyJsonSchemaExtrasFromDescription);
+  }
   if (typeof schema === "object" && schema != null) {
     const output = Object.fromEntries(
       Object.entries(schema).map(([key, value]) => [
         key,
-        applyExtraFromDescription(value),
+        applyJsonSchemaExtrasFromDescription(value),
       ])
     );
 
     if (
       "description" in output &&
       typeof output.description === "string" &&
-      output.description.startsWith(DESCRIPTION_PREFIX)
+      output.description.startsWith(META_EXTRAS_DESCRIPTION_PREFIX)
     ) {
-      const strMeta = output.description.slice(DESCRIPTION_PREFIX.length);
+      const strMeta = output.description.slice(
+        META_EXTRAS_DESCRIPTION_PREFIX.length
+      );
       delete output.description;
       Object.assign(output, JSON.parse(strMeta));
     }
 
-    return output;
+    return output as T;
   }
-
   return schema;
 }
 
-export function getUpdateTypeSchema(shape: z.AnyZodObject) {
-  const updateShape = (() => {
-    if (UPDATE_TYPE_CACHE.has(shape)) UPDATE_TYPE_CACHE.get(shape);
-
-    const newShape = applyPlugin(shape, {
-      reducer: true,
-      jsonSchemaExtra: true,
-    }).partial();
-
-    UPDATE_TYPE_CACHE.set(shape, newShape);
-    return newShape;
-  })();
-
-  const schema = zodToJsonSchema(updateShape);
-  return applyExtraFromDescription(schema);
+function toJsonSchema(schema: InteropZodObject): JSONSchema {
+  return applyJsonSchemaExtrasFromDescription(
+    interopToJsonSchema(schema)
+  ) as JSONSchema;
 }
 
-export function getConfigTypeSchema(shape: z.AnyZodObject) {
-  const configShape = (() => {
-    if (CONFIG_TYPE_CACHE.has(shape)) CONFIG_TYPE_CACHE.get(shape);
-    const newShape = applyPlugin(shape, { jsonSchemaExtra: true });
-    CONFIG_TYPE_CACHE.set(shape, newShape);
-    return newShape;
-  })();
+/**
+ * Get the state schema for a graph.
+ * @param graph - The graph to get the state schema for.
+ * @returns The state schema for the graph.
+ */
+export function getStateTypeSchema(
+  graph: unknown,
+  registry: SchemaMetaRegistry = schemaMetaRegistry
+): JSONSchema | undefined {
+  if (!isGraphWithZodLike(graph)) return undefined;
+  const schemaDef = graph.builder._schemaRuntimeDefinition;
+  if (!schemaDef) return undefined;
 
-  const schema = zodToJsonSchema(configShape);
-  return applyExtraFromDescription(schema);
+  return toJsonSchema(
+    registry.getExtendedChannelSchemas(schemaDef, {
+      withJsonSchemaExtrasAsDescription: true,
+    })
+  );
 }
 
-export function getStateTypeSchema(schema: z.AnyZodObject) {
-  return zodToJsonSchema(schema);
+/**
+ * Get the update schema for a graph.
+ * @param graph - The graph to get the update schema for.
+ * @returns The update schema for the graph.
+ */
+export function getUpdateTypeSchema(
+  graph: unknown,
+  registry: SchemaMetaRegistry = schemaMetaRegistry
+): JSONSchema | undefined {
+  if (!isGraphWithZodLike(graph)) return undefined;
+  const schemaDef = graph.builder._schemaRuntimeDefinition;
+  if (!schemaDef) return undefined;
+
+  return toJsonSchema(
+    registry.getExtendedChannelSchemas(schemaDef, {
+      withReducerSchema: true,
+      withJsonSchemaExtrasAsDescription: true,
+      asPartial: true,
+    })
+  );
+}
+
+/**
+ * Get the input schema for a graph.
+ * @param graph - The graph to get the input schema for.
+ * @returns The input schema for the graph.
+ */
+export function getInputTypeSchema(
+  graph: unknown,
+  registry: SchemaMetaRegistry = schemaMetaRegistry
+): JSONSchema | undefined {
+  if (!isGraphWithZodLike(graph)) return undefined;
+  let schemaDef = graph.builder._inputRuntimeDefinition;
+  if (schemaDef === PartialStateSchema) {
+    // No need to pass `.partial()` here, that's being done by `applyPlugin`
+    schemaDef = graph.builder._schemaRuntimeDefinition;
+  }
+  if (!schemaDef) return undefined;
+
+  return toJsonSchema(
+    registry.getExtendedChannelSchemas(schemaDef, {
+      withReducerSchema: true,
+      withJsonSchemaExtrasAsDescription: true,
+      asPartial: true,
+    })
+  );
+}
+
+/**
+ * Get the output schema for a graph.
+ * @param graph - The graph to get the output schema for.
+ * @returns The output schema for the graph.
+ */
+export function getOutputTypeSchema(
+  graph: unknown,
+  registry: SchemaMetaRegistry = schemaMetaRegistry
+): JSONSchema | undefined {
+  if (!isGraphWithZodLike(graph)) return undefined;
+  const schemaDef = graph.builder._outputRuntimeDefinition;
+  if (!schemaDef) return undefined;
+
+  return toJsonSchema(
+    registry.getExtendedChannelSchemas(schemaDef, {
+      withJsonSchemaExtrasAsDescription: true,
+    })
+  );
+}
+
+/**
+ * Get the config schema for a graph.
+ * @param graph - The graph to get the config schema for.
+ * @returns The config schema for the graph.
+ */
+export function getConfigTypeSchema(
+  graph: unknown,
+  registry: SchemaMetaRegistry = schemaMetaRegistry
+): JSONSchema | undefined {
+  if (!isGraphWithZodLike(graph)) return undefined;
+  const configDef = graph.builder._configRuntimeSchema;
+  if (!configDef) return undefined;
+
+  return toJsonSchema(
+    registry.getExtendedChannelSchemas(configDef, {
+      withJsonSchemaExtrasAsDescription: true,
+    })
+  );
 }

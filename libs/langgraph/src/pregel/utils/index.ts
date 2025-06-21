@@ -1,3 +1,4 @@
+import { Callbacks } from "@langchain/core/callbacks/manager";
 import { RunnableConfig } from "@langchain/core/runnables";
 import type {
   ChannelVersions,
@@ -52,29 +53,50 @@ export type RetryPolicy = {
    * @default 500
    */
   initialInterval?: number;
+
   /**
    * Multiplier by which the interval increases after each retry.
    * @default 2
    */
   backoffFactor?: number;
+
   /**
    * Maximum amount of time that may elapse between retries in milliseconds.
    * @default 128000
    */
   maxInterval?: number;
+
   /**
    * Maximum amount of time that may elapse between retries.
    * @default 3
    */
   maxAttempts?: number;
+
   /** Whether to add random jitter to the interval between retries. */
   jitter?: boolean;
+
   /** A function that returns True for exceptions that should trigger a retry. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  retryOn?: (e: any) => boolean;
+  retryOn?: (e: any) => boolean; // eslint-disable-line @typescript-eslint/no-explicit-any
 
   /** Whether to log a warning when a retry is attempted. Defaults to true. */
   logWarning?: boolean;
+};
+
+/**
+ * Configuration for caching nodes.
+ */
+export type CachePolicy = {
+  /**
+   * A function used to generate a cache key from node's input.
+   * @returns A key for the cache.
+   */
+  keyFunc?: (args: unknown[]) => string;
+
+  /**
+   * The time to live for the cache in seconds.
+   * If not defined, the entry will never expire.
+   */
+  ttl?: number;
 };
 
 export function patchConfigurable(
@@ -123,10 +145,12 @@ export function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
     return signals[0];
   }
 
-  if ("any" in AbortSignal) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (AbortSignal as any).any(signals);
-  }
+  // AbortSignal.any() does seem to suffer from memory leaks
+  // @see https://github.com/nodejs/node/issues/55328
+  // if ("any" in AbortSignal) {
+  //   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  //   return (AbortSignal as any).any(signals);
+  // }
   const combinedController = new AbortController();
   const listener = () => {
     combinedController.abort();
@@ -141,3 +165,36 @@ export function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
 
   return combinedController.signal;
 }
+
+/**
+ * Combine multiple callbacks into a single callback.
+ * @param callback1 - The first callback to combine.
+ * @param callback2 - The second callback to combine.
+ * @returns A single callback that is a combination of the input callbacks.
+ */
+export const combineCallbacks = (
+  callback1?: Callbacks,
+  callback2?: Callbacks
+): Callbacks | undefined => {
+  if (!callback1 && !callback2) {
+    return undefined;
+  }
+
+  if (!callback1) {
+    return callback2;
+  }
+
+  if (!callback2) {
+    return callback1;
+  }
+  if (Array.isArray(callback1) && Array.isArray(callback2)) {
+    return [...callback1, ...callback2];
+  }
+  if (Array.isArray(callback1)) {
+    return [...callback1, callback2] as Callbacks;
+  }
+  if (Array.isArray(callback2)) {
+    return [callback1, ...callback2];
+  }
+  return [callback1, callback2] as Callbacks;
+};

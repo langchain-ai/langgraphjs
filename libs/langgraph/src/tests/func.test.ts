@@ -1,10 +1,13 @@
-import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
-import { describe, it, expect, beforeAll } from "@jest/globals";
+import {
+  BaseCheckpointSaver,
+  InMemoryCache,
+} from "@langchain/langgraph-checkpoint";
+import { describe, it, expect, beforeEach, beforeAll } from "vitest";
 import { task, entrypoint, getPreviousState } from "../func/index.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { Command, PREVIOUS, START } from "../constants.js";
 import { interrupt } from "../interrupt.js";
-import { MemorySaverAssertImmutable } from "./utils.js";
+import { MemorySaverAssertImmutable, SlowInMemoryCache } from "./utils.js";
 import { Annotation, StateGraph } from "../graph/index.js";
 import { gatherIterator } from "../utils.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
@@ -502,6 +505,70 @@ export function runFuncTests(
           },
         ]);
       });
+
+      it("stores previous returned value in state, allows updating state", async () => {
+        // equivalent to `test_entrypoint_stateful` in python tests
+        const previousStates: unknown[] = [];
+
+        const graph = entrypoint(
+          { name: "graph", checkpointer },
+          async (inputs: Record<string, string>) => {
+            const previous = getPreviousState<unknown>();
+            previousStates.push(previous);
+            return {
+              previous,
+              current: inputs,
+            };
+          }
+        );
+
+        const config = {
+          configurable: { thread_id },
+        };
+
+        await graph.updateState(config, {
+          a: -1,
+        });
+
+        expect(await graph.invoke({ a: "1" }, config)).toEqual({
+          current: { a: "1" },
+          previous: { a: -1 },
+        });
+
+        expect(await graph.invoke({ a: "2" }, config)).toEqual({
+          current: { a: "2" },
+          previous: { current: { a: "1" }, previous: { a: -1 } },
+        });
+
+        expect(await graph.invoke({ a: "3" }, config)).toEqual({
+          current: { a: "3" },
+          previous: {
+            current: { a: "2" },
+            previous: { current: { a: "1" }, previous: { a: -1 } },
+          },
+        });
+
+        await graph.updateState(config, {
+          a: 3,
+        });
+
+        expect(await graph.invoke({ a: "4" }, config)).toEqual({
+          current: { a: "4" },
+          previous: {
+            a: 3,
+          },
+        });
+
+        expect(previousStates).toEqual([
+          { a: -1 },
+          { current: { a: "1" }, previous: { a: -1 } },
+          {
+            current: { a: "2" },
+            previous: { current: { a: "1" }, previous: { a: -1 } },
+          },
+          { a: 3 },
+        ]);
+      });
     });
 
     describe("interrupt handling", () => {
@@ -596,6 +663,7 @@ export function runFuncTests(
         expect(result.length).toEqual(capturedOutput?.length);
         expect(result).toEqual(capturedOutput);
       });
+
       it("task with interrupts", async () => {
         let taskCallCount = 0;
 
@@ -620,7 +688,19 @@ export function runFuncTests(
         // ideally the withCheckpointer = false case would throw an error here, see https://github.com/langchain-ai/langgraphjs/issues/796
         const firstRun = await graph.invoke("the correct ", config);
 
-        expect(firstRun).toBeUndefined();
+        expect(firstRun).toEqual({
+          __interrupt__: [
+            {
+              ns: [
+                expect.stringMatching(/^interruptGraph:/),
+                expect.stringMatching(/^interruptTask:/),
+              ],
+              resumable: true,
+              value: "Please provide input",
+              when: "during",
+            },
+          ],
+        });
         expect(taskCallCount).toBe(1);
         expect(graphCallCount).toBe(1);
 
@@ -673,7 +753,16 @@ export function runFuncTests(
 
         // First run, interrupted at bar
         const firstRun = await graph.invoke({ a: "" }, config);
-        expect(firstRun).toBeUndefined();
+        expect(firstRun).toEqual({
+          __interrupt__: [
+            {
+              ns: [expect.stringMatching(/^interruptGraph:/)],
+              resumable: true,
+              value: "Provide value for bar:",
+              when: "during",
+            },
+          ],
+        });
 
         // Resume with an answer
         const result = await graph.invoke(
@@ -712,7 +801,19 @@ export function runFuncTests(
 
         // First run, interrupted at bar
         const firstRun = await graph.invoke({ a: "" }, config);
-        expect(firstRun).toBeUndefined();
+        expect(firstRun).toEqual({
+          __interrupt__: [
+            {
+              ns: [
+                expect.stringMatching(/^interruptGraph:/),
+                expect.stringMatching(/^bar:/),
+              ],
+              resumable: true,
+              value: "Provide value for bar:",
+              when: "during",
+            },
+          ],
+        });
 
         // Resume with an answer
         const result = await graph.invoke(
@@ -722,6 +823,7 @@ export function runFuncTests(
 
         expect(result).toEqual({ a: "foobar" });
       });
+
       it("can handle falsy return values from tasks", async () => {
         // equivalent to `test_falsy_return_from_task` in python tests
         const falsyTask = task("falsyTask", async () => {
@@ -740,7 +842,16 @@ export function runFuncTests(
 
         // First run should interrupt
         const firstRun = await graph.invoke({ a: 5 }, config);
-        expect(firstRun).toBeUndefined();
+        expect(firstRun).toEqual({
+          __interrupt__: [
+            {
+              ns: [expect.stringMatching(/^falsyGraph:/)],
+              resumable: true,
+              value: "test",
+              when: "during",
+            },
+          ],
+        });
 
         // Resume with answer
         const result = await graph.invoke(
@@ -775,7 +886,16 @@ export function runFuncTests(
 
         // First run should interrupt
         const firstRun = await graph.invoke([], config);
-        expect(firstRun).toBeUndefined();
+        expect(firstRun).toEqual({
+          __interrupt__: [
+            {
+              ns: [expect.stringMatching(/^graph:/)],
+              resumable: true,
+              value: { a: "boo1" },
+              when: "during",
+            },
+          ],
+        });
 
         // Resume with first answer
         const secondRun = await graph.invoke(
@@ -784,7 +904,16 @@ export function runFuncTests(
         );
 
         // TODO: make this return something other than null when we figure out a interrupt return value
-        expect(secondRun).toBeNull();
+        expect(secondRun).toEqual({
+          __interrupt__: [
+            {
+              ns: [expect.stringMatching(/^graph:/)],
+              resumable: true,
+              value: { a: "boo2" },
+              when: "during",
+            },
+          ],
+        });
 
         // Resume with second answer
         const thirdRun = await graph.invoke(
@@ -792,7 +921,16 @@ export function runFuncTests(
           config
         );
 
-        expect(thirdRun).toBeNull();
+        expect(thirdRun).toEqual({
+          __interrupt__: [
+            {
+              ns: [expect.stringMatching(/^graph:/)],
+              resumable: true,
+              value: { a: "boo3" },
+              when: "during",
+            },
+          ],
+        });
 
         // Resume with final answer and get result
         const result = await graph.invoke(new Command({ resume: "c" }), config);
@@ -835,7 +973,19 @@ export function runFuncTests(
         const config = { configurable: { thread_id } };
 
         let result = await program.invoke([], config);
-        expect(result).toBeUndefined();
+        expect(result).toEqual({
+          __interrupt__: [
+            {
+              ns: [
+                expect.stringMatching(/^program:/),
+                expect.stringMatching(/^add-participant:/),
+              ],
+              resumable: true,
+              value: "Hey do you want to add James?",
+              when: "during",
+            },
+          ],
+        });
 
         let currTasks = (await program.getState(config)).tasks;
         expect(currTasks[0].interrupts).toHaveLength(1);
@@ -853,7 +1003,19 @@ export function runFuncTests(
         expect(currTasks[0].interrupts[0].when).toEqual("during");
 
         result = await program.invoke(new Command({ resume: true }), config);
-        expect(result).toBeNull();
+        expect(result).toEqual({
+          __interrupt__: [
+            {
+              ns: [
+                expect.stringMatching(/^program:/),
+                expect.stringMatching(/^add-participant:/),
+              ],
+              resumable: true,
+              value: "Hey do you want to add Will?",
+              when: "during",
+            },
+          ],
+        });
 
         currTasks = (await program.getState(config)).tasks;
         expect(currTasks[0].interrupts).toHaveLength(1);
@@ -873,6 +1035,113 @@ export function runFuncTests(
         result = await program.invoke(new Command({ resume: true }), config);
         expect(result).toEqual(["Added James!", "Added Will!"]);
       });
+
+      it.each([[{ slowCache: false }], [{ slowCache: true }]])(
+        "mutliple interrupts with cache (%s)",
+        async ({ slowCache }) => {
+          const checkpointer = await createCheckpointer();
+          const cache = slowCache
+            ? new SlowInMemoryCache()
+            : new InMemoryCache();
+
+          let counter = 0;
+
+          const double = task(
+            { name: "double", cachePolicy: { ttl: 1000 } },
+            (x: number) => {
+              counter += 1;
+              return 2 * x;
+            }
+          );
+
+          const graph = entrypoint(
+            {
+              name: "graph",
+              checkpointer,
+              cache,
+            },
+            async () => {
+              const values: [double: number, interrupt: unknown][] = [];
+
+              for (const idx of [1, 1, 2, 2, 3, 3]) {
+                const first = await double(idx);
+                const second = interrupt({ a: "boo" });
+                values.push([first, second]);
+              }
+
+              return { values };
+            }
+          );
+
+          let config = { configurable: { thread_id: "1" } };
+
+          await graph.invoke({}, config);
+          await graph.invoke(new Command({ resume: "a" }), config);
+          await graph.invoke(new Command({ resume: "b" }), config);
+          await graph.invoke(new Command({ resume: "c" }), config);
+          await graph.invoke(new Command({ resume: "d" }), config);
+          await graph.invoke(new Command({ resume: "e" }), config);
+          let result = await graph.invoke(new Command({ resume: "f" }), config);
+
+          expect(result).toEqual({
+            values: [
+              [2, "a"],
+              [2, "b"],
+              [4, "c"],
+              [4, "d"],
+              [6, "e"],
+              [6, "f"],
+            ],
+          });
+          expect(counter).toBe(3);
+
+          config = { configurable: { thread_id: "2" } };
+
+          await graph.invoke({}, config);
+          await graph.invoke(new Command({ resume: "a" }), config);
+          await graph.invoke(new Command({ resume: "b" }), config);
+          await graph.invoke(new Command({ resume: "c" }), config);
+          await graph.invoke(new Command({ resume: "d" }), config);
+          await graph.invoke(new Command({ resume: "e" }), config);
+          result = await graph.invoke(new Command({ resume: "f" }), config);
+
+          expect(result).toEqual({
+            values: [
+              [2, "a"],
+              [2, "b"],
+              [4, "c"],
+              [4, "d"],
+              [6, "e"],
+              [6, "f"],
+            ],
+          });
+          expect(counter).toBe(3);
+
+          await graph.clearCache();
+
+          config = { configurable: { thread_id: "3" } };
+          await graph.invoke({}, config);
+          await graph.invoke(new Command({ resume: "a" }), config);
+          await graph.invoke(new Command({ resume: "b" }), config);
+          await graph.invoke(new Command({ resume: "c" }), config);
+          await graph.invoke(new Command({ resume: "d" }), config);
+          await graph.invoke(new Command({ resume: "e" }), config);
+          result = await graph.invoke(new Command({ resume: "f" }), config);
+
+          expect(result).toEqual({
+            values: [
+              [2, "a"],
+              [2, "b"],
+              [4, "c"],
+              [4, "d"],
+              [6, "e"],
+              [6, "f"],
+            ],
+          });
+
+          expect(counter).toBe(6);
+        }
+      );
     });
   });
 }

@@ -87,6 +87,7 @@ nav:
                     - how-tos/branching.ipynb
                     - how-tos/command.ipynb
                     - how-tos/recursion-limit.ipynb
+                    - how-tos/defer-node-execution.ipynb
                 - Persistence:
                     - Persistence: how-tos#persistence
                     - how-tos/persistence.ipynb
@@ -147,6 +148,7 @@ nav:
                     - Other: how-tos#other
                     - how-tos/configuration.ipynb
                     - how-tos/node-retry-policies.ipynb
+                    - how-tos/node-caching.ipynb
                     - how-tos/dynamically-returning-directly.ipynb
                     - how-tos/respond-in-format.ipynb
                     - how-tos/managing-agent-steps.ipynb
@@ -184,6 +186,7 @@ nav:
                     - cloud/how-tos/assistant_versioning.md
                 - Threads:
                     - Threads: how-tos#threads
+                    - cloud/how-tos/use_threads.md
                     - cloud/how-tos/copy_threads.md
                     - cloud/how-tos/check_thread_status.md
                 - Runs:
@@ -403,6 +406,7 @@ markdown_extensions:
   - github-callouts
 extra_css:
   - css/mkdocstrings.css
+  - css/agent_graph_widget.css
 hooks:
   - _scripts/notebook_hooks.py
 extra:
@@ -424,23 +428,6 @@ extra:
       link: https://github.com/langchain-ai/langgraphjs
     - icon: fontawesome/brands/twitter
       link: https://twitter.com/LangChainAI
-  analytics:
-    provider: google
-    property: G-WR87FQLG9F
-    feedback:
-      title: Was this page helpful?
-      ratings:
-        - icon: material/emoticon-happy-outline
-          name: This page was helpful
-          data: 1
-          note: >-
-            Thanks for your feedback!
-        - icon: material/emoticon-sad-outline
-          name: This page could be improved
-          data: 0
-          note: >-
-            Thanks for your feedback! Please help us improve this page by adding to the discussion below.
-
 
 validation:
   # https://www.mkdocs.org/user-guide/configuration/

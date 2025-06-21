@@ -1,4 +1,4 @@
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 import { AnyValue } from "../channels/any_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { LastValue } from "../channels/last_value.js";
@@ -35,6 +35,18 @@ describe("LastValue", () => {
     const channel2 = restoredChannel.fromCheckpoint(checkpoint);
     expect(channel2.get()).toBe(100);
   });
+
+  it.each([0, "", false, null])("should handle '%s'", (value) => {
+    const channel = new LastValue<unknown>();
+    channel.update([value]);
+    expect(channel.get()).toBe(value);
+
+    const checkpoint = channel.checkpoint();
+
+    const restoredChannel = new LastValue<unknown>();
+    const channel2 = restoredChannel.fromCheckpoint(checkpoint);
+    expect(channel2.get()).toBe(value);
+  });
 });
 
 describe("Topic", () => {
@@ -58,6 +70,17 @@ describe("Topic", () => {
     const checkpoint = channel.checkpoint();
     const newChannel = new Topic<string>().fromCheckpoint(checkpoint);
     expect(newChannel.get()).toEqual(["e"]);
+  });
+
+  it.each([0, "", false, null])("should handle '%s'", (value) => {
+    const channel = new Topic<unknown>();
+    channel.update([value]);
+
+    expect(channel.get()).toEqual([value]);
+
+    const checkpoint = channel.checkpoint();
+    const newChannel = new Topic<unknown>().fromCheckpoint(checkpoint);
+    expect(newChannel.get()).toEqual([value]);
   });
 });
 
@@ -193,6 +216,18 @@ describe("AnyValue", () => {
     channel.update([4, 5]);
     expect(channel.get()).toBe(5);
   });
+
+  it.each([0, "", false, null])("should handle '%s'", (value) => {
+    const channel = new AnyValue<unknown>();
+    channel.update([value]);
+    expect(channel.get()).toBe(value);
+
+    const checkpoint = channel.checkpoint();
+
+    const restoredChannel = new AnyValue<unknown>();
+    const channel2 = restoredChannel.fromCheckpoint(checkpoint);
+    expect(channel2.get()).toBe(value);
+  });
 });
 
 describe("EphemeralValue with guard: false", () => {
@@ -208,6 +243,24 @@ describe("EphemeralValue with guard: false", () => {
 
     channel.update([4, 5]);
     expect(channel.get()).toBe(5);
+  });
+
+  it.each([0, "", false, null])("should handle '%s'", (value) => {
+    const channel = new EphemeralValue<unknown>(false);
+    channel.update([value]);
+    expect(channel.get()).toBe(value);
+  });
+
+  it.each([0, "", false, null])("should handle '%s'", (value) => {
+    const channel = new EphemeralValue<unknown>(false);
+    channel.update([value]);
+    expect(channel.get()).toBe(value);
+
+    const checkpoint = channel.checkpoint();
+
+    const restoredChannel = new EphemeralValue<unknown>(false);
+    const channel2 = restoredChannel.fromCheckpoint(checkpoint);
+    expect(channel2.get()).toBe(value);
   });
 });
 

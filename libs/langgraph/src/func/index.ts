@@ -1,4 +1,5 @@
 import {
+  BaseCache,
   BaseCheckpointSaver,
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
@@ -10,10 +11,11 @@ import {
   END,
   PREVIOUS,
   START,
+  TAG_HIDDEN,
 } from "../constants.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { call, getRunnableForEntrypoint } from "../pregel/call.js";
-import { RetryPolicy } from "../pregel/utils/index.js";
+import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
 import { LastValue } from "../channels/last_value.js";
 import {
   EntrypointFinal,
@@ -23,12 +25,17 @@ import {
   TaskFunc,
 } from "./types.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
-import { isAsyncGeneratorFunction, isGeneratorFunction } from "../utils.js";
+import {
+  RunnableCallable,
+  isAsyncGeneratorFunction,
+  isGeneratorFunction,
+} from "../utils.js";
+import { ChannelWrite, PASSTHROUGH } from "../pregel/write.js";
 
 /**
  * Options for the {@link task} function
  */
-export type TaskOptions = {
+export interface TaskOptions {
   /**
    * The name of the task, analogous to the node name in {@link StateGraph}.
    */
@@ -38,7 +45,12 @@ export type TaskOptions = {
    * the task should be retried if it fails.
    */
   retry?: RetryPolicy;
-};
+
+  /**
+   * The cache policy for the task. Configures how the task should be cached.
+   */
+  cachePolicy?: CachePolicy;
+}
 
 /**
  * Define a LangGraph task using the `task` function.
@@ -90,17 +102,33 @@ export function task<ArgsT extends unknown[], OutputT>(
   optionsOrName: TaskOptions | string,
   func: TaskFunc<ArgsT, OutputT>
 ): (...args: ArgsT) => Promise<OutputT> {
-  const { name, retry } =
+  const options =
     typeof optionsOrName === "string"
-      ? { name: optionsOrName, retry: undefined }
+      ? { name: optionsOrName, retry: undefined, cachePolicy: undefined }
       : optionsOrName;
+
+  const { name, retry } = options;
   if (isAsyncGeneratorFunction(func) || isGeneratorFunction(func)) {
     throw new Error(
       "Generators are disallowed as tasks. For streaming responses, use config.write."
     );
   }
+
+  const cachePolicy =
+    options.cachePolicy ??
+    // `cache` was mistakingly used as an alias for `cachePolicy` in v0.3.x,
+    // TODO: remove in 1.x
+    ("cache" in options ? (options.cache as CachePolicy) : undefined);
+
+  let cache: CachePolicy | undefined;
+  if (typeof cachePolicy === "boolean") {
+    cache = cachePolicy ? {} : undefined;
+  } else {
+    cache = cachePolicy;
+  }
+
   return (...args: ArgsT) => {
-    return call({ func, name, retry }, ...args);
+    return call({ func, name, retry, cache }, ...args);
   };
 }
 
@@ -122,6 +150,11 @@ export type EntrypointOptions = {
    * The store for the {@link entrypoint}. Used to persist data across workflow runs.
    */
   store?: BaseStore;
+
+  /**
+   * The cache for the {@link entrypoint}. Used to cache values between workflow runs.
+   */
+  cache?: BaseCache;
 };
 
 /**
@@ -140,7 +173,11 @@ export interface EntrypointFunction {
     },
     Record<string, unknown>,
     InputT,
-    EntrypointReturnT<OutputT>
+    EntrypointReturnT<OutputT>,
+    // Because the update type is an return type union of tasks + entrypoint,
+    // thus we can't type it properly.
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    Awaited<EntrypointReturnT<OutputT>>
   >;
 
   /**
@@ -303,7 +340,7 @@ export const entrypoint = function entrypoint<InputT, OutputT>(
   optionsOrName: EntrypointOptions | string,
   func: EntrypointFunc<InputT, OutputT>
 ) {
-  const { name, checkpointer, store } =
+  const { name, checkpointer, store, cache } =
     typeof optionsOrName === "string"
       ? { name: optionsOrName, checkpointer: undefined, store: undefined }
       : optionsOrName;
@@ -314,6 +351,49 @@ export const entrypoint = function entrypoint<InputT, OutputT>(
   }
   const streamMode = "updates";
   const bound = getRunnableForEntrypoint(name, func);
+
+  // Helper to check if a value is an EntrypointFinal
+  function isEntrypointFinal(
+    value: unknown
+  ): value is EntrypointFinal<unknown, unknown> {
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      "__lg_type" in value &&
+      value.__lg_type === "__pregel_final"
+    );
+  }
+
+  // Helper function to pluck the return value from EntrypointFinal or passthrough
+  const pluckReturnValue = new RunnableCallable({
+    name: "pluckReturnValue",
+    func: (value: unknown) => {
+      return isEntrypointFinal(value) ? value.value : value;
+    },
+  });
+
+  // Helper function to pluck the save value from EntrypointFinal or passthrough
+  const pluckSaveValue = new RunnableCallable({
+    name: "pluckSaveValue",
+    func: (value: unknown) => {
+      return isEntrypointFinal(value) ? value.save : value;
+    },
+  });
+
+  const entrypointNode = new PregelNode<InputT, EntrypointReturnT<OutputT>>({
+    bound,
+    triggers: [START],
+    channels: [START],
+    writers: [
+      new ChannelWrite(
+        [
+          { channel: END, value: PASSTHROUGH, mapper: pluckReturnValue },
+          { channel: PREVIOUS, value: PASSTHROUGH, mapper: pluckSaveValue },
+        ],
+        [TAG_HIDDEN]
+      ),
+    ],
+  });
 
   return new Pregel<
     Record<string, PregelNode<InputT, EntrypointReturnT<OutputT>>>, // node types
@@ -329,12 +409,7 @@ export const entrypoint = function entrypoint<InputT, OutputT>(
     name,
     checkpointer,
     nodes: {
-      [name]: new PregelNode<InputT, EntrypointReturnT<OutputT>>({
-        bound,
-        triggers: [START],
-        channels: [START],
-        writers: [],
-      }),
+      [name]: entrypointNode,
     },
     channels: {
       [START]: new EphemeralValue<InputT>(),
@@ -346,6 +421,7 @@ export const entrypoint = function entrypoint<InputT, OutputT>(
     streamChannels: END,
     streamMode,
     store,
+    cache,
   });
 } as EntrypointFunction;
 

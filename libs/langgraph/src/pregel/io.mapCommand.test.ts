@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it } from "vitest";
 import { Command, Send } from "../constants.js";
 import { mapCommand } from "./io.js";
 import { InvalidUpdateError } from "../errors.js";
@@ -16,7 +16,7 @@ describe("mapCommand", () => {
     expect(result).toEqual([
       [
         "00000000-0000-0000-0000-000000000000",
-        "branch:__start__:__self__:nextNode",
+        "branch:to:nextNode",
         "__start__",
       ],
     ]);
@@ -50,13 +50,13 @@ describe("mapCommand", () => {
     expect(result).toEqual([
       [
         "00000000-0000-0000-0000-000000000000",
-        "branch:__start__:__self__:nextNode1",
+        "branch:to:nextNode1",
         "__start__",
       ],
       ["00000000-0000-0000-0000-000000000000", "__pregel_tasks", send],
       [
         "00000000-0000-0000-0000-000000000000",
-        "branch:__start__:__self__:nextNode2",
+        "branch:to:nextNode2",
         "__start__",
       ],
     ]);
@@ -187,7 +187,7 @@ describe("mapCommand", () => {
     expect(result).toEqual([
       [
         "00000000-0000-0000-0000-000000000000",
-        "branch:__start__:__self__:nextNode",
+        "branch:to:nextNode",
         "__start__",
       ],
       ["00000000-0000-0000-0000-000000000000", "__resume__", "resumeValue"],

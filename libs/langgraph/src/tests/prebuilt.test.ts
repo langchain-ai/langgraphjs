@@ -1,7 +1,7 @@
 /* eslint-disable no-process-env */
 /* eslint-disable no-param-reassign */
 /* eslint-disable no-return-assign */
-import { beforeAll, describe, expect, it } from "@jest/globals";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { StructuredTool, tool } from "@langchain/core/tools";
 
 import {
@@ -22,6 +22,7 @@ import {
   _AnyIdToolMessage,
   FakeConfigurableModel,
   FakeToolCallingChatModel,
+  getReadableMermaid,
   MemorySaverAssertImmutable,
 } from "./utils.js";
 import { ToolNode, createReactAgent } from "../prebuilt/index.js";
@@ -37,18 +38,25 @@ import {
   interrupt,
   MemorySaver,
   messagesStateReducer,
+  REMOVE_ALL_MESSAGES,
   Send,
   StateGraph,
 } from "../index.js";
-import { MessagesAnnotation } from "../graph/messages_annotation.js";
+import {
+  MessagesAnnotation,
+  MessagesZodState,
+} from "../graph/messages_annotation.js";
+import { gatherIterator } from "../utils.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
-  process.env.LANGCHAIN_TRACING_V2 = "false";
-  process.env.LANGCHAIN_ENDPOINT = "";
-  process.env.LANGCHAIN_ENDPOINT = "";
-  process.env.LANGCHAIN_API_KEY = "";
-  process.env.LANGCHAIN_PROJECT = "";
+  if (typeof process !== "undefined") {
+    process.env.LANGCHAIN_TRACING_V2 = "false";
+    process.env.LANGCHAIN_ENDPOINT = "";
+    process.env.LANGCHAIN_ENDPOINT = "";
+    process.env.LANGCHAIN_API_KEY = "";
+    process.env.LANGCHAIN_PROJECT = "";
+  }
 });
 
 const searchSchema = z.object({
@@ -499,6 +507,158 @@ describe("createReactAgent with bound tools", () => {
   );
 });
 
+describe("createReactAgent agent name options", () => {
+  it("Can use inline agent name", async () => {
+    const responses = [
+      new AIMessage("Hello, how can I help?"),
+      new AIMessage("Hmm, I'm not sure about that."),
+    ];
+    const llm = new FakeToolCallingChatModel({ responses });
+    const invokeSpy = vi.spyOn(llm, "invoke");
+    const agent = createReactAgent({
+      llm,
+      tools: [new SearchAPI()],
+      includeAgentName: "inline",
+      name: "test agent",
+    });
+
+    const messages = [new HumanMessage("Hello!")];
+    const result1 = await agent.invoke({ messages });
+    const outputMessage1 = result1.messages.at(-1) as AIMessage;
+    messages.push(outputMessage1);
+
+    expect(outputMessage1.name).toBe("test agent");
+    expect(outputMessage1.content).toBe("Hello, how can I help?");
+
+    const result2 = await agent.invoke({ messages });
+    const outputMessage2 = result2.messages.at(-1) as AIMessage;
+
+    expect(invokeSpy).toHaveBeenLastCalledWith(
+      [
+        messages[0],
+        new _AnyIdAIMessage({
+          // no name on input message
+          name: undefined,
+          // xml formatting on input message
+          content:
+            "<name>test agent</name><content>Hello, how can I help?</content>",
+        }),
+      ],
+      expect.objectContaining({})
+    );
+
+    // name applied on returned output
+    expect(outputMessage2.name).toBe("test agent");
+
+    // no xml formatting on returned output
+    expect(outputMessage2.content).toBe("Hmm, I'm not sure about that.");
+  });
+
+  it("Can use inline agent name with content blocks", async () => {
+    const responses = [
+      new AIMessage({
+        content: [{ type: "text", text: "Hello, how can I help?" }],
+      }),
+      new AIMessage({
+        content: [{ type: "text", text: "Hmm, I'm not sure about that." }],
+      }),
+    ];
+    const llm = new FakeToolCallingChatModel({ responses });
+    const invokeSpy = vi.spyOn(llm, "invoke");
+
+    const agent = createReactAgent({
+      llm,
+      tools: [new SearchAPI()],
+      includeAgentName: "inline",
+      name: "test agent",
+    });
+
+    const messages = [new HumanMessage("Hello!")];
+    const result1 = await agent.invoke({ messages });
+    const outputMessage1 = result1.messages.at(-1) as AIMessage;
+    messages.push(outputMessage1);
+
+    expect(outputMessage1.name).toBe("test agent");
+    expect(outputMessage1.content).toEqual([
+      { type: "text", text: "Hello, how can I help?" },
+    ]);
+
+    const result2 = await agent.invoke({ messages });
+    const outputMessage2 = result2.messages.at(-1) as AIMessage;
+
+    expect(invokeSpy).toHaveBeenLastCalledWith(
+      [
+        messages[0],
+        new _AnyIdAIMessage({
+          // no name on input message
+          name: undefined,
+          // xml formatting on input message
+          content: [
+            {
+              type: "text",
+              text: "<name>test agent</name><content>Hello, how can I help?</content>",
+            },
+          ],
+        }),
+      ],
+      expect.objectContaining({})
+    );
+
+    // name applied on returned output
+    expect(outputMessage2.name).toBe("test agent");
+
+    // no xml formatting on returned output
+    expect(outputMessage2.content).toEqual([
+      { type: "text", text: "Hmm, I'm not sure about that." },
+    ]);
+  });
+
+  it("Sets name when includeAgentName is undefined", async () => {
+    const responses = [
+      new AIMessage("Hello, how can I help?"),
+      new AIMessage("Hmm, I'm not sure about that."),
+    ];
+    const llm = new FakeToolCallingChatModel({ responses });
+    const invokeSpy = vi.spyOn(llm, "invoke");
+    const agent = createReactAgent({
+      llm,
+      tools: [new SearchAPI()],
+      // includeAgentName: undefined
+      name: "test agent",
+    });
+
+    const messages = [new HumanMessage("Hello!")];
+    const result1 = await agent.invoke({ messages });
+    const outputMessage1 = result1.messages.at(-1) as AIMessage;
+    messages.push(outputMessage1);
+
+    expect(outputMessage1.name).toBe("test agent");
+    expect(outputMessage1.content).toBe("Hello, how can I help?");
+
+    const result2 = await agent.invoke({ messages });
+    const outputMessage2 = result2.messages.at(-1) as AIMessage;
+
+    expect(invokeSpy).toHaveBeenLastCalledWith(
+      [
+        messages[0],
+        new _AnyIdAIMessage({
+          // name is set to "test agent"
+          name: "test agent",
+          // no xml formatting on input message
+          content: "Hello, how can I help?",
+        }),
+      ],
+      expect.objectContaining({})
+    );
+
+    // name applied on returned output
+    expect(outputMessage2.name).toBe("test agent");
+
+    // no xml formatting on returned output
+    expect(outputMessage2.content).toBe("Hmm, I'm not sure about that.");
+  });
+});
+
 describe("createReactAgent with legacy messageModifier", () => {
   const tools = [new SearchAPI()];
 
@@ -892,6 +1052,471 @@ describe("createReactAgent with ToolNode", () => {
   });
 });
 
+describe("createReactAgent with hooks", () => {
+  it("preModelHook", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [new AIMessage({ id: "0", content: "Hello!" })],
+    });
+    const llmSpy = vi.spyOn(llm, "_generate");
+
+    // Test `llm_input_messages`
+    let agent = createReactAgent({
+      llm,
+      tools: [],
+      preModelHook: () => ({
+        llmInputMessages: [
+          new HumanMessage({ id: "human", content: "pre-hook" }),
+        ],
+      }),
+    });
+
+    expect("pre_model_hook" in agent.nodes).toBe(true);
+    expect(await agent.invoke({ messages: [new HumanMessage("hi?")] })).toEqual(
+      {
+        messages: [
+          new _AnyIdHumanMessage("hi?"),
+          new AIMessage({ id: "0", content: "Hello!" }),
+        ],
+      }
+    );
+
+    expect(llmSpy).toHaveBeenCalledWith(
+      [new HumanMessage({ id: "human", content: "pre-hook" })],
+      expect.anything(),
+      undefined
+    );
+
+    // Test `messages`
+    agent = createReactAgent({
+      llm,
+      tools: [],
+      preModelHook: () => ({
+        messages: [
+          new RemoveMessage({ id: REMOVE_ALL_MESSAGES }),
+          new HumanMessage("Hello!"),
+        ],
+      }),
+    });
+
+    expect("pre_model_hook" in agent.nodes).toBe(true);
+    expect(await agent.invoke({ messages: [new HumanMessage("hi?")] })).toEqual(
+      {
+        messages: [
+          new _AnyIdHumanMessage("Hello!"),
+          new AIMessage({ id: "0", content: "Hello!" }),
+        ],
+      }
+    );
+  });
+
+  it("postModelHook", async () => {
+    const FlagAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      flag: Annotation<boolean>,
+    });
+
+    const llm = new FakeToolCallingChatModel({
+      responses: [new AIMessage({ id: "1", content: "hi?" })],
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools: [],
+      postModelHook: () => ({ flag: true }),
+      stateSchema: FlagAnnotation,
+    });
+
+    expect("post_model_hook" in agent.nodes).toBe(true);
+    expect(
+      await agent.invoke({
+        messages: [new HumanMessage("hi?")],
+        flag: false,
+      })
+    ).toMatchObject({ flag: true });
+
+    expect(
+      await gatherIterator(
+        agent.stream({
+          messages: [new HumanMessage("hi?")],
+          flag: false,
+        })
+      )
+    ).toMatchObject([
+      {
+        agent: {
+          messages: [new AIMessage({ id: "1", content: "hi?" })],
+        },
+      },
+      { post_model_hook: { flag: true } },
+    ]);
+  });
+
+  it("postModelHook + structured response", async () => {
+    const weatherResponseSchema = z.object({
+      temperature: z.number().describe("The temperature in fahrenheit"),
+    });
+
+    const FlagAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      flag: Annotation<boolean>,
+      structuredResponse: Annotation<z.infer<typeof weatherResponseSchema>>,
+    });
+
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          id: "1",
+          content: "What's the weather?",
+          tool_calls: [
+            {
+              name: "get_weather",
+              args: {},
+              id: "1",
+              type: "tool_call",
+            },
+          ],
+        }),
+        new AIMessage({ id: "3", content: "The weather is nice" }),
+      ],
+      structuredResponse: { temperature: 75 },
+    });
+
+    const getWeather = tool(async () => "The weather is sunny and 75°F.", {
+      name: "get_weather",
+      description: "Get the weather",
+      schema: z.object({}),
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools: [getWeather],
+      responseFormat: weatherResponseSchema,
+      postModelHook: () => ({ flag: true }),
+      stateSchema: FlagAnnotation,
+    });
+
+    expect("post_model_hook" in agent.nodes).toBe(true);
+    expect("generate_structured_response" in agent.nodes).toBe(true);
+
+    const response = await agent.invoke({
+      messages: [new HumanMessage({ id: "0", content: "What's the weather?" })],
+      flag: false,
+    });
+
+    expect(response).toMatchObject({
+      flag: true,
+      structuredResponse: { temperature: 75 },
+    });
+
+    expect(
+      await gatherIterator(
+        agent.stream({
+          messages: [
+            new HumanMessage({ id: "0", content: "What's the weather?" }),
+          ],
+          flag: false,
+        })
+      )
+    ).toEqual([
+      {
+        agent: {
+          messages: [
+            new AIMessage({
+              content: "What's the weather?",
+              id: "1",
+              tool_calls: [
+                {
+                  name: "get_weather",
+                  args: {},
+                  id: "1",
+                  type: "tool_call",
+                },
+              ],
+            }),
+          ],
+        },
+      },
+      { post_model_hook: { flag: true } },
+      {
+        tools: {
+          messages: [
+            new _AnyIdToolMessage({
+              content: "The weather is sunny and 75°F.",
+              name: "get_weather",
+              tool_call_id: "1",
+            }),
+          ],
+        },
+      },
+      {
+        agent: {
+          messages: [
+            new AIMessage({
+              content: "The weather is nice",
+              id: "3",
+            }),
+          ],
+        },
+      },
+      { post_model_hook: { flag: true } },
+      {
+        generate_structured_response: {
+          structuredResponse: { temperature: 75 },
+        },
+      },
+    ]);
+  });
+
+  it.each([
+    [
+      {
+        name: "no tools",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [],
+        }),
+        structure: [
+          "__start__ --> agent",
+          "agent -.-> __end__",
+          "agent -.-> tools",
+          "tools --> agent",
+        ],
+      },
+    ],
+    [
+      {
+        name: "tools",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+        }),
+        structure: [
+          "__start__ --> agent",
+          "agent -.-> __end__",
+          "agent -.-> tools",
+          "tools --> agent",
+        ],
+      },
+    ],
+
+    [
+      {
+        name: "pre + tools",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+          preModelHook: () => ({ messages: [] }),
+        }),
+        structure: [
+          "__start__ --> pre_model_hook",
+          "agent -.-> __end__",
+          "agent -.-> tools",
+          "pre_model_hook --> agent",
+          "tools --> pre_model_hook",
+        ],
+      },
+    ],
+
+    [
+      {
+        name: "tools + post",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+          postModelHook: () => ({ flag: true }),
+          stateSchema: Annotation.Root({
+            ...MessagesAnnotation.spec,
+            flag: Annotation<boolean>,
+          }),
+        }),
+        structure: [
+          "__start__ --> agent",
+          "agent --> post_model_hook",
+          "tools --> agent",
+          "post_model_hook -.-> tools",
+          "post_model_hook -.-> agent",
+          "post_model_hook -.-> __end__",
+        ],
+      },
+    ],
+
+    [
+      {
+        name: "tools + response format",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+          responseFormat: z.object({
+            temperature: z.number().describe("The temperature in fahrenheit"),
+          }),
+        }),
+        structure: [
+          "__start__ --> agent",
+          "generate_structured_response --> __end__",
+          "tools --> agent",
+          "agent -.-> tools",
+          "agent -.-> generate_structured_response",
+        ],
+      },
+    ],
+
+    [
+      {
+        name: "pre + tools + response format",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+          preModelHook: () => ({ messages: [] }),
+          responseFormat: z.object({
+            temperature: z.number().describe("The temperature in fahrenheit"),
+          }),
+        }),
+        structure: [
+          "__start__ --> pre_model_hook",
+          "pre_model_hook --> agent",
+          "agent -.-> tools",
+          "agent -.-> generate_structured_response",
+          "generate_structured_response --> __end__",
+          "tools --> pre_model_hook",
+        ],
+      },
+    ],
+
+    [
+      {
+        name: "tools + post + response format",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+          responseFormat: z.object({
+            temperature: z.number().describe("The temperature in fahrenheit"),
+          }),
+          postModelHook: () => ({ flag: true }),
+          stateSchema: Annotation.Root({
+            ...MessagesAnnotation.spec,
+            flag: Annotation<boolean>,
+          }),
+        }),
+        structure: [
+          "__start__ --> agent",
+          "agent --> post_model_hook",
+          "generate_structured_response --> __end__",
+          "tools --> agent",
+          "post_model_hook -.-> tools",
+          "post_model_hook -.-> agent",
+          "post_model_hook -.-> generate_structured_response",
+        ],
+      },
+    ],
+
+    [
+      {
+        name: "pre + tools + post",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+          preModelHook: () => ({ messages: [] }),
+          postModelHook: () => ({ flag: true }),
+          stateSchema: Annotation.Root({
+            ...MessagesAnnotation.spec,
+            flag: Annotation<boolean>,
+          }),
+        }),
+        structure: [
+          "__start__ --> pre_model_hook",
+          "pre_model_hook --> agent",
+          "agent --> post_model_hook",
+          "tools --> pre_model_hook",
+          "post_model_hook -.-> tools",
+          "post_model_hook -.-> pre_model_hook",
+          "post_model_hook -.-> __end__",
+        ],
+      },
+    ],
+
+    [
+      {
+        name: "pre + tools + post + response format",
+        graph: createReactAgent({
+          llm: new FakeToolCallingChatModel({}),
+          tools: [
+            tool(() => "The weather is sunny and 75°F.", {
+              name: "get_weather",
+              description: "Get the weather",
+              schema: z.object({}),
+            }),
+          ],
+          responseFormat: z.object({
+            temperature: z.number().describe("The temperature in fahrenheit"),
+          }),
+          preModelHook: () => ({ messages: [] }),
+          postModelHook: () => ({ flag: true }),
+          stateSchema: Annotation.Root({
+            ...MessagesAnnotation.spec,
+            flag: Annotation<boolean>,
+          }),
+        }),
+        structure: [
+          "__start__ --> pre_model_hook",
+          "pre_model_hook --> agent",
+          "agent --> post_model_hook",
+          "generate_structured_response --> __end__",
+          "tools --> pre_model_hook",
+          "post_model_hook -.-> tools",
+          "post_model_hook -.-> pre_model_hook",
+          "post_model_hook -.-> generate_structured_response",
+        ],
+      },
+    ],
+  ])("mermaid $name", async ({ graph, structure }) => {
+    expect(getReadableMermaid(await graph.getGraphAsync()).sort()).toEqual(
+      structure.sort()
+    );
+  });
+});
+
 describe("ToolNode", () => {
   it("Should support graceful error handling", async () => {
     const toolNode = new ToolNode([new SearchAPI()]);
@@ -1050,6 +1675,84 @@ describe("MessagesAnnotation", () => {
 
     expect(res.messages.length).toEqual(1);
     expect(res2.messages.length).toEqual(1);
+  });
+});
+
+describe("MessagesZodState", () => {
+  it("should assign ids properly and avoid duping added messages", async () => {
+    const childGraph = new StateGraph(MessagesZodState)
+      .addNode("duper", ({ messages }) => ({ messages }))
+      .addNode("duper2", () => ({ messages: [new AIMessage("duper2")] }))
+      .addEdge("__start__", "duper")
+      .addEdge("duper", "duper2")
+      .compile({ interruptBefore: ["duper2"] });
+
+    const graph = new StateGraph(MessagesZodState)
+      .addNode("duper", childGraph)
+      .addNode("duper2", ({ messages }) => ({ messages }))
+      .addEdge("__start__", "duper")
+      .addEdge("duper", "duper2")
+      .compile({ checkpointer: new MemorySaverAssertImmutable() });
+
+    const res = await graph.invoke(
+      { messages: [new HumanMessage("should be only one")] },
+      { configurable: { thread_id: "1" } }
+    );
+    expect(res.messages.length).toEqual(1);
+
+    const res2 = await graph.invoke(null, { configurable: { thread_id: "1" } });
+    expect(res2.messages.length).toEqual(2);
+  });
+
+  it("should handle message reducers correctly", async () => {
+    const graph = new StateGraph(MessagesZodState)
+      .addNode("add", ({ messages }) => ({
+        messages: [...messages, new HumanMessage("new message")],
+      }))
+      .addNode("remove", ({ messages }) => {
+        return {
+          messages: [new RemoveMessage({ id: messages[0].id ?? "" })],
+        };
+      })
+      .addEdge("__start__", "add")
+      .addEdge("add", "remove")
+      .compile();
+
+    const result = await graph.invoke({
+      messages: [new HumanMessage({ id: "test-id", content: "original" })],
+    });
+
+    expect(result.messages.length).toEqual(1);
+  });
+
+  it("should handle array updates correctly", async () => {
+    const graph = new StateGraph(MessagesZodState)
+      .addNode("add", () => ({
+        messages: [
+          new HumanMessage({ id: "msg1", content: "message 1" }),
+          new HumanMessage({ id: "msg2", content: "message 2" }),
+        ],
+      }))
+      .addNode("update", ({ messages }) => {
+        const firstMessageId = messages[0]?.id;
+        if (!firstMessageId) {
+          throw new Error("No message ID found");
+        }
+        return {
+          messages: [
+            new HumanMessage({ id: firstMessageId, content: "updated" }),
+          ],
+        };
+      })
+      .addEdge("__start__", "add")
+      .addEdge("add", "update")
+      .compile();
+
+    const result = await graph.invoke({ messages: [] });
+
+    expect(result.messages.length).toEqual(2);
+    expect(result.messages[0].content).toEqual("updated");
+    expect(result.messages[1].content).toEqual("message 2");
   });
 });
 
@@ -1305,6 +2008,33 @@ describe("_shouldBindTools", () => {
       ).rejects.toThrow();
     }
   );
+
+  it("should handle bindTool with server tools", async () => {
+    const tool1 = tool((input) => `Tool 1: ${input.someVal}`, {
+      name: "tool1",
+      description: "Tool 1 docstring.",
+      schema: z.object({ someVal: z.number().describe("Input value") }),
+    });
+
+    const server = { type: "web_search_preview" };
+
+    const model = new FakeToolCallingChatModel({
+      responses: [new AIMessage("test")],
+    });
+
+    expect(await _shouldBindTools(model, [tool1, server])).toBe(true);
+    expect(
+      await _shouldBindTools(model.bindTools([tool1, server]), [tool1, server])
+    ).toBe(false);
+
+    await expect(
+      _shouldBindTools(model.bindTools([tool1]), [tool1, server])
+    ).rejects.toThrow();
+
+    await expect(
+      _shouldBindTools(model.bindTools([server]), [tool1, server])
+    ).rejects.toThrow();
+  });
 });
 
 describe("_getModel", () => {

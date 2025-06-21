@@ -1,21 +1,24 @@
 /* eslint-disable no-param-reassign */
 import {
-  Runnable,
-  RunnableConfig,
-  RunnableFunc,
-  RunnableSequence,
+  _coerceToRunnable,
   getCallbackManagerForConfig,
   mergeConfigs,
   patchConfig,
-  _coerceToRunnable,
+  Runnable,
+  RunnableConfig,
+  RunnableFunc,
   RunnableLike,
+  RunnableSequence,
 } from "@langchain/core/runnables";
+import type { StreamEvent } from "@langchain/core/tracers/log_stream";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import {
   All,
+  BaseCache,
   BaseCheckpointSaver,
   BaseStore,
   CheckpointListOptions,
+  CheckpointMetadata,
   CheckpointTuple,
   compareChannelVersions,
   copyCheckpoint,
@@ -23,77 +26,38 @@ import {
   PendingWrite,
   SCHEDULED,
   uuid5,
-  CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
-import type { StreamEvent } from "@langchain/core/tracers/log_stream";
 import {
   BaseChannel,
   createCheckpoint,
   emptyChannels,
   isBaseChannel,
 } from "../channels/base.js";
-import { PregelNode } from "./read.js";
-import { validateGraph, validateKeys } from "./validate.js";
-import { mapInput, readChannels } from "./io.js";
 import {
-  printStepCheckpoint,
-  printStepTasks,
-  printStepWrites,
-  tasksWithWrites,
-} from "./debug.js";
-import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
-import {
+  CHECKPOINT_NAMESPACE_END,
+  CHECKPOINT_NAMESPACE_SEPARATOR,
+  Command,
   CONFIG_KEY_CHECKPOINTER,
+  CONFIG_KEY_NODE_FINISHED,
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
+  CONFIG_KEY_STREAM,
   CONFIG_KEY_TASK_ID,
+  COPY,
+  END,
   ERROR,
   INPUT,
   INTERRUPT,
-  PUSH,
-  CHECKPOINT_NAMESPACE_SEPARATOR,
-  CHECKPOINT_NAMESPACE_END,
-  CONFIG_KEY_STREAM,
-  Command,
+  Interrupt,
+  isInterrupted,
   NULL_TASK_ID,
-  COPY,
-  END,
-  CONFIG_KEY_NODE_FINISHED,
+  PUSH,
 } from "../constants.js";
-import {
-  PregelExecutableTask,
-  PregelInterface,
-  PregelParams,
-  StateSnapshot,
-  StreamMode,
-  PregelInputType,
-  PregelOutputType,
-  PregelOptions,
-  SingleChannelSubscriptionOptions,
-  MultipleChannelSubscriptionOptions,
-  GetStateOptions,
-} from "./types.js";
 import {
   GraphRecursionError,
   GraphValueError,
   InvalidUpdateError,
 } from "../errors.js";
-import {
-  _prepareNextTasks,
-  _localRead,
-  _applyWrites,
-  StrRecord,
-  WritesProtocol,
-} from "./algo.js";
-import {
-  _coerceToDict,
-  combineAbortSignals,
-  getNewChannelVersions,
-  patchCheckpointMap,
-  RetryPolicy,
-} from "./utils/index.js";
-import { findSubgraphPregel } from "./utils/subgraph.js";
-import { PregelLoop } from "./loop.js";
 import {
   ChannelKeyPlaceholder,
   isConfiguredManagedValue,
@@ -104,23 +68,60 @@ import {
 } from "../managed/base.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
 import {
-  ensureLangGraphConfig,
-  recastCheckpointNamespace,
-} from "./utils/config.js";
-import { LangGraphRunnableConfig } from "./runnable_types.js";
+  _applyWrites,
+  _localRead,
+  _prepareNextTasks,
+  StrRecord,
+  WritesProtocol,
+} from "./algo.js";
+import {
+  printStepCheckpoint,
+  printStepTasks,
+  printStepWrites,
+  tasksWithWrites,
+} from "./debug.js";
+import { mapInput, readChannels } from "./io.js";
+import { PregelLoop } from "./loop.js";
 import { StreamMessagesHandler } from "./messages.js";
+import { PregelNode } from "./read.js";
+import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { PregelRunner } from "./runner.js";
 import {
   IterableReadableStreamWithAbortSignal,
   IterableReadableWritableStream,
 } from "./stream.js";
+import {
+  GetStateOptions,
+  MultipleChannelSubscriptionOptions,
+  PregelExecutableTask,
+  PregelInputType,
+  PregelInterface,
+  PregelOptions,
+  PregelOutputType,
+  PregelParams,
+  SingleChannelSubscriptionOptions,
+  StateSnapshot,
+  StreamMode,
+  type StreamOutputMap,
+} from "./types.js";
+import {
+  ensureLangGraphConfig,
+  recastCheckpointNamespace,
+} from "./utils/config.js";
+import {
+  _coerceToDict,
+  combineAbortSignals,
+  combineCallbacks,
+  getNewChannelVersions,
+  patchCheckpointMap,
+  RetryPolicy,
+} from "./utils/index.js";
+import { findSubgraphPregel } from "./utils/subgraph.js";
+import { validateGraph, validateKeys } from "./validate.js";
+import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
-
-function isString(value: unknown): value is string {
-  return typeof value === "string";
-}
 
 /**
  * Utility class for working with channels in the Pregel system.
@@ -201,7 +202,7 @@ export class Channel {
 
     let channelMappingOrArray: string[] | Record<string, string>;
 
-    if (isString(channels)) {
+    if (typeof channels === "string") {
       if (key) {
         channelMappingOrArray = { [key]: channels };
       } else {
@@ -282,7 +283,41 @@ export class Channel {
   }
 }
 
-export type { PregelInputType, PregelOutputType, PregelOptions };
+export type { PregelInputType, PregelOptions, PregelOutputType };
+
+// This is a workaround to allow Pregel to override `invoke` / `stream` and `withConfig`
+// without having to adhere to the types in the `Runnable` class (thanks to `any`).
+// Alternatively we could mark those methods with @ts-ignore / @ts-expect-error,
+// but these do not get carried over when building via `tsc`.
+class PartialRunnable<
+  RunInput,
+  RunOutput,
+  CallOptions extends RunnableConfig
+> extends Runnable<RunInput, RunOutput, CallOptions> {
+  lc_namespace = ["langgraph", "pregel"];
+
+  override invoke(
+    _input: RunInput,
+    _options?: Partial<CallOptions>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<any> {
+    throw new Error("Not implemented");
+  }
+
+  // Overriden by `Pregel`
+  override withConfig(_config: CallOptions): typeof this {
+    return super.withConfig(_config) as typeof this;
+  }
+
+  // Overriden by `Pregel`
+  override stream(
+    input: RunInput,
+    options?: Partial<CallOptions>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<IterableReadableStream<any>> {
+    return super.stream(input, options);
+  }
+}
 
 /**
  * The Pregel class is the core runtime engine of LangGraph, implementing a message-passing graph computation model
@@ -349,9 +384,11 @@ export class Pregel<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
     InputType = PregelInputType,
-    OutputType = PregelOutputType
+    OutputType = PregelOutputType,
+    StreamUpdatesType = InputType,
+    StreamValuesType = OutputType
   >
-  extends Runnable<
+  extends PartialRunnable<
     InputType | Command | null,
     OutputType,
     PregelOptions<Nodes, Channels, ConfigurableFieldType>
@@ -450,9 +487,16 @@ export class Pregel<
   config?: LangGraphRunnableConfig;
 
   /**
-   * Optional long-term memory store for the graph, allows for persistance & retrieval of data across threads
+   * Optional long-term memory store for the graph, allows for persistence & retrieval of data across threads
    */
   store?: BaseStore;
+
+  triggerToNodes: Record<string, string[]> = {};
+
+  /**
+   * Optional cache for the graph, useful for caching tasks.
+   */
+  cache?: BaseCache;
 
   /**
    * Constructor for Pregel - meant for internal use only.
@@ -482,6 +526,7 @@ export class Pregel<
     this.retryPolicy = fields.retryPolicy;
     this.config = fields.config;
     this.store = fields.store;
+    this.cache = fields.cache;
     this.name = fields.name;
 
     if (this.autoValidate) {
@@ -508,8 +553,6 @@ export class Pregel<
    * @param config - The configuration to merge with the current configuration
    * @returns A new Pregel instance with the merged configuration
    */
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-ignore Remove ignore when we remove support for 0.2 versions of core
   override withConfig(config: RunnableConfig): typeof this {
     const mergedConfig = mergeConfigs(this.config, config);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -536,6 +579,13 @@ export class Pregel<
       interruptAfterNodes: this.interruptAfter,
       interruptBeforeNodes: this.interruptBefore,
     });
+
+    for (const [name, node] of Object.entries(this.nodes)) {
+      for (const trigger of node.triggers) {
+        this.triggerToNodes[trigger] ??= [];
+        this.triggerToNodes[trigger].push(name);
+      }
+    }
 
     return this;
   }
@@ -708,13 +758,19 @@ export class Pregel<
         );
 
       if (nullWrites.length > 0) {
-        _applyWrites(saved.checkpoint, channels, [
-          {
-            name: INPUT,
-            writes: nullWrites as PendingWrite[],
-            triggers: [],
-          },
-        ]);
+        _applyWrites(
+          saved.checkpoint,
+          channels,
+          [
+            {
+              name: INPUT,
+              writes: nullWrites as PendingWrite[],
+              triggers: [],
+            },
+          ],
+          undefined,
+          this.triggerToNodes
+        );
       }
     }
 
@@ -801,7 +857,9 @@ export class Pregel<
         _applyWrites(
           saved.checkpoint,
           channels,
-          tasksWithWrites as unknown as WritesProtocol[]
+          tasksWithWrites as unknown as WritesProtocol[],
+          undefined,
+          this.triggerToNodes
         );
       }
     }
@@ -827,7 +885,12 @@ export class Pregel<
         this.streamChannelsAsIs as string | string[]
       ),
       next: nextList,
-      tasks: tasksWithWrites(nextTasks, saved?.pendingWrites ?? [], taskStates),
+      tasks: tasksWithWrites(
+        nextTasks,
+        saved?.pendingWrites ?? [],
+        taskStates,
+        this.streamChannelsAsIs
+      ),
       metadata,
       config: patchCheckpointMap(saved.config, saved.metadata),
       createdAt: saved.checkpoint.ts,
@@ -1119,13 +1182,19 @@ export class Pregel<
             .filter((w) => w[0] === NULL_TASK_ID)
             .map((w) => w.slice(1)) as PendingWrite<string>[];
           if (nullWrites.length > 0) {
-            _applyWrites(saved.checkpoint, channels, [
-              {
-                name: INPUT,
-                writes: nullWrites,
-                triggers: [],
-              },
-            ]);
+            _applyWrites(
+              saved.checkpoint,
+              channels,
+              [
+                {
+                  name: INPUT,
+                  writes: nullWrites,
+                  triggers: [],
+                },
+              ],
+              undefined,
+              this.triggerToNodes
+            );
           }
           // apply writes from tasks that already ran
           for (const [taskId, k, v] of saved.pendingWrites || []) {
@@ -1141,7 +1210,9 @@ export class Pregel<
           _applyWrites(
             checkpoint,
             channels,
-            Object.values(nextTasks) as WritesProtocol<string>[]
+            Object.values(nextTasks) as WritesProtocol<string>[],
+            undefined,
+            this.triggerToNodes
           );
         }
         // save checkpoint
@@ -1217,7 +1288,8 @@ export class Pregel<
               triggers: [],
             },
           ],
-          checkpointer.getNextVersion.bind(this.checkpointer)
+          checkpointer.getNextVersion.bind(this.checkpointer),
+          this.triggerToNodes
         );
 
         // apply input write to channels
@@ -1278,13 +1350,13 @@ export class Pregel<
           .filter((w) => w[0] === NULL_TASK_ID)
           .map((w) => w.slice(1)) as PendingWrite<string>[];
         if (nullWrites.length > 0) {
-          _applyWrites(saved.checkpoint, channels, [
-            {
-              name: INPUT,
-              writes: nullWrites,
-              triggers: [],
-            },
-          ]);
+          _applyWrites(
+            saved.checkpoint,
+            channels,
+            [{ name: INPUT, writes: nullWrites, triggers: [] }],
+            undefined,
+            this.triggerToNodes
+          );
         }
         // apply writes
         for (const [tid, k, v] of saved.pendingWrites) {
@@ -1300,7 +1372,13 @@ export class Pregel<
           return task.writes.length > 0;
         });
         if (tasks.length > 0) {
-          _applyWrites(checkpoint, channels, tasks as WritesProtocol[]);
+          _applyWrites(
+            checkpoint,
+            channels,
+            tasks as WritesProtocol[],
+            undefined,
+            this.triggerToNodes
+          );
         }
       }
       const nonNullVersion = Object.values(checkpoint.versions_seen)
@@ -1318,7 +1396,10 @@ export class Pregel<
       if (updates.length === 1) {
         // eslint-disable-next-line prefer-const
         let { values, asNode } = updates[0];
-        if (asNode === undefined && nonNullVersion === undefined) {
+        if (asNode === undefined && Object.keys(this.nodes).length === 1) {
+          // if only one node, use it
+          [asNode] = Object.keys(this.nodes);
+        } else if (asNode === undefined && nonNullVersion === undefined) {
           if (
             typeof this.inputChannels === "string" &&
             this.nodes[this.inputChannels] !== undefined
@@ -1453,7 +1534,8 @@ export class Pregel<
         checkpoint,
         channels,
         tasks as PregelExecutableTask<string, string>[],
-        checkpointer.getNextVersion.bind(this.checkpointer)
+        checkpointer.getNextVersion.bind(this.checkpointer),
+        this.triggerToNodes
       );
 
       const newVersions = getNewChannelVersions(
@@ -1552,7 +1634,8 @@ export class Pregel<
     All | string[], // interrupt after
     BaseCheckpointSaver | undefined,
     BaseStore | undefined,
-    boolean
+    boolean,
+    BaseCache | undefined
   ] {
     const {
       debug,
@@ -1611,6 +1694,7 @@ export class Pregel<
       defaultCheckpointer = this.checkpointer;
     }
     const defaultStore: BaseStore | undefined = config.store ?? this.store;
+    const defaultCache: BaseCache | undefined = config.cache ?? this.cache;
 
     return [
       defaultDebug,
@@ -1623,6 +1707,7 @@ export class Pregel<
       defaultCheckpointer,
       defaultStore,
       streamModeSingle,
+      defaultCache,
     ];
   }
 
@@ -1642,10 +1727,31 @@ export class Pregel<
    * @param options - Configuration options for streaming
    * @returns An async iterable stream of graph state updates
    */
-  override async stream(
+  override async stream<
+    TStreamMode extends StreamMode | StreamMode[] | undefined,
+    TSubgraphs extends boolean
+  >(
     input: InputType | Command | null,
-    options?: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>>
-  ): Promise<IterableReadableStream<PregelOutputType>> {
+    options?: Partial<
+      PregelOptions<
+        Nodes,
+        Channels,
+        ConfigurableFieldType,
+        TStreamMode,
+        TSubgraphs
+      >
+    >
+  ): Promise<
+    IterableReadableStream<
+      StreamOutputMap<
+        TStreamMode,
+        TSubgraphs,
+        StreamUpdatesType,
+        StreamValuesType,
+        keyof Nodes
+      >
+    >
+  > {
     // The ensureConfig method called internally defaults recursionLimit to 25 if not
     // passed directly in `options`.
     // There is currently no way in _streamIterator to determine whether this was
@@ -1662,7 +1768,15 @@ export class Pregel<
     };
 
     return new IterableReadableStreamWithAbortSignal(
-      await super.stream(input, config),
+      (await super.stream(input, config)) as IterableReadableStream<
+        StreamOutputMap<
+          TStreamMode,
+          TSubgraphs,
+          StreamUpdatesType,
+          StreamValuesType,
+          keyof Nodes
+        >
+      >,
       abortController
     );
   }
@@ -1698,10 +1812,12 @@ export class Pregel<
 
     const config = {
       recursionLimit: this.config?.recursionLimit,
+      ...options,
       // Similar to `stream`, we need to pass the `config.callbacks` here,
       // otherwise the user-provided callback will get lost in `ensureLangGraphConfig`.
-      callbacks: this.config?.callbacks,
-      ...options,
+
+      // extend the callbacks with the ones from the config
+      callbacks: combineCallbacks(this.config?.callbacks, options?.callbacks),
       signal: options?.signal
         ? combineAbortSignals(options.signal, abortController.signal)
         : abortController.signal,
@@ -1852,6 +1968,7 @@ export class Pregel<
       checkpointer,
       store,
       streamModeSingle,
+      cache,
     ] = this._defaults(restConfig);
 
     config.configurable = await this._validateConfigurable(config.configurable);
@@ -1918,11 +2035,13 @@ export class Pregel<
           outputKeys,
           streamKeys: this.streamChannelsAsIs as string | string[],
           store,
+          cache: cache as BaseCache<PendingWrite<string>[]>,
           stream,
           interruptAfter,
           interruptBefore,
           manager: runManager,
           debug: this.debug,
+          triggerToNodes: this.triggerToNodes,
         });
 
         const runner = new PregelRunner({
@@ -1944,6 +2063,7 @@ export class Pregel<
           // Call `.stop()` again incase it was not called in the loop, e.g due to an error.
           if (loop) {
             await loop.store?.stop();
+            await loop.cache?.stop();
           }
           await Promise.all([
             ...(loop?.checkpointerPromises ?? []),
@@ -2018,11 +2138,32 @@ export class Pregel<
     };
     const chunks = [];
     const stream = await this.stream(input, config);
+    const interruptChunks: Interrupt[][] = [];
+
+    let latest: OutputType | undefined;
+
     for await (const chunk of stream) {
-      chunks.push(chunk);
+      if (streamMode === "values") {
+        if (isInterrupted(chunk)) {
+          interruptChunks.push(chunk[INTERRUPT]);
+        } else {
+          latest = chunk as OutputType;
+        }
+      } else {
+        chunks.push(chunk);
+      }
     }
+
     if (streamMode === "values") {
-      return chunks[chunks.length - 1];
+      if (interruptChunks.length > 0) {
+        const interrupts = interruptChunks.flat(1);
+        if (latest == null) return { [INTERRUPT]: interrupts } as OutputType;
+        if (typeof latest === "object") {
+          return { ...latest, [INTERRUPT]: interrupts };
+        }
+      }
+
+      return latest as OutputType;
     }
     return chunks as OutputType;
   }
@@ -2037,10 +2178,12 @@ export class Pregel<
     let tickError;
     try {
       while (
-        await loop.tick({
-          inputKeys: this.inputChannels as string | string[],
-        })
+        await loop.tick({ inputKeys: this.inputChannels as string | string[] })
       ) {
+        for (const { task } of await loop._matchCachedWrites()) {
+          loop._outputWrites(task.id, task.writes, true);
+        }
+
         if (debug) {
           printStepCheckpoint(
             loop.checkpointMetadata.step,
@@ -2090,5 +2233,9 @@ export class Pregel<
         await loop.finishAndHandleError();
       }
     }
+  }
+
+  async clearCache(): Promise<void> {
+    await this.cache?.clear([]);
   }
 }

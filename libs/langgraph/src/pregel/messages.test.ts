@@ -1,4 +1,4 @@
-import { describe, expect, it, jest } from "@jest/globals";
+import { describe, expect, it, vi } from "vitest";
 import {
   AIMessage,
   AIMessageChunk,
@@ -15,7 +15,7 @@ import { TAG_HIDDEN, TAG_NOSTREAM } from "../constants.js";
 describe("StreamMessagesHandler", () => {
   describe("constructor", () => {
     it("should properly initialize the handler", () => {
-      const streamFn = jest.fn();
+      const streamFn = vi.fn();
       const handler = new StreamMessagesHandler(streamFn);
 
       expect(handler.name).toBe("StreamMessagesHandler");
@@ -30,7 +30,7 @@ describe("StreamMessagesHandler", () => {
 
   describe("_emit", () => {
     it("should emit a message with metadata", () => {
-      const streamFn = jest.fn();
+      const streamFn = vi.fn();
       const handler = new StreamMessagesHandler(streamFn);
 
       const meta: [string[], Record<string, unknown>] = [
@@ -55,7 +55,7 @@ describe("StreamMessagesHandler", () => {
     });
 
     it("should deduplicate messages when dedupe=true and message has been seen", () => {
-      const streamFn = jest.fn();
+      const streamFn = vi.fn();
       const handler = new StreamMessagesHandler(streamFn);
 
       const meta: [string[], Record<string, unknown>] = [
@@ -76,7 +76,7 @@ describe("StreamMessagesHandler", () => {
     });
 
     it("should assign proper ID to tool messages", () => {
-      const streamFn = jest.fn();
+      const streamFn = vi.fn();
       const handler = new StreamMessagesHandler(streamFn);
 
       const meta: [string[], Record<string, unknown>] = [
@@ -97,7 +97,7 @@ describe("StreamMessagesHandler", () => {
     });
 
     it("should maintain stable message IDs for the same run", () => {
-      const streamFn = jest.fn();
+      const streamFn = vi.fn();
       const handler = new StreamMessagesHandler(streamFn);
 
       const meta: [string[], Record<string, unknown>] = [
@@ -122,7 +122,7 @@ describe("StreamMessagesHandler", () => {
 
   describe("handleChatModelStart", () => {
     it("should store metadata when provided", () => {
-      const handler = new StreamMessagesHandler(jest.fn());
+      const handler = new StreamMessagesHandler(vi.fn());
 
       const runId = "run-123";
       const metadata = {
@@ -148,7 +148,7 @@ describe("StreamMessagesHandler", () => {
     });
 
     it("should not store metadata when TAG_NOSTREAM is present", () => {
-      const handler = new StreamMessagesHandler(jest.fn());
+      const handler = new StreamMessagesHandler(vi.fn());
 
       const runId = "run-123";
       const metadata = {
@@ -173,14 +173,14 @@ describe("StreamMessagesHandler", () => {
 
   describe("handleLLMNewToken", () => {
     it("should emit message chunk when metadata exists", () => {
-      const streamFn = jest.fn();
+      const streamFn = vi.fn();
       const handler = new StreamMessagesHandler(streamFn);
 
       const runId = "run-123";
       handler.metadatas[runId] = [["ns1", "ns2"], { name: "test" }];
 
       // Spy on _emit
-      const emitSpy = jest.spyOn(handler, "_emit");
+      const emitSpy = vi.spyOn(handler, "_emit");
 
       handler.handleLLMNewToken(
         "token",
@@ -201,14 +201,14 @@ describe("StreamMessagesHandler", () => {
     });
 
     it("should emit provided chunk when available", () => {
-      const streamFn = jest.fn();
+      const streamFn = vi.fn();
       const handler = new StreamMessagesHandler(streamFn);
 
       const runId = "run-123";
       handler.metadatas[runId] = [["ns1"], { name: "test" }];
 
       // Spy on _emit
-      const emitSpy = jest.spyOn(handler, "_emit");
+      const emitSpy = vi.spyOn(handler, "_emit");
 
       // Create a chunk
       const chunk = new ChatGenerationChunk({
@@ -234,14 +234,14 @@ describe("StreamMessagesHandler", () => {
     });
 
     it("should not emit when metadata is missing", () => {
-      const streamFn = jest.fn();
+      const streamFn = vi.fn();
       const handler = new StreamMessagesHandler(streamFn);
 
       const runId = "run-123";
       // No metadata for this runId
 
       // Spy on _emit
-      const emitSpy = jest.spyOn(handler, "_emit");
+      const emitSpy = vi.spyOn(handler, "_emit");
 
       handler.handleLLMNewToken(
         "token",
@@ -259,7 +259,7 @@ describe("StreamMessagesHandler", () => {
 
   describe("handleLLMEnd", () => {
     it("should emit message from non-streaming run", () => {
-      const streamFn = jest.fn();
+      const streamFn = vi.fn();
       const handler = new StreamMessagesHandler(streamFn);
 
       const runId = "run-123";
@@ -267,7 +267,7 @@ describe("StreamMessagesHandler", () => {
       // Not marked as emitted yet
 
       // Mock _emit directly instead of spying
-      handler._emit = jest.fn();
+      handler._emit = vi.fn();
 
       const message = new AIMessage({ content: "final result" });
       handler.handleLLMEnd(
@@ -290,7 +290,7 @@ describe("StreamMessagesHandler", () => {
     });
 
     it("should not emit for streaming runs that already emitted", () => {
-      const streamFn = jest.fn();
+      const streamFn = vi.fn();
       const handler = new StreamMessagesHandler(streamFn);
 
       const runId = "run-123";
@@ -299,7 +299,7 @@ describe("StreamMessagesHandler", () => {
       handler.emittedChatModelRunIds[runId] = true;
 
       // Mock _emit directly
-      handler._emit = jest.fn();
+      handler._emit = vi.fn();
 
       handler.handleLLMEnd(
         {
@@ -325,7 +325,7 @@ describe("StreamMessagesHandler", () => {
 
   describe("handleLLMError", () => {
     it("should clean up metadata on error", () => {
-      const handler = new StreamMessagesHandler(jest.fn());
+      const handler = new StreamMessagesHandler(vi.fn());
 
       const runId = "run-123";
       handler.metadatas[runId] = [["ns1"], { name: "test" }];
@@ -339,7 +339,7 @@ describe("StreamMessagesHandler", () => {
 
   describe("handleChainStart", () => {
     it("should store metadata for matching node name", () => {
-      const handler = new StreamMessagesHandler(jest.fn());
+      const handler = new StreamMessagesHandler(vi.fn());
 
       const runId = "chain-123";
       const metadata = {
@@ -365,7 +365,7 @@ describe("StreamMessagesHandler", () => {
     });
 
     it("should not store metadata when node name doesn't match", () => {
-      const handler = new StreamMessagesHandler(jest.fn());
+      const handler = new StreamMessagesHandler(vi.fn());
 
       const runId = "chain-123";
       const metadata = {
@@ -388,7 +388,7 @@ describe("StreamMessagesHandler", () => {
     });
 
     it("should not store metadata when TAG_HIDDEN is present", () => {
-      const handler = new StreamMessagesHandler(jest.fn());
+      const handler = new StreamMessagesHandler(vi.fn());
 
       const runId = "chain-123";
       const metadata = {
@@ -413,14 +413,14 @@ describe("StreamMessagesHandler", () => {
 
   describe("handleChainEnd", () => {
     it("should emit a single message output", () => {
-      const streamFn = jest.fn();
+      const streamFn = vi.fn();
       const handler = new StreamMessagesHandler(streamFn);
 
       const runId = "chain-123";
       handler.metadatas[runId] = [["ns1"], { name: "test" }];
 
       // Mock _emit directly
-      handler._emit = jest.fn();
+      handler._emit = vi.fn();
 
       const message = new AIMessage({ content: "chain result" });
       handler.handleChainEnd(message, runId);
@@ -438,14 +438,14 @@ describe("StreamMessagesHandler", () => {
     });
 
     it("should emit messages from an array output", () => {
-      const streamFn = jest.fn();
+      const streamFn = vi.fn();
       const handler = new StreamMessagesHandler(streamFn);
 
       const runId = "chain-123";
       handler.metadatas[runId] = [["ns1"], { name: "test" }];
 
       // Mock _emit directly
-      handler._emit = jest.fn();
+      handler._emit = vi.fn();
 
       const message1 = new AIMessage({ content: "result 1" });
       const message2 = new AIMessage({ content: "result 2" });
@@ -457,7 +457,7 @@ describe("StreamMessagesHandler", () => {
       expect(handler._emit).toHaveBeenCalledTimes(2);
 
       // Verify calls in a way that's less brittle
-      const callArgs = (handler._emit as jest.Mock).mock.calls;
+      const callArgs = (handler._emit as ReturnType<typeof vi.fn>).mock.calls;
       const emittedContents = callArgs.map(
         (args) => (args[1] as BaseMessage).content
       );
@@ -469,14 +469,14 @@ describe("StreamMessagesHandler", () => {
     });
 
     it("should emit messages from object output properties", () => {
-      const streamFn = jest.fn();
+      const streamFn = vi.fn();
       const handler = new StreamMessagesHandler(streamFn);
 
       const runId = "chain-123";
       handler.metadatas[runId] = [["ns1"], { name: "test" }];
 
       // Mock _emit directly
-      handler._emit = jest.fn();
+      handler._emit = vi.fn();
 
       const message = new AIMessage({ content: "direct result" });
       const arrayMessage = new AIMessage({ content: "array result" });
@@ -494,7 +494,7 @@ describe("StreamMessagesHandler", () => {
       expect(handler._emit).toHaveBeenCalledTimes(2);
 
       // Verify calls in a way that's less brittle
-      const callArgs = (handler._emit as jest.Mock).mock.calls;
+      const callArgs = (handler._emit as ReturnType<typeof vi.fn>).mock.calls;
       const emittedContents = callArgs.map(
         (args) => (args[1] as BaseMessage).content
       );
@@ -506,14 +506,14 @@ describe("StreamMessagesHandler", () => {
     });
 
     it("should do nothing when metadata is missing", () => {
-      const streamFn = jest.fn();
+      const streamFn = vi.fn();
       const handler = new StreamMessagesHandler(streamFn);
 
       const runId = "chain-123";
       // No metadata for this runId
 
       // Spy on _emit
-      const emitSpy = jest.spyOn(handler, "_emit");
+      const emitSpy = vi.spyOn(handler, "_emit");
 
       const message = new AIMessage({ content: "result" });
       handler.handleChainEnd(message, runId);
@@ -525,7 +525,7 @@ describe("StreamMessagesHandler", () => {
 
   describe("handleChainError", () => {
     it("should clean up metadata on error", () => {
-      const handler = new StreamMessagesHandler(jest.fn());
+      const handler = new StreamMessagesHandler(vi.fn());
 
       const runId = "chain-123";
       handler.metadatas[runId] = [["ns1"], { name: "test" }];

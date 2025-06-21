@@ -4,7 +4,7 @@
 
     - [LangGraph Server](./langgraph_server.md)
 
-When building agents, it is fairly common to make rapid changes that _do not_ alter the graph logic. For example, simply changing prompts or the LLM selection can have significant impacts on the behavior of the agents. Assistants offer an easy way to make and save these types of changes to agent configuration. This can have at least two use-cases:
+When building agents, it is fairly common to make rapid changes that _do not_ alter the graph logic. For example, simply changing prompts or the LLM selection can have significant impacts on the behavior of the agents. Assistants offer an easy way to make and save these types of changes to agent configuration. This can have at least two use cases:
 
 - Assistants give developers a quick and easy way to modify and version agents for experimentation.
 - Assistants can be modified via LangGraph Studio, offering a no-code way to configure agents (e.g., for business users).

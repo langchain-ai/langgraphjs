@@ -4,8 +4,10 @@ export {
   StateGraph,
   CompiledStateGraph,
   MessageGraph,
+  typedNode,
   messagesStateReducer,
   messagesStateReducer as addMessages,
+  REMOVE_ALL_MESSAGES,
   type Messages,
   Annotation,
   type StateType,
@@ -18,6 +20,7 @@ export {
 export type {
   StateSnapshot,
   StreamMode,
+  StreamOutputMap,
   PregelParams,
   PregelOptions,
   SingleChannelSubscriptionOptions,
@@ -48,6 +51,8 @@ export {
   isCommand,
   START,
   END,
+  INTERRUPT,
+  isInterrupted,
   type Interrupt,
 } from "./constants.js";
 export {
@@ -81,5 +86,8 @@ export {
   type TaskOptions,
 } from "./func/index.js";
 
-export { MessagesAnnotation } from "./graph/messages_annotation.js";
+export {
+  MessagesAnnotation,
+  MessagesZodState,
+} from "./graph/messages_annotation.js";
 export { type LangGraphRunnableConfig } from "./pregel/runnable_types.js";

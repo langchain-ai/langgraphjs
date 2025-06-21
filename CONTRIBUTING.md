@@ -257,7 +257,7 @@ Some key concepts:
 - Each node writes to (one or more) channels. This defines where the final value after a node is executed is stored, because nodes don't store their own value.
 - More on channels below.
 
-To form an intuition around Pregel graphs, lets look at the example tests.
+To form an intuition around Pregel graphs, let's look at the example tests.
 
 In the example below, the pregel graph is defined to start at `inputChannelName` and end at `outputChannelName`. The graph has a single node called `nodeOne` that transforms the input value by adding one to it. When the graph is invoked with an input value of `2`:
 
@@ -352,17 +352,17 @@ it("should handle checkpoints correctly", async () => {
 });
 ```
 
-Those are some of the fundamentals of how a Pregel graph works. To get a deeper understanding of how Pregel works, you can check out it's expected behavior in `pregel.test.ts`.
+Those are some of the fundamentals of how a Pregel graph works. To get a deeper understanding of how Pregel works, you can check out its expected behavior in `pregel.test.ts`.
 
 #### Channels
 
 Some concepts about channels:
 
 1. Channels are the way nodes communicate with one another in Pregel. If it were not for channels, nodes would have no way of storing values or denoting dependencies on other nodes.
-2. At it's core, every channel does a couple things:
+2. At its core, every channel does a couple things:
 
 - It stores a current value.
-- It implements a way to `update` it's current value based on the expected parameter for the update function.
+- It implements a way to `update` its current value based on the expected parameter for the update function.
 - It implements a way to `checkpoint` or "snapshot" the current state of the channel. This enables persistence across a graph.
 - It implements a way to `empty` or "restore" a channel from a checkpoint/snapshot. This enables us to create a new channel from a checkpoint variable stored in a database.
 

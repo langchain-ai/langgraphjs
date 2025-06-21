@@ -66,7 +66,7 @@ export type EntrypointFinalValueT<OutputT> = OutputT extends
  * This is necessary because `tsc --init` targets ES2016 by default, which doesn't include AsyncGenerators.
  *
  * This works because when `skipLibCheck` is true (and it is in the default `tsconfig.json` created by `tsc --init`),
- * TypeScript will replace any unresolved libary types with `any`. So, when `AsyncGenerator` doesn't exist, this checks
+ * TypeScript will replace any unresolved library types with `any`. So, when `AsyncGenerator` doesn't exist, this checks
  * if `any` extends `object`, which it doesn't. When that happens, this type resolves to the `false` literal, and we can
  * use it in the type predicates below to skip over the AsyncGenerator-specific logic.
  *

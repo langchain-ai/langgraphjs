@@ -1,4 +1,4 @@
-import { describe, it, expect } from "@jest/globals";
+import { describe, expect, it } from "vitest";
 import { AIMessage } from "@langchain/core/messages";
 import {
   Command,

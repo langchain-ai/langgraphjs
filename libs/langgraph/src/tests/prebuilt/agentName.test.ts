@@ -1,17 +1,20 @@
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
-import { addInlineAgentName, removeInlineAgentName } from "../agentName.js";
+import {
+  _addInlineAgentName,
+  _removeInlineAgentName,
+} from "../../prebuilt/agentName.js";
 
-describe("addInlineAgentName", () => {
+describe("_addInlineAgentName", () => {
   it("should return non-AI messages unchanged", () => {
     const humanMessage = new HumanMessage("Hello");
-    const result = addInlineAgentName(humanMessage);
+    const result = _addInlineAgentName(humanMessage);
     expect(result).toEqual(humanMessage);
   });
 
   it("should return AI messages with no name unchanged", () => {
     const aiMessage = new AIMessage("Hello world");
-    const result = addInlineAgentName(aiMessage);
+    const result = _addInlineAgentName(aiMessage);
     expect(result).toEqual(aiMessage);
   });
 
@@ -20,11 +23,10 @@ describe("addInlineAgentName", () => {
       content: "Hello world",
       name: "assistant",
     });
-    const result = addInlineAgentName(aiMessage);
+    const result = _addInlineAgentName(aiMessage);
     expect(result.content).toEqual(
       "<name>assistant</name><content>Hello world</content>"
     );
-    expect(result.name).toEqual("assistant");
   });
 
   it("should handle content blocks correctly", () => {
@@ -36,7 +38,7 @@ describe("addInlineAgentName", () => {
       content: contentBlocks,
       name: "assistant",
     });
-    const result = addInlineAgentName(aiMessage);
+    const result = _addInlineAgentName(aiMessage);
     expect(result.content).toEqual([
       {
         type: "text",
@@ -59,15 +61,15 @@ describe("addInlineAgentName", () => {
       content: contentBlocks,
       name: "assistant",
     });
-    const result = addInlineAgentName(aiMessage);
+    const result = _addInlineAgentName(aiMessage);
     expect(result.content).toEqual(expectedContentBlocks);
   });
 });
 
-describe("removeInlineAgentName", () => {
+describe("_removeInlineAgentName", () => {
   it("should return non-AI messages unchanged", () => {
     const humanMessage = new HumanMessage("Hello");
-    const result = removeInlineAgentName(humanMessage);
+    const result = _removeInlineAgentName(humanMessage);
     expect(result).toEqual(humanMessage);
   });
 
@@ -76,7 +78,7 @@ describe("removeInlineAgentName", () => {
       content: "",
       name: "assistant",
     });
-    const result = removeInlineAgentName(aiMessage);
+    const result = _removeInlineAgentName(aiMessage);
     expect(result).toEqual(aiMessage);
   });
 
@@ -85,7 +87,7 @@ describe("removeInlineAgentName", () => {
       content: "Hello world",
       name: "assistant",
     });
-    const result = removeInlineAgentName(aiMessage);
+    const result = _removeInlineAgentName(aiMessage);
     expect(result).toEqual(aiMessage);
   });
 
@@ -94,7 +96,7 @@ describe("removeInlineAgentName", () => {
       content: "<name>assistant</name><content>Hello world</content>",
       name: "assistant",
     });
-    const result = removeInlineAgentName(aiMessage);
+    const result = _removeInlineAgentName(aiMessage);
     expect(result.content).toEqual("Hello world");
     expect(result.name).toEqual("assistant");
   });
@@ -111,7 +113,7 @@ describe("removeInlineAgentName", () => {
       content: contentBlocks,
       name: "assistant",
     });
-    const result = removeInlineAgentName(aiMessage);
+    const result = _removeInlineAgentName(aiMessage);
 
     const expectedContent = [
       { type: "text", text: "Hello world" },
@@ -132,7 +134,7 @@ describe("removeInlineAgentName", () => {
       content: contentBlocks,
       name: "assistant",
     });
-    const result = removeInlineAgentName(aiMessage);
+    const result = _removeInlineAgentName(aiMessage);
     expect(result.content).toEqual(expectedContentBlocks);
   });
 
@@ -144,7 +146,7 @@ message</content>`;
       content: multilineContent,
       name: "assistant",
     });
-    const result = removeInlineAgentName(aiMessage);
+    const result = _removeInlineAgentName(aiMessage);
     expect(result.content).toEqual("This is\na multiline\nmessage");
   });
 });

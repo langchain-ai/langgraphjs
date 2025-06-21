@@ -1,9 +1,10 @@
 /* eslint-disable no-promise-executor-return */
 /* eslint-disable import/no-extraneous-dependencies */
 import assert from "node:assert";
-import { expect, it } from "@jest/globals";
+import { expect, it } from "vitest";
 import { v4 as uuidv4 } from "uuid";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
+import { Graph as DrawableGraph } from "@langchain/core/runnables/graph";
 import {
   BaseChatModel,
   BaseChatModelParams,
@@ -30,6 +31,8 @@ import {
   Checkpoint,
   CheckpointMetadata,
   PendingWrite,
+  CacheFullKey,
+  InMemoryCache,
 } from "@langchain/langgraph-checkpoint";
 import { z } from "zod";
 import { BaseTracer, Run } from "@langchain/core/tracers/base";
@@ -128,7 +131,6 @@ export class FakeChatModel extends BaseChatModel {
         text: content,
       });
 
-      yield chunk;
       await runManager?.handleLLMNewToken(
         content,
         undefined,
@@ -137,6 +139,12 @@ export class FakeChatModel extends BaseChatModel {
         undefined,
         { chunk }
       );
+
+      // TODO: workaround for the issue found in Node 18.x
+      // where @langchain/core/utils/stream AsyncGeneratorWithSetup
+      // does for some reason not yield the first chunk to the consumer
+      // and instead the LLM token callback is seen first.
+      yield chunk;
 
       isFirstChunk = false;
     }
@@ -214,11 +222,11 @@ export class FakeToolCallingChatModel extends BaseChatModel {
 
   bindTools(tools: BindToolsInput[]) {
     const toolDicts = [];
+    const serverTools = [];
     for (const tool of tools) {
       if (!("name" in tool)) {
-        throw new TypeError(
-          "Only tools with a name property are supported by FakeToolCallingModel.bindTools"
-        );
+        serverTools.push(tool);
+        continue;
       }
 
       // NOTE: this is a simplified tool spec for testing purposes only
@@ -246,7 +254,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
       toolsToBind = [{ functionDeclarations: toolDicts }];
     }
     return this.bind({
-      tools: toolsToBind,
+      tools: [...toolsToBind, ...serverTools],
     } as BaseChatModelCallOptions);
   }
 
@@ -349,6 +357,24 @@ export class MemorySaverAssertImmutable extends MemorySaver {
     this.storageForCopies[thread_id][checkpoint.id] = serializedCheckpoint;
 
     return super.put(config, checkpoint, metadata);
+  }
+}
+
+export class SlowInMemoryCache extends InMemoryCache {
+  async get(keys: CacheFullKey[]) {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    return super.get(keys);
+  }
+
+  async set(
+    pairs: {
+      key: CacheFullKey;
+      value: unknown;
+      ttl?: number;
+    }[]
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return super.set(pairs);
   }
 }
 
@@ -574,6 +600,7 @@ export async function dumpDebugStream<
   console.log(`invoking ${graph.name} with arguments ${JSON.stringify(input)}`);
   const stream = await graph.stream(input, {
     ...config,
+    subgraphs: true,
     streamMode: ["updates", "debug", "values"],
   });
 
@@ -643,4 +670,18 @@ export async function dumpDebugStream<
   console.log();
   console.log(`final state: ${JSON.stringify(graphState.values, null, 2)}`);
   return invokeReturnValue as ReturnType<typeof graph.invoke>;
+}
+
+export function getReadableMermaid(graph: DrawableGraph) {
+  const mermaid = graph.drawMermaid({ withStyles: false });
+  return mermaid
+    .replace(/\s*&nbsp;(.*)&nbsp;\s*/g, "[$1]")
+    .split("\n")
+    .slice(1)
+    .map((i) => {
+      const res = i.trim();
+      if (res.endsWith(";")) return res.slice(0, -1);
+      return res;
+    })
+    .filter(Boolean);
 }

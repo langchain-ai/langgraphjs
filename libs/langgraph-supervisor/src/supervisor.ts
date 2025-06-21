@@ -1,7 +1,7 @@
-import { z } from "zod";
 import { LanguageModelLike } from "@langchain/core/language_models/base";
 import { StructuredToolInterface, DynamicTool } from "@langchain/core/tools";
 import { RunnableToolLike } from "@langchain/core/runnables";
+import { InteropZodType } from "@langchain/core/utils/types";
 import {
   START,
   StateGraph,
@@ -13,13 +13,17 @@ import {
   createReactAgent,
   createReactAgentAnnotation,
   CreateReactAgentParams,
+  withAgentName,
+  AgentNameMode,
 } from "@langchain/langgraph/prebuilt";
 import {
   BaseChatModel,
   BindToolsInput,
 } from "@langchain/core/language_models/chat_models";
 import { createHandoffTool, createHandoffBackMessages } from "./handoff.js";
-import { withAgentName, AgentNameMode } from "./agentName.js";
+
+export type { AgentNameMode };
+export { withAgentName };
 
 type OutputMode = "full_history" | "last_message";
 const PROVIDERS_WITH_PARALLEL_TOOL_CALLS_PARAM = new Set(["ChatOpenAI"]);
@@ -99,10 +103,12 @@ export type CreateSupervisorParams<
   tools?: (StructuredToolInterface | RunnableToolLike | DynamicTool)[];
   prompt?: CreateReactAgentParams["prompt"];
   responseFormat?:
-    | z.ZodType<StructuredResponseFormat>
+    | InteropZodType<StructuredResponseFormat>
     | {
         prompt: string;
-        schema: z.ZodType<StructuredResponseFormat> | Record<string, unknown>;
+        schema:
+          | InteropZodType<StructuredResponseFormat>
+          | Record<string, unknown>;
       }
     | Record<string, unknown>;
   stateSchema?: AnnotationRootT;

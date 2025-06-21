@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it } from "vitest";
 import { RunnablePassthrough } from "@langchain/core/runnables";
 import { uuid6 } from "@langchain/langgraph-checkpoint";
 import {

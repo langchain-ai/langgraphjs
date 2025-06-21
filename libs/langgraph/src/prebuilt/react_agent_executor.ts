@@ -19,18 +19,19 @@ import {
   RunnableToolLike,
   RunnableSequence,
   RunnableBinding,
+  type RunnableLike,
 } from "@langchain/core/runnables";
 import { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
+import { InteropZodType } from "@langchain/core/utils/types";
 import {
   All,
   BaseCheckpointSaver,
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
-import { z } from "zod";
 
 import {
   StateGraph,
-  CompiledStateGraph,
+  type CompiledStateGraph,
   AnnotationRoot,
 } from "../graph/index.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
@@ -39,6 +40,7 @@ import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { Annotation } from "../graph/annotation.js";
 import { Messages, messagesStateReducer } from "../graph/message.js";
 import { END, START } from "../constants.js";
+import { withAgentName } from "./agentName.js";
 
 export interface AgentState<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,7 +60,7 @@ export type N = typeof START | "agent" | "tools";
 export type StructuredResponseSchemaAndPrompt<StructuredResponseType> = {
   prompt: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  schema: z.ZodType<StructuredResponseType> | Record<string, any>;
+  schema: InteropZodType<StructuredResponseType> | Record<string, any>;
 };
 
 function _convertMessageModifierToPrompt(
@@ -123,6 +125,13 @@ function _getPromptRunnable(prompt?: Prompt): RunnableInterface {
   return promptRunnable;
 }
 
+type ServerTool = Record<string, unknown>;
+type ClientTool = StructuredToolInterface | DynamicTool | RunnableToolLike;
+
+function isClientTool(tool: ClientTool | ServerTool): tool is ClientTool {
+  return Runnable.isRunnable(tool);
+}
+
 function _getPrompt(
   prompt?: Prompt,
   stateModifier?: CreateReactAgentParams["stateModifier"],
@@ -173,7 +182,7 @@ function _isConfigurableModel(model: any): model is ConfigurableModelInterface {
 
 export async function _shouldBindTools(
   llm: LanguageModelLike,
-  tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[]
+  tools: (ClientTool | ServerTool)[]
 ): Promise<boolean> {
   // If model is a RunnableSequence, find a RunnableBinding or BaseChatModel in its steps
   let model = llm;
@@ -218,7 +227,10 @@ export async function _shouldBindTools(
     );
   }
 
-  const toolNames = new Set(tools.map((tool) => tool.name));
+  const toolNames = new Set<string>(
+    tools.flatMap((tool) => (isClientTool(tool) ? tool.name : []))
+  );
+
   const boundToolNames = new Set<string>();
 
   for (const boundTool of boundTools) {
@@ -228,7 +240,7 @@ export async function _shouldBindTools(
     if ("type" in boundTool && boundTool.type === "function") {
       boundToolName = boundTool.function.name;
     }
-    // Anthropic- or Google-style tool
+    // Anthropic or Google-style tool
     else if ("name" in boundTool) {
       boundToolName = boundTool.name;
     }
@@ -326,6 +338,27 @@ export const createReactAgentAnnotation = <
     structuredResponse: Annotation<T>,
   });
 
+type WithStateGraphNodes<K extends string, Graph> = Graph extends StateGraph<
+  infer SD,
+  infer S,
+  infer U,
+  infer N,
+  infer I,
+  infer O,
+  infer C
+>
+  ? StateGraph<SD, S, U, N | K, I, O, C>
+  : never;
+
+const PreHookAnnotation = Annotation.Root({
+  llmInputMessages: Annotation<BaseMessage[], Messages>({
+    reducer: messagesStateReducer,
+    default: () => [],
+  }),
+});
+
+type PreHookAnnotation = typeof PreHookAnnotation;
+
 export type CreateReactAgentParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   A extends AnnotationRoot<any> = AnnotationRoot<any>,
@@ -334,14 +367,15 @@ export type CreateReactAgentParams<
 > = {
   /** The chat model that can utilize OpenAI-style tool calling. */
   llm: LanguageModelLike;
+
   /** A list of tools or a ToolNode. */
-  tools:
-    | ToolNode
-    | (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
+  tools: ToolNode | (ServerTool | ClientTool)[];
+
   /**
    * @deprecated Use prompt instead.
    */
   messageModifier?: MessageModifier;
+
   /**
    * @deprecated Use prompt instead.
    */
@@ -390,11 +424,42 @@ export type CreateReactAgentParams<
    * This is not the only strategy to get structured responses, see more options in [this guide](https://langchain-ai.github.io/langgraph/how-tos/react-agent-structured-output/).
    */
   responseFormat?:
-    | z.ZodType<StructuredResponseType>
+    | InteropZodType<StructuredResponseType>
     | StructuredResponseSchemaAndPrompt<StructuredResponseType>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     | Record<string, any>;
+  /**
+   * An optional name for the agent.
+   */
   name?: string;
+  /**
+   * Use to specify how to expose the agent name to the underlying supervisor LLM.
+
+      - undefined: Relies on the LLM provider {@link AIMessage#name}. Currently, only OpenAI supports this.
+      - `"inline"`: Add the agent name directly into the content field of the {@link AIMessage} using XML-style tags.
+          Example: `"How can I help you"` -> `"<name>agent_name</name><content>How can I help you?</content>"`
+   */
+  includeAgentName?: "inline" | undefined;
+
+  /**
+   * An optional node to add before the `agent` node (i.e., the node that calls the LLM).
+   * Useful for managing long message histories (e.g., message trimming, summarization, etc.).
+   */
+  preModelHook?: RunnableLike<
+    A["State"] & PreHookAnnotation["State"],
+    A["Update"] & PreHookAnnotation["Update"],
+    LangGraphRunnableConfig
+  >;
+
+  /**
+   * An optional node to add after the `agent` node (i.e., the node that calls the LLM).
+   * Useful for implementing human-in-the-loop, guardrails, validation, or other post-processing.
+   */
+  postModelHook?: RunnableLike<
+    A["State"],
+    A["Update"],
+    LangGraphRunnableConfig
+  >;
 };
 
 /**
@@ -471,17 +536,21 @@ export function createReactAgent<
     interruptAfter,
     store,
     responseFormat,
+    preModelHook,
+    postModelHook,
     name,
+    includeAgentName,
   } = params;
 
-  let toolClasses: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
+  let toolClasses: (ClientTool | ServerTool)[];
+
   let toolNode: ToolNode;
   if (!Array.isArray(tools)) {
     toolClasses = tools.tools;
     toolNode = tools;
   } else {
     toolClasses = tools;
-    toolNode = new ToolNode(tools);
+    toolNode = new ToolNode(toolClasses.filter(isClientTool));
   }
 
   let cachedModelRunnable: Runnable | null = null;
@@ -501,9 +570,16 @@ export function createReactAgent<
       modelWithTools = llm;
     }
 
-    const modelRunnable = (
-      _getPrompt(prompt, stateModifier, messageModifier) as Runnable
-    ).pipe(modelWithTools);
+    const promptRunnable = _getPrompt(
+      prompt,
+      stateModifier,
+      messageModifier
+    ) as Runnable;
+
+    const modelRunnable =
+      includeAgentName === "inline"
+        ? promptRunnable.pipe(withAgentName(modelWithTools, includeAgentName))
+        : promptRunnable.pipe(modelWithTools);
 
     cachedModelRunnable = modelRunnable;
     return modelRunnable;
@@ -513,22 +589,20 @@ export function createReactAgent<
   // our graph needs to check if these were called
   const shouldReturnDirect = new Set(
     toolClasses
+      .filter(isClientTool)
       .filter((tool) => "returnDirect" in tool && tool.returnDirect)
       .map((tool) => tool.name)
   );
 
-  const shouldContinue = (state: AgentState<StructuredResponseFormat>) => {
-    const { messages } = state;
-    const lastMessage = messages[messages.length - 1];
-    if (
-      isAIMessage(lastMessage) &&
-      (!lastMessage.tool_calls || lastMessage.tool_calls.length === 0)
-    ) {
-      return responseFormat != null ? "generate_structured_response" : END;
-    } else {
-      return "continue";
+  function getModelInputState(
+    state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"]
+  ): Omit<AgentState<StructuredResponseFormat>, "llmInputMessages"> {
+    const { messages, llmInputMessages, ...rest } = state;
+    if (llmInputMessages != null && llmInputMessages.length > 0) {
+      return { messages: llmInputMessages, ...rest };
     }
-  };
+    return { messages, ...rest };
+  }
 
   const generateStructuredResponse = async (
     state: AgentState<StructuredResponseFormat>,
@@ -563,14 +637,17 @@ export function createReactAgent<
   };
 
   const callModel = async (
-    state: AgentState<StructuredResponseFormat>,
+    state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"],
     config?: RunnableConfig
   ) => {
     // NOTE: we're dynamically creating the model runnable here
     // to ensure that we can validate ConfigurableModel properly
     const modelRunnable = await getModelRunnable(llm);
     // TODO: Auto-promote streaming.
-    const response = (await modelRunnable.invoke(state, config)) as BaseMessage;
+    const response = (await modelRunnable.invoke(
+      getModelInputState(state),
+      config
+    )) as BaseMessage;
     // add agent name to the AIMessage
     // TODO: figure out if we can avoid mutating the message directly
     response.name = name;
@@ -578,51 +655,131 @@ export function createReactAgent<
     return { messages: [response] };
   };
 
-  const workflow = new StateGraph(
-    stateSchema ?? createReactAgentAnnotation<StructuredResponseFormat>()
-  )
-    .addNode("agent", callModel)
-    .addNode("tools", toolNode)
-    .addEdge(START, "agent");
+  const schema =
+    stateSchema ?? createReactAgentAnnotation<StructuredResponseFormat>();
+
+  const workflow = new StateGraph(schema).addNode("tools", toolNode);
+
+  const allNodeWorkflows = workflow as WithStateGraphNodes<
+    | "pre_model_hook"
+    | "post_model_hook"
+    | "generate_structured_response"
+    | "agent",
+    typeof workflow
+  >;
+
+  const conditionalMap = <T extends string>(map: Record<string, T | null>) => {
+    return Object.fromEntries(
+      Object.entries(map).filter(([_, v]) => v != null) as [string, T][]
+    );
+  };
+
+  let entrypoint: "agent" | "pre_model_hook" = "agent";
+  let inputSchema: AnnotationRoot<(typeof schema)["spec"]> | undefined;
+  if (preModelHook != null) {
+    allNodeWorkflows
+      .addNode("pre_model_hook", preModelHook)
+      .addEdge("pre_model_hook", "agent");
+    entrypoint = "pre_model_hook";
+
+    inputSchema = Annotation.Root({
+      ...schema.spec,
+      ...PreHookAnnotation.spec,
+    });
+  } else {
+    entrypoint = "agent";
+  }
+
+  allNodeWorkflows
+    .addNode("agent", callModel, { input: inputSchema })
+    .addEdge(START, entrypoint);
+
+  if (postModelHook != null) {
+    allNodeWorkflows
+      .addNode("post_model_hook", postModelHook)
+      .addEdge("agent", "post_model_hook")
+      .addConditionalEdges(
+        "post_model_hook",
+        (state) => {
+          const { messages } = state;
+          const lastMessage = messages[messages.length - 1];
+
+          if (isAIMessage(lastMessage) && lastMessage.tool_calls?.length) {
+            return "tools";
+          }
+
+          if (isToolMessage(lastMessage)) return entrypoint;
+          if (responseFormat != null) return "generate_structured_response";
+          return END;
+        },
+        conditionalMap({
+          tools: "tools",
+          [entrypoint]: entrypoint,
+          generate_structured_response:
+            responseFormat != null ? "generate_structured_response" : null,
+          [END]: responseFormat != null ? null : END,
+        })
+      );
+  }
 
   if (responseFormat !== undefined) {
     workflow
       .addNode("generate_structured_response", generateStructuredResponse)
-      .addEdge("generate_structured_response", END)
-      .addConditionalEdges("agent", shouldContinue, {
-        continue: "tools",
-        [END]: END,
-        generate_structured_response: "generate_structured_response",
-      });
-  } else {
-    workflow.addConditionalEdges("agent", shouldContinue, {
-      continue: "tools",
-      [END]: END,
-    });
+      .addEdge("generate_structured_response", END);
   }
 
-  const routeToolResponses = (state: AgentState<StructuredResponseFormat>) => {
-    // Check the last consecutive tool calls
-    for (let i = state.messages.length - 1; i >= 0; i -= 1) {
-      const message = state.messages[i];
-      if (!isToolMessage(message)) {
-        break;
-      }
-      // Check if this tool is configured to return directly
-      if (message.name !== undefined && shouldReturnDirect.has(message.name)) {
-        return END;
-      }
-    }
-    return "agent";
-  };
+  if (postModelHook == null) {
+    allNodeWorkflows.addConditionalEdges(
+      "agent",
+      (state) => {
+        const { messages } = state;
+        const lastMessage = messages[messages.length - 1];
+
+        // if there's no function call, we finish
+        if (!isAIMessage(lastMessage) || !lastMessage.tool_calls?.length) {
+          if (responseFormat != null) return "generate_structured_response";
+          return END;
+        }
+
+        // there are function calls, we continue
+        return "tools";
+      },
+      conditionalMap({
+        tools: "tools",
+        generate_structured_response:
+          responseFormat != null ? "generate_structured_response" : null,
+        [END]: responseFormat != null ? null : END,
+      })
+    );
+  }
 
   if (shouldReturnDirect.size > 0) {
-    workflow.addConditionalEdges("tools", routeToolResponses, ["agent", END]);
+    allNodeWorkflows.addConditionalEdges(
+      "tools",
+      (state) => {
+        // Check the last consecutive tool calls
+        for (let i = state.messages.length - 1; i >= 0; i -= 1) {
+          const message = state.messages[i];
+          if (!isToolMessage(message)) break;
+
+          // Check if this tool is configured to return directly
+          if (
+            message.name !== undefined &&
+            shouldReturnDirect.has(message.name)
+          ) {
+            return END;
+          }
+        }
+
+        return entrypoint;
+      },
+      conditionalMap({ [entrypoint]: entrypoint, [END]: END })
+    );
   } else {
-    workflow.addEdge("tools", "agent");
+    allNodeWorkflows.addEdge("tools", entrypoint);
   }
 
-  return workflow.compile({
+  return allNodeWorkflows.compile({
     checkpointer: checkpointer ?? checkpointSaver,
     interruptBefore,
     interruptAfter,
