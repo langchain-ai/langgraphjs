@@ -55,7 +55,7 @@ export function validateGraph<
   for (const chan of subscribedChannels) {
     if (!(chan in channels)) {
       throw new GraphValidationError(
-        `Subcribed channel '${String(chan)}' not in channels`
+        `Subscribed channel '${String(chan)}' not in channels`
       );
     }
   }
