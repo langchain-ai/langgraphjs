@@ -72,7 +72,7 @@ export function deepCopy<T>(obj: T): T {
 /** @hidden */
 export function emptyCheckpoint(): Checkpoint {
   return {
-    v: 2,
+    v: 4,
     id: uuid6(-2),
     ts: new Date().toISOString(),
     channel_values: {},
