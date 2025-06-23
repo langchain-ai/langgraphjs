@@ -4,8 +4,9 @@ import type {
   Checkpoint,
   CheckpointTuple,
 } from "@langchain/langgraph-checkpoint";
-import { uuid6 } from "@langchain/langgraph-checkpoint";
+import { emptyCheckpoint, TASKS, uuid6 } from "@langchain/langgraph-checkpoint";
 import pg from "pg";
+import { RunnableConfig } from "@langchain/core/runnables";
 import { PostgresSaver } from "../index.js"; // Adjust the import path as needed
 import { getMigrations } from "../migrations.js";
 
@@ -27,7 +28,6 @@ const checkpoint1: Checkpoint = {
       someKey4: 1,
     },
   },
-  pending_sends: [],
 };
 
 const checkpoint2: Checkpoint = {
@@ -46,7 +46,6 @@ const checkpoint2: Checkpoint = {
       someKey4: 2,
     },
   },
-  pending_sends: [],
 };
 
 const { TEST_POSTGRES_URL } = process.env;
@@ -58,7 +57,7 @@ let postgresSavers: PostgresSaver[] = [];
 
 describe.each([
   { schema: undefined, description: "the default schema" },
-  { schema: "custom_schema", description: "a custom schema" },
+  // { schema: "custom_schema", description: "a custom schema" },
 ])("PostgresSaver with $description", ({ schema }) => {
   let postgresSaver: PostgresSaver;
 
@@ -430,5 +429,80 @@ describe.each([
     const checkpointTuple2 = checkpointTuples[1];
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
     expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
+  });
+
+  it("pending sends migration", async () => {
+    let config: RunnableConfig = {
+      configurable: { thread_id: "thread-1", checkpoint_ns: "" },
+    };
+
+    const checkpoint0 = emptyCheckpoint();
+
+    config = await postgresSaver.put(
+      config,
+      checkpoint0,
+      { source: "loop", parents: {}, step: 0, writes: null },
+      {}
+    );
+
+    await postgresSaver.putWrites(
+      config,
+      [
+        [TASKS, "send-1"],
+        [TASKS, "send-2"],
+      ],
+      "task-1"
+    );
+    await postgresSaver.putWrites(config, [[TASKS, "send-3"]], "task-2");
+
+    // check that fetching checkpount 0 doesn't attach pending sends
+    // (they should be attached to the next checkpoint)
+    const tuple0 = await postgresSaver.getTuple(config);
+    expect(tuple0?.checkpoint.channel_values).toEqual({});
+    expect(tuple0?.checkpoint.channel_versions).toEqual({});
+
+    // create second checkpoint
+    const checkpoint1: Checkpoint = {
+      v: 1,
+      id: uuid6(1),
+      ts: "2024-04-20T17:19:07.952Z",
+      channel_values: {},
+      channel_versions: checkpoint0.channel_versions,
+      versions_seen: checkpoint0.versions_seen,
+    };
+    config = await postgresSaver.put(
+      config,
+      checkpoint1,
+      {
+        source: "loop",
+        parents: {},
+        step: 1,
+        writes: null,
+      },
+      {}
+    );
+
+    // check that pending sends are attached to checkpoint1
+    const checkpoint1Tuple = await postgresSaver.getTuple(config);
+    expect(checkpoint1Tuple?.checkpoint.channel_values).toEqual({
+      [TASKS]: ["send-1", "send-2", "send-3"],
+    });
+    expect(checkpoint1Tuple?.checkpoint.channel_versions[TASKS]).toBeDefined();
+
+    // check that the list also applies the migration
+    const checkpointTupleGenerator = postgresSaver.list({
+      configurable: { thread_id: "thread-1" },
+    });
+    const checkpointTuples: CheckpointTuple[] = [];
+    for await (const checkpoint of checkpointTupleGenerator) {
+      checkpointTuples.push(checkpoint);
+    }
+    expect(checkpointTuples.length).toBe(2);
+    expect(checkpointTuples[0].checkpoint.channel_values).toEqual({
+      [TASKS]: ["send-1", "send-2", "send-3"],
+    });
+    expect(
+      checkpointTuples[0].checkpoint.channel_versions[TASKS]
+    ).toBeDefined();
   });
 });

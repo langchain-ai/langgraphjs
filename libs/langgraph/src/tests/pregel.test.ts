@@ -44,6 +44,7 @@ import {
   InMemoryCache,
   InMemoryStore,
   PendingWrite,
+  SendProtocol,
   uuid5,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
@@ -102,6 +103,7 @@ import {
   START,
   TAG_NOSTREAM,
   isInterrupted,
+  TASKS,
 } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
@@ -179,6 +181,7 @@ export function runPregelTests(
       expect(checkpoint?.channel_values).toEqual({
         input: 1,
         output: 1,
+        [TASKS]: [[], []],
       });
     });
 
@@ -430,10 +433,10 @@ export function runPregelTests(
         // call method / assertions
         expect(pregel1.streamChannelsList).toEqual(["output"]);
         expect(pregel2.streamChannelsList).toEqual(["input", "output"]);
-        expect(pregel3.streamChannelsList).toEqual(["input", "output"]);
+        expect(pregel3.streamChannelsList).toEqual(["input", "output", TASKS]);
         expect(pregel1.streamChannelsAsIs).toEqual("output");
         expect(pregel2.streamChannelsAsIs).toEqual(["input", "output"]);
-        expect(pregel3.streamChannelsAsIs).toEqual(["input", "output"]);
+        expect(pregel3.streamChannelsAsIs).toEqual(["input", "output", TASKS]);
       });
     });
 
@@ -488,7 +491,7 @@ export function runPregelTests(
           false, // debug
           ["values"], // stream mode
           "outputKey", // input keys
-          ["inputKey", "outputKey", "channel3"], // output keys,
+          ["inputKey", "outputKey", "channel3", TASKS], // output keys,
           {},
           ["one"], // interrupt before
           ["one"], // interrupt after
@@ -582,7 +585,6 @@ export function runPregelTests(
             channel1: 1,
           },
         },
-        pending_sends: [],
       };
 
       const interruptNodes = ["node1"];
@@ -617,7 +619,6 @@ export function runPregelTests(
           channel1: 2, // current channel version is greater than last version seen
         },
         versions_seen: {},
-        pending_sends: [],
       };
 
       const interruptNodes = ["node1"];
@@ -656,7 +657,6 @@ export function runPregelTests(
             channel1: 2,
           },
         },
-        pending_sends: [],
       };
 
       const interruptNodes = ["node1"];
@@ -695,7 +695,6 @@ export function runPregelTests(
             channel1: 1,
           },
         },
-        pending_sends: [],
       };
 
       const interruptNodes = ["node1"];
@@ -728,7 +727,6 @@ export function runPregelTests(
         channel_values: {},
         channel_versions: {},
         versions_seen: {},
-        pending_sends: [],
       };
 
       const channel1 = new LastValue<number>();
@@ -779,7 +777,6 @@ export function runPregelTests(
         channel_values: {},
         channel_versions: {},
         versions_seen: {},
-        pending_sends: [],
       };
 
       const channel1 = new LastValue<number>();
@@ -844,7 +841,6 @@ export function runPregelTests(
             channel1: 1,
           },
         },
-        pending_sends: [],
       };
 
       const lastValueChannel1 = new LastValue<string>();
@@ -896,7 +892,6 @@ export function runPregelTests(
             channel1: 1,
           },
         },
-        pending_sends: [],
       };
 
       const lastValueChannel1 = new LastValue<string>();
@@ -948,7 +943,6 @@ export function runPregelTests(
             channel2: 5,
           },
         },
-        pending_sends: [],
       };
 
       const processes: Record<string, PregelNode> = {
@@ -1010,6 +1004,12 @@ export function runPregelTests(
     });
 
     it("should return an object containing PregelExecutableTasks", () => {
+      const pendingSends = [
+        { node: "node1", args: { test: true } },
+        // Will not appear because node3 has no writers
+        { node: "node3", args: { test3: "value3" } },
+      ];
+
       const checkpoint: Checkpoint = {
         v: 1,
         id: uuid6(-1),
@@ -1017,6 +1017,7 @@ export function runPregelTests(
         channel_values: {
           channel1: 1,
           channel2: 2,
+          [TASKS]: [[], pendingSends],
         },
         channel_versions: {
           channel1: 2,
@@ -1024,32 +1025,16 @@ export function runPregelTests(
           channel3: 4,
           channel4: 4,
           channel6: 4,
+          [TASKS]: 5,
         },
         versions_seen: {
-          node1: {
-            channel1: 1,
-          },
-          node2: {
-            channel2: 5,
-          },
-          node3: {
-            channel3: 4,
-          },
-          node4: {
-            channel4: 3,
-          },
-          node6: {
-            channel6: 3,
-          },
+          node1: { channel1: 1 },
+          node2: { channel2: 5 },
+          node3: { channel3: 4 },
+          node4: { channel4: 3 },
+          node6: { channel6: 3 },
         },
-        pending_sends: [
-          {
-            node: "node1",
-            args: { test: true },
-          },
-          // Will not appear because node3 has no writers
-          { node: "node3", args: { test3: "value3" } },
-        ],
+        // pending_sends: pendingSends,
       };
 
       const processes: Record<string, PregelNode> = {
@@ -1083,15 +1068,23 @@ export function runPregelTests(
 
       const channel1 = new LastValue<number>();
       channel1.update([1]);
+
       const channel2 = new LastValue<number>();
       channel2.update([2]);
+
       const channel3 = new LastValue<number>();
       channel3.update([3]);
+
       const channel4 = new LastValue<number>();
       channel4.update([4]);
+
       const channel5 = new LastValue<number>();
+
       const channel6 = new LastValue<number>();
       channel6.update([6]);
+
+      const channelTask = new Topic<SendProtocol>({ accumulate: false });
+      channelTask.update(pendingSends);
 
       const channels = {
         channel1,
@@ -1100,6 +1093,7 @@ export function runPregelTests(
         channel4,
         channel5,
         channel6,
+        [TASKS]: channelTask,
       };
       const managed = new ManagedValueMapping();
 
@@ -1208,9 +1202,7 @@ export function runPregelTests(
       .pipe(Channel.writeTo(["output"]));
 
     const app = new Pregel({
-      nodes: {
-        one: chain,
-      },
+      nodes: { one: chain },
       channels: {
         input: new LastValue<number>(),
         output: new LastValue<number>(),
@@ -7825,9 +7817,9 @@ graph TD;
                   checkpoint_ns: expect.any(String),
                 },
               },
-              result: {
-                myKey: "hi my value here and there",
-              },
+              result: checkpointDuring
+                ? { myKey: "hi my value here and there" }
+                : undefined,
             },
           ],
           next: ["inner"],
@@ -8448,7 +8440,9 @@ graph TD;
                     checkpoint_ns: expect.stringContaining("child"),
                   },
                 },
-                result: { myKey: "hi my value here and there" },
+                result: checkpointDuring
+                  ? { myKey: "hi my value here and there" }
+                  : undefined,
               },
             ],
             next: ["child"],
@@ -8628,7 +8622,9 @@ graph TD;
                     checkpoint_ns: expect.stringContaining("child:"),
                   },
                 },
-                result: { myKey: "hi my value here and there" },
+                result: checkpointDuring
+                  ? { myKey: "hi my value here and there" }
+                  : undefined,
               },
             ],
           },
@@ -8746,7 +8742,9 @@ graph TD;
                 name: "grandchild2",
                 path: [PULL, "grandchild2"],
                 interrupts: [],
-                result: { myKey: "hi my value here and there" },
+                result: checkpointDuring
+                  ? { myKey: "hi my value here and there" }
+                  : undefined,
               },
             ],
           },
@@ -8954,13 +8952,15 @@ graph TD;
           thread_id: "1",
         },
         createdAt: expect.any(String),
-        parentConfig: {
-          configurable: {
-            thread_id: "1",
-            checkpoint_ns: "",
-            checkpoint_id: expect.any(String),
-          },
-        },
+        parentConfig: checkpointDuring
+          ? {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
+            }
+          : undefined,
       });
 
       // check state of each of the inner tasks
@@ -9159,7 +9159,9 @@ graph TD;
                   checkpoint_ns: expect.stringContaining("generateJoke:"),
                 },
               },
-              result: { jokes: ["Joke about cats - hohoho"] },
+              result: checkpointDuring
+                ? { jokes: ["Joke about cats - hohoho"] }
+                : undefined,
             },
             {
               id: expect.any(String),
@@ -9172,7 +9174,9 @@ graph TD;
                   checkpoint_ns: expect.stringContaining("generateJoke:"),
                 },
               },
-              result: { jokes: ["Joke about turtles - hohoho"] },
+              result: checkpointDuring
+                ? { jokes: ["Joke about turtles - hohoho"] }
+                : undefined,
             },
           ],
           next: ["generateJoke", "generateJoke"],
@@ -9191,28 +9195,28 @@ graph TD;
             thread_id: "1",
           },
           createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
-            },
-          },
-        },
-        {
-          values: { jokes: [] },
-          tasks: checkpointDuring
-            ? [
-                {
-                  id: expect.any(String),
-                  name: "__start__",
-                  path: [PULL, "__start__"],
-                  interrupts: [],
-                  result: { subjects: ["cats", "dogs"] },
+          parentConfig: checkpointDuring
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: "",
+                  checkpoint_id: expect.any(String),
                 },
-              ]
-            : [],
-          next: checkpointDuring ? ["__start__"] : [],
+              }
+            : undefined,
+        },
+        checkpointDuring && {
+          values: { jokes: [] },
+          tasks: [
+            {
+              id: expect.any(String),
+              name: "__start__",
+              path: [PULL, "__start__"],
+              interrupts: [],
+              result: { subjects: ["cats", "dogs"] },
+            },
+          ],
+          next: ["__start__"],
           config: {
             configurable: {
               thread_id: "1",
@@ -9229,7 +9233,7 @@ graph TD;
           },
           createdAt: expect.any(String),
         },
-      ];
+      ].filter(Boolean);
       expect(actualHistory).toEqual(expectedHistory);
     });
 

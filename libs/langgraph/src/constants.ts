@@ -66,7 +66,6 @@ export const RESERVED = [
   RESUME,
   ERROR,
   NO_WRITES,
-  TASKS,
 
   // reserved config.configurable keys
   CONFIG_KEY_SEND,

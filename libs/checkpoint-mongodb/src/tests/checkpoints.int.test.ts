@@ -9,7 +9,7 @@ import { getEnvironmentVariable } from "@langchain/core/utils/env";
 import { MongoDBSaver } from "../index.js";
 
 const checkpoint1: Checkpoint = {
-  v: 1,
+  v: 4,
   id: uuid6(-1),
   ts: "2024-04-19T17:19:07.952Z",
   channel_values: {
@@ -23,10 +23,10 @@ const checkpoint1: Checkpoint = {
       someKey4: 1,
     },
   },
-  pending_sends: [],
 };
+
 const checkpoint2: Checkpoint = {
-  v: 1,
+  v: 4,
   id: uuid6(1),
   ts: "2024-04-20T17:19:07.952Z",
   channel_values: {
@@ -40,10 +40,11 @@ const checkpoint2: Checkpoint = {
       someKey4: 2,
     },
   },
-  pending_sends: [],
 };
 
-const client = new MongoClient(getEnvironmentVariable("MONGODB_URL")!);
+const client = new MongoClient(getEnvironmentVariable("MONGODB_URL")!, {
+  auth: { username: "user", password: "password" },
+});
 
 afterAll(async () => {
   const db = client.db();
@@ -54,9 +55,7 @@ afterAll(async () => {
 
 describe("MongoDBSaver", () => {
   it("should save and retrieve checkpoints correctly", async () => {
-    const saver = new MongoDBSaver({
-      client,
-    });
+    const saver = new MongoDBSaver({ client });
 
     // get undefined checkpoint
     const undefinedCheckpoint = await saver.getTuple({
