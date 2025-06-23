@@ -12299,6 +12299,268 @@ graph TD;
           ]
     );
   });
+
+  it("fork and update task results", async () => {
+    const checkpointer = await createCheckpointer();
+    let twoCount = 0;
+
+    function checkpoint(
+      input: Partial<
+        Omit<StateSnapshot, "metadata"> & { metadata?: Record<string, unknown> }
+      >
+    ) {
+      const { values } = input;
+      return ["checkpoint", { values }] as ["checkpoint", unknown];
+    }
+
+    function task(value: Partial<StateSnapshot["tasks"][number]>) {
+      const { name, result } = value;
+      return ["task", { name, result }] as ["task", unknown];
+    }
+
+    type Value = ["checkpoint", unknown] | ["task", unknown];
+    type Tree = Value[] | [...Value[], Tree[]];
+
+    function getTree(history: StateSnapshot[]): Tree {
+      type ProcessNode = { item: StateSnapshot; children: ProcessNode[] };
+
+      if (history.length === 0) return [];
+
+      // Build a tree structure similar to renderForks
+      const nodeMap: Record<string, ProcessNode> = {};
+      const rootNodes: ProcessNode[] = [];
+
+      // Second pass: establish parent-child relationships
+      history
+        .slice()
+        .reverse()
+        .forEach((item) => {
+          const checkpointId = item.config.configurable!.checkpoint_id;
+          const parentCheckpointId =
+            item.parentConfig?.configurable?.checkpoint_id;
+          nodeMap[checkpointId] ??= { item, children: [] };
+
+          const parent = nodeMap[parentCheckpointId];
+          (parent?.children ?? rootNodes).push(nodeMap[checkpointId]);
+        });
+
+      // Convert nodes to Tree structure
+      function nodeToTree(node: ProcessNode): Tree {
+        const result: Value[] = [
+          checkpoint(node.item),
+          ...node.item.tasks.map(task),
+        ];
+
+        if (node.children.length > 1) {
+          const branches = node.children.map(nodeToTree);
+          return [...result, branches];
+        }
+
+        if (node.children.length === 1) {
+          return [...result, ...nodeToTree(node.children[0])];
+        }
+
+        return result;
+      }
+
+      // Process all root nodes
+      if (rootNodes.length === 1) return nodeToTree(rootNodes[0]);
+
+      // Multiple root nodes - treat as branches
+      if (rootNodes.length > 1) {
+        const branches = rootNodes.map((node) => nodeToTree(node));
+        return branches as Tree;
+      }
+
+      return [];
+    }
+
+    const graph = new StateGraph(
+      Annotation.Root({
+        name: Annotation<string>({
+          reducer: (a, b) => [a, b].join(" > "),
+        }),
+      })
+    )
+      .addSequence({
+        one: () =>
+          new Command({ goto: [new Send("two", {})], update: { name: "one" } }),
+        two: () => {
+          twoCount += 1;
+          return { name: `two ${twoCount}` };
+        },
+        three: () => ({ name: "three" }),
+      })
+      .addEdge(START, "one")
+      .compile({ checkpointer });
+
+    let config = { configurable: { thread_id: "1" } };
+    let history: StateSnapshot[] = [];
+
+    // Initial run
+    await graph.invoke({ name: "start" }, config);
+    history = await gatherIterator(graph.getStateHistory(config));
+
+    expect(getTree(history)).toMatchObject([
+      checkpoint({ values: {} }),
+      task({ name: "__start__", result: { name: "start" } }),
+      checkpoint({ values: { name: "start" } }),
+      task({ name: "one", result: { name: "one" } }),
+      checkpoint({ values: { name: "start > one" } }),
+      task({ name: "two", result: { name: "two 1" } }),
+      task({ name: "two", result: { name: "two 2" } }),
+      checkpoint({ values: { name: "start > one > two 2 > two 1" } }),
+      task({ name: "three", result: { name: "three" } }),
+      checkpoint({ values: { name: "start > one > two 2 > two 1 > three" } }),
+    ]);
+
+    // Fork from task "one"
+    // Start from the checkpoint that has the task "one"
+    await graph.invoke(
+      null,
+      await graph.updateState(
+        history[3].config,
+        [{ values: { name: "one*" }, asNode: "one" }],
+        "__copy__"
+      )
+    );
+
+    history = await gatherIterator(graph.getStateHistory(config));
+
+    expect(getTree(history)).toMatchObject([
+      checkpoint({ values: {} }),
+      task({ name: "__start__", result: { name: "start" } }),
+      [
+        [
+          checkpoint({ values: { name: "start" } }),
+          task({ name: "one", result: { name: "one" } }),
+          checkpoint({ values: { name: "start > one" } }),
+          task({ name: "two", result: { name: "two 1" } }),
+          task({ name: "two", result: { name: "two 2" } }),
+          checkpoint({ values: { name: "start > one > two 2 > two 1" } }),
+          task({ name: "three", result: { name: "three" } }),
+          checkpoint({
+            values: { name: "start > one > two 2 > two 1 > three" },
+          }),
+        ],
+        [
+          checkpoint({ values: { name: "start" } }),
+          task({ name: "one", result: { name: "one*" } }),
+          checkpoint({ values: { name: "start > one*" } }),
+          task({ name: "two", result: { name: "two 3" } }),
+          checkpoint({ values: { name: "start > one* > two 3" } }),
+          task({ name: "three", result: { name: "three" } }),
+          checkpoint({
+            values: { name: "start > one* > two 3 > three" },
+          }),
+        ],
+      ],
+    ]);
+
+    config = { configurable: { thread_id: "2" } };
+
+    // initialise the thread once again
+    await graph.invoke({ name: "start" }, config);
+    history = await gatherIterator(graph.getStateHistory(config));
+
+    // Fork from from task "two"
+    // Start from the checkpoint that has the task "two"
+    await graph.invoke(
+      null,
+      await graph.updateState(
+        history[2].config,
+        [
+          { values: { name: "two 6" }, asNode: "two" },
+          { values: { name: "two 7" }, asNode: "two" },
+        ],
+        "__copy__"
+      )
+    );
+
+    history = await gatherIterator(graph.getStateHistory(config));
+    expect(getTree(history)).toMatchObject([
+      checkpoint({ values: {} }),
+      task({ name: "__start__", result: { name: "start" } }),
+      checkpoint({ values: { name: "start" } }),
+      task({ name: "one", result: { name: "one" } }),
+      [
+        [
+          checkpoint({ values: { name: "start > one" } }),
+          task({ name: "two", result: { name: "two 4" } }),
+          task({ name: "two", result: { name: "two 5" } }),
+          checkpoint({ values: { name: "start > one > two 5 > two 4" } }),
+          task({ name: "three", result: { name: "three" } }),
+          checkpoint({
+            values: { name: "start > one > two 5 > two 4 > three" },
+          }),
+        ],
+        [
+          checkpoint({ values: { name: "start > one" } }),
+          task({ name: "two", result: { name: "two 6" } }),
+          task({ name: "two", result: { name: "two 7" } }),
+          checkpoint({ values: { name: "start > one > two 6 > two 7" } }),
+          task({ name: "three", result: { name: "three" } }),
+          checkpoint({
+            values: { name: "start > one > two 6 > two 7 > three" },
+          }),
+        ],
+      ],
+    ]);
+
+    // Fork task three
+    expect(history[1]).toMatchObject({
+      values: { name: "start > one > two 6 > two 7" },
+    });
+    await graph.invoke(
+      null,
+      await graph.updateState(
+        history[1].config,
+        [{ values: { name: "three*" }, asNode: "three" }],
+        "__copy__"
+      )
+    );
+
+    history = await gatherIterator(graph.getStateHistory(config));
+    expect(getTree(history)).toMatchObject([
+      checkpoint({ values: {} }),
+      task({ name: "__start__", result: { name: "start" } }),
+      checkpoint({ values: { name: "start" } }),
+      task({ name: "one", result: { name: "one" } }),
+      [
+        [
+          checkpoint({ values: { name: "start > one" } }),
+          task({ name: "two", result: { name: "two 4" } }),
+          task({ name: "two", result: { name: "two 5" } }),
+          checkpoint({ values: { name: "start > one > two 5 > two 4" } }),
+          task({ name: "three", result: { name: "three" } }),
+          checkpoint({
+            values: { name: "start > one > two 5 > two 4 > three" },
+          }),
+        ],
+        [
+          checkpoint({ values: { name: "start > one" } }),
+          task({ name: "two", result: { name: "two 6" } }),
+          task({ name: "two", result: { name: "two 7" } }),
+          [
+            [
+              checkpoint({ values: { name: "start > one > two 6 > two 7" } }),
+              task({ name: "three", result: { name: "three" } }),
+              checkpoint({
+                values: { name: "start > one > two 6 > two 7 > three" },
+              }),
+            ],
+            [
+              checkpoint({ values: { name: "start > one > two 6 > two 7" } }),
+              task({ name: "three", result: { name: "three*" } }),
+              checkpoint({
+                values: { name: "start > one > two 6 > two 7 > three*" },
+              }),
+            ],
+          ],
+        ],
+      ],
+    ]);
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
