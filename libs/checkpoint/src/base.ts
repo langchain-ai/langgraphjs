@@ -12,7 +12,6 @@ import {
   RESUME,
   SCHEDULED,
   type ChannelProtocol,
-  type SendProtocol,
 } from "./serde/types.js";
 import { JsonPlusSerializer } from "./serde/jsonplus.js";
 
@@ -25,7 +24,7 @@ export interface Checkpoint<
   C extends string = string
 > {
   /**
-   * The version of the checkpoint format. Currently 1
+   * The version of the checkpoint format. Currently 2
    */
   v: number;
   /**
@@ -48,11 +47,6 @@ export interface Checkpoint<
    * @default {}
    */
   versions_seen: Record<N, Record<C, ChannelVersion>>;
-  /**
-   * List of packets sent to nodes but not yet processed.
-   * Cleared by the next checkpoint.
-   */
-  pending_sends: SendProtocol[];
 }
 
 export interface ReadonlyCheckpoint extends Readonly<Checkpoint> {
@@ -84,13 +78,12 @@ export function deepCopy<T>(obj: T): T {
 /** @hidden */
 export function emptyCheckpoint(): Checkpoint {
   return {
-    v: 1,
+    v: 2,
     id: uuid6(-2),
     ts: new Date().toISOString(),
     channel_values: {},
     channel_versions: {},
     versions_seen: {},
-    pending_sends: [],
   };
 }
 
@@ -103,7 +96,6 @@ export function copyCheckpoint(checkpoint: ReadonlyCheckpoint): Checkpoint {
     channel_values: { ...checkpoint.channel_values },
     channel_versions: { ...checkpoint.channel_versions },
     versions_seen: deepCopy(checkpoint.versions_seen),
-    pending_sends: [...checkpoint.pending_sends],
   };
 }
 

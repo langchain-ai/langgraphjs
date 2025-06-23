@@ -68,15 +68,10 @@ export class MemorySaver extends BaseCheckpointSaver {
       if (saved !== undefined) {
         const [checkpoint, metadata, parentCheckpointId] = saved;
         const key = _generateKey(thread_id, checkpoint_ns, checkpoint_id);
-        const pending_sends = await this._getPendingSends(
-          thread_id,
-          checkpoint_ns,
-          parentCheckpointId
+        const deserializedCheckpoint: Checkpoint = await this.serde.loadsTyped(
+          "json",
+          checkpoint
         );
-        const deserializedCheckpoint: Checkpoint = {
-          ...(await this.serde.loadsTyped("json", checkpoint)),
-          pending_sends,
-        };
         const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
           Object.values(this.writes[key] || {}).map(
             async ([taskId, channel, value]) => {
@@ -118,15 +113,10 @@ export class MemorySaver extends BaseCheckpointSaver {
         const saved = checkpoints[checkpoint_id];
         const [checkpoint, metadata, parentCheckpointId] = saved;
         const key = _generateKey(thread_id, checkpoint_ns, checkpoint_id);
-        const pending_sends = await this._getPendingSends(
-          thread_id,
-          checkpoint_ns,
-          parentCheckpointId
+        const deserializedCheckpoint: Checkpoint = await this.serde.loadsTyped(
+          "json",
+          checkpoint
         );
-        const deserializedCheckpoint: Checkpoint = {
-          ...(await this.serde.loadsTyped("json", checkpoint)),
-          pending_sends,
-        };
         const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
           Object.values(this.writes[key] || {}).map(
             async ([taskId, channel, value]) => {
@@ -238,11 +228,6 @@ export class MemorySaver extends BaseCheckpointSaver {
 
           const key = _generateKey(threadId, checkpointNamespace, checkpointId);
           const writes = Object.values(this.writes[key] || {});
-          const pending_sends = await this._getPendingSends(
-            threadId,
-            checkpointNamespace,
-            parentCheckpointId
-          );
 
           const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
             writes.map(async ([taskId, channel, value]) => {
@@ -256,7 +241,6 @@ export class MemorySaver extends BaseCheckpointSaver {
 
           const deserializedCheckpoint = {
             ...(await this.serde.loadsTyped("json", checkpoint)),
-            pending_sends,
           };
 
           const checkpointTuple: CheckpointTuple = {
@@ -292,7 +276,6 @@ export class MemorySaver extends BaseCheckpointSaver {
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
     const preparedCheckpoint: Partial<Checkpoint> = copyCheckpoint(checkpoint);
-    delete preparedCheckpoint.pending_sends;
     const threadId = config.configurable?.thread_id;
     const checkpointNamespace = config.configurable?.checkpoint_ns ?? "";
     if (threadId === undefined) {
