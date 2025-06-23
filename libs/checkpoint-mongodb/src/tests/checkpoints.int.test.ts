@@ -23,8 +23,8 @@ const checkpoint1: Checkpoint = {
       someKey4: 1,
     },
   },
-  pending_sends: [],
 };
+
 const checkpoint2: Checkpoint = {
   v: 1,
   id: uuid6(1),
@@ -40,10 +40,14 @@ const checkpoint2: Checkpoint = {
       someKey4: 2,
     },
   },
-  pending_sends: [],
 };
 
-const client = new MongoClient(getEnvironmentVariable("MONGODB_URL")!);
+const client = new MongoClient(getEnvironmentVariable("MONGODB_URL")!, {
+  auth: {
+    username: "user",
+    password: "password",
+  },
+});
 
 afterAll(async () => {
   const db = client.db();
@@ -54,9 +58,7 @@ afterAll(async () => {
 
 describe("MongoDBSaver", () => {
   it("should save and retrieve checkpoints correctly", async () => {
-    const saver = new MongoDBSaver({
-      client,
-    });
+    const saver = new MongoDBSaver({ client });
 
     // get undefined checkpoint
     const undefinedCheckpoint = await saver.getTuple({
