@@ -6,13 +6,7 @@ import type {
   CheckpointPendingWrite,
   CheckpointMetadata,
 } from "./types.js";
-import {
-  ERROR,
-  INTERRUPT,
-  RESUME,
-  SCHEDULED,
-  type ChannelProtocol,
-} from "./serde/types.js";
+import { ERROR, INTERRUPT, RESUME, SCHEDULED } from "./serde/types.js";
 import { JsonPlusSerializer } from "./serde/jsonplus.js";
 
 type ChannelVersion = number | string;
@@ -157,7 +151,7 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
    * Default is to use integer versions, incrementing by 1. If you override, you can use str/int/float versions,
    * as long as they are monotonically increasing.
    */
-  getNextVersion(current: V | undefined, _channel: ChannelProtocol): V {
+  getNextVersion(current: V | undefined): V {
     if (typeof current === "string") {
       throw new Error("Please override this method to use string versions.");
     }
