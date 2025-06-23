@@ -44,6 +44,7 @@ import {
   InMemoryCache,
   InMemoryStore,
   PendingWrite,
+  SendProtocol,
   uuid5,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
@@ -101,6 +102,7 @@ import {
   Send,
   START,
   TAG_NOSTREAM,
+  TASKS,
 } from "../constants.js";
 import { ManagedValueMapping } from "../managed/base.js";
 import { SharedValue } from "../managed/shared_value.js";
@@ -178,6 +180,7 @@ export function runPregelTests(
       expect(checkpoint?.channel_values).toEqual({
         input: 1,
         output: 1,
+        [TASKS]: [[], []],
       });
     });
 
@@ -429,10 +432,10 @@ export function runPregelTests(
         // call method / assertions
         expect(pregel1.streamChannelsList).toEqual(["output"]);
         expect(pregel2.streamChannelsList).toEqual(["input", "output"]);
-        expect(pregel3.streamChannelsList).toEqual(["input", "output"]);
+        expect(pregel3.streamChannelsList).toEqual(["input", "output", TASKS]);
         expect(pregel1.streamChannelsAsIs).toEqual("output");
         expect(pregel2.streamChannelsAsIs).toEqual(["input", "output"]);
-        expect(pregel3.streamChannelsAsIs).toEqual(["input", "output"]);
+        expect(pregel3.streamChannelsAsIs).toEqual(["input", "output", TASKS]);
       });
     });
 
@@ -487,7 +490,7 @@ export function runPregelTests(
           false, // debug
           ["values"], // stream mode
           "outputKey", // input keys
-          ["inputKey", "outputKey", "channel3"], // output keys,
+          ["inputKey", "outputKey", "channel3", TASKS], // output keys,
           {},
           ["one"], // interrupt before
           ["one"], // interrupt after
@@ -581,7 +584,6 @@ export function runPregelTests(
             channel1: 1,
           },
         },
-        pending_sends: [],
       };
 
       const interruptNodes = ["node1"];
@@ -616,7 +618,6 @@ export function runPregelTests(
           channel1: 2, // current channel version is greater than last version seen
         },
         versions_seen: {},
-        pending_sends: [],
       };
 
       const interruptNodes = ["node1"];
@@ -655,7 +656,6 @@ export function runPregelTests(
             channel1: 2,
           },
         },
-        pending_sends: [],
       };
 
       const interruptNodes = ["node1"];
@@ -694,7 +694,6 @@ export function runPregelTests(
             channel1: 1,
           },
         },
-        pending_sends: [],
       };
 
       const interruptNodes = ["node1"];
@@ -727,7 +726,6 @@ export function runPregelTests(
         channel_values: {},
         channel_versions: {},
         versions_seen: {},
-        pending_sends: [],
       };
 
       const channel1 = new LastValue<number>();
@@ -778,7 +776,6 @@ export function runPregelTests(
         channel_values: {},
         channel_versions: {},
         versions_seen: {},
-        pending_sends: [],
       };
 
       const channel1 = new LastValue<number>();
@@ -843,7 +840,6 @@ export function runPregelTests(
             channel1: 1,
           },
         },
-        pending_sends: [],
       };
 
       const lastValueChannel1 = new LastValue<string>();
@@ -895,7 +891,6 @@ export function runPregelTests(
             channel1: 1,
           },
         },
-        pending_sends: [],
       };
 
       const lastValueChannel1 = new LastValue<string>();
@@ -947,7 +942,6 @@ export function runPregelTests(
             channel2: 5,
           },
         },
-        pending_sends: [],
       };
 
       const processes: Record<string, PregelNode> = {
@@ -1009,6 +1003,12 @@ export function runPregelTests(
     });
 
     it("should return an object containing PregelExecutableTasks", () => {
+      const pendingSends = [
+        { node: "node1", args: { test: true } },
+        // Will not appear because node3 has no writers
+        { node: "node3", args: { test3: "value3" } },
+      ];
+
       const checkpoint: Checkpoint = {
         v: 1,
         id: uuid6(-1),
@@ -1016,6 +1016,7 @@ export function runPregelTests(
         channel_values: {
           channel1: 1,
           channel2: 2,
+          [TASKS]: [[], pendingSends],
         },
         channel_versions: {
           channel1: 2,
@@ -1023,32 +1024,16 @@ export function runPregelTests(
           channel3: 4,
           channel4: 4,
           channel6: 4,
+          [TASKS]: 5,
         },
         versions_seen: {
-          node1: {
-            channel1: 1,
-          },
-          node2: {
-            channel2: 5,
-          },
-          node3: {
-            channel3: 4,
-          },
-          node4: {
-            channel4: 3,
-          },
-          node6: {
-            channel6: 3,
-          },
+          node1: { channel1: 1 },
+          node2: { channel2: 5 },
+          node3: { channel3: 4 },
+          node4: { channel4: 3 },
+          node6: { channel6: 3 },
         },
-        pending_sends: [
-          {
-            node: "node1",
-            args: { test: true },
-          },
-          // Will not appear because node3 has no writers
-          { node: "node3", args: { test3: "value3" } },
-        ],
+        // pending_sends: pendingSends,
       };
 
       const processes: Record<string, PregelNode> = {
@@ -1082,15 +1067,23 @@ export function runPregelTests(
 
       const channel1 = new LastValue<number>();
       channel1.update([1]);
+
       const channel2 = new LastValue<number>();
       channel2.update([2]);
+
       const channel3 = new LastValue<number>();
       channel3.update([3]);
+
       const channel4 = new LastValue<number>();
       channel4.update([4]);
+
       const channel5 = new LastValue<number>();
+
       const channel6 = new LastValue<number>();
       channel6.update([6]);
+
+      const channelTask = new Topic<SendProtocol>({ accumulate: false });
+      channelTask.update(pendingSends);
 
       const channels = {
         channel1,
@@ -1099,6 +1092,7 @@ export function runPregelTests(
         channel4,
         channel5,
         channel6,
+        [TASKS]: channelTask,
       };
       const managed = new ManagedValueMapping();
 
@@ -1207,9 +1201,7 @@ export function runPregelTests(
       .pipe(Channel.writeTo(["output"]));
 
     const app = new Pregel({
-      nodes: {
-        one: chain,
-      },
+      nodes: { one: chain },
       channels: {
         input: new LastValue<number>(),
         output: new LastValue<number>(),
@@ -5950,7 +5942,7 @@ graph TD;
       });
 
       const checkpoints = [];
-      if (toolTwo.checkpointer) {
+      if (typeof toolTwo.checkpointer !== "boolean" && toolTwo.checkpointer) {
         for await (const checkpoint of toolTwo.checkpointer.list(thread1)) {
           checkpoints.push(checkpoint);
         }
@@ -6713,7 +6705,7 @@ graph TD;
   });
 
   describe.each([
-    // [{ checkpointDuring: true }], // emit all checkpoint events
+    [{ checkpointDuring: true }], // emit all checkpoint events
     [{ checkpointDuring: false }], // only emit single checkpoint per run
   ])("Subgraphs %s", ({ checkpointDuring }) => {
     test.each([
@@ -7550,9 +7542,9 @@ graph TD;
                   checkpoint_ns: expect.any(String),
                 },
               },
-              result: {
-                myKey: "hi my value here and there",
-              },
+              result: checkpointDuring
+                ? { myKey: "hi my value here and there" }
+                : undefined,
             },
           ],
           next: ["inner"],
@@ -8173,7 +8165,9 @@ graph TD;
                     checkpoint_ns: expect.stringContaining("child"),
                   },
                 },
-                result: { myKey: "hi my value here and there" },
+                result: checkpointDuring
+                  ? { myKey: "hi my value here and there" }
+                  : undefined,
               },
             ],
             next: ["child"],
@@ -8280,7 +8274,7 @@ graph TD;
 
       expect(childHistory).toEqual(
         [
-          {
+          checkpointDuring && {
             values: { myKey: "hi my value here and there" },
             next: [],
             config: {
@@ -8353,7 +8347,9 @@ graph TD;
                     checkpoint_ns: expect.stringContaining("child:"),
                   },
                 },
-                result: { myKey: "hi my value here and there" },
+                result: checkpointDuring
+                  ? { myKey: "hi my value here and there" }
+                  : undefined,
               },
             ],
           },
@@ -8393,11 +8389,14 @@ graph TD;
 
       // get grandchild graph history
       const grandchildHistory = await gatherIterator(
-        app.getStateHistory(childHistory[1].tasks[0].state as RunnableConfig)
+        app.getStateHistory(
+          childHistory[checkpointDuring ? 1 : 0].tasks[0]
+            .state as RunnableConfig
+        )
       );
       expect(grandchildHistory).toEqual(
         [
-          {
+          checkpointDuring && {
             values: { myKey: "hi my value here and there" },
             next: [],
             config: {
@@ -8468,7 +8467,9 @@ graph TD;
                 name: "grandchild2",
                 path: [PULL, "grandchild2"],
                 interrupts: [],
-                result: { myKey: "hi my value here and there" },
+                result: checkpointDuring
+                  ? { myKey: "hi my value here and there" }
+                  : undefined,
               },
             ],
           },
@@ -8676,13 +8677,15 @@ graph TD;
           thread_id: "1",
         },
         createdAt: expect.any(String),
-        parentConfig: {
-          configurable: {
-            thread_id: "1",
-            checkpoint_ns: "",
-            checkpoint_id: expect.any(String),
-          },
-        },
+        parentConfig: checkpointDuring
+          ? {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
+            }
+          : undefined,
       });
 
       // check state of each of the inner tasks
@@ -8881,7 +8884,9 @@ graph TD;
                   checkpoint_ns: expect.stringContaining("generateJoke:"),
                 },
               },
-              result: { jokes: ["Joke about cats - hohoho"] },
+              result: checkpointDuring
+                ? { jokes: ["Joke about cats - hohoho"] }
+                : undefined,
             },
             {
               id: expect.any(String),
@@ -8894,7 +8899,9 @@ graph TD;
                   checkpoint_ns: expect.stringContaining("generateJoke:"),
                 },
               },
-              result: { jokes: ["Joke about turtles - hohoho"] },
+              result: checkpointDuring
+                ? { jokes: ["Joke about turtles - hohoho"] }
+                : undefined,
             },
           ],
           next: ["generateJoke", "generateJoke"],
@@ -8913,28 +8920,28 @@ graph TD;
             thread_id: "1",
           },
           createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
-            },
-          },
-        },
-        {
-          values: { jokes: [] },
-          tasks: checkpointDuring
-            ? [
-                {
-                  id: expect.any(String),
-                  name: "__start__",
-                  path: [PULL, "__start__"],
-                  interrupts: [],
-                  result: { subjects: ["cats", "dogs"] },
+          parentConfig: checkpointDuring
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: "",
+                  checkpoint_id: expect.any(String),
                 },
-              ]
-            : [],
-          next: checkpointDuring ? ["__start__"] : [],
+              }
+            : undefined,
+        },
+        checkpointDuring && {
+          values: { jokes: [] },
+          tasks: [
+            {
+              id: expect.any(String),
+              name: "__start__",
+              path: [PULL, "__start__"],
+              interrupts: [],
+              result: { subjects: ["cats", "dogs"] },
+            },
+          ],
+          next: ["__start__"],
           config: {
             configurable: {
               thread_id: "1",
@@ -8951,7 +8958,7 @@ graph TD;
           },
           createdAt: expect.any(String),
         },
-      ];
+      ].filter(Boolean);
       expect(actualHistory).toEqual(expectedHistory);
     });
 
@@ -9061,6 +9068,395 @@ graph TD;
       expect(result).toEqual({
         uniqueStrings: ["foo", "bar", "baz"],
       });
+    });
+
+    it("checkpointer: true", async () => {
+      const checkpointer = await createCheckpointer();
+      const StateAnnotation = Annotation.Root({ myKey: Annotation<string>() });
+
+      const innerCounter = ({ myKey }: typeof StateAnnotation.State) => {
+        const thereCount = myKey.split("there").length - 1;
+        if (thereCount < 2) return "inner";
+        return END;
+      };
+
+      const inner = new StateGraph(
+        Annotation.Root({
+          myKey: Annotation<string>({ reducer: (a, b) => a + b }),
+          myOtherKey: Annotation<string>(),
+        })
+      )
+        .addSequence({
+          inner_1: (state) => ({
+            myKey: " got here",
+            myOtherKey: state.myKey,
+          }),
+          inner_2: () => ({ myKey: " and there" }),
+        })
+        .addEdge(START, "inner_1");
+
+      const graph = new StateGraph(StateAnnotation)
+        .addNode("inner", inner.compile({ checkpointer: true }))
+        .addEdge(START, "inner")
+        .addConditionalEdges("inner", innerCounter)
+        .compile({ checkpointer });
+
+      expect(
+        await gatherIterator(
+          graph.stream(
+            { myKey: "" },
+            {
+              configurable: { thread_id: "1" },
+              checkpointDuring,
+              subgraphs: true,
+            }
+          )
+        )
+      ).toEqual([
+        [["inner"], { inner_1: { myKey: " got here", myOtherKey: "" } }],
+        [["inner"], { inner_2: { myKey: " and there" } }],
+        [[], { inner: { myKey: " got here and there" } }],
+        [
+          ["inner"],
+          {
+            inner_1: {
+              myKey: " got here",
+              myOtherKey: " got here and there got here and there",
+            },
+          },
+        ],
+        [["inner"], { inner_2: { myKey: " and there" } }],
+        [
+          [],
+          {
+            inner: {
+              myKey:
+                " got here and there got here and there got here and there",
+            },
+          },
+        ],
+      ]);
+
+      const innerHistory = await gatherIterator(
+        graph.getStateHistory({
+          configurable: { thread_id: "1", checkpoint_ns: "inner" },
+        })
+      );
+
+      expect(innerHistory).toEqual(
+        [
+          {
+            values: {
+              myKey:
+                " got here and there got here and there got here and there",
+              myOtherKey: " got here and there got here and there",
+            },
+            next: [],
+            tasks: [],
+            metadata: {
+              source: "loop",
+              writes: { inner_2: { myKey: " and there" } },
+              step: 6,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+              },
+            },
+          },
+          checkpointDuring && {
+            values: {
+              myKey: " got here and there got here and there got here",
+              myOtherKey: " got here and there got here and there",
+            },
+            next: ["inner_2"],
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "inner_2",
+                path: ["__pregel_pull", "inner_2"],
+                interrupts: [],
+                result: { myKey: " and there" },
+              },
+            ],
+            metadata: {
+              source: "loop",
+              writes: {
+                inner_1: {
+                  myKey: " got here",
+                  myOtherKey: " got here and there got here and there",
+                },
+              },
+              step: 5,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+              },
+            },
+          },
+          checkpointDuring && {
+            values: {
+              myKey: " got here and there got here and there",
+              myOtherKey: "",
+            },
+            next: ["inner_1"],
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "inner_1",
+                path: ["__pregel_pull", "inner_1"],
+                interrupts: [],
+                result: {
+                  myKey: " got here",
+                  myOtherKey: " got here and there got here and there",
+                },
+              },
+            ],
+            metadata: {
+              source: "loop",
+              writes: null,
+              step: 4,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+              },
+            },
+          },
+          checkpointDuring && {
+            values: { myKey: " got here and there", myOtherKey: "" },
+            next: ["__start__"],
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "__start__",
+                path: ["__pregel_pull", "__start__"],
+                interrupts: [],
+                result: { myKey: " got here and there" },
+              },
+            ],
+            metadata: {
+              source: "input",
+              writes: { __start__: { myKey: " got here and there" } },
+              step: 3,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+              },
+            },
+          },
+          {
+            values: { myKey: " got here and there", myOtherKey: "" },
+            next: [],
+            tasks: [],
+            metadata: {
+              source: "loop",
+              writes: { inner_2: { myKey: " and there" } },
+              step: 2,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: checkpointDuring
+              ? {
+                  configurable: {
+                    thread_id: "1",
+                    checkpoint_ns: "inner",
+                    checkpoint_id: expect.any(String),
+                  },
+                }
+              : undefined,
+          },
+          checkpointDuring && {
+            values: { myKey: " got here", myOtherKey: "" },
+            next: ["inner_2"],
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "inner_2",
+                path: ["__pregel_pull", "inner_2"],
+                interrupts: [],
+                result: { myKey: " and there" },
+              },
+            ],
+            metadata: {
+              source: "loop",
+              writes: { inner_1: { myKey: " got here", myOtherKey: "" } },
+              step: 1,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+              },
+            },
+          },
+          checkpointDuring && {
+            values: { myKey: "" },
+            next: ["inner_1"],
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "inner_1",
+                path: ["__pregel_pull", "inner_1"],
+                interrupts: [],
+                result: { myKey: " got here", myOtherKey: "" },
+              },
+            ],
+            metadata: {
+              source: "loop",
+              writes: null,
+              step: 0,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+              },
+            },
+          },
+          checkpointDuring && {
+            values: {},
+            next: ["__start__"],
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "__start__",
+                path: ["__pregel_pull", "__start__"],
+                interrupts: [],
+                result: { myKey: "" },
+              },
+            ],
+            metadata: {
+              source: "input",
+              writes: { __start__: { myKey: "" } },
+              step: -1,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: undefined,
+          },
+        ].filter(Boolean)
+      );
     });
 
     it("should not throw when you try to access config.store inside a subgraph", async () => {

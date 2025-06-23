@@ -220,10 +220,7 @@ export class PregelLoop {
 
   protected checkpointer?: BaseCheckpointSaver;
 
-  protected checkpointerGetNextVersion: (
-    current: number | undefined,
-    channel: BaseChannel
-  ) => number;
+  protected checkpointerGetNextVersion: (current: number | undefined) => number;
 
   channels: Record<string, BaseChannel>;
 
@@ -258,8 +255,6 @@ export class PregelLoop {
   protected skipDoneTasks: boolean;
 
   protected prevCheckpointConfig: RunnableConfig | undefined;
-
-  protected prevCheckpoint: Checkpoint | undefined;
 
   status:
     | "pending"
@@ -546,21 +541,15 @@ export class PregelLoop {
       this.checkpointPendingWrites.push([taskId, c, v]);
     }
 
-    const putWritePromise = this.checkpointer?.putWrites(
-      {
-        ...this.checkpointConfig,
-        configurable: {
-          ...this.checkpointConfig.configurable,
-          checkpoint_ns: this.config.configurable?.checkpoint_ns ?? "",
-          checkpoint_id: this.checkpoint.id,
-        },
-      },
-      writesCopy,
-      taskId
-    );
+    const config = patchConfigurable(this.checkpointConfig, {
+      [CONFIG_KEY_CHECKPOINT_NS]: this.config.configurable?.checkpoint_ns ?? "",
+      [CONFIG_KEY_CHECKPOINT_ID]: this.checkpoint.id,
+    });
 
-    if (putWritePromise !== undefined) {
-      this.checkpointerPromises.push(putWritePromise);
+    if (this.checkpointDuring && this.checkpointer != null) {
+      this.checkpointerPromises.push(
+        this.checkpointer.putWrites(config, writesCopy, taskId)
+      );
     }
 
     if (this.tasks) {
@@ -840,10 +829,10 @@ export class PregelLoop {
       // if it's a top graph
       (!this.isNested ||
         // or a nested graph with error or interrupt
-        error !== undefined ||
+        typeof error !== "undefined" ||
         // or a nested graph with checkpointer: true
-        this.checkpointNamespace.some((part) =>
-          part.includes(CHECKPOINT_NAMESPACE_END)
+        this.checkpointNamespace.every(
+          (part) => !part.includes(CHECKPOINT_NAMESPACE_END)
         ))
     ) {
       this._putCheckpoint(this.checkpointMetadata);
@@ -1126,13 +1115,11 @@ export class PregelLoop {
       // this is achieved by writing child checkpoints as progress is made
       // (so that error recovery / resuming from interrupt don't lose work)
       // but doing so always with an id equal to that of the parent checkpoint
-      this.checkpointConfig = {
-        ...this.checkpointConfig,
-        configurable: {
-          ...this.checkpointConfig.configurable,
-          checkpoint_ns: this.config.configurable?.checkpoint_ns ?? "",
-        },
-      };
+      this.checkpointConfig = patchConfigurable(this.checkpointConfig, {
+        [CONFIG_KEY_CHECKPOINT_NS]:
+          this.config.configurable?.checkpoint_ns ?? "",
+      });
+
       const channelVersions = { ...this.checkpoint.channel_versions };
       const newVersions = getNewChannelVersions(
         this.checkpointPreviousVersions,
@@ -1157,31 +1144,12 @@ export class PregelLoop {
       };
     };
 
-    // We need to retroactively store the previous checkpoint
-    // if it turns out that pending sends are scheduled.
-    // TODO: remove when `pending_sends` is removed from checkpoints
-    if (
-      !exiting &&
-      !this.checkpointDuring &&
-      this.checkpointer != null &&
-      this.prevCheckpoint != null &&
-      this.checkpoint.pending_sends.length > 0
-    ) {
-      storeCheckpoint(this.prevCheckpoint);
-    }
-
     if (!exiting) {
       this.checkpointMetadata = {
         ...inputMetadata,
         step: this.step,
         parents: this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] ?? {},
       };
-    }
-
-    // Store previous checkpoint in case pending_sends are scheduled
-    // for next checkpoint.
-    if (!this.checkpointDuring) {
-      this.prevCheckpoint = this.checkpoint;
     }
 
     // create new checkpoint

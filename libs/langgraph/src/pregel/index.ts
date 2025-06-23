@@ -25,6 +25,7 @@ import {
   emptyCheckpoint,
   PendingWrite,
   SCHEDULED,
+  SendProtocol,
   uuid5,
 } from "@langchain/langgraph-checkpoint";
 import {
@@ -53,6 +54,8 @@ import {
   NULL_TASK_ID,
   PUSH,
   CONFIG_KEY_CHECKPOINT_DURING,
+  CONFIG_KEY_CHECKPOINT_NS,
+  TASKS,
 } from "../constants.js";
 import {
   GraphRecursionError,
@@ -120,6 +123,7 @@ import {
 import { findSubgraphPregel } from "./utils/subgraph.js";
 import { validateGraph, validateKeys } from "./validate.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
+import { Topic } from "../channels/topic.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
@@ -479,7 +483,7 @@ export class Pregel<
    * When provided, saves a checkpoint of the graph state at every superstep.
    * When false or undefined, checkpointing is disabled, and the graph will not be able to save or restore state.
    */
-  checkpointer?: BaseCheckpointSaver | false;
+  checkpointer?: BaseCheckpointSaver | boolean;
 
   /** Optional retry policy for handling failures in node execution */
   retryPolicy?: RetryPolicy;
@@ -514,6 +518,20 @@ export class Pregel<
 
     this.nodes = fields.nodes;
     this.channels = fields.channels;
+
+    if (
+      TASKS in this.channels &&
+      "lc_graph_name" in this.channels[TASKS] &&
+      this.channels[TASKS].lc_graph_name !== "Topic"
+    ) {
+      throw new Error(
+        `Channel '${TASKS}' is reserved and cannot be used in the graph.`
+      );
+    } else {
+      (this.channels as Record<string, BaseChannel>)[TASKS] =
+        new Topic<SendProtocol>({ accumulate: false });
+    }
+
     this.autoValidate = fields.autoValidate ?? this.autoValidate;
     this.streamMode = streamMode ?? this.streamMode;
     this.inputChannels = fields.inputChannels;
@@ -1173,7 +1191,10 @@ export class Pregel<
             true,
             {
               step: (saved.metadata?.step ?? -1) + 1,
-              checkpointer: this.checkpointer || undefined,
+              checkpointer:
+                typeof this.checkpointer !== "boolean"
+                  ? this.checkpointer
+                  : undefined,
               store: this.store,
             }
           );
@@ -1694,6 +1715,8 @@ export class Pregel<
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] !== undefined
     ) {
       defaultCheckpointer = config.configurable[CONFIG_KEY_CHECKPOINTER];
+    } else if (this.checkpointer === true) {
+      throw new Error("checkpointer: true cannot be used for root graphs.");
     } else {
       defaultCheckpointer = this.checkpointer;
     }
@@ -1986,6 +2009,16 @@ export class Pregel<
     const stream = new IterableReadableWritableStream({
       modes: new Set(streamMode),
     });
+
+    // set up subgraph checkpointing
+    if (this.checkpointer === true) {
+      config.configurable ??= {};
+      const ns: string = config.configurable[CONFIG_KEY_CHECKPOINT_NS] ?? "";
+      config.configurable[CONFIG_KEY_CHECKPOINT_NS] = ns
+        .split(CHECKPOINT_NAMESPACE_SEPARATOR)
+        .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
+        .join(CHECKPOINT_NAMESPACE_SEPARATOR);
+    }
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {

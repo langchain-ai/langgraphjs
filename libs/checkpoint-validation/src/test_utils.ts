@@ -96,18 +96,15 @@ export function initialCheckpointTuple({
   return {
     config,
     checkpoint: {
-      v: 1,
+      v: 4,
       ts: new Date().toISOString(),
       id: checkpoint_id,
       channel_values,
       channel_versions,
       versions_seen: {
         // this is meant to be opaque to checkpointers, so we just stuff dummy data in here to make sure it's stored and retrieved
-        "": {
-          someChannel: 1,
-        },
+        "": { someChannel: 1 },
       },
-      pending_sends: [],
     },
 
     metadata: {
@@ -201,7 +198,7 @@ export function parentAndChildCheckpointTuplesWithWrites({
   return {
     parent: {
       checkpoint: {
-        v: 1,
+        v: 4,
         ts: new Date().toISOString(),
         id: parentCheckpointId,
         channel_values: initialChannelValues,
@@ -212,7 +209,6 @@ export function parentAndChildCheckpointTuplesWithWrites({
             someChannel: 1,
           },
         },
-        pending_sends: [],
       },
       metadata: {
         source: "input",
@@ -232,7 +228,7 @@ export function parentAndChildCheckpointTuplesWithWrites({
     },
     child: {
       checkpoint: {
-        v: 2,
+        v: 4,
         ts: new Date().toISOString(),
         id: childCheckpointId,
         channel_values: childChannelValues,
@@ -243,7 +239,7 @@ export function parentAndChildCheckpointTuplesWithWrites({
             someChannel: 1,
           },
         },
-        pending_sends,
+        // pending_sends,
       },
       metadata: {
         source: "loop",
