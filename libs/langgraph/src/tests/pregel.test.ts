@@ -12560,6 +12560,63 @@ graph TD;
         ],
       ],
     ]);
+
+    // Regenerate task three
+    expect(history[3]).toMatchObject({
+      values: { name: "start > one > two 6 > two 7" },
+    });
+    await graph.invoke(
+      null,
+      await graph.updateState(history[3].config, null, "__copy__")
+    );
+
+    history = await gatherIterator(graph.getStateHistory(config));
+    expect(getTree(history)).toMatchObject([
+      checkpoint({ values: {} }),
+      task({ name: "__start__", result: { name: "start" } }),
+      checkpoint({ values: { name: "start" } }),
+      task({ name: "one", result: { name: "one" } }),
+      [
+        [
+          checkpoint({ values: { name: "start > one" } }),
+          task({ name: "two", result: { name: "two 4" } }),
+          task({ name: "two", result: { name: "two 5" } }),
+          checkpoint({ values: { name: "start > one > two 5 > two 4" } }),
+          task({ name: "three", result: { name: "three" } }),
+          checkpoint({
+            values: { name: "start > one > two 5 > two 4 > three" },
+          }),
+        ],
+        [
+          checkpoint({ values: { name: "start > one" } }),
+          task({ name: "two", result: { name: "two 6" } }),
+          task({ name: "two", result: { name: "two 7" } }),
+          [
+            [
+              checkpoint({ values: { name: "start > one > two 6 > two 7" } }),
+              task({ name: "three", result: { name: "three" } }),
+              checkpoint({
+                values: { name: "start > one > two 6 > two 7 > three" },
+              }),
+            ],
+            [
+              checkpoint({ values: { name: "start > one > two 6 > two 7" } }),
+              task({ name: "three", result: { name: "three*" } }),
+              checkpoint({
+                values: { name: "start > one > two 6 > two 7 > three*" },
+              }),
+            ],
+            [
+              checkpoint({ values: { name: "start > one > two 6 > two 7" } }),
+              task({ name: "three", result: { name: "three" } }),
+              checkpoint({
+                values: { name: "start > one > two 6 > two 7 > three" },
+              }),
+            ],
+          ],
+        ],
+      ],
+    ]);
   });
 }
 

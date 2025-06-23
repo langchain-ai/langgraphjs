@@ -47,6 +47,7 @@ import {
   BaseChannel,
   LangGraphRunnableConfig,
   ManagedValueSpec,
+  StateSnapshot,
 } from "../web.js";
 
 export interface FakeChatModelArgs extends BaseChatModelParams {
