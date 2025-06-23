@@ -152,7 +152,7 @@ export function createCheckpoint<ValueType>(
     }
   }
   return {
-    v: 2,
+    v: 4,
     id: options?.id ?? uuid6(step),
     ts: new Date().toISOString(),
     channel_values: values,

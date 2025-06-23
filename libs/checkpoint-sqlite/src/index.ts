@@ -10,6 +10,7 @@ import {
   type CheckpointMetadata,
   TASKS,
   copyCheckpoint,
+  maxChannelVersion,
 } from "@langchain/langgraph-checkpoint";
 
 interface CheckpointRow {
@@ -21,7 +22,6 @@ interface CheckpointRow {
   checkpoint_ns?: string;
   type?: string;
   pending_writes: string;
-  pending_sends: string;
 }
 
 interface PendingWriteColumn {
@@ -63,7 +63,7 @@ const validCheckpointMetadataKeys = validateKeys<
   typeof checkpointMetadataKeys
 >(checkpointMetadataKeys);
 
-function prepareSql(db: DatabaseType, checkpoint_id: boolean) {
+function prepareSql(db: DatabaseType, checkpointId: boolean) {
   const sql = `
   SELECT
     thread_id,
@@ -105,7 +105,7 @@ function prepareSql(db: DatabaseType, checkpoint_id: boolean) {
     ) as pending_sends
   FROM checkpoints
   WHERE thread_id = ? AND checkpoint_ns = ? ${
-    checkpoint_id
+    checkpointId
       ? "AND checkpoint_id = ?"
       : "ORDER BY checkpoint_id DESC LIMIT 1"
   }`;
@@ -177,16 +177,14 @@ CREATE TABLE IF NOT EXISTS writes (
     } = config.configurable ?? {};
 
     const args = [thread_id, checkpoint_ns];
-    if (checkpoint_id) {
-      args.push(checkpoint_id);
-    }
-    const row = (
-      checkpoint_id ? this.withCheckpoint : this.withoutCheckpoint
-    ).get(...args) as CheckpointRow;
-    if (row === undefined) {
-      return undefined;
-    }
+    if (checkpoint_id) args.push(checkpoint_id);
+
+    const stm = checkpoint_id ? this.withCheckpoint : this.withoutCheckpoint;
+    const row = stm.get(...args) as CheckpointRow;
+    if (row === undefined) return undefined;
+
     let finalConfig = config;
+
     if (!checkpoint_id) {
       finalConfig = {
         configurable: {
@@ -196,6 +194,7 @@ CREATE TABLE IF NOT EXISTS writes (
         },
       };
     }
+
     if (
       finalConfig.configurable?.thread_id === undefined ||
       finalConfig.configurable?.checkpoint_id === undefined
@@ -218,16 +217,24 @@ CREATE TABLE IF NOT EXISTS writes (
       )
     );
 
-    const pending_sends = await Promise.all(
-      (JSON.parse(row.pending_sends) as PendingSendColumn[]).map((send) =>
-        this.serde.loadsTyped(send.type ?? "json", send.value ?? "")
-      )
-    );
+    // const pending_sends = await Promise.all(
+    //   (JSON.parse(row.pending_sends) as PendingSendColumn[]).map((send) =>
+    //     this.serde.loadsTyped(send.type ?? "json", send.value ?? "")
+    //   )
+    // );
 
-    const checkpoint = {
-      ...(await this.serde.loadsTyped(row.type ?? "json", row.checkpoint)),
-      pending_sends,
-    } as Checkpoint;
+    const checkpoint = (await this.serde.loadsTyped(
+      row.type ?? "json",
+      row.checkpoint
+    )) as Checkpoint;
+
+    if (checkpoint.v < 4 && row.parent_checkpoint_id != null) {
+      await this.migratePendingSends(
+        checkpoint,
+        row.thread_id,
+        row.parent_checkpoint_id
+      );
+    }
 
     return {
       checkpoint,
@@ -365,16 +372,18 @@ CREATE TABLE IF NOT EXISTS writes (
           )
         );
 
-        const pending_sends = await Promise.all(
-          (JSON.parse(row.pending_sends) as PendingSendColumn[]).map((send) =>
-            this.serde.loadsTyped(send.type ?? "json", send.value ?? "")
-          )
-        );
+        const checkpoint = (await this.serde.loadsTyped(
+          row.type ?? "json",
+          row.checkpoint
+        )) as Checkpoint;
 
-        const checkpoint = {
-          ...(await this.serde.loadsTyped(row.type ?? "json", row.checkpoint)),
-          pending_sends,
-        } as Checkpoint;
+        if (checkpoint.v < 4 && row.parent_checkpoint_id != null) {
+          await this.migratePendingSends(
+            checkpoint,
+            row.thread_id,
+            row.parent_checkpoint_id
+          );
+        }
 
         yield {
           config: {
@@ -426,7 +435,6 @@ CREATE TABLE IF NOT EXISTS writes (
     }
 
     const preparedCheckpoint: Partial<Checkpoint> = copyCheckpoint(checkpoint);
-    delete preparedCheckpoint.pending_sends;
 
     const [type1, serializedCheckpoint] =
       this.serde.dumpsTyped(preparedCheckpoint);
@@ -507,5 +515,47 @@ CREATE TABLE IF NOT EXISTS writes (
     });
 
     transaction(rows);
+  }
+
+  protected async migratePendingSends(
+    checkpoint: Checkpoint,
+    threadId: string,
+    parentCheckpointId: string
+  ) {
+    const { pending_sends } = this.db
+      .prepare(
+        `
+          SELECT
+            checkpoint_id,
+            json_group_array(
+              json_object(
+                'type', ps.type,
+                'value', CAST(ps.value AS TEXT)
+              )
+            ) as pending_sends
+          FROM writes as ps
+          WHERE ps.thread_id = ?
+            AND ps.checkpoint_id = ?
+            AND ps.channel = '${TASKS}'
+          ORDER BY ps.idx
+        `
+      )
+      .get(threadId, parentCheckpointId) as { pending_sends: string };
+
+    const mutableCheckpoint = checkpoint;
+
+    // add pending sends to checkpoint
+    mutableCheckpoint.channel_values ??= {};
+    mutableCheckpoint.channel_values[TASKS] = await Promise.all(
+      JSON.parse(pending_sends).map(({ type, value }: PendingSendColumn) =>
+        this.serde.loadsTyped(type, value)
+      )
+    );
+
+    // add to versions
+    mutableCheckpoint.channel_versions[TASKS] =
+      Object.keys(checkpoint.channel_versions).length > 0
+        ? maxChannelVersion(...Object.values(checkpoint.channel_versions))
+        : this.getNextVersion(undefined);
   }
 }
