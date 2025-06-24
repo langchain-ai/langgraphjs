@@ -18,16 +18,16 @@ import { serialiseAsDict } from "../utils/serde.mjs";
 
 const api = new Hono();
 
-const createValidRun = async (
+export const createValidRun = async (
   threadId: string | undefined,
   payload: z.infer<typeof schemas.RunCreate>,
-  kwargs: {
+  kwargs?: {
     auth: AuthContext | undefined;
     headers: Headers | undefined;
   },
 ): Promise<Run> => {
   const { assistant_id: assistantId, ...run } = payload;
-  const { auth, headers } = kwargs;
+  const { auth, headers } = kwargs ?? {};
   const runId = uuid4();
 
   const streamMode = Array.isArray(payload.stream_mode)

@@ -1,6 +1,9 @@
 import { BaseMessageChunk, isBaseMessage } from "@langchain/core/messages";
 import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import {
+  BaseCheckpointSaver,
+  BaseStore,
+  LangGraphRunnableConfig,
   type CheckpointMetadata,
   type Interrupt,
   type StateSnapshot,
@@ -147,6 +150,14 @@ export async function* streamState(
   options?: {
     onCheckpoint?: (checkpoint: StreamCheckpoint) => void;
     onTaskResult?: (taskResult: StreamTaskResult) => void;
+    getGraph?: (
+      graphId: string,
+      config: LangGraphRunnableConfig | undefined,
+      options?: {
+        checkpointer?: BaseCheckpointSaver | null;
+        store?: BaseStore;
+      },
+    ) => Promise<Pregel<any, any, any, any, any>>;
     signal?: AbortSignal;
   },
 ): AsyncGenerator<{ event: string; data: unknown }> {
@@ -157,7 +168,7 @@ export async function* streamState(
     throw new Error("Invalid or missing graph_id");
   }
 
-  const graph = await getGraph(graphId, kwargs.config, {
+  const graph = await (options?.getGraph ?? getGraph)(graphId, kwargs.config, {
     checkpointer: kwargs.temporary ? null : undefined,
   });
 
