@@ -12414,8 +12414,52 @@ graph TD;
       checkpoint({ values: { name: "start > one > two 2 > two 1 > three" } }),
     ]);
 
+    // Update the start state
+    await graph.invoke(
+      null,
+      await graph.updateState(
+        history[4].config,
+        [{ values: { name: "start*" }, asNode: "__start__" }],
+        "__copy__"
+      )
+    );
+
+    history = await gatherIterator(graph.getStateHistory(config));
+    expect(getTree(history)).toMatchObject([
+      [
+        checkpoint({ values: {} }),
+        task({ name: "__start__", result: { name: "start" } }),
+        checkpoint({ values: { name: "start" } }),
+        task({ name: "one", result: { name: "one" } }),
+        checkpoint({ values: { name: "start > one" } }),
+        task({ name: "two", result: { name: "two 1" } }),
+        task({ name: "two", result: { name: "two 2" } }),
+        checkpoint({ values: { name: "start > one > two 2 > two 1" } }),
+        task({ name: "three", result: { name: "three" } }),
+        checkpoint({ values: { name: "start > one > two 2 > two 1 > three" } }),
+      ],
+      [
+        checkpoint({ values: {} }),
+        task({ name: "__start__", result: { name: "start*" } }),
+        checkpoint({ values: { name: "start*" } }),
+        task({ name: "one", result: { name: "one" } }),
+        checkpoint({ values: { name: "start* > one" } }),
+        task({ name: "two", result: { name: "two 3" } }),
+        task({ name: "two", result: { name: "two 4" } }),
+        checkpoint({ values: { name: "start* > one > two 4 > two 3" } }),
+        task({ name: "three", result: { name: "three" } }),
+        checkpoint({
+          values: { name: "start* > one > two 4 > two 3 > three" },
+        }),
+      ],
+    ]);
+
     // Fork from task "one"
     // Start from the checkpoint that has the task "one"
+    expect(history[3]).toMatchObject({
+      values: { name: "start*" },
+      tasks: [{ name: "one" }],
+    });
     await graph.invoke(
       null,
       await graph.updateState(
@@ -12426,37 +12470,51 @@ graph TD;
     );
 
     history = await gatherIterator(graph.getStateHistory(config));
-
     expect(getTree(history)).toMatchObject([
-      checkpoint({ values: {} }),
-      task({ name: "__start__", result: { name: "start" } }),
       [
+        checkpoint({ values: {} }),
+        task({ name: "__start__", result: { name: "start" } }),
+        checkpoint({ values: { name: "start" } }),
+        task({ name: "one", result: { name: "one" } }),
+        checkpoint({ values: { name: "start > one" } }),
+        task({ name: "two", result: { name: "two 1" } }),
+        task({ name: "two", result: { name: "two 2" } }),
+        checkpoint({ values: { name: "start > one > two 2 > two 1" } }),
+        task({ name: "three", result: { name: "three" } }),
+        checkpoint({ values: { name: "start > one > two 2 > two 1 > three" } }),
+      ],
+      [
+        checkpoint({ values: {} }),
+        task({ name: "__start__", result: { name: "start*" } }),
         [
-          checkpoint({ values: { name: "start" } }),
-          task({ name: "one", result: { name: "one" } }),
-          checkpoint({ values: { name: "start > one" } }),
-          task({ name: "two", result: { name: "two 1" } }),
-          task({ name: "two", result: { name: "two 2" } }),
-          checkpoint({ values: { name: "start > one > two 2 > two 1" } }),
-          task({ name: "three", result: { name: "three" } }),
-          checkpoint({
-            values: { name: "start > one > two 2 > two 1 > three" },
-          }),
-        ],
-        [
-          checkpoint({ values: { name: "start" } }),
-          task({ name: "one", result: { name: "one*" } }),
-          checkpoint({ values: { name: "start > one*" } }),
-          task({ name: "two", result: { name: "two 3" } }),
-          checkpoint({ values: { name: "start > one* > two 3" } }),
-          task({ name: "three", result: { name: "three" } }),
-          checkpoint({
-            values: { name: "start > one* > two 3 > three" },
-          }),
+          [
+            checkpoint({ values: { name: "start*" } }),
+            task({ name: "one", result: { name: "one" } }),
+            checkpoint({ values: { name: "start* > one" } }),
+            task({ name: "two", result: { name: "two 3" } }),
+            task({ name: "two", result: { name: "two 4" } }),
+            checkpoint({ values: { name: "start* > one > two 4 > two 3" } }),
+            task({ name: "three", result: { name: "three" } }),
+            checkpoint({
+              values: { name: "start* > one > two 4 > two 3 > three" },
+            }),
+          ],
+          [
+            checkpoint({ values: { name: "start*" } }),
+            task({ name: "one", result: { name: "one*" } }),
+            checkpoint({ values: { name: "start* > one*" } }),
+            task({ name: "two", result: { name: "two 5" } }),
+            checkpoint({ values: { name: "start* > one* > two 5" } }),
+            task({ name: "three", result: { name: "three" } }),
+            checkpoint({
+              values: { name: "start* > one* > two 5 > three" },
+            }),
+          ],
         ],
       ],
     ]);
 
+    twoCount = 0;
     config = { configurable: { thread_id: "2" } };
 
     // initialise the thread once again
@@ -12465,13 +12523,14 @@ graph TD;
 
     // Fork from from task "two"
     // Start from the checkpoint that has the task "two"
+    expect(history[2]).toMatchObject({ values: { name: "start > one" } });
     await graph.invoke(
       null,
       await graph.updateState(
         history[2].config,
         [
-          { values: { name: "two 6" }, asNode: "two" },
-          { values: { name: "two 7" }, asNode: "two" },
+          { values: { name: "two 3" }, asNode: "two" },
+          { values: { name: "two 4" }, asNode: "two" },
         ],
         "__copy__"
       )
@@ -12486,22 +12545,22 @@ graph TD;
       [
         [
           checkpoint({ values: { name: "start > one" } }),
-          task({ name: "two", result: { name: "two 4" } }),
-          task({ name: "two", result: { name: "two 5" } }),
-          checkpoint({ values: { name: "start > one > two 5 > two 4" } }),
+          task({ name: "two", result: { name: "two 1" } }),
+          task({ name: "two", result: { name: "two 2" } }),
+          checkpoint({ values: { name: "start > one > two 2 > two 1" } }),
           task({ name: "three", result: { name: "three" } }),
           checkpoint({
-            values: { name: "start > one > two 5 > two 4 > three" },
+            values: { name: "start > one > two 2 > two 1 > three" },
           }),
         ],
         [
           checkpoint({ values: { name: "start > one" } }),
-          task({ name: "two", result: { name: "two 6" } }),
-          task({ name: "two", result: { name: "two 7" } }),
-          checkpoint({ values: { name: "start > one > two 6 > two 7" } }),
+          task({ name: "two", result: { name: "two 3" } }),
+          task({ name: "two", result: { name: "two 4" } }),
+          checkpoint({ values: { name: "start > one > two 3 > two 4" } }),
           task({ name: "three", result: { name: "three" } }),
           checkpoint({
-            values: { name: "start > one > two 6 > two 7 > three" },
+            values: { name: "start > one > two 3 > two 4 > three" },
           }),
         ],
       ],
@@ -12509,7 +12568,8 @@ graph TD;
 
     // Fork task three
     expect(history[1]).toMatchObject({
-      values: { name: "start > one > two 6 > two 7" },
+      values: { name: "start > one > two 3 > two 4" },
+      tasks: [{ name: "three" }],
     });
     await graph.invoke(
       null,
@@ -12529,31 +12589,31 @@ graph TD;
       [
         [
           checkpoint({ values: { name: "start > one" } }),
-          task({ name: "two", result: { name: "two 4" } }),
-          task({ name: "two", result: { name: "two 5" } }),
-          checkpoint({ values: { name: "start > one > two 5 > two 4" } }),
+          task({ name: "two", result: { name: "two 1" } }),
+          task({ name: "two", result: { name: "two 2" } }),
+          checkpoint({ values: { name: "start > one > two 2 > two 1" } }),
           task({ name: "three", result: { name: "three" } }),
           checkpoint({
-            values: { name: "start > one > two 5 > two 4 > three" },
+            values: { name: "start > one > two 2 > two 1 > three" },
           }),
         ],
         [
           checkpoint({ values: { name: "start > one" } }),
-          task({ name: "two", result: { name: "two 6" } }),
-          task({ name: "two", result: { name: "two 7" } }),
+          task({ name: "two", result: { name: "two 3" } }),
+          task({ name: "two", result: { name: "two 4" } }),
           [
             [
-              checkpoint({ values: { name: "start > one > two 6 > two 7" } }),
+              checkpoint({ values: { name: "start > one > two 3 > two 4" } }),
               task({ name: "three", result: { name: "three" } }),
               checkpoint({
-                values: { name: "start > one > two 6 > two 7 > three" },
+                values: { name: "start > one > two 3 > two 4 > three" },
               }),
             ],
             [
-              checkpoint({ values: { name: "start > one > two 6 > two 7" } }),
+              checkpoint({ values: { name: "start > one > two 3 > two 4" } }),
               task({ name: "three", result: { name: "three*" } }),
               checkpoint({
-                values: { name: "start > one > two 6 > two 7 > three*" },
+                values: { name: "start > one > two 3 > two 4 > three*" },
               }),
             ],
           ],
@@ -12563,7 +12623,8 @@ graph TD;
 
     // Regenerate task three
     expect(history[3]).toMatchObject({
-      values: { name: "start > one > two 6 > two 7" },
+      values: { name: "start > one > two 3 > two 4" },
+      tasks: [{ name: "three" }],
     });
     await graph.invoke(
       null,
@@ -12579,38 +12640,38 @@ graph TD;
       [
         [
           checkpoint({ values: { name: "start > one" } }),
-          task({ name: "two", result: { name: "two 4" } }),
-          task({ name: "two", result: { name: "two 5" } }),
-          checkpoint({ values: { name: "start > one > two 5 > two 4" } }),
+          task({ name: "two", result: { name: "two 1" } }),
+          task({ name: "two", result: { name: "two 2" } }),
+          checkpoint({ values: { name: "start > one > two 2 > two 1" } }),
           task({ name: "three", result: { name: "three" } }),
           checkpoint({
-            values: { name: "start > one > two 5 > two 4 > three" },
+            values: { name: "start > one > two 2 > two 1 > three" },
           }),
         ],
         [
           checkpoint({ values: { name: "start > one" } }),
-          task({ name: "two", result: { name: "two 6" } }),
-          task({ name: "two", result: { name: "two 7" } }),
+          task({ name: "two", result: { name: "two 3" } }),
+          task({ name: "two", result: { name: "two 4" } }),
           [
             [
-              checkpoint({ values: { name: "start > one > two 6 > two 7" } }),
+              checkpoint({ values: { name: "start > one > two 3 > two 4" } }),
               task({ name: "three", result: { name: "three" } }),
               checkpoint({
-                values: { name: "start > one > two 6 > two 7 > three" },
+                values: { name: "start > one > two 3 > two 4 > three" },
               }),
             ],
             [
-              checkpoint({ values: { name: "start > one > two 6 > two 7" } }),
+              checkpoint({ values: { name: "start > one > two 3 > two 4" } }),
               task({ name: "three", result: { name: "three*" } }),
               checkpoint({
-                values: { name: "start > one > two 6 > two 7 > three*" },
+                values: { name: "start > one > two 3 > two 4 > three*" },
               }),
             ],
             [
-              checkpoint({ values: { name: "start > one > two 6 > two 7" } }),
+              checkpoint({ values: { name: "start > one > two 3 > two 4" } }),
               task({ name: "three", result: { name: "three" } }),
               checkpoint({
-                values: { name: "start > one > two 6 > two 7 > three" },
+                values: { name: "start > one > two 3 > two 4 > three" },
               }),
             ],
           ],
