@@ -8,7 +8,7 @@ import {
 } from "@langchain/langgraph";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it } from "vitest";
 import {
   FakeChatModel,
   FakeStreamingChatModel,

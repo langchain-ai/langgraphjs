@@ -1,3 +1,4 @@
+import { test, expect } from "vitest";
 import { Annotation } from "@langchain/langgraph";
 import { CUAState, CUAUpdate } from "../types.js";
 import { createCua } from "../index.js";

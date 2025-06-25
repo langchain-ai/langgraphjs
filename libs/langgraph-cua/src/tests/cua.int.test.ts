@@ -1,4 +1,4 @@
-import { test, expect } from "@jest/globals";
+import { test, expect } from "vitest";
 import { ChatOpenAI } from "@langchain/openai";
 import { createCua } from "../index.js";
 import { stopInstance } from "../utils.js";
