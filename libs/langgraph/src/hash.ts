@@ -28,6 +28,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 const n = (n: number | string) => BigInt(n);
+const view = (data: Uint8Array | DataView, offset: number = 0) =>
+  new DataView(data.buffer, data.byteOffset + offset, data.byteLength - offset);
 
 const PRIME32_1 = n("0x9E3779B1"); // 0b10011110001101110111100110110001
 const PRIME32_2 = n("0x85EBCA77"); // 0b10000101111010111100101001110111
@@ -57,7 +59,7 @@ const hexToUint8Array = (hex: string) => {
     write += 1;
   }
 
-  return bytes;
+  return view(bytes);
 };
 
 const kkey = hexToUint8Array(
@@ -74,18 +76,6 @@ const _U32 = 4;
 
 function assert(a: boolean) {
   if (!a) throw new Error("Assert failed");
-}
-
-// Basically (byte*)buf + offset
-function getView(buf: Uint8Array, offset: number = 0): Uint8Array {
-  console.log("new.view", Buffer.from(buf.buffer));
-  const res = new Uint8Array(
-    buf.buffer,
-    buf.byteOffset + offset,
-  );
-
-  console.log("new.res", Buffer.from(res));
-  return res;
 }
 
 function bswap64(a: bigint) {
@@ -111,12 +101,9 @@ function rotl32(a: bigint, b: bigint) {
 
 function XXH3_accumulate_512(
   acc: BigUint64Array,
-  data: Uint8Array,
-  key: Uint8Array
+  dataView: DataView,
+  keyView: DataView
 ) {
-  const dataView = new DataView(data.buffer);
-  const keyView = new DataView(key.buffer);
-
   for (let i = 0; i < ACC_NB; i += 1) {
     const data_val = dataView.getBigUint64(i * 8, true);
     const data_key = data_val ^ keyView.getBigUint64(i * 8, true);
@@ -128,24 +115,23 @@ function XXH3_accumulate_512(
 
 function XXH3_accumulate(
   acc: BigUint64Array,
-  data: Uint8Array,
-  key: Uint8Array,
+  dataView: DataView,
+  keyView: DataView,
   nbStripes: number
 ) {
   for (let n = 0; n < nbStripes; n += 1) {
     XXH3_accumulate_512(
       acc,
-      getView(data, n * STRIPE_LEN),
-      getView(key, n * 8)
+      view(dataView, n * STRIPE_LEN),
+      view(keyView, n * 8)
     );
   }
   return acc;
 }
 
-function XXH3_scrambleAcc(acc: BigUint64Array, key: Uint8Array) {
-  const keyView = new DataView(key.buffer);
+function XXH3_scrambleAcc(acc: BigUint64Array, key: DataView) {
   for (let i = 0; i < ACC_NB; i += 1) {
-    const key64 = keyView.getBigUint64(i * 8, true);
+    const key64 = key.getBigUint64(i * 8, true);
     let acc64 = acc[i];
     acc64 = xorshift64(acc64, n(47));
     acc64 ^= key64;
@@ -155,35 +141,30 @@ function XXH3_scrambleAcc(acc: BigUint64Array, key: Uint8Array) {
   return acc;
 }
 
-function XXH3_mix2Accs(acc: BigUint64Array, key: Uint8Array) {
-  const keyView = new DataView(key.buffer);
+function XXH3_mix2Accs(acc: BigUint64Array, key: DataView) {
   return XXH3_mul128_fold64(
-    acc[0] ^ keyView.getBigUint64(0, true),
-    acc[1] ^ keyView.getBigUint64(_U64, true)
+    acc[0] ^ key.getBigUint64(0, true),
+    acc[1] ^ key.getBigUint64(_U64, true)
   );
 }
 
-function XXH3_mergeAccs(acc: BigUint64Array, key: Uint8Array, start: bigint) {
+function XXH3_mergeAccs(acc: BigUint64Array, key: DataView, start: bigint) {
   let result64 = start;
 
-  result64 += XXH3_mix2Accs(acc.slice(0), getView(key, 0 * _U32));
-  result64 += XXH3_mix2Accs(acc.slice(2), getView(key, 4 * _U32));
-  result64 += XXH3_mix2Accs(acc.slice(4), getView(key, 8 * _U32));
-  result64 += XXH3_mix2Accs(acc.slice(6), getView(key, 12 * _U32));
+  result64 += XXH3_mix2Accs(acc.slice(0), view(key, 0 * _U32));
+  result64 += XXH3_mix2Accs(acc.slice(2), view(key, 4 * _U32));
+  result64 += XXH3_mix2Accs(acc.slice(4), view(key, 8 * _U32));
+  result64 += XXH3_mix2Accs(acc.slice(6), view(key, 12 * _U32));
 
   return XXH3_avalanche(result64 & mask64);
 }
 
 function XXH3_hashLong(
   input: BigUint64Array,
-  data: Uint8Array,
-  secret: Uint8Array,
-  f_acc: (
-    acc: BigUint64Array,
-    data: Uint8Array,
-    key: Uint8Array
-  ) => BigUint64Array,
-  f_scramble: (acc: BigUint64Array, key: Uint8Array) => BigUint64Array
+  data: DataView,
+  secret: DataView,
+  f_acc: (acc: BigUint64Array, data: DataView, key: DataView) => BigUint64Array,
+  f_scramble: (acc: BigUint64Array, key: DataView) => BigUint64Array
 ) {
   let acc = input;
   const nbStripesPerBlock = Math.floor((secret.byteLength - STRIPE_LEN) / 8);
@@ -193,11 +174,11 @@ function XXH3_hashLong(
   for (let n = 0; n < nb_blocks; n += 1) {
     acc = XXH3_accumulate(
       acc,
-      getView(data, n * block_len),
+      view(data, n * block_len),
       secret,
       nbStripesPerBlock
     );
-    acc = f_scramble(acc, getView(secret, secret.byteLength - STRIPE_LEN));
+    acc = f_scramble(acc, view(secret, secret.byteLength - STRIPE_LEN));
   }
 
   {
@@ -207,7 +188,7 @@ function XXH3_hashLong(
     );
     acc = XXH3_accumulate(
       acc,
-      getView(data, nb_blocks * block_len),
+      view(data, nb_blocks * block_len),
       secret,
       nbStripes
     );
@@ -215,14 +196,14 @@ function XXH3_hashLong(
     // Last Stripe
     acc = f_acc(
       acc,
-      getView(data, data.byteLength - STRIPE_LEN),
-      getView(secret, secret.byteLength - STRIPE_LEN - 7)
+      view(data, data.byteLength - STRIPE_LEN),
+      view(secret, secret.byteLength - STRIPE_LEN - 7)
     );
   }
   return acc;
 }
 
-function XXH3_hashLong_128b(data: Uint8Array, secret: Uint8Array) {
+function XXH3_hashLong_128b(data: DataView, secret: DataView) {
   let acc = new BigUint64Array([
     PRIME32_3,
     PRIME64_1,
@@ -233,7 +214,7 @@ function XXH3_hashLong_128b(data: Uint8Array, secret: Uint8Array) {
     PRIME64_5,
     PRIME32_1,
   ]);
-  assert(data.length > 128);
+  assert(data.byteLength > 128);
 
   acc = XXH3_hashLong(acc, data, secret, XXH3_accumulate_512, XXH3_scrambleAcc);
 
@@ -242,12 +223,12 @@ function XXH3_hashLong_128b(data: Uint8Array, secret: Uint8Array) {
   {
     const low64 = XXH3_mergeAccs(
       acc,
-      getView(secret, 11),
+      view(secret, 11),
       (n(data.byteLength) * PRIME64_1) & mask64
     );
     const high64 = XXH3_mergeAccs(
       acc,
-      getView(secret, secret.byteLength - STRIPE_LEN - 11),
+      view(secret, secret.byteLength - STRIPE_LEN - 11),
       ~(n(data.byteLength) * PRIME64_2) & mask64
     );
     return (high64 << n(64)) | low64;
@@ -259,10 +240,7 @@ function XXH3_mul128_fold64(a: bigint, b: bigint) {
   return (lll & mask64) ^ (lll >> n(64));
 }
 
-function XXH3_mix16B(data: Uint8Array, key: Uint8Array, seed: bigint) {
-  const dataView = new DataView(data.buffer);
-  const keyView = new DataView(key.buffer);
-
+function XXH3_mix16B(dataView: DataView, keyView: DataView, seed: bigint) {
   return XXH3_mul128_fold64(
     (dataView.getBigUint64(0, true) ^ (keyView.getBigUint64(0, true) + seed)) &
       mask64,
@@ -273,28 +251,19 @@ function XXH3_mix16B(data: Uint8Array, key: Uint8Array, seed: bigint) {
 
 function XXH3_mix32B(
   acc: bigint,
-  data1: Uint8Array,
-  data2: Uint8Array,
-  key: Uint8Array,
+  data1: DataView,
+  data2: DataView,
+  key: DataView,
   seed: bigint
 ) {
   let accl = acc & mask64;
   let acch = (acc >> n(64)) & mask64;
 
-  const data1View = new DataView(data1.buffer);
-  const data2View = new DataView(data2.buffer);
-
   accl += XXH3_mix16B(data1, key, seed);
-  console.log(
-    "new.acc",
-    acc,
-    data2View.getBigUint64(0, true),
-    data2View.getBigUint64(8, true)
-  );
-  accl ^= data2View.getBigUint64(0, true) + data2View.getBigUint64(8, true);
+  accl ^= data2.getBigUint64(0, true) + data2.getBigUint64(8, true);
   accl &= mask64;
-  acch += XXH3_mix16B(data2, getView(key, 16), seed);
-  acch ^= data1View.getBigUint64(0, true) + data1View.getBigUint64(8, true);
+  acch += XXH3_mix16B(data2, view(key, 16), seed);
+  acch ^= data1.getBigUint64(0, true) + data1.getBigUint64(8, true);
   acch &= mask64;
 
   return (acch << n(64)) | accl;
@@ -321,24 +290,21 @@ function XXH3_avalanche64(input: bigint) {
   return h64;
 }
 
-function XXH3_len_1to3_128b(data: Uint8Array, key32: Uint8Array, seed: bigint) {
+function XXH3_len_1to3_128b(data: DataView, key32: DataView, seed: bigint) {
   const len = data.byteLength;
   assert(len > 0 && len <= 3);
 
-  const dataView = new DataView(data.buffer);
-  const key32View = new DataView(key32.buffer);
-
   const combined =
-    n(dataView.getUint8(len - 1)) |
+    n(data.getUint8(len - 1)) |
     n(len << 8) |
-    n(dataView.getUint8(0) << 16) |
-    n(dataView.getUint8(len >> 1) << 24);
+    n(data.getUint8(0) << 16) |
+    n(data.getUint8(len >> 1) << 24);
 
   const blow =
-    (n(key32View.getUint32(0, true)) ^ n(key32View.getUint32(4, true))) + seed;
+    (n(key32.getUint32(0, true)) ^ n(key32.getUint32(4, true))) + seed;
   const low = (combined ^ blow) & mask64;
   const bhigh =
-    (n(key32View.getUint32(8, true)) ^ n(key32View.getUint32(12, true))) - seed;
+    (n(key32.getUint32(8, true)) ^ n(key32.getUint32(12, true))) - seed;
   const high = (rotl32(bswap32(combined), n(13)) ^ bhigh) & mask64;
 
   return ((XXH3_avalanche64(high) & mask64) << n(64)) | XXH3_avalanche64(low);
@@ -348,20 +314,16 @@ function xorshift64(b: bigint, shift: bigint) {
   return b ^ (b >> shift);
 }
 
-function XXH3_len_4to8_128b(data: Uint8Array, key32: Uint8Array, seed: bigint) {
+function XXH3_len_4to8_128b(data: DataView, key32: DataView, seed: bigint) {
   const len = data.byteLength;
   assert(len >= 4 && len <= 8);
 
-  const dataView = new DataView(data.buffer);
-  const key32View = new DataView(key32.buffer);
-
   {
-    const l1 = dataView.getUint32(0, true);
-    const l2 = dataView.getUint32(len - 4, true);
+    const l1 = data.getUint32(0, true);
+    const l2 = data.getUint32(len - 4, true);
     const l64 = n(l1) | (n(l2) << n(32));
     const bitflip =
-      ((key32View.getBigUint64(16, true) ^ key32View.getBigUint64(24, true)) +
-        seed) &
+      ((key32.getBigUint64(16, true) ^ key32.getBigUint64(24, true)) + seed) &
       mask64;
     const keyed = l64 ^ bitflip;
     let m128 = (keyed * (PRIME64_1 + (n(len) << n(2)))) & mask128;
@@ -379,28 +341,19 @@ function XXH3_len_4to8_128b(data: Uint8Array, key32: Uint8Array, seed: bigint) {
   }
 }
 
-function XXH3_len_9to16_128b(
-  data: Uint8Array,
-  key64: Uint8Array,
-  seed: bigint
-) {
+function XXH3_len_9to16_128b(data: DataView, key64: DataView, seed: bigint) {
   const len = data.byteLength;
   assert(len >= 9 && len <= 16);
 
-  const dataView = new DataView(data.buffer);
-  const key64View = new DataView(key64.buffer);
-
   {
     const bitflipl =
-      ((key64View.getBigUint64(32, true) ^ key64View.getBigUint64(40, true)) +
-        seed) &
+      ((key64.getBigUint64(32, true) ^ key64.getBigUint64(40, true)) + seed) &
       mask64;
     const bitfliph =
-      ((key64View.getBigUint64(48, true) ^ key64View.getBigUint64(56, true)) -
-        seed) &
+      ((key64.getBigUint64(48, true) ^ key64.getBigUint64(56, true)) - seed) &
       mask64;
-    const ll1 = dataView.getBigUint64(0, true);
-    let ll2 = dataView.getBigUint64(len - 8, true);
+    const ll1 = data.getBigUint64(0, true);
+    let ll2 = data.getBigUint64(len - 8, true);
 
     let m128 = (ll1 ^ ll2 ^ bitflipl) * PRIME64_1;
 
@@ -421,7 +374,7 @@ function XXH3_len_9to16_128b(
   }
 }
 
-function XXH3_len_0to16_128b(data: Uint8Array, seed: bigint) {
+function XXH3_len_0to16_128b(data: DataView, seed: bigint) {
   const len = data.byteLength;
   assert(len <= 16);
 
@@ -429,13 +382,12 @@ function XXH3_len_0to16_128b(data: Uint8Array, seed: bigint) {
   if (len >= 4) return XXH3_len_4to8_128b(data, kkey, seed);
   if (len > 0) return XXH3_len_1to3_128b(data, kkey, seed);
 
-  const keyView = new DataView(kkey.buffer);
   return (
     XXH3_avalanche64(
-      seed ^ keyView.getBigUint64(64, true) ^ keyView.getBigUint64(72, true)
+      seed ^ kkey.getBigUint64(64, true) ^ kkey.getBigUint64(72, true)
     ) |
     (XXH3_avalanche64(
-      seed ^ keyView.getBigUint64(80, true) ^ keyView.getBigUint64(88, true)
+      seed ^ kkey.getBigUint64(80, true) ^ kkey.getBigUint64(88, true)
     ) <<
       n(64))
   );
@@ -446,25 +398,20 @@ function inv64(x: bigint) {
   return (~x + n(1)) & mask64;
 }
 
-function XXH3_len_17to128_128b(
-  data: Uint8Array,
-  secret: Uint8Array,
-  seed: bigint
-) {
+function XXH3_len_17to128_128b(data: DataView, secret: DataView, seed: bigint) {
   let acc = (n(data.byteLength) * PRIME64_1) & mask64;
   let i = n(data.byteLength - 1) / n(32);
   while (i >= 0) {
     const ni = Number(i);
     acc = XXH3_mix32B(
       acc,
-      getView(data, 16 * ni),
-      getView(data, data.byteLength - 16 * (ni + 1)),
-      getView(secret, 32 * ni),
+      view(data, 16 * ni),
+      view(data, data.byteLength - 16 * (ni + 1)),
+      view(secret, 32 * ni),
       seed
     );
     i -= n(1);
   }
-  console.log("new.acc", acc);
 
   let h128l = (acc + (acc >> n(64))) & mask64;
   h128l = XXH3_avalanche(h128l);
@@ -475,23 +422,21 @@ function XXH3_len_17to128_128b(
   h128h &= mask64;
 
   h128h = inv64(XXH3_avalanche(h128h));
-  console.log("h128l", h128l);
-  console.log("h128h", h128h);
   return h128l | (h128h << n(64));
 }
 
 function XXH3_len_129to240_128b(
-  data: Uint8Array,
-  secret: Uint8Array,
+  data: DataView,
+  secret: DataView,
   seed: bigint
 ) {
   let acc = (n(data.byteLength) * PRIME64_1) & mask64;
   for (let i = 32; i < 160; i += 32) {
     acc = XXH3_mix32B(
       acc,
-      getView(data, i - 32),
-      getView(data, i - 16),
-      getView(secret, i - 32),
+      view(data, i - 32),
+      view(data, i - 16),
+      view(secret, i - 32),
       seed
     );
   }
@@ -499,17 +444,17 @@ function XXH3_len_129to240_128b(
   for (let i = 160; i <= data.byteLength; i += 32) {
     acc = XXH3_mix32B(
       acc,
-      getView(data, i - 32),
-      getView(data, i - 16),
-      getView(secret, 3 + i - 160),
+      view(data, i - 32),
+      view(data, i - 16),
+      view(secret, 3 + i - 160),
       seed
     );
   }
   acc = XXH3_mix32B(
     acc,
-    getView(data, data.byteLength - 16),
-    getView(data, data.byteLength - 32),
-    getView(secret, 136 - 17 - 16),
+    view(data, data.byteLength - 16),
+    view(data, data.byteLength - 32),
+    view(secret, 136 - 17 - 16),
     inv64(seed)
   );
 
@@ -527,10 +472,8 @@ function XXH3_len_129to240_128b(
 
 // 16 byte min input
 export function XXH3_128(input: Uint8Array | string, seed: bigint = n(0)) {
-  console.log("---- new.input", input);
   const encoder = new TextEncoder();
-  const data = typeof input === "string" ? encoder.encode(input) : input;
-
+  const data = view(typeof input === "string" ? encoder.encode(input) : input);
   const len = data.byteLength;
 
   if (len <= 16) return XXH3_len_0to16_128b(data, seed).toString(16);

@@ -89,24 +89,24 @@ describe("XXH3_128", () => {
   describe("17-128 bytes", () => {
     it("should hash 17 bytes", () => {
       const input = "abcdefghijklmnopq";
-      expect(XXH3_128(input)).toBe("3d973df8a854ab19319b63583608fa0d");
+      expect(XXH3_128(input)).toBe("11078c38a5ca3a8dc3acc9940596efab");
     });
 
     it("should hash 32 bytes", () => {
       const input = "abcdefghijklmnopqrstuvwxyz123456";
-      expect(XXH3_128(input)).toBe("e8f2c24fb956a65a873332bb379dc7bd");
+      expect(XXH3_128(input)).toBe("668b14f3933edd9f52625e96b6d3b0f3");
     });
 
     it("should hash 64 bytes", () => {
       const input =
         "abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz123456";
-      expect(XXH3_128(input)).toBe("2b3720a78eb02501d0bb5a39f1e19d86");
+      expect(XXH3_128(input)).toBe("2d794cf93e1a067211e9b7a76062d8d6");
     });
 
     it("should hash 128 bytes", () => {
       const input =
         "abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz123456";
-      expect(XXH3_128(input)).toBe("301439fd064fe95288d4b3cdbedee89f");
+      expect(XXH3_128(input)).toBe("8d2ec8e569ae8fa6d7cc4c23a95f14d9");
     });
   });
 
@@ -114,19 +114,19 @@ describe("XXH3_128", () => {
     it("should hash 129 bytes", () => {
       const input =
         "abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz123456a";
-      expect(XXH3_128(input)).toBe("955860a9e5134408ec6557abebe1b45a");
+      expect(XXH3_128(input)).toBe("b2ea1620c3bb852c2012ecacf727c481");
     });
 
     it("should hash 160 bytes", () => {
       const input =
         "abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890";
-      expect(XXH3_128(input)).toBe("496aeff5abcfe1ed8ef0b0eede8018db");
+      expect(XXH3_128(input)).toBe("c800bd4157366fc23720f1739930fb8a");
     });
 
     it("should hash 240 bytes", () => {
       const input =
         "abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890";
-      expect(XXH3_128(input)).toBe("c06653791953b02b860738c5a3d7eb90");
+      expect(XXH3_128(input)).toBe("bc971ffa336b4d9c484aaf4bea72ea4c");
     });
   });
 
@@ -134,22 +134,22 @@ describe("XXH3_128", () => {
     it("should hash 241 bytes", () => {
       const input =
         "abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890a";
-      expect(XXH3_128(input)).toBe("dc8d3e164b467ebde18c4ee8f6bf7fc5");
+      expect(XXH3_128(input)).toBe("6ac1192bda13b7b0ccc2d9ba4de6130f");
     });
 
     it("should hash 512 bytes", () => {
       const input = "a".repeat(512);
-      expect(XXH3_128(input)).toBe("61cb8e5f3acc2edc9825abab3a61a7a4");
+      expect(XXH3_128(input)).toBe("9718dbab650037cd4659a548a9cc8db1");
     });
 
     it("should hash 1024 bytes", () => {
       const input = "b".repeat(1024);
-      expect(XXH3_128(input)).toBe("674a2fabf7113490f71769db320ec71f");
+      expect(XXH3_128(input)).toBe("fd5ea522e67427228507db63d38fc496");
     });
 
     it("should hash 4096 bytes", () => {
       const input = "c".repeat(4096);
-      expect(XXH3_128(input)).toBe("6b00432615d44797accea64e9ea6a823");
+      expect(XXH3_128(input)).toBe("b1fc3898cb4ccfb9bc50ac89ff26de23");
     });
   });
 
@@ -218,19 +218,19 @@ describe("XXH3_128", () => {
     it("should hash exactly 128 bytes", () => {
       const input = "a".repeat(128);
       expect(input.length).toBe(128);
-      expect(XXH3_128(input)).toBe("1c02fd60cf8267b1358f359b067db3d6");
+      expect(XXH3_128(input)).toBe("134e2a91815f3105ef354c1b9e35d99d");
     });
 
     it("should hash exactly 240 bytes", () => {
       const input = "b".repeat(240);
       expect(input.length).toBe(240);
-      expect(XXH3_128(input)).toBe("84137b23e42803d8ce6759680ee3bb0f");
+      expect(XXH3_128(input)).toBe("5bb7a7da5e4ff82c807fb4b4352efc95");
     });
 
     it("should hash exactly 241 bytes", () => {
       const input = "c".repeat(241);
       expect(input.length).toBe(241);
-      expect(XXH3_128(input)).toBe("b286a33f807561c8d83d50f5a399141f");
+      expect(XXH3_128(input)).toBe("b90b3e70eb1fd4a05d911035549cfeaf");
     });
   });
 });
