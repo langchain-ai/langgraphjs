@@ -1252,10 +1252,20 @@ export class Pregel<
           throw new InvalidUpdateError(`Cannot copy a non-existent checkpoint`);
         }
 
+        const isCopyWithUpdates = (
+          values: unknown
+        ): values is [values: unknown, asNode: string][] => {
+          if (!Array.isArray(values)) return false;
+          if (values.length === 0) return false;
+          return values.every((v) => Array.isArray(v) && v.length === 2);
+        };
+
         const nextCheckpoint = createCheckpoint(checkpoint, undefined, step);
         const nextConfig = await checkpointer.put(
           saved.parentConfig ??
-            patchConfigurable(saved.config, { checkpoint_id: undefined }),
+            (isCopyWithUpdates(values)
+              ? patchConfigurable(saved.config, { checkpoint_id: undefined })
+              : saved.config),
           nextCheckpoint,
           {
             source: "fork",
@@ -1265,14 +1275,6 @@ export class Pregel<
           },
           {}
         );
-
-        const isCopyWithUpdates = (
-          values: unknown
-        ): values is [values: unknown, asNode: string][] => {
-          if (!Array.isArray(values)) return false;
-          if (values.length === 0) return false;
-          return values.every((v) => Array.isArray(v) && v.length === 2);
-        };
 
         // We want to both clone a checkpoint and update state in one go.
         // Reuse the same task ID if possible.
