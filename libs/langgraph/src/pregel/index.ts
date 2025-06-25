@@ -1254,21 +1254,29 @@ export class Pregel<
 
         const nextCheckpoint = createCheckpoint(checkpoint, undefined, step);
         const nextConfig = await checkpointer.put(
-          saved?.parentConfig ??
-            patchConfigurable(checkpointConfig, { checkpoint_id: undefined }),
+          saved.parentConfig ??
+            patchConfigurable(saved.config, { checkpoint_id: undefined }),
           nextCheckpoint,
           {
             source: "fork",
             step: step + 1,
             writes: {},
-            parents: saved?.metadata?.parents ?? {},
+            parents: saved.metadata?.parents ?? {},
           },
           {}
         );
 
+        const isCopyWithUpdates = (
+          values: unknown
+        ): values is [values: unknown, asNode: string][] => {
+          if (!Array.isArray(values)) return false;
+          if (values.length === 0) return false;
+          return values.every((v) => Array.isArray(v) && v.length === 2);
+        };
+
         // We want to both clone a checkpoint and update state in one go.
         // Reuse the same task ID if possible.
-        if (Array.isArray(values) && values.length > 0) {
+        if (isCopyWithUpdates(values)) {
           // figure out the task IDs for the next update checkpoint
           const nextTasks = _prepareNextTasks(
             nextCheckpoint,
@@ -1295,11 +1303,12 @@ export class Pregel<
               { values: unknown; asNode: string; taskId?: string }[]
             >
           >((acc, item) => {
-            acc[item.asNode] ??= [];
+            const [values, asNode] = item;
+            acc[asNode] ??= [];
 
-            const targetIdx = acc[item.asNode].length;
-            const taskId = tasksGroupBy[item.asNode]?.[targetIdx]?.id;
-            acc[item.asNode].push({ ...item, taskId });
+            const targetIdx = acc[asNode].length;
+            const taskId = tasksGroupBy[asNode]?.[targetIdx]?.id;
+            acc[asNode].push({ values, asNode, taskId });
 
             return acc;
           }, {});

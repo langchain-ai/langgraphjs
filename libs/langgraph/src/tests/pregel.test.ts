@@ -12419,7 +12419,7 @@ graph TD;
       null,
       await graph.updateState(
         history[4].config,
-        [{ values: { name: "start*" }, asNode: "__start__" }],
+        [[{ name: "start*" }, "__start__"]],
         "__copy__"
       )
     );
@@ -12464,7 +12464,7 @@ graph TD;
       null,
       await graph.updateState(
         history[3].config,
-        [{ values: { name: "one*" }, asNode: "one" }],
+        [[{ name: "one*" }, "one"]],
         "__copy__"
       )
     );
@@ -12529,8 +12529,8 @@ graph TD;
       await graph.updateState(
         history[2].config,
         [
-          { values: { name: "two 3" }, asNode: "two" },
-          { values: { name: "two 4" }, asNode: "two" },
+          [{ name: "two 3" }, "two"],
+          [{ name: "two 4" }, "two"],
         ],
         "__copy__"
       )
@@ -12575,7 +12575,7 @@ graph TD;
       null,
       await graph.updateState(
         history[1].config,
-        [{ values: { name: "three*" }, asNode: "three" }],
+        [[{ name: "three*" }, "three"]],
         "__copy__"
       )
     );
