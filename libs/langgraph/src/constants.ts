@@ -23,6 +23,7 @@ export const CONFIG_KEY_RESUME_VALUE = "__pregel_resume_value";
 export const CONFIG_KEY_SCRATCHPAD = "__pregel_scratchpad";
 /** config key containing state from previous invocation of graph for the given thread */
 export const CONFIG_KEY_PREVIOUS_STATE = "__pregel_previous";
+export const CONFIG_KEY_CHECKPOINT_DURING = "__pregel_checkpoint_during";
 export const CONFIG_KEY_CHECKPOINT_ID = "checkpoint_id";
 export const CONFIG_KEY_CHECKPOINT_NS = "checkpoint_ns";
 

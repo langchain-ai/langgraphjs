@@ -25,6 +25,7 @@ const CONFIG_KEYS = [
   "writer",
   "interruptBefore",
   "interruptAfter",
+  "checkpointDuring",
   "signal",
 ];
 

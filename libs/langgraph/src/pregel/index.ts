@@ -52,6 +52,8 @@ import {
   isInterrupted,
   NULL_TASK_ID,
   PUSH,
+  CONFIG_KEY_CHECKPOINT_DURING,
+  CONFIG_KEY_CHECKPOINT_NS,
 } from "../constants.js";
 import {
   GraphRecursionError,
@@ -478,7 +480,7 @@ export class Pregel<
    * When provided, saves a checkpoint of the graph state at every superstep.
    * When false or undefined, checkpointing is disabled, and the graph will not be able to save or restore state.
    */
-  checkpointer?: BaseCheckpointSaver | false;
+  checkpointer?: BaseCheckpointSaver | boolean;
 
   /** Optional retry policy for handling failures in node execution */
   retryPolicy?: RetryPolicy;
@@ -1172,7 +1174,10 @@ export class Pregel<
             true,
             {
               step: (saved.metadata?.step ?? -1) + 1,
-              checkpointer: this.checkpointer || undefined,
+              checkpointer:
+                typeof this.checkpointer !== "boolean"
+                  ? this.checkpointer
+                  : undefined,
               store: this.store,
             }
           );
@@ -1622,6 +1627,8 @@ export class Pregel<
    * - checkpointer
    * - store
    * - whether stream mode is single
+   * - node cache
+   * - whether checkpoint during is enabled
    * @internal
    */
   _defaults(config: PregelOptions<Nodes, Channels>): [
@@ -1632,10 +1639,11 @@ export class Pregel<
     LangGraphRunnableConfig, // config without pregel keys
     All | string[], // interrupt before
     All | string[], // interrupt after
-    BaseCheckpointSaver | undefined,
-    BaseStore | undefined,
-    boolean,
-    BaseCache | undefined
+    BaseCheckpointSaver | undefined, // checkpointer
+    BaseStore | undefined, // store
+    boolean, // stream mode single
+    BaseCache | undefined, // node cache
+    boolean // checkpoint during
   ] {
     const {
       debug,
@@ -1690,11 +1698,17 @@ export class Pregel<
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] !== undefined
     ) {
       defaultCheckpointer = config.configurable[CONFIG_KEY_CHECKPOINTER];
+    } else if (this.checkpointer === true) {
+      throw new Error("checkpointer: true cannot be used for root graphs.");
     } else {
       defaultCheckpointer = this.checkpointer;
     }
     const defaultStore: BaseStore | undefined = config.store ?? this.store;
     const defaultCache: BaseCache | undefined = config.cache ?? this.cache;
+    const defaultCheckpointDuring =
+      config.checkpointDuring ??
+      config?.configurable?.[CONFIG_KEY_CHECKPOINT_DURING] ??
+      true;
 
     return [
       defaultDebug,
@@ -1708,6 +1722,7 @@ export class Pregel<
       defaultStore,
       streamModeSingle,
       defaultCache,
+      defaultCheckpointDuring,
     ];
   }
 
@@ -1969,6 +1984,7 @@ export class Pregel<
       store,
       streamModeSingle,
       cache,
+      checkpointDuring,
     ] = this._defaults(restConfig);
 
     config.configurable = await this._validateConfigurable(config.configurable);
@@ -1976,6 +1992,16 @@ export class Pregel<
     const stream = new IterableReadableWritableStream({
       modes: new Set(streamMode),
     });
+
+    // set up subgraph checkpointing
+    if (this.checkpointer === true) {
+      config.configurable ??= {};
+      const ns: string = config.configurable[CONFIG_KEY_CHECKPOINT_NS] ?? "";
+      config.configurable[CONFIG_KEY_CHECKPOINT_NS] = ns
+        .split(CHECKPOINT_NAMESPACE_SEPARATOR)
+        .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
+        .join(CHECKPOINT_NAMESPACE_SEPARATOR);
+    }
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {
@@ -2042,6 +2068,7 @@ export class Pregel<
           manager: runManager,
           debug: this.debug,
           triggerToNodes: this.triggerToNodes,
+          checkpointDuring,
         });
 
         const runner = new PregelRunner({
