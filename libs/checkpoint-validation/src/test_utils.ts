@@ -1,3 +1,4 @@
+import { it, expect } from "vitest";
 import {
   BaseCheckpointSaver,
   ChannelVersions,
@@ -19,7 +20,7 @@ export type WhySkipped = string;
  *
  * @param checkpointerName - The name of the current module being tested (as passed via the `name` argument in the top-level suite entrypoint).
  * @param skippedCheckpointers - A list of modules for which the test should be skipped.
- * @returns A function that can be used in place of the Jest @see it function and conditionally skips the test for the provided module.
+ * @returns A function that can be used in place of the Vitest @see it function and conditionally skips the test for the provided module.
  */
 export function it_skipForSomeModules(
   checkpointerName: string,
@@ -28,11 +29,8 @@ export function it_skipForSomeModules(
   const skipReason = skippedCheckpointers[checkpointerName];
 
   if (skipReason) {
-    const skip = (
-      name: string,
-      test: jest.ProvidesCallback | undefined,
-      timeout?: number
-    ) => {
+    const skip = (...args: Parameters<typeof it.skip>) => {
+      const [name, test, timeout] = args;
       it.skip(`[because ${skipReason}] ${name}`, test, timeout);
     };
     skip.prototype = it.skip.prototype;
@@ -42,28 +40,6 @@ export function it_skipForSomeModules(
   return it;
 }
 
-export function it_skipIfNot(
-  checkpointerName: string,
-  ...checkpointers: CheckpointerName[]
-): typeof it | typeof it.skip {
-  if (!checkpointers.includes(checkpointerName)) {
-    const skip = (
-      name: string,
-      test: jest.ProvidesCallback | undefined,
-      timeout?: number
-    ) => {
-      it.skip(
-        `[only passes for "${checkpointers.join('", "')}"] ${name}`,
-        test,
-        timeout
-      );
-    };
-    skip.prototype = it.skip.prototype;
-    return skip as typeof it.skip;
-  }
-
-  return it;
-}
 export interface InitialCheckpointTupleConfig {
   thread_id: string;
   checkpoint_id: string;

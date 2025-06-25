@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   CheckpointTuple,
   PendingWrite,
@@ -76,7 +77,7 @@ export function listTests<T extends BaseCheckpointSaver>(
     // can't reference argumentCombinations directly here because it isn't built at the time this is evaluated.
     // We do know how many entries there will be though, so we just pass the index for each entry, instead.
     it.each(argumentCombinations)(
-      "%s",
+      "$description",
       async ({
         thread_id,
         checkpoint_ns,

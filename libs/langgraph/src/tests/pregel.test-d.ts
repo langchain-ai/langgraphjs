@@ -2,7 +2,7 @@
 import "../graph/zod/plugin.js";
 import { z } from "zod";
 
-import { expectTypeOf, it } from "vitest";
+import { expectTypeOf, it, beforeAll } from "vitest";
 import type { BaseMessage } from "@langchain/core/messages";
 import { StateGraph } from "../graph/state.js";
 import { Annotation } from "../graph/annotation.js";

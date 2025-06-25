@@ -1,3 +1,4 @@
+import { it, expect } from "vitest";
 import { z } from "zod";
 import { Command, START } from "../constants.js";
 import { Annotation } from "../graph/annotation.js";
