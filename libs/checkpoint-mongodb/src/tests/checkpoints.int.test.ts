@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from "@jest/globals";
+import { describe, it, expect, afterAll } from "vitest";
 import { MongoClient } from "mongodb";
 import {
   Checkpoint,
