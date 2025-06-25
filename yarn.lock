@@ -2265,7 +2265,7 @@ __metadata:
     release-it: "npm:^19.0.2"
     scrapybara: "npm:^2.4.4"
     tsx: "npm:^4.19.3"
-    turbo: "npm:latest"
+    turbo: "npm:^2.5.4"
     typescript: "npm:^4.9.5 || ^5.4.5"
     zod: "npm:^3.23.8"
   peerDependencies:
@@ -2315,7 +2315,7 @@ __metadata:
     prettier: "npm:^2.8.3"
     release-it: "npm:^19.0.2"
     tsx: "npm:^4.19.3"
-    turbo: "npm:latest"
+    turbo: "npm:^2.5.4"
     typescript: "npm:^4.9.5 || ^5.4.5"
     uuid: "npm:^10.0.0"
     zod: "npm:^3.25.32"
@@ -2353,7 +2353,7 @@ __metadata:
     prettier: "npm:^2.8.3"
     release-it: "npm:^19.0.2"
     tsx: "npm:^4.19.3"
-    turbo: "npm:latest"
+    turbo: "npm:^2.5.4"
     typescript: "npm:^4.9.5 || ^5.4.5"
     zod: "npm:^3.23.8"
   peerDependencies:
@@ -9971,7 +9971,7 @@ __metadata:
     semver: "npm:^7.6.3"
     tslab: "npm:^1.0.21"
     tsx: "npm:^4.19.3"
-    turbo: "npm:canary"
+    turbo: "npm:^2.5.4"
     typedoc: "npm:^0.25.13"
     typescript: "npm:^4.9.5 || ^5.4.5"
   languageName: unknown
@@ -13932,100 +13932,58 @@ __metadata:
   languageName: node
   linkType: hard
 
-"turbo-darwin-64@npm:2.0.7-canary.1":
-  version: 2.0.7-canary.1
-  resolution: "turbo-darwin-64@npm:2.0.7-canary.1"
+"turbo-darwin-64@npm:2.5.4":
+  version: 2.5.4
+  resolution: "turbo-darwin-64@npm:2.5.4"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
 
-"turbo-darwin-64@npm:2.4.4":
-  version: 2.4.4
-  resolution: "turbo-darwin-64@npm:2.4.4"
-  conditions: os=darwin & cpu=x64
-  languageName: node
-  linkType: hard
-
-"turbo-darwin-arm64@npm:2.0.7-canary.1":
-  version: 2.0.7-canary.1
-  resolution: "turbo-darwin-arm64@npm:2.0.7-canary.1"
+"turbo-darwin-arm64@npm:2.5.4":
+  version: 2.5.4
+  resolution: "turbo-darwin-arm64@npm:2.5.4"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
 
-"turbo-darwin-arm64@npm:2.4.4":
-  version: 2.4.4
-  resolution: "turbo-darwin-arm64@npm:2.4.4"
-  conditions: os=darwin & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"turbo-linux-64@npm:2.0.7-canary.1":
-  version: 2.0.7-canary.1
-  resolution: "turbo-linux-64@npm:2.0.7-canary.1"
+"turbo-linux-64@npm:2.5.4":
+  version: 2.5.4
+  resolution: "turbo-linux-64@npm:2.5.4"
   conditions: os=linux & cpu=x64
   languageName: node
   linkType: hard
 
-"turbo-linux-64@npm:2.4.4":
-  version: 2.4.4
-  resolution: "turbo-linux-64@npm:2.4.4"
-  conditions: os=linux & cpu=x64
-  languageName: node
-  linkType: hard
-
-"turbo-linux-arm64@npm:2.0.7-canary.1":
-  version: 2.0.7-canary.1
-  resolution: "turbo-linux-arm64@npm:2.0.7-canary.1"
+"turbo-linux-arm64@npm:2.5.4":
+  version: 2.5.4
+  resolution: "turbo-linux-arm64@npm:2.5.4"
   conditions: os=linux & cpu=arm64
   languageName: node
   linkType: hard
 
-"turbo-linux-arm64@npm:2.4.4":
-  version: 2.4.4
-  resolution: "turbo-linux-arm64@npm:2.4.4"
-  conditions: os=linux & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"turbo-windows-64@npm:2.0.7-canary.1":
-  version: 2.0.7-canary.1
-  resolution: "turbo-windows-64@npm:2.0.7-canary.1"
+"turbo-windows-64@npm:2.5.4":
+  version: 2.5.4
+  resolution: "turbo-windows-64@npm:2.5.4"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
 
-"turbo-windows-64@npm:2.4.4":
-  version: 2.4.4
-  resolution: "turbo-windows-64@npm:2.4.4"
-  conditions: os=win32 & cpu=x64
-  languageName: node
-  linkType: hard
-
-"turbo-windows-arm64@npm:2.0.7-canary.1":
-  version: 2.0.7-canary.1
-  resolution: "turbo-windows-arm64@npm:2.0.7-canary.1"
+"turbo-windows-arm64@npm:2.5.4":
+  version: 2.5.4
+  resolution: "turbo-windows-arm64@npm:2.5.4"
   conditions: os=win32 & cpu=arm64
   languageName: node
   linkType: hard
 
-"turbo-windows-arm64@npm:2.4.4":
-  version: 2.4.4
-  resolution: "turbo-windows-arm64@npm:2.4.4"
-  conditions: os=win32 & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"turbo@npm:canary":
-  version: 2.0.7-canary.1
-  resolution: "turbo@npm:2.0.7-canary.1"
+"turbo@npm:^2.5.4":
+  version: 2.5.4
+  resolution: "turbo@npm:2.5.4"
   dependencies:
-    turbo-darwin-64: "npm:2.0.7-canary.1"
-    turbo-darwin-arm64: "npm:2.0.7-canary.1"
-    turbo-linux-64: "npm:2.0.7-canary.1"
-    turbo-linux-arm64: "npm:2.0.7-canary.1"
-    turbo-windows-64: "npm:2.0.7-canary.1"
-    turbo-windows-arm64: "npm:2.0.7-canary.1"
+    turbo-darwin-64: "npm:2.5.4"
+    turbo-darwin-arm64: "npm:2.5.4"
+    turbo-linux-64: "npm:2.5.4"
+    turbo-linux-arm64: "npm:2.5.4"
+    turbo-windows-64: "npm:2.5.4"
+    turbo-windows-arm64: "npm:2.5.4"
   dependenciesMeta:
     turbo-darwin-64:
       optional: true
@@ -14041,36 +13999,7 @@ __metadata:
       optional: true
   bin:
     turbo: bin/turbo
-  checksum: 10/dc033b07b37fb2c54a181c0a471f14285f2aae3ac98a6c39f17fc77633ae5d4f94cd1f61e2ee7858bfe0e1254ce26a23168c10a1bf15b3fb585e9c7c0c85bc9a
-  languageName: node
-  linkType: hard
-
-"turbo@npm:latest":
-  version: 2.4.4
-  resolution: "turbo@npm:2.4.4"
-  dependencies:
-    turbo-darwin-64: "npm:2.4.4"
-    turbo-darwin-arm64: "npm:2.4.4"
-    turbo-linux-64: "npm:2.4.4"
-    turbo-linux-arm64: "npm:2.4.4"
-    turbo-windows-64: "npm:2.4.4"
-    turbo-windows-arm64: "npm:2.4.4"
-  dependenciesMeta:
-    turbo-darwin-64:
-      optional: true
-    turbo-darwin-arm64:
-      optional: true
-    turbo-linux-64:
-      optional: true
-    turbo-linux-arm64:
-      optional: true
-    turbo-windows-64:
-      optional: true
-    turbo-windows-arm64:
-      optional: true
-  bin:
-    turbo: bin/turbo
-  checksum: 10/ea60911d280e85068ec31c58cf079e5eb423db9dfa3fc1f1fdb5456debb0c6395ef20040384b4d6400e22cfbc1590381a61c4be1bdc7a06bbdf6b9b92573c42a
+  checksum: 10/43dd952192a1261de3845ecac96d4f42ea6d8e49eaa4c339c029dbe010a1323957ef4b0080f8f06e3cd0169c1f00c356d32cbabde1ee08c72b0708f90994a774
   languageName: node
   linkType: hard
 
