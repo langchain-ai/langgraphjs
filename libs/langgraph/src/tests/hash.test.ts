@@ -2,10 +2,8 @@ import { expect, it, describe } from "vitest";
 import { isXXH3, XXH3 } from "../hash.js";
 
 describe("XXH3_128", () => {
-  describe("empty string (0 bytes)", () => {
-    it("should hash empty string", () => {
-      expect(XXH3("")).toBe("99aa06d3014798d86001c324468d497f");
-    });
+  it("should hash empty string", () => {
+    expect(XXH3("")).toBe("99aa06d3014798d86001c324468d497f");
   });
 
   it("1-3 bytes", () => {
