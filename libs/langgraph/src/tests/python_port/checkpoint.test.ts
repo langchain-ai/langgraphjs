@@ -858,10 +858,7 @@ describe("Checkpoint Tests (Python port)", () => {
 
     // Stream execution will be interrupted
     const stream1 = await tool_two_with_checkpoint.stream(
-      {
-        my_key: "value ⛰️",
-        market: "DE",
-      },
+      { my_key: "value ⛰️", market: "DE" },
       thread2
     );
 
@@ -869,7 +866,6 @@ describe("Checkpoint Tests (Python port)", () => {
 
     // Assert that we got the expected outputs including an interrupt
     expect(results1).toEqual([
-      { tool_one: { my_key: " one" } },
       {
         __interrupt__: [
           expect.objectContaining({
@@ -881,6 +877,7 @@ describe("Checkpoint Tests (Python port)", () => {
           }),
         ],
       },
+      { tool_one: { my_key: " one" } },
     ]);
 
     // Resume with an answer

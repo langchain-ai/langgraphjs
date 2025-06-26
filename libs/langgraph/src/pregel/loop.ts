@@ -25,10 +25,10 @@ import {
 } from "../channels/base.js";
 import {
   Call,
+  type CallTaskPath,
   PregelExecutableTask,
   PregelScratchpad,
   StreamMode,
-  TaskPath,
 } from "./types.js";
 import {
   isCommand,
@@ -605,6 +605,11 @@ export class PregelLoop {
 
       if (writes.length > 0) {
         if (writes[0][0] === INTERRUPT) {
+          // in `algo.ts` we append a bool to the task path to indicate
+          // whether or not a call was present. If so, we don't emit the
+          // the interrupt as it'll be emitted by the parent.
+          if (task.path?.[0] === PUSH && task.path?.at(-1) === true) return;
+
           const interruptWrites = writes
             .filter((w) => w[0] === INTERRUPT)
             .flatMap((w) => w[1] as string[]);
@@ -920,7 +925,7 @@ export class PregelLoop {
     }
 
     const pushed = _prepareSingleTask(
-      [PUSH, task.path ?? [], writeIdx, task.id, call] as TaskPath,
+      [PUSH, task.path ?? [], writeIdx, task.id, call] as CallTaskPath,
       this.checkpoint,
       this.checkpointPendingWrites,
       this.nodes,

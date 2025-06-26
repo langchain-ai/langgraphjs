@@ -613,11 +613,15 @@ export function _prepareSingleTask<
       checkpoint.id
     );
     const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${id}`;
+
+    // we append `true` to the task path to indicate that a call is being made
+    // so we should not return interrupts from this task (responsibility lies with the parent)
+    const outputTaskPath = [...taskPath.slice(0, 3), true] as VariadicTaskPath;
     const metadata = {
       langgraph_step: step,
       langgraph_node: call.name,
       langgraph_triggers: triggers,
-      langgraph_path: taskPath.slice(0, 3),
+      langgraph_path: outputTaskPath,
       langgraph_checkpoint_ns: taskCheckpointNamespace,
     };
     if (forExecution) {
@@ -659,7 +663,7 @@ export function _prepareSingleTask<
                     name: call.name,
                     writes: writes as PendingWrite[],
                     triggers,
-                    path: taskPath.slice(0, 3) as VariadicTaskPath,
+                    path: outputTaskPath,
                   },
                   select_,
                   fresh_
@@ -694,7 +698,7 @@ export function _prepareSingleTask<
             }
           : undefined,
         id,
-        path: taskPath.slice(0, 3) as VariadicTaskPath,
+        path: outputTaskPath,
         writers: [],
       } satisfies PregelExecutableTask<keyof Nn, keyof Cc>;
       return task;
@@ -703,7 +707,7 @@ export function _prepareSingleTask<
         id,
         name: call.name,
         interrupts: [],
-        path: taskPath.slice(0, 3) as VariadicTaskPath,
+        path: outputTaskPath,
       };
     }
   } else if (taskPath[0] === PUSH) {
