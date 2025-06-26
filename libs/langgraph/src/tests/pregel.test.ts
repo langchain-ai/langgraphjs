@@ -3411,6 +3411,7 @@ graph TD;
         market: "DE",
         __interrupt__: [
           {
+            interrupt_id: expect.any(String),
             value: "Just because...",
             resumable: true,
             when: "during",
@@ -3440,6 +3441,7 @@ graph TD;
             id: expect.any(String),
             interrupts: [
               {
+                interrupt_id: expect.any(String),
                 ns: [expect.stringMatching(/^tool_two:/)],
                 resumable: true,
                 value: "Just because...",
@@ -3544,6 +3546,7 @@ graph TD;
         market: "DE",
         __interrupt__: [
           {
+            interrupt_id: expect.any(String),
             value: "Just because...",
             resumable: true,
             ns: [expect.stringMatching(/^tool_two:/)],
@@ -3583,6 +3586,7 @@ graph TD;
         market: "DE",
         __interrupt__: [
           {
+            interrupt_id: expect.any(String),
             value: "Just because...",
             resumable: true,
             ns: [expect.stringMatching(/^tool_two:/)],
@@ -3628,6 +3632,7 @@ graph TD;
             path: [PULL, "tool_two"],
             interrupts: [
               {
+                interrupt_id: expect.any(String),
                 value: "Just because...",
                 resumable: true,
                 ns: [expect.stringMatching(/^tool_two:/)],
@@ -12970,7 +12975,7 @@ graph TD;
       ],
     ]);
   });
-  
+
   it("resume multiple interrupts", async () => {
     const checkpointer = await createCheckpointer();
     const config = { configurable: { thread_id: "1" } };
