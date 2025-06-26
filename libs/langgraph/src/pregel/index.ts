@@ -1176,10 +1176,7 @@ export class Pregel<
             true,
             {
               step: (saved.metadata?.step ?? -1) + 1,
-              checkpointer:
-                typeof this.checkpointer !== "boolean"
-                  ? this.checkpointer
-                  : undefined,
+              checkpointer,
               store: this.store,
             }
           );
@@ -1190,7 +1187,7 @@ export class Pregel<
             .map((w) => w.slice(1)) as PendingWrite<string>[];
           if (nullWrites.length > 0) {
             _applyWrites(
-              saved.checkpoint,
+              checkpoint,
               channels,
               [
                 {
@@ -1199,7 +1196,7 @@ export class Pregel<
                   triggers: [],
                 },
               ],
-              undefined,
+              checkpointer.getNextVersion.bind(checkpointer),
               this.triggerToNodes
             );
           }
@@ -1218,14 +1215,14 @@ export class Pregel<
             checkpoint,
             channels,
             Object.values(nextTasks) as WritesProtocol<string>[],
-            undefined,
+            checkpointer.getNextVersion.bind(checkpointer),
             this.triggerToNodes
           );
         }
         // save checkpoint
         const nextConfig = await checkpointer.put(
           checkpointConfig,
-          createCheckpoint(checkpoint, undefined, step),
+          createCheckpoint(checkpoint, channels, step),
           {
             ...checkpointMetadata,
             source: "update",
@@ -1233,7 +1230,10 @@ export class Pregel<
             writes: {},
             parents: saved?.metadata?.parents ?? {},
           },
-          {}
+          getNewChannelVersions(
+            checkpointPreviousVersions,
+            checkpoint.channel_versions
+          )
         );
         return patchCheckpointMap(
           nextConfig,
