@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, test, expect, vi } from "vitest";
 import { Client } from "@langchain/langgraph-sdk";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { RemoteGraph } from "../pregel/remote.js";
 import { gatherIterator } from "../utils.js";
 import { Command, INTERRUPT, Send } from "../constants.js";
 import { GraphInterrupt } from "../errors.js";
-import { RunnableConfig } from "@langchain/core/runnables";
 
 describe("RemoteGraph", () => {
   test("withConfig", () => {
