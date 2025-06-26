@@ -633,8 +633,8 @@ export class PregelLoop {
         this._emit(
           gatherIteratorSync(
             prefixGenerator(
-              mapDebugTaskResults(this.step, [[task, writes]], this.streamKeys),
-              "debug"
+              mapDebugTaskResults([[task, writes]], this.streamKeys),
+              "tasks"
             )
           )
         );
@@ -782,7 +782,6 @@ export class PregelLoop {
         await gatherIterator(
           prefixGenerator(
             mapDebugCheckpoint(
-              this.step - 1, // printing checkpoint for previous step
               this.checkpointConfig,
               this.channels,
               this.streamKeys,
@@ -792,7 +791,7 @@ export class PregelLoop {
               this.prevCheckpointConfig,
               this.outputKeys
             ),
-            "debug"
+            "checkpoints"
           )
         )
       );
@@ -838,10 +837,7 @@ export class PregelLoop {
 
     // Produce debug output
     const debugOutput = await gatherIterator(
-      prefixGenerator(
-        mapDebugTasks(this.step, Object.values(this.tasks)),
-        "debug"
-      )
+      prefixGenerator(mapDebugTasks(Object.values(this.tasks)), "tasks")
     );
     this._emit(debugOutput);
 
@@ -952,9 +948,7 @@ export class PregelLoop {
     }
 
     this._emit(
-      gatherIteratorSync(
-        prefixGenerator(mapDebugTasks(this.step, [pushed]), "debug")
-      )
+      gatherIteratorSync(prefixGenerator(mapDebugTasks([pushed]), "tasks"))
     );
 
     if (this.debug) printStepTasks(this.step, [pushed]);
@@ -1127,9 +1121,38 @@ export class PregelLoop {
   }
 
   protected _emit(values: [StreamMode, unknown][]) {
-    for (const chunk of values) {
-      if (this.stream.modes.has(chunk[0])) {
-        this.stream.push([this.checkpointNamespace, ...chunk]);
+    for (const [mode, payload] of values) {
+      if (this.stream.modes.has(mode)) {
+        this.stream.push([this.checkpointNamespace, mode, payload]);
+      }
+
+      // debug mode is a "checkpoints" or "tasks" wrapped in an object
+      // TODO: consider deprecating this in 1.x
+      if (
+        (mode === "checkpoints" || mode === "tasks") &&
+        this.stream.modes.has("debug")
+      ) {
+        const step = mode === "checkpoints" ? this.step - 1 : this.step;
+        const timestamp = new Date().toISOString();
+        const type = (() => {
+          if (mode === "checkpoints") {
+            return "checkpoint";
+          } else if (
+            typeof payload === "object" &&
+            payload != null &&
+            "result" in payload
+          ) {
+            return "task_result";
+          } else {
+            return "task";
+          }
+        })();
+
+        this.stream.push([
+          this.checkpointNamespace,
+          "debug",
+          { step, type, timestamp, payload },
+        ]);
       }
     }
   }
