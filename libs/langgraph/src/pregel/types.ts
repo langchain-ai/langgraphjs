@@ -60,18 +60,17 @@ interface StreamTasksOutputBase {
   interrupts: Interrupt[];
 }
 
-export interface StreamTasksCreateOutput<StreamValues>
-  extends StreamTasksOutputBase {
+interface StreamTasksCreateOutput<StreamValues> extends StreamTasksOutputBase {
   input: StreamValues;
   triggers: string[];
 }
 
-export interface StreamTasksResultOutput<Keys, StreamUpdates>
+interface StreamTasksResultOutput<Keys, StreamUpdates>
   extends StreamTasksOutputBase {
   result: [Keys, StreamUpdates][];
 }
 
-export type StreamTasksOutput<StreamUpdates, StreamValues, Nodes = string> =
+type StreamTasksOutput<StreamUpdates, StreamValues, Nodes = string> =
   | StreamTasksCreateOutput<StreamValues>
   | StreamTasksResultOutput<Nodes, StreamUpdates>;
 
