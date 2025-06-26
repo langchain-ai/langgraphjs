@@ -52,6 +52,7 @@ import {
   CONFIG_KEY_PREVIOUS_STATE,
   PREVIOUS,
   CACHE_NS_WRITES,
+  CONFIG_KEY_RESUME_MAP,
 } from "../constants.js";
 import {
   Call,
@@ -69,6 +70,7 @@ import { ManagedValueMapping } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { getRunnableForFunc } from "./call.js";
 import { IterableReadableWritableStream } from "./stream.js";
+import { XXH3 } from "../hash.js";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -611,11 +613,15 @@ export function _prepareSingleTask<
       checkpoint.id
     );
     const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${id}`;
+
+    // we append `true` to the task path to indicate that a call is being made
+    // so we should not return interrupts from this task (responsibility lies with the parent)
+    const outputTaskPath = [...taskPath.slice(0, 3), true] as VariadicTaskPath;
     const metadata = {
       langgraph_step: step,
       langgraph_node: call.name,
       langgraph_triggers: triggers,
-      langgraph_path: taskPath.slice(0, 3),
+      langgraph_path: outputTaskPath,
       langgraph_checkpoint_ns: taskCheckpointNamespace,
     };
     if (forExecution) {
@@ -657,7 +663,7 @@ export function _prepareSingleTask<
                     name: call.name,
                     writes: writes as PendingWrite[],
                     triggers,
-                    path: taskPath.slice(0, 3) as VariadicTaskPath,
+                    path: outputTaskPath,
                   },
                   select_,
                   fresh_
@@ -672,6 +678,8 @@ export function _prepareSingleTask<
                 pendingWrites: pendingWrites ?? [],
                 taskId: id,
                 currentTaskInput: call.input,
+                resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
+                namespaceHash: XXH3(taskCheckpointNamespace),
               }),
               [CONFIG_KEY_PREVIOUS_STATE]: checkpoint.channel_values[PREVIOUS],
               checkpoint_id: undefined,
@@ -690,7 +698,7 @@ export function _prepareSingleTask<
             }
           : undefined,
         id,
-        path: taskPath.slice(0, 3) as VariadicTaskPath,
+        path: outputTaskPath,
         writers: [],
       } satisfies PregelExecutableTask<keyof Nn, keyof Cc>;
       return task;
@@ -699,7 +707,7 @@ export function _prepareSingleTask<
         id,
         name: call.name,
         interrupts: [],
-        path: taskPath.slice(0, 3) as VariadicTaskPath,
+        path: outputTaskPath,
       };
     }
   } else if (taskPath[0] === PUSH) {
@@ -817,6 +825,8 @@ export function _prepareSingleTask<
                   pendingWrites: pendingWrites ?? [],
                   taskId,
                   currentTaskInput: packet.args,
+                  resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
+                  namespaceHash: XXH3(taskCheckpointNamespace),
                 }),
                 [CONFIG_KEY_PREVIOUS_STATE]:
                   checkpoint.channel_values[PREVIOUS],
@@ -996,6 +1006,8 @@ export function _prepareSingleTask<
                     pendingWrites: pendingWrites ?? [],
                     taskId,
                     currentTaskInput: val,
+                    resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
+                    namespaceHash: XXH3(taskCheckpointNamespace),
                   }),
                   [CONFIG_KEY_PREVIOUS_STATE]:
                     checkpoint.channel_values[PREVIOUS],
@@ -1114,23 +1126,38 @@ function _scratchpad({
   pendingWrites,
   taskId,
   currentTaskInput,
+  resumeMap,
+  namespaceHash,
 }: {
   pendingWrites: CheckpointPendingWrite[];
   taskId: string;
   currentTaskInput: unknown;
+  resumeMap: Record<string, unknown> | undefined;
+  namespaceHash: string;
 }): PregelScratchpad {
   const nullResume = pendingWrites.find(
     ([writeTaskId, chan]) => writeTaskId === NULL_TASK_ID && chan === RESUME
   )?.[2];
 
-  const scratchpad = {
-    callCounter: 0,
-    interruptCounter: -1,
-    resume: pendingWrites
+  const resume = (() => {
+    const result = pendingWrites
       .filter(
         ([writeTaskId, chan]) => writeTaskId === taskId && chan === RESUME
       )
-      .flatMap(([_writeTaskId, _chan, resume]) => resume),
+      .flatMap(([_writeTaskId, _chan, resume]) => resume);
+
+    if (resumeMap != null && namespaceHash in resumeMap) {
+      const mappedResume = resumeMap[namespaceHash];
+      result.push(mappedResume);
+    }
+
+    return result;
+  })();
+
+  const scratchpad = {
+    callCounter: 0,
+    interruptCounter: -1,
+    resume,
     nullResume,
     subgraphCounter: 0,
     currentTaskInput,

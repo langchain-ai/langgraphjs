@@ -691,6 +691,7 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
+              interrupt_id: expect.any(String),
               ns: [
                 expect.stringMatching(/^interruptGraph:/),
                 expect.stringMatching(/^interruptTask:/),
@@ -756,6 +757,7 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
+              interrupt_id: expect.any(String),
               ns: [expect.stringMatching(/^interruptGraph:/)],
               resumable: true,
               value: "Provide value for bar:",
@@ -804,6 +806,7 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
+              interrupt_id: expect.any(String),
               ns: [
                 expect.stringMatching(/^interruptGraph:/),
                 expect.stringMatching(/^bar:/),
@@ -845,6 +848,7 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
+              interrupt_id: expect.any(String),
               ns: [expect.stringMatching(/^falsyGraph:/)],
               resumable: true,
               value: "test",
@@ -889,6 +893,7 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
+              interrupt_id: expect.any(String),
               ns: [expect.stringMatching(/^graph:/)],
               resumable: true,
               value: { a: "boo1" },
@@ -907,6 +912,7 @@ export function runFuncTests(
         expect(secondRun).toEqual({
           __interrupt__: [
             {
+              interrupt_id: expect.any(String),
               ns: [expect.stringMatching(/^graph:/)],
               resumable: true,
               value: { a: "boo2" },
@@ -924,6 +930,7 @@ export function runFuncTests(
         expect(thirdRun).toEqual({
           __interrupt__: [
             {
+              interrupt_id: expect.any(String),
               ns: [expect.stringMatching(/^graph:/)],
               resumable: true,
               value: { a: "boo3" },
@@ -976,6 +983,7 @@ export function runFuncTests(
         expect(result).toEqual({
           __interrupt__: [
             {
+              interrupt_id: expect.any(String),
               ns: [
                 expect.stringMatching(/^program:/),
                 expect.stringMatching(/^add-participant:/),
@@ -1006,6 +1014,7 @@ export function runFuncTests(
         expect(result).toEqual({
           __interrupt__: [
             {
+              interrupt_id: expect.any(String),
               ns: [
                 expect.stringMatching(/^program:/),
                 expect.stringMatching(/^add-participant:/),

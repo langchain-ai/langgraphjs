@@ -25,10 +25,10 @@ import {
 } from "../channels/base.js";
 import {
   Call,
+  type CallTaskPath,
   PregelExecutableTask,
   PregelScratchpad,
   StreamMode,
-  TaskPath,
 } from "./types.js";
 import {
   isCommand,
@@ -49,6 +49,7 @@ import {
   CONFIG_KEY_CHECKPOINT_NS,
   CHECKPOINT_NAMESPACE_END,
   CONFIG_KEY_CHECKPOINT_ID,
+  CONFIG_KEY_RESUME_MAP,
 } from "../constants.js";
 import {
   _applyWrites,
@@ -86,6 +87,7 @@ import { PregelNode } from "./read.js";
 import { ManagedValueMapping, WritableManagedValue } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { IterableReadableWritableStream, StreamChunk } from "./stream.js";
+import { isXXH3 } from "../hash.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
@@ -600,19 +602,32 @@ export class PregelLoop {
       ) {
         return;
       }
-      if (
-        writes.length > 0 &&
-        writes[0][0] !== ERROR &&
-        writes[0][0] !== INTERRUPT
-      ) {
-        this._emit(
-          gatherIteratorSync(
-            prefixGenerator(
-              mapOutputUpdates(this.outputKeys, [[task, writes]], cached),
-              "updates"
+
+      if (writes.length > 0) {
+        if (writes[0][0] === INTERRUPT) {
+          // in `algo.ts` we append a bool to the task path to indicate
+          // whether or not a call was present. If so, we don't emit the
+          // the interrupt as it'll be emitted by the parent.
+          if (task.path?.[0] === PUSH && task.path?.at(-1) === true) return;
+
+          const interruptWrites = writes
+            .filter((w) => w[0] === INTERRUPT)
+            .flatMap((w) => w[1] as string[]);
+
+          this._emit([
+            ["updates", { [INTERRUPT]: interruptWrites }],
+            ["values", { [INTERRUPT]: interruptWrites }],
+          ]);
+        } else if (writes[0][0] !== ERROR) {
+          this._emit(
+            gatherIteratorSync(
+              prefixGenerator(
+                mapOutputUpdates(this.outputKeys, [[task, writes]], cached),
+                "updates"
+              )
             )
-          )
-        );
+          );
+        }
       }
       if (!cached) {
         this._emit(
@@ -886,11 +901,12 @@ export class PregelLoop {
       }
 
       // Emit INTERRUPT event
-      const interrupts = { [INTERRUPT]: (error as GraphInterrupt).interrupts };
-      this._emit([
-        ["updates", interrupts],
-        ["values", interrupts],
-      ]);
+      if (isGraphInterrupt(error) && !error.interrupts.length) {
+        this._emit([
+          ["updates", { [INTERRUPT]: [] }],
+          ["values", { [INTERRUPT]: [] }],
+        ]);
+      }
     }
     return suppress;
   }
@@ -909,7 +925,7 @@ export class PregelLoop {
     }
 
     const pushed = _prepareSingleTask(
-      [PUSH, task.path ?? [], writeIdx, task.id, call] as TaskPath,
+      [PUSH, task.path ?? [], writeIdx, task.id, call] as CallTaskPath,
       this.checkpoint,
       this.checkpointPendingWrites,
       this.nodes,
@@ -975,8 +991,19 @@ export class PregelLoop {
       this.putWrites(NULL_TASK_ID, [[RESUME, scratchpad.nullResume]]);
     }
 
+    // map command to writes
     if (isCommand(this.input)) {
       const hasResume = this.input.resume != null;
+
+      if (
+        this.input.resume != null &&
+        typeof this.input.resume === "object" &&
+        Object.keys(this.input.resume).every(isXXH3)
+      ) {
+        this.config.configurable ??= {};
+        this.config.configurable[CONFIG_KEY_RESUME_MAP] = this.input.resume;
+      }
+
       if (hasResume && this.checkpointer == null) {
         throw new Error("Cannot use Command(resume=...) without checkpointer");
       }

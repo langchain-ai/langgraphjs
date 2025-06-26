@@ -597,7 +597,7 @@ export function isCall(value: unknown): value is Call {
 }
 
 export type SimpleTaskPath = [string, string | number];
-export type VariadicTaskPath = [string, ...(string | number)[]];
+export type VariadicTaskPath = [string, ...(string | number)[], boolean];
 export type CallTaskPath =
   | [string, ...(string | number)[], Call]
   | [string, TaskPath, ...(string | number)[], Call];
