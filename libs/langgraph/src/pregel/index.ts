@@ -1746,9 +1746,10 @@ export class Pregel<
       // but don't overwrite `streamMode`if provided
       if (config.configurable?.[CONFIG_KEY_TASK_ID] !== undefined) {
         defaultStreamMode = ["values"];
+      } else {
+        defaultStreamMode = this.streamMode;
       }
 
-      defaultStreamMode = this.streamMode;
       streamModeSingle = true;
     }
 
