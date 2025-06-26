@@ -1263,9 +1263,7 @@ export class Pregel<
         const nextCheckpoint = createCheckpoint(checkpoint, undefined, step);
         const nextConfig = await checkpointer.put(
           saved.parentConfig ??
-            (isCopyWithUpdates(values)
-              ? patchConfigurable(saved.config, { checkpoint_id: undefined })
-              : saved.config),
+            patchConfigurable(saved.config, { checkpoint_id: undefined }),
           nextCheckpoint,
           {
             source: "fork",
