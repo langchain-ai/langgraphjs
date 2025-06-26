@@ -21,7 +21,14 @@ import { LangGraphRunnableConfig } from "./runnable_types.js";
 /**
  * Selects the type of output you'll receive when streaming from the graph. See [Streaming](/langgraphjs/how-tos/#streaming) for more details.
  */
-export type StreamMode = "values" | "updates" | "debug" | "messages" | "custom";
+export type StreamMode =
+  | "values"
+  | "updates"
+  | "debug"
+  | "messages"
+  | "checkpoints"
+  | "tasks"
+  | "custom";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PregelInputType = any;
@@ -38,6 +45,35 @@ type StreamCustomOutput = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type StreamDebugOutput = Record<string, any>;
 
+type StreamCheckpointsOutput<StreamValues> = {
+  values: StreamValues;
+  next: string[];
+  config: RunnableConfig;
+  metadata?: CheckpointMetadata;
+  parentConfig?: RunnableConfig | undefined;
+  tasks: PregelTaskDescription[];
+};
+
+interface StreamTasksOutputBase {
+  id: string;
+  name: string;
+  interrupts: Interrupt[];
+}
+
+interface StreamTasksCreateOutput<StreamValues> extends StreamTasksOutputBase {
+  input: StreamValues;
+  triggers: string[];
+}
+
+interface StreamTasksResultOutput<Keys, StreamUpdates>
+  extends StreamTasksOutputBase {
+  result: [Keys, StreamUpdates][];
+}
+
+type StreamTasksOutput<StreamUpdates, StreamValues, Nodes = string> =
+  | StreamTasksCreateOutput<StreamValues>
+  | StreamTasksResultOutput<Nodes, StreamUpdates>;
+
 type DefaultStreamMode = "updates";
 
 export type StreamOutputMap<
@@ -45,7 +81,7 @@ export type StreamOutputMap<
   TStreamSubgraphs extends boolean,
   StreamUpdates,
   StreamValues,
-  Nodes = string
+  Nodes
 > = (
   undefined extends TStreamMode
     ? []
@@ -67,6 +103,16 @@ export type StreamOutputMap<
         ];
         messages: [string[], "messages", StreamMessageOutput];
         custom: [string[], "custom", StreamCustomOutput];
+        checkpoints: [
+          string[],
+          "checkpoints",
+          StreamCheckpointsOutput<StreamValues>
+        ];
+        tasks: [
+          string[],
+          "tasks",
+          StreamTasksOutput<StreamUpdates, StreamValues>
+        ];
         debug: [string[], "debug", StreamDebugOutput];
       }[Multiple]
     : {
@@ -77,6 +123,8 @@ export type StreamOutputMap<
         ];
         messages: ["messages", StreamMessageOutput];
         custom: ["custom", StreamCustomOutput];
+        checkpoints: ["checkpoints", StreamCheckpointsOutput<StreamValues>];
+        tasks: ["tasks", StreamTasksOutput<StreamUpdates, StreamValues, Nodes>];
         debug: ["debug", StreamDebugOutput];
       }[Multiple]
   : (
@@ -91,6 +139,11 @@ export type StreamOutputMap<
         ];
         messages: [string[], StreamMessageOutput];
         custom: [string[], StreamCustomOutput];
+        checkpoints: [string[], StreamCheckpointsOutput<StreamValues>];
+        tasks: [
+          string[],
+          StreamTasksOutput<StreamUpdates, StreamValues, Nodes>
+        ];
         debug: [string[], StreamDebugOutput];
       }[Single]
     : {
@@ -98,6 +151,8 @@ export type StreamOutputMap<
         updates: Record<Nodes extends string ? Nodes : string, StreamUpdates>;
         messages: StreamMessageOutput;
         custom: StreamCustomOutput;
+        checkpoints: StreamCheckpointsOutput<StreamValues>;
+        tasks: StreamTasksOutput<StreamUpdates, StreamValues, Nodes>;
         debug: StreamDebugOutput;
       }[Single]
   : never;

@@ -67,7 +67,10 @@ it("state graph annotation", async () => {
 
   expectTypeOf(
     await gatherIterator(
-      graph.stream(input, { streamMode: ["values"], subgraphs: true })
+      graph.stream(input, {
+        streamMode: ["values"],
+        subgraphs: true,
+      })
     )
   ).toExtend<[string[], "values", { foo: string[] }][]>();
 
@@ -83,7 +86,10 @@ it("state graph annotation", async () => {
 
   expectTypeOf(
     await gatherIterator(
-      graph.stream(input, { streamMode: ["updates"], subgraphs: true })
+      graph.stream(input, {
+        streamMode: ["updates"],
+        subgraphs: true,
+      })
     )
   ).toExtend<
     [
@@ -145,30 +151,14 @@ it("state graph annotation", async () => {
       | ["debug", Record<string, any>]
       | ["messages", [BaseMessage, Record<string, any>]]
       | ["custom", any]
-    )[]
-  >();
-
-  expectTypeOf(
-    await gatherIterator(
-      graph.stream(input, {
-        streamMode: ["updates", "values"] as
-          | StreamMode
-          | StreamMode[]
-          | undefined,
-        subgraphs: true,
-      })
-    )
-  ).toExtend<
-    (
+      | ["checkpoints", { values: { foo: string[] } }]
       | [
-          string[],
-          "updates",
-          Record<"one" | "two" | "three", { foo?: string[] | string }>
+          "tasks",
+          { id: string; name: string } & (
+            | { input: unknown }
+            | { result: [string, unknown][] }
+          )
         ]
-      | [string[], "values", { foo: string[] }]
-      | [string[], "debug", Record<string, any>]
-      | [string[], "messages", [BaseMessage, Record<string, any>]]
-      | [string[], "custom", any]
     )[]
   >();
 });
@@ -296,6 +286,14 @@ it("state graph zod", async () => {
       | ["debug", Record<string, any>]
       | ["messages", [BaseMessage, Record<string, any>]]
       | ["custom", any]
+      | ["checkpoints", { values: { foo: string[] } }]
+      | [
+          "tasks",
+          { id: string; name: string } & (
+            | { input: unknown }
+            | { result: [string, unknown][] }
+          )
+        ]
     )[]
   >();
 
@@ -320,6 +318,15 @@ it("state graph zod", async () => {
       | [string[], "debug", Record<string, any>]
       | [string[], "messages", [BaseMessage, Record<string, any>]]
       | [string[], "custom", any]
+      | [string[], "checkpoints", { values: { foo: string[] } }]
+      | [
+          string[],
+          "tasks",
+          { id: string; name: string } & (
+            | { input: unknown }
+            | { result: [string, unknown][] }
+          )
+        ]
     )[]
   >();
 });
