@@ -311,6 +311,7 @@ describe("Graph Structure Tests (Python port)", () => {
       {
         [INTERRUPT]: [
           {
+            interrupt_id: expect.any(String),
             value: "question",
             resumable: true,
             ns: expect.arrayContaining([expect.stringMatching(/^graph:/)]),
@@ -443,6 +444,7 @@ describe("Graph Structure Tests (Python port)", () => {
       {
         [INTERRUPT]: [
           {
+            interrupt_id: expect.any(String),
             value: "question",
             resumable: true,
             ns: expect.arrayContaining([expect.stringMatching(/^graph:/)]),
