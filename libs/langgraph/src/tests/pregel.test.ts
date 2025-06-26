@@ -9797,6 +9797,50 @@ graph TD;
       const result = await minimalMainGraph.invoke({ query: "test" }, config);
       expect(result).toBeDefined();
     });
+
+    it("streamMode should be respected", async () => {
+      const checkpointer = await createCheckpointer();
+      const subgraph = new StateGraph(MessagesAnnotation)
+        .addNode("c_one", () => ({ messages: ["c_one"] }))
+        .addEdge(START, "c_one")
+        .compile({ checkpointer });
+
+      const graph = new StateGraph(
+        Annotation.Root({
+          ...MessagesAnnotation.spec,
+          updates: Annotation<unknown[]>,
+        })
+      )
+        .addNode(
+          "p_one",
+          async (state) => ({
+            updates: await gatherIterator(
+              subgraph.stream(
+                { messages: state.messages },
+                { streamMode: "updates" }
+              )
+            ),
+          }),
+          { subgraphs: [subgraph] }
+        )
+        .addEdge(START, "p_one")
+        .compile({ checkpointer });
+
+      expect(
+        await graph.invoke(
+          { messages: ["input"] },
+          { configurable: { thread_id: "1" }, checkpointDuring }
+        )
+      ).toEqual({
+        messages: [new _AnyIdHumanMessage("input")],
+        updates: await gatherIterator(
+          subgraph.stream(
+            { messages: ["input"] },
+            { streamMode: "updates", configurable: { thread_id: "random" } }
+          )
+        ),
+      });
+    });
   });
 
   it("should work with streamMode messages and custom from within a subgraph", async () => {
