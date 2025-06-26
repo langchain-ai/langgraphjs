@@ -691,8 +691,7 @@ export function _prepareSingleTask<
         retry_policy: call.retry,
         cache_key: call.cache
           ? {
-              // TODO: add xxh3_128 hex digest
-              key: (call.cache.keyFunc ?? JSON.stringify)([call.input]),
+              key: XXH3((call.cache.keyFunc ?? JSON.stringify)([call.input])),
               ns: [CACHE_NS_WRITES, call.name ?? "__dynamic__"],
               ttl: call.cache.ttl,
             }
@@ -839,9 +838,9 @@ export function _prepareSingleTask<
           retry_policy: proc.retryPolicy,
           cache_key: proc.cachePolicy
             ? {
-                key: (proc.cachePolicy.keyFunc ?? JSON.stringify)([
-                  packet.args,
-                ]),
+                key: XXH3(
+                  (proc.cachePolicy.keyFunc ?? JSON.stringify)([packet.args])
+                ),
                 ns: [CACHE_NS_WRITES, proc.name ?? "__dynamic__", packet.node],
                 ttl: proc.cachePolicy.ttl,
               }
@@ -1020,7 +1019,9 @@ export function _prepareSingleTask<
             retry_policy: proc.retryPolicy,
             cache_key: proc.cachePolicy
               ? {
-                  key: (proc.cachePolicy.keyFunc ?? JSON.stringify)([val]),
+                  key: XXH3(
+                    (proc.cachePolicy.keyFunc ?? JSON.stringify)([val])
+                  ),
                   ns: [CACHE_NS_WRITES, proc.name ?? "__dynamic__", name],
                   ttl: proc.cachePolicy.ttl,
                 }
