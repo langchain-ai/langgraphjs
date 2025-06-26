@@ -3288,6 +3288,7 @@ graph TD;
         market: "DE",
         __interrupt__: [
           {
+            interrupt_id: expect.any(String),
             value: "Just because...",
             resumable: true,
             when: "during",
@@ -3324,6 +3325,7 @@ graph TD;
         market: "DE",
         __interrupt__: [
           {
+            interrupt_id: expect.any(String),
             value: "Just because...",
             resumable: true,
             when: "during",
@@ -3362,6 +3364,7 @@ graph TD;
             path: [PULL, "tool_two"],
             interrupts: [
               {
+                interrupt_id: expect.any(String),
                 ns: [expect.stringMatching(/^tool_two:/)],
                 resumable: true,
                 value: "Just because...",
@@ -13025,8 +13028,6 @@ graph TD;
       values[INTERRUPT].map((i) => [i.interrupt_id, `response: ${i.value}`])
     );
 
-    // TODO: this does seem to be flaky, indicating that the scratchpad
-    // sometimes does not see the resume value? Inspect why...
     expect(await graph.invoke(new Command({ resume }), config)).toEqual({
       prompts: ["a", "b", "c", "d", "e"],
       humanInputs: [

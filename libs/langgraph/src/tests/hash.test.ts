@@ -1,5 +1,5 @@
 import { expect, it, describe } from "vitest";
-import { XXH3 } from "../hash.js";
+import { isXXH3, XXH3 } from "../hash.js";
 
 describe("XXH3_128", () => {
   describe("empty string (0 bytes)", () => {
@@ -18,7 +18,7 @@ describe("XXH3_128", () => {
     });
 
     it("should hash 3 bytes", () => {
-      expect(XXH3("abc")).toBe("6b05ab6733a618578af5f94892f3950");
+      expect(XXH3("abc")).toBe("06b05ab6733a618578af5f94892f3950");
     });
   });
 
@@ -62,27 +62,19 @@ describe("XXH3_128", () => {
     });
 
     it("should hash 13 bytes", () => {
-      expect(XXH3("abcdefghijklm")).toBe(
-        "b3f3c61b89a9d1224c633bfeef25de5b"
-      );
+      expect(XXH3("abcdefghijklm")).toBe("b3f3c61b89a9d1224c633bfeef25de5b");
     });
 
     it("should hash 14 bytes", () => {
-      expect(XXH3("abcdefghijklmn")).toBe(
-        "4d15f6daa22c156bcb0743e0c58a8d23"
-      );
+      expect(XXH3("abcdefghijklmn")).toBe("4d15f6daa22c156bcb0743e0c58a8d23");
     });
 
     it("should hash 15 bytes", () => {
-      expect(XXH3("abcdefghijklmno")).toBe(
-        "5e190a0fa5ad0836d35dc9eaab32b9a0"
-      );
+      expect(XXH3("abcdefghijklmno")).toBe("5e190a0fa5ad0836d35dc9eaab32b9a0");
     });
 
     it("should hash 16 bytes", () => {
-      expect(XXH3("abcdefghijklmnop")).toBe(
-        "1f58fc809b1b8c4b3e8e153ff12f6330"
-      );
+      expect(XXH3("abcdefghijklmnop")).toBe("1f58fc809b1b8c4b3e8e153ff12f6330");
     });
   });
 
@@ -232,5 +224,19 @@ describe("XXH3_128", () => {
       expect(input.length).toBe(241);
       expect(XXH3(input)).toBe("b90b3e70eb1fd4a05d911035549cfeaf");
     });
+  });
+
+  it("is xxh3", () => {
+    const hashes = [
+      "32492f4bab4024f66da6c4ff3e821c65",
+      "f2d76ea0c369b4533fa9aa9a35a8977a",
+      "f9ba21d816b67aa8ec87181f23014542",
+      "4a48370063a9d5590bb01dba7d4aadaa",
+      "04a913522053b6d1de18c51b98821e54",
+    ];
+
+    for (const hash of hashes) {
+      expect(isXXH3(hash), hash).toBe(true);
+    }
   });
 });

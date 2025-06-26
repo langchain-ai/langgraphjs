@@ -476,10 +476,11 @@ export function XXH3(input: Uint8Array | string, seed: bigint = n(0)) {
   const data = view(typeof input === "string" ? encoder.encode(input) : input);
   const len = data.byteLength;
 
-  if (len <= 16) return XXH3_len_0to16_128b(data, seed).toString(16);
-  if (len <= 128) return XXH3_len_17to128_128b(data, kkey, seed).toString(16);
-  if (len <= 240) return XXH3_len_129to240_128b(data, kkey, seed).toString(16);
-  return XXH3_hashLong_128b(data, kkey).toString(16);
+  const hexDigest = (data: bigint) => data.toString(16).padStart(32, "0");
+  if (len <= 16) return hexDigest(XXH3_len_0to16_128b(data, seed));
+  if (len <= 128) return hexDigest(XXH3_len_17to128_128b(data, kkey, seed));
+  if (len <= 240) return hexDigest(XXH3_len_129to240_128b(data, kkey, seed));
+  return hexDigest(XXH3_hashLong_128b(data, kkey));
 }
 
 export function isXXH3(value: string): boolean {
