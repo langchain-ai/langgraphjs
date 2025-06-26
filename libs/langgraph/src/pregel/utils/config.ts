@@ -143,7 +143,7 @@ export function getWriter(
     );
   }
 
-  return runConfig?.configurable?.writer;
+  return runConfig?.writer || runConfig?.configurable?.writer;
 }
 
 /**
