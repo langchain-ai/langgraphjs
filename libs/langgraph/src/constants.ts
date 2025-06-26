@@ -181,6 +181,7 @@ export type Interrupt<Value = any> = {
   when: "during" | (string & {});
   resumable?: boolean;
   ns?: string[];
+  interrupt_id?: string;
 };
 
 /**

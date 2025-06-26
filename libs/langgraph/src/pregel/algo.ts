@@ -52,6 +52,7 @@ import {
   CONFIG_KEY_PREVIOUS_STATE,
   PREVIOUS,
   CACHE_NS_WRITES,
+  CONFIG_KEY_RESUME_MAP,
 } from "../constants.js";
 import {
   Call,
@@ -69,6 +70,7 @@ import { ManagedValueMapping } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { getRunnableForFunc } from "./call.js";
 import { IterableReadableWritableStream } from "./stream.js";
+import { XXH3 } from "../hash.js";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -672,6 +674,8 @@ export function _prepareSingleTask<
                 pendingWrites: pendingWrites ?? [],
                 taskId: id,
                 currentTaskInput: call.input,
+                resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
+                namespaceHash: XXH3(taskCheckpointNamespace),
               }),
               [CONFIG_KEY_PREVIOUS_STATE]: checkpoint.channel_values[PREVIOUS],
               checkpoint_id: undefined,
@@ -817,6 +821,8 @@ export function _prepareSingleTask<
                   pendingWrites: pendingWrites ?? [],
                   taskId,
                   currentTaskInput: packet.args,
+                  resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
+                  namespaceHash: XXH3(taskCheckpointNamespace),
                 }),
                 [CONFIG_KEY_PREVIOUS_STATE]:
                   checkpoint.channel_values[PREVIOUS],
@@ -996,6 +1002,8 @@ export function _prepareSingleTask<
                     pendingWrites: pendingWrites ?? [],
                     taskId,
                     currentTaskInput: val,
+                    resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
+                    namespaceHash: XXH3(taskCheckpointNamespace),
                   }),
                   [CONFIG_KEY_PREVIOUS_STATE]:
                     checkpoint.channel_values[PREVIOUS],
@@ -1114,23 +1122,38 @@ function _scratchpad({
   pendingWrites,
   taskId,
   currentTaskInput,
+  resumeMap,
+  namespaceHash,
 }: {
   pendingWrites: CheckpointPendingWrite[];
   taskId: string;
   currentTaskInput: unknown;
+  resumeMap: Record<string, unknown> | undefined;
+  namespaceHash: string;
 }): PregelScratchpad {
   const nullResume = pendingWrites.find(
     ([writeTaskId, chan]) => writeTaskId === NULL_TASK_ID && chan === RESUME
   )?.[2];
 
-  const scratchpad = {
-    callCounter: 0,
-    interruptCounter: -1,
-    resume: pendingWrites
+  const resume = (() => {
+    const result = pendingWrites
       .filter(
         ([writeTaskId, chan]) => writeTaskId === taskId && chan === RESUME
       )
-      .flatMap(([_writeTaskId, _chan, resume]) => resume),
+      .flatMap(([_writeTaskId, _chan, resume]) => resume);
+
+    if (resumeMap != null && namespaceHash in resumeMap) {
+      const mappedResume = resumeMap[namespaceHash];
+      result.push(mappedResume);
+    }
+
+    return result;
+  })();
+
+  const scratchpad = {
+    callCounter: 0,
+    interruptCounter: -1,
+    resume,
     nullResume,
     subgraphCounter: 0,
     currentTaskInput,

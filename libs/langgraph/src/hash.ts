@@ -471,7 +471,7 @@ function XXH3_len_129to240_128b(
 }
 
 // 16 byte min input
-export function XXH3_128(input: Uint8Array | string, seed: bigint = n(0)) {
+export function XXH3(input: Uint8Array | string, seed: bigint = n(0)) {
   const encoder = new TextEncoder();
   const data = view(typeof input === "string" ? encoder.encode(input) : input);
   const len = data.byteLength;
@@ -480,4 +480,9 @@ export function XXH3_128(input: Uint8Array | string, seed: bigint = n(0)) {
   if (len <= 128) return XXH3_len_17to128_128b(data, kkey, seed).toString(16);
   if (len <= 240) return XXH3_len_129to240_128b(data, kkey, seed).toString(16);
   return XXH3_hashLong_128b(data, kkey).toString(16);
+}
+
+export function isXXH3(value: string): boolean {
+  // Check if the given string matches the format of XXH3 (128 bit hex digest).
+  return /^[0-9a-f]{32}$/.test(value);
 }

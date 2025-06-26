@@ -118,6 +118,7 @@ import {
 } from "../graph/zod/schema.js";
 import "../graph/zod/plugin.js";
 import { withLangGraph } from "../graph/zod/meta.js";
+import { isXXH3, XXH3 } from "../hash.js";
 
 expect.extend({
   toHaveKeyStartingWith(received: object, prefix: string) {
@@ -12972,43 +12973,70 @@ graph TD;
     const checkpointer = await createCheckpointer();
     const config = { configurable: { thread_id: "1" } };
 
+    const childGraph = new StateGraph(
+      Annotation.Root({
+        prompt: Annotation<string>,
+        humanInput: Annotation<string>,
+        humanInputs: Annotation<string[]>,
+      })
+    )
+      .addNode("getHumanInput", (state) => {
+        const humanInput = interrupt(state.prompt);
+        return { humanInput, humanInputs: [humanInput] };
+      })
+      .addEdge(START, "getHumanInput")
+      .compile();
+
     const graph = new StateGraph(
       Annotation.Root({
-        inputs: Annotation<("a" | "b" | "c")[]>,
-        outputs: Annotation<string[]>({
+        prompts: Annotation<string[]>,
+        humanInputs: Annotation<string[]>({
           default: () => [],
           reducer: (a, b) => [...a, ...b],
         }),
       })
     )
-      .addNode({
-        a: () => ({ outputs: [interrupt<string>("a")] }),
-        b: () => ({ outputs: [interrupt<string>("b")] }),
-        c: () => ({ outputs: [interrupt<string>("c")] }),
+      .addNode("childGraph", childGraph)
+      .addNode("cleanup", (state) => {
+        expect(state.humanInputs).toHaveLength(state.prompts.length);
+        return {};
       })
-      .addNode(
-        "cleanup",
-        (state) => {
-          expect(state.outputs).toHaveLength(state.inputs.length);
-          return {};
-        },
-        { defer: true }
-      )
       .addConditionalEdges(
         START,
-        (state) => state.inputs.map((prompt) => new Send(prompt, state)),
-        ["a", "b", "c"]
+        ({ prompts }) =>
+          prompts.map((prompt) => new Send("childGraph", { prompt })),
+        ["childGraph"]
       )
-      .addEdge(["a", "b", "c"], "cleanup")
+      .addEdge("childGraph", "cleanup")
+      .addEdge("cleanup", END)
       .compile({ checkpointer });
 
-    const values = await graph.invoke({ inputs: ["a", "b", "c"] }, config);
+    const prompts = ["a", "b", "c", "d", "e"];
+
+    const values = await graph.invoke({ prompts }, config);
     const state = await graph.getState(config);
+    const interrupts = state.tasks.flatMap((t) => t.interrupts);
 
-    if (!isInterrupted(values)) throw new Error("Graph was not interrupted");
-    expect(values[INTERRUPT]).toEqual(state.tasks.flatMap((t) => t.interrupts));
+    if (!isInterrupted<string>(values))
+      throw new Error("Graph was not interrupted");
+    expect(values[INTERRUPT]).toEqual(interrupts);
 
-    // TODO: add tests for multiple resumes after we have a stable ID for interrupts
+    const resume = Object.fromEntries(
+      values[INTERRUPT].map((i) => [i.interrupt_id, `response: ${i.value}`])
+    );
+
+    // TODO: this does seem to be flaky, indicating that the scratchpad
+    // sometimes does not see the resume value? Inspect why...
+    expect(await graph.invoke(new Command({ resume }), config)).toEqual({
+      prompts: ["a", "b", "c", "d", "e"],
+      humanInputs: [
+        "response: a",
+        "response: b",
+        "response: c",
+        "response: d",
+        "response: e",
+      ],
+    });
   });
 }
 

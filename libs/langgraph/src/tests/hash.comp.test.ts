@@ -1,87 +1,82 @@
 import { expect, it, describe } from "vitest";
+import { XXH3_128 as XHH3_128_OLD } from "../hash.old.js";
 import { XXH3 } from "../hash.js";
 
 describe("XXH3_128", () => {
   describe("empty string (0 bytes)", () => {
     it("should hash empty string", () => {
-      expect(XXH3("")).toBe("99aa06d3014798d86001c324468d497f");
+      expect(XXH3("")).toBe(XHH3_128_OLD(""));
     });
   });
 
   describe("1-3 bytes", () => {
     it("should hash 1 byte", () => {
-      expect(XXH3("a")).toBe("a96faf705af16834e6c632b61e964e1f");
+      expect(XXH3("a")).toBe(XHH3_128_OLD("a"));
     });
 
     it("should hash 2 bytes", () => {
-      expect(XXH3("ab")).toBe("89c65ebc828eebaca873719c24d5735c");
+      expect(XXH3("ab")).toBe(XHH3_128_OLD("ab"));
     });
 
     it("should hash 3 bytes", () => {
-      expect(XXH3("abc")).toBe("6b05ab6733a618578af5f94892f3950");
+      expect(XXH3("abc")).toBe(XHH3_128_OLD("abc"));
     });
   });
 
   describe("4-8 bytes", () => {
     it("should hash 4 bytes", () => {
-      expect(XXH3("abcd")).toBe("8d6b60383dfa90c21be79eecd1b1353d");
+      expect(XXH3("abcd")).toBe(XHH3_128_OLD("abcd"));
     });
 
     it("should hash 5 bytes", () => {
-      expect(XXH3("abcde")).toBe("3043c78169f25c3f97d5a48ef320eec2");
+      expect(XXH3("abcde")).toBe(XHH3_128_OLD("abcde"));
     });
 
     it("should hash 6 bytes", () => {
-      expect(XXH3("abcdef")).toBe("389197a55db2b2e4da35a6714d34f8a2");
+      expect(XXH3("abcdef")).toBe(XHH3_128_OLD("abcdef"));
     });
 
     it("should hash 7 bytes", () => {
-      expect(XXH3("abcdefg")).toBe("2aafd83869a59c313fe798c0edaa6dc6");
+      expect(XXH3("abcdefg")).toBe(XHH3_128_OLD("abcdefg"));
     });
 
     it("should hash 8 bytes", () => {
-      expect(XXH3("abcdefgh")).toBe("dac23237af37353342b702b313880f12");
+      expect(XXH3("abcdefgh")).toBe(XHH3_128_OLD("abcdefgh"));
     });
   });
 
   describe("9-16 bytes", () => {
     it("should hash 9 bytes", () => {
-      expect(XXH3("abcdefghi")).toBe("b43ff5bc5ff2e0adc0646b2d7986db98");
+      expect(XXH3("abcdefghi")).toBe(XHH3_128_OLD("abcdefghi"));
     });
 
     it("should hash 10 bytes", () => {
-      expect(XXH3("abcdefghij")).toBe("9e814df2752571c7b0a8c058e69ff5a7");
+      expect(XXH3("abcdefghij")).toBe(XHH3_128_OLD("abcdefghij"));
     });
 
     it("should hash 11 bytes", () => {
-      expect(XXH3("abcdefghijk")).toBe("f63802ddeb8a84810c30617e220bd2c5");
+      expect(XXH3("abcdefghijk")).toBe(XHH3_128_OLD("abcdefghijk"));
     });
 
     it("should hash 12 bytes", () => {
-      expect(XXH3("abcdefghijkl")).toBe("d5c1c71e1ef3a2b6ca41a0e8a26ef9e2");
+      expect(XXH3("abcdefghijkl")).toBe(XHH3_128_OLD("abcdefghijkl"));
     });
 
     it("should hash 13 bytes", () => {
-      expect(XXH3("abcdefghijklm")).toBe(
-        "b3f3c61b89a9d1224c633bfeef25de5b"
-      );
+      expect(XXH3("abcdefghijklm")).toBe(XHH3_128_OLD("abcdefghijklm"));
     });
 
     it("should hash 14 bytes", () => {
-      expect(XXH3("abcdefghijklmn")).toBe(
-        "4d15f6daa22c156bcb0743e0c58a8d23"
-      );
+      expect(XXH3("abcdefghijklmn")).toBe(XHH3_128_OLD("abcdefghijklmn"));
     });
 
     it("should hash 15 bytes", () => {
-      expect(XXH3("abcdefghijklmno")).toBe(
-        "5e190a0fa5ad0836d35dc9eaab32b9a0"
-      );
+      expect(XXH3("abcdefghijklmno")).toBe(XHH3_128_OLD("abcdefghijklmno"));
     });
 
     it("should hash 16 bytes", () => {
       expect(XXH3("abcdefghijklmnop")).toBe(
-        "1f58fc809b1b8c4b3e8e153ff12f6330"
+        XHH3_128_OLD("abcdefghijklmnop")
       );
     });
   });
@@ -89,24 +84,24 @@ describe("XXH3_128", () => {
   describe("17-128 bytes", () => {
     it("should hash 17 bytes", () => {
       const input = "abcdefghijklmnopq";
-      expect(XXH3(input)).toBe("11078c38a5ca3a8dc3acc9940596efab");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
 
     it("should hash 32 bytes", () => {
       const input = "abcdefghijklmnopqrstuvwxyz123456";
-      expect(XXH3(input)).toBe("668b14f3933edd9f52625e96b6d3b0f3");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
 
     it("should hash 64 bytes", () => {
       const input =
         "abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz123456";
-      expect(XXH3(input)).toBe("2d794cf93e1a067211e9b7a76062d8d6");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
 
     it("should hash 128 bytes", () => {
       const input =
         "abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz123456";
-      expect(XXH3(input)).toBe("8d2ec8e569ae8fa6d7cc4c23a95f14d9");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
   });
 
@@ -114,19 +109,19 @@ describe("XXH3_128", () => {
     it("should hash 129 bytes", () => {
       const input =
         "abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz123456a";
-      expect(XXH3(input)).toBe("b2ea1620c3bb852c2012ecacf727c481");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
 
     it("should hash 160 bytes", () => {
       const input =
         "abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890";
-      expect(XXH3(input)).toBe("c800bd4157366fc23720f1739930fb8a");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
 
     it("should hash 240 bytes", () => {
       const input =
         "abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890";
-      expect(XXH3(input)).toBe("bc971ffa336b4d9c484aaf4bea72ea4c");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
   });
 
@@ -134,77 +129,77 @@ describe("XXH3_128", () => {
     it("should hash 241 bytes", () => {
       const input =
         "abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890a";
-      expect(XXH3(input)).toBe("6ac1192bda13b7b0ccc2d9ba4de6130f");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
 
     it("should hash 512 bytes", () => {
       const input = "a".repeat(512);
-      expect(XXH3(input)).toBe("9718dbab650037cd4659a548a9cc8db1");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
 
     it("should hash 1024 bytes", () => {
       const input = "b".repeat(1024);
-      expect(XXH3(input)).toBe("fd5ea522e67427228507db63d38fc496");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
 
     it("should hash 4096 bytes", () => {
       const input = "c".repeat(4096);
-      expect(XXH3(input)).toBe("b1fc3898cb4ccfb9bc50ac89ff26de23");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
   });
 
   describe("Uint8Array input", () => {
     it("should hash Uint8Array", () => {
       const input = new TextEncoder().encode("hello");
-      expect(XXH3(input)).toBe("b5e9c1ad071b3e7fc779cfaa5e523818");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
 
     it("should hash empty Uint8Array", () => {
       const input = new Uint8Array(0);
-      expect(XXH3(input)).toBe("99aa06d3014798d86001c324468d497f");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
 
     it("should hash single byte Uint8Array", () => {
       const input = new Uint8Array([97]); // 'a'
-      expect(XXH3(input)).toBe("a96faf705af16834e6c632b61e964e1f");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
   });
 
   describe("seed parameter", () => {
     it("should hash with seed 0", () => {
-      expect(XXH3("hello", 0n)).toBe("b5e9c1ad071b3e7fc779cfaa5e523818");
+      expect(XXH3("hello", 0n)).toBe(XHH3_128_OLD("hello", 0n));
     });
 
     it("should hash with seed 1", () => {
-      expect(XXH3("hello", 1n)).toBe("4a93b99b880550ca7edc2e874953d36d");
+      expect(XXH3("hello", 1n)).toBe(XHH3_128_OLD("hello", 1n));
     });
 
     it("should hash with large seed", () => {
       expect(XXH3("hello", 123456789n)).toBe(
-        "f3dd985a017416ec2e47f80041087a9f"
+        XHH3_128_OLD("hello", 123456789n)
       );
     });
 
     it("should hash empty string with seed", () => {
-      expect(XXH3("", 42n)).toBe("16c20acd33f7af2f3c1d09e9fe249164");
+      expect(XXH3("", 42n)).toBe(XHH3_128_OLD("", 42n));
     });
   });
 
   describe("edge cases", () => {
     it("should handle unicode characters", () => {
-      expect(XXH3("hello世界")).toBe("136ef66cd12de20cef7671666c482f52");
+      expect(XXH3("hello世界")).toBe(XHH3_128_OLD("hello世界"));
     });
 
     it("should handle special characters", () => {
-      expect(XXH3("!@#$%^&*()")).toBe("ecce31aa3ba802e484741d278c4654b0");
+      expect(XXH3("!@#$%^&*()")).toBe(XHH3_128_OLD("!@#$%^&*()"));
     });
 
     it("should handle newlines", () => {
-      expect(XXH3("hello\nworld")).toBe("9b32ed3fe4b0707222962e00f9cd6b5a");
+      expect(XXH3("hello\nworld")).toBe(XHH3_128_OLD("hello\nworld"));
     });
 
     it("should handle tabs", () => {
-      expect(XXH3("hello\tworld")).toBe("234bacfb02656dc40604b57b6fc10016");
+      expect(XXH3("hello\tworld")).toBe(XHH3_128_OLD("hello\tworld"));
     });
   });
 
@@ -212,25 +207,25 @@ describe("XXH3_128", () => {
     it("should hash exactly 16 bytes", () => {
       const input = "1234567890123456";
       expect(input.length).toBe(16);
-      expect(XXH3(input)).toBe("f57143299804fb6a2e61ad3f8cc8fed5");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
 
     it("should hash exactly 128 bytes", () => {
       const input = "a".repeat(128);
       expect(input.length).toBe(128);
-      expect(XXH3(input)).toBe("134e2a91815f3105ef354c1b9e35d99d");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
 
     it("should hash exactly 240 bytes", () => {
       const input = "b".repeat(240);
       expect(input.length).toBe(240);
-      expect(XXH3(input)).toBe("5bb7a7da5e4ff82c807fb4b4352efc95");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
 
     it("should hash exactly 241 bytes", () => {
       const input = "c".repeat(241);
       expect(input.length).toBe(241);
-      expect(XXH3(input)).toBe("b90b3e70eb1fd4a05d911035549cfeaf");
+      expect(XXH3(input)).toBe(XHH3_128_OLD(input));
     });
   });
 });
