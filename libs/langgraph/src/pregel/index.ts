@@ -1742,13 +1742,14 @@ export class Pregel<
       defaultStreamMode = Array.isArray(streamMode) ? streamMode : [streamMode];
       streamModeSingle = typeof streamMode === "string";
     } else {
+      // if being called as a node in another graph, default to values mode
+      // but don't overwrite `streamMode`if provided
+      if (config.configurable?.[CONFIG_KEY_TASK_ID] !== undefined) {
+        defaultStreamMode = ["values"];
+      }
+
       defaultStreamMode = this.streamMode;
       streamModeSingle = true;
-    }
-
-    // if being called as a node in another graph, always use values mode
-    if (config.configurable?.[CONFIG_KEY_TASK_ID] !== undefined) {
-      defaultStreamMode = ["values"];
     }
 
     let defaultCheckpointer: BaseCheckpointSaver | undefined;
