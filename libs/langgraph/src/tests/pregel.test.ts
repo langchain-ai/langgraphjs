@@ -3501,40 +3501,31 @@ graph TD;
     it("should handle partial pending checkpoint", async () => {
       const checkpointer = await createCheckpointer();
 
-      const StateAnnotation = Annotation.Root({
-        my_key: Annotation<string>({
-          reducer: (a, b) => a + b,
-        }),
-        market: Annotation<string>,
-      });
-
-      const toolOne = (
-        s: typeof StateAnnotation.State
-      ): typeof StateAnnotation.Update => {
-        return { my_key: " one" };
-      };
-
       let toolTwoNodeCount = 0;
 
-      function toolTwoNode(
-        s: typeof StateAnnotation.State
-      ): typeof StateAnnotation.Update {
-        toolTwoNodeCount += 1;
-        const answer =
-          s.market === "DE" ? interrupt("Just because...") : " all good";
-        return { my_key: answer };
-      }
+      const toolTwoGraph = new StateGraph(
+        Annotation.Root({
+          my_key: Annotation<string>({ reducer: (a, b) => a + b }),
+          market: Annotation<string>,
+        })
+      )
+        .addNode({
+          tool_one: () => ({ my_key: " one" }),
+          tool_two: ({ market }) => {
+            toolTwoNodeCount += 1;
 
-      function start(
-        state: typeof StateAnnotation.State
-      ): Array<Send | string> {
-        return ["tool_two", new Send("tool_one", state)];
-      }
+            if (market === "DE") {
+              return { my_key: interrupt("Just because...") };
+            }
 
-      const toolTwoGraph = new StateGraph(StateAnnotation)
-        .addNode("tool_two", toolTwoNode)
-        .addNode("tool_one", toolOne)
-        .addConditionalEdges(START, start, ["tool_one", "tool_two"]);
+            return { my_key: " all good" };
+          },
+        })
+        .addConditionalEdges(
+          START,
+          (state) => ["tool_two", new Send("tool_one", state)],
+          ["tool_one", "tool_two"]
+        );
 
       let toolTwo = toolTwoGraph.compile();
 
