@@ -3312,10 +3312,11 @@ graph TD;
         toolTwo.invoke({ my_key: "value", market: "DE" })
       ).rejects.toThrow(/thread_id/);
 
-      const thread1 = { configurable: { thread_id: "1" } };
+      const thread2 = { configurable: { thread_id: "2" } };
+
       // stop when about to enter node
       expect(
-        await toolTwo.invoke({ my_key: "value ⛰️", market: "DE" }, thread1)
+        await toolTwo.invoke({ my_key: "value ⛰️", market: "DE" }, thread2)
       ).toEqual({
         my_key: "value ⛰️",
         market: "DE",
@@ -3331,7 +3332,7 @@ graph TD;
 
       const toolTwoCheckpointer = toolTwo.checkpointer as BaseCheckpointSaver;
       const checkpoints = await gatherIterator(
-        toolTwoCheckpointer.list(thread1)
+        toolTwoCheckpointer.list(thread2)
       );
       expect(checkpoints.map((c) => c.metadata)).toEqual([
         {
@@ -3348,7 +3349,7 @@ graph TD;
         },
       ]);
 
-      const state = await toolTwo.getState(thread1);
+      const state = await toolTwo.getState(thread2);
       expect(state).toEqual({
         values: { my_key: "value ⛰️", market: "DE" },
         next: ["tool_two"],
@@ -3367,8 +3368,93 @@ graph TD;
             ],
           },
         ],
-        config: (await toolTwoCheckpointer.getTuple(thread1))!.config,
-        createdAt: (await toolTwoCheckpointer.getTuple(thread1))!.checkpoint.ts,
+        config: (await toolTwoCheckpointer.getTuple(thread2))!.config,
+        createdAt: (await toolTwoCheckpointer.getTuple(thread2))!.checkpoint.ts,
+        metadata: {
+          source: "loop",
+          step: 0,
+          writes: null,
+          parents: {},
+          thread_id: "2",
+        },
+        parentConfig: (
+          await gatherIterator(toolTwoCheckpointer.list(thread2, { limit: 2 }))
+        ).slice(-1)[0].config,
+      });
+
+      // resume execution
+      expect(
+        await gatherIterator(
+          toolTwo.stream(new Command({ resume: " this is great" }), thread2)
+        )
+      ).toEqual([
+        {
+          tool_two: { my_key: " this is great" },
+        },
+      ]);
+
+      // flow: interrupt -> clear tasks
+      const thread1 = { configurable: { thread_id: "1" } };
+
+      // stop when about to enter node
+      expect(
+        await toolTwo.invoke(
+          { my_key: "value ⛰️", market: "DE" },
+          { ...thread1, checkpointDuring: false }
+        )
+      ).toEqual({
+        my_key: "value ⛰️",
+        market: "DE",
+        __interrupt__: [
+          {
+            value: "Just because...",
+            resumable: true,
+            when: "during",
+            ns: [expect.stringMatching(/^tool_two:/)],
+          },
+        ],
+      });
+
+      expect(
+        (await gatherIterator(toolTwoCheckpointer.list(thread1))).map(
+          (c) => c.metadata
+        )
+      ).toEqual([
+        {
+          source: "loop",
+          step: 0,
+          writes: null,
+          parents: {},
+        },
+      ]);
+
+      expect(await toolTwo.getState(thread1)).toEqual({
+        values: { my_key: "value ⛰️", market: "DE" },
+        next: ["tool_two"],
+        tasks: [
+          {
+            id: expect.any(String),
+            interrupts: [
+              {
+                ns: [expect.stringMatching(/^tool_two:/)],
+                resumable: true,
+                value: "Just because...",
+                when: "during",
+              },
+            ],
+            name: "tool_two",
+            path: [PULL, "tool_two"],
+            result: undefined,
+          },
+        ],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
         metadata: {
           source: "loop",
           step: 0,
@@ -3376,25 +3462,235 @@ graph TD;
           parents: {},
           thread_id: "1",
         },
-        parentConfig: (
-          await gatherIterator(toolTwoCheckpointer.list(thread1, { limit: 2 }))
-        ).slice(-1)[0].config,
+        parentConfig: undefined,
       });
 
-      // resume execution
-      expect(
-        await gatherIterator(
-          toolTwo.stream(new Command({ resume: " this is great" }), {
-            configurable: { thread_id: "1" },
-          })
-        )
-      ).toEqual([
-        {
-          tool_two: {
-            my_key: " this is great",
+      // clear the interrupt and next tasks
+      await toolTwo.updateState(thread1, null, END);
+
+      // interrupt and next tasks are cleared
+      expect(await toolTwo.getState(thread1)).toEqual({
+        values: { my_key: "value ⛰️", market: "DE" },
+        next: [],
+        tasks: [],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
           },
         },
+        createdAt: expect.any(String),
+        metadata: {
+          source: "update",
+          step: 1,
+          writes: {},
+          parents: {},
+          thread_id: "1",
+        },
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      });
+    });
+
+    it("should handle partial pending checkpoint", async () => {
+      const checkpointer = await createCheckpointer();
+
+      const StateAnnotation = Annotation.Root({
+        my_key: Annotation<string>({
+          reducer: (a, b) => a + b,
+        }),
+        market: Annotation<string>,
+      });
+
+      const toolOne = (
+        s: typeof StateAnnotation.State
+      ): typeof StateAnnotation.Update => {
+        return { my_key: " one" };
+      };
+
+      let toolTwoNodeCount = 0;
+
+      function toolTwoNode(
+        s: typeof StateAnnotation.State
+      ): typeof StateAnnotation.Update {
+        toolTwoNodeCount += 1;
+        const answer =
+          s.market === "DE" ? interrupt("Just because...") : " all good";
+        return { my_key: answer };
+      }
+
+      function start(
+        state: typeof StateAnnotation.State
+      ): Array<Send | string> {
+        return ["tool_two", new Send("tool_one", state)];
+      }
+
+      const toolTwoGraph = new StateGraph(StateAnnotation)
+        .addNode("tool_two", toolTwoNode)
+        .addNode("tool_one", toolOne)
+        .addConditionalEdges(START, start, ["tool_one", "tool_two"]);
+
+      let toolTwo = toolTwoGraph.compile();
+
+      const tracer = new FakeTracer();
+      expect(
+        await toolTwo.invoke(
+          { my_key: "value", market: "DE" },
+          { callbacks: [tracer] }
+        )
+      ).toEqual({
+        my_key: "value one",
+        market: "DE",
+        __interrupt__: [
+          {
+            value: "Just because...",
+            resumable: true,
+            ns: [expect.stringMatching(/^tool_two:/)],
+            when: "during",
+          },
+        ],
+      });
+
+      expect(toolTwoNodeCount).toBe(1); // interrupts aren't retried
+      expect(tracer.runs.length).toBe(1);
+
+      const run = tracer.runs[0];
+      expect(run.end_time).toBeDefined();
+      expect(run.error).toBeUndefined();
+      // TODO: there seems to be a bug with tracing
+      // expect(run.outputs).toEqual({ market: "DE", my_key: "value one" });
+
+      expect(await toolTwo.invoke({ my_key: "value", market: "US" })).toEqual({
+        my_key: "value all good one",
+        market: "US",
+      });
+
+      toolTwo = toolTwoGraph.compile({ checkpointer });
+
+      // missing thread_id
+      await expect(
+        toolTwo.invoke({ my_key: "value", market: "DE" })
+      ).rejects.toThrow(/thread_id/);
+
+      const thread2 = { configurable: { thread_id: "2" } };
+
+      // stop when about to enter node
+      expect(
+        await toolTwo.invoke({ my_key: "value ⛰️", market: "DE" }, thread2)
+      ).toEqual({
+        my_key: "value ⛰️ one",
+        market: "DE",
+        __interrupt__: [
+          {
+            value: "Just because...",
+            resumable: true,
+            ns: [expect.stringMatching(/^tool_two:/)],
+            when: "during",
+          },
+        ],
+      });
+
+      const toolTwoCheckpointer = toolTwo.checkpointer as BaseCheckpointSaver;
+      const checkpoints = await gatherIterator(
+        toolTwoCheckpointer.list(thread2)
+      );
+
+      expect(checkpoints.map((c) => c.metadata)).toEqual([
+        {
+          source: "loop",
+          step: 0,
+          writes: null,
+          parents: {},
+        },
+        {
+          source: "input",
+          step: -1,
+          writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
+          parents: {},
+        },
       ]);
+
+      expect(await toolTwo.getState(thread2)).toEqual({
+        values: { my_key: "value ⛰️ one", market: "DE" },
+        next: ["tool_two"],
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "tool_one",
+            path: ["__pregel_push", 0],
+            interrupts: [],
+            result: { my_key: " one" },
+          },
+          {
+            id: expect.any(String),
+            name: "tool_two",
+            path: [PULL, "tool_two"],
+            interrupts: [
+              {
+                value: "Just because...",
+                resumable: true,
+                ns: [expect.stringMatching(/^tool_two:/)],
+                when: "during",
+              },
+            ],
+          },
+        ],
+
+        config: {
+          configurable: {
+            thread_id: "2",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
+        metadata: {
+          source: "loop",
+          step: 0,
+          writes: null,
+          thread_id: "2",
+          parents: {},
+        },
+        parentConfig: {
+          configurable: {
+            thread_id: "2",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      });
+
+      // clear the interrupt and next tasks
+      await toolTwo.updateState(thread2, null, END);
+
+      // interrupt and unresolved tasks are cleared, finished tasks are kept
+      expect(await toolTwo.getState(thread2)).toEqual({
+        values: { my_key: "value ⛰️ one", market: "DE" },
+        next: [],
+        tasks: [],
+        config: {
+          configurable: {
+            thread_id: "2",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
+        metadata: {
+          source: "update",
+          step: 1,
+          writes: {},
+          parents: {},
+          thread_id: "2",
+        },
+        parentConfig: expect.any(Object),
+      });
     });
 
     it("should not cancel node on other node interrupted", async () => {
