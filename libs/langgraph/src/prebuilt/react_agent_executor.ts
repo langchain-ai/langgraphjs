@@ -397,9 +397,9 @@ export type CreateReactAgentParams<
   prompt?: Prompt;
   stateSchema?: A;
   /** An optional checkpoint saver to persist the agent's state. */
-  checkpointSaver?: BaseCheckpointSaver;
+  checkpointSaver?: BaseCheckpointSaver | boolean;
   /** An optional checkpoint saver to persist the agent's state. Alias of "checkpointSaver". */
-  checkpointer?: BaseCheckpointSaver;
+  checkpointer?: BaseCheckpointSaver | boolean;
   /** An optional list of node names to interrupt before running. */
   interruptBefore?: N[] | All;
   /** An optional list of node names to interrupt after running. */
