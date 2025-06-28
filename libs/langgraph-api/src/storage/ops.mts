@@ -1258,33 +1258,46 @@ export class Runs {
   }> {
     yield* conn.withGenerator(async function* (STORE, options) {
       const now = new Date();
-      const pendingRuns = Object.values(STORE.runs)
+      const pendingRunIds = Object.values(STORE.runs)
         .filter((run) => run.status === "pending" && run.created_at < now)
-        .sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
+        .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())
+        .map((run) => run.run_id);
 
-      if (!pendingRuns.length) {
+      if (!pendingRunIds.length) {
         return;
       }
 
-      for (const run of pendingRuns) {
-        const runId = run.run_id;
-        const threadId = run.thread_id;
-        const thread = STORE.threads[threadId];
-
-        if (!thread) {
-          await console.warn(
-            `Unexpected missing thread in Runs.next: ${threadId}`,
-          );
-          continue;
-        }
-
+      for (const runId of pendingRunIds) {
         if (StreamManager.isLocked(runId)) continue;
+
         try {
           const signal = StreamManager.lock(runId);
+          const run = STORE.runs[runId];
+
+          if (!run) continue;
+
+          const threadId = run.thread_id;
+          const thread = STORE.threads[threadId];
+
+          if (!thread) {
+            logger.warn(`Unexpected missing thread in Runs.next: ${threadId}`);
+            continue;
+          }
+
+          // is the run still valid?
+          if (run.status !== "pending") continue;
+          if (
+            Object.values(STORE.runs).some(
+              (run) => run.thread_id === threadId && run.status === "running",
+            )
+          ) {
+            continue;
+          }
 
           options.schedulePersist();
           STORE.retry_counter[runId] ??= 0;
           STORE.retry_counter[runId] += 1;
+          STORE.runs[runId].status = "running";
 
           yield { run, attempt: STORE.retry_counter[runId], signal };
         } finally {
@@ -1411,7 +1424,9 @@ export class Runs {
       // if multitask_mode = reject, check for inflight runs
       // and if there are any, return them to reject putting a new run
       const inflightRuns = Object.values(STORE.runs).filter(
-        (run) => run.thread_id === threadId && run.status === "pending",
+        (run) =>
+          run.thread_id === threadId &&
+          (run.status === "pending" || run.status === "running"),
       );
 
       if (options?.preventInsertInInflight) {
@@ -1759,7 +1774,7 @@ export class Runs {
               if (!options?.ignore404)
                 yield { event: "error", data: "Run not found" };
               break;
-            } else if (run.status !== "pending") {
+            } else if (run.status !== "pending" && run.status !== "running") {
               break;
             }
           }
