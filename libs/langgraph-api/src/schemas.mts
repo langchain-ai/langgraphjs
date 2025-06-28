@@ -423,6 +423,23 @@ export const ThreadStateUpdate = z
   })
   .describe("Payload for adding state to a thread.");
 
+export const ThreadHistoryRequest = z.object({
+  limit: z.number().optional().default(10),
+  before: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  checkpoint: z
+    .object({
+      checkpoint_id: z.string().uuid().optional(),
+      checkpoint_ns: z.string().optional(),
+      checkpoint_map: z.record(z.string(), z.unknown()).optional(),
+    })
+    .optional(),
+});
+
+export const ThreadPatchRequest = z.object({
+  metadata: z.record(z.string(), z.unknown()),
+});
+
 export const AssistantLatestVersion = z.object({
   version: z.number(),
 });

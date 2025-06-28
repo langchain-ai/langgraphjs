@@ -27,7 +27,7 @@ const createValidRun = async (
   },
 ): Promise<Run> => {
   const { assistant_id: assistantId, ...run } = payload;
-  const { auth, headers } = kwargs;
+  const { auth, headers } = kwargs ?? {};
   const runId = uuid4();
 
   const streamMode = Array.isArray(payload.stream_mode)
