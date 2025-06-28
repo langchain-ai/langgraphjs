@@ -1,13 +1,17 @@
-import { BaseCheckpointSaver, BaseStore, Pregel } from "@langchain/langgraph";
+import type {
+  BaseCheckpointSaver,
+  BaseStore,
+  Pregel,
+} from "@langchain/langgraph";
+import type { Metadata, Run } from "./storage/ops.mjs";
 import { Hono } from "hono";
 import { ensureContentType } from "./http/middleware.mjs";
 
 import * as schemas from "./schemas.mjs";
 
-import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
+import { zValidator } from "@hono/zod-validator";
 import { streamSSE } from "hono/streaming";
-import type { Metadata, Run } from "./storage/ops.mjs";
 import { streamState } from "./stream.mjs";
 import { serialiseAsDict } from "./utils/serde.mjs";
 import { jsonExtra } from "./utils/hono.mjs";
@@ -32,8 +36,8 @@ export function createServer(app: {
   };
 }) {
   const api = new Hono();
-  api.use(ensureContentType());
 
+  api.use(ensureContentType());
   api.post("/threads", zValidator("json", schemas.ThreadCreate), async (c) => {
     // create a new threaad
     const payload = c.req.valid("json");

@@ -74,29 +74,6 @@ export async function registerFromEnv(
   );
 }
 
-export async function initGraph(
-  graph: CompiledGraph<string> | CompiledGraphFactory<string>,
-  config: LangGraphRunnableConfig | undefined,
-  options?: {
-    checkpointer?: BaseCheckpointSaver | null;
-    store?: BaseStore;
-  },
-) {
-  const compiled =
-    typeof graph === "function"
-      ? await graph(config ?? { configurable: {} })
-      : graph;
-
-  if (typeof options?.checkpointer !== "undefined") {
-    compiled.checkpointer = options?.checkpointer ?? undefined;
-  } else {
-    compiled.checkpointer = checkpointer;
-  }
-
-  compiled.store = options?.store ?? store;
-  return compiled;
-}
-
 export async function getGraph(
   graphId: string,
   config: LangGraphRunnableConfig | undefined,
@@ -107,7 +84,21 @@ export async function getGraph(
 ) {
   if (!GRAPHS[graphId])
     throw new HTTPException(404, { message: `Graph "${graphId}" not found` });
-  return initGraph(GRAPHS[graphId], config, options);
+
+  const compiled =
+    typeof GRAPHS[graphId] === "function"
+      ? await GRAPHS[graphId](config ?? { configurable: {} })
+      : GRAPHS[graphId];
+
+  if (typeof options?.checkpointer !== "undefined") {
+    compiled.checkpointer = options?.checkpointer ?? undefined;
+  } else {
+    compiled.checkpointer = checkpointer;
+  }
+
+  compiled.store = options?.store ?? store;
+
+  return compiled;
 }
 
 export async function getCachedStaticGraphSchema(graphId: string) {
