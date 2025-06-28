@@ -9,14 +9,14 @@ import { streamSSE } from "hono/streaming";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { v4 as uuidv4 } from "uuid";
 
-import type { Metadata, Run } from "./storage/ops.mjs";
-import * as schemas from "./schemas.mjs";
+import type { Metadata, Run } from "../storage/ops.mjs";
+import * as schemas from "../schemas.mjs";
 
 import { z } from "zod";
-import { streamState } from "./stream.mjs";
-import { serialiseAsDict } from "./utils/serde.mjs";
-import { getDisconnectAbortSignal, jsonExtra } from "./utils/hono.mjs";
-import { stateSnapshotToThreadState } from "./state.mjs";
+import { streamState } from "../stream.mjs";
+import { serialiseAsDict } from "../utils/serde.mjs";
+import { getDisconnectAbortSignal, jsonExtra } from "../utils/hono.mjs";
+import { stateSnapshotToThreadState } from "../state.mjs";
 
 type AnyPregel = Pregel<any, any, any, any, any>;
 
@@ -151,6 +151,7 @@ export function attachEmbedRoutes(
     zValidator("param", z.object({ thread_id: z.string().uuid() })),
     zValidator("json", schemas.ThreadHistoryRequest),
     async (c) => {
+      // Get Thread History Post
       const { thread_id } = c.req.valid("param");
       const { limit, before, metadata, checkpoint } = c.req.valid("json");
 
@@ -196,10 +197,7 @@ export function attachEmbedRoutes(
           getGraph,
           signal,
         })) {
-          await stream.writeSSE({
-            data: serialiseAsDict(data),
-            event,
-          });
+          await stream.writeSSE({ data: serialiseAsDict(data), event });
         }
       });
     },
@@ -226,10 +224,7 @@ export function attachEmbedRoutes(
           getGraph,
           signal,
         })) {
-          await stream.writeSSE({
-            data: serialiseAsDict(data),
-            event,
-          });
+          await stream.writeSSE({ data: serialiseAsDict(data), event });
         }
       } finally {
         await options.threads.delete(threadId);
