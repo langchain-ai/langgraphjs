@@ -3,47 +3,109 @@ import type {
   BaseStore,
   Pregel,
 } from "@langchain/langgraph";
-import type { Metadata, Run } from "./storage/ops.mjs";
-import { Hono } from "hono";
-import { ensureContentType } from "./http/middleware.mjs";
-
-import * as schemas from "./schemas.mjs";
-
-import { z } from "zod";
+import type { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { streamSSE } from "hono/streaming";
-import { streamState } from "./stream.mjs";
-import { serialiseAsDict } from "./utils/serde.mjs";
-import { jsonExtra } from "./utils/hono.mjs";
-import { stateSnapshotToThreadState } from "./state.mjs";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { v4 as uuidv4 } from "uuid";
 
+import type { Metadata, Run } from "./storage/ops.mjs";
+import * as schemas from "./schemas.mjs";
+
+import { z } from "zod";
+import { streamState } from "./stream.mjs";
+import { serialiseAsDict } from "./utils/serde.mjs";
+import { getDisconnectAbortSignal, jsonExtra } from "./utils/hono.mjs";
+import { stateSnapshotToThreadState } from "./state.mjs";
+
 type AnyPregel = Pregel<any, any, any, any, any>;
 
-type SimpleThread = {
+interface Thread {
   thread_id: string;
   metadata: Metadata;
-};
+}
 
-export function createServer(app: {
-  graph: Record<string, AnyPregel>;
-  store?: BaseStore;
-  checkpointer: BaseCheckpointSaver;
-  threads: {
-    get: (threadId: string) => Promise<SimpleThread>;
-    put: (threadId: string, options: { metadata?: Metadata }) => Promise<void>;
+interface ThreadSaver {
+  get: (id: string) => Promise<Thread>;
+  put: (id: string, options: { metadata?: Metadata }) => Promise<void>;
+  delete: (id: string) => Promise<void>;
+}
+
+function createStubRun(
+  threadId: string,
+  payload: z.infer<typeof schemas.RunCreate>,
+): Run {
+  const now = new Date();
+  const runId = uuidv4();
+
+  const streamMode = Array.isArray(payload.stream_mode)
+    ? payload.stream_mode
+    : payload.stream_mode
+      ? [payload.stream_mode]
+      : undefined;
+
+  const config = Object.assign(
+    {},
+    payload.config ?? {},
+    {
+      configurable: {
+        run_id: runId,
+        thread_id: threadId,
+        graph_id: payload.assistant_id,
+      },
+    },
+    { metadata: payload.metadata ?? {} },
+  );
+
+  return {
+    run_id: runId,
+    thread_id: threadId,
+    assistant_id: payload.assistant_id,
+    metadata: payload.metadata ?? {},
+    status: "running",
+    kwargs: {
+      input: payload.input,
+      command: payload.command,
+      config,
+      stream_mode: streamMode,
+      interrupt_before: payload.interrupt_before,
+      interrupt_after: payload.interrupt_after,
+      feedback_keys: payload.feedback_keys,
+      subgraphs: payload.stream_subgraphs,
+      temporary: false,
+    },
+    multitask_strategy: "reject",
+    created_at: now,
+    updated_at: now,
   };
-}) {
-  const api = new Hono();
+}
 
-  api.use(ensureContentType());
+/**
+ * Attach LangGraph Platform-esque routes to a given Hono instance.
+ * @experimental Does not follow semver.
+ */
+export function attachEmbedRoutes(
+  api: Hono,
+  options: {
+    graph: Record<string, AnyPregel>;
+    threads: ThreadSaver;
+    checkpointer: BaseCheckpointSaver;
+    store?: BaseStore;
+  },
+) {
+  async function getGraph(graphId: string) {
+    const targetGraph = options.graph[graphId];
+    targetGraph.store = options.store;
+    targetGraph.checkpointer = options.checkpointer;
+    return targetGraph;
+  }
+
   api.post("/threads", zValidator("json", schemas.ThreadCreate), async (c) => {
     // create a new threaad
     const payload = c.req.valid("json");
     const threadId = payload.thread_id || uuidv4();
 
-    await app.threads.put(threadId, payload);
+    await options.threads.put(threadId, payload);
     return jsonExtra(c, { thread_id: threadId });
   });
 
@@ -59,9 +121,9 @@ export function createServer(app: {
       const { thread_id } = c.req.valid("param");
       const { subgraphs } = c.req.valid("query");
 
-      const thread = await app.threads.get(thread_id);
+      const thread = await options.threads.get(thread_id);
       const graphId = thread.metadata?.graph_id as string | undefined | null;
-      const graph = graphId ? app.graph[graphId] : undefined;
+      const graph = graphId ? options.graph[graphId] : undefined;
 
       if (graph == null) {
         return jsonExtra(
@@ -87,28 +149,14 @@ export function createServer(app: {
   api.post(
     "/threads/:thread_id/history",
     zValidator("param", z.object({ thread_id: z.string().uuid() })),
-    zValidator(
-      "json",
-      z.object({
-        limit: z.number().optional().default(10),
-        before: z.string().optional(),
-        metadata: z.record(z.string(), z.unknown()).optional(),
-        checkpoint: z
-          .object({
-            checkpoint_id: z.string().uuid().optional(),
-            checkpoint_ns: z.string().optional(),
-            checkpoint_map: z.record(z.string(), z.unknown()).optional(),
-          })
-          .optional(),
-      }),
-    ),
+    zValidator("json", schemas.ThreadHistoryRequest),
     async (c) => {
       const { thread_id } = c.req.valid("param");
       const { limit, before, metadata, checkpoint } = c.req.valid("json");
 
-      const thread = await app.threads.get(thread_id);
+      const thread = await options.threads.get(thread_id);
       const graphId = thread.metadata?.graph_id as string | undefined | null;
-      const graph = graphId ? app.graph[graphId] : undefined;
+      const graph = graphId ? options.graph[graphId] : undefined;
       if (graph == null) return jsonExtra(c, []);
 
       const config = { configurable: { thread_id, ...checkpoint } };
@@ -140,55 +188,13 @@ export function createServer(app: {
         const { thread_id } = c.req.valid("param");
         const payload = c.req.valid("json");
 
-        const runId = uuidv4();
-        const run: Run = {
-          run_id: runId,
-          thread_id: thread_id,
-          assistant_id: payload.assistant_id,
-          metadata: payload.metadata ?? {},
-          status: "running",
-          kwargs: {
-            input: payload.input,
-            command: payload.command,
-            config: Object.assign(
-              {},
-              payload.config ?? {},
-              {
-                configurable: {
-                  run_id: runId,
-                  thread_id,
-                  graph_id: payload.assistant_id,
-                },
-              },
-              { metadata: payload.metadata ?? {} },
-            ),
-            stream_mode: Array.isArray(payload.stream_mode)
-              ? payload.stream_mode
-              : payload.stream_mode
-                ? [payload.stream_mode]
-                : undefined,
-            interrupt_before: payload.interrupt_before,
-            interrupt_after: payload.interrupt_after,
-            webhook: payload.webhook,
-            feedback_keys: payload.feedback_keys,
-            temporary: false,
-            subgraphs: false,
-            resumable: false,
-          },
-          multitask_strategy: "reject",
-          created_at: new Date(),
-          updated_at: new Date(),
-        };
+        const signal = getDisconnectAbortSignal(c, stream);
+        const run = createStubRun(thread_id, payload);
 
-        for await (const { event, data } of streamState(run, 1, {
-          getGraph: async (graphId) => {
-            const targetGraph = app.graph[graphId];
-
-            targetGraph.store = app.store;
-            targetGraph.checkpointer = app.checkpointer;
-
-            return targetGraph;
-          },
+        for await (const { event, data } of streamState(run, {
+          attempt: 1,
+          getGraph,
+          signal,
         })) {
           await stream.writeSSE({
             data: serialiseAsDict(data),
@@ -199,5 +205,35 @@ export function createServer(app: {
     },
   );
 
-  return api;
+  api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
+    // Stream Stateless Run
+    return streamSSE(c, async (stream) => {
+      const payload = c.req.valid("json");
+      const signal = getDisconnectAbortSignal(c, stream);
+      const threadId = uuidv4();
+
+      await options.threads.put(threadId, {
+        metadata: {
+          graph_id: payload.assistant_id,
+          assistant_id: payload.assistant_id,
+        },
+      });
+
+      try {
+        const run = createStubRun(threadId, payload);
+        for await (const { event, data } of streamState(run, {
+          attempt: 1,
+          getGraph,
+          signal,
+        })) {
+          await stream.writeSSE({
+            data: serialiseAsDict(data),
+            event,
+          });
+        }
+      } finally {
+        await options.threads.delete(threadId);
+      }
+    });
+  });
 }

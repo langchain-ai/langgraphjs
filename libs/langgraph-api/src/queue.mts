@@ -7,6 +7,7 @@ import {
 import { logError, logger } from "./logging.mjs";
 import { serializeError } from "./utils/serde.mjs";
 import { callWebhook } from "./webhook.mjs";
+import { getGraph } from "./graph/load.mjs";
 
 const MAX_RETRY_ATTEMPTS = 3;
 
@@ -22,7 +23,7 @@ export const queue = async () => {
   }
 };
 
-const worker = async (run: Run, attempt: number, abortSignal: AbortSignal) => {
+const worker = async (run: Run, attempt: number, signal: AbortSignal) => {
   const startedAt = new Date();
   let endedAt: Date | undefined = undefined;
   let checkpoint: StreamCheckpoint | undefined = undefined;
@@ -62,8 +63,10 @@ const worker = async (run: Run, attempt: number, abortSignal: AbortSignal) => {
     const resumable = run.kwargs?.resumable ?? false;
 
     try {
-      const stream = streamState(run, attempt, {
-        signal: abortSignal,
+      const stream = streamState(run, {
+        getGraph,
+        attempt,
+        signal,
         ...(!temporary ? { onCheckpoint, onTaskResult } : undefined),
       });
 

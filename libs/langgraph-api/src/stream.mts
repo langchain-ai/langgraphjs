@@ -1,17 +1,15 @@
 import { BaseMessageChunk, isBaseMessage } from "@langchain/core/messages";
 import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
-import {
+import type {
   BaseCheckpointSaver,
-  BaseStore,
   LangGraphRunnableConfig,
-  type CheckpointMetadata,
-  type Interrupt,
-  type StateSnapshot,
+  CheckpointMetadata,
+  Interrupt,
+  StateSnapshot,
 } from "@langchain/langgraph";
 import type { Pregel } from "@langchain/langgraph/pregel";
 import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
 import { getLangGraphCommand } from "./command.mjs";
-import { getGraph } from "./graph/load.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
 import type { Checkpoint, Run, RunnableConfig } from "./storage/ops.mjs";
 import {
@@ -146,18 +144,15 @@ let LANGGRAPH_VERSION: { name: string; version: string } | undefined;
 
 export async function* streamState(
   run: Run,
-  attempt: number = 1,
-  options?: {
-    onCheckpoint?: (checkpoint: StreamCheckpoint) => void;
-    onTaskResult?: (taskResult: StreamTaskResult) => void;
-    getGraph?: (
+  options: {
+    attempt: number;
+    getGraph: (
       graphId: string,
       config: LangGraphRunnableConfig | undefined,
-      options?: {
-        checkpointer?: BaseCheckpointSaver | null;
-        store?: BaseStore;
-      },
+      options?: { checkpointer?: BaseCheckpointSaver | null },
     ) => Promise<Pregel<any, any, any, any, any>>;
+    onCheckpoint?: (checkpoint: StreamCheckpoint) => void;
+    onTaskResult?: (taskResult: StreamTaskResult) => void;
     signal?: AbortSignal;
   },
 ): AsyncGenerator<{ event: string; data: unknown }> {
@@ -168,7 +163,7 @@ export async function* streamState(
     throw new Error("Invalid or missing graph_id");
   }
 
-  const graph = await (options?.getGraph ?? getGraph)(graphId, kwargs.config, {
+  const graph = await options.getGraph(graphId, kwargs.config, {
     checkpointer: kwargs.temporary ? null : undefined,
   });
 
@@ -192,7 +187,7 @@ export async function* streamState(
 
   yield {
     event: "metadata",
-    data: { run_id: run.run_id, attempt },
+    data: { run_id: run.run_id, attempt: options.attempt },
   };
 
   if (!LANGGRAPH_VERSION) {
@@ -202,7 +197,7 @@ export async function* streamState(
 
   const metadata = {
     ...kwargs.config?.metadata,
-    run_attempt: attempt,
+    run_attempt: options.attempt,
     langgraph_version: LANGGRAPH_VERSION?.version ?? "0.0.0",
     langgraph_plan: "developer",
     langgraph_host: "self-hosted",

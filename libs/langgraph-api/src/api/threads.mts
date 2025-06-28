@@ -222,21 +222,7 @@ api.get(
 api.post(
   "/threads/:thread_id/history",
   zValidator("param", z.object({ thread_id: z.string().uuid() })),
-  zValidator(
-    "json",
-    z.object({
-      limit: z.number().optional().default(10),
-      before: z.string().optional(),
-      metadata: z.record(z.string(), z.unknown()).optional(),
-      checkpoint: z
-        .object({
-          checkpoint_id: z.string().uuid().optional(),
-          checkpoint_ns: z.string().optional(),
-          checkpoint_map: z.record(z.string(), z.unknown()).optional(),
-        })
-        .optional(),
-    }),
-  ),
+  zValidator("json", schemas.ThreadHistoryRequest),
   async (c) => {
     // Get Thread History Post
     const { thread_id } = c.req.valid("param");
@@ -276,7 +262,7 @@ api.delete(
 api.patch(
   "/threads/:thread_id",
   zValidator("param", z.object({ thread_id: z.string().uuid() })),
-  zValidator("json", z.object({ metadata: z.record(z.string(), z.unknown()) })),
+  zValidator("json", schemas.ThreadPatchRequest),
   async (c) => {
     // Patch Thread
     const { thread_id } = c.req.valid("param");
