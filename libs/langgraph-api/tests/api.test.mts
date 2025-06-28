@@ -581,6 +581,10 @@ describe("threads copy", () => {
     const history = await client.threads.getHistory<AgentState>(
       thread.thread_id,
     );
+
+    if (history.length !== 5) {
+      console.dir(history, { depth: null });
+    }
     expect(history.length).toBe(5);
     expect(history[0].values.messages.length).toBe(4);
     expect(history[0].next.length).toBe(0);
@@ -2152,7 +2156,11 @@ describe("multitasking", () => {
       | null = null;
 
     let iter = 0;
-    while (lastStatus == null || lastStatus === "pending") {
+    while (
+      lastStatus == null ||
+      lastStatus === "pending" ||
+      lastStatus === "running"
+    ) {
       const run = await client.runs.get(threadId, runId);
       lastStatus = run.status;
 
