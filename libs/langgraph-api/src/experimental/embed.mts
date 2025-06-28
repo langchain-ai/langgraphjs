@@ -3,7 +3,7 @@ import type {
   BaseStore,
   Pregel,
 } from "@langchain/langgraph";
-import type { Hono } from "hono";
+import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { streamSSE } from "hono/streaming";
 import { RunnableConfig } from "@langchain/core/runnables";
@@ -17,6 +17,7 @@ import { streamState } from "../stream.mjs";
 import { serialiseAsDict } from "../utils/serde.mjs";
 import { getDisconnectAbortSignal, jsonExtra } from "../utils/hono.mjs";
 import { stateSnapshotToThreadState } from "../state.mjs";
+import { ensureContentType } from "../http/middleware.mjs";
 
 type AnyPregel = Pregel<any, any, any, any, any>;
 
@@ -84,21 +85,22 @@ function createStubRun(
  * Attach LangGraph Platform-esque routes to a given Hono instance.
  * @experimental Does not follow semver.
  */
-export function attachEmbedRoutes(
-  api: Hono,
-  options: {
-    graph: Record<string, AnyPregel>;
-    threads: ThreadSaver;
-    checkpointer: BaseCheckpointSaver;
-    store?: BaseStore;
-  },
-) {
+export function createEmbedServer(options: {
+  graph: Record<string, AnyPregel>;
+  threads: ThreadSaver;
+  checkpointer: BaseCheckpointSaver;
+  store?: BaseStore;
+}) {
   async function getGraph(graphId: string) {
     const targetGraph = options.graph[graphId];
     targetGraph.store = options.store;
     targetGraph.checkpointer = options.checkpointer;
     return targetGraph;
   }
+
+  const api = new Hono();
+
+  api.use(ensureContentType());
 
   api.post("/threads", zValidator("json", schemas.ThreadCreate), async (c) => {
     // create a new threaad
@@ -192,6 +194,16 @@ export function attachEmbedRoutes(
         const signal = getDisconnectAbortSignal(c, stream);
         const run = createStubRun(thread_id, payload);
 
+        // update thread with new graph_id
+        const thread = await options.threads.get(thread_id);
+        await options.threads.put(thread_id, {
+          metadata: {
+            ...thread.metadata,
+            graph_id: payload.assistant_id,
+            assistant_id: payload.assistant_id,
+          },
+        });
+
         for await (const { event, data } of streamState(run, {
           attempt: 1,
           getGraph,
@@ -231,4 +243,6 @@ export function attachEmbedRoutes(
       }
     });
   });
+
+  return api;
 }
