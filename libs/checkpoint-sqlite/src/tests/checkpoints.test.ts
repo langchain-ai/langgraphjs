@@ -148,6 +148,33 @@ describe("SqliteSaver", () => {
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
   });
 
+  it("should delete thread", async () => {
+    const saver = SqliteSaver.fromConnString(":memory:");
+    await saver.put({ configurable: { thread_id: "1" } }, emptyCheckpoint(), {
+      source: "update",
+      step: -1,
+      writes: null,
+      parents: {},
+    });
+
+    await saver.put({ configurable: { thread_id: "2" } }, emptyCheckpoint(), {
+      source: "update",
+      step: -1,
+      writes: null,
+      parents: {},
+    });
+
+    await saver.deleteThread("1");
+
+    expect(
+      await saver.getTuple({ configurable: { thread_id: "1" } })
+    ).toBeUndefined();
+
+    expect(
+      await saver.getTuple({ configurable: { thread_id: "2" } })
+    ).toBeDefined();
+  });
+
   it("pending sends migration", async () => {
     const saver = SqliteSaver.fromConnString(":memory:");
 

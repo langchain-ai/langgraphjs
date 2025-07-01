@@ -24,6 +24,11 @@ function _generateKey(
   return JSON.stringify([threadId, checkpointNamespace, checkpointId]);
 }
 
+function _parseKey(key: string) {
+  const [threadId, checkpointNamespace, checkpointId] = JSON.parse(key);
+  return { threadId, checkpointNamespace, checkpointId };
+}
+
 export class MemorySaver extends BaseCheckpointSaver {
   // thread ID ->  checkpoint namespace -> checkpoint ID -> checkpoint mapping
   storage: Record<
@@ -343,5 +348,12 @@ export class MemorySaver extends BaseCheckpointSaver {
       }
       this.writes[outerKey][innerKeyStr] = [taskId, channel, serializedValue];
     });
+  }
+
+  async deleteThread(threadId: string): Promise<void> {
+    delete this.storage[threadId];
+    for (const key of Object.keys(this.writes)) {
+      if (_parseKey(key).threadId === threadId) delete this.writes[key];
+    }
   }
 }

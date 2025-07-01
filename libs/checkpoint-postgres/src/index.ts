@@ -637,4 +637,26 @@ export class PostgresSaver extends BaseCheckpointSaver {
   async end() {
     return this.pool.end();
   }
+
+  async deleteThread(threadId: string): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(this.SQL_STATEMENTS.DELETE_CHECKPOINT_BLOBS_SQL, [
+        threadId,
+      ]);
+      await client.query(this.SQL_STATEMENTS.DELETE_CHECKPOINTS_SQL, [
+        threadId,
+      ]);
+      await client.query(this.SQL_STATEMENTS.DELETE_CHECKPOINT_WRITES_SQL, [
+        threadId,
+      ]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 }

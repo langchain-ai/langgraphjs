@@ -7,6 +7,9 @@ export interface SQL_STATEMENTS {
   UPSERT_CHECKPOINTS_SQL: string;
   UPSERT_CHECKPOINT_WRITES_SQL: string;
   INSERT_CHECKPOINT_WRITES_SQL: string;
+  DELETE_CHECKPOINTS_SQL: string;
+  DELETE_CHECKPOINT_BLOBS_SQL: string;
+  DELETE_CHECKPOINT_WRITES_SQL: string;
 }
 
 export type SQL_TYPES = {
@@ -28,6 +31,9 @@ export type SQL_TYPES = {
   UPSERT_CHECKPOINTS_SQL: unknown;
   UPSERT_CHECKPOINT_WRITES_SQL: unknown;
   INSERT_CHECKPOINT_WRITES_SQL: unknown;
+  DELETE_CHECKPOINTS_SQL: unknown;
+  DELETE_CHECKPOINT_BLOBS_SQL: unknown;
+  DELETE_CHECKPOINT_WRITES_SQL: unknown;
 };
 
 interface TABLES {
@@ -114,6 +120,10 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
   ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id, task_id, idx) DO NOTHING
   `,
+
+    DELETE_CHECKPOINTS_SQL: `DELETE FROM ${SCHEMA_TABLES.checkpoints} WHERE thread_id = $1`,
+    DELETE_CHECKPOINT_BLOBS_SQL: `DELETE FROM ${SCHEMA_TABLES.checkpoint_blobs} WHERE thread_id = $1`,
+    DELETE_CHECKPOINT_WRITES_SQL: `DELETE FROM ${SCHEMA_TABLES.checkpoint_writes} WHERE thread_id = $1`,
   };
 };
 

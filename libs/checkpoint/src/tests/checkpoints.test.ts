@@ -4,10 +4,12 @@ import {
   CheckpointTuple,
   compareChannelVersions,
   deepCopy,
+  emptyCheckpoint,
   maxChannelVersion,
 } from "../base.js";
 import { MemorySaver } from "../memory.js";
 import { uuid6 } from "../id.js";
+import type { CheckpointMetadata } from "../types.js";
 
 const checkpoint1: Checkpoint = {
   v: 4,
@@ -139,6 +141,29 @@ describe("MemorySaver", () => {
     const checkpointTuple2 = checkpointTuples[1];
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
     expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
+  });
+
+  it("should delete thread", async () => {
+    const memorySaver = new MemorySaver();
+    const thread1 = { configurable: { thread_id: "1", checkpoint_ns: "" } };
+    const thread2 = { configurable: { thread_id: "2", checkpoint_ns: "" } };
+
+    const meta: CheckpointMetadata = {
+      source: "update",
+      step: -1,
+      writes: null,
+      parents: {},
+    };
+
+    await memorySaver.put(thread1, emptyCheckpoint(), meta);
+    await memorySaver.put(thread2, emptyCheckpoint(), meta);
+
+    expect(await memorySaver.getTuple(thread1)).toBeDefined();
+
+    await memorySaver.deleteThread("1");
+
+    expect(await memorySaver.getTuple(thread1)).toBeUndefined();
+    expect(await memorySaver.getTuple(thread2)).toBeDefined();
   });
 });
 
