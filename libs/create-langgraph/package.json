@@ -16,7 +16,8 @@
     "clean": "npx -y bun scripts/clean.mjs",
     "cli": "tsx src/cli.mts",
     "cli:watch": "tsx watch src/cli.mts",
-    "build": "npx -y bun scripts/build.mjs",
+    "build": "yarn turbo:command build:internal --filter=create-langgraph",
+    "build:internal": "npx -y bun scripts/build.mjs",
     "prepack": "yarn run build",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

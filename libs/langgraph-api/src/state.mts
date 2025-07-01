@@ -33,8 +33,6 @@ export const stateSnapshotToThreadState = (
         task.state != null && isStateSnapshot(task.state)
           ? stateSnapshotToThreadState(task.state)
           : null,
-      // TODO: add missing result to the library
-      // @ts-expect-error
       result: task.result ?? null,
     })),
     metadata: state.metadata as Record<string, unknown> | undefined,

@@ -35,7 +35,9 @@ export type StreamMode =
   | "custom"
   | "updates"
   | "events"
-  | "debug";
+  | "debug"
+  | "tasks"
+  | "checkpoints";
 
 export type MultitaskStrategy = "reject" | "rollback" | "interrupt" | "enqueue";
 
@@ -705,7 +707,7 @@ interface ThreadTask {
   interrupts: Record<string, unknown>[];
   checkpoint: Checkpoint | null;
   state: ThreadState | null;
-  result: Record<string, unknown> | null;
+  result: unknown | null;
 }
 
 export interface ThreadState {

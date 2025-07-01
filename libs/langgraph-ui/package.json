@@ -19,7 +19,8 @@
   },
   "scripts": {
     "clean": "npx -y bun scripts/clean.mjs",
-    "build": "npx -y bun scripts/build.mjs",
+    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-ui",
+    "build:internal": "npx -y bun scripts/build.mjs",
     "prepack": "yarn run build",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",

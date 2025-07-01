@@ -1431,27 +1431,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:^0.3.40, @langchain/core@npm:^0.3.58":
-  version: 0.3.58
-  resolution: "@langchain/core@npm:0.3.58"
-  dependencies:
-    "@cfworker/json-schema": "npm:^4.0.2"
-    ansi-styles: "npm:^5.0.0"
-    camelcase: "npm:6"
-    decamelize: "npm:1.2.0"
-    js-tiktoken: "npm:^1.0.12"
-    langsmith: "npm:^0.3.29"
-    mustache: "npm:^4.2.0"
-    p-queue: "npm:^6.6.2"
-    p-retry: "npm:4"
-    uuid: "npm:^10.0.0"
-    zod: "npm:^3.25.32"
-    zod-to-json-schema: "npm:^3.22.3"
-  checksum: 10/679fc9fa39f4be988f517cbf8e518bd4a575e111d488117a5270e5be04da2734affa13685cef7b81b1b11b0e482d8200ebdbae23e2e9e2387fa1d19e72cc4ae5
-  languageName: node
-  linkType: hard
-
-"@langchain/core@npm:^0.3.59":
+"@langchain/core@npm:^0.3.40, @langchain/core@npm:^0.3.58, @langchain/core@npm:^0.3.59":
   version: 0.3.61
   resolution: "@langchain/core@npm:0.3.61"
   dependencies:
@@ -8947,7 +8927,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"langsmith@npm:>=0.2.8 <0.4.0, langsmith@npm:^0.3.29":
+"langsmith@npm:>=0.2.8 <0.4.0":
   version: 0.3.30
   resolution: "langsmith@npm:0.3.30"
   dependencies:
