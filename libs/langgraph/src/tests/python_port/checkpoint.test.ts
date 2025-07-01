@@ -163,6 +163,10 @@ describe("Checkpoint Tests (Python port)", () => {
       ): Promise<void> {
         // No explicit return needed
       }
+
+      deleteThread(_threadId: string): Promise<void> {
+        throw new Error("Faulty delete_thread");
+      }
     }
 
     // Create a faulty put checkpoint saver
@@ -193,6 +197,10 @@ describe("Checkpoint Tests (Python port)", () => {
       ): Promise<void> {
         // No explicit return needed
       }
+
+      deleteThread(_threadId: string): Promise<void> {
+        throw new Error("Faulty delete_thread");
+      }
     }
 
     // Create a faulty putWrites checkpoint saver
@@ -222,6 +230,10 @@ describe("Checkpoint Tests (Python port)", () => {
         _taskId: string
       ): Promise<void> {
         throw new Error("Faulty put_writes");
+      }
+
+      deleteThread(_threadId: string): Promise<void> {
+        throw new Error("Faulty delete_thread");
       }
     }
 
@@ -256,6 +268,10 @@ describe("Checkpoint Tests (Python port)", () => {
         _taskId: string
       ): Promise<void> {
         // No explicit return needed
+      }
+
+      deleteThread(_threadId: string): Promise<void> {
+        throw new Error("Faulty delete_thread");
       }
     }
 
