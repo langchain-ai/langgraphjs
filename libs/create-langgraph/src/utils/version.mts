@@ -4,7 +4,7 @@ import * as url from "node:url";
 async function getVersion() {
   try {
     const packageJson = url.fileURLToPath(
-      new URL("../../package.json", import.meta.url),
+      new URL("../../package.json", import.meta.url)
     );
     const { version } = JSON.parse(await fs.readFile(packageJson, "utf-8"));
     return version;

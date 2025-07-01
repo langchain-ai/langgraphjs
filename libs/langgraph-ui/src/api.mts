@@ -53,9 +53,9 @@ export async function build(options: BuildOptionsType) {
 
           schemas[graphId] ??= { assets: [], name: graphId };
           schemas[graphId].assets.push(path.relative(folder, target));
-        }),
+        })
       );
-    }),
+    })
   );
 
   await fs.writeFile(schemasPath, JSON.stringify(schemas), {
@@ -68,7 +68,7 @@ type WatchOptionsType = (
   | {
       onOutput: (
         graphId: string,
-        result: { basename: string; contents: Uint8Array }[],
+        result: { basename: string; contents: Uint8Array }[]
       ) => void;
     }
 ) &
@@ -81,9 +81,9 @@ export async function watch(options: WatchOptionsType) {
     await Promise.all(
       Object.entries(defs).map(async ([graphId, userPath]) => {
         await bundler.watch(graphId, { cwd, config, userPath }, (files) =>
-          options.onOutput(graphId, files),
+          options.onOutput(graphId, files)
         );
-      }),
+      })
     );
 
     return;
@@ -111,16 +111,16 @@ export async function watch(options: WatchOptionsType) {
 
                 schemas[graphId] ??= { assets: [], name: graphId };
                 schemas[graphId].assets.push(path.relative(folder, target));
-              }),
+              })
             );
 
             await fs.writeFile(schemasPath, JSON.stringify(schemas), {
               encoding: "utf-8",
             });
           },
-          (e) => console.error(e),
+          (e) => console.error(e)
         );
       });
-    }),
+    })
   );
 }

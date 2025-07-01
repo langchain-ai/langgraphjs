@@ -19,7 +19,7 @@ import { gracefulExit } from "exit-hook";
 builder
   .command("dev")
   .description(
-    "Run LangGraph API server in development mode with hot reloading.",
+    "Run LangGraph API server in development mode with hot reloading."
   )
   .option("-p, --port <number>", "port to run the server on", "2024")
   .option("-h, --host <string>", "host to bind to", "localhost")
@@ -28,7 +28,7 @@ builder
   .option("-c, --config <path>", "path to configuration file", process.cwd())
   .option(
     "--tunnel",
-    "use Cloudflare Tunnel to expose the server to the internet",
+    "use Cloudflare Tunnel to expose the server to the internet"
   )
   .allowExcessArguments()
   .allowUnknownOption()
@@ -41,7 +41,7 @@ builder
       host: command.opts().host !== "localhost",
       n_jobs_per_worker: command.opts().nJobsPerWorker !== "10",
       tunnel: Boolean(command.opts().tunnel),
-    })),
+    }))
   )
   .action(async (options, { args }) => {
     try {
@@ -83,11 +83,11 @@ builder
 
       if (!gitignoreContent.includes(".langgraph_api")) {
         logger.info(
-          "Updating .gitignore to prevent `.langgraph_api` from being committed.",
+          "Updating .gitignore to prevent `.langgraph_api` from being committed."
         );
         await fs.appendFile(
           gitignorePath,
-          "\n# LangGraph API\n.langgraph_api\n",
+          "\n# LangGraph API\n.langgraph_api\n"
         );
       }
 
@@ -114,15 +114,15 @@ builder
 
         const oldWatch = Object.entries(watcher.getWatched()).flatMap(
           ([dir, files]) =>
-            files.map((file) => path.resolve(projectCwd, dir, file)),
+            files.map((file) => path.resolve(projectCwd, dir, file))
         );
 
         const addedTarget = newWatch.filter(
-          (target) => !oldWatch.includes(target),
+          (target) => !oldWatch.includes(target)
         );
 
         const removedTarget = oldWatch.filter(
-          (target) => !newWatch.includes(target),
+          (target) => !newWatch.includes(target)
         );
 
         watcher.unwatch(removedTarget).add(addedTarget);
@@ -150,21 +150,21 @@ builder
 
         if ("python_version" in config) {
           logger.warn(
-            "Launching Python server from @langchain/langgraph-cli is experimental. Please use the `langgraph-cli` package from PyPi instead.",
+            "Launching Python server from @langchain/langgraph-cli is experimental. Please use the `langgraph-cli` package from PyPi instead."
           );
 
           const { spawnPythonServer } = await import("./dev.python.mjs");
           child = await spawnPythonServer(
             { ...options, rest: args },
             { configPath, config, env, hostUrl },
-            { pid, projectCwd },
+            { pid, projectCwd }
           );
         } else {
           const { spawnServer } = await import("@langchain/langgraph-api");
           child = await spawnServer(
             options,
             { config, env, hostUrl },
-            { pid, projectCwd },
+            { pid, projectCwd }
           );
         }
       };

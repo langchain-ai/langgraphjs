@@ -7,7 +7,7 @@ const API_URL = "http://localhost:2024";
 const config = { configurable: { user_id: "123" } };
 
 const SECRET_KEY = new TextEncoder().encode(
-  "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7",
+  "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
 );
 const ALGORITHM = "HS256";
 
@@ -28,19 +28,19 @@ beforeAll(() => truncate(API_URL, "all"));
 it("unauthenticated user", async () => {
   const client = await createJwtClient("wfh", ["me"]);
   await expect(client.assistants.create({ graphId: "agent" })).rejects.toThrow(
-    "HTTP 401",
+    "HTTP 401"
   );
 });
 
 it("create assistant with forbidden scopes", async () => {
   let user = await createJwtClient("johndoe");
   await expect(user.assistants.create({ graphId: "agent" })).rejects.toThrow(
-    "HTTP 403",
+    "HTTP 403"
   );
 
   user = await createJwtClient("johndoe", ["foo"]);
   await expect(user.assistants.create({ graphId: "agent" })).rejects.toThrow(
-    "HTTP 403",
+    "HTTP 403"
   );
 
   user = await createJwtClient("johndoe", ["assistants:write"]);
@@ -66,7 +66,7 @@ it("get thread history from unauthorized user", async () => {
 
   const user2 = await createJwtClient("alice", ["me"]);
   await expect(
-    user2.runs.wait(thread.thread_id, "agent", { input, config }),
+    user2.runs.wait(thread.thread_id, "agent", { input, config })
   ).rejects.toThrow("HTTP 404");
 });
 
@@ -80,7 +80,7 @@ it("add run to unauthorized thread", async () => {
 
   const user2 = await createJwtClient("alice", ["me"]);
   await expect(
-    user2.runs.wait(thread.thread_id, "agent", { input, config }),
+    user2.runs.wait(thread.thread_id, "agent", { input, config })
   ).rejects.toThrow("HTTP 404");
 });
 
@@ -94,12 +94,12 @@ it("asssistant access control", async () => {
   await expect(
     otherUser.assistants.update(assistant.assistant_id, {
       metadata: { foo: "bar" },
-    }),
+    })
   ).rejects.toThrow("HTTP 404");
 
   // Other user can't delete the assistant
   await expect(
-    otherUser.assistants.delete(assistant.assistant_id),
+    otherUser.assistants.delete(assistant.assistant_id)
   ).rejects.toThrow("HTTP 404");
 });
 
@@ -111,12 +111,12 @@ it("thread operations auth", async () => {
 
   // Other user can't update thread
   await expect(
-    otherUser.threads.update(thread.thread_id, { metadata: { foo: "bar" } }),
+    otherUser.threads.update(thread.thread_id, { metadata: { foo: "bar" } })
   ).rejects.toThrow("HTTP 404");
 
   // Other user can't delete thread
   await expect(otherUser.threads.delete(thread.thread_id)).rejects.toThrow(
-    "HTTP 404",
+    "HTTP 404"
   );
 });
 
@@ -133,7 +133,7 @@ it("run streaming auth", async () => {
   });
 
   const chunks = await gatherIterator(
-    otherUser.runs.joinStream(thread.thread_id, run.run_id),
+    otherUser.runs.joinStream(thread.thread_id, run.run_id)
   );
 
   expect(chunks).toMatchObject([
@@ -167,17 +167,17 @@ it("store auth", async () => {
 
   // Test store access control
   await expect(userA.store.getItem(["ALL"], "key_one")).rejects.toThrow(
-    "HTTP 403",
+    "HTTP 403"
   );
   await expect(
-    userA.store.putItem(["ALL"], "key_one", { foo: "bar" }),
+    userA.store.putItem(["ALL"], "key_one", { foo: "bar" })
   ).rejects.toThrow("HTTP 403");
   await expect(userA.store.deleteItem(["ALL"], "key_one")).rejects.toThrow(
-    "HTTP 403",
+    "HTTP 403"
   );
   await expect(userA.store.searchItems(["ALL"])).rejects.toThrow("HTTP 403");
   await expect(userA.store.listNamespaces({ prefix: ["ALL"] })).rejects.toThrow(
-    "HTTP 403",
+    "HTTP 403"
   );
 
   // Test owner can access their own store
@@ -190,7 +190,7 @@ it("store auth", async () => {
   });
 
   expect(
-    await userA.store.listNamespaces({ prefix: ["johndoe"] }),
+    await userA.store.listNamespaces({ prefix: ["johndoe"] })
   ).toMatchObject({ namespaces: [["johndoe"]] });
 
   // Test other user can access their own store
@@ -201,7 +201,7 @@ it("store auth", async () => {
     items: [{ key: "key_one", value: { text: "test user B" } }],
   });
   expect(await userB.store.listNamespaces({ prefix: ["alice"] })).toMatchObject(
-    { namespaces: [["alice"]] },
+    { namespaces: [["alice"]] }
   );
 });
 
@@ -218,7 +218,7 @@ it("run cancellation", async () => {
 
   // Other user can't cancel the run
   await expect(
-    otherUser.runs.cancel(thread.thread_id, run.run_id),
+    otherUser.runs.cancel(thread.thread_id, run.run_id)
   ).rejects.toThrow("HTTP 404");
 
   // Owner can cancel their own run
@@ -237,13 +237,13 @@ it("get assistant ownership", async () => {
 
   // Another user cannot get this assistant
   await expect(
-    otherUser.assistants.get(assistant.assistant_id),
+    otherUser.assistants.get(assistant.assistant_id)
   ).rejects.toThrow("HTTP 404");
 
   // Test invalid assistant IDs
   const nonexistantUuid = crypto.randomUUID();
   await expect(owner.assistants.get(nonexistantUuid)).rejects.toThrow(
-    "HTTP 404",
+    "HTTP 404"
   );
 });
 
@@ -261,7 +261,7 @@ it("get assistant graph", async () => {
 
   // Another user can't access the graph
   await expect(
-    otherUser.assistants.getGraph(assistant.assistant_id),
+    otherUser.assistants.getGraph(assistant.assistant_id)
   ).rejects.toThrow("HTTP 404");
 });
 
@@ -292,10 +292,10 @@ it("thread state operations", async () => {
 
   // Another user cannot access or modify state
   await expect(otherUser.threads.getState(thread.thread_id)).rejects.toThrow(
-    "HTTP 404",
+    "HTTP 404"
   );
   await expect(
-    otherUser.threads.updateState(thread.thread_id, { values: { sleep: 432 } }),
+    otherUser.threads.updateState(thread.thread_id, { values: { sleep: 432 } })
   ).rejects.toThrow("HTTP 404");
 });
 
@@ -315,7 +315,7 @@ it("run operations", async () => {
   // Owner can list runs
   const runs = await owner.runs.list(thread.thread_id);
   expect(runs).toMatchObject(
-    expect.arrayContaining([expect.objectContaining({ run_id: run.run_id })]),
+    expect.arrayContaining([expect.objectContaining({ run_id: run.run_id })])
   );
 
   // Owner can get specific run
@@ -324,18 +324,18 @@ it("run operations", async () => {
 
   // Another user cannot access runs, cancel or delete a run not owned by them
   await expect(otherUser.runs.list(thread.thread_id)).rejects.toThrow(
-    "HTTP 404",
+    "HTTP 404"
   );
   await expect(
-    otherUser.runs.get(thread.thread_id, run.run_id),
+    otherUser.runs.get(thread.thread_id, run.run_id)
   ).rejects.toThrow("HTTP 404");
 
   await expect(
-    otherUser.runs.cancel(thread.thread_id, run.run_id, true),
+    otherUser.runs.cancel(thread.thread_id, run.run_id, true)
   ).rejects.toThrow("HTTP 404");
 
   await expect(
-    otherUser.runs.delete(thread.thread_id, run.run_id),
+    otherUser.runs.delete(thread.thread_id, run.run_id)
   ).rejects.toThrow("HTTP 404");
 
   // Owner can cancel run
@@ -344,7 +344,7 @@ it("run operations", async () => {
   // Owner can delete run
   await owner.runs.delete(thread.thread_id, run.run_id);
   await expect(owner.runs.get(thread.thread_id, run.run_id)).rejects.toThrow(
-    "HTTP 404",
+    "HTTP 404"
   );
 });
 
@@ -358,7 +358,7 @@ it("create run in other user thread", async () => {
   };
 
   await expect(
-    otherUser.runs.create(thread.thread_id, "agent", { input, config }),
+    otherUser.runs.create(thread.thread_id, "agent", { input, config })
   ).rejects.toThrow("HTTP 404");
 });
 
@@ -379,7 +379,7 @@ it("list runs other user thread", async () => {
 
   // Other user cannot list runs
   await expect(otherUser.runs.list(thread.thread_id)).rejects.toThrow(
-    "HTTP 404",
+    "HTTP 404"
   );
 });
 
@@ -395,7 +395,7 @@ it("get run other user thread", async () => {
 
   // Other user attempts to get the run
   await expect(
-    otherUser.runs.get(thread.thread_id, run.run_id),
+    otherUser.runs.get(thread.thread_id, run.run_id)
   ).rejects.toThrow("HTTP 404");
 });
 
@@ -411,7 +411,7 @@ it("join run other user thread", async () => {
 
   // Other user tries to join the run
   await expect(
-    otherUser.runs.join(thread.thread_id, run.run_id),
+    otherUser.runs.join(thread.thread_id, run.run_id)
   ).rejects.toThrow("HTTP 404");
 });
 
@@ -425,7 +425,7 @@ it("wait run other user thread", async () => {
 
   // Other user tries to wait on run result
   await expect(
-    otherUser.runs.wait(thread.thread_id, "agent", { input, config }),
+    otherUser.runs.wait(thread.thread_id, "agent", { input, config })
   ).rejects.toThrow("HTTP 404");
 });
 
@@ -441,7 +441,7 @@ it("stream run other user thread", async () => {
 
   // Other user tries to join_stream
   const chunks = await gatherIterator(
-    otherUser.runs.joinStream(thread.thread_id, run.run_id),
+    otherUser.runs.joinStream(thread.thread_id, run.run_id)
   );
   expect(chunks).toHaveLength(1);
   expect(chunks).toMatchObject([
@@ -461,7 +461,7 @@ it("cancel run other user thread", async () => {
   });
 
   await expect(
-    otherUser.runs.cancel(thread.thread_id, run.run_id),
+    otherUser.runs.cancel(thread.thread_id, run.run_id)
   ).rejects.toThrow("HTTP 404");
 
   await owner.runs.cancel(thread.thread_id, run.run_id);
@@ -479,7 +479,7 @@ it("delete run other user thread", async () => {
   });
 
   await expect(
-    otherUser.runs.delete(thread.thread_id, run.run_id),
+    otherUser.runs.delete(thread.thread_id, run.run_id)
   ).rejects.toThrow("HTTP 404");
 
   await owner.runs.cancel(thread.thread_id, run.run_id);
@@ -494,7 +494,7 @@ it("update thread state other user", async () => {
 
   // Other user tries to update state
   await expect(
-    otherUser.threads.updateState(thread.thread_id, newState),
+    otherUser.threads.updateState(thread.thread_id, newState)
   ).rejects.toThrow("HTTP 404");
 });
 
@@ -519,7 +519,7 @@ it("get checkpoint other user", async () => {
   }
 
   await expect(
-    otherUser.threads.getState(thread.thread_id, checkpointId),
+    otherUser.threads.getState(thread.thread_id, checkpointId)
   ).rejects.toThrow("HTTP 404");
 });
 
@@ -535,10 +535,10 @@ it("assistant version leakage", async () => {
   expect(result.metadata?.foo).toBe(someId);
 
   await expect(
-    otherUser.assistants.getVersions(assistant.assistant_id),
+    otherUser.assistants.getVersions(assistant.assistant_id)
   ).rejects.toThrow("HTTP 404");
   await expect(
-    otherUser.assistants.setLatest(assistant.assistant_id, 1),
+    otherUser.assistants.setLatest(assistant.assistant_id, 1)
   ).rejects.toThrow("HTTP 404");
 });
 
@@ -553,7 +553,7 @@ it("assistant set latest", async () => {
   expect(updated.metadata?.foo).toBe("bar");
 
   await expect(
-    otherUser.assistants.setLatest(assistant.assistant_id, 1),
+    otherUser.assistants.setLatest(assistant.assistant_id, 1)
   ).rejects.toThrow("HTTP 404");
 
   const result = await owner.assistants.setLatest(assistant.assistant_id, 1);
@@ -571,18 +571,18 @@ it("assistant search filtering", async () => {
   // each user should only see their own assistants
   const results1 = await user1.assistants.search();
   expect(results1).toContainEqual(
-    expect.objectContaining({ assistant_id: assistant1.assistant_id }),
+    expect.objectContaining({ assistant_id: assistant1.assistant_id })
   );
   expect(results1).not.toContainEqual(
-    expect.objectContaining({ assistant_id: assistant2.assistant_id }),
+    expect.objectContaining({ assistant_id: assistant2.assistant_id })
   );
 
   const results2 = await user2.assistants.search();
   expect(results2).toContainEqual(
-    expect.objectContaining({ assistant_id: assistant2.assistant_id }),
+    expect.objectContaining({ assistant_id: assistant2.assistant_id })
   );
   expect(results2).not.toContainEqual(
-    expect.objectContaining({ assistant_id: assistant1.assistant_id }),
+    expect.objectContaining({ assistant_id: assistant1.assistant_id })
   );
 });
 
@@ -594,7 +594,7 @@ it("thread copy authorization", async () => {
 
   // Other user can't copy the thread
   await expect(otherUser.threads.copy(thread.thread_id)).rejects.toThrow(
-    "HTTP 409",
+    "HTTP 409"
   );
 
   // Owner can copy the thread
@@ -614,7 +614,7 @@ it("thread history authorization", async () => {
   expect(history).toHaveLength(5);
 
   await expect(otherUser.threads.getHistory(thread.thread_id)).rejects.toThrow(
-    "HTTP 404",
+    "HTTP 404"
   );
 });
 
@@ -632,7 +632,7 @@ it("test stateless runs", async () => {
 
   expect(values).not.toBeNull();
   const chunks = await gatherIterator(
-    owner.runs.stream(null, assistant.assistant_id, { input, config }),
+    owner.runs.stream(null, assistant.assistant_id, { input, config })
   );
 
   expect(chunks.find((i) => i.event === "error")).not.toBeDefined();

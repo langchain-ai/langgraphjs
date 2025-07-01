@@ -26,12 +26,12 @@ const fileExists = async (path: string) => {
 builder
   .command("dockerfile")
   .description(
-    "Generate a Dockerfile for the LangGraph API server, with Docker Compose options.",
+    "Generate a Dockerfile for the LangGraph API server, with Docker Compose options."
   )
   .argument("<save-path>", "Path to save the Dockerfile")
   .option(
     "--add-docker-compose",
-    "Add additional files for running the LangGraph API server with docker-compose. These files include a docker-compose.yml, .env file, and a .dockerignore file.",
+    "Add additional files for running the LangGraph API server with docker-compose. These files include a docker-compose.yml, .env file, and a .dockerignore file."
   )
   .option("-c, --config <path>", "Path to configuration file", process.cwd())
   .exitOverride((error) => gracefulExit(error.exitCode))
@@ -40,7 +40,7 @@ builder
     withAnalytics((command) => ({
       config: command.opts().config !== process.cwd(),
       add_docker_compose: !!command.opts().addDockerCompose,
-    })),
+    }))
   )
   .action(async (savePath, options) => {
     const configPath = await getProjectPath(options.config);
@@ -69,7 +69,7 @@ builder
 
       const composePath = path.resolve(
         path.dirname(targetPath),
-        "docker-compose.yml",
+        "docker-compose.yml"
       );
 
       await fs.writeFile(composePath, compose);
@@ -77,7 +77,7 @@ builder
 
       const dockerignorePath = path.resolve(
         path.dirname(targetPath),
-        ".dockerignore",
+        ".dockerignore"
       );
 
       if (!fileExists(dockerignorePath)) {
@@ -126,7 +126,7 @@ builder
             *.test.js
             *.spec.js
             tests
-          `,
+          `
         );
         logger.info(`✅ Created: ${path.basename(dockerignorePath)}`);
       }
@@ -141,7 +141,7 @@ builder
             # Or if you have a LangGraph Cloud license key, then uncomment the following line:
             # LANGGRAPH_CLOUD_LICENSE_KEY=your-license-key
             # Add any other environment variables go below...
-          `,
+          `
         );
         logger.info(`✅ Created: ${path.basename(envPath)}`);
       }

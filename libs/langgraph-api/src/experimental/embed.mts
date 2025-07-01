@@ -34,7 +34,7 @@ interface ThreadSaver {
 
 function createStubRun(
   threadId: string,
-  payload: z.infer<typeof schemas.RunCreate>,
+  payload: z.infer<typeof schemas.RunCreate>
 ): Run {
   const now = new Date();
   const runId = uuidv4();
@@ -42,8 +42,8 @@ function createStubRun(
   const streamMode = Array.isArray(payload.stream_mode)
     ? payload.stream_mode
     : payload.stream_mode
-      ? [payload.stream_mode]
-      : undefined;
+    ? [payload.stream_mode]
+    : undefined;
 
   const config = Object.assign(
     {},
@@ -55,7 +55,7 @@ function createStubRun(
         graph_id: payload.assistant_id,
       },
     },
-    { metadata: payload.metadata ?? {} },
+    { metadata: payload.metadata ?? {} }
   );
 
   return {
@@ -116,7 +116,7 @@ export function createEmbedServer(options: {
     zValidator("param", z.object({ thread_id: z.string().uuid() })),
     zValidator(
       "query",
-      z.object({ subgraphs: schemas.coercedBoolean.optional() }),
+      z.object({ subgraphs: schemas.coercedBoolean.optional() })
     ),
     async (c) => {
       // Get Latest Thread State
@@ -138,14 +138,14 @@ export function createEmbedServer(options: {
             createdAt: undefined,
             parentConfig: undefined,
             tasks: [],
-          }),
+          })
         );
       }
 
       const config = { configurable: { thread_id } };
       const result = await graph.getState(config, { subgraphs });
       return jsonExtra(c, stateSnapshotToThreadState(result));
-    },
+    }
   );
 
   api.post(
@@ -178,7 +178,7 @@ export function createEmbedServer(options: {
         result.push(stateSnapshotToThreadState(state));
       }
       return jsonExtra(c, result);
-    },
+    }
   );
 
   api.post(
@@ -212,7 +212,7 @@ export function createEmbedServer(options: {
           await stream.writeSSE({ data: serialiseAsDict(data), event });
         }
       });
-    },
+    }
   );
 
   api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {

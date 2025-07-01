@@ -12,7 +12,7 @@ const StateSchema = Annotation.Root({
 });
 
 const longRunning = async (
-  state: typeof StateSchema.State,
+  state: typeof StateSchema.State
 ): Promise<typeof StateSchema.Update> => {
   await new Promise((resolve) => setTimeout(resolve, state.delay));
   return { messages: [`finished after ${state.delay}ms`] };

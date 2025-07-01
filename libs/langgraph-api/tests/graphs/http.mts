@@ -20,7 +20,7 @@ export const app = new Hono<{
   })
   .use(async (c, next) => {
     const runsQuery = new RegExp(
-      "^(/runs(/stream|/wait)?$|/runs/batch$|/threads/[^/]+/runs(/stream|/wait)?)$",
+      "^(/runs(/stream|/wait)?$|/runs/batch$|/threads/[^/]+/runs(/stream|/wait)?)$"
     );
 
     if (c.req.method === "POST" && c.req.path.match(runsQuery)) {
@@ -51,8 +51,8 @@ export const app = new Hono<{
         headers: {
           "x-custom-output": c.req.header("x-custom-input") as string,
         },
-      },
-    ),
+      }
+    )
   )
   .get("/runs/afakeroute", (c) => c.json({ foo: "afakeroute" }))
   .get("/custom/error", () => {
@@ -66,7 +66,7 @@ export const app = new Hono<{
       }
 
       await stream.close();
-    }),
+    })
   )
   .post("/custom/webhook", async (c) => {
     WEBHOOK_PAYLOAD = await c.req.json();

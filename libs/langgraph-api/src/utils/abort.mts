@@ -7,7 +7,7 @@ export const combineAbortSignals = (
 
   const abortController = new AbortController();
   signals.forEach((signal) =>
-    signal.addEventListener("abort", () => abortController.abort()),
+    signal.addEventListener("abort", () => abortController.abort())
   );
   return abortController.signal;
 };

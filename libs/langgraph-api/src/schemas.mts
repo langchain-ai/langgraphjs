@@ -165,7 +165,7 @@ export const CommandSchema = z.object({
         z.union([
           z.string(),
           z.object({ node: z.string(), input: z.unknown().optional() }),
-        ]),
+        ])
       ),
     ])
     .optional(),
@@ -214,7 +214,7 @@ export const RunCreate = z
             "events",
             "debug",
             "custom",
-          ]),
+          ])
         ),
         z.enum([
           "values",
@@ -342,9 +342,9 @@ export const ThreadCreate = z
               values: z.unknown().nullish(),
               command: CommandSchema.nullish(),
               as_node: z.string(),
-            }),
+            })
           ),
-        }),
+        })
       )
       .describe("The supersteps to apply to the thread.")
       .optional(),

@@ -27,7 +27,7 @@ const RunnableConfigSchema = z.object({
 });
 
 const getRunnableConfig = (
-  userConfig: z.infer<typeof RunnableConfigSchema> | null | undefined,
+  userConfig: z.infer<typeof RunnableConfigSchema> | null | undefined
 ) => {
   if (!userConfig) return {};
   return {
@@ -56,11 +56,11 @@ api.post(
         if_exists: payload.if_exists ?? "raise",
         name: payload.name ?? "Untitled",
       },
-      c.var.auth,
+      c.var.auth
     );
 
     return c.json(assistant);
-  },
+  }
 );
 
 api.post(
@@ -79,7 +79,7 @@ api.post(
         limit: payload.limit ?? 10,
         offset: payload.offset ?? 0,
       },
-      c.var.auth,
+      c.var.auth
     )) {
       result.push(item.assistant);
       if (total === 0) {
@@ -89,7 +89,7 @@ api.post(
 
     c.res.headers.set("X-Pagination-Total", total.toString());
     return c.json(result);
-  },
+  }
 );
 
 api.get("/assistants/:assistant_id", async (c) => {
@@ -113,7 +113,7 @@ api.patch(
     const payload = c.req.valid("json");
 
     return c.json(await Assistants.patch(assistantId, payload, c.var.auth));
-  },
+  }
 );
 
 api.get(
@@ -132,7 +132,7 @@ api.get(
       xray: xray ?? undefined,
     });
     return c.json(drawable.toJSON());
-  },
+  }
 );
 
 api.get(
@@ -153,7 +153,7 @@ api.get(
 
       const graphSchema = await getCachedStaticGraphSchema(assistant.graph_id);
       const rootGraphId = Object.keys(graphSchema).find(
-        (i) => !i.includes("|"),
+        (i) => !i.includes("|")
       );
 
       if (!rootGraphId)
@@ -168,14 +168,14 @@ api.get(
       state_schema: schema.state,
       config_schema: schema.config,
     });
-  },
+  }
 );
 
 api.get(
   "/assistants/:assistant_id/subgraphs/:namespace?",
   zValidator(
     "param",
-    z.object({ assistant_id: z.string(), namespace: z.string().optional() }),
+    z.object({ assistant_id: z.string(), namespace: z.string().optional() })
   ),
   zValidator("query", z.object({ recurse: schemas.coercedBoolean.optional() })),
   async (c) => {
@@ -209,7 +209,7 @@ api.get(
         const graphSchema = await graphSchemaPromise;
 
         const rootGraphId = Object.keys(graphSchema).find(
-          (i) => !i.includes("|"),
+          (i) => !i.includes("|")
         );
         if (!rootGraphId) {
           throw new HTTPException(404, {
@@ -224,7 +224,7 @@ api.get(
     }
 
     return c.json(Object.fromEntries(result));
-  },
+  }
 );
 
 api.post(
@@ -235,7 +235,7 @@ api.post(
     const assistantId = getAssistantId(c.req.param("assistant_id"));
     const { version } = c.req.valid("json");
     return c.json(await Assistants.setLatest(assistantId, version, c.var.auth));
-  },
+  }
 );
 
 api.post(
@@ -246,7 +246,7 @@ api.post(
       limit: z.number().min(1).max(1000).optional().default(10),
       offset: z.number().min(0).optional().default(0),
       metadata: z.record(z.unknown()).optional(),
-    }),
+    })
   ),
   async (c) => {
     // Get Assistant Versions
@@ -255,7 +255,7 @@ api.post(
     const versions = await Assistants.getVersions(
       assistantId,
       { limit, offset, metadata },
-      c.var.auth,
+      c.var.auth
     );
 
     if (!versions?.length) {
@@ -265,7 +265,7 @@ api.post(
     }
 
     return c.json(versions);
-  },
+  }
 );
 
 export default api;

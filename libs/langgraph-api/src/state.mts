@@ -7,13 +7,13 @@ import { runnableConfigToCheckpoint } from "./utils/runnableConfig.mjs";
 import { serializeError } from "./utils/serde.mjs";
 
 const isStateSnapshot = (
-  state: StateSnapshot | LangGraphRunnableConfig,
+  state: StateSnapshot | LangGraphRunnableConfig
 ): state is StateSnapshot => {
   return "values" in state && "next" in state;
 };
 
 export const stateSnapshotToThreadState = (
-  state: StateSnapshot,
+  state: StateSnapshot
 ): ThreadState => {
   return {
     values: state.values,
@@ -27,7 +27,7 @@ export const stateSnapshotToThreadState = (
       // TODO: too many type assertions, check if this is actually correct
       checkpoint:
         task.state != null && "configurable" in task.state
-          ? ((task.state.configurable as Checkpoint) ?? null)
+          ? (task.state.configurable as Checkpoint) ?? null
           : null,
       state:
         task.state != null && isStateSnapshot(task.state)

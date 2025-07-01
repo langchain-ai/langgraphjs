@@ -131,7 +131,7 @@ export const conn = new FileSystemPersistence<Store>(
     assistants: {},
     assistant_versions: [],
     retry_counter: {},
-  }),
+  })
 );
 
 class TimeoutError extends Error {}
@@ -200,7 +200,7 @@ class Queue {
       options.signal?.addEventListener(
         "abort",
         () => reject(new AbortError()),
-        { signal: clean.signal },
+        { signal: clean.signal }
       );
 
       this.listeners.push(resolver);
@@ -234,7 +234,7 @@ class StreamManagerImpl {
 
   getQueue(
     runId: string,
-    options: { ifNotFound: "create"; resumable: boolean },
+    options: { ifNotFound: "create"; resumable: boolean }
   ): Queue {
     if (this.readers[runId] == null) {
       this.readers[runId] = new Queue(options);
@@ -282,8 +282,8 @@ export const truncate = (flags: {
         Object.entries(STORE.assistants).filter(
           ([key, assistant]) =>
             assistant.metadata?.created_by === "system" &&
-            uuid5(assistant.graph_id, NAMESPACE_GRAPH) === key,
-        ),
+            uuid5(assistant.graph_id, NAMESPACE_GRAPH) === key
+        )
       );
     }
 
@@ -298,7 +298,7 @@ const isObject = (value: unknown): value is Record<string, unknown> => {
 
 const isJsonbContained = (
   superset: Record<string, unknown> | undefined,
-  subset: Record<string, unknown> | undefined,
+  subset: Record<string, unknown> | undefined
 ): boolean => {
   if (superset == null || subset == null) return true;
   for (const [key, value] of Object.entries(subset)) {
@@ -322,7 +322,7 @@ export class Assistants {
       limit: number;
       offset: number;
     },
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): AsyncGenerator<{ assistant: Assistant; total: number }> {
     const [filters] = await handleAuthEvent(auth, "assistants:search", {
       graph_id: options.graph_id,
@@ -365,7 +365,7 @@ export class Assistants {
 
       for (const assistant of filtered.slice(
         options.offset,
-        options.offset + options.limit,
+        options.offset + options.limit
       )) {
         yield {
           assistant: {
@@ -380,7 +380,7 @@ export class Assistants {
 
   static async get(
     assistant_id: string,
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): Promise<Assistant> {
     const [filters] = await handleAuthEvent(auth, "assistants:read", {
       assistant_id,
@@ -406,7 +406,7 @@ export class Assistants {
       if_exists: OnConflictBehavior;
       name?: string;
     },
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): Promise<Assistant> {
     const [filters, mutable] = await handleAuthEvent(
       auth,
@@ -418,7 +418,7 @@ export class Assistants {
         metadata: options.metadata,
         if_exists: options.if_exists,
         name: options.name,
-      },
+      }
     );
 
     return conn.with((STORE) => {
@@ -471,7 +471,7 @@ export class Assistants {
       metadata?: Metadata;
       name?: string;
     },
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): Promise<Assistant> {
     const [filters, mutable] = await handleAuthEvent(
       auth,
@@ -482,7 +482,7 @@ export class Assistants {
         config: options?.config,
         metadata: options?.metadata,
         name: options?.name,
-      },
+      }
     );
 
     return conn.with((STORE) => {
@@ -527,7 +527,7 @@ export class Assistants {
         Math.max(
           ...STORE.assistant_versions
             .filter((v) => v["assistant_id"] === assistantId)
-            .map((v) => v["version"]),
+            .map((v) => v["version"])
         ) + 1;
 
       assistant.version = newVersion;
@@ -549,7 +549,7 @@ export class Assistants {
 
   static async delete(
     assistant_id: string,
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): Promise<string[]> {
     const [filters] = await handleAuthEvent(auth, "assistants:delete", {
       assistant_id,
@@ -569,7 +569,7 @@ export class Assistants {
 
       // Cascade delete for assistant versions and crons
       STORE.assistant_versions = STORE.assistant_versions.filter(
-        (v) => v["assistant_id"] !== assistant_id,
+        (v) => v["assistant_id"] !== assistant_id
       );
 
       for (const run of Object.values(STORE.runs)) {
@@ -585,7 +585,7 @@ export class Assistants {
   static async setLatest(
     assistant_id: string,
     version: number,
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): Promise<Assistant> {
     const [filters] = await handleAuthEvent(auth, "assistants:update", {
       assistant_id,
@@ -603,7 +603,7 @@ export class Assistants {
       }
 
       const assistantVersion = STORE.assistant_versions.find(
-        (v) => v["assistant_id"] === assistant_id && v["version"] === version,
+        (v) => v["assistant_id"] === assistant_id && v["version"] === version
       );
 
       if (!assistantVersion)
@@ -632,7 +632,7 @@ export class Assistants {
       offset: number;
       metadata?: Metadata;
     },
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ) {
     const [filters] = await handleAuthEvent(auth, "assistants:read", {
       assistant_id,
@@ -729,7 +729,7 @@ export class Threads {
       sort_by?: "thread_id" | "status" | "created_at" | "updated_at";
       sort_order?: "asc" | "desc";
     },
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): AsyncGenerator<{ thread: Thread; total: number }> {
     const [filters] = await handleAuthEvent(auth, "threads:search", {
       metadata: options.metadata,
@@ -788,7 +788,7 @@ export class Threads {
 
       for (const thread of filtered.slice(
         options.offset,
-        options.offset + options.limit,
+        options.offset + options.limit
       )) {
         yield { thread, total };
       }
@@ -798,7 +798,7 @@ export class Threads {
   // TODO: make this accept `undefined`
   static async get(
     thread_id: string,
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): Promise<Thread> {
     const [filters] = await handleAuthEvent(auth, "threads:read", {
       thread_id,
@@ -828,7 +828,7 @@ export class Threads {
       metadata?: Metadata;
       if_exists: OnConflictBehavior;
     },
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): Promise<Thread> {
     const [filters, mutable] = await handleAuthEvent(auth, "threads:create", {
       thread_id,
@@ -870,7 +870,7 @@ export class Threads {
   static async patch(
     threadId: string,
     options: { metadata?: Metadata },
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): Promise<Thread> {
     const [filters, mutable] = await handleAuthEvent(auth, "threads:update", {
       thread_id: threadId,
@@ -906,7 +906,7 @@ export class Threads {
     options: {
       checkpoint?: CheckpointPayload;
       exception?: Error;
-    },
+    }
   ) {
     return conn.with((STORE) => {
       const thread = STORE.threads[threadId];
@@ -919,7 +919,7 @@ export class Threads {
       }
 
       const hasPendingRuns = Object.values(STORE.runs).some(
-        (run) => run["thread_id"] === threadId && run["status"] === "pending",
+        (run) => run["thread_id"] === threadId && run["status"] === "pending"
       );
 
       let status: ThreadStatus = "idle";
@@ -944,7 +944,7 @@ export class Threads {
                 if (task.interrupts) acc[task.id] = task.interrupts;
                 return acc;
               },
-              {},
+              {}
             )
           : undefined;
     });
@@ -952,7 +952,7 @@ export class Threads {
 
   static async delete(
     thread_id: string,
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): Promise<string[]> {
     const [filters] = await handleAuthEvent(auth, "threads:delete", {
       thread_id,
@@ -986,7 +986,7 @@ export class Threads {
 
   static async copy(
     thread_id: string,
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): Promise<Thread> {
     const [filters] = await handleAuthEvent(auth, "threads:read", {
       thread_id,
@@ -1021,7 +1021,7 @@ export class Threads {
     static async get(
       config: RunnableConfig,
       options: { subgraphs?: boolean },
-      auth: AuthContext | undefined,
+      auth: AuthContext | undefined
     ): Promise<LangGraphStateSnapshot> {
       const subgraphs = options.subgraphs ?? false;
       const threadId = config.configurable?.thread_id;
@@ -1066,7 +1066,7 @@ export class Threads {
         | null
         | undefined,
       asNode: string | undefined,
-      auth: AuthContext | undefined,
+      auth: AuthContext | undefined
     ) {
       const threadId = config.configurable?.thread_id;
       const [filters] = await handleAuthEvent(auth, "threads:update", {
@@ -1089,7 +1089,7 @@ export class Threads {
           Object.values(STORE.runs).some(
             (run) =>
               run.thread_id === threadId &&
-              (run.status === "pending" || run.status === "running"),
+              (run.status === "pending" || run.status === "running")
           )
         ) {
           throw new HTTPException(409, { message: "Thread is busy" });
@@ -1146,7 +1146,7 @@ export class Threads {
           as_node?: string | undefined;
         }>;
       }>,
-      auth: AuthContext | undefined,
+      auth: AuthContext | undefined
     ) {
       const threadId = config.configurable?.thread_id;
       if (!threadId) return [];
@@ -1188,7 +1188,7 @@ export class Threads {
               j.command != null ? getLangGraphCommand(j.command) : j.values,
             asNode: j.as_node,
           })),
-        })),
+        }))
       );
       const state = await Threads.State.get(config, { subgraphs: false }, auth);
 
@@ -1212,7 +1212,7 @@ export class Threads {
         before?: string | RunnableConfig;
         metadata?: Metadata;
       },
-      auth: AuthContext | undefined,
+      auth: AuthContext | undefined
     ) {
       const threadId = config.configurable?.thread_id;
       if (!threadId) return [];
@@ -1288,7 +1288,7 @@ export class Runs {
           if (run.status !== "pending") continue;
           if (
             Object.values(STORE.runs).some(
-              (run) => run.thread_id === threadId && run.status === "running",
+              (run) => run.thread_id === threadId && run.status === "running"
             )
           ) {
             continue;
@@ -1321,7 +1321,7 @@ export class Runs {
       ifNotExists?: IfNotExists;
       afterSeconds?: number;
     },
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): Promise<Run[]> {
     return conn.with(async (STORE) => {
       const assistant = STORE.assistants[assistantId];
@@ -1352,14 +1352,14 @@ export class Runs {
           if_not_exists: ifNotExists,
           after_seconds: afterSeconds,
           kwargs,
-        },
+        }
       );
 
       const metadata = mutable.metadata ?? {};
       const config: RunnableConfig = kwargs.config ?? {};
 
       const existingThread = Object.values(STORE.threads).find(
-        (thread) => thread.thread_id === threadId,
+        (thread) => thread.thread_id === threadId
       );
 
       if (
@@ -1385,7 +1385,7 @@ export class Runs {
             configurable: Object.assign(
               {},
               assistant.config?.configurable,
-              config?.configurable,
+              config?.configurable
             ),
           }),
           created_at: now,
@@ -1410,9 +1410,9 @@ export class Runs {
                 {},
                 assistant.config?.configurable,
                 existingThread?.config?.configurable,
-                config?.configurable,
+                config?.configurable
               ),
-            },
+            }
           );
 
           existingThread.updated_at = now;
@@ -1426,7 +1426,7 @@ export class Runs {
       const inflightRuns = Object.values(STORE.runs).filter(
         (run) =>
           run.thread_id === threadId &&
-          (run.status === "pending" || run.status === "running"),
+          (run.status === "pending" || run.status === "running")
       );
 
       if (options?.preventInsertInInflight) {
@@ -1449,14 +1449,14 @@ export class Runs {
             existingThread?.config?.configurable?.user_id ??
             assistant.config?.configurable?.user_id ??
             options?.userId,
-        },
+        }
       );
 
       const mergedMetadata = Object.assign(
         {},
         assistant.metadata,
         existingThread?.metadata,
-        metadata,
+        metadata
       );
 
       const newRun: Run = {
@@ -1471,7 +1471,7 @@ export class Runs {
             assistant.config,
             config,
             { configurable },
-            { metadata: mergedMetadata },
+            { metadata: mergedMetadata }
           ),
         }),
         multitask_strategy: multitaskStrategy,
@@ -1487,7 +1487,7 @@ export class Runs {
   static async get(
     runId: string,
     thread_id: string | undefined,
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): Promise<Run | null> {
     const [filters] = await handleAuthEvent(auth, "threads:read", {
       thread_id,
@@ -1514,7 +1514,7 @@ export class Runs {
   static async delete(
     run_id: string,
     thread_id: string | undefined,
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): Promise<string | null> {
     const [filters] = await handleAuthEvent(auth, "threads:delete", {
       run_id,
@@ -1542,13 +1542,13 @@ export class Runs {
   static async wait(
     runId: string,
     threadId: string | undefined,
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ) {
     const runStream = Runs.Stream.join(
       runId,
       threadId,
       { ignore404: threadId == null, lastEventId: undefined },
-      auth,
+      auth
     );
 
     const lastChunk = new Promise(async (resolve, reject) => {
@@ -1574,7 +1574,7 @@ export class Runs {
   static async join(
     runId: string,
     threadId: string,
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ) {
     // check if thread exists
     await Threads.get(threadId, auth);
@@ -1592,7 +1592,7 @@ export class Runs {
     options: {
       action?: "interrupt" | "rollback";
     },
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ) {
     return conn.with(async (STORE) => {
       const action = options.action ?? "interrupt";
@@ -1637,7 +1637,7 @@ export class Runs {
               {
                 run_id: runId,
                 thread_id: threadId,
-              },
+              }
             );
 
             promises.push(Runs.delete(runId, threadId, auth));
@@ -1672,7 +1672,7 @@ export class Runs {
       status?: string | null;
       metadata?: Metadata | null;
     },
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ) {
     const [filters] = await handleAuthEvent(auth, "threads:search", {
       thread_id: threadId,
@@ -1720,7 +1720,7 @@ export class Runs {
         cancelOnDisconnect?: AbortSignal;
         lastEventId: string | undefined;
       },
-      auth: AuthContext | undefined,
+      auth: AuthContext | undefined
     ): AsyncGenerator<{ id?: string; event: string; data: unknown }> {
       yield* conn.withGenerator(async function* (STORE) {
         // TODO: what if we're joining an already completed run? Should we check before?
@@ -1761,7 +1761,7 @@ export class Runs {
               if (message.data === "done") break;
             } else {
               const streamTopic = message.topic.substring(
-                `run:${runId}:stream:`.length,
+                `run:${runId}:stream:`.length
               );
 
               yield { id, event: streamTopic, data: message.data };

@@ -16,7 +16,7 @@ export const serialiseAsDict = (obj: unknown) => {
 
       return value;
     },
-    2,
+    2
   );
 };
 

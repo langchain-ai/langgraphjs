@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 
 export const GRAPHS: Record<string, CompiledGraph<string>> = {};
 export const NAMESPACE_GRAPH = uuid.parse(
-  "6ba7b821-9dad-11d1-80b4-00c04fd430c8",
+  "6ba7b821-9dad-11d1-80b4-00c04fd430c8"
 );
 
 export type CompiledGraphFactory<T extends string> = (config: {
@@ -15,7 +15,7 @@ export type CompiledGraphFactory<T extends string> = (config: {
 
 export async function resolveGraph(
   spec: string,
-  options: { cwd: string; onlyFilePresence?: false },
+  options: { cwd: string; onlyFilePresence?: false }
 ): Promise<{
   sourceFile: string;
   exportSymbol: string;
@@ -24,12 +24,12 @@ export async function resolveGraph(
 
 export async function resolveGraph(
   spec: string,
-  options: { cwd: string; onlyFilePresence: true },
+  options: { cwd: string; onlyFilePresence: true }
 ): Promise<{ sourceFile: string; exportSymbol: string; resolved: undefined }>;
 
 export async function resolveGraph(
   spec: string,
-  options: { cwd: string; onlyFilePresence?: boolean },
+  options: { cwd: string; onlyFilePresence?: boolean }
 ) {
   const [userFile, exportSymbol] = spec.split(":", 2);
   const sourceFile = path.resolve(options.cwd, userFile);

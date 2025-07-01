@@ -48,8 +48,8 @@ it("compose with custom db and healthcheck", () => {
   expect(
     createCompose(
       { ...DEFAULT_DOCKER_CAPABILITIES, healthcheckStartInterval: true },
-      { port, postgresUri },
-    ),
+      { port, postgresUri }
+    )
   ).toEqual(dedent`
       services:
         langgraph-redis:

@@ -18,7 +18,7 @@ declare module "hono" {
 
 export function isAuthMatching(
   metadata: Record<string, unknown> | undefined,
-  filters: AuthFilters,
+  filters: AuthFilters
 ) {
   if (filters == null) return true;
   for (const [key, value] of Object.entries(filters)) {
@@ -44,7 +44,7 @@ export function isAuthMatching(
 export const handleAuthEvent = async <T extends keyof AuthEventValueMap>(
   context: AuthContext | undefined,
   event: T,
-  value: AuthEventValueMap[T],
+  value: AuthEventValueMap[T]
 ): Promise<[AuthFilters | undefined, value: AuthEventValueMap[T]]> => {
   const [resource, action] = event.split(":");
   const result = await authorize({
@@ -56,7 +56,7 @@ export const handleAuthEvent = async <T extends keyof AuthEventValueMap>(
 
   return [result.filters, result.value] as [
     AuthFilters | undefined,
-    value: AuthEventValueMap[T],
+    value: AuthEventValueMap[T]
   ];
 };
 

@@ -35,7 +35,7 @@ let analyticsPromise = Promise.resolve();
 
 export function withAnalytics<TCommand extends Command<any, any, any>>(
   fn?: (command: TCommand) => Record<string, boolean>,
-  options?: { name?: string },
+  options?: { name?: string }
 ) {
   if (process.env.LANGGRAPH_CLI_NO_ANALYTICS === "1") {
     return () => void 0;
@@ -50,7 +50,7 @@ export function withAnalytics<TCommand extends Command<any, any, any>>(
         cli_version: version,
         cli_command: options?.name ?? actionCommand.name(),
         params: fn?.(actionCommand) ?? {},
-      }).catch(() => {}),
+      }).catch(() => {})
     );
   };
 }

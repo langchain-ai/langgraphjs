@@ -6,7 +6,7 @@ const api = new Hono();
 
 // Get the version using the same pattern as semver/index.mts
 const packageJsonPath = url.fileURLToPath(
-  new URL("../../package.json", import.meta.url),
+  new URL("../../package.json", import.meta.url)
 );
 
 let version: string;

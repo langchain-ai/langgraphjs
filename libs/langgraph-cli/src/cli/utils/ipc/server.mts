@@ -53,7 +53,7 @@ export const createIpcServer = async () => {
       bufferData((message: Buffer) => {
         const data = JSON.parse(message.toString());
         server.emit("data", data);
-      }),
+      })
     );
   });
 

@@ -85,9 +85,9 @@
   },
   "devDependencies": {
     "@langchain/core": "^0.3.59",
-    "@langchain/langgraph": "^0.2.57",
-    "@langchain/langgraph-checkpoint": "~0.0.16",
-    "@langchain/langgraph-sdk": "^0.0.77",
+    "@langchain/langgraph": "workspace:*",
+    "@langchain/langgraph-checkpoint": "workspace:*",
+    "@langchain/langgraph-sdk": "~0.0.77",
     "@types/babel__code-frame": "^7.0.6",
     "@types/node": "^22.2.0",
     "@types/react": "^19.0.8",
@@ -96,8 +96,8 @@
     "@types/uuid": "^10.0.0",
     "jose": "^6.0.10",
     "postgres": "^3.4.5",
-    "prettier": "^3.3.3",
-    "typescript": "^5.5.4",
-    "vitest": "^3.0.5"
+    "prettier": "^2.8.3",
+    "typescript": "^4.9.5 || ^5.4.5",
+    "vitest": "^3.1.2"
   }
 }

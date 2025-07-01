@@ -70,8 +70,8 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
         invalidPackages.map(({ name, version, required }) => [
           name,
           { version, required },
-        ]),
-      ),
+        ])
+      )
     );
   }
 
@@ -105,7 +105,7 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
         assistants: z.boolean().optional(),
         checkpointer: z.boolean().optional(),
         store: z.boolean().optional(),
-      }),
+      })
     ),
     (c) => {
       const { runs, threads, assistants, checkpointer, store } =
@@ -113,7 +113,7 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
 
       truncate({ runs, threads, assistants, checkpointer, store });
       return c.json({ ok: true });
-    },
+    }
   );
 
   app.use(cors(options.http?.cors));
@@ -158,8 +158,8 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
         { fetch: app.fetch, port: options.port, hostname: options.host },
         (c) => {
           resolve({ host: `${c.address}:${c.port}`, cleanup });
-        },
+        }
       );
-    },
+    }
   );
 }

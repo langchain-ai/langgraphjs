@@ -63,7 +63,7 @@ api.post(
         maxDepth: payload.max_depth,
       }),
     });
-  },
+  }
 );
 
 api.post(
@@ -90,7 +90,7 @@ api.post(
     });
 
     return c.json({ items: items.map(mapItemsToApi) });
-  },
+  }
 );
 
 api.put("/store/items", zValidator("json", schemas.StorePutItem), async (c) => {
@@ -121,7 +121,7 @@ api.delete(
     });
     await storageStore.delete(payload.namespace ?? [], payload.key);
     return c.body(null, 204);
-  },
+  }
 );
 
 api.get(
@@ -139,7 +139,7 @@ api.get(
     const key = payload.key;
     const namespace = payload.namespace;
     return c.json(mapItemsToApi(await storageStore.get(namespace, key)));
-  },
+  }
 );
 
 export default api;

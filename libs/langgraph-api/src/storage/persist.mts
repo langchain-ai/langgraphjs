@@ -11,7 +11,7 @@ superjson.registerCustom<Uint8Array, string>(
     serialize: (v) => Buffer.from(v).toString("base64"),
     deserialize: (v) => new Uint8Array(Buffer.from(v, "base64")),
   },
-  "Uint8Array",
+  "Uint8Array"
 );
 
 export function serialize(data: unknown) {
@@ -81,7 +81,7 @@ export class FileSystemPersistence<Schema> {
   }
 
   async *withGenerator<T extends AsyncGenerator<any>>(
-    fn: ((data: Schema, options: { schedulePersist: () => void }) => T) | T,
+    fn: ((data: Schema, options: { schedulePersist: () => void }) => T) | T
   ) {
     if (this.filepath == null || this.data == null) {
       throw new Error(`${this.name} not initialized`);

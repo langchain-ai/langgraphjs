@@ -3,11 +3,11 @@ import * as fs from "node:fs/promises";
 import * as semver from "semver";
 
 const packageJsonPath = url.fileURLToPath(
-  new URL("../../package.json", import.meta.url),
+  new URL("../../package.json", import.meta.url)
 );
 
 export async function checkSemver(
-  packages: { name: string; version: string }[],
+  packages: { name: string; version: string }[]
 ): Promise<
   { name: string; version: string; required: string; satisfies: boolean }[]
 > {
@@ -55,7 +55,7 @@ export async function checkLangGraphSemver() {
   ];
 
   const resolved = await Promise.all(
-    validate.map((name) => resolveVersion(name)),
+    validate.map((name) => resolveVersion(name))
   );
   return checkSemver(resolved);
 }

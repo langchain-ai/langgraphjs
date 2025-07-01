@@ -17,14 +17,14 @@ const CLOUDFLARED_VERSION = "2025.2.1";
 const CLOUDFLARED_CACHE_DIR = path.join(
   __dirname,
   ".cloudflare",
-  CLOUDFLARED_VERSION,
+  CLOUDFLARED_VERSION
 );
 
 const writeFile = async (path: string, stream: ReadableStream | null) => {
   if (stream == null) throw new Error("Stream is null");
   return await fs.writeFile(
     path,
-    Readable.fromWeb(stream as nodeStream.ReadableStream),
+    Readable.fromWeb(stream as nodeStream.ReadableStream)
   );
 };
 
@@ -59,7 +59,7 @@ class CloudflareUrlStream extends TransformStream<Uint8Array, string> {
       transform(chunk, controller) {
         const str = decoder.decode(chunk);
         const urlMatch = str.match(
-          /https:\/\/[a-z0-9-]+\.trycloudflare\.com/,
+          /https:\/\/[a-z0-9-]+\.trycloudflare\.com/
         )?.[0];
 
         if (urlMatch) controller.enqueue(urlMatch);
@@ -74,7 +74,7 @@ class CloudflareUrlStream extends TransformStream<Uint8Array, string> {
 }
 
 export async function startCloudflareTunnel(
-  port: string,
+  port: string
 ): Promise<CloudflareTunnel> {
   const targetBinaryPath = await ensureCloudflared();
   logger.info("Starting tunnel");
@@ -82,7 +82,7 @@ export async function startCloudflareTunnel(
   const child = spawn(
     targetBinaryPath,
     ["tunnel", "--url", `http://localhost:${port}`],
-    { stdio: ["inherit", "pipe", "pipe"] },
+    { stdio: ["inherit", "pipe", "pipe"] }
   );
 
   child.stdout

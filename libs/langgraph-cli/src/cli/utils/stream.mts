@@ -65,7 +65,7 @@ export class BytesLineDecoder extends TransformStream<Uint8Array, Uint8Array> {
 
             return acc;
           },
-          { lines: [], from: 0 },
+          { lines: [], from: 0 }
         );
 
         if (lines.length === 1 && !trailingNewline) {

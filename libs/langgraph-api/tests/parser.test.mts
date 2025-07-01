@@ -65,7 +65,7 @@ test.concurrent("graph factories", () => {
         },
       ],
       exportSymbol: "graph",
-    })),
+    }))
   );
 
   for (const schema of schemas) {
@@ -125,7 +125,7 @@ describe.concurrent("subgraphs", () => {
             `,
           },
         ],
-      })),
+      }))
     );
 
     for (const schemas of schemasList) {
@@ -262,7 +262,7 @@ describe.concurrent("subgraphs", () => {
         "parent",
         "parent|parent_two",
         "parent|parent_two|child_two",
-      ]),
+      ])
     );
 
     expect(schema["parent"].state).toMatchObject({
@@ -388,10 +388,10 @@ describe.concurrent("subgraphs", () => {
             exportSymbol: "parent",
           },
         ],
-        { strict: true },
+        { strict: true }
       );
     }).toThrowError(
-      `Multiple unique subgraph invocations found for "parent|parent_one"`,
+      `Multiple unique subgraph invocations found for "parent|parent_one"`
     );
   });
 
@@ -459,7 +459,7 @@ describe.concurrent("subgraphs", () => {
 
     const schema = schemas[0];
     expect(Object.keys(schema)).toEqual(
-      expect.arrayContaining(["graph", "graph|child"]),
+      expect.arrayContaining(["graph", "graph|child"])
     );
 
     expect(schema["graph|child"].input).toMatchObject({
@@ -597,7 +597,7 @@ describe.concurrent("subgraphs", () => {
 
     const schema = schemas[0];
     expect(Object.keys(schema)).toEqual(
-      expect.arrayContaining(["graph", "graph|child"]),
+      expect.arrayContaining(["graph", "graph|child"])
     );
 
     expect(schema["graph|child"].input).toMatchObject({
@@ -867,7 +867,7 @@ test.concurrent("weather", () => {
 
   const schema = schemas[0];
   expect(Object.keys(schema)).toEqual(
-    expect.arrayContaining(["graph", "graph|weather_graph"]),
+    expect.arrayContaining(["graph", "graph|weather_graph"])
   );
 });
 
@@ -932,7 +932,7 @@ test.concurrent("nested", () => {
 
   const schema = schemas[0];
   expect(Object.keys(schema)).toEqual(
-    expect.arrayContaining(["graph", "graph|gp_two", "graph|gp_two|p_two"]),
+    expect.arrayContaining(["graph", "graph|gp_two", "graph|gp_two|p_two"])
   );
 });
 

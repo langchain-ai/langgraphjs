@@ -10,7 +10,7 @@ const GRAPH_UI: Record<string, { basename: string; contents: Uint8Array }[]> =
 
 export async function registerGraphUi(
   defs: Record<string, string>,
-  options: { cwd: string; config?: { shared?: string[] } },
+  options: { cwd: string; config?: { shared?: string[] } }
 ) {
   await watch({
     defs,
@@ -37,24 +37,24 @@ api.post(
     const result = [];
 
     for (const css of files.filter(
-      (i) => path.extname(i.basename) === ".css",
+      (i) => path.extname(i.basename) === ".css"
     )) {
       result.push(
-        `<link rel="stylesheet" href="http://${host}/ui/${agent}/${css.basename}" />`,
+        `<link rel="stylesheet" href="http://${host}/ui/${agent}/${css.basename}" />`
       );
     }
 
     const js = files.find((i) => path.extname(i.basename) === ".js");
     if (js) {
       result.push(
-        `<script src="http://${host}/ui/${agent}/${js.basename}" onload='__LGUI_${agent}.render(${messageName}, "{{shadowRootId}}")'></script>`,
+        `<script src="http://${host}/ui/${agent}/${js.basename}" onload='__LGUI_${agent}.render(${messageName}, "{{shadowRootId}}")'></script>`
       );
     }
 
     return c.text(result.join("\n"), {
       headers: { "Content-Type": "text/html" },
     });
-  },
+  }
 );
 
 api.get("/ui/:agent/:basename", async (c) => {

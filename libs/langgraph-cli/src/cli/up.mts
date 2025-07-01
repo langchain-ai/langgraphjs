@@ -31,7 +31,7 @@ const waitForHealthcheck = async (port: number) => {
   while (Date.now() - now < 10_000) {
     const ok = await fetch(`http://localhost:${port}/ok`).then(
       (res) => res.ok,
-      () => false,
+      () => false
     );
 
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -47,23 +47,23 @@ builder
   .option("-c, --config <path>", "Path to configuration file", process.cwd())
   .option(
     "-d, --docker-compose <path>",
-    "Advanced: Path to docker-compose.yml file with additional services to launch",
+    "Advanced: Path to docker-compose.yml file with additional services to launch"
   )
   .option("-p, --port <port>", "Port to run the server on", "8123")
   .option("--recreate", "Force recreate containers and volumes", false)
   .option(
     "--no-pull",
-    "Running the server with locally-built images. By default LangGraph will pull the latest images from the registry",
+    "Running the server with locally-built images. By default LangGraph will pull the latest images from the registry"
   )
   .option("--watch", "Restart on file changes", false)
   .option(
     "--wait",
     "Wait for services to start before returning. Implies --detach",
-    false,
+    false
   )
   .option(
     "--postgres-uri <uri>",
-    "Postgres URI to use for the database. Defaults to launching a local database",
+    "Postgres URI to use for the database. Defaults to launching a local database"
   )
   .exitOverride((error) => gracefulExit(error.exitCode))
   .hook(
@@ -77,7 +77,7 @@ builder
       pull: command.opts().pull,
       watch: command.opts().watch,
       wait: command.opts().wait,
-    })),
+    }))
   )
   .action(async (params) => {
     logger.info("Starting LangGraph API server...");
@@ -85,7 +85,7 @@ builder
       dedent`
         For local dev, requires env var LANGSMITH_API_KEY with access to LangGraph Cloud closed beta.
         For production use, requires a license key in env var LANGGRAPH_CLOUD_LICENSE_KEY.
-      `,
+      `
     );
 
     const configPath = await getProjectPath(params.config);
@@ -120,13 +120,13 @@ builder
     // remove dangling images
     logger.info(`Pruning dangling images...`);
     await stream(
-      exec`docker image prune -f --filter ${`label=com.docker.compose.project=${name}`}`,
+      exec`docker image prune -f --filter ${`label=com.docker.compose.project=${name}`}`
     );
 
     // remove stale containers
     logger.info(`Pruning stale containers...`);
     await stream(
-      exec`docker container prune -f --filter ${`label=com.docker.compose.project=${name}`}`,
+      exec`docker container prune -f --filter ${`label=com.docker.compose.project=${name}`}`
     );
 
     const input = createCompose(capabilities, {
@@ -150,7 +150,7 @@ builder
         args.push("--watch");
       } else {
         logger.warn(
-          "Watch mode is not available. Please upgrade your Docker Engine.",
+          "Watch mode is not available. Please upgrade your Docker Engine."
         );
       }
     } else if (params.wait) {
@@ -180,7 +180,7 @@ builder
           - LangGraph Studio: https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:${params.port}
         `);
       },
-      () => void 0,
+      () => void 0
     );
 
     await up.catch(() => void 0);

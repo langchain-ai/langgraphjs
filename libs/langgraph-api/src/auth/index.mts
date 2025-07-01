@@ -139,7 +139,7 @@ export async function authenticate(request: Request) {
       }
 
       throw new Error(
-        "Invalid auth response received. Make sure to either return a `string` or an object with `identity` property.",
+        "Invalid auth response received. Make sure to either return a `string` or an object with `identity` property."
       );
     })();
 
@@ -151,7 +151,7 @@ export async function authenticate(request: Request) {
 
 export async function registerAuth(
   auth: { path?: string; disable_studio_auth?: boolean },
-  options: { cwd: string },
+  options: { cwd: string }
 ) {
   if (!auth.path) return;
 
@@ -160,7 +160,7 @@ export async function registerAuth(
   const sourceFile = path.resolve(options.cwd, userFile);
 
   const module = (await import(url.pathToFileURL(sourceFile).toString()).then(
-    (module) => module[exportSymbol || "default"],
+    (module) => module[exportSymbol || "default"]
   )) as Auth | undefined;
 
   if (!module) throw new Error(`Failed to load auth: ${auth.path}`);
