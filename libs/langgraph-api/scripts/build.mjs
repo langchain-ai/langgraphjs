@@ -1,7 +1,17 @@
-#!/usr/bin/env bun
-import { $ } from "./utils.mjs";
+import { exec } from "node:child_process";
 
-await $`rm -rf dist`;
+function $(strings) {
+  const command = strings.join(" ");
+  console.log(command);
+
+  return new Promise((resolve, reject) => {
+    exec(command, (error, stdout, stderr) => {
+      if (error) return reject(error);
+      return resolve({ stdout, stderr });
+    });
+  });
+}
+
 await $`yarn tsc --outDir dist`;
 
 await $`cp src/graph/parser/schema/types.template.mts dist/src/graph/parser/schema`;

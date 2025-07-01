@@ -9,6 +9,7 @@ import { randomUUID } from "crypto";
 import postgres from "postgres";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { findLast, gatherIterator, truncate } from "./utils.mjs";
+import waitPort from "wait-port";
 
 const API_URL = "http://localhost:2024";
 const client = new Client<any>({ apiUrl: API_URL });
@@ -30,7 +31,10 @@ interface AgentState {
 
 const IS_MEMORY = true;
 
-beforeAll(() => truncate(API_URL, "all"));
+beforeAll(async () => {
+  await waitPort({ port: 2024, timeout: 10_000 });
+  await truncate(API_URL, "all");
+});
 
 describe("assistants", () => {
   it("create read update delete", async () => {

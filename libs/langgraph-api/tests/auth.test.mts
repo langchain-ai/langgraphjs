@@ -2,8 +2,9 @@ import { Client } from "@langchain/langgraph-sdk";
 import { beforeAll, expect, it } from "vitest";
 import { gatherIterator, truncate } from "./utils.mjs";
 import { SignJWT } from "jose";
+import waitPort from "wait-port";
 
-const API_URL = "http://localhost:2024";
+const API_URL = "http://localhost:2025";
 const config = { configurable: { user_id: "123" } };
 
 const SECRET_KEY = new TextEncoder().encode(
@@ -23,7 +24,10 @@ const createJwtClient = async (sub: string, scopes: string[] = []) => {
   });
 };
 
-beforeAll(() => truncate(API_URL, "all"));
+beforeAll(async () => {
+  await waitPort({ port: 2025, timeout: 10_000 });
+  await truncate(API_URL, "all");
+});
 
 it("unauthenticated user", async () => {
   const client = await createJwtClient("wfh", ["me"]);

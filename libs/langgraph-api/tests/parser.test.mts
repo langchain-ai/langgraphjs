@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { SubgraphExtractor } from "../src/graph/parser/parser.mjs";
 import dedent from "dedent";
 
-test.concurrent("graph factories", () => {
+test.concurrent("graph factories", { timeout: 15_000 }, () => {
   const MessagesSchema = {
     type: "object",
     properties: {
@@ -76,7 +76,7 @@ test.concurrent("graph factories", () => {
   }
 });
 
-describe.concurrent("subgraphs", () => {
+describe.concurrent("subgraphs", { timeout: 15_000 }, () => {
   test.concurrent(`basic`, () => {
     const testCases = [
       "subgraph",
@@ -793,7 +793,7 @@ describe.concurrent("subgraphs", () => {
   });
 });
 
-test.concurrent("weather", () => {
+test.concurrent("weather", { timeout: 15_000 }, () => {
   const schemas = SubgraphExtractor.extractSchemas([
     {
       sourceFile: [
@@ -871,7 +871,7 @@ test.concurrent("weather", () => {
   );
 });
 
-test.concurrent("nested", () => {
+test.concurrent("nested", { timeout: 15_000 }, () => {
   const schemas = SubgraphExtractor.extractSchemas([
     {
       sourceFile: [
@@ -936,15 +936,18 @@ test.concurrent("nested", () => {
   );
 });
 
-test.concurrent("overlapping parallel schema inference", () => {
-  const schemas = SubgraphExtractor.extractSchemas([
-    {
-      exportSymbol: "graph",
-      sourceFile: [
-        {
-          name: "graph1.mts",
-          main: true,
-          contents: dedent`
+test.concurrent(
+  "overlapping parallel schema inference",
+  { timeout: 15_000 },
+  () => {
+    const schemas = SubgraphExtractor.extractSchemas([
+      {
+        exportSymbol: "graph",
+        sourceFile: [
+          {
+            name: "graph1.mts",
+            main: true,
+            contents: dedent`
             import { Annotation, StateGraph, END, START } from "@langchain/langgraph";
             export const graph = new StateGraph(
               Annotation.Root({ messages: Annotation<string[]>({ reducer: (a, b) => a.concat(b) }) }),
@@ -955,16 +958,16 @@ test.concurrent("overlapping parallel schema inference", () => {
               .addEdge("child", END)
               .compile();
           `,
-        },
-      ],
-    },
-    {
-      exportSymbol: "graph",
-      sourceFile: [
-        {
-          name: "graph2.mts",
-          main: true,
-          contents: dedent`
+          },
+        ],
+      },
+      {
+        exportSymbol: "graph",
+        sourceFile: [
+          {
+            name: "graph2.mts",
+            main: true,
+            contents: dedent`
             import { Annotation, StateGraph, END, START } from "@langchain/langgraph";
             export const graph = new StateGraph(
               Annotation.Root({ messages: Annotation<string[]>({ reducer: (a, b) => a.concat(b) }) }),
@@ -975,29 +978,30 @@ test.concurrent("overlapping parallel schema inference", () => {
               .addEdge("child", END)
               .compile();
           `,
-        },
-      ],
-    },
-  ]);
+          },
+        ],
+      },
+    ]);
 
-  expect(schemas).toMatchObject([
-    {
-      graph: {
-        config: {
-          type: "object",
-          $schema: "http://json-schema.org/draft-07/schema#",
-          properties: { graph1: { type: "string" } },
+    expect(schemas).toMatchObject([
+      {
+        graph: {
+          config: {
+            type: "object",
+            $schema: "http://json-schema.org/draft-07/schema#",
+            properties: { graph1: { type: "string" } },
+          },
         },
       },
-    },
-    {
-      graph: {
-        config: {
-          type: "object",
-          $schema: "http://json-schema.org/draft-07/schema#",
-          properties: { graph2: { type: "string" } },
+      {
+        graph: {
+          config: {
+            type: "object",
+            $schema: "http://json-schema.org/draft-07/schema#",
+            properties: { graph2: { type: "string" } },
+          },
         },
       },
-    },
-  ]);
-});
+    ]);
+  }
+);

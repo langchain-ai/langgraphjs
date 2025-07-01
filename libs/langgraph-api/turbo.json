@@ -2,12 +2,19 @@
   "$schema": "https://turbo.build/schema.json",
   "extends": ["//"],
   "tasks": {
-    "test:api": {
+    "test": {
+      "with": ["start", "start:auth"],
       "cache": false,
+      "persistent": true
+    },
+    "start": {
+      "cache": false,
+      "persistent": true,
       "dependsOn": ["^build", "build"]
     },
-    "test:parser": {
+    "start:auth": {
       "cache": false,
+      "persistent": true,
       "dependsOn": ["^build", "build"]
     }
   }

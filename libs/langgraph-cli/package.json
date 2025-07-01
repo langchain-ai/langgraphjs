@@ -19,9 +19,9 @@
     "url": "git@github.com:langchain-ai/langgraphjs-api.git"
   },
   "scripts": {
-    "clean": "npx -y bun scripts/clean.mjs",
+    "clean": "rm -rf dist/ .turbo/",
     "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-cli",
-    "build:internal": "npx -y bun scripts/build.mjs",
+    "build:internal": "yarn clean && node scripts/build.mjs",
     "prepack": "yarn run build",
     "typecheck": "tsc --noEmit",
     "cli": "tsx src/cli/cli.mts",
