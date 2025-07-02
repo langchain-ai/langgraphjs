@@ -1954,9 +1954,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph-sdk-validation@workspace:libs/sdk-js-validation":
+"@langchain/langgraph-sdk-validation@workspace:libs/sdk-validation":
   version: 0.0.0-use.local
-  resolution: "@langchain/langgraph-sdk-validation@workspace:libs/sdk-js-validation"
+  resolution: "@langchain/langgraph-sdk-validation@workspace:libs/sdk-validation"
   dependencies:
     "@langchain/langgraph": "workspace:*"
     "@langchain/langgraph-api": "npm:~0.0.41"
@@ -1982,9 +1982,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph-sdk@workspace:*, @langchain/langgraph-sdk@workspace:libs/sdk-js":
+"@langchain/langgraph-sdk@workspace:*, @langchain/langgraph-sdk@workspace:libs/sdk":
   version: 0.0.0-use.local
-  resolution: "@langchain/langgraph-sdk@workspace:libs/sdk-js"
+  resolution: "@langchain/langgraph-sdk@workspace:libs/sdk"
   dependencies:
     "@langchain/core": "npm:^0.3.61"
     "@langchain/scripts": "npm:^0.1.4"
