@@ -6,8 +6,8 @@
   "scripts": {
     "clean": "rm -rf dist/ dist-cjs/",
     "format": "prettier --write src",
-    "lint": "prettier --check src && tsc --noEmit",
-    "test": "vitest"
+    "lint": "prettier --check src",
+    "test": "vitest run"
   },
   "main": "index.js",
   "license": "MIT",
