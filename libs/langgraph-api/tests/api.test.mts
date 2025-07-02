@@ -1440,7 +1440,7 @@ describe("subgraphs", () => {
   });
 
   // (1) interrupt and then continue running, no modification
-  it.only.concurrent("human in the loop - no modification", async () => {
+  it.concurrent("human in the loop - no modification", async () => {
     const assistant = await client.assistants.create({ graphId: "weather" });
     const thread = await client.threads.create();
 
