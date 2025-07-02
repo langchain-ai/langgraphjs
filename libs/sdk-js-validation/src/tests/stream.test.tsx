@@ -311,10 +311,7 @@ describe("useStream", () => {
           setStopped(true);
           mutate((prev) => ({
             ...prev,
-            messages: [
-              ...(prev.messages ?? []),
-              { type: "ai", content: "Stream stopped" },
-            ],
+            messages: [{ type: "ai", content: "Stream stopped" }],
           }));
         },
       });
