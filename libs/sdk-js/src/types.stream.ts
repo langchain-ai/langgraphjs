@@ -151,7 +151,13 @@ export type EventsStreamEvent = {
   event: "events";
   data: {
     event:
-      | `on_${"chat_model" | "llm" | "chain" | "tool" | "retriever" | "prompt"}_${"start" | "stream" | "end"}`
+      | `on_${
+          | "chat_model"
+          | "llm"
+          | "chain"
+          | "tool"
+          | "retriever"
+          | "prompt"}_${"start" | "stream" | "end"}`
       | (string & {});
     name: string;
     tags: string[];
@@ -179,7 +185,7 @@ type GetStreamModeMap<
   TStreamMode extends StreamMode | StreamMode[],
   TStateType = unknown,
   TUpdateType = TStateType,
-  TCustomType = unknown,
+  TCustomType = unknown
 > =
   | {
       values: ValuesStreamEvent<TStateType>;
@@ -198,7 +204,7 @@ type GetSubgraphsStreamModeMap<
   TStreamMode extends StreamMode | StreamMode[],
   TStateType = unknown,
   TUpdateType = TStateType,
-  TCustomType = unknown,
+  TCustomType = unknown
 > =
   | {
       values: SubgraphValuesStreamEvent<TStateType>;
@@ -218,7 +224,7 @@ export type TypedAsyncGenerator<
   TSubgraphs extends boolean = false,
   TStateType = unknown,
   TUpdateType = TStateType,
-  TCustomType = unknown,
+  TCustomType = unknown
 > = AsyncGenerator<
   TSubgraphs extends true
     ? GetSubgraphsStreamModeMap<

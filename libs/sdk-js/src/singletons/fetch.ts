@@ -5,7 +5,7 @@
 const DEFAULT_FETCH_IMPLEMENTATION = (...args: any[]) => fetch(...args);
 
 const LANGSMITH_FETCH_IMPLEMENTATION_KEY = Symbol.for(
-  "lg:fetch_implementation",
+  "lg:fetch_implementation"
 );
 
 /**

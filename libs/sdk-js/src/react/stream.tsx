@@ -95,7 +95,7 @@ class MessageTupleManager {
     if (!id) {
       console.warn(
         "No message ID found for chunk, ignoring in state",
-        serialized,
+        serialized
       );
       return null;
     }
@@ -190,7 +190,7 @@ export type MessageMetadata<StateType extends Record<string, unknown>> = {
 };
 
 function getBranchSequence<StateType extends Record<string, unknown>>(
-  history: ThreadState<StateType>[],
+  history: ThreadState<StateType>[]
 ) {
   const childrenMap: Record<string, ThreadState<StateType>[]> = {};
 
@@ -254,7 +254,7 @@ const ROOT_ID = "$";
 function getBranchView<StateType extends Record<string, unknown>>(
   sequence: Sequence<StateType>,
   paths: string[][],
-  branch: string,
+  branch: string
 ) {
   const path = branch.split(PATH_SEP);
   const pathMap: Record<string, string[][]> = {};
@@ -308,7 +308,7 @@ function getBranchView<StateType extends Record<string, unknown>>(
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
-  threadId: string,
+  threadId: string
 ) {
   return client.threads.getHistory<StateType>(threadId, { limit: 1000 });
 }
@@ -317,7 +317,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   threadId: string | undefined | null,
   client: Client,
   clearCallbackRef: RefObject<(() => void) | undefined>,
-  submittingRef: RefObject<boolean>,
+  submittingRef: RefObject<boolean>
 ) {
   const [history, setHistory] = useState<ThreadState<StateType>[]>([]);
 
@@ -327,7 +327,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
 
   const fetcher = useCallback(
     (
-      threadId: string | undefined | null,
+      threadId: string | undefined | null
     ): Promise<ThreadState<StateType>[]> => {
       if (threadId != null) {
         const client = clientRef.current;
@@ -341,7 +341,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       clearCallbackRef.current?.();
       return Promise.resolve([]);
     },
-    [],
+    []
   );
 
   useEffect(() => {
@@ -360,7 +360,7 @@ const useControllableThreadId = (options?: {
   onThreadId?: (threadId: string) => void;
 }): [string | null, (threadId: string) => void] => {
   const [localThreadId, _setLocalThreadId] = useState<string | null>(
-    options?.threadId ?? null,
+    options?.threadId ?? null
   );
 
   const onThreadIdRef = useRef(options?.onThreadId);
@@ -387,7 +387,7 @@ type BagTemplate = {
 
 type GetUpdateType<
   Bag extends BagTemplate,
-  StateType extends Record<string, unknown>,
+  StateType extends Record<string, unknown>
 > = Bag extends { UpdateType: unknown }
   ? Bag["UpdateType"]
   : Partial<StateType>;
@@ -417,7 +417,7 @@ interface RunCallbackMeta {
 
 export interface UseStreamOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate,
+  Bag extends BagTemplate = BagTemplate
 > {
   /**
    * The ID of the assistant to use.
@@ -467,7 +467,7 @@ export interface UseStreamOptions<
    */
   onFinish?: (
     state: ThreadState<StateType>,
-    run: RunCallbackMeta | undefined,
+    run: RunCallbackMeta | undefined
   ) => void;
 
   /**
@@ -479,7 +479,7 @@ export interface UseStreamOptions<
    * Callback that is called when an update event is received.
    */
   onUpdateEvent?: (
-    data: UpdatesStreamEvent<GetUpdateType<Bag, StateType>>["data"],
+    data: UpdatesStreamEvent<GetUpdateType<Bag, StateType>>["data"]
   ) => void;
 
   /**
@@ -489,9 +489,9 @@ export interface UseStreamOptions<
     data: CustomStreamEvent<GetCustomEventType<Bag>>["data"],
     options: {
       mutate: (
-        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>),
+        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
       ) => void;
-    },
+    }
   ) => void;
 
   /**
@@ -532,7 +532,7 @@ export interface UseStreamOptions<
    */
   onStop?: (options: {
     mutate: (
-      update: Partial<StateType> | ((prev: StateType) => Partial<StateType>),
+      update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
     ) => void;
   }) => void;
 
@@ -569,7 +569,7 @@ interface RunMetadataStorage {
 
 export interface UseStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate,
+  Bag extends BagTemplate = BagTemplate
 > {
   /**
    * The current values of the thread.
@@ -596,7 +596,7 @@ export interface UseStream<
    */
   submit: (
     values: GetUpdateType<Bag, StateType> | null | undefined,
-    options?: SubmitOptions<StateType, GetConfigurableType<Bag>>,
+    options?: SubmitOptions<StateType, GetConfigurableType<Bag>>
   ) => void;
 
   /**
@@ -641,7 +641,7 @@ export interface UseStream<
    */
   getMessagesMetadata: (
     message: Message,
-    index?: number,
+    index?: number
   ) => MessageMetadata<StateType> | undefined;
 
   /**
@@ -660,7 +660,7 @@ export interface UseStream<
   joinStream: (
     runId: string,
     lastEventId?: string,
-    options?: { streamMode?: StreamMode | StreamMode[] },
+    options?: { streamMode?: StreamMode | StreamMode[] }
   ) => Promise<void>;
 }
 
@@ -669,7 +669,7 @@ type ConfigWithConfigurable<ConfigurableType extends Record<string, unknown>> =
 
 interface SubmitOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  ConfigurableType extends Record<string, unknown> = Record<string, unknown>,
+  ConfigurableType extends Record<string, unknown> = Record<string, unknown>
 > {
   config?: ConfigWithConfigurable<ConfigurableType>;
   checkpoint?: Omit<Checkpoint, "thread_id"> | null;
@@ -708,7 +708,7 @@ function useStreamValuesState<StateType extends Record<string, unknown>>() {
   type Mutate = Partial<StateType> | ((prev: StateType) => Partial<StateType>);
 
   const [values, setValues] = useState<[values: StateType, kind: Kind] | null>(
-    null,
+    null
   );
 
   const setStreamValues = useCallback(
@@ -728,7 +728,7 @@ function useStreamValuesState<StateType extends Record<string, unknown>>() {
       if (values == null) setValues(null);
       setValues([values, kind] as [StateType, Kind]);
     },
-    [],
+    []
   );
 
   const mutate = useCallback(
@@ -739,13 +739,13 @@ function useStreamValuesState<StateType extends Record<string, unknown>>() {
         return { ...prev, ...next };
       }, kind);
     },
-    [setStreamValues],
+    [setStreamValues]
   );
 
   return [values?.[0] ?? null, setStreamValues, mutate] as [
     Values,
     (update: Update, kind?: Kind) => void,
-    (kind: Kind, serverValues: StateType) => (update: Mutate) => void,
+    (kind: Kind, serverValues: StateType) => (update: Mutate) => void
   ];
 }
 
@@ -756,7 +756,7 @@ export function useStream<
     InterruptType?: unknown;
     CustomEventType?: unknown;
     UpdateType?: unknown;
-  } = BagTemplate,
+  } = BagTemplate
 >(options: UseStreamOptions<StateType, Bag>): UseStream<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
@@ -803,7 +803,7 @@ export function useStream<
       options.apiUrl,
       options.callerOptions,
       options.defaultHeaders,
-    ],
+    ]
   );
 
   const [threadId, onThreadId] = useControllableThreadId(options);
@@ -831,7 +831,7 @@ export function useStream<
         }
       }
     },
-    [],
+    []
   );
 
   const hasUpdateListener = options.onUpdateEvent != null;
@@ -866,7 +866,7 @@ export function useStream<
     threadId,
     client,
     clearCallbackRef,
-    submittingRef,
+    submittingRef
   );
 
   const getMessages = useMemo(() => {
@@ -880,7 +880,7 @@ export function useStream<
   const { history: flatHistory, branchByCheckpoint } = getBranchView(
     rootSequence,
     paths,
-    branch,
+    branch
   );
 
   const threadHead: ThreadState<StateType> | undefined = flatHistory.at(-1);
@@ -911,7 +911,7 @@ export function useStream<
         const firstSeenIdx = findLastIndex(history.data, (state) =>
           getMessages(state.values)
             .map((m, idx) => m.id ?? idx)
-            .includes(messageId),
+            .includes(messageId)
         );
 
         const firstSeen = history.data[firstSeenIdx] as
@@ -938,7 +938,7 @@ export function useStream<
           branch: branch?.branch,
           branchOptions: branch?.branchOptions,
         };
-      },
+      }
     );
   })();
 
@@ -960,7 +960,7 @@ export function useStream<
       onSuccess: () => Promise<ThreadState<StateType>[]>;
       stream: AsyncGenerator<EventStreamEvent>;
       getCallbackMeta: () => { thread_id: string; run_id: string } | undefined;
-    }>,
+    }>
   ) {
     let getCallbackMeta:
       | (() => { thread_id: string; run_id: string } | undefined)
@@ -1004,7 +1004,7 @@ export function useStream<
           const messageId = messageManagerRef.current.add(serialized);
           if (!messageId) {
             console.warn(
-              "Failed to add message to manager, no message ID found",
+              "Failed to add message to manager, no message ID found"
             );
             continue;
           }
@@ -1060,7 +1060,7 @@ export function useStream<
   const joinStream = async (
     runId: string,
     lastEventId?: string,
-    options?: { streamMode?: StreamMode | StreamMode[] },
+    options?: { streamMode?: StreamMode | StreamMode[] }
   ) => {
     lastEventId ??= "-1";
     if (!threadId) return;
@@ -1084,7 +1084,7 @@ export function useStream<
 
   const submit = async (
     values: UpdateType | null | undefined,
-    submitOptions?: SubmitOptions<StateType, ConfigurableType>,
+    submitOptions?: SubmitOptions<StateType, ConfigurableType>
   ) => {
     await consumeStream(async (signal: AbortSignal) => {
       // Unbranch things
@@ -1253,11 +1253,11 @@ export function useStream<
 
     getMessagesMetadata(
       message: Message,
-      index?: number,
+      index?: number
     ): MessageMetadata<StateType> | undefined {
       trackStreamMode("messages-tuple", "values");
       return messageMetadata?.find(
-        (m) => m.messageId === (message.id ?? index),
+        (m) => m.messageId === (message.id ?? index)
       );
     },
   };

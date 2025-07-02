@@ -69,7 +69,7 @@ export class HTTPException extends Error {
 
   constructor(
     status: number,
-    options?: { message?: string; headers?: HeadersInit; cause?: unknown },
+    options?: { message?: string; headers?: HeadersInit; cause?: unknown }
   ) {
     super(options?.message ?? HTTP_STATUS_MAPPING[status] ?? "Unknown error", {
       cause: options?.cause,

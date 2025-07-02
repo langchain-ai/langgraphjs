@@ -29,7 +29,7 @@ export const typedUi = <Decl extends Record<string, ElementType>>(
   options?: {
     /** The key to write the UI messages to. Defaults to `ui`. */
     stateKey?: string;
-  },
+  }
 ) => {
   type PropMap = { [K in keyof Decl]: ComponentPropsWithoutRef<Decl[K]> };
   let items: (UIMessage | RemoveUIMessage)[] = [];
@@ -45,7 +45,7 @@ export const typedUi = <Decl extends Record<string, ElementType>>(
       props: PropMap[K];
       metadata?: Record<string, unknown>;
     },
-    options?: { message?: MessageLike; merge?: boolean },
+    options?: { message?: MessageLike; merge?: boolean }
   ): UIMessage<K, PropMap[K]>;
 
   function handlePush<K extends keyof PropMap & string>(
@@ -55,7 +55,7 @@ export const typedUi = <Decl extends Record<string, ElementType>>(
       props: Partial<PropMap[K]>;
       metadata?: Record<string, unknown>;
     },
-    options: { message?: MessageLike; merge: true },
+    options: { message?: MessageLike; merge: true }
   ): UIMessage<K, Partial<PropMap[K]>>;
 
   function handlePush<K extends keyof PropMap & string>(
@@ -65,7 +65,7 @@ export const typedUi = <Decl extends Record<string, ElementType>>(
       props: PropMap[K] | Partial<PropMap[K]>;
       metadata?: Record<string, unknown>;
     },
-    options?: { message?: MessageLike; merge?: boolean },
+    options?: { message?: MessageLike; merge?: boolean }
   ): UIMessage<K, PropMap[K] | Partial<PropMap[K]>> {
     const evt: UIMessage<K, PropMap[K] | Partial<PropMap[K]>> = {
       type: "ui" as const,

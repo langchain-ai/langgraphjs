@@ -71,19 +71,19 @@ class HTTPError extends Error {
 
   static async fromResponse(
     response: Response,
-    options?: { includeResponse?: boolean },
+    options?: { includeResponse?: boolean }
   ): Promise<HTTPError> {
     try {
       return new HTTPError(
         response.status,
         await response.text(),
-        options?.includeResponse ? response : undefined,
+        options?.includeResponse ? response : undefined
       );
     } catch {
       return new HTTPError(
         response.status,
         response.statusText,
-        options?.includeResponse ? response : undefined,
+        options?.includeResponse ? response : undefined
       );
     }
   }
@@ -107,7 +107,7 @@ export class AsyncCaller {
 
   protected maxRetries: AsyncCallerParams["maxRetries"];
 
-  private queue: (typeof import("p-queue"))["default"]["prototype"];
+  private queue: typeof import("p-queue")["default"]["prototype"];
 
   private onFailedResponseHook?: ResponseCallback;
 
@@ -179,9 +179,9 @@ export class AsyncCaller {
             // but they're quite sensible.
             retries: this.maxRetries,
             randomize: true,
-          },
+          }
         ),
-      { throwOnTimeout: true },
+      { throwOnTimeout: true }
     );
   }
 
@@ -210,7 +210,7 @@ export class AsyncCaller {
     const fetchFn =
       this.customFetch ?? (_getFetchImplementation() as typeof fetch);
     return this.call(() =>
-      fetchFn(...args).then((res) => (res.ok ? res : Promise.reject(res))),
+      fetchFn(...args).then((res) => (res.ok ? res : Promise.reject(res)))
     );
   }
 }

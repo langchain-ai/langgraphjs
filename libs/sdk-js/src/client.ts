@@ -44,7 +44,7 @@ import { IterableReadableStream } from "./utils/stream.js";
 type HeaderValue = string | undefined | null;
 
 function* iterateHeaders(
-  headers: HeadersInit | Record<string, HeaderValue>,
+  headers: HeadersInit | Record<string, HeaderValue>
 ): IterableIterator<[string, string | null]> {
   let iter: Iterable<(HeaderValue | HeaderValue | null[])[]>;
   let shouldClear = false;
@@ -66,7 +66,7 @@ function* iterateHeaders(
     const name = item[0];
     if (typeof name !== "string")
       throw new TypeError(
-        `Expected header name to be a string, got ${typeof name}`,
+        `Expected header name to be a string, got ${typeof name}`
       );
     const values = Array.isArray(item[1]) ? item[1] : [item[1]];
     let didClear = false;
@@ -142,7 +142,7 @@ const REGEX_RUN_METADATA =
   /(\/threads\/(?<thread_id>.+))?\/runs\/(?<run_id>.+)/;
 
 function getRunMetadataFromResponse(
-  response: Response,
+  response: Response
 ): { run_id: string; thread_id?: string } | undefined {
   const contentLocation = response.headers.get("Content-Location");
   if (!contentLocation) return undefined;
@@ -158,7 +158,7 @@ function getRunMetadataFromResponse(
 
 export type RequestHook = (
   url: URL,
-  init: RequestInit,
+  init: RequestInit
 ) => Promise<RequestInit> | RequestInit;
 
 export interface ClientConfig {
@@ -228,7 +228,7 @@ class BaseClient {
       params?: Record<string, unknown>;
       timeoutMs?: number | null;
       withResponse?: boolean;
-    },
+    }
   ): [url: URL, init: RequestInit] {
     const mutatedOptions = {
       ...options,
@@ -284,7 +284,7 @@ class BaseClient {
       timeoutMs?: number | null;
       signal?: AbortSignal;
       withResponse: true;
-    },
+    }
   ): Promise<[T, Response]>;
 
   protected async fetch<T>(
@@ -295,7 +295,7 @@ class BaseClient {
       timeoutMs?: number | null;
       signal?: AbortSignal;
       withResponse?: false;
-    },
+    }
   ): Promise<T>;
 
   protected async fetch<T>(
@@ -306,7 +306,7 @@ class BaseClient {
       timeoutMs?: number | null;
       signal?: AbortSignal;
       withResponse?: boolean;
-    },
+    }
   ): Promise<T | [T, Response]> {
     const [url, init] = this.prepareFetchOptions(path, options);
 
@@ -343,7 +343,7 @@ export class CronsClient extends BaseClient {
   async createForThread(
     threadId: string,
     assistantId: string,
-    payload?: CronsCreatePayload,
+    payload?: CronsCreatePayload
   ): Promise<CronCreateForThreadResponse> {
     const json: Record<string, any> = {
       schedule: payload?.schedule,
@@ -363,7 +363,7 @@ export class CronsClient extends BaseClient {
       {
         method: "POST",
         json,
-      },
+      }
     );
   }
 
@@ -375,7 +375,7 @@ export class CronsClient extends BaseClient {
    */
   async create(
     assistantId: string,
-    payload?: CronsCreatePayload,
+    payload?: CronsCreatePayload
   ): Promise<CronCreateResponse> {
     const json: Record<string, any> = {
       schedule: payload?.schedule,
@@ -452,7 +452,7 @@ export class AssistantsClient extends BaseClient {
    */
   async getGraph(
     assistantId: string,
-    options?: { xray?: boolean | number },
+    options?: { xray?: boolean | number }
   ): Promise<AssistantGraph> {
     return this.fetch<AssistantGraph>(`/assistants/${assistantId}/graph`, {
       params: { xray: options?.xray },
@@ -480,12 +480,12 @@ export class AssistantsClient extends BaseClient {
     options?: {
       namespace?: string;
       recurse?: boolean;
-    },
+    }
   ): Promise<Subgraphs> {
     if (options?.namespace) {
       return this.fetch<Subgraphs>(
         `/assistants/${assistantId}/subgraphs/${options.namespace}`,
-        { params: { recurse: options?.recurse } },
+        { params: { recurse: options?.recurse } }
       );
     }
     return this.fetch<Subgraphs>(`/assistants/${assistantId}/subgraphs`, {
@@ -535,7 +535,7 @@ export class AssistantsClient extends BaseClient {
       metadata?: Metadata;
       name?: string;
       description?: string;
-    },
+    }
   ): Promise<Assistant> {
     return this.fetch<Assistant>(`/assistants/${assistantId}`, {
       method: "PATCH",
@@ -598,7 +598,7 @@ export class AssistantsClient extends BaseClient {
       metadata?: Metadata;
       limit?: number;
       offset?: number;
-    },
+    }
   ): Promise<AssistantVersion[]> {
     return this.fetch<AssistantVersion[]>(
       `/assistants/${assistantId}/versions`,
@@ -609,7 +609,7 @@ export class AssistantsClient extends BaseClient {
           limit: payload?.limit ?? 10,
           offset: payload?.offset ?? 0,
         },
-      },
+      }
     );
   }
 
@@ -630,7 +630,7 @@ export class AssistantsClient extends BaseClient {
 
 export class ThreadsClient<
   TStateType = DefaultValues,
-  TUpdateType = TStateType,
+  TUpdateType = TStateType
 > extends BaseClient {
   /**
    * Get a thread by ID.
@@ -639,7 +639,7 @@ export class ThreadsClient<
    * @returns The thread.
    */
   async get<ValuesType = TStateType>(
-    threadId: string,
+    threadId: string
   ): Promise<Thread<ValuesType>> {
     return this.fetch<Thread<ValuesType>>(`/threads/${threadId}`);
   }
@@ -725,7 +725,7 @@ export class ThreadsClient<
        * Metadata for the thread.
        */
       metadata?: Metadata;
-    },
+    }
   ): Promise<Thread> {
     return this.fetch<Thread>(`/threads/${threadId}`, {
       method: "PATCH",
@@ -800,7 +800,7 @@ export class ThreadsClient<
   async getState<ValuesType = TStateType>(
     threadId: string,
     checkpoint?: Checkpoint | string,
-    options?: { subgraphs?: boolean },
+    options?: { subgraphs?: boolean }
   ): Promise<ThreadState<ValuesType>> {
     if (checkpoint != null) {
       if (typeof checkpoint !== "string") {
@@ -809,14 +809,14 @@ export class ThreadsClient<
           {
             method: "POST",
             json: { checkpoint, subgraphs: options?.subgraphs },
-          },
+          }
         );
       }
 
       // deprecated
       return this.fetch<ThreadState<ValuesType>>(
         `/threads/${threadId}/state/${checkpoint}`,
-        { params: { subgraphs: options?.subgraphs } },
+        { params: { subgraphs: options?.subgraphs } }
       );
     }
 
@@ -838,7 +838,7 @@ export class ThreadsClient<
       checkpoint?: Checkpoint;
       checkpointId?: string;
       asNode?: string;
-    },
+    }
   ): Promise<Pick<Config, "configurable">> {
     return this.fetch<Pick<Config, "configurable">>(
       `/threads/${threadId}/state`,
@@ -850,7 +850,7 @@ export class ThreadsClient<
           checkpoint: options.checkpoint,
           as_node: options?.asNode,
         },
-      },
+      }
     );
   }
 
@@ -862,14 +862,14 @@ export class ThreadsClient<
    */
   async patchState(
     threadIdOrConfig: string | Config,
-    metadata: Metadata,
+    metadata: Metadata
   ): Promise<void> {
     let threadId: string;
 
     if (typeof threadIdOrConfig !== "string") {
       if (typeof threadIdOrConfig.configurable?.thread_id !== "string") {
         throw new Error(
-          "Thread ID is required when updating state with a config.",
+          "Thread ID is required when updating state with a config."
         );
       }
       threadId = threadIdOrConfig.configurable.thread_id;
@@ -897,7 +897,7 @@ export class ThreadsClient<
       before?: Config;
       checkpoint?: Partial<Omit<Checkpoint, "thread_id">>;
       metadata?: Metadata;
-    },
+    }
   ): Promise<ThreadState<ValuesType>[]> {
     return this.fetch<ThreadState<ValuesType>[]>(
       `/threads/${threadId}/history`,
@@ -909,7 +909,7 @@ export class ThreadsClient<
           metadata: options?.metadata,
           checkpoint: options?.checkpoint,
         },
-      },
+      }
     );
   }
 }
@@ -917,18 +917,18 @@ export class ThreadsClient<
 export class RunsClient<
   TStateType = DefaultValues,
   TUpdateType = TStateType,
-  TCustomEventType = unknown,
+  TCustomEventType = unknown
 > extends BaseClient {
   stream<
     TStreamMode extends StreamMode | StreamMode[] = StreamMode,
-    TSubgraphs extends boolean = false,
+    TSubgraphs extends boolean = false
   >(
     threadId: null,
     assistantId: string,
     payload?: Omit<
       RunsStreamPayload<TStreamMode, TSubgraphs>,
       "multitaskStrategy" | "onCompletion"
-    >,
+    >
   ): TypedAsyncGenerator<
     TStreamMode,
     TSubgraphs,
@@ -939,11 +939,11 @@ export class RunsClient<
 
   stream<
     TStreamMode extends StreamMode | StreamMode[] = StreamMode,
-    TSubgraphs extends boolean = false,
+    TSubgraphs extends boolean = false
   >(
     threadId: string,
     assistantId: string,
-    payload?: RunsStreamPayload<TStreamMode, TSubgraphs>,
+    payload?: RunsStreamPayload<TStreamMode, TSubgraphs>
   ): TypedAsyncGenerator<
     TStreamMode,
     TSubgraphs,
@@ -961,11 +961,11 @@ export class RunsClient<
    */
   async *stream<
     TStreamMode extends StreamMode | StreamMode[] = StreamMode,
-    TSubgraphs extends boolean = false,
+    TSubgraphs extends boolean = false
   >(
     threadId: string | null,
     assistantId: string,
-    payload?: RunsStreamPayload<TStreamMode, TSubgraphs>,
+    payload?: RunsStreamPayload<TStreamMode, TSubgraphs>
   ): TypedAsyncGenerator<
     TStreamMode,
     TSubgraphs,
@@ -1005,7 +1005,7 @@ export class RunsClient<
         json,
         timeoutMs: null,
         signal: payload?.signal,
-      }),
+      })
     );
 
     const runMetadata = getRunMetadataFromResponse(response);
@@ -1031,7 +1031,7 @@ export class RunsClient<
   async create(
     threadId: string,
     assistantId: string,
-    payload?: RunsCreatePayload,
+    payload?: RunsCreatePayload
   ): Promise<Run> {
     const json: Record<string, any> = {
       input: payload?.input,
@@ -1079,13 +1079,13 @@ export class RunsClient<
    * @returns An array of created runs.
    */
   async createBatch(
-    payloads: (RunsCreatePayload & { assistantId: string })[],
+    payloads: (RunsCreatePayload & { assistantId: string })[]
   ): Promise<Run[]> {
     const filteredPayloads = payloads
       .map((payload) => ({ ...payload, assistant_id: payload.assistantId }))
       .map((payload) => {
         return Object.fromEntries(
-          Object.entries(payload).filter(([_, v]) => v !== undefined),
+          Object.entries(payload).filter(([_, v]) => v !== undefined)
         );
       });
 
@@ -1098,13 +1098,13 @@ export class RunsClient<
   async wait(
     threadId: null,
     assistantId: string,
-    payload?: Omit<RunsWaitPayload, "multitaskStrategy" | "onCompletion">,
+    payload?: Omit<RunsWaitPayload, "multitaskStrategy" | "onCompletion">
   ): Promise<ThreadState["values"]>;
 
   async wait(
     threadId: string,
     assistantId: string,
-    payload?: RunsWaitPayload,
+    payload?: RunsWaitPayload
   ): Promise<ThreadState["values"]>;
 
   /**
@@ -1118,7 +1118,7 @@ export class RunsClient<
   async wait(
     threadId: string | null,
     assistantId: string,
-    payload?: RunsWaitPayload,
+    payload?: RunsWaitPayload
   ): Promise<ThreadState["values"]> {
     const json: Record<string, any> = {
       input: payload?.input,
@@ -1198,7 +1198,7 @@ export class RunsClient<
        * Status of the run to filter by.
        */
       status?: RunStatus;
-    },
+    }
   ): Promise<Run[]> {
     return this.fetch<Run[]>(`/threads/${threadId}/runs`, {
       params: {
@@ -1233,7 +1233,7 @@ export class RunsClient<
     threadId: string,
     runId: string,
     wait: boolean = false,
-    action: CancelAction = "interrupt",
+    action: CancelAction = "interrupt"
   ): Promise<void> {
     return this.fetch<void>(`/threads/${threadId}/runs/${runId}/cancel`, {
       method: "POST",
@@ -1254,7 +1254,7 @@ export class RunsClient<
   async join(
     threadId: string,
     runId: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal }
   ): Promise<void> {
     return this.fetch<void>(`/threads/${threadId}/runs/${runId}/join`, {
       timeoutMs: null,
@@ -1286,7 +1286,7 @@ export class RunsClient<
           lastEventId?: string;
           streamMode?: StreamMode | StreamMode[];
         }
-      | AbortSignal,
+      | AbortSignal
   ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
     const opts =
       typeof options === "object" &&
@@ -1311,8 +1311,8 @@ export class RunsClient<
             cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
             stream_mode: opts?.streamMode,
           },
-        },
-      ),
+        }
+      )
     );
 
     const stream: ReadableStream<{ event: string; data: any }> = (
@@ -1377,12 +1377,12 @@ export class StoreClient extends BaseClient {
     options?: {
       index?: false | string[] | null;
       ttl?: number | null;
-    },
+    }
   ): Promise<void> {
     namespace.forEach((label) => {
       if (label.includes(".")) {
         throw new Error(
-          `Invalid namespace label '${label}'. Namespace labels cannot contain periods ('.')`,
+          `Invalid namespace label '${label}'. Namespace labels cannot contain periods ('.')`
         );
       }
     });
@@ -1431,12 +1431,12 @@ export class StoreClient extends BaseClient {
     key: string,
     options?: {
       refreshTtl?: boolean | null;
-    },
+    }
   ): Promise<Item | null> {
     namespace.forEach((label) => {
       if (label.includes(".")) {
         throw new Error(
-          `Invalid namespace label '${label}'. Namespace labels cannot contain periods ('.')`,
+          `Invalid namespace label '${label}'. Namespace labels cannot contain periods ('.')`
         );
       }
     });
@@ -1474,7 +1474,7 @@ export class StoreClient extends BaseClient {
     namespace.forEach((label) => {
       if (label.includes(".")) {
         throw new Error(
-          `Invalid namespace label '${label}'. Namespace labels cannot contain periods ('.')`,
+          `Invalid namespace label '${label}'. Namespace labels cannot contain periods ('.')`
         );
       }
     });
@@ -1529,7 +1529,7 @@ export class StoreClient extends BaseClient {
       offset?: number;
       query?: string;
       refreshTtl?: boolean | null;
-    },
+    }
   ): Promise<SearchItemsResponse> {
     const payload = {
       namespace_prefix: namespacePrefix,
@@ -1545,7 +1545,7 @@ export class StoreClient extends BaseClient {
       {
         method: "POST",
         json: payload,
-      },
+      }
     );
     return {
       items: response.items.map((item) => ({
@@ -1614,10 +1614,10 @@ class UiClient extends BaseClient {
             },
             method: "POST",
             json: { name: agentName },
-          }),
+          })
         );
         return response.text();
-      },
+      }
     );
   }
 }
@@ -1625,7 +1625,7 @@ class UiClient extends BaseClient {
 export class Client<
   TStateType = DefaultValues,
   TUpdateType = TStateType,
-  TCustomEventType = unknown,
+  TCustomEventType = unknown
 > {
   /**
    * The client for interacting with assistants.

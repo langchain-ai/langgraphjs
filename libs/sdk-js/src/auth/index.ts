@@ -11,7 +11,7 @@ import type {
 export class Auth<
   TExtra = {},
   TAuthReturn extends BaseAuthReturn = BaseAuthReturn,
-  TUser extends BaseUser = ToUserLike<TAuthReturn>,
+  TUser extends BaseUser = ToUserLike<TAuthReturn>
 > {
   /**
    * @internal
@@ -23,7 +23,7 @@ export class Auth<
   } = {};
 
   authenticate<T extends BaseAuthReturn>(
-    cb: AuthenticateCallback<T>,
+    cb: AuthenticateCallback<T>
   ): Auth<TExtra, T> {
     this["~handlerCache"].authenticate = cb;
     return this as unknown as Auth<TExtra, T>;

@@ -1989,7 +1989,7 @@ __metadata:
     msw: "npm:^2.8.2"
     p-queue: "npm:^6.6.2"
     p-retry: "npm:4"
-    prettier: "npm:^3.2.5"
+    prettier: "npm:^2.8.3"
     react: "npm:^19.0.0"
     react-dom: "npm:^19.0.0"
     typescript: "npm:^4.9.5 || ^5.4.5"
@@ -2022,7 +2022,7 @@ __metadata:
     msw: "npm:^2.8.2"
     p-queue: "npm:^6.6.2"
     p-retry: "npm:4"
-    prettier: "npm:^3.2.5"
+    prettier: "npm:^2.8.3"
     react: "npm:^19.0.0"
     react-dom: "npm:^19.0.0"
     typedoc: "npm:^0.27.7"
@@ -12695,15 +12695,6 @@ __metadata:
   bin:
     prettier: bin-prettier.js
   checksum: 10/00cdb6ab0281f98306cd1847425c24cbaaa48a5ff03633945ab4c701901b8e96ad558eb0777364ffc312f437af9b5a07d0f45346266e8245beaf6247b9c62b24
-  languageName: node
-  linkType: hard
-
-"prettier@npm:^3.2.5":
-  version: 3.6.2
-  resolution: "prettier@npm:3.6.2"
-  bin:
-    prettier: bin/prettier.cjs
-  checksum: 10/1213691706bcef1371d16ef72773c8111106c3533b660b1cc8ec158bd109cdf1462804125f87f981f23c4a3dba053b6efafda30ab0114cc5b4a725606bb9ff26
   languageName: node
   linkType: hard
 

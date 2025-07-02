@@ -1,6 +1,6 @@
 export interface UIMessage<
   TName extends string = string,
-  TProps extends Record<string, unknown> = Record<string, unknown>,
+  TProps extends Record<string, unknown> = Record<string, unknown>
 > {
   type: "ui";
 
@@ -29,7 +29,7 @@ export function isUIMessage(message: unknown): message is UIMessage {
 }
 
 export function isRemoveUIMessage(
-  message: unknown,
+  message: unknown
 ): message is RemoveUIMessage {
   if (typeof message !== "object" || message == null) return false;
   if (!("type" in message)) return false;
@@ -38,7 +38,7 @@ export function isRemoveUIMessage(
 
 export function uiMessageReducer(
   state: UIMessage[],
-  update: UIMessage | RemoveUIMessage | (UIMessage | RemoveUIMessage)[],
+  update: UIMessage | RemoveUIMessage | (UIMessage | RemoveUIMessage)[]
 ) {
   const events = Array.isArray(update) ? update : [update];
   let newState = state.slice();

@@ -27,7 +27,7 @@ type GetMetaType<Bag extends BagTemplate> = Bag extends { MetaType: unknown }
 
 interface UseStreamContext<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate,
+  Bag extends BagTemplate = BagTemplate
 > extends UseStream<StateType, Bag> {
   meta?: GetMetaType<Bag>;
 }
@@ -40,12 +40,12 @@ export function useStreamContext<
     CustomEventType?: unknown;
     UpdateType?: unknown;
     MetaType?: unknown;
-  } = BagTemplate,
+  } = BagTemplate
 >(): UseStreamContext<StateType, Bag> {
   const ctx = React.useContext(UseStreamContext);
   if (!ctx) {
     throw new Error(
-      "useStreamContext must be used within a LoadExternalComponent",
+      "useStreamContext must be used within a LoadExternalComponent"
     );
   }
 
@@ -75,14 +75,14 @@ class ComponentStore {
     string,
     ((
       comp: React.FunctionComponent | React.ComponentClass,
-      el: HTMLElement,
+      el: HTMLElement
     ) => void)[]
   > = {};
 
   respond(
     shadowRootId: string,
     comp: React.FunctionComponent | React.ComponentClass,
-    targetElement: HTMLElement,
+    targetElement: HTMLElement
   ) {
     this.cache[shadowRootId] = { comp, target: targetElement };
     this.callbacks[shadowRootId]?.forEach((c) => c(comp, targetElement));
@@ -95,7 +95,7 @@ class ComponentStore {
         this.callbacks[shadowRootId].push(onStoreChange);
         return () => {
           this.callbacks[shadowRootId] = this.callbacks[shadowRootId].filter(
-            (c) => c !== onStoreChange,
+            (c) => c !== onStoreChange
           );
         };
       },
@@ -177,7 +177,7 @@ export function LoadExternalComponent({
 
   const store = React.useMemo(
     () => COMPONENT_STORE.getBoundStore(shadowRootId),
-    [shadowRootId],
+    [shadowRootId]
   );
   const state = React.useSyncExternalStore(store.subscribe, store.getSnapshot);
 
@@ -187,8 +187,8 @@ export function LoadExternalComponent({
   const fallbackComponent = isReactNode(fallback)
     ? fallback
     : typeof fallback === "object" && fallback != null
-      ? fallback?.[message.name]
-      : null;
+    ? fallback?.[message.name]
+    : null;
 
   const uiNamespace = namespace ?? stream.assistantId;
   const uiClient = stream.client["~ui"];
@@ -201,7 +201,7 @@ export function LoadExternalComponent({
       const fragment = document
         .createRange()
         .createContextualFragment(
-          html.replace("{{shadowRootId}}", shadowRootId),
+          html.replace("{{shadowRootId}}", shadowRootId)
         );
       root.appendChild(fragment);
     });
@@ -223,7 +223,7 @@ export function LoadExternalComponent({
         {state?.target != null
           ? ReactDOM.createPortal(
               React.createElement(state.comp, message.props),
-              state.target,
+              state.target
             )
           : fallbackComponent}
       </UseStreamContext.Provider>

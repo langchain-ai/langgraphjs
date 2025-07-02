@@ -88,7 +88,7 @@ describe("BytesLineDecoder", () => {
 describe("SSEDecoder", () => {
   const createStream = (lines: string[]) => {
     return Readable.toWeb(
-      Readable.from(lines.map((line) => textEncoder.encode(line))),
+      Readable.from(lines.map((line) => textEncoder.encode(line)))
     ) as ReadableStream<Uint8Array>;
   };
 

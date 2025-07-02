@@ -1,6 +1,6 @@
 export function mergeSignals(...signals: (AbortSignal | null | undefined)[]) {
   const nonZeroSignals = signals.filter(
-    (signal): signal is AbortSignal => signal != null,
+    (signal): signal is AbortSignal => signal != null
   );
 
   if (nonZeroSignals.length === 0) return undefined;

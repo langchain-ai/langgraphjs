@@ -55,7 +55,7 @@ export function BytesLineDecoder() {
 
           return acc;
         },
-        { lines: [], from: 0 },
+        { lines: [], from: 0 }
       );
 
       if (lines.length === 1 && !trailingNewline) {
