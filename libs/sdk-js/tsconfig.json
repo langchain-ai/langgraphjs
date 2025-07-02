@@ -20,14 +20,5 @@
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "coverage"],
-  "includeVersion": true,
-  "typedocOptions": {
-    "entryPoints": ["src/client.ts"],
-    "readme": "none",
-    "out": "docs",
-    "plugin": ["typedoc-plugin-markdown"],
-    "excludePrivate": true,
-    "excludeProtected": true,
-    "excludeExternals": false
-  }
+  "includeVersion": true
 }
