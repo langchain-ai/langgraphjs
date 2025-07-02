@@ -5,8 +5,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { setupServer } from "msw/node";
 import { http } from "msw";
-import { useStream } from "../react/stream.js";
-import type { Message } from "../types.messages.js";
+import { useStream } from "@langchain/langgraph-sdk/react";
+import type { Message } from "@langchain/langgraph-sdk";
 
 import { StateGraph, MessagesAnnotation, START } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
@@ -26,7 +26,7 @@ const threads = (() => {
     get: async (id: string) => THREADS[id],
     put: async (
       threadId: string,
-      { metadata }: { metadata?: Record<string, unknown> },
+      { metadata }: { metadata?: Record<string, unknown> }
     ) => {
       THREADS[threadId] = { thread_id: threadId, metadata: metadata ?? {} };
     },
@@ -188,15 +188,15 @@ describe("useStream", () => {
 
     // Should immediately show cached messages
     expect(screen.getByTestId("message-cached-0")).toHaveTextContent(
-      "Cached user message",
+      "Cached user message"
     );
     expect(screen.getByTestId("message-cached-1")).toHaveTextContent(
-      "Cached AI response",
+      "Cached AI response"
     );
 
     // Values should include initial values
     expect(screen.getByTestId("values")).toHaveTextContent(
-      "Cached user message",
+      "Cached user message"
     );
 
     // Submitting should clear out the cached messages
@@ -295,7 +295,7 @@ describe("useStream", () => {
     expect(onStopCallback).toHaveBeenCalledWith(
       expect.objectContaining({
         mutate: expect.any(Function),
-      }),
+      })
     );
   });
 
@@ -347,7 +347,7 @@ describe("useStream", () => {
 
     // Initial state
     expect(screen.getByTestId("stopped-status")).toHaveTextContent(
-      "Not stopped",
+      "Not stopped"
     );
 
     // Start and stop stream
@@ -358,7 +358,7 @@ describe("useStream", () => {
     await waitFor(() => {
       expect(screen.getByTestId("stopped-status")).toHaveTextContent("Stopped");
       expect(screen.getByTestId("message-0")).toHaveTextContent(
-        "Stream stopped",
+        "Stream stopped"
       );
     });
   });
@@ -411,7 +411,7 @@ describe("useStream", () => {
     await waitFor(() => {
       expect(screen.getByTestId("counter")).toHaveTextContent("15");
       expect(screen.getByTestId("items")).toHaveTextContent(
-        "item1, item2, stopped",
+        "item1, item2, stopped"
       );
     });
   });
