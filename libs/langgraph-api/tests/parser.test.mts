@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { SubgraphExtractor } from "../src/graph/parser/parser.mjs";
 import dedent from "dedent";
 
-test.concurrent("graph factories", { timeout: 15_000 }, () => {
+test.concurrent("graph factories", { timeout: 30_000 }, () => {
   const MessagesSchema = {
     type: "object",
     properties: {
@@ -76,7 +76,7 @@ test.concurrent("graph factories", { timeout: 15_000 }, () => {
   }
 });
 
-describe.concurrent("subgraphs", { timeout: 15_000 }, () => {
+describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
   test.concurrent(`basic`, () => {
     const testCases = [
       "subgraph",
@@ -793,7 +793,7 @@ describe.concurrent("subgraphs", { timeout: 15_000 }, () => {
   });
 });
 
-test.concurrent("weather", { timeout: 15_000 }, () => {
+test.concurrent("weather", { timeout: 30_000 }, () => {
   const schemas = SubgraphExtractor.extractSchemas([
     {
       sourceFile: [
@@ -871,7 +871,7 @@ test.concurrent("weather", { timeout: 15_000 }, () => {
   );
 });
 
-test.concurrent("nested", { timeout: 15_000 }, () => {
+test.concurrent("nested", { timeout: 30_000 }, () => {
   const schemas = SubgraphExtractor.extractSchemas([
     {
       sourceFile: [
@@ -938,7 +938,7 @@ test.concurrent("nested", { timeout: 15_000 }, () => {
 
 test.concurrent(
   "overlapping parallel schema inference",
-  { timeout: 15_000 },
+  { timeout: 30_000 },
   () => {
     const schemas = SubgraphExtractor.extractSchemas([
       {

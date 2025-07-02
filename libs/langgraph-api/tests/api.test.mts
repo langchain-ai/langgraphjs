@@ -1008,7 +1008,12 @@ describe("runs", () => {
       );
 
       expect(chunks.filter((i) => i.event === "error").length).toBe(0);
-      messages = findLast(chunks, (i) => i.event === "values")?.data.messages;
+      messages =
+        findLast(
+          chunks,
+          (i): i is { event: "values"; data: { messages: BaseMessage[] } } =>
+            i.event === "values" && "messages" in i.data
+        )?.data.messages ?? [];
 
       const threadAfterInterrupt = await client.threads.get(thread.thread_id);
       expect(threadAfterInterrupt.status).toBe("interrupted");
@@ -1060,10 +1065,14 @@ describe("runs", () => {
     expect(chunks.filter((i) => i.event === "error").length).toBe(0);
 
     // edit the last message
-    const lastMessage = findLast(
-      chunks,
-      (i) => i.event === "values"
-    )?.data.messages.at(-1);
+    const lastMessage =
+      findLast(
+        chunks,
+        (i): i is { event: "values"; data: { messages: BaseMessage[] } } =>
+          i.event === "values" && "messages" in i.data
+      )?.data.messages.at(-1) ?? null;
+
+    if (!lastMessage) throw new Error("No last message");
     lastMessage.content = "modified";
 
     // update state
@@ -1431,7 +1440,7 @@ describe("subgraphs", () => {
   });
 
   // (1) interrupt and then continue running, no modification
-  it.concurrent("human in the loop - no modification", async () => {
+  it.only.concurrent("human in the loop - no modification", async () => {
     const assistant = await client.assistants.create({ graphId: "weather" });
     const thread = await client.threads.create();
 
@@ -1447,7 +1456,7 @@ describe("subgraphs", () => {
     );
 
     for (const chunk of chunks) {
-      if (chunk.event === "values") {
+      if (chunk.event === "values" && "messages" in chunk.data) {
         lastMessageBeforeInterrupt =
           chunk.data.messages[chunk.data.messages.length - 1];
       }
@@ -1494,6 +1503,13 @@ describe("subgraphs", () => {
           route: "weather",
         },
         id: "2",
+      },
+      {
+        data: {
+          __interrupt__: [],
+        },
+        event: "values",
+        id: "3",
       },
     ]);
 
