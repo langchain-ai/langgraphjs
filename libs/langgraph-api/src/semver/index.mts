@@ -1,9 +1,11 @@
 import * as url from "node:url";
 import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import * as semver from "semver";
 
-const packageJsonPath = url.fileURLToPath(
-  new URL("../../package.json", import.meta.url)
+const packageJsonPath = path.resolve(
+  url.fileURLToPath(import.meta.url),
+  "../../../package.json"
 );
 
 export async function checkSemver(

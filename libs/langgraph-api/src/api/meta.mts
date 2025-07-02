@@ -1,12 +1,14 @@
 import { Hono } from "hono";
 import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import * as url from "node:url";
 
 const api = new Hono();
 
 // Get the version using the same pattern as semver/index.mts
-const packageJsonPath = url.fileURLToPath(
-  new URL("../../package.json", import.meta.url)
+const packageJsonPath = path.resolve(
+  url.fileURLToPath(import.meta.url),
+  "../../../package.json"
 );
 
 let version: string;
