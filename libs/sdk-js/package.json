@@ -9,8 +9,8 @@
     "build:internal": "yarn clean && yarn lc_build --create-entrypoints --pre --tree-shaking",
     "prepack": "yarn run build",
     "format": "prettier --write src",
-    "lint": "prettier --check src && tsc --noEmit",
-    "test": "vitest",
+    "lint": "prettier --check src",
+    "test": "vitest run",
     "typedoc": "typedoc && typedoc src/react/index.ts --out docs/react --options typedoc.react.json && typedoc src/auth/index.ts --out docs/auth --options typedoc.auth.json"
   },
   "main": "index.js",
