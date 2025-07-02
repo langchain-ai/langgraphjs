@@ -80,7 +80,7 @@ jobs:
       matrix:
         # See Node.js release schedule at https://nodejs.org/en/about/releases/
         os: [ubuntu-latest]
-        node-version: [20.x, "22.4.1"]
+        node-version: [18.x, 20.x, "22.4.1"]
         include:
           - os: windows-latest
             node-version: "22.4.1"

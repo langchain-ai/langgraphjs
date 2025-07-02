@@ -33,123 +33,144 @@ afterAll(async () => {
   if (process.env.TURBO_HASH) await kill(API_URL);
 });
 
-it("unauthenticated user", async () => {
-  const client = await createJwtClient("wfh", ["me"]);
-  await expect(client.assistants.create({ graphId: "agent" })).rejects.toThrow(
-    "HTTP 401"
-  );
-});
+it.skipIf(process.version.startsWith("v18."))(
+  "unauthenticated user",
+  async () => {
+    const client = await createJwtClient("wfh", ["me"]);
+    await expect(
+      client.assistants.create({ graphId: "agent" })
+    ).rejects.toThrow("HTTP 401");
+  }
+);
 
-it("create assistant with forbidden scopes", async () => {
-  let user = await createJwtClient("johndoe");
-  await expect(user.assistants.create({ graphId: "agent" })).rejects.toThrow(
-    "HTTP 403"
-  );
+it.skipIf(process.version.startsWith("v18."))(
+  "create assistant with forbidden scopes",
+  async () => {
+    let user = await createJwtClient("johndoe");
+    await expect(user.assistants.create({ graphId: "agent" })).rejects.toThrow(
+      "HTTP 403"
+    );
 
-  user = await createJwtClient("johndoe", ["foo"]);
-  await expect(user.assistants.create({ graphId: "agent" })).rejects.toThrow(
-    "HTTP 403"
-  );
+    user = await createJwtClient("johndoe", ["foo"]);
+    await expect(user.assistants.create({ graphId: "agent" })).rejects.toThrow(
+      "HTTP 403"
+    );
 
-  user = await createJwtClient("johndoe", ["assistants:write"]);
-  await user.assistants.create({ graphId: "agent" });
+    user = await createJwtClient("johndoe", ["assistants:write"]);
+    await user.assistants.create({ graphId: "agent" });
 
-  const fetched = await user.assistants.search({ graphId: "agent" });
-  expect(fetched).toHaveLength(1);
-  expect(fetched).toMatchObject([{ metadata: { owner: "johndoe" } }]);
-});
+    const fetched = await user.assistants.search({ graphId: "agent" });
+    expect(fetched).toHaveLength(1);
+    expect(fetched).toMatchObject([{ metadata: { owner: "johndoe" } }]);
+  }
+);
 
-it("get thread history from unauthorized user", async () => {
-  const input = { messages: [{ role: "human", content: "foo" }] };
-  const user1 = await createJwtClient("johndoe", ["me", "assistants:write"]);
+it.skipIf(process.version.startsWith("v18."))(
+  "get thread history from unauthorized user",
+  async () => {
+    const input = { messages: [{ role: "human", content: "foo" }] };
+    const user1 = await createJwtClient("johndoe", ["me", "assistants:write"]);
 
-  await user1.assistants.create({ graphId: "agent" });
-  let thread = await user1.threads.create();
-  let history = await user1.threads.getHistory(thread.thread_id);
-  expect(history).toEqual([]);
+    await user1.assistants.create({ graphId: "agent" });
+    let thread = await user1.threads.create();
+    let history = await user1.threads.getHistory(thread.thread_id);
+    expect(history).toEqual([]);
 
-  await user1.runs.wait(thread.thread_id, "agent", { input, config });
-  history = await user1.threads.getHistory(thread.thread_id);
-  expect(history).toHaveLength(5);
+    await user1.runs.wait(thread.thread_id, "agent", { input, config });
+    history = await user1.threads.getHistory(thread.thread_id);
+    expect(history).toHaveLength(5);
 
-  const user2 = await createJwtClient("alice", ["me"]);
-  await expect(
-    user2.runs.wait(thread.thread_id, "agent", { input, config })
-  ).rejects.toThrow("HTTP 404");
-});
+    const user2 = await createJwtClient("alice", ["me"]);
+    await expect(
+      user2.runs.wait(thread.thread_id, "agent", { input, config })
+    ).rejects.toThrow("HTTP 404");
+  }
+);
 
-it("add run to unauthorized thread", async () => {
-  const user1 = await createJwtClient("johndoe", ["me"]);
-  const thread = await user1.threads.create();
+it.skipIf(process.version.startsWith("v18."))(
+  "add run to unauthorized thread",
+  async () => {
+    const user1 = await createJwtClient("johndoe", ["me"]);
+    const thread = await user1.threads.create();
 
-  const input = { messages: [{ role: "human", content: "foo" }] };
-  const history = await user1.threads.getHistory(thread.thread_id);
-  expect(history).toEqual([]);
+    const input = { messages: [{ role: "human", content: "foo" }] };
+    const history = await user1.threads.getHistory(thread.thread_id);
+    expect(history).toEqual([]);
 
-  const user2 = await createJwtClient("alice", ["me"]);
-  await expect(
-    user2.runs.wait(thread.thread_id, "agent", { input, config })
-  ).rejects.toThrow("HTTP 404");
-});
+    const user2 = await createJwtClient("alice", ["me"]);
+    await expect(
+      user2.runs.wait(thread.thread_id, "agent", { input, config })
+    ).rejects.toThrow("HTTP 404");
+  }
+);
 
-it("asssistant access control", async () => {
-  const owner = await createJwtClient("johndoe", ["assistants:write"]);
-  const otherUser = await createJwtClient("alice", ["assistants:write"]);
+it.skipIf(process.version.startsWith("v18."))(
+  "asssistant access control",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["assistants:write"]);
+    const otherUser = await createJwtClient("alice", ["assistants:write"]);
 
-  const assistant = await owner.assistants.create({ graphId: "agent" });
+    const assistant = await owner.assistants.create({ graphId: "agent" });
 
-  // Other user can't update the assistant
-  await expect(
-    otherUser.assistants.update(assistant.assistant_id, {
-      metadata: { foo: "bar" },
-    })
-  ).rejects.toThrow("HTTP 404");
+    // Other user can't update the assistant
+    await expect(
+      otherUser.assistants.update(assistant.assistant_id, {
+        metadata: { foo: "bar" },
+      })
+    ).rejects.toThrow("HTTP 404");
 
-  // Other user can't delete the assistant
-  await expect(
-    otherUser.assistants.delete(assistant.assistant_id)
-  ).rejects.toThrow("HTTP 404");
-});
+    // Other user can't delete the assistant
+    await expect(
+      otherUser.assistants.delete(assistant.assistant_id)
+    ).rejects.toThrow("HTTP 404");
+  }
+);
 
-it("thread operations auth", async () => {
-  const owner = await createJwtClient("johndoe", ["me"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
+it.skipIf(process.version.startsWith("v18."))(
+  "thread operations auth",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
 
-  const thread = await owner.threads.create();
+    const thread = await owner.threads.create();
 
-  // Other user can't update thread
-  await expect(
-    otherUser.threads.update(thread.thread_id, { metadata: { foo: "bar" } })
-  ).rejects.toThrow("HTTP 404");
+    // Other user can't update thread
+    await expect(
+      otherUser.threads.update(thread.thread_id, { metadata: { foo: "bar" } })
+    ).rejects.toThrow("HTTP 404");
 
-  // Other user can't delete thread
-  await expect(otherUser.threads.delete(thread.thread_id)).rejects.toThrow(
-    "HTTP 404"
-  );
-});
+    // Other user can't delete thread
+    await expect(otherUser.threads.delete(thread.thread_id)).rejects.toThrow(
+      "HTTP 404"
+    );
+  }
+);
 
-it("run streaming auth", async () => {
-  const owner = await createJwtClient("johndoe", ["me"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
+it.skipIf(process.version.startsWith("v18."))(
+  "run streaming auth",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
 
-  const thread = await owner.threads.create();
-  const input = { messages: [{ role: "human", content: "foo" }] };
+    const thread = await owner.threads.create();
+    const input = { messages: [{ role: "human", content: "foo" }] };
 
-  const run = await owner.runs.create(thread.thread_id, "agent", {
-    input,
-    config,
-  });
+    const run = await owner.runs.create(thread.thread_id, "agent", {
+      input,
+      config,
+    });
 
-  const chunks = await gatherIterator(
-    otherUser.runs.joinStream(thread.thread_id, run.run_id)
-  );
+    const chunks = await gatherIterator(
+      otherUser.runs.joinStream(thread.thread_id, run.run_id)
+    );
 
-  expect(chunks).toMatchObject([
-    { event: "error", data: { message: expect.stringContaining("404") } },
-  ]);
-});
+    expect(chunks).toMatchObject([
+      { event: "error", data: { message: expect.stringContaining("404") } },
+    ]);
+  }
+);
 
-it("store auth", async () => {
+it.skipIf(process.version.startsWith("v18."))("store auth", async () => {
   const userA = await createJwtClient("johndoe", ["me", "assistants:write"]);
   const userB = await createJwtClient("alice", ["me", "assistants:write"]);
 
@@ -213,7 +234,7 @@ it("store auth", async () => {
   );
 });
 
-it("run cancellation", async () => {
+it.skipIf(process.version.startsWith("v18."))("run cancellation", async () => {
   const owner = await createJwtClient("johndoe", ["me"]);
   const otherUser = await createJwtClient("alice", ["me"]);
 
@@ -233,81 +254,94 @@ it("run cancellation", async () => {
   await owner.runs.cancel(thread.thread_id, run.run_id);
 });
 
-it("get assistant ownership", async () => {
-  const owner = await createJwtClient("johndoe", ["assistants:write"]);
-  const otherUser = await createJwtClient("alice", ["assistants:write"]);
+it.skipIf(process.version.startsWith("v18."))(
+  "get assistant ownership",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["assistants:write"]);
+    const otherUser = await createJwtClient("alice", ["assistants:write"]);
 
-  const assistant = await owner.assistants.create({ graphId: "agent" });
+    const assistant = await owner.assistants.create({ graphId: "agent" });
 
-  // Owner can get the assistant
-  const fetched = await owner.assistants.get(assistant.assistant_id);
-  expect(fetched.assistant_id).toBe(assistant.assistant_id);
+    // Owner can get the assistant
+    const fetched = await owner.assistants.get(assistant.assistant_id);
+    expect(fetched.assistant_id).toBe(assistant.assistant_id);
 
-  // Another user cannot get this assistant
-  await expect(
-    otherUser.assistants.get(assistant.assistant_id)
-  ).rejects.toThrow("HTTP 404");
+    // Another user cannot get this assistant
+    await expect(
+      otherUser.assistants.get(assistant.assistant_id)
+    ).rejects.toThrow("HTTP 404");
 
-  // Test invalid assistant IDs
-  const nonexistantUuid = crypto.randomUUID();
-  await expect(owner.assistants.get(nonexistantUuid)).rejects.toThrow(
-    "HTTP 404"
-  );
-});
+    // Test invalid assistant IDs
+    const nonexistantUuid = crypto.randomUUID();
+    await expect(owner.assistants.get(nonexistantUuid)).rejects.toThrow(
+      "HTTP 404"
+    );
+  }
+);
 
-it("get assistant graph", async () => {
-  const owner = await createJwtClient("johndoe", ["assistants:write"]);
-  const otherUser = await createJwtClient("alice", ["assistants:write"]);
+it.skipIf(process.version.startsWith("v18."))(
+  "get assistant graph",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["assistants:write"]);
+    const otherUser = await createJwtClient("alice", ["assistants:write"]);
 
-  const assistant = await owner.assistants.create({ graphId: "agent" });
+    const assistant = await owner.assistants.create({ graphId: "agent" });
 
-  // Owner can get the graph
-  const graph = await owner.assistants.getGraph(assistant.assistant_id);
-  expect(graph).toBeInstanceOf(Object);
-  expect(graph).toHaveProperty("nodes");
-  expect(graph).toHaveProperty("edges");
+    // Owner can get the graph
+    const graph = await owner.assistants.getGraph(assistant.assistant_id);
+    expect(graph).toBeInstanceOf(Object);
+    expect(graph).toHaveProperty("nodes");
+    expect(graph).toHaveProperty("edges");
 
-  // Another user can't access the graph
-  await expect(
-    otherUser.assistants.getGraph(assistant.assistant_id)
-  ).rejects.toThrow("HTTP 404");
-});
+    // Another user can't access the graph
+    await expect(
+      otherUser.assistants.getGraph(assistant.assistant_id)
+    ).rejects.toThrow("HTTP 404");
+  }
+);
 
-it("thread state operations", async () => {
-  const owner = await createJwtClient("johndoe", ["me"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
+it.skipIf(process.version.startsWith("v18."))(
+  "thread state operations",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
 
-  const thread = await owner.threads.create();
-  const input = { messages: [{ type: "human", content: "test" }] };
-  const run = await owner.runs.create(thread.thread_id, "agent_simple", {
-    input,
-    config,
-  });
-  expect(run.run_id).toBeDefined();
-  await owner.runs.join(thread.thread_id, run.run_id);
+    const thread = await owner.threads.create();
+    const input = { messages: [{ type: "human", content: "test" }] };
+    const run = await owner.runs.create(thread.thread_id, "agent_simple", {
+      input,
+      config,
+    });
+    expect(run.run_id).toBeDefined();
+    await owner.runs.join(thread.thread_id, run.run_id);
 
-  // Owner can get and update state
-  const state = await owner.threads.getState(thread.thread_id);
-  expect(state.values).toMatchObject({
-    messages: expect.arrayContaining([
-      expect.objectContaining({ type: "human", content: "test" }),
-    ]),
-  });
+    // Owner can get and update state
+    const state = await owner.threads.getState(thread.thread_id);
+    expect(state.values).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({ type: "human", content: "test" }),
+      ]),
+    });
 
-  await owner.threads.updateState(thread.thread_id, { values: { sleep: 432 } });
-  const updatedState = await owner.threads.getState(thread.thread_id);
-  expect(updatedState.values).toMatchObject({ sleep: 432 });
+    await owner.threads.updateState(thread.thread_id, {
+      values: { sleep: 432 },
+    });
+    const updatedState = await owner.threads.getState(thread.thread_id);
+    expect(updatedState.values).toMatchObject({ sleep: 432 });
 
-  // Another user cannot access or modify state
-  await expect(otherUser.threads.getState(thread.thread_id)).rejects.toThrow(
-    "HTTP 404"
-  );
-  await expect(
-    otherUser.threads.updateState(thread.thread_id, { values: { sleep: 432 } })
-  ).rejects.toThrow("HTTP 404");
-});
+    // Another user cannot access or modify state
+    await expect(otherUser.threads.getState(thread.thread_id)).rejects.toThrow(
+      "HTTP 404"
+    );
+    await expect(
+      otherUser.threads.updateState(thread.thread_id, {
+        values: { sleep: 432 },
+      })
+    ).rejects.toThrow("HTTP 404");
+  }
+);
 
-it("run operations", async () => {
+it.skipIf(process.version.startsWith("v18."))("run operations", async () => {
   const owner = await createJwtClient("johndoe", ["me"]);
   const otherUser = await createJwtClient("alice", ["me"]);
 
@@ -356,292 +390,340 @@ it("run operations", async () => {
   );
 });
 
-it("create run in other user thread", async () => {
-  const owner = await createJwtClient("johndoe", ["me"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
+it.skipIf(process.version.startsWith("v18."))(
+  "create run in other user thread",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
 
-  const thread = await owner.threads.create();
-  const input = {
-    messages: [{ role: "human", content: "Unauthorized attempt" }],
-  };
+    const thread = await owner.threads.create();
+    const input = {
+      messages: [{ role: "human", content: "Unauthorized attempt" }],
+    };
 
-  await expect(
-    otherUser.runs.create(thread.thread_id, "agent", { input, config })
-  ).rejects.toThrow("HTTP 404");
-});
-
-it("list runs other user thread", async () => {
-  const owner = await createJwtClient("johndoe", ["me"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
-
-  const thread = await owner.threads.create();
-  const input = { messages: [{ role: "human", content: "Hello" }] };
-  const run = await owner.runs.create(thread.thread_id, "agent", {
-    input,
-    config,
-  });
-
-  // Owner can list runs
-  const ownerRuns = await owner.runs.list(thread.thread_id);
-  expect(ownerRuns.some((r) => r.run_id === run.run_id)).toBe(true);
-
-  // Other user cannot list runs
-  await expect(otherUser.runs.list(thread.thread_id)).rejects.toThrow(
-    "HTTP 404"
-  );
-});
-
-it("get run other user thread", async () => {
-  const owner = await createJwtClient("johndoe", ["me"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
-
-  const thread = await owner.threads.create();
-  const run = await owner.runs.create(thread.thread_id, "agent", {
-    input: { messages: [{ role: "human", content: "Check run" }] },
-    config,
-  });
-
-  // Other user attempts to get the run
-  await expect(
-    otherUser.runs.get(thread.thread_id, run.run_id)
-  ).rejects.toThrow("HTTP 404");
-});
-
-it("join run other user thread", async () => {
-  const owner = await createJwtClient("johndoe", ["me"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
-
-  const thread = await owner.threads.create();
-  const run = await owner.runs.create(thread.thread_id, "agent", {
-    input: { messages: [{ role: "human", content: "Join?" }] },
-    config,
-  });
-
-  // Other user tries to join the run
-  await expect(
-    otherUser.runs.join(thread.thread_id, run.run_id)
-  ).rejects.toThrow("HTTP 404");
-});
-
-it("wait run other user thread", async () => {
-  const owner = await createJwtClient("johndoe", ["me"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
-
-  const thread = await owner.threads.create();
-  const input = { messages: [{ role: "human", content: "Waiting test" }] };
-  await owner.runs.create(thread.thread_id, "agent", { input, config });
-
-  // Other user tries to wait on run result
-  await expect(
-    otherUser.runs.wait(thread.thread_id, "agent", { input, config })
-  ).rejects.toThrow("HTTP 404");
-});
-
-it("stream run other user thread", async () => {
-  const owner = await createJwtClient("johndoe", ["me"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
-
-  const thread = await owner.threads.create();
-  const run = await owner.runs.create(thread.thread_id, "agent", {
-    input: { messages: [{ role: "human", content: "Stream me" }] },
-    config,
-  });
-
-  // Other user tries to join_stream
-  const chunks = await gatherIterator(
-    otherUser.runs.joinStream(thread.thread_id, run.run_id)
-  );
-  expect(chunks).toHaveLength(1);
-  expect(chunks).toMatchObject([
-    { event: "error", data: { message: expect.stringContaining("404") } },
-  ]);
-});
-
-it("cancel run other user thread", async () => {
-  const owner = await createJwtClient("johndoe", ["me"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
-
-  const thread = await owner.threads.create();
-  const run = await owner.runs.create(thread.thread_id, "agent", {
-    input: { messages: [{ role: "human", content: "Cancel test" }] },
-    config,
-    afterSeconds: 100,
-  });
-
-  await expect(
-    otherUser.runs.cancel(thread.thread_id, run.run_id)
-  ).rejects.toThrow("HTTP 404");
-
-  await owner.runs.cancel(thread.thread_id, run.run_id);
-});
-
-it("delete run other user thread", async () => {
-  const owner = await createJwtClient("johndoe", ["me"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
-
-  const thread = await owner.threads.create();
-  const run = await owner.runs.create(thread.thread_id, "agent", {
-    input: { messages: [{ role: "human", content: "Delete me" }] },
-    config,
-    afterSeconds: 100,
-  });
-
-  await expect(
-    otherUser.runs.delete(thread.thread_id, run.run_id)
-  ).rejects.toThrow("HTTP 404");
-
-  await owner.runs.cancel(thread.thread_id, run.run_id);
-});
-
-it("update thread state other user", async () => {
-  const owner = await createJwtClient("johndoe", ["me"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
-
-  const thread = await owner.threads.create();
-  const newState = { values: { some: "value" } };
-
-  // Other user tries to update state
-  await expect(
-    otherUser.threads.updateState(thread.thread_id, newState)
-  ).rejects.toThrow("HTTP 404");
-});
-
-it("get checkpoint other user", async () => {
-  const owner = await createJwtClient("johndoe", ["me", "assistants:write"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
-
-  await owner.assistants.create({ graphId: "agent" });
-  const thread = await owner.threads.create();
-  const input = { messages: [{ role: "human", content: "Checkpoint test" }] };
-  await owner.runs.wait(thread.thread_id, "agent", { input, config });
-
-  // Get history to find a checkpoint
-  const history = await owner.threads.getHistory(thread.thread_id);
-  if (history.length === 0) {
-    return; // Skip if no checkpoints
+    await expect(
+      otherUser.runs.create(thread.thread_id, "agent", { input, config })
+    ).rejects.toThrow("HTTP 404");
   }
+);
 
-  const checkpointId = history[history.length - 1].checkpoint?.checkpoint_id;
-  if (!checkpointId) {
-    return; // Skip if no checkpoint ID
+it.skipIf(process.version.startsWith("v18."))(
+  "list runs other user thread",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
+
+    const thread = await owner.threads.create();
+    const input = { messages: [{ role: "human", content: "Hello" }] };
+    const run = await owner.runs.create(thread.thread_id, "agent", {
+      input,
+      config,
+    });
+
+    // Owner can list runs
+    const ownerRuns = await owner.runs.list(thread.thread_id);
+    expect(ownerRuns.some((r) => r.run_id === run.run_id)).toBe(true);
+
+    // Other user cannot list runs
+    await expect(otherUser.runs.list(thread.thread_id)).rejects.toThrow(
+      "HTTP 404"
+    );
   }
+);
 
-  await expect(
-    otherUser.threads.getState(thread.thread_id, checkpointId)
-  ).rejects.toThrow("HTTP 404");
-});
+it.skipIf(process.version.startsWith("v18."))(
+  "get run other user thread",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
 
-it("assistant version leakage", async () => {
-  const owner = await createJwtClient("johndoe", ["assistants:write"]);
-  const otherUser = await createJwtClient("alice", ["assistants:write"]);
+    const thread = await owner.threads.create();
+    const run = await owner.runs.create(thread.thread_id, "agent", {
+      input: { messages: [{ role: "human", content: "Check run" }] },
+      config,
+    });
 
-  const assistant = await owner.assistants.create({ graphId: "agent" });
-  const someId = crypto.randomUUID();
-  const result = await owner.assistants.update(assistant.assistant_id, {
-    metadata: { foo: someId },
-  });
-  expect(result.metadata?.foo).toBe(someId);
+    // Other user attempts to get the run
+    await expect(
+      otherUser.runs.get(thread.thread_id, run.run_id)
+    ).rejects.toThrow("HTTP 404");
+  }
+);
 
-  await expect(
-    otherUser.assistants.getVersions(assistant.assistant_id)
-  ).rejects.toThrow("HTTP 404");
-  await expect(
-    otherUser.assistants.setLatest(assistant.assistant_id, 1)
-  ).rejects.toThrow("HTTP 404");
-});
+it.skipIf(process.version.startsWith("v18."))(
+  "join run other user thread",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
 
-it("assistant set latest", async () => {
-  const owner = await createJwtClient("johndoe", ["assistants:write"]);
-  const otherUser = await createJwtClient("alice", ["assistants:write"]);
+    const thread = await owner.threads.create();
+    const run = await owner.runs.create(thread.thread_id, "agent", {
+      input: { messages: [{ role: "human", content: "Join?" }] },
+      config,
+    });
 
-  const assistant = await owner.assistants.create({ graphId: "agent" });
-  const updated = await owner.assistants.update(assistant.assistant_id, {
-    metadata: { foo: "bar" },
-  });
-  expect(updated.metadata?.foo).toBe("bar");
+    // Other user tries to join the run
+    await expect(
+      otherUser.runs.join(thread.thread_id, run.run_id)
+    ).rejects.toThrow("HTTP 404");
+  }
+);
 
-  await expect(
-    otherUser.assistants.setLatest(assistant.assistant_id, 1)
-  ).rejects.toThrow("HTTP 404");
+it.skipIf(process.version.startsWith("v18."))(
+  "wait run other user thread",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
 
-  const result = await owner.assistants.setLatest(assistant.assistant_id, 1);
-  expect(result.assistant_id).toBe(assistant.assistant_id);
-  expect(result.version).toBe(1);
-});
+    const thread = await owner.threads.create();
+    const input = { messages: [{ role: "human", content: "Waiting test" }] };
+    await owner.runs.create(thread.thread_id, "agent", { input, config });
 
-it("assistant search filtering", async () => {
-  const user1 = await createJwtClient("johndoe", ["assistants:write"]);
-  const user2 = await createJwtClient("alice", ["assistants:write"]);
+    // Other user tries to wait on run result
+    await expect(
+      otherUser.runs.wait(thread.thread_id, "agent", { input, config })
+    ).rejects.toThrow("HTTP 404");
+  }
+);
 
-  const assistant1 = await user1.assistants.create({ graphId: "agent" });
-  const assistant2 = await user2.assistants.create({ graphId: "agent" });
+it.skipIf(process.version.startsWith("v18."))(
+  "stream run other user thread",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
 
-  // each user should only see their own assistants
-  const results1 = await user1.assistants.search();
-  expect(results1).toContainEqual(
-    expect.objectContaining({ assistant_id: assistant1.assistant_id })
-  );
-  expect(results1).not.toContainEqual(
-    expect.objectContaining({ assistant_id: assistant2.assistant_id })
-  );
+    const thread = await owner.threads.create();
+    const run = await owner.runs.create(thread.thread_id, "agent", {
+      input: { messages: [{ role: "human", content: "Stream me" }] },
+      config,
+    });
 
-  const results2 = await user2.assistants.search();
-  expect(results2).toContainEqual(
-    expect.objectContaining({ assistant_id: assistant2.assistant_id })
-  );
-  expect(results2).not.toContainEqual(
-    expect.objectContaining({ assistant_id: assistant1.assistant_id })
-  );
-});
+    // Other user tries to join_stream
+    const chunks = await gatherIterator(
+      otherUser.runs.joinStream(thread.thread_id, run.run_id)
+    );
+    expect(chunks).toHaveLength(1);
+    expect(chunks).toMatchObject([
+      { event: "error", data: { message: expect.stringContaining("404") } },
+    ]);
+  }
+);
 
-it("thread copy authorization", async () => {
-  const owner = await createJwtClient("johndoe", ["me"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
+it.skipIf(process.version.startsWith("v18."))(
+  "cancel run other user thread",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
 
-  const thread = await owner.threads.create();
+    const thread = await owner.threads.create();
+    const run = await owner.runs.create(thread.thread_id, "agent", {
+      input: { messages: [{ role: "human", content: "Cancel test" }] },
+      config,
+      afterSeconds: 100,
+    });
 
-  // Other user can't copy the thread
-  await expect(otherUser.threads.copy(thread.thread_id)).rejects.toThrow(
-    "HTTP 409"
-  );
+    await expect(
+      otherUser.runs.cancel(thread.thread_id, run.run_id)
+    ).rejects.toThrow("HTTP 404");
 
-  // Owner can copy the thread
-  const copiedThread = await owner.threads.copy(thread.thread_id);
-  expect(copiedThread).not.toBeNull();
-});
+    await owner.runs.cancel(thread.thread_id, run.run_id);
+  }
+);
 
-it("thread history authorization", async () => {
-  const owner = await createJwtClient("johndoe", ["me"]);
-  const otherUser = await createJwtClient("alice", ["me"]);
+it.skipIf(process.version.startsWith("v18."))(
+  "delete run other user thread",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
 
-  const thread = await owner.threads.create();
-  const input = { messages: [{ role: "human", content: "foo" }] };
+    const thread = await owner.threads.create();
+    const run = await owner.runs.create(thread.thread_id, "agent", {
+      input: { messages: [{ role: "human", content: "Delete me" }] },
+      config,
+      afterSeconds: 100,
+    });
 
-  await owner.runs.wait(thread.thread_id, "agent", { input, config });
-  const history = await owner.threads.getHistory(thread.thread_id);
-  expect(history).toHaveLength(5);
+    await expect(
+      otherUser.runs.delete(thread.thread_id, run.run_id)
+    ).rejects.toThrow("HTTP 404");
 
-  await expect(otherUser.threads.getHistory(thread.thread_id)).rejects.toThrow(
-    "HTTP 404"
-  );
-});
+    await owner.runs.cancel(thread.thread_id, run.run_id);
+  }
+);
 
-it("test stateless runs", async () => {
-  const owner = await createJwtClient("johndoe", ["me", "assistants:write"]);
-  const assistant = await owner.assistants.create({ graphId: "agent" });
-  const input = {
-    messages: [{ role: "human", content: "stateless run test" }],
-  };
+it.skipIf(process.version.startsWith("v18."))(
+  "update thread state other user",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
 
-  const values = await owner.runs.wait(null, assistant.assistant_id, {
-    input,
-    config,
-  });
+    const thread = await owner.threads.create();
+    const newState = { values: { some: "value" } };
 
-  expect(values).not.toBeNull();
-  const chunks = await gatherIterator(
-    owner.runs.stream(null, assistant.assistant_id, { input, config })
-  );
+    // Other user tries to update state
+    await expect(
+      otherUser.threads.updateState(thread.thread_id, newState)
+    ).rejects.toThrow("HTTP 404");
+  }
+);
 
-  expect(chunks.find((i) => i.event === "error")).not.toBeDefined();
-});
+it.skipIf(process.version.startsWith("v18."))(
+  "get checkpoint other user",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me", "assistants:write"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
+
+    await owner.assistants.create({ graphId: "agent" });
+    const thread = await owner.threads.create();
+    const input = { messages: [{ role: "human", content: "Checkpoint test" }] };
+    await owner.runs.wait(thread.thread_id, "agent", { input, config });
+
+    // Get history to find a checkpoint
+    const history = await owner.threads.getHistory(thread.thread_id);
+    if (history.length === 0) {
+      return; // Skip if no checkpoints
+    }
+
+    const checkpointId = history[history.length - 1].checkpoint?.checkpoint_id;
+    if (!checkpointId) {
+      return; // Skip if no checkpoint ID
+    }
+
+    await expect(
+      otherUser.threads.getState(thread.thread_id, checkpointId)
+    ).rejects.toThrow("HTTP 404");
+  }
+);
+
+it.skipIf(process.version.startsWith("v18."))(
+  "assistant version leakage",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["assistants:write"]);
+    const otherUser = await createJwtClient("alice", ["assistants:write"]);
+
+    const assistant = await owner.assistants.create({ graphId: "agent" });
+    const someId = crypto.randomUUID();
+    const result = await owner.assistants.update(assistant.assistant_id, {
+      metadata: { foo: someId },
+    });
+    expect(result.metadata?.foo).toBe(someId);
+
+    await expect(
+      otherUser.assistants.getVersions(assistant.assistant_id)
+    ).rejects.toThrow("HTTP 404");
+    await expect(
+      otherUser.assistants.setLatest(assistant.assistant_id, 1)
+    ).rejects.toThrow("HTTP 404");
+  }
+);
+
+it.skipIf(process.version.startsWith("v18."))(
+  "assistant set latest",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["assistants:write"]);
+    const otherUser = await createJwtClient("alice", ["assistants:write"]);
+
+    const assistant = await owner.assistants.create({ graphId: "agent" });
+    const updated = await owner.assistants.update(assistant.assistant_id, {
+      metadata: { foo: "bar" },
+    });
+    expect(updated.metadata?.foo).toBe("bar");
+
+    await expect(
+      otherUser.assistants.setLatest(assistant.assistant_id, 1)
+    ).rejects.toThrow("HTTP 404");
+
+    const result = await owner.assistants.setLatest(assistant.assistant_id, 1);
+    expect(result.assistant_id).toBe(assistant.assistant_id);
+    expect(result.version).toBe(1);
+  }
+);
+
+it.skipIf(process.version.startsWith("v18."))(
+  "assistant search filtering",
+  async () => {
+    const user1 = await createJwtClient("johndoe", ["assistants:write"]);
+    const user2 = await createJwtClient("alice", ["assistants:write"]);
+
+    const assistant1 = await user1.assistants.create({ graphId: "agent" });
+    const assistant2 = await user2.assistants.create({ graphId: "agent" });
+
+    // each user should only see their own assistants
+    const results1 = await user1.assistants.search();
+    expect(results1).toContainEqual(
+      expect.objectContaining({ assistant_id: assistant1.assistant_id })
+    );
+    expect(results1).not.toContainEqual(
+      expect.objectContaining({ assistant_id: assistant2.assistant_id })
+    );
+
+    const results2 = await user2.assistants.search();
+    expect(results2).toContainEqual(
+      expect.objectContaining({ assistant_id: assistant2.assistant_id })
+    );
+    expect(results2).not.toContainEqual(
+      expect.objectContaining({ assistant_id: assistant1.assistant_id })
+    );
+  }
+);
+
+it.skipIf(process.version.startsWith("v18."))(
+  "thread copy authorization",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
+
+    const thread = await owner.threads.create();
+
+    // Other user can't copy the thread
+    await expect(otherUser.threads.copy(thread.thread_id)).rejects.toThrow(
+      "HTTP 409"
+    );
+
+    // Owner can copy the thread
+    const copiedThread = await owner.threads.copy(thread.thread_id);
+    expect(copiedThread).not.toBeNull();
+  }
+);
+
+it.skipIf(process.version.startsWith("v18."))(
+  "thread history authorization",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
+
+    const thread = await owner.threads.create();
+    const input = { messages: [{ role: "human", content: "foo" }] };
+
+    await owner.runs.wait(thread.thread_id, "agent", { input, config });
+    const history = await owner.threads.getHistory(thread.thread_id);
+    expect(history).toHaveLength(5);
+
+    await expect(
+      otherUser.threads.getHistory(thread.thread_id)
+    ).rejects.toThrow("HTTP 404");
+  }
+);
+
+it.skipIf(process.version.startsWith("v18."))(
+  "test stateless runs",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me", "assistants:write"]);
+    const assistant = await owner.assistants.create({ graphId: "agent" });
+    const input = {
+      messages: [{ role: "human", content: "stateless run test" }],
+    };
+
+    const values = await owner.runs.wait(null, assistant.assistant_id, {
+      input,
+      config,
+    });
+
+    expect(values).not.toBeNull();
+    const chunks = await gatherIterator(
+      owner.runs.stream(null, assistant.assistant_id, { input, config })
+    );
+
+    expect(chunks.find((i) => i.event === "error")).not.toBeDefined();
+  }
+);
