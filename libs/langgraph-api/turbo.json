@@ -2,6 +2,13 @@
   "$schema": "https://turbo.build/schema.json",
   "extends": ["//"],
   "tasks": {
+    "build": {
+      "outputs": ["**/dist/**"]
+    },
+    "build:internal": {
+      "dependsOn": ["^build:internal"],
+      "outputs": ["**/dist/**"]
+    },
     "test": {
       "with": ["start", "start:auth"],
       "cache": false,
@@ -10,12 +17,12 @@
     "start": {
       "cache": false,
       "persistent": true,
-      "dependsOn": ["^build", "build"]
+      "dependsOn": ["^build:internal", "build:internal"]
     },
     "start:auth": {
       "cache": false,
       "persistent": true,
-      "dependsOn": ["^build", "build"]
+      "dependsOn": ["^build:internal", "build:internal"]
     }
   }
 }
