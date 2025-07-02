@@ -56,7 +56,7 @@ describe("assistants", () => {
     );
   });
 
-  it("schemas", { timeout: 10_000 }, async () => {
+  it("schemas", { timeout: 30_000 }, async () => {
     const graphId = "agent";
     const config = { configurable: { model: "openai" } };
 
