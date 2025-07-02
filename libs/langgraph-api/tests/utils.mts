@@ -45,3 +45,9 @@ export async function truncate(
     body: JSON.stringify(flags),
   });
 }
+
+export async function kill(apiUrl: string) {
+  await fetch(`${apiUrl}/internal/kill`, {
+    method: "POST",
+  });
+}

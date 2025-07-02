@@ -7,8 +7,8 @@ import { Client, type FeedbackStreamEvent } from "@langchain/langgraph-sdk";
 import { RemoteGraph } from "@langchain/langgraph/remote";
 import { randomUUID } from "crypto";
 import postgres from "postgres";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { findLast, gatherIterator, truncate } from "./utils.mjs";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { findLast, gatherIterator, kill, truncate } from "./utils.mjs";
 import waitPort from "wait-port";
 
 const API_URL = "http://localhost:2024";
@@ -32,8 +32,12 @@ interface AgentState {
 const IS_MEMORY = true;
 
 beforeAll(async () => {
-  await waitPort({ port: 2024, timeout: 10_000 });
+  if (process.env.TURBO_HASH) await waitPort({ port: 2024, timeout: 10_000 });
   await truncate(API_URL, "all");
+});
+
+afterAll(async () => {
+  if (process.env.TURBO_HASH) await kill(API_URL);
 });
 
 describe("assistants", () => {

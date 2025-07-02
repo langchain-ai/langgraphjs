@@ -1,6 +1,6 @@
 import { Client } from "@langchain/langgraph-sdk";
-import { beforeAll, expect, it } from "vitest";
-import { gatherIterator, truncate } from "./utils.mjs";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { gatherIterator, kill, truncate } from "./utils.mjs";
 import { SignJWT } from "jose";
 import waitPort from "wait-port";
 
@@ -25,8 +25,12 @@ const createJwtClient = async (sub: string, scopes: string[] = []) => {
 };
 
 beforeAll(async () => {
-  await waitPort({ port: 2025, timeout: 10_000 });
+  if (process.env.TURBO_HASH) await waitPort({ port: 2025, timeout: 10_000 });
   await truncate(API_URL, "all");
+});
+
+afterAll(async () => {
+  if (process.env.TURBO_HASH) await kill(API_URL);
 });
 
 it("unauthenticated user", async () => {

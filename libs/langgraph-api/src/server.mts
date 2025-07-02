@@ -116,6 +116,12 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
     }
   );
 
+  app.post("/internal/kill", (c) => {
+    logger.warn(`Killing process ${process.pid} in 100ms`);
+    process.kill(process.ppid, "SIGTERM");
+    return c.json({ ok: true });
+  });
+
   app.use(cors(options.http?.cors));
   app.use(requestLogger());
 

@@ -11,17 +11,18 @@
     },
     "test": {
       "with": ["start", "start:auth"],
-      "cache": false,
-      "persistent": true
+      "cache": false
     },
     "start": {
       "cache": false,
       "persistent": true,
+      "interruptible": true,
       "dependsOn": ["^build:internal", "build:internal"]
     },
     "start:auth": {
       "cache": false,
       "persistent": true,
+      "interruptible": true,
       "dependsOn": ["^build:internal", "build:internal"]
     }
   }
