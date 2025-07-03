@@ -12,7 +12,7 @@
   "license": "MIT",
   "dependencies": {
     "@langchain/langgraph": "workspace:*",
-    "@langchain/langgraph-api": "~0.0.41",
+    "@langchain/langgraph-api": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
@@ -20,7 +20,7 @@
     "@testing-library/user-event": "^14.6.1",
     "@tsconfig/recommended": "^1.0.2",
     "@types/json-schema": "^7.0.15",
-    "@types/node": "^20.12.12",
+    "@types/node": "^18.15.11",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.4.1",
