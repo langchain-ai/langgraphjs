@@ -363,7 +363,7 @@ describe("config to compose", () => {
 
     expect(yaml.stringify(actual, { blockQuote: "literal" })).toEqual(expected);
     expect(rewrite).toMatchObject({
-      source: expect.stringContaining("/tests/unit_tests"),
+      source: expect.stringContaining(path.join("/tests/unit_tests")),
       target: "/deps/__outer_unit_tests/unit_tests",
     });
   });
@@ -403,7 +403,7 @@ describe("config to compose", () => {
 
     expect(yaml.stringify(actual, { blockQuote: "literal" })).toEqual(expected);
     expect(rewrite).toMatchObject({
-      source: expect.stringContaining("/tests/unit_tests"),
+      source: expect.stringContaining(path.join("/tests/unit_tests")),
       target: "/deps/__outer_unit_tests/unit_tests",
     });
   });
@@ -441,7 +441,7 @@ describe("config to compose", () => {
 
     expect(yaml.stringify(actual, { blockQuote: "literal" })).toEqual(expected);
     expect(rewrite).toMatchObject({
-      source: expect.stringContaining("/tests/unit_tests"),
+      source: expect.stringContaining(path.join("/tests/unit_tests")),
       target: "/deps/__outer_unit_tests/unit_tests",
     });
   });
@@ -489,7 +489,7 @@ describe("config to compose", () => {
 
     expect(yaml.stringify(actual, { blockQuote: "literal" })).toEqual(expected);
     expect(rewrite).toMatchObject({
-      source: expect.stringContaining("/tests/unit_tests"),
+      source: expect.stringContaining(path.join("/tests/unit_tests")),
       target: "/deps/__outer_unit_tests/unit_tests",
     });
   });
@@ -550,7 +550,7 @@ describe("config to compose", () => {
 
     expect(yaml.stringify(actual, { blockQuote: "literal" })).toEqual(expected);
     expect(rewrite).toMatchObject({
-      source: expect.stringContaining("/tests/env_tests"),
+      source: expect.stringContaining(path.join("/tests/env_tests")),
       target: "/deps/__outer_env_tests/env_tests",
     });
   });
@@ -664,7 +664,7 @@ describe("config to compose", () => {
 
     expect(yaml.stringify(actual, { blockQuote: "literal" })).toEqual(expected);
     expect(rewrite).toMatchObject({
-      source: expect.stringContaining("/tests/unit_tests"),
+      source: expect.stringContaining(path.join("/tests/unit_tests")),
       target: "/deps/__outer_unit_tests/unit_tests",
     });
   });
@@ -773,7 +773,7 @@ describe("packaging", () => {
 
     expect(yaml.stringify(actual, { blockQuote: "literal" })).toEqual(expected);
     expect(rewrite).toMatchObject({
-      source: expect.stringContaining("/tests/packaging_tests/js"),
+      source: expect.stringContaining(path.join("/tests/packaging_tests/js")),
       target: "/deps/js",
     });
   });

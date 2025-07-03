@@ -143,7 +143,10 @@ export async function assembleLocalDeps(
         rebuildFiles.push(rfile);
 
         pipReqs.push([
-          path.relative(path.dirname(configPath), rfile),
+          path
+            .relative(path.dirname(configPath), rfile)
+            .split(path.sep)
+            .join("/"),
           `${containerPath}/requirements.txt`,
         ]);
       }
@@ -158,7 +161,10 @@ export async function assembleLocalDeps(
       "pnpm-lock.yaml",
       "bun.lockb",
     ]) {
-      const jsFile = path.resolve(path.dirname(configPath), name);
+      const jsFile = path
+        .resolve(path.dirname(configPath), name)
+        .split(path.sep)
+        .join("/");
       rebuildFiles.push(jsFile);
     }
 
@@ -191,10 +197,14 @@ async function updateGraphPaths(
         find: {
           for (const realPath of Object.keys(localDeps.realPkgs)) {
             if (resolved.startsWith(realPath)) {
-              moduleStr = `/deps/${path.basename(realPath)}/${path.relative(
-                realPath,
-                resolved
-              )}`;
+              moduleStr = path
+                .join(
+                  "/deps",
+                  path.basename(realPath),
+                  path.relative(realPath, resolved)
+                )
+                .split(path.sep)
+                .join("/");
               break find;
             }
           }
@@ -203,7 +213,10 @@ async function updateGraphPaths(
             localDeps.fauxPkgs
           )) {
             if (resolved.startsWith(fauxPkg)) {
-              moduleStr = `${destPath}/${path.relative(fauxPkg, resolved)}`;
+              moduleStr = path
+                .join(destPath, path.relative(fauxPkg, resolved))
+                .split(path.sep)
+                .join("/");
               break find;
             }
 
@@ -415,7 +428,14 @@ export async function configToWatch(
     });
   }
 
-  if (watch.length > 0) return watch;
+  if (watch.length > 0) {
+    return watch.map((item) => ({
+      ...item,
+      path: item.path.split(path.sep).join("/"),
+      target: item.target?.split(path.sep).join("/"),
+      ignore: item.ignore?.map((i) => i.split(path.sep).join("/")),
+    }));
+  }
   return undefined;
 }
 
