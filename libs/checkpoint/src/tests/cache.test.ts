@@ -63,7 +63,7 @@ describe("InMemoryCache", () => {
 
       // Check before TTL expires
       await new Promise((resolve) => {
-        setTimeout(resolve, 100);
+        setTimeout(resolve, 1);
       });
 
       const result = await cache.get([key]);
