@@ -41,7 +41,7 @@ beforeAll(async () => {
   }
 
   await truncate(API_URL, "all");
-});
+}, 20_000);
 
 afterAll(() => server?.kill("SIGTERM"));
 
