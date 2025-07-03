@@ -11,6 +11,8 @@ import { findLast, gatherIterator, truncate } from "./utils.mjs";
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import waitPort from "wait-port";
+import { createRequire } from "node:module";
+import * as path from "node:path";
 
 const API_URL = "http://localhost:2024";
 const client = new Client<any>({ apiUrl: API_URL });
@@ -35,9 +37,14 @@ const IS_MEMORY = true;
 
 beforeAll(async () => {
   if (process.env.TURBO_HASH) {
+    const tsx = path.resolve(
+      createRequire(import.meta.url).resolve("tsx/esm/api"),
+      "../../../cli.mjs"
+    );
+
     server = spawn(
-      "tsx",
-      ["./tests/utils.server.mts", "-c", "./graphs/langgraph.json"],
+      "node",
+      [tsx, "./tests/utils.server.mts", "-c", "./graphs/langgraph.json"],
       { stdio: "pipe", env: { ...process.env, PORT: "2024" } }
     );
 

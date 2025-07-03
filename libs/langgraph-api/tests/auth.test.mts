@@ -4,6 +4,8 @@ import { gatherIterator, truncate } from "./utils.mjs";
 import { SignJWT } from "jose";
 import waitPort from "wait-port";
 import { type ChildProcess, spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import * as path from "node:path";
 
 const API_URL = "http://localhost:2025";
 const config = { configurable: { user_id: "123" } };
@@ -28,9 +30,14 @@ const createJwtClient = async (sub: string, scopes: string[] = []) => {
 
 beforeAll(async () => {
   if (process.env.TURBO_HASH) {
+    const tsx = path.resolve(
+      createRequire(import.meta.url).resolve("tsx/esm/api"),
+      "../../../cli.mjs"
+    );
+
     server = spawn(
-      "tsx",
-      ["./tests/utils.server.mts", "-c", "./graphs/langgraph.auth.json"],
+      "node",
+      [tsx, "./tests/utils.server.mts", "-c", "./graphs/langgraph.auth.json"],
       { stdio: "pipe", env: { ...process.env, PORT: "2025" } }
     );
 
