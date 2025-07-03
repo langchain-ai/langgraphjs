@@ -44,11 +44,11 @@ beforeAll(async () => {
     server.stdout?.on("data", (data) => console.log(data.toString().trimEnd()));
     server.stderr?.on("data", (data) => console.log(data.toString().trimEnd()));
 
-    await waitPort({ port: 2025, timeout: 30_000 });
+    await waitPort({ port: 2025, timeout: 60_000 });
   }
 
   await truncate(API_URL, "all");
-}, 60_000);
+}, 120_000);
 
 afterAll(() => server?.kill("SIGTERM"));
 
