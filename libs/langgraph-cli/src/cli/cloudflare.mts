@@ -96,7 +96,7 @@ export async function startCloudflareTunnel(
   const tunnelUrl = new Promise<string>((resolve) => {
     child.stderr
       .pipe(new CloudflareUrlStream().fromWeb())
-      .once("data", (data) => {
+      .once("data", (data: string) => {
         logger.info(`Tunnel URL: "${data}"`);
         resolve(data);
       });

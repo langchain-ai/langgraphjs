@@ -20,7 +20,7 @@
     "@testing-library/user-event": "^14.6.1",
     "@tsconfig/recommended": "^1.0.2",
     "@types/json-schema": "^7.0.15",
-    "@types/node": "^20.12.12",
+    "@types/node": "^18.15.11",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.4.1",

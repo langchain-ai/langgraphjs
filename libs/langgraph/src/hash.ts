@@ -216,7 +216,13 @@ function XXH3_hashLong_128b(data: DataView, secret: DataView) {
   ]);
   assert(data.byteLength > 128);
 
-  acc = XXH3_hashLong(acc, data, secret, XXH3_accumulate_512, XXH3_scrambleAcc);
+  acc = XXH3_hashLong(
+    acc,
+    data,
+    secret,
+    XXH3_accumulate_512,
+    XXH3_scrambleAcc
+  ) as BigUint64Array<ArrayBuffer>;
 
   /* converge into final hash */
   assert(acc.length * 8 === 64);

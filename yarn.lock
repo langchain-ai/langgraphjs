@@ -1731,7 +1731,7 @@ __metadata:
     "@langchain/langgraph-ui": "workspace:*"
     "@types/babel__code-frame": "npm:^7.0.6"
     "@types/json-schema": "npm:^7.0.15"
-    "@types/node": "npm:^22.2.0"
+    "@types/node": "npm:^18.15.11"
     "@types/react": "npm:^19.0.8"
     "@types/react-dom": "npm:^19.0.3"
     "@types/semver": "npm:^7.7.0"
@@ -1944,7 +1944,7 @@ __metadata:
     "@commander-js/extra-typings": "npm:^13.0.0"
     "@langchain/langgraph-api": "workspace:*"
     "@types/babel__code-frame": "npm:^7.0.6"
-    "@types/node": "npm:^22.2.0"
+    "@types/node": "npm:^18.15.11"
     chokidar: "npm:^4.0.3"
     commander: "npm:^13.0.0"
     dedent: "npm:^1.5.3"
@@ -2016,7 +2016,7 @@ __metadata:
     "@testing-library/user-event": "npm:^14.6.1"
     "@tsconfig/recommended": "npm:^1.0.2"
     "@types/json-schema": "npm:^7.0.15"
-    "@types/node": "npm:^20.12.12"
+    "@types/node": "npm:^18.15.11"
     "@types/react": "npm:^19.0.8"
     "@types/react-dom": "npm:^19.0.3"
     "@vitejs/plugin-react": "npm:^4.4.1"
@@ -2039,7 +2039,7 @@ __metadata:
     "@langchain/scripts": "npm:^0.1.4"
     "@tsconfig/recommended": "npm:^1.0.2"
     "@types/json-schema": "npm:^7.0.15"
-    "@types/node": "npm:^20.12.12"
+    "@types/node": "npm:^18.15.11"
     "@types/react": "npm:^19.0.8"
     "@types/react-dom": "npm:^19.0.3"
     "@types/uuid": "npm:^9.0.1"
@@ -2130,7 +2130,7 @@ __metadata:
   resolution: "@langchain/langgraph-ui@workspace:libs/langgraph-ui"
   dependencies:
     "@commander-js/extra-typings": "npm:^13.0.0"
-    "@types/node": "npm:^22.2.0"
+    "@types/node": "npm:^18.15.11"
     "@types/react": "npm:^19.0.8"
     "@types/react-dom": "npm:^19.0.3"
     commander: "npm:^13.0.0"
@@ -3978,30 +3978,21 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/node@npm:^18.15.11":
+  version: 18.19.115
+  resolution: "@types/node@npm:18.19.115"
+  dependencies:
+    undici-types: "npm:~5.26.4"
+  checksum: 10/5bb9717da8cba1977f0ef87548f73d3f05476bcf1b58da856a58496711684a6417ab7ee1f2712d087eb13ca5e40351578f0c466d24096086ee5c3fa8baf590c7
+  languageName: node
+  linkType: hard
+
 "@types/node@npm:^18.16.2":
   version: 18.19.33
   resolution: "@types/node@npm:18.19.33"
   dependencies:
     undici-types: "npm:~5.26.4"
   checksum: 10/e5816356e3bcf1af272587d6a95c172199532a86bdb379e4d314a10605463908b36316af51ff6d3c19d9f1965e14a6f62c6a5cbab876aafffe71e1211512084a
-  languageName: node
-  linkType: hard
-
-"@types/node@npm:^20.12.12":
-  version: 20.19.4
-  resolution: "@types/node@npm:20.19.4"
-  dependencies:
-    undici-types: "npm:~6.21.0"
-  checksum: 10/43ff00d92503b159bc2fc8a97f3f4c7db2fbfe9b08d4957661a775b4bdd407b87d3a41212d01c6f939827a77a115633cfc2ce6128ed94438e2d2e8611f42f101
-  languageName: node
-  linkType: hard
-
-"@types/node@npm:^22.2.0":
-  version: 22.16.0
-  resolution: "@types/node@npm:22.16.0"
-  dependencies:
-    undici-types: "npm:~6.21.0"
-  checksum: 10/26ebbbd24749caa4a692664290c53cdca63ec717ca250cd2babf3d3da796e9d3d0b6b9814d160693261b5e881796bf0f3c1887fef355b19e9a78fe27cd5e2ce2
   languageName: node
   linkType: hard
 
@@ -5929,7 +5920,7 @@ __metadata:
   dependencies:
     "@clack/prompts": "npm:^0.9.1"
     "@commander-js/extra-typings": "npm:^13.0.0"
-    "@types/node": "npm:^22.2.0"
+    "@types/node": "npm:^18.15.11"
     commander: "npm:^13.0.0"
     dedent: "npm:^1.5.3"
     extract-zip: "npm:^2.0.1"
@@ -14025,13 +14016,6 @@ __metadata:
   version: 5.26.5
   resolution: "undici-types@npm:5.26.5"
   checksum: 10/0097779d94bc0fd26f0418b3a05472410408877279141ded2bd449167be1aed7ea5b76f756562cb3586a07f251b90799bab22d9019ceba49c037c76445f7cddd
-  languageName: node
-  linkType: hard
-
-"undici-types@npm:~6.21.0":
-  version: 6.21.0
-  resolution: "undici-types@npm:6.21.0"
-  checksum: 10/ec8f41aa4359d50f9b59fa61fe3efce3477cc681908c8f84354d8567bb3701fafdddf36ef6bff307024d3feb42c837cf6f670314ba37fc8145e219560e473d14
   languageName: node
   linkType: hard
 

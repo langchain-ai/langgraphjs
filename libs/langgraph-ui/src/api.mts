@@ -15,14 +15,14 @@ interface BuildEnvType {
 }
 
 function getBuildEnv(options?: BuildEnvType) {
-  const cwd = options.cwd ?? process.cwd();
+  const cwd = options?.cwd ?? process.cwd();
 
   const defs =
-    options.defs ??
+    options?.defs ??
     DefsSchema.parse(JSON.parse(process.env.LANGGRAPH_UI || "{}"));
 
   const config =
-    options.config ??
+    options?.config ??
     ConfigSchema.parse(JSON.parse(process.env.LANGGRAPH_UI_CONFIG || "{}"));
 
   return { cwd, defs, config };
