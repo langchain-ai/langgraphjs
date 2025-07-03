@@ -5,14 +5,16 @@ import type {
 } from "@langchain/core/messages";
 import { Client, type FeedbackStreamEvent } from "@langchain/langgraph-sdk";
 import { RemoteGraph } from "@langchain/langgraph/remote";
-import { randomUUID } from "crypto";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { findLast, gatherIterator, kill, truncate } from "./utils.mjs";
+import { findLast, gatherIterator, truncate } from "./utils.mjs";
+import { type ChildProcess, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import waitPort from "wait-port";
 
 const API_URL = "http://localhost:2024";
 const client = new Client<any>({ apiUrl: API_URL });
+let server: ChildProcess | undefined;
 
 // Passed to all invocation requests as the graph now requires this field to be present
 // in `configurable` due to a new `SharedValue` field requiring it.
@@ -32,13 +34,23 @@ interface AgentState {
 const IS_MEMORY = true;
 
 beforeAll(async () => {
-  if (process.env.TURBO_HASH) await waitPort({ port: 2024, timeout: 10_000 });
+  if (process.env.TURBO_HASH) {
+    server = spawn(
+      "tsx",
+      ["./tests/utils.server.mts", "-c", "./graphs/langgraph.json"],
+      { stdio: "pipe", env: { ...process.env, PORT: "2024" } }
+    );
+
+    server.stdout?.on("data", (data) => console.log(data.toString().trimEnd()));
+    server.stderr?.on("data", (data) => console.log(data.toString().trimEnd()));
+
+    await waitPort({ port: 2024, timeout: 10_000 });
+  }
+
   await truncate(API_URL, "all");
 });
 
-afterAll(async () => {
-  if (process.env.TURBO_HASH) await kill(API_URL);
-});
+afterAll(() => server?.kill("SIGTERM"));
 
 describe("assistants", () => {
   it("create read update delete", async () => {

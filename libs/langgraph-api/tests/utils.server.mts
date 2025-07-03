@@ -28,8 +28,14 @@ const { spawnServer } = (
       await import("../dist/cli/spawn.mjs")
 ) as typeof import("../src/cli/spawn.mjs");
 
-await spawnServer(
-  { port: process.env.PORT || "2024", nJobsPerWorker: "10", host: "localhost" },
+const server = await spawnServer(
+  {
+    port: process.env.PORT || "2024",
+    nJobsPerWorker: "10",
+    host: "localhost",
+  },
   { config, env, hostUrl: "https://smith.langchain.com" },
   { pid: process.pid, projectCwd: dirname(configPath) }
 );
+
+process.once("SIGTERM", () => server.kill("SIGTERM"));

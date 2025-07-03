@@ -41,8 +41,6 @@
     "clean": "rm -rf dist/ .turbo/ ./tests/graphs/.langgraph_api/",
     "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-api",
     "build:internal": "yarn clean && node scripts/build.mjs",
-    "start": "PORT=2024 tsx ./tests/utils.server.mts -c ./graphs/langgraph.json",
-    "start:auth": "PORT=2025 tsx ./tests/utils.server.mts -c ./graphs/langgraph.auth.json",
     "dev": "tsx ./tests/utils.server.mts --dev",
     "prepack": "yarn run build",
     "typecheck": "tsc --noEmit",

@@ -1,11 +1,13 @@
 import { Client } from "@langchain/langgraph-sdk";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { gatherIterator, kill, truncate } from "./utils.mjs";
+import { gatherIterator, truncate } from "./utils.mjs";
 import { SignJWT } from "jose";
 import waitPort from "wait-port";
+import { type ChildProcess, spawn } from "node:child_process";
 
 const API_URL = "http://localhost:2025";
 const config = { configurable: { user_id: "123" } };
+let server: ChildProcess | undefined;
 
 const SECRET_KEY = new TextEncoder().encode(
   "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
@@ -25,13 +27,23 @@ const createJwtClient = async (sub: string, scopes: string[] = []) => {
 };
 
 beforeAll(async () => {
-  if (process.env.TURBO_HASH) await waitPort({ port: 2025, timeout: 10_000 });
+  if (process.env.TURBO_HASH) {
+    server = spawn(
+      "tsx",
+      ["./tests/utils.server.mts", "-c", "./graphs/langgraph.auth.json"],
+      { stdio: "pipe", env: { ...process.env, PORT: "2025" } }
+    );
+
+    server.stdout?.on("data", (data) => console.log(data.toString().trimEnd()));
+    server.stderr?.on("data", (data) => console.log(data.toString().trimEnd()));
+
+    await waitPort({ port: 2025, timeout: 10_000 });
+  }
+
   await truncate(API_URL, "all");
 });
 
-afterAll(async () => {
-  if (process.env.TURBO_HASH) await kill(API_URL);
-});
+afterAll(() => server?.kill("SIGTERM"));
 
 it.skipIf(process.version.startsWith("v18."))(
   "unauthenticated user",
