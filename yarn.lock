@@ -2430,7 +2430,7 @@ __metadata:
     execa: "npm:^9.5.2"
     exit-hook: "npm:^4.0.0"
     extract-zip: "npm:^2.0.1"
-    langsmith: "npm:^0.2.15"
+    langsmith: "npm:^0.3.33"
     open: "npm:^10.1.0"
     prettier: "npm:^2.8.3"
     stacktrace-parser: "npm:^0.1.10"
@@ -6784,7 +6784,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"commander@npm:^10.0.0, commander@npm:^10.0.1":
+"commander@npm:^10.0.0":
   version: 10.0.1
   resolution: "commander@npm:10.0.1"
   checksum: 10/8799faa84a30da985802e661cc9856adfaee324d4b138413013ef7f087e8d7924b144c30a1f1405475f0909f467665cd9e1ce13270a2f41b141dab0b7a58f3fb
@@ -11535,46 +11535,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"langsmith@npm:>=0.2.8 <0.4.0":
-  version: 0.3.30
-  resolution: "langsmith@npm:0.3.30"
-  dependencies:
-    "@types/uuid": "npm:^10.0.0"
-    chalk: "npm:^4.1.2"
-    console-table-printer: "npm:^2.12.1"
-    p-queue: "npm:^6.6.2"
-    p-retry: "npm:4"
-    semver: "npm:^7.6.3"
-    uuid: "npm:^10.0.0"
-  peerDependencies:
-    openai: "*"
-  peerDependenciesMeta:
-    openai:
-      optional: true
-  checksum: 10/dd4aca439e87f86b05de2ba9eb1a05000d91ef891259532d1e385e9c6ede32e2c9a087f9e2f3a6f365e28139561a66aeab077e11c7066b54e4051081e938eecf
-  languageName: node
-  linkType: hard
-
-"langsmith@npm:^0.2.15":
-  version: 0.2.15
-  resolution: "langsmith@npm:0.2.15"
-  dependencies:
-    "@types/uuid": "npm:^10.0.0"
-    commander: "npm:^10.0.1"
-    p-queue: "npm:^6.6.2"
-    p-retry: "npm:4"
-    semver: "npm:^7.6.3"
-    uuid: "npm:^10.0.0"
-  peerDependencies:
-    openai: "*"
-  peerDependenciesMeta:
-    openai:
-      optional: true
-  checksum: 10/23668b2440813275f68deeab4f5ceb20a563e84ce7ce0a4d8324000793ce2cbe849df9b18637bfb20a147ea025349372a00a6c81a15b43a9e7d379bc8179fd6d
-  languageName: node
-  linkType: hard
-
-"langsmith@npm:^0.3.33":
+"langsmith@npm:>=0.2.8 <0.4.0, langsmith@npm:^0.3.33":
   version: 0.3.37
   resolution: "langsmith@npm:0.3.37"
   dependencies:
