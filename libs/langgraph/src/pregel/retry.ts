@@ -30,10 +30,17 @@ const DEFAULT_RETRY_ON_HANDLER = (error: any) => {
   ) {
     return false;
   }
+
+  // Thrown when interrupt is called without a checkpointer
+  if (error.name === "GraphValueError") {
+    return false;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if ((error as any)?.code === "ECONNABORTED") {
     return false;
   }
+
   const status =
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (error as any)?.response?.status ?? (error as any)?.status;
