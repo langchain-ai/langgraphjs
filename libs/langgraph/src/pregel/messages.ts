@@ -146,6 +146,9 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
   }
 
   handleLLMEnd(output: LLMResult, runId: string) {
+    // Filter out runs that we do not have metadata for
+    if (this.metadatas[runId] === undefined) return;
+
     // In JS, non-streaming runs do not call handleLLMNewToken at the model level
     if (!this.emittedChatModelRunIds[runId]) {
       const chatGeneration = output.generations?.[0]?.[0] as ChatGeneration;
