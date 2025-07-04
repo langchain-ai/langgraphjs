@@ -3275,32 +3275,25 @@ graph TD;
           retryPolicy: { logWarning: false },
         })
         .addEdge(START, "tool_two");
+
       let toolTwo = toolTwoGraph.compile();
 
       const tracer = new FakeTracer();
-      const result = await toolTwo.invoke(
-        { my_key: "value", market: "DE" },
-        { callbacks: [tracer] }
-      );
-      expect(result).toEqual({
-        my_key: "value",
-        market: "DE",
-        __interrupt__: [
-          {
-            interrupt_id: expect.any(String),
-            value: "Just because...",
-            resumable: true,
-            when: "during",
-            ns: [expect.stringMatching(/^tool_two:/)],
-          },
-        ],
-      });
+
+      await expect(
+        toolTwo.invoke(
+          { my_key: "value", market: "DE" },
+          { callbacks: [tracer] }
+        )
+      ).rejects.toThrow("No checkpointer set");
+
       expect(toolTwoNodeCount).toBe(1); // interrupts aren't retried
       expect(tracer.runs.length).toBe(1);
+
       const run = tracer.runs[0];
       expect(run.end_time).toBeDefined();
-      expect(run.error).toBeUndefined();
-      expect(run.outputs).toEqual({ market: "DE", my_key: "value" });
+      expect(run.error).toEqual(expect.stringMatching(/No checkpointer set/));
+      expect(run.outputs).toBeUndefined();
 
       expect(await toolTwo.invoke({ my_key: "value", market: "US" })).toEqual({
         my_key: "value all good",
@@ -3536,33 +3529,19 @@ graph TD;
       let toolTwo = toolTwoGraph.compile();
 
       const tracer = new FakeTracer();
-      expect(
-        await toolTwo.invoke(
+      await expect(
+        toolTwo.invoke(
           { my_key: "value", market: "DE" },
           { callbacks: [tracer] }
         )
-      ).toEqual({
-        my_key: "value one",
-        market: "DE",
-        __interrupt__: [
-          {
-            interrupt_id: expect.any(String),
-            value: "Just because...",
-            resumable: true,
-            ns: [expect.stringMatching(/^tool_two:/)],
-            when: "during",
-          },
-        ],
-      });
+      ).rejects.toThrow(/No checkpointer set/);
 
       expect(toolTwoNodeCount).toBe(1); // interrupts aren't retried
-      expect(tracer.runs.length).toBe(1);
+      expect(tracer.runs.length).toBe(2);
 
-      const run = tracer.runs[0];
-      expect(run.end_time).toBeDefined();
-      expect(run.error).toBeUndefined();
-      // TODO: there seems to be a bug with tracing
-      // expect(run.outputs).toEqual({ market: "DE", my_key: "value one" });
+      const run = tracer.runs.at(-1);
+      expect(run?.end_time).toBeDefined();
+      expect(run?.error).toEqual(expect.stringMatching(/No checkpointer set/));
 
       expect(await toolTwo.invoke({ my_key: "value", market: "US" })).toEqual({
         my_key: "value all good one",
@@ -10948,6 +10927,25 @@ graph TD;
 
     expect(result.messages).toBeDefined();
     expect(result.messages).toHaveLength(1);
+  });
+
+  it("should fail fast when interrupt is called without a checkpointer", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", () => {
+        interrupt("<INTERRUPTED>");
+        return {};
+      })
+      .addEdge(START, "one")
+      .compile();
+
+    const config = { configurable: { thread_id: "1" } };
+    const input = { messages: [{ type: "human" as const, content: "test" }] };
+
+    await expect(graph.invoke(input, config)).rejects.toThrow(
+      "No checkpointer set"
+    );
+
+    await expect(graph.getState(config)).rejects.toThrow("No checkpointer set");
   });
 
   describe("should interrupt and resume with Command inside a subgraph and usable zod schema", async () => {
