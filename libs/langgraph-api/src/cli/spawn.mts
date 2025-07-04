@@ -41,6 +41,7 @@ export async function spawnServer(
 ) {
   const localUrl = `http://${args.host}:${args.port}`;
   const studioUrl = `${context.hostUrl}/studio?baseUrl=${localUrl}`;
+  const nodeOptions = context.env.NODE_OPTIONS ?? ""; // Allow user to pass breakpoints to child process for debugging
 
   console.log(`
           Welcome to
@@ -87,6 +88,7 @@ For production use, please use LangGraph Cloud.
         ...context.env,
         NODE_ENV: "development",
         LANGGRAPH_API_URL: localUrl,
+        NODE_OPTIONS: nodeOptions,
       },
     }
   );
