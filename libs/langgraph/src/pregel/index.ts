@@ -52,6 +52,8 @@ import {
   isInterrupted,
   NULL_TASK_ID,
   PUSH,
+  CONFIG_KEY_CHECKPOINT_DURING,
+  CONFIG_KEY_CHECKPOINT_NS,
 } from "../constants.js";
 import {
   GraphRecursionError,
@@ -478,7 +480,7 @@ export class Pregel<
    * When provided, saves a checkpoint of the graph state at every superstep.
    * When false or undefined, checkpointing is disabled, and the graph will not be able to save or restore state.
    */
-  checkpointer?: BaseCheckpointSaver | false;
+  checkpointer?: BaseCheckpointSaver | boolean;
 
   /** Optional retry policy for handling failures in node execution */
   retryPolicy?: RetryPolicy;
@@ -1088,6 +1090,7 @@ export class Pregel<
       updates: {
         values?: Record<string, unknown> | unknown;
         asNode?: keyof Nodes | string;
+        taskId?: string;
       }[]
     ) => {
       // get last checkpoint
@@ -1103,6 +1106,7 @@ export class Pregel<
         ...saved?.checkpoint.channel_versions,
       };
       const step = saved?.metadata?.step ?? -1;
+
       // merge configurable fields with previous checkpoint config
       let checkpointConfig = patchConfigurable(config, {
         checkpoint_ns: config.configurable?.checkpoint_ns ?? "",
@@ -1172,7 +1176,7 @@ export class Pregel<
             true,
             {
               step: (saved.metadata?.step ?? -1) + 1,
-              checkpointer: this.checkpointer || undefined,
+              checkpointer,
               store: this.store,
             }
           );
@@ -1183,7 +1187,7 @@ export class Pregel<
             .map((w) => w.slice(1)) as PendingWrite<string>[];
           if (nullWrites.length > 0) {
             _applyWrites(
-              saved.checkpoint,
+              checkpoint,
               channels,
               [
                 {
@@ -1192,7 +1196,7 @@ export class Pregel<
                   triggers: [],
                 },
               ],
-              undefined,
+              checkpointer.getNextVersion.bind(checkpointer),
               this.triggerToNodes
             );
           }
@@ -1211,14 +1215,14 @@ export class Pregel<
             checkpoint,
             channels,
             Object.values(nextTasks) as WritesProtocol<string>[],
-            undefined,
+            checkpointer.getNextVersion.bind(checkpointer),
             this.triggerToNodes
           );
         }
         // save checkpoint
         const nextConfig = await checkpointer.put(
           checkpointConfig,
-          createCheckpoint(checkpoint, undefined, step),
+          createCheckpoint(checkpoint, channels, step),
           {
             ...checkpointMetadata,
             source: "update",
@@ -1226,35 +1230,96 @@ export class Pregel<
             writes: {},
             parents: saved?.metadata?.parents ?? {},
           },
-          {}
+          getNewChannelVersions(
+            checkpointPreviousVersions,
+            checkpoint.channel_versions
+          )
         );
         return patchCheckpointMap(
           nextConfig,
           saved ? saved.metadata : undefined
         );
       }
-      if (values == null && asNode === COPY) {
+
+      if (asNode === COPY) {
         if (updates.length > 1) {
           throw new InvalidUpdateError(
             `Cannot copy checkpoint with multiple updates`
           );
         }
 
+        if (saved == null) {
+          throw new InvalidUpdateError(`Cannot copy a non-existent checkpoint`);
+        }
+
+        const isCopyWithUpdates = (
+          values: unknown
+        ): values is [values: unknown, asNode: string][] => {
+          if (!Array.isArray(values)) return false;
+          if (values.length === 0) return false;
+          return values.every((v) => Array.isArray(v) && v.length === 2);
+        };
+
+        const nextCheckpoint = createCheckpoint(checkpoint, undefined, step);
         const nextConfig = await checkpointer.put(
-          saved?.parentConfig ?? checkpointConfig,
-          createCheckpoint(checkpoint, undefined, step),
+          saved.parentConfig ??
+            patchConfigurable(saved.config, { checkpoint_id: undefined }),
+          nextCheckpoint,
           {
             source: "fork",
             step: step + 1,
             writes: {},
-            parents: saved?.metadata?.parents ?? {},
+            parents: saved.metadata?.parents ?? {},
           },
           {}
         );
-        return patchCheckpointMap(
-          nextConfig,
-          saved ? saved.metadata : undefined
-        );
+
+        // We want to both clone a checkpoint and update state in one go.
+        // Reuse the same task ID if possible.
+        if (isCopyWithUpdates(values)) {
+          // figure out the task IDs for the next update checkpoint
+          const nextTasks = _prepareNextTasks(
+            nextCheckpoint,
+            saved.pendingWrites,
+            this.nodes,
+            channels,
+            managed,
+            nextConfig,
+            false,
+            { step: step + 2 }
+          );
+
+          const tasksGroupBy = Object.values(nextTasks).reduce<
+            Record<string, { id: string }[]>
+          >((acc, { name, id }) => {
+            acc[name] ??= [];
+            acc[name].push({ id });
+            return acc;
+          }, {});
+
+          const userGroupBy = values.reduce<
+            Record<
+              string,
+              { values: unknown; asNode: string; taskId?: string }[]
+            >
+          >((acc, item) => {
+            const [values, asNode] = item;
+            acc[asNode] ??= [];
+
+            const targetIdx = acc[asNode].length;
+            const taskId = tasksGroupBy[asNode]?.[targetIdx]?.id;
+            acc[asNode].push({ values, asNode, taskId });
+
+            return acc;
+          }, {});
+
+          return updateSuperStep(
+            patchCheckpointMap(nextConfig, saved.metadata),
+            Object.values(userGroupBy).flat()
+          );
+        }
+
+        return patchCheckpointMap(nextConfig, saved.metadata);
       }
 
       if (asNode === INPUT) {
@@ -1391,11 +1456,12 @@ export class Pregel<
       const validUpdates: Array<{
         values: Record<string, unknown> | unknown;
         asNode: keyof Nodes | string;
+        taskId?: string;
       }> = [];
 
       if (updates.length === 1) {
         // eslint-disable-next-line prefer-const
-        let { values, asNode } = updates[0];
+        let { values, asNode, taskId } = updates[0];
         if (asNode === undefined && Object.keys(this.nodes).length === 1) {
           // if only one node, use it
           [asNode] = Object.keys(this.nodes);
@@ -1436,21 +1502,21 @@ export class Pregel<
           throw new InvalidUpdateError(`Ambiguous update, specify "asNode"`);
         }
 
-        validUpdates.push({ values, asNode });
+        validUpdates.push({ values, asNode, taskId });
       } else {
-        for (const { asNode, values } of updates) {
+        for (const { asNode, values, taskId } of updates) {
           if (asNode == null) {
             throw new InvalidUpdateError(
               `"asNode" is required when applying multiple updates`
             );
           }
 
-          validUpdates.push({ values, asNode });
+          validUpdates.push({ values, asNode, taskId });
         }
       }
 
       const tasks: PregelExecutableTask<keyof Nodes, keyof Channels>[] = [];
-      for (const { asNode, values } of validUpdates) {
+      for (const { asNode, values, taskId } of validUpdates) {
         if (this.nodes[asNode] === undefined) {
           throw new InvalidUpdateError(
             `Node "${asNode.toString()}" does not exist`
@@ -1476,7 +1542,7 @@ export class Pregel<
               : writers[0],
           writes: [],
           triggers: [INTERRUPT],
-          id: uuid5(INTERRUPT, checkpoint.id),
+          id: taskId ?? uuid5(INTERRUPT, checkpoint.id),
           writers: [],
         });
       }
@@ -1622,6 +1688,8 @@ export class Pregel<
    * - checkpointer
    * - store
    * - whether stream mode is single
+   * - node cache
+   * - whether checkpoint during is enabled
    * @internal
    */
   _defaults(config: PregelOptions<Nodes, Channels>): [
@@ -1632,10 +1700,11 @@ export class Pregel<
     LangGraphRunnableConfig, // config without pregel keys
     All | string[], // interrupt before
     All | string[], // interrupt after
-    BaseCheckpointSaver | undefined,
-    BaseStore | undefined,
-    boolean,
-    BaseCache | undefined
+    BaseCheckpointSaver | undefined, // checkpointer
+    BaseStore | undefined, // store
+    boolean, // stream mode single
+    BaseCache | undefined, // node cache
+    boolean // checkpoint during
   ] {
     const {
       debug,
@@ -1673,13 +1742,15 @@ export class Pregel<
       defaultStreamMode = Array.isArray(streamMode) ? streamMode : [streamMode];
       streamModeSingle = typeof streamMode === "string";
     } else {
-      defaultStreamMode = this.streamMode;
-      streamModeSingle = true;
-    }
+      // if being called as a node in another graph, default to values mode
+      // but don't overwrite `streamMode`if provided
+      if (config.configurable?.[CONFIG_KEY_TASK_ID] !== undefined) {
+        defaultStreamMode = ["values"];
+      } else {
+        defaultStreamMode = this.streamMode;
+      }
 
-    // if being called as a node in another graph, always use values mode
-    if (config.configurable?.[CONFIG_KEY_TASK_ID] !== undefined) {
-      defaultStreamMode = ["values"];
+      streamModeSingle = true;
     }
 
     let defaultCheckpointer: BaseCheckpointSaver | undefined;
@@ -1690,11 +1761,17 @@ export class Pregel<
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] !== undefined
     ) {
       defaultCheckpointer = config.configurable[CONFIG_KEY_CHECKPOINTER];
+    } else if (this.checkpointer === true) {
+      throw new Error("checkpointer: true cannot be used for root graphs.");
     } else {
       defaultCheckpointer = this.checkpointer;
     }
     const defaultStore: BaseStore | undefined = config.store ?? this.store;
     const defaultCache: BaseCache | undefined = config.cache ?? this.cache;
+    const defaultCheckpointDuring =
+      config.checkpointDuring ??
+      config?.configurable?.[CONFIG_KEY_CHECKPOINT_DURING] ??
+      true;
 
     return [
       defaultDebug,
@@ -1708,6 +1785,7 @@ export class Pregel<
       defaultStore,
       streamModeSingle,
       defaultCache,
+      defaultCheckpointDuring,
     ];
   }
 
@@ -1969,6 +2047,7 @@ export class Pregel<
       store,
       streamModeSingle,
       cache,
+      checkpointDuring,
     ] = this._defaults(restConfig);
 
     config.configurable = await this._validateConfigurable(config.configurable);
@@ -1976,6 +2055,16 @@ export class Pregel<
     const stream = new IterableReadableWritableStream({
       modes: new Set(streamMode),
     });
+
+    // set up subgraph checkpointing
+    if (this.checkpointer === true) {
+      config.configurable ??= {};
+      const ns: string = config.configurable[CONFIG_KEY_CHECKPOINT_NS] ?? "";
+      config.configurable[CONFIG_KEY_CHECKPOINT_NS] = ns
+        .split(CHECKPOINT_NAMESPACE_SEPARATOR)
+        .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
+        .join(CHECKPOINT_NAMESPACE_SEPARATOR);
+    }
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {
@@ -2042,6 +2131,7 @@ export class Pregel<
           manager: runManager,
           debug: this.debug,
           triggerToNodes: this.triggerToNodes,
+          checkpointDuring,
         });
 
         const runner = new PregelRunner({

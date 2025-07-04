@@ -10,6 +10,7 @@ import {
   RESUME,
 } from "./constants.js";
 import { PregelScratchpad } from "./pregel/types.js";
+import { XXH3 } from "./hash.js";
 
 /**
  * Interrupts the execution of a graph node.
@@ -94,12 +95,19 @@ export function interrupt<I = unknown, R = any>(value: I): R {
   }
 
   // No resume value found
+  const ns: string[] | undefined = conf[CONFIG_KEY_CHECKPOINT_NS]?.split(
+    CHECKPOINT_NAMESPACE_SEPARATOR
+  );
   throw new GraphInterrupt([
     {
       value,
       when: "during",
       resumable: true,
-      ns: conf[CONFIG_KEY_CHECKPOINT_NS]?.split(CHECKPOINT_NAMESPACE_SEPARATOR),
+      ns,
+      get interrupt_id() {
+        if (ns == null) return undefined;
+        return XXH3(ns.join(CHECKPOINT_NAMESPACE_SEPARATOR));
+      },
     },
   ]);
 }

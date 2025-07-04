@@ -1,5 +1,5 @@
 /* eslint-disable no-process-env */
-import { describe, it, expect, beforeEach, afterAll } from "@jest/globals";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import type {
   Checkpoint,
   CheckpointTuple,

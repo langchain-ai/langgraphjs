@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { v4 as uuidv4 } from "uuid";
 import { RunnableConfig } from "@langchain/core/runnables";
 import {
@@ -818,6 +818,7 @@ describe("Checkpoint Tests (Python port)", () => {
       market: "DE",
       __interrupt__: [
         {
+          interrupt_id: expect.any(String),
           value: "Just because...",
           resumable: true,
           when: "during",
@@ -857,10 +858,7 @@ describe("Checkpoint Tests (Python port)", () => {
 
     // Stream execution will be interrupted
     const stream1 = await tool_two_with_checkpoint.stream(
-      {
-        my_key: "value ⛰️",
-        market: "DE",
-      },
+      { my_key: "value ⛰️", market: "DE" },
       thread2
     );
 
@@ -868,10 +866,10 @@ describe("Checkpoint Tests (Python port)", () => {
 
     // Assert that we got the expected outputs including an interrupt
     expect(results1).toEqual([
-      { tool_one: { my_key: " one" } },
       {
         __interrupt__: [
           expect.objectContaining({
+            interrupt_id: expect.any(String),
             value: "Just because...",
             resumable: true,
             ns: expect.any(Array),
@@ -879,6 +877,7 @@ describe("Checkpoint Tests (Python port)", () => {
           }),
         ],
       },
+      { tool_one: { my_key: " one" } },
     ]);
 
     // Resume with an answer
@@ -917,6 +916,7 @@ describe("Checkpoint Tests (Python port)", () => {
       market: "DE",
       __interrupt__: [
         {
+          interrupt_id: expect.any(String),
           value: "Just because...",
           resumable: true,
           when: "during",

@@ -344,6 +344,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       market: "DE",
       __interrupt__: [
         {
+          interrupt_id: expect.any(String),
           value: "Just because...",
           resumable: true,
           when: "during",
@@ -394,6 +395,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       {
         __interrupt__: [
           {
+            interrupt_id: expect.any(String),
             value: "Just because...",
             resumable: true,
             when: "during",
@@ -428,6 +430,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       {
         __interrupt__: [
           {
+            interrupt_id: expect.any(String),
             value: "Just because...",
             resumable: true,
             when: "during",
@@ -510,6 +513,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       market: "DE",
       __interrupt__: [
         {
+          interrupt_id: expect.any(String),
           value: "Just because...",
           resumable: true,
           when: "during",
@@ -563,6 +567,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       {
         __interrupt__: [
           {
+            interrupt_id: expect.any(String),
             value: "Just because...",
             resumable: true,
             when: "during",
@@ -603,6 +608,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       {
         __interrupt__: [
           {
+            interrupt_id: expect.any(String),
             value: "Just because...",
             resumable: true,
             when: "during",
@@ -683,6 +689,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       hello: "world again",
       __interrupt__: [
         {
+          interrupt_id: expect.any(String),
           value: "I am bad",
           resumable: true,
           when: "during",
@@ -699,6 +706,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       hello: "world again",
       __interrupt__: [
         {
+          interrupt_id: expect.any(String),
           value: "I am bad",
           resumable: true,
           when: "during",

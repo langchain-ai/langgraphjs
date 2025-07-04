@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   Checkpoint,
   CheckpointMetadata,

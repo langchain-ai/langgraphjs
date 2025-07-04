@@ -25,6 +25,7 @@ const CONFIG_KEYS = [
   "writer",
   "interruptBefore",
   "interruptAfter",
+  "checkpointDuring",
   "signal",
 ];
 
@@ -142,7 +143,7 @@ export function getWriter(
     );
   }
 
-  return runConfig?.configurable?.writer;
+  return runConfig?.writer || runConfig?.configurable?.writer;
 }
 
 /**

@@ -103,10 +103,12 @@ export function prefixGenerator<T, Prefix extends string>(
   generator: Generator<T>,
   prefix: Prefix
 ): Generator<[Prefix, T]>;
+
 export function prefixGenerator<T>(
   generator: Generator<T>,
   prefix?: undefined
 ): Generator<T>;
+
 export function prefixGenerator<
   T,
   Prefix extends string | undefined = undefined

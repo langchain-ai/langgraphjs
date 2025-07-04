@@ -3,7 +3,7 @@
   "private": true,
   "description": "LangGraph",
   "type": "module",
-  "packageManager": "yarn@3.5.1",
+  "packageManager": "yarn@4.9.2",
   "engines": {
     "node": ">=18"
   },
@@ -18,7 +18,7 @@
     "examples"
   ],
   "scripts": {
-    "build": "turbo run build",
+    "build": "turbo run build:internal",
     "turbo:command": "turbo",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
@@ -47,7 +47,7 @@
     "semver": "^7.6.3",
     "tslab": "^1.0.21",
     "tsx": "^4.19.3",
-    "turbo": "canary",
+    "turbo": "^2.5.4",
     "typedoc": "^0.25.13",
     "typescript": "^4.9.5 || ^5.4.5"
   },

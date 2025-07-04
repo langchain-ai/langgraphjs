@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, test, expect, vi } from "vitest";
 import { Client } from "@langchain/langgraph-sdk";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { RemoteGraph } from "../pregel/remote.js";
 import { gatherIterator } from "../utils.js";
 import { Command, INTERRUPT, Send } from "../constants.js";
@@ -526,8 +527,54 @@ describe("RemoteGraph", () => {
         interruptBefore: undefined,
         interruptAfter: undefined,
         streamSubgraphs: false,
+        signal: undefined,
         ifNotExists: "create",
       },
+    ]);
+  });
+
+  test("invoke propagates recursionLimit and other config keys to API", async () => {
+    const client = new Client({});
+    let streamArgs: unknown[] | undefined;
+    vi.spyOn(client.runs, "stream").mockImplementation(async function* (
+      ...args
+    ) {
+      streamArgs = args;
+      yield {
+        event: "values",
+        data: { messages: [{ type: "human", content: "world" }] },
+      };
+    });
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "thread_1",
+        custom_key: "custom_value",
+      },
+      recursionLimit: 10,
+      tags: ["test", "invoke"],
+      metadata: { source: "test", version: "1.0" },
+      signal: new AbortController().signal,
+    };
+
+    await remotePregel.invoke({}, config);
+
+    expect(streamArgs).toEqual([
+      "thread_1",
+      "test_graph_id",
+      expect.objectContaining({
+        signal: config.signal,
+        config: expect.objectContaining({
+          configurable: config.configurable,
+          recursion_limit: config.recursionLimit,
+          tags: config.tags,
+        }),
+      }),
     ]);
   });
 });

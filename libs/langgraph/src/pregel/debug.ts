@@ -88,10 +88,8 @@ export function* _readChannels<Value>(
 }
 
 export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
-  step: number,
   tasks: readonly PregelExecutableTask<N, C>[]
 ) {
-  const ts = new Date().toISOString();
   for (const { id, name, input, config, triggers, writes } of tasks) {
     if (config?.tags?.includes(TAG_HIDDEN)) continue;
 
@@ -102,18 +100,7 @@ export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
       .map(([, v]) => {
         return v;
       });
-    yield {
-      type: "task",
-      timestamp: ts,
-      step,
-      payload: {
-        id,
-        name,
-        input,
-        triggers,
-        interrupts,
-      },
-    };
+    yield { id, name, input, triggers, interrupts };
   }
 }
 
@@ -121,27 +108,20 @@ export function* mapDebugTaskResults<
   N extends PropertyKey,
   C extends PropertyKey
 >(
-  step: number,
   tasks: readonly [PregelExecutableTask<N, C>, PendingWrite<C>[]][],
   streamChannels: PropertyKey | Array<PropertyKey>
 ) {
-  const ts = new Date().toISOString();
   for (const [{ id, name, config }, writes] of tasks) {
     if (config?.tags?.includes(TAG_HIDDEN)) continue;
     yield {
-      type: "task_result",
-      timestamp: ts,
-      step,
-      payload: {
-        id,
-        name,
-        result: writes.filter(([channel]) => {
-          return Array.isArray(streamChannels)
-            ? streamChannels.includes(channel)
-            : channel === streamChannels;
-        }),
-        interrupts: writes.filter((w) => w[0] === INTERRUPT).map((w) => w[1]),
-      },
+      id,
+      name,
+      result: writes.filter(([channel]) => {
+        return Array.isArray(streamChannels)
+          ? streamChannels.includes(channel)
+          : channel === streamChannels;
+      }),
+      interrupts: writes.filter((w) => w[0] === INTERRUPT).map((w) => w[1]),
     };
   }
 }
@@ -152,7 +132,6 @@ export function* mapDebugCheckpoint<
   N extends PropertyKey,
   C extends PropertyKey
 >(
-  step: number,
   config: RunnableConfig,
   channels: Record<string, BaseChannel>,
   streamChannels: string | string[],
@@ -213,19 +192,13 @@ export function* mapDebugCheckpoint<
     };
   }
 
-  const ts = new Date().toISOString();
   yield {
-    type: "checkpoint",
-    timestamp: ts,
-    step,
-    payload: {
-      config: formatConfig(config),
-      values: readChannels(channels, streamChannels),
-      metadata,
-      next: tasks.map((task) => task.name),
-      tasks: tasksWithWrites(tasks, pendingWrites, taskStates, outputKeys),
-      parentConfig: parentConfig ? formatConfig(parentConfig) : undefined,
-    },
+    config: formatConfig(config),
+    values: readChannels(channels, streamChannels),
+    metadata,
+    next: tasks.map((task) => task.name),
+    tasks: tasksWithWrites(tasks, pendingWrites, taskStates, outputKeys),
+    parentConfig: parentConfig ? formatConfig(parentConfig) : undefined,
   };
 }
 

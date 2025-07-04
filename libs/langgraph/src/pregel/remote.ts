@@ -262,6 +262,7 @@ export class RemoteGraph<
       tags: sanitizedConfig.tags ?? [],
       metadata: sanitizedConfig.metadata ?? {},
       configurable: newConfigurable,
+      recursion_limit: sanitizedConfig.recursionLimit,
     };
   }
 
@@ -435,6 +436,7 @@ export class RemoteGraph<
         interruptAfter: interruptAfter as string[],
         streamSubgraphs,
         ifNotExists: "create",
+        signal: mergedConfig.signal,
       }
     )) {
       let mode;

@@ -1,0 +1,134 @@
+{
+  "name": "@langchain/langgraph-sdk",
+  "version": "0.0.89",
+  "description": "Client library for interacting with the LangGraph API",
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf dist/ dist-cjs/",
+    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-sdk",
+    "build:internal": "yarn clean && yarn lc_build --create-entrypoints --pre --tree-shaking",
+    "prepack": "yarn run build",
+    "format": "prettier --write src",
+    "lint": "prettier --check src",
+    "test": "vitest run",
+    "typedoc": "typedoc && typedoc src/react/index.ts --out docs/react --options typedoc.react.json && typedoc src/auth/index.ts --out docs/auth --options typedoc.auth.json"
+  },
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "@types/json-schema": "^7.0.15",
+    "p-queue": "^6.6.2",
+    "p-retry": "4",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@langchain/core": "^0.3.61",
+    "@langchain/scripts": "^0.1.4",
+    "@tsconfig/recommended": "^1.0.2",
+    "@types/node": "^18.15.11",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@types/uuid": "^9.0.1",
+    "prettier": "^2.8.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^4.9.5 || ^5.4.5",
+    "vitest": "^3.1.2"
+  },
+  "peerDependencies": {
+    "@langchain/core": ">=0.2.31 <0.4.0",
+    "react": "^18 || ^19"
+  },
+  "peerDependenciesMeta": {
+    "@langchain/core": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./index.d.ts",
+        "require": "./index.d.cts",
+        "default": "./index.d.ts"
+      },
+      "import": "./index.js",
+      "require": "./index.cjs"
+    },
+    "./client": {
+      "types": {
+        "import": "./client.d.ts",
+        "require": "./client.d.cts",
+        "default": "./client.d.ts"
+      },
+      "import": "./client.js",
+      "require": "./client.cjs"
+    },
+    "./auth": {
+      "types": {
+        "import": "./auth.d.ts",
+        "require": "./auth.d.cts",
+        "default": "./auth.d.ts"
+      },
+      "import": "./auth.js",
+      "require": "./auth.cjs"
+    },
+    "./react": {
+      "types": {
+        "import": "./react.d.ts",
+        "require": "./react.d.cts",
+        "default": "./react.d.ts"
+      },
+      "import": "./react.js",
+      "require": "./react.cjs"
+    },
+    "./react-ui": {
+      "types": {
+        "import": "./react-ui.d.ts",
+        "require": "./react-ui.d.cts",
+        "default": "./react-ui.d.ts"
+      },
+      "import": "./react-ui.js",
+      "require": "./react-ui.cjs"
+    },
+    "./react-ui/server": {
+      "types": {
+        "import": "./react-ui/server.d.ts",
+        "require": "./react-ui/server.d.cts",
+        "default": "./react-ui/server.d.ts"
+      },
+      "import": "./react-ui/server.js",
+      "require": "./react-ui/server.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "index.cjs",
+    "index.js",
+    "index.d.ts",
+    "index.d.cts",
+    "client.cjs",
+    "client.js",
+    "client.d.ts",
+    "client.d.cts",
+    "auth.cjs",
+    "auth.js",
+    "auth.d.ts",
+    "auth.d.cts",
+    "react.cjs",
+    "react.js",
+    "react.d.ts",
+    "react.d.cts",
+    "react-ui.cjs",
+    "react-ui.js",
+    "react-ui.d.ts",
+    "react-ui.d.cts",
+    "react-ui/server.cjs",
+    "react-ui/server.js",
+    "react-ui/server.d.ts",
+    "react-ui/server.d.cts"
+  ]
+}

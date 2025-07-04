@@ -1,3 +1,4 @@
+import { it } from "vitest";
 import { specTest } from "../spec/index.js";
 import { initializer } from "./postgres_initializer.js";
 import { isSkippedCIEnvironment } from "./utils.js";
