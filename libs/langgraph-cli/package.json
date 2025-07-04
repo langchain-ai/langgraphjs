@@ -41,7 +41,7 @@
     "execa": "^9.5.2",
     "exit-hook": "^4.0.0",
     "extract-zip": "^2.0.1",
-    "langsmith": "^0.2.15",
+    "langsmith": "^0.3.33",
     "open": "^10.1.0",
     "stacktrace-parser": "^0.1.10",
     "tar": "^7.4.3",
