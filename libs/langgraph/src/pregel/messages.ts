@@ -39,7 +39,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
 
   streamFn: (streamChunk: StreamChunk) => void;
 
-  metadatas: Record<string, Meta> = {};
+  metadatas: Record<string, Meta | undefined> = {};
 
   seen: Record<string, BaseMessage> = {};
 
