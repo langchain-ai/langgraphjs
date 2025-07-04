@@ -17,6 +17,7 @@ import {
   maxChannelVersion,
   BaseStore,
   CheckpointPendingWrite,
+  SendProtocol,
 } from "@langchain/langgraph-checkpoint";
 import {
   BaseChannel,
@@ -71,6 +72,7 @@ import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { getRunnableForFunc } from "./call.js";
 import { IterableReadableWritableStream } from "./stream.js";
 import { XXH3 } from "../hash.js";
+import { Topic } from "../channels/topic.js";
 
 /**
  * Construct a type with a set of properties K of type T
@@ -230,7 +232,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   channels: Cc,
   tasks: WritesProtocol<keyof Cc>[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getNextVersion: ((version: any, channel: BaseChannel) => any) | undefined,
+  getNextVersion: ((version: any) => any) | undefined,
   triggerToNodes: Record<string, string[]> | undefined
 ): Record<string, PendingWriteValue[]> {
   // Sort tasks by first 3 path elements for deterministic order
@@ -287,38 +289,21 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   for (const chan of channelsToConsume) {
     if (chan in onlyChannels && onlyChannels[chan].consume()) {
       if (getNextVersion !== undefined) {
-        checkpoint.channel_versions[chan] = getNextVersion(
-          maxVersion,
-          onlyChannels[chan]
-        );
+        checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
       }
     }
   }
 
-  // Clear pending sends
-  if (checkpoint.pending_sends?.length && bumpStep) {
-    checkpoint.pending_sends = [];
-  }
-
   // Group writes by channel
-  const pendingWriteValuesByChannel = {} as Record<
-    keyof Cc,
-    PendingWriteValue[]
-  >;
+  const pendingWritesByChannel = {} as Record<keyof Cc, PendingWriteValue[]>;
   const pendingWritesByManaged = {} as Record<keyof Cc, PendingWriteValue[]>;
   for (const task of tasks) {
     for (const [chan, val] of task.writes) {
       if (IGNORE.has(chan)) {
         // do nothing
-      } else if (chan === TASKS) {
-        // TODO: remove branch in 1.0
-        checkpoint.pending_sends.push({
-          node: (val as Send).node,
-          args: (val as Send).args,
-        });
       } else if (chan in onlyChannels) {
-        pendingWriteValuesByChannel[chan] ??= [];
-        pendingWriteValuesByChannel[chan].push(val);
+        pendingWritesByChannel[chan] ??= [];
+        pendingWritesByChannel[chan].push(val);
       } else {
         pendingWritesByManaged[chan] ??= [];
         pendingWritesByManaged[chan].push(val);
@@ -326,7 +311,8 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
     }
   }
 
-  // find the highest version of all channels
+  // Find the highest version of all channels
+  // TODO: figure out why we need to do this twice (Python only does this once)
   maxVersion = undefined;
   if (Object.keys(checkpoint.channel_versions).length > 0) {
     maxVersion = maxChannelVersion(
@@ -336,7 +322,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
 
   const updatedChannels: Set<string> = new Set();
   // Apply writes to channels
-  for (const [chan, vals] of Object.entries(pendingWriteValuesByChannel)) {
+  for (const [chan, vals] of Object.entries(pendingWritesByChannel)) {
     if (chan in onlyChannels) {
       let updated;
       try {
@@ -356,10 +342,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
         }
       }
       if (updated && getNextVersion !== undefined) {
-        checkpoint.channel_versions[chan] = getNextVersion(
-          maxVersion,
-          onlyChannels[chan]
-        );
+        checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
 
         // unavailable channels can't trigger tasks, so don't add them
         if (onlyChannels[chan].isAvailable()) {
@@ -375,10 +358,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       if (onlyChannels[chan].isAvailable() && !updatedChannels.has(chan)) {
         const updated = onlyChannels[chan].update([]);
         if (updated && getNextVersion !== undefined) {
-          checkpoint.channel_versions[chan] = getNextVersion(
-            maxVersion,
-            onlyChannels[chan]
-          );
+          checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
 
           // unavailable channels can't trigger tasks, so don't add them
           if (onlyChannels[chan].isAvailable()) {
@@ -392,17 +372,13 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // If this is (tentatively) the last superstep, notify all channels of finish
   if (
     bumpStep &&
-    checkpoint.pending_sends.length === 0 &&
     !Object.keys(triggerToNodes ?? {}).some((channel) =>
       updatedChannels.has(channel)
     )
   ) {
     for (const chan of Object.keys(onlyChannels)) {
       if (onlyChannels[chan].finish() && getNextVersion !== undefined) {
-        checkpoint.channel_versions[chan] = getNextVersion(
-          maxVersion,
-          onlyChannels[chan]
-        );
+        checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
 
         // unavailable channels can't trigger tasks, so don't add them
         if (onlyChannels[chan].isAvailable()) {
@@ -485,23 +461,29 @@ export function _prepareNextTasks<
     | Record<string, PregelExecutableTask<keyof Nn, keyof Cc>>
     | Record<string, PregelTaskDescription> = {};
 
-  // Consume pending packets
-  for (let i = 0; i < checkpoint.pending_sends.length; i += 1) {
-    const task = _prepareSingleTask(
-      [PUSH, i],
-      checkpoint,
-      pendingWrites,
-      processes,
-      channels,
-      managed,
-      config,
-      forExecution,
-      extra
-    );
-    if (task !== undefined) {
-      tasks[task.id] = task;
+  // Consume pending tasks
+  const tasksChannel = channels[TASKS] as Topic<SendProtocol> | undefined;
+
+  if (tasksChannel?.isAvailable()) {
+    const len = tasksChannel.get().length;
+    for (let i = 0; i < len; i += 1) {
+      const task = _prepareSingleTask(
+        [PUSH, i],
+        checkpoint,
+        pendingWrites,
+        processes,
+        channels,
+        managed,
+        config,
+        forExecution,
+        extra
+      );
+      if (task !== undefined) {
+        tasks[task.id] = task;
+      }
     }
   }
+
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
   for (const name of Object.keys(processes)) {
@@ -714,18 +696,21 @@ export function _prepareSingleTask<
       typeof taskPath[1] === "number"
         ? taskPath[1]
         : parseInt(taskPath[1] as string, 10);
-    if (index >= checkpoint.pending_sends.length) {
+
+    if (!channels[TASKS]?.isAvailable()) {
+      return undefined;
+    }
+
+    const sends = channels[TASKS].get() as SendProtocol[];
+    if (index < 0 || index >= sends.length) {
       return undefined;
     }
 
     const packet =
-      _isSendInterface(checkpoint.pending_sends[index]) &&
-      !_isSend(checkpoint.pending_sends[index])
-        ? new Send(
-            checkpoint.pending_sends[index].node,
-            checkpoint.pending_sends[index].args
-          )
-        : checkpoint.pending_sends[index];
+      _isSendInterface(sends[index]) && !_isSend(sends[index])
+        ? new Send(sends[index].node, sends[index].args)
+        : sends[index];
+
     if (!_isSendInterface(packet)) {
       console.warn(
         `Ignoring invalid packet ${JSON.stringify(packet)} in pending sends.`

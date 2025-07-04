@@ -227,7 +227,7 @@ describe("Checkpoint Tests (Python port)", () => {
 
     // Create a faulty version checkpoint saver
     class FaultyVersionCheckpointer extends BaseCheckpointSaver<number> {
-      getNextVersion(_current: number | undefined, _channel: unknown): number {
+      getNextVersion(_current: number | undefined): number {
         throw new Error("Faulty get_next_version");
       }
 
