@@ -19,6 +19,7 @@
   ],
   "scripts": {
     "build": "turbo run build:internal",
+    "changeset": "npx @changesets/cli@^2.29.5",
     "turbo:command": "turbo",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
@@ -30,7 +31,7 @@
     "test:exports:docker": "docker compose -f environment_tests/docker-compose.yml up --force-recreate",
     "format": "turbo run format",
     "format:check": "turbo run format:check",
-    "release": "node scripts/release_workspace.cjs --workspace"
+    "release": "turbo build && yarn changeset publish"
   },
   "author": "LangChain",
   "license": "MIT",
