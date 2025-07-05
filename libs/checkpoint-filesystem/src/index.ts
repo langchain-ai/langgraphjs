@@ -60,7 +60,7 @@ export class FileCheckpointSaver extends BaseCheckpointSaver {
             return channel === TASKS;
           })
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          .map(([_taskId, _channel, writes]) => writes) ?? [];
+          .map(([_taskId, _channel, writes]) => writes as SendProtocol) ?? [];
     }
 
     return pendingSends;
@@ -200,7 +200,10 @@ export class FileCheckpointSaver extends BaseCheckpointSaver {
 
         const pendingWrites: CheckpointPendingWrite[] = Object.values(
           writesData.writes[key] || {}
-        ).map(([taskId, channel, value]) => [taskId, channel, value]);
+        ).map(
+          ([taskId, channel, value]) =>
+            [taskId, channel, value] as CheckpointPendingWrite
+        );
 
         const checkpointTuple: CheckpointTuple = {
           checkpoint: {
@@ -235,11 +238,19 @@ export class FileCheckpointSaver extends BaseCheckpointSaver {
         b.localeCompare(a)
       )[0];
 
+      if (!latestCheckpointId) {
+        return undefined;
+      }
+
       const saved = checkpoints[latestCheckpointId];
 
       const [checkpoint, metadata, parentCheckpointId] = saved;
 
-      const key = generateKey(threadId, checkpointNamespace, checkpointId);
+      const key = generateKey(
+        threadId,
+        checkpointNamespace,
+        latestCheckpointId
+      );
 
       const pendingSends = await this._getPendingSends(
         threadId,
@@ -322,6 +333,9 @@ export class FileCheckpointSaver extends BaseCheckpointSaver {
       for (const checkpointNamespace of Object.keys(
         storageData.storage ?? {}
       )) {
+        if (!storageData.storage?.[checkpointNamespace]) {
+          continue;
+        }
         if (
           configCheckpointNamespace !== undefined &&
           checkpointNamespace !== configCheckpointNamespace
@@ -383,7 +397,8 @@ export class FileCheckpointSaver extends BaseCheckpointSaver {
           );
 
           const pendingWrites: CheckpointPendingWrite[] = writes.map(
-            ([taskId, channel, value]) => [taskId, channel, value]
+            ([taskId, channel, value]) =>
+              [taskId, channel, value] as CheckpointPendingWrite
           );
 
           const checkpointTuple: CheckpointTuple = {
