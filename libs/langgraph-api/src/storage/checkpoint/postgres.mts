@@ -24,10 +24,10 @@ const API_MIGRATIONS = [
 ];
 
 export class PostgresSaver extends CorePostgresSaver implements APISaver {
-    async initialize(cwd: string): Promise<APISaver> {
+    async initialize(cwd: string): Promise<PostgresSaver> {
         await this.setup();
         await this.runApiMigrations();
-        return this as APISaver;
+        return this;
     }
 
     private async runApiMigrations(): Promise<void> {
@@ -212,7 +212,6 @@ export class PostgresSaver extends CorePostgresSaver implements APISaver {
         config: RunnableConfig,
         checkpoint: Checkpoint,
         metadata: CheckpointMetadata,
-        newVersions: any,
     ): Promise<RunnableConfig> {
         // Merge config.metadata with checkpoint metadata, similar to InMemorySaver
         const mergedMetadata = {
@@ -225,7 +224,7 @@ export class PostgresSaver extends CorePostgresSaver implements APISaver {
             ...metadata,
         };
 
-        return await super.put(config, checkpoint, mergedMetadata, newVersions);
+        return await super.put(config, checkpoint, mergedMetadata, {});
     }
 
     toJSON() {
