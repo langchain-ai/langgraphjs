@@ -207,6 +207,32 @@ export class PostgresStore implements BaseStore {
   }
 
   /**
+   * Clear all data from the store by truncating all tables.
+   */
+  async clear(): Promise<void> {
+    if (!this.isSetup && this.ensureTables) {
+      await this.setup();
+    }
+
+    return this.core.withClient(async (client) => {
+      // Check if vector table exists first
+      const vectorTableExists = await client.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = $1 AND table_name = 'store_vectors'
+        )
+      `, [this.core.schema]);
+      
+      if (vectorTableExists.rows[0].exists) {
+        await client.query(`TRUNCATE TABLE ${this.core.schema}.store_vectors CASCADE`);
+      }
+      
+      // Truncate main store table
+      await client.query(`TRUNCATE TABLE ${this.core.schema}.store CASCADE`);
+    });
+  }
+
+  /**
    * Execute multiple operations in a single batch.
    */
   async batch<Op extends Operation[]>(

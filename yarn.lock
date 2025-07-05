@@ -2213,6 +2213,7 @@ __metadata:
     "@langchain/langgraph": "workspace:*"
     "@langchain/langgraph-checkpoint": "workspace:*"
     "@langchain/langgraph-sdk": "workspace:*"
+    "@langchain/langgraph-store-postgres": "workspace:*"
     "@langchain/langgraph-ui": "workspace:*"
     "@types/babel__code-frame": "npm:^7.0.6"
     "@types/json-schema": "npm:^7.0.15"
@@ -2243,6 +2244,7 @@ __metadata:
     winston-console-format: "npm:^1.0.8"
     zod: "npm:^3.23.8"
   peerDependencies:
+    "@langchain/community": ^0.3.59
     "@langchain/core": ^0.3.59
     "@langchain/langgraph": ^0.2.57 || ^0.3.0
     "@langchain/langgraph-checkpoint": ~0.0.16
@@ -2547,7 +2549,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph-store-postgres@workspace:libs/store-postgres":
+"@langchain/langgraph-store-postgres@workspace:*, @langchain/langgraph-store-postgres@workspace:libs/store-postgres":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-store-postgres@workspace:libs/store-postgres"
   dependencies:
