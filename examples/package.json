@@ -1,6 +1,7 @@
 {
   "name": "examples",
   "type": "module",
+  "private": true,
   "description": "Dependencies for LangGraph examples.",
   "scripts": {
     "start": "tsx --experimental-wasm-modules -r dotenv/config src/index.ts"
