@@ -242,8 +242,4 @@ export class PostgresPersistence {
       client.release();
     }
   }
-
-  async flush() {
-    return Promise.resolve(true);
-  }
 }

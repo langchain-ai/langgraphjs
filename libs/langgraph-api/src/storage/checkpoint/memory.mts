@@ -37,14 +37,14 @@ const conn = new FileSystemPersistence<{
 }));
 
 class InMemorySaver extends MemorySaver implements APISaver {
-  async initialize(cwd: string) {
+  async initialize(cwd: string): Promise<InMemorySaver> {
     await conn.initialize(cwd);
     await conn.with(({ storage, writes }) => {
       this.storage = storage;
       this.writes = writes;
     });
 
-    return conn;
+    return this;
   }
 
   clear() {

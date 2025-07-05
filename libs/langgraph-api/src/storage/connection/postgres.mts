@@ -1,5 +1,7 @@
-import { Pool } from "pg";
+import pg from "pg";
 import { storageConfig } from "../config.mjs";
+
+const { Pool } = pg;
 
 export const pool = new Pool({
     connectionString: storageConfig.POSTGRES_URI_CUSTOM,
