@@ -12,7 +12,7 @@ import { HTTPException } from "hono/http-exception";
 import { type CompiledGraphFactory, resolveGraph } from "./load.utils.mjs";
 import type { GraphSchema, GraphSpec } from "./parser/index.mjs";
 import { getStaticGraphSchema } from "./parser/index.mjs";
-import { checkpointer } from "../storage/checkpoint.mjs";
+import { checkpointer } from "../storage/checkpoint/memory.mjs";
 import { store } from "../storage/store.mjs";
 import { logger } from "../logging.mjs";
 

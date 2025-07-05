@@ -16,6 +16,25 @@ declare module "hono" {
   }
 }
 
+// Helper to convert auth filters to a JSONB object for Postgres's @> operator
+export function isAuthMatchingPostgres(filters: AuthFilters): Record<string, any> {
+  if (!filters) return {};
+  const jsonb: Record<string, any> = {};
+
+  for (const [key, value] of Object.entries(filters)) {
+    if (typeof value === "object" && value != null) {
+      if (value.$eq) {
+        jsonb[key] = value.$eq;
+      } else if (value.$contains) {
+        jsonb[key] = [value.$contains]; // The @> operator needs an array for element containment
+      }
+    } else {
+      jsonb[key] = value;
+    }
+  }
+  return jsonb;
+}
+
 export function isAuthMatching(
   metadata: Record<string, unknown> | undefined,
   filters: AuthFilters
