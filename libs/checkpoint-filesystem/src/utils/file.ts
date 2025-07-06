@@ -10,12 +10,39 @@ import {
 import { join } from "path";
 import { IFileSaverStorageData, IFileSaverWritesData } from "../types.js";
 
+// Constants
+const LOCK_FILE_SUFFIX = ".lock";
+const LOCK_TIMEOUT_MS = 30000; // 30 seconds timeout
+const LOCK_CHECK_INTERVAL_MS = 10;
+const MAX_LOCK_ATTEMPTS = Math.ceil(LOCK_TIMEOUT_MS / LOCK_CHECK_INTERVAL_MS);
+
+// Error type definitions
+class FileLockError extends Error {
+  constructor(message: string, public readonly filePath: string) {
+    super(message);
+    this.name = "FileLockError";
+  }
+}
+
+class FileOperationError extends Error {
+  constructor(
+    message: string,
+    public readonly operation: string,
+    public readonly filePath?: string
+  ) {
+    super(message);
+    this.name = "FileOperationError";
+  }
+}
+
+// File lock manager
 class FileLockManager {
-  private locks = new Map<string, Promise<void>>();
+  private readonly locks = new Map<string, Promise<void>>();
 
   async acquireLock(filePath: string): Promise<void> {
     const lockKey = filePath;
 
+    // If lock already exists, wait for the existing lock to complete
     if (this.locks.has(lockKey)) {
       await this.locks.get(lockKey);
     }
@@ -33,12 +60,13 @@ class FileLockManager {
 
   async releaseLock(filePath: string): Promise<void> {
     const lockKey = filePath;
-    const lockFilePath = `${filePath}.lock`;
+    const lockFilePath = `${filePath}${LOCK_FILE_SUFFIX}`;
 
     try {
       await unlink(lockFilePath);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
+      // Ignore file not found errors
       if (error.code !== "ENOENT") {
         console.warn(
           `Failed to remove lock file ${lockFilePath}:`,
@@ -51,7 +79,7 @@ class FileLockManager {
   }
 
   private async createFileLock(filePath: string): Promise<void> {
-    const lockFilePath = `${filePath}.lock`;
+    const lockFilePath = `${filePath}${LOCK_FILE_SUFFIX}`;
 
     try {
       const fd = await open(lockFilePath, "wx");
@@ -62,22 +90,25 @@ class FileLockManager {
         await this.waitForLockRelease(lockFilePath);
         return this.createFileLock(filePath);
       }
-      throw error;
+      throw new FileLockError(
+        `Failed to create lock file: ${error.message}`,
+        filePath
+      );
     }
   }
 
   private async waitForLockRelease(lockFilePath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       let attempts = 0;
-      const maxAttempts = 3000;
 
       const checkLock = async () => {
         attempts += 1;
 
-        if (attempts > maxAttempts) {
+        if (attempts > MAX_LOCK_ATTEMPTS) {
           reject(
-            new Error(
-              `Lock timeout for ${lockFilePath} after ${maxAttempts * 10}ms`
+            new FileLockError(
+              `Lock timeout for ${lockFilePath} after ${LOCK_TIMEOUT_MS}ms`,
+              lockFilePath
             )
           );
           return;
@@ -86,7 +117,7 @@ class FileLockManager {
         try {
           await access(lockFilePath);
           // eslint-disable-next-line @typescript-eslint/no-misused-promises
-          void setTimeout(checkLock, 10);
+          setTimeout(checkLock, LOCK_CHECK_INTERVAL_MS);
         } catch {
           resolve();
         }
@@ -99,8 +130,7 @@ class FileLockManager {
   async withLock<T>(filePath: string, operation: () => Promise<T>): Promise<T> {
     await this.acquireLock(filePath);
     try {
-      const result = await operation();
-      return result;
+      return await operation();
     } finally {
       await this.releaseLock(filePath);
     }
@@ -114,9 +144,13 @@ class FileLockManager {
   }
 }
 
+// Singleton lock manager
 const lockManager = new FileLockManager();
 
-export const ensureDirectoryExists = async (basePath: string) => {
+// Utility functions
+export const ensureDirectoryExists = async (
+  basePath: string
+): Promise<void> => {
   try {
     await access(basePath);
   } catch {
@@ -124,8 +158,10 @@ export const ensureDirectoryExists = async (basePath: string) => {
   }
 };
 
+// Thread data file types
 type ThreadDataFileType = "storage" | "writes";
 
+// File thread data storage class
 export class FileThreadDataStorage {
   private readonly basePath: string;
 
@@ -136,22 +172,32 @@ export class FileThreadDataStorage {
     this.fileExtension = fileExtension;
   }
 
-  private _getThreadFilePath(threadId: string, type: ThreadDataFileType) {
-    // threadId.storage.json or threadId.writes.json
+  private _getThreadFilePath(
+    threadId: string,
+    type: ThreadDataFileType
+  ): string {
     return join(this.basePath, `${threadId}.${type}${this.fileExtension}`);
   }
 
   private async _checkThreadFileExists(
     threadId: string,
     type: ThreadDataFileType
-  ) {
+  ): Promise<boolean> {
     const filePath = this._getThreadFilePath(threadId, type);
-    return access(filePath)
-      .then(() => true)
-      .catch(() => false);
+    try {
+      await access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
-  // read or create - protected by file lock
+  private _createEmptyThreadData<
+    T extends IFileSaverStorageData | IFileSaverWritesData
+  >(type: ThreadDataFileType): T {
+    return (type === "storage" ? { storage: {} } : { writes: {} }) as T;
+  }
+
   async loadThreadData<T extends IFileSaverStorageData | IFileSaverWritesData>(
     threadId: string,
     type: ThreadDataFileType
@@ -162,67 +208,136 @@ export class FileThreadDataStorage {
       const fileExists = await this._checkThreadFileExists(threadId, type);
 
       if (fileExists) {
-        const fileContent = await readFile(filePath, "utf-8");
-        return JSON.parse(fileContent) as T;
+        try {
+          const fileContent = await readFile(filePath, "utf-8");
+          return JSON.parse(fileContent) as T;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } catch (error: any) {
+          throw new FileOperationError(
+            `Failed to read thread data: ${error.message}`,
+            "read",
+            filePath
+          );
+        }
       } else {
-        const emptyData: T =
-          type === "storage" ? ({ storage: {} } as T) : ({ writes: {} } as T);
+        const emptyData = this._createEmptyThreadData<T>(type);
 
-        await writeFile(filePath, JSON.stringify(emptyData), "utf-8");
+        try {
+          await ensureDirectoryExists(this.basePath);
+          await writeFile(
+            filePath,
+            JSON.stringify(emptyData, null, 2),
+            "utf-8"
+          );
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } catch (error: any) {
+          throw new FileOperationError(
+            `Failed to create thread data file: ${error.message}`,
+            "create",
+            filePath
+          );
+        }
 
         return emptyData;
       }
     });
   }
 
-  // save - protected by file lock
   async saveThreadData<T extends IFileSaverStorageData | IFileSaverWritesData>(
     threadId: string,
     data: T,
     type: ThreadDataFileType
-  ) {
+  ): Promise<void> {
     const filePath = this._getThreadFilePath(threadId, type);
 
     return lockManager.withLock(filePath, async () => {
-      await ensureDirectoryExists(this.basePath);
-      await writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
+      try {
+        await ensureDirectoryExists(this.basePath);
+        await writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (error: any) {
+        throw new FileOperationError(
+          `Failed to save thread data: ${error.message}`,
+          "write",
+          filePath
+        );
+      }
     });
   }
 
-  // clean all thread data - protected by file lock
-  async cleanAllThreadData() {
-    const threadIds = await readdir(this.basePath);
+  async cleanAllThreadData(): Promise<void> {
+    try {
+      const threadIds = await readdir(this.basePath);
 
-    const cleanupPromises = threadIds.map(async (threadId) => {
-      const storagePath = this._getThreadFilePath(threadId, "storage");
+      const cleanupPromises = threadIds.map(async (threadId) => {
+        const storagePath = this._getThreadFilePath(threadId, "storage");
+        const writesPath = this._getThreadFilePath(threadId, "writes");
 
-      const writesPath = this._getThreadFilePath(threadId, "writes");
+        await Promise.all([
+          this.deleteFileWithLock(storagePath),
+          this.deleteFileWithLock(writesPath),
+        ]);
+      });
 
-      // Clean up in parallel, but each file has independent locks
-      await Promise.all([
-        lockManager.withLock(storagePath, async () => {
-          try {
-            await unlink(storagePath);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } catch (error: any) {
-            if (error.code !== "ENOENT") {
-              throw error;
-            }
-          }
-        }),
-        lockManager.withLock(writesPath, async () => {
-          try {
-            await unlink(writesPath);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } catch (error: any) {
-            if (error.code !== "ENOENT") {
-              throw error;
-            }
-          }
-        }),
-      ]);
+      await Promise.all(cleanupPromises);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      if (error.code === "ENOENT") {
+        return;
+      }
+      throw new FileOperationError(
+        `Failed to clean thread data: ${error.message}`,
+        "cleanup",
+        this.basePath
+      );
+    }
+  }
+
+  private async deleteFileWithLock(filePath: string): Promise<void> {
+    return lockManager.withLock(filePath, async () => {
+      try {
+        await unlink(filePath);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (error: any) {
+        // 忽略文件不存在的错误
+        if (error.code !== "ENOENT") {
+          throw new FileOperationError(
+            `Failed to delete file: ${error.message}`,
+            "delete",
+            filePath
+          );
+        }
+      }
     });
+  }
 
-    await Promise.all(cleanupPromises);
+  async getAllThreadIds(): Promise<string[]> {
+    try {
+      const files = await readdir(this.basePath);
+      // 过滤出有效的线程ID（去掉文件扩展名）
+      return files
+        .filter((file) => file.includes("."))
+        .map((file) => file.split(".")[0])
+        .filter((id, index, arr) => arr.indexOf(id) === index); // 去重
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      if (error.code === "ENOENT") {
+        return [];
+      }
+      throw new FileOperationError(
+        `Failed to get thread IDs: ${error.message}`,
+        "list",
+        this.basePath
+      );
+    }
+  }
+
+  async threadExists(threadId: string): Promise<boolean> {
+    const storageExists = await this._checkThreadFileExists(
+      threadId,
+      "storage"
+    );
+    const writesExists = await this._checkThreadFileExists(threadId, "writes");
+    return storageExists || writesExists;
   }
 }
