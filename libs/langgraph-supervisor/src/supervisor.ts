@@ -219,6 +219,26 @@ const createSupervisor = <
     } else {
       supervisorLLM = llm.bindTools(allTools);
     }
+
+    // hack: with newer version of LangChain we've started using `withConfig()` instead of `bind()`
+    // when binding tools, thus older version of LangGraph will incorrectly try to bind tools twice.
+    // @ts-expect-error hack
+    supervisorLLM.kwargs ??= {};
+
+    // @ts-expect-error hack
+    // eslint-disable-next-line prefer-destructuring
+    const kwargs = supervisorLLM.kwargs;
+
+    if (!("tools" in kwargs)) {
+      if (
+        "config" in supervisorLLM &&
+        typeof supervisorLLM.config === "object" &&
+        supervisorLLM.config != null &&
+        "tools" in supervisorLLM.config
+      ) {
+        kwargs.tools = supervisorLLM.config.tools;
+      }
+    }
   }
 
   // Apply agent name handling if specified
