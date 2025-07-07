@@ -222,6 +222,8 @@ const createSupervisor = <
 
     // hack: with newer version of LangChain we've started using `withConfig()` instead of `bind()`
     // when binding tools, thus older version of LangGraph will incorrectly try to bind tools twice.
+    // TODO: remove when we start handling tools from config in @langchain/langgraph
+
     // @ts-expect-error hack
     supervisorLLM.kwargs ??= {};
 
