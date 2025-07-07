@@ -44,10 +44,11 @@ api.post(
       );
     }
 
+    const stableName = agent.replace(/[^a-zA-Z0-9]/g, "_");
     const js = files.find((i) => path.extname(i.basename) === ".js");
     if (js) {
       result.push(
-        `<script src="http://${host}/ui/${agent}/${js.basename}" onload='__LGUI_${agent}.render(${messageName}, "{{shadowRootId}}")'></script>`
+        `<script src="http://${host}/ui/${agent}/${js.basename}" onload='__LGUI_${stableName}.render(${messageName}, "{{shadowRootId}}")'></script>`
       );
     }
 

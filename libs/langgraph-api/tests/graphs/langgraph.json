@@ -10,7 +10,7 @@
     "agent_simple": "./agent_simple.mts:graph"
   },
   "ui": {
-    "agent": "./agent/ui.tsx"
+    "agent-alias": "./agent/ui.tsx"
   },
   "http": {
     "app": "./http.mts:app"
