@@ -5,6 +5,7 @@ export default defineConfig((env) => {
   return {
     test: {
       ...configDefaults,
+      globals: true,
       chaiConfig: {
         truncateThreshold: 100_000,
       },
