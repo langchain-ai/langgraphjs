@@ -976,7 +976,7 @@ export class Pregel<
     const checkpointer: BaseCheckpointSaver =
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
     if (!checkpointer) {
-      throw new Error("No checkpointer set");
+      throw new GraphValueError("No checkpointer set");
     }
 
     const checkpointNamespace: string =

@@ -1,11 +1,15 @@
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { RunnableConfig } from "@langchain/core/runnables";
-import { type PendingWrite } from "@langchain/langgraph-checkpoint";
-import { GraphInterrupt } from "./errors.js";
+import {
+  BaseCheckpointSaver,
+  type PendingWrite,
+} from "@langchain/langgraph-checkpoint";
+import { GraphInterrupt, GraphValueError } from "./errors.js";
 import {
   CONFIG_KEY_CHECKPOINT_NS,
   CONFIG_KEY_SCRATCHPAD,
   CONFIG_KEY_SEND,
+  CONFIG_KEY_CHECKPOINTER,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   RESUME,
 } from "./constants.js";
@@ -67,6 +71,9 @@ export function interrupt<I = unknown, R = any>(value: I): R {
   if (!conf) {
     throw new Error("No configurable found in config");
   }
+
+  const checkpointer: BaseCheckpointSaver = conf[CONFIG_KEY_CHECKPOINTER];
+  if (!checkpointer) throw new GraphValueError("No checkpointer set");
 
   // Track interrupt index
   const scratchpad: PregelScratchpad = conf[CONFIG_KEY_SCRATCHPAD];
