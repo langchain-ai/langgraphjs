@@ -98,7 +98,7 @@ interface ThreadDelete {
  */
 interface ThreadSearch {
   thread_id?: Maybe<string>;
-  status?: Maybe<"idle" | "busy" | "interrupted" | "error" | (string & {})>;
+  status?: Maybe<"idle" | "busy" | "interrupted" | "error" | (string & {})>; // eslint-disable-line @typescript-eslint/ban-types
   metadata?: Maybe<Record<string, unknown>>;
   values?: Maybe<Record<string, unknown>>;
   limit?: Maybe<number>;
@@ -330,7 +330,7 @@ type CallbackParameter<
   Event extends string = string,
   Resource extends string = string,
   Action extends string = string,
-  Value extends unknown = unknown,
+  Value = unknown,
   TUser extends BaseUser = BaseUser
 > = {
   event: Event;

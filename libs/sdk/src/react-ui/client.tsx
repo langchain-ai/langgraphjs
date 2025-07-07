@@ -1,11 +1,10 @@
 "use client";
 
-import { useStream } from "../react/index.js";
-import type { UIMessage } from "./types.js";
-
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import * as JsxRuntime from "react/jsx-runtime";
+import type { UIMessage } from "./types.js";
+import { useStream } from "../react/index.js";
 import type { UseStream } from "../react/stream.js";
 
 const UseStreamContext = React.createContext<{
@@ -64,6 +63,7 @@ interface ComponentTarget {
 
 class ComponentStore {
   private cache: Record<string, ComponentTarget> = {};
+
   private boundCache: Record<
     string,
     {
@@ -71,6 +71,7 @@ class ComponentStore {
       getSnapshot: () => ComponentTarget | undefined;
     }
   > = {};
+
   private callbacks: Record<
     string,
     ((
@@ -184,17 +185,18 @@ export function LoadExternalComponent({
   const clientComponent = components?.[message.name];
   const hasClientComponent = clientComponent != null;
 
-  const fallbackComponent = isReactNode(fallback)
-    ? fallback
-    : typeof fallback === "object" && fallback != null
-    ? fallback?.[message.name]
-    : null;
+  let fallbackComponent = null;
+  if (isReactNode(fallback)) {
+    fallbackComponent = fallback;
+  } else if (typeof fallback === "object" && fallback != null) {
+    fallbackComponent = fallback?.[message.name];
+  }
 
   const uiNamespace = namespace ?? stream.assistantId;
   const uiClient = stream.client["~ui"];
   React.useEffect(() => {
     if (hasClientComponent) return;
-    uiClient.getComponent(uiNamespace, message.name).then((html) => {
+    void uiClient.getComponent(uiNamespace, message.name).then((html) => {
       const dom = ref.current;
       if (!dom) return;
       const root = dom.shadowRoot ?? dom.attachShadow({ mode: "open" });

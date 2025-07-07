@@ -32,7 +32,7 @@ export const typedUi = <Decl extends Record<string, ElementType>>(
   }
 ) => {
   type PropMap = { [K in keyof Decl]: ComponentPropsWithoutRef<Decl[K]> };
-  let items: (UIMessage | RemoveUIMessage)[] = [];
+  const items: (UIMessage | RemoveUIMessage)[] = [];
   const stateKey = options?.stateKey ?? "ui";
 
   const runId = (config.metadata?.run_id as string | undefined) ?? config.runId;

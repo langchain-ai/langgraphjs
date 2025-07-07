@@ -16,7 +16,7 @@ export type StreamEvent =
   | "messages/metadata"
   | "messages/complete"
   | "messages"
-  | (string & {});
+  | (string & {}); // eslint-disable-line @typescript-eslint/ban-types
 
 export interface Send {
   node: string;
