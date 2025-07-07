@@ -81,7 +81,7 @@ export interface GraphSchema {
 export type Subgraphs = Record<string, GraphSchema>;
 
 export type Metadata = Optional<{
-  source?: "input" | "loop" | "update" | (string & {});
+  source?: "input" | "loop" | "update" | (string & {}); // eslint-disable-line @typescript-eslint/ban-types
 
   step?: number;
 
@@ -146,7 +146,7 @@ export interface AssistantGraph {
  */
 export interface Interrupt<TValue = unknown> {
   value?: TValue;
-  when: "during" | (string & {});
+  when: "during" | (string & {}); // eslint-disable-line @typescript-eslint/ban-types
   resumable?: boolean;
   ns?: string[];
 }
@@ -283,6 +283,7 @@ export interface ListNamespaceResponse {
 export interface Item {
   namespace: string[];
   key: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   value: Record<string, any>;
   createdAt: string;
   updatedAt: string;

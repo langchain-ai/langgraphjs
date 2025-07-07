@@ -32,6 +32,7 @@ export type AIMessage = BaseMessage & {
   tool_calls?:
     | {
         name: string;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         args: { [x: string]: any };
         id?: string | undefined;
         type?: "tool_call" | undefined;

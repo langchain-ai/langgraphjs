@@ -1,6 +1,22 @@
 /* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
+
 "use client";
 
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  type BaseMessageChunk,
+  type BaseMessage,
+  coerceMessageLikeToMessage,
+  convertToChunk,
+  isBaseMessageChunk,
+} from "@langchain/core/messages";
 import { Client, getClientConfigHash, type ClientConfig } from "../client.js";
 import type {
   Command,
@@ -29,22 +45,6 @@ import type {
   UpdatesStreamEvent,
   ValuesStreamEvent,
 } from "../types.stream.js";
-
-import {
-  type RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
-  type BaseMessageChunk,
-  type BaseMessage,
-  coerceMessageLikeToMessage,
-  convertToChunk,
-  isBaseMessageChunk,
-} from "@langchain/core/messages";
 
 class StreamError extends Error {
   constructor(data: { error?: string; name?: string; message: string }) {
@@ -83,6 +83,7 @@ class MessageTupleManager {
     // TODO: this is sometimes sent from the API
     // figure out how to prevent this or move this to LC.js
     if (serialized.type.endsWith("MessageChunk")) {
+      // eslint-disable-next-line no-param-reassign
       serialized.type = serialized.type
         .slice(0, -"MessageChunk".length)
         .toLowerCase() as Message["type"];
@@ -91,7 +92,7 @@ class MessageTupleManager {
     const message = coerceMessageLikeToMessage(serialized);
     const chunk = tryConvertToChunk(message);
 
-    const id = (chunk ?? message).id;
+    const { id } = chunk ?? message;
     if (!id) {
       console.warn(
         "No message ID found for chunk, ignoring in state",
@@ -134,33 +135,38 @@ function unique<T>(array: T[]) {
 }
 
 function findLastIndex<T>(array: T[], predicate: (item: T) => boolean) {
-  for (let i = array.length - 1; i >= 0; i--) {
+  for (let i = array.length - 1; i >= 0; i -= 1) {
     if (predicate(array[i])) return i;
   }
   return -1;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface Node<StateType = any> {
   type: "node";
   value: ThreadState<StateType>;
   path: string[];
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface Fork<StateType = any> {
   type: "fork";
   items: Array<Sequence<StateType>>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface Sequence<StateType = any> {
   type: "sequence";
   items: Array<Node<StateType> | Fork<StateType>>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface ValidFork<StateType = any> {
   type: "fork";
   items: Array<ValidSequence<StateType>>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface ValidSequence<StateType = any> {
   type: "sequence";
   items: [Node<StateType>, ...(Node<StateType> | ValidFork<StateType>)[]];
@@ -228,8 +234,8 @@ function getBranchSequence<StateType extends Record<string, unknown>>(
     for (const value of children) {
       const id = value.checkpoint.checkpoint_id!;
 
-      let sequence = task.sequence;
-      let path = task.path;
+      let { sequence } = task;
+      let { path } = task;
       if (fork != null) {
         sequence = { type: "sequence", items: [] };
         fork.items.unshift(sequence);
@@ -341,12 +347,12 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       clearCallbackRef.current?.();
       return Promise.resolve([]);
     },
-    []
+    [clearCallbackRef]
   );
 
   useEffect(() => {
     if (submittingRef.current) return;
-    fetcher(threadId);
+    void fetcher(threadId);
   }, [fetcher, clientHash, submittingRef, threadId]);
 
   return {
@@ -775,6 +781,7 @@ export function useStream<
     | ErrorStreamEvent
     | FeedbackStreamEvent;
 
+  // eslint-disable-next-line prefer-const
   let { assistantId, messagesKey, onCreated, onError, onFinish } = options;
 
   const reconnectOnMountRef = useRef(options.reconnectOnMount);
@@ -948,7 +955,7 @@ export function useStream<
 
     if (runMetadataStorage && threadId) {
       const runId = runMetadataStorage.getItem(`lg:stream:${threadId}`);
-      if (runId) client.runs.cancel(threadId, runId);
+      if (runId) void client.runs.cancel(threadId, runId);
       runMetadataStorage.removeItem(`lg:stream:${threadId}`);
     }
 
@@ -1039,7 +1046,7 @@ export function useStream<
     } catch (error) {
       if (
         !(
-          error instanceof Error &&
+          error instanceof Error && // eslint-disable-line no-instanceof/no-instanceof
           (error.name === "AbortError" || error.name === "TimeoutError")
         )
       ) {
@@ -1062,6 +1069,7 @@ export function useStream<
     lastEventId?: string,
     options?: { streamMode?: StreamMode | StreamMode[] }
   ) => {
+    // eslint-disable-next-line no-param-reassign
     lastEventId ??= "-1";
     if (!threadId) return;
     await consumeStream(async (signal: AbortSignal) => {
@@ -1124,6 +1132,7 @@ export function useStream<
 
       const checkpoint =
         submitOptions?.checkpoint ?? threadHead?.checkpoint ?? undefined;
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-expect-error
       if (checkpoint != null) delete checkpoint.thread_id;
       let rejoinKey: `lg:stream:${string}` | undefined;
@@ -1200,7 +1209,7 @@ export function useStream<
   useEffect(() => {
     if (reconnectKey && reconnectRef.current.shouldReconnect) {
       reconnectRef.current.shouldReconnect = false;
-      joinStreamRef.current?.(reconnectKey.runId);
+      void joinStreamRef.current?.(reconnectKey.runId);
     }
   }, [reconnectKey]);
 
@@ -1220,7 +1229,7 @@ export function useStream<
     isLoading,
 
     stop,
-    submit,
+    submit, // eslint-disable-line @typescript-eslint/no-misused-promises
 
     joinStream,
 

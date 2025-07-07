@@ -37,7 +37,7 @@ export interface AsyncCallerParams {
    *
    * By default we expect the `fetch` is available in the global scope.
    */
-  fetch?: typeof fetch | ((...args: any[]) => any);
+  fetch?: typeof fetch | ((...args: any[]) => any); // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
 export interface AsyncCallerCallOptions {
@@ -58,6 +58,7 @@ function isResponse(x: unknown): x is Response {
  */
 class HTTPError extends Error {
   status: number;
+
   text: string;
 
   response?: Response;
@@ -135,7 +136,7 @@ export class AsyncCaller {
     callable: T,
     ...args: Parameters<T>
   ): Promise<Awaited<ReturnType<T>>> {
-    const onFailedResponseHook = this.onFailedResponseHook;
+    const { onFailedResponseHook } = this;
     return this.queue.add(
       () =>
         pRetry(
@@ -166,6 +167,7 @@ export class AsyncCaller {
                 throw error;
               }
 
+              // eslint-disable-next-line no-instanceof/no-instanceof
               if (error instanceof HTTPError) {
                 if (STATUS_NO_RETRY.includes(error.status)) {
                   throw error;
