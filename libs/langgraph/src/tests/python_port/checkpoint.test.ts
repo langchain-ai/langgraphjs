@@ -807,26 +807,13 @@ describe("Checkpoint Tests (Python port)", () => {
     // Compile the graph without a checkpointer first
     const tool_two = tool_two_graph.compile();
 
-    // Test basic invoke functionality
-    const result1 = await tool_two.invoke({
-      my_key: "value",
-      market: "DE",
-    });
-
-    expect(result1).toEqual({
-      my_key: "value one",
-      market: "DE",
-      __interrupt__: [
-        {
-          interrupt_id: expect.any(String),
-          value: "Just because...",
-          resumable: true,
-          when: "during",
-          ns: [expect.stringMatching(/^tool_two:/)],
-        },
-      ],
-    });
-
+    // Test basic invoke functionality, should fail b/c of lack of checkpointer
+    await expect(
+      tool_two.invoke({
+        my_key: "value",
+        market: "DE",
+      })
+    ).rejects.toThrow(/No checkpointer set/);
     expect(tool_two_node_count).toBe(1);
 
     // Test with a different market value
