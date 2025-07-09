@@ -1119,6 +1119,7 @@ export function useStream<
       if (!usableThreadId) {
         const thread = await client.threads.create({
           threadId: submitOptions?.threadId,
+          metadata: submitOptions?.metadata,
         });
         onThreadId(thread.thread_id);
         usableThreadId = thread.thread_id;

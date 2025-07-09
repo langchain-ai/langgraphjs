@@ -112,6 +112,27 @@ export function createEmbedServer(options: {
   });
 
   api.get(
+    "/threads/:thread_id",
+    zValidator("param", z.object({ thread_id: z.string().uuid() })),
+    async (c) => {
+      // Get Thread
+      const { thread_id } = c.req.valid("param");
+      const thread = await options.threads.get(thread_id);
+      return jsonExtra(c, thread);
+    }
+  );
+
+  api.delete(
+    "/threads/:thread_id",
+    zValidator("param", z.object({ thread_id: z.string().uuid() })),
+    async (c) => {
+      const { thread_id } = c.req.valid("param");
+      await options.threads.delete(thread_id);
+      return new Response(null, { status: 204 });
+    }
+  );
+
+  api.get(
     "/threads/:thread_id/state",
     zValidator("param", z.object({ thread_id: z.string().uuid() })),
     zValidator(

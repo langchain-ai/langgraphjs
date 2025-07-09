@@ -6,7 +6,7 @@ import { userEvent } from "@testing-library/user-event";
 import { setupServer } from "msw/node";
 import { http } from "msw";
 import { useStream } from "@langchain/langgraph-sdk/react";
-import type { Message } from "@langchain/langgraph-sdk";
+import { Client, type Message } from "@langchain/langgraph-sdk";
 
 import { StateGraph, MessagesAnnotation, START } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
@@ -443,5 +443,59 @@ describe("useStream", () => {
     await waitFor(() => {
       expect(onStopCallback).not.toHaveBeenCalled();
     });
+  });
+
+  it("make sure to pass metadata to the thread", async () => {
+    const user = userEvent.setup();
+
+    const onStopCallback = vi.fn();
+    const threadId = randomUUID();
+
+    function TestComponent() {
+      const { submit, messages } = useStream({
+        assistantId: "agent",
+        apiKey: "test-api-key",
+        onStop: onStopCallback,
+      });
+
+      return (
+        <div>
+          <div data-testid="messages">
+            {messages.map((msg, i) => (
+              <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              submit(
+                { messages: [{ content: "Hello", type: "human" }] },
+                { metadata: { random: "123" }, threadId }
+              )
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    }
+
+    render(<TestComponent />);
+
+    await user.click(screen.getByTestId("submit"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+      expect(screen.getByTestId("message-1")).toHaveTextContent("Hey");
+    });
+
+    const client = new Client();
+
+    const thread = await client.threads.get(threadId);
+    expect(thread.metadata).toMatchObject({ random: "123" });
   });
 });
