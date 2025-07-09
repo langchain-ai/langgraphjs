@@ -200,6 +200,18 @@ function getBranchSequence<StateType extends Record<string, unknown>>(
 ) {
   const childrenMap: Record<string, ThreadState<StateType>[]> = {};
 
+  // Short circuit if there's only a singular one state
+  // TODO: I think we can make this more generalizable for all `fetchStateHistory` values.
+  if (history.length <= 1) {
+    return {
+      rootSequence: {
+        type: "sequence",
+        items: history.map((value) => ({ type: "node", value, path: [] })),
+      } satisfies Sequence<StateType>,
+      paths: [],
+    };
+  }
+
   // First pass - collect nodes for each checkpoint
   history.forEach((state) => {
     const checkpointId = state.parent_checkpoint?.checkpoint_id ?? "$";
@@ -314,14 +326,23 @@ function getBranchView<StateType extends Record<string, unknown>>(
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
-  threadId: string
+  threadId: string,
+  options?: { limit?: boolean | number }
 ) {
-  return client.threads.getHistory<StateType>(threadId, { limit: 1000 });
+  if (options?.limit === false) {
+    return client.threads
+      .getState<StateType>(threadId)
+      .then((state) => [state]);
+  }
+
+  const limit = typeof options?.limit === "number" ? options.limit : 1000;
+  return client.threads.getHistory<StateType>(threadId, { limit });
 }
 
 function useThreadHistory<StateType extends Record<string, unknown>>(
   threadId: string | undefined | null,
   client: Client,
+  limit: boolean | number,
   clearCallbackRef: RefObject<(() => void) | undefined>,
   submittingRef: RefObject<boolean>
 ) {
@@ -337,7 +358,9 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
     ): Promise<ThreadState<StateType>[]> => {
       if (threadId != null) {
         const client = clientRef.current;
-        return fetchHistory<StateType>(client, threadId).then((history) => {
+        return fetchHistory<StateType>(client, threadId, {
+          limit,
+        }).then((history) => {
           setHistory(history);
           return history;
         });
@@ -347,13 +370,13 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       clearCallbackRef.current?.();
       return Promise.resolve([]);
     },
-    [clearCallbackRef]
+    [clearCallbackRef, limit]
   );
 
   useEffect(() => {
     if (submittingRef.current) return;
     void fetcher(threadId);
-  }, [fetcher, clientHash, submittingRef, threadId]);
+  }, [fetcher, clientHash, limit, submittingRef, threadId]);
 
   return {
     data: history,
@@ -565,6 +588,14 @@ export interface UseStreamOptions<
    * cached UI display without server fetches.
    */
   initialValues?: StateType | null;
+
+  /**
+   * Whether to fetch the history of the thread.
+   * If true, the history will be fetched from the server. Defaults to 1000 entries.
+   * If false, only the last state will be fetched from the server.
+   * @default true
+   */
+  fetchStateHistory?: boolean | { limit: number };
 }
 
 interface RunMetadataStorage {
@@ -781,8 +812,9 @@ export function useStream<
     | ErrorStreamEvent
     | FeedbackStreamEvent;
 
-  // eslint-disable-next-line prefer-const
-  let { assistantId, messagesKey, onCreated, onError, onFinish } = options;
+  let { messagesKey } = options;
+  const { assistantId, fetchStateHistory } = options;
+  const { onCreated, onError, onFinish } = options;
 
   const reconnectOnMountRef = useRef(options.reconnectOnMount);
   const runMetadataStorage = useMemo(() => {
@@ -866,12 +898,15 @@ export function useStream<
     setStreamValues(null);
   };
 
-  // TODO: this should be done on the server to avoid pagination
-  // TODO: should we permit adapter? SWR / React Query?
-  // TODO: make this only when branching is expected
+  const historyLimit =
+    typeof fetchStateHistory === "object" && fetchStateHistory != null
+      ? fetchStateHistory.limit ?? true
+      : fetchStateHistory ?? true;
+
   const history = useThreadHistory<StateType>(
     threadId,
     client,
+    historyLimit,
     clearCallbackRef,
     submittingRef
   );
@@ -1238,7 +1273,15 @@ export function useStream<
     setBranch,
 
     history: flatHistory,
-    experimental_branchTree: rootSequence,
+    get experimental_branchTree() {
+      if (historyLimit === false) {
+        throw new Error(
+          "`experimental_branchTree` is not available when `fetchStateHistory` is set to `false`"
+        );
+      }
+
+      return rootSequence;
+    },
 
     get interrupt() {
       // Don't show the interrupt if the stream is loading
