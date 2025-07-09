@@ -1,5 +1,13 @@
 # @langchain/langgraph-api
 
+## 0.0.44
+
+### Patch Changes
+
+- 2f26f2f: Expose get/delete thread endpoint to embed server
+- Updated dependencies [2f26f2f]
+  - @langchain/langgraph-ui@0.0.44
+
 ## 0.0.43
 
 ### Patch Changes
