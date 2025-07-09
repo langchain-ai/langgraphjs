@@ -53,6 +53,16 @@ function createStubRun(
         run_id: runId,
         thread_id: threadId,
         graph_id: payload.assistant_id,
+        ...(payload.checkpoint_id
+          ? { checkpoint_id: payload.checkpoint_id }
+          : null),
+        ...payload.checkpoint,
+        ...(payload.langsmith_tracer
+          ? {
+              langsmith_project: payload.langsmith_tracer.project_name,
+              langsmith_example_id: payload.langsmith_tracer.example_id,
+            }
+          : null),
       },
     },
     { metadata: payload.metadata ?? {} }
