@@ -1,5 +1,11 @@
 # @langchain/langgraph-ui
 
+## 0.0.45
+
+### Patch Changes
+
+- 603daa6: Embed should properly handle `payload.checkpoint` and `payload.checkpoint_id`
+
 ## 0.0.44
 
 ### Patch Changes

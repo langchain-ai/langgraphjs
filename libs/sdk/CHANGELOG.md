@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 0.0.92
+
+### Patch Changes
+
+- 603daa6: Make history fetching configurable in useStream via `fetchStateHistory`
+
 ## 0.0.91
 
 ### Patch Changes

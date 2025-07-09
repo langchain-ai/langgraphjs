@@ -1,5 +1,13 @@
 # @langchain/langgraph-cli
 
+## 0.0.45
+
+### Patch Changes
+
+- 603daa6: Embed should properly handle `payload.checkpoint` and `payload.checkpoint_id`
+- Updated dependencies [603daa6]
+  - @langchain/langgraph-api@0.0.45
+
 ## 0.0.44
 
 ### Patch Changes
