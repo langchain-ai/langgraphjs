@@ -1,4 +1,3 @@
-import { it } from "vitest";
 import { specTest } from "../spec/index.js";
 import { initializer } from "./mongodb_initializer.js";
 import { isSkippedCIEnvironment } from "./utils.js";

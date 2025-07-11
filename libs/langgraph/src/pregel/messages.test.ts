@@ -321,6 +321,31 @@ describe("StreamMessagesHandler", () => {
       // Should clean up metadata
       expect(handler.metadatas[runId]).toBeUndefined();
     });
+
+    it("should not emit when metadata is missing", () => {
+      const streamFn = vi.fn();
+      const handler = new StreamMessagesHandler(streamFn);
+
+      // Spy on _emit
+      const emitSpy = vi.spyOn(handler, "_emit");
+
+      handler.handleLLMEnd(
+        {
+          generations: [
+            [
+              {
+                text: "test output",
+                message: new AIMessage({ content: "result" }),
+              },
+            ],
+          ],
+        } as unknown as LLMResult,
+        "run-123"
+      );
+
+      // Should not emit anything
+      expect(emitSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe("handleLLMError", () => {

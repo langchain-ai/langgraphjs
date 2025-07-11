@@ -142,7 +142,7 @@ export function SSEDecoder() {
       } else if (fieldName === "id") {
         if (value.indexOf(NULL) === -1) lastEventId = decoder.decode(value);
       } else if (fieldName === "retry") {
-        const retryNum = Number.parseInt(decoder.decode(value));
+        const retryNum = Number.parseInt(decoder.decode(value), 10);
         if (!Number.isNaN(retryNum)) retry = retryNum;
       }
     },
@@ -161,7 +161,7 @@ export function SSEDecoder() {
 
 function joinArrays(data: ArrayLike<number>[]) {
   const totalLength = data.reduce((acc, curr) => acc + curr.length, 0);
-  let merged = new Uint8Array(totalLength);
+  const merged = new Uint8Array(totalLength);
   let offset = 0;
   for (const c of data) {
     merged.set(c, offset);

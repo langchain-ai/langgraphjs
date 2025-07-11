@@ -180,6 +180,13 @@ function _isConfigurableModel(model: any): model is ConfigurableModelInterface {
   );
 }
 
+function _isChatModelWithBindTools(
+  llm: LanguageModelLike
+): llm is BaseChatModel & Required<Pick<BaseChatModel, "bindTools">> {
+  if (!_isBaseChatModel(llm)) return false;
+  return "bindTools" in llm && typeof llm.bindTools === "function";
+}
+
 export async function _shouldBindTools(
   llm: LanguageModelLike,
   tools: (ClientTool | ServerTool)[]
@@ -205,20 +212,41 @@ export async function _shouldBindTools(
     return true;
   }
 
-  // If no tools in kwargs, we should bind tools
-  if (
-    !model.kwargs ||
-    typeof model.kwargs !== "object" ||
-    !("tools" in model.kwargs)
-  ) {
-    return true;
-  }
+  let boundTools = (() => {
+    // check if model.kwargs contain the tools key
+    if (
+      model.kwargs != null &&
+      typeof model.kwargs === "object" &&
+      "tools" in model.kwargs &&
+      Array.isArray(model.kwargs.tools)
+    ) {
+      return (model.kwargs.tools ?? null) as BindToolsInput[] | null;
+    }
 
-  let boundTools = model.kwargs.tools as BindToolsInput[];
+    // Some models can bind the tools via `withConfig()` instead of `bind()`
+    if (
+      model.config != null &&
+      typeof model.config === "object" &&
+      "tools" in model.config &&
+      Array.isArray(model.config.tools)
+    ) {
+      return (model.config.tools ?? null) as BindToolsInput[] | null;
+    }
+
+    return null;
+  })();
+
   // google-style
-  if (boundTools.length === 1 && "functionDeclarations" in boundTools[0]) {
+  if (
+    boundTools != null &&
+    boundTools.length === 1 &&
+    "functionDeclarations" in boundTools[0]
+  ) {
     boundTools = boundTools[0].functionDeclarations;
   }
+
+  // If no tools in kwargs, we should bind tools
+  if (boundTools == null) return true;
 
   // Check if tools count matches
   if (tools.length !== boundTools.length) {
@@ -267,6 +295,76 @@ export async function _shouldBindTools(
   }
 
   return false;
+}
+
+const _simpleBindTools = (
+  llm: LanguageModelLike,
+  toolClasses: (ClientTool | ServerTool)[]
+) => {
+  if (_isChatModelWithBindTools(llm)) {
+    return llm.bindTools(toolClasses);
+  }
+
+  if (
+    RunnableBinding.isRunnableBinding(llm) &&
+    _isChatModelWithBindTools(llm.bound)
+  ) {
+    const newBound = llm.bound.bindTools(toolClasses);
+
+    if (RunnableBinding.isRunnableBinding(newBound)) {
+      return new RunnableBinding({
+        bound: newBound.bound,
+        config: { ...llm.config, ...newBound.config },
+        kwargs: { ...llm.kwargs, ...newBound.kwargs },
+        configFactories: newBound.configFactories ?? llm.configFactories,
+      });
+    }
+
+    return new RunnableBinding({
+      bound: newBound,
+      config: llm.config,
+      kwargs: llm.kwargs,
+      configFactories: llm.configFactories,
+    });
+  }
+
+  return null;
+};
+
+export async function _bindTools(
+  llm: LanguageModelLike,
+  toolClasses: (ClientTool | ServerTool)[]
+) {
+  const model = _simpleBindTools(llm, toolClasses);
+  if (model) return model;
+
+  if (_isConfigurableModel(llm)) {
+    const model = _simpleBindTools(await llm._model(), toolClasses);
+    if (model) return model;
+  }
+
+  if (RunnableSequence.isRunnableSequence(llm)) {
+    const modelStep = llm.steps.findIndex(
+      (step) =>
+        RunnableBinding.isRunnableBinding(step) ||
+        _isBaseChatModel(step) ||
+        _isConfigurableModel(step)
+    );
+
+    if (modelStep >= 0) {
+      const model = _simpleBindTools(llm.steps[modelStep], toolClasses);
+      if (model) {
+        const nextSteps: unknown[] = llm.steps.slice();
+        nextSteps.splice(modelStep, 1, model);
+
+        return RunnableSequence.from(
+          nextSteps as [RunnableLike, ...RunnableLike[], RunnableLike]
+        );
+      }
+    }
+  }
+
+  throw new Error(`llm ${llm} must define bindTools method.`);
 }
 
 export async function _getModel(
@@ -562,10 +660,7 @@ export function createReactAgent<
 
     let modelWithTools: LanguageModelLike;
     if (await _shouldBindTools(llm, toolClasses)) {
-      if (!("bindTools" in llm) || typeof llm.bindTools !== "function") {
-        throw new Error(`llm ${llm} must define bindTools method.`);
-      }
-      modelWithTools = llm.bindTools(toolClasses);
+      modelWithTools = await _bindTools(llm, toolClasses);
     } else {
       modelWithTools = llm;
     }

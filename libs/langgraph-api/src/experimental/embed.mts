@@ -53,6 +53,16 @@ function createStubRun(
         run_id: runId,
         thread_id: threadId,
         graph_id: payload.assistant_id,
+        ...(payload.checkpoint_id
+          ? { checkpoint_id: payload.checkpoint_id }
+          : null),
+        ...payload.checkpoint,
+        ...(payload.langsmith_tracer
+          ? {
+              langsmith_project: payload.langsmith_tracer.project_name,
+              langsmith_example_id: payload.langsmith_tracer.example_id,
+            }
+          : null),
       },
     },
     { metadata: payload.metadata ?? {} }
@@ -110,6 +120,27 @@ export function createEmbedServer(options: {
     await options.threads.put(threadId, payload);
     return jsonExtra(c, { thread_id: threadId });
   });
+
+  api.get(
+    "/threads/:thread_id",
+    zValidator("param", z.object({ thread_id: z.string().uuid() })),
+    async (c) => {
+      // Get Thread
+      const { thread_id } = c.req.valid("param");
+      const thread = await options.threads.get(thread_id);
+      return jsonExtra(c, thread);
+    }
+  );
+
+  api.delete(
+    "/threads/:thread_id",
+    zValidator("param", z.object({ thread_id: z.string().uuid() })),
+    async (c) => {
+      const { thread_id } = c.req.valid("param");
+      await options.threads.delete(thread_id);
+      return new Response(null, { status: 204 });
+    }
+  );
 
   api.get(
     "/threads/:thread_id/state",

@@ -1,12 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { setupServer } from "msw/node";
 import { http } from "msw";
 import { useStream } from "@langchain/langgraph-sdk/react";
-import type { Message } from "@langchain/langgraph-sdk";
+import { Client, type Message } from "@langchain/langgraph-sdk";
 
 import { StateGraph, MessagesAnnotation, START } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
@@ -442,6 +442,315 @@ describe("useStream", () => {
     // Wait for stream to complete naturally
     await waitFor(() => {
       expect(onStopCallback).not.toHaveBeenCalled();
+    });
+  });
+
+  it("make sure to pass metadata to the thread", async () => {
+    const user = userEvent.setup();
+
+    const onStopCallback = vi.fn();
+    const threadId = randomUUID();
+
+    function TestComponent() {
+      const { submit, messages } = useStream({
+        assistantId: "agent",
+        apiKey: "test-api-key",
+        onStop: onStopCallback,
+      });
+
+      return (
+        <div>
+          <div data-testid="messages">
+            {messages.map((msg, i) => (
+              <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              submit(
+                { messages: [{ content: "Hello", type: "human" }] },
+                { metadata: { random: "123" }, threadId }
+              )
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    }
+
+    render(<TestComponent />);
+
+    await user.click(screen.getByTestId("submit"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+      expect(screen.getByTestId("message-1")).toHaveTextContent("Hey");
+    });
+
+    const client = new Client();
+
+    const thread = await client.threads.get(threadId);
+    expect(thread.metadata).toMatchObject({ random: "123" });
+  });
+
+  it("branching", async () => {
+    const user = userEvent.setup();
+
+    function BranchControls(props: {
+      branch: string | undefined;
+      branchOptions: string[] | undefined;
+      onSelect: (branch: string) => void;
+    }) {
+      if (!props.branchOptions || !props.branch) return null;
+      const index = props.branchOptions.indexOf(props.branch);
+
+      return (
+        <div role="navigation">
+          <button
+            type="button"
+            onClick={() => {
+              const prevBranch = props.branchOptions?.[index - 1];
+              if (!prevBranch) return;
+              props.onSelect(prevBranch);
+            }}
+          >
+            Previous
+          </button>
+
+          <span>
+            {index + 1} / {props.branchOptions.length}
+          </span>
+
+          <button
+            type="button"
+            onClick={() => {
+              const nextBranch = props.branchOptions?.[index + 1];
+              if (!nextBranch) return;
+              props.onSelect(nextBranch);
+            }}
+          >
+            Next
+          </button>
+        </div>
+      );
+    }
+
+    function TestComponent() {
+      const { submit, messages, getMessagesMetadata, setBranch } = useStream({
+        assistantId: "agent",
+        apiKey: "test-api-key",
+      });
+
+      return (
+        <div>
+          <div data-testid="messages">
+            {messages.map((msg, i) => {
+              const metadata = getMessagesMetadata(msg, i);
+
+              const checkpoint =
+                metadata?.firstSeenState?.parent_checkpoint ?? undefined;
+
+              const text =
+                typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content);
+
+              return (
+                <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                  <div className="content" role="text">
+                    {text}
+                  </div>
+
+                  <BranchControls
+                    branch={metadata?.branch}
+                    branchOptions={metadata?.branchOptions}
+                    onSelect={setBranch}
+                  />
+
+                  {msg.type === "human" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const messages = {
+                          type: "human",
+                          content: `Fork: ${text}`,
+                        };
+
+                        submit({ messages: [messages] }, { checkpoint });
+                      }}
+                    >
+                      Fork
+                    </button>
+                  )}
+
+                  {msg.type === "ai" && (
+                    <button
+                      type="button"
+                      onClick={() => submit(undefined, { checkpoint })}
+                    >
+                      Regenerate
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const formData = new FormData(e.target as HTMLFormElement);
+              const content = formData.get("input") as string;
+              submit({ messages: [{ type: "human", content }] });
+            }}
+          >
+            <input type="text" placeholder="Input" name="input" />
+            <button type="submit">Send</button>
+          </form>
+        </div>
+      );
+    }
+
+    render(<TestComponent />);
+
+    await user.type(screen.getByPlaceholderText("Input"), "Hello");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId("message-0")).getByRole("text")
+      ).toHaveTextContent("Hello");
+      expect(
+        within(screen.getByTestId("message-1")).getByRole("text")
+      ).toHaveTextContent("Hey");
+      expect(
+        within(screen.getByTestId("message-0")).queryByRole("navigation")
+      ).not.toBeInTheDocument();
+    });
+
+    // Retry the second message
+    await user.click(screen.getByRole("button", { name: "Regenerate" }));
+
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId("message-0")).getByRole("text")
+      ).toHaveTextContent("Hello");
+      expect(
+        within(screen.getByTestId("message-1")).getByRole("text")
+      ).toHaveTextContent("Hey");
+      expect(
+        within(screen.getByTestId("message-1")).getByRole("navigation")
+      ).toHaveTextContent("2 / 2");
+    });
+
+    // Fork the first message
+    await user.click(screen.getByRole("button", { name: "Fork" }));
+
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId("message-0")).getByRole("text")
+      ).toHaveTextContent("Fork: Hello");
+      expect(
+        within(screen.getByTestId("message-0")).getByRole("navigation")
+      ).toHaveTextContent("2 / 2");
+
+      expect(
+        within(screen.getByTestId("message-1")).getByRole("text")
+      ).toHaveTextContent("Hey");
+      expect(
+        within(screen.getByTestId("message-1")).queryByRole("navigation")
+      ).not.toBeInTheDocument();
+    });
+
+    await user.click(
+      within(screen.getByTestId("message-0")).getByRole("button", {
+        name: "Previous",
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId("message-0")).getByRole("text")
+      ).toHaveTextContent("Hello");
+      expect(
+        within(screen.getByTestId("message-0")).getByRole("navigation")
+      ).toHaveTextContent("1 / 2");
+      expect(
+        within(screen.getByTestId("message-1")).getByRole("text")
+      ).toHaveTextContent("Hey");
+      expect(
+        within(screen.getByTestId("message-1")).getByRole("navigation")
+      ).toHaveTextContent("2 / 2");
+    });
+
+    await user.click(
+      within(screen.getByTestId("message-1")).getByRole("button", {
+        name: "Previous",
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId("message-0")).getByRole("text")
+      ).toHaveTextContent("Hello");
+      expect(
+        within(screen.getByTestId("message-0")).getByRole("navigation")
+      ).toHaveTextContent("1 / 2");
+      expect(
+        within(screen.getByTestId("message-1")).getByRole("text")
+      ).toHaveTextContent("Hey");
+      expect(
+        within(screen.getByTestId("message-1")).getByRole("navigation")
+      ).toHaveTextContent("1 / 2");
+    });
+  });
+
+  it("fetchStateHistory: false", async () => {
+    const user = userEvent.setup();
+
+    function TestComponent() {
+      const { submit, messages } = useStream({
+        assistantId: "agent",
+        apiKey: "test-api-key",
+        fetchStateHistory: false,
+      });
+
+      return (
+        <div>
+          <div data-testid="messages">
+            {messages.map((msg, i) => (
+              <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              submit({ messages: [{ content: "Hello", type: "human" }] })
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    }
+
+    render(<TestComponent />);
+
+    await user.click(screen.getByTestId("submit"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+      expect(screen.getByTestId("message-1")).toHaveTextContent("Hey");
     });
   });
 });

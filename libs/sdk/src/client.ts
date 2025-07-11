@@ -49,6 +49,7 @@ function* iterateHeaders(
   let iter: Iterable<(HeaderValue | HeaderValue | null[])[]>;
   let shouldClear = false;
 
+  // eslint-disable-next-line no-instanceof/no-instanceof
   if (headers instanceof Headers) {
     const entries: [string, string][] = [];
     headers.forEach((value, name) => {
@@ -62,7 +63,7 @@ function* iterateHeaders(
     iter = Object.entries(headers ?? {});
   }
 
-  for (let item of iter) {
+  for (const item of iter) {
     const name = item[0];
     if (typeof name !== "string")
       throw new TypeError(
@@ -263,7 +264,7 @@ class BaseClient {
       for (const [key, value] of Object.entries(mutatedOptions.params)) {
         if (value == null) continue;
 
-        let strValue =
+        const strValue =
           typeof value === "string" || typeof value === "number"
             ? value.toString()
             : JSON.stringify(value);
@@ -345,7 +346,7 @@ export class CronsClient extends BaseClient {
     assistantId: string,
     payload?: CronsCreatePayload
   ): Promise<CronCreateForThreadResponse> {
-    const json: Record<string, any> = {
+    const json: Record<string, unknown> = {
       schedule: payload?.schedule,
       input: payload?.input,
       config: payload?.config,
@@ -377,7 +378,7 @@ export class CronsClient extends BaseClient {
     assistantId: string,
     payload?: CronsCreatePayload
   ): Promise<CronCreateResponse> {
-    const json: Record<string, any> = {
+    const json: Record<string, unknown> = {
       schedule: payload?.schedule,
       input: payload?.input,
       config: payload?.config,
@@ -879,7 +880,7 @@ export class ThreadsClient<
 
     return this.fetch<void>(`/threads/${threadId}/state`, {
       method: "PATCH",
-      json: { metadata: metadata },
+      json: { metadata },
     });
   }
 
@@ -973,7 +974,7 @@ export class RunsClient<
     TUpdateType,
     TCustomEventType
   > {
-    const json: Record<string, any> = {
+    const json: Record<string, unknown> = {
       input: payload?.input,
       command: payload?.command,
       config: payload?.config,
@@ -1011,6 +1012,7 @@ export class RunsClient<
     const runMetadata = getRunMetadataFromResponse(response);
     if (runMetadata) payload?.onRunCreated?.(runMetadata);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stream: ReadableStream<{ event: any; data: any }> = (
       response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
     )
@@ -1033,7 +1035,7 @@ export class RunsClient<
     assistantId: string,
     payload?: RunsCreatePayload
   ): Promise<Run> {
-    const json: Record<string, any> = {
+    const json: Record<string, unknown> = {
       input: payload?.input,
       command: payload?.command,
       config: payload?.config,
@@ -1120,7 +1122,7 @@ export class RunsClient<
     assistantId: string,
     payload?: RunsWaitPayload
   ): Promise<ThreadState["values"]> {
-    const json: Record<string, any> = {
+    const json: Record<string, unknown> = {
       input: payload?.input,
       command: payload?.command,
       config: payload?.config,
@@ -1239,7 +1241,7 @@ export class RunsClient<
       method: "POST",
       params: {
         wait: wait ? "1" : "0",
-        action: action,
+        action,
       },
     });
   }
@@ -1287,10 +1289,12 @@ export class RunsClient<
           streamMode?: StreamMode | StreamMode[];
         }
       | AbortSignal
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
     const opts =
       typeof options === "object" &&
       options != null &&
+      // eslint-disable-next-line no-instanceof/no-instanceof
       options instanceof AbortSignal
         ? { signal: options }
         : options;
@@ -1315,6 +1319,7 @@ export class RunsClient<
       )
     );
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stream: ReadableStream<{ event: string; data: any }> = (
       response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
     )
@@ -1341,6 +1346,7 @@ export class RunsClient<
 interface APIItem {
   namespace: string[];
   key: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   value: Record<string, any>;
   created_at: string;
   updated_at: string;
@@ -1373,7 +1379,7 @@ export class StoreClient extends BaseClient {
   async putItem(
     namespace: string[],
     key: string,
-    value: Record<string, any>,
+    value: Record<string, unknown>,
     options?: {
       index?: false | string[] | null;
       ttl?: number | null;
@@ -1441,7 +1447,7 @@ export class StoreClient extends BaseClient {
       }
     });
 
-    const params: Record<string, any> = {
+    const params: Record<string, unknown> = {
       namespace: namespace.join("."),
       key,
     };
@@ -1524,7 +1530,7 @@ export class StoreClient extends BaseClient {
   async searchItems(
     namespacePrefix: string[],
     options?: {
-      filter?: Record<string, any>;
+      filter?: Record<string, unknown>;
       limit?: number;
       offset?: number;
       query?: string;
@@ -1603,7 +1609,7 @@ class UiClient extends BaseClient {
   }
 
   async getComponent(assistantId: string, agentName: string): Promise<string> {
-    return UiClient["getOrCached"](
+    return UiClient.getOrCached(
       `${this.apiUrl}-${assistantId}-${agentName}`,
       async () => {
         const response = await this.asyncCaller.fetch(

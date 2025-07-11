@@ -13,7 +13,11 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { z } from "zod";
-import { RunnableLambda, RunnableSequence } from "@langchain/core/runnables";
+import {
+  Runnable,
+  RunnableLambda,
+  RunnableSequence,
+} from "@langchain/core/runnables";
 import { CallbackManager } from "@langchain/core/callbacks/manager";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import {
@@ -29,6 +33,7 @@ import { ToolNode, createReactAgent } from "../prebuilt/index.js";
 import {
   _shouldBindTools,
   _getModel,
+  _bindTools,
 } from "../prebuilt/react_agent_executor.js";
 // Enable automatic config passing
 import {
@@ -2008,6 +2013,128 @@ describe("_shouldBindTools", () => {
       ).rejects.toThrow();
     }
   );
+
+  it("should bind model with bindTools", async () => {
+    const tool1 = tool((input) => `Tool 1: ${input.someVal}`, {
+      name: "tool1",
+      description: "Tool 1 docstring.",
+      schema: z.object({
+        someVal: z.number().describe("Input value"),
+      }),
+    });
+
+    const model = new FakeToolCallingChatModel({
+      responses: [new AIMessage("test")],
+      toolStyle: "openai",
+    });
+
+    const confModel = new FakeConfigurableModel({ model });
+
+    async function serialize(runnable: Runnable | Promise<Runnable>) {
+      return JSON.parse(JSON.stringify(await runnable));
+    }
+
+    // Should bind when a regular model
+    expect(await serialize(_bindTools(model, [tool1]))).toEqual(
+      await serialize(model.bindTools([tool1]))
+    );
+
+    // Should bind when model wrapped in `withConfig`
+    expect(
+      await serialize(
+        _bindTools(model.withConfig({ tags: ["nostream"] }), [tool1])
+      )
+    ).toEqual(
+      await serialize(
+        model.bindTools([tool1]).withConfig({ tags: ["nostream"] })
+      )
+    );
+
+    // Should bind when model wrapped in multiple `withConfig`
+    expect(
+      await serialize(
+        _bindTools(
+          model
+            .withConfig({ tags: ["nostream"] })
+            .withConfig({ metadata: { hello: "world" } }),
+          [tool1]
+        )
+      )
+    ).toEqual(
+      await serialize(
+        model
+          .bindTools([tool1])
+          .withConfig({ tags: ["nostream"], metadata: { hello: "world" } })
+      )
+    );
+
+    // Should bind when a configurable model
+    expect(await serialize(_bindTools(confModel, [tool1]))).toEqual(
+      await serialize(confModel.bindTools([tool1]))
+    );
+
+    // Should bind when a seq
+    expect(
+      await serialize(
+        _bindTools(
+          RunnableSequence.from([
+            model,
+            RunnableLambda.from((message) => message),
+          ]),
+          [tool1]
+        )
+      )
+    ).toEqual(
+      await serialize(
+        RunnableSequence.from([
+          model.bindTools([tool1]),
+          RunnableLambda.from((message) => message),
+        ])
+      )
+    );
+
+    // Should bind when a seq with configurable model
+    expect(
+      await serialize(
+        _bindTools(
+          RunnableSequence.from([
+            confModel,
+            RunnableLambda.from((message) => message),
+          ]),
+          [tool1]
+        )
+      )
+    ).toEqual(
+      await serialize(
+        RunnableSequence.from([
+          confModel.bindTools([tool1]),
+          RunnableLambda.from((message) => message),
+        ])
+      )
+    );
+
+    // Should bind when a seq with config model
+    expect(
+      await serialize(
+        _bindTools(
+          RunnableSequence.from([
+            confModel.withConfig({ tags: ["nostream"] }),
+            RunnableLambda.from((message) => message),
+          ]),
+          [tool1]
+        )
+      )
+    ).toEqual(
+      await serialize(
+        RunnableSequence.from([
+          confModel.bindTools([tool1]).withConfig({
+            tags: ["nostream"],
+          }),
+          RunnableLambda.from((message) => message),
+        ])
+      )
+    );
+  });
 
   it("should handle bindTool with server tools", async () => {
     const tool1 = tool((input) => `Tool 1: ${input.someVal}`, {

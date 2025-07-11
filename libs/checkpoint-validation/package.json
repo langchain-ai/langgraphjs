@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint-validation",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "Library for validating LangGraph checkpoint saver implementations.",
   "type": "module",
   "engines": {
@@ -14,7 +14,7 @@
   },
   "scripts": {
     "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-checkpoint-validation",
-    "build:internal": "yarn clean && yarn lc_build --create-entrypoints --pre --tree-shaking",
+    "build:internal": "yarn clean && yarn lc_build --create-entrypoints --pre --tree-shaking && cp src/runner.ts dist/runner.ts",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
@@ -49,6 +49,7 @@
     "@testcontainers/postgresql": "^11.0.3",
     "@tsconfig/recommended": "^1.0.3",
     "@types/uuid": "^10",
+    "@types/yargs": "^17.0.33",
     "@typescript-eslint/eslint-plugin": "^6.12.0",
     "@typescript-eslint/parser": "^6.12.0",
     "better-sqlite3": "^11.7.0",

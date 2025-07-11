@@ -303,9 +303,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
 
     // Define our state schema
     const StateAnnotation = Annotation.Root({
-      my_key: Annotation<string>({
-        reducer: (a, b) => (a || "") + b,
-      }),
+      my_key: Annotation<string>({ reducer: (a, b) => (a || "") + b }),
       market: Annotation<string>(),
     });
 
@@ -333,41 +331,22 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
 
     const tracer = new FakeTracer();
 
-    // Invoke with "DE" should complete normally but with an interrupt internally
-    const result1 = await toolTwo.invoke(
-      { my_key: "value", market: "DE" },
-      { callbacks: [tracer] }
-    );
-
-    expect(result1).toEqual({
-      my_key: "value",
-      market: "DE",
-      __interrupt__: [
-        {
-          interrupt_id: expect.any(String),
-          value: "Just because...",
-          resumable: true,
-          when: "during",
-          ns: [expect.stringMatching(/^tool_two:.*$/)],
-        },
-      ],
-    });
+    // Invoke with "DE" should fail b/c of lack of checkpointer
+    await expect(
+      toolTwo.invoke({ my_key: "value", market: "DE" }, { callbacks: [tracer] })
+    ).rejects.toThrow(/No checkpointer set/);
 
     expect(toolTwoNodeCount).toBe(1);
     expect(tracer.runs.length).toBe(1);
 
     const run = tracer.runs[0];
     expect(run.end_time).toBeDefined();
-    expect(run.error).toBeUndefined();
-    expect(run.outputs).toEqual({ market: "DE", my_key: "value" });
+    expect(run.error).toBeDefined();
+    expect(run.outputs).toBeUndefined();
 
     // Invoke with "US" should not interrupt
     const result2 = await toolTwo.invoke({ my_key: "value", market: "US" });
-
-    expect(result2).toEqual({
-      my_key: "value all good",
-      market: "US",
-    });
+    expect(result2).toEqual({ my_key: "value all good", market: "US" });
 
     // Now test with a checkpointer
     const checkpointer = new MemorySaver();
@@ -502,44 +481,22 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
 
     const tracer = new FakeTracer();
 
-    // Invoke with "DE" should complete normally but with an interrupt internally
-    const result1 = await toolTwo.invoke(
-      { my_key: "value", market: "DE" },
-      { callbacks: [tracer] }
-    );
-
-    expect(result1).toEqual({
-      my_key: "value",
-      market: "DE",
-      __interrupt__: [
-        {
-          interrupt_id: expect.any(String),
-          value: "Just because...",
-          resumable: true,
-          when: "during",
-          ns: [
-            expect.stringMatching(/^tool_two:.*$/),
-            expect.stringMatching(/^do:.*$/),
-          ],
-        },
-      ],
-    });
+    // Invoke with "DE" should fail b/c of lack of checkpointer
+    await expect(
+      toolTwo.invoke({ my_key: "value", market: "DE" }, { callbacks: [tracer] })
+    ).rejects.toThrow(/No checkpointer set/);
 
     expect(toolTwoNodeCount).toBe(1);
     expect(tracer.runs.length).toBe(1);
 
     const run = tracer.runs[0];
     expect(run.end_time).toBeDefined();
-    expect(run.error).toBeUndefined();
-    expect(run.outputs).toEqual({ market: "DE", my_key: "value" });
+    expect(run.error).toBeDefined();
+    expect(run.outputs).toBeUndefined();
 
     // Invoke with "US" should not interrupt
     const result2 = await toolTwo.invoke({ my_key: "value", market: "US" });
-
-    expect(result2).toEqual({
-      my_key: "value all good",
-      market: "US",
-    });
+    expect(result2).toEqual({ my_key: "value all good", market: "US" });
 
     // Now test with a checkpointer
     const checkpointer = new MemorySaver();

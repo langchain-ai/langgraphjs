@@ -1,6 +1,22 @@
 /* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
+
 "use client";
 
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  type BaseMessageChunk,
+  type BaseMessage,
+  coerceMessageLikeToMessage,
+  convertToChunk,
+  isBaseMessageChunk,
+} from "@langchain/core/messages";
 import { Client, getClientConfigHash, type ClientConfig } from "../client.js";
 import type {
   Command,
@@ -29,22 +45,6 @@ import type {
   UpdatesStreamEvent,
   ValuesStreamEvent,
 } from "../types.stream.js";
-
-import {
-  type RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
-  type BaseMessageChunk,
-  type BaseMessage,
-  coerceMessageLikeToMessage,
-  convertToChunk,
-  isBaseMessageChunk,
-} from "@langchain/core/messages";
 
 class StreamError extends Error {
   constructor(data: { error?: string; name?: string; message: string }) {
@@ -83,6 +83,7 @@ class MessageTupleManager {
     // TODO: this is sometimes sent from the API
     // figure out how to prevent this or move this to LC.js
     if (serialized.type.endsWith("MessageChunk")) {
+      // eslint-disable-next-line no-param-reassign
       serialized.type = serialized.type
         .slice(0, -"MessageChunk".length)
         .toLowerCase() as Message["type"];
@@ -91,7 +92,7 @@ class MessageTupleManager {
     const message = coerceMessageLikeToMessage(serialized);
     const chunk = tryConvertToChunk(message);
 
-    const id = (chunk ?? message).id;
+    const { id } = chunk ?? message;
     if (!id) {
       console.warn(
         "No message ID found for chunk, ignoring in state",
@@ -134,33 +135,38 @@ function unique<T>(array: T[]) {
 }
 
 function findLastIndex<T>(array: T[], predicate: (item: T) => boolean) {
-  for (let i = array.length - 1; i >= 0; i--) {
+  for (let i = array.length - 1; i >= 0; i -= 1) {
     if (predicate(array[i])) return i;
   }
   return -1;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface Node<StateType = any> {
   type: "node";
   value: ThreadState<StateType>;
   path: string[];
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface Fork<StateType = any> {
   type: "fork";
   items: Array<Sequence<StateType>>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface Sequence<StateType = any> {
   type: "sequence";
   items: Array<Node<StateType> | Fork<StateType>>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface ValidFork<StateType = any> {
   type: "fork";
   items: Array<ValidSequence<StateType>>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface ValidSequence<StateType = any> {
   type: "sequence";
   items: [Node<StateType>, ...(Node<StateType> | ValidFork<StateType>)[]];
@@ -193,6 +199,18 @@ function getBranchSequence<StateType extends Record<string, unknown>>(
   history: ThreadState<StateType>[]
 ) {
   const childrenMap: Record<string, ThreadState<StateType>[]> = {};
+
+  // Short circuit if there's only a singular one state
+  // TODO: I think we can make this more generalizable for all `fetchStateHistory` values.
+  if (history.length <= 1) {
+    return {
+      rootSequence: {
+        type: "sequence",
+        items: history.map((value) => ({ type: "node", value, path: [] })),
+      } satisfies Sequence<StateType>,
+      paths: [],
+    };
+  }
 
   // First pass - collect nodes for each checkpoint
   history.forEach((state) => {
@@ -228,8 +246,8 @@ function getBranchSequence<StateType extends Record<string, unknown>>(
     for (const value of children) {
       const id = value.checkpoint.checkpoint_id!;
 
-      let sequence = task.sequence;
-      let path = task.path;
+      let { sequence } = task;
+      let { path } = task;
       if (fork != null) {
         sequence = { type: "sequence", items: [] };
         fork.items.unshift(sequence);
@@ -308,14 +326,23 @@ function getBranchView<StateType extends Record<string, unknown>>(
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
-  threadId: string
+  threadId: string,
+  options?: { limit?: boolean | number }
 ) {
-  return client.threads.getHistory<StateType>(threadId, { limit: 1000 });
+  if (options?.limit === false) {
+    return client.threads
+      .getState<StateType>(threadId)
+      .then((state) => [state]);
+  }
+
+  const limit = typeof options?.limit === "number" ? options.limit : 1000;
+  return client.threads.getHistory<StateType>(threadId, { limit });
 }
 
 function useThreadHistory<StateType extends Record<string, unknown>>(
   threadId: string | undefined | null,
   client: Client,
+  limit: boolean | number,
   clearCallbackRef: RefObject<(() => void) | undefined>,
   submittingRef: RefObject<boolean>
 ) {
@@ -331,7 +358,9 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
     ): Promise<ThreadState<StateType>[]> => {
       if (threadId != null) {
         const client = clientRef.current;
-        return fetchHistory<StateType>(client, threadId).then((history) => {
+        return fetchHistory<StateType>(client, threadId, {
+          limit,
+        }).then((history) => {
           setHistory(history);
           return history;
         });
@@ -341,13 +370,13 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       clearCallbackRef.current?.();
       return Promise.resolve([]);
     },
-    []
+    [clearCallbackRef, limit]
   );
 
   useEffect(() => {
     if (submittingRef.current) return;
-    fetcher(threadId);
-  }, [fetcher, clientHash, submittingRef, threadId]);
+    void fetcher(threadId);
+  }, [fetcher, clientHash, limit, submittingRef, threadId]);
 
   return {
     data: history,
@@ -559,6 +588,14 @@ export interface UseStreamOptions<
    * cached UI display without server fetches.
    */
   initialValues?: StateType | null;
+
+  /**
+   * Whether to fetch the history of the thread.
+   * If true, the history will be fetched from the server. Defaults to 1000 entries.
+   * If false, only the last state will be fetched from the server.
+   * @default true
+   */
+  fetchStateHistory?: boolean | { limit: number };
 }
 
 interface RunMetadataStorage {
@@ -775,7 +812,9 @@ export function useStream<
     | ErrorStreamEvent
     | FeedbackStreamEvent;
 
-  let { assistantId, messagesKey, onCreated, onError, onFinish } = options;
+  let { messagesKey } = options;
+  const { assistantId, fetchStateHistory } = options;
+  const { onCreated, onError, onFinish } = options;
 
   const reconnectOnMountRef = useRef(options.reconnectOnMount);
   const runMetadataStorage = useMemo(() => {
@@ -859,12 +898,15 @@ export function useStream<
     setStreamValues(null);
   };
 
-  // TODO: this should be done on the server to avoid pagination
-  // TODO: should we permit adapter? SWR / React Query?
-  // TODO: make this only when branching is expected
+  const historyLimit =
+    typeof fetchStateHistory === "object" && fetchStateHistory != null
+      ? fetchStateHistory.limit ?? true
+      : fetchStateHistory ?? true;
+
   const history = useThreadHistory<StateType>(
     threadId,
     client,
+    historyLimit,
     clearCallbackRef,
     submittingRef
   );
@@ -948,7 +990,7 @@ export function useStream<
 
     if (runMetadataStorage && threadId) {
       const runId = runMetadataStorage.getItem(`lg:stream:${threadId}`);
-      if (runId) client.runs.cancel(threadId, runId);
+      if (runId) void client.runs.cancel(threadId, runId);
       runMetadataStorage.removeItem(`lg:stream:${threadId}`);
     }
 
@@ -1039,7 +1081,7 @@ export function useStream<
     } catch (error) {
       if (
         !(
-          error instanceof Error &&
+          error instanceof Error && // eslint-disable-line no-instanceof/no-instanceof
           (error.name === "AbortError" || error.name === "TimeoutError")
         )
       ) {
@@ -1062,6 +1104,7 @@ export function useStream<
     lastEventId?: string,
     options?: { streamMode?: StreamMode | StreamMode[] }
   ) => {
+    // eslint-disable-next-line no-param-reassign
     lastEventId ??= "-1";
     if (!threadId) return;
     await consumeStream(async (signal: AbortSignal) => {
@@ -1111,6 +1154,7 @@ export function useStream<
       if (!usableThreadId) {
         const thread = await client.threads.create({
           threadId: submitOptions?.threadId,
+          metadata: submitOptions?.metadata,
         });
         onThreadId(thread.thread_id);
         usableThreadId = thread.thread_id;
@@ -1124,6 +1168,7 @@ export function useStream<
 
       const checkpoint =
         submitOptions?.checkpoint ?? threadHead?.checkpoint ?? undefined;
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-expect-error
       if (checkpoint != null) delete checkpoint.thread_id;
       let rejoinKey: `lg:stream:${string}` | undefined;
@@ -1200,7 +1245,7 @@ export function useStream<
   useEffect(() => {
     if (reconnectKey && reconnectRef.current.shouldReconnect) {
       reconnectRef.current.shouldReconnect = false;
-      joinStreamRef.current?.(reconnectKey.runId);
+      void joinStreamRef.current?.(reconnectKey.runId);
     }
   }, [reconnectKey]);
 
@@ -1220,7 +1265,7 @@ export function useStream<
     isLoading,
 
     stop,
-    submit,
+    submit, // eslint-disable-line @typescript-eslint/no-misused-promises
 
     joinStream,
 
@@ -1228,7 +1273,15 @@ export function useStream<
     setBranch,
 
     history: flatHistory,
-    experimental_branchTree: rootSequence,
+    get experimental_branchTree() {
+      if (historyLimit === false) {
+        throw new Error(
+          "`experimental_branchTree` is not available when `fetchStateHistory` is set to `false`"
+        );
+      }
+
+      return rootSequence;
+    },
 
     get interrupt() {
       // Don't show the interrupt if the stream is loading

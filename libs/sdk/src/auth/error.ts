@@ -65,6 +65,7 @@ const HTTP_STATUS_MAPPING: { [key: number]: string } = {
 
 export class HTTPException extends Error {
   status: number;
+
   headers: HeadersInit;
 
   constructor(

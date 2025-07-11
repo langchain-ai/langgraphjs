@@ -158,7 +158,7 @@ export type EventsStreamEvent = {
           | "tool"
           | "retriever"
           | "prompt"}_${"start" | "stream" | "end"}`
-      | (string & {});
+      | (string & {}); // eslint-disable-line @typescript-eslint/ban-types
     name: string;
     tags: string[];
     run_id: string;

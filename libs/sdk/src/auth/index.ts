@@ -9,7 +9,7 @@ import type {
 } from "./types.js";
 
 export class Auth<
-  TExtra = {},
+  TExtra = {}, // eslint-disable-line @typescript-eslint/ban-types
   TAuthReturn extends BaseAuthReturn = BaseAuthReturn,
   TUser extends BaseUser = ToUserLike<TAuthReturn>
 > {

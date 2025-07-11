@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ThreadState } from "../schema.js";
 
 interface Node<StateType = any> {

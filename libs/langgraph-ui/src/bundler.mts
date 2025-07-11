@@ -102,7 +102,7 @@ function setup(
       ...(args.config?.shared ?? []),
     ],
     plugins: [tailwind(), entrypointPlugin(args), registerPlugin(onResult)],
-    globalName: `__LGUI_${agentName}`,
+    globalName: `__LGUI_${agentName.replace(/[^a-zA-Z0-9]/g, "_")}`,
   };
 }
 
