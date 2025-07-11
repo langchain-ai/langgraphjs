@@ -4653,6 +4653,67 @@ graph TD;
       expect(nonRetryableErrorCount).toBe(1);
     });
 
+    it("should recognize resuming run", async () => {
+      async function firstNode(
+        _state: typeof MessagesAnnotation.State
+      ): Promise<Partial<typeof MessagesAnnotation.State>> {
+        return {
+          messages: [new AIMessage({ content: "first" })],
+        };
+      }
+
+      async function secondNode(
+        _state: typeof MessagesAnnotation.State,
+        config: RunnableConfig
+      ): Promise<Partial<typeof MessagesAnnotation.State>> {
+        if (config?.configurable?.runAttempt === 1) {
+          throw new Error("Expected error: retryme");
+        }
+
+        return {
+          messages: [new AIMessage({ content: "second" })],
+        };
+      }
+      const checkpointer = await createCheckpointer();
+      const app = new StateGraph(MessagesAnnotation)
+        .addNode("firstNode", firstNode)
+        .addNode("secondNode", secondNode)
+        .addEdge(START, "firstNode")
+        .addEdge("firstNode", "secondNode")
+        .addEdge("secondNode", END)
+        .compile({ checkpointer });
+
+      const runId = uuid6(2);
+      const runConfig = {
+        configurable: { thread_id: uuid6(1), runAttempt: 1 },
+        metadata: { run_id: runId },
+      };
+
+      try {
+        await app.invoke(
+          { messages: [new HumanMessage({ content: "aninput" })] },
+          runConfig
+        );
+      } catch (e) {
+        // Pass
+      }
+      runConfig.configurable.runAttempt = 2;
+      const appResult = await app.invoke(
+        { messages: [new HumanMessage({ content: "aninput" })] },
+        runConfig
+      );
+
+      const expected = [
+        { role: "human", content: "aninput" },
+        { role: "ai", content: "first" },
+        { role: "ai", content: "second" },
+      ];
+      const actual = appResult?.messages.map((msg) => {
+        return { role: msg.getType(), content: msg.content };
+      });
+      expect(actual).toEqual(expected);
+    });
+
     it("should allow undefined values returned in a node update", async () => {
       interface GraphState {
         test?: string;
