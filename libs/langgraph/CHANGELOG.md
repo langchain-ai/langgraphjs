@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- 796eb1b: ensure resuming only happens once with matching run ids
+- fix(langgraph): Ensure resuming only happens with matching run ids by @hinthornw in https://github.com/langchain-ai/langgraphjs/pull/1381
 
 ## 0.3.7
 
