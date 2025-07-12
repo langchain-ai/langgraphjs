@@ -22,6 +22,7 @@
     "lint:fix": "yarn lint:eslint --fix && yarn lint:dpdm",
     "prepack": "yarn build",
     "test": "vitest run",
+    "test:single": "vitest run --mode single",
     "test:browser": "vitest run --mode browser",
     "test:watch": "vitest watch",
     "test:int": "vitest run --mode int",
