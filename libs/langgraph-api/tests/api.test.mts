@@ -3,7 +3,10 @@ import type {
   BaseMessageLike,
   MessageType,
 } from "@langchain/core/messages";
-import { Client, type FeedbackStreamEvent } from "@langchain/langgraph-sdk";
+import {
+  Client,
+  type MessagesTupleStreamEvent,
+} from "@langchain/langgraph-sdk";
 import { RemoteGraph } from "@langchain/langgraph/remote";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -11,11 +14,6 @@ import { findLast, gatherIterator, truncate } from "./utils.mjs";
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import waitPort from "wait-port";
-import {
-  MessagesTupleStreamEvent,
-  MetadataStreamEvent,
-  SubgraphMessagesTupleStreamEvent,
-} from "../../sdk/dist/types.stream.js";
 
 const API_URL = "http://localhost:2024";
 const client = new Client<any>({ apiUrl: API_URL });
@@ -956,7 +954,7 @@ describe("runs", () => {
 
     const messages = chunks
       .filter(
-        (i): i is SubgraphMessagesTupleStreamEvent | MessagesTupleStreamEvent =>
+        (i): i is MessagesTupleStreamEvent =>
           i.event.startsWith("messages|") || i.event === "messages"
       )
       .map((i) => i.data[0]);
