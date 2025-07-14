@@ -76,7 +76,7 @@ export const auth = (): MiddlewareHandler => {
       c.req.header("x-auth-scheme") === "langsmith"
     ) {
       c.set("auth", {
-        user: STUDIO_USER,
+        user: { ...STUDIO_USER, kind: "StudioUser" },
         scopes: STUDIO_USER.permissions.slice(),
       });
       return next();
