@@ -11,6 +11,11 @@ import { findLast, gatherIterator, truncate } from "./utils.mjs";
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import waitPort from "wait-port";
+import {
+  MessagesTupleStreamEvent,
+  MetadataStreamEvent,
+  SubgraphMessagesTupleStreamEvent,
+} from "../../sdk/dist/types.stream.js";
 
 const API_URL = "http://localhost:2024";
 const client = new Client<any>({ apiUrl: API_URL });
@@ -936,18 +941,24 @@ describe("runs", () => {
     const stream = await client.runs.stream(
       thread.thread_id,
       assistant.assistant_id,
-      { input, streamMode: "messages-tuple", config: globalConfig }
+      {
+        input,
+        streamMode: "messages-tuple",
+        config: globalConfig,
+        streamSubgraphs: true,
+      }
     );
 
     const chunks = await gatherIterator(stream);
-    const runId = findLast(
-      chunks,
-      (i): i is FeedbackStreamEvent => i.event === "metadata"
-    )?.data.run_id;
+    const runId = findLast(chunks, (i) => i.event === "metadata")?.data.run_id;
+    expect(runId).not.toBeUndefined();
     expect(runId).not.toBeNull();
 
     const messages = chunks
-      .filter((i) => i.event === "messages")
+      .filter(
+        (i): i is SubgraphMessagesTupleStreamEvent | MessagesTupleStreamEvent =>
+          i.event.startsWith("messages|") || i.event === "messages"
+      )
       .map((i) => i.data[0]);
 
     expect(messages).toHaveLength("begin".length + "end".length + 1);
@@ -957,7 +968,7 @@ describe("runs", () => {
       ..."end".split("").map((c) => ({ content: c })),
     ]);
 
-    const seenEventTypes = new Set(chunks.map((i) => i.event));
+    const seenEventTypes = new Set(chunks.map((i) => i.event.split("|")[0]));
     expect(seenEventTypes).toEqual(new Set(["metadata", "messages"]));
 
     const run = await client.runs.get(thread.thread_id, runId as string);
