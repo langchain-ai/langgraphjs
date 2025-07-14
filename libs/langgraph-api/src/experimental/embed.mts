@@ -156,7 +156,7 @@ export function createEmbedServer(options: {
 
       const thread = await options.threads.get(thread_id);
       const graphId = thread.metadata?.graph_id as string | undefined | null;
-      const graph = graphId ? options.graph[graphId] : undefined;
+      const graph = graphId ? await getGraph(graphId) : undefined;
 
       if (graph == null) {
         return jsonExtra(
@@ -190,7 +190,7 @@ export function createEmbedServer(options: {
 
       const thread = await options.threads.get(thread_id);
       const graphId = thread.metadata?.graph_id as string | undefined | null;
-      const graph = graphId ? options.graph[graphId] : undefined;
+      const graph = graphId ? await getGraph(graphId) : undefined;
       if (graph == null) return jsonExtra(c, []);
 
       const config = { configurable: { thread_id, ...checkpoint } };
