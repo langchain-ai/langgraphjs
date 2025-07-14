@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 0.0.94
+
+### Patch Changes
+
+- 11e95e0: Add isStudioUser for custom auth
+
 ## 0.0.93
 
 ### Patch Changes
