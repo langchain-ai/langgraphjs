@@ -4,4 +4,4 @@
 "@langchain/langgraph-ui": patch
 ---
 
-Embed should use `getGraph(...)`
+Embed methods for obtaining state should use `getGraph(...)`
