@@ -39,6 +39,19 @@ export class Auth<
   }
 }
 
+/**
+ * Check if the provided user was provided by LangGraph Studio.
+ *
+ * By default, if you add custom authorization on your resources, this will also apply to interactions made from the Studio.
+ * If you want, you can handle logged-in Studio users in a special way.
+ *
+ * @param user - The user to check
+ * @returns True if the user is a studio user, false otherwise
+ */
+export function isStudioUser(user: BaseUser) {
+  return user.identity === "langgraph-studio-user";
+}
+
 export type {
   Filters as AuthFilters,
   EventValueMap as AuthEventValueMap,
