@@ -896,6 +896,7 @@ export function useStream<
   clearCallbackRef.current = () => {
     setStreamError(undefined);
     setStreamValues(null);
+    messageManagerRef.current.clear();
   };
 
   const historyLimit =
@@ -1091,9 +1092,6 @@ export function useStream<
       }
     } finally {
       setIsLoading(false);
-
-      // Assumption: messages are already handled, we can clear the manager
-      messageManagerRef.current.clear();
       submittingRef.current = false;
       abortRef.current = null;
     }
