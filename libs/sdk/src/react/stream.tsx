@@ -1041,8 +1041,13 @@ export function useStream<
           }
           setStreamValues(data);
         }
-        if (event === "messages") {
-          const [serialized] = data;
+        if (
+          event === "messages" ||
+          // if `streamSubgraphs: true`, then we also want
+          // to also receive messages from subgraphs
+          event.startsWith("messages|")
+        ) {
+          const [serialized] = data as MessagesTupleStreamEvent["data"];
 
           const messageId = messageManagerRef.current.add(serialized);
           if (!messageId) {
