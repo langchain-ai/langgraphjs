@@ -1,5 +1,13 @@
 # @langchain/langgraph-cli
 
+## 0.0.46
+
+### Patch Changes
+
+- d172de3: Fix apply namespace to messages-tuple stream mode
+- Updated dependencies [d172de3]
+  - @langchain/langgraph-api@0.0.46
+
 ## 0.0.45
 
 ### Patch Changes
