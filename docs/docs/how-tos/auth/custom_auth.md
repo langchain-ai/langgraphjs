@@ -132,3 +132,30 @@ Assuming you are using JWT token authentication, you could access your deploymen
     ```bash
     curl -H "Authorization: Bearer ${your-token}" http://localhost:2024/threads
     ```
+
+### Authorizing a Studio user
+
+By default, if you add custom authorization on your resources, this will also apply to interactions made from the Studio. If you want, you can handle logged-in Studio users in a special way with [isStudioUser()](../../reference/functions/sdk_auth.isStudioUser.html).
+
+```typescript
+import { Auth, isStudioUser } from "@langchain/langgraph-sdk/auth";
+
+export const auth = new Auth().on("*", ({ value, user }) => {
+  // If the request is made using LangSmith API-key auth
+  if (isStudioUser(user)) {
+    // E.g., allow all requests
+    return {};
+  }
+
+  // Otherwise, apply regular authorization logic ...
+  if ("metadata" in value) {
+    value.metadata ??= {};
+    value.metadata.owner = user.identity;
+  }
+
+  // Filter the resource by the owner
+  return { owner: user.identity };
+});
+```
+
+Only use this if you want to permit developer access to a graph deployed on the managed LangGraph Platform SaaS.
