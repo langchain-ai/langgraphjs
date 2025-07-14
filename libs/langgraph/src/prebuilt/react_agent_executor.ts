@@ -61,6 +61,7 @@ export type StructuredResponseSchemaAndPrompt<StructuredResponseType> = {
   prompt: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schema: InteropZodType<StructuredResponseType> | Record<string, any>;
+  strict?:true
 };
 
 function _convertMessageModifierToPrompt(
@@ -478,6 +479,7 @@ export type CreateReactAgentParams<
    * @deprecated Use prompt instead.
    */
   stateModifier?: StateModifier;
+
   /**
    * An optional prompt for the LLM. This takes full graph state BEFORE the LLM is called and prepares the input to LLM.
    *
@@ -524,6 +526,7 @@ export type CreateReactAgentParams<
   responseFormat?:
     | InteropZodType<StructuredResponseType>
     | StructuredResponseSchemaAndPrompt<StructuredResponseType>
+    | { schema: InteropZodType<StructuredResponseType> | Record<string, any>; strict?: boolean }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     | Record<string, any>;
   /**
@@ -714,14 +717,17 @@ export function createReactAgent<
     if (
       typeof responseFormat === "object" &&
       "prompt" in responseFormat &&
-      "schema" in responseFormat
+      "schema" in responseFormat 
     ) {
-      const { prompt, schema } = responseFormat;
+      const { prompt, schema,strict } = responseFormat;
+      
       modelWithStructuredOutput = (await _getModel(llm)).withStructuredOutput(
-        schema
+        schema,
+        strict ? {strict:true} : undefined
       );
       messages.unshift(new SystemMessage({ content: prompt }));
-    } else {
+    } 
+    else {
       modelWithStructuredOutput = (await _getModel(llm)).withStructuredOutput(
         responseFormat
       );
@@ -750,8 +756,7 @@ export function createReactAgent<
     return { messages: [response] };
   };
 
-  const schema =
-    stateSchema ?? createReactAgentAnnotation<StructuredResponseFormat>();
+  const schema =stateSchema ?? createReactAgentAnnotation<StructuredResponseFormat>();
 
   const workflow = new StateGraph(schema).addNode("tools", toolNode);
 
