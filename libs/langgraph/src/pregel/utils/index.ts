@@ -135,7 +135,9 @@ export function patchCheckpointMap(
   }
 }
 
-function isMultiAbortSignal(signal: unknown): signal is MultiAbortSignal {
+export function isMultiAbortSignal(
+  signal: unknown
+): signal is MultiAbortSignal {
   return (
     typeof signal === "object" &&
     signal !== null &&
@@ -145,152 +147,75 @@ function isMultiAbortSignal(signal: unknown): signal is MultiAbortSignal {
   );
 }
 
-/**
- * MultiAbortSignal combines multiple AbortSignal instances into a single signal that aborts
- * when any of the provided signals aborts. Instead of generically creating new signals,
- * this deduplicates signals and avoids redundant event listeners by flattening nested
- * MultiAbortSignal dependencies.
- *
- * This takes on a similar shape to node's native implementation of `AbortSignal.any()`, but
- * is inlined here since the native implementation suffers from memory leaks in older versions of node.
- * @see https://github.com/nodejs/node/issues/55328
- */
-export class MultiAbortSignal extends EventTarget implements AbortSignal {
-  /** @internal */
-  private _controller: AbortController;
-
-  /** @internal */
-  private _signal: AbortSignal;
-
-  /** @internal */
-  private _reason: unknown;
-
-  /**
-   * The set of signals that are directly tracked by this MultiAbortSignal.
-   * @internal
-   */
-  private _dependentSignals = new Set<AbortSignal>();
-
-  /**
-   * Creates a new MultiAbortSignal that aborts when any of the provided signals aborts.
-   * This signal manages listeners on the direct input signals, avoiding
-   * redundant listeners for signals already implicitly covered by other MultiAbortSignals.
-   * @param {Iterable<AbortSignal>} signals - An iterable of AbortSignal objects.
-   */
-  constructor(...signals: AbortSignal[]) {
-    super();
-
-    this._controller = new AbortController();
-    this._signal = this._controller.signal;
-
-    // First, we resolve all downstream signals that are contained
-    // in the hierarchy of the signals passed into the constructor.
-    const knownSignals: AbortSignal[] = [];
-    for (const signal of signals) {
-      if (isMultiAbortSignal(signal)) {
-        knownSignals.push(...signal.getDependentSignals());
-      }
-    }
-    // Then, we enumerate the signals to dedupe them.
-    for (const signal of signals) {
-      // If the signal passed into the constructor is already tracked
-      // in a downstream MultiAbortSignal, we skip it.
-      if (knownSignals.includes(signal)) continue;
-      // Otherwise, we add it to the list of signals that need event listeners.
-      this._dependentSignals.add(signal);
-    }
-
-    const _abortWithReason = (reason: unknown) => {
-      this._controller.abort(reason);
-      this._reason = reason;
-      this.dispatchEvent(new Event("abort"));
-    };
-    const abortListener = (event: Event) => {
-      const target = event.target as AbortSignal;
-      _abortWithReason(target.reason);
-      // Clean up event listeners from all signals we planned to watch
-      for (const signal of this._dependentSignals) {
-        signal.removeEventListener("abort", abortListener);
-      }
-    };
-
-    for (const signal of this._dependentSignals) {
-      if (signal.aborted) {
-        // If any signal is already aborted, immediately abort the combined signal
-        _abortWithReason(signal.reason);
-        for (const signal of this._dependentSignals) {
-          signal.removeEventListener("abort", abortListener);
-        }
-        return;
-      }
-      // Attach listener with a signal for automatic cleanup
-      signal.addEventListener("abort", abortListener, { signal: this._signal });
-    }
-  }
-
-  get aborted(): boolean {
-    return this._signal.aborted;
-  }
-
-  get reason(): unknown {
-    return this._reason;
-  }
-
-  throwIfAborted(): void {
-    this._signal.throwIfAborted();
-  }
-
-  addEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject | null,
-    options?: boolean | AddEventListenerOptions
-  ): void {
-    if (listener === null) return;
-
-    if (type === "abort") {
-      super.addEventListener(type, listener, options);
-    } else {
-      this._signal.addEventListener(type, listener, options);
-    }
-  }
-
-  removeEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject | null,
-    options?: boolean | EventListenerOptions
-  ): void {
-    if (listener === null) return;
-
-    if (type === "abort") {
-      super.removeEventListener(type, listener, options);
-    } else {
-      this._signal.removeEventListener(type, listener, options);
-    }
-  }
-
-  set onabort(value: ((this: AbortSignal, ev: Event) => void) | null) {
-    this._signal.onabort = value;
-  }
-
-  get onabort(): ((this: AbortSignal, ev: Event) => void) | null {
-    return this._signal.onabort;
-  }
-
+export interface MultiAbortSignal extends AbortSignal {
   /**
    * Returns a flattened set of signals that are contained within the hierarchy of a MultiAbortSignal.
    * If a MultiAbortSignal was passed as a signal into the constructor, it's dependent signals will be
    * included in the returned set.
    */
-  getDependentSignals(): ReadonlySet<AbortSignal> {
-    const out: AbortSignal[] = [];
-    for (const signal of this._dependentSignals) {
-      out.push(signal);
-      if (isMultiAbortSignal(signal)) {
-        out.push(...signal.getDependentSignals());
-      }
+  getDependentSignals(): ReadonlySet<AbortSignal>;
+}
+
+/**
+ * Combine multiple abort signals into a single abort signal.
+ * @param signals - The abort signals to combine.
+ * @returns A single abort signal that is aborted if any of the input signals are aborted.
+ */
+export function combineAbortSignals(
+  ...signals: AbortSignal[]
+): MultiAbortSignal {
+  const controller = new AbortController();
+  const dependentSignals = new Set<AbortSignal>();
+
+  // First, we resolve all downstream signals that are contained
+  // in the hierarchy of the signals passed into the constructor.
+  const knownSignals: AbortSignal[] = [];
+  for (const signal of signals) {
+    if (isMultiAbortSignal(signal)) {
+      knownSignals.push(...signal.getDependentSignals());
     }
-    return new Set(out);
   }
+  // Then, we enumerate the signals to dedupe them.
+  for (const signal of signals) {
+    // If the signal passed into the constructor is already tracked
+    // in a downstream MultiAbortSignal, we skip it.
+    if (knownSignals.includes(signal)) continue;
+    // Otherwise, we add it to the list of signals that need event listeners.
+    dependentSignals.add(signal);
+  }
+
+  const abortListener = (event: Event) => {
+    const target = event.target as AbortSignal;
+    controller.abort(target.reason);
+    // Clean up event listeners from all signals we planned to watch
+    for (const signal of dependentSignals) {
+      signal.removeEventListener("abort", abortListener);
+    }
+  };
+
+  for (const signal of dependentSignals) {
+    if (signal.aborted) {
+      // If any signal is already aborted, immediately abort the combined signal
+      // and stop adding listeners.
+      controller.abort(signal.reason);
+      break;
+    }
+    signal.addEventListener("abort", abortListener);
+  }
+
+  return Object.assign(controller.signal, {
+    getDependentSignals(): ReadonlySet<AbortSignal> {
+      const out: AbortSignal[] = [];
+      for (const signal of dependentSignals) {
+        if (isMultiAbortSignal(signal)) {
+          out.push(...signal.getDependentSignals());
+        } else {
+          out.push(signal);
+        }
+      }
+      return new Set(out);
+    },
+  });
 }
 
 /**

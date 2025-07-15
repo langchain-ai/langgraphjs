@@ -7,7 +7,7 @@ import {
 } from "./types.js";
 import {
   CachePolicy,
-  MultiAbortSignal,
+  combineAbortSignals,
   patchConfigurable,
   RetryPolicy,
 } from "./utils/index.js";
@@ -218,7 +218,7 @@ export class PregelRunner {
     const externalAbortSignal = subgraphCalledWithSignalCreatedByNode
       ? // Chain the signals here to make sure that the subgraph receives the external abort signal in
         // addition to the signal created by the node.
-        new MultiAbortSignal(previousSignals.externalAbortSignal!, signal!)
+        combineAbortSignals(previousSignals.externalAbortSignal!, signal!)
       : // Otherwise, just keep using the external abort signal, or initialize it if it hasn't been
         // assigned yet
         previousSignals.externalAbortSignal ?? signal;
@@ -226,7 +226,7 @@ export class PregelRunner {
     const errorAbortSignal = previousSignals.errorAbortSignal
       ? // Chaining here rather than always using a fresh one handles the case where a subgraph is
         // called in a parallel branch to some other node in the parent graph.
-        new MultiAbortSignal(
+        combineAbortSignals(
           previousSignals.errorAbortSignal!,
           exceptionSignalController.signal
         )
@@ -236,7 +236,7 @@ export class PregelRunner {
       ? AbortSignal.timeout(timeout)
       : undefined;
 
-    const composedAbortSignal: AbortSignal = new MultiAbortSignal(
+    const composedAbortSignal: AbortSignal = combineAbortSignals(
       ...(externalAbortSignal ? [externalAbortSignal] : []),
       ...(timeoutAbortSignal ? [timeoutAbortSignal] : []),
       errorAbortSignal
@@ -303,7 +303,7 @@ export class PregelRunner {
     let listener: () => void;
     const timeoutOrCancelSignal =
       signals?.externalAbortSignal || signals?.timeoutAbortSignal
-        ? new MultiAbortSignal(
+        ? combineAbortSignals(
             ...(signals.externalAbortSignal
               ? [signals.externalAbortSignal]
               : []),

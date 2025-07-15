@@ -112,9 +112,9 @@ import {
 } from "./utils/config.js";
 import {
   _coerceToDict,
+  combineAbortSignals,
   combineCallbacks,
   getNewChannelVersions,
-  MultiAbortSignal,
   patchCheckpointMap,
   RetryPolicy,
 } from "./utils/index.js";
@@ -1841,7 +1841,7 @@ export class Pregel<
       recursionLimit: this.config?.recursionLimit,
       ...options,
       signal: options?.signal
-        ? new MultiAbortSignal(options.signal, abortController.signal)
+        ? combineAbortSignals(options.signal, abortController.signal)
         : abortController.signal,
     };
 
@@ -1897,7 +1897,7 @@ export class Pregel<
       // extend the callbacks with the ones from the config
       callbacks: combineCallbacks(this.config?.callbacks, options?.callbacks),
       signal: options?.signal
-        ? new MultiAbortSignal(options.signal, abortController.signal)
+        ? combineAbortSignals(options.signal, abortController.signal)
         : abortController.signal,
     };
 
