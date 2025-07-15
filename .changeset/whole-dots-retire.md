@@ -2,4 +2,4 @@
 "@langchain/langgraph": patch
 ---
 
-add UpdateType type utility for Zod, extend Zod and Zod 4 support
+add UpdateType type utility for Zod, improve Zod 4 and Zod 4 mini support
