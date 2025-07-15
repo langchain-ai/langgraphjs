@@ -141,7 +141,6 @@ export function isMultiAbortSignal(
   return (
     typeof signal === "object" &&
     signal !== null &&
-    "_dependentSignals" in signal &&
     "getDependentSignals" in signal &&
     typeof signal.getDependentSignals === "function"
   );
@@ -168,7 +167,7 @@ export function combineAbortSignals(
   const dependentSignals = new Set<AbortSignal>();
 
   // First, we resolve all downstream signals that are contained
-  // in the hierarchy of the signals passed into the constructor.
+  // in the hierarchy of the signals passed as args;
   const knownSignals: AbortSignal[] = [];
   for (const signal of signals) {
     if (isMultiAbortSignal(signal)) {
@@ -177,7 +176,7 @@ export function combineAbortSignals(
   }
   // Then, we enumerate the signals to dedupe them.
   for (const signal of signals) {
-    // If the signal passed into the constructor is already tracked
+    // If the signal passed as an arg is already tracked
     // in a downstream MultiAbortSignal, we skip it.
     if (knownSignals.includes(signal)) continue;
     // Otherwise, we add it to the list of signals that need event listeners.
