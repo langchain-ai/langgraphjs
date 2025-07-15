@@ -16,6 +16,11 @@ export type MongoDBSaverParams = {
   dbName?: string;
   checkpointCollectionName?: string;
   checkpointWritesCollectionName?: string;
+   /**
+   * Change 1 Made ttl optional 
+   */
+   enableTTL?:boolean
+  
 };
 
 /**
@@ -23,12 +28,18 @@ export type MongoDBSaverParams = {
  */
 export class MongoDBSaver extends BaseCheckpointSaver {
   protected client: MongoClient;
-
+  
   protected db: MongoDatabase;
 
   checkpointCollectionName = "checkpoints";
 
   checkpointWritesCollectionName = "checkpoint_writes";
+      /** Change 2:
+       * Conditionally Added _createdATForTTL if ttl is enabled
+       */
+  protected enableTTL:boolean
+ 
+
 
   constructor(
     {
@@ -36,11 +47,13 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       dbName,
       checkpointCollectionName,
       checkpointWritesCollectionName,
+      enableTTL,
     }: MongoDBSaverParams,
     serde?: SerializerProtocol
   ) {
     super(serde);
     this.client = client;
+    this.enableTTL = enableTTL ?? false;
     this.db = this.client.db(dbName);
     this.checkpointCollectionName =
       checkpointCollectionName ?? this.checkpointCollectionName;
@@ -84,6 +97,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       thread_id,
       checkpoint_ns,
       checkpoint_id: doc.checkpoint_id,
+
     };
     const checkpoint = (await this.serde.loadsTyped(
       doc.type,
@@ -229,12 +243,20 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     if (checkpointType !== metadataType) {
       throw new Error("Mismatched checkpoint and metadata types.");
     }
+
     const doc = {
       parent_checkpoint_id: config.configurable?.checkpoint_id,
       type: checkpointType,
       checkpoint: serializedCheckpoint,
       metadata: serializedMetadata,
+      /** Change 3:
+       * Conditionally Added _createdATForTTL if ttl is enabled
+       */
+      ...(this.enableTTL ? { _createdAtForTTL: new Date() } : {}),
     };
+    
+
+
     const upsertQuery = {
       thread_id,
       checkpoint_ns,
