@@ -1,5 +1,9 @@
 // @ts-expect-error If zod/v4 is not imported, the module augmentation will fail in build
 import type { ZodType } from "zod/v4"; // eslint-disable-line @typescript-eslint/no-unused-vars
+
+// @ts-expect-error If zod/v4-mini is not imported, the module augmentation will fail in build
+import type { ZodMiniType } from "zod/v4-mini"; // eslint-disable-line @typescript-eslint/no-unused-vars
+
 import type * as core from "zod/v4/core";
 import { getInteropZodDefaultGetter } from "@langchain/core/utils/types";
 import { $ZodType, $ZodRegistry, $replace } from "zod/v4/core";
@@ -77,6 +81,30 @@ declare module "zod/v4" {
       registry: R,
       meta: SchemaMeta<TOutput, TInput>
     ): ReducedZodChannel<this, ZodType<TOutput, TInput, TInternals>>;
+  }
+}
+
+declare module "zod/v4-mini" {
+  export interface ZodMiniType<
+    out Output = unknown,
+    out Input = unknown,
+    out Internals extends core.$ZodTypeInternals<
+      Output,
+      Input
+    > = core.$ZodTypeInternals<Output, Input>
+  > extends core.$ZodType<Output, Input, Internals> {
+    register<
+      R extends LanggraphZodMetaRegistry,
+      TOutput = core.output<this>,
+      TInput = core.input<this>,
+      TInternals extends core.$ZodTypeInternals<
+        TOutput,
+        TInput
+      > = core.$ZodTypeInternals<TOutput, TInput>
+    >(
+      registry: R,
+      meta: SchemaMeta<TOutput, TInput>
+    ): ReducedZodChannel<this, ZodMiniType<TOutput, TInput, TInternals>>;
   }
 }
 
