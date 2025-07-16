@@ -16,12 +16,15 @@ import { LastValue } from "../../channels/last_value.js";
 
 export const META_EXTRAS_DESCRIPTION_PREFIX = "lg:";
 
+/** @internal */
 export type ReducedZodChannel<
   T extends InteropZodType,
   TReducerSchema extends InteropZodType
 > = T & {
   lg_reducer_schema: TReducerSchema;
 };
+
+/** @internal */
 export type InteropZodToStateDefinition<
   T extends InteropZodObject,
   TShape = InteropZodObjectShape<T>
@@ -37,6 +40,24 @@ export type InteropZodToStateDefinition<
       : never
     : TShape[key] extends InteropZodType<infer V, infer U>
     ? BaseChannel<V, U>
+    : never;
+};
+
+export type UpdateType<
+  T extends InteropZodObject,
+  TShape = InteropZodObjectShape<T>
+> = {
+  [key in keyof TShape]?: TShape[key] extends ReducedZodChannel<
+    infer Schema,
+    infer ReducerSchema
+  >
+    ? Schema extends InteropZodType<unknown>
+      ? ReducerSchema extends InteropZodType<infer U>
+        ? U
+        : never
+      : never
+    : TShape[key] extends InteropZodType<unknown, infer U>
+    ? U
     : never;
 };
 

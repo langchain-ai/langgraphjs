@@ -89,5 +89,6 @@ export {
 export {
   MessagesAnnotation,
   MessagesZodState,
+  MessagesZodMeta,
 } from "./graph/messages_annotation.js";
 export { type LangGraphRunnableConfig } from "./pregel/runnable_types.js";

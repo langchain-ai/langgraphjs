@@ -244,7 +244,8 @@ function getBranchSequence<StateType extends Record<string, unknown>>(
     }
 
     for (const value of children) {
-      const id = value.checkpoint.checkpoint_id!;
+      const id = value.checkpoint?.checkpoint_id;
+      if (id == null) continue;
 
       let { sequence } = task;
       let { path } = task;
@@ -297,7 +298,10 @@ function getBranchView<StateType extends Record<string, unknown>>(
 
     if (item.type === "node") {
       history.push(item.value);
-      branchByCheckpoint[item.value.checkpoint.checkpoint_id!] = {
+      const checkpointId = item.value.checkpoint?.checkpoint_id;
+      if (checkpointId == null) continue;
+
+      branchByCheckpoint[checkpointId] = {
         branch: item.path.join(PATH_SEP),
         branchOptions: (item.path.length > 0
           ? pathMap[item.path.at(-2) ?? ROOT_ID] ?? []
@@ -312,7 +316,7 @@ function getBranchView<StateType extends Record<string, unknown>>(
           ? item.items.findIndex((value) => {
               const firstItem = value.items.at(0);
               if (!firstItem || firstItem.type !== "node") return false;
-              return firstItem.value.checkpoint.checkpoint_id === forkId;
+              return firstItem.value.checkpoint?.checkpoint_id === forkId;
             })
           : -1;
 
@@ -330,9 +334,10 @@ function fetchHistory<StateType extends Record<string, unknown>>(
   options?: { limit?: boolean | number }
 ) {
   if (options?.limit === false) {
-    return client.threads
-      .getState<StateType>(threadId)
-      .then((state) => [state]);
+    return client.threads.getState<StateType>(threadId).then((state) => {
+      if (state.checkpoint == null) return [];
+      return [state];
+    });
   }
 
   const limit = typeof options?.limit === "number" ? options.limit : 1000;
@@ -896,6 +901,7 @@ export function useStream<
   clearCallbackRef.current = () => {
     setStreamError(undefined);
     setStreamValues(null);
+    messageManagerRef.current.clear();
   };
 
   const historyLimit =
@@ -960,9 +966,11 @@ export function useStream<
           | ThreadState<StateType>
           | undefined;
 
-        let branch = firstSeen
-          ? branchByCheckpoint[firstSeen.checkpoint.checkpoint_id!]
-          : undefined;
+        const checkpointId = firstSeen?.checkpoint?.checkpoint_id;
+        let branch =
+          firstSeen && checkpointId != null
+            ? branchByCheckpoint[checkpointId]
+            : undefined;
 
         if (!branch?.branch?.length) branch = undefined;
 
@@ -1040,8 +1048,13 @@ export function useStream<
           }
           setStreamValues(data);
         }
-        if (event === "messages") {
-          const [serialized] = data;
+        if (
+          event === "messages" ||
+          // if `streamSubgraphs: true`, then we also want
+          // to also receive messages from subgraphs
+          event.startsWith("messages|")
+        ) {
+          const [serialized] = data as MessagesTupleStreamEvent["data"];
 
           const messageId = messageManagerRef.current.add(serialized);
           if (!messageId) {
@@ -1091,9 +1104,6 @@ export function useStream<
       }
     } finally {
       setIsLoading(false);
-
-      // Assumption: messages are already handled, we can clear the manager
-      messageManagerRef.current.clear();
       submittingRef.current = false;
       abortRef.current = null;
     }

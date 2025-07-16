@@ -47,7 +47,16 @@ const agent = new StateGraph(MessagesAnnotation)
   .addEdge(START, "agent")
   .compile();
 
-const app = createEmbedServer({ graph: { agent }, checkpointer, threads });
+const parentAgent = new StateGraph(MessagesAnnotation)
+  .addNode("agent", agent, { subgraphs: [agent] })
+  .addEdge(START, "agent")
+  .compile();
+
+const app = createEmbedServer({
+  graph: { agent, parentAgent },
+  checkpointer,
+  threads,
+});
 const server = setupServer(http.all("*", (ctx) => app.fetch(ctx.request)));
 
 function TestChatComponent() {
@@ -751,6 +760,67 @@ describe("useStream", () => {
     await waitFor(() => {
       expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
       expect(screen.getByTestId("message-1")).toHaveTextContent("Hey");
+    });
+  });
+
+  it("streamSubgraphs: true and messages-tuple", async () => {
+    const user = userEvent.setup();
+
+    function TestComponent() {
+      const { submit, messages } = useStream({
+        assistantId: "parentAgent",
+        apiKey: "test-api-key",
+      });
+
+      return (
+        <div>
+          <div data-testid="messages">
+            {messages.map((msg, i) => (
+              <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              submit(
+                { messages: [{ content: "Hello", type: "human" }] },
+                { streamSubgraphs: true }
+              )
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    }
+
+    render(<TestComponent />);
+
+    await user.click(screen.getByTestId("submit"));
+
+    // Make sure that we're properly streaming the tokens from subgraphs
+    await waitFor(() => {
+      expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+      expect(screen.getByTestId("message-1").textContent).toBe("H");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+      expect(screen.getByTestId("message-1").textContent).toBe("He");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+      expect(screen.getByTestId("message-1").textContent).toBe("Hey");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+      expect(screen.getByTestId("message-1").textContent).toBe("Hey");
     });
   });
 });

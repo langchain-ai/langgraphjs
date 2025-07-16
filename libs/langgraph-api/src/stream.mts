@@ -271,7 +271,11 @@ export async function* streamState(
 
       if (mode === "messages") {
         if (userStreamMode.includes("messages-tuple")) {
-          yield { event: "messages", data };
+          if (kwargs.subgraphs && ns?.length) {
+            yield { event: `messages|${ns.join("|")}`, data };
+          } else {
+            yield { event: "messages", data };
+          }
         }
       } else if (userStreamMode.includes(mode)) {
         if (kwargs.subgraphs && ns?.length) {

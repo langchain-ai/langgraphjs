@@ -301,22 +301,32 @@ export class PregelLoop {
   get isResuming() {
     const hasChannelVersions =
       Object.keys(this.checkpoint.channel_versions).length !== 0;
+
     const configHasResumingFlag =
       this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined;
     const configIsResuming =
       configHasResumingFlag && this.config.configurable?.[CONFIG_KEY_RESUMING];
+
     const inputIsNullOrUndefined =
       this.input === null || this.input === undefined;
     const inputIsCommandResuming =
       isCommand(this.input) && this.input.resume != null;
     const inputIsResuming = this.input === INPUT_RESUMING;
 
+    const runIdMatchesPrevious =
+      !this.isNested &&
+      this.config.metadata?.run_id !== undefined &&
+      (this.checkpointMetadata as { run_id?: unknown })?.run_id !== undefined &&
+      this.config.metadata.run_id ===
+        (this.checkpointMetadata as { run_id?: unknown })?.run_id;
+
     return (
       hasChannelVersions &&
       (configIsResuming ||
         inputIsNullOrUndefined ||
         inputIsCommandResuming ||
-        inputIsResuming)
+        inputIsResuming ||
+        runIdMatchesPrevious)
     );
   }
 

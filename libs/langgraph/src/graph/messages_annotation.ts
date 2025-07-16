@@ -1,10 +1,10 @@
 /* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
 
 import { BaseMessage } from "@langchain/core/messages";
-import { z } from "zod";
+import { z } from "zod/v3";
 import { Annotation } from "./annotation.js";
 import { Messages, messagesStateReducer } from "./message.js";
-import { withLangGraph } from "./zod/meta.js";
+import { SchemaMeta, withLangGraph } from "./zod/meta.js";
 
 /**
  * Prebuilt state annotation that combines returned messages.
@@ -49,6 +49,25 @@ export const MessagesAnnotation = Annotation.Root({
 });
 
 /**
+ * Prebuilt schema meta for Zod state definition.
+ *
+ * @example
+ * ```ts
+ * import { z } from "zod/v4-mini";
+ * import { MessagesZodState, StateGraph } from "@langchain/langgraph";
+ *
+ * const AgentState = z.object({
+ *   messages: z.custom<BaseMessage[]>().register(registry, MessagesZodMeta),
+ * });
+ * ```
+ */
+export const MessagesZodMeta: SchemaMeta<BaseMessage[], Messages> = {
+  reducer: { fn: messagesStateReducer },
+  jsonSchemaExtra: { langgraph_type: "messages" },
+  default: () => [],
+};
+
+/**
  * Prebuilt state object that uses Zod to combine returned messages.
  * This utility is synonymous with the `MessagesAnnotation` annotation,
  * but uses Zod as the way to express messages state.
@@ -88,14 +107,5 @@ export const MessagesAnnotation = Annotation.Root({
  * ```
  */
 export const MessagesZodState = z.object({
-  messages: withLangGraph(z.custom<BaseMessage[]>(), {
-    reducer: {
-      schema: z.custom<Messages>(),
-      fn: messagesStateReducer,
-    },
-    jsonSchemaExtra: {
-      langgraph_type: "messages",
-    },
-    default: () => [],
-  }),
+  messages: withLangGraph(z.custom<BaseMessage[]>(), MessagesZodMeta),
 });

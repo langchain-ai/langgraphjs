@@ -1,5 +1,23 @@
 # @langchain/langgraph-api
 
+## 0.0.47
+
+### Patch Changes
+
+- 39cc88f: Fix apply namespace to messages-tuple stream mode
+- c1ddda1: Embed methods for obtaining state should use `getGraph(...)`
+- Updated dependencies [39cc88f]
+- Updated dependencies [c1ddda1]
+  - @langchain/langgraph-ui@0.0.47
+
+## 0.0.46
+
+### Patch Changes
+
+- d172de3: Fix apply namespace to messages-tuple stream mode
+- Updated dependencies [d172de3]
+  - @langchain/langgraph-ui@0.0.46
+
 ## 0.0.45
 
 ### Patch Changes
