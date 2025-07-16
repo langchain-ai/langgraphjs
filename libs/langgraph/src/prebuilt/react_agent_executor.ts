@@ -57,11 +57,13 @@ export interface AgentState<
 
 export type N = typeof START | "agent" | "tools";
 
-export type StructuredResponseSchemaAndPrompt<StructuredResponseType> = {
-  prompt: string;
+type StructuredResponseSchemaOptions<StructuredResponseType> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schema: InteropZodType<StructuredResponseType> | Record<string, any>;
-  strict?:true
+  prompt?: string;
+
+  strict?: boolean;
+  [key: string]: unknown;
 };
 
 function _convertMessageModifierToPrompt(
@@ -525,14 +527,15 @@ export type CreateReactAgentParams<
    */
   responseFormat?:
     | InteropZodType<StructuredResponseType>
-    | StructuredResponseSchemaAndPrompt<StructuredResponseType>
-    | { schema: InteropZodType<StructuredResponseType> | Record<string, any>; strict?: boolean }
+    | StructuredResponseSchemaOptions<StructuredResponseType>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     | Record<string, any>;
+
   /**
    * An optional name for the agent.
    */
   name?: string;
+
   /**
    * Use to specify how to expose the agent name to the underlying supervisor LLM.
 
@@ -714,23 +717,18 @@ export function createReactAgent<
     const messages = [...state.messages];
     let modelWithStructuredOutput;
 
-    if (
-      typeof responseFormat === "object" &&
-      "prompt" in responseFormat &&
-      "schema" in responseFormat 
-    ) {
-      const { prompt, schema,strict } = responseFormat;
-      
-      modelWithStructuredOutput = (await _getModel(llm)).withStructuredOutput(
-        schema,
-        strict ? {strict:true} : undefined
-      );
-      messages.unshift(new SystemMessage({ content: prompt }));
-    } 
-    else {
-      modelWithStructuredOutput = (await _getModel(llm)).withStructuredOutput(
-        responseFormat
-      );
+    const model = await _getModel(llm);
+
+    if (typeof responseFormat === "object" && "schema" in responseFormat) {
+      const { prompt, schema, ...options } =
+        responseFormat as StructuredResponseSchemaOptions<StructuredResponseFormat>;
+
+      modelWithStructuredOutput = model.withStructuredOutput(schema, options);
+      if (prompt != null) {
+        messages.unshift(new SystemMessage({ content: prompt }));
+      }
+    } else {
+      modelWithStructuredOutput = model.withStructuredOutput(responseFormat);
     }
 
     const response = await modelWithStructuredOutput.invoke(messages, config);
@@ -756,7 +754,8 @@ export function createReactAgent<
     return { messages: [response] };
   };
 
-  const schema =stateSchema ?? createReactAgentAnnotation<StructuredResponseFormat>();
+  const schema =
+    stateSchema ?? createReactAgentAnnotation<StructuredResponseFormat>();
 
   const workflow = new StateGraph(schema).addNode("tools", toolNode);
 
