@@ -22,7 +22,10 @@ import {
   type RunnableLike,
 } from "@langchain/core/runnables";
 import { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
-import { InteropZodType } from "@langchain/core/utils/types";
+import type {
+  InteropZodObject,
+  InteropZodType,
+} from "@langchain/core/utils/types";
 import {
   All,
   BaseCheckpointSaver,
@@ -41,6 +44,7 @@ import { Annotation } from "../graph/annotation.js";
 import { Messages, messagesStateReducer } from "../graph/message.js";
 import { END, START } from "../constants.js";
 import { withAgentName } from "./agentName.js";
+import type { InteropZodToStateDefinition } from "../graph/zod/meta.js";
 
 export interface AgentState<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -460,9 +464,18 @@ const PreHookAnnotation = Annotation.Root({
 
 type PreHookAnnotation = typeof PreHookAnnotation;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyAnnotationRoot = AnnotationRoot<any>;
+
+type ToAnnotationRoot<A extends AnyAnnotationRoot | InteropZodObject> =
+  A extends AnyAnnotationRoot
+    ? A
+    : A extends InteropZodObject
+    ? AnnotationRoot<InteropZodToStateDefinition<A>>
+    : never;
+
 export type CreateReactAgentParams<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  A extends AnnotationRoot<any> = AnnotationRoot<any>,
+  A extends AnyAnnotationRoot | InteropZodObject = AnyAnnotationRoot,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   StructuredResponseType = Record<string, any>
 > = {
@@ -550,8 +563,8 @@ export type CreateReactAgentParams<
    * Useful for managing long message histories (e.g., message trimming, summarization, etc.).
    */
   preModelHook?: RunnableLike<
-    A["State"] & PreHookAnnotation["State"],
-    A["Update"] & PreHookAnnotation["Update"],
+    ToAnnotationRoot<A>["State"] & PreHookAnnotation["State"],
+    ToAnnotationRoot<A>["Update"] & PreHookAnnotation["Update"],
     LangGraphRunnableConfig
   >;
 
@@ -560,8 +573,8 @@ export type CreateReactAgentParams<
    * Useful for implementing human-in-the-loop, guardrails, validation, or other post-processing.
    */
   postModelHook?: RunnableLike<
-    A["State"],
-    A["Update"],
+    ToAnnotationRoot<A>["State"],
+    ToAnnotationRoot<A>["Update"],
     LangGraphRunnableConfig
   >;
 };
@@ -608,24 +621,22 @@ export type CreateReactAgentParams<
  * // Returns the messages in the state at each step of execution
  * ```
  */
-
 export function createReactAgent<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/ban-types
-  A extends AnnotationRoot<any> = typeof MessagesAnnotation,
+  A extends AnyAnnotationRoot | InteropZodObject = typeof MessagesAnnotation,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   StructuredResponseFormat extends Record<string, any> = Record<string, any>
 >(
   params: CreateReactAgentParams<A, StructuredResponseFormat>
 ): CompiledStateGraph<
-  A["State"],
-  A["Update"],
+  ToAnnotationRoot<A>["State"],
+  ToAnnotationRoot<A>["Update"],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any,
-  typeof MessagesAnnotation.spec & A["spec"],
+  typeof MessagesAnnotation.spec & ToAnnotationRoot<A>["spec"],
   ReturnType<
     typeof createReactAgentAnnotation<StructuredResponseFormat>
   >["spec"] &
-    A["spec"]
+    ToAnnotationRoot<A>["spec"]
 > {
   const {
     llm,
@@ -757,7 +768,10 @@ export function createReactAgent<
   const schema =
     stateSchema ?? createReactAgentAnnotation<StructuredResponseFormat>();
 
-  const workflow = new StateGraph(schema).addNode("tools", toolNode);
+  const workflow = new StateGraph(schema as AnyAnnotationRoot).addNode(
+    "tools",
+    toolNode
+  );
 
   const allNodeWorkflows = workflow as WithStateGraphNodes<
     | "pre_model_hook"
@@ -774,7 +788,7 @@ export function createReactAgent<
   };
 
   let entrypoint: "agent" | "pre_model_hook" = "agent";
-  let inputSchema: AnnotationRoot<(typeof schema)["spec"]> | undefined;
+  let inputSchema: AnnotationRoot<ToAnnotationRoot<A>["spec"]> | undefined;
   if (preModelHook != null) {
     allNodeWorkflows
       .addNode("pre_model_hook", preModelHook)
@@ -782,7 +796,7 @@ export function createReactAgent<
     entrypoint = "pre_model_hook";
 
     inputSchema = Annotation.Root({
-      ...schema.spec,
+      ...workflow._schemaDefinition,
       ...PreHookAnnotation.spec,
     });
   } else {
@@ -799,7 +813,7 @@ export function createReactAgent<
       .addEdge("agent", "post_model_hook")
       .addConditionalEdges(
         "post_model_hook",
-        (state) => {
+        (state: AgentState<StructuredResponseFormat>) => {
           const { messages } = state;
           const lastMessage = messages[messages.length - 1];
 
@@ -830,7 +844,7 @@ export function createReactAgent<
   if (postModelHook == null) {
     allNodeWorkflows.addConditionalEdges(
       "agent",
-      (state) => {
+      (state: AgentState<StructuredResponseFormat>) => {
         const { messages } = state;
         const lastMessage = messages[messages.length - 1];
 
@@ -855,7 +869,7 @@ export function createReactAgent<
   if (shouldReturnDirect.size > 0) {
     allNodeWorkflows.addConditionalEdges(
       "tools",
-      (state) => {
+      (state: AgentState<StructuredResponseFormat>) => {
         // Check the last consecutive tool calls
         for (let i = state.messages.length - 1; i >= 0; i -= 1) {
           const message = state.messages[i];

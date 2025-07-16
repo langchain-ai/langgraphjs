@@ -12,7 +12,8 @@ import {
   SystemMessage,
   ToolMessage,
 } from "@langchain/core/messages";
-import { z } from "zod";
+import { z } from "zod/v3";
+import { z as z4 } from "zod/v4";
 import {
   Runnable,
   RunnableLambda,
@@ -49,9 +50,12 @@ import {
 } from "../index.js";
 import {
   MessagesAnnotation,
+  MessagesZodMeta,
   MessagesZodState,
 } from "../graph/messages_annotation.js";
 import { gatherIterator } from "../utils.js";
+import { withLangGraph } from "../graph/zod/meta.js";
+import { registry } from "../graph/zod/zod-registry.js";
 
 // Tracing slows down the tests
 beforeAll(() => {
@@ -252,20 +256,54 @@ describe("createReactAgent with prompt/state modifier", () => {
     const agent = createReactAgent({
       llm,
       tools: [
-        tool(
-          async () =>
-            new Command({
-              update: {
-                foo: "baz",
-              },
-            }),
-          {
-            name: "test",
-            schema: z.object({}),
-          }
-        ),
+        tool(async () => new Command({ update: { foo: "baz" } }), {
+          name: "test",
+          schema: z.object({}),
+        }),
       ],
       stateSchema: StateAnnotation,
+    });
+
+    const result = await agent.invoke({
+      messages: [],
+      foo: "bar",
+    });
+    const expected = [
+      new _AnyIdAIMessage({
+        content: "result1",
+        tool_calls: [{ id: "test1234", args: {}, name: "test" }],
+      }),
+      new _AnyIdAIMessage("result2"),
+    ];
+    expect(result.messages).toEqual(expected);
+    expect(result.foo).toEqual("baz");
+  });
+
+  it("Allows custom Zod 4 state schema", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [
+        new AIMessage({
+          content: "result1",
+          tool_calls: [{ id: "test1234", args: {}, name: "test" }],
+        }),
+        new AIMessage("result2"),
+      ],
+    });
+
+    const agent = createReactAgent({
+      llm,
+      tools: [
+        tool(async () => new Command({ update: { foo: "baz" } }), {
+          name: "test",
+          schema: z.object({}),
+        }),
+      ],
+      stateSchema: z4.object({
+        messages: z4
+          .custom<BaseMessage[]>()
+          .register(registry, MessagesZodMeta),
+        foo: z4.string(),
+      }),
     });
 
     const result = await agent.invoke({
@@ -1111,6 +1149,98 @@ describe("createReactAgent with hooks", () => {
           new AIMessage({ id: "0", content: "Hello!" }),
         ],
       }
+    );
+  });
+
+  it("preModelHook + Zod 3 + postModelHook", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [new AIMessage({ id: "0", content: "Hello!" })],
+    });
+
+    const llmSpy = vi.spyOn(llm, "_generate");
+
+    const agent = createReactAgent({
+      llm,
+      tools: [],
+      preModelHook: () => ({
+        llmInputMessages: [
+          new HumanMessage({ id: "human", content: "pre-hook" }),
+        ],
+      }),
+      stateSchema: z.object({
+        messages: withLangGraph(z.custom<BaseMessage[]>(), MessagesZodMeta),
+        flag: withLangGraph(z.boolean(), {
+          reducer: {
+            fn: (a, b) => [a, ...b].reduce((acc, curr) => acc || curr, false),
+            schema: z.array(z.boolean()),
+          },
+          default: () => false,
+        }),
+      }),
+      postModelHook: () => ({ flag: [false, false, true] }),
+    });
+
+    expect(await agent.invoke({ messages: [new HumanMessage("hi?")] })).toEqual(
+      {
+        messages: [
+          new _AnyIdHumanMessage("hi?"),
+          new AIMessage({ id: "0", content: "Hello!" }),
+        ],
+        flag: true,
+      }
+    );
+
+    expect(llmSpy).toHaveBeenCalledWith(
+      [new HumanMessage({ id: "human", content: "pre-hook" })],
+      expect.anything(),
+      undefined
+    );
+  });
+
+  it("preModelHook + Zod 4 + postModelHook", async () => {
+    const llm = new FakeToolCallingChatModel({
+      responses: [new AIMessage({ id: "0", content: "Hello!" })],
+    });
+
+    const llmSpy = vi.spyOn(llm, "_generate");
+
+    const agent = createReactAgent({
+      llm,
+      tools: [],
+      preModelHook: () => ({
+        llmInputMessages: [
+          new HumanMessage({ id: "human", content: "pre-hook" }),
+        ],
+      }),
+      stateSchema: z4.object({
+        messages: z4
+          .custom<BaseMessage[]>()
+          .register(registry, MessagesZodMeta),
+        flag: z4.boolean().register(registry, {
+          reducer: {
+            fn: (a, b) => [a, ...b].reduce((acc, curr) => acc || curr, false),
+            schema: z.array(z.boolean()),
+          },
+          default: () => false,
+        }),
+      }),
+      postModelHook: () => ({ flag: [false, false, true] }),
+    });
+
+    expect(await agent.invoke({ messages: [new HumanMessage("hi?")] })).toEqual(
+      {
+        messages: [
+          new _AnyIdHumanMessage("hi?"),
+          new AIMessage({ id: "0", content: "Hello!" }),
+        ],
+        flag: true,
+      }
+    );
+
+    expect(llmSpy).toHaveBeenCalledWith(
+      [new HumanMessage({ id: "human", content: "pre-hook" })],
+      expect.anything(),
+      undefined
     );
   });
 
