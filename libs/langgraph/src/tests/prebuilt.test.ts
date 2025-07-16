@@ -279,6 +279,43 @@ describe("createReactAgent with prompt/state modifier", () => {
     expect(result.foo).toEqual("baz");
   });
 
+  it("Throws if messages is not in state schema", async () => {
+    const llm = new FakeToolCallingChatModel({});
+
+    // Annotation
+    expect
+      .soft(() =>
+        createReactAgent({
+          llm,
+          tools: [],
+          stateSchema: Annotation.Root({ flag: Annotation<boolean> }),
+        })
+      )
+      .toThrowError("Missing required `messages` key in state schema.");
+
+    // Zod 3
+    expect
+      .soft(() =>
+        createReactAgent({
+          llm,
+          tools: [],
+          stateSchema: z.object({ flag: z.boolean() }),
+        })
+      )
+      .toThrowError("Missing required `messages` key in state schema.");
+
+    // Zod 4
+    expect
+      .soft(() =>
+        createReactAgent({
+          llm,
+          tools: [],
+          stateSchema: z4.object({ flag: z4.boolean() }),
+        })
+      )
+      .toThrowError("Missing required `messages` key in state schema.");
+  });
+
   it("Allows custom Zod 4 state schema", async () => {
     const llm = new FakeToolCallingChatModel({
       responses: [

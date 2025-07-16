@@ -773,6 +773,10 @@ export function createReactAgent<
     toolNode
   );
 
+  if (!("messages" in workflow._schemaDefinition)) {
+    throw new Error("Missing required `messages` key in state schema.");
+  }
+
   const allNodeWorkflows = workflow as WithStateGraphNodes<
     | "pre_model_hook"
     | "post_model_hook"
