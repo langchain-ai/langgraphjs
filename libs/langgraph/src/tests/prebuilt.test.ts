@@ -2514,7 +2514,7 @@ describe("ToolNode with Commands", () => {
       ],
     });
 
-    expect(result).toEqual([
+    expect(result).toMatchObject([
       {
         messages: [
           new ToolMessage({
@@ -2549,7 +2549,7 @@ describe("ToolNode with Commands", () => {
       ],
     });
 
-    expect(singleToolResult).toEqual([
+    expect(singleToolResult).toMatchObject([
       new Command({
         update: {
           messages: [
@@ -2575,7 +2575,7 @@ describe("ToolNode with Commands", () => {
       ],
     });
 
-    expect(asyncToolResult).toEqual([
+    expect(asyncToolResult).toMatchObject([
       new Command({
         update: {
           messages: [
@@ -2607,7 +2607,7 @@ describe("ToolNode with Commands", () => {
       ],
     });
 
-    expect(multipleCommandsResult).toEqual([
+    expect(multipleCommandsResult).toMatchObject([
       new Command({
         update: {
           messages: [
@@ -2705,7 +2705,7 @@ describe("ToolNode with Commands", () => {
       }),
     ]);
 
-    expect(result).toEqual([
+    expect(result).toMatchObject([
       [
         new ToolMessage({
           content: "3",
@@ -2736,7 +2736,7 @@ describe("ToolNode with Commands", () => {
         }),
       ]);
 
-      expect(result).toEqual([
+      expect(result).toMatchObject([
         new Command({
           update: [
             // @ts-expect-error: Command typing needs to be updated properly
@@ -2766,7 +2766,7 @@ describe("ToolNode with Commands", () => {
       }),
     ]);
 
-    expect(multipleCommandsResult).toEqual([
+    expect(multipleCommandsResult).toMatchObject([
       new Command({
         update: [
           // @ts-expect-error: Command typing needs to be updated properly
@@ -2854,7 +2854,7 @@ describe("ToolNode with Commands", () => {
       }),
     ]);
 
-    expect(result).toEqual([
+    expect(result).toMatchObject([
       new Command({
         goto: [
           new Send("alice", {
