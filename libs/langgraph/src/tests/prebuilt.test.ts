@@ -13,7 +13,7 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { z } from "zod/v3";
-import { boolean, z as z4 } from "zod/v4";
+import { z as z4 } from "zod/v4";
 import {
   Runnable,
   RunnableLambda,
