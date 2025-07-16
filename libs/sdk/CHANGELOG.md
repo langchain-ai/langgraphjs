@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 0.0.96
+
+### Patch Changes
+
+- 53b8c30: fix(sdk): `runs.join()` returns the thread values
+
 ## 0.0.95
 
 ### Patch Changes

@@ -1,5 +1,18 @@
 # @langchain/langgraph
 
+## 0.3.9
+
+### Patch Changes
+
+- 430ae93: feat(langgraph): validate if messages present in user provided schema
+- 4aed3f4: fix(langgraph): dispose unused combined signals
+- 02f9e02: fix(langgraph): preModelHook `llmInputMessages` should not keep concatenating messages
+- 6e616f5: fix(langgraph): respect strict option in responseFormat inside createReactAgent
+- 6812b50: feat(langgraph): allow extending state with Zod schema
+- 8166703: add UpdateType type utility for Zod, improve Zod 4 and Zod 4 mini support
+- Updated dependencies [53b8c30]
+  - @langchain/langgraph-sdk@0.0.96
+
 ## 0.3.8
 
 ### Patch Changes
