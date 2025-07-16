@@ -1096,7 +1096,7 @@ describe("createReactAgent with ToolNode", () => {
 });
 
 describe("createReactAgent with hooks", () => {
-  it.only("preModelHook", async () => {
+  it("preModelHook", async () => {
     const llm = new FakeToolCallingChatModel({
       responses: [
         new AIMessage({ id: "0", content: "Hello!" }),
