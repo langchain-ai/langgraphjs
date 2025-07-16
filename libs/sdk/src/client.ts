@@ -1257,8 +1257,8 @@ export class RunsClient<
     threadId: string,
     runId: string,
     options?: { signal?: AbortSignal }
-  ): Promise<void> {
-    return this.fetch<void>(`/threads/${threadId}/runs/${runId}/join`, {
+  ): Promise<TStateType> {
+    return this.fetch<TStateType>(`/threads/${threadId}/runs/${runId}/join`, {
       timeoutMs: null,
       signal: options?.signal,
     });
