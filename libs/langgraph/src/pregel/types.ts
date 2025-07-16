@@ -595,11 +595,6 @@ export type PregelAbortSignals = {
   /**
    * Aborts when the currently executing task throws any error other than a {@link GraphBubbleUp}
    */
-  errorAbortSignal?: AbortSignal;
-
-  /**
-   * Aborts when the currently executing task throws any error other than a {@link GraphBubbleUp}
-   */
   timeoutAbortSignal?: AbortSignal;
 
   /**

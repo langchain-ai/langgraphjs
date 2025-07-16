@@ -1840,9 +1840,8 @@ export class Pregel<
     const config = {
       recursionLimit: this.config?.recursionLimit,
       ...options,
-      signal: options?.signal
-        ? combineAbortSignals(options.signal, abortController.signal)
-        : abortController.signal,
+      signal: combineAbortSignals(options?.signal, abortController.signal)
+        .signal,
     };
 
     return new IterableReadableStreamWithAbortSignal(
@@ -1896,9 +1895,8 @@ export class Pregel<
 
       // extend the callbacks with the ones from the config
       callbacks: combineCallbacks(this.config?.callbacks, options?.callbacks),
-      signal: options?.signal
-        ? combineAbortSignals(options.signal, abortController.signal)
-        : abortController.signal,
+      signal: combineAbortSignals(options?.signal, abortController.signal)
+        .signal,
     };
 
     return new IterableReadableStreamWithAbortSignal(

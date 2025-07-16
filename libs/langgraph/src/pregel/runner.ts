@@ -111,21 +111,26 @@ export class PregelRunner {
 
     const nodeErrors: Set<Error> = new Set();
     let graphBubbleUp: GraphBubbleUp | undefined;
+
     const exceptionSignalController = new AbortController();
+    const exceptionSignal = exceptionSignalController.signal;
+    const stepTimeoutSignal = timeout
+      ? AbortSignal.timeout(timeout)
+      : undefined;
 
     // Start task execution
     const pendingTasks = Object.values(this.loop.tasks).filter(
       (t) => t.writes.length === 0
     );
 
-    const currentSignals = this._initializeAbortSignals({
-      exceptionSignalController,
-      timeout,
+    const { signals, disposeCombinedSignal } = this._initializeAbortSignals({
+      exceptionSignal,
+      stepTimeoutSignal,
       signal: options.signal,
     });
 
     const taskStream = this._executeTasksWithRetry(pendingTasks, {
-      signals: currentSignals,
+      signals,
       retryPolicy,
       maxConcurrency,
     });
@@ -155,6 +160,8 @@ export class PregelRunner {
         nodeErrors.add(error);
       }
     }
+
+    disposeCombinedSignal?.();
 
     onStepWrite?.(
       this.loop.step,
@@ -195,65 +202,44 @@ export class PregelRunner {
    * @internal
    */
   private _initializeAbortSignals({
-    exceptionSignalController,
-    timeout,
+    exceptionSignal,
+    stepTimeoutSignal,
     signal,
   }: {
-    exceptionSignalController: AbortController;
-    timeout?: number;
+    exceptionSignal: AbortSignal;
+    stepTimeoutSignal?: AbortSignal;
     signal?: AbortSignal;
-  }): PregelAbortSignals {
-    const previousSignals: PregelAbortSignals =
-      (this.loop.config.configurable?.[
-        CONFIG_KEY_ABORT_SIGNALS
-      ] as PregelAbortSignals) ?? {};
+  }): { signals: PregelAbortSignals; disposeCombinedSignal?: () => void } {
+    const previousSignals = (this.loop.config.configurable?.[
+      CONFIG_KEY_ABORT_SIGNALS
+    ] ?? {}) as PregelAbortSignals;
 
-    // This is true when a node calls a subgraph and, rather than forwarding its own AbortSignal,
-    // it creates a new AbortSignal and passes that along instead.
-    const subgraphCalledWithSignalCreatedByNode =
-      signal &&
-      previousSignals.composedAbortSignal &&
-      signal !== previousSignals.composedAbortSignal;
+    // We always inherit the external abort signal from AsyncLocalStorage,
+    // since that's the only way the signal is inherited by the subgraph calls.
+    const externalAbortSignal = previousSignals.externalAbortSignal ?? signal;
 
-    const externalAbortSignal = subgraphCalledWithSignalCreatedByNode
-      ? // Chain the signals here to make sure that the subgraph receives the external abort signal in
-        // addition to the signal created by the node.
-        combineAbortSignals(previousSignals.externalAbortSignal!, signal!)
-      : // Otherwise, just keep using the external abort signal, or initialize it if it hasn't been
-        // assigned yet
-        previousSignals.externalAbortSignal ?? signal;
+    // inherit the step timeout signal from parent graph
+    const timeoutAbortSignal =
+      stepTimeoutSignal ?? previousSignals.timeoutAbortSignal;
 
-    const errorAbortSignal = previousSignals.errorAbortSignal
-      ? // Chaining here rather than always using a fresh one handles the case where a subgraph is
-        // called in a parallel branch to some other node in the parent graph.
-        combineAbortSignals(
-          previousSignals.errorAbortSignal!,
-          exceptionSignalController.signal
-        )
-      : exceptionSignalController.signal;
+    const { signal: composedAbortSignal, dispose: disposeCombinedSignal } =
+      combineAbortSignals(
+        externalAbortSignal,
+        timeoutAbortSignal,
+        exceptionSignal
+      );
 
-    const timeoutAbortSignal = timeout
-      ? AbortSignal.timeout(timeout)
-      : undefined;
-
-    const composedAbortSignal: AbortSignal = combineAbortSignals(
-      ...(externalAbortSignal ? [externalAbortSignal] : []),
-      ...(timeoutAbortSignal ? [timeoutAbortSignal] : []),
-      errorAbortSignal
-    );
-
-    const currentSignals: PregelAbortSignals = {
+    const signals: PregelAbortSignals = {
       externalAbortSignal,
-      errorAbortSignal,
       timeoutAbortSignal,
       composedAbortSignal,
     };
 
     this.loop.config = patchConfigurable(this.loop.config, {
-      [CONFIG_KEY_ABORT_SIGNALS]: currentSignals,
+      [CONFIG_KEY_ABORT_SIGNALS]: signals,
     });
 
-    return currentSignals;
+    return { signals, disposeCombinedSignal };
   }
 
   /**
@@ -300,21 +286,16 @@ export class PregelRunner {
 
     let startedTasksCount = 0;
 
-    let listener: () => void;
-    const timeoutOrCancelSignal =
-      signals?.externalAbortSignal || signals?.timeoutAbortSignal
-        ? combineAbortSignals(
-            ...(signals.externalAbortSignal
-              ? [signals.externalAbortSignal]
-              : []),
-            ...(signals.timeoutAbortSignal ? [signals.timeoutAbortSignal] : [])
-          )
-        : undefined;
+    let listener: (() => void) | undefined;
+    const timeoutOrCancelSignal = combineAbortSignals(
+      signals?.externalAbortSignal,
+      signals?.timeoutAbortSignal
+    );
 
-    const abortPromise = timeoutOrCancelSignal
+    const abortPromise = timeoutOrCancelSignal.signal
       ? new Promise<never>((_resolve, reject) => {
           listener = () => reject(new Error("Abort"));
-          timeoutOrCancelSignal.addEventListener("abort", listener, {
+          timeoutOrCancelSignal.signal?.addEventListener("abort", listener, {
             once: true,
           });
         })
@@ -357,6 +338,12 @@ export class PregelRunner {
       }
 
       yield settledTask as SettledPregelTask;
+
+      if (listener != null) {
+        timeoutOrCancelSignal.signal?.removeEventListener("abort", listener);
+        timeoutOrCancelSignal.dispose?.();
+      }
+
       delete executingTasksMap[(settledTask as SettledPregelTask).task.id];
     }
   }
