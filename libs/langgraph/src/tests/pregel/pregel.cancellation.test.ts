@@ -3,7 +3,6 @@ import { v4 as uuidv4 } from "uuid";
 import {
   Annotation,
   Command,
-  CompiledStateGraph,
   END,
   LangGraphRunnableConfig,
   MemorySaver,
@@ -64,82 +63,63 @@ describe("Pregel AbortSignal", () => {
     }),
   });
 
+  function getKey(config: LangGraphRunnableConfig) {
+    return config.configurable?.invokeId ?? "undefined";
+  }
+
   function createGraph({
     mode,
     checkSignal,
   }: {
     mode: TestMode;
     checkSignal: boolean;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  }): CompiledStateGraph<
-    typeof StateAnnotation.State,
-    typeof StateAnnotation.Update,
-    string,
-    typeof StateAnnotation.spec,
-    typeof StateAnnotation.spec
-  > {
+  }) {
     const graph = new StateGraph(StateAnnotation)
-      .addNode(
-        "one",
-        async (
-          _: typeof StateAnnotation.State,
-          config: LangGraphRunnableConfig
-        ) => {
-          oneCount += 1;
-          if (checkSignal) {
-            const { signal } = config;
-            expect(signal).toBeDefined();
-            return new Promise((resolve, reject) => {
-              const listener = () => {
-                oneRejected = true;
-                reject(new Error("Aborted"));
-              };
+      .addNode("one", async (_, config) => {
+        const key = getKey(config);
 
-              signal!.addEventListener("abort", listener, { once: true });
-              setTimeout(() => {
-                if (!signal!.aborted) {
-                  signal!.removeEventListener("abort", listener);
-                  oneResolved = true;
-                  resolve({
-                    nodeLog: {
-                      [config.configurable!.invokeId]: new Set(["one"]),
-                    },
-                  });
-                }
-              }, 50);
-            });
-          } else {
-            await new Promise((resolve) => {
-              oneResolved = true;
-              setTimeout(resolve, 50);
-            });
-            return {
-              nodeLog: {
-                [config.configurable!.invokeId]: new Set(["one"]),
-              },
+        oneCount += 1;
+
+        if (checkSignal) {
+          const { signal } = config;
+          expect(signal).toBeDefined();
+          return new Promise((resolve, reject) => {
+            const listener = () => {
+              oneRejected = true;
+              reject(new Error("Aborted"));
             };
-          }
+
+            signal!.addEventListener("abort", listener, { once: true });
+            setTimeout(() => {
+              if (!signal!.aborted) {
+                signal!.removeEventListener("abort", listener);
+                oneResolved = true;
+
+                resolve({ nodeLog: { [key]: new Set(["one"]) } });
+              }
+            }, 50);
+          });
         }
-      )
-      .addNode(
-        "two",
-        (
-          state: typeof StateAnnotation.State,
-          config: LangGraphRunnableConfig
-        ) => {
-          twoCount += 1;
-          if (state.shouldThrow) {
-            twoRejected = true;
-            throw new Error("Should not be called!");
-          }
-          twoResolved = true;
-          return {
-            nodeLog: {
-              [config.configurable!.invokeId]: new Set(["two"]),
-            },
-          };
+
+        await new Promise((resolve) => {
+          oneResolved = true;
+          setTimeout(resolve, 50);
+        });
+
+        return { nodeLog: { [key]: new Set(["one"]) } };
+      })
+      .addNode("two", (state, config) => {
+        const key = getKey(config);
+
+        twoCount += 1;
+        if (state.shouldThrow) {
+          twoRejected = true;
+          throw new Error("Should not be called!");
         }
-      )
+
+        twoResolved = true;
+        return { nodeLog: { [key]: new Set(["two"]) } };
+      })
       .addEdge(START, "one")
       .addEdge("one", "two")
       .addEdge("two", END)
@@ -151,30 +131,19 @@ describe("Pregel AbortSignal", () => {
 
     if (mode === "Subgraph called within node without config") {
       return new StateGraph(StateAnnotation)
-        .addNode(
-          "graph",
-          async (
-            { shouldThrow }: typeof StateAnnotation.State,
-            config: LangGraphRunnableConfig
-          ) => {
-            // IMPORTANT: We're explicitly not passing the config here.
-            const result = await graph.invoke({ shouldThrow });
-            // returning two update commands here to make the reducer do the "heavy lifting" of
-            // combining the subgraph result with the parent graph result.
-            return [
-              new Command({
-                update: {
-                  nodeLog: {
-                    [config.configurable!.invokeId]: new Set(["graph"]),
-                  },
-                },
-              }),
-              new Command({
-                update: result,
-              }),
-            ];
-          }
-        )
+        .addNode("graph", async ({ shouldThrow }, config) => {
+          const key = getKey(config);
+
+          // IMPORTANT: We're explicitly not passing the config here.
+          const result = await graph.invoke({ shouldThrow });
+          // returning two update commands here to make the reducer do the "heavy lifting" of
+          // combining the subgraph result with the parent graph result.
+
+          return [
+            new Command({ update: { nodeLog: { [key]: new Set(["graph"]) } } }),
+            new Command({ update: result }),
+          ];
+        })
         .addEdge(START, "graph")
         .addEdge("graph", END)
         .compile({ checkpointer });
@@ -182,30 +151,18 @@ describe("Pregel AbortSignal", () => {
 
     if (mode === "Subgraph called within node with config") {
       return new StateGraph(StateAnnotation)
-        .addNode(
-          "graph",
-          async (
-            { shouldThrow }: typeof StateAnnotation.State,
-            config: LangGraphRunnableConfig
-          ) => {
-            // IMPORTANT: We're explicitly passing the config here, as that's the point of this test case
-            const result = await graph.invoke({ shouldThrow }, config);
-            // returning two update commands here to make the reducer do the "heavy lifting" of
-            // combining the subgraph result with the parent graph result.
-            return [
-              new Command({
-                update: {
-                  nodeLog: {
-                    [config.configurable!.invokeId]: new Set(["graph"]),
-                  },
-                },
-              }),
-              new Command({
-                update: result,
-              }),
-            ];
-          }
-        )
+        .addNode("graph", async ({ shouldThrow }, config) => {
+          const key = getKey(config);
+
+          // IMPORTANT: We're explicitly passing the config here, as that's the point of this test case
+          const result = await graph.invoke({ shouldThrow }, config);
+          // returning two update commands here to make the reducer do the "heavy lifting" of
+          // combining the subgraph result with the parent graph result.
+          return [
+            new Command({ update: { nodeLog: { [key]: new Set(["graph"]) } } }),
+            new Command({ update: result }),
+          ];
+        })
         .addEdge(START, "graph")
         .addEdge("graph", END)
         .compile({ checkpointer });
@@ -233,17 +190,68 @@ describe("Pregel AbortSignal", () => {
       const abortController = new AbortController();
       const config = {
         signal: abortController.signal,
-        configurable: {
-          thread_id: uuidv4(),
-        },
+        configurable: { thread_id: uuidv4() },
       };
 
       setTimeout(() => abortController.abort(), 10);
 
-      await expect(
-        async () =>
-          await createGraph({ mode, checkSignal: false }).invoke({}, config)
+      await expect(() =>
+        createGraph({ mode, checkSignal: false }).invoke({}, config)
       ).rejects.toThrow("Abort");
+
+      // Ensure that the `twoCount` has had time to increment before we check it, in case the stream aborted but the graph execution didn't.
+      await new Promise((resolve) => {
+        setTimeout(resolve, 300);
+      });
+      expect(oneCount).toEqual(1);
+      expect(twoCount).toEqual(0);
+    }
+  );
+
+  it.each([
+    "Single layer graph",
+    "Subgraph called within node without config",
+    "Subgraph called within node with config",
+    "Subgraph called as node",
+  ] as TestMode[])(
+    "%s should cancel when step timeout is triggered",
+    async (mode) => {
+      const graph = createGraph({ mode, checkSignal: false });
+      graph.stepTimeout = 10;
+
+      await expect(() =>
+        graph.invoke({}, { configurable: { thread_id: uuidv4() } })
+      ).rejects.toThrow("Abort");
+
+      // Ensure that the `twoCount` has had time to increment before we check it, in case the stream aborted but the graph execution didn't.
+      await new Promise((resolve) => {
+        setTimeout(resolve, 300);
+      });
+      expect(oneCount).toEqual(1);
+      expect(twoCount).toEqual(0);
+    }
+  );
+
+  it.each([
+    "Single layer graph",
+    "Subgraph called within node without config",
+    "Subgraph called within node with config",
+    "Subgraph called as node",
+  ] as TestMode[])(
+    "%s should cancel when external AbortSignal is aborted while step timeout is set",
+    async (mode) => {
+      const graph = createGraph({ mode, checkSignal: false });
+      graph.stepTimeout = 100;
+
+      const abortController = new AbortController();
+      setTimeout(() => abortController.abort(), 10);
+
+      const config = {
+        configurable: { thread_id: uuidv4() },
+        signal: abortController.signal,
+      };
+
+      await expect(() => graph.invoke({}, config)).rejects.toThrow("Abort");
 
       // Ensure that the `twoCount` has had time to increment before we check it, in case the stream aborted but the graph execution didn't.
       await new Promise((resolve) => {
@@ -262,17 +270,13 @@ describe("Pregel AbortSignal", () => {
   ] as TestMode[])(
     "%s should pass AbortSignal into nodes via config when timeout is provided but no external signal is given",
     async (mode) => {
-      const config = {
-        timeout: 10,
-        configurable: {
-          thread_id: uuidv4(),
-        },
-      };
+      const config = { timeout: 10, configurable: { thread_id: uuidv4() } };
 
-      await expect(
-        async () =>
-          await createGraph({ mode, checkSignal: true }).invoke({}, config)
-      ).rejects.toThrow("Abort");
+      await expect(() => {
+        const graph = createGraph({ mode, checkSignal: true });
+        graph.stepTimeout = 10;
+        return graph.invoke({}, config);
+      }).rejects.toThrow("Abort");
 
       // Ensure that the `twoCount` has had time to increment before we check it, in case the stream aborted but the graph execution didn't.
       await new Promise((resolve) => {
@@ -297,14 +301,11 @@ describe("Pregel AbortSignal", () => {
       const config = {
         signal: abortController.signal,
         timeout: 10,
-        configurable: {
-          thread_id: uuidv4(),
-        },
+        configurable: { thread_id: uuidv4() },
       };
 
-      await expect(
-        async () =>
-          await createGraph({ mode, checkSignal: true }).invoke({}, config)
+      await expect(() =>
+        createGraph({ mode, checkSignal: true }).invoke({}, config)
       ).rejects.toThrow("Abort");
 
       // Ensure that the `twoCount` has had time to increment before we check it, in case the stream aborted but the graph execution didn't.
@@ -337,9 +338,8 @@ describe("Pregel AbortSignal", () => {
 
       setTimeout(() => abortController.abort(), 10);
 
-      await expect(
-        async () =>
-          await createGraph({ mode, checkSignal: true }).invoke({}, config)
+      await expect(() =>
+        createGraph({ mode, checkSignal: true }).invoke({}, config)
       ).rejects.toThrow("Abort");
 
       // Ensure that the `twoCount` has had time to increment before we check it, in case the stream aborted but the graph execution didn't.
@@ -375,13 +375,12 @@ describe("Pregel AbortSignal", () => {
 
       const thread1Execution1Result = await graph.invoke(
         { shouldThrow: false },
-        {
-          configurable: { thread_id: thread1Id, invokeId: "1" },
-        }
+        { configurable: { thread_id: thread1Id, invokeId: "1" } }
       );
 
       expect(oneCount).toEqual(1);
       expect(twoCount).toEqual(1);
+
       expect(oneRejected).toEqual(false);
       expect(oneResolved).toEqual(true);
       expect(twoRejected).toEqual(false);
@@ -394,9 +393,7 @@ describe("Pregel AbortSignal", () => {
 
       const thread1Execution2Result = await graph.invoke(
         { shouldThrow: false },
-        {
-          configurable: { thread_id: thread1Id, invokeId: "2" },
-        }
+        { configurable: { thread_id: thread1Id, invokeId: "2" } }
       );
 
       expect(oneCount).toEqual(2);
@@ -413,9 +410,7 @@ describe("Pregel AbortSignal", () => {
 
       const thread2Execution1Result = await graph.invoke(
         { shouldThrow: false },
-        {
-          configurable: { thread_id: thread2Id, invokeId: "1" },
-        }
+        { configurable: { thread_id: thread2Id, invokeId: "1" } }
       );
 
       expect(oneCount).toEqual(3);
@@ -471,9 +466,7 @@ describe("Pregel AbortSignal", () => {
 
       const thread2Execution2Attempt2Result = await graph.invoke(
         { shouldThrow: false },
-        {
-          configurable: { thread_id: thread2Id, invokeId: "2" },
-        }
+        { configurable: { thread_id: thread2Id, invokeId: "2" } }
       );
 
       expect(oneCount).toEqual(5);

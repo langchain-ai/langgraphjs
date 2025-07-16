@@ -138,32 +138,40 @@ export function patchCheckpointMap(
 /**
  * Combine multiple abort signals into a single abort signal.
  * @param signals - The abort signals to combine.
- * @returns A single abort signal that is aborted if any of the input signals are aborted.
+ * @returns A combined abort signal and a dispose function to remove the abort listener if unused.
  */
-export function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
-  if (signals.length === 1) {
-    return signals[0];
+export function combineAbortSignals(...x: (AbortSignal | undefined)[]): {
+  signal: AbortSignal | undefined;
+  dispose?: () => void;
+} {
+  const signals = [...new Set(x.filter((s) => s !== undefined))];
+
+  if (signals.length === 0) {
+    return { signal: undefined, dispose: undefined };
   }
 
-  // AbortSignal.any() does seem to suffer from memory leaks
-  // @see https://github.com/nodejs/node/issues/55328
-  // if ("any" in AbortSignal) {
-  //   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  //   return (AbortSignal as any).any(signals);
-  // }
+  if (signals.length === 1) {
+    return { signal: signals[0], dispose: undefined };
+  }
+
   const combinedController = new AbortController();
   const listener = () => {
     combinedController.abort();
     signals.forEach((s) => s.removeEventListener("abort", listener));
   };
 
-  signals.forEach((s) => s.addEventListener("abort", listener));
+  signals.forEach((s) => s.addEventListener("abort", listener, { once: true }));
 
   if (signals.some((s) => s.aborted)) {
     combinedController.abort();
   }
 
-  return combinedController.signal;
+  return {
+    signal: combinedController.signal,
+    dispose: () => {
+      signals.forEach((s) => s.removeEventListener("abort", listener));
+    },
+  };
 }
 
 /**
