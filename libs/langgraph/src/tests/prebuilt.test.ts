@@ -1864,19 +1864,30 @@ describe("createReactAgent with structured responses", () => {
       "The weather is nice"
     );
 
-    // Test with prompt and schema
+    // Test with prompt and schema (and options)
     const agent2 = createReactAgent({
       llm,
       tools: [getWeather],
       responseFormat: {
         prompt: "Meow",
         schema: weatherResponseSchema,
+
+        name: "generate_structured_response",
+        strict: true,
       },
     });
+
+    const withStructuredOutputSpy = vi.spyOn(llm, "withStructuredOutput");
 
     const result2 = await agent2.invoke({
       messages: [new HumanMessage("What's the weather?")],
     });
+
+    // Check if `strict` is set properly
+    expect(withStructuredOutputSpy).toHaveBeenCalledWith(
+      weatherResponseSchema,
+      { name: "generate_structured_response", strict: true }
+    );
 
     expect(result2.structuredResponse).toEqual(expectedStructuredResponse);
     expect(result2.messages.length).toEqual(4);

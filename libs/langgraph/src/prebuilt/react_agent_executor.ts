@@ -57,10 +57,13 @@ export interface AgentState<
 
 export type N = typeof START | "agent" | "tools";
 
-export type StructuredResponseSchemaAndPrompt<StructuredResponseType> = {
-  prompt: string;
+type StructuredResponseSchemaOptions<StructuredResponseType> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schema: InteropZodType<StructuredResponseType> | Record<string, any>;
+  prompt?: string;
+
+  strict?: boolean;
+  [key: string]: unknown;
 };
 
 function _convertMessageModifierToPrompt(
@@ -478,6 +481,7 @@ export type CreateReactAgentParams<
    * @deprecated Use prompt instead.
    */
   stateModifier?: StateModifier;
+
   /**
    * An optional prompt for the LLM. This takes full graph state BEFORE the LLM is called and prepares the input to LLM.
    *
@@ -523,13 +527,15 @@ export type CreateReactAgentParams<
    */
   responseFormat?:
     | InteropZodType<StructuredResponseType>
-    | StructuredResponseSchemaAndPrompt<StructuredResponseType>
+    | StructuredResponseSchemaOptions<StructuredResponseType>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     | Record<string, any>;
+
   /**
    * An optional name for the agent.
    */
   name?: string;
+
   /**
    * Use to specify how to expose the agent name to the underlying supervisor LLM.
 
@@ -711,20 +717,18 @@ export function createReactAgent<
     const messages = [...state.messages];
     let modelWithStructuredOutput;
 
-    if (
-      typeof responseFormat === "object" &&
-      "prompt" in responseFormat &&
-      "schema" in responseFormat
-    ) {
-      const { prompt, schema } = responseFormat;
-      modelWithStructuredOutput = (await _getModel(llm)).withStructuredOutput(
-        schema
-      );
-      messages.unshift(new SystemMessage({ content: prompt }));
+    const model = await _getModel(llm);
+
+    if (typeof responseFormat === "object" && "schema" in responseFormat) {
+      const { prompt, schema, ...options } =
+        responseFormat as StructuredResponseSchemaOptions<StructuredResponseFormat>;
+
+      modelWithStructuredOutput = model.withStructuredOutput(schema, options);
+      if (prompt != null) {
+        messages.unshift(new SystemMessage({ content: prompt }));
+      }
     } else {
-      modelWithStructuredOutput = (await _getModel(llm)).withStructuredOutput(
-        responseFormat
-      );
+      modelWithStructuredOutput = model.withStructuredOutput(responseFormat);
     }
 
     const response = await modelWithStructuredOutput.invoke(messages, config);
