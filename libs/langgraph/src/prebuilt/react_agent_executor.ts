@@ -457,7 +457,7 @@ type WithStateGraphNodes<K extends string, Graph> = Graph extends StateGraph<
 
 const PreHookAnnotation = Annotation.Root({
   llmInputMessages: Annotation<BaseMessage[], Messages>({
-    reducer: messagesStateReducer,
+    reducer: (_, update) => messagesStateReducer([], update),
     default: () => [],
   }),
 });

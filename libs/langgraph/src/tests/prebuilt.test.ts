@@ -1135,33 +1135,60 @@ describe("createReactAgent with ToolNode", () => {
 describe("createReactAgent with hooks", () => {
   it("preModelHook", async () => {
     const llm = new FakeToolCallingChatModel({
-      responses: [new AIMessage({ id: "0", content: "Hello!" })],
+      responses: [
+        new AIMessage({ id: "0", content: "Hello!" }),
+        new AIMessage({ id: "1", content: "Hello again!" }),
+      ],
     });
     const llmSpy = vi.spyOn(llm, "_generate");
+    const checkpointer = new MemorySaver();
 
     // Test `llm_input_messages`
     let agent = createReactAgent({
       llm,
       tools: [],
-      preModelHook: () => ({
-        llmInputMessages: [
-          new HumanMessage({ id: "human", content: "pre-hook" }),
-        ],
-      }),
+      preModelHook: () => ({ llmInputMessages: "pre-hook" }),
+      checkpointer,
     });
 
     expect("pre_model_hook" in agent.nodes).toBe(true);
-    expect(await agent.invoke({ messages: [new HumanMessage("hi?")] })).toEqual(
-      {
-        messages: [
-          new _AnyIdHumanMessage("hi?"),
-          new AIMessage({ id: "0", content: "Hello!" }),
-        ],
-      }
-    );
+    expect(
+      await agent.invoke(
+        { messages: [new HumanMessage("hi?")] },
+        { configurable: { thread_id: "1" } }
+      )
+    ).toEqual({
+      messages: [
+        new _AnyIdHumanMessage("hi?"),
+        new AIMessage({ id: "0", content: "Hello!" }),
+      ],
+    });
 
     expect(llmSpy).toHaveBeenCalledWith(
-      [new HumanMessage({ id: "human", content: "pre-hook" })],
+      [new _AnyIdHumanMessage({ content: "pre-hook" })],
+      expect.anything(),
+      undefined
+    );
+
+    llmSpy.mockClear();
+
+    // Second invocation
+    expect(
+      await agent.invoke(
+        { messages: [new HumanMessage("hi again")] },
+        { configurable: { thread_id: "1" } }
+      )
+    ).toEqual({
+      messages: [
+        new _AnyIdHumanMessage("hi?"),
+        new AIMessage({ id: "0", content: "Hello!" }),
+        new _AnyIdHumanMessage("hi again"),
+        new AIMessage({ id: "1", content: "Hello again!" }),
+      ],
+    });
+
+    expect(llmSpy).toHaveBeenCalledWith(
+      [new _AnyIdHumanMessage("pre-hook")],
       expect.anything(),
       undefined
     );
