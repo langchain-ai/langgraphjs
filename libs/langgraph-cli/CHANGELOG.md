@@ -1,5 +1,12 @@
 # @langchain/langgraph-cli
 
+## 0.0.50
+
+### Patch Changes
+
+- 337b419: fix(cli): enable correct passthrough of docker build args
+  - @langchain/langgraph-api@0.0.50
+
 ## 0.0.49
 
 ### Patch Changes

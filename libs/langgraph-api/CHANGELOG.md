@@ -1,5 +1,11 @@
 # @langchain/langgraph-api
 
+## 0.0.50
+
+### Patch Changes
+
+- @langchain/langgraph-ui@0.0.50
+
 ## 0.0.49
 
 ### Patch Changes
