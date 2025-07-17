@@ -1,5 +1,13 @@
 # @langchain/langgraph-cli
 
+## 0.0.49
+
+### Patch Changes
+
+- 78a15a1: feat(cli): add sysinfo command to obtain actual version
+- Updated dependencies [ee1defa]
+  - @langchain/langgraph-api@0.0.49
+
 ## 0.0.48
 
 ### Patch Changes
