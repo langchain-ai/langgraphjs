@@ -65,6 +65,27 @@ for await (const checkpoint of checkpointer.list(readConfig)) {
 }
 ```
 
+## Usage with existing connection pool
+
+```ts
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import pg from "pg";
+
+// You can use any existing postgres connection pool
+// we create a new pool here for the sake of the example
+const pool = new pg.Pool({
+  connectionString: "postgresql://..."
+});
+
+const checkpointer = new PostgresSaver(pool, undefined, {
+  schema: "schema_name"
+});
+
+await checkpointer.setup();
+
+// ...
+```
+
 ## Testing
 
 Spin up testing PostgreSQL
