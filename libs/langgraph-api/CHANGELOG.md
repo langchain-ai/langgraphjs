@@ -1,5 +1,13 @@
 # @langchain/langgraph-api
 
+## 0.0.48
+
+### Patch Changes
+
+- ac7b067: fix(sdk): use `kind` when checking for Studio user
+- Updated dependencies [ac7b067]
+  - @langchain/langgraph-ui@0.0.48
+
 ## 0.0.47
 
 ### Patch Changes
