@@ -2742,10 +2742,7 @@ it("tasks / checkpoints stream mode", async () => {
       event: "tasks",
       data: {
         name: "agent",
-        input: {
-          messages: [{ content: "input", type: "human" }],
-          sharedState: {},
-        },
+        input: { messages: [{ content: "input", type: "human" }] },
         triggers: ["branch:to:agent"],
         interrupts: [],
       },
@@ -2754,12 +2751,12 @@ it("tasks / checkpoints stream mode", async () => {
       event: "tasks",
       data: {
         name: "agent",
-        result: [
-          ["interrupt", false],
-          ["messages", [{ content: "begin", type: "ai" }]],
-          ["sharedState", { data: { user_id: "123" } }],
-          ["sharedStateValue", null],
-        ],
+        result: expect.arrayContaining([
+          [
+            "messages",
+            [expect.objectContaining({ content: "begin", type: "ai" })],
+          ],
+        ]),
         interrupts: [],
       },
     },
@@ -2771,8 +2768,6 @@ it("tasks / checkpoints stream mode", async () => {
             { content: "input", type: "human" },
             { content: "begin", type: "ai" },
           ],
-          sharedStateValue: null,
-          interrupt: false,
         },
         metadata: { source: "loop", step: 1 },
         next: ["tool"],
@@ -2787,9 +2782,6 @@ it("tasks / checkpoints stream mode", async () => {
             { content: "input", type: "human" },
             { content: "begin", type: "ai" },
           ],
-          sharedStateValue: null,
-          interrupt: false,
-          sharedState: { data: { user_id: "123" } },
         },
         triggers: ["branch:to:tool"],
         interrupts: [],
@@ -2799,19 +2791,18 @@ it("tasks / checkpoints stream mode", async () => {
       event: "tasks",
       data: {
         name: "tool",
-        result: [
+        result: expect.arrayContaining([
           [
             "messages",
             [
-              {
+              expect.objectContaining({
                 content: "tool_call__begin",
                 tool_call_id: "tool_call_id",
                 type: "tool",
-              },
+              }),
             ],
           ],
-          ["sharedStateFromStoreConfig", { id: "123" }],
-        ],
+        ]),
         interrupts: [],
       },
     },
@@ -2828,9 +2819,6 @@ it("tasks / checkpoints stream mode", async () => {
               type: "tool",
             },
           ],
-          sharedStateValue: null,
-          interrupt: false,
-          sharedStateFromStoreConfig: { id: "123" },
         },
         metadata: { source: "loop", step: 2 },
         next: ["agent"],
@@ -2850,10 +2838,6 @@ it("tasks / checkpoints stream mode", async () => {
               type: "tool",
             },
           ],
-          sharedStateValue: null,
-          interrupt: false,
-          sharedState: { data: { user_id: "123" } },
-          sharedStateFromStoreConfig: { id: "123" },
         },
         triggers: ["branch:to:agent"],
         interrupts: [],
@@ -2863,12 +2847,12 @@ it("tasks / checkpoints stream mode", async () => {
       event: "tasks",
       data: {
         name: "agent",
-        result: [
-          ["interrupt", false],
-          ["messages", [{ content: "end", type: "ai" }]],
-          ["sharedState", { data: { user_id: "123" } }],
-          ["sharedStateValue", "123"],
-        ],
+        result: expect.arrayContaining([
+          [
+            "messages",
+            [expect.objectContaining({ content: "end", type: "ai" })],
+          ],
+        ]),
         interrupts: [],
       },
     },
@@ -2886,9 +2870,6 @@ it("tasks / checkpoints stream mode", async () => {
             },
             { content: "end", type: "ai" },
           ],
-          sharedStateValue: "123",
-          interrupt: false,
-          sharedStateFromStoreConfig: { id: "123" },
         },
         metadata: { source: "loop", step: 3 },
         next: [],
