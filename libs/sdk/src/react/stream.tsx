@@ -550,14 +550,12 @@ export interface UseStreamOptions<
   /**
    * Callback that is called when a checkpoints event is received.
    */
-  onCheckpointsEvent?: (
-    data: CheckpointsStreamEvent<StateType>["data"]
-  ) => void;
+  onCheckpointEvent?: (data: CheckpointsStreamEvent<StateType>["data"]) => void;
 
   /**
    * Callback that is called when a tasks event is received.
    */
-  onTasksEvent?: (
+  onTaskEvent?: (
     data: TasksStreamEvent<StateType, GetUpdateType<Bag, StateType>>["data"]
   ) => void;
 
@@ -909,8 +907,8 @@ export function useStream<
   const hasLangChainListener = options.onLangChainEvent != null;
   const hasDebugListener = options.onDebugEvent != null;
 
-  const hasCheckpointsListener = options.onCheckpointsEvent != null;
-  const hasTasksListener = options.onTasksEvent != null;
+  const hasCheckpointListener = options.onCheckpointEvent != null;
+  const hasTaskListener = options.onTaskEvent != null;
 
   const callbackStreamMode = useMemo(() => {
     const modes: Exclude<StreamMode, "messages">[] = [];
@@ -918,16 +916,16 @@ export function useStream<
     if (hasCustomListener) modes.push("custom");
     if (hasLangChainListener) modes.push("events");
     if (hasDebugListener) modes.push("debug");
-    if (hasCheckpointsListener) modes.push("checkpoints");
-    if (hasTasksListener) modes.push("tasks");
+    if (hasCheckpointListener) modes.push("checkpoints");
+    if (hasTaskListener) modes.push("tasks");
     return modes;
   }, [
     hasUpdateListener,
     hasCustomListener,
     hasLangChainListener,
     hasDebugListener,
-    hasCheckpointsListener,
-    hasTasksListener,
+    hasCheckpointListener,
+    hasTaskListener,
   ]);
 
   const clearCallbackRef = useRef<() => void>(null!);
@@ -1073,8 +1071,8 @@ export function useStream<
         if (event === "metadata") options.onMetadataEvent?.(data);
         if (event === "events") options.onLangChainEvent?.(data);
         if (event === "debug") options.onDebugEvent?.(data);
-        if (event === "checkpoints") options.onCheckpointsEvent?.(data);
-        if (event === "tasks") options.onTasksEvent?.(data);
+        if (event === "checkpoints") options.onCheckpointEvent?.(data);
+        if (event === "tasks") options.onTaskEvent?.(data);
 
         if (event === "values") {
           if ("__interrupt__" in data) {
