@@ -49,6 +49,7 @@ export class Auth<
  * @returns True if the user is a studio user, false otherwise
  */
 export function isStudioUser(user: BaseUser) {
+  if ("kind" in user && user.kind === "StudioUser") return true;
   return user.identity === "langgraph-studio-user";
 }
 

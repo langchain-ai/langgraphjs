@@ -61,6 +61,7 @@ export const handleAuthEvent = async <T extends keyof AuthEventValueMap>(
 };
 
 const STUDIO_USER = {
+  kind: "StudioUser",
   display_name: "langgraph-studio-user",
   identity: "langgraph-studio-user",
   permissions: [],
