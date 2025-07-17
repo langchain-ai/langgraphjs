@@ -64,5 +64,7 @@ builder
     }
 
     exec = $({ ...opts, input });
-    await stream(exec`docker build -f - -t ${params.tag} ${pass}`);
+    await stream(
+      exec`docker build -f - -t ${params.tag} ${projectDir} ${pass}`
+    );
   });
