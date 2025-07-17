@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 0.0.49
+
+### Patch Changes
+
+- ee1defa: feat(api): pass through "tasks" and "checkpoints" stream mode
+  - @langchain/langgraph-ui@0.0.49
+
 ## 0.0.48
 
 ### Patch Changes

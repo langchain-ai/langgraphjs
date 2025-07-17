@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 0.0.98
+
+### Patch Changes
+
+- ee1defa: feat(sdk): add typing for "tasks" and "checkpoints" stream mode
+
 ## 0.0.97
 
 ### Patch Changes

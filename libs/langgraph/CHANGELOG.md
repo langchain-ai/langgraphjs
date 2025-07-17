@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 0.3.10
+
+### Patch Changes
+
+- a12c1fb: fix(langgraph): stop suggesting public properties and methods of Command when calling invoke
+- Updated dependencies [ee1defa]
+  - @langchain/langgraph-sdk@0.0.98
+
 ## 0.3.9
 
 ### Patch Changes
