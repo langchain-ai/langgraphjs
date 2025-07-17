@@ -30,6 +30,7 @@ builder
   )
   .argument("[args...]")
   .passThroughOptions()
+  .allowUnknownOption()
   .exitOverride((error) => gracefulExit(error.exitCode))
   .hook(
     "preAction",
@@ -63,7 +64,5 @@ builder
     }
 
     exec = $({ ...opts, input });
-    await stream(
-      exec`docker build -f - -t ${params.tag} ${projectDir} ${pass}`
-    );
+    await stream(exec`docker build -f - -t ${params.tag} ${pass}`);
   });
