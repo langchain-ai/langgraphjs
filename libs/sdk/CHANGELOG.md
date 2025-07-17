@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 0.0.99
+
+### Patch Changes
+
+- 768e2e2: feat(sdk): expose interrupt_id in types
+
 ## 0.0.98
 
 ### Patch Changes
