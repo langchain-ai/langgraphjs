@@ -54,6 +54,7 @@ import {
   PUSH,
   CONFIG_KEY_CHECKPOINT_DURING,
   CONFIG_KEY_CHECKPOINT_NS,
+  type CommandInstance,
 } from "../constants.js";
 import {
   GraphRecursionError,
@@ -391,7 +392,7 @@ export class Pregel<
     StreamValuesType = OutputType
   >
   extends PartialRunnable<
-    InputType | Command | null,
+    InputType | CommandInstance | null,
     OutputType,
     PregelOptions<Nodes, Channels, ConfigurableFieldType>
   >
@@ -1809,7 +1810,7 @@ export class Pregel<
     TStreamMode extends StreamMode | StreamMode[] | undefined,
     TSubgraphs extends boolean
   >(
-    input: InputType | Command | null,
+    input: InputType | CommandInstance | null,
     options?: Partial<
       PregelOptions<
         Nodes,
@@ -1862,7 +1863,7 @@ export class Pregel<
    * @inheritdoc
    */
   override streamEvents(
-    input: InputType | Command | null,
+    input: InputType | CommandInstance | null,
     options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
       version: "v1" | "v2";
     },
@@ -1870,7 +1871,7 @@ export class Pregel<
   ): IterableReadableStream<StreamEvent>;
 
   override streamEvents(
-    input: InputType | Command | null,
+    input: InputType | CommandInstance | null,
     options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
       version: "v1" | "v2";
       encoding: "text/event-stream";
@@ -1879,7 +1880,7 @@ export class Pregel<
   ): IterableReadableStream<Uint8Array>;
 
   override streamEvents(
-    input: InputType | Command | null,
+    input: InputType | CommandInstance | null,
     options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
       version: "v1" | "v2";
     },
@@ -2215,7 +2216,7 @@ export class Pregel<
    * @param options The configuration to use for the run.
    */
   override async invoke(
-    input: InputType | Command | null,
+    input: InputType | CommandInstance | null,
     options?: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>>
   ): Promise<OutputType> {
     const streamMode = options?.streamMode ?? "values";

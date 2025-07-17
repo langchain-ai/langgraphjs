@@ -87,6 +87,22 @@ export const RESERVED = [
 export const CHECKPOINT_NAMESPACE_SEPARATOR = "|";
 export const CHECKPOINT_NAMESPACE_END = ":";
 
+/** @internal */
+const COMMAND_SYMBOL = Symbol.for("langgraph.command");
+
+/**
+ * Instance of a {@link Command} class.
+ *
+ * This is used to avoid IntelliSense suggesting public fields
+ * of {@link Command} class when a plain object is expected.
+ *
+ * @see {@link Command}
+ * @internal
+ */
+export class CommandInstance {
+  [COMMAND_SYMBOL]: true;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface SendInterface<Node extends string = string, Args = any> {
   node: Node;
@@ -317,7 +333,7 @@ export class Command<
   Resume = unknown,
   Update extends Record<string, unknown> = Record<string, unknown>,
   Nodes extends string = string
-> {
+> extends CommandInstance {
   readonly lg_name = "Command";
 
   lc_direct_tool_output = true;
@@ -353,6 +369,7 @@ export class Command<
   static PARENT = "__parent__";
 
   constructor(args: CommandParams<Resume, Update, Nodes>) {
+    super();
     this.resume = args.resume;
     this.graph = args.graph;
     this.update = args.update;
