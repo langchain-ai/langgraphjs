@@ -30,6 +30,7 @@ builder
   )
   .argument("[args...]")
   .passThroughOptions()
+  .allowUnknownOption()
   .exitOverride((error) => gracefulExit(error.exitCode))
   .hook(
     "preAction",
