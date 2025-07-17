@@ -1,6 +1,7 @@
 import type { Message } from "./types.messages.js";
-
+import type { Interrupt, Metadata, Config, ThreadTask } from "./schema.js";
 /**
+import type { SubgraphCheckpointsStreamEvent } from "./types.stream.subgraph.js";
  * Stream modes
  * - "values": Stream only the state values.
  * - "messages": Stream complete messages.
@@ -16,6 +17,8 @@ export type StreamMode =
   | "updates"
   | "events"
   | "debug"
+  | "tasks"
+  | "checkpoints"
   | "custom"
   | "messages-tuple";
 
@@ -120,6 +123,66 @@ type MessagesPartialStreamEvent = {
   data: Message[];
 };
 
+type TasksStreamCreateEvent<StateType> = {
+  id?: string;
+  event: "tasks";
+  data: {
+    id: string;
+    name: string;
+    interrupts: Interrupt[];
+    input: StateType;
+    triggers: string[];
+  };
+};
+
+type TasksStreamResultEvent<UpdateType> = {
+  id?: string;
+  event: "tasks";
+  data: {
+    id: string;
+    name: string;
+    interrupts: Interrupt[];
+    result: [string, UpdateType][];
+  };
+};
+
+type TasksStreamErrorEvent = {
+  id?: string;
+  event: "tasks";
+  data: {
+    id: string;
+    name: string;
+    interrupts: Interrupt[];
+    error: string;
+  };
+};
+
+export type TasksStreamEvent<StateType, UpdateType> =
+  | TasksStreamCreateEvent<StateType>
+  | TasksStreamResultEvent<UpdateType>
+  | TasksStreamErrorEvent;
+
+type SubgraphTasksStreamEvent<StateType, UpdateType> =
+  | AsSubgraph<TasksStreamCreateEvent<StateType>>
+  | AsSubgraph<TasksStreamResultEvent<UpdateType>>
+  | AsSubgraph<TasksStreamErrorEvent>;
+
+export type CheckpointsStreamEvent<StateType> = {
+  id?: string;
+  event: "checkpoints";
+  data: {
+    values: StateType;
+    next: string[];
+    config: Config;
+    metadata: Metadata;
+    tasks: ThreadTask[];
+  };
+};
+
+type SubgraphCheckpointsStreamEvent<StateType> = AsSubgraph<
+  CheckpointsStreamEvent<StateType>
+>;
+
 /**
  * Message stream event specific to LangGraph Server.
  * @deprecated Use `streamMode: "messages-tuple"` instead.
@@ -194,6 +257,8 @@ type GetStreamModeMap<
       debug: DebugStreamEvent;
       messages: MessagesStreamEvent;
       "messages-tuple": MessagesTupleStreamEvent;
+      tasks: TasksStreamEvent<TStateType, TUpdateType>;
+      checkpoints: CheckpointsStreamEvent<TStateType>;
       events: EventsStreamEvent;
     }[TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode]
   | ErrorStreamEvent
@@ -214,6 +279,8 @@ type GetSubgraphsStreamModeMap<
       messages: SubgraphMessagesStreamEvent;
       "messages-tuple": SubgraphMessagesTupleStreamEvent;
       events: SubgraphEventsStreamEvent;
+      tasks: SubgraphTasksStreamEvent<TStateType, TUpdateType>;
+      checkpoints: SubgraphCheckpointsStreamEvent<TStateType>;
     }[TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode]
   | SubgraphErrorStreamEvent
   | MetadataStreamEvent

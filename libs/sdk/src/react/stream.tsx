@@ -33,6 +33,7 @@ import type {
   ThreadState,
 } from "../schema.js";
 import type {
+  CheckpointsStreamEvent,
   CustomStreamEvent,
   DebugStreamEvent,
   ErrorStreamEvent,
@@ -42,6 +43,7 @@ import type {
   MessagesTupleStreamEvent,
   MetadataStreamEvent,
   StreamMode,
+  TasksStreamEvent,
   UpdatesStreamEvent,
   ValuesStreamEvent,
 } from "../types.stream.js";
@@ -546,6 +548,20 @@ export interface UseStreamOptions<
   onDebugEvent?: (data: DebugStreamEvent["data"]) => void;
 
   /**
+   * Callback that is called when a checkpoints event is received.
+   */
+  onCheckpointsEvent?: (
+    data: CheckpointsStreamEvent<StateType>["data"]
+  ) => void;
+
+  /**
+   * Callback that is called when a tasks event is received.
+   */
+  onTasksEvent?: (
+    data: TasksStreamEvent<StateType, GetUpdateType<Bag, StateType>>["data"]
+  ) => void;
+
+  /**
    * Callback that is called when the stream is stopped by the user.
    * Provides a mutate function to update the stream state immediately
    * without requiring a server roundtrip.
@@ -814,6 +830,8 @@ export function useStream<
     | MessagesTupleStreamEvent
     | EventsStreamEvent
     | MetadataStreamEvent
+    | CheckpointsStreamEvent<StateType>
+    | TasksStreamEvent<StateType, UpdateType>
     | ErrorStreamEvent
     | FeedbackStreamEvent;
 
@@ -864,7 +882,15 @@ export function useStream<
   const abortRef = useRef<AbortController | null>(null);
 
   const trackStreamModeRef = useRef<
-    Array<"values" | "updates" | "events" | "custom" | "messages-tuple">
+    Array<
+      | "values"
+      | "updates"
+      | "events"
+      | "custom"
+      | "messages-tuple"
+      | "checkpoints"
+      | "tasks"
+    >
   >([]);
 
   const trackStreamMode = useCallback(
@@ -883,18 +909,25 @@ export function useStream<
   const hasLangChainListener = options.onLangChainEvent != null;
   const hasDebugListener = options.onDebugEvent != null;
 
+  const hasCheckpointsListener = options.onCheckpointsEvent != null;
+  const hasTasksListener = options.onTasksEvent != null;
+
   const callbackStreamMode = useMemo(() => {
     const modes: Exclude<StreamMode, "messages">[] = [];
     if (hasUpdateListener) modes.push("updates");
     if (hasCustomListener) modes.push("custom");
     if (hasLangChainListener) modes.push("events");
     if (hasDebugListener) modes.push("debug");
+    if (hasCheckpointsListener) modes.push("checkpoints");
+    if (hasTasksListener) modes.push("tasks");
     return modes;
   }, [
     hasUpdateListener,
     hasCustomListener,
     hasLangChainListener,
     hasDebugListener,
+    hasCheckpointsListener,
+    hasTasksListener,
   ]);
 
   const clearCallbackRef = useRef<() => void>(null!);
@@ -1040,6 +1073,8 @@ export function useStream<
         if (event === "metadata") options.onMetadataEvent?.(data);
         if (event === "events") options.onLangChainEvent?.(data);
         if (event === "debug") options.onDebugEvent?.(data);
+        if (event === "checkpoints") options.onCheckpointsEvent?.(data);
+        if (event === "tasks") options.onTasksEvent?.(data);
 
         if (event === "values") {
           if ("__interrupt__" in data) {

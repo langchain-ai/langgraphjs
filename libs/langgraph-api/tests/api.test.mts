@@ -2704,3 +2704,195 @@ it("resumable streams", { timeout: 10_000 }, async () => {
 
   expect(join).toEqual(source);
 });
+
+it("tasks / checkpoints stream mode", async () => {
+  const assistant = await client.assistants.create({ graphId: "agent" });
+  const thread = await client.threads.create();
+
+  const stream = await gatherIterator(
+    client.runs.stream(thread.thread_id, assistant.assistant_id, {
+      input: { messages: [{ role: "human", content: "input" }] },
+      streamMode: ["tasks", "checkpoints"],
+      config: globalConfig,
+    })
+  );
+
+  expect(stream).toMatchObject([
+    {
+      event: "metadata",
+      data: { run_id: expect.any(String) },
+    },
+    {
+      event: "checkpoints",
+      data: {
+        values: { messages: [] },
+        metadata: { source: "input", step: -1 },
+        next: ["__start__"],
+      },
+    },
+    {
+      event: "checkpoints",
+      data: {
+        values: { messages: [{ content: "input", type: "human" }] },
+        metadata: { source: "loop", step: 0 },
+        next: ["agent"],
+      },
+    },
+    {
+      event: "tasks",
+      data: {
+        name: "agent",
+        input: {
+          messages: [{ content: "input", type: "human" }],
+          sharedState: {},
+        },
+        triggers: ["branch:to:agent"],
+        interrupts: [],
+      },
+    },
+    {
+      event: "tasks",
+      data: {
+        name: "agent",
+        result: [
+          ["interrupt", false],
+          ["messages", [{ content: "begin", type: "ai" }]],
+          ["sharedState", { data: { user_id: "123" } }],
+          ["sharedStateValue", null],
+        ],
+        interrupts: [],
+      },
+    },
+    {
+      event: "checkpoints",
+      data: {
+        values: {
+          messages: [
+            { content: "input", type: "human" },
+            { content: "begin", type: "ai" },
+          ],
+          sharedStateValue: null,
+          interrupt: false,
+        },
+        metadata: { source: "loop", step: 1 },
+        next: ["tool"],
+      },
+    },
+    {
+      event: "tasks",
+      data: {
+        name: "tool",
+        input: {
+          messages: [
+            { content: "input", type: "human" },
+            { content: "begin", type: "ai" },
+          ],
+          sharedStateValue: null,
+          interrupt: false,
+          sharedState: { data: { user_id: "123" } },
+        },
+        triggers: ["branch:to:tool"],
+        interrupts: [],
+      },
+    },
+    {
+      event: "tasks",
+      data: {
+        name: "tool",
+        result: [
+          [
+            "messages",
+            [
+              {
+                content: "tool_call__begin",
+                tool_call_id: "tool_call_id",
+                type: "tool",
+              },
+            ],
+          ],
+          ["sharedStateFromStoreConfig", { id: "123" }],
+        ],
+        interrupts: [],
+      },
+    },
+    {
+      event: "checkpoints",
+      data: {
+        values: {
+          messages: [
+            { content: "input", type: "human" },
+            { content: "begin", type: "ai" },
+            {
+              content: "tool_call__begin",
+              tool_call_id: "tool_call_id",
+              type: "tool",
+            },
+          ],
+          sharedStateValue: null,
+          interrupt: false,
+          sharedStateFromStoreConfig: { id: "123" },
+        },
+        metadata: { source: "loop", step: 2 },
+        next: ["agent"],
+      },
+    },
+    {
+      event: "tasks",
+      data: {
+        name: "agent",
+        input: {
+          messages: [
+            { content: "input", type: "human" },
+            { content: "begin", type: "ai" },
+            {
+              content: "tool_call__begin",
+              tool_call_id: "tool_call_id",
+              type: "tool",
+            },
+          ],
+          sharedStateValue: null,
+          interrupt: false,
+          sharedState: { data: { user_id: "123" } },
+          sharedStateFromStoreConfig: { id: "123" },
+        },
+        triggers: ["branch:to:agent"],
+        interrupts: [],
+      },
+    },
+    {
+      event: "tasks",
+      data: {
+        name: "agent",
+        result: [
+          ["interrupt", false],
+          ["messages", [{ content: "end", type: "ai" }]],
+          ["sharedState", { data: { user_id: "123" } }],
+          ["sharedStateValue", "123"],
+        ],
+        interrupts: [],
+      },
+    },
+    {
+      event: "checkpoints",
+      data: {
+        values: {
+          messages: [
+            { content: "input", type: "human" },
+            { content: "begin", type: "ai" },
+            {
+              content: "tool_call__begin",
+              tool_call_id: "tool_call_id",
+              type: "tool",
+            },
+            { content: "end", type: "ai" },
+          ],
+          sharedStateValue: "123",
+          interrupt: false,
+          sharedStateFromStoreConfig: { id: "123" },
+        },
+        metadata: { source: "loop", step: 3 },
+        next: [],
+      },
+    },
+  ]);
+});
