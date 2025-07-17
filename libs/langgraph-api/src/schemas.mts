@@ -212,6 +212,8 @@ export const RunCreate = z
             "messages-tuple",
             "updates",
             "events",
+            "tasks",
+            "checkpoints",
             "debug",
             "custom",
           ])
@@ -222,6 +224,8 @@ export const RunCreate = z
           "messages-tuple",
           "updates",
           "events",
+          "tasks",
+          "checkpoints",
           "debug",
           "custom",
         ]),

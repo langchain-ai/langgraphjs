@@ -2704,3 +2704,176 @@ it("resumable streams", { timeout: 10_000 }, async () => {
 
   expect(join).toEqual(source);
 });
+
+it("tasks / checkpoints stream mode", async () => {
+  const assistant = await client.assistants.create({ graphId: "agent" });
+  const thread = await client.threads.create();
+
+  const stream = await gatherIterator(
+    client.runs.stream(thread.thread_id, assistant.assistant_id, {
+      input: { messages: [{ role: "human", content: "input" }] },
+      streamMode: ["tasks", "checkpoints"],
+      config: globalConfig,
+    })
+  );
+
+  expect(stream).toMatchObject([
+    {
+      event: "metadata",
+      data: { run_id: expect.any(String) },
+    },
+    {
+      event: "checkpoints",
+      data: {
+        values: { messages: [] },
+        metadata: { source: "input", step: -1 },
+        next: ["__start__"],
+      },
+    },
+    {
+      event: "checkpoints",
+      data: {
+        values: { messages: [{ content: "input", type: "human" }] },
+        metadata: { source: "loop", step: 0 },
+        next: ["agent"],
+      },
+    },
+    {
+      event: "tasks",
+      data: {
+        name: "agent",
+        input: { messages: [{ content: "input", type: "human" }] },
+        triggers: ["branch:to:agent"],
+        interrupts: [],
+      },
+    },
+    {
+      event: "tasks",
+      data: {
+        name: "agent",
+        result: expect.arrayContaining([
+          [
+            "messages",
+            [expect.objectContaining({ content: "begin", type: "ai" })],
+          ],
+        ]),
+        interrupts: [],
+      },
+    },
+    {
+      event: "checkpoints",
+      data: {
+        values: {
+          messages: [
+            { content: "input", type: "human" },
+            { content: "begin", type: "ai" },
+          ],
+        },
+        metadata: { source: "loop", step: 1 },
+        next: ["tool"],
+      },
+    },
+    {
+      event: "tasks",
+      data: {
+        name: "tool",
+        input: {
+          messages: [
+            { content: "input", type: "human" },
+            { content: "begin", type: "ai" },
+          ],
+        },
+        triggers: ["branch:to:tool"],
+        interrupts: [],
+      },
+    },
+    {
+      event: "tasks",
+      data: {
+        name: "tool",
+        result: expect.arrayContaining([
+          [
+            "messages",
+            [
+              expect.objectContaining({
+                content: "tool_call__begin",
+                tool_call_id: "tool_call_id",
+                type: "tool",
+              }),
+            ],
+          ],
+        ]),
+        interrupts: [],
+      },
+    },
+    {
+      event: "checkpoints",
+      data: {
+        values: {
+          messages: [
+            { content: "input", type: "human" },
+            { content: "begin", type: "ai" },
+            {
+              content: "tool_call__begin",
+              tool_call_id: "tool_call_id",
+              type: "tool",
+            },
+          ],
+        },
+        metadata: { source: "loop", step: 2 },
+        next: ["agent"],
+      },
+    },
+    {
+      event: "tasks",
+      data: {
+        name: "agent",
+        input: {
+          messages: [
+            { content: "input", type: "human" },
+            { content: "begin", type: "ai" },
+            {
+              content: "tool_call__begin",
+              tool_call_id: "tool_call_id",
+              type: "tool",
+            },
+          ],
+        },
+        triggers: ["branch:to:agent"],
+        interrupts: [],
+      },
+    },
+    {
+      event: "tasks",
+      data: {
+        name: "agent",
+        result: expect.arrayContaining([
+          [
+            "messages",
+            [expect.objectContaining({ content: "end", type: "ai" })],
+          ],
+        ]),
+        interrupts: [],
+      },
+    },
+    {
+      event: "checkpoints",
+      data: {
+        values: {
+          messages: [
+            { content: "input", type: "human" },
+            { content: "begin", type: "ai" },
+            {
+              content: "tool_call__begin",
+              tool_call_id: "tool_call_id",
+              type: "tool",
+            },
+            { content: "end", type: "ai" },
+          ],
+        },
+        metadata: { source: "loop", step: 3 },
+        next: [],
+      },
+    },
+  ]);
+});
