@@ -145,6 +145,7 @@ export interface AssistantGraph {
  * An interrupt thrown inside a thread.
  */
 export interface Interrupt<TValue = unknown> {
+  interrupt_id?: string;
   value?: TValue;
   when: "during" | (string & {}); // eslint-disable-line @typescript-eslint/ban-types
   resumable?: boolean;
