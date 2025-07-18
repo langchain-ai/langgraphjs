@@ -1769,6 +1769,36 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@langchain/langgraph-checkpoint-filesystem@workspace:libs/checkpoint-filesystem":
+  version: 0.0.0-use.local
+  resolution: "@langchain/langgraph-checkpoint-filesystem@workspace:libs/checkpoint-filesystem"
+  dependencies:
+    "@langchain/langgraph-checkpoint": "workspace:*"
+    "@langchain/scripts": "npm:>=0.1.3 <0.2.0"
+    "@tsconfig/recommended": "npm:^1.0.3"
+    "@typescript-eslint/eslint-plugin": "npm:^6.12.0"
+    "@typescript-eslint/parser": "npm:^6.12.0"
+    better-sqlite3: "npm:^11.7.0"
+    dotenv: "npm:^16.3.1"
+    dpdm: "npm:^3.12.0"
+    eslint: "npm:^8.33.0"
+    eslint-config-airbnb-base: "npm:^15.0.0"
+    eslint-config-prettier: "npm:^8.6.0"
+    eslint-plugin-import: "npm:^2.29.1"
+    eslint-plugin-no-instanceof: "npm:^1.0.1"
+    eslint-plugin-prettier: "npm:^4.2.1"
+    prettier: "npm:^2.8.3"
+    release-it: "npm:^19.0.2"
+    rollup: "npm:^4.37.0"
+    tsx: "npm:^4.19.3"
+    typescript: "npm:^4.9.5 || ^5.4.5"
+    vitest: "npm:^3.1.2"
+  peerDependencies:
+    "@langchain/core": ">=0.2.31 <0.4.0"
+    "@langchain/langgraph-checkpoint": ~0.0.18
+  languageName: unknown
+  linkType: soft
+
 "@langchain/langgraph-checkpoint-mongodb@workspace:*, @langchain/langgraph-checkpoint-mongodb@workspace:libs/checkpoint-mongodb":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-checkpoint-mongodb@workspace:libs/checkpoint-mongodb"
