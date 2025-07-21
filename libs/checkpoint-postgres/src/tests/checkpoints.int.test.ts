@@ -5,7 +5,7 @@ import type {
   CheckpointMetadata,
   CheckpointTuple,
 } from "@langchain/langgraph-checkpoint";
-import { TASKS, uuid6 } from "@langchain/langgraph-checkpoint";
+import { emptyCheckpoint, TASKS, uuid6 } from "@langchain/langgraph-checkpoint";
 import pg from "pg";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { PostgresSaver } from "../index.js"; // Adjust the import path as needed
