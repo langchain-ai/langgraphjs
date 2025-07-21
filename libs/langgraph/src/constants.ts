@@ -194,7 +194,7 @@ export function _isSend(x: unknown): x is Send {
 export type Interrupt<Value = any> = {
   value?: Value;
   // eslint-disable-next-line @typescript-eslint/ban-types
-  when: "during" | (string & {});
+  when?: "during" | (string & {});
   resumable?: boolean;
   ns?: string[];
   interrupt_id?: string;
