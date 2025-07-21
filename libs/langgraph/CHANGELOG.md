@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 0.3.11
+
+### Patch Changes
+
+- a0efb98: Relax `when` type for `Interrupt`
+- Updated dependencies [a0efb98]
+  - @langchain/langgraph-sdk@0.0.100
+
 ## 0.3.10
 
 ### Patch Changes

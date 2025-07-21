@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 0.0.100
+
+### Patch Changes
+
+- a0efb98: Rename `interrupt_id` to `id`
+
 ## 0.0.99
 
 ### Patch Changes
