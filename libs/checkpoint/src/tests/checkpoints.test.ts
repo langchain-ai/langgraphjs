@@ -1,13 +1,15 @@
 import { describe, it, expect } from "vitest";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import {
-  Checkpoint,
-  CheckpointTuple,
+  type Checkpoint,
+  type CheckpointTuple,
   compareChannelVersions,
   deepCopy,
   maxChannelVersion,
 } from "../base.js";
 import { MemorySaver } from "../memory.js";
 import { uuid6 } from "../id.js";
+import { TASKS } from "../index.js";
 
 const checkpoint1: Checkpoint = {
   v: 4,
@@ -139,6 +141,84 @@ describe("MemorySaver", () => {
     const checkpointTuple2 = checkpointTuples[1];
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
     expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
+  });
+
+  it("should migrate pending sends", async () => {
+    const memorySaver = new MemorySaver();
+    let config: RunnableConfig = {
+      configurable: { thread_id: "thread-1", checkpoint_ns: "" },
+    };
+
+    const checkpoint0: Checkpoint = {
+      v: 1,
+      id: uuid6(0),
+      ts: "2024-04-19T17:19:07.952Z",
+      channel_values: {},
+      channel_versions: {},
+      versions_seen: {},
+    };
+
+    config = await memorySaver.put(config, checkpoint0, {
+      source: "loop",
+      parents: {},
+      step: 0,
+      writes: null,
+    });
+
+    await memorySaver.putWrites(
+      config,
+      [
+        [TASKS, "send-1"],
+        [TASKS, "send-2"],
+      ],
+      "task-1"
+    );
+    await memorySaver.putWrites(config, [[TASKS, "send-3"]], "task-2");
+
+    // check that fetching checkpount 0 doesn't attach pending sends
+    // (they should be attached to the next checkpoint)
+    const tuple0 = await memorySaver.getTuple(config);
+    expect(tuple0?.checkpoint.channel_values).toEqual({});
+    expect(tuple0?.checkpoint.channel_versions).toEqual({});
+
+    // create second checkpoint
+    const checkpoint1: Checkpoint = {
+      v: 1,
+      id: uuid6(1),
+      ts: "2024-04-20T17:19:07.952Z",
+      channel_values: {},
+      channel_versions: checkpoint0.channel_versions,
+      versions_seen: checkpoint0.versions_seen,
+    };
+    config = await memorySaver.put(config, checkpoint1, {
+      source: "loop",
+      parents: {},
+      step: 1,
+      writes: null,
+    });
+
+    // check that pending sends are attached to checkpoint1
+    const checkpoint1Tuple = await memorySaver.getTuple(config);
+    expect.soft(checkpoint1Tuple?.checkpoint.channel_values).toEqual({
+      [TASKS]: ["send-1", "send-2", "send-3"],
+    });
+    expect(checkpoint1Tuple?.checkpoint.channel_versions[TASKS]).toBeDefined();
+
+    // check that the list also applies the migration
+    const checkpointTupleGenerator = memorySaver.list({
+      configurable: { thread_id: "thread-1" },
+    });
+    const checkpointTuples: CheckpointTuple[] = [];
+    for await (const checkpoint of checkpointTupleGenerator) {
+      checkpointTuples.push(checkpoint);
+    }
+    expect(checkpointTuples.length).toBe(2);
+    expect(checkpointTuples[0].checkpoint.channel_values).toEqual({
+      [TASKS]: ["send-1", "send-2", "send-3"],
+    });
+    expect(
+      checkpointTuples[0].checkpoint.channel_versions[TASKS]
+    ).toBeDefined();
   });
 });
 

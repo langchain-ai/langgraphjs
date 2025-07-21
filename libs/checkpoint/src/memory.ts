@@ -6,6 +6,7 @@ import {
   CheckpointTuple,
   copyCheckpoint,
   getCheckpointId,
+  maxChannelVersion,
   WRITES_IDX_MAP,
 } from "./base.js";
 import { SerializerProtocol } from "./serde/base.js";
@@ -14,7 +15,7 @@ import {
   CheckpointPendingWrite,
   PendingWrite,
 } from "./types.js";
-import { SendProtocol, TASKS } from "./serde/types.js";
+import { TASKS } from "./serde/types.js";
 
 function _generateKey(
   threadId: string,
@@ -37,25 +38,34 @@ export class MemorySaver extends BaseCheckpointSaver {
     super(serde);
   }
 
-  async _getPendingSends(
+  async _migratePendingSends(
+    mutableCheckpoint: Checkpoint,
     threadId: string,
     checkpointNs: string,
-    parentCheckpointId?: string
+    parentCheckpointId: string
   ) {
-    let pendingSends: SendProtocol[] = [];
-    if (parentCheckpointId !== undefined) {
-      const key = _generateKey(threadId, checkpointNs, parentCheckpointId);
-      pendingSends = await Promise.all(
-        Object.values(this.writes[key] || {})
-          ?.filter(([_taskId, channel]) => {
-            return channel === TASKS;
-          })
-          .map(([_taskId, _channel, writes]) => {
-            return this.serde.loadsTyped("json", writes);
-          }) ?? []
-      );
-    }
-    return pendingSends;
+    const deseriablizableCheckpoint = mutableCheckpoint;
+    const parentKey = _generateKey(threadId, checkpointNs, parentCheckpointId);
+
+    const pendingSends = await Promise.all(
+      Object.values(this.writes[parentKey] ?? {})
+        .filter(([_taskId, channel]) => channel === TASKS)
+        .map(
+          async ([_taskId, _channel, writes]) =>
+            await this.serde.loadsTyped("json", writes)
+        )
+    );
+
+    deseriablizableCheckpoint.channel_values ??= {};
+    deseriablizableCheckpoint.channel_values[TASKS] = pendingSends;
+
+    deseriablizableCheckpoint.channel_versions ??= {};
+    deseriablizableCheckpoint.channel_versions[TASKS] =
+      Object.keys(deseriablizableCheckpoint.channel_versions).length > 0
+        ? maxChannelVersion(
+            ...Object.values(deseriablizableCheckpoint.channel_versions)
+          )
+        : this.getNextVersion(undefined);
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
@@ -72,6 +82,16 @@ export class MemorySaver extends BaseCheckpointSaver {
           "json",
           checkpoint
         );
+
+        if (deserializedCheckpoint.v < 4 && parentCheckpointId !== undefined) {
+          await this._migratePendingSends(
+            deserializedCheckpoint,
+            thread_id,
+            checkpoint_ns,
+            parentCheckpointId
+          );
+        }
+
         const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
           Object.values(this.writes[key] || {}).map(
             async ([taskId, channel, value]) => {
@@ -117,6 +137,16 @@ export class MemorySaver extends BaseCheckpointSaver {
           "json",
           checkpoint
         );
+
+        if (deserializedCheckpoint.v < 4 && parentCheckpointId !== undefined) {
+          await this._migratePendingSends(
+            deserializedCheckpoint,
+            thread_id,
+            checkpoint_ns,
+            parentCheckpointId
+          );
+        }
+
         const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
           Object.values(this.writes[key] || {}).map(
             async ([taskId, channel, value]) => {
@@ -239,9 +269,22 @@ export class MemorySaver extends BaseCheckpointSaver {
             })
           );
 
-          const deserializedCheckpoint = {
-            ...(await this.serde.loadsTyped("json", checkpoint)),
-          };
+          const deserializedCheckpoint = await this.serde.loadsTyped(
+            "json",
+            checkpoint
+          );
+
+          if (
+            deserializedCheckpoint.v < 4 &&
+            parentCheckpointId !== undefined
+          ) {
+            await this._migratePendingSends(
+              deserializedCheckpoint,
+              threadId,
+              checkpointNamespace,
+              parentCheckpointId
+            );
+          }
 
           const checkpointTuple: CheckpointTuple = {
             config: {
