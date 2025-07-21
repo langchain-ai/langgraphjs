@@ -9,6 +9,7 @@ import {
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { CheckpointerTestInitializer } from "../types.js";
 import {
+  it_skipForSomeModules,
   parentAndChildCheckpointTuplesWithWrites,
   putTuples,
 } from "../test_utils.js";
@@ -247,7 +248,10 @@ export function getTupleTests<T extends BaseCheckpointSaver>(
         });
       });
 
-      it("should migrate pending sends", async () => {
+      it_skipForSomeModules(initializer.checkpointerName, {
+        "@langchain/langgraph-checkpoint-mongodb":
+          "MongoDBSaver never stored pending sends",
+      })("should migrate pending sends", async () => {
         let config: RunnableConfig = {
           configurable: { thread_id: "thread-1", checkpoint_ns: "" },
         };

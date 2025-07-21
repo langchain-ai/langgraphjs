@@ -10,6 +10,7 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import { CheckpointerTestInitializer } from "../types.js";
 import {
   generateTuplePairs,
+  it_skipForSomeModules,
   putTuples,
   toArray,
   toMap,
@@ -135,7 +136,10 @@ export function listTests<T extends BaseCheckpointSaver>(
       }
     );
 
-    it("migrate pending sends", async () => {
+    it_skipForSomeModules(initializer.checkpointerName, {
+      "@langchain/langgraph-checkpoint-mongodb":
+        "MongoDBSaver never stored pending sends",
+    })("should migrate pending sends", async () => {
       let config: RunnableConfig = {
         configurable: { thread_id: "thread-1", checkpoint_ns: "" },
       };
