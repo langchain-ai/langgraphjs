@@ -436,7 +436,14 @@ describe.each([
       configurable: { thread_id: "thread-1", checkpoint_ns: "" },
     };
 
-    const checkpoint0 = emptyCheckpoint();
+    const checkpoint0: Checkpoint = {
+      v: 1,
+      id: uuid6(0),
+      ts: "2024-04-19T17:19:07.952Z",
+      channel_values: {},
+      channel_versions: {},
+      versions_seen: {},
+    };
 
     config = await postgresSaver.put(
       config,
@@ -473,12 +480,7 @@ describe.each([
     config = await postgresSaver.put(
       config,
       checkpoint1,
-      {
-        source: "loop",
-        parents: {},
-        step: 1,
-        writes: null,
-      },
+      { source: "loop", parents: {}, step: 1, writes: null },
       {}
     );
 
