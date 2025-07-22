@@ -25,8 +25,7 @@ import { CrudOperations } from "./modules/crud-operations.js";
 import { SearchOperations } from "./modules/search-operations.js";
 import { TTLManager } from "./modules/ttl-manager.js";
 
-// Re-export types for convenience
-export * from "./modules/types.js";
+export type * from "./modules/types.js";
 
 const { Pool } = pg;
 
@@ -353,31 +352,6 @@ export class PostgresStore implements BaseStore {
   }
 
   /**
-   * Put an item with advanced options like TTL.
-   */
-  async putAdvanced(
-    namespace: string[],
-    key: string,
-    value: Record<string, unknown> | null,
-    index?: false | string[],
-    options: PutOptions = {}
-  ): Promise<void> {
-    if (!this.isSetup && this.ensureTables) {
-      await this.setup();
-    }
-    return this.core.withClient(async (client) => {
-      const operation: PutOperation & { options: PutOptions } = {
-        namespace,
-        key,
-        value,
-        index,
-        options,
-      };
-      return this.crudOps.executePut(client, operation);
-    });
-  }
-
-  /**
    * Get statistics about the store.
    */
   async getStats(): Promise<{
@@ -421,7 +395,7 @@ export class PostgresStore implements BaseStore {
    * @param options - Search options including filter, similarity threshold, and distance metric
    * @returns Promise resolving to an array of search results with similarity scores
    */
-  async vectorSearch(
+  protected async vectorSearch(
     namespacePrefix: string[],
     query: string,
     options: {
@@ -453,7 +427,7 @@ export class PostgresStore implements BaseStore {
    * @param options - Search options including filter, vector weight, and similarity threshold
    * @returns Promise resolving to an array of search results with combined similarity scores
    */
-  async hybridSearch(
+  protected async hybridSearch(
     namespacePrefix: string[],
     query: string,
     options: {
