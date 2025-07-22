@@ -432,12 +432,7 @@ export class PregelLoop {
     )) ?? {
       config,
       checkpoint: emptyCheckpoint(),
-      metadata: {
-        source: "input",
-        step: -2,
-        writes: null,
-        parents: {},
-      },
+      metadata: { source: "input", step: -2, parents: {} },
       pendingWrites: [],
     };
     checkpointConfig = {
@@ -724,14 +719,7 @@ export class PregelLoop {
       this._emit(valuesOutput);
       // clear pending writes
       this.checkpointPendingWrites = [];
-      await this._putCheckpoint({
-        source: "loop",
-        writes:
-          mapOutputUpdates(
-            this.outputKeys,
-            Object.values(this.tasks).map((task) => [task, task.writes])
-          ).next().value ?? null,
-      });
+      await this._putCheckpoint({ source: "loop" });
       // after execution, check if we should interrupt
       if (
         shouldInterrupt(
@@ -1067,7 +1055,7 @@ export class PregelLoop {
       // we need to create a new checkpoint for Command(update=...) or Command(goto=...)
       // in case the result of Command(goto=...) is an interrupt.
       // If not done, the checkpoint containing the interrupt will be lost.
-      await this._putCheckpoint({ source: "input", writes: {} });
+      await this._putCheckpoint({ source: "input" });
       this.input = INPUT_DONE;
     } else {
       // map inputs to channel updates
@@ -1097,10 +1085,7 @@ export class PregelLoop {
           this.triggerToNodes
         );
         // save input checkpoint
-        await this._putCheckpoint({
-          source: "input",
-          writes: Object.fromEntries(inputWrites),
-        });
+        await this._putCheckpoint({ source: "input" });
 
         this.input = INPUT_DONE;
       } else if (!(CONFIG_KEY_RESUMING in (this.config.configurable ?? {}))) {

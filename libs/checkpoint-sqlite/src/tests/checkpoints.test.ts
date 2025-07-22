@@ -56,7 +56,7 @@ describe("SqliteSaver", () => {
     const runnableConfig = await sqliteSaver.put(
       { configurable: { thread_id: "1" } },
       checkpoint1,
-      { source: "update", step: -1, writes: null, parents: {} }
+      { source: "update", step: -1, parents: {} }
     );
     expect(runnableConfig).toEqual({
       configurable: {
@@ -108,7 +108,6 @@ describe("SqliteSaver", () => {
       {
         source: "update",
         step: -1,
-        writes: null,
         parents: { "": checkpoint1.id },
       }
     );
@@ -153,14 +152,12 @@ describe("SqliteSaver", () => {
     await saver.put({ configurable: { thread_id: "1" } }, emptyCheckpoint(), {
       source: "update",
       step: -1,
-      writes: null,
       parents: {},
     });
 
     await saver.put({ configurable: { thread_id: "2" } }, emptyCheckpoint(), {
       source: "update",
       step: -1,
-      writes: null,
       parents: {},
     });
 
@@ -188,7 +185,6 @@ describe("SqliteSaver", () => {
       source: "loop",
       parents: {},
       step: 0,
-      writes: null,
     });
 
     await saver.putWrites(
@@ -220,7 +216,6 @@ describe("SqliteSaver", () => {
       source: "loop",
       parents: {},
       step: 1,
-      writes: null,
     });
 
     // check that pending sends are attached to checkpoint1

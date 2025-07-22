@@ -268,7 +268,7 @@ export function getTupleTests<T extends BaseCheckpointSaver>(
         config = await checkpointer.put(
           config,
           checkpoint0,
-          { source: "loop", parents: {}, step: 0, writes: null },
+          { source: "loop", parents: {}, step: 0 },
           {}
         );
 
@@ -300,7 +300,7 @@ export function getTupleTests<T extends BaseCheckpointSaver>(
         config = await checkpointer.put(
           config,
           checkpoint1,
-          { source: "loop", parents: {}, step: 1, writes: null },
+          { source: "loop", parents: {}, step: 1 },
           {}
         );
 
