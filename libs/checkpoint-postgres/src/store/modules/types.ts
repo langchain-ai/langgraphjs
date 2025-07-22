@@ -11,7 +11,6 @@ export interface Embeddings {
 }
 
 export type EmbeddingsFunc = (texts: string[]) => Promise<number[][]>;
-export type AEmbeddingsFunc = (texts: string[]) => Promise<number[][]>;
 export type VectorIndexType = "ivfflat" | "hnsw";
 export type DistanceMetric = "cosine" | "l2" | "inner_product";
 
@@ -65,7 +64,7 @@ export interface IndexConfig {
    * Embedding function to generate embeddings from text.
    * Can be a LangChain Embeddings instance or a function.
    */
-  embed: Embeddings | EmbeddingsFunc | AEmbeddingsFunc;
+  embed: Embeddings | EmbeddingsFunc;
 
   /**
    * Fields to extract text from for embedding generation.

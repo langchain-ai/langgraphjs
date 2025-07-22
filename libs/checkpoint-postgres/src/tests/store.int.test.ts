@@ -359,10 +359,10 @@ describe("PostgresStore CRUD Operations", () => {
     expect(mockEmbedding.calls.length).toBe(mockCallsBefore);
 
     // When - search for this item
-    const results = await storeWithVectors.vectorSearch(
-      namespace,
-      "test document"
-    );
+    const results = await storeWithVectors.search(namespace, {
+      query: "test document",
+      mode: "vector",
+    });
 
     // Then - item should not be found via vector search
     expect(results.length).toBe(0);
@@ -400,10 +400,10 @@ describe("PostgresStore CRUD Operations", () => {
     expect(embedCalls).not.toContain("Not indexed content");
 
     // When - search for indexed content
-    const results = await storeWithVectors.vectorSearch(
-      namespace,
-      "indexed summary"
-    );
+    const results = await storeWithVectors.search(namespace, {
+      query: "indexed summary",
+      mode: "vector",
+    });
 
     // Then - item should be found
     expect(results.length).toBeGreaterThan(0);
@@ -525,16 +525,19 @@ describe("PostgresStore Error Handling", () => {
 
   it("should throw error when using vectorSearch directly without vector configuration", async () => {
     // When/Then
-    await expect(store.vectorSearch(["docs"], "test query")).rejects.toThrow(
-      /Vector search not configured/
-    );
+    await expect(
+      store.search(["docs"], { mode: "vector", query: "test query" })
+    ).rejects.toThrow(/Vector search not configured/);
   });
 
   it("should throw error when using hybridSearch directly without vector configuration", async () => {
     // When/Then
-    await expect(store.hybridSearch(["docs"], "test query")).rejects.toThrow(
-      /Vector search not configured/
-    );
+    await expect(
+      store.search(["docs"], {
+        query: "test query",
+        mode: "hybrid",
+      })
+    ).rejects.toThrow(/Vector search not configured/);
   });
 
   it("should handle unknown search mode", async () => {
@@ -596,21 +599,24 @@ describe("PostgresStore Hybrid Search", () => {
 
   it("should combine vector and text search effectively", async () => {
     // When
-    const vectorHeavy = await store.hybridSearch(
-      ["docs"],
-      "machine learning algorithms",
-      { vectorWeight: 0.9, limit: 10 }
-    );
-    const textHeavy = await store.hybridSearch(
-      ["docs"],
-      "machine learning algorithms",
-      { vectorWeight: 0.1, limit: 10 }
-    );
-    const balanced = await store.hybridSearch(
-      ["docs"],
-      "machine learning algorithms",
-      { vectorWeight: 0.5, limit: 10 }
-    );
+    const vectorHeavy = await store.search(["docs"], {
+      mode: "hybrid",
+      query: "machine learning algorithms",
+      vectorWeight: 0.9,
+      limit: 10,
+    });
+    const textHeavy = await store.search(["docs"], {
+      mode: "hybrid",
+      query: "machine learning algorithms",
+      vectorWeight: 0.1,
+      limit: 10,
+    });
+    const balanced = await store.search(["docs"], {
+      mode: "hybrid",
+      query: "machine learning algorithms",
+      vectorWeight: 0.5,
+      limit: 10,
+    });
 
     // Then
     expect(vectorHeavy).toBeDefined();
@@ -630,11 +636,12 @@ describe("PostgresStore Hybrid Search", () => {
 
   it("should maintain result ordering by score", async () => {
     // When
-    const results = await store.hybridSearch(
-      ["docs"],
-      "machine learning algorithms",
-      { vectorWeight: 0.5, limit: 10 }
-    );
+    const results = await store.search(["docs"], {
+      mode: "hybrid",
+      query: "machine learning algorithms",
+      vectorWeight: 0.5,
+      limit: 10,
+    });
 
     // Then
     if (results.length > 1) {
@@ -685,15 +692,13 @@ describe("PostgresStore Hybrid Search", () => {
     expect(results).toBeDefined();
 
     // Verify direct method works with same parameters
-    const directResults = await store.hybridSearch(
-      ["docs"],
-      "neural networks research",
-      {
-        vectorWeight,
-        similarityThreshold,
-        limit: 5,
-      }
-    );
+    const directResults = await store.search(["docs"], {
+      mode: "hybrid",
+      query: "neural networks research",
+      vectorWeight,
+      similarityThreshold,
+      limit: 5,
+    });
 
     // Both should have similar result structure
     expect(results.length).toBe(directResults.length);
@@ -1063,7 +1068,7 @@ describe("PostgresStore TTL", () => {
 
   it("should support TTL configuration and sweep", async () => {
     // Given
-    await store.putAdvanced(["test"], "ttl-item", { data: "expires" });
+    await store.put(["test"], "ttl-item", { data: "expires" });
 
     // When
     const item = await store.get(["test"], "ttl-item");
@@ -1078,7 +1083,7 @@ describe("PostgresStore TTL", () => {
 
   it("should refresh TTL on read", async () => {
     // Given
-    await store.putAdvanced(["test"], "refresh-item", { data: "refresh test" });
+    await store.put(["test"], "refresh-item", { data: "refresh test" });
 
     // When
     const item1 = await store.get(["test"], "refresh-item");
@@ -1137,11 +1142,11 @@ describe("PostgresStore Vector Search", () => {
     });
 
     // When
-    const results = await store.vectorSearch(
-      ["docs"],
-      "artificial intelligence",
-      { limit: 5 }
-    );
+    const results = await store.search(["docs"], {
+      query: "artificial intelligence",
+      mode: "vector",
+      limit: 5,
+    });
 
     // Then
     expect(results).toBeDefined();
@@ -1154,13 +1159,19 @@ describe("PostgresStore Vector Search", () => {
     await store.put(["test"], "item1", { text: "sample content for testing" });
 
     // When
-    const cosineResults = await store.vectorSearch(["test"], "query text", {
+    const cosineResults = await store.search(["test"], {
+      query: "query text",
+      mode: "vector",
       distanceMetric: "cosine",
     });
-    const l2Results = await store.vectorSearch(["test"], "query text", {
+    const l2Results = await store.search(["test"], {
+      query: "query text",
+      mode: "vector",
       distanceMetric: "l2",
     });
-    const ipResults = await store.vectorSearch(["test"], "query text", {
+    const ipResults = await store.search(["test"], {
+      query: "query text",
+      mode: "vector",
       distanceMetric: "inner_product",
     });
 
@@ -1176,16 +1187,16 @@ describe("PostgresStore Vector Search", () => {
     await store.put(["test"], "item2", { text: "similar query content" });
 
     // When
-    const highThresholdResults = await store.vectorSearch(
-      ["test"],
-      "query content",
-      { similarityThreshold: 0.9 }
-    );
-    const lowThresholdResults = await store.vectorSearch(
-      ["test"],
-      "query content",
-      { similarityThreshold: 0.1 }
-    );
+    const highThresholdResults = await store.search(["test"], {
+      query: "query content",
+      mode: "vector",
+      similarityThreshold: 0.9,
+    });
+    const lowThresholdResults = await store.search(["test"], {
+      query: "query content",
+      mode: "vector",
+      similarityThreshold: 0.1,
+    });
 
     // Then
     expect(lowThresholdResults.length).toBeGreaterThanOrEqual(
@@ -1212,7 +1223,10 @@ describe("PostgresStore Vector Search", () => {
     await store.put(["test"], "doc1", testObj);
 
     // When
-    const searchResults = await store.vectorSearch(["test"], "Test Document");
+    const searchResults = await store.search(["test"], {
+      query: "Test Document",
+      mode: "vector",
+    });
 
     // Then
     expect(searchResults.length).toBeGreaterThan(0);
@@ -1281,10 +1295,10 @@ describe("PostgresStore Vector Search", () => {
     expect(mockEmbedding.calls.length).toBe(mockCallsBefore);
 
     // When - search for this item
-    const results = await store.vectorSearch(
-      ["no-index"],
-      "not indexed content"
-    );
+    const results = await store.search(["no-index"], {
+      query: "not indexed content",
+      mode: "vector",
+    });
 
     // Then - item should not be found via vector search
     expect(results.length).toBe(0);
@@ -1318,10 +1332,10 @@ describe("PostgresStore Vector Search", () => {
     );
 
     // Verify with search
-    const results = await store.vectorSearch(
-      ["selective-index"],
-      "summary text"
-    );
+    const results = await store.search(["selective-index"], {
+      query: "summary text",
+      mode: "vector",
+    });
     expect(results.length).toBeGreaterThan(0);
   });
 });
