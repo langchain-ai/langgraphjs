@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll, beforeEach } from "vitest";
-import { Client } from '@elastic/elasticsearch';
+import { Client } from "@elastic/elasticsearch";
 import {
   Checkpoint,
   CheckpointTuple,
@@ -43,19 +43,29 @@ const checkpoint2: Checkpoint = {
   pending_sends: [],
 };
 
-const client = new Client({ node: getEnvironmentVariable("ELASTICSEARCH_URL")! });
+const client = new Client({
+  node: getEnvironmentVariable("ELASTICSEARCH_URL")!,
+});
 
 beforeEach(async () => {
   try {
-    await client.indices.delete({ index: ElasticSearchSaver.defaultCheckpointIndex });
-    await client.indices.delete({ index: ElasticSearchSaver.defaultCheckpointWritesIndex });
+    await client.indices.delete({
+      index: ElasticSearchSaver.defaultCheckpointIndex,
+    });
+    await client.indices.delete({
+      index: ElasticSearchSaver.defaultCheckpointWritesIndex,
+    });
   } catch (error) {
     // ignore errors if indices do not exist
   }
-})
+});
 afterAll(async () => {
-  await client.indices.delete({ index: ElasticSearchSaver.defaultCheckpointIndex });
-  await client.indices.delete({ index: ElasticSearchSaver.defaultCheckpointWritesIndex });
+  await client.indices.delete({
+    index: ElasticSearchSaver.defaultCheckpointIndex,
+  });
+  await client.indices.delete({
+    index: ElasticSearchSaver.defaultCheckpointWritesIndex,
+  });
   await client.close();
 });
 
@@ -65,7 +75,6 @@ describe("ElasticsearchSaver", () => {
       client,
     });
     await saver.setupIndices();
-
 
     // get undefined checkpoint
     const undefinedCheckpoint = await saver.getTuple({

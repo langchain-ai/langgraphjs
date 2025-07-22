@@ -1,4 +1,4 @@
-import { Client as ESClient, estypes } from '@elastic/elasticsearch'
+import { Client as ESClient, estypes } from "@elastic/elasticsearch";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import {
   BaseCheckpointSaver,
@@ -19,7 +19,7 @@ type CheckpointDocument = {
   type: string;
   checkpoint: string;
   metadata: string;
-}
+};
 
 type WritesDocument = {
   thread_id: string;
@@ -29,8 +29,8 @@ type WritesDocument = {
   idx: number;
   channel: string;
   value: string;
-  type: string
-}
+  type: string;
+};
 
 export type ElasticSearchSaverParams = {
   client: ESClient;
@@ -48,7 +48,9 @@ export class ElasticSearchSaver extends BaseCheckpointSaver {
   protected client: ESClient;
 
   static defaultCheckpointIndex = "checkpoints";
+
   static defaultCheckpointWritesIndex = "checkpoint_writes";
+
   static defaultCheckpointIndexMapping: estypes.MappingTypeMapping = {
     properties: {
       thread_id: { type: "keyword" },
@@ -58,8 +60,9 @@ export class ElasticSearchSaver extends BaseCheckpointSaver {
       type: { type: "keyword" },
       checkpoint: { type: "binary" },
       metadata: { type: "binary" },
-    }
-  }
+    },
+  };
+
   static defaultCheckpointWritesIndexMapping: estypes.MappingTypeMapping = {
     properties: {
       thread_id: { type: "keyword" },
@@ -70,35 +73,42 @@ export class ElasticSearchSaver extends BaseCheckpointSaver {
       channel: { type: "keyword" },
       type: { type: "keyword" },
       value: { type: "binary" },
-    }
-  }
+    },
+  };
 
   checkpointIndex = ElasticSearchSaver.defaultCheckpointIndex;
+
   checkpointWritesIndex = ElasticSearchSaver.defaultCheckpointWritesIndex;
-  refreshPolicy: estypes.Refresh = 'wait_for';
-  checkpointIndexMapping: estypes.MappingTypeMapping = ElasticSearchSaver.defaultCheckpointIndexMapping;
-  checkpointWritesIndexMapping: estypes.MappingTypeMapping = ElasticSearchSaver.defaultCheckpointWritesIndexMapping;
+
+  refreshPolicy: estypes.Refresh = "wait_for";
+
+  checkpointIndexMapping: estypes.MappingTypeMapping =
+    ElasticSearchSaver.defaultCheckpointIndexMapping;
+
+  checkpointWritesIndexMapping: estypes.MappingTypeMapping =
+    ElasticSearchSaver.defaultCheckpointWritesIndexMapping;
 
   constructor(
     {
       client,
       checkpointIndex,
       checkpointWritesIndex,
-      refreshPolicy = 'wait_for',
+      refreshPolicy = "wait_for",
       checkpointIndexMapping,
-      checkpointWritesIndexMapping
+      checkpointWritesIndexMapping,
     }: ElasticSearchSaverParams,
     serde?: SerializerProtocol
   ) {
     super(serde);
     this.client = client;
-    this.checkpointIndex =
-      checkpointIndex ?? this.checkpointIndex;
+    this.checkpointIndex = checkpointIndex ?? this.checkpointIndex;
     this.checkpointWritesIndex =
       checkpointWritesIndex ?? this.checkpointWritesIndex;
     this.refreshPolicy = refreshPolicy;
-    this.checkpointIndexMapping = checkpointIndexMapping ?? this.checkpointIndexMapping;
-    this.checkpointWritesIndexMapping = checkpointWritesIndexMapping ?? this.checkpointWritesIndexMapping;
+    this.checkpointIndexMapping =
+      checkpointIndexMapping ?? this.checkpointIndexMapping;
+    this.checkpointWritesIndexMapping =
+      checkpointWritesIndexMapping ?? this.checkpointWritesIndexMapping;
   }
 
   /**
@@ -107,19 +117,23 @@ export class ElasticSearchSaver extends BaseCheckpointSaver {
    * This method should be called once before using the saver.
    */
   async setupIndices(): Promise<void> {
-    const exists = await this.client.indices.exists({ index: this.checkpointIndex });
+    const exists = await this.client.indices.exists({
+      index: this.checkpointIndex,
+    });
     if (!exists) {
       await this.client.indices.create({
         index: this.checkpointIndex,
-        mappings: this.checkpointIndexMapping
+        mappings: this.checkpointIndexMapping,
       });
     }
 
-    const existsWrites = await this.client.indices.exists({ index: this.checkpointWritesIndex });
+    const existsWrites = await this.client.indices.exists({
+      index: this.checkpointWritesIndex,
+    });
     if (!existsWrites) {
       await this.client.indices.create({
         index: this.checkpointWritesIndex,
-        mappings: this.checkpointWritesIndexMapping
+        mappings: this.checkpointWritesIndexMapping,
       });
     }
   }
@@ -137,64 +151,72 @@ export class ElasticSearchSaver extends BaseCheckpointSaver {
       checkpoint_id,
     } = config.configurable ?? {};
 
-    const result = await this.client.search<CheckpointDocument>({
-      index: this.checkpointIndex,
-      size: 1,
-      sort: [{ checkpoint_id: { order: "desc" } }],
-      query: {
-        bool: {
-          must: [
-            { term: { thread_id } },
-            { term: { checkpoint_ns } },
-            ...(checkpoint_id ? [{ term: { checkpoint_id } }] : []),
-          ]
-        }
-      }
-    }).catch((error) => {
-      this.errorWarnings(error);
-      throw error;
-    })
+    const result = await this.client
+      .search<CheckpointDocument>({
+        index: this.checkpointIndex,
+        size: 1,
+        sort: [{ checkpoint_id: { order: "desc" } }],
+        query: {
+          bool: {
+            must: [
+              { term: { thread_id } },
+              { term: { checkpoint_ns } },
+              ...(checkpoint_id ? [{ term: { checkpoint_id } }] : []),
+            ],
+          },
+        },
+      })
+      .catch((error) => {
+        this.errorWarnings(error);
+        throw error;
+      });
 
-
-    if (result.hits.hits.length === 0 || result.hits.hits[0]?._source === undefined) {
+    if (
+      result.hits.hits.length === 0 ||
+      result.hits.hits[0]?._source === undefined
+    ) {
       return undefined;
     }
 
     const doc = result.hits.hits[0]._source;
 
-    const serializedWrites = await this.client.search<WritesDocument>({
-      index: this.checkpointWritesIndex,
-      sort: [{ idx: { order: "asc" } }],
-      query: {
-        bool: {
-          must: [
-            { term: { thread_id } },
-            { term: { checkpoint_ns } },
-            { term: { checkpoint_id: doc.checkpoint_id } },
-          ]
-        }
-      }
-    }).catch((error) => {
-      this.errorWarnings(error);
-      throw error;
-    });
+    const serializedWrites = await this.client
+      .search<WritesDocument>({
+        index: this.checkpointWritesIndex,
+        sort: [{ idx: { order: "asc" } }],
+        query: {
+          bool: {
+            must: [
+              { term: { thread_id } },
+              { term: { checkpoint_ns } },
+              { term: { checkpoint_id: doc.checkpoint_id } },
+            ],
+          },
+        },
+      })
+      .catch((error) => {
+        this.errorWarnings(error);
+        throw error;
+      });
 
     const checkpoint = (await this.serde.loadsTyped(
       doc.type,
-      new Uint8Array(Buffer.from(doc.checkpoint, 'base64'))
+      new Uint8Array(Buffer.from(doc.checkpoint, "base64"))
     )) as Checkpoint;
 
-    const pendingWrites: CheckpointPendingWrite[] = await Promise.all(serializedWrites.hits.hits.map(async (serializedWrite) => {
-      const source = serializedWrite._source!
-      return [
-        source.task_id,
-        source.channel,
-        await this.serde.loadsTyped(
-          source.type,
-          new Uint8Array(Buffer.from(source.value, 'base64'))
-        ),
-      ] as CheckpointPendingWrite;
-    }));
+    const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
+      serializedWrites.hits.hits.map(async (serializedWrite) => {
+        const source = serializedWrite._source!;
+        return [
+          source.task_id,
+          source.channel,
+          await this.serde.loadsTyped(
+            source.type,
+            new Uint8Array(Buffer.from(source.value, "base64"))
+          ),
+        ] as CheckpointPendingWrite;
+      })
+    );
 
     const configurableValues = {
       thread_id,
@@ -204,21 +226,21 @@ export class ElasticSearchSaver extends BaseCheckpointSaver {
 
     return {
       config: { configurable: configurableValues },
-      checkpoint: checkpoint,
+      checkpoint,
       pendingWrites,
       metadata: (await this.serde.loadsTyped(
         doc.type,
-        new Uint8Array(Buffer.from(doc.metadata, 'base64'))
+        new Uint8Array(Buffer.from(doc.metadata, "base64"))
       )) as CheckpointMetadata,
       parentConfig:
         doc.parent_checkpoint_id != null
           ? {
-            configurable: {
-              thread_id,
-              checkpoint_ns,
-              checkpoint_id: doc.parent_checkpoint_id,
-            },
-          }
+              configurable: {
+                thread_id,
+                checkpoint_ns,
+                checkpoint_id: doc.parent_checkpoint_id,
+              },
+            }
           : undefined,
     };
   }
@@ -239,12 +261,19 @@ export class ElasticSearchSaver extends BaseCheckpointSaver {
       mustClauses.push({ term: { thread_id: config.configurable.thread_id } });
     }
 
-    if (config?.configurable?.checkpoint_ns !== undefined && config?.configurable?.checkpoint_ns !== null) {
-      mustClauses.push({ term: { checkpoint_ns: config.configurable.checkpoint_ns } });
+    if (
+      config?.configurable?.checkpoint_ns !== undefined &&
+      config?.configurable?.checkpoint_ns !== null
+    ) {
+      mustClauses.push({
+        term: { checkpoint_ns: config.configurable.checkpoint_ns },
+      });
     }
 
     if (before) {
-      mustClauses.push({ range: { checkpoint_id: { lt: before.configurable?.checkpoint_id } } });
+      mustClauses.push({
+        range: { checkpoint_id: { lt: before.configurable?.checkpoint_id } },
+      });
     }
 
     if (filter) {
@@ -253,19 +282,21 @@ export class ElasticSearchSaver extends BaseCheckpointSaver {
       });
     }
 
-    const result = await this.client.search<CheckpointDocument>({
-      index: this.checkpointIndex,
-      ...(limit ? { size: limit } : {}),
-      sort: [{ checkpoint_id: { order: "desc" } }],
-      query: {
-        bool: {
-          must: mustClauses,
-        }
-      }
-    }).catch((error) => {
-      this.errorWarnings(error);
-      throw error;
-    });
+    const result = await this.client
+      .search<CheckpointDocument>({
+        index: this.checkpointIndex,
+        ...(limit ? { size: limit } : {}),
+        sort: [{ checkpoint_id: { order: "desc" } }],
+        query: {
+          bool: {
+            must: mustClauses,
+          },
+        },
+      })
+      .catch((error) => {
+        this.errorWarnings(error);
+        throw error;
+      });
 
     for await (const hit of result.hits.hits) {
       const source = hit._source;
@@ -274,11 +305,11 @@ export class ElasticSearchSaver extends BaseCheckpointSaver {
       }
       const checkpoint = (await this.serde.loadsTyped(
         source.type,
-        new Uint8Array(Buffer.from(source.checkpoint, 'base64'))
+        new Uint8Array(Buffer.from(source.checkpoint, "base64"))
       )) as Checkpoint;
       const metadata = (await this.serde.loadsTyped(
         source.type,
-        new Uint8Array(Buffer.from(source.metadata, 'base64'))
+        new Uint8Array(Buffer.from(source.metadata, "base64"))
       )) as CheckpointMetadata;
       yield {
         config: {
@@ -288,16 +319,16 @@ export class ElasticSearchSaver extends BaseCheckpointSaver {
             checkpoint_id: source.checkpoint_id,
           },
         },
-        checkpoint: checkpoint,
-        metadata: metadata,
+        checkpoint,
+        metadata,
         parentConfig: source.parent_checkpoint_id
           ? {
-            configurable: {
-              thread_id: source.thread_id,
-              checkpoint_ns: source.checkpoint_ns,
-              checkpoint_id: source.parent_checkpoint_id,
-            },
-          }
+              configurable: {
+                thread_id: source.thread_id,
+                checkpoint_ns: source.checkpoint_ns,
+                checkpoint_id: source.parent_checkpoint_id,
+              },
+            }
           : undefined,
       };
     }
@@ -334,23 +365,23 @@ export class ElasticSearchSaver extends BaseCheckpointSaver {
       checkpoint_id,
       parent_checkpoint_id: config.configurable?.checkpoint_id,
       type: checkpointType,
-      checkpoint: Buffer.from(serializedCheckpoint).toString('base64'),
-      metadata: Buffer.from(serializedMetadata).toString('base64'),
+      checkpoint: Buffer.from(serializedCheckpoint).toString("base64"),
+      metadata: Buffer.from(serializedMetadata).toString("base64"),
     };
-
 
     const compositeId = `thread_id:${thread_id}|checkpoint_ns:${checkpoint_ns}|checkpoint_id:${checkpoint_id}`;
 
-
-    await this.client.index({
-      index: this.checkpointIndex,
-      id: compositeId,
-      document: doc,
-      refresh: this.refreshPolicy
-    }).catch((error) => {
-      this.errorWarnings(error);
-      throw error;
-    });
+    await this.client
+      .index({
+        index: this.checkpointIndex,
+        id: compositeId,
+        document: doc,
+        refresh: this.refreshPolicy,
+      })
+      .catch((error) => {
+        this.errorWarnings(error);
+        throw error;
+      });
 
     return {
       configurable: {
@@ -395,33 +426,37 @@ export class ElasticSearchSaver extends BaseCheckpointSaver {
         task_id: taskId,
         idx,
         channel,
-        value: Buffer.from(serializedValue).toString('base64'),
-        type
-      } 
+        value: Buffer.from(serializedValue).toString("base64"),
+        type,
+      };
 
       return [
         {
           index: {
             _index: this.checkpointWritesIndex,
-            _id: compositeId
-          }
+            _id: compositeId,
+          },
         },
-        doc
-      ]
-    })
+        doc,
+      ];
+    });
 
-    await this.client.bulk({
-      operations,
-      refresh: this.refreshPolicy
-    }).catch((error) => {
-      this.errorWarnings(error);
-      throw error;
-    })
+    await this.client
+      .bulk({
+        operations,
+        refresh: this.refreshPolicy,
+      })
+      .catch((error) => {
+        this.errorWarnings(error);
+        throw error;
+      });
   }
 
-  errorWarnings(error: any): void {
-    // check if error is index_not_found_exception
-    if (error.meta?.body?.error?.type === 'index_not_found_exception') {
+  errorWarnings(error: unknown): void {
+    if (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (error as any)?.meta?.body?.error?.type === "index_not_found_exception"
+    ) {
       console.warn(`ElasticSearchSaver error. Did you forget to call setupIndices? e.g. 
 
 const checkpointer = new ElasticSearchSaver({ client });
