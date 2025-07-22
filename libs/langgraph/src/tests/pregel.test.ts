@@ -69,7 +69,6 @@ import {
   Graph,
   StateGraph,
   StateGraphArgs,
-  StateType,
 } from "../graph/index.js";
 import { Topic } from "../channels/topic.js";
 import { PregelNode } from "../pregel/read.js";
@@ -1970,12 +1969,12 @@ export function runPregelTests(
   });
 
   it("should allow a conditional edge after a send", async () => {
-    const State = {
+    const State = Annotation.Root({
       items: Annotation<string[]>({
         reducer: (a, b) => a.concat(b),
       }),
-    };
-    const sendForFun = (state: StateType<typeof State>) => {
+    });
+    const sendForFun = (state: typeof State.State) => {
       return [new Send("2", state), new Send("2", state)];
     };
     const routeToThree = () => "3";
