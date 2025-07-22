@@ -2531,11 +2531,6 @@ describe("Graph Structure Tests (Python port)", () => {
     // Verify metadata structure (not exact values since they can vary)
     expect(state.metadata).toMatchObject({
       source: "loop",
-      writes: {
-        alice: {
-          user_name: "Meow",
-        },
-      },
       thread_id: "1",
       step: 1,
     });

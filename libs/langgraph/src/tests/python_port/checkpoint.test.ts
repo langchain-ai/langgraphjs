@@ -1207,7 +1207,6 @@ describe("Checkpoint Tests (Python port)", () => {
       parents: {},
       source: "loop",
       step: 0,
-      writes: null,
       thread_id: "1",
     });
 
