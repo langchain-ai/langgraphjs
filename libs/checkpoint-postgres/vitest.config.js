@@ -21,6 +21,7 @@ export default defineConfig((env) => {
         exclude: configDefaults.exclude,
         include: ["**/*.int.test.ts"],
         name: "int",
+        fileParallelism: false,
         environment: "node",
       },
     };
