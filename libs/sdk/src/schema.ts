@@ -145,10 +145,32 @@ export interface AssistantGraph {
  * An interrupt thrown inside a thread.
  */
 export interface Interrupt<TValue = unknown> {
-  interrupt_id?: string;
+  /**
+   * The ID of the interrupt.
+   */
+  id?: string;
+
+  /**
+   * The value of the interrupt.
+   */
   value?: TValue;
-  when: "during" | (string & {}); // eslint-disable-line @typescript-eslint/ban-types
+
+  /**
+   * Will be deprecated in the future.
+   * @deprecated Will be removed in the future.
+   */
+  when?: "during" | (string & {}); // eslint-disable-line @typescript-eslint/ban-types
+
+  /**
+   * Whether the interrupt can be resumed.
+   * @deprecated Will be removed in the future.
+   */
   resumable?: boolean;
+
+  /**
+   * The namespace of the interrupt.
+   * @deprecated Replaced by `interrupt_id`
+   */
   ns?: string[];
 }
 
