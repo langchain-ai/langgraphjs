@@ -10,11 +10,11 @@ import {
 } from "@langchain/langgraph-checkpoint";
 
 // Import types
-import {
+import type {
   PostgresStoreConfig,
   SearchOptions,
   SearchItem,
-  PutOptions,
+  FilterOperators,
 } from "./modules/types.js";
 
 // Import modules
@@ -488,10 +488,58 @@ export class PostgresStore implements BaseStore {
    */
   async search(
     namespacePrefix: string[],
-    options: SearchOptions & {
+    options: {
+      /**
+       * Filter conditions with support for advanced operators.
+       */
+      filter?: Record<
+        string,
+        string | number | boolean | null | FilterOperators
+      >;
+
+      /**
+       * Natural language search query.
+       */
+      query?: string;
+
+      /**
+       * Maximum number of results to return.
+       * @default 10
+       */
+      limit?: number;
+
+      /**
+       * Number of results to skip for pagination.
+       * @default 0
+       */
+      offset?: number;
+
+      /**
+       * Whether to refresh TTL for returned items.
+       */
+      refreshTtl?: boolean;
+
+      /**
+       * Search mode.
+       * @default "auto"
+       */
       mode?: "text" | "vector" | "hybrid" | "auto";
+
+      /**
+       * Similarity threshold for vector search.
+       */
       similarityThreshold?: number;
+
+      /**
+       * Distance metric for vector search.
+       * @default "cosine"
+       */
       distanceMetric?: "cosine" | "l2" | "inner_product";
+
+      /**
+       * Weight for vector search in hybrid mode.
+       * @default 0.7
+       */
       vectorWeight?: number;
     } = {}
   ): Promise<SearchItem[]> {
