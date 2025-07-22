@@ -81,7 +81,7 @@ afterAll(async () => {
 
 describe.each([
   { schema: undefined, description: "the default schema" },
-  // { schema: "custom_schema", description: "a custom schema" },
+  { schema: "custom_schema", description: "a custom schema" },
 ])("PostgresSaver with $description", ({ schema }) => {
   let postgresSaver: PostgresSaver;
   let currentDbConnectionString: string;
