@@ -152,12 +152,11 @@ export function createCheckpoint<ValueType>(
     }
   }
   return {
-    v: 1,
+    v: 4,
     id: options?.id ?? uuid6(step),
     ts: new Date().toISOString(),
     channel_values: values,
     channel_versions: { ...checkpoint.channel_versions },
     versions_seen: deepCopy(checkpoint.versions_seen),
-    pending_sends: checkpoint.pending_sends ?? [],
   };
 }

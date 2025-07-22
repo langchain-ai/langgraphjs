@@ -1,0 +1,12 @@
+version: "3.8"
+
+services:
+  mongodb:
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: user
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_DATABASE: testdb
+    ports:
+      - "27017:27017"
+    command: mongod --auth --logpath /var/log/mongodb/mongod.log --logappend
