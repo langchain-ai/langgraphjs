@@ -1,7 +1,7 @@
 /* eslint-disable no-process-env */
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import pg from "pg";
-import { PostgresStore } from "../index.js";
+import { PostgresStore } from "../../store/index.js";
 
 const { Pool } = pg;
 const { TEST_POSTGRES_URL } = process.env;
