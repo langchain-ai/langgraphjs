@@ -2423,51 +2423,41 @@ it("batch update state", async () => {
   const thread = await client.threads.create();
   const input = { messages: [{ role: "human", content: "foo" }] };
 
-  await gatherIterator(
+  const stream = await gatherIterator(
     client.runs.stream(thread.thread_id, assistant.assistant_id, {
       input,
       config: globalConfig,
+      streamMode: ["updates"],
     })
   );
 
   const history = await client.threads.getHistory(thread.thread_id);
-  const supersteps = history
-    .slice()
-    .reverse()
-    .flatMap((i) => {
-      if (i.metadata?.source === "input") {
-        const values = i.metadata.writes?.["__start__"] ?? i.metadata.writes;
-        return [
-          { updates: [{ asNode: "__input__", values }] },
-          { updates: [{ asNode: "__start__", values }] },
-        ];
-      }
+  const clone = await client.threads.create({
+    graphId: "agent",
+    supersteps: [
+      // first checkpoint
+      { updates: [{ asNode: "__input__", values: history.at(-2)?.values }] },
 
-      return {
-        updates: Object.entries(i.metadata?.writes ?? {}).map(
-          ([asNode, values]) => ({ asNode, values })
-        ),
-      };
-    })
-    .filter((i) => i.updates.length > 0);
+      // second checkpoint
+      { updates: [{ asNode: "__start__", values: history.at(-2)?.values }] },
 
-  const clone = await client.threads.create({ graphId: "agent", supersteps });
+      // checkpoints created by update
+      ...stream
+        .filter((i) => i.event === "updates")
+        .map(({ data }) => ({
+          updates: Object.entries(data).map(([asNode, values]) => ({
+            asNode,
+            values,
+          })),
+        })),
+    ],
+  });
+
   const newHistory = await client.threads.getHistory(clone.thread_id);
 
   expect
-    .soft(newHistory.map((i) => i.next))
-    .toMatchObject(history.map((i) => i.next));
-  expect.soft(newHistory.map((i) => i.values)).toMatchObject(
-    history.map((i) => ({
-      ...i.values,
-      messages: i.values.messages.map((msg: any) => ({
-        ...msg,
-        // as the initial message does not have an ID, we just assume that
-        // the field is present
-        id: expect.any(String),
-      })),
-    }))
-  );
+    .soft(newHistory.map(({ next, values }) => ({ next, values })))
+    .toMatchObject(history.map(({ next, values }) => ({ next, values })));
 });
 
 it("dynamic graph", async () => {
