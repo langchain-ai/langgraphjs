@@ -527,7 +527,7 @@ describe("PostgresStore Error Handling", () => {
     // When/Then
     await expect(
       store.search(["docs"], { mode: "vector", query: "test query" })
-    ).rejects.toThrow(/Vector search not configured/);
+    ).rejects.toThrow(/Vector search requested but not configured/);
   });
 
   it("should throw error when using hybridSearch directly without vector configuration", async () => {
@@ -537,7 +537,7 @@ describe("PostgresStore Error Handling", () => {
         query: "test query",
         mode: "hybrid",
       })
-    ).rejects.toThrow(/Vector search not configured/);
+    ).rejects.toThrow(/Hybrid search requested but vector search not configured/);
   });
 
   it("should handle unknown search mode", async () => {
