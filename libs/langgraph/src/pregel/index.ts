@@ -25,6 +25,7 @@ import {
   emptyCheckpoint,
   PendingWrite,
   SCHEDULED,
+  SendProtocol,
   uuid5,
 } from "@langchain/langgraph-checkpoint";
 import {
@@ -55,6 +56,7 @@ import {
   CONFIG_KEY_CHECKPOINT_DURING,
   CONFIG_KEY_CHECKPOINT_NS,
   type CommandInstance,
+  TASKS,
 } from "../constants.js";
 import {
   GraphRecursionError,
@@ -122,6 +124,7 @@ import {
 import { findSubgraphPregel } from "./utils/subgraph.js";
 import { validateGraph, validateKeys } from "./validate.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
+import { Topic } from "../channels/topic.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
@@ -516,6 +519,20 @@ export class Pregel<
 
     this.nodes = fields.nodes;
     this.channels = fields.channels;
+
+    if (
+      TASKS in this.channels &&
+      "lc_graph_name" in this.channels[TASKS] &&
+      this.channels[TASKS].lc_graph_name !== "Topic"
+    ) {
+      throw new Error(
+        `Channel '${TASKS}' is reserved and cannot be used in the graph.`
+      );
+    } else {
+      (this.channels as Record<string, BaseChannel>)[TASKS] =
+        new Topic<SendProtocol>({ accumulate: false });
+    }
+
     this.autoValidate = fields.autoValidate ?? this.autoValidate;
     this.streamMode = streamMode ?? this.streamMode;
     this.inputChannels = fields.inputChannels;

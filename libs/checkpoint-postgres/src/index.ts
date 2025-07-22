@@ -9,12 +9,15 @@ import {
   type CheckpointMetadata,
   type ChannelVersions,
   WRITES_IDX_MAP,
+  TASKS,
+  maxChannelVersion,
 } from "@langchain/langgraph-checkpoint";
 import pg from "pg";
 
 import { getMigrations } from "./migrations.js";
 import {
   type SQL_STATEMENTS,
+  type SQL_TYPES,
   getSQLStatements,
   getTablesWithSchema,
 } from "./sql.js";
@@ -171,16 +174,10 @@ export class PostgresSaver extends BaseCheckpointSaver {
 
   protected async _loadCheckpoint(
     checkpoint: Omit<Checkpoint, "pending_sends" | "channel_values">,
-    channelValues: [Uint8Array, Uint8Array, Uint8Array][],
-    pendingSends: [Uint8Array, Uint8Array][]
+    channelValues: [Uint8Array, Uint8Array, Uint8Array][]
   ): Promise<Checkpoint> {
     return {
       ...checkpoint,
-      pending_sends: await Promise.all(
-        (pendingSends || []).map(([c, b]) =>
-          this.serde.loadsTyped(c.toString(), b)
-        )
-      ),
       channel_values: await this._loadBlobs(channelValues),
     };
   }
@@ -191,12 +188,13 @@ export class PostgresSaver extends BaseCheckpointSaver {
     if (!blobValues || blobValues.length === 0) {
       return {};
     }
+    const textDecoder = new TextDecoder();
     const entries = await Promise.all(
       blobValues
-        .filter(([, t]) => new TextDecoder().decode(t) !== "empty")
+        .filter(([, t]) => textDecoder.decode(t) !== "empty")
         .map(async ([k, t, v]) => [
-          new TextDecoder().decode(k),
-          await this.serde.loadsTyped(new TextDecoder().decode(t), v),
+          textDecoder.decode(k),
+          await this.serde.loadsTyped(textDecoder.decode(t), v),
         ])
     );
     return Object.fromEntries(entries);
@@ -247,13 +245,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
   }
 
   protected _dumpCheckpoint(checkpoint: Checkpoint) {
-    const serialized: Record<string, unknown> = {
-      ...checkpoint,
-      pending_sends: [],
-    };
-    if ("channel_values" in serialized) {
-      delete serialized.channel_values;
-    }
+    const serialized: Record<string, unknown> = { ...checkpoint };
+    if ("channel_values" in serialized) delete serialized.channel_values;
     return serialized;
   }
 
@@ -370,22 +363,33 @@ export class PostgresSaver extends BaseCheckpointSaver {
       args = [thread_id, checkpoint_ns];
     }
 
-    const result = await this.pool.query(
+    const result = await this.pool.query<SQL_TYPES["SELECT_SQL"]>(
       this.SQL_STATEMENTS.SELECT_SQL + where,
       args
     );
 
     const [row] = result.rows;
+    if (row === undefined) return undefined;
 
-    if (row === undefined) {
-      return undefined;
+    if (row.checkpoint.v < 4 && row.parent_checkpoint_id != null) {
+      const sendsResult = await this.pool.query<
+        SQL_TYPES["SELECT_PENDING_SENDS_SQL"]
+      >(this.SQL_STATEMENTS.SELECT_PENDING_SENDS_SQL, [
+        thread_id,
+        [row.parent_checkpoint_id],
+      ]);
+
+      const [sendsRow] = sendsResult.rows;
+      if (sendsRow != null) {
+        await this._migratePendingSends(sendsRow.pending_sends, row);
+      }
     }
 
     const checkpoint = await this._loadCheckpoint(
       row.checkpoint,
-      row.channel_values,
-      row.pending_sends
+      row.channel_values
     );
+
     const finalConfig = {
       configurable: {
         thread_id,
@@ -431,7 +435,37 @@ export class PostgresSaver extends BaseCheckpointSaver {
       query += ` LIMIT ${Number.parseInt(limit.toString(), 10)}`; // sanitize via parseInt, as limit could be an externally provided value
     }
 
-    const result = await this.pool.query(query, args);
+    const result = await this.pool.query<SQL_TYPES["SELECT_SQL"]>(query, args);
+    const toMigrate = result.rows.filter(
+      (row) => row.checkpoint.v < 4 && row.parent_checkpoint_id != null
+    );
+
+    if (toMigrate.length > 0) {
+      const sendsResult = await this.pool.query<
+        SQL_TYPES["SELECT_PENDING_SENDS_SQL"]
+      >(this.SQL_STATEMENTS.SELECT_PENDING_SENDS_SQL, [
+        toMigrate[0].thread_id,
+        toMigrate.map((row) => row.parent_checkpoint_id),
+      ]);
+
+      const parentMap = toMigrate.reduce<
+        Record<string, SQL_TYPES["SELECT_SQL"][]>
+      >((acc, row) => {
+        if (!row.parent_checkpoint_id) return acc;
+
+        acc[row.parent_checkpoint_id] ??= [];
+        acc[row.parent_checkpoint_id].push(row);
+        return acc;
+      }, {});
+
+      // add to values
+      for (const sendsRow of sendsResult.rows) {
+        for (const row of parentMap[sendsRow.checkpoint_id]) {
+          await this._migratePendingSends(sendsRow.pending_sends, row);
+        }
+      }
+    }
+
     for (const value of result.rows) {
       yield {
         config: {
@@ -443,8 +477,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
         },
         checkpoint: await this._loadCheckpoint(
           value.checkpoint,
-          value.channel_values,
-          value.pending_sends
+          value.channel_values
         ),
         metadata: await this._loadMetadata(value.metadata),
         parentConfig: value.parent_checkpoint_id
@@ -459,6 +492,41 @@ export class PostgresSaver extends BaseCheckpointSaver {
         pendingWrites: await this._loadWrites(value.pending_writes),
       };
     }
+  }
+
+  async _migratePendingSends(
+    pendingSends: [Uint8Array, Uint8Array][],
+    mutableRow: {
+      channel_values: [Uint8Array, Uint8Array, Uint8Array][];
+      checkpoint: Omit<Checkpoint, "pending_sends" | "channel_values">;
+    }
+  ) {
+    const textEncoder = new TextEncoder();
+    const textDecoder = new TextDecoder();
+    const row = mutableRow;
+
+    const [enc, blob] = this.serde.dumpsTyped(
+      await Promise.all(
+        pendingSends.map(([enc, blob]) =>
+          this.serde.loadsTyped(textDecoder.decode(enc), blob)
+        )
+      )
+    );
+
+    row.channel_values ??= [];
+    row.channel_values.push([
+      textEncoder.encode(TASKS),
+      textEncoder.encode(enc),
+      blob,
+    ]);
+
+    // add to versions
+    row.checkpoint.channel_versions[TASKS] =
+      Object.keys(mutableRow.checkpoint.channel_versions).length > 0
+        ? maxChannelVersion(
+            ...Object.values(mutableRow.checkpoint.channel_versions)
+          )
+        : this.getNextVersion(undefined);
   }
 
   /**

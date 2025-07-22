@@ -49,6 +49,7 @@
     "@langchain/anthropic": "^0.3.12",
     "@langchain/community": "^0.3.27",
     "@langchain/core": "^0.3.58",
+    "@langchain/langgraph-checkpoint": "workspace:*",
     "@langchain/langgraph-checkpoint-postgres": "workspace:*",
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",

@@ -1908,7 +1908,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph-checkpoint@npm:~0.0.18, @langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint":
+"@langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-checkpoint@workspace:libs/checkpoint"
   dependencies:
@@ -2166,7 +2166,7 @@ __metadata:
     "@langchain/anthropic": "npm:^0.3.12"
     "@langchain/community": "npm:^0.3.27"
     "@langchain/core": "npm:^0.3.58"
-    "@langchain/langgraph-checkpoint": "npm:~0.0.18"
+    "@langchain/langgraph-checkpoint": "workspace:*"
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
     "@langchain/langgraph-sdk": "workspace:*"
