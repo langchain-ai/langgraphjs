@@ -84,7 +84,6 @@ export function initialCheckpointTuple({
     metadata: {
       source: "input",
       step: -1,
-      writes: null,
       parents: {},
     },
   };
@@ -181,7 +180,6 @@ export function parentAndChildCheckpointTuplesWithWrites({
       metadata: {
         source: "input",
         step: -1,
-        writes: null,
         parents: {},
       },
       config: {
@@ -212,9 +210,6 @@ export function parentAndChildCheckpointTuplesWithWrites({
       metadata: {
         source: "loop",
         step: 0,
-        writes: {
-          someNode: parentPendingWrites,
-        },
         parents: {
           [checkpoint_ns]: parentCheckpointId,
         },

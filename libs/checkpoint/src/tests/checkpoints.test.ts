@@ -94,7 +94,7 @@ describe("MemorySaver", () => {
     const runnableConfig = await memorySaver.put(
       { configurable: { thread_id: "1", checkpoint_ns: "" } },
       checkpoint1,
-      { source: "update", step: -1, writes: null, parents: {} }
+      { source: "update", step: -1, parents: {} }
     );
     expect(runnableConfig).toEqual({
       configurable: {
@@ -124,7 +124,6 @@ describe("MemorySaver", () => {
       {
         source: "update",
         step: -1,
-        writes: null,
         parents: {},
       }
     );
@@ -164,7 +163,6 @@ describe("MemorySaver", () => {
       source: "loop",
       parents: {},
       step: 0,
-      writes: null,
     });
 
     await memorySaver.putWrites(
@@ -196,7 +194,6 @@ describe("MemorySaver", () => {
       source: "loop",
       parents: {},
       step: 1,
-      writes: null,
     });
 
     // check that pending sends are attached to checkpoint1
@@ -231,7 +228,6 @@ describe("MemorySaver", () => {
     const meta: CheckpointMetadata = {
       source: "update",
       step: -1,
-      writes: null,
       parents: {},
     };
 

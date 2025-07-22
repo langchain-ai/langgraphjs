@@ -25,7 +25,6 @@ export function deleteThreadTests<T extends BaseCheckpointSaver>(
       const meta: CheckpointMetadata = {
         source: "update",
         step: -1,
-        writes: null,
         parents: {},
       };
 

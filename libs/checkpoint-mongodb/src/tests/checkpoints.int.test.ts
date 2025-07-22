@@ -68,7 +68,7 @@ describe("MongoDBSaver", () => {
     const runnableConfig = await saver.put(
       { configurable: { thread_id: "1" } },
       checkpoint1,
-      { source: "update", step: -1, writes: null, parents: {} }
+      { source: "update", step: -1, parents: {} }
     );
     expect(runnableConfig).toEqual({
       configurable: {
@@ -117,7 +117,7 @@ describe("MongoDBSaver", () => {
         },
       },
       checkpoint2,
-      { source: "update", step: -1, writes: null, parents: {} }
+      { source: "update", step: -1, parents: {} }
     );
 
     // verify that parentTs is set and retrieved correctly for second checkpoint
@@ -153,14 +153,12 @@ describe("MongoDBSaver", () => {
     await saver.put({ configurable: { thread_id: "1" } }, emptyCheckpoint(), {
       source: "update",
       step: -1,
-      writes: null,
       parents: {},
     });
 
     await saver.put({ configurable: { thread_id: "2" } }, emptyCheckpoint(), {
       source: "update",
       step: -1,
-      writes: null,
       parents: {},
     });
 

@@ -1246,10 +1246,6 @@ describe("Checkpoint Tests (Python port)", () => {
 
     // First checkpoint (most recent) should have no pending writes
     expect(checkpoints[0]?.pendingWrites).toEqual([]);
-
-    // Check that the metadata in the first checkpoint has writes
-    expect(checkpoints[0]?.metadata?.writes).toBeDefined();
-
     expect(checkpoints[1]?.pendingWrites).toBeDefined();
     expect(checkpoints[2]?.pendingWrites).toBeDefined();
   });

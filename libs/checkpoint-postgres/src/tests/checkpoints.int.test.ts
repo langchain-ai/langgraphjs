@@ -343,7 +343,7 @@ describe.each([
     const runnableConfig = await postgresSaver.put(
       { configurable: { thread_id: "1" } },
       checkpoint1,
-      { source: "update", step: -1, writes: null, parents: {} },
+      { source: "update", step: -1, parents: {} },
       checkpoint1.channel_versions
     );
     expect(runnableConfig).toEqual({
@@ -399,7 +399,7 @@ describe.each([
         },
       },
       checkpoint2,
-      { source: "update", step: -1, writes: null, parents: {} },
+      { source: "update", step: -1, parents: {} },
       checkpoint2.channel_versions
     );
 
@@ -410,7 +410,6 @@ describe.each([
     expect(secondCheckpointTuple?.metadata).toEqual({
       source: "update",
       step: -1,
-      writes: null,
       parents: {},
     });
     expect(secondCheckpointTuple?.parentConfig).toEqual({
@@ -443,7 +442,6 @@ describe.each([
     const meta: CheckpointMetadata = {
       source: "update",
       step: -1,
-      writes: null,
       parents: {},
     };
 
@@ -475,7 +473,7 @@ describe.each([
     config = await postgresSaver.put(
       config,
       checkpoint0,
-      { source: "loop", parents: {}, step: 0, writes: null },
+      { source: "loop", parents: {}, step: 0 },
       {}
     );
 
@@ -510,7 +508,7 @@ describe.each([
     config = await postgresSaver.put(
       config,
       checkpoint1,
-      { source: "loop", parents: {}, step: 1, writes: null },
+      { source: "loop", parents: {}, step: 1 },
       {}
     );
 
