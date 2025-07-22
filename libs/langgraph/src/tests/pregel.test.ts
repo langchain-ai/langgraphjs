@@ -69,7 +69,6 @@ import {
   Graph,
   StateGraph,
   StateGraphArgs,
-  StateType,
 } from "../graph/index.js";
 import { Topic } from "../channels/topic.js";
 import { PregelNode } from "../pregel/read.js";
