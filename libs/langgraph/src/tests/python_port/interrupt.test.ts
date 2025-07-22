@@ -1053,6 +1053,5 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
         thread_id: "2",
       })
     );
-    expect(state?.metadata?.writes).toEqual({ alittlewhile: { value: 2 } });
   });
 });

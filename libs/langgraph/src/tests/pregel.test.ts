@@ -1640,7 +1640,6 @@ export function runPregelTests(
         metadata: {
           source: "loop",
           step: 6,
-          writes: { two: 5 },
           parents: {},
           thread_id: "1",
         },
@@ -1669,7 +1668,6 @@ export function runPregelTests(
         metadata: {
           source: "loop",
           step: 5,
-          writes: {},
           parents: {},
           thread_id: "1",
         },
@@ -1698,7 +1696,6 @@ export function runPregelTests(
         metadata: {
           source: "input",
           step: 4,
-          writes: { input: 3 },
           parents: {},
           thread_id: "1",
         },
@@ -1726,7 +1723,6 @@ export function runPregelTests(
         metadata: {
           source: "loop",
           step: 3,
-          writes: {},
           parents: {},
           thread_id: "1",
         },
@@ -1755,7 +1751,6 @@ export function runPregelTests(
         metadata: {
           source: "input",
           step: 2,
-          writes: { input: 20 },
           parents: {},
           thread_id: "1",
         },
@@ -1776,7 +1771,6 @@ export function runPregelTests(
         metadata: {
           source: "loop",
           step: 1,
-          writes: { two: 4 },
           parents: {},
           thread_id: "1",
         },
@@ -1805,7 +1799,6 @@ export function runPregelTests(
         metadata: {
           source: "loop",
           step: 0,
-          writes: {},
           parents: {},
           thread_id: "1",
         },
@@ -1834,7 +1827,6 @@ export function runPregelTests(
         metadata: {
           source: "input",
           step: -1,
-          writes: { input: 2 },
           parents: {},
           thread_id: "1",
         },
@@ -3101,7 +3093,6 @@ graph TD;
           metadata: {
             source: "update",
             step: 4,
-            writes: { analyzer_one: { docs: ["doc5"] } },
             thread_id: "2",
           },
         });
@@ -3326,13 +3317,11 @@ graph TD;
         {
           source: "loop",
           step: 0,
-          writes: null,
           parents: {},
         },
         {
           source: "input",
           step: -1,
-          writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
           parents: {},
         },
       ]);
@@ -3362,7 +3351,6 @@ graph TD;
         metadata: {
           source: "loop",
           step: 0,
-          writes: null,
           parents: {},
           thread_id: "2",
         },
@@ -3413,7 +3401,6 @@ graph TD;
         {
           source: "loop",
           step: 0,
-          writes: null,
           parents: {},
         },
       ]);
@@ -3449,7 +3436,6 @@ graph TD;
         metadata: {
           source: "loop",
           step: 0,
-          writes: null,
           parents: {},
           thread_id: "1",
         },
@@ -3475,7 +3461,6 @@ graph TD;
         metadata: {
           source: "update",
           step: 1,
-          writes: {},
           parents: {},
           thread_id: "1",
         },
@@ -3575,13 +3560,11 @@ graph TD;
         {
           source: "loop",
           step: 0,
-          writes: null,
           parents: {},
         },
         {
           source: "input",
           step: -1,
-          writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
           parents: {},
         },
       ]);
@@ -3624,7 +3607,6 @@ graph TD;
         metadata: {
           source: "loop",
           step: 0,
-          writes: null,
           thread_id: "2",
           parents: {},
         },
@@ -3656,7 +3638,6 @@ graph TD;
         metadata: {
           source: "update",
           step: 1,
-          writes: {},
           parents: {},
           thread_id: "2",
         },
@@ -4056,11 +4037,6 @@ graph TD;
         metadata: {
           source: "loop",
           step: 1,
-          writes: {
-            agent: {
-              messages: expectedOutputMessages[1],
-            },
-          },
           parents: {},
           thread_id: "1",
         },
@@ -4116,23 +4092,6 @@ graph TD;
           thread_id: "1",
           source: "update",
           step: 2,
-          writes: {
-            agent: {
-              messages: new AIMessage({
-                id: "ai1",
-                content: "",
-                tool_calls: [
-                  {
-                    id: "tool_call123",
-                    name: "search_api",
-                    args: { query: "a different query" },
-                    type: "tool_call",
-                  },
-                ],
-              }),
-              something_extra: "hi there",
-            },
-          },
         },
         config: (await appWithInterruptCheckpointer.getTuple(config))?.config,
         createdAt: (await appWithInterruptCheckpointer.getTuple(config))
@@ -4209,11 +4168,6 @@ graph TD;
           thread_id: "1",
           source: "loop",
           step: 4,
-          writes: {
-            agent: {
-              messages: expectedOutputMessages[3],
-            },
-          },
         },
         createdAt: (await appWithInterruptCheckpointer.getTuple(config))
           ?.checkpoint.ts,
@@ -4269,15 +4223,6 @@ graph TD;
           step: 5,
           parents: {},
           thread_id: "1",
-          writes: {
-            agent: {
-              messages: new AIMessage({
-                content: "answer",
-                id: "ai2",
-              }),
-              something_extra: "hi there",
-            },
-          },
         },
         createdAt: (await appWithInterruptCheckpointer.getTuple(config))
           ?.checkpoint.ts,
@@ -4705,12 +4650,6 @@ graph TD;
           metadata: {
             thread_id: "102",
             source: "loop",
-            writes: {
-              wipeFields: {
-                test: undefined,
-                reducerField: undefined,
-              },
-            },
             step: 2,
             parents: {},
           },
@@ -4751,12 +4690,6 @@ graph TD;
           metadata: {
             thread_id: "102",
             source: "loop",
-            writes: {
-              updateTest: {
-                test: "test",
-                reducerField: "should not be wiped",
-              },
-            },
             step: 1,
             parents: {},
           },
@@ -4794,7 +4727,6 @@ graph TD;
           metadata: {
             thread_id: "102",
             source: "loop",
-            writes: null,
             step: 0,
             parents: {},
           },
@@ -4828,9 +4760,6 @@ graph TD;
           metadata: {
             thread_id: "102",
             source: "input",
-            writes: {
-              __start__: { messages: ["initial input"] },
-            },
             step: -1,
             parents: {},
           },
@@ -5439,7 +5368,6 @@ graph TD;
           metadata: {
             source: "input",
             step: -1,
-            writes: { __start__: { my_key: "value", market: "DE" } },
             parents: {},
           },
           next: ["__start__"],
@@ -5485,7 +5413,6 @@ graph TD;
           metadata: {
             source: "loop",
             step: 0,
-            writes: null,
             parents: {},
           },
           next: ["prepare"],
@@ -5554,7 +5481,6 @@ graph TD;
           metadata: {
             source: "loop",
             step: 1,
-            writes: { prepare: { my_key: " prepared" } },
             parents: {},
           },
           next: ["tool_two_slow"],
@@ -5623,7 +5549,6 @@ graph TD;
           metadata: {
             source: "loop",
             step: 2,
-            writes: { tool_two_slow: { my_key: " slow" } },
             parents: {},
           },
           next: ["finish"],
@@ -5692,7 +5617,6 @@ graph TD;
           metadata: {
             source: "loop",
             step: 3,
-            writes: { finish: { my_key: " finished" } },
             parents: {},
           },
           next: [],
@@ -5791,13 +5715,11 @@ graph TD;
       {
         source: "loop",
         step: 0,
-        writes: null,
         parents: {},
       },
       {
         source: "input",
         step: -1,
-        writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
         parents: {},
       },
     ]);
@@ -5817,7 +5739,6 @@ graph TD;
       metadata: {
         source: "loop",
         step: 0,
-        writes: null,
         parents: {},
         thread_id: "1",
       },
@@ -5839,7 +5760,6 @@ graph TD;
       metadata: {
         source: "loop",
         step: 1,
-        writes: { tool_two_slow: { my_key: " slow" } },
         parents: {},
         thread_id: "1",
       },
@@ -5875,7 +5795,6 @@ graph TD;
       metadata: {
         source: "loop",
         step: 0,
-        writes: null,
         parents: {},
         thread_id: "2",
       },
@@ -5898,7 +5817,6 @@ graph TD;
         source: "loop",
         step: 1,
         thread_id: "2",
-        writes: { tool_two_fast: { my_key: " fast" } },
         parents: {},
       },
       parentConfig: (
@@ -5933,7 +5851,6 @@ graph TD;
       metadata: {
         source: "loop",
         step: 0,
-        writes: null,
         parents: {},
         thread_id: "3",
       },
@@ -5959,7 +5876,6 @@ graph TD;
       metadata: {
         source: "update",
         step: 1,
-        writes: { [START]: { my_key: "key" } },
         parents: {},
         thread_id: "3",
       },
@@ -5981,7 +5897,6 @@ graph TD;
       metadata: {
         source: "loop",
         step: 2,
-        writes: { tool_two_fast: { my_key: " fast" } },
         parents: {},
         thread_id: "3",
       },
@@ -6227,13 +6142,11 @@ graph TD;
         {
           source: "loop",
           step: 0,
-          writes: null,
           parents: {},
         },
         {
           source: "input",
           step: -1,
-          writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
           parents: {},
         },
       ]);
@@ -6242,7 +6155,7 @@ graph TD;
         values: { my_key: "value ⛰️", market: "DE" },
         tasks: [{ name: "tool_two_slow" }],
         next: ["tool_two_slow"],
-        metadata: { source: "loop", step: 0, writes: null },
+        metadata: { source: "loop", step: 0 },
       });
 
       expect(await toolTwo.invoke(null, thread1)).toEqual({
@@ -6260,11 +6173,6 @@ graph TD;
         metadata: {
           source: "loop",
           step: 1,
-          writes: {
-            tool_two_slow: {
-              my_key: " slow",
-            },
-          },
           parents: {},
         },
       });
@@ -6294,7 +6202,7 @@ graph TD;
         },
         tasks: [{ name: "tool_two_fast" }],
         next: ["tool_two_fast"],
-        metadata: { source: "loop", step: 0, writes: null, parents: {} },
+        metadata: { source: "loop", step: 0, parents: {} },
       });
 
       expect(await toolTwo.invoke(null, thread2)).toEqual({
@@ -6312,7 +6220,6 @@ graph TD;
         metadata: {
           source: "loop",
           step: 1,
-          writes: { tool_two_fast: { my_key: " fast" } },
           parents: {},
         },
       });
@@ -6330,7 +6237,7 @@ graph TD;
         values: { my_key: "value", market: "US" },
         tasks: [{ name: "tool_two_fast" }],
         next: ["tool_two_fast"],
-        metadata: { source: "loop", step: 0, writes: null, parents: {} },
+        metadata: { source: "loop", step: 0, parents: {} },
       });
 
       await toolTwo.updateState(thread3, { my_key: "key" });
@@ -6342,7 +6249,6 @@ graph TD;
         metadata: {
           source: "update",
           step: 1,
-          writes: { [START]: { my_key: "key" } },
           parents: {},
         },
       });
@@ -6359,7 +6265,6 @@ graph TD;
         metadata: {
           source: "loop",
           step: 2,
-          writes: { tool_two_fast: { my_key: " fast" } },
           parents: {},
         },
       });
@@ -7357,7 +7262,6 @@ graph TD;
         metadata: {
           parents: {},
           source: "loop",
-          writes: { outer1: { myKey: "hi my value" } },
           step: 1,
           thread_id: "1",
         },
@@ -7412,12 +7316,6 @@ graph TD;
                   "": expect.any(String),
                 },
                 source: "loop",
-                writes: {
-                  inner1: {
-                    myKey: "hi my value here",
-                    myOtherKey: "hi my value",
-                  },
-                },
                 step: 1,
               },
               createdAt: expect.any(String),
@@ -7445,7 +7343,6 @@ graph TD;
           thread_id: "1",
           parents: {},
           source: "loop",
-          writes: { outer1: { myKey: "hi my value" } },
           step: 1,
         },
         createdAt: expect.any(String),
@@ -7491,9 +7388,6 @@ graph TD;
               thread_id: "1",
               parents: {},
               source: "loop",
-              writes: {
-                outer1: { myKey: "hi my value" },
-              },
               step: 1,
             },
             createdAt: expect.any(String),
@@ -7531,7 +7425,6 @@ graph TD;
               parents: {},
               source: "loop",
               step: 0,
-              writes: null,
               thread_id: "1",
             },
             createdAt: expect.any(String),
@@ -7567,7 +7460,6 @@ graph TD;
               thread_id: "1",
               parents: {},
               source: "input",
-              writes: { __start__: { myKey: "my value" } },
               step: -1,
             },
             createdAt: expect.any(String),
@@ -7597,12 +7489,6 @@ graph TD;
             metadata: {
               thread_id: "1",
               source: "loop",
-              writes: {
-                inner1: {
-                  myKey: "hi my value here",
-                  myOtherKey: "hi my value",
-                },
-              },
               step: 1,
               parents: { "": expect.any(String) },
             },
@@ -7642,7 +7528,6 @@ graph TD;
             metadata: {
               thread_id: "1",
               source: "loop",
-              writes: null,
               step: 0,
               parents: { "": expect.any(String) },
             },
@@ -7684,9 +7569,6 @@ graph TD;
             metadata: {
               thread_id: "1",
               source: "input",
-              writes: {
-                __start__: { myKey: "hi my value" },
-              },
               step: -1,
               parents: { "": expect.any(String) },
             },
@@ -7721,9 +7603,6 @@ graph TD;
           thread_id: "1",
           parents: {},
           source: "loop",
-          writes: {
-            outer2: { myKey: "hi my value here and there and back again" },
-          },
           step: 3,
         },
         createdAt: expect.any(String),
@@ -7754,9 +7633,6 @@ graph TD;
             thread_id: "1",
             parents: {},
             source: "loop",
-            writes: {
-              outer2: { myKey: "hi my value here and there and back again" },
-            },
             step: 3,
           },
           createdAt: expect.any(String),
@@ -7791,7 +7667,6 @@ graph TD;
             thread_id: "1",
             parents: {},
             source: "loop",
-            writes: { inner: { myKey: "hi my value here and there" } },
             step: 2,
           },
           createdAt: expect.any(String),
@@ -7834,7 +7709,6 @@ graph TD;
             thread_id: "1",
             parents: {},
             source: "loop",
-            writes: { outer1: { myKey: "hi my value" } },
             step: 1,
           },
           createdAt: expect.any(String),
@@ -7870,7 +7744,6 @@ graph TD;
           metadata: {
             parents: {},
             source: "loop",
-            writes: null,
             step: 0,
             thread_id: "1",
           },
@@ -7906,7 +7779,6 @@ graph TD;
             thread_id: "1",
             parents: {},
             source: "input",
-            writes: { __start__: { myKey: "my value" } },
             step: -1,
           },
           createdAt: expect.any(String),
@@ -8108,7 +7980,6 @@ graph TD;
         metadata: {
           parents: {},
           source: "loop",
-          writes: { parent1: { myKey: "hi my value" } },
           step: 1,
           thread_id: "1",
         },
@@ -8168,7 +8039,6 @@ graph TD;
             "": expect.any(String),
           }),
           source: "loop",
-          writes: { grandchild1: { myKey: "hi my value here" } },
           step: 1,
         },
         createdAt: expect.any(String),
@@ -8226,9 +8096,6 @@ graph TD;
                         "": expect.any(String),
                       }),
                       source: "loop",
-                      writes: {
-                        grandchild1: { myKey: "hi my value here" },
-                      },
                       step: 1,
                       thread_id: "1",
                     },
@@ -8260,7 +8127,6 @@ graph TD;
                 thread_id: "1",
                 parents: { "": expect.any(String) },
                 source: "loop",
-                writes: null,
                 step: 0,
               },
               createdAt: expect.any(String),
@@ -8288,7 +8154,6 @@ graph TD;
           thread_id: "1",
           parents: {},
           source: "loop",
-          writes: { parent1: { myKey: "hi my value" } },
           step: 1,
         },
         createdAt: expect.any(String),
@@ -8342,9 +8207,6 @@ graph TD;
           thread_id: "1",
           parents: {},
           source: "loop",
-          writes: {
-            parent2: { myKey: "hi my value here and there and back again" },
-          },
           step: 3,
         },
         createdAt: expect.any(String),
@@ -8376,9 +8238,6 @@ graph TD;
               thread_id: "1",
               parents: {},
               source: "loop",
-              writes: {
-                parent2: { myKey: "hi my value here and there and back again" },
-              },
               step: 3,
             },
             createdAt: expect.any(String),
@@ -8403,7 +8262,6 @@ graph TD;
             metadata: {
               thread_id: "1",
               source: "loop",
-              writes: { child: { myKey: "hi my value here and there" } },
               step: 2,
               parents: {},
             },
@@ -8457,7 +8315,6 @@ graph TD;
               thread_id: "1",
               parents: {},
               source: "loop",
-              writes: { parent1: { myKey: "hi my value" } },
               step: 1,
             },
             createdAt: expect.any(String),
@@ -8484,7 +8341,6 @@ graph TD;
             },
             metadata: {
               source: "loop",
-              writes: null,
               step: 0,
               parents: {},
               thread_id: "1",
@@ -8521,7 +8377,6 @@ graph TD;
             metadata: {
               thread_id: "1",
               source: "input",
-              writes: { __start__: { myKey: "my value" } },
               step: -1,
               parents: {},
             },
@@ -8565,7 +8420,6 @@ graph TD;
             metadata: {
               thread_id: "1",
               source: "loop",
-              writes: { child1: { myKey: "hi my value here and there" } },
               step: 1,
               parents: { "": expect.any(String) },
             },
@@ -8596,7 +8450,6 @@ graph TD;
             metadata: {
               thread_id: "1",
               source: "loop",
-              writes: null,
               step: 0,
               parents: { "": expect.any(String) },
             },
@@ -8644,7 +8497,6 @@ graph TD;
             metadata: {
               thread_id: "1",
               source: "input",
-              writes: { __start__: { myKey: "hi my value" } },
               step: -1,
               parents: { "": expect.any(String) },
             },
@@ -8687,7 +8539,6 @@ graph TD;
             metadata: {
               thread_id: "1",
               source: "loop",
-              writes: { grandchild2: { myKey: "hi my value here and there" } },
               step: 2,
               parents: expect.objectContaining({
                 "": expect.any(String),
@@ -8720,7 +8571,6 @@ graph TD;
             metadata: {
               thread_id: "1",
               source: "loop",
-              writes: { grandchild1: { myKey: "hi my value here" } },
               step: 1,
               parents: expect.objectContaining({
                 "": expect.any(String),
@@ -8765,7 +8615,6 @@ graph TD;
             metadata: {
               thread_id: "1",
               source: "loop",
-              writes: null,
               step: 0,
               parents: expect.objectContaining({
                 "": expect.any(String),
@@ -8806,7 +8655,6 @@ graph TD;
             metadata: {
               thread_id: "1",
               source: "input",
-              writes: { __start__: { myKey: "hi my value" } },
               step: -1,
               parents: expect.objectContaining({
                 "": expect.any(String),
@@ -8947,7 +8795,6 @@ graph TD;
         metadata: {
           parents: {},
           source: "loop",
-          writes: null,
           step: 0,
           thread_id: "1",
         },
@@ -8982,9 +8829,6 @@ graph TD;
         metadata: {
           step: 1,
           source: "loop",
-          writes: {
-            edit: {},
-          },
           parents: { "": expect.any(String) },
           thread_id: "1",
         },
@@ -9027,9 +8871,6 @@ graph TD;
           thread_id: "1",
           step: 1,
           source: "loop",
-          writes: {
-            edit: {},
-          },
           parents: { "": expect.any(String) },
         },
         createdAt: expect.any(String),
@@ -9086,12 +8927,6 @@ graph TD;
           parents: {},
           thread_id: "1",
           source: "loop",
-          writes: {
-            generateJoke: [
-              { jokes: ["Joke about cats - hohoho"] },
-              { jokes: ["Joke about turtles - hohoho"] },
-            ],
-          },
           step: 1,
         },
         createdAt: expect.any(String),
@@ -9127,12 +8962,6 @@ graph TD;
           metadata: {
             parents: {},
             source: "loop",
-            writes: {
-              generateJoke: [
-                { jokes: ["Joke about cats - hohoho"] },
-                { jokes: ["Joke about turtles - hohoho"] },
-              ],
-            },
             step: 1,
             thread_id: "1",
           },
@@ -9190,7 +9019,6 @@ graph TD;
           metadata: {
             parents: {},
             source: "loop",
-            writes: null,
             step: 0,
             thread_id: "1",
           },
@@ -9227,7 +9055,6 @@ graph TD;
           metadata: {
             parents: {},
             source: "input",
-            writes: { __start__: { subjects: ["cats", "dogs"] } },
             step: -1,
             thread_id: "1",
           },
@@ -9430,7 +9257,6 @@ graph TD;
             tasks: [],
             metadata: {
               source: "loop",
-              writes: { inner_2: { myKey: " and there" } },
               step: 6,
               parents: { "": expect.any(String) },
               thread_id: "1",
@@ -9472,12 +9298,6 @@ graph TD;
             ],
             metadata: {
               source: "loop",
-              writes: {
-                inner_1: {
-                  myKey: " got here",
-                  myOtherKey: " got here and there got here and there",
-                },
-              },
               step: 5,
               parents: { "": expect.any(String) },
               thread_id: "1",
@@ -9522,7 +9342,6 @@ graph TD;
             ],
             metadata: {
               source: "loop",
-              writes: null,
               step: 4,
               parents: { "": expect.any(String) },
               thread_id: "1",
@@ -9561,7 +9380,6 @@ graph TD;
             ],
             metadata: {
               source: "input",
-              writes: { __start__: { myKey: " got here and there" } },
               step: 3,
               parents: { "": expect.any(String) },
               thread_id: "1",
@@ -9592,7 +9410,6 @@ graph TD;
             tasks: [],
             metadata: {
               source: "loop",
-              writes: { inner_2: { myKey: " and there" } },
               step: 2,
               parents: { "": expect.any(String) },
               thread_id: "1",
@@ -9633,7 +9450,6 @@ graph TD;
             ],
             metadata: {
               source: "loop",
-              writes: { inner_1: { myKey: " got here", myOtherKey: "" } },
               step: 1,
               parents: { "": expect.any(String) },
               thread_id: "1",
@@ -9672,7 +9488,6 @@ graph TD;
             ],
             metadata: {
               source: "loop",
-              writes: null,
               step: 0,
               parents: { "": expect.any(String) },
               thread_id: "1",
@@ -9711,7 +9526,6 @@ graph TD;
             ],
             metadata: {
               source: "input",
-              writes: { __start__: { myKey: "" } },
               step: -1,
               parents: { "": expect.any(String) },
               thread_id: "1",
@@ -10467,11 +10281,6 @@ graph TD;
       },
       metadata: {
         source: "loop",
-        writes: {
-          alice: {
-            user_name: "Meow",
-          },
-        },
         step: 1,
         parents: {},
         thread_id: "1",
@@ -10581,16 +10390,6 @@ graph TD;
       metadata: {
         source: "loop",
         thread_id: "1",
-        writes: {
-          bob: {
-            messages: [
-              {
-                role: "assistant",
-                content: "bob",
-              },
-            ],
-          },
-        },
         step: 3,
         parents: {},
       },
@@ -10708,22 +10507,6 @@ graph TD;
       tasks: [],
       metadata: {
         source: "loop",
-        writes: {
-          alice: {
-            messages: [
-              new _AnyIdHumanMessage({
-                content: "get user name",
-              }),
-              new _AnyIdAIMessage({
-                content: "grandkid",
-              }),
-              new _AnyIdAIMessage({
-                content: "robert",
-              }),
-            ],
-            user_name: "jeffrey",
-          },
-        },
         step: 1,
         parents: {},
         thread_id: "1",
@@ -11580,11 +11363,17 @@ graph TD;
     expect(checkpoints.length).toBe(2);
     expect(checkpoints).toMatchObject([
       {
-        metadata: {
-          writes: { nodeA: { foo: "updated" }, nodeB: { baz: "new" } },
+        checkpoint: {
+          channel_values: { foo: "updated", baz: "new" },
+          versions_seen: { nodeA: {}, nodeB: {} },
         },
       },
-      { metadata: { writes: { nodeA: { foo: "bar" } } } },
+      {
+        checkpoint: {
+          channel_values: { foo: "bar" },
+          versions_seen: { nodeA: {} },
+        },
+      },
     ]);
 
     // perform multiple steps at the same time
@@ -11612,11 +11401,17 @@ graph TD;
     expect(checkpoints.length).toBe(2);
     expect(checkpoints).toMatchObject([
       {
-        metadata: {
-          writes: { nodeA: { foo: "updated" }, nodeB: { baz: "new" } },
+        checkpoint: {
+          channel_values: { foo: "updated", baz: "new" },
+          versions_seen: { nodeA: {}, nodeB: {} },
         },
       },
-      { metadata: { writes: { nodeA: { foo: "bar" } } } },
+      {
+        checkpoint: {
+          channel_values: { foo: "bar" },
+          versions_seen: { nodeA: {} },
+        },
+      },
     ]);
 
     // throw error if updating without `asNode`

@@ -1153,7 +1153,6 @@ export class Pregel<
           {
             source: "update",
             step: step + 1,
-            writes: {},
             parents: saved?.metadata?.parents ?? {},
           },
           {}
@@ -1245,7 +1244,6 @@ export class Pregel<
             ...checkpointMetadata,
             source: "update",
             step: step + 1,
-            writes: {},
             parents: saved?.metadata?.parents ?? {},
           },
           getNewChannelVersions(
@@ -1286,7 +1284,6 @@ export class Pregel<
           {
             source: "fork",
             step: step + 1,
-            writes: {},
             parents: saved.metadata?.parents ?? {},
           },
           {}
@@ -1384,7 +1381,6 @@ export class Pregel<
           {
             source: "input",
             step: nextStep,
-            writes: Object.fromEntries(inputWrites),
             parents: saved?.metadata?.parents ?? {},
           },
           getNewChannelVersions(
@@ -1632,9 +1628,6 @@ export class Pregel<
         {
           source: "update",
           step: step + 1,
-          writes: Object.fromEntries(
-            validUpdates.map((update) => [update.asNode, update.values])
-          ),
           parents: saved?.metadata?.parents ?? {},
         },
         newVersions
