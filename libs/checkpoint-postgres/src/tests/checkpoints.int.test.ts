@@ -60,12 +60,35 @@ if (!TEST_POSTGRES_URL) {
 
 let postgresSavers: PostgresSaver[] = [];
 
+afterAll(async () => {
+  await Promise.all(postgresSavers.map((saver) => saver.end()));
+  // clear the ended savers to clean up for the next test
+  postgresSavers = [];
+
+  // Drop all test databases
+  const pool = new Pool({ connectionString: TEST_POSTGRES_URL });
+
+  try {
+    const result = await pool.query(`
+    SELECT datname FROM pg_database
+    WHERE datname LIKE 'lg_test_db_%'
+  `);
+
+    for (const row of result.rows) {
+      const dbName = row.datname;
+      await pool.query(`DROP DATABASE ${dbName} WITH (FORCE)`);
+      console.log(`🗑️  Dropped database: ${dbName}`);
+    }
+  } finally {
+    await pool.end();
+  }
+}, 30_000);
+
 describe.each([
   { schema: undefined, description: "the default schema" },
   // { schema: "custom_schema", description: "a custom schema" },
 ])("PostgresSaver with $description", ({ schema }) => {
   let postgresSaver: PostgresSaver;
-
   let currentDbConnectionString: string;
 
   beforeEach(async () => {
@@ -92,31 +115,6 @@ describe.each([
       });
       postgresSavers.push(postgresSaver);
       await postgresSaver.setup();
-    } finally {
-      await pool.end();
-    }
-  });
-
-  afterAll(async () => {
-    await Promise.all(postgresSavers.map((saver) => saver.end()));
-    // clear the ended savers to clean up for the next test
-    postgresSavers = [];
-    // Drop all test databases
-    const pool = new Pool({
-      connectionString: TEST_POSTGRES_URL,
-    });
-
-    try {
-      const result = await pool.query(`
-      SELECT datname FROM pg_database
-      WHERE datname LIKE 'lg_test_db_%'
-    `);
-
-      for (const row of result.rows) {
-        const dbName = row.datname;
-        await pool.query(`DROP DATABASE ${dbName} WITH (FORCE)`);
-        console.log(`🗑️  Dropped database: ${dbName}`);
-      }
     } finally {
       await pool.end();
     }
