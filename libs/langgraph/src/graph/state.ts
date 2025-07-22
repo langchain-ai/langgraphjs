@@ -261,14 +261,20 @@ export class StateGraph<
   constructor(
     fields: SD extends StateDefinition
       ?
-          | SD
           | AnnotationRoot<SD>
-          | StateGraphArgs<S>
           | StateGraphArgsWithStateSchema<
               SD,
               ToStateDefinition<I>,
               ToStateDefinition<O>
             >
+      : never,
+    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+  );
+
+  /** @deprecated Use `Annotation.Root` or `zod` for state definition instead. */
+  constructor(
+    fields: SD extends StateDefinition
+      ? SD | StateGraphArgs<S>
       : StateGraphArgs<S>,
     configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
