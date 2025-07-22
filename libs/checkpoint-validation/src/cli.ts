@@ -5,6 +5,7 @@ import yargs from "yargs";
 import {
   isTestTypeFilter,
   isTestTypeFilterArray,
+  TestTypeFilter,
   testTypeFilters,
 } from "./types.js";
 import { resolveImportPath } from "./import_utils.js";
@@ -20,10 +21,11 @@ const builder = yargs()
   })
   .positional("filters", {
     array: true,
-    choices: ["getTuple", "put", "putWrites", "list"],
-    default: [],
-    describe:
-      "Only run the specified suites. Valid values are 'getTuple', 'put', 'putWrites', and 'list'",
+    choices: testTypeFilters,
+    default: [] as TestTypeFilter[],
+    describe: `Only run the specified suites. Valid values are ${testTypeFilters.join(
+      ", "
+    )}`,
     demandOption: false,
   })
   .help()
@@ -45,7 +47,7 @@ export async function main() {
 
   if (!isTestTypeFilterArray(parsed.filters)) {
     console.error(
-      `Invalid filters: '${parsed.filters
+      `Invalid filters: '${(parsed.filters as TestTypeFilter[])
         .filter((f) => !isTestTypeFilter(f))
         .join("', '")}'. Expected only values from '${testTypeFilters.join(
         "', '"

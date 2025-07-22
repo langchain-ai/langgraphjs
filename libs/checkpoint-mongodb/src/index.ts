@@ -293,4 +293,14 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       .collection(this.checkpointWritesCollectionName)
       .bulkWrite(operations);
   }
+
+  async deleteThread(threadId: string) {
+    await this.db
+      .collection(this.checkpointCollectionName)
+      .deleteMany({ thread_id: threadId });
+
+    await this.db
+      .collection(this.checkpointWritesCollectionName)
+      .deleteMany({ thread_id: threadId });
+  }
 }

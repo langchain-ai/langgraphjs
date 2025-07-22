@@ -2,9 +2,10 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import type {
   Checkpoint,
+  CheckpointMetadata,
   CheckpointTuple,
 } from "@langchain/langgraph-checkpoint";
-import { TASKS, uuid6 } from "@langchain/langgraph-checkpoint";
+import { emptyCheckpoint, TASKS, uuid6 } from "@langchain/langgraph-checkpoint";
 import pg from "pg";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { PostgresSaver } from "../index.js"; // Adjust the import path as needed
@@ -28,6 +29,8 @@ const checkpoint1: Checkpoint = {
       someKey4: 1,
     },
   },
+  // @ts-expect-error - older version of checkpoint
+  pending_sends: [],
 };
 
 const checkpoint2: Checkpoint = {
@@ -46,6 +49,8 @@ const checkpoint2: Checkpoint = {
       someKey4: 2,
     },
   },
+  // @ts-expect-error - older version of checkpoint
+  pending_sends: [],
 };
 
 const { TEST_POSTGRES_URL } = process.env;
@@ -431,6 +436,28 @@ describe.each([
     expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
   });
 
+  it("should delete thread", async () => {
+    const thread1 = { configurable: { thread_id: "1", checkpoint_ns: "" } };
+    const thread2 = { configurable: { thread_id: "2", checkpoint_ns: "" } };
+
+    const meta: CheckpointMetadata = {
+      source: "update",
+      step: -1,
+      writes: null,
+      parents: {},
+    };
+
+    await postgresSaver.put(thread1, emptyCheckpoint(), meta, {});
+    await postgresSaver.put(thread2, emptyCheckpoint(), meta, {});
+
+    expect(await postgresSaver.getTuple(thread1)).toBeDefined();
+
+    await postgresSaver.deleteThread("1");
+
+    expect(await postgresSaver.getTuple(thread1)).toBeUndefined();
+    expect(await postgresSaver.getTuple(thread2)).toBeDefined();
+  });
+
   it("pending sends migration", async () => {
     let config: RunnableConfig = {
       configurable: { thread_id: "thread-1", checkpoint_ns: "" },
@@ -476,7 +503,10 @@ describe.each([
       channel_values: {},
       channel_versions: checkpoint0.channel_versions,
       versions_seen: checkpoint0.versions_seen,
+      // @ts-expect-error - older version of checkpoint
+      pending_sends: [],
     };
+
     config = await postgresSaver.put(
       config,
       checkpoint1,
