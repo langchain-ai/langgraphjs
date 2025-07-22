@@ -181,7 +181,7 @@ export class PostgresStore implements BaseStore {
   /**
    * Creates a PostgresStore instance from a connection string.
    */
-  static fromConnectionString(
+  static fromConnString(
     connectionString: string,
     options?: Omit<PostgresStoreConfig, "connectionOptions">
   ): PostgresStore {
