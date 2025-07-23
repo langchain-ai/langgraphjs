@@ -175,7 +175,7 @@ export function createCua<
   const StateAnnotation = Annotation.Root({
     ...CUAAnnotation.spec,
     ...stateModifier?.spec,
-  });
+  }) as AnnotationRoot<(typeof CUAAnnotation)["spec"]>;
 
   const workflow = new StateGraph(StateAnnotation, CUAConfigurable)
     .addNode("callModel", callModel)
@@ -215,7 +215,7 @@ export function createCua<
     recursionLimit,
   });
 
-  return configuredGraph;
+  return configuredGraph as typeof cuaGraph;
 }
 
 export {

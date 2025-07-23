@@ -57,9 +57,7 @@ test("It can use the agent to interact with the browser", async () => {
           },
         ],
       },
-      {
-        streamMode: "updates",
-      }
+      { streamMode: "updates" }
     );
 
     for await (const update of stream) {
@@ -74,8 +72,12 @@ test("It can use the agent to interact with the browser", async () => {
       }
 
       if (update.takeComputerAction) {
-        if (update.takeComputerAction?.messages?.[0]) {
-          const message = update.takeComputerAction.messages[0];
+        const messages = update.takeComputerAction.messages as  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          | any[]
+          | undefined;
+
+        if (messages?.[0]) {
+          const message = messages[0];
           console.log("----TAKE COMPUTER ACTION----\n", {
             ToolMessage: {
               type: message.additional_kwargs?.type,
@@ -88,22 +90,21 @@ test("It can use the agent to interact with the browser", async () => {
 
       if (update.callModel) {
         if (update.callModel?.messages) {
-          const message = update.callModel.messages;
-          const allOutputs = message.additional_kwargs?.tool_outputs;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const message = update.callModel.messages as any;
+          const allOutputs = message.additional_kwargs?.tool_outputs as [
+            { action: Record<string, unknown>; call_id: string }
+          ];
           if (allOutputs?.length) {
             const output = allOutputs[allOutputs.length - 1];
             console.log("----CALL MODEL----\n", {
-              ComputerCall: {
-                ...output.action,
-                call_id: output.call_id,
-              },
+              ComputerCall: { ...output.action, call_id: output.call_id },
             });
             continue;
           }
+
           console.log("----CALL MODEL----\n", {
-            AIMessage: {
-              content: message.content,
-            },
+            AIMessage: { content: message.content },
           });
         }
       }

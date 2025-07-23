@@ -148,7 +148,5 @@ export async function callModel(
     ]);
   }
 
-  return {
-    messages: response,
-  };
+  return { messages: response };
 }
