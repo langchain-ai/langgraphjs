@@ -1,5 +1,12 @@
 # @langchain/langgraph-cli
 
+## 0.0.51
+
+### Patch Changes
+
+- 11319f7: fix(cli): allow node_version: 22 when pulling and building image
+  - @langchain/langgraph-api@0.0.51
+
 ## 0.0.50
 
 ### Patch Changes
