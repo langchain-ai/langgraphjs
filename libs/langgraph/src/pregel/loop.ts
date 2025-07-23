@@ -466,7 +466,7 @@ export class PregelLoop {
 
     if (store) {
       // Start the store. This is a batch store, so it will run continuously
-      store.start();
+      await store.start();
     }
     return new PregelLoop({
       input: params.input,
@@ -685,7 +685,7 @@ export class PregelLoop {
    */
   async tick(params: { inputKeys?: string | string[] }): Promise<boolean> {
     if (this.store && !this.store.isRunning) {
-      this.store?.start();
+      await this.store?.start();
     }
     const { inputKeys = [] } = params;
     if (this.status !== "pending") {

@@ -359,31 +359,16 @@ export class PostgresStore implements BaseStore {
   /**
    * Start the store. Calls setup() if ensureTables is true.
    */
-  start(): void {
+  async start(): Promise<void> {
     if (this.ensureTables && !this.isSetup) {
-      this.setup().catch((error) => {
-        console.error("Failed to setup PostgresStore:", error);
-      });
+      await this.setup();
     }
   }
 
   /**
    * Stop the store and close all database connections.
    */
-  stop(): void {
-    if (this.isClosed) return;
-
-    this.ttlManager.stop();
-    this.core.pool.end().catch((error) => {
-      console.error("Error closing PostgreSQL pool:", error);
-    });
-    this.isClosed = true;
-  }
-
-  /**
-   * Close all database connections.
-   */
-  async end(): Promise<void> {
+  async stop(): Promise<void> {
     if (this.isClosed) return;
 
     this.ttlManager.stop();

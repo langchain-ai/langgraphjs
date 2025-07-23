@@ -54,10 +54,10 @@ describe("AsyncBatchedStore", () => {
     }
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
     store = new AsyncBatchedStore(new MockStore());
     // Start the store
-    store.start();
+    await store.start();
   });
 
   afterEach(async () => {

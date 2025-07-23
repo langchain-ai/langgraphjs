@@ -13,7 +13,7 @@ if (!TEST_POSTGRES_URL) {
 let testStores: PostgresStore[] = [];
 
 afterAll(async () => {
-  await Promise.all(testStores.map((s) => s.end()));
+  await Promise.all(testStores.map((s) => s.stop()));
   testStores = [];
   const pool = new Pool({ connectionString: TEST_POSTGRES_URL });
   try {
@@ -1364,8 +1364,8 @@ describe("PostgresStore Migration System", () => {
   });
 
   afterEach(async () => {
-    if (store) await store.end();
-    if (storeWithVectors) await storeWithVectors.end();
+    if (store) await store.stop();
+    if (storeWithVectors) await storeWithVectors.stop();
   });
 
   it("should properly track and apply store migrations", async () => {
