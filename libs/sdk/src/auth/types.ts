@@ -396,9 +396,12 @@ type OnParameter<
   ? OnSingleParameter<T, TUser>
   : never;
 
-export type AnyCallback = (
-  request: CallbackParameter
-) => void | boolean | Filters<string>;
+export type AnyCallback = {
+  (request: CallbackParameter):
+    | void
+    | PromiseMaybe<boolean>
+    | PromiseMaybe<Filters<string>>;
+};
 
 export type CallbackEvent = "*" | OnKey | OnKey[];
 
@@ -406,6 +409,9 @@ export type OnCallback<
   T extends CallbackEvent,
   TUser extends BaseUser = BaseUser,
   TMetadata extends Record<string, unknown> = Record<string, unknown>
-> = (
-  request: OnParameter<T, TUser>
-) => void | boolean | Filters<keyof TMetadata>;
+> = {
+  (request: OnParameter<T, TUser>):
+    | void
+    | PromiseMaybe<boolean>
+    | PromiseMaybe<Filters<keyof TMetadata>>;
+};
