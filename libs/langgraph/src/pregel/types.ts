@@ -14,7 +14,6 @@ import type { BaseMessage } from "@langchain/core/messages";
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
 import type { Interrupt } from "../constants.js";
-import type { ManagedValueSpec } from "../managed/base.js";
 import { CachePolicy, RetryPolicy } from "./utils/index.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 
@@ -162,12 +161,12 @@ export type StreamOutputMap<
  * These options control how the graph executes, what data is streamed, and how interrupts are handled.
  *
  * @typeParam Nodes - Mapping of node names to their {@link PregelNode} implementations
- * @typeParam Channels - Mapping of channel names to their {@link BaseChannel} or {@link ManagedValueSpec} implementations
+ * @typeParam Channels - Mapping of channel names to their {@link BaseChannel} implementations
  * @typeParam ConfigurableFieldType - Type of configurable fields in the {@link RunnableConfig} that is passed to the graph
  */
 export interface PregelOptions<
   Nodes extends StrRecord<string, PregelNode>,
-  Channels extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+  Channels extends StrRecord<string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ConfigurableFieldType extends Record<string, any> = Record<string, any>,
   TStreamMode extends StreamMode | StreamMode[] | undefined =
@@ -304,7 +303,7 @@ type StrRecord<K extends string, T> = {
 
 export interface PregelInterface<
   Nodes extends StrRecord<string, PregelNode>,
-  Channels extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+  Channels extends StrRecord<string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>
 > {
@@ -362,7 +361,7 @@ export interface PregelInterface<
  */
 export type PregelParams<
   Nodes extends StrRecord<string, PregelNode>,
-  Channels extends StrRecord<string, BaseChannel | ManagedValueSpec>
+  Channels extends StrRecord<string, BaseChannel>
 > = {
   /**
    * The name of the graph. @see {@link Runnable.name}
@@ -447,12 +446,12 @@ export type PregelParams<
   config?: LangGraphRunnableConfig;
 
   /**
-   * Memory store to use for SharedValues.
+   * External key-value store.
    */
   store?: BaseStore;
 
   /**
-   * Memory store to use for SharedValues.
+   * Storage used for node caching.
    */
   cache?: BaseCache;
 };

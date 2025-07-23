@@ -63,14 +63,6 @@ import {
   GraphValueError,
   InvalidUpdateError,
 } from "../errors.js";
-import {
-  ChannelKeyPlaceholder,
-  isConfiguredManagedValue,
-  ManagedValue,
-  ManagedValueMapping,
-  NoopManagedValue,
-  type ManagedValueSpec,
-} from "../managed/base.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
 import {
   _applyWrites,
@@ -386,7 +378,7 @@ class PartialRunnable<
  */
 export class Pregel<
     Nodes extends StrRecord<string, PregelNode>,
-    Channels extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+    Channels extends StrRecord<string, BaseChannel>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
     InputType = PregelInputType,
@@ -761,9 +753,6 @@ export class Pregel<
     }
 
     // Create all channels
-    const { managed } = await this.prepareSpecs(config, {
-      skipManaged: true,
-    });
     const channels = emptyChannels(
       this.channels as Record<string, BaseChannel>,
       saved.checkpoint
@@ -801,7 +790,6 @@ export class Pregel<
         saved.pendingWrites,
         this.nodes,
         channels,
-        managed,
         saved.config,
         true,
         { step: (saved.metadata?.step ?? -1) + 1, store: this.store }
@@ -1169,11 +1157,6 @@ export class Pregel<
         checkpoint
       );
 
-      // Pass `skipManaged: true` as managed values are not used/relevant in update state calls.
-      const { managed } = await this.prepareSpecs(config, {
-        skipManaged: true,
-      });
-
       if (values === null && asNode === END) {
         if (updates.length > 1) {
           throw new InvalidUpdateError(
@@ -1188,7 +1171,6 @@ export class Pregel<
             saved.pendingWrites || [],
             this.nodes,
             channels,
-            managed,
             saved.config,
             true,
             {
@@ -1298,7 +1280,6 @@ export class Pregel<
             saved.pendingWrites,
             this.nodes,
             channels,
-            managed,
             nextConfig,
             false,
             { step: step + 2 }
@@ -1414,7 +1395,6 @@ export class Pregel<
           saved.pendingWrites,
           this.nodes,
           channels,
-          managed,
           saved.config,
           true,
           {
@@ -1580,10 +1560,8 @@ export class Pregel<
                   fresh_: boolean = false
                 ) =>
                   _localRead(
-                    step,
                     checkpoint,
                     channels,
-                    managed,
                     // TODO: Why does keyof StrRecord allow number and symbol?
                     task as PregelExecutableTask<string, string>,
                     select_ as string | string[],
@@ -1917,78 +1895,6 @@ export class Pregel<
   }
 
   /**
-   * Prepares channel specifications and managed values for graph execution.
-   * This is an internal method used to set up the graph's communication channels
-   * and managed state before execution.
-   *
-   * @param config - Configuration for preparing specs
-   * @param options - Additional options
-   * @param options.skipManaged - Whether to skip initialization of managed values
-   * @returns Object containing channel specs and managed value mapping
-   * @internal
-   */
-  protected async prepareSpecs(
-    config: RunnableConfig,
-    options?: {
-      skipManaged?: boolean;
-    }
-  ) {
-    const configForManaged: LangGraphRunnableConfig = {
-      ...config,
-      store: this.store,
-    };
-    const channelSpecs: Record<string, BaseChannel> = {};
-    const managedSpecs: Record<string, ManagedValueSpec> = {};
-
-    for (const [name, spec] of Object.entries(this.channels)) {
-      if (isBaseChannel(spec)) {
-        channelSpecs[name] = spec;
-      } else if (options?.skipManaged) {
-        managedSpecs[name] = {
-          cls: NoopManagedValue,
-          params: { config: {} },
-        };
-      } else {
-        managedSpecs[name] = spec;
-      }
-    }
-    const managed = new ManagedValueMapping(
-      await Object.entries(managedSpecs).reduce(
-        async (accPromise, [key, value]) => {
-          const acc = await accPromise;
-          let initializedValue;
-
-          if (isConfiguredManagedValue(value)) {
-            if (
-              "key" in value.params &&
-              value.params.key === ChannelKeyPlaceholder
-            ) {
-              value.params.key = key;
-            }
-            initializedValue = await value.cls.initialize(
-              configForManaged,
-              value.params
-            );
-          } else {
-            initializedValue = await value.initialize(configForManaged);
-          }
-
-          if (initializedValue !== undefined) {
-            acc.push([key, initializedValue]);
-          }
-
-          return acc;
-        },
-        Promise.resolve([] as [string, ManagedValue][])
-      )
-    );
-    return {
-      channelSpecs,
-      managed,
-    };
-  }
-
-  /**
    * Validates the input for the graph.
    * @param input - The input to validate
    * @returns The validated input
@@ -2108,7 +2014,12 @@ export class Pregel<
       config?.runName ?? this.getName() // run_name
     );
 
-    const { channelSpecs, managed } = await this.prepareSpecs(config);
+    const channelSpecs: Record<string, BaseChannel> = {};
+    for (const [name, spec] of Object.entries(this.channels)) {
+      if (isBaseChannel(spec)) {
+        channelSpecs[name] = spec;
+      }
+    }
 
     let loop: PregelLoop | undefined;
     let loopError: unknown;
@@ -2129,7 +2040,6 @@ export class Pregel<
           checkpointer,
           nodes: this.nodes,
           channelSpecs,
-          managed,
           outputKeys,
           streamKeys: this.streamChannelsAsIs as string | string[],
           store,
@@ -2164,10 +2074,7 @@ export class Pregel<
             await loop.store?.stop();
             await loop.cache?.stop();
           }
-          await Promise.all([
-            ...(loop?.checkpointerPromises ?? []),
-            ...Array.from(managed.values()).map((mv) => mv.promises()),
-          ]);
+          await Promise.all(loop?.checkpointerPromises ?? []);
         } catch (e) {
           loopError = loopError ?? e;
         }
