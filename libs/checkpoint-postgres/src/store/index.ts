@@ -19,11 +19,12 @@ import type {
 
 // Import modules
 import { DatabaseCore } from "./modules/database-core.js";
-import { DatabaseSetup } from "./modules/database-setup.js";
 import { VectorOperations } from "./modules/vector-operations.js";
 import { CrudOperations } from "./modules/crud-operations.js";
 import { SearchOperations } from "./modules/search-operations.js";
 import { TTLManager } from "./modules/ttl-manager.js";
+import { getStoreMigrations, StoreMigrationConfig } from "./store-migrations.js";
+import { getStoreTablesWithSchema } from "./sql.js";
 
 export type * from "./modules/types.js";
 
@@ -35,8 +36,6 @@ const { Pool } = pg;
  */
 export class PostgresStore implements BaseStore {
   private core: DatabaseCore;
-
-  private dbSetup: DatabaseSetup;
 
   private vectorOps: VectorOperations;
 
@@ -67,26 +66,12 @@ export class PostgresStore implements BaseStore {
       config.index
     );
 
-    this.dbSetup = new DatabaseSetup(this.core);
     this.vectorOps = new VectorOperations(this.core);
     this.crudOps = new CrudOperations(this.core, this.vectorOps);
     this.searchOps = new SearchOperations(this.core, this.vectorOps);
     this.ttlManager = new TTLManager(this.core);
 
     this.ensureTables = config.ensureTables ?? true;
-  }
-
-  /**
-   * Get an item by namespace and key.
-   */
-  async get(namespace: string[], key: string): Promise<Item | null> {
-    if (!this.isSetup && this.ensureTables) {
-      await this.setup();
-    }
-
-    return this.core.withClient(async (client) => {
-      return this.crudOps.executeGet(client, { namespace, key });
-    });
   }
 
   /**
@@ -113,6 +98,19 @@ export class PostgresStore implements BaseStore {
       };
 
       await this.crudOps.executePut(client, operation);
+    });
+  }
+
+  /**
+   * Get an item by namespace and key.
+   */
+  async get(namespace: string[], key: string): Promise<Item | null> {
+    if (!this.isSetup && this.ensureTables) {
+      await this.setup();
+    }
+
+    return this.core.withClient(async (client) => {
+      return this.crudOps.executeGet(client, { namespace, key });
     });
   }
 
@@ -191,17 +189,79 @@ export class PostgresStore implements BaseStore {
   }
 
   /**
-   * Initialize the store by creating necessary tables and indexes.
+   * Initialize the store by running migrations to create necessary tables and indexes.
    */
   async setup(): Promise<void> {
     if (this.isSetup) return;
 
-    await this.dbSetup.initialize();
+    await this.runStoreMigrations();
     this.isSetup = true;
 
     // Start TTL sweeper if configured
     if (this.core.ttlConfig?.sweepIntervalMinutes) {
       this.ttlManager.start();
+    }
+  }
+
+  /**
+   * Run store migrations to set up the database schema
+   */
+  private async runStoreMigrations(): Promise<void> {
+    const client = await this.core.pool.connect();
+    const STORE_TABLES = getStoreTablesWithSchema(this.core.schema);
+    
+    try {
+      await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.core.schema}`);
+      
+      let version = -1;
+      
+      const migrationConfig: StoreMigrationConfig = {
+        schema: this.core.schema,
+        indexConfig: this.core.indexConfig ? {
+          dims: this.core.indexConfig.dims,
+          indexType: this.core.indexConfig.indexType,
+          distanceMetric: this.core.indexConfig.distanceMetric,
+          createAllMetricIndexes: this.core.indexConfig.createAllMetricIndexes,
+          hnsw: this.core.indexConfig.hnsw,
+          ivfflat: this.core.indexConfig.ivfflat,
+        } : undefined,
+      };
+      
+      const migrations = getStoreMigrations(migrationConfig);
+
+      // Check current migration version using the same pattern as checkpoints
+      try {
+        const result = await client.query(
+          `SELECT v FROM ${STORE_TABLES.store_migrations} ORDER BY v DESC LIMIT 1`
+        );
+        if (result.rows.length > 0) {
+          version = result.rows[0].v;
+        }
+      } catch (error: unknown) {
+        // Assume table doesn't exist if there's an error
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          typeof error.code === "string" &&
+          error.code === "42P01" // Postgres error code for undefined_table
+        ) {
+          version = -1;
+        } else {
+          throw error;
+        }
+      }
+
+      // Run migrations starting from the next version
+      for (let v = version + 1; v < migrations.length; v += 1) {
+        await client.query(migrations[v]);
+        await client.query(
+          `INSERT INTO ${STORE_TABLES.store_migrations} (v) VALUES ($1)`,
+          [v]
+        );
+      }
+    } finally {
+      client.release();
     }
   }
 

@@ -1,5 +1,5 @@
 /* eslint-disable no-process-env */
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
 import pg from "pg";
 import { PostgresStore } from "../store/index.js";
 
@@ -1337,5 +1337,187 @@ describe("PostgresStore Vector Search", () => {
       mode: "vector",
     });
     expect(results.length).toBeGreaterThan(0);
+  });
+});
+
+describe("PostgresStore Migration System", () => {
+  let store: PostgresStore;
+  let storeWithVectors: PostgresStore;
+  let dbName: string;
+  let dbConnectionString: string;
+  let mockEmbedding: ((texts: string[]) => Promise<number[][]>) & {
+    calls: string[][];
+    toHaveBeenCalled: () => boolean;
+  };
+
+  beforeEach(async () => {
+    dbName = `migration_test_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const pool = new Pool({ connectionString: TEST_POSTGRES_URL });
+    try {
+      await pool.query(`CREATE DATABASE ${dbName}`);
+    } finally {
+      await pool.end();
+    }
+    dbConnectionString = `${TEST_POSTGRES_URL.split("/")
+      .slice(0, -1)
+      .join("/")}/${dbName}`;
+  });
+
+  afterEach(async () => {
+    if (store) await store.end();
+    if (storeWithVectors) await storeWithVectors.end();
+  });
+
+  it("should properly track and apply store migrations", async () => {
+    // Create store without vector indexing
+    store = PostgresStore.fromConnString(dbConnectionString, {
+      schema: "migration_test"
+    });
+    testStores.push(store);
+    
+    // First setup should create migration table and apply all migrations
+    await store.setup();
+    
+    // Verify migration table exists and has correct entries
+    const pool = new Pool({ connectionString: dbConnectionString });
+    const client = await pool.connect();
+    try {
+      const result = await client.query(
+        `SELECT v FROM migration_test.store_migrations ORDER BY v`
+      );
+      
+      // Should have exactly 4 migrations for basic store setup (migrations table, main table, indexes, trigger)
+      expect(result.rows.length).toBe(4);
+      expect(result.rows.map(r => r.v)).toEqual([0, 1, 2, 3]);
+      
+      // Verify main tables were created
+      const tablesResult = await client.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'migration_test' 
+        AND table_name IN ('store', 'store_migrations')
+        ORDER BY table_name
+      `);
+      expect(tablesResult.rows.map(r => r.table_name)).toEqual(['store', 'store_migrations']);
+      
+      // Re-running setup should not create duplicate migrations
+      await store.setup();
+      const result2 = await client.query(
+        `SELECT v FROM migration_test.store_migrations ORDER BY v`
+      );
+      expect(result2.rows.length).toBe(4); // Should still be 4, no duplicates
+      
+    } finally {
+      client.release();
+      await pool.end();
+    }
+  });
+
+  it("should apply vector migrations when vector indexing is configured", async () => {
+    // Create store with vector indexing
+    mockEmbedding = createMockEmbedding(128, { asEmpty: false });
+    storeWithVectors = new PostgresStore({
+      connectionOptions: dbConnectionString,
+      schema: "vector_migration_test",
+      index: {
+        dims: 128,
+        embed: mockEmbedding,
+        fields: ["content"],
+        indexType: "hnsw",
+        distanceMetric: "cosine",
+      },
+    });
+    testStores.push(storeWithVectors);
+    
+    await storeWithVectors.setup();
+    
+    // Verify migration table and vector migrations
+    const pool = new Pool({ connectionString: dbConnectionString });
+    const client = await pool.connect();
+    try {
+      const result = await client.query(
+        `SELECT v FROM vector_migration_test.store_migrations ORDER BY v`
+      );
+      
+      // Should have 7 migrations: 4 basic + 3 vector (extension + table + index)
+      expect(result.rows.length).toBe(7);
+      expect(result.rows.map(r => r.v)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+      
+      // Verify vector table was created
+      const tablesResult = await client.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'vector_migration_test' 
+        AND table_name IN ('store', 'store_vectors', 'store_migrations')
+        ORDER BY table_name
+      `);
+      expect(tablesResult.rows.map(r => r.table_name)).toEqual(['store', 'store_migrations', 'store_vectors']);
+      
+      // Verify vector index was created
+      const indexResult = await client.query(`
+        SELECT indexname 
+        FROM pg_indexes 
+        WHERE schemaname = 'vector_migration_test' 
+        AND indexname LIKE 'idx_store_vectors_embedding_%'
+      `);
+      expect(indexResult.rows.length).toBeGreaterThan(0);
+      
+    } finally {
+      client.release();
+      await pool.end();
+    }
+  });
+
+  it("should handle migration failures gracefully", async () => {
+    // Create store
+    store = PostgresStore.fromConnString(dbConnectionString, {
+      schema: "failure_test"
+    });
+    testStores.push(store);
+    
+    // First setup should work
+    await store.setup();
+    
+    // Verify basic functionality works after migration
+    await store.put(["test"], "key1", { data: "value1" });
+    const item = await store.get(["test"], "key1");
+    expect(item?.value).toEqual({ data: "value1" });
+  });
+
+  it("should support multiple schemas with independent migrations", async () => {
+    // Create two stores with different schemas
+    const store1 = PostgresStore.fromConnString(dbConnectionString, {
+      schema: "schema1"
+    });
+    const store2 = PostgresStore.fromConnString(dbConnectionString, {
+      schema: "schema2"
+    });
+    testStores.push(store1, store2);
+    
+    await store1.setup();
+    await store2.setup();
+    
+    // Verify both schemas have independent migration tables
+    const pool = new Pool({ connectionString: dbConnectionString });
+    const client = await pool.connect();
+    try {
+      const schema1Result = await client.query(
+        `SELECT v FROM schema1.store_migrations ORDER BY v`
+      );
+      const schema2Result = await client.query(
+        `SELECT v FROM schema2.store_migrations ORDER BY v`
+      );
+      
+      expect(schema1Result.rows.length).toBe(4);
+      expect(schema2Result.rows.length).toBe(4);
+      
+      // Both should have same migration versions
+      expect(schema1Result.rows.map(r => r.v)).toEqual([0, 1, 2, 3]);
+      expect(schema2Result.rows.map(r => r.v)).toEqual([0, 1, 2, 3]);
+      
+    } finally {
+      client.release();
+      await pool.end();
+    }
   });
 });
