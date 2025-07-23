@@ -60,7 +60,7 @@ const DEFAULT_NODE_VERSION = "20" as const;
 const PYTHON_EXTENSIONS = [".py", ".pyx", ".pyd", ".pyi"];
 
 const PythonVersionSchema = z.union([z.literal("3.11"), z.literal("3.12")]);
-const NodeVersionSchema = z.literal("20");
+const NodeVersionSchema = z.union([z.literal("20"), z.literal("22")]);
 
 const PythonConfigSchema = BaseConfigSchema.merge(
   z.object({
