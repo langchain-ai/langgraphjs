@@ -63,7 +63,8 @@ export class PostgresStore implements BaseStore {
       pool,
       config.schema || "public",
       config.ttl,
-      config.index
+      config.index,
+      config.textSearchLanguage
     );
 
     this.vectorOps = new VectorOperations(this.core);
