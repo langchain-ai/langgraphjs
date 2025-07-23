@@ -186,7 +186,7 @@ export class SearchOperations {
           updated_at,
           CASE 
             WHEN $2::text IS NOT NULL THEN 
-              ts_rank(to_tsvector('english', value::text), plainto_tsquery('english', $2::text))
+              ts_rank(to_tsvector($3::regconfig, value::text), plainto_tsquery($3::regconfig, $2::text))
             ELSE 0
           END as score
         FROM ${this.core.schema}.store
@@ -194,8 +194,8 @@ export class SearchOperations {
           AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
       `;
 
-      const params: unknown[] = [`${namespacePath}%`, query || null];
-      let paramIndex = 3;
+      const params: unknown[] = [`${namespacePath}%`, query || null, this.core.textSearchLanguage];
+      let paramIndex = 4;
 
       // Add filter conditions using advanced filtering
       if (filter && Object.keys(filter).length > 0) {
@@ -210,7 +210,7 @@ export class SearchOperations {
       // Add full-text search if query is provided
       if (query) {
         sqlQuery += ` AND (
-          to_tsvector('english', value::text) @@ plainto_tsquery('english', $2::text)
+          to_tsvector($3::regconfig, value::text) @@ plainto_tsquery($3::regconfig, $2::text)
           OR value::text ILIKE $${paramIndex}
         )`;
         params.push(`%${query}%`);
@@ -430,14 +430,14 @@ export class SearchOperations {
           s.updated_at,
           (
             $3 * (1 - MIN(v.embedding <=> $2)) + 
-            (1 - $3) * ts_rank(to_tsvector('english', s.value::text), plainto_tsquery('english', $4))
+            (1 - $3) * ts_rank(to_tsvector($6::regconfig, s.value::text), plainto_tsquery($6::regconfig, $4))
           ) as hybrid_score
         FROM ${this.core.schema}.store s
         JOIN ${this.core.schema}.store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
         WHERE s.namespace_path LIKE $1
           AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
           AND (
-            to_tsvector('english', s.value::text) @@ plainto_tsquery('english', $4)
+            to_tsvector($6::regconfig, s.value::text) @@ plainto_tsquery($6::regconfig, $4)
             OR v.embedding <=> $2 <= $5
           )
       `;
@@ -448,8 +448,9 @@ export class SearchOperations {
         vectorWeight,
         query,
         1 - similarityThreshold,
+        this.core.textSearchLanguage,
       ];
-      let paramIndex = 6;
+      let paramIndex = 7;
 
       // Add filter conditions
       if (filter && Object.keys(filter).length > 0) {

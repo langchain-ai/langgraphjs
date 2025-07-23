@@ -221,4 +221,11 @@ export interface PostgresStoreConfig {
    * If provided, enables vector similarity search using pgvector extension.
    */
   index?: IndexConfig;
+
+  /**
+   * Language for PostgreSQL full-text search operations.
+   * Supports any language configuration available in PostgreSQL.
+   * @default "english"
+   */
+  textSearchLanguage?: string;
 }
