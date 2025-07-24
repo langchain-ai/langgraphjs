@@ -872,11 +872,8 @@ describe("Checkpoint Tests (Python port)", () => {
       {
         __interrupt__: [
           expect.objectContaining({
-            interrupt_id: expect.any(String),
+            id: expect.any(String),
             value: "Just because...",
-            resumable: true,
-            ns: expect.any(Array),
-            when: "during",
           }),
         ],
       },
@@ -919,11 +916,8 @@ describe("Checkpoint Tests (Python port)", () => {
       market: "DE",
       __interrupt__: [
         {
-          interrupt_id: expect.any(String),
+          id: expect.any(String),
           value: "Just because...",
-          resumable: true,
-          when: "during",
-          ns: [expect.stringMatching(/^tool_two:/)],
         },
       ],
     });

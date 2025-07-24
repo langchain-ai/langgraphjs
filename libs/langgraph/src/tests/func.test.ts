@@ -691,14 +691,8 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [
-                expect.stringMatching(/^interruptGraph:/),
-                expect.stringMatching(/^interruptTask:/),
-              ],
-              resumable: true,
+              id: expect.any(String),
               value: "Please provide input",
-              when: "during",
             },
           ],
         });
@@ -757,11 +751,8 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [expect.stringMatching(/^interruptGraph:/)],
-              resumable: true,
+              id: expect.any(String),
               value: "Provide value for bar:",
-              when: "during",
             },
           ],
         });
@@ -806,14 +797,8 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [
-                expect.stringMatching(/^interruptGraph:/),
-                expect.stringMatching(/^bar:/),
-              ],
-              resumable: true,
+              id: expect.any(String),
               value: "Provide value for bar:",
-              when: "during",
             },
           ],
         });
@@ -848,11 +833,8 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [expect.stringMatching(/^falsyGraph:/)],
-              resumable: true,
+              id: expect.any(String),
               value: "test",
-              when: "during",
             },
           ],
         });
@@ -893,11 +875,8 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [expect.stringMatching(/^graph:/)],
-              resumable: true,
+              id: expect.any(String),
               value: { a: "boo1" },
-              when: "during",
             },
           ],
         });
@@ -912,11 +891,8 @@ export function runFuncTests(
         expect(secondRun).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [expect.stringMatching(/^graph:/)],
-              resumable: true,
+              id: expect.any(String),
               value: { a: "boo2" },
-              when: "during",
             },
           ],
         });
@@ -930,11 +906,8 @@ export function runFuncTests(
         expect(thirdRun).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [expect.stringMatching(/^graph:/)],
-              resumable: true,
+              id: expect.any(String),
               value: { a: "boo3" },
-              when: "during",
             },
           ],
         });
@@ -983,14 +956,8 @@ export function runFuncTests(
         expect(result).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [
-                expect.stringMatching(/^program:/),
-                expect.stringMatching(/^add-participant:/),
-              ],
-              resumable: true,
+              id: expect.any(String),
               value: "Hey do you want to add James?",
-              when: "during",
             },
           ],
         });
@@ -1014,14 +981,8 @@ export function runFuncTests(
         expect(result).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [
-                expect.stringMatching(/^program:/),
-                expect.stringMatching(/^add-participant:/),
-              ],
-              resumable: true,
+              id: expect.any(String),
               value: "Hey do you want to add Will?",
-              when: "during",
             },
           ],
         });

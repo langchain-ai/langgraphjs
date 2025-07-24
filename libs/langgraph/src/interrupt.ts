@@ -107,14 +107,11 @@ export function interrupt<I = unknown, R = any>(value: I): R {
   );
   throw new GraphInterrupt([
     {
-      value,
-      when: "during",
-      resumable: true,
-      ns,
-      get interrupt_id() {
+      get id() {
         if (ns == null) return undefined;
         return XXH3(ns.join(CHECKPOINT_NAMESPACE_SEPARATOR));
       },
+      value,
     },
   ]);
 }
