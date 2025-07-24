@@ -5999,7 +5999,7 @@ graph TD;
     });
   });
 
-  describe.only("StateGraph start branch then end", () => {
+  describe("StateGraph start branch then end", () => {
     let checkpointer: BaseCheckpointSaver<number>;
 
     const GraphAnnotation = Annotation.Root({
