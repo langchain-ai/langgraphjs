@@ -105,13 +105,7 @@ export function interrupt<I = unknown, R = any>(value: I): R {
   const ns: string[] | undefined = conf[CONFIG_KEY_CHECKPOINT_NS]?.split(
     CHECKPOINT_NAMESPACE_SEPARATOR
   );
-  throw new GraphInterrupt([
-    {
-      get id() {
-        if (ns == null) return undefined;
-        return XXH3(ns.join(CHECKPOINT_NAMESPACE_SEPARATOR));
-      },
-      value,
-    },
-  ]);
+
+  const id = ns ? XXH3(ns.join(CHECKPOINT_NAMESPACE_SEPARATOR)) : undefined;
+  throw new GraphInterrupt([{ id, value }]);
 }
