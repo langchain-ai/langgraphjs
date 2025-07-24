@@ -3647,12 +3647,7 @@ graph TD;
       // Return state at interrupt time
       expect(await graph.invoke({ hello: "world" }, thread)).toEqual({
         hello: "again",
-        __interrupt__: [
-          {
-            value: "I am bad",
-            when: "during",
-          },
-        ],
+        __interrupt__: [{ value: "I am bad" }],
       });
 
       expect(awhileReturns).toBe(1);
@@ -3661,12 +3656,7 @@ graph TD;
       // Invoking a graph with no more tasks should return the final value
       expect(await graph.invoke(null, thread)).toEqual({
         hello: "again",
-        __interrupt__: [
-          {
-            value: "I am bad",
-            when: "during",
-          },
-        ],
+        __interrupt__: [{ value: "I am bad" }],
       });
 
       expect(awhileReturns).toBe(1);
@@ -11531,7 +11521,7 @@ graph TD;
     expect(state.tasks).toMatchObject([
       {
         name: "interrupt",
-        interrupts: [{ value: "interrupt", when: "during", resumable: true }],
+        interrupts: [{ value: "interrupt" }],
       },
     ]);
 

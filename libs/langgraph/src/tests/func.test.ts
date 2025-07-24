@@ -638,22 +638,10 @@ export function runFuncTests(
         expect(results[3]).toEqual({ mapper: "11" });
         const {
           __interrupt__: [inter],
-        } = results[4] as {
-          __interrupt__: [
-            {
-              value: string;
-              resumable: boolean;
-              ns: string[];
-              when: string;
-            }
-          ];
-        };
+        } = results[4] as { __interrupt__: [{ id: string; value: string }] };
 
         expect(inter.value).toEqual("question");
-        expect(inter.resumable).toEqual(true);
-        expect(inter.ns.length).toEqual(1);
-        expect(inter.ns[0]).toMatch(/^graph:/);
-        expect(inter.when).toEqual("during");
+        expect(inter.id).toBeDefined();
 
         const result = await graph.invoke(new Command({ resume: "answer" }), {
           configurable: { thread_id },
