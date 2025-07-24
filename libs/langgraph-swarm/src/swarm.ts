@@ -145,14 +145,7 @@ const createSwarm = <
     });
   }
 
-  return builder as StateGraph<
-    AnnotationRootT["spec"],
-    AnnotationRootT["State"],
-    AnnotationRootT["Update"],
-    string,
-    AnnotationRootT["spec"],
-    AnnotationRootT["spec"]
-  >;
+  return builder;
 };
 
 export { createSwarm, addActiveAgentRouter, SwarmState };
