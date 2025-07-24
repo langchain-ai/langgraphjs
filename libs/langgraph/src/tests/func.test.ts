@@ -967,15 +967,7 @@ export function runFuncTests(
         expect(currTasks[0].interrupts[0].value).toEqual(
           "Hey do you want to add James?"
         );
-        expect(currTasks[0].interrupts[0].resumable).toEqual(true);
-        expect(currTasks[0].interrupts[0].ns!.length).toEqual(2);
-        expect(currTasks[0].interrupts[0].ns![0]).toEqual(
-          expect.stringMatching(/^program:.*$/)
-        );
-        expect(currTasks[0].interrupts[0].ns![1]).toEqual(
-          expect.stringMatching(/^add-participant:.*$/)
-        );
-        expect(currTasks[0].interrupts[0].when).toEqual("during");
+        expect(currTasks[0].interrupts[0].id).toBeDefined();
 
         result = await program.invoke(new Command({ resume: true }), config);
         expect(result).toEqual({
@@ -992,15 +984,7 @@ export function runFuncTests(
         expect(currTasks[0].interrupts[0].value).toEqual(
           "Hey do you want to add Will?"
         );
-        expect(currTasks[0].interrupts[0].resumable).toEqual(true);
-        expect(currTasks[0].interrupts[0].ns!.length).toEqual(2);
-        expect(currTasks[0].interrupts[0].ns![0]).toEqual(
-          expect.stringMatching(/^program:.*$/)
-        );
-        expect(currTasks[0].interrupts[0].ns![1]).toEqual(
-          expect.stringMatching(/^add-participant:.*$/)
-        );
-        expect(currTasks[0].interrupts[0].when).toEqual("during");
+        expect(currTasks[0].interrupts[0].id).toBeDefined();
 
         result = await program.invoke(new Command({ resume: true }), config);
         expect(result).toEqual(["Added James!", "Added Will!"]);

@@ -938,8 +938,7 @@ describe("Checkpoint Tests (Python port)", () => {
           task.name === "tool_two" &&
           task.interrupts &&
           task.interrupts.length > 0 &&
-          task.interrupts[0].value === "Just because..." &&
-          task.interrupts[0].resumable === true
+          task.interrupts[0].value === "Just because..."
       )
     ).toBe(true);
 
