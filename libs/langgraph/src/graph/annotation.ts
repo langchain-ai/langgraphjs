@@ -1,4 +1,4 @@
-import { RunnableLike } from "@langchain/core/runnables";
+import { RunnableLike } from "../pregel/runnable_types.js";
 import { BaseChannel } from "../channels/base.js";
 import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { LastValue } from "../channels/last_value.js";
