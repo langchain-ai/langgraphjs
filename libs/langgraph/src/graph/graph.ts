@@ -5,7 +5,7 @@ import {
   RunnableConfig,
   RunnableInterface,
   RunnableIOSchema,
-  RunnableLike,
+  type RunnableLike as LangChainRunnableLike,
 } from "@langchain/core/runnables";
 import {
   Node as DrawableGraphNode,
@@ -14,6 +14,10 @@ import {
 import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { z } from "zod";
 import { validate as isUuid } from "uuid";
+import type {
+  RunnableLike,
+  LangGraphRunnableConfig,
+} from "../pregel/runnable_types.js";
 import { PregelNode } from "../pregel/read.js";
 import { Channel, Pregel } from "../pregel/index.js";
 import type { PregelParams } from "../pregel/types.js";
@@ -40,7 +44,6 @@ import {
   UnreachableNodeError,
 } from "../errors.js";
 import { StateDefinition, StateType } from "./annotation.js";
-import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 
 export interface BranchOptions<
@@ -82,9 +85,13 @@ export class Branch<
         CallOptions
       >;
     } else {
-      this.path = _coerceToRunnable(options.path).withConfig({
-        runName: `Branch`,
-      } as CallOptions);
+      this.path = _coerceToRunnable(
+        options.path as LangChainRunnableLike<
+          IO,
+          BranchPathReturnValue,
+          CallOptions
+        >
+      ).withConfig({ runName: `Branch` } as CallOptions);
     }
     this.ends = Array.isArray(options.pathMap)
       ? options.pathMap.reduce((acc, n) => {
@@ -384,7 +391,13 @@ export class Graph<
       const pathDisplayValues = Array.isArray(options.pathMap)
         ? options.pathMap.join(",")
         : Object.keys(options.pathMap ?? {}).join(",");
-      options.path = _coerceToRunnable(options.path).withConfig({
+      options.path = _coerceToRunnable(
+        options.path as LangChainRunnableLike<
+          RunInput,
+          BranchPathReturnValue,
+          LangGraphRunnableConfig<StateType<C>>
+        >
+      ).withConfig({
         runName: `Branch<${options.source}${
           pathDisplayValues !== "" ? `,${pathDisplayValues}` : ""
         }>`.slice(0, 63),
