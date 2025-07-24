@@ -1,9 +1,5 @@
 /* eslint-disable @typescript-eslint/no-use-before-define */
-import {
-  _coerceToRunnable,
-  Runnable,
-  RunnableLike,
-} from "@langchain/core/runnables";
+import { _coerceToRunnable, Runnable } from "@langchain/core/runnables";
 import {
   All,
   type BaseCache,
@@ -16,6 +12,10 @@ import {
   interopZodObjectPartial,
   isInteropZodObject,
 } from "@langchain/core/utils/types";
+import type {
+  RunnableLike,
+  LangGraphRunnableConfig,
+} from "../pregel/runnable_types.js";
 import { BaseChannel, isBaseChannel } from "../channels/base.js";
 import {
   CompiledGraph,
@@ -59,7 +59,6 @@ import {
   UpdateType,
 } from "./annotation.js";
 import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
-import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 import { LastValueAfterFinish } from "../channels/last_value.js";
 import {
