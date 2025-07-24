@@ -880,6 +880,15 @@ describe("Checkpoint Tests (Python port)", () => {
       { tool_one: { my_key: " one" } },
     ]);
 
+    // check if the interrupt is persisted
+    const state1 = await tool_two_with_checkpoint.getState(thread2);
+    expect(state1.tasks.at(-1)?.interrupts).toEqual([
+      {
+        id: expect.any(String),
+        value: "Just because...",
+      },
+    ]);
+
     // Resume with an answer
     const stream2 = await tool_two_with_checkpoint.stream(
       new Command({ resume: " my answer" }),
@@ -923,17 +932,17 @@ describe("Checkpoint Tests (Python port)", () => {
     });
 
     // Check the state
-    const state = await tool_two_with_checkpoint.getState(thread1);
+    const state2 = await tool_two_with_checkpoint.getState(thread1);
 
     // Just check partial state since the structure might vary
-    expect(state.values).toEqual({
+    expect(state2.values).toEqual({
       my_key: "value ⛰️ one",
       market: "DE",
     });
 
     // Check for an interrupted task
     expect(
-      state.tasks.some(
+      state2.tasks.some(
         (task) =>
           task.name === "tool_two" &&
           task.interrupts &&
