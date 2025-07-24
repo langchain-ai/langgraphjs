@@ -138,7 +138,6 @@ type NodeAction<S, U, C extends SDZod> = RunnableLike<
   LangGraphRunnableConfig<StateType<ToStateDefinition<C>>>
 >;
 
-type AnyStateDefinition<Type = any> = StateDefinition & { "~Any": Type }; // eslint-disable-line @typescript-eslint/no-explicit-any
 const PartialStateSchema = Symbol.for("langgraph.state.partial");
 type PartialStateSchema = typeof PartialStateSchema;
 
@@ -209,12 +208,8 @@ export class StateGraph<
   S = SD extends SDZod ? StateType<ToStateDefinition<SD>> : SD,
   U = SD extends SDZod ? UpdateType<ToStateDefinition<SD>> : Partial<S>,
   N extends string = typeof START,
-  I extends SDZod = SD extends SDZod
-    ? ToStateDefinition<SD>
-    : AnyStateDefinition<U>,
-  O extends SDZod = SD extends SDZod
-    ? ToStateDefinition<SD>
-    : AnyStateDefinition<S>,
+  I extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
+  O extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
   C extends SDZod = StateDefinition
 > extends Graph<N, S, U, StateGraphNodeSpec<S, U>, ToStateDefinition<C>> {
   channels: Record<string, BaseChannel> = {};
@@ -772,10 +767,8 @@ export class CompiledStateGraph<
   S,
   U,
   StateType<ToStateDefinition<C>>,
-  I extends AnyStateDefinition<infer AI>
-    ? AI
-    : UpdateType<ToStateDefinition<I>>,
-  O extends AnyStateDefinition<infer AO> ? AO : StateType<ToStateDefinition<O>>
+  UpdateType<ToStateDefinition<I>>,
+  StateType<ToStateDefinition<O>>
 > {
   declare builder: StateGraph<unknown, S, U, N, I, O, C>;
 

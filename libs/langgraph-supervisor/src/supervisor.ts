@@ -259,9 +259,6 @@ const createSupervisor = <
   });
 
   let builder = new StateGraph(schema)
-    // @ts-expect-error due to the workaround for arbitrary types in StateGraph<Type>,
-    // we need to ignore type-checker here.
-    // TODO: revisit after we deprecate MessagesGraph
     .addNode(supervisorAgent.name!, supervisorAgent, {
       ends: [...agentNames],
     })

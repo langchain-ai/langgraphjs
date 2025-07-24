@@ -5128,6 +5128,7 @@ graph TD;
       });
 
       const result = await app.invoke(
+        // @ts-expect-error Will be deprecated
         new HumanMessage("what is the weather in sf?")
       );
 
@@ -5275,9 +5276,10 @@ graph TD;
         ]),
       });
 
-      const stream = await app.stream([
-        new HumanMessage("what is the weather in sf?"),
-      ]);
+      const stream = await app.stream(
+        // @ts-expect-error Will be deprecated
+        [new HumanMessage("what is the weather in sf?")]
+      );
       const streamItems = await gatherIterator(stream);
 
       const lastItem = streamItems[streamItems.length - 1];

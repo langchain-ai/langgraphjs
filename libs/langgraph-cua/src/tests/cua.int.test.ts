@@ -57,7 +57,9 @@ test("It can use the agent to interact with the browser", async () => {
           },
         ],
       },
-      { streamMode: "updates" }
+      {
+        streamMode: "updates",
+      }
     );
 
     for await (const update of stream) {
