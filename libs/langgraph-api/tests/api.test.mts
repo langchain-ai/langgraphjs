@@ -31,7 +31,6 @@ type BaseMessage = {
 
 interface AgentState {
   messages: Array<BaseMessage>;
-  sharedStateValue?: string | null;
 }
 
 const IS_MEMORY = true;
@@ -1190,64 +1189,6 @@ describe("runs", () => {
 
 describe("shared state", () => {
   beforeEach(() => truncate(API_URL, { store: true }));
-
-  it("should share state between runs with the same thread ID", async () => {
-    const assistant = await client.assistants.create({ graphId: "agent" });
-    const thread = await client.threads.create();
-
-    const input = {
-      messages: [
-        { type: "human", content: "should_end", id: "initial-message" },
-      ],
-    };
-    const config = { configurable: { user_id: "start_user_id" } };
-
-    // First run
-    const res1 = (await client.runs.wait(
-      thread.thread_id,
-      assistant.assistant_id,
-      { input, config }
-    )) as Awaited<Record<string, any>>;
-    expect(res1.sharedStateValue).toBe(null);
-
-    // Second run with the same thread ID & config
-    const res2 = (await client.runs.wait(
-      thread.thread_id,
-      assistant.assistant_id,
-      { input, config }
-    )) as Awaited<Record<string, any>>;
-    expect(res2.sharedStateValue).toBe(config.configurable.user_id);
-  });
-
-  it("should not share state between runs with different thread IDs", async () => {
-    const assistant = await client.assistants.create({ graphId: "agent" });
-    const thread = await client.threads.create();
-
-    const input = {
-      messages: [{ type: "human", content: "foo", id: "initial-message" }],
-    };
-
-    // Run with the default `globalConfig`
-    const config1 = { configurable: { user_id: "start_user_id" } };
-    const res1 = (await client.runs.wait(
-      thread.thread_id,
-      assistant.assistant_id,
-      { input, config: config1 }
-    )) as Awaited<Record<string, any>>;
-
-    // Run with the same thread id but a new config
-    const config2 = { configurable: { user_id: "new_user_id" } };
-    const res2 = (await client.runs.wait(
-      thread.thread_id,
-      assistant.assistant_id,
-      { input, config: config2 }
-    )) as Awaited<Record<string, any>>;
-
-    expect(res1.sharedStateValue).toBe(config1.configurable.user_id);
-    // Null on first iteration since the shared value is set in the second iteration
-    expect(res2.sharedStateValue).toBe(config2.configurable.user_id);
-    expect(res1.sharedStateValue).not.toBe(res2.sharedStateValue);
-  });
 
   it("should be able to set and return data from store in config", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
