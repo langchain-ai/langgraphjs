@@ -43,11 +43,7 @@ import {
 import { Pregel, PregelInputType, PregelOutputType } from "../pregel/index.js";
 import { StrRecord } from "../pregel/algo.js";
 import { PregelNode } from "../pregel/read.js";
-import {
-  BaseChannel,
-  LangGraphRunnableConfig,
-  ManagedValueSpec,
-} from "../web.js";
+import { BaseChannel, LangGraphRunnableConfig } from "../web.js";
 
 export interface FakeChatModelArgs extends BaseChatModelParams {
   responses: BaseMessage[];
@@ -586,7 +582,7 @@ export function skipIf(condition: () => boolean): typeof it | typeof it.skip {
 
 export async function dumpDebugStream<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+  Cc extends StrRecord<string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
   InputType = PregelInputType,

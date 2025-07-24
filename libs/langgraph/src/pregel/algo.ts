@@ -67,7 +67,6 @@ import {
 } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { getNullChannelVersion } from "./utils/index.js";
-import { ManagedValueMapping } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { getRunnableForFunc } from "./call.js";
 import { IterableReadableWritableStream } from "./stream.js";
@@ -124,15 +123,12 @@ export function shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
 }
 
 export function _localRead<Cc extends Record<string, BaseChannel>>(
-  step: number,
   checkpoint: ReadonlyCheckpoint,
   channels: Cc,
-  managed: ManagedValueMapping,
   task: WritesProtocol<keyof Cc>,
   select: Array<keyof Cc> | keyof Cc,
   fresh: boolean = false
 ): Record<string, unknown> | unknown {
-  let managedKeys: Array<keyof Cc> = [];
   let updated = new Set<keyof Cc>();
 
   if (!Array.isArray(select)) {
@@ -144,10 +140,6 @@ export function _localRead<Cc extends Record<string, BaseChannel>>(
     }
     updated = updated || new Set();
   } else {
-    managedKeys = select.filter((k) => managed.get(k as string)) as Array<
-      keyof Cc
-    >;
-    select = select.filter((k) => !managed.get(k as string)) as Array<keyof Cc>;
     updated = new Set(
       select.filter((c) => task.writes.some(([key, _]) => key === c))
     );
@@ -175,25 +167,13 @@ export function _localRead<Cc extends Record<string, BaseChannel>>(
     values = readChannels(channels, select);
   }
 
-  if (managedKeys.length > 0) {
-    for (const k of managedKeys) {
-      const managedValue = managed.get(k as string);
-      if (managedValue) {
-        const resultOfManagedCall = managedValue.call(step);
-        values[k as string] = resultOfManagedCall;
-      }
-    }
-  }
-
   return values;
 }
 
 export function _localWrite(
-  step: number,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   commit: (writes: [string, any][]) => any,
   processes: Record<string, PregelNode>,
-  managed: ManagedValueMapping,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   writes: [string, any][]
 ) {
@@ -211,8 +191,6 @@ export function _localWrite(
           `Invalid node name "${value.node}" in Send packet`
         );
       }
-      // replace any runtime values with placeholders
-      managed.replaceRuntimeValues(step, value.args);
     }
   }
   commit(writes);
@@ -234,7 +212,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getNextVersion: ((version: any) => any) | undefined,
   triggerToNodes: Record<string, string[]> | undefined
-): Record<string, PendingWriteValue[]> {
+): void {
   // Sort tasks by first 3 path elements for deterministic order
   // Later path parts (like task IDs) are ignored for sorting
   tasks.sort((a, b) => {
@@ -296,7 +274,6 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
 
   // Group writes by channel
   const pendingWritesByChannel = {} as Record<keyof Cc, PendingWriteValue[]>;
-  const pendingWritesByManaged = {} as Record<keyof Cc, PendingWriteValue[]>;
   for (const task of tasks) {
     for (const [chan, val] of task.writes) {
       if (IGNORE.has(chan)) {
@@ -304,9 +281,6 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       } else if (chan in onlyChannels) {
         pendingWritesByChannel[chan] ??= [];
         pendingWritesByChannel[chan].push(val);
-      } else {
-        pendingWritesByManaged[chan] ??= [];
-        pendingWritesByManaged[chan].push(val);
       }
     }
   }
@@ -387,9 +361,6 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       }
     }
   }
-
-  // Return managed values writes to be applied externally
-  return pendingWritesByManaged;
 }
 
 export type NextTaskExtraFields = {
@@ -417,7 +388,6 @@ export function _prepareNextTasks<
   pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
   channels: Cc,
-  managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: false,
   extra: NextTaskExtraFieldsWithoutStore
@@ -431,7 +401,6 @@ export function _prepareNextTasks<
   pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
   channels: Cc,
-  managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: true,
   extra: NextTaskExtraFieldsWithStore
@@ -450,7 +419,6 @@ export function _prepareNextTasks<
   pendingWrites: [string, string, unknown][] | undefined,
   processes: Nn,
   channels: Cc,
-  managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: boolean,
   extra: NextTaskExtraFieldsWithStore | NextTaskExtraFieldsWithoutStore
@@ -473,7 +441,6 @@ export function _prepareNextTasks<
         pendingWrites,
         processes,
         channels,
-        managed,
         config,
         forExecution,
         extra
@@ -493,7 +460,6 @@ export function _prepareNextTasks<
       pendingWrites,
       processes,
       channels,
-      managed,
       config,
       forExecution,
       extra
@@ -514,7 +480,6 @@ export function _prepareSingleTask<
   pendingWrites: CheckpointPendingWrite[] | undefined,
   processes: Nn,
   channels: Cc,
-  managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: false,
   extra: NextTaskExtraFields
@@ -529,7 +494,6 @@ export function _prepareSingleTask<
   pendingWrites: CheckpointPendingWrite[] | undefined,
   processes: Nn,
   channels: Cc,
-  managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: true,
   extra: NextTaskExtraFields
@@ -544,7 +508,6 @@ export function _prepareSingleTask<
   pendingWrites: CheckpointPendingWrite[] | undefined,
   processes: Nn,
   channels: Cc,
-  managed: ManagedValueMapping,
   config: RunnableConfig,
   forExecution: boolean,
   extra: NextTaskExtraFieldsWithStore
@@ -563,7 +526,6 @@ export function _prepareSingleTask<
   pendingWrites: CheckpointPendingWrite[] | undefined,
   processes: Nn,
   channels: Cc,
-  managed: ManagedValueMapping,
   config: LangGraphRunnableConfig,
   forExecution: boolean,
   extra: NextTaskExtraFields
@@ -626,10 +588,8 @@ export function _prepareSingleTask<
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
                 _localWrite(
-                  step,
                   (items: PendingWrite<keyof Cc>[]) => writes.push(...items),
                   processes,
-                  managed,
                   writes_
                 ),
               [CONFIG_KEY_READ]: (
@@ -637,10 +597,8 @@ export function _prepareSingleTask<
                 fresh_: boolean = false
               ) =>
                 _localRead(
-                  step,
                   checkpoint,
                   channels,
-                  managed,
                   {
                     name: call.name,
                     writes: writes as PendingWrite[],
@@ -750,7 +708,6 @@ export function _prepareSingleTask<
       const proc = processes[packet.node];
       const node = proc.getNode();
       if (node !== undefined) {
-        managed.replaceRuntimePlaceholders(step, packet.args);
         if (proc.metadata !== undefined) {
           metadata = { ...metadata, ...proc.metadata };
         }
@@ -775,10 +732,8 @@ export function _prepareSingleTask<
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
                   _localWrite(
-                    step,
                     (items: PendingWrite<keyof Cc>[]) => writes.push(...items),
                     processes,
-                    managed,
                     writes_
                   ),
                 [CONFIG_KEY_READ]: (
@@ -786,10 +741,8 @@ export function _prepareSingleTask<
                   fresh_: boolean = false
                 ) =>
                   _localRead(
-                    step,
                     checkpoint,
                     channels,
-                    managed,
                     {
                       name: packet.node,
                       writes: writes as PendingWrite[],
@@ -901,7 +854,7 @@ export function _prepareSingleTask<
       .sort();
     // If any of the channels read by this process were updated
     if (triggers.length > 0) {
-      const val = _procInput(step, proc, managed, channels, forExecution);
+      const val = _procInput(proc, channels, forExecution);
       if (val === undefined) {
         return undefined;
       }
@@ -954,12 +907,10 @@ export function _prepareSingleTask<
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
                     _localWrite(
-                      step,
                       (items: PendingWrite<keyof Cc>[]) => {
                         writes.push(...items);
                       },
                       processes,
-                      managed,
                       writes_
                     ),
                   [CONFIG_KEY_READ]: (
@@ -967,10 +918,8 @@ export function _prepareSingleTask<
                     fresh_: boolean = false
                   ) =>
                     _localRead(
-                      step,
                       checkpoint,
                       channels,
-                      managed,
                       {
                         name,
                         writes: writes as PendingWrite[],
@@ -1037,9 +986,7 @@ export function _prepareSingleTask<
  * @internal
  */
 function _procInput(
-  step: number,
   proc: PregelNode,
-  managed: ManagedValueMapping,
   channels: StrRecord<string, BaseChannel>,
   forExecution: boolean
 ) {
@@ -1071,8 +1018,6 @@ function _procInput(
             throw e;
           }
         }
-      } else {
-        val[k] = managed.get(k)?.call(step);
       }
     }
   } else if (Array.isArray(proc.channels)) {
