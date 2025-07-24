@@ -13,7 +13,12 @@ import { truncate, conn as opsConn } from "./storage/ops.mjs";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { queue } from "./queue.mjs";
-import { logger, requestLogger } from "./logging.mjs";
+import {
+  logger,
+  requestLogger,
+  registerRuntimeLogFormatter,
+  registerSdkLogger,
+} from "./logging.mjs";
 import { checkpointer } from "./storage/checkpoint.mjs";
 import { store as graphStore } from "./storage/store.mjs";
 import { auth } from "./auth/custom.mjs";
@@ -87,8 +92,25 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
     await Promise.all(callbacks.map((c) => c.flush()));
   };
 
+  // Register global logger that can be consumed via SDK
+  // We need to do this before we load the graphs in-case the logger is obtained at top-level.
+  registerSdkLogger();
+
   logger.info(`Registering graphs from ${options.cwd}`);
   await registerFromEnv(options.graphs, { cwd: options.cwd });
+
+  // Make sure to register the runtime formatter after we've loaded the graphs
+  // to ensure that we're not loading `@langchain/langgraph` from different path.
+  const { getConfig } = await import("@langchain/langgraph");
+  registerRuntimeLogFormatter((info) => {
+    const config = getConfig();
+    if (config == null) return info;
+
+    const node = config.metadata?.["langgraph_node"];
+    if (node != null) info.langgraph_node = node;
+
+    return info;
+  });
 
   const app = new Hono();
 
