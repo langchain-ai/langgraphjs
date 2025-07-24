@@ -1,5 +1,7 @@
 # @langchain/langgraph-ui
 
+## 0.0.51
+
 ## 0.0.50
 
 ## 0.0.49

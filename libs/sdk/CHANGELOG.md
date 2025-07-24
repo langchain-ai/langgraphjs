@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 0.0.101
+
+### Patch Changes
+
+- f5e87cb: fix(sdk): allow async authorize callback
+
 ## 0.0.100
 
 ### Patch Changes
