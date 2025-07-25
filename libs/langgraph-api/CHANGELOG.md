@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 0.0.52
+
+### Patch Changes
+
+- 030698f: feat(api): add support for injecting `langgraph_node` in structured logs, expose structlog
+  - @langchain/langgraph-ui@0.0.52
+
 ## 0.0.51
 
 ### Patch Changes
