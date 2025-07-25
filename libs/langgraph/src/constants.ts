@@ -191,12 +191,8 @@ export function _isSend(x: unknown): x is Send {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Interrupt<Value = any> = {
+  id?: string;
   value?: Value;
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  when?: "during" | (string & {});
-  resumable?: boolean;
-  ns?: string[];
-  interrupt_id?: string;
 };
 
 /**
