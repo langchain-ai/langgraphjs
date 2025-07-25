@@ -73,6 +73,15 @@
       "import": "./index.js",
       "require": "./index.cjs"
     },
+    "./store": {
+      "types": {
+        "import": "./store.d.ts",
+        "require": "./store.d.cts",
+        "default": "./store.d.ts"
+      },
+      "import": "./store.js",
+      "require": "./store.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -80,6 +89,10 @@
     "index.cjs",
     "index.js",
     "index.d.ts",
-    "index.d.cts"
+    "index.d.cts",
+    "store.cjs",
+    "store.js",
+    "store.d.ts",
+    "store.d.cts"
   ]
 }

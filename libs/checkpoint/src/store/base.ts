@@ -547,10 +547,10 @@ export abstract class BaseStore {
   /**
    * Start the store. Override if initialization is needed.
    */
-  start(): void {}
+  async start(): Promise<void> {}
 
   /**
    * Stop the store. Override if cleanup is needed.
    */
-  stop(): void {}
+  async stop(): Promise<void> {}
 }
