@@ -638,22 +638,10 @@ export function runFuncTests(
         expect(results[3]).toEqual({ mapper: "11" });
         const {
           __interrupt__: [inter],
-        } = results[4] as {
-          __interrupt__: [
-            {
-              value: string;
-              resumable: boolean;
-              ns: string[];
-              when: string;
-            }
-          ];
-        };
+        } = results[4] as { __interrupt__: [{ id: string; value: string }] };
 
         expect(inter.value).toEqual("question");
-        expect(inter.resumable).toEqual(true);
-        expect(inter.ns.length).toEqual(1);
-        expect(inter.ns[0]).toMatch(/^graph:/);
-        expect(inter.when).toEqual("during");
+        expect(inter.id).toBeDefined();
 
         const result = await graph.invoke(new Command({ resume: "answer" }), {
           configurable: { thread_id },
@@ -691,14 +679,8 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [
-                expect.stringMatching(/^interruptGraph:/),
-                expect.stringMatching(/^interruptTask:/),
-              ],
-              resumable: true,
+              id: expect.any(String),
               value: "Please provide input",
-              when: "during",
             },
           ],
         });
@@ -757,11 +739,8 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [expect.stringMatching(/^interruptGraph:/)],
-              resumable: true,
+              id: expect.any(String),
               value: "Provide value for bar:",
-              when: "during",
             },
           ],
         });
@@ -806,14 +785,8 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [
-                expect.stringMatching(/^interruptGraph:/),
-                expect.stringMatching(/^bar:/),
-              ],
-              resumable: true,
+              id: expect.any(String),
               value: "Provide value for bar:",
-              when: "during",
             },
           ],
         });
@@ -848,11 +821,8 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [expect.stringMatching(/^falsyGraph:/)],
-              resumable: true,
+              id: expect.any(String),
               value: "test",
-              when: "during",
             },
           ],
         });
@@ -893,11 +863,8 @@ export function runFuncTests(
         expect(firstRun).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [expect.stringMatching(/^graph:/)],
-              resumable: true,
+              id: expect.any(String),
               value: { a: "boo1" },
-              when: "during",
             },
           ],
         });
@@ -912,11 +879,8 @@ export function runFuncTests(
         expect(secondRun).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [expect.stringMatching(/^graph:/)],
-              resumable: true,
+              id: expect.any(String),
               value: { a: "boo2" },
-              when: "during",
             },
           ],
         });
@@ -930,11 +894,8 @@ export function runFuncTests(
         expect(thirdRun).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [expect.stringMatching(/^graph:/)],
-              resumable: true,
+              id: expect.any(String),
               value: { a: "boo3" },
-              when: "during",
             },
           ],
         });
@@ -983,14 +944,8 @@ export function runFuncTests(
         expect(result).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [
-                expect.stringMatching(/^program:/),
-                expect.stringMatching(/^add-participant:/),
-              ],
-              resumable: true,
+              id: expect.any(String),
               value: "Hey do you want to add James?",
-              when: "during",
             },
           ],
         });
@@ -1000,28 +955,14 @@ export function runFuncTests(
         expect(currTasks[0].interrupts[0].value).toEqual(
           "Hey do you want to add James?"
         );
-        expect(currTasks[0].interrupts[0].resumable).toEqual(true);
-        expect(currTasks[0].interrupts[0].ns!.length).toEqual(2);
-        expect(currTasks[0].interrupts[0].ns![0]).toEqual(
-          expect.stringMatching(/^program:.*$/)
-        );
-        expect(currTasks[0].interrupts[0].ns![1]).toEqual(
-          expect.stringMatching(/^add-participant:.*$/)
-        );
-        expect(currTasks[0].interrupts[0].when).toEqual("during");
+        expect(currTasks[0].interrupts[0].id).toBeDefined();
 
         result = await program.invoke(new Command({ resume: true }), config);
         expect(result).toEqual({
           __interrupt__: [
             {
-              interrupt_id: expect.any(String),
-              ns: [
-                expect.stringMatching(/^program:/),
-                expect.stringMatching(/^add-participant:/),
-              ],
-              resumable: true,
+              id: expect.any(String),
               value: "Hey do you want to add Will?",
-              when: "during",
             },
           ],
         });
@@ -1031,15 +972,7 @@ export function runFuncTests(
         expect(currTasks[0].interrupts[0].value).toEqual(
           "Hey do you want to add Will?"
         );
-        expect(currTasks[0].interrupts[0].resumable).toEqual(true);
-        expect(currTasks[0].interrupts[0].ns!.length).toEqual(2);
-        expect(currTasks[0].interrupts[0].ns![0]).toEqual(
-          expect.stringMatching(/^program:.*$/)
-        );
-        expect(currTasks[0].interrupts[0].ns![1]).toEqual(
-          expect.stringMatching(/^add-participant:.*$/)
-        );
-        expect(currTasks[0].interrupts[0].when).toEqual("during");
+        expect(currTasks[0].interrupts[0].id).toBeDefined();
 
         result = await program.invoke(new Command({ resume: true }), config);
         expect(result).toEqual(["Added James!", "Added Will!"]);

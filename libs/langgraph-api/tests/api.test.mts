@@ -1836,10 +1836,8 @@ describe("subgraphs", () => {
         error: null,
         interrupts: [
           {
+            id: expect.any(String),
             value: "i want to interrupt",
-            when: "during",
-            resumable: true,
-            ns: [expect.stringMatching(/^agent:/)],
           },
         ],
         checkpoint: null,
@@ -1853,10 +1851,8 @@ describe("subgraphs", () => {
     expect(thread.interrupts).toMatchObject({
       [state.tasks[0].id]: [
         {
+          id: expect.any(String),
           value: "i want to interrupt",
-          when: "during",
-          resumable: true,
-          ns: [expect.stringMatching(/^agent:/)],
         },
       ],
     });

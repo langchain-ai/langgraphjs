@@ -3283,11 +3283,8 @@ graph TD;
         market: "DE",
         __interrupt__: [
           {
-            interrupt_id: expect.any(String),
+            id: expect.any(String),
             value: "Just because...",
-            resumable: true,
-            when: "during",
-            ns: [expect.stringMatching(/^tool_two:/)],
           },
         ],
       });
@@ -3320,11 +3317,8 @@ graph TD;
             path: [PULL, "tool_two"],
             interrupts: [
               {
-                interrupt_id: expect.any(String),
-                ns: [expect.stringMatching(/^tool_two:/)],
-                resumable: true,
+                id: expect.any(String),
                 value: "Just because...",
-                when: "during",
               },
             ],
           },
@@ -3367,11 +3361,8 @@ graph TD;
         market: "DE",
         __interrupt__: [
           {
-            interrupt_id: expect.any(String),
+            id: expect.any(String),
             value: "Just because...",
-            resumable: true,
-            when: "during",
-            ns: [expect.stringMatching(/^tool_two:/)],
           },
         ],
       });
@@ -3396,11 +3387,8 @@ graph TD;
             id: expect.any(String),
             interrupts: [
               {
-                interrupt_id: expect.any(String),
-                ns: [expect.stringMatching(/^tool_two:/)],
-                resumable: true,
+                id: expect.any(String),
                 value: "Just because...",
-                when: "during",
               },
             ],
             name: "tool_two",
@@ -3525,11 +3513,8 @@ graph TD;
         market: "DE",
         __interrupt__: [
           {
-            interrupt_id: expect.any(String),
+            id: expect.any(String),
             value: "Just because...",
-            resumable: true,
-            ns: [expect.stringMatching(/^tool_two:/)],
-            when: "during",
           },
         ],
       });
@@ -3569,11 +3554,8 @@ graph TD;
             path: [PULL, "tool_two"],
             interrupts: [
               {
-                interrupt_id: expect.any(String),
+                id: expect.any(String),
                 value: "Just because...",
-                resumable: true,
-                ns: [expect.stringMatching(/^tool_two:/)],
-                when: "during",
               },
             ],
           },
@@ -3665,12 +3647,7 @@ graph TD;
       // Return state at interrupt time
       expect(await graph.invoke({ hello: "world" }, thread)).toEqual({
         hello: "again",
-        __interrupt__: [
-          {
-            value: "I am bad",
-            when: "during",
-          },
-        ],
+        __interrupt__: [{ value: "I am bad" }],
       });
 
       expect(awhileReturns).toBe(1);
@@ -3679,12 +3656,7 @@ graph TD;
       // Invoking a graph with no more tasks should return the final value
       expect(await graph.invoke(null, thread)).toEqual({
         hello: "again",
-        __interrupt__: [
-          {
-            value: "I am bad",
-            when: "during",
-          },
-        ],
+        __interrupt__: [{ value: "I am bad" }],
       });
 
       expect(awhileReturns).toBe(1);
@@ -11549,7 +11521,7 @@ graph TD;
     expect(state.tasks).toMatchObject([
       {
         name: "interrupt",
-        interrupts: [{ value: "interrupt", when: "during", resumable: true }],
+        interrupts: [{ value: "interrupt" }],
       },
     ]);
 
@@ -12305,7 +12277,7 @@ graph TD;
     expect(values[INTERRUPT]).toEqual(interrupts);
 
     const resume = Object.fromEntries(
-      values[INTERRUPT].map((i) => [i.interrupt_id, `response: ${i.value}`])
+      values[INTERRUPT].map((i) => [i.id, `response: ${i.value}`])
     );
 
     expect(await graph.invoke(new Command({ resume }), config)).toEqual({

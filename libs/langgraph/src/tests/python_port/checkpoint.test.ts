@@ -872,15 +872,21 @@ describe("Checkpoint Tests (Python port)", () => {
       {
         __interrupt__: [
           expect.objectContaining({
-            interrupt_id: expect.any(String),
+            id: expect.any(String),
             value: "Just because...",
-            resumable: true,
-            ns: expect.any(Array),
-            when: "during",
           }),
         ],
       },
       { tool_one: { my_key: " one" } },
+    ]);
+
+    // check if the interrupt is persisted
+    const state1 = await tool_two_with_checkpoint.getState(thread2);
+    expect(state1.tasks.at(-1)?.interrupts).toEqual([
+      {
+        id: expect.any(String),
+        value: "Just because...",
+      },
     ]);
 
     // Resume with an answer
@@ -919,33 +925,29 @@ describe("Checkpoint Tests (Python port)", () => {
       market: "DE",
       __interrupt__: [
         {
-          interrupt_id: expect.any(String),
+          id: expect.any(String),
           value: "Just because...",
-          resumable: true,
-          when: "during",
-          ns: [expect.stringMatching(/^tool_two:/)],
         },
       ],
     });
 
     // Check the state
-    const state = await tool_two_with_checkpoint.getState(thread1);
+    const state2 = await tool_two_with_checkpoint.getState(thread1);
 
     // Just check partial state since the structure might vary
-    expect(state.values).toEqual({
+    expect(state2.values).toEqual({
       my_key: "value ⛰️ one",
       market: "DE",
     });
 
     // Check for an interrupted task
     expect(
-      state.tasks.some(
+      state2.tasks.some(
         (task) =>
           task.name === "tool_two" &&
           task.interrupts &&
           task.interrupts.length > 0 &&
-          task.interrupts[0].value === "Just because..." &&
-          task.interrupts[0].resumable === true
+          task.interrupts[0].value === "Just because..."
       )
     ).toBe(true);
 
