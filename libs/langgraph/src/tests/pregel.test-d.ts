@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import "../graph/zod/plugin.js";
-import { z } from "zod";
+import { z } from "zod/v3";
 
 import { expectTypeOf, it, beforeAll } from "vitest";
 import type { BaseMessage } from "@langchain/core/messages";
@@ -10,7 +10,8 @@ import { gatherIterator } from "../utils.js";
 import { StreamMode } from "../pregel/types.js";
 import { task, entrypoint } from "../func/index.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
-import { INTERRUPT, isInterrupted } from "../constants.js";
+import { INTERRUPT, isInterrupted, START } from "../constants.js";
+import { withLangGraph } from "../graph/zod/meta.js";
 
 beforeAll(() => {
   // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
@@ -161,6 +162,58 @@ it("state graph annotation", async () => {
         ]
     )[]
   >();
+});
+
+it("state graph configurable", async () => {
+  new StateGraph(
+    Annotation.Root({
+      foo: Annotation({
+        reducer: (state: string[], update: string | string[]) => {
+          return Array.isArray(update)
+            ? [...state, ...update]
+            : [...state, update];
+        },
+        default: () => [],
+      }),
+    }),
+    Annotation.Root({ modelName: Annotation<string> })
+  )
+    .addNode("one", (state, config) => {
+      expectTypeOf(state).toExtend<{ foo: string[] }>();
+      expectTypeOf(config.configurable).toExtend<
+        { modelName: string } | undefined
+      >();
+
+      return { foo: "one" };
+    })
+    .addEdge(START, "one")
+    .compile();
+
+  new StateGraph(
+    z.object({
+      foo: withLangGraph(z.array(z.string()), {
+        reducer: {
+          schema: z.union([z.string(), z.array(z.string())]),
+          fn: (state: string[], update: string | string[]) => {
+            return Array.isArray(update)
+              ? [...state, ...update]
+              : [...state, update];
+          },
+        },
+      }),
+    }),
+    z.object({ modelName: z.string() })
+  )
+    .addNode("one", (state, config) => {
+      expectTypeOf(state).toExtend<{ foo: string[] }>();
+      expectTypeOf(config.configurable).toExtend<
+        { modelName: string } | undefined
+      >();
+
+      return { foo: "one" };
+    })
+    .addEdge(START, "one")
+    .compile();
 });
 
 it("state graph zod", async () => {

@@ -235,13 +235,10 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpoint_ns,
       checkpoint_id,
     };
-    await this.db.collection(this.checkpointCollectionName).updateOne(
-      upsertQuery,
-      {
-        $set: doc,
-      },
-      { upsert: true }
-    );
+    await this.db
+      .collection(this.checkpointCollectionName)
+      .updateOne(upsertQuery, { $set: doc }, { upsert: true });
+
     return {
       configurable: {
         thread_id,
@@ -286,13 +283,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       return {
         updateOne: {
           filter: upsertQuery,
-          update: {
-            $set: {
-              channel,
-              type,
-              value: serializedValue,
-            },
-          },
+          update: { $set: { channel, type, value: serializedValue } },
           upsert: true,
         },
       };
@@ -301,5 +292,15 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     await this.db
       .collection(this.checkpointWritesCollectionName)
       .bulkWrite(operations);
+  }
+
+  async deleteThread(threadId: string) {
+    await this.db
+      .collection(this.checkpointCollectionName)
+      .deleteMany({ thread_id: threadId });
+
+    await this.db
+      .collection(this.checkpointWritesCollectionName)
+      .deleteMany({ thread_id: threadId });
   }
 }

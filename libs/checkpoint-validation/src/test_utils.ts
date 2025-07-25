@@ -3,7 +3,6 @@ import {
   ChannelVersions,
   CheckpointPendingWrite,
   PendingWrite,
-  SendProtocol,
   TASKS,
   uuid6,
   type CheckpointTuple,
@@ -71,24 +70,20 @@ export function initialCheckpointTuple({
   return {
     config,
     checkpoint: {
-      v: 1,
+      v: 4,
       ts: new Date().toISOString(),
       id: checkpoint_id,
       channel_values,
       channel_versions,
       versions_seen: {
         // this is meant to be opaque to checkpointers, so we just stuff dummy data in here to make sure it's stored and retrieved
-        "": {
-          someChannel: 1,
-        },
+        "": { someChannel: 1 },
       },
-      pending_sends: [],
     },
 
     metadata: {
       source: "input",
       step: -1,
-      writes: null,
       parents: {},
     },
   };
@@ -122,12 +117,6 @@ export function parentAndChildCheckpointTuplesWithWrites({
 
   const parentChannelVersions = Object.fromEntries(
     Object.keys(initialChannelValues).map((key) => [key, 1])
-  );
-
-  const pending_sends = writesToParent.flatMap(({ writes }) =>
-    writes
-      .filter(([channel]) => channel === TASKS)
-      .map(([_, value]) => value as SendProtocol)
   );
 
   const parentPendingWrites = writesToParent.flatMap(({ taskId, writes }) =>
@@ -176,7 +165,7 @@ export function parentAndChildCheckpointTuplesWithWrites({
   return {
     parent: {
       checkpoint: {
-        v: 1,
+        v: 4,
         ts: new Date().toISOString(),
         id: parentCheckpointId,
         channel_values: initialChannelValues,
@@ -187,12 +176,10 @@ export function parentAndChildCheckpointTuplesWithWrites({
             someChannel: 1,
           },
         },
-        pending_sends: [],
       },
       metadata: {
         source: "input",
         step: -1,
-        writes: null,
         parents: {},
       },
       config: {
@@ -207,7 +194,7 @@ export function parentAndChildCheckpointTuplesWithWrites({
     },
     child: {
       checkpoint: {
-        v: 2,
+        v: 4,
         ts: new Date().toISOString(),
         id: childCheckpointId,
         channel_values: childChannelValues,
@@ -218,14 +205,11 @@ export function parentAndChildCheckpointTuplesWithWrites({
             someChannel: 1,
           },
         },
-        pending_sends,
+        // pending_sends,
       },
       metadata: {
         source: "loop",
         step: 0,
-        writes: {
-          someNode: parentPendingWrites,
-        },
         parents: {
           [checkpoint_ns]: parentCheckpointId,
         },

@@ -84,7 +84,6 @@ import {
   printStepTasks,
 } from "./debug.js";
 import { PregelNode } from "./read.js";
-import { ManagedValueMapping, WritableManagedValue } from "../managed/base.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { IterableReadableWritableStream, StreamChunk } from "./stream.js";
 import { isXXH3 } from "../hash.js";
@@ -102,7 +101,6 @@ export type PregelLoopInitializeParams = {
   streamKeys: string | string[];
   nodes: Record<string, PregelNode>;
   channelSpecs: Record<string, BaseChannel>;
-  managed: ManagedValueMapping;
   stream: IterableReadableWritableStream;
   store?: BaseStore;
   cache?: BaseCache<PendingWrite<string>[]>;
@@ -125,7 +123,6 @@ type PregelLoopParams = {
   checkpointPendingWrites: CheckpointPendingWrite[];
   checkpointConfig: RunnableConfig;
   channels: Record<string, BaseChannel>;
-  managed: ManagedValueMapping;
   step: number;
   stop: number;
   outputKeys: string | string[];
@@ -222,14 +219,9 @@ export class PregelLoop {
 
   protected checkpointer?: BaseCheckpointSaver;
 
-  protected checkpointerGetNextVersion: (
-    current: number | undefined,
-    channel: BaseChannel
-  ) => number;
+  protected checkpointerGetNextVersion: (current: number | undefined) => number;
 
   channels: Record<string, BaseChannel>;
-
-  managed: ManagedValueMapping;
 
   protected checkpoint: Checkpoint;
 
@@ -260,8 +252,6 @@ export class PregelLoop {
   protected skipDoneTasks: boolean;
 
   protected prevCheckpointConfig: RunnableConfig | undefined;
-
-  protected prevCheckpoint: Checkpoint | undefined;
 
   status:
     | "pending"
@@ -346,7 +336,6 @@ export class PregelLoop {
     this.checkpointMetadata = params.checkpointMetadata;
     this.checkpointPreviousVersions = params.checkpointPreviousVersions;
     this.channels = params.channels;
-    this.managed = params.managed;
     this.checkpointPendingWrites = params.checkpointPendingWrites;
     this.step = params.step;
     this.stop = params.stop;
@@ -437,12 +426,7 @@ export class PregelLoop {
     )) ?? {
       config,
       checkpoint: emptyCheckpoint(),
-      metadata: {
-        source: "input",
-        step: -2,
-        writes: null,
-        parents: {},
-      },
+      metadata: { source: "input", step: -2, parents: {} },
       pendingWrites: [],
     };
     checkpointConfig = {
@@ -483,7 +467,6 @@ export class PregelLoop {
       prevCheckpointConfig,
       checkpointNamespace,
       channels,
-      managed: params.managed,
       isNested,
       manager: params.manager,
       skipDoneTasks,
@@ -524,14 +507,6 @@ export class PregelLoop {
     this.checkpointerPromises.push(this._checkpointerChainedPromise);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  protected async updateManagedValues(key: string, values: any[]) {
-    const mv = this.managed.get(key);
-    if (mv && "update" in mv && typeof mv.update === "function") {
-      await (mv as WritableManagedValue).update(values);
-    }
-  }
-
   /**
    * Put writes for a task, to be read by the next tick.
    * @param taskId
@@ -558,21 +533,15 @@ export class PregelLoop {
       this.checkpointPendingWrites.push([taskId, c, v]);
     }
 
-    const putWritePromise = this.checkpointer?.putWrites(
-      {
-        ...this.checkpointConfig,
-        configurable: {
-          ...this.checkpointConfig.configurable,
-          checkpoint_ns: this.config.configurable?.checkpoint_ns ?? "",
-          checkpoint_id: this.checkpoint.id,
-        },
-      },
-      writesCopy,
-      taskId
-    );
+    const config = patchConfigurable(this.checkpointConfig, {
+      [CONFIG_KEY_CHECKPOINT_NS]: this.config.configurable?.checkpoint_ns ?? "",
+      [CONFIG_KEY_CHECKPOINT_ID]: this.checkpoint.id,
+    });
 
-    if (putWritePromise !== undefined) {
-      this.checkpointerPromises.push(putWritePromise);
+    if (this.checkpointDuring && this.checkpointer != null) {
+      this.checkpointerPromises.push(
+        this.checkpointer.putWrites(config, writesCopy, taskId)
+      );
     }
 
     if (this.tasks) {
@@ -715,16 +684,13 @@ export class PregelLoop {
       // finish superstep
       const writes = Object.values(this.tasks).flatMap((t) => t.writes);
       // All tasks have finished
-      const managedValueWrites = _applyWrites(
+      _applyWrites(
         this.checkpoint,
         this.channels,
         Object.values(this.tasks),
         this.checkpointerGetNextVersion,
         this.triggerToNodes
       );
-      for (const [key, values] of Object.entries(managedValueWrites)) {
-        await this.updateManagedValues(key, values);
-      }
       // produce values output
       const valuesOutput = await gatherIterator(
         prefixGenerator(
@@ -735,14 +701,7 @@ export class PregelLoop {
       this._emit(valuesOutput);
       // clear pending writes
       this.checkpointPendingWrites = [];
-      await this._putCheckpoint({
-        source: "loop",
-        writes:
-          mapOutputUpdates(
-            this.outputKeys,
-            Object.values(this.tasks).map((task) => [task, task.writes])
-          ).next().value ?? null,
-      });
+      await this._putCheckpoint({ source: "loop" });
       // after execution, check if we should interrupt
       if (
         shouldInterrupt(
@@ -772,7 +731,6 @@ export class PregelLoop {
       this.checkpointPendingWrites,
       this.nodes,
       this.channels,
-      this.managed,
       this.config,
       true,
       {
@@ -882,16 +840,14 @@ export class PregelLoop {
         this.checkpointPendingWrites.length > 0 &&
         Object.values(this.tasks).some((task) => task.writes.length > 0)
       ) {
-        const managedValueWrites = _applyWrites(
+        _applyWrites(
           this.checkpoint,
           this.channels,
           Object.values(this.tasks),
           this.checkpointerGetNextVersion,
           this.triggerToNodes
         );
-        for (const [key, values] of Object.entries(managedValueWrites)) {
-          await this.updateManagedValues(key, values);
-        }
+
         this._emit(
           gatherIteratorSync(
             prefixGenerator(
@@ -936,7 +892,6 @@ export class PregelLoop {
       this.checkpointPendingWrites,
       this.nodes,
       this.channels,
-      this.managed,
       task.config ?? {},
       true,
       {
@@ -1078,7 +1033,7 @@ export class PregelLoop {
       // we need to create a new checkpoint for Command(update=...) or Command(goto=...)
       // in case the result of Command(goto=...) is an interrupt.
       // If not done, the checkpoint containing the interrupt will be lost.
-      await this._putCheckpoint({ source: "input", writes: {} });
+      await this._putCheckpoint({ source: "input" });
       this.input = INPUT_DONE;
     } else {
       // map inputs to channel updates
@@ -1089,7 +1044,6 @@ export class PregelLoop {
           this.checkpointPendingWrites,
           this.nodes,
           this.channels,
-          this.managed,
           this.config,
           true,
           { step: this.step }
@@ -1108,10 +1062,7 @@ export class PregelLoop {
           this.triggerToNodes
         );
         // save input checkpoint
-        await this._putCheckpoint({
-          source: "input",
-          writes: Object.fromEntries(inputWrites),
-        });
+        await this._putCheckpoint({ source: "input" });
 
         this.input = INPUT_DONE;
       } else if (!(CONFIG_KEY_RESUMING in (this.config.configurable ?? {}))) {
@@ -1186,13 +1137,11 @@ export class PregelLoop {
       // this is achieved by writing child checkpoints as progress is made
       // (so that error recovery / resuming from interrupt don't lose work)
       // but doing so always with an id equal to that of the parent checkpoint
-      this.checkpointConfig = {
-        ...this.checkpointConfig,
-        configurable: {
-          ...this.checkpointConfig.configurable,
-          checkpoint_ns: this.config.configurable?.checkpoint_ns ?? "",
-        },
-      };
+      this.checkpointConfig = patchConfigurable(this.checkpointConfig, {
+        [CONFIG_KEY_CHECKPOINT_NS]:
+          this.config.configurable?.checkpoint_ns ?? "",
+      });
+
       const channelVersions = { ...this.checkpoint.channel_versions };
       const newVersions = getNewChannelVersions(
         this.checkpointPreviousVersions,
@@ -1217,31 +1166,12 @@ export class PregelLoop {
       };
     };
 
-    // We need to retroactively store the previous checkpoint
-    // if it turns out that pending sends are scheduled.
-    // TODO: remove when `pending_sends` is removed from checkpoints
-    if (
-      !exiting &&
-      !this.checkpointDuring &&
-      this.checkpointer != null &&
-      this.prevCheckpoint != null &&
-      this.checkpoint.pending_sends.length > 0
-    ) {
-      storeCheckpoint(this.prevCheckpoint);
-    }
-
     if (!exiting) {
       this.checkpointMetadata = {
         ...inputMetadata,
         step: this.step,
         parents: this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] ?? {},
       };
-    }
-
-    // Store previous checkpoint in case pending_sends are scheduled
-    // for next checkpoint.
-    if (!this.checkpointDuring) {
-      this.prevCheckpoint = this.checkpoint;
     }
 
     // create new checkpoint

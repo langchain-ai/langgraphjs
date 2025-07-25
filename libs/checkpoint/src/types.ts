@@ -23,6 +23,7 @@ export type CheckpointMetadata<ExtraProperties extends object = object> = {
    * - "fork": The checkpoint was created as a copy of another checkpoint.
    */
   source: "input" | "loop" | "update" | "fork";
+
   /**
    * The step number of the checkpoint.
    * -1 for the first "input" checkpoint.
@@ -30,11 +31,6 @@ export type CheckpointMetadata<ExtraProperties extends object = object> = {
    * ... for the nth checkpoint afterwards.
    */
   step: number;
-  /**
-   * The writes that were made between the previous checkpoint and this one.
-   * Mapping from node name to writes emitted by that node.
-   */
-  writes: Record<string, unknown> | null;
 
   /**
    * The IDs of the parent checkpoints.
