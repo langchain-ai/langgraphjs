@@ -9,6 +9,9 @@ import {
 } from "@langchain/langgraph";
 import { BaseMessage, ToolMessage } from "@langchain/core/messages";
 import { FakeListChatModel } from "@langchain/core/utils/testing";
+import { getLogger } from "@langchain/langgraph-sdk/logging";
+
+const logger = getLogger();
 
 const getStableModel = (() => {
   const cached: Record<string, FakeListChatModel> = {};
@@ -32,6 +35,8 @@ async function callModel(
   config: LangGraphRunnableConfig
 ): Promise<typeof AgentState.Update> {
   let userId: string | undefined;
+
+  logger.warn("Hello, world!", { random: 123 });
 
   if (config.configurable?.langgraph_auth_user != null) {
     const user = config.configurable?.langgraph_auth_user as

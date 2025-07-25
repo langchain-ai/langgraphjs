@@ -100,6 +100,15 @@
       "import": "./react.js",
       "require": "./react.cjs"
     },
+    "./logging": {
+      "types": {
+        "import": "./logging.d.ts",
+        "require": "./logging.d.cts",
+        "default": "./logging.d.ts"
+      },
+      "import": "./logging.js",
+      "require": "./logging.cjs"
+    },
     "./react-ui": {
       "types": {
         "import": "./react-ui.d.ts",
@@ -138,6 +147,10 @@
     "react.js",
     "react.d.ts",
     "react.d.cts",
+    "logging.cjs",
+    "logging.js",
+    "logging.d.ts",
+    "logging.d.cts",
     "react-ui.cjs",
     "react-ui.js",
     "react-ui.d.ts",

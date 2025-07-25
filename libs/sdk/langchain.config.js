@@ -16,6 +16,7 @@ export const config = {
     client: "client",
     auth: "auth/index",
     react: "react/index",
+    logging: "logging/index",
     "react-ui": "react-ui/index",
     "react-ui/server": "react-ui/server/index",
   },

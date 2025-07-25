@@ -1,4 +1,4 @@
-import { createLogger, format, transports } from "winston";
+import { createLogger, format, transports, type Logger } from "winston";
 import { logger as honoLogger } from "hono/logger";
 import { consoleFormat } from "winston-console-format";
 import type { MiddlewareHandler } from "hono";
@@ -10,9 +10,19 @@ import path from "node:path";
 const LOG_JSON = process.env.LOG_JSON === "true";
 const LOG_LEVEL = process.env.LOG_LEVEL || "debug";
 
+let RUNTIME_LOG_FORMATTER:
+  | ((info: Record<string, unknown>) => Record<string, unknown>)
+  | undefined;
+
+const applyRuntimeFormatter = format((info) => {
+  if (!RUNTIME_LOG_FORMATTER) return info;
+  return RUNTIME_LOG_FORMATTER(info) as typeof info;
+});
+
 export const logger = createLogger({
   level: LOG_LEVEL,
   format: format.combine(
+    applyRuntimeFormatter(),
     format.errors({ stack: true }),
     format.timestamp(),
     format.json(),
@@ -20,6 +30,7 @@ export const logger = createLogger({
       ? [
           format.colorize({ all: true }),
           format.padLevels(),
+
           consoleFormat({
             showMeta: true,
             metaStrip: ["timestamp"],
@@ -54,6 +65,21 @@ export const logger = createLogger({
   ),
   transports: [new transports.Console()],
 });
+
+// Expose the logger to be consumed by `getLogger`
+export function registerSdkLogger() {
+  const GLOBAL_LOGGER = Symbol.for("langgraph.api.sdk-logger");
+  type GLOBAL_LOGGER = typeof GLOBAL_LOGGER;
+
+  const maybeGlobal = globalThis as unknown as { [GLOBAL_LOGGER]: Logger };
+  maybeGlobal[GLOBAL_LOGGER] = logger;
+}
+
+export async function registerRuntimeLogFormatter(
+  formatter: (info: Record<string, unknown>) => Record<string, unknown>
+) {
+  RUNTIME_LOG_FORMATTER = formatter;
+}
 
 const formatStack = (stack: string | undefined | null) => {
   if (!stack) return stack;
