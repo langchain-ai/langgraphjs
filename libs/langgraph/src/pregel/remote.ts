@@ -304,7 +304,11 @@ export class RemoteGraph<
         id: task.id,
         name: task.name,
         error: task.error ? { message: task.error } : undefined,
-        interrupts: task.interrupts,
+        // TODO: remove in LangGraph.js 0.4
+        interrupts: task.interrupts.map(({ id, ...rest }) => ({
+          interrupt_id: id,
+          ...rest,
+        })),
         // eslint-disable-next-line no-nested-ternary
         state: task.state
           ? this._createStateSnapshot(task.state)
