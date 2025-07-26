@@ -48,6 +48,9 @@ import type {
   ValuesStreamEvent,
 } from "../types.stream.js";
 
+
+const PATH_SEP = ">";
+const ROOT_ID = "$";
 class StreamError extends Error {
   constructor(data: { error?: string; name?: string; message: string }) {
     super(data.message);
@@ -197,7 +200,7 @@ export type MessageMetadata<StateType extends Record<string, unknown>> = {
   branchOptions: string[] | undefined;
 };
 
-function getBranchSequence<StateType extends Record<string, unknown>>(
+export function getBranchSequence<StateType extends Record<string, unknown>>(
   history: ThreadState<StateType>[]
 ) {
   const childrenMap: Record<string, ThreadState<StateType>[]> = {};
@@ -220,6 +223,26 @@ function getBranchSequence<StateType extends Record<string, unknown>>(
     childrenMap[checkpointId] ??= [];
     childrenMap[checkpointId].push(state);
   });
+
+  // Fix for truncated history: if we're missing the root checkpoint,
+  // attach any "orphan" checkpoints directly to the root so we still
+  // get a usable branch tree instead of an empty result.
+  if (!childrenMap[ROOT_ID]?.length) {
+    const presentIds = new Set(
+      history
+        .map((s) => s.checkpoint?.checkpoint_id)
+        .filter((id): id is string => id != null)
+    );
+
+    const orphans = history.filter((s) => {
+      const parentId = s.parent_checkpoint?.checkpoint_id;
+      return parentId == null || !presentIds.has(parentId);
+    });
+
+    if (orphans.length > 0) {
+      childrenMap[ROOT_ID] = orphans;
+    }
+  }
 
   // Second pass - create a tree of sequences
   type Task = { id: string; sequence: Sequence; path: string[] };
@@ -268,8 +291,6 @@ function getBranchSequence<StateType extends Record<string, unknown>>(
   return { rootSequence, paths };
 }
 
-const PATH_SEP = ">";
-const ROOT_ID = "$";
 
 // Get flat view
 function getBranchView<StateType extends Record<string, unknown>>(
