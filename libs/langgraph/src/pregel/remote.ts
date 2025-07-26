@@ -227,18 +227,22 @@ export class RemoteGraph<
     ]);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sanitizeObj = (obj: any): any => {
+    const sanitizeObj = (obj: any, seen = new WeakSet()): any => {
       // Remove non-JSON serializable fields from the given object
       if (obj && typeof obj === "object") {
-        if (Array.isArray(obj)) {
-          return obj.map((v) => sanitizeObj(v));
-        } else {
-          return Object.fromEntries(
-            Object.entries(obj).map(([k, v]) => [k, sanitizeObj(v)])
-          );
+        if (!seen.has(obj)) {
+          seen.add(obj);
+
+          if (Array.isArray(obj)) {
+            return obj.map((v) => sanitizeObj(v, seen));
+          } else {
+            return Object.fromEntries(
+              Object.entries(obj).map(([k, v]) => [k, sanitizeObj(v, seen)])
+            );
+          }
         }
       }
-
+    
       try {
         JSON.stringify(obj);
         return obj;
