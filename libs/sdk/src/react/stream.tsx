@@ -48,7 +48,6 @@ import type {
   ValuesStreamEvent,
 } from "../types.stream.js";
 
-
 const PATH_SEP = ">";
 const ROOT_ID = "$";
 class StreamError extends Error {
@@ -290,7 +289,6 @@ export function getBranchSequence<StateType extends Record<string, unknown>>(
 
   return { rootSequence, paths };
 }
-
 
 // Get flat view
 function getBranchView<StateType extends Record<string, unknown>>(
