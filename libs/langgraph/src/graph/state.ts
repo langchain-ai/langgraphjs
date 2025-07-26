@@ -1026,7 +1026,7 @@ export class CompiledStateGraph<
     return input;
   }
 
-  protected async _validateConfigurable(
+  protected async _validateContext(
     config: Partial<LangGraphRunnableConfig["configurable"]>
   ): Promise<LangGraphRunnableConfig["configurable"]> {
     const configSchema = this.builder._configRuntimeSchema;

@@ -292,6 +292,11 @@ export interface PregelOptions<
    * Optional cache for the graph, useful for caching tasks.
    */
   cache?: BaseCache;
+
+  /**
+   * Static context for the graph run, like `userId`, `dbConnection` etc.
+   */
+  context?: ConfigurableFieldType;
 }
 
 /**
