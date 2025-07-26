@@ -8,7 +8,7 @@ type RunnableFunc<
 > = (
   input: RunInput,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  options: CallOptions | (Record<string, any> & CallOptions)
+  options: CallOptions
 ) => RunOutput | Promise<RunOutput>;
 
 type RunnableMapLike<RunInput, RunOutput> = {
@@ -26,9 +26,23 @@ export type RunnableLike<
 
 export interface LangGraphRunnableConfig<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableType extends Record<string, any> = Record<string, any>
-> extends RunnableConfig<ConfigurableType> {
+  ContextType extends Record<string, any> = Record<string, any>
+> extends RunnableConfig<ContextType> {
+  context?: ContextType;
+
   store?: BaseStore;
 
   writer?: (chunk: unknown) => void;
+}
+
+export interface Runtime<
+  ContextType extends Record<string, unknown> = Record<string, unknown>
+> {
+  context?: ContextType;
+
+  store?: BaseStore;
+
+  writer?: (chunk: unknown) => void;
+
+  signal?: AbortSignal;
 }
