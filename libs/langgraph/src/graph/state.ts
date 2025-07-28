@@ -1027,8 +1027,8 @@ export class CompiledStateGraph<
   }
 
   protected async _validateContext(
-    config: Partial<LangGraphRunnableConfig["configurable"]>
-  ): Promise<LangGraphRunnableConfig["configurable"]> {
+    config: Partial<Record<string, unknown>>
+  ): Promise<Partial<Record<string, unknown>>> {
     const configSchema = this.builder._configRuntimeSchema;
     if (isInteropZodObject(configSchema)) interopParse(configSchema, config);
     return config;
