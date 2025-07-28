@@ -2,7 +2,7 @@
 import "../graph/zod/plugin.js";
 import { z } from "zod/v3";
 
-import { expectTypeOf, it, beforeAll } from "vitest";
+import { expectTypeOf, it, beforeAll, expect } from "vitest";
 import type { BaseMessage } from "@langchain/core/messages";
 import { StateGraph } from "../graph/state.js";
 import { Annotation } from "../graph/annotation.js";
@@ -12,6 +12,7 @@ import { task, entrypoint } from "../func/index.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { INTERRUPT, isInterrupted, START } from "../constants.js";
 import { withLangGraph } from "../graph/zod/meta.js";
+import { Runtime } from "../pregel/runnable_types.js";
 
 beforeAll(() => {
   // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
@@ -165,7 +166,7 @@ it("state graph annotation", async () => {
 });
 
 it("state graph configurable", async () => {
-  new StateGraph(
+  const graph = new StateGraph(
     Annotation.Root({
       foo: Annotation({
         reducer: (state: string[], update: string | string[]) => {
@@ -189,7 +190,12 @@ it("state graph configurable", async () => {
     .addEdge(START, "one")
     .compile();
 
-  new StateGraph(
+  await graph.invoke({ foo: "bar" }, { configurable: { modelName: "valid" } });
+
+  // @ts-expect-error - Invalid configurable value
+  await graph.invoke({ foo: "bar" }, { configurable: { modelName: 123 } });
+
+  const graphZod = new StateGraph(
     z.object({
       foo: withLangGraph(z.array(z.string()), {
         reducer: {
@@ -204,9 +210,9 @@ it("state graph configurable", async () => {
     }),
     z.object({ modelName: z.string() })
   )
-    .addNode("one", (state, config) => {
+    .addNode("one", (state, runtime) => {
       expectTypeOf(state).toExtend<{ foo: string[] }>();
-      expectTypeOf(config.configurable).toExtend<
+      expectTypeOf(runtime.configurable).toExtend<
         { modelName: string } | undefined
       >();
 
@@ -214,6 +220,83 @@ it("state graph configurable", async () => {
     })
     .addEdge(START, "one")
     .compile();
+
+  await graphZod.stream(
+    { foo: "bar" },
+    { streamMode: "custom", configurable: { modelName: "valid" } }
+  );
+
+  await expect(
+    // @ts-expect-error - Invalid configurable value
+    graphZod.invoke({ foo: "bar" }, { configurable: { modelName: 123 } })
+  ).rejects.toThrow("Expected string, received number");
+});
+
+it("state graph context", async () => {
+  const graph = new StateGraph(
+    Annotation.Root({
+      foo: Annotation({
+        reducer: (state: string[], update: string | string[]) => {
+          return Array.isArray(update)
+            ? [...state, ...update]
+            : [...state, update];
+        },
+        default: () => [],
+      }),
+    }),
+    Annotation.Root({ modelName: Annotation<string> })
+  )
+    .addNode("one", (state, runtime: Runtime<{ modelName: string }>) => {
+      expectTypeOf(state).toExtend<{ foo: string[] }>();
+      expectTypeOf(runtime.context).toExtend<
+        { modelName: string } | undefined
+      >();
+      return { foo: "one" };
+    })
+    .addEdge(START, "one")
+    .compile();
+
+  await graph.invoke({ foo: "bar" }, { context: { modelName: "valid" } });
+
+  // @ts-expect-error - Invalid context value, but only checked at type-level
+  await graph.invoke({ foo: "bar" }, { context: { modelName: 123 } });
+
+  const graphZod = new StateGraph(
+    z.object({
+      foo: withLangGraph(z.array(z.string()), {
+        reducer: {
+          schema: z.union([z.string(), z.array(z.string())]),
+          fn: (state: string[], update: string | string[]) => {
+            return Array.isArray(update)
+              ? [...state, ...update]
+              : [...state, update];
+          },
+        },
+      }),
+    }),
+    z.object({ modelName: z.string() })
+  )
+    .addNode("one", (state, runtime) => {
+      expectTypeOf(state).toExtend<{ foo: string[] }>();
+      expectTypeOf(runtime.context).toExtend<
+        { modelName: string } | undefined
+      >();
+      expect(runtime.context?.modelName).toBeTypeOf("string");
+
+      return { foo: "one" };
+    })
+    .addEdge(START, "one")
+    .compile();
+
+  await graphZod.stream(
+    { foo: "bar" },
+    { streamMode: "custom", context: { modelName: "valid" } }
+  );
+
+  await expect(
+    // @ts-expect-error - Invalid context value
+    graphZod.invoke({ foo: "bar" }, { context: { modelName: 123 } })
+  ).rejects.toThrow("Expected string, received number");
 });
 
 it("state graph zod", async () => {

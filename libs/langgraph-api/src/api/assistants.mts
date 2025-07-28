@@ -51,6 +51,7 @@ api.post(
       payload.assistant_id ?? uuid(),
       {
         config: payload.config ?? {},
+        context: payload.context ?? {},
         graph_id: payload.graph_id,
         metadata: payload.metadata ?? {},
         if_exists: payload.if_exists ?? "raise",
@@ -167,6 +168,10 @@ api.get(
       output_schema: schema.output,
       state_schema: schema.state,
       config_schema: schema.config,
+
+      // From JS PoV `configSchema` and `contextSchema` are indistinguishable,
+      // thus we use config_schema for context_schema.
+      context_schema: schema.config,
     });
   }
 );

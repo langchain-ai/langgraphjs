@@ -162,19 +162,19 @@ export type StreamOutputMap<
  *
  * @typeParam Nodes - Mapping of node names to their {@link PregelNode} implementations
  * @typeParam Channels - Mapping of channel names to their {@link BaseChannel} implementations
- * @typeParam ConfigurableFieldType - Type of configurable fields in the {@link RunnableConfig} that is passed to the graph
+ * @typeParam ContextType - Type of context that can be passed to the graph
  */
 export interface PregelOptions<
   Nodes extends StrRecord<string, PregelNode>,
   Channels extends StrRecord<string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType extends Record<string, any> = Record<string, any>,
+  ContextType extends Record<string, any> = Record<string, any>,
   TStreamMode extends StreamMode | StreamMode[] | undefined =
     | StreamMode
     | StreamMode[]
     | undefined,
   TSubgraphs extends boolean = boolean
-> extends RunnableConfig<ConfigurableFieldType> {
+> extends RunnableConfig<ContextType> {
   /**
    * Controls what information is streamed during graph execution.
    * Multiple modes can be enabled simultaneously.
@@ -292,6 +292,11 @@ export interface PregelOptions<
    * Optional cache for the graph, useful for caching tasks.
    */
   cache?: BaseCache;
+
+  /**
+   * Static context for the graph run, like `userId`, `dbConnection` etc.
+   */
+  context?: ContextType;
 }
 
 /**
@@ -305,7 +310,7 @@ export interface PregelInterface<
   Nodes extends StrRecord<string, PregelNode>,
   Channels extends StrRecord<string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>
+  ContextType extends Record<string, any> = StrRecord<string, any>
 > {
   lg_is_pregel: boolean;
 
@@ -346,12 +351,12 @@ export interface PregelInterface<
 
   stream(
     input: PregelInputType,
-    options?: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>>
+    options?: Partial<PregelOptions<Nodes, Channels, ContextType>>
   ): Promise<IterableReadableStream<PregelOutputType>>;
 
   invoke(
     input: PregelInputType,
-    options?: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>>
+    options?: Partial<PregelOptions<Nodes, Channels, ContextType>>
   ): Promise<PregelOutputType>;
 }
 

@@ -18,6 +18,7 @@ interface AssistantCreate {
   assistant_id?: Maybe<string>;
   metadata?: Maybe<Record<string, unknown>>;
   config?: Maybe<AssistantConfig>;
+  context?: Maybe<unknown>;
   if_exists?: Maybe<"raise" | "do_nothing">;
   name?: Maybe<string>;
   graph_id: string;
@@ -38,6 +39,7 @@ interface AssistantUpdate {
   assistant_id: string;
   metadata?: Maybe<Record<string, unknown>>;
   config?: Maybe<AssistantConfig>;
+  context?: Maybe<unknown>;
   graph_id?: Maybe<string>;
   name?: Maybe<string>;
   version?: Maybe<number>;
