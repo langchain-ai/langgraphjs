@@ -138,13 +138,6 @@ function unique<T>(array: T[]) {
   return [...new Set(array)] as T[];
 }
 
-function findLastIndex<T>(array: T[], predicate: (item: T) => boolean) {
-  for (let i = array.length - 1; i >= 0; i -= 1) {
-    if (predicate(array[i])) return i;
-  }
-  return -1;
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface Node<StateType = any> {
   type: "node";
@@ -1001,20 +994,44 @@ export function useStream<
     return error;
   })();
 
+  // Find where a message was actually created (not just inherited from earlier states)
+  const findMessageCreationState = (
+    messageId: string | number,
+    historyStates: ThreadState<StateType>[]
+  ): ThreadState<StateType> | undefined => {
+    const chronologicalStates = [...historyStates].reverse();
+    if (chronologicalStates.length < 2) return undefined;
+
+    // Build initial set from the very first state. We **cannot** claim
+    // a message was created here because we don't know whether it existed
+    // earlier than our loaded window.
+    // (in case where all states are loaded this is still valid because very fist state has empty messages array)
+    let previousMessages = new Set<string | number>(
+      getMessages(chronologicalStates[0].values).map((m, idx) => m.id ?? idx)
+    );
+
+    for (let i = 1; i < chronologicalStates.length; i += 1) {
+      const state = chronologicalStates[i];
+      const currentMessages = new Set<string | number>(
+        getMessages(state.values).map((m, idx) => m.id ?? idx)
+      );
+
+      if (currentMessages.has(messageId) && !previousMessages.has(messageId)) {
+        return state;
+      }
+
+      previousMessages = currentMessages;
+    }
+
+    return undefined;
+  };
+
   const messageMetadata = (() => {
     const alreadyShown = new Set<string>();
     return getMessages(historyValues).map(
       (message, idx): MessageMetadata<StateType> => {
         const messageId = message.id ?? idx;
-        const firstSeenIdx = findLastIndex(history.data, (state) =>
-          getMessages(state.values)
-            .map((m, idx) => m.id ?? idx)
-            .includes(messageId)
-        );
-
-        const firstSeen = history.data[firstSeenIdx] as
-          | ThreadState<StateType>
-          | undefined;
+        const firstSeen = findMessageCreationState(messageId, history.data);
 
         const checkpointId = firstSeen?.checkpoint?.checkpoint_id;
         let branch =
