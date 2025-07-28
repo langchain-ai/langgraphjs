@@ -25,7 +25,6 @@ import {
   BaseChannel,
   GraphInterrupt,
   LangGraphRunnableConfig,
-  ManagedValueSpec,
   RemoteException,
 } from "../web.js";
 import { StrRecord } from "./algo.js";
@@ -46,10 +45,7 @@ import {
 } from "../constants.js";
 
 export type RemoteGraphParams = Omit<
-  PregelParams<
-    StrRecord<string, PregelNode>,
-    StrRecord<string, BaseChannel | ManagedValueSpec>
-  >,
+  PregelParams<StrRecord<string, PregelNode>, StrRecord<string, BaseChannel>>,
   "channels" | "nodes" | "inputChannels" | "outputChannels"
 > & {
   graphId: string;
@@ -162,10 +158,7 @@ const getStreamModes = (
  */
 export class RemoteGraph<
     Nn extends StrRecord<string, PregelNode> = StrRecord<string, PregelNode>,
-    Cc extends StrRecord<string, BaseChannel | ManagedValueSpec> = StrRecord<
-      string,
-      BaseChannel | ManagedValueSpec
-    >,
+    Cc extends StrRecord<string, BaseChannel> = StrRecord<string, BaseChannel>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>
   >

@@ -311,11 +311,8 @@ describe("Graph Structure Tests (Python port)", () => {
       {
         [INTERRUPT]: [
           {
-            interrupt_id: expect.any(String),
+            id: expect.any(String),
             value: "question",
-            resumable: true,
-            ns: expect.arrayContaining([expect.stringMatching(/^graph:/)]),
-            when: "during",
           },
         ],
       },
@@ -444,11 +441,8 @@ describe("Graph Structure Tests (Python port)", () => {
       {
         [INTERRUPT]: [
           {
-            interrupt_id: expect.any(String),
+            id: expect.any(String),
             value: "question",
-            resumable: true,
-            ns: expect.arrayContaining([expect.stringMatching(/^graph:/)]),
-            when: "during",
           },
         ],
       },
@@ -2531,11 +2525,6 @@ describe("Graph Structure Tests (Python port)", () => {
     // Verify metadata structure (not exact values since they can vary)
     expect(state.metadata).toMatchObject({
       source: "loop",
-      writes: {
-        alice: {
-          user_name: "Meow",
-        },
-      },
       thread_id: "1",
       step: 1,
     });

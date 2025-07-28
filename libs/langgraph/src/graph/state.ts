@@ -1,9 +1,5 @@
 /* eslint-disable @typescript-eslint/no-use-before-define */
-import {
-  _coerceToRunnable,
-  Runnable,
-  RunnableLike,
-} from "@langchain/core/runnables";
+import { _coerceToRunnable, Runnable } from "@langchain/core/runnables";
 import {
   All,
   type BaseCache,
@@ -16,6 +12,10 @@ import {
   interopZodObjectPartial,
   isInteropZodObject,
 } from "@langchain/core/utils/types";
+import type {
+  RunnableLike,
+  LangGraphRunnableConfig,
+} from "../pregel/runnable_types.js";
 import { BaseChannel, isBaseChannel } from "../channels/base.js";
 import {
   CompiledGraph,
@@ -59,8 +59,6 @@ import {
   UpdateType,
 } from "./annotation.js";
 import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
-import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
-import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 import { LastValueAfterFinish } from "../channels/last_value.js";
 import {
@@ -213,7 +211,7 @@ export class StateGraph<
   O extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
   C extends SDZod = StateDefinition
 > extends Graph<N, S, U, StateGraphNodeSpec<S, U>, ToStateDefinition<C>> {
-  channels: Record<string, BaseChannel | ManagedValueSpec> = {};
+  channels: Record<string, BaseChannel> = {};
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
   waitingEdges: Set<[N[], N]> = new Set();
@@ -261,14 +259,20 @@ export class StateGraph<
   constructor(
     fields: SD extends StateDefinition
       ?
-          | SD
           | AnnotationRoot<SD>
-          | StateGraphArgs<S>
           | StateGraphArgsWithStateSchema<
               SD,
               ToStateDefinition<I>,
               ToStateDefinition<O>
             >
+      : never,
+    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+  );
+
+  /** @deprecated Use `Annotation.Root` or `zod` for state definition instead. */
+  constructor(
+    fields: SD extends StateDefinition
+      ? SD | StateGraphArgs<S>
       : StateGraphArgs<S>,
     configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
@@ -392,10 +396,7 @@ export class StateGraph<
       }
       if (this.channels[key] !== undefined) {
         if (this.channels[key] !== channel) {
-          if (
-            !isConfiguredManagedValue(channel) &&
-            channel.lc_graph_name !== "LastValue"
-          ) {
+          if (channel.lc_graph_name !== "LastValue") {
             throw new Error(
               `Channel "${key}" already exists with a different type.`
             );
@@ -783,9 +784,7 @@ export class CompiledStateGraph<
       // Get input schema keys excluding managed values
       outputKeys = Object.entries(
         this.builder._schemaDefinitions.get(this.builder._inputDefinition)
-      )
-        .filter(([_, v]) => !isConfiguredManagedValue(v))
-        .map(([k]) => k);
+      ).map(([k]) => k);
     } else {
       outputKeys = Object.keys(this.builder.channels);
     }

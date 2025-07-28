@@ -56,7 +56,7 @@ describe("SqliteSaver", () => {
     const runnableConfig = await sqliteSaver.put(
       { configurable: { thread_id: "1" } },
       checkpoint1,
-      { source: "update", step: -1, writes: null, parents: {} }
+      { source: "update", step: -1, parents: {} }
     );
     expect(runnableConfig).toEqual({
       configurable: {
@@ -108,7 +108,6 @@ describe("SqliteSaver", () => {
       {
         source: "update",
         step: -1,
-        writes: null,
         parents: { "": checkpoint1.id },
       }
     );
@@ -148,6 +147,31 @@ describe("SqliteSaver", () => {
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
   });
 
+  it("should delete thread", async () => {
+    const saver = SqliteSaver.fromConnString(":memory:");
+    await saver.put({ configurable: { thread_id: "1" } }, emptyCheckpoint(), {
+      source: "update",
+      step: -1,
+      parents: {},
+    });
+
+    await saver.put({ configurable: { thread_id: "2" } }, emptyCheckpoint(), {
+      source: "update",
+      step: -1,
+      parents: {},
+    });
+
+    await saver.deleteThread("1");
+
+    expect(
+      await saver.getTuple({ configurable: { thread_id: "1" } })
+    ).toBeUndefined();
+
+    expect(
+      await saver.getTuple({ configurable: { thread_id: "2" } })
+    ).toBeDefined();
+  });
+
   it("pending sends migration", async () => {
     const saver = SqliteSaver.fromConnString(":memory:");
 
@@ -161,7 +185,6 @@ describe("SqliteSaver", () => {
       source: "loop",
       parents: {},
       step: 0,
-      writes: null,
     });
 
     await saver.putWrites(
@@ -193,7 +216,6 @@ describe("SqliteSaver", () => {
       source: "loop",
       parents: {},
       step: 1,
-      writes: null,
     });
 
     // check that pending sends are attached to checkpoint1

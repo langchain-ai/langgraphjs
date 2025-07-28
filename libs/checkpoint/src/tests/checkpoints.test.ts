@@ -5,11 +5,13 @@ import {
   type CheckpointTuple,
   compareChannelVersions,
   deepCopy,
+  emptyCheckpoint,
   maxChannelVersion,
 } from "../base.js";
 import { MemorySaver } from "../memory.js";
 import { uuid6 } from "../id.js";
 import { TASKS } from "../index.js";
+import type { CheckpointMetadata } from "../types.js";
 
 const checkpoint1: Checkpoint = {
   v: 4,
@@ -92,7 +94,7 @@ describe("MemorySaver", () => {
     const runnableConfig = await memorySaver.put(
       { configurable: { thread_id: "1", checkpoint_ns: "" } },
       checkpoint1,
-      { source: "update", step: -1, writes: null, parents: {} }
+      { source: "update", step: -1, parents: {} }
     );
     expect(runnableConfig).toEqual({
       configurable: {
@@ -122,7 +124,6 @@ describe("MemorySaver", () => {
       {
         source: "update",
         step: -1,
-        writes: null,
         parents: {},
       }
     );
@@ -162,7 +163,6 @@ describe("MemorySaver", () => {
       source: "loop",
       parents: {},
       step: 0,
-      writes: null,
     });
 
     await memorySaver.putWrites(
@@ -194,7 +194,6 @@ describe("MemorySaver", () => {
       source: "loop",
       parents: {},
       step: 1,
-      writes: null,
     });
 
     // check that pending sends are attached to checkpoint1
@@ -219,6 +218,28 @@ describe("MemorySaver", () => {
     expect(
       checkpointTuples[0].checkpoint.channel_versions[TASKS]
     ).toBeDefined();
+  });
+
+  it("should delete thread", async () => {
+    const memorySaver = new MemorySaver();
+    const thread1 = { configurable: { thread_id: "1", checkpoint_ns: "" } };
+    const thread2 = { configurable: { thread_id: "2", checkpoint_ns: "" } };
+
+    const meta: CheckpointMetadata = {
+      source: "update",
+      step: -1,
+      parents: {},
+    };
+
+    await memorySaver.put(thread1, emptyCheckpoint(), meta);
+    await memorySaver.put(thread2, emptyCheckpoint(), meta);
+
+    expect(await memorySaver.getTuple(thread1)).toBeDefined();
+
+    await memorySaver.deleteThread("1");
+
+    expect(await memorySaver.getTuple(thread1)).toBeUndefined();
+    expect(await memorySaver.getTuple(thread2)).toBeDefined();
   });
 });
 

@@ -3,6 +3,7 @@ import { MongoClient } from "mongodb";
 import {
   Checkpoint,
   CheckpointTuple,
+  emptyCheckpoint,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
 import { getEnvironmentVariable } from "@langchain/core/utils/env";
@@ -67,7 +68,7 @@ describe("MongoDBSaver", () => {
     const runnableConfig = await saver.put(
       { configurable: { thread_id: "1" } },
       checkpoint1,
-      { source: "update", step: -1, writes: null, parents: {} }
+      { source: "update", step: -1, parents: {} }
     );
     expect(runnableConfig).toEqual({
       configurable: {
@@ -116,7 +117,7 @@ describe("MongoDBSaver", () => {
         },
       },
       checkpoint2,
-      { source: "update", step: -1, writes: null, parents: {} }
+      { source: "update", step: -1, parents: {} }
     );
 
     // verify that parentTs is set and retrieved correctly for second checkpoint
@@ -145,5 +146,29 @@ describe("MongoDBSaver", () => {
     const checkpointTuple2 = checkpointTuples[1];
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
     expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
+  });
+
+  it("should delete thread", async () => {
+    const saver = new MongoDBSaver({ client });
+    await saver.put({ configurable: { thread_id: "1" } }, emptyCheckpoint(), {
+      source: "update",
+      step: -1,
+      parents: {},
+    });
+
+    await saver.put({ configurable: { thread_id: "2" } }, emptyCheckpoint(), {
+      source: "update",
+      step: -1,
+      parents: {},
+    });
+
+    await saver.deleteThread("1");
+
+    expect(
+      await saver.getTuple({ configurable: { thread_id: "1" } })
+    ).toBeUndefined();
+    expect(
+      await saver.getTuple({ configurable: { thread_id: "2" } })
+    ).toBeDefined();
   });
 });

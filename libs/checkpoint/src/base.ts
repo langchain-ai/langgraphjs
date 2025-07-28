@@ -146,6 +146,12 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
   ): Promise<void>;
 
   /**
+   * Delete all checkpoints and writes associated with a specific thread ID.
+   * @param threadId The thread ID whose checkpoints should be deleted.
+   */
+  abstract deleteThread(threadId: string): Promise<void>;
+
+  /**
    * Generate the next version ID for a channel.
    *
    * Default is to use integer versions, incrementing by 1. If you override, you can use str/int/float versions,
