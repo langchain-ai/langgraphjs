@@ -374,11 +374,8 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       {
         __interrupt__: [
           {
-            interrupt_id: expect.any(String),
+            id: expect.any(String),
             value: "Just because...",
-            resumable: true,
-            when: "during",
-            ns: [expect.stringMatching(/^tool_two:.*$/)],
           },
         ],
       },
@@ -409,11 +406,8 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       {
         __interrupt__: [
           {
-            interrupt_id: expect.any(String),
+            id: expect.any(String),
             value: "Just because...",
-            resumable: true,
-            when: "during",
-            ns: [expect.stringMatching(/^tool_two:.*$/)],
           },
         ],
       },
@@ -524,14 +518,8 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       {
         __interrupt__: [
           {
-            interrupt_id: expect.any(String),
+            id: expect.any(String),
             value: "Just because...",
-            resumable: true,
-            when: "during",
-            ns: [
-              expect.stringMatching(/^tool_two:.*$/),
-              expect.stringMatching(/^do:.*$/),
-            ],
           },
         ],
       },
@@ -565,14 +553,8 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       {
         __interrupt__: [
           {
-            interrupt_id: expect.any(String),
+            id: expect.any(String),
             value: "Just because...",
-            resumable: true,
-            when: "during",
-            ns: [
-              expect.stringMatching(/^tool_two:.*$/),
-              expect.stringMatching(/^do:.*$/),
-            ],
           },
         ],
       },
@@ -646,11 +628,8 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       hello: "world again",
       __interrupt__: [
         {
-          interrupt_id: expect.any(String),
+          id: expect.any(String),
           value: "I am bad",
-          resumable: true,
-          when: "during",
-          ns: [expect.stringMatching(/^bad:.*$/)],
         },
       ],
     });
@@ -663,11 +642,8 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
       hello: "world again",
       __interrupt__: [
         {
-          interrupt_id: expect.any(String),
+          id: expect.any(String),
           value: "I am bad",
-          resumable: true,
-          when: "during",
-          ns: [expect.stringMatching(/^bad:.*$/)],
         },
       ],
     });
@@ -1053,6 +1029,5 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
         thread_id: "2",
       })
     );
-    expect(state?.metadata?.writes).toEqual({ alittlewhile: { value: 2 } });
   });
 });

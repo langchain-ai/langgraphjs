@@ -1,6 +1,6 @@
-# @langchain/langgraph-supervisor
+# @langchain/langgraph-cua
 
-## 0.0.16
+## 0.0.7
 
 ### Patch Changes
 
@@ -11,9 +11,3 @@
 - Updated dependencies [fa78796]
 - Updated dependencies [565f472]
   - @langchain/langgraph@0.4.0
-
-## 0.0.15
-
-### Patch Changes
-
-- aa7542e: Fix issue with bindTools called twice when using with newer LangChain LLM models

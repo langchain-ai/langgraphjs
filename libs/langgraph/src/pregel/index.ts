@@ -25,6 +25,7 @@ import {
   emptyCheckpoint,
   PendingWrite,
   SCHEDULED,
+  SendProtocol,
   uuid5,
 } from "@langchain/langgraph-checkpoint";
 import {
@@ -52,23 +53,16 @@ import {
   isInterrupted,
   NULL_TASK_ID,
   PUSH,
-  CONFIG_KEY_CHECKPOINT_DURING,
+  CONFIG_KEY_DURABILITY,
   CONFIG_KEY_CHECKPOINT_NS,
   type CommandInstance,
+  TASKS,
 } from "../constants.js";
 import {
   GraphRecursionError,
   GraphValueError,
   InvalidUpdateError,
 } from "../errors.js";
-import {
-  ChannelKeyPlaceholder,
-  isConfiguredManagedValue,
-  ManagedValue,
-  ManagedValueMapping,
-  NoopManagedValue,
-  type ManagedValueSpec,
-} from "../managed/base.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
 import {
   _applyWrites,
@@ -93,7 +87,8 @@ import {
   IterableReadableStreamWithAbortSignal,
   IterableReadableWritableStream,
 } from "./stream.js";
-import {
+import type {
+  Durability,
   GetStateOptions,
   MultipleChannelSubscriptionOptions,
   PregelExecutableTask,
@@ -105,7 +100,7 @@ import {
   SingleChannelSubscriptionOptions,
   StateSnapshot,
   StreamMode,
-  type StreamOutputMap,
+  StreamOutputMap,
 } from "./types.js";
 import {
   ensureLangGraphConfig,
@@ -122,6 +117,7 @@ import {
 import { findSubgraphPregel } from "./utils/subgraph.js";
 import { validateGraph, validateKeys } from "./validate.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
+import { Topic } from "../channels/topic.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
@@ -377,15 +373,15 @@ class PartialRunnable<
  *
  * @typeParam Nodes - Mapping of node names to their {@link PregelNode} implementations
  * @typeParam Channels - Mapping of channel names to their {@link BaseChannel} or {@link ManagedValueSpec} implementations
- * @typeParam ConfigurableFieldType - Type of configurable fields that can be passed to the graph
+ * @typeParam ContextType - Type of context that can be passed to the graph
  * @typeParam InputType - Type of input values accepted by the graph
  * @typeParam OutputType - Type of output values produced by the graph
  */
 export class Pregel<
     Nodes extends StrRecord<string, PregelNode>,
-    Channels extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+    Channels extends StrRecord<string, BaseChannel>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
+    ContextType extends Record<string, any> = StrRecord<string, any>,
     InputType = PregelInputType,
     OutputType = PregelOutputType,
     StreamUpdatesType = InputType,
@@ -394,10 +390,10 @@ export class Pregel<
   extends PartialRunnable<
     InputType | CommandInstance | null,
     OutputType,
-    PregelOptions<Nodes, Channels, ConfigurableFieldType>
+    PregelOptions<Nodes, Channels, ContextType>
   >
   implements
-    PregelInterface<Nodes, Channels, ConfigurableFieldType>,
+    PregelInterface<Nodes, Channels, ContextType>,
     PregelParams<Nodes, Channels>
 {
   /**
@@ -516,6 +512,20 @@ export class Pregel<
 
     this.nodes = fields.nodes;
     this.channels = fields.channels;
+
+    if (
+      TASKS in this.channels &&
+      "lc_graph_name" in this.channels[TASKS] &&
+      this.channels[TASKS].lc_graph_name !== "Topic"
+    ) {
+      throw new Error(
+        `Channel '${TASKS}' is reserved and cannot be used in the graph.`
+      );
+    } else {
+      (this.channels as Record<string, BaseChannel>)[TASKS] =
+        new Topic<SendProtocol>({ accumulate: false });
+    }
+
     this.autoValidate = fields.autoValidate ?? this.autoValidate;
     this.streamMode = streamMode ?? this.streamMode;
     this.inputChannels = fields.inputChannels;
@@ -744,9 +754,6 @@ export class Pregel<
     }
 
     // Create all channels
-    const { managed } = await this.prepareSpecs(config, {
-      skipManaged: true,
-    });
     const channels = emptyChannels(
       this.channels as Record<string, BaseChannel>,
       saved.checkpoint
@@ -784,7 +791,6 @@ export class Pregel<
         saved.pendingWrites,
         this.nodes,
         channels,
-        managed,
         saved.config,
         true,
         { step: (saved.metadata?.step ?? -1) + 1, store: this.store }
@@ -1136,7 +1142,6 @@ export class Pregel<
           {
             source: "update",
             step: step + 1,
-            writes: {},
             parents: saved?.metadata?.parents ?? {},
           },
           {}
@@ -1153,11 +1158,6 @@ export class Pregel<
         checkpoint
       );
 
-      // Pass `skipManaged: true` as managed values are not used/relevant in update state calls.
-      const { managed } = await this.prepareSpecs(config, {
-        skipManaged: true,
-      });
-
       if (values === null && asNode === END) {
         if (updates.length > 1) {
           throw new InvalidUpdateError(
@@ -1172,7 +1172,6 @@ export class Pregel<
             saved.pendingWrites || [],
             this.nodes,
             channels,
-            managed,
             saved.config,
             true,
             {
@@ -1228,7 +1227,6 @@ export class Pregel<
             ...checkpointMetadata,
             source: "update",
             step: step + 1,
-            writes: {},
             parents: saved?.metadata?.parents ?? {},
           },
           getNewChannelVersions(
@@ -1269,7 +1267,6 @@ export class Pregel<
           {
             source: "fork",
             step: step + 1,
-            writes: {},
             parents: saved.metadata?.parents ?? {},
           },
           {}
@@ -1284,7 +1281,6 @@ export class Pregel<
             saved.pendingWrites,
             this.nodes,
             channels,
-            managed,
             nextConfig,
             false,
             { step: step + 2 }
@@ -1367,7 +1363,6 @@ export class Pregel<
           {
             source: "input",
             step: nextStep,
-            writes: Object.fromEntries(inputWrites),
             parents: saved?.metadata?.parents ?? {},
           },
           getNewChannelVersions(
@@ -1401,7 +1396,6 @@ export class Pregel<
           saved.pendingWrites,
           this.nodes,
           channels,
-          managed,
           saved.config,
           true,
           {
@@ -1567,10 +1561,8 @@ export class Pregel<
                   fresh_: boolean = false
                 ) =>
                   _localRead(
-                    step,
                     checkpoint,
                     channels,
-                    managed,
                     // TODO: Why does keyof StrRecord allow number and symbol?
                     task as PregelExecutableTask<string, string>,
                     select_ as string | string[],
@@ -1615,9 +1607,6 @@ export class Pregel<
         {
           source: "update",
           step: step + 1,
-          writes: Object.fromEntries(
-            validUpdates.map((update) => [update.asNode, update.values])
-          ),
           parents: saved?.metadata?.parents ?? {},
         },
         newVersions
@@ -1705,7 +1694,7 @@ export class Pregel<
     BaseStore | undefined, // store
     boolean, // stream mode single
     BaseCache | undefined, // node cache
-    boolean // checkpoint during
+    Durability // durability
   ] {
     const {
       debug,
@@ -1769,10 +1758,24 @@ export class Pregel<
     }
     const defaultStore: BaseStore | undefined = config.store ?? this.store;
     const defaultCache: BaseCache | undefined = config.cache ?? this.cache;
-    const defaultCheckpointDuring =
-      config.checkpointDuring ??
-      config?.configurable?.[CONFIG_KEY_CHECKPOINT_DURING] ??
-      true;
+
+    if (config.durability != null && config.checkpointDuring != null) {
+      throw new Error(
+        "Cannot use both `durability` and `checkpointDuring` at the same time."
+      );
+    }
+
+    const checkpointDuringDurability: Durability | undefined = (() => {
+      if (config.checkpointDuring == null) return undefined;
+      if (config.checkpointDuring === false) return "exit";
+      return "async";
+    })();
+
+    const defaultDurability: Durability =
+      config.durability ??
+      checkpointDuringDurability ??
+      config?.configurable?.[CONFIG_KEY_DURABILITY] ??
+      "async";
 
     return [
       defaultDebug,
@@ -1786,7 +1789,7 @@ export class Pregel<
       defaultStore,
       streamModeSingle,
       defaultCache,
-      defaultCheckpointDuring,
+      defaultDurability,
     ];
   }
 
@@ -1812,13 +1815,7 @@ export class Pregel<
   >(
     input: InputType | CommandInstance | null,
     options?: Partial<
-      PregelOptions<
-        Nodes,
-        Channels,
-        ConfigurableFieldType,
-        TStreamMode,
-        TSubgraphs
-      >
+      PregelOptions<Nodes, Channels, ContextType, TStreamMode, TSubgraphs>
     >
   ): Promise<
     IterableReadableStream<
@@ -1864,7 +1861,7 @@ export class Pregel<
    */
   override streamEvents(
     input: InputType | CommandInstance | null,
-    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+    options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
       version: "v1" | "v2";
     },
     streamOptions?: StreamEventsOptions
@@ -1872,7 +1869,7 @@ export class Pregel<
 
   override streamEvents(
     input: InputType | CommandInstance | null,
-    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+    options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
       version: "v1" | "v2";
       encoding: "text/event-stream";
     },
@@ -1881,7 +1878,7 @@ export class Pregel<
 
   override streamEvents(
     input: InputType | CommandInstance | null,
-    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+    options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
       version: "v1" | "v2";
     },
     streamOptions?: StreamEventsOptions
@@ -1907,78 +1904,6 @@ export class Pregel<
   }
 
   /**
-   * Prepares channel specifications and managed values for graph execution.
-   * This is an internal method used to set up the graph's communication channels
-   * and managed state before execution.
-   *
-   * @param config - Configuration for preparing specs
-   * @param options - Additional options
-   * @param options.skipManaged - Whether to skip initialization of managed values
-   * @returns Object containing channel specs and managed value mapping
-   * @internal
-   */
-  protected async prepareSpecs(
-    config: RunnableConfig,
-    options?: {
-      skipManaged?: boolean;
-    }
-  ) {
-    const configForManaged: LangGraphRunnableConfig = {
-      ...config,
-      store: this.store,
-    };
-    const channelSpecs: Record<string, BaseChannel> = {};
-    const managedSpecs: Record<string, ManagedValueSpec> = {};
-
-    for (const [name, spec] of Object.entries(this.channels)) {
-      if (isBaseChannel(spec)) {
-        channelSpecs[name] = spec;
-      } else if (options?.skipManaged) {
-        managedSpecs[name] = {
-          cls: NoopManagedValue,
-          params: { config: {} },
-        };
-      } else {
-        managedSpecs[name] = spec;
-      }
-    }
-    const managed = new ManagedValueMapping(
-      await Object.entries(managedSpecs).reduce(
-        async (accPromise, [key, value]) => {
-          const acc = await accPromise;
-          let initializedValue;
-
-          if (isConfiguredManagedValue(value)) {
-            if (
-              "key" in value.params &&
-              value.params.key === ChannelKeyPlaceholder
-            ) {
-              value.params.key = key;
-            }
-            initializedValue = await value.cls.initialize(
-              configForManaged,
-              value.params
-            );
-          } else {
-            initializedValue = await value.initialize(configForManaged);
-          }
-
-          if (initializedValue !== undefined) {
-            acc.push([key, initializedValue]);
-          }
-
-          return acc;
-        },
-        Promise.resolve([] as [string, ManagedValue][])
-      )
-    );
-    return {
-      channelSpecs,
-      managed,
-    };
-  }
-
-  /**
    * Validates the input for the graph.
    * @param input - The input to validate
    * @returns The validated input
@@ -1989,15 +1914,15 @@ export class Pregel<
   }
 
   /**
-   * Validates the configurable options for the graph.
-   * @param config - The configurable options to validate
-   * @returns The validated configurable options
+   * Validates the context options for the graph.
+   * @param context - The context options to validate
+   * @returns The validated context options
    * @internal
    */
-  protected async _validateConfigurable(
-    config: Partial<LangGraphRunnableConfig["configurable"]>
-  ): Promise<LangGraphRunnableConfig["configurable"]> {
-    return config;
+  protected async _validateContext(
+    context: Partial<LangGraphRunnableConfig["context"]>
+  ): Promise<LangGraphRunnableConfig["context"]> {
+    return context;
   }
 
   /**
@@ -2046,10 +1971,15 @@ export class Pregel<
       store,
       streamModeSingle,
       cache,
-      checkpointDuring,
+      durability,
     ] = this._defaults(restConfig);
 
-    config.configurable = await this._validateConfigurable(config.configurable);
+    // At entrypoint, `configurable` is an alias for `context`.
+    if (typeof config.context !== "undefined") {
+      config.context = await this._validateContext(config.context);
+    } else {
+      config.configurable = await this._validateContext(config.configurable);
+    }
 
     const stream = new IterableReadableWritableStream({
       modes: new Set(streamMode),
@@ -2098,7 +2028,12 @@ export class Pregel<
       config?.runName ?? this.getName() // run_name
     );
 
-    const { channelSpecs, managed } = await this.prepareSpecs(config);
+    const channelSpecs: Record<string, BaseChannel> = {};
+    for (const [name, spec] of Object.entries(this.channels)) {
+      if (isBaseChannel(spec)) {
+        channelSpecs[name] = spec;
+      }
+    }
 
     let loop: PregelLoop | undefined;
     let loopError: unknown;
@@ -2119,7 +2054,6 @@ export class Pregel<
           checkpointer,
           nodes: this.nodes,
           channelSpecs,
-          managed,
           outputKeys,
           streamKeys: this.streamChannelsAsIs as string | string[],
           store,
@@ -2130,7 +2064,7 @@ export class Pregel<
           manager: runManager,
           debug: this.debug,
           triggerToNodes: this.triggerToNodes,
-          checkpointDuring,
+          durability,
         });
 
         const runner = new PregelRunner({
@@ -2145,6 +2079,11 @@ export class Pregel<
           };
         }
         await this._runLoop({ loop, runner, debug, config });
+
+        // wait for checkpoints to be persisted
+        if (durability === "sync") {
+          await Promise.all(loop?.checkpointerPromises ?? []);
+        }
       } catch (e) {
         loopError = e;
       } finally {
@@ -2154,10 +2093,7 @@ export class Pregel<
             await loop.store?.stop();
             await loop.cache?.stop();
           }
-          await Promise.all([
-            ...(loop?.checkpointerPromises ?? []),
-            ...Array.from(managed.values()).map((mv) => mv.promises()),
-          ]);
+          await Promise.all(loop?.checkpointerPromises ?? []);
         } catch (e) {
           loopError = loopError ?? e;
         }
@@ -2217,7 +2153,7 @@ export class Pregel<
    */
   override async invoke(
     input: InputType | CommandInstance | null,
-    options?: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>>
+    options?: Partial<PregelOptions<Nodes, Channels, ContextType>>
   ): Promise<OutputType> {
     const streamMode = options?.streamMode ?? "values";
     const config = {
