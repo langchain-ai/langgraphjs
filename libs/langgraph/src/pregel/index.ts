@@ -372,7 +372,7 @@ class PartialRunnable<
  *
  * @typeParam Nodes - Mapping of node names to their {@link PregelNode} implementations
  * @typeParam Channels - Mapping of channel names to their {@link BaseChannel} or {@link ManagedValueSpec} implementations
- * @typeParam ConfigurableFieldType - Type of configurable fields that can be passed to the graph
+ * @typeParam ContextType - Type of context that can be passed to the graph
  * @typeParam InputType - Type of input values accepted by the graph
  * @typeParam OutputType - Type of output values produced by the graph
  */
@@ -380,7 +380,7 @@ export class Pregel<
     Nodes extends StrRecord<string, PregelNode>,
     Channels extends StrRecord<string, BaseChannel>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
+    ContextType extends Record<string, any> = StrRecord<string, any>,
     InputType = PregelInputType,
     OutputType = PregelOutputType,
     StreamUpdatesType = InputType,
@@ -389,10 +389,10 @@ export class Pregel<
   extends PartialRunnable<
     InputType | CommandInstance | null,
     OutputType,
-    PregelOptions<Nodes, Channels, ConfigurableFieldType>
+    PregelOptions<Nodes, Channels, ContextType>
   >
   implements
-    PregelInterface<Nodes, Channels, ConfigurableFieldType>,
+    PregelInterface<Nodes, Channels, ContextType>,
     PregelParams<Nodes, Channels>
 {
   /**
@@ -1800,13 +1800,7 @@ export class Pregel<
   >(
     input: InputType | CommandInstance | null,
     options?: Partial<
-      PregelOptions<
-        Nodes,
-        Channels,
-        ConfigurableFieldType,
-        TStreamMode,
-        TSubgraphs
-      >
+      PregelOptions<Nodes, Channels, ContextType, TStreamMode, TSubgraphs>
     >
   ): Promise<
     IterableReadableStream<
@@ -1852,7 +1846,7 @@ export class Pregel<
    */
   override streamEvents(
     input: InputType | CommandInstance | null,
-    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+    options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
       version: "v1" | "v2";
     },
     streamOptions?: StreamEventsOptions
@@ -1860,7 +1854,7 @@ export class Pregel<
 
   override streamEvents(
     input: InputType | CommandInstance | null,
-    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+    options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
       version: "v1" | "v2";
       encoding: "text/event-stream";
     },
@@ -1869,7 +1863,7 @@ export class Pregel<
 
   override streamEvents(
     input: InputType | CommandInstance | null,
-    options: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>> & {
+    options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
       version: "v1" | "v2";
     },
     streamOptions?: StreamEventsOptions
@@ -1905,15 +1899,15 @@ export class Pregel<
   }
 
   /**
-   * Validates the configurable options for the graph.
-   * @param config - The configurable options to validate
-   * @returns The validated configurable options
+   * Validates the context options for the graph.
+   * @param context - The context options to validate
+   * @returns The validated context options
    * @internal
    */
-  protected async _validateConfigurable(
-    config: Partial<LangGraphRunnableConfig["configurable"]>
-  ): Promise<LangGraphRunnableConfig["configurable"]> {
-    return config;
+  protected async _validateContext(
+    context: Partial<LangGraphRunnableConfig["context"]>
+  ): Promise<LangGraphRunnableConfig["context"]> {
+    return context;
   }
 
   /**
@@ -1965,7 +1959,12 @@ export class Pregel<
       checkpointDuring,
     ] = this._defaults(restConfig);
 
-    config.configurable = await this._validateConfigurable(config.configurable);
+    // At entrypoint, `configurable` is an alias for `context`.
+    if (typeof config.context !== "undefined") {
+      config.context = await this._validateContext(config.context);
+    } else {
+      config.configurable = await this._validateContext(config.configurable);
+    }
 
     const stream = new IterableReadableWritableStream({
       modes: new Set(streamMode),
@@ -2134,7 +2133,7 @@ export class Pregel<
    */
   override async invoke(
     input: InputType | CommandInstance | null,
-    options?: Partial<PregelOptions<Nodes, Channels, ConfigurableFieldType>>
+    options?: Partial<PregelOptions<Nodes, Channels, ContextType>>
   ): Promise<OutputType> {
     const streamMode = options?.streamMode ?? "values";
     const config = {

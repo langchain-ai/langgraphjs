@@ -253,7 +253,7 @@ export class StateGraph<
     fields: SD extends StateDefinition
       ? StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
       : never,
-    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
@@ -266,7 +266,7 @@ export class StateGraph<
               ToStateDefinition<O>
             >
       : never,
-    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   /** @deprecated Use `Annotation.Root` or `zod` for state definition instead. */
@@ -274,14 +274,14 @@ export class StateGraph<
     fields: SD extends StateDefinition
       ? SD | StateGraphArgs<S>
       : StateGraphArgs<S>,
-    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
     fields: SD extends InteropZodObject
       ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
       : never,
-    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
@@ -299,7 +299,7 @@ export class StateGraph<
             >
           | StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
       : StateGraphArgs<S>,
-    configSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   ) {
     super();
 
@@ -367,8 +367,8 @@ export class StateGraph<
     this._addSchema(this._inputDefinition);
     this._addSchema(this._outputDefinition);
 
-    if (isInteropZodObject(configSchema)) {
-      this._configRuntimeSchema = configSchema;
+    if (isInteropZodObject(contextSchema)) {
+      this._configRuntimeSchema = contextSchema;
     }
   }
 
@@ -1026,9 +1026,9 @@ export class CompiledStateGraph<
     return input;
   }
 
-  protected async _validateConfigurable(
-    config: Partial<LangGraphRunnableConfig["configurable"]>
-  ): Promise<LangGraphRunnableConfig["configurable"]> {
+  protected async _validateContext(
+    config: Partial<Record<string, unknown>>
+  ): Promise<Partial<Record<string, unknown>>> {
     const configSchema = this.builder._configRuntimeSchema;
     if (isInteropZodObject(configSchema)) interopParse(configSchema, config);
     return config;
