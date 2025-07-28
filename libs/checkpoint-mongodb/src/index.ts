@@ -218,9 +218,14 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         `The provided config must contain a configurable field with a "thread_id" field.`
       );
     }
-    const [checkpointType, serializedCheckpoint] =
-      this.serde.dumpsTyped(checkpoint);
-    const [metadataType, serializedMetadata] = this.serde.dumpsTyped(metadata);
+    const [
+      [checkpointType, serializedCheckpoint],
+      [metadataType, serializedMetadata],
+    ] = await Promise.all([
+      this.serde.dumpsTyped(checkpoint),
+      this.serde.dumpsTyped(metadata),
+    ]);
+
     if (checkpointType !== metadataType) {
       throw new Error("Mismatched checkpoint and metadata types.");
     }
@@ -269,25 +274,27 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       );
     }
 
-    const operations = writes.map(([channel, value], idx) => {
-      const upsertQuery = {
-        thread_id,
-        checkpoint_ns,
-        checkpoint_id,
-        task_id: taskId,
-        idx,
-      };
+    const operations = await Promise.all(
+      writes.map(async ([channel, value], idx) => {
+        const upsertQuery = {
+          thread_id,
+          checkpoint_ns,
+          checkpoint_id,
+          task_id: taskId,
+          idx,
+        };
 
-      const [type, serializedValue] = this.serde.dumpsTyped(value);
+        const [type, serializedValue] = await this.serde.dumpsTyped(value);
 
-      return {
-        updateOne: {
-          filter: upsertQuery,
-          update: { $set: { channel, type, value: serializedValue } },
-          upsert: true,
-        },
-      };
-    });
+        return {
+          updateOne: {
+            filter: upsertQuery,
+            update: { $set: { channel, type, value: serializedValue } },
+            upsert: true,
+          },
+        };
+      })
+    );
 
     await this.db
       .collection(this.checkpointWritesCollectionName)

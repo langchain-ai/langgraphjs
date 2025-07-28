@@ -201,7 +201,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
   }
 
   protected async _loadMetadata(metadata: Record<string, unknown>) {
-    const [type, dumpedValue] = this.serde.dumpsTyped(metadata);
+    const [type, dumpedValue] = await this.serde.dumpsTyped(metadata);
     return this.serde.loadsTyped(type, dumpedValue);
   }
 
@@ -220,28 +220,34 @@ export class PostgresSaver extends BaseCheckpointSaver {
       : [];
   }
 
-  protected _dumpBlobs(
+  protected async _dumpBlobs(
     threadId: string,
     checkpointNs: string,
     values: Record<string, unknown>,
     versions: ChannelVersions
-  ): [string, string, string, string, string, Uint8Array | undefined][] {
+  ): Promise<
+    [string, string, string, string, string, Uint8Array | undefined][]
+  > {
     if (Object.keys(versions).length === 0) {
       return [];
     }
 
-    return Object.entries(versions).map(([k, ver]) => {
-      const [type, value] =
-        k in values ? this.serde.dumpsTyped(values[k]) : ["empty", null];
-      return [
-        threadId,
-        checkpointNs,
-        k,
-        ver.toString(),
-        type,
-        value ? new Uint8Array(value) : undefined,
-      ];
-    });
+    return Promise.all(
+      Object.entries(versions).map(async ([k, ver]) => {
+        const [type, value] =
+          k in values
+            ? await this.serde.dumpsTyped(values[k])
+            : ["empty", null];
+        return [
+          threadId,
+          checkpointNs,
+          k,
+          ver.toString(),
+          type,
+          value ? new Uint8Array(value) : undefined,
+        ];
+      })
+    );
   }
 
   protected _dumpCheckpoint(checkpoint: Checkpoint) {
@@ -250,34 +256,38 @@ export class PostgresSaver extends BaseCheckpointSaver {
     return serialized;
   }
 
-  protected _dumpMetadata(metadata: CheckpointMetadata) {
-    const [, serializedMetadata] = this.serde.dumpsTyped(metadata);
+  protected async _dumpMetadata(metadata: CheckpointMetadata) {
+    const [, serializedMetadata] = await this.serde.dumpsTyped(metadata);
     // We need to remove null characters before writing
     return JSON.parse(
       new TextDecoder().decode(serializedMetadata).replace(/\0/g, "")
     );
   }
 
-  protected _dumpWrites(
+  protected async _dumpWrites(
     threadId: string,
     checkpointNs: string,
     checkpointId: string,
     taskId: string,
     writes: [string, unknown][]
-  ): [string, string, string, string, number, string, string, Uint8Array][] {
-    return writes.map(([channel, value], idx) => {
-      const [type, serializedValue] = this.serde.dumpsTyped(value);
-      return [
-        threadId,
-        checkpointNs,
-        checkpointId,
-        taskId,
-        WRITES_IDX_MAP[channel] ?? idx,
-        channel,
-        type,
-        new Uint8Array(serializedValue),
-      ];
-    });
+  ): Promise<
+    [string, string, string, string, number, string, string, Uint8Array][]
+  > {
+    return Promise.all(
+      writes.map(async ([channel, value], idx) => {
+        const [type, serializedValue] = await this.serde.dumpsTyped(value);
+        return [
+          threadId,
+          checkpointNs,
+          checkpointId,
+          taskId,
+          WRITES_IDX_MAP[channel] ?? idx,
+          channel,
+          type,
+          new Uint8Array(serializedValue),
+        ];
+      })
+    );
   }
 
   /**
@@ -505,7 +515,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     const textDecoder = new TextDecoder();
     const row = mutableRow;
 
-    const [enc, blob] = this.serde.dumpsTyped(
+    const [enc, blob] = await this.serde.dumpsTyped(
       await Promise.all(
         pendingSends.map(([enc, blob]) =>
           this.serde.loadsTyped(textDecoder.decode(enc), blob)
@@ -565,7 +575,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     const serializedCheckpoint = this._dumpCheckpoint(checkpoint);
     try {
       await client.query("BEGIN");
-      const serializedBlobs = this._dumpBlobs(
+      const serializedBlobs = await this._dumpBlobs(
         thread_id,
         checkpoint_ns,
         checkpoint.channel_values,
@@ -583,7 +593,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
         checkpoint.id,
         checkpoint_id,
         serializedCheckpoint,
-        this._dumpMetadata(metadata),
+        await this._dumpMetadata(metadata),
       ]);
       await client.query("COMMIT");
     } catch (e) {
@@ -612,7 +622,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
       ? this.SQL_STATEMENTS.UPSERT_CHECKPOINT_WRITES_SQL
       : this.SQL_STATEMENTS.INSERT_CHECKPOINT_WRITES_SQL;
 
-    const dumpedWrites = this._dumpWrites(
+    const dumpedWrites = await this._dumpWrites(
       config.configurable?.thread_id,
       config.configurable?.checkpoint_ns,
       config.configurable?.checkpoint_id,
