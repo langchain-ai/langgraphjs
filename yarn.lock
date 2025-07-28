@@ -1797,7 +1797,7 @@ __metadata:
     vitest: "npm:^3.1.2"
   peerDependencies:
     "@langchain/core": ">=0.2.31 <0.4.0"
-    "@langchain/langgraph-checkpoint": ~0.0.15
+    "@langchain/langgraph-checkpoint": ^0.1.0
   languageName: unknown
   linkType: soft
 
@@ -1829,7 +1829,7 @@ __metadata:
     vitest: "npm:^3.1.2"
   peerDependencies:
     "@langchain/core": ">=0.2.31 <0.4.0"
-    "@langchain/langgraph-checkpoint": ~0.0.15
+    "@langchain/langgraph-checkpoint": ^0.1.0
   languageName: unknown
   linkType: soft
 
@@ -1861,7 +1861,7 @@ __metadata:
     vitest: "npm:^3.1.2"
   peerDependencies:
     "@langchain/core": ">=0.2.31 <0.4.0"
-    "@langchain/langgraph-checkpoint": ~0.0.15
+    "@langchain/langgraph-checkpoint": ^0.1.0
   languageName: unknown
   linkType: soft
 
@@ -1902,7 +1902,7 @@ __metadata:
     zod: "npm:^3.23.8"
   peerDependencies:
     "@langchain/core": ">=0.2.31 <0.4.0"
-    "@langchain/langgraph-checkpoint": ~0.0.15
+    "@langchain/langgraph-checkpoint": ^0.1.0
   bin:
     validate-checkpointer: ./bin/cli.js
   languageName: unknown
@@ -2000,7 +2000,7 @@ __metadata:
     zod: "npm:^3.23.8"
   peerDependencies:
     "@langchain/core": ^0.3.43
-    "@langchain/langgraph": ^0.2.57 || ^0.3.0
+    "@langchain/langgraph": ^0.2.57 || ^0.3.0 || ^0.4.0
     "@langchain/openai": ">=0.5.1"
   languageName: unknown
   linkType: soft
@@ -2104,7 +2104,7 @@ __metadata:
     zod: "npm:^3.25.32"
   peerDependencies:
     "@langchain/core": ^0.3.58
-    "@langchain/langgraph": ^0.2.72 || ^0.3.0
+    "@langchain/langgraph": ^0.2.72 || ^0.3.0 || ^0.4.0
   languageName: unknown
   linkType: soft
 
@@ -2135,7 +2135,7 @@ __metadata:
     zod: "npm:^3.23.8"
   peerDependencies:
     "@langchain/core": ^0.3.40
-    "@langchain/langgraph": ^0.2.53 || ^0.3.0
+    "@langchain/langgraph": ^0.2.53 || ^0.3.0 || ^0.4.0
   languageName: unknown
   linkType: soft
 
