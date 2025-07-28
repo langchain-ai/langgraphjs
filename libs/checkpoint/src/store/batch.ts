@@ -106,7 +106,7 @@ export class AsyncBatchedStore extends BaseStore {
     } as PutOperation);
   }
 
-  async start(): Promise<void> {
+  start(): void {
     if (!this.running) {
       this.running = true;
       this.processingTask = this.processBatchQueue();
