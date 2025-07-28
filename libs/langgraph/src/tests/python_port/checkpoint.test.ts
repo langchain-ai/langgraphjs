@@ -102,11 +102,13 @@ class MemorySaverAssertCheckpointMetadata extends MemorySaver {
     }
 
     // Serialize checkpoint and merged metadata
-    const serializedCheckpoint = this.serde.dumpsTyped(checkpoint)[1];
-    const serializedMergedMetadata = this.serde.dumpsTyped({
-      ...configurable,
-      ...metadata,
-    })[1];
+    const serializedCheckpoint = (await this.serde.dumpsTyped(checkpoint))[1];
+    const serializedMergedMetadata = (
+      await this.serde.dumpsTyped({
+        ...configurable,
+        ...metadata,
+      })
+    )[1];
 
     // Store in the storage with merged metadata
     this.storage[threadId][checkpointNs][checkpoint.id] = [

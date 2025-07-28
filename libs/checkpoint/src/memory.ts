@@ -339,8 +339,12 @@ export class MemorySaver extends BaseCheckpointSaver {
       this.storage[threadId][checkpointNamespace] = {};
     }
 
-    const [, serializedCheckpoint] = this.serde.dumpsTyped(preparedCheckpoint);
-    const [, serializedMetadata] = this.serde.dumpsTyped(metadata);
+    const [[, serializedCheckpoint], [, serializedMetadata]] =
+      await Promise.all([
+        this.serde.dumpsTyped(preparedCheckpoint),
+        this.serde.dumpsTyped(metadata),
+      ]);
+
     this.storage[threadId][checkpointNamespace][checkpoint.id] = [
       serializedCheckpoint,
       serializedMetadata,
@@ -379,18 +383,21 @@ export class MemorySaver extends BaseCheckpointSaver {
     if (this.writes[outerKey] === undefined) {
       this.writes[outerKey] = {};
     }
-    writes.forEach(([channel, value], idx) => {
-      const [, serializedValue] = this.serde.dumpsTyped(value);
-      const innerKey: [string, number] = [
-        taskId,
-        WRITES_IDX_MAP[channel] || idx,
-      ];
-      const innerKeyStr = `${innerKey[0]},${innerKey[1]}`;
-      if (innerKey[1] >= 0 && outerWrites_ && innerKeyStr in outerWrites_) {
-        return;
-      }
-      this.writes[outerKey][innerKeyStr] = [taskId, channel, serializedValue];
-    });
+
+    await Promise.all(
+      writes.map(async ([channel, value], idx) => {
+        const [, serializedValue] = await this.serde.dumpsTyped(value);
+        const innerKey: [string, number] = [
+          taskId,
+          WRITES_IDX_MAP[channel] || idx,
+        ];
+        const innerKeyStr = `${innerKey[0]},${innerKey[1]}`;
+        if (innerKey[1] >= 0 && outerWrites_ && innerKeyStr in outerWrites_) {
+          return;
+        }
+        this.writes[outerKey][innerKeyStr] = [taskId, channel, serializedValue];
+      })
+    );
   }
 
   async deleteThread(threadId: string): Promise<void> {

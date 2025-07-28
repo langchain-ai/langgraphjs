@@ -347,7 +347,7 @@ export class MemorySaverAssertImmutable extends MemorySaver {
         ).toEqual(loaded);
       }
     }
-    const [, serializedCheckpoint] = this.serde.dumpsTyped(checkpoint);
+    const [, serializedCheckpoint] = await this.serde.dumpsTyped(checkpoint);
     // save a copy of the checkpoint
     this.storageForCopies[thread_id][checkpoint.id] = serializedCheckpoint;
 
