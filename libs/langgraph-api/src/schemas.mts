@@ -34,6 +34,7 @@ export const AssistantCreate = z
       .optional(),
     graph_id: z.string().describe("The graph to use."),
     config: AssistantConfig.optional(),
+    context: z.unknown().optional(),
     metadata: z
       .object({})
       .catchall(z.unknown())
@@ -50,6 +51,7 @@ export const AssistantPatch = z
   .object({
     graph_id: z.string().describe("The graph to use.").optional(),
     config: AssistantConfig.optional(),
+    context: z.unknown().optional(),
     name: z.string().optional(),
     metadata: z
       .object({})
@@ -98,6 +100,7 @@ export const CronCreate = z
       .describe("Metadata for the run.")
       .optional(),
     config: AssistantConfig.optional(),
+    context: z.unknown().optional(),
     webhook: z.string().optional(),
     interrupt_before: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
     interrupt_after: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
@@ -192,6 +195,7 @@ export const RunCreate = z
       .catchall(z.any())
       .describe("Metadata for the run.")
       .optional(),
+    context: z.unknown().optional(),
     config: AssistantConfig.optional(),
     webhook: z.string().optional(),
     interrupt_before: z.union([z.enum(["*"]), z.array(z.string())]).optional(),

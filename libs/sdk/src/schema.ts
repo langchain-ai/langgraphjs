@@ -76,6 +76,12 @@ export interface GraphSchema {
    * Missing if unable to generate JSON schema from graph.
    */
   config_schema?: JSONSchema7 | null | undefined;
+
+  /**
+   * The schema for the graph context.
+   * Missing if unable to generate JSON schema from graph.
+   */
+  context_schema?: JSONSchema7 | null | undefined;
 }
 
 export type Subgraphs = Record<string, GraphSchema>;

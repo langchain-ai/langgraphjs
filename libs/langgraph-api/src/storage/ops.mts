@@ -67,6 +67,7 @@ interface Assistant {
   updated_at: Date;
   version: number;
   config: RunnableConfig;
+  context: unknown;
   metadata: Metadata;
 }
 
@@ -75,6 +76,7 @@ interface AssistantVersion {
   version: number;
   graph_id: string;
   config: RunnableConfig;
+  context: unknown;
   metadata: Metadata;
   created_at: Date;
   name: string | undefined;
@@ -90,6 +92,7 @@ export interface RunKwargs {
   interrupt_after?: "*" | string[] | undefined;
 
   config?: RunnableConfig;
+  context?: unknown;
 
   subgraphs?: boolean;
   resumable?: boolean;
@@ -403,6 +406,7 @@ export class Assistants {
     assistant_id: string,
     options: {
       config: RunnableConfig;
+      context: unknown;
       graph_id: string;
       metadata?: Metadata;
       if_exists: OnConflictBehavior;
@@ -416,6 +420,7 @@ export class Assistants {
       {
         assistant_id,
         config: options.config,
+        context: options.context,
         graph_id: options.graph_id,
         metadata: options.metadata,
         if_exists: options.if_exists,
@@ -444,6 +449,7 @@ export class Assistants {
         assistant_id: assistant_id,
         version: 1,
         config: options.config ?? {},
+        context: options.context ?? {},
         created_at: now,
         updated_at: now,
         graph_id: options.graph_id,
@@ -456,6 +462,7 @@ export class Assistants {
         version: 1,
         graph_id: options.graph_id,
         config: options.config ?? {},
+        context: options.context ?? {},
         metadata: mutable.metadata ?? ({} as Metadata),
         created_at: now,
         name: options.name || options.graph_id,
@@ -469,6 +476,7 @@ export class Assistants {
     assistantId: string,
     options: {
       config?: RunnableConfig;
+      context?: unknown;
       graph_id?: string;
       metadata?: Metadata;
       name?: string;
@@ -515,6 +523,10 @@ export class Assistants {
         assistant["config"] = options?.config ?? assistant["config"];
       }
 
+      if (options?.context != null) {
+        assistant["context"] = options?.context ?? assistant["context"];
+      }
+
       if (options?.name != null) {
         assistant["name"] = options?.name ?? assistant["name"];
       }
@@ -539,6 +551,7 @@ export class Assistants {
         version: newVersion,
         graph_id: options?.graph_id ?? assistant["graph_id"],
         config: options?.config ?? assistant["config"],
+        context: options?.context ?? assistant["context"],
         name: options?.name ?? assistant["name"],
         metadata: metadata ?? assistant["metadata"],
         created_at: now,
@@ -1475,6 +1488,10 @@ export class Runs {
             { configurable },
             { metadata: mergedMetadata }
           ),
+          context:
+            typeof assistant.context !== "object" && assistant.context != null
+              ? assistant.context ?? kwargs.context
+              : Object.assign({}, assistant.context, kwargs.context),
         }),
         multitask_strategy: multitaskStrategy,
         created_at: new Date(now.valueOf() + afterSeconds * 1000),

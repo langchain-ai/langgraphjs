@@ -48,7 +48,7 @@ export async function registerFromEnv(
         graph_id: graphId,
       });
 
-      const config = envConfig?.[graphId];
+      const { context, ...config } = envConfig?.[graphId] ?? {};
       const { resolved, ...spec } = await resolveGraph(rawSpec, {
         cwd: options.cwd,
       });
@@ -62,7 +62,8 @@ export async function registerFromEnv(
         {
           graph_id: graphId,
           metadata: { created_by: "system" },
-          config: config ?? {},
+          config,
+          context,
           if_exists: "do_nothing",
           name: graphId,
         },

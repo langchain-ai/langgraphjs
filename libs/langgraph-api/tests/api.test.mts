@@ -2804,3 +2804,76 @@ it("tasks / checkpoints stream mode", async () => {
     },
   ]);
 });
+
+describe("runtime API", () => {
+  it("simple", async () => {
+    const assistant = await client.assistants.create({
+      graphId: "simple_runtime",
+    });
+    const thread = await client.threads.create();
+
+    expect(
+      await client.runs.wait(thread.thread_id, assistant.assistant_id, {
+        input: { messages: [{ role: "human", content: "input" }] },
+        context: { model: "openai" },
+      })
+    ).toEqual({ model: "openai" });
+  });
+
+  it("schema", async () => {
+    const assistant = await client.assistants.create({
+      graphId: "simple_runtime",
+    });
+
+    const schema = await client.assistants.getSchemas(assistant.assistant_id);
+
+    // From JS PoV `configSchema` and `contextSchema` are indistinguishable,
+    // thus we populate both fields.
+    expect.soft(schema).toMatchObject({
+      config_schema: {
+        type: "object",
+        properties: {
+          model: { type: "string", enum: ["anthropic", "openai"] },
+        },
+      },
+      context_schema: {
+        type: "object",
+        properties: {
+          model: { type: "string", enum: ["anthropic", "openai"] },
+        },
+      },
+    });
+  });
+
+  it("assistant crud", async () => {
+    const assistant = await client.assistants.create({
+      graphId: "simple_runtime",
+      context: { model: "anthropic" },
+    });
+
+    expect(
+      await client.runs.wait(null, assistant.assistant_id, {
+        input: { messages: [{ role: "human", content: "input" }] },
+      })
+    ).toEqual({ model: "anthropic" });
+
+    // patch to say openai
+    await client.assistants.update(assistant.assistant_id, {
+      context: { model: "openai" },
+    });
+
+    expect(
+      await client.runs.wait(null, assistant.assistant_id, {
+        input: { messages: [{ role: "human", content: "input" }] },
+      })
+    ).toEqual({ model: "openai" });
+  });
+
+  it("default from env", async () => {
+    expect(
+      await client.runs.wait(null, "simple_runtime", {
+        input: { messages: [{ role: "human", content: "input" }] },
+      })
+    ).toEqual({ model: "unknown" });
+  });
+});
