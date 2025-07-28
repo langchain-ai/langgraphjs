@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 0.0.53
+
+### Patch Changes
+
+- f1bcec7: Add support for Context API in in-memory dev server
+  - @langchain/langgraph-ui@0.0.53
+
 ## 0.0.52
 
 ### Patch Changes
