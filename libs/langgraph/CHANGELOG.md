@@ -1,5 +1,11 @@
 # @langchain/langgraph
 
+## 0.3.12
+
+### Patch Changes
+
+- 034730f: fix(langgraph): add support for new interrupt ID
+
 ## 0.3.11
 
 ### Patch Changes
