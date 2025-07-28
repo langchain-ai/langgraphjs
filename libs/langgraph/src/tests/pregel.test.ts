@@ -496,7 +496,7 @@ export function runPregelTests(
           undefined,
           true,
           undefined,
-          true,
+          "async",
         ];
 
         const expectedDefaults2 = [
@@ -511,7 +511,7 @@ export function runPregelTests(
           undefined,
           true,
           undefined,
-          true,
+          "async",
         ];
 
         expect(pregel._defaults(config1)).toEqual(expectedDefaults1);
@@ -3354,7 +3354,7 @@ graph TD;
       expect(
         await toolTwo.invoke(
           { my_key: "value ⛰️", market: "DE" },
-          { ...thread1, checkpointDuring: false }
+          { ...thread1, durability: "exit" }
         )
       ).toEqual({
         my_key: "value ⛰️",
@@ -6292,9 +6292,10 @@ graph TD;
   });
 
   describe.each([
-    [{ checkpointDuring: true }], // emit all checkpoint events
-    [{ checkpointDuring: false }], // only emit single checkpoint per run
-  ])("Subgraphs %s", ({ checkpointDuring }) => {
+    [{ durability: "async" as const }], // emit all checkpoint events
+    [{ durability: "sync" as const }], // emit all checkpoint events, save after every tick
+    [{ durability: "exit" as const }], // only emit single checkpoint per run
+  ])("Subgraphs %s", ({ durability }) => {
     test.each([
       [
         "nested graph interrupts parallel",
@@ -6387,7 +6388,7 @@ graph TD;
       const app = graph.compile({ checkpointer });
 
       // test invoke w/ nested interrupt
-      const config1 = { configurable: { thread_id: "1" }, checkpointDuring };
+      const config1 = { configurable: { thread_id: "1" }, durability };
       expect(await app.invoke({ myKey: "" }, config1)).toEqual({
         myKey: " and parallel",
         __interrupt__: [],
@@ -6401,7 +6402,7 @@ graph TD;
       // - outer_1 finishes before inner interrupts (because we see its output in stream, which only happens after node finishes)
       // - the writes of outer are persisted in 1st call and used in 2nd call, ie outer isn't called again (because we don't see outer_1 output again in 2nd stream)
       // test stream updates w/ nested interrupt
-      const config2 = { configurable: { thread_id: "2" }, checkpointDuring };
+      const config2 = { configurable: { thread_id: "2" }, durability };
 
       expect(
         await gatherIterator(
@@ -6429,7 +6430,7 @@ graph TD;
       const config3 = {
         configurable: { thread_id: "3" },
         streamMode: "values" as const,
-        checkpointDuring,
+        durability,
       };
       expect(
         await gatherIterator(await app.stream({ myKey: "" }, config3))
@@ -6452,7 +6453,7 @@ graph TD;
       const config4 = {
         configurable: { thread_id: "4" },
         streamMode: "values" as const,
-        checkpointDuring,
+        durability,
       };
       expect(
         await gatherIterator(appBefore.stream({ myKey: "" }, config4))
@@ -6477,7 +6478,7 @@ graph TD;
       const config5 = {
         configurable: { thread_id: "5" },
         streamMode: "values" as const,
-        checkpointDuring,
+        durability,
       };
       expect(
         await gatherIterator(appAfter.stream({ myKey: "" }, config5))
@@ -6560,7 +6561,7 @@ graph TD;
       const app = graph.compile({ checkpointer });
 
       // test invoke w/ nested interrupt
-      const config = { configurable: { thread_id: "1" }, checkpointDuring };
+      const config = { configurable: { thread_id: "1" }, durability };
       expect(await app.invoke({ myKey: "my value" }, config)).toEqual({
         myKey: "hi my value",
         __interrupt__: [],
@@ -6570,7 +6571,7 @@ graph TD;
       });
 
       // test stream updates w/ nested interrupt
-      const config2 = { configurable: { thread_id: "2" }, checkpointDuring };
+      const config2 = { configurable: { thread_id: "2" }, durability };
       expect(
         await gatherIterator(app.stream({ myKey: "my value" }, config2))
       ).toEqual([{ parent1: { myKey: "hi my value" } }, { [INTERRUPT]: [] }]);
@@ -6583,7 +6584,7 @@ graph TD;
       const config3 = {
         configurable: { thread_id: "3" },
         streamMode: "values" as const,
-        checkpointDuring,
+        durability,
       };
       expect(
         await gatherIterator(app.stream({ myKey: "my value" }, config3))
@@ -6637,7 +6638,7 @@ graph TD;
         .addEdge("inner", "outer2")
         .compile({ checkpointer });
 
-      const config = { configurable: { thread_id: "1" }, checkpointDuring };
+      const config = { configurable: { thread_id: "1" }, durability };
       await app.invoke({ myKey: "my value" }, config);
 
       // test state w/ nested subgraph state (right after interrupt)
@@ -6673,15 +6674,16 @@ graph TD;
           thread_id: "1",
         },
         createdAt: expect.any(String),
-        parentConfig: checkpointDuring
-          ? {
-              configurable: {
-                thread_id: "1",
-                checkpoint_ns: "",
-                checkpoint_id: expect.any(String),
-              },
-            }
-          : undefined,
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: "",
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
       });
 
       // now, getState with subgraphs state
@@ -6726,15 +6728,16 @@ graph TD;
                 step: 1,
               },
               createdAt: expect.any(String),
-              parentConfig: checkpointDuring
-                ? {
-                    configurable: {
-                      thread_id: "1",
-                      checkpoint_ns: expect.stringMatching(/^inner:/),
-                      checkpoint_id: expect.any(String),
-                    },
-                  }
-                : undefined,
+              parentConfig:
+                durability !== "exit"
+                  ? {
+                      configurable: {
+                        thread_id: "1",
+                        checkpoint_ns: expect.stringMatching(/^inner:/),
+                        checkpoint_id: expect.any(String),
+                      },
+                    }
+                  : undefined,
             },
           },
         ],
@@ -6753,15 +6756,16 @@ graph TD;
           step: 1,
         },
         createdAt: expect.any(String),
-        parentConfig: checkpointDuring
-          ? {
-              configurable: {
-                thread_id: "1",
-                checkpoint_ns: "",
-                checkpoint_id: expect.any(String),
-              },
-            }
-          : undefined,
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: "",
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
       });
 
       // getStateHistory returns outer graph checkpoints
@@ -6798,18 +6802,19 @@ graph TD;
               step: 1,
             },
             createdAt: expect.any(String),
-            parentConfig: checkpointDuring
-              ? {
-                  configurable: {
-                    thread_id: "1",
-                    checkpoint_ns: "",
-                    checkpoint_id: expect.any(String),
-                  },
-                }
-              : undefined,
+            parentConfig:
+              durability !== "exit"
+                ? {
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: "",
+                      checkpoint_id: expect.any(String),
+                    },
+                  }
+                : undefined,
           },
 
-          checkpointDuring && {
+          durability !== "exit" && {
             values: { myKey: "my value" },
             tasks: [
               {
@@ -6844,7 +6849,7 @@ graph TD;
             },
           },
 
-          checkpointDuring && {
+          durability !== "exit" && {
             values: {},
             tasks: [
               {
@@ -6900,15 +6905,16 @@ graph TD;
               parents: { "": expect.any(String) },
             },
             createdAt: expect.any(String),
-            parentConfig: checkpointDuring
-              ? {
-                  configurable: {
-                    thread_id: "1",
-                    checkpoint_ns: expect.stringMatching(/^inner:/),
-                    checkpoint_id: expect.any(String),
-                  },
-                }
-              : undefined,
+            parentConfig:
+              durability !== "exit"
+                ? {
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: expect.stringMatching(/^inner:/),
+                      checkpoint_id: expect.any(String),
+                    },
+                  }
+                : undefined,
             tasks: [
               {
                 id: expect.any(String),
@@ -6919,7 +6925,7 @@ graph TD;
             ],
           },
 
-          checkpointDuring && {
+          durability !== "exit" && {
             values: { myKey: "hi my value" },
             next: ["inner1"],
             config: {
@@ -6960,7 +6966,7 @@ graph TD;
             ],
           },
 
-          checkpointDuring && {
+          durability !== "exit" && {
             values: {},
             next: ["__start__"],
             config: {
@@ -7051,7 +7057,7 @@ graph TD;
             },
           },
         },
-        checkpointDuring && {
+        durability !== "exit" && {
           values: { myKey: "hi my value here and there" },
           tasks: [
             {
@@ -7099,9 +7105,10 @@ graph TD;
                   checkpoint_ns: expect.any(String),
                 },
               },
-              result: checkpointDuring
-                ? { myKey: "hi my value here and there" }
-                : undefined,
+              result:
+                durability !== "exit"
+                  ? { myKey: "hi my value here and there" }
+                  : undefined,
             },
           ],
           next: ["inner"],
@@ -7119,17 +7126,18 @@ graph TD;
             step: 1,
           },
           createdAt: expect.any(String),
-          parentConfig: checkpointDuring
-            ? {
-                configurable: {
-                  thread_id: "1",
-                  checkpoint_ns: "",
-                  checkpoint_id: expect.any(String),
-                },
-              }
-            : undefined,
+          parentConfig:
+            durability !== "exit"
+              ? {
+                  configurable: {
+                    thread_id: "1",
+                    checkpoint_ns: "",
+                    checkpoint_id: expect.any(String),
+                  },
+                }
+              : undefined,
         },
-        checkpointDuring && {
+        durability !== "exit" && {
           values: { myKey: "my value" },
           tasks: [
             {
@@ -7163,7 +7171,7 @@ graph TD;
             },
           },
         },
-        checkpointDuring && {
+        durability !== "exit" && {
           values: {},
           tasks: [
             {
@@ -7269,7 +7277,7 @@ graph TD;
       expect(
         await app.invoke([2, 3], {
           configurable: { thread_id: "1" },
-          checkpointDuring,
+          durability,
         })
       ).toBe(27);
 
@@ -7279,7 +7287,7 @@ graph TD;
       expect(
         await app.invoke([2, 3], {
           configurable: { thread_id: "1" },
-          checkpointDuring,
+          durability,
         })
       ).toBe(27);
     });
@@ -7344,7 +7352,7 @@ graph TD;
       const app = graph.compile({ checkpointer });
 
       // test invoke w/ nested interrupt
-      const config = { configurable: { thread_id: "1" }, checkpointDuring };
+      const config = { configurable: { thread_id: "1" }, durability };
       expect(
         await gatherIterator(
           app.stream({ myKey: "my value" }, { ...config, subgraphs: true })
@@ -7391,15 +7399,16 @@ graph TD;
           thread_id: "1",
         },
         createdAt: expect.any(String),
-        parentConfig: checkpointDuring
-          ? {
-              configurable: {
-                thread_id: "1",
-                checkpoint_ns: "",
-                checkpoint_id: expect.any(String),
-              },
-            }
-          : undefined,
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: "",
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
       });
       const childState = await app.getState(
         outerState.tasks[0].state as RunnableConfig
@@ -7449,15 +7458,16 @@ graph TD;
           step: 1,
         },
         createdAt: expect.any(String),
-        parentConfig: checkpointDuring
-          ? {
-              configurable: {
-                thread_id: "1",
-                checkpoint_ns: expect.any(String),
-                checkpoint_id: expect.any(String),
-              },
-            }
-          : undefined,
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: expect.any(String),
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
       });
 
       // get state with subgraphs
@@ -7507,15 +7517,16 @@ graph TD;
                       thread_id: "1",
                     },
                     createdAt: expect.any(String),
-                    parentConfig: checkpointDuring
-                      ? {
-                          configurable: {
-                            thread_id: "1",
-                            checkpoint_ns: expect.any(String),
-                            checkpoint_id: expect.any(String),
-                          },
-                        }
-                      : undefined,
+                    parentConfig:
+                      durability !== "exit"
+                        ? {
+                            configurable: {
+                              thread_id: "1",
+                              checkpoint_ns: expect.any(String),
+                              checkpoint_id: expect.any(String),
+                            },
+                          }
+                        : undefined,
                   },
                 },
               ],
@@ -7537,15 +7548,16 @@ graph TD;
                 step: 0,
               },
               createdAt: expect.any(String),
-              parentConfig: checkpointDuring
-                ? {
-                    configurable: {
-                      thread_id: "1",
-                      checkpoint_ns: expect.stringMatching(/^child:/),
-                      checkpoint_id: expect.any(String),
-                    },
-                  }
-                : undefined,
+              parentConfig:
+                durability !== "exit"
+                  ? {
+                      configurable: {
+                        thread_id: "1",
+                        checkpoint_ns: expect.stringMatching(/^child:/),
+                        checkpoint_id: expect.any(String),
+                      },
+                    }
+                  : undefined,
             },
           },
         ],
@@ -7564,15 +7576,16 @@ graph TD;
           step: 1,
         },
         createdAt: expect.any(String),
-        parentConfig: checkpointDuring
-          ? {
-              configurable: {
-                thread_id: "1",
-                checkpoint_ns: "",
-                checkpoint_id: expect.any(String),
-              },
-            }
-          : undefined,
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: "",
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
       });
 
       // resume
@@ -7656,7 +7669,7 @@ graph TD;
               },
             },
           },
-          checkpointDuring && {
+          durability !== "exit" && {
             values: { myKey: "hi my value here and there" },
             next: ["parent2"],
             config: {
@@ -7705,9 +7718,10 @@ graph TD;
                     checkpoint_ns: expect.stringContaining("child"),
                   },
                 },
-                result: checkpointDuring
-                  ? { myKey: "hi my value here and there" }
-                  : undefined,
+                result:
+                  durability !== "exit"
+                    ? { myKey: "hi my value here and there" }
+                    : undefined,
               },
             ],
             next: ["child"],
@@ -7725,18 +7739,19 @@ graph TD;
               step: 1,
             },
             createdAt: expect.any(String),
-            parentConfig: checkpointDuring
-              ? {
-                  configurable: {
-                    thread_id: "1",
-                    checkpoint_ns: "",
-                    checkpoint_id: expect.any(String),
-                  },
-                }
-              : undefined,
+            parentConfig:
+              durability !== "exit"
+                ? {
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: "",
+                      checkpoint_id: expect.any(String),
+                    },
+                  }
+                : undefined,
           },
 
-          checkpointDuring && {
+          durability !== "exit" && {
             values: { myKey: "my value" },
             next: ["parent1"],
             config: {
@@ -7771,7 +7786,7 @@ graph TD;
             ],
           },
 
-          checkpointDuring && {
+          durability !== "exit" && {
             values: {},
             next: ["__start__"],
             config: {
@@ -7804,14 +7819,14 @@ graph TD;
       // get child graph history
       const childHistory = await gatherIterator(
         app.getStateHistory(
-          outerHistory[checkpointDuring ? 2 : 1].tasks[0]
+          outerHistory[durability !== "exit" ? 2 : 1].tasks[0]
             .state as RunnableConfig
         )
       );
 
       expect(childHistory).toEqual(
         [
-          checkpointDuring && {
+          durability !== "exit" && {
             values: { myKey: "hi my value here and there" },
             next: [],
             config: {
@@ -7861,15 +7876,16 @@ graph TD;
               parents: { "": expect.any(String) },
             },
             createdAt: expect.any(String),
-            parentConfig: checkpointDuring
-              ? {
-                  configurable: {
-                    thread_id: "1",
-                    checkpoint_ns: expect.stringContaining("child:"),
-                    checkpoint_id: expect.any(String),
-                  },
-                }
-              : undefined,
+            parentConfig:
+              durability !== "exit"
+                ? {
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: expect.stringContaining("child:"),
+                      checkpoint_id: expect.any(String),
+                    },
+                  }
+                : undefined,
             tasks: [
               {
                 id: expect.any(String),
@@ -7882,13 +7898,14 @@ graph TD;
                     checkpoint_ns: expect.stringContaining("child:"),
                   },
                 },
-                result: checkpointDuring
-                  ? { myKey: "hi my value here and there" }
-                  : undefined,
+                result:
+                  durability !== "exit"
+                    ? { myKey: "hi my value here and there" }
+                    : undefined,
               },
             ],
           },
-          checkpointDuring && {
+          durability !== "exit" && {
             values: {},
             next: ["__start__"],
             config: {
@@ -7924,13 +7941,13 @@ graph TD;
       // get grandchild graph history
       const grandchildHistory = await gatherIterator(
         app.getStateHistory(
-          childHistory[checkpointDuring ? 1 : 0].tasks[0]
+          childHistory[durability !== "exit" ? 1 : 0].tasks[0]
             .state as RunnableConfig
         )
       );
       expect(grandchildHistory).toEqual(
         [
-          checkpointDuring && {
+          durability !== "exit" && {
             values: { myKey: "hi my value here and there" },
             next: [],
             config: {
@@ -7984,29 +8001,31 @@ graph TD;
               }),
             },
             createdAt: expect.any(String),
-            parentConfig: checkpointDuring
-              ? {
-                  configurable: {
-                    thread_id: "1",
-                    checkpoint_ns: expect.any(String),
-                    checkpoint_id: expect.any(String),
-                  },
-                }
-              : undefined,
+            parentConfig:
+              durability !== "exit"
+                ? {
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: expect.any(String),
+                      checkpoint_id: expect.any(String),
+                    },
+                  }
+                : undefined,
             tasks: [
               {
                 id: expect.any(String),
                 name: "grandchild2",
                 path: [PULL, "grandchild2"],
                 interrupts: [],
-                result: checkpointDuring
-                  ? { myKey: "hi my value here and there" }
-                  : undefined,
+                result:
+                  durability !== "exit"
+                    ? { myKey: "hi my value here and there" }
+                    : undefined,
               },
             ],
           },
 
-          checkpointDuring && {
+          durability !== "exit" && {
             values: { myKey: "hi my value" },
             next: ["grandchild1"],
             config: {
@@ -8046,7 +8065,7 @@ graph TD;
             ],
           },
 
-          checkpointDuring && {
+          durability !== "exit" && {
             values: {},
             next: ["__start__"],
             config: {
@@ -8082,12 +8101,12 @@ graph TD;
       );
 
       // replay grandchild checkpoint
-      // only applicable if checkpointDuring is true
-      if (checkpointDuring) {
+      // only applicable if `durability` is `async` or `sync`
+      if (durability !== "exit") {
         const events = await gatherIterator(
           app.stream(null, {
-            ...grandchildHistory[checkpointDuring ? 2 : 1].config,
-            checkpointDuring,
+            ...grandchildHistory[2].config,
+            durability,
             subgraphs: true,
           })
         );
@@ -8143,7 +8162,7 @@ graph TD;
         );
 
       const graph = builder.compile({ checkpointer });
-      const config = { configurable: { thread_id: "1" }, checkpointDuring };
+      const config = { configurable: { thread_id: "1" }, durability };
       const tracer = new FakeTracer();
 
       // invoke and pause at nested interrupt
@@ -8206,15 +8225,16 @@ graph TD;
           thread_id: "1",
         },
         createdAt: expect.any(String),
-        parentConfig: checkpointDuring
-          ? {
-              configurable: {
-                thread_id: "1",
-                checkpoint_ns: "",
-                checkpoint_id: expect.any(String),
-              },
-            }
-          : undefined,
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: "",
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
       });
 
       // check state of each of the inner tasks
@@ -8240,15 +8260,16 @@ graph TD;
           thread_id: "1",
         },
         createdAt: expect.any(String),
-        parentConfig: checkpointDuring
-          ? {
-              configurable: {
-                thread_id: "1",
-                checkpoint_ns: expect.stringContaining("generateJoke:"),
-                checkpoint_id: expect.any(String),
-              },
-            }
-          : undefined,
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: expect.stringContaining("generateJoke:"),
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
         tasks: [
           {
             id: expect.any(String),
@@ -8281,15 +8302,16 @@ graph TD;
           parents: { "": expect.any(String) },
         },
         createdAt: expect.any(String),
-        parentConfig: checkpointDuring
-          ? {
-              configurable: {
-                thread_id: "1",
-                checkpoint_ns: expect.stringContaining("generateJoke:"),
-                checkpoint_id: expect.any(String),
-              },
-            }
-          : undefined,
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: expect.stringContaining("generateJoke:"),
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
         tasks: [
           {
             id: expect.any(String),
@@ -8395,9 +8417,10 @@ graph TD;
                   checkpoint_ns: expect.stringContaining("generateJoke:"),
                 },
               },
-              result: checkpointDuring
-                ? { jokes: ["Joke about cats - hohoho"] }
-                : undefined,
+              result:
+                durability !== "exit"
+                  ? { jokes: ["Joke about cats - hohoho"] }
+                  : undefined,
             },
             {
               id: expect.any(String),
@@ -8410,9 +8433,10 @@ graph TD;
                   checkpoint_ns: expect.stringContaining("generateJoke:"),
                 },
               },
-              result: checkpointDuring
-                ? { jokes: ["Joke about turtles - hohoho"] }
-                : undefined,
+              result:
+                durability !== "exit"
+                  ? { jokes: ["Joke about turtles - hohoho"] }
+                  : undefined,
             },
           ],
           next: ["generateJoke", "generateJoke"],
@@ -8430,17 +8454,18 @@ graph TD;
             thread_id: "1",
           },
           createdAt: expect.any(String),
-          parentConfig: checkpointDuring
-            ? {
-                configurable: {
-                  thread_id: "1",
-                  checkpoint_ns: "",
-                  checkpoint_id: expect.any(String),
-                },
-              }
-            : undefined,
+          parentConfig:
+            durability !== "exit"
+              ? {
+                  configurable: {
+                    thread_id: "1",
+                    checkpoint_ns: "",
+                    checkpoint_id: expect.any(String),
+                  },
+                }
+              : undefined,
         },
-        checkpointDuring && {
+        durability !== "exit" && {
           values: { jokes: [] },
           tasks: [
             {
@@ -8502,7 +8527,7 @@ graph TD;
 
       // First chunk from subgraph (buffered on initial await) should be streamed immediately
       const stream = await Promise.race([
-        graph.stream({}, { subgraphs: true, checkpointDuring }),
+        graph.stream({}, { subgraphs: true, durability }),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("Timed out.")), 100)
         ),
@@ -8572,7 +8597,7 @@ graph TD;
 
       const result = await mainGraph.invoke(
         { uniqueStrings: [] },
-        { checkpointDuring }
+        { durability }
       );
       expect(result).toEqual({
         uniqueStrings: ["foo", "bar", "baz"],
@@ -8616,7 +8641,7 @@ graph TD;
             { myKey: "" },
             {
               configurable: { thread_id: "1" },
-              checkpointDuring,
+              durability,
               subgraphs: true,
             }
           )
@@ -8688,7 +8713,7 @@ graph TD;
               },
             },
           },
-          checkpointDuring && {
+          durability !== "exit" && {
             values: {
               myKey: " got here and there got here and there got here",
               myOtherKey: " got here and there got here and there",
@@ -8729,7 +8754,7 @@ graph TD;
               },
             },
           },
-          checkpointDuring && {
+          durability !== "exit" && {
             values: {
               myKey: " got here and there got here and there",
               myOtherKey: "",
@@ -8773,7 +8798,7 @@ graph TD;
               },
             },
           },
-          checkpointDuring && {
+          durability !== "exit" && {
             values: { myKey: " got here and there", myOtherKey: "" },
             next: ["__start__"],
             tasks: [
@@ -8833,17 +8858,18 @@ graph TD;
               },
             },
             createdAt: expect.any(String),
-            parentConfig: checkpointDuring
-              ? {
-                  configurable: {
-                    thread_id: "1",
-                    checkpoint_ns: "inner",
-                    checkpoint_id: expect.any(String),
-                  },
-                }
-              : undefined,
+            parentConfig:
+              durability !== "exit"
+                ? {
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: "inner",
+                      checkpoint_id: expect.any(String),
+                    },
+                  }
+                : undefined,
           },
-          checkpointDuring && {
+          durability !== "exit" && {
             values: { myKey: " got here", myOtherKey: "" },
             next: ["inner_2"],
             tasks: [
@@ -8881,7 +8907,7 @@ graph TD;
               },
             },
           },
-          checkpointDuring && {
+          durability !== "exit" && {
             values: { myKey: "" },
             next: ["inner_1"],
             tasks: [
@@ -8919,7 +8945,7 @@ graph TD;
               },
             },
           },
-          checkpointDuring && {
+          durability !== "exit" && {
             values: {},
             next: ["__start__"],
             tasks: [
@@ -8995,7 +9021,7 @@ graph TD;
         .addEdge("reasoning_subgraph", END);
 
       const minimalMainGraph = mainWorkflow.compile({ store, checkpointer });
-      const config = { configurable: { thread_id: "1" }, checkpointDuring };
+      const config = { configurable: { thread_id: "1" }, durability };
 
       // Expect the invocation to pass
       const result = await minimalMainGraph.invoke({ query: "test" }, config);
@@ -9033,7 +9059,7 @@ graph TD;
       expect(
         await graph.invoke(
           { messages: ["input"] },
-          { configurable: { thread_id: "1" }, checkpointDuring }
+          { configurable: { thread_id: "1" }, durability }
         )
       ).toEqual({
         messages: [new _AnyIdHumanMessage("input")],
@@ -10853,9 +10879,10 @@ graph TD;
   });
 
   it.each([
-    [{ checkpointDuring: true }], // emit all checkpoints
-    [{ checkpointDuring: false }], // emit only on finish
-  ])("update as input %s", async ({ checkpointDuring }) => {
+    [{ durability: "async" as const }], // emit all checkpoints
+    [{ durability: "sync" as const }], // emit all checkpoints, save after every tick
+    [{ durability: "exit" as const }], // emit only on finish
+  ])("update as input %s", async ({ durability }) => {
     const checkpointer = await createCheckpointer();
     const graph = new StateGraph(Annotation.Root({ foo: Annotation<string> }))
       .addNode("agent", () => ({ foo: "agent" }))
@@ -10867,14 +10894,14 @@ graph TD;
     expect(
       await graph.invoke(
         { foo: "input" },
-        { configurable: { thread_id: "1" }, checkpointDuring }
+        { configurable: { thread_id: "1" }, durability }
       )
     ).toEqual({ foo: "tool" });
 
     expect(
       await graph.invoke(
         { foo: "input" },
-        { configurable: { thread_id: "1" }, checkpointDuring }
+        { configurable: { thread_id: "1" }, durability }
       )
     ).toEqual({ foo: "tool" });
 
@@ -10911,7 +10938,7 @@ graph TD;
     });
 
     const actual = newHistory.map(mapSnapshot);
-    if (checkpointDuring) {
+    if (durability !== "exit") {
       expect(actual).toMatchObject(history.map(mapSnapshot));
     } else {
       expect([actual[0], actual[4]]).toMatchObject(history.map(mapSnapshot));
@@ -11740,9 +11767,10 @@ graph TD;
   });
 
   it.each([
-    [{ checkpointDuring: true }], // emit all checkpoints
-    [{ checkpointDuring: false }], // emit only on finish
-  ])("checkpoint recovery async %s", async ({ checkpointDuring }) => {
+    [{ durability: "async" as const }], // emit all checkpoints
+    [{ durability: "sync" as const }], // emit all checkpoints, save after every tick
+    [{ durability: "exit" as const }], // emit only on finish
+  ])("checkpoint recovery async %s", async ({ durability }) => {
     const checkpointer = await createCheckpointer();
     const State = Annotation.Root({
       steps: Annotation<string[]>({
@@ -11768,7 +11796,7 @@ graph TD;
       .addEdge("__start__", "node1")
       .compile({ checkpointer });
 
-    const config = { configurable: { thread_id: "1" }, checkpointDuring };
+    const config = { configurable: { thread_id: "1" }, durability };
 
     // first attempt should fail
     await expect(
@@ -11798,7 +11826,7 @@ graph TD;
     const history = await gatherIterator(graph.getStateHistory(config));
 
     expect(history.map(mapSnapshot)).toEqual(
-      checkpointDuring
+      durability !== "exit"
         ? [
             {
               source: "loop",
