@@ -23,9 +23,10 @@ import {
   createCheckpoint,
   emptyChannels,
 } from "../channels/base.js";
-import {
+import type {
   Call,
-  type CallTaskPath,
+  CallTaskPath,
+  Durability,
   PregelExecutableTask,
   PregelScratchpad,
   StreamMode,
@@ -106,7 +107,7 @@ export type PregelLoopInitializeParams = {
   cache?: BaseCache<PendingWrite<string>[]>;
   interruptAfter: string[] | All;
   interruptBefore: string[] | All;
-  checkpointDuring: boolean;
+  durability: Durability;
   manager?: CallbackManagerForChainRun;
   debug: boolean;
   triggerToNodes: Record<string, string[]>;
@@ -138,7 +139,7 @@ type PregelLoopParams = {
   prevCheckpointConfig: RunnableConfig | undefined;
   interruptAfter: string[] | All;
   interruptBefore: string[] | All;
-  checkpointDuring: boolean;
+  durability: Durability;
   debug: boolean;
   triggerToNodes: Record<string, string[]>;
 };
@@ -241,7 +242,7 @@ export class PregelLoop {
 
   protected stop: number;
 
-  protected checkpointDuring: boolean;
+  protected durability: Durability;
 
   protected outputKeys: string | string[];
 
@@ -354,7 +355,7 @@ export class PregelLoop {
     this.prevCheckpointConfig = params.prevCheckpointConfig;
     this.interruptAfter = params.interruptAfter;
     this.interruptBefore = params.interruptBefore;
-    this.checkpointDuring = params.checkpointDuring;
+    this.durability = params.durability;
     this.debug = params.debug;
     this.triggerToNodes = params.triggerToNodes;
   }
@@ -482,7 +483,7 @@ export class PregelLoop {
       cache: params.cache,
       interruptAfter: params.interruptAfter,
       interruptBefore: params.interruptBefore,
-      checkpointDuring: params.checkpointDuring,
+      durability: params.durability,
       debug: params.debug,
       triggerToNodes: params.triggerToNodes,
     });
@@ -538,7 +539,7 @@ export class PregelLoop {
       [CONFIG_KEY_CHECKPOINT_ID]: this.checkpoint.id,
     });
 
-    if (this.checkpointDuring && this.checkpointer != null) {
+    if (this.durability !== "exit" && this.checkpointer != null) {
       this.checkpointerPromises.push(
         this.checkpointer.putWrites(config, writesCopy, taskId)
       );
@@ -815,7 +816,7 @@ export class PregelLoop {
   async finishAndHandleError(error?: Error) {
     // persist current checkpoint and writes
     if (
-      !this.checkpointDuring &&
+      this.durability === "exit" &&
       // if it's a top graph
       (!this.isNested ||
         // or a nested graph with error or interrupt
@@ -1124,7 +1125,7 @@ export class PregelLoop {
     const exiting = this.checkpointMetadata === inputMetadata;
 
     const doCheckpoint =
-      this.checkpointer != null && (this.checkpointDuring || exiting);
+      this.checkpointer != null && (this.durability !== "exit" || exiting);
 
     const storeCheckpoint = (checkpoint: Checkpoint) => {
       // store the previous checkpoint config for debug events

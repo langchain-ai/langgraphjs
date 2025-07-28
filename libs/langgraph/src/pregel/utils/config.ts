@@ -27,6 +27,7 @@ const CONFIG_KEYS = [
   "interruptBefore",
   "interruptAfter",
   "checkpointDuring",
+  "durability",
   "signal",
 ];
 

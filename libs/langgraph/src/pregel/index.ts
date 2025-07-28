@@ -53,7 +53,7 @@ import {
   isInterrupted,
   NULL_TASK_ID,
   PUSH,
-  CONFIG_KEY_CHECKPOINT_DURING,
+  CONFIG_KEY_DURABILITY,
   CONFIG_KEY_CHECKPOINT_NS,
   type CommandInstance,
   TASKS,
@@ -87,7 +87,8 @@ import {
   IterableReadableStreamWithAbortSignal,
   IterableReadableWritableStream,
 } from "./stream.js";
-import {
+import type {
+  Durability,
   GetStateOptions,
   MultipleChannelSubscriptionOptions,
   PregelExecutableTask,
@@ -99,7 +100,7 @@ import {
   SingleChannelSubscriptionOptions,
   StateSnapshot,
   StreamMode,
-  type StreamOutputMap,
+  StreamOutputMap,
 } from "./types.js";
 import {
   ensureLangGraphConfig,
@@ -1693,7 +1694,7 @@ export class Pregel<
     BaseStore | undefined, // store
     boolean, // stream mode single
     BaseCache | undefined, // node cache
-    boolean // checkpoint during
+    Durability // durability
   ] {
     const {
       debug,
@@ -1757,10 +1758,24 @@ export class Pregel<
     }
     const defaultStore: BaseStore | undefined = config.store ?? this.store;
     const defaultCache: BaseCache | undefined = config.cache ?? this.cache;
-    const defaultCheckpointDuring =
-      config.checkpointDuring ??
-      config?.configurable?.[CONFIG_KEY_CHECKPOINT_DURING] ??
-      true;
+
+    if (config.durability != null && config.checkpointDuring != null) {
+      throw new Error(
+        "Cannot use both `durability` and `checkpointDuring` at the same time."
+      );
+    }
+
+    const checkpointDuringDurability: Durability | undefined = (() => {
+      if (config.checkpointDuring == null) return undefined;
+      if (config.checkpointDuring === false) return "exit";
+      return "async";
+    })();
+
+    const defaultDurability: Durability =
+      config.durability ??
+      checkpointDuringDurability ??
+      config?.configurable?.[CONFIG_KEY_DURABILITY] ??
+      "async";
 
     return [
       defaultDebug,
@@ -1774,7 +1789,7 @@ export class Pregel<
       defaultStore,
       streamModeSingle,
       defaultCache,
-      defaultCheckpointDuring,
+      defaultDurability,
     ];
   }
 
@@ -1956,7 +1971,7 @@ export class Pregel<
       store,
       streamModeSingle,
       cache,
-      checkpointDuring,
+      durability,
     ] = this._defaults(restConfig);
 
     // At entrypoint, `configurable` is an alias for `context`.
@@ -2049,7 +2064,7 @@ export class Pregel<
           manager: runManager,
           debug: this.debug,
           triggerToNodes: this.triggerToNodes,
-          checkpointDuring,
+          durability,
         });
 
         const runner = new PregelRunner({
@@ -2064,6 +2079,11 @@ export class Pregel<
           };
         }
         await this._runLoop({ loop, runner, debug, config });
+
+        // wait for checkpoints to be persisted
+        if (durability === "sync") {
+          await Promise.all(loop?.checkpointerPromises ?? []);
+        }
       } catch (e) {
         loopError = e;
       } finally {

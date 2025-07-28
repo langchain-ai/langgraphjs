@@ -24,7 +24,7 @@ export const CONFIG_KEY_RESUME_MAP = "__pregel_resume_map";
 export const CONFIG_KEY_SCRATCHPAD = "__pregel_scratchpad";
 /** config key containing state from previous invocation of graph for the given thread */
 export const CONFIG_KEY_PREVIOUS_STATE = "__pregel_previous";
-export const CONFIG_KEY_CHECKPOINT_DURING = "__pregel_checkpoint_during";
+export const CONFIG_KEY_DURABILITY = "__pregel_durability";
 export const CONFIG_KEY_CHECKPOINT_ID = "checkpoint_id";
 export const CONFIG_KEY_CHECKPOINT_NS = "checkpoint_ns";
 
@@ -71,6 +71,7 @@ export const RESERVED = [
   CONFIG_KEY_SEND,
   CONFIG_KEY_READ,
   CONFIG_KEY_CHECKPOINTER,
+  CONFIG_KEY_DURABILITY,
   CONFIG_KEY_STREAM,
   CONFIG_KEY_RESUMING,
   CONFIG_KEY_TASK_ID,
