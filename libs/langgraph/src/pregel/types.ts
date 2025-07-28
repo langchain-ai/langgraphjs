@@ -29,6 +29,8 @@ export type StreamMode =
   | "tasks"
   | "custom";
 
+export type Durability = "exit" | "async" | "sync";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PregelInputType = any;
 
@@ -279,8 +281,18 @@ export interface PregelOptions<
   /**
    * Whether to checkpoint intermediate steps, defaults to `true`.
    * If `false`, only the final checkpoint is saved.
+   * @deprecated Use `durability` instead.
    */
   checkpointDuring?: boolean;
+
+  /**
+   * Whether to checkpoint during the run (or only at the end/interruption).
+   * - `"async"`: Save checkpoint asynchronously while the next step executes (default).
+   * - `"sync"`: Save checkpoint synchronously before the next step starts.
+   * - `"exit"`: Save checkpoint only when the graph exits.
+   * @default "async"
+   */
+  durability?: Durability;
 
   /**
    * A shared value store that allows you to store and retrieve state across
