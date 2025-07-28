@@ -584,13 +584,13 @@ export async function dumpDebugStream<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
+  ContextType extends Record<string, any> = StrRecord<string, any>,
   InputType = PregelInputType,
   OutputType = PregelOutputType
 >(
-  graph: Pregel<Nn, Cc, ConfigurableFieldType, InputType, OutputType>,
+  graph: Pregel<Nn, Cc, ContextType, InputType, OutputType>,
   input: InputType,
-  config: LangGraphRunnableConfig<ConfigurableFieldType>
+  config: LangGraphRunnableConfig<ContextType>
 ) {
   console.log(`invoking ${graph.name} with arguments ${JSON.stringify(input)}`);
   const stream = await graph.stream(input, {

@@ -2833,13 +2833,13 @@ describe("runtime API", () => {
       config_schema: {
         type: "object",
         properties: {
-          model: { type: "string", enum: ["anthropic", "openai"] },
+          model: { type: "string", enum: ["anthropic", "openai", "unknown"] },
         },
       },
       context_schema: {
         type: "object",
         properties: {
-          model: { type: "string", enum: ["anthropic", "openai"] },
+          model: { type: "string", enum: ["anthropic", "openai", "unknown"] },
         },
       },
     });
