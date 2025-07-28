@@ -537,7 +537,9 @@ describe("PostgresStore Error Handling", () => {
         query: "test query",
         mode: "hybrid",
       })
-    ).rejects.toThrow(/Hybrid search requested but vector search not configured/);
+    ).rejects.toThrow(
+      /Hybrid search requested but vector search not configured/
+    );
   });
 
   it("should handle unknown search mode", async () => {
@@ -1371,13 +1373,13 @@ describe("PostgresStore Migration System", () => {
   it("should properly track and apply store migrations", async () => {
     // Create store without vector indexing
     store = PostgresStore.fromConnString(dbConnectionString, {
-      schema: "migration_test"
+      schema: "migration_test",
     });
     testStores.push(store);
-    
+
     // First setup should create migration table and apply all migrations
     await store.setup();
-    
+
     // Verify migration table exists and has correct entries
     const pool = new Pool({ connectionString: dbConnectionString });
     const client = await pool.connect();
@@ -1385,11 +1387,11 @@ describe("PostgresStore Migration System", () => {
       const result = await client.query(
         `SELECT v FROM migration_test.store_migrations ORDER BY v`
       );
-      
+
       // Should have exactly 4 migrations for basic store setup (migrations table, main table, indexes, trigger)
       expect(result.rows.length).toBe(4);
-      expect(result.rows.map(r => r.v)).toEqual([0, 1, 2, 3]);
-      
+      expect(result.rows.map((r) => r.v)).toEqual([0, 1, 2, 3]);
+
       // Verify main tables were created
       const tablesResult = await client.query(`
         SELECT table_name 
@@ -1398,15 +1400,17 @@ describe("PostgresStore Migration System", () => {
         AND table_name IN ('store', 'store_migrations')
         ORDER BY table_name
       `);
-      expect(tablesResult.rows.map(r => r.table_name)).toEqual(['store', 'store_migrations']);
-      
+      expect(tablesResult.rows.map((r) => r.table_name)).toEqual([
+        "store",
+        "store_migrations",
+      ]);
+
       // Re-running setup should not create duplicate migrations
       await store.setup();
       const result2 = await client.query(
         `SELECT v FROM migration_test.store_migrations ORDER BY v`
       );
       expect(result2.rows.length).toBe(4); // Should still be 4, no duplicates
-      
     } finally {
       client.release();
       await pool.end();
@@ -1428,9 +1432,9 @@ describe("PostgresStore Migration System", () => {
       },
     });
     testStores.push(storeWithVectors);
-    
+
     await storeWithVectors.setup();
-    
+
     // Verify migration table and vector migrations
     const pool = new Pool({ connectionString: dbConnectionString });
     const client = await pool.connect();
@@ -1438,11 +1442,11 @@ describe("PostgresStore Migration System", () => {
       const result = await client.query(
         `SELECT v FROM vector_migration_test.store_migrations ORDER BY v`
       );
-      
+
       // Should have 7 migrations: 4 basic + 3 vector (extension + table + index)
       expect(result.rows.length).toBe(7);
-      expect(result.rows.map(r => r.v)).toEqual([0, 1, 2, 3, 4, 5, 6]);
-      
+      expect(result.rows.map((r) => r.v)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+
       // Verify vector table was created
       const tablesResult = await client.query(`
         SELECT table_name 
@@ -1451,8 +1455,12 @@ describe("PostgresStore Migration System", () => {
         AND table_name IN ('store', 'store_vectors', 'store_migrations')
         ORDER BY table_name
       `);
-      expect(tablesResult.rows.map(r => r.table_name)).toEqual(['store', 'store_migrations', 'store_vectors']);
-      
+      expect(tablesResult.rows.map((r) => r.table_name)).toEqual([
+        "store",
+        "store_migrations",
+        "store_vectors",
+      ]);
+
       // Verify vector index was created
       const indexResult = await client.query(`
         SELECT indexname 
@@ -1461,7 +1469,6 @@ describe("PostgresStore Migration System", () => {
         AND indexname LIKE 'idx_store_vectors_embedding_%'
       `);
       expect(indexResult.rows.length).toBeGreaterThan(0);
-      
     } finally {
       client.release();
       await pool.end();
@@ -1471,13 +1478,13 @@ describe("PostgresStore Migration System", () => {
   it("should handle migration failures gracefully", async () => {
     // Create store
     store = PostgresStore.fromConnString(dbConnectionString, {
-      schema: "failure_test"
+      schema: "failure_test",
     });
     testStores.push(store);
-    
+
     // First setup should work
     await store.setup();
-    
+
     // Verify basic functionality works after migration
     await store.put(["test"], "key1", { data: "value1" });
     const item = await store.get(["test"], "key1");
@@ -1487,16 +1494,16 @@ describe("PostgresStore Migration System", () => {
   it("should support multiple schemas with independent migrations", async () => {
     // Create two stores with different schemas
     const store1 = PostgresStore.fromConnString(dbConnectionString, {
-      schema: "schema1"
+      schema: "schema1",
     });
     const store2 = PostgresStore.fromConnString(dbConnectionString, {
-      schema: "schema2"
+      schema: "schema2",
     });
     testStores.push(store1, store2);
-    
+
     await store1.setup();
     await store2.setup();
-    
+
     // Verify both schemas have independent migration tables
     const pool = new Pool({ connectionString: dbConnectionString });
     const client = await pool.connect();
@@ -1507,14 +1514,13 @@ describe("PostgresStore Migration System", () => {
       const schema2Result = await client.query(
         `SELECT v FROM schema2.store_migrations ORDER BY v`
       );
-      
+
       expect(schema1Result.rows.length).toBe(4);
       expect(schema2Result.rows.length).toBe(4);
-      
+
       // Both should have same migration versions
-      expect(schema1Result.rows.map(r => r.v)).toEqual([0, 1, 2, 3]);
-      expect(schema2Result.rows.map(r => r.v)).toEqual([0, 1, 2, 3]);
-      
+      expect(schema1Result.rows.map((r) => r.v)).toEqual([0, 1, 2, 3]);
+      expect(schema2Result.rows.map((r) => r.v)).toEqual([0, 1, 2, 3]);
     } finally {
       client.release();
       await pool.end();

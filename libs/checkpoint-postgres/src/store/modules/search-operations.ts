@@ -194,7 +194,11 @@ export class SearchOperations {
           AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
       `;
 
-      const params: unknown[] = [`${namespacePath}%`, query || null, this.core.textSearchLanguage];
+      const params: unknown[] = [
+        `${namespacePath}%`,
+        query || null,
+        this.core.textSearchLanguage,
+      ];
       let paramIndex = 4;
 
       // Add filter conditions using advanced filtering

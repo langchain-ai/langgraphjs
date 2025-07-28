@@ -89,7 +89,11 @@ export const getStoreMigrations = (config: StoreMigrationConfig): string[] => {
     );`);
 
     // Migration 7: Create vector indexes
-    const { indexType = "hnsw", distanceMetric = "cosine", createAllMetricIndexes = false } = indexConfig;
+    const {
+      indexType = "hnsw",
+      distanceMetric = "cosine",
+      createAllMetricIndexes = false,
+    } = indexConfig;
     const metricsToIndex: DistanceMetric[] = createAllMetricIndexes
       ? ["cosine", "l2", "inner_product"]
       : [distanceMetric];
@@ -103,9 +107,9 @@ export const getStoreMigrations = (config: StoreMigrationConfig): string[] => {
       } else {
         metricSuffix = "ip";
       }
-      
+
       const indexName = `idx_store_vectors_embedding_${metricSuffix}_${indexType}`;
-      
+
       const operatorClassMap = {
         cosine: "vector_cosine_ops",
         l2: "vector_l2_ops",

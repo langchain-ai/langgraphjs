@@ -23,7 +23,10 @@ import { VectorOperations } from "./modules/vector-operations.js";
 import { CrudOperations } from "./modules/crud-operations.js";
 import { SearchOperations } from "./modules/search-operations.js";
 import { TTLManager } from "./modules/ttl-manager.js";
-import { getStoreMigrations, StoreMigrationConfig } from "./store-migrations.js";
+import {
+  getStoreMigrations,
+  StoreMigrationConfig,
+} from "./store-migrations.js";
 import { getStoreTablesWithSchema } from "./sql.js";
 
 export type * from "./modules/types.js";
@@ -210,24 +213,27 @@ export class PostgresStore implements BaseStore {
   private async runStoreMigrations(): Promise<void> {
     const client = await this.core.pool.connect();
     const STORE_TABLES = getStoreTablesWithSchema(this.core.schema);
-    
+
     try {
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.core.schema}`);
-      
+
       let version = -1;
-      
+
       const migrationConfig: StoreMigrationConfig = {
         schema: this.core.schema,
-        indexConfig: this.core.indexConfig ? {
-          dims: this.core.indexConfig.dims,
-          indexType: this.core.indexConfig.indexType,
-          distanceMetric: this.core.indexConfig.distanceMetric,
-          createAllMetricIndexes: this.core.indexConfig.createAllMetricIndexes,
-          hnsw: this.core.indexConfig.hnsw,
-          ivfflat: this.core.indexConfig.ivfflat,
-        } : undefined,
+        indexConfig: this.core.indexConfig
+          ? {
+              dims: this.core.indexConfig.dims,
+              indexType: this.core.indexConfig.indexType,
+              distanceMetric: this.core.indexConfig.distanceMetric,
+              createAllMetricIndexes:
+                this.core.indexConfig.createAllMetricIndexes,
+              hnsw: this.core.indexConfig.hnsw,
+              ivfflat: this.core.indexConfig.ivfflat,
+            }
+          : undefined,
       };
-      
+
       const migrations = getStoreMigrations(migrationConfig);
 
       // Check current migration version using the same pattern as checkpoints
