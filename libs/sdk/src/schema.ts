@@ -108,6 +108,9 @@ export interface AssistantBase {
   /** The assistant config. */
   config: Config;
 
+  /** The assistant context. */
+  context: unknown;
+
   /** The time the assistant was created. */
   created_at: string;
 
