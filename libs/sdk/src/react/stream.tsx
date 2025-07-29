@@ -354,6 +354,8 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   submittingRef: RefObject<boolean>
 ) {
   const [history, setHistory] = useState<ThreadState<StateType>[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<unknown | undefined>(undefined);
 
   const clientHash = getClientConfigHash(client);
   const clientRef = useRef(client);
@@ -365,15 +367,30 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
     ): Promise<ThreadState<StateType>[]> => {
       if (threadId != null) {
         const client = clientRef.current;
+
+        setIsLoading(true);
         return fetchHistory<StateType>(client, threadId, {
           limit,
-        }).then((history) => {
-          setHistory(history);
-          return history;
-        });
+        })
+          .then(
+            (history) => {
+              setHistory(history);
+              return history;
+            },
+            (error) => {
+              setError(error);
+              return Promise.reject(error);
+            }
+          )
+          .finally(() => {
+            setIsLoading(false);
+          });
       }
 
       setHistory([]);
+      setError(undefined);
+      setIsLoading(false);
+
       clearCallbackRef.current?.();
       return Promise.resolve([]);
     },
@@ -387,6 +404,8 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
 
   return {
     data: history,
+    isLoading,
+    error,
     mutate: (mutateId?: string) => fetcher(mutateId ?? threadId),
   };
 }
@@ -641,6 +660,11 @@ export interface UseStream<
    * Whether the stream is currently running.
    */
   isLoading: boolean;
+
+  /**
+   * Whether the thread history is currently being fetched.
+   */
+  isFetching: boolean;
 
   /**
    * Stops the stream.
@@ -967,7 +991,7 @@ export function useStream<
   const historyValues =
     threadHead?.values ?? options.initialValues ?? ({} as StateType);
 
-  const historyError = (() => {
+  const historyValueError = (() => {
     const error = threadHead?.tasks?.at(-1)?.error;
     if (error == null) return undefined;
     try {
@@ -1300,7 +1324,7 @@ export function useStream<
     }
   }, [reconnectKey]);
 
-  const error = streamError ?? historyError;
+  const error = streamError ?? historyValueError ?? history.error;
   const values = streamValues ?? historyValues;
 
   return {
@@ -1314,6 +1338,7 @@ export function useStream<
 
     error,
     isLoading,
+    isFetching: history.isLoading,
 
     stop,
     submit, // eslint-disable-line @typescript-eslint/no-misused-promises
