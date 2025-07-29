@@ -964,9 +964,10 @@ export function useStream<
     messageManagerRef.current.clear();
   };
 
-  const onErrorRef = useRef<((error: unknown) => void) | undefined>(undefined);
-  onErrorRef.current = (error: unknown, run?: RunCallbackMeta) =>
-    options.onError?.(error, run);
+  const onErrorRef = useRef<
+    ((error: unknown, run?: RunCallbackMeta) => void) | undefined
+  >(undefined);
+  onErrorRef.current = options.onError;
 
   const historyLimit =
     typeof fetchStateHistory === "object" && fetchStateHistory != null
