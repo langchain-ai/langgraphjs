@@ -2,4 +2,4 @@
 "@langchain/langgraph-sdk": patch
 ---
 
-feat(sdk): add `isFetching` option to `useStream`, handle thread error fetching
+feat(sdk): add `isHistoryLoading` option to `useStream`, handle thread error fetching
