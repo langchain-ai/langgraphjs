@@ -664,9 +664,9 @@ export interface UseStream<
   isLoading: boolean;
 
   /**
-   * Whether the thread history is currently being fetched.
+   * Whether the thread is currently being loaded.
    */
-  isHistoryLoading: boolean;
+  isThreadLoading: boolean;
 
   /**
    * Stops the stream.
@@ -1350,7 +1350,7 @@ export function useStream<
     setBranch,
 
     history: flatHistory,
-    isHistoryLoading: history.isLoading && history.data == null,
+    isThreadLoading: history.isLoading && history.data == null,
 
     get experimental_branchTree() {
       if (historyLimit === false) {
