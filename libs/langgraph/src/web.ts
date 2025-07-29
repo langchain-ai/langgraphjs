@@ -77,7 +77,6 @@ export {
   type MatchCondition,
   type ListNamespacesOperation,
 } from "@langchain/langgraph-checkpoint";
-export * from "./managed/index.js";
 
 export {
   entrypoint,
@@ -91,4 +90,7 @@ export {
   MessagesZodState,
   MessagesZodMeta,
 } from "./graph/messages_annotation.js";
-export { type LangGraphRunnableConfig } from "./pregel/runnable_types.js";
+export {
+  type LangGraphRunnableConfig,
+  type Runtime,
+} from "./pregel/runnable_types.js";

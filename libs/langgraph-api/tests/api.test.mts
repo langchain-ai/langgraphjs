@@ -31,7 +31,6 @@ type BaseMessage = {
 
 interface AgentState {
   messages: Array<BaseMessage>;
-  sharedStateValue?: string | null;
 }
 
 const IS_MEMORY = true;
@@ -1191,64 +1190,6 @@ describe("runs", () => {
 describe("shared state", () => {
   beforeEach(() => truncate(API_URL, { store: true }));
 
-  it("should share state between runs with the same thread ID", async () => {
-    const assistant = await client.assistants.create({ graphId: "agent" });
-    const thread = await client.threads.create();
-
-    const input = {
-      messages: [
-        { type: "human", content: "should_end", id: "initial-message" },
-      ],
-    };
-    const config = { configurable: { user_id: "start_user_id" } };
-
-    // First run
-    const res1 = (await client.runs.wait(
-      thread.thread_id,
-      assistant.assistant_id,
-      { input, config }
-    )) as Awaited<Record<string, any>>;
-    expect(res1.sharedStateValue).toBe(null);
-
-    // Second run with the same thread ID & config
-    const res2 = (await client.runs.wait(
-      thread.thread_id,
-      assistant.assistant_id,
-      { input, config }
-    )) as Awaited<Record<string, any>>;
-    expect(res2.sharedStateValue).toBe(config.configurable.user_id);
-  });
-
-  it("should not share state between runs with different thread IDs", async () => {
-    const assistant = await client.assistants.create({ graphId: "agent" });
-    const thread = await client.threads.create();
-
-    const input = {
-      messages: [{ type: "human", content: "foo", id: "initial-message" }],
-    };
-
-    // Run with the default `globalConfig`
-    const config1 = { configurable: { user_id: "start_user_id" } };
-    const res1 = (await client.runs.wait(
-      thread.thread_id,
-      assistant.assistant_id,
-      { input, config: config1 }
-    )) as Awaited<Record<string, any>>;
-
-    // Run with the same thread id but a new config
-    const config2 = { configurable: { user_id: "new_user_id" } };
-    const res2 = (await client.runs.wait(
-      thread.thread_id,
-      assistant.assistant_id,
-      { input, config: config2 }
-    )) as Awaited<Record<string, any>>;
-
-    expect(res1.sharedStateValue).toBe(config1.configurable.user_id);
-    // Null on first iteration since the shared value is set in the second iteration
-    expect(res2.sharedStateValue).toBe(config2.configurable.user_id);
-    expect(res1.sharedStateValue).not.toBe(res2.sharedStateValue);
-  });
-
   it("should be able to set and return data from store in config", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
@@ -1895,10 +1836,8 @@ describe("subgraphs", () => {
         error: null,
         interrupts: [
           {
+            id: expect.any(String),
             value: "i want to interrupt",
-            when: "during",
-            resumable: true,
-            ns: [expect.stringMatching(/^agent:/)],
           },
         ],
         checkpoint: null,
@@ -1912,10 +1851,8 @@ describe("subgraphs", () => {
     expect(thread.interrupts).toMatchObject({
       [state.tasks[0].id]: [
         {
+          id: expect.any(String),
           value: "i want to interrupt",
-          when: "during",
-          resumable: true,
-          ns: [expect.stringMatching(/^agent:/)],
         },
       ],
     });
@@ -2423,51 +2360,41 @@ it("batch update state", async () => {
   const thread = await client.threads.create();
   const input = { messages: [{ role: "human", content: "foo" }] };
 
-  await gatherIterator(
+  const stream = await gatherIterator(
     client.runs.stream(thread.thread_id, assistant.assistant_id, {
       input,
       config: globalConfig,
+      streamMode: ["updates"],
     })
   );
 
   const history = await client.threads.getHistory(thread.thread_id);
-  const supersteps = history
-    .slice()
-    .reverse()
-    .flatMap((i) => {
-      if (i.metadata?.source === "input") {
-        const values = i.metadata.writes?.["__start__"] ?? i.metadata.writes;
-        return [
-          { updates: [{ asNode: "__input__", values }] },
-          { updates: [{ asNode: "__start__", values }] },
-        ];
-      }
+  const clone = await client.threads.create({
+    graphId: "agent",
+    supersteps: [
+      // first checkpoint
+      { updates: [{ asNode: "__input__", values: history.at(-2)?.values }] },
 
-      return {
-        updates: Object.entries(i.metadata?.writes ?? {}).map(
-          ([asNode, values]) => ({ asNode, values })
-        ),
-      };
-    })
-    .filter((i) => i.updates.length > 0);
+      // second checkpoint
+      { updates: [{ asNode: "__start__", values: history.at(-2)?.values }] },
 
-  const clone = await client.threads.create({ graphId: "agent", supersteps });
+      // checkpoints created by update
+      ...stream
+        .filter((i) => i.event === "updates")
+        .map(({ data }) => ({
+          updates: Object.entries(data).map(([asNode, values]) => ({
+            asNode,
+            values,
+          })),
+        })),
+    ],
+  });
+
   const newHistory = await client.threads.getHistory(clone.thread_id);
 
   expect
-    .soft(newHistory.map((i) => i.next))
-    .toMatchObject(history.map((i) => i.next));
-  expect.soft(newHistory.map((i) => i.values)).toMatchObject(
-    history.map((i) => ({
-      ...i.values,
-      messages: i.values.messages.map((msg: any) => ({
-        ...msg,
-        // as the initial message does not have an ID, we just assume that
-        // the field is present
-        id: expect.any(String),
-      })),
-    }))
-  );
+    .soft(newHistory.map(({ next, values }) => ({ next, values })))
+    .toMatchObject(history.map(({ next, values }) => ({ next, values })));
 });
 
 it("dynamic graph", async () => {
@@ -2876,4 +2803,77 @@ it("tasks / checkpoints stream mode", async () => {
       },
     },
   ]);
+});
+
+describe("runtime API", () => {
+  it("simple", async () => {
+    const assistant = await client.assistants.create({
+      graphId: "simple_runtime",
+    });
+    const thread = await client.threads.create();
+
+    expect(
+      await client.runs.wait(thread.thread_id, assistant.assistant_id, {
+        input: { messages: [{ role: "human", content: "input" }] },
+        context: { model: "openai" },
+      })
+    ).toEqual({ model: "openai" });
+  });
+
+  it("schema", async () => {
+    const assistant = await client.assistants.create({
+      graphId: "simple_runtime",
+    });
+
+    const schema = await client.assistants.getSchemas(assistant.assistant_id);
+
+    // From JS PoV `configSchema` and `contextSchema` are indistinguishable,
+    // thus we populate both fields.
+    expect.soft(schema).toMatchObject({
+      config_schema: {
+        type: "object",
+        properties: {
+          model: { type: "string", enum: ["anthropic", "openai", "unknown"] },
+        },
+      },
+      context_schema: {
+        type: "object",
+        properties: {
+          model: { type: "string", enum: ["anthropic", "openai", "unknown"] },
+        },
+      },
+    });
+  });
+
+  it("assistant crud", async () => {
+    const assistant = await client.assistants.create({
+      graphId: "simple_runtime",
+      context: { model: "anthropic" },
+    });
+
+    expect(
+      await client.runs.wait(null, assistant.assistant_id, {
+        input: { messages: [{ role: "human", content: "input" }] },
+      })
+    ).toEqual({ model: "anthropic" });
+
+    // patch to say openai
+    await client.assistants.update(assistant.assistant_id, {
+      context: { model: "openai" },
+    });
+
+    expect(
+      await client.runs.wait(null, assistant.assistant_id, {
+        input: { messages: [{ role: "human", content: "input" }] },
+      })
+    ).toEqual({ model: "openai" });
+  });
+
+  it("default from env", async () => {
+    expect(
+      await client.runs.wait(null, "simple_runtime", {
+        input: { messages: [{ role: "human", content: "input" }] },
+      })
+    ).toEqual({ model: "unknown" });
+  });
 });

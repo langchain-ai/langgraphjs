@@ -43,11 +43,7 @@ import {
 import { Pregel, PregelInputType, PregelOutputType } from "../pregel/index.js";
 import { StrRecord } from "../pregel/algo.js";
 import { PregelNode } from "../pregel/read.js";
-import {
-  BaseChannel,
-  LangGraphRunnableConfig,
-  ManagedValueSpec,
-} from "../web.js";
+import { BaseChannel, LangGraphRunnableConfig } from "../web.js";
 
 export interface FakeChatModelArgs extends BaseChatModelParams {
   responses: BaseMessage[];
@@ -351,7 +347,7 @@ export class MemorySaverAssertImmutable extends MemorySaver {
         ).toEqual(loaded);
       }
     }
-    const [, serializedCheckpoint] = this.serde.dumpsTyped(checkpoint);
+    const [, serializedCheckpoint] = await this.serde.dumpsTyped(checkpoint);
     // save a copy of the checkpoint
     this.storageForCopies[thread_id][checkpoint.id] = serializedCheckpoint;
 
@@ -586,15 +582,15 @@ export function skipIf(condition: () => boolean): typeof it | typeof it.skip {
 
 export async function dumpDebugStream<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel | ManagedValueSpec>,
+  Cc extends StrRecord<string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>,
+  ContextType extends Record<string, any> = StrRecord<string, any>,
   InputType = PregelInputType,
   OutputType = PregelOutputType
 >(
-  graph: Pregel<Nn, Cc, ConfigurableFieldType, InputType, OutputType>,
+  graph: Pregel<Nn, Cc, ContextType, InputType, OutputType>,
   input: InputType,
-  config: LangGraphRunnableConfig<ConfigurableFieldType>
+  config: LangGraphRunnableConfig<ContextType>
 ) {
   console.log(`invoking ${graph.name} with arguments ${JSON.stringify(input)}`);
   const stream = await graph.stream(input, {

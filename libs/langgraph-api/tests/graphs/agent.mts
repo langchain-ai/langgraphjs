@@ -5,7 +5,6 @@ import {
   START,
   END,
   messagesStateReducer,
-  SharedValue,
   interrupt,
   type LangGraphRunnableConfig,
 } from "@langchain/langgraph";
@@ -27,7 +26,6 @@ const GraphAnnotationOutput = Annotation.Root({
 
 const GraphAnnotationInput = Annotation.Root({
   ...GraphAnnotationOutput.spec,
-  sharedState: SharedValue.on("user_id"),
   sharedStateFromStoreConfig: Annotation<Record<string, any> | null>,
 });
 
@@ -108,7 +106,6 @@ const agentNode = async (
 
   const model = getModel(config.configurable?.thread_id ?? "$");
   const response = await model.invoke(state.messages);
-  const sharedStateValue = state.sharedState?.data?.user_id ?? null;
 
   // Define in the first node
   // Then retrieve in the second node
@@ -123,7 +120,6 @@ const agentNode = async (
     interrupt: false,
     messages: [response],
     sharedState: { data: { user_id: config?.configurable?.user_id } },
-    sharedStateValue,
   };
 };
 

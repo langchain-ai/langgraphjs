@@ -350,6 +350,7 @@ export class CronsClient extends BaseClient {
       schedule: payload?.schedule,
       input: payload?.input,
       config: payload?.config,
+      context: payload?.context,
       metadata: payload?.metadata,
       assistant_id: assistantId,
       interrupt_before: payload?.interruptBefore,
@@ -382,6 +383,7 @@ export class CronsClient extends BaseClient {
       schedule: payload?.schedule,
       input: payload?.input,
       config: payload?.config,
+      context: payload?.context,
       metadata: payload?.metadata,
       assistant_id: assistantId,
       interrupt_before: payload?.interruptBefore,
@@ -502,6 +504,7 @@ export class AssistantsClient extends BaseClient {
   async create(payload: {
     graphId: string;
     config?: Config;
+    context?: unknown;
     metadata?: Metadata;
     assistantId?: string;
     ifExists?: OnConflictBehavior;
@@ -513,6 +516,7 @@ export class AssistantsClient extends BaseClient {
       json: {
         graph_id: payload.graphId,
         config: payload.config,
+        context: payload.context,
         metadata: payload.metadata,
         assistant_id: payload.assistantId,
         if_exists: payload.ifExists,
@@ -533,6 +537,7 @@ export class AssistantsClient extends BaseClient {
     payload: {
       graphId?: string;
       config?: Config;
+      context?: unknown;
       metadata?: Metadata;
       name?: string;
       description?: string;
@@ -543,6 +548,7 @@ export class AssistantsClient extends BaseClient {
       json: {
         graph_id: payload.graphId,
         config: payload.config,
+        context: payload.context,
         metadata: payload.metadata,
         name: payload.name,
         description: payload.description,
@@ -978,6 +984,7 @@ export class RunsClient<
       input: payload?.input,
       command: payload?.command,
       config: payload?.config,
+      context: payload?.context,
       metadata: payload?.metadata,
       stream_mode: payload?.streamMode,
       stream_subgraphs: payload?.streamSubgraphs,
@@ -1039,6 +1046,7 @@ export class RunsClient<
       input: payload?.input,
       command: payload?.command,
       config: payload?.config,
+      context: payload?.context,
       metadata: payload?.metadata,
       stream_mode: payload?.streamMode,
       stream_subgraphs: payload?.streamSubgraphs,
@@ -1126,6 +1134,7 @@ export class RunsClient<
       input: payload?.input,
       command: payload?.command,
       config: payload?.config,
+      context: payload?.context,
       metadata: payload?.metadata,
       assistant_id: assistantId,
       interrupt_before: payload?.interruptBefore,

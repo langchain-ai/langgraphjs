@@ -102,11 +102,13 @@ class MemorySaverAssertCheckpointMetadata extends MemorySaver {
     }
 
     // Serialize checkpoint and merged metadata
-    const serializedCheckpoint = this.serde.dumpsTyped(checkpoint)[1];
-    const serializedMergedMetadata = this.serde.dumpsTyped({
-      ...configurable,
-      ...metadata,
-    })[1];
+    const serializedCheckpoint = (await this.serde.dumpsTyped(checkpoint))[1];
+    const serializedMergedMetadata = (
+      await this.serde.dumpsTyped({
+        ...configurable,
+        ...metadata,
+      })
+    )[1];
 
     // Store in the storage with merged metadata
     this.storage[threadId][checkpointNs][checkpoint.id] = [
@@ -163,6 +165,10 @@ describe("Checkpoint Tests (Python port)", () => {
       ): Promise<void> {
         // No explicit return needed
       }
+
+      deleteThread(_threadId: string): Promise<void> {
+        throw new Error("Faulty delete_thread");
+      }
     }
 
     // Create a faulty put checkpoint saver
@@ -192,6 +198,10 @@ describe("Checkpoint Tests (Python port)", () => {
         _taskId: string
       ): Promise<void> {
         // No explicit return needed
+      }
+
+      deleteThread(_threadId: string): Promise<void> {
+        throw new Error("Faulty delete_thread");
       }
     }
 
@@ -223,11 +233,15 @@ describe("Checkpoint Tests (Python port)", () => {
       ): Promise<void> {
         throw new Error("Faulty put_writes");
       }
+
+      deleteThread(_threadId: string): Promise<void> {
+        throw new Error("Faulty delete_thread");
+      }
     }
 
     // Create a faulty version checkpoint saver
     class FaultyVersionCheckpointer extends BaseCheckpointSaver<number> {
-      getNextVersion(_current: number | undefined, _channel: unknown): number {
+      getNextVersion(_current: number | undefined): number {
         throw new Error("Faulty get_next_version");
       }
 
@@ -256,6 +270,10 @@ describe("Checkpoint Tests (Python port)", () => {
         _taskId: string
       ): Promise<void> {
         // No explicit return needed
+      }
+
+      deleteThread(_threadId: string): Promise<void> {
+        throw new Error("Faulty delete_thread");
       }
     }
 
@@ -856,15 +874,21 @@ describe("Checkpoint Tests (Python port)", () => {
       {
         __interrupt__: [
           expect.objectContaining({
-            interrupt_id: expect.any(String),
+            id: expect.any(String),
             value: "Just because...",
-            resumable: true,
-            ns: expect.any(Array),
-            when: "during",
           }),
         ],
       },
       { tool_one: { my_key: " one" } },
+    ]);
+
+    // check if the interrupt is persisted
+    const state1 = await tool_two_with_checkpoint.getState(thread2);
+    expect(state1.tasks.at(-1)?.interrupts).toEqual([
+      {
+        id: expect.any(String),
+        value: "Just because...",
+      },
     ]);
 
     // Resume with an answer
@@ -903,33 +927,29 @@ describe("Checkpoint Tests (Python port)", () => {
       market: "DE",
       __interrupt__: [
         {
-          interrupt_id: expect.any(String),
+          id: expect.any(String),
           value: "Just because...",
-          resumable: true,
-          when: "during",
-          ns: [expect.stringMatching(/^tool_two:/)],
         },
       ],
     });
 
     // Check the state
-    const state = await tool_two_with_checkpoint.getState(thread1);
+    const state2 = await tool_two_with_checkpoint.getState(thread1);
 
     // Just check partial state since the structure might vary
-    expect(state.values).toEqual({
+    expect(state2.values).toEqual({
       my_key: "value ⛰️ one",
       market: "DE",
     });
 
     // Check for an interrupted task
     expect(
-      state.tasks.some(
+      state2.tasks.some(
         (task) =>
           task.name === "tool_two" &&
           task.interrupts &&
           task.interrupts.length > 0 &&
-          task.interrupts[0].value === "Just because..." &&
-          task.interrupts[0].resumable === true
+          task.interrupts[0].value === "Just because..."
       )
     ).toBe(true);
 
@@ -1191,7 +1211,6 @@ describe("Checkpoint Tests (Python port)", () => {
       parents: {},
       source: "loop",
       step: 0,
-      writes: null,
       thread_id: "1",
     });
 
@@ -1230,10 +1249,6 @@ describe("Checkpoint Tests (Python port)", () => {
 
     // First checkpoint (most recent) should have no pending writes
     expect(checkpoints[0]?.pendingWrites).toEqual([]);
-
-    // Check that the metadata in the first checkpoint has writes
-    expect(checkpoints[0]?.metadata?.writes).toBeDefined();
-
     expect(checkpoints[1]?.pendingWrites).toBeDefined();
     expect(checkpoints[2]?.pendingWrites).toBeDefined();
   });

@@ -1,5 +1,32 @@
 # @langchain/langgraph
 
+## 0.4.0
+
+### Minor Changes
+
+- 5f7ee26: feat(langgraph): cleanup of interrupt interface
+- 10432a4: chore(langgraph): remove SharedValue / managed values
+- f1bcec7: chore(langgraph): introduce `context` field and `Runtime` type
+- 14dd523: fix(langgraph): auto-inference of configurable fields
+- fa78796: Add `durability` checkpointer mode
+- 565f472: Mark StateGraph({ channel }) constructor deprecated
+
+### Patch Changes
+
+- Updated dependencies [ccbcbc1]
+- Updated dependencies [10f292a]
+- Updated dependencies [f1bcec7]
+- Updated dependencies [3fd7f73]
+- Updated dependencies [773ec0d]
+  - @langchain/langgraph-checkpoint@0.1.0
+  - @langchain/langgraph-sdk@0.0.103
+
+## 0.3.12
+
+### Patch Changes
+
+- 034730f: fix(langgraph): add support for new interrupt ID
+
 ## 0.3.11
 
 ### Patch Changes

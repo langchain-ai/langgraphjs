@@ -5,12 +5,14 @@ import { putTests } from "./put.js";
 import { putWritesTests } from "./put_writes.js";
 import { getTupleTests } from "./get_tuple.js";
 import { listTests } from "./list.js";
+import { deleteThreadTests } from "./delete_thread.js";
 
 const testTypeMap = {
   getTuple: getTupleTests,
   list: listTests,
   put: putTests,
   putWrites: putWritesTests,
+  deleteThread: deleteThreadTests,
 };
 
 /**
@@ -39,6 +41,7 @@ export function specTest<T extends BaseCheckpointSaver>(
       putWritesTests(initializer);
       getTupleTests(initializer);
       listTests(initializer);
+      deleteThreadTests(initializer);
     } else {
       for (const testType of filters) {
         testTypeMap[testType](initializer);

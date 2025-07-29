@@ -59,6 +59,12 @@ export interface RunsInvokePayload {
   config?: Config;
 
   /**
+   * Static context to add to the assistant.
+   * @remarks Added in LangGraph.js 0.4
+   */
+  context?: unknown;
+
+  /**
    * Checkpoint ID for when creating a new run.
    */
   checkpointId?: string;

@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-swarm",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "An implementation of a multi-agent swarm using LangGraph",
   "type": "module",
   "engines": {
@@ -34,7 +34,7 @@
   },
   "peerDependencies": {
     "@langchain/core": "^0.3.40",
-    "@langchain/langgraph": "^0.2.53 || ^0.3.0"
+    "@langchain/langgraph": "^0.2.53 || ^0.3.0 || ^0.4.0"
   },
   "devDependencies": {
     "@langchain/langgraph": "workspace:*",
