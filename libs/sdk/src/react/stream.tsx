@@ -1065,8 +1065,13 @@ export function useStream<
         }
 
         if (event === "updates") options.onUpdateEvent?.(data);
-        if (event === "custom")
-          options.onCustomEvent?.(data, {
+        if (
+          event === "custom" ||
+          // if `streamSubgraphs: true`, then we also want
+          // to also receive custom events from subgraphs
+          event.startsWith("custom|")
+        )
+          options.onCustomEvent?.(data as CustomType, {
             mutate: getMutateFn("stream", historyValues),
           });
         if (event === "metadata") options.onMetadataEvent?.(data);
@@ -1203,6 +1208,7 @@ export function useStream<
         onThreadId(thread.thread_id);
         usableThreadId = thread.thread_id;
       }
+      if (!usableThreadId) throw new Error("Failed to obtain valid thread ID.");
 
       const streamMode = unique([
         ...(submitOptions?.streamMode ?? []),
