@@ -351,7 +351,8 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   client: Client,
   limit: boolean | number,
   clearCallbackRef: RefObject<(() => void) | undefined>,
-  submittingRef: RefObject<boolean>
+  submittingRef: RefObject<boolean>,
+  onErrorRef: RefObject<((error: unknown) => void) | undefined>
 ) {
   const [history, setHistory] = useState<ThreadState<StateType>[] | undefined>(
     undefined
@@ -381,6 +382,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
             },
             (error) => {
               setError(error);
+              onErrorRef.current?.(error);
               return Promise.reject(error);
             }
           )
@@ -396,7 +398,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       clearCallbackRef.current?.();
       return Promise.resolve([]);
     },
-    [clearCallbackRef, limit]
+    [clearCallbackRef, onErrorRef, limit]
   );
 
   useEffect(() => {
@@ -962,6 +964,10 @@ export function useStream<
     messageManagerRef.current.clear();
   };
 
+  const onErrorRef = useRef<((error: unknown) => void) | undefined>(undefined);
+  onErrorRef.current = (error: unknown, run?: RunCallbackMeta) =>
+    options.onError?.(error, run);
+
   const historyLimit =
     typeof fetchStateHistory === "object" && fetchStateHistory != null
       ? fetchStateHistory.limit ?? true
@@ -972,7 +978,8 @@ export function useStream<
     client,
     historyLimit,
     clearCallbackRef,
-    submittingRef
+    submittingRef,
+    onErrorRef
   );
 
   const getMessages = useMemo(() => {
