@@ -1,5 +1,13 @@
 # @langchain/langgraph-sdk
 
+## 0.0.104
+
+### Patch Changes
+
+- af9ec5a: feat(sdk): add `isThreadLoading` option to `useStream`, handle thread error fetching
+- 8e1ec9e: feat(sdk): add Context API support for useStream
+- f43e48c: fix(sdk): handle subgraph custom events in stream processing of useStream
+
 ## 0.0.103
 
 ### Patch Changes
