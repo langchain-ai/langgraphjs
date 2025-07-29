@@ -179,7 +179,11 @@ async function updateGraphPaths(
   config: Config,
   localDeps: LocalDeps
 ) {
-  for (const [graphId, importStr] of Object.entries(config.graphs)) {
+  for (const [graphId, graphDef] of Object.entries(config.graphs)) {
+    // Handle both string and object formats
+    const importStr = typeof graphDef === "string" ? graphDef : graphDef.path;
+    const description = typeof graphDef === "object" ? graphDef.description : undefined;
+    
     let [moduleStr, attrStr] = importStr.split(":", 2);
     if (!moduleStr || !attrStr) {
       throw new Error(
@@ -226,7 +230,15 @@ async function updateGraphPaths(
           }
         }
 
-        config["graphs"][graphId] = `${moduleStr}:${attrStr}`;
+        // Update config with resolved path, preserving object format if needed
+        if (typeof graphDef === "object") {
+          config["graphs"][graphId] = {
+            path: `${moduleStr}:${attrStr}`,
+            ...(description && { description })
+          };
+        } else {
+          config["graphs"][graphId] = `${moduleStr}:${attrStr}`;
+        }
       }
     }
   }
