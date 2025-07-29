@@ -831,7 +831,9 @@ export function useStream<
     | CheckpointsStreamEvent<StateType>
     | TasksStreamEvent<StateType, UpdateType>
     | ErrorStreamEvent
-    | FeedbackStreamEvent;
+    | FeedbackStreamEvent
+    // Include subgraph variants for custom events
+    | (CustomStreamEvent<CustomType> & { event: `custom|${string}` });
 
   let { messagesKey } = options;
   const { assistantId, fetchStateHistory } = options;
@@ -950,8 +952,8 @@ export function useStream<
 
   const getMessages = useMemo(() => {
     return (value: StateType) =>
-      Array.isArray(value[messagesKey])
-        ? (value[messagesKey] as Message[])
+      Array.isArray(value[messagesKey!])
+        ? (value[messagesKey!] as Message[])
         : [];
   }, [messagesKey]);
 
@@ -1064,8 +1066,11 @@ export function useStream<
         }
 
         if (event === "updates") options.onUpdateEvent?.(data);
-        if (event === "custom")
-          options.onCustomEvent?.(data, {
+        if (event === "custom" ||
+            // if `streamSubgraphs: true`, then we also want
+            // to also receive custom events from subgraphs
+            event.startsWith("custom|"))
+          options.onCustomEvent?.(data as CustomType, {
             mutate: getMutateFn("stream", historyValues),
           });
         if (event === "metadata") options.onMetadataEvent?.(data);
@@ -1242,14 +1247,14 @@ export function useStream<
         onRunCreated(params) {
           callbackMeta = {
             run_id: params.run_id,
-            thread_id: params.thread_id ?? usableThreadId,
+            thread_id: params.thread_id ?? usableThreadId ?? "",
           };
 
           if (runMetadataStorage) {
-            rejoinKey = `lg:stream:${callbackMeta.thread_id}`;
-            runMetadataStorage.setItem(rejoinKey, callbackMeta.run_id);
+            rejoinKey = `lg:stream:${callbackMeta?.thread_id}`;
+            runMetadataStorage.setItem(rejoinKey, callbackMeta?.run_id || "");
           }
-          onCreated?.(callbackMeta);
+          if (callbackMeta) onCreated?.(callbackMeta);
         },
       }) as AsyncGenerator<EventStreamEvent>;
 
@@ -1258,7 +1263,7 @@ export function useStream<
         getCallbackMeta: () => callbackMeta,
         onSuccess: () => {
           if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
-          return history.mutate(usableThreadId);
+          return history.mutate(usableThreadId || "");
         },
       };
     });
