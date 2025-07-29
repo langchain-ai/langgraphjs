@@ -353,7 +353,9 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   clearCallbackRef: RefObject<(() => void) | undefined>,
   submittingRef: RefObject<boolean>
 ) {
-  const [history, setHistory] = useState<ThreadState<StateType>[]>([]);
+  const [history, setHistory] = useState<ThreadState<StateType>[] | undefined>(
+    undefined
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<unknown | undefined>(undefined);
 
@@ -387,7 +389,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
           });
       }
 
-      setHistory([]);
+      setHistory(undefined);
       setError(undefined);
       setIsLoading(false);
 
@@ -664,7 +666,7 @@ export interface UseStream<
   /**
    * Whether the thread history is currently being fetched.
    */
-  isFetching: boolean;
+  isHistoryLoading: boolean;
 
   /**
    * Stops the stream.
@@ -980,7 +982,7 @@ export function useStream<
         : [];
   }, [messagesKey]);
 
-  const { rootSequence, paths } = getBranchSequence(history.data);
+  const { rootSequence, paths } = getBranchSequence(history.data ?? []);
   const { history: flatHistory, branchByCheckpoint } = getBranchView(
     rootSequence,
     paths,
@@ -1012,13 +1014,13 @@ export function useStream<
     return getMessages(historyValues).map(
       (message, idx): MessageMetadata<StateType> => {
         const messageId = message.id ?? idx;
-        const firstSeenIdx = findLastIndex(history.data, (state) =>
+        const firstSeenIdx = findLastIndex(history.data ?? [], (state) =>
           getMessages(state.values)
             .map((m, idx) => m.id ?? idx)
             .includes(messageId)
         );
 
-        const firstSeen = history.data[firstSeenIdx] as
+        const firstSeen = history.data?.[firstSeenIdx] as
           | ThreadState<StateType>
           | undefined;
 
@@ -1338,7 +1340,6 @@ export function useStream<
 
     error,
     isLoading,
-    isFetching: history.isLoading,
 
     stop,
     submit, // eslint-disable-line @typescript-eslint/no-misused-promises
@@ -1349,6 +1350,8 @@ export function useStream<
     setBranch,
 
     history: flatHistory,
+    isHistoryLoading: history.isLoading && history.data == null,
+
     get experimental_branchTree() {
       if (historyLimit === false) {
         throw new Error(
