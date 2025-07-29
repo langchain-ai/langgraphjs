@@ -725,9 +725,10 @@ type ConfigWithConfigurable<ConfigurableType extends Record<string, unknown>> =
 
 interface SubmitOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  ConfigurableType extends Record<string, unknown> = Record<string, unknown>
+  ContextType extends Record<string, unknown> = Record<string, unknown>
 > {
-  config?: ConfigWithConfigurable<ConfigurableType>;
+  config?: ConfigWithConfigurable<ContextType>;
+  context?: ContextType;
   checkpoint?: Omit<Checkpoint, "thread_id"> | null;
   command?: Command;
   interruptBefore?: "*" | string[];
@@ -1222,6 +1223,7 @@ export function useStream<
       const stream = client.runs.stream(usableThreadId, assistantId, {
         input: values as Record<string, unknown>,
         config: submitOptions?.config,
+        context: submitOptions?.context,
         command: submitOptions?.command,
 
         interruptBefore: submitOptions?.interruptBefore,
