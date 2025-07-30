@@ -577,4 +577,101 @@ describe("RemoteGraph", () => {
       }),
     ]);
   });
+
+  test("handles circular references in config", async () => {
+    const client = new Client({});
+    vi.spyOn((client as any).runs, "stream").mockImplementation(
+      async function* () {
+        yield { event: "values", data: { result: "success" } };
+      }
+    );
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    // Create circular reference
+    const circularObj: any = { name: "test" };
+    circularObj.self = circularObj;
+
+    const config = {
+      configurable: {
+        thread_id: "thread_1",
+        circular: circularObj,
+        normal: "value",
+      },
+    };
+
+    // Should not throw error despite circular reference
+    const stream = await remotePregel.stream({ input: "test" }, config);
+    const chunks = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toEqual([{ result: "success" }]);
+  });
+
+  test("handles nested circular references in config metadata", async () => {
+    const client = new Client({});
+    let capturedConfig: any;
+    vi.spyOn((client as any).runs, "stream").mockImplementation(
+      async function* (...args: any[]) {
+        capturedConfig = args[2].config;
+        yield { event: "values", data: { done: true } };
+      }
+    );
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    const parent: any = { type: "parent" };
+    const child = { type: "child", parent };
+    parent.child = child;
+
+    const config = {
+      configurable: { thread_id: "thread_1" },
+      metadata: { nested: parent },
+    };
+
+    await remotePregel.stream({}, config);
+
+    // Config should be sanitized without errors
+    expect((capturedConfig as any).metadata.nested).toBeDefined();
+    expect(typeof (capturedConfig as any).metadata.nested).toBe("object");
+  });
+
+  test("preserves non-circular objects in config", async () => {
+    const client = new Client({});
+    let capturedConfig: any;
+    vi.spyOn((client as any).runs, "stream").mockImplementation(
+      async function* (...args: any[]) {
+        capturedConfig = args[2].config;
+        yield { event: "values", data: {} };
+      }
+    );
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    const config = {
+      configurable: {
+        thread_id: "thread_1",
+        nested: { deep: { value: 42 } },
+        array: [1, 2, { item: "test" }],
+      },
+      metadata: { source: "test" },
+    };
+
+    await remotePregel.stream({}, config);
+
+    expect((capturedConfig as any).configurable.nested.deep.value).toBe(42);
+    expect((capturedConfig as any).configurable.array[2].item).toBe("test");
+    expect((capturedConfig as any).metadata.source).toBe("test");
+  });
 });
