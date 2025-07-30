@@ -37,7 +37,7 @@ const { Pool } = pg;
  * PostgreSQL implementation of the BaseStore interface.
  * This is now a lightweight orchestrator that delegates to specialized modules.
  */
-export class PostgresStore implements BaseStore {
+export class PostgresStore extends BaseStore {
   private core: DatabaseCore;
 
   private vectorOps: VectorOperations;
@@ -55,6 +55,8 @@ export class PostgresStore implements BaseStore {
   private ensureTables: boolean;
 
   constructor(config: PostgresStoreConfig) {
+    super();
+
     // Create connection pool
     const pool =
       typeof config.connectionOptions === "string"
