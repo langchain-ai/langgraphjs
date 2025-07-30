@@ -230,6 +230,7 @@ export async function* streamState(
       interruptBefore: kwargs.interrupt_before,
 
       tags: kwargs.config?.tags,
+      context: kwargs.context,
       configurable: kwargs.config?.configurable,
       recursionLimit: kwargs.config?.recursion_limit,
       subgraphs: kwargs.subgraphs,

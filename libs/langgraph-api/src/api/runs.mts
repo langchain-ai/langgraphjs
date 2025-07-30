@@ -101,6 +101,7 @@ const createValidRun = async (
       input: run.input,
       command: run.command,
       config,
+      context: run.context,
       stream_mode: streamMode,
       interrupt_before: run.interrupt_before,
       interrupt_after: run.interrupt_after,

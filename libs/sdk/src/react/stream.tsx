@@ -351,9 +351,14 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   client: Client,
   limit: boolean | number,
   clearCallbackRef: RefObject<(() => void) | undefined>,
-  submittingRef: RefObject<boolean>
+  submittingRef: RefObject<boolean>,
+  onErrorRef: RefObject<((error: unknown) => void) | undefined>
 ) {
-  const [history, setHistory] = useState<ThreadState<StateType>[]>([]);
+  const [history, setHistory] = useState<ThreadState<StateType>[] | undefined>(
+    undefined
+  );
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<unknown | undefined>(undefined);
 
   const clientHash = getClientConfigHash(client);
   const clientRef = useRef(client);
@@ -365,19 +370,35 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
     ): Promise<ThreadState<StateType>[]> => {
       if (threadId != null) {
         const client = clientRef.current;
+
+        setIsLoading(true);
         return fetchHistory<StateType>(client, threadId, {
           limit,
-        }).then((history) => {
-          setHistory(history);
-          return history;
-        });
+        })
+          .then(
+            (history) => {
+              setHistory(history);
+              return history;
+            },
+            (error) => {
+              setError(error);
+              onErrorRef.current?.(error);
+              return Promise.reject(error);
+            }
+          )
+          .finally(() => {
+            setIsLoading(false);
+          });
       }
 
-      setHistory([]);
+      setHistory(undefined);
+      setError(undefined);
+      setIsLoading(false);
+
       clearCallbackRef.current?.();
       return Promise.resolve([]);
     },
-    [clearCallbackRef, limit]
+    [clearCallbackRef, onErrorRef, limit]
   );
 
   useEffect(() => {
@@ -387,6 +408,8 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
 
   return {
     data: history,
+    isLoading,
+    error,
     mutate: (mutateId?: string) => fetcher(mutateId ?? threadId),
   };
 }
@@ -643,6 +666,11 @@ export interface UseStream<
   isLoading: boolean;
 
   /**
+   * Whether the thread is currently being loaded.
+   */
+  isThreadLoading: boolean;
+
+  /**
    * Stops the stream.
    */
   stop: () => void;
@@ -725,9 +753,10 @@ type ConfigWithConfigurable<ConfigurableType extends Record<string, unknown>> =
 
 interface SubmitOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  ConfigurableType extends Record<string, unknown> = Record<string, unknown>
+  ContextType extends Record<string, unknown> = Record<string, unknown>
 > {
-  config?: ConfigWithConfigurable<ConfigurableType>;
+  config?: ConfigWithConfigurable<ContextType>;
+  context?: ContextType;
   checkpoint?: Omit<Checkpoint, "thread_id"> | null;
   command?: Command;
   interruptBefore?: "*" | string[];
@@ -935,6 +964,11 @@ export function useStream<
     messageManagerRef.current.clear();
   };
 
+  const onErrorRef = useRef<
+    ((error: unknown, run?: RunCallbackMeta) => void) | undefined
+  >(undefined);
+  onErrorRef.current = options.onError;
+
   const historyLimit =
     typeof fetchStateHistory === "object" && fetchStateHistory != null
       ? fetchStateHistory.limit ?? true
@@ -945,7 +979,8 @@ export function useStream<
     client,
     historyLimit,
     clearCallbackRef,
-    submittingRef
+    submittingRef,
+    onErrorRef
   );
 
   const getMessages = useMemo(() => {
@@ -955,7 +990,7 @@ export function useStream<
         : [];
   }, [messagesKey]);
 
-  const { rootSequence, paths } = getBranchSequence(history.data);
+  const { rootSequence, paths } = getBranchSequence(history.data ?? []);
   const { history: flatHistory, branchByCheckpoint } = getBranchView(
     rootSequence,
     paths,
@@ -966,7 +1001,7 @@ export function useStream<
   const historyValues =
     threadHead?.values ?? options.initialValues ?? ({} as StateType);
 
-  const historyError = (() => {
+  const historyValueError = (() => {
     const error = threadHead?.tasks?.at(-1)?.error;
     if (error == null) return undefined;
     try {
@@ -987,13 +1022,13 @@ export function useStream<
     return getMessages(historyValues).map(
       (message, idx): MessageMetadata<StateType> => {
         const messageId = message.id ?? idx;
-        const firstSeenIdx = findLastIndex(history.data, (state) =>
+        const firstSeenIdx = findLastIndex(history.data ?? [], (state) =>
           getMessages(state.values)
             .map((m, idx) => m.id ?? idx)
             .includes(messageId)
         );
 
-        const firstSeen = history.data[firstSeenIdx] as
+        const firstSeen = history.data?.[firstSeenIdx] as
           | ThreadState<StateType>
           | undefined;
 
@@ -1064,8 +1099,13 @@ export function useStream<
         }
 
         if (event === "updates") options.onUpdateEvent?.(data);
-        if (event === "custom")
-          options.onCustomEvent?.(data, {
+        if (
+          event === "custom" ||
+          // if `streamSubgraphs: true`, then we also want
+          // to also receive custom events from subgraphs
+          event.startsWith("custom|")
+        )
+          options.onCustomEvent?.(data as CustomType, {
             mutate: getMutateFn("stream", historyValues),
           });
         if (event === "metadata") options.onMetadataEvent?.(data);
@@ -1202,6 +1242,7 @@ export function useStream<
         onThreadId(thread.thread_id);
         usableThreadId = thread.thread_id;
       }
+      if (!usableThreadId) throw new Error("Failed to obtain valid thread ID.");
 
       const streamMode = unique([
         ...(submitOptions?.streamMode ?? []),
@@ -1222,6 +1263,7 @@ export function useStream<
       const stream = client.runs.stream(usableThreadId, assistantId, {
         input: values as Record<string, unknown>,
         config: submitOptions?.config,
+        context: submitOptions?.context,
         command: submitOptions?.command,
 
         interruptBefore: submitOptions?.interruptBefore,
@@ -1292,7 +1334,7 @@ export function useStream<
     }
   }, [reconnectKey]);
 
-  const error = streamError ?? historyError;
+  const error = streamError ?? historyValueError ?? history.error;
   const values = streamValues ?? historyValues;
 
   return {
@@ -1316,6 +1358,8 @@ export function useStream<
     setBranch,
 
     history: flatHistory,
+    isThreadLoading: history.isLoading && history.data == null,
+
     get experimental_branchTree() {
       if (historyLimit === false) {
         throw new Error(

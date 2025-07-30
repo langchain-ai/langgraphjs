@@ -25,7 +25,6 @@ import {
   BaseChannel,
   GraphInterrupt,
   LangGraphRunnableConfig,
-  ManagedValueSpec,
   RemoteException,
 } from "../web.js";
 import { StrRecord } from "./algo.js";
@@ -46,10 +45,7 @@ import {
 } from "../constants.js";
 
 export type RemoteGraphParams = Omit<
-  PregelParams<
-    StrRecord<string, PregelNode>,
-    StrRecord<string, BaseChannel | ManagedValueSpec>
-  >,
+  PregelParams<StrRecord<string, PregelNode>, StrRecord<string, BaseChannel>>,
   "channels" | "nodes" | "inputChannels" | "outputChannels"
 > & {
   graphId: string;
@@ -162,19 +158,16 @@ const getStreamModes = (
  */
 export class RemoteGraph<
     Nn extends StrRecord<string, PregelNode> = StrRecord<string, PregelNode>,
-    Cc extends StrRecord<string, BaseChannel | ManagedValueSpec> = StrRecord<
-      string,
-      BaseChannel | ManagedValueSpec
-    >,
+    Cc extends StrRecord<string, BaseChannel> = StrRecord<string, BaseChannel>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>
+    ContextType extends Record<string, any> = StrRecord<string, any>
   >
   extends Runnable<
     PregelInputType,
     PregelOutputType,
-    PregelOptions<Nn, Cc, ConfigurableFieldType>
+    PregelOptions<Nn, Cc, ContextType>
   >
-  implements PregelInterface<Nn, Cc, ConfigurableFieldType>
+  implements PregelInterface<Nn, Cc, ContextType>
 {
   static lc_name() {
     return "RemoteGraph";
@@ -355,7 +348,7 @@ export class RemoteGraph<
 
   override async invoke(
     input: PregelInputType,
-    options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
+    options?: Partial<PregelOptions<Nn, Cc, ContextType>>
   ): Promise<PregelOutputType> {
     let lastValue;
     const stream = await this.stream(input, {
@@ -370,14 +363,14 @@ export class RemoteGraph<
 
   override streamEvents(
     input: PregelInputType,
-    options: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>> & {
+    options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
       version: "v1" | "v2";
     }
   ): IterableReadableStream<StreamEvent>;
 
   override streamEvents(
     input: PregelInputType,
-    options: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>> & {
+    options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
       version: "v1" | "v2";
       encoding: never;
     }
@@ -385,7 +378,7 @@ export class RemoteGraph<
 
   override streamEvents(
     _input: PregelInputType,
-    _options: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>> & {
+    _options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
       version: "v1" | "v2";
       encoding?: never;
     }
@@ -395,7 +388,7 @@ export class RemoteGraph<
 
   override async *_streamIterator(
     input: PregelInputType,
-    options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
+    options?: Partial<PregelOptions<Nn, Cc, ContextType>>
   ): AsyncGenerator<PregelOutputType> {
     const mergedConfig = mergeConfigs(this.config, options);
     const sanitizedConfig = this._sanitizeConfig(mergedConfig);
@@ -607,9 +600,7 @@ export class RemoteGraph<
   }
 
   /** @deprecated Use getSubgraphsAsync instead. The async method will become the default in the next minor release. */
-  getSubgraphs(): Generator<
-    [string, PregelInterface<Nn, Cc, ConfigurableFieldType>]
-  > {
+  getSubgraphs(): Generator<[string, PregelInterface<Nn, Cc, ContextType>]> {
     throw new Error(
       `The synchronous "getSubgraphs" method is not supported for this graph. Call "getSubgraphsAsync" instead.`
     );
@@ -618,7 +609,7 @@ export class RemoteGraph<
   async *getSubgraphsAsync(
     namespace?: string,
     recurse = false
-  ): AsyncGenerator<[string, PregelInterface<Nn, Cc, ConfigurableFieldType>]> {
+  ): AsyncGenerator<[string, PregelInterface<Nn, Cc, ContextType>]> {
     const subgraphs = await this.client.assistants.getSubgraphs(this.graphId, {
       namespace,
       recurse,

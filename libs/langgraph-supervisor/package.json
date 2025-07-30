@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-supervisor",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "description": "LangGraph Multi-Agent Supervisor",
   "type": "module",
   "engines": {
@@ -35,7 +35,7 @@
   },
   "peerDependencies": {
     "@langchain/core": "^0.3.58",
-    "@langchain/langgraph": "^0.2.72 || ^0.3.0"
+    "@langchain/langgraph": "^0.2.72 || ^0.3.0 || ^0.4.0"
   },
   "devDependencies": {
     "@langchain/langgraph": "workspace:*",

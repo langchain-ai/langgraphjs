@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph",
-  "version": "0.3.11",
+  "version": "0.4.0",
   "description": "LangGraph",
   "type": "module",
   "engines": {
@@ -31,8 +31,8 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/langgraph-checkpoint": "~0.0.18",
-    "@langchain/langgraph-sdk": "~0.0.102",
+    "@langchain/langgraph-checkpoint": "^0.1.0",
+    "@langchain/langgraph-sdk": "~0.0.104",
     "uuid": "^10.0.0",
     "zod": "^3.25.32"
   },
@@ -49,6 +49,7 @@
     "@langchain/anthropic": "^0.3.12",
     "@langchain/community": "^0.3.27",
     "@langchain/core": "^0.3.58",
+    "@langchain/langgraph-checkpoint": "workspace:*",
     "@langchain/langgraph-checkpoint-postgres": "workspace:*",
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",

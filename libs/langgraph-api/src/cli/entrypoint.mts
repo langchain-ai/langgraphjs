@@ -31,9 +31,12 @@ const [{ host, cleanup }, organizationId] = await Promise.all([
     if (isTracingEnabled()) {
       try {
         // @ts-expect-error Private method
-        return new LangSmithClient()._getTenantId();
+        return await new LangSmithClient()._getTenantId();
       } catch (error) {
-        logger.warn("Failed to get organization ID", { error });
+        logger.warn(
+          "Failed to get organization ID. Tracing to LangSmith will not work.",
+          { error }
+        );
       }
     }
     return null;

@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-cua",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "An implementation of a computer use agent (CUA) using LangGraph",
   "type": "module",
   "engines": {
@@ -36,7 +36,7 @@
   },
   "peerDependencies": {
     "@langchain/core": "^0.3.43",
-    "@langchain/langgraph": "^0.2.57 || ^0.3.0",
+    "@langchain/langgraph": "^0.2.57 || ^0.3.0 || ^0.4.0",
     "@langchain/openai": ">=0.5.1"
   },
   "devDependencies": {
