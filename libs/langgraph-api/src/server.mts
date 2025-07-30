@@ -27,6 +27,7 @@ import { registerHttp } from "./http/custom.mjs";
 import { cors, ensureContentType } from "./http/middleware.mjs";
 import { bindLoopbackFetch } from "./loopback.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
+import { getConfig } from "@langchain/langgraph";
 
 export const StartServerSchema = z.object({
   port: z.number(),
@@ -99,9 +100,6 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
   logger.info(`Registering graphs from ${options.cwd}`);
   await registerFromEnv(options.graphs, { cwd: options.cwd });
 
-  // Make sure to register the runtime formatter after we've loaded the graphs
-  // to ensure that we're not loading `@langchain/langgraph` from different path.
-  const { getConfig } = await import("@langchain/langgraph");
   registerRuntimeLogFormatter((info) => {
     const config = getConfig();
     if (config == null) return info;

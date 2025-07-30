@@ -12,7 +12,8 @@ function abs(relativePath) {
 export const config = {
   internals: [/node\:/, /@langchain\/core\//, /async_hooks/],
   entrypoints: {
-    index: "index"
+    index: "index",
+    store: "store/index",
   },
   tsConfigPath: resolve("./tsconfig.json"),
   cjsSource: "./dist-cjs",

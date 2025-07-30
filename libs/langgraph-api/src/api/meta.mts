@@ -12,11 +12,22 @@ const packageJsonPath = path.resolve(
 );
 
 let version: string;
+let langgraph_js_version: string;
 try {
   const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf-8"));
   version = packageJson.version;
 } catch {
   console.warn("Could not determine version of langgraph-api");
+}
+
+// Get the installed version of @langchain/langgraph
+try {
+  const langgraphPkg = await import("@langchain/langgraph/package.json");
+  if (langgraphPkg?.default?.version) {
+    langgraph_js_version = langgraphPkg.default.version;
+  }
+} catch {
+  console.warn("Could not determine version of @langchain/langgraph");
 }
 
 // read env variable
@@ -42,6 +53,7 @@ api.get("/info", (c) => {
   })();
   return c.json({
     version,
+    langgraph_js_version,
     context: "js",
     flags: {
       assistants: true,

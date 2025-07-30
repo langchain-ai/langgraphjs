@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   postgres:
-    image: postgres:latest
+    image: pgvector/pgvector:pg17
     container_name: langgraphjs-postgres-test
     environment:
       POSTGRES_USER: user
