@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 0.0.54
+
+### Patch Changes
+
+- 1777878: fix(cli): only warn the user if an invalid LangSmith API key is passed while tracing is enabled
+  - @langchain/langgraph-ui@0.0.54
+
 ## 0.0.53
 
 ### Patch Changes
