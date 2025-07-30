@@ -577,4 +577,64 @@ describe("RemoteGraph", () => {
       }),
     ]);
   });
+
+  test("handle circular references", async () => {
+    const client = new Client({});
+    const streamSpy = vi
+      .spyOn((client as any).runs, "stream")
+      .mockImplementation(async function* () {
+        yield {
+          event: "values",
+          data: { messages: [{ type: "human", content: "world" }] },
+        };
+      });
+
+    const remotePregel = new RemoteGraph({ client, graphId: "test_graph_id" });
+
+    const config: any = {
+      configurable: { thread_id: "thread_1", bigint: 123n },
+      metadata: { source: "test" },
+      tags: [],
+    };
+    config.configurable.circular = config;
+    config.metadata.circular = config;
+    config.tags.push(config);
+
+    const result = await remotePregel.invoke({}, config);
+    expect(result).toEqual({ messages: [{ type: "human", content: "world" }] });
+
+    expect(streamSpy).toHaveBeenCalledWith(
+      "thread_1",
+      "test_graph_id",
+      expect.objectContaining({
+        config: expect.objectContaining({
+          configurable: {
+            circular: "[Circular]",
+            bigint: "123",
+            thread_id: "thread_1",
+          },
+          metadata: {
+            source: "test",
+            circular: "[Circular]",
+            thread_id: "thread_1",
+          },
+          tags: [
+            {
+              configurable: {
+                circular: "[Circular]",
+                bigint: "123",
+                thread_id: "thread_1",
+              },
+              metadata: {
+                source: "test",
+                circular: "[Circular]",
+                thread_id: "thread_1",
+              },
+              tags: ["[Circular]"],
+            },
+          ],
+        }),
+      })
+    );
+  });
 });
