@@ -3,31 +3,31 @@ import { Hono } from "hono";
 
 import { registerFromEnv } from "./graph/load.mjs";
 
-import runs from "./api/runs.mjs";
-import threads from "./api/threads.mjs";
 import assistants from "./api/assistants.mjs";
-import store from "./api/store.mjs";
 import meta from "./api/meta.mjs";
+import runs from "./api/runs.mjs";
+import store from "./api/store.mjs";
+import threads from "./api/threads.mjs";
 
-import { truncate, conn as opsConn } from "./storage/ops.mjs";
 import { zValidator } from "@hono/zod-validator";
+import { getConfig } from "@langchain/langgraph";
 import { z } from "zod";
-import { queue } from "./queue.mjs";
-import {
-  logger,
-  requestLogger,
-  registerRuntimeLogFormatter,
-  registerSdkLogger,
-} from "./logging.mjs";
-import { checkpointer } from "./storage/checkpoint.mjs";
-import { store as graphStore } from "./storage/store.mjs";
 import { auth } from "./auth/custom.mjs";
 import { registerAuth } from "./auth/index.mjs";
 import { registerHttp } from "./http/custom.mjs";
 import { cors, ensureContentType } from "./http/middleware.mjs";
+import {
+  logger,
+  registerRuntimeLogFormatter,
+  registerSdkLogger,
+  requestLogger,
+} from "./logging.mjs";
 import { bindLoopbackFetch } from "./loopback.mjs";
+import { queue } from "./queue.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
-import { getConfig } from "@langchain/langgraph";
+import { checkpointer } from "./storage/checkpoint.mjs";
+import { conn as opsConn, truncate } from "./storage/ops.mjs";
+import { store as graphStore } from "./storage/store.mjs";
 
 export const StartServerSchema = z.object({
   port: z.number(),
@@ -139,6 +139,9 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
   app.use(cors(options.http?.cors));
   app.use(requestLogger());
 
+  // Register meta routes before auth so they're excluded from authentication
+  if (!options.http?.disable_meta) app.route("/", meta);
+
   if (options.auth?.path) {
     logger.info(`Loading auth from ${options.auth.path}`);
     await registerAuth(options.auth, { cwd: options.cwd });
@@ -152,8 +155,6 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
   }
 
   app.use(ensureContentType());
-
-  if (!options.http?.disable_meta) app.route("/", meta);
   if (!options.http?.disable_assistants) app.route("/", assistants);
   if (!options.http?.disable_runs) app.route("/", runs);
   if (!options.http?.disable_threads) app.route("/", threads);
