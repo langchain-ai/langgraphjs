@@ -235,7 +235,7 @@ export class RemoteGraph<
           }
         }
       }
-    
+
       try {
         JSON.stringify(obj);
         return obj;

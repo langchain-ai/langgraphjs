@@ -604,7 +604,10 @@ describe("RemoteGraph", () => {
     };
 
     // Should not throw error despite circular reference
-    const stream = await remotePregel.stream({ input: "test" }, config);
+    const stream = await remotePregel.stream(
+      { input: "test" },
+      { ...config, streamMode: "values" }
+    );
     const chunks = [];
     for await (const chunk of stream) {
       chunks.push(chunk);
