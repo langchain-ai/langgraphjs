@@ -380,7 +380,6 @@ describe.each([
     expect(firstCheckpointTuple?.metadata).toEqual({
       source: "update",
       step: -1,
-      writes: null,
       parents: {},
     });
     expect(firstCheckpointTuple?.parentConfig).toBeUndefined();
