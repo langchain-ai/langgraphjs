@@ -43,7 +43,7 @@ test.concurrent("graph factories", { timeout: 30_000 }, () => {
     testCases.map((prop, idx) => ({
       sourceFile: [
         {
-          name: `graph_${idx}.mts`,
+          path: `graph_${idx}.mts`,
           main: true,
           contents: dedent`
             import { HumanMessage } from "@langchain/core/messages";
@@ -90,7 +90,7 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         sourceFile: [
           {
             main: true,
-            name: "graph.mts",
+            path: "graph.mts",
             contents: dedent`
               import { HumanMessage } from "@langchain/core/messages";
               import {
@@ -207,7 +207,7 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
       {
         sourceFile: [
           {
-            name: "graph.mts",
+            path: "graph.mts",
             main: true,
             contents: dedent`
               import { HumanMessage } from "@langchain/core/messages";
@@ -335,7 +335,7 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
           {
             sourceFile: [
               {
-                name: "graph.mts",
+                path: "graph.mts",
                 main: true,
                 contents: dedent`
                 import { HumanMessage } from "@langchain/core/messages";
@@ -400,7 +400,7 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
       {
         sourceFile: [
           {
-            name: "graph.mts",
+            path: "graph.mts",
             main: true,
             contents: dedent`
               import { HumanMessage } from "@langchain/core/messages";
@@ -430,7 +430,7 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
             `,
           },
           {
-            name: "./subgraph.mts",
+            path: "./subgraph.mts",
             contents: dedent`
               import { HumanMessage } from "@langchain/core/messages";
               import {
@@ -539,7 +539,7 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
       {
         sourceFile: [
           {
-            name: "graph.mts",
+            path: "graph.mts",
             main: true,
             contents: dedent`
               import { HumanMessage } from "@langchain/core/messages";
@@ -569,7 +569,7 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
               `,
           },
           {
-            name: "./subgraph.mts",
+            path: "./subgraph.mts",
             contents: dedent`
               import { HumanMessage } from "@langchain/core/messages";
               import {
@@ -677,7 +677,7 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
       {
         sourceFile: [
           {
-            name: "graph.mts",
+            path: "graph.mts",
             main: true,
             contents: dedent`
             import { HumanMessage } from "@langchain/core/messages";
@@ -798,7 +798,7 @@ test.concurrent("weather", { timeout: 30_000 }, () => {
     {
       sourceFile: [
         {
-          name: "graph.mts",
+          path: "graph.mts",
           main: true,
           contents: dedent`
             import { Annotation, StateGraph, END, START } from "@langchain/langgraph";
@@ -876,7 +876,7 @@ test.concurrent("nested", { timeout: 30_000 }, () => {
     {
       sourceFile: [
         {
-          name: "graph.mts",
+          path: "graph.mts",
           main: true,
           contents: dedent`
             import { Annotation, StateGraph, END, START } from "@langchain/langgraph";
@@ -945,7 +945,7 @@ test.concurrent(
         exportSymbol: "graph",
         sourceFile: [
           {
-            name: "graph1.mts",
+            path: "graph1/graph.mts",
             main: true,
             contents: dedent`
             import { Annotation, StateGraph, END, START } from "@langchain/langgraph";
@@ -965,12 +965,12 @@ test.concurrent(
         exportSymbol: "graph",
         sourceFile: [
           {
-            name: "graph2.mts",
+            path: "graph2/graph.mts",
             main: true,
             contents: dedent`
             import { Annotation, StateGraph, END, START } from "@langchain/langgraph";
             export const graph = new StateGraph(
-              Annotation.Root({ messages: Annotation<string[]>({ reducer: (a, b) => a.concat(b) }) }),
+              Annotation.Root({ random: Annotation<string[]>({ reducer: (a, b) => a.concat(b) }) }),
               Annotation.Root({ graph2: Annotation<string> })
             )
               .addNode("child", (state) => state)

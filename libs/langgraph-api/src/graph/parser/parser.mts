@@ -365,7 +365,7 @@ export class SubgraphExtractor {
       sourceFile:
         | string
         | {
-            name: string;
+            path: string;
             contents: string;
             main?: boolean;
           }[];
@@ -423,13 +423,17 @@ export class SubgraphExtractor {
       if (typeof item.sourceFile === "string") {
         targetPaths.push({ ...item, sourceFile: item.sourceFile });
       } else {
-        for (const { name, contents, main } of item.sourceFile ?? []) {
-          fsMap.set(vfsPath(path.resolve(projectDirname, name)), contents);
+        for (const { path: sourcePath, contents, main } of item.sourceFile ??
+          []) {
+          fsMap.set(
+            vfsPath(path.resolve(projectDirname, sourcePath)),
+            contents
+          );
 
           if (main) {
             targetPaths.push({
               ...item,
-              sourceFile: path.resolve(projectDirname, name),
+              sourceFile: path.resolve(projectDirname, sourcePath),
             });
           }
         }
@@ -498,21 +502,24 @@ export class SubgraphExtractor {
         options
       );
 
+      const suffix = path
+        .relative(projectDirname, targetPath.sourceFile)
+        .split(path.sep)
+        .join("__");
+
+      const graphDirname = path.dirname(targetPath.sourceFile);
       const { sourceFile, inferFile, exports } =
-        extractor.getAugmentedSourceFile(
-          path.basename(targetPath.sourceFile),
-          targetPath.exportSymbol
-        );
+        extractor.getAugmentedSourceFile(suffix, targetPath.exportSymbol);
 
       for (const { fileName, contents } of [sourceFile, inferFile]) {
         system.writeFile(
-          vfsPath(path.resolve(projectDirname, fileName)),
+          vfsPath(path.resolve(graphDirname, fileName)),
           contents
         );
       }
 
       researchTargets.push({
-        rootName: path.resolve(projectDirname, inferFile.fileName),
+        rootName: path.resolve(graphDirname, inferFile.fileName),
         exports,
       });
     }
