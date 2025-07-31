@@ -274,7 +274,7 @@ export class SubgraphExtractor {
       typeName: sanitize(typeName),
     }));
 
-    const sourceFilePath = `__langgraph__source_${sanitize(suffix)}.mts`;
+    const sourceFilePath = `__langgraph__source_${sanitize(suffix)}${ext}`;
     const sourceContents = [
       this.getText(this.sourceFile),
       typeExports.map(
@@ -282,7 +282,7 @@ export class SubgraphExtractor {
       ),
     ];
 
-    const inferFilePath = `__langgraph__infer_${sanitize(suffix)}.mts`;
+    const inferFilePath = `__langgraph__infer_${sanitize(suffix)}${ext}`;
     const inferContents = [
       typeExports.map(
         (type) => `import type { ${type.typeName} } from "./${sourceFilePath}"`
