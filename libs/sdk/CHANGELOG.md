@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 0.0.105
+
+### Patch Changes
+
+- 7054a6a: add context to assistantBase interface
+
 ## 0.0.104
 
 ### Patch Changes

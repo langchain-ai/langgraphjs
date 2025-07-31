@@ -1,5 +1,14 @@
 # @langchain/langgraph-api
 
+## 0.0.55
+
+### Patch Changes
+
+- ef84039: fix(api): place the schema inference template next to the graph code, use whole path for symbol name
+- 7edf347: exlcude meta routes from auth
+- 77b21d5: add installed langgraph version to info endpoint for js server
+  - @langchain/langgraph-ui@0.0.55
+
 ## 0.0.54
 
 ### Patch Changes

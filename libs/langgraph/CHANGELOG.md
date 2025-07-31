@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 0.4.1
+
+### Patch Changes
+
+- f2cc704: fix(langgraph): RemotePregel serialization fix
+- Updated dependencies [7054a6a]
+  - @langchain/langgraph-sdk@0.0.105
+
 ## 0.4.0
 
 ### Minor Changes
