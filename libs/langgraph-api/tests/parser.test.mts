@@ -404,20 +404,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
             main: true,
             contents: dedent`
               import { HumanMessage } from "@langchain/core/messages";
-              import { subgraph } from "./subgraph.mts";
+              import { subgraph } from "./subgraph.mjs";
               import {
-                Annotation,
                 MessagesAnnotation,
                 StateGraph,
               } from "@langchain/langgraph";
-        
+
               const ParentSchema = MessagesAnnotation;
-        
-              const SubgraphSchema = Annotation.Root({
-                ...MessagesAnnotation.spec,
-                kind: Annotation<"weather" | "other">,
-              });
-        
+              
               export const graph = new StateGraph(ParentSchema)
                 .addNode("parent", () => {
                   return { messages: [new HumanMessage("Hello from child")] };
@@ -543,19 +537,13 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
             main: true,
             contents: dedent`
               import { HumanMessage } from "@langchain/core/messages";
-              import { subgraph } from "./subgraph.mts";
+              import { subgraph } from "./subgraph.mjs";
               import {
-                Annotation,
                 MessagesAnnotation,
                 StateGraph,
               } from "@langchain/langgraph";
         
               const ParentSchema = MessagesAnnotation;
-        
-              const SubgraphSchema = Annotation.Root({
-                ...MessagesAnnotation.spec,
-                kind: Annotation<"weather" | "other">,
-              });
         
               export const graph = new StateGraph(ParentSchema)
                 .addNode("parent", () => {
@@ -711,6 +699,8 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
               .addEdge("child", "__end__");
 
             const indirect1 = parent
+
+            // @ts-ignore
             const indirect2 = (() => indirect1)()
             export const graph = parent.compile() 
           `,

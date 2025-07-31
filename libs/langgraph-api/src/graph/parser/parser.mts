@@ -224,7 +224,8 @@ export class SubgraphExtractor {
 
   public getAugmentedSourceFile = (
     sourcePath: string,
-    name: string
+    name: string,
+    options: { allowImportingTsExtensions: boolean }
   ): {
     inferFile: { fileName: string; contents: string };
     sourceFile: { fileName: string; contents: string };
@@ -253,7 +254,11 @@ export class SubgraphExtractor {
       },
     ];
 
+    const seenTypeName = new Set<string>();
     for (const { subgraph, node, namespace } of vars) {
+      if (seenTypeName.has(subgraph.name)) continue;
+      seenTypeName.add(subgraph.name);
+
       typeExports.push({
         typeName: sanitize(
           `__langgraph__${namespace.join("_")}_${node}_${suffix}`
@@ -277,9 +282,14 @@ export class SubgraphExtractor {
     ];
 
     const inferFilePath = `__langgraph__infer_${sanitize(suffix)}${ext}`;
+    const sourceFileImportPath = options.allowImportingTsExtensions
+      ? sourceFilePath
+      : sourceFilePath.slice(0, -ext.length) + ext.replace("ts", "js");
+
     const inferContents = [
       typeExports.map(
-        (type) => `import type { ${type.typeName} } from "./${sourceFilePath}"`
+        (type) =>
+          `import type { ${type.typeName} } from "./${sourceFileImportPath}"`
       ),
       this.inferFile.getText(this.inferFile),
       typeExports.map(
@@ -446,8 +456,7 @@ export class SubgraphExtractor {
         path.dirname(tsconfigPath)
       );
 
-      // apply user's tsconfig.json options
-      compilerOptions = { ...compilerOptions, ...parsedTsconfig.options };
+      compilerOptions = { ...parsedTsconfig.options, ...compilerOptions };
     }
 
     const vfsHost = vfs.createVirtualCompilerHost(system, compilerOptions, ts);
@@ -541,7 +550,11 @@ export class SubgraphExtractor {
       const { sourceFile, inferFile, exports } =
         extractor.getAugmentedSourceFile(
           path.relative(projectDirname, targetPath.sourceFile),
-          targetPath.exportSymbol
+          targetPath.exportSymbol,
+          {
+            allowImportingTsExtensions:
+              compilerOptions.allowImportingTsExtensions ?? false,
+          }
         );
 
       for (const { fileName, contents } of [sourceFile, inferFile]) {
@@ -567,38 +580,74 @@ export class SubgraphExtractor {
     // This may explain why sometimes the schema is invalid.
     const allDiagnostics = ts.getPreEmitDiagnostics(extract);
     for (const diagnostic of allDiagnostics) {
+      let message =
+        ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n") + "\n";
+
       if (diagnostic.file) {
-        let { line, character } = ts.getLineAndCharacterOfPosition(
+        const fileName = diagnostic.file.fileName;
+        const { line, character } = ts.getLineAndCharacterOfPosition(
           diagnostic.file,
           diagnostic.start!
         );
-        let message = ts.flattenDiagnosticMessageText(
-          diagnostic.messageText,
-          "\n"
-        );
-        console.log(
-          `${diagnostic.file.fileName} (${line + 1},${
-            character + 1
-          }): ${message}` + "\n"
-        );
-      } else {
-        console.log(
-          ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n") + "\n"
-        );
+        const fileLoc = `(${line + 1},${character + 1})`;
+        message = `${fileName} ${fileLoc}: ${message}`;
       }
+
+      console.log(message);
     }
 
     const schemaGenerator = buildGenerator(extract);
-    const trySymbol = (schema: typeof schemaGenerator, symbol: string) => {
+    const trySymbol = (symbol: string) => {
+      let schema: JSONSchema7 | undefined = undefined;
       try {
-        return schema?.getSchemaForSymbol(symbol) ?? undefined;
+        schema = schemaGenerator?.getSchemaForSymbol(symbol) ?? undefined;
       } catch (e) {
         console.warn(
           `Failed to obtain symbol "${symbol}":`,
           (e as Error)?.message
         );
       }
-      return undefined;
+
+      if (schema == null) return undefined;
+
+      const definitions = schema.definitions;
+      if (definitions == null) return schema;
+
+      const toReplace = Object.keys(definitions).flatMap((key) => {
+        const replacedKey = key.includes("import(")
+          ? key.replace(/import\(.+@langchain[\\/]core.+\)\./, "")
+          : key;
+
+        if (key !== replacedKey && definitions[replacedKey] == null) {
+          return [
+            {
+              source: key,
+              target: replacedKey,
+
+              sourceRef: `#/definitions/${key}`,
+              targetRef: `#/definitions/${replacedKey}`,
+            },
+          ];
+        }
+        return [];
+      });
+
+      for (const { source, target } of toReplace) {
+        definitions[target] = definitions[source];
+        delete definitions[source];
+      }
+
+      const refMap = toReplace.reduce<Record<string, string>>((acc, item) => {
+        acc[item.sourceRef] = item.targetRef;
+        return acc;
+      }, {});
+
+      return JSON.parse(
+        JSON.stringify(schema, (_, value) => {
+          if (typeof value === "string" && refMap[value]) return refMap[value];
+          return value;
+        })
+      );
     };
 
     return researchTargets.map(({ exports }) =>
@@ -606,10 +655,10 @@ export class SubgraphExtractor {
         exports.map(({ typeName, graphName }) => [
           graphName,
           {
-            state: trySymbol(schemaGenerator, `${typeName}__update`),
-            input: trySymbol(schemaGenerator, `${typeName}__input`),
-            output: trySymbol(schemaGenerator, `${typeName}__output`),
-            config: trySymbol(schemaGenerator, `${typeName}__config`),
+            state: trySymbol(`${typeName}__update`),
+            input: trySymbol(`${typeName}__input`),
+            output: trySymbol(`${typeName}__output`),
+            config: trySymbol(`${typeName}__config`),
           },
         ])
       )
