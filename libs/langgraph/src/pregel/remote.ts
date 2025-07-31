@@ -219,24 +219,25 @@ export class RemoteGraph<
       "checkpoint_ns",
     ]);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sanitizeObj = (obj: any): any => {
-      // Remove non-JSON serializable fields from the given object
-      if (obj && typeof obj === "object") {
-        if (Array.isArray(obj)) {
-          return obj.map((v) => sanitizeObj(v));
-        } else {
-          return Object.fromEntries(
-            Object.entries(obj).map(([k, v]) => [k, sanitizeObj(v)])
-          );
-        }
-      }
-
+    const sanitizeObj = <T>(obj: T): T => {
       try {
+        // This will only throw if we're trying to serialize a circular reference
+        // or trying to serialize a BigInt...
         JSON.stringify(obj);
         return obj;
       } catch {
-        return null;
+        const seen = new WeakSet();
+        return JSON.parse(
+          JSON.stringify(obj, (_, value) => {
+            if (typeof value === "object" && value != null) {
+              if (seen.has(value)) return "[Circular]";
+              seen.add(value);
+            }
+
+            if (typeof value === "bigint") return value.toString();
+            return value;
+          })
+        );
       }
     };
 
