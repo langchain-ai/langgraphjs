@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-postgres
 
+## 0.1.1
+
+### Patch Changes
+
+- 42ced3a: Add Store implemention for Postgres
+
 ## 0.1.0
 
 ### Minor Changes
