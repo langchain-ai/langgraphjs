@@ -743,3 +743,11 @@ it.skipIf(process.version.startsWith("v18."))(
     expect(chunks.find((i) => i.event === "error")).not.toBeDefined();
   }
 );
+
+it("info endpoint", async () => {
+  const res = await fetch(API_URL + "/info");
+  expect(res.status).toBe(200);
+
+  const json = await res.json();
+  expect(json).toMatchObject({ version: expect.any(String) });
+});

@@ -72,6 +72,9 @@ export const auth = (): MiddlewareHandler => {
   return async (c, next) => {
     if (!isAuthRegistered()) return next();
 
+    // skip for /info
+    if (c.req.path === "/info") return next();
+
     if (
       !isStudioAuthDisabled() &&
       c.req.header("x-auth-scheme") === "langsmith"
