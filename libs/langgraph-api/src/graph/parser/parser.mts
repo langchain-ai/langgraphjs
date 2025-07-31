@@ -229,24 +229,31 @@ export class SubgraphExtractor {
   };
 
   public getAugmentedSourceFile = (
-    suffix: string,
+    sourcePath: string,
     name: string
   ): {
     inferFile: { fileName: string; contents: string };
     sourceFile: { fileName: string; contents: string };
     exports: { typeName: string; valueName: string; graphName: string }[];
   } => {
+    function sanitize<T extends string>(input: T): T {
+      return input.replace(/[^a-zA-Z0-9]/g, "_") as T;
+    }
+
     const vars = this.getSubgraphsVariables(name);
+
     type TypeExport = {
       typeName: `__langgraph__${string}`;
       valueName: string;
       graphName: string;
     };
 
-    const typeSuffix = suffix.replace(/[^a-zA-Z0-9]/g, "_");
-    const typeExports: TypeExport[] = [
+    const ext = path.extname(sourcePath);
+    const suffix = sourcePath.slice(0, -ext.length);
+
+    let typeExports: TypeExport[] = [
       {
-        typeName: `__langgraph__${name}_${typeSuffix}`,
+        typeName: sanitize(`__langgraph__${name}_${suffix}`),
         valueName: name,
         graphName: name,
       },
@@ -254,48 +261,56 @@ export class SubgraphExtractor {
 
     for (const { subgraph, node, namespace } of vars) {
       typeExports.push({
-        typeName: `__langgraph__${namespace.join("_")}_${node}_${typeSuffix}`,
+        typeName: sanitize(
+          `__langgraph__${namespace.join("_")}_${node}_${suffix}`
+        ),
         valueName: subgraph.name,
         graphName: [...namespace, node].join("|"),
       });
     }
 
-    const sourceFilePath = `__langgraph__source_${suffix}.mts`;
+    typeExports = typeExports.map(({ typeName, ...rest }) => ({
+      ...rest,
+      typeName: sanitize(typeName),
+    }));
+
+    const sourceFilePath = `__langgraph__source_${sanitize(suffix)}.mts`;
     const sourceContents = [
       this.getText(this.sourceFile),
-      ...typeExports.map(
-        ({ typeName, valueName }) =>
-          `export type ${typeName} = typeof ${valueName}`
+      typeExports.map(
+        (type) => `export type ${type.typeName} = typeof ${type.valueName}`
       ),
-    ].join("\n\n");
+    ];
 
-    const inferFilePath = `__langgraph__infer_${suffix}.mts`;
+    const inferFilePath = `__langgraph__infer_${sanitize(suffix)}.mts`;
     const inferContents = [
-      ...typeExports.map(
-        ({ typeName }) =>
-          `import type { ${typeName}} from "./__langgraph__source_${suffix}.mts"`
+      typeExports.map(
+        (type) => `import type { ${type.typeName} } from "./${sourceFilePath}"`
       ),
       this.inferFile.getText(this.inferFile),
+      typeExports.map(
+        (type) => dedent`
+          type ${type.typeName}__reflect = Reflect<${type.typeName}>;
+          export type ${type.typeName}__state = Inspect<${type.typeName}__reflect["state"]>;
+          export type ${type.typeName}__update = Inspect<${type.typeName}__reflect["update"]>;
 
-      ...typeExports.flatMap(({ typeName }) => {
-        return [
-          dedent`
-            type ${typeName}__reflect = Reflect<${typeName}>;
-            export type ${typeName}__state = Inspect<${typeName}__reflect["state"]>;
-            export type ${typeName}__update = Inspect<${typeName}__reflect["update"]>;
-
-            type ${typeName}__builder = BuilderReflect<${typeName}>;
-            export type ${typeName}__input = Inspect<FilterAny<${typeName}__builder["input"]>>;
-            export type ${typeName}__output = Inspect<FilterAny<${typeName}__builder["output"]>>;
-            export type ${typeName}__config = Inspect<FilterAny<${typeName}__builder["config"]>>;
-          `,
-        ];
-      }),
-    ].join("\n\n");
+          type ${type.typeName}__builder = BuilderReflect<${type.typeName}>;
+          export type ${type.typeName}__input = Inspect<FilterAny<${type.typeName}__builder["input"]>>;
+          export type ${type.typeName}__output = Inspect<FilterAny<${type.typeName}__builder["output"]>>;
+          export type ${type.typeName}__config = Inspect<FilterAny<${type.typeName}__builder["config"]>>;
+        `
+      ),
+    ];
 
     return {
-      inferFile: { fileName: inferFilePath, contents: inferContents },
-      sourceFile: { fileName: sourceFilePath, contents: sourceContents },
+      inferFile: {
+        fileName: inferFilePath,
+        contents: inferContents.flat(1).join("\n\n"),
+      },
+      sourceFile: {
+        fileName: sourceFilePath,
+        contents: sourceContents.flat(1).join("\n\n"),
+      },
       exports: typeExports,
     };
   };
@@ -502,14 +517,12 @@ export class SubgraphExtractor {
         options
       );
 
-      const suffix = path
-        .relative(projectDirname, targetPath.sourceFile)
-        .split(path.sep)
-        .join("__");
-
       const graphDirname = path.dirname(targetPath.sourceFile);
       const { sourceFile, inferFile, exports } =
-        extractor.getAugmentedSourceFile(suffix, targetPath.exportSymbol);
+        extractor.getAugmentedSourceFile(
+          path.relative(projectDirname, targetPath.sourceFile),
+          targetPath.exportSymbol
+        );
 
       for (const { fileName, contents } of [sourceFile, inferFile]) {
         system.writeFile(

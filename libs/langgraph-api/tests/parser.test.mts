@@ -230,24 +230,24 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
               });
 
               const subchild = new StateGraph(SubchildSchema)
-                .addNode("subchild_one", () => ({ messages: [new HumanMessage("subchild_one")] }))
-                .addNode("subchild_two", () => ({ messages: [new HumanMessage("subchild_two")] }))
-                .addEdge("__start__", "subchild_one")
-                .addEdge("subchild_one", "subchild_two")
+                .addNode("subchild-one", () => ({ messages: [new HumanMessage("subchild-one")] }))
+                .addNode("subchild-two", () => ({ messages: [new HumanMessage("subchild-two")] }))
+                .addEdge("__start__", "subchild-one")
+                .addEdge("subchild-one", "subchild-two")
                 .compile();
           
               const child = new StateGraph(ChildSchema)
-                .addNode("child_one", () => ({ messages: [new HumanMessage("child_one")] }))
-                .addNode("child_two", subchild)
-                .addEdge("__start__", "child_one")
-                .addEdge("child_one", "child_two")
+                .addNode("child-one", () => ({ messages: [new HumanMessage("child-one")] }))
+                .addNode("child-two", subchild)
+                .addEdge("__start__", "child-one")
+                .addEdge("child-one", "child-two")
                 .compile();
           
               export const parent = new StateGraph(ParentSchema)
-                .addNode("parent_one", () => ({ messages: [new HumanMessage("parent_one")] }))
-                .addNode("parent_two", child)
-                .addEdge("__start__", "parent_one")
-                .addEdge("parent_one", "parent_two")
+                .addNode("parent-one", () => ({ messages: [new HumanMessage("parent-one")] }))
+                .addNode("parent-two", child)
+                .addEdge("__start__", "parent-one")
+                .addEdge("parent-one", "parent-two")
                 .compile();
             `,
           },
@@ -260,8 +260,8 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
     expect(Object.keys(schema)).toEqual(
       expect.arrayContaining([
         "parent",
-        "parent|parent_two",
-        "parent|parent_two|child_two",
+        "parent|parent-two",
+        "parent|parent-two|child-two",
       ])
     );
 
@@ -283,7 +283,7 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
-    expect(schema["parent|parent_two"].state).toMatchObject({
+    expect(schema["parent|parent-two"].state).toMatchObject({
       type: "object",
       properties: {
         child: {
@@ -305,7 +305,7 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
-    expect(schema["parent|parent_two|child_two"].state).toMatchObject({
+    expect(schema["parent|parent-two|child-two"].state).toMatchObject({
       type: "object",
       properties: {
         subchild: {
