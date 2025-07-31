@@ -221,14 +221,14 @@ export class RemoteGraph<
 
     const sanitizeObj = <T>(obj: T): T => {
       try {
+        // This will only throw if we're trying to serialize a circular reference
+        // or trying to serialize a BigInt...
         JSON.stringify(obj);
         return obj;
       } catch {
         const seen = new WeakSet();
-        // This will only throw if we're trying to serialize a circular reference
-        // or trying to serialize a BigInt...
         return JSON.parse(
-          JSON.stringify(obj, (key, value) => {
+          JSON.stringify(obj, (_, value) => {
             if (typeof value === "object" && value != null) {
               if (seen.has(value)) return "[Circular]";
               seen.add(value);
