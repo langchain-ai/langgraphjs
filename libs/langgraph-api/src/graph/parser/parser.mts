@@ -27,12 +27,6 @@ const INFER_TEMPLATE_PATH = path.resolve(
   "./schema/types.template.mts"
 );
 
-const compilerOptions = {
-  noEmit: true,
-  strict: true,
-  allowUnusedLabels: true,
-};
-
 export class SubgraphExtractor {
   protected program: ts.Program;
   protected checker: ts.TypeChecker;
@@ -430,6 +424,32 @@ export class SubgraphExtractor {
       return inputPath;
     };
 
+    let compilerOptions: ts.CompilerOptions = {
+      noEmit: true,
+      strict: true,
+      allowUnusedLabels: true,
+    };
+
+    // Find tsconfig.json file
+    const tsconfigPath = ts.findConfigFile(
+      projectDirname,
+      ts.sys.fileExists,
+      "tsconfig.json"
+    );
+
+    // Read tsconfig.json file
+    if (tsconfigPath != null) {
+      const tsconfigFile = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
+      const parsedTsconfig = ts.parseJsonConfigFileContent(
+        tsconfigFile.config,
+        ts.sys,
+        path.dirname(tsconfigPath)
+      );
+
+      // apply user's tsconfig.json options
+      compilerOptions = { ...compilerOptions, ...parsedTsconfig.options };
+    }
+
     const vfsHost = vfs.createVirtualCompilerHost(system, compilerOptions, ts);
     const host = vfsHost.compilerHost;
 
@@ -542,6 +562,31 @@ export class SubgraphExtractor {
       options: compilerOptions,
       host,
     });
+
+    // Print out any diagnostics file that were detected before emitting
+    // This may explain why sometimes the schema is invalid.
+    const allDiagnostics = ts.getPreEmitDiagnostics(extract);
+    for (const diagnostic of allDiagnostics) {
+      if (diagnostic.file) {
+        let { line, character } = ts.getLineAndCharacterOfPosition(
+          diagnostic.file,
+          diagnostic.start!
+        );
+        let message = ts.flattenDiagnosticMessageText(
+          diagnostic.messageText,
+          "\n"
+        );
+        console.log(
+          `${diagnostic.file.fileName} (${line + 1},${
+            character + 1
+          }): ${message}` + "\n"
+        );
+      } else {
+        console.log(
+          ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n") + "\n"
+        );
+      }
+    }
 
     const schemaGenerator = buildGenerator(extract);
     const trySymbol = (schema: typeof schemaGenerator, symbol: string) => {
