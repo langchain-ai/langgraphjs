@@ -1,5 +1,11 @@
 # @langchain/langgraph-supervisor
 
+## 0.0.17
+
+### Patch Changes
+
+- 55f15d4: feat: support contextSchema in supervisor
+
 ## 0.0.16
 
 ### Patch Changes
