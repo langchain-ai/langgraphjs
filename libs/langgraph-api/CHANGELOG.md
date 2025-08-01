@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 0.0.56
+
+### Patch Changes
+
+- 3c390c9: fix(api): parser: sanitise generated symbol names, honor typescript extension
+  - @langchain/langgraph-ui@0.0.56
+
 ## 0.0.55
 
 ### Patch Changes

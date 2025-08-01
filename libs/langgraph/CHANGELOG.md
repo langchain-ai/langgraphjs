@@ -1,5 +1,11 @@
 # @langchain/langgraph
 
+## 0.4.2
+
+### Patch Changes
+
+- c911c5f: fix(langgraph): handle empty messages
+
 ## 0.4.1
 
 ### Patch Changes
