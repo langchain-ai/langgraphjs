@@ -260,7 +260,8 @@ export function toolsCondition(
     : state.messages[state.messages.length - 1];
 
   if (
-    message !== undefined && "tool_calls" in message &&
+    message !== undefined &&
+    "tool_calls" in message &&
     ((message as AIMessage).tool_calls?.length ?? 0) > 0
   ) {
     return "tools";
