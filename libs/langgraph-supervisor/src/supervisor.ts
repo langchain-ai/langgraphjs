@@ -112,6 +112,7 @@ export type CreateSupervisorParams<
       }
     | Record<string, unknown>;
   stateSchema?: AnnotationRootT;
+  contextSchema?: AnnotationRootT;
   outputMode?: OutputMode;
   addHandoffBackMessages?: boolean;
   supervisorName?: string;
@@ -146,6 +147,7 @@ export type CreateSupervisorParams<
  * **Note**: The graph will make a separate call to the LLM to generate the structured response after the agent loop is finished.
  * This is not the only strategy to get structured responses, see more options in [this guide](https://langchain-ai.github.io/langgraph/how-tos/react-agent-structured-output/).
  * @param stateSchema State schema to use for the supervisor graph
+ * @param contextSchema Context schema to use for the supervisor graph
  * @param outputMode Mode for adding managed agents' outputs to the message history in the multi-agent workflow.
  *   Can be one of:
  *   - `full_history`: add the entire agent message history
@@ -170,6 +172,7 @@ const createSupervisor = <
   prompt,
   responseFormat,
   stateSchema,
+  contextSchema,
   outputMode = "last_message",
   addHandoffBackMessages = true,
   supervisorName = "supervisor",
@@ -258,7 +261,7 @@ const createSupervisor = <
     stateSchema: schema,
   });
 
-  let builder = new StateGraph(schema)
+  let builder = new StateGraph(schema, contextSchema)
     .addNode(supervisorAgent.name!, supervisorAgent, {
       ends: [...agentNames],
     })
