@@ -1,0 +1,86 @@
+{
+  "name": "@langchain/langgraph-checkpoint-mysql",
+  "version": "0.0.1",
+  "description": "LangGraph",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:langchain-ai/langgraphjs.git"
+  },
+  "scripts": {
+    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-checkpoint-mysql",
+    "build:internal": "yarn clean && yarn lc_build --create-entrypoints --pre --tree-shaking",
+    "clean": "rm -rf dist/ dist-cjs/ .turbo/",
+    "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
+    "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
+    "lint": "yarn lint:eslint && yarn lint:dpdm",
+    "lint:fix": "yarn lint:eslint --fix && yarn lint:dpdm",
+    "prepack": "yarn build",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:int": "vitest run --mode int",
+    "format": "prettier --config .prettierrc --write \"src\"",
+    "format:check": "prettier --config .prettierrc --check \"src\""
+  },
+  "author": "LangChain",
+  "license": "MIT",
+  "dependencies": {
+    "mysql2": "^3.14.1",
+    "sequelize": "^6.37.7"
+  },
+  "peerDependencies": {
+    "@langchain/core": ">=0.2.31 <0.4.0",
+    "@langchain/langgraph-checkpoint": "~0.0.15"
+  },
+  "devDependencies": {
+    "@langchain/langgraph-checkpoint": "workspace:*",
+    "@langchain/scripts": ">=0.1.2 <0.2.0",
+    "@tsconfig/recommended": "^1.0.3",
+    "@types/pg": "^8.11.8",
+    "@types/uuid": "^10",
+    "@typescript-eslint/eslint-plugin": "^6.12.0",
+    "@typescript-eslint/parser": "^6.12.0",
+    "dotenv": "^16.3.1",
+    "dpdm": "^3.12.0",
+    "eslint": "^8.33.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^8.6.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-no-instanceof": "^1.0.1",
+    "eslint-plugin-prettier": "^4.2.1",
+    "prettier": "^2.8.3",
+    "release-it": "^19.0.2",
+    "rollup": "^4.37.0",
+    "tsx": "^4.19.3",
+    "typescript": "^4.9.5 || ^5.4.5",
+    "vitest": "^3.1.2"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./index.d.ts",
+        "require": "./index.d.cts",
+        "default": "./index.d.ts"
+      },
+      "import": "./index.js",
+      "require": "./index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "index.cjs",
+    "index.js",
+    "index.d.ts",
+    "index.d.cts"
+  ]
+}
