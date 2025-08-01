@@ -5,14 +5,14 @@ import type {
   StateDefinition,
 } from "@langchain/langgraph";
 
-// @ts-expect-error
+// @ts-ignore
 type AnyPregel = {
   lg_is_pregel: boolean;
   stream: (...args: any[]) => any;
   invoke: (...args: any[]) => any;
 };
 
-// @ts-expect-error
+// @ts-ignore
 type AnyGraph = {
   compiled: boolean;
   compile: (...args: any[]) => any;
@@ -30,7 +30,7 @@ type Defactorify<T> = T extends (...args: any[]) => infer R
   ? Awaited<R>
   : Awaited<T>;
 
-// @ts-expect-error
+// @ts-ignore
 type Inspect<T, TDepth extends Array<0> = []> = TDepth extends [0, 0, 0]
   ? any
   : T extends unknown
@@ -51,7 +51,7 @@ type ReflectCompiled<T> = T extends { RunInput: infer S; RunOutput: infer U }
   ? { state: OutputType; update: InputType }
   : never;
 
-// @ts-expect-error
+// @ts-ignore
 type Reflect<T> = Defactorify<T> extends infer DT
   ? DT extends {
       compile(...args: any[]): infer Compiled;
@@ -74,7 +74,7 @@ type BuilderReflectCompiled<T> = T extends {
     }
   : never;
 
-// @ts-expect-error
+// @ts-ignore
 type BuilderReflect<T> = Defactorify<T> extends infer DT
   ? DT extends {
       compile(...args: any[]): infer Compiled;
@@ -83,5 +83,5 @@ type BuilderReflect<T> = Defactorify<T> extends infer DT
     : BuilderReflectCompiled<DT>
   : never;
 
-// @ts-expect-error
+// @ts-ignore
 type FilterAny<T> = 0 extends 1 & T ? never : T;
