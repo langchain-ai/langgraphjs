@@ -58,10 +58,11 @@ builder
       let tunnel: CloudflareTunnel | undefined = undefined;
 
       let hostUrl = "https://smith.langchain.com";
+      let envNoBrowser = process.env.BROWSER === "none";
 
       server.on("data", async (data) => {
         const response = z.object({ queryParams: z.string() }).parse(data);
-        if (options.browser && !hasOpenedFlag) {
+        if (options.browser && !envNoBrowser && !hasOpenedFlag) {
           hasOpenedFlag = true;
 
           const queryParams = new URLSearchParams(response.queryParams);
@@ -147,6 +148,7 @@ builder
         if (child != null) child.kill();
         if (tunnel != null) tunnel.child.kill();
         if (options.tunnel) tunnel = await startCloudflareTunnel(options.port);
+        envNoBrowser = process.env.BROWSER === "none" || env.BROWSER === "none";
 
         if ("python_version" in config) {
           logger.warn(
