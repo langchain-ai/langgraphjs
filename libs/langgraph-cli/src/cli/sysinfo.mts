@@ -74,12 +74,12 @@ builder
       const info = await getPackageInfo(pkg);
       if (!info) continue;
 
-      const targetRegex = new RegExp(escapeRegExp(pkg) + "@[^\\s]*", "g");
+      const targetRegex = new RegExp(escapeRegExp(pkg) + "[@\\s][^\\s]*", "g");
       console.log(
         pkg,
         "->",
         gatherMatch(info, targetRegex)
-          .map((i) => i.slice(pkg.length))
+          .map((i) => i.slice(pkg.length).trim())
           .join(", ")
       );
     }

@@ -103,16 +103,22 @@ body:
       description: |
         Please share your system info with us. 
 
-        Package Info (`npm ls` / `yarn info` / `pnpm list`)
-        Platform (Windows / Linux / Mac)
-        Node version
-        Package Manager (Yarn / Npm / Pnpm / Bun) and version of the package manager
-      placeholder: |
-        Package Info (`npm ls` / `yarn info` / `pnpm list`)
-        Platform (Windows / Linux / Mac)
-        Node version
-        Package Manager (Yarn / Npm / Pnpm / Bun) and version of the package manager
+        Run `npx @langchain/langgraph-cli@latest sysinfo` and paste the output here.
 
-        Don't forget to include any other relevant packages you're using (if you're not sure what's relevant, you can paste the entire output of `npm ls` / `yarn info` / `pnpm list`).
+        Alternatively, you can also paste the following:
+
+        - Package Info (`npm ls` / `yarn info` / `pnpm list`)
+        - Platform (Windows / Linux / Mac)
+        - Node version
+        - Package Manager (Yarn / NPM / PNPM / Bun) and version of the package manager
+      placeholder: |
+        Run `npx @langchain/langgraph-cli@latest sysinfo` and paste the output here.
+
+        Alternatively, you can also paste the following:
+
+        - Package Info (`npm ls` / `yarn info` / `pnpm list`)
+        - Platform (Windows / Linux / Mac)
+        - Node version
+        - Package Manager (Yarn / NPM / PNPM / Bun) and version of the package manager
     validations:
       required: true
