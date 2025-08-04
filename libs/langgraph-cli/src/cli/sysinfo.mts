@@ -44,7 +44,7 @@ builder
 
     const packages = gatherMatch(
       output.stdout,
-      /(@langchain\/[^\s@]+|langsmith|langchain)/g
+      /(@langchain\/[^\s@]+|langsmith|langchain|zod|zod-to-json-schema)/g
     );
 
     async function getPackageInfo(packageName: string) {
