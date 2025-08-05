@@ -4,7 +4,7 @@
 
     - [LangGraph Server](./langgraph_server.md)
 
-When building agents, it is fairly common to make rapid changes that _do not_ alter the graph logic. For example, simply changing prompts or the LLM selection can have significant impacts on the behavior of the agents. Assistants offer an easy way to make and save these types of changes to agent configuration. This can have at least two use-cases:
+When building agents, it is fairly common to make rapid changes that _do not_ alter the graph logic. For example, simply changing prompts or the LLM selection can have significant impacts on the behavior of the agents. Assistants offer an easy way to make and save these types of changes to agent configuration. This can have at least two use cases:
 
 - Assistants give developers a quick and easy way to modify and version agents for experimentation.
 - Assistants can be modified via LangGraph Studio, offering a no-code way to configure agents (e.g., for business users).
@@ -15,7 +15,7 @@ This is because Assistants are tightly coupled to your deployed graph, and so we
 
 ## Configuring Assistants
 
-In practice, an assistant is just an _instance_ of a graph with a specific configuration. Because of this, multiple assistants can reference the same graph but can contain different configurations, such as prompts, models, and other graph configuration options. The LangGraph Cloud API provides several endpoints for creating and managing assistants. See [this how-to](https://langchain-ai.github.io/langgraph/cloud/how-tos/configuration_cloud.md) for more details on how to create assistants.
+In practice, an assistant is just an _instance_ of a graph with a specific configuration. Because of this, multiple assistants can reference the same graph but can contain different configurations, such as prompts, models, and other graph configuration options. The LangGraph Cloud API provides several endpoints for creating and managing assistants. See [this how-to](/langgraphjs/cloud/how-tos/configuration_cloud) for more details on how to create assistants.
 
 ## Versioning Assistants
 
@@ -25,7 +25,7 @@ Once you've created an assistant, you can save and version it to track changes t
 2) The agent configuration options represent parameters that can be changed
 3) Assistant versions save and track specific settings of the agent configuration options
 
-For example, let's imagine you have a general writing agent. You have created a general graph architecture that works well for writing. However, there are different types of writing, e.g. blogs vs tweets. In order to get the best performance on each use case, you need to make some minor changes to the models and prompts used. In this setup, you could create an assistant for each use case - one for blog writing and one for tweeting. These would share the same graph structure, but they may use different models and different prompts. Read [this how-to](https://langchain-ai.github.io/langgraph/cloud/how-tos/assistant_versioning.md) to learn how you can use assistant versioning through both the [Studio](https://langchain-ai.github.io/langgraph/cloud/how-tos/index.md/#langgraph-studio) and the SDK.
+For example, let's imagine you have a general writing agent. You have created a general graph architecture that works well for writing. However, there are different types of writing, e.g. blogs vs tweets. In order to get the best performance on each use case, you need to make some minor changes to the models and prompts used. In this setup, you could create an assistant for each use case - one for blog writing and one for tweeting. These would share the same graph structure, but they may use different models and different prompts. Read [this how-to](/langgraphjs/cloud/how-tos/assistant_versioning) to learn how you can use assistant versioning through both the [Studio](/langgraphjs/cloud/how-tos/index/#langgraph-studio) and the SDK.
 
 ![assistant versions](img/assistants.png)
 

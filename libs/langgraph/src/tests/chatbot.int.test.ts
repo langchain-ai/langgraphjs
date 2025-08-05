@@ -1,4 +1,4 @@
-import { beforeAll, describe, it } from "@jest/globals";
+import { beforeAll, describe, it } from "vitest";
 import { ChatOpenAI } from "@langchain/openai";
 import {
   BaseMessage,
@@ -23,6 +23,8 @@ describe("Chatbot", () => {
       .addEdge("oracle", END)
       .addEdge(START, "oracle")
       .compile();
+
+    // @ts-expect-error Will be deprecated anyway
     const res = await graph.invoke(new HumanMessage("What is 1 + 1?"));
 
     console.log(res);
@@ -73,10 +75,13 @@ describe("Chatbot", () => {
         end: END,
       })
       .compile();
+
+    // @ts-expect-error Will be deprecated anyway
     const res = await graph.invoke(new HumanMessage("What is 1 + 1?"));
 
     console.log(res);
 
+    // @ts-expect-error Will be deprecated anyway
     const res2 = await graph.invoke(new HumanMessage("What is your name?"));
 
     console.log(res2);

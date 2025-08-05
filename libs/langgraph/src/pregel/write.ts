@@ -42,13 +42,21 @@ const IS_WRITER = Symbol("IS_WRITER");
 export class ChannelWrite<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   RunInput = any
-> extends RunnableCallable {
-  writes: Array<ChannelWriteEntry | Send>;
+> extends RunnableCallable<RunInput, RunInput> {
+  writes: Array<ChannelWriteEntry | ChannelWriteTupleEntry | Send>;
 
-  constructor(writes: Array<ChannelWriteEntry | Send>, tags?: string[]) {
+  constructor(
+    writes: Array<ChannelWriteEntry | ChannelWriteTupleEntry | Send>,
+    tags?: string[]
+  ) {
     const name = `ChannelWrite<${writes
       .map((packet) => {
-        return _isSend(packet) ? packet.node : packet.channel;
+        if (_isSend(packet)) {
+          return packet.node;
+        } else if ("channel" in packet) {
+          return packet.channel;
+        }
+        return "...";
       })
       .join(",")}>`;
     super({
@@ -61,65 +69,79 @@ export class ChannelWrite<
     this.writes = writes;
   }
 
-  async _getWriteValues(
-    input: unknown,
-    config: RunnableConfig
-  ): Promise<[string, unknown][]> {
-    const writes: [string, Send][] = this.writes
-      .filter(_isSend)
-      .map((packet) => {
-        return [TASKS, packet];
-      });
-    const entries = this.writes.filter((write): write is ChannelWriteEntry => {
-      return !_isSend(write);
-    });
-    const invalidEntry = entries.find((write) => {
-      return write.channel === TASKS;
-    });
-    if (invalidEntry) {
-      throw new InvalidUpdateError(
-        `Cannot write to the reserved channel ${TASKS}`
-      );
-    }
-    const values: [string, unknown][] = await Promise.all(
-      entries.map(async (write: ChannelWriteEntry) => {
-        let value;
-        if (_isPassthrough(write.value)) {
-          value = input;
-        } else {
-          value = write.value;
-        }
-        const mappedValue = write.mapper
-          ? await write.mapper.invoke(value, config)
-          : value;
-        return {
-          ...write,
-          value: mappedValue,
-        };
-      })
-    ).then((writes: Array<ChannelWriteEntry>) => {
-      return writes
-        .filter(
-          (write: ChannelWriteEntry) => !write.skipNone || write.value !== null
-        )
-        .map((write) => {
-          return [write.channel, write.value];
-        });
-    });
-    return [...writes, ...values];
-  }
-
   async _write(input: unknown, config: RunnableConfig): Promise<unknown> {
-    const values = await this._getWriteValues(input, config);
-    ChannelWrite.doWrite(config, values);
+    const writes = this.writes.map((write) => {
+      if (_isChannelWriteTupleEntry(write) && _isPassthrough(write.value)) {
+        return {
+          mapper: write.mapper,
+          value: input,
+        };
+      } else if (_isChannelWriteEntry(write) && _isPassthrough(write.value)) {
+        return {
+          channel: write.channel,
+          value: input,
+          skipNone: write.skipNone,
+          mapper: write.mapper,
+        };
+      } else {
+        return write;
+      }
+    });
+    await ChannelWrite.doWrite(config, writes);
     return input;
   }
 
   // TODO: Support requireAtLeastOneOf
-  static doWrite(config: RunnableConfig, values: [string, unknown][]): void {
+  static async doWrite(
+    config: RunnableConfig,
+    writes: (ChannelWriteEntry | ChannelWriteTupleEntry | Send)[]
+  ): Promise<void> {
+    // validate
+    for (const w of writes) {
+      if (_isChannelWriteEntry(w)) {
+        if (w.channel === TASKS) {
+          throw new InvalidUpdateError(
+            "Cannot write to the reserved channel TASKS"
+          );
+        }
+        if (_isPassthrough(w.value)) {
+          throw new InvalidUpdateError("PASSTHROUGH value must be replaced");
+        }
+      }
+      if (_isChannelWriteTupleEntry(w)) {
+        if (_isPassthrough(w.value)) {
+          throw new InvalidUpdateError("PASSTHROUGH value must be replaced");
+        }
+      }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const writeEntries: [string, any][] = [];
+    for (const w of writes) {
+      if (_isSend(w)) {
+        writeEntries.push([TASKS, w]);
+      } else if (_isChannelWriteTupleEntry(w)) {
+        const mappedResult = await w.mapper.invoke(w.value, config);
+        if (mappedResult != null && mappedResult.length > 0) {
+          writeEntries.push(...mappedResult);
+        }
+      } else if (_isChannelWriteEntry(w)) {
+        const mappedValue =
+          w.mapper !== undefined
+            ? await w.mapper.invoke(w.value, config)
+            : w.value;
+        if (_isSkipWrite(mappedValue)) {
+          continue;
+        }
+        if (w.skipNone && mappedValue === undefined) {
+          continue;
+        }
+        writeEntries.push([w.channel, mappedValue]);
+      } else {
+        throw new Error(`Invalid write entry: ${JSON.stringify(w)}`);
+      }
+    }
     const write: TYPE_SEND = config.configurable?.[CONFIG_KEY_SEND];
-    const filtered = values.filter(([_, value]) => !_isSkipWrite(value));
-    write(filtered);
+    write(writeEntries);
   }
 
   static isWriter(runnable: RunnableLike): runnable is ChannelWrite {
@@ -140,4 +162,24 @@ export interface ChannelWriteEntry {
   value: unknown;
   skipNone?: boolean;
   mapper?: Runnable;
+}
+
+function _isChannelWriteEntry(x: unknown): x is ChannelWriteEntry {
+  return (
+    x !== undefined && typeof (x as ChannelWriteEntry).channel === "string"
+  );
+}
+
+export interface ChannelWriteTupleEntry {
+  value: unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mapper: Runnable<any, [string, any][]>;
+}
+
+function _isChannelWriteTupleEntry(x: unknown): x is ChannelWriteTupleEntry {
+  return (
+    x !== undefined &&
+    !_isChannelWriteEntry(x) &&
+    Runnable.isRunnable((x as ChannelWriteTupleEntry).mapper)
+  );
 }

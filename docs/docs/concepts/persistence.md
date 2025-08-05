@@ -1,6 +1,6 @@
 # Persistence
 
-LangGraph has a built-in persistence layer, implemented through checkpointers. When you compile graph with a checkpointer, the checkpointer saves a `checkpoint` of the graph state at every super-step. Those checkpoints are saved to a `thread`, which can be accessed after graph execution. Because `threads` allow access to graph's state after execution, several powerful capabilities including human-in-the-loop, memory, time travel, and fault-tolerance are all possible. See [this how-to guide](/langgraphjs/how-tos/persistence) for an end-to-end example on how to add and use checkpointers with your graph. Below, we'll discuss each of these concepts in more detail. 
+LangGraph has a built-in persistence layer, implemented through checkpointers. When you compile graph with a checkpointer, the checkpointer saves a `checkpoint` of the graph state at every super-step. Those checkpoints are saved to a `thread`, which can be accessed after graph execution. Because `threads` allow access to graph's state after execution, several powerful capabilities including human-in-the-loop, memory, time travel, and fault-tolerance are all possible. See [this how-to guide](/langgraphjs/how-tos/persistence) for an end-to-end example of how to add and use checkpointers with your graph. Below, we'll discuss each of these concepts in more detail. 
 
 ![Checkpoints](img/persistence/checkpoints.jpg)
 
@@ -25,11 +25,9 @@ Checkpoint is a snapshot of the graph state saved at each super-step and is repr
 Let's see what checkpoints are saved when a simple graph is invoked as follows:
 
 ```typescript
-import { StateGraph, START, END } from "langgraph";
-import { MemorySaver } from "langgraph/checkpoint";
-import { Annotation } from "@langchain/core/utils/types";
+import { StateGraph, START, END, MemorySaver, Annotation } from "@langchain/langgraph";
 
-const GraphAnnotation = Annotation.Object({
+const GraphAnnotation = Annotation.Root({
   foo: Annotation<string>
   bar: Annotation<string[]>({
     reducer: (a, b) => [...a, ...b],
@@ -46,11 +44,11 @@ function nodeB(state: typeof GraphAnnotation.State) {
 }
 
 const workflow = new StateGraph(GraphAnnotation);
-workflow.addNode("nodeA", nodeA);
-workflow.addNode("nodeB", nodeB);
-workflow.addEdge(START, "nodeA");
-workflow.addEdge("nodeA", "nodeB");
-workflow.addEdge("nodeB", END);
+  .addNode("nodeA", nodeA)
+  .addNode("nodeB", nodeB)
+  .addEdge(START, "nodeA")
+  .addEdge("nodeA", "nodeB")
+  .addEdge("nodeB", END);
 
 const checkpointer = new MemorySaver();
 const graph = workflow.compile({ checkpointer });
@@ -169,9 +167,9 @@ These are the values that will be used to update the state. Note that this updat
 Let's assume you have defined the state of your graph with the following schema (see full example above):
 
 ```typescript
-import { Annotation } from "@langchain/core/utils/types";
+import { Annotation } from "@langchain/langgraph";
 
-const GraphAnnotation = Annotation.Object({
+const GraphAnnotation = Annotation.Root({
   foo: Annotation<string>
   bar: Annotation<string[]>({
     reducer: (a, b) => [...a, ...b],
@@ -212,7 +210,7 @@ The final argument you can optionally specify when calling `updateState` is the 
 
 A [state schema](low_level.md#state) specifies a set of keys that are populated as a graph is executed. As discussed above, state can be written by a checkpointer to a thread at each graph step, enabling state persistence.
 
-But, what if we want to retrain some information *across threads*? Consider the case of a chatbot where we want to retain specific information about the user across *all* chat conversations (e.g., threads) with that user!
+But, what if we want to retain some information *across threads*? Consider the case of a chatbot where we want to retain specific information about the user across *all* chat conversations (e.g., threads) with that user!
 
 With checkpointers alone, we cannot share information across threads. This motivates the need for the `Store` interface. As an illustration, we can define an `InMemoryStore` to store information about a user across threads.
 First, let's showcase this in isolation without using LangGraph.
@@ -223,7 +221,7 @@ import { InMemoryStore } from "@langchain/langgraph";
 const inMemoryStore = new InMemoryStore();
 ```
 
-Memories are namespaced by a `tuple`, which in this specific example will be `[<user_id>, "memories"]`. The namespace can be any length and represent anything, does not have be user specific.
+Memories are namespaced by a `tuple`, which in this specific example will be `[<user_id>, "memories"]`. The namespace can be any length and represent anything, does not have to be user specific.
 
 ```ts
 const userId = "1";
@@ -236,14 +234,14 @@ We use the `store.put` method to save memories to our namespace in the store. Wh
 import { v4 as uuid4 } from 'uuid';
 
 const memoryId = uuid4();
-const memory = { food_preference : "I like pizza" };
+const memory = { food_preference: "I like pizza" };
 await inMemoryStore.put(namespaceForMemory, memoryId, memory);
 ```
 
 We can read out memories in our namespace using `store.search`, which will return all memories for a given user as a list. The most recent memory is the last in the list.
 
 ```ts
-const memories = inMemoryStore.search(namespaceForMemory);
+const memories = await inMemoryStore.search(namespaceForMemory);
 console.log(memories.at(-1));
 
 /*
@@ -265,7 +263,7 @@ The attributes a retrieved memory has are:
 - `created_at`: Timestamp for when this memory was created
 - `updated_at`: Timestamp for when this memory was updated
 
-With this all in place, we use the `inMemoryStore` in LangGraph. The `inMemoryStore` works hand-in-hand with the checkpointer: the checkpointer saves state to threads, as discussed above, and the the `inMemoryStore` allows us to store arbitrary information for access *across* threads. We compile the graph with both the checkpointer and the `inMemoryStore` as follows. 
+With this all in place, we use the `inMemoryStore` in LangGraph. The `inMemoryStore` works hand-in-hand with the checkpointer: the checkpointer saves state to threads, as discussed above, and the `inMemoryStore` allows us to store arbitrary information for access *across* threads. We compile the graph with both the checkpointer and the `inMemoryStore` as follows. 
 
 ```ts
 import { MemorySaver } from "@langchain/langgraph";
@@ -331,7 +329,7 @@ const updateMemory = async (
 };
 ```
 
-As we showed above, we can also access the store in any node and use `search` to get memories. Recall the the memories are returned as a list of objects that can be converted to a dictionary.
+As we showed above, we can also access the store in any node and use `search` to get memories. Recall that the memories are returned as a list of objects that can be converted to a dictionary.
 
 ```ts
 const memories = inMemoryStore.search(namespaceForMemory);
@@ -419,7 +417,7 @@ First, checkpointers facilitate [human-in-the-loop workflows](/langgraphjs/conce
 
 ### Memory
 
-Second, checkpointers allow for ["memory"](/langgraphjs/concepts/agentic_concepts#memory) between interactions.  In the case of repeated human interactions (like conversations) any follow up messages can be sent to that thread, which will retain its memory of previous ones. See [this how-to guide](/langgraphjs/how-tos/manage-conversation-history) for an end-to-end example on how to add and manage conversation memory using checkpointers.
+Second, checkpointers allow for ["memory"](/langgraphjs/concepts/agentic_concepts#memory) between interactions.  In the case of repeated human interactions (like conversations) any follow up messages can be sent to that thread, which will retain its memory of previous ones. See [this how-to guide](/langgraphjs/how-tos/manage-conversation-history) for an end-to-end example of how to add and manage conversation memory using checkpointers.
 
 ### Time Travel
 

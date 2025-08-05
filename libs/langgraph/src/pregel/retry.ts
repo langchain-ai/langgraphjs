@@ -1,6 +1,8 @@
-import { getSubgraphsSeenSet, isGraphInterrupt } from "../errors.js";
+import { Command, CONFIG_KEY_RESUMING } from "../constants.js";
+import { isGraphBubbleUp, isParentCommand } from "../errors.js";
 import { PregelExecutableTask } from "./types.js";
-import type { RetryPolicy } from "./utils/index.js";
+import { getParentCheckpointNamespace } from "./utils/config.js";
+import { patchConfigurable, type RetryPolicy } from "./utils/index.js";
 
 export const DEFAULT_INITIAL_INTERVAL = 500;
 export const DEFAULT_BACKOFF_FACTOR = 2;
@@ -28,10 +30,17 @@ const DEFAULT_RETRY_ON_HANDLER = (error: any) => {
   ) {
     return false;
   }
+
+  // Thrown when interrupt is called without a checkpointer
+  if (error.name === "GraphValueError") {
+    return false;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if ((error as any)?.code === "ECONNABORTED") {
     return false;
   }
+
   const status =
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (error as any)?.response?.status ?? (error as any)?.status;
@@ -49,61 +58,24 @@ export type SettledPregelTask = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   task: PregelExecutableTask<any, any>;
   error: Error;
+  signalAborted?: boolean;
 };
 
-export async function* executeTasksWithRetry(
+export async function _runWithRetry<
+  N extends PropertyKey,
+  C extends PropertyKey
+>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tasks: PregelExecutableTask<any, any>[],
-  options?: {
-    stepTimeout?: number;
-    signal?: AbortSignal;
-    retryPolicy?: RetryPolicy;
-  }
-): AsyncGenerator<SettledPregelTask> {
-  const { stepTimeout, retryPolicy } = options ?? {};
-  let signal = options?.signal;
-  // Start tasks
-  const executingTasksMap = Object.fromEntries(
-    tasks.map((pregelTask) => {
-      return [pregelTask.id, _runWithRetry(pregelTask, retryPolicy)];
-    })
-  );
-  if (stepTimeout && signal) {
-    if ("any" in AbortSignal) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      signal = (AbortSignal as any).any([
-        signal,
-        AbortSignal.timeout(stepTimeout),
-      ]);
-    }
-  } else if (stepTimeout) {
-    signal = AbortSignal.timeout(stepTimeout);
-  }
-
-  // Abort if signal is aborted
-  signal?.throwIfAborted();
-
-  let listener: () => void;
-  const signalPromise = new Promise<never>((_resolve, reject) => {
-    listener = () => reject(new Error("Abort"));
-    signal?.addEventListener("abort", listener);
-  }).finally(() => signal?.removeEventListener("abort", listener));
-
-  while (Object.keys(executingTasksMap).length > 0) {
-    const settledTask = await Promise.race([
-      ...Object.values(executingTasksMap),
-      signalPromise,
-    ]);
-    yield settledTask;
-    delete executingTasksMap[settledTask.task.id];
-  }
-}
-
-async function _runWithRetry(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pregelTask: PregelExecutableTask<any, any>,
-  retryPolicy?: RetryPolicy
-) {
+  pregelTask: PregelExecutableTask<N, C>,
+  retryPolicy?: RetryPolicy,
+  configurable?: Record<string, unknown>,
+  signal?: AbortSignal
+): Promise<{
+  task: PregelExecutableTask<N, C>;
+  result: unknown;
+  error: Error | undefined;
+  signalAborted?: boolean;
+}> {
   const resolvedRetryPolicy = pregelTask.retry_policy ?? retryPolicy;
   let interval =
     resolvedRetryPolicy !== undefined
@@ -112,24 +84,47 @@ async function _runWithRetry(
   let attempts = 0;
   let error;
   let result;
+
+  let { config } = pregelTask;
+  if (configurable) config = patchConfigurable(config, configurable);
+  config = { ...config, signal };
+
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    // Modify writes in place to clear any previous retries
-    while (pregelTask.writes.length > 0) {
-      pregelTask.writes.pop();
+    if (signal?.aborted) {
+      // no need to throw here - we'll throw from the runner, instead.
+      // there's just no point in retrying if the user has requested an abort.
+      break;
     }
+    // Clear any writes from previous attempts
+    pregelTask.writes.splice(0, pregelTask.writes.length);
     error = undefined;
     try {
-      result = await pregelTask.proc.invoke(
-        pregelTask.input,
-        pregelTask.config
-      );
+      result = await pregelTask.proc.invoke(pregelTask.input, config);
       break;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (e: any) {
+    } catch (e: unknown) {
       error = e;
-      error.pregelTaskId = pregelTask.id;
-      if (isGraphInterrupt(error)) {
+      (error as { pregelTaskId: string }).pregelTaskId = pregelTask.id;
+      if (isParentCommand(error)) {
+        const ns: string = config?.configurable?.checkpoint_ns;
+        const cmd = error.command;
+        if (cmd.graph === ns) {
+          // this command is for the current graph, handle it
+          for (const writer of pregelTask.writers) {
+            await writer.invoke(cmd, config);
+          }
+          error = undefined;
+          break;
+        } else if (cmd.graph === Command.PARENT) {
+          // this command is for the parent graph, assign it to the parent
+          const parentNs = getParentCheckpointNamespace(ns);
+          error.command = new Command({
+            ...error.command,
+            graph: parentNs,
+          });
+        }
+      }
+      if (isGraphBubbleUp(error)) {
         break;
       }
       if (resolvedRetryPolicy === undefined) {
@@ -158,26 +153,26 @@ async function _runWithRetry(
       await new Promise((resolve) => setTimeout(resolve, intervalWithJitter));
       // log the retry
       const errorName =
-        error.name ??
+        (error as Error).name ??
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (error.constructor as any).unminifiable_name ??
-        error.constructor.name;
-      console.log(
-        `Retrying task "${pregelTask.name}" after ${interval.toFixed(
-          2
-        )}ms (attempt ${attempts}) after ${errorName}: ${error}`
-      );
-    } finally {
-      // Clear checkpoint_ns seen (for subgraph detection)
-      const checkpointNs = pregelTask.config?.configurable?.checkpoint_ns;
-      if (checkpointNs) {
-        getSubgraphsSeenSet().delete(checkpointNs);
+        ((error as Error).constructor as any).unminifiable_name ??
+        (error as Error).constructor.name;
+      if (resolvedRetryPolicy?.logWarning ?? true) {
+        console.log(
+          `Retrying task "${String(pregelTask.name)}" after ${interval.toFixed(
+            2
+          )}ms (attempt ${attempts}) after ${errorName}: ${error}`
+        );
       }
+
+      // signal subgraphs to resume (if available)
+      config = patchConfigurable(config, { [CONFIG_KEY_RESUMING]: true });
     }
   }
   return {
     task: pregelTask,
     result,
-    error,
+    error: error as Error | undefined,
+    signalAborted: signal?.aborted,
   };
 }

@@ -18,6 +18,14 @@ remote.cjs
 remote.js
 remote.d.ts
 remote.d.cts
+zod.cjs
+zod.js
+zod.d.ts
+zod.d.cts
+zod/schema.cjs
+zod/schema.js
+zod/schema.d.ts
+zod/schema.d.cts
 node_modules
 dist
 .yarn

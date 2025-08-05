@@ -5,6 +5,7 @@
     "lib": [
       "ES2021",
       "ES2022.Object",
+      "ES2022.Error",
       "DOM"
     ],
     "target": "ES2021",

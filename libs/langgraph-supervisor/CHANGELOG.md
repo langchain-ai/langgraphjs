@@ -1,0 +1,25 @@
+# @langchain/langgraph-supervisor
+
+## 0.0.17
+
+### Patch Changes
+
+- 55f15d4: feat: support contextSchema in supervisor
+
+## 0.0.16
+
+### Patch Changes
+
+- Updated dependencies [10432a4]
+- Updated dependencies [f1bcec7]
+- Updated dependencies [14dd523]
+- Updated dependencies [5f7ee26]
+- Updated dependencies [fa78796]
+- Updated dependencies [565f472]
+  - @langchain/langgraph@0.4.0
+
+## 0.0.15
+
+### Patch Changes
+
+- aa7542e: Fix issue with bindTools called twice when using with newer LangChain LLM models

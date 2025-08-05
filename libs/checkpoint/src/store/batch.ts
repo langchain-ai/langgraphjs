@@ -10,8 +10,22 @@ import {
   OperationResults,
 } from "./base.js";
 
+/**
+ * Extracts and returns the underlying store from an `AsyncBatchedStore`,
+ * or returns the input if it is not an `AsyncBatchedStore`.
+ */
+const extractStore = (input: BaseStore | AsyncBatchedStore): BaseStore => {
+  if ("lg_name" in input && input.lg_name === "AsyncBatchedStore") {
+    // @ts-expect-error is a protected property
+    return input.store;
+  }
+  return input;
+};
+
 export class AsyncBatchedStore extends BaseStore {
-  private store: BaseStore;
+  lg_name = "AsyncBatchedStore";
+
+  protected store: BaseStore;
 
   private queue: Map<
     number,
@@ -30,7 +44,7 @@ export class AsyncBatchedStore extends BaseStore {
 
   constructor(store: BaseStore) {
     super();
-    this.store = store;
+    this.store = extractStore(store);
   }
 
   get isRunning(): boolean {
@@ -63,14 +77,16 @@ export class AsyncBatchedStore extends BaseStore {
       filter?: Record<string, any>;
       limit?: number;
       offset?: number;
+      query?: string;
     }
   ): Promise<Item[]> {
-    const { filter, limit = 10, offset = 0 } = options || {};
+    const { filter, limit = 10, offset = 0, query } = options || {};
     return this.enqueueOperation({
       namespacePrefix,
       filter,
       limit,
       offset,
+      query,
     } as SearchOperation);
   }
 
@@ -138,5 +154,17 @@ export class AsyncBatchedStore extends BaseStore {
         });
       }
     }
+  }
+
+  // AsyncBatchedStore is internal and gets passed as args into traced tasks
+  // some BaseStores contain circular references so just serialize without it
+  // as this causes warnings when tracing with LangSmith.
+  toJSON() {
+    return {
+      queue: this.queue,
+      nextKey: this.nextKey,
+      running: this.running,
+      store: "[LangGraphStore]",
+    };
   }
 }

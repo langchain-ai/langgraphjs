@@ -4,7 +4,8 @@ import { Runnable, type RunnableConfig } from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
 import { ToolExecutor } from "./tool_executor.js";
 import { StateGraph } from "../graph/state.js";
-import { END, START } from "../graph/index.js";
+import { END, START } from "../constants.js";
+import type { BaseChannel } from "../channels/base.js";
 
 interface Step {
   action: AgentAction | AgentFinish;
@@ -69,7 +70,12 @@ export function createAgentExecutor({
   };
 
   // Define a new graph
-  const workflow = new StateGraph<AgentExecutorState>({
+  const workflow = new StateGraph<{
+    [K in keyof AgentExecutorState]: BaseChannel<
+      AgentExecutorState[K],
+      AgentExecutorState[K]
+    >;
+  }>({
     channels: {
       input: null,
       agentOutcome: null,

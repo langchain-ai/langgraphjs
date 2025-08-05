@@ -1,20 +1,25 @@
 /* eslint-disable @typescript-eslint/no-use-before-define */
-import {
-  _coerceToRunnable,
-  Runnable,
-  RunnableLike,
-} from "@langchain/core/runnables";
+import { _coerceToRunnable, Runnable } from "@langchain/core/runnables";
 import {
   All,
+  type BaseCache,
   BaseCheckpointSaver,
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
+import {
+  type InteropZodObject,
+  interopParse,
+  interopZodObjectPartial,
+  isInteropZodObject,
+} from "@langchain/core/utils/types";
+import type {
+  RunnableLike,
+  LangGraphRunnableConfig,
+} from "../pregel/runnable_types.js";
 import { BaseChannel, isBaseChannel } from "../channels/base.js";
 import {
-  END,
   CompiledGraph,
   Graph,
-  START,
   Branch,
   AddNodeOptions,
   NodeSpec,
@@ -22,21 +27,29 @@ import {
 import {
   ChannelWrite,
   ChannelWriteEntry,
+  ChannelWriteTupleEntry,
   PASSTHROUGH,
-  SKIP_WRITE,
 } from "../pregel/write.js";
 import { ChannelRead, PregelNode } from "../pregel/read.js";
-import { NamedBarrierValue } from "../channels/named_barrier_value.js";
+import {
+  NamedBarrierValue,
+  NamedBarrierValueAfterFinish,
+} from "../channels/named_barrier_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { RunnableCallable } from "../utils.js";
 import {
+  isCommand,
   _isSend,
   CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
+  Command,
+  END,
+  SELF,
   Send,
+  START,
   TAG_HIDDEN,
 } from "../constants.js";
-import { InvalidUpdateError } from "../errors.js";
+import { InvalidUpdateError, ParentCommand } from "../errors.js";
 import {
   AnnotationRoot,
   getChannel,
@@ -45,10 +58,14 @@ import {
   StateType,
   UpdateType,
 } from "./annotation.js";
-import type { RetryPolicy } from "../pregel/utils/index.js";
-import { isConfiguredManagedValue, ManagedValueSpec } from "../managed/base.js";
-import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
+import { LastValueAfterFinish } from "../channels/last_value.js";
+import {
+  type SchemaMetaRegistry,
+  InteropZodToStateDefinition,
+  schemaMetaRegistry,
+} from "./zod/meta.js";
 
 const ROOT = "__root__";
 
@@ -71,14 +88,16 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
 > & {
   input?: StateDefinition;
   retryPolicy?: RetryPolicy;
+  cachePolicy?: CachePolicy;
 };
 
-export type StateGraphAddNodeOptions = {
+export type StateGraphAddNodeOptions<Nodes extends string = string> = {
   retryPolicy?: RetryPolicy;
-  // TODO: Fix generic typing
+  cachePolicy?: CachePolicy | boolean;
+  // TODO: Fix generic typing for annotations
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  input?: AnnotationRoot<any>;
-} & AddNodeOptions;
+  input?: AnnotationRoot<any> | InteropZodObject;
+} & AddNodeOptions<Nodes>;
 
 export type StateGraphArgsWithStateSchema<
   SD extends StateDefinition,
@@ -97,6 +116,29 @@ export type StateGraphArgsWithInputOutputSchemas<
   input: AnnotationRoot<SD>;
   output: AnnotationRoot<O>;
 };
+
+type ZodStateGraphArgsWithStateSchema<
+  SD extends InteropZodObject,
+  I extends SDZod,
+  O extends SDZod
+> = { state: SD; input?: I; output?: O };
+
+type SDZod = StateDefinition | InteropZodObject;
+
+type ToStateDefinition<T> = T extends InteropZodObject
+  ? InteropZodToStateDefinition<T>
+  : T extends StateDefinition
+  ? T
+  : never;
+
+type NodeAction<S, U, C extends SDZod> = RunnableLike<
+  S,
+  U extends object ? U & Record<string, any> : U, // eslint-disable-line @typescript-eslint/no-explicit-any
+  LangGraphRunnableConfig<StateType<ToStateDefinition<C>>>
+>;
+
+const PartialStateSchema = Symbol.for("langgraph.state.partial");
+type PartialStateSchema = typeof PartialStateSchema;
 
 /**
  * A graph whose nodes communicate by reading and writing to a shared state.
@@ -161,15 +203,15 @@ export type StateGraphArgsWithInputOutputSchemas<
  * ```
  */
 export class StateGraph<
-  SD extends StateDefinition | unknown,
-  S = SD extends StateDefinition ? StateType<SD> : SD,
-  U = SD extends StateDefinition ? UpdateType<SD> : Partial<S>,
+  SD extends SDZod | unknown,
+  S = SD extends SDZod ? StateType<ToStateDefinition<SD>> : SD,
+  U = SD extends SDZod ? UpdateType<ToStateDefinition<SD>> : Partial<S>,
   N extends string = typeof START,
-  I extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition,
-  O extends StateDefinition = SD extends StateDefinition ? SD : StateDefinition,
-  C extends StateDefinition = StateDefinition
-> extends Graph<N, S, U, StateGraphNodeSpec<S, U>, C> {
-  channels: Record<string, BaseChannel | ManagedValueSpec> = {};
+  I extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
+  O extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
+  C extends SDZod = StateDefinition
+> extends Graph<N, S, U, StateGraphNodeSpec<S, U>, ToStateDefinition<C>> {
+  channels: Record<string, BaseChannel> = {};
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
   waitingEdges: Set<[N[], N]> = new Set();
@@ -178,10 +220,19 @@ export class StateGraph<
   _schemaDefinition: StateDefinition;
 
   /** @internal */
+  _schemaRuntimeDefinition: InteropZodObject | undefined;
+
+  /** @internal */
   _inputDefinition: I;
 
   /** @internal */
+  _inputRuntimeDefinition: InteropZodObject | PartialStateSchema | undefined;
+
+  /** @internal */
   _outputDefinition: O;
+
+  /** @internal */
+  _outputRuntimeDefinition: InteropZodObject | undefined;
 
   /**
    * Map schemas to managed values
@@ -189,25 +240,103 @@ export class StateGraph<
    */
   _schemaDefinitions = new Map();
 
+  /** @internal */
+  _metaRegistry: SchemaMetaRegistry = schemaMetaRegistry;
+
   /** @internal Used only for typing. */
-  _configSchema: C | undefined;
+  _configSchema: ToStateDefinition<C> | undefined;
+
+  /** @internal */
+  _configRuntimeSchema: InteropZodObject | undefined;
+
+  constructor(
+    fields: SD extends StateDefinition
+      ? StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
+      : never,
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+  );
 
   constructor(
     fields: SD extends StateDefinition
       ?
+          | AnnotationRoot<SD>
+          | StateGraphArgsWithStateSchema<
+              SD,
+              ToStateDefinition<I>,
+              ToStateDefinition<O>
+            >
+      : never,
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+  );
+
+  /** @deprecated Use `Annotation.Root` or `zod` for state definition instead. */
+  constructor(
+    fields: SD extends StateDefinition
+      ? SD | StateGraphArgs<S>
+      : StateGraphArgs<S>,
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+  );
+
+  constructor(
+    fields: SD extends InteropZodObject
+      ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
+      : never,
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+  );
+
+  constructor(
+    fields: SD extends InteropZodObject
+      ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
+      : SD extends StateDefinition
+      ?
           | SD
           | AnnotationRoot<SD>
           | StateGraphArgs<S>
-          | StateGraphArgsWithStateSchema<SD, I, O>
-          | StateGraphArgsWithInputOutputSchemas<SD, O>
+          | StateGraphArgsWithStateSchema<
+              SD,
+              ToStateDefinition<I>,
+              ToStateDefinition<O>
+            >
+          | StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
       : StateGraphArgs<S>,
-    configSchema?: AnnotationRoot<C>
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   ) {
     super();
-    if (
+
+    if (isZodStateGraphArgsWithStateSchema(fields)) {
+      const stateDef = this._metaRegistry.getChannelsForSchema(fields.state);
+      const inputDef =
+        fields.input != null
+          ? this._metaRegistry.getChannelsForSchema(fields.input)
+          : stateDef;
+      const outputDef =
+        fields.output != null
+          ? this._metaRegistry.getChannelsForSchema(fields.output)
+          : stateDef;
+
+      this._schemaDefinition = stateDef;
+      this._schemaRuntimeDefinition = fields.state;
+
+      this._inputDefinition = inputDef as I;
+      this._inputRuntimeDefinition = fields.input ?? PartialStateSchema;
+
+      this._outputDefinition = outputDef as O;
+      this._outputRuntimeDefinition = fields.output ?? fields.state;
+    } else if (isInteropZodObject(fields)) {
+      const stateDef = this._metaRegistry.getChannelsForSchema(fields);
+
+      this._schemaDefinition = stateDef;
+      this._schemaRuntimeDefinition = fields;
+
+      this._inputDefinition = stateDef as I;
+      this._inputRuntimeDefinition = PartialStateSchema;
+
+      this._outputDefinition = stateDef as O;
+      this._outputRuntimeDefinition = fields;
+    } else if (
       isStateGraphArgsWithInputOutputSchemas<
         SD extends StateDefinition ? SD : never,
-        O
+        O extends StateDefinition ? O : never
       >(fields)
     ) {
       this._schemaDefinition = fields.input.spec;
@@ -226,14 +355,21 @@ export class StateGraph<
       const spec = _getChannels(fields.channels);
       this._schemaDefinition = spec;
     } else {
-      throw new Error("Invalid StateGraph input.");
+      throw new Error(
+        "Invalid StateGraph input. Make sure to pass a valid Annotation.Root or Zod schema."
+      );
     }
-    this._inputDefinition = this._inputDefinition ?? this._schemaDefinition;
-    this._outputDefinition = this._outputDefinition ?? this._schemaDefinition;
+
+    this._inputDefinition ??= this._schemaDefinition as I;
+    this._outputDefinition ??= this._schemaDefinition as O;
+
     this._addSchema(this._schemaDefinition);
     this._addSchema(this._inputDefinition);
     this._addSchema(this._outputDefinition);
-    this._configSchema = configSchema?.spec;
+
+    if (isInteropZodObject(contextSchema)) {
+      this._configRuntimeSchema = contextSchema;
+    }
   }
 
   get allEdges(): Set<[string, string]> {
@@ -245,7 +381,7 @@ export class StateGraph<
     ]);
   }
 
-  _addSchema(stateDefinition: StateDefinition) {
+  _addSchema(stateDefinition: SDZod) {
     if (this._schemaDefinitions.has(stateDefinition)) {
       return;
     }
@@ -260,10 +396,7 @@ export class StateGraph<
       }
       if (this.channels[key] !== undefined) {
         if (this.channels[key] !== channel) {
-          if (
-            !isConfiguredManagedValue(channel) &&
-            channel.lc_graph_name !== "LastValue"
-          ) {
+          if (channel.lc_graph_name !== "LastValue") {
             throw new Error(
               `Channel "${key}" already exists with a different type.`
             );
@@ -275,71 +408,148 @@ export class StateGraph<
     }
   }
 
+  override addNode<K extends string>(
+    nodes:
+      | Record<K, NodeAction<S, U, C>>
+      | [
+          key: K,
+          action: NodeAction<S, U, C>,
+          options?: StateGraphAddNodeOptions
+        ][]
+  ): StateGraph<SD, S, U, N | K, I, O, C>;
+
   override addNode<K extends string, NodeInput = S>(
     key: K,
-    action: RunnableLike<
-      NodeInput,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      U extends object ? U & Record<string, any> : U,
-      LangGraphRunnableConfig<StateType<C>>
-    >,
+    action: NodeAction<NodeInput, U, C>,
     options?: StateGraphAddNodeOptions
+  ): StateGraph<SD, S, U, N | K, I, O, C>;
+
+  override addNode<K extends string, NodeInput = S>(
+    ...args:
+      | [
+          key: K,
+          action: NodeAction<NodeInput, U, C>,
+          options?: StateGraphAddNodeOptions
+        ]
+      | [
+          nodes:
+            | Record<K, NodeAction<NodeInput, U, C>>
+            | [
+                key: K,
+                action: NodeAction<NodeInput, U, C>,
+                options?: StateGraphAddNodeOptions
+              ][]
+        ]
   ): StateGraph<SD, S, U, N | K, I, O, C> {
-    if (key in this.channels) {
-      throw new Error(
-        `${key} is already being used as a state attribute (a.k.a. a channel), cannot also be used as a node name.`
-      );
+    function isMultipleNodes(
+      args: unknown[]
+    ): args is [
+      nodes:
+        | Record<K, NodeAction<NodeInput, U, C>>
+        | [
+            key: K,
+            action: NodeAction<NodeInput, U, C>,
+            options?: AddNodeOptions
+          ][]
+    ] {
+      return args.length >= 1 && typeof args[0] !== "string";
     }
 
-    for (const reservedChar of [
-      CHECKPOINT_NAMESPACE_SEPARATOR,
-      CHECKPOINT_NAMESPACE_END,
-    ]) {
-      if (key.includes(reservedChar)) {
+    const nodes = (
+      isMultipleNodes(args) // eslint-disable-line no-nested-ternary
+        ? Array.isArray(args[0])
+          ? args[0]
+          : Object.entries(args[0]).map(([key, action]) => [
+              key,
+              action,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (action as any)[Symbol.for("langgraph.state.node")] ?? undefined,
+            ])
+        : [[args[0], args[1], args[2]]]
+    ) as [
+      K,
+      NodeAction<NodeInput, U, C>,
+      StateGraphAddNodeOptions | undefined
+    ][];
+
+    if (nodes.length === 0) {
+      throw new Error("No nodes provided in `addNode`");
+    }
+
+    for (const [key, action, options] of nodes) {
+      if (key in this.channels) {
         throw new Error(
-          `"${reservedChar}" is a reserved character and is not allowed in node names.`
+          `${key} is already being used as a state attribute (a.k.a. a channel), cannot also be used as a node name.`
         );
       }
-    }
-    this.warnIfCompiled(
-      `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
-    );
 
-    if (key in this.nodes) {
-      throw new Error(`Node \`${key}\` already present.`);
-    }
-    if (key === END || key === START) {
-      throw new Error(`Node \`${key}\` is reserved.`);
-    }
+      for (const reservedChar of [
+        CHECKPOINT_NAMESPACE_SEPARATOR,
+        CHECKPOINT_NAMESPACE_END,
+      ]) {
+        if (key.includes(reservedChar)) {
+          throw new Error(
+            `"${reservedChar}" is a reserved character and is not allowed in node names.`
+          );
+        }
+      }
+      this.warnIfCompiled(
+        `Adding a node to a graph that has already been compiled. This will not be reflected in the compiled graph.`
+      );
 
-    if (options?.input !== undefined) {
-      this._addSchema(options.input.spec);
-    }
+      if (key in this.nodes) {
+        throw new Error(`Node \`${key}\` already present.`);
+      }
+      if (key === END || key === START) {
+        throw new Error(`Node \`${key}\` is reserved.`);
+      }
 
-    let runnable;
-    if (Runnable.isRunnable(action)) {
-      runnable = action;
-    } else if (typeof action === "function") {
-      runnable = new RunnableCallable({
-        func: action,
-        name: key,
-        trace: false,
-      });
-    } else {
-      runnable = _coerceToRunnable(action);
-    }
-    const nodeSpec: StateGraphNodeSpec<S, U> = {
-      runnable: runnable as unknown as Runnable<S, U>,
-      retryPolicy: options?.retryPolicy,
-      metadata: options?.metadata,
-      input: options?.input?.spec ?? this._schemaDefinition,
-      subgraphs: isPregelLike(runnable)
-        ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          [runnable as any]
-        : options?.subgraphs,
-    };
+      let inputSpec = this._schemaDefinition;
+      if (options?.input !== undefined) {
+        if (isInteropZodObject(options.input)) {
+          inputSpec = this._metaRegistry.getChannelsForSchema(options.input);
+        } else if (options.input.spec !== undefined) {
+          inputSpec = options.input.spec;
+        }
+      }
+      if (inputSpec !== undefined) {
+        this._addSchema(inputSpec);
+      }
 
-    this.nodes[key as unknown as N] = nodeSpec;
+      let runnable;
+      if (Runnable.isRunnable(action)) {
+        runnable = action;
+      } else if (typeof action === "function") {
+        runnable = new RunnableCallable({
+          func: action,
+          name: key,
+          trace: false,
+        });
+      } else {
+        runnable = _coerceToRunnable(action);
+      }
+
+      let cachePolicy = options?.cachePolicy;
+      if (typeof cachePolicy === "boolean") {
+        cachePolicy = cachePolicy ? {} : undefined;
+      }
+
+      const nodeSpec: StateGraphNodeSpec<S, U> = {
+        runnable: runnable as unknown as Runnable<S, U>,
+        retryPolicy: options?.retryPolicy,
+        cachePolicy,
+        metadata: options?.metadata,
+        input: inputSpec ?? this._schemaDefinition,
+        subgraphs: isPregelLike(runnable)
+          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            [runnable as any]
+          : options?.subgraphs,
+        ends: options?.ends,
+        defer: options?.defer,
+      };
+
+      this.nodes[key as unknown as N] = nodeSpec;
+    }
 
     return this as StateGraph<SD, S, U, N | K, I, O, C>;
   }
@@ -379,16 +589,74 @@ export class StateGraph<
     return this;
   }
 
+  addSequence<K extends string>(
+    nodes: [
+      key: K,
+      action: NodeAction<S, U, C>,
+      options?: StateGraphAddNodeOptions
+    ][]
+  ): StateGraph<SD, S, U, N | K, I, O, C>;
+
+  addSequence<K extends string>(
+    nodes: Record<K, NodeAction<S, U, C>>
+  ): StateGraph<SD, S, U, N | K, I, O, C>;
+
+  addSequence<K extends string>(
+    nodes:
+      | [
+          key: K,
+          action: NodeAction<S, U, C>,
+          options?: StateGraphAddNodeOptions
+        ][]
+      | Record<K, NodeAction<S, U, C>>
+  ): StateGraph<SD, S, U, N | K, I, O, C> {
+    const parsedNodes = Array.isArray(nodes)
+      ? nodes
+      : (Object.entries(nodes).map(([key, action]) => [
+          key,
+          action,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (action as any)[Symbol.for("langgraph.state.node")] ?? undefined,
+        ]) as [K, NodeAction<S, U, C>, StateGraphAddNodeOptions | undefined][]);
+
+    if (parsedNodes.length === 0) {
+      throw new Error("Sequence requires at least one node.");
+    }
+
+    let previousNode: N | undefined;
+    for (const [key, action, options] of parsedNodes) {
+      if (key in this.nodes) {
+        throw new Error(
+          `Node names must be unique: node with the name "${key}" already exists.`
+        );
+      }
+
+      const validKey = key as unknown as N;
+      this.addNode(validKey, action, options);
+      if (previousNode != null) {
+        this.addEdge(previousNode, validKey);
+      }
+
+      previousNode = validKey;
+    }
+
+    return this as StateGraph<SD, S, U, N | K, I, O, C>;
+  }
+
   override compile({
     checkpointer,
     store,
+    cache,
     interruptBefore,
     interruptAfter,
+    name,
   }: {
-    checkpointer?: BaseCheckpointSaver | false;
+    checkpointer?: BaseCheckpointSaver | boolean;
     store?: BaseStore;
+    cache?: BaseCache;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
+    name?: string;
   } = {}): CompiledStateGraph<S, U, N, I, O, C> {
     // validate the graph
     this.validate([
@@ -424,6 +692,8 @@ export class StateGraph<
       streamChannels,
       streamMode: "updates",
       store,
+      cache,
+      name,
     });
 
     // attach nodes, edges and branches
@@ -432,6 +702,19 @@ export class StateGraph<
       this.nodes
     )) {
       compiled.attachNode(key as N, node);
+    }
+    compiled.attachBranch(START, SELF, _getControlBranch() as Branch<S, N>, {
+      withReader: false,
+    });
+    for (const [key] of Object.entries<StateGraphNodeSpec<S, U>>(this.nodes)) {
+      compiled.attachBranch(
+        key as N,
+        SELF,
+        _getControlBranch() as Branch<S, N>,
+        {
+          withReader: false,
+        }
+      );
     }
     for (const [start, end] of this.edges) {
       compiled.attachEdge(start, end);
@@ -475,49 +758,127 @@ export class CompiledStateGraph<
   S,
   U,
   N extends string = typeof START,
-  I extends StateDefinition = StateDefinition,
-  O extends StateDefinition = StateDefinition,
-  C extends StateDefinition = StateDefinition
-> extends CompiledGraph<N, S, U, StateType<C>> {
+  I extends SDZod = StateDefinition,
+  O extends SDZod = StateDefinition,
+  C extends SDZod = StateDefinition
+> extends CompiledGraph<
+  N,
+  S,
+  U,
+  StateType<ToStateDefinition<C>>,
+  UpdateType<ToStateDefinition<I>>,
+  StateType<ToStateDefinition<O>>
+> {
   declare builder: StateGraph<unknown, S, U, N, I, O, C>;
+
+  /** @internal */
+  _metaRegistry: SchemaMetaRegistry = schemaMetaRegistry;
 
   attachNode(key: typeof START, node?: never): void;
 
   attachNode(key: N, node: StateGraphNodeSpec<S, U>): void;
 
   attachNode(key: N | typeof START, node?: StateGraphNodeSpec<S, U>): void {
-    const stateKeys = Object.keys(this.builder.channels);
+    let outputKeys: string[];
+    if (key === START) {
+      // Get input schema keys excluding managed values
+      outputKeys = Object.entries(
+        this.builder._schemaDefinitions.get(this.builder._inputDefinition)
+      ).map(([k]) => k);
+    } else {
+      outputKeys = Object.keys(this.builder.channels);
+    }
 
-    function getStateKey(key: keyof U, input: U) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function _getRoot(input: unknown): [string, any][] | null {
+      if (isCommand(input)) {
+        if (input.graph === Command.PARENT) {
+          return null;
+        }
+        return input._updateAsTuples();
+      } else if (
+        Array.isArray(input) &&
+        input.length > 0 &&
+        input.some((i) => isCommand(i))
+      ) {
+        const updates: [string, unknown][] = [];
+        for (const i of input) {
+          if (isCommand(i)) {
+            if (i.graph === Command.PARENT) {
+              continue;
+            }
+            updates.push(...i._updateAsTuples());
+          } else {
+            updates.push([ROOT, i]);
+          }
+        }
+        return updates;
+      } else if (input != null) {
+        return [[ROOT, input]];
+      }
+      return null;
+    }
+
+    // to avoid name collision below
+    const nodeKey = key;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function _getUpdates(input: U): [string, any][] | null {
       if (!input) {
-        return SKIP_WRITE;
-      } else if (typeof input !== "object" || Array.isArray(input)) {
+        return null;
+      } else if (isCommand(input)) {
+        if (input.graph === Command.PARENT) {
+          return null;
+        }
+        return input._updateAsTuples().filter(([k]) => outputKeys.includes(k));
+      } else if (
+        Array.isArray(input) &&
+        input.length > 0 &&
+        input.some(isCommand)
+      ) {
+        const updates: [string, unknown][] = [];
+        for (const item of input) {
+          if (isCommand(item)) {
+            if (item.graph === Command.PARENT) {
+              continue;
+            }
+            updates.push(
+              ...item._updateAsTuples().filter(([k]) => outputKeys.includes(k))
+            );
+          } else {
+            const itemUpdates = _getUpdates(item);
+            if (itemUpdates) {
+              updates.push(...(itemUpdates ?? []));
+            }
+          }
+        }
+        return updates;
+      } else if (typeof input === "object" && !Array.isArray(input)) {
+        return Object.entries(input).filter(([k]) => outputKeys.includes(k));
+      } else {
         const typeofInput = Array.isArray(input) ? "array" : typeof input;
         throw new InvalidUpdateError(
-          `Expected node "${key.toString()}" to return an object, received ${typeofInput}`,
+          `Expected node "${nodeKey.toString()}" to return an object or an array containing at least one Command object, received ${typeofInput}`,
           {
             lc_error_code: "INVALID_GRAPH_NODE_RETURN_VALUE",
           }
         );
-      } else {
-        return key in input ? input[key] : SKIP_WRITE;
       }
     }
 
-    // state updaters
-    const stateWriteEntries: ChannelWriteEntry[] = stateKeys.map((key) =>
-      key === ROOT
-        ? { channel: key, value: PASSTHROUGH, skipNone: true }
-        : {
-            channel: key,
-            value: PASSTHROUGH,
-            mapper: new RunnableCallable({
-              func: getStateKey.bind(null, key as keyof U),
-              trace: false,
-              recurse: false,
-            }),
-          }
-    );
+    const stateWriteEntries: (ChannelWriteTupleEntry | ChannelWriteEntry)[] = [
+      {
+        value: PASSTHROUGH,
+        mapper: new RunnableCallable({
+          func:
+            outputKeys.length && outputKeys[0] === ROOT
+              ? _getRoot
+              : _getUpdates,
+          trace: false,
+          recurse: false,
+        }),
+      },
+    ];
 
     // add node and output channel
     if (key === START) {
@@ -536,18 +897,16 @@ export class CompiledStateGraph<
       );
       const isSingleInput =
         Object.keys(inputValues).length === 1 && ROOT in inputValues;
-      this.channels[key] = new EphemeralValue(false);
+      const branchChannel = `branch:to:${key}` as string | N;
+      this.channels[branchChannel] = node?.defer
+        ? new LastValueAfterFinish()
+        : new EphemeralValue(false);
       this.nodes[key] = new PregelNode<S, U>({
-        triggers: [],
+        triggers: [branchChannel],
         // read state keys
         channels: isSingleInput ? Object.keys(inputValues) : inputValues,
-        // publish to this channel and state keys
-        writers: [
-          new ChannelWrite(
-            stateWriteEntries.concat({ channel: key, value: key }),
-            [TAG_HIDDEN]
-          ),
-        ],
+        // publish to state keys
+        writers: [new ChannelWrite(stateWriteEntries, [TAG_HIDDEN])],
         mapper: isSingleInput
           ? undefined
           : // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -559,94 +918,120 @@ export class CompiledStateGraph<
         bound: node?.runnable,
         metadata: node?.metadata,
         retryPolicy: node?.retryPolicy,
+        cachePolicy: node?.cachePolicy,
         subgraphs: node?.subgraphs,
+        ends: node?.ends,
       });
     }
   }
 
-  attachEdge(start: N | N[] | "__start__", end: N | "__end__"): void {
-    if (end === END) {
-      return;
-    }
-    if (Array.isArray(start)) {
-      const channelName = `join:${start.join("+")}:${end}`;
+  attachEdge(starts: N | N[] | "__start__", end: N | "__end__"): void {
+    if (end === END) return;
+    if (typeof starts === "string") {
+      this.nodes[starts].writers.push(
+        new ChannelWrite(
+          [{ channel: `branch:to:${end}`, value: null }],
+          [TAG_HIDDEN]
+        )
+      );
+    } else if (Array.isArray(starts)) {
+      const channelName = `join:${starts.join("+")}:${end}`;
       // register channel
-      (this.channels as Record<string, BaseChannel>)[channelName] =
-        new NamedBarrierValue(new Set(start));
+      this.channels[channelName as string | N] = this.builder.nodes[end].defer
+        ? new NamedBarrierValueAfterFinish(new Set(starts))
+        : new NamedBarrierValue(new Set(starts));
       // subscribe to channel
       this.nodes[end].triggers.push(channelName);
       // publish to channel
-      for (const s of start) {
-        this.nodes[s].writers.push(
-          new ChannelWrite([{ channel: channelName, value: s }], [TAG_HIDDEN])
+      for (const start of starts) {
+        this.nodes[start].writers.push(
+          new ChannelWrite(
+            [{ channel: channelName, value: start }],
+            [TAG_HIDDEN]
+          )
         );
       }
-    } else if (start === START) {
-      const channelName = `${START}:${end}`;
-      // register channel
-      (this.channels as Record<string, BaseChannel>)[channelName] =
-        new EphemeralValue();
-      // subscribe to channel
-      this.nodes[end].triggers.push(channelName);
-      // publish to channel
-      this.nodes[START].writers.push(
-        new ChannelWrite([{ channel: channelName, value: START }], [TAG_HIDDEN])
-      );
-    } else {
-      this.nodes[end].triggers.push(start);
     }
   }
 
   attachBranch(
     start: N | typeof START,
-    name: string,
-    branch: Branch<S, N>
+    _: string,
+    branch: Branch<S, N>,
+    options: { withReader?: boolean } = { withReader: true }
   ): void {
+    const branchWriter = async (
+      packets: (string | Send)[],
+      config: LangGraphRunnableConfig
+    ) => {
+      const filteredPackets = packets.filter((p) => p !== END);
+      if (!filteredPackets.length) return;
+
+      const writes: (ChannelWriteEntry | Send)[] = filteredPackets.map((p) => {
+        if (_isSend(p)) return p;
+        return { channel: p === END ? p : `branch:to:${p}`, value: start };
+      });
+      await ChannelWrite.doWrite(
+        { ...config, tags: (config.tags ?? []).concat([TAG_HIDDEN]) },
+        writes
+      );
+    };
     // attach branch publisher
     this.nodes[start].writers.push(
-      branch.compile(
-        // writer
-        (dests) => {
-          const filteredDests = dests.filter((dest) => dest !== END);
-          if (!filteredDests.length) {
-            return;
-          }
-          const writes: (ChannelWriteEntry | Send)[] = filteredDests.map(
-            (dest) => {
-              if (_isSend(dest)) {
-                return dest;
-              }
-              return {
-                channel: `branch:${start}:${name}:${dest}`,
-                value: start,
-              };
-            }
-          );
-          return new ChannelWrite(writes, [TAG_HIDDEN]);
-        },
+      branch.run(
+        branchWriter,
         // reader
-        (config) =>
-          ChannelRead.doRead<S>(
-            config,
-            this.streamChannels ?? this.outputChannels,
-            true
-          )
+        options.withReader
+          ? (config) =>
+              ChannelRead.doRead<S>(
+                config,
+                this.streamChannels ?? this.outputChannels,
+                true
+              )
+          : undefined
       )
     );
+  }
 
-    // attach branch subscribers
-    const ends = branch.ends
-      ? Object.values(branch.ends)
-      : Object.keys(this.builder.nodes);
-    for (const end of ends) {
-      if (end === END) {
-        continue;
+  protected async _validateInput(
+    input: UpdateType<ToStateDefinition<I>>
+  ): Promise<UpdateType<ToStateDefinition<I>>> {
+    if (input == null) return input;
+
+    const schema = (() => {
+      const input = this.builder._inputRuntimeDefinition;
+      const schema = this.builder._schemaRuntimeDefinition;
+
+      const apply = (schema: InteropZodObject | undefined) => {
+        if (schema == null) return undefined;
+        return this._metaRegistry.getExtendedChannelSchemas(schema, {
+          withReducerSchema: true,
+        });
+      };
+
+      if (isInteropZodObject(input)) return apply(input);
+      if (input === PartialStateSchema) {
+        return interopZodObjectPartial(apply(schema)!);
       }
-      const channelName = `branch:${start}:${name}:${end}`;
-      (this.channels as Record<string, BaseChannel>)[channelName] =
-        new EphemeralValue(false);
-      this.nodes[end as N].triggers.push(channelName);
+      return undefined;
+    })();
+
+    if (isCommand(input)) {
+      const parsedInput = input;
+      if (input.update && schema != null)
+        parsedInput.update = interopParse(schema, input.update);
+      return parsedInput;
     }
+    if (schema != null) return interopParse(schema, input);
+    return input;
+  }
+
+  protected async _validateContext(
+    config: Partial<Record<string, unknown>>
+  ): Promise<Partial<Record<string, unknown>>> {
+    const configSchema = this.builder._configRuntimeSchema;
+    if (isInteropZodObject(configSchema)) interopParse(configSchema, config);
+    return config;
   }
 }
 
@@ -709,4 +1094,134 @@ function isStateGraphArgsWithInputOutputSchemas<
     (obj as StateGraphArgsWithInputOutputSchemas<SD, O>).input !== undefined &&
     (obj as StateGraphArgsWithInputOutputSchemas<SD, O>).output !== undefined
   );
+}
+
+function isZodStateGraphArgsWithStateSchema<
+  SD extends InteropZodObject,
+  I extends InteropZodObject,
+  O extends InteropZodObject
+>(value: unknown): value is ZodStateGraphArgsWithStateSchema<SD, I, O> {
+  if (typeof value !== "object" || value == null) {
+    return false;
+  }
+
+  if (!("state" in value) || !isInteropZodObject(value.state)) {
+    return false;
+  }
+
+  if ("input" in value && !isInteropZodObject(value.input)) {
+    return false;
+  }
+
+  if ("output" in value && !isInteropZodObject(value.output)) {
+    return false;
+  }
+
+  return true;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function _controlBranch(value: any): (string | Send)[] {
+  if (_isSend(value)) {
+    return [value];
+  }
+  const commands = [];
+  if (isCommand(value)) {
+    commands.push(value);
+  } else if (Array.isArray(value)) {
+    commands.push(...value.filter(isCommand));
+  }
+  const destinations: (string | Send)[] = [];
+
+  for (const command of commands) {
+    if (command.graph === Command.PARENT) {
+      throw new ParentCommand(command);
+    }
+
+    if (_isSend(command.goto)) {
+      destinations.push(command.goto);
+    } else if (typeof command.goto === "string") {
+      destinations.push(command.goto);
+    } else {
+      if (Array.isArray(command.goto)) {
+        destinations.push(...command.goto);
+      }
+    }
+  }
+  return destinations;
+}
+
+function _getControlBranch() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const CONTROL_BRANCH_PATH = new RunnableCallable<any, (string | Send)[]>({
+    func: _controlBranch,
+    tags: [TAG_HIDDEN],
+    trace: false,
+    recurse: false,
+    name: "<control_branch>",
+  });
+  return new Branch({
+    path: CONTROL_BRANCH_PATH,
+  });
+}
+
+type TypedNodeAction<
+  SD extends StateDefinition,
+  Nodes extends string,
+  C extends StateDefinition = StateDefinition
+> = RunnableLike<
+  StateType<SD>,
+  UpdateType<SD> | Command<unknown, UpdateType<SD>, Nodes>,
+  LangGraphRunnableConfig<StateType<C>>
+>;
+
+export function typedNode<
+  SD extends SDZod,
+  Nodes extends string,
+  C extends SDZod = StateDefinition
+>(
+  _state: SD extends StateDefinition ? AnnotationRoot<SD> : never,
+  _options?: {
+    nodes?: Nodes[];
+    config?: C extends StateDefinition ? AnnotationRoot<C> : never;
+  }
+): (
+  func: TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>,
+  options?: StateGraphAddNodeOptions<Nodes>
+) => TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>;
+
+export function typedNode<
+  SD extends SDZod,
+  Nodes extends string,
+  C extends SDZod = StateDefinition
+>(
+  _state: SD extends InteropZodObject ? SD : never,
+  _options?: {
+    nodes?: Nodes[];
+    config?: C extends InteropZodObject ? C : never;
+  }
+): (
+  func: TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>,
+  options?: StateGraphAddNodeOptions<Nodes>
+) => TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>;
+
+export function typedNode<
+  SD extends SDZod,
+  Nodes extends string,
+  C extends SDZod = StateDefinition
+>(
+  _state: SD extends InteropZodObject
+    ? SD
+    : SD extends StateDefinition
+    ? AnnotationRoot<SD>
+    : never,
+  _options?: { nodes?: Nodes[]; config?: AnnotationRoot<ToStateDefinition<C>> }
+) {
+  return (
+    func: TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>,
+    options?: StateGraphAddNodeOptions<Nodes>
+  ) => {
+    Object.assign(func, { [Symbol.for("langgraph.state.node")]: options });
+    return func;
+  };
 }

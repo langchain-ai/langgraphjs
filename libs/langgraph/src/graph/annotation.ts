@@ -1,12 +1,7 @@
-import { RunnableLike } from "@langchain/core/runnables";
+import { RunnableLike } from "../pregel/runnable_types.js";
 import { BaseChannel } from "../channels/base.js";
 import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { LastValue } from "../channels/last_value.js";
-import {
-  isConfiguredManagedValue,
-  ManagedValueSpec,
-  type ConfiguredManagedValue,
-} from "../managed/base.js";
 
 export type SingleReducer<ValueType, UpdateType = ValueType> =
   | {
@@ -23,23 +18,19 @@ export type SingleReducer<ValueType, UpdateType = ValueType> =
   | null;
 
 export interface StateDefinition {
-  [key: string]: BaseChannel | (() => BaseChannel) | ConfiguredManagedValue;
+  [key: string]: BaseChannel | (() => BaseChannel);
 }
 
 type ExtractValueType<C> = C extends BaseChannel
   ? C["ValueType"]
   : C extends () => BaseChannel
   ? ReturnType<C>["ValueType"]
-  : C extends ConfiguredManagedValue<infer V>
-  ? V
   : never;
 
 type ExtractUpdateType<C> = C extends BaseChannel
   ? C["UpdateType"]
   : C extends () => BaseChannel
   ? ReturnType<C>["UpdateType"]
-  : C extends ConfiguredManagedValue<infer V>
-  ? V
   : never;
 
 export type StateType<SD extends StateDefinition> = {
@@ -66,7 +57,6 @@ export interface AnnotationFunction {
 
 /**
  * Should not be instantiated directly. See {@link Annotation}.
- * @internal
  */
 export class AnnotationRoot<SD extends StateDefinition> {
   lc_graph_name = "AnnotationRoot";
@@ -159,11 +149,9 @@ export const Annotation: AnnotationFunction = function <
   ValueType,
   UpdateType = ValueType
 >(
-  annotation?: SingleReducer<ValueType, UpdateType> | ConfiguredManagedValue
-): BaseChannel<ValueType, UpdateType> | ManagedValueSpec {
-  if (isConfiguredManagedValue(annotation)) {
-    return annotation;
-  } else if (annotation) {
+  annotation?: SingleReducer<ValueType, UpdateType>
+): BaseChannel<ValueType, UpdateType> {
+  if (annotation) {
     return getChannel<ValueType, UpdateType>(annotation);
   } else {
     // @ts-expect-error - Annotation without reducer

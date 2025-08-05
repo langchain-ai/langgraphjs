@@ -1,9 +1,10 @@
 /* eslint-disable prefer-template */
-import { it, expect } from "@jest/globals";
+import { it, expect } from "vitest";
 import {
   Annotation,
+  END,
   InvalidUpdateError,
-  MultipleSubgraphsError,
+  START,
   StateGraph,
 } from "../web.js";
 import { MemorySaverAssertImmutable } from "./utils.js";
@@ -58,65 +59,25 @@ it("StateGraph bad return type", async () => {
   expect(error?.lc_error_code).toEqual("INVALID_GRAPH_NODE_RETURN_VALUE");
 });
 
-it("MultipleSubgraph error", async () => {
-  const checkpointer = new MemorySaverAssertImmutable();
-
-  const InnerStateAnnotation = Annotation.Root({
-    myKey: Annotation<string>,
-    myOtherKey: Annotation<string>,
-  });
-  const inner1 = async (state: typeof InnerStateAnnotation.State) => {
-    return {
-      myKey: state.myKey + " here",
-      myOtherKey: state.myKey,
-    };
-  };
-  const inner2 = async (state: typeof InnerStateAnnotation.State) => {
-    return {
-      myKey: state.myKey + " and there",
-      myOtherKey: state.myKey,
-    };
-  };
-  const inner = new StateGraph(InnerStateAnnotation)
-    .addNode("inner1", inner1)
-    .addNode("inner2", inner2)
-    .addEdge("__start__", "inner1")
-    .addEdge("inner1", "inner2");
-
-  const innerApp = inner.compile({});
+it("Should throw errors in conditional edges", async () => {
+  class TestError extends Error {}
 
   const StateAnnotation = Annotation.Root({
     myKey: Annotation<string>,
-    otherParentKey: Annotation<string>,
   });
-  const outer1 = async (state: typeof StateAnnotation.State) => {
-    return { myKey: "hi " + state.myKey };
-  };
-  const outer2 = async (state: typeof StateAnnotation.State) => {
-    return { myKey: state.myKey + " and back again" };
-  };
+
   const graph = new StateGraph(StateAnnotation)
-    .addNode("outer1", outer1)
-    .addNode("inner", async (state, config) => {
-      await innerApp.invoke(state, config);
-      await innerApp.invoke(state, config);
+    .addNode("init", (state) => state)
+    .addNode("x", (state) => state)
+    .addEdge(START, "init")
+    .addConditionalEdges("init", () => {
+      throw new TestError();
     })
-    .addNode("inner2", innerApp)
-    .addNode("outer2", outer2)
-    .addEdge("__start__", "outer1")
-    .addEdge("outer1", "inner")
-    .addEdge("outer1", "inner2")
-    .addEdge("inner", "outer2");
+    .addEdge("x", END);
 
-  const app = graph.compile({ checkpointer });
+  const app = graph.compile({ checkpointer: new MemorySaverAssertImmutable() });
 
-  let error: MultipleSubgraphsError | undefined;
-  try {
-    const config = { configurable: { thread_id: "1" } };
-    await app.invoke({}, config);
-  } catch (e) {
-    error = e as MultipleSubgraphsError;
-  }
-  expect(error).toBeInstanceOf(MultipleSubgraphsError);
-  expect(error?.lc_error_code).toEqual("MULTIPLE_SUBGRAPHS");
+  await expect(
+    app.invoke({}, { configurable: { thread_id: "1" } })
+  ).rejects.toThrow(TestError);
 });

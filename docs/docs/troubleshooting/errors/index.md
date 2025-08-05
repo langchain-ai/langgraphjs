@@ -7,3 +7,4 @@ Errors referenced below will have an `lc_error_code` property corresponding to o
 - [INVALID_CONCURRENT_GRAPH_UPDATE](/langgraphjs/troubleshooting/errors/INVALID_CONCURRENT_GRAPH_UPDATE)
 - [INVALID_GRAPH_NODE_RETURN_VALUE](/langgraphjs/troubleshooting/errors/INVALID_GRAPH_NODE_RETURN_VALUE)
 - [MULTIPLE_SUBGRAPHS](/langgraphjs/troubleshooting/errors/MULTIPLE_SUBGRAPHS)
+- [UNREACHABLE_NODE](/langgraphjs/troubleshooting/errors/UNREACHABLE_NODE)

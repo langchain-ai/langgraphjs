@@ -133,7 +133,7 @@ export class JsonPlusSerializer implements SerializerProtocol {
     );
   }
 
-  dumpsTyped(obj: any): [string, Uint8Array] {
+  async dumpsTyped(obj: any): Promise<[string, Uint8Array]> {
     if (obj instanceof Uint8Array) {
       return ["bytes", obj];
     } else {

@@ -9,17 +9,35 @@ import {
   type CheckpointMetadata,
   type ChannelVersions,
   WRITES_IDX_MAP,
+  TASKS,
+  maxChannelVersion,
 } from "@langchain/langgraph-checkpoint";
 import pg from "pg";
 
-import { MIGRATIONS } from "./migrations.js";
+import { getMigrations } from "./migrations.js";
 import {
-  INSERT_CHECKPOINT_WRITES_SQL,
-  SELECT_SQL,
-  UPSERT_CHECKPOINT_BLOBS_SQL,
-  UPSERT_CHECKPOINT_WRITES_SQL,
-  UPSERT_CHECKPOINTS_SQL,
+  type SQL_STATEMENTS,
+  type SQL_TYPES,
+  getSQLStatements,
+  getTablesWithSchema,
 } from "./sql.js";
+
+interface PostgresSaverOptions {
+  schema: string;
+}
+
+const _defaultOptions: PostgresSaverOptions = {
+  schema: "public",
+};
+
+const _ensureCompleteOptions = (
+  options?: Partial<PostgresSaverOptions>
+): PostgresSaverOptions => {
+  return {
+    ...options,
+    schema: options?.schema ?? _defaultOptions.schema,
+  };
+};
 
 const { Pool } = pg;
 
@@ -35,7 +53,11 @@ const { Pool } = pg;
  * import { createReactAgent } from "@langchain/langgraph/prebuilt";
  *
  * const checkpointer = PostgresSaver.fromConnString(
- *   "postgresql://user:password@localhost:5432/db"
+ *   "postgresql://user:password@localhost:5432/db",
+ *   // optional configuration object
+ *   {
+ *     schema: "custom_schema" // defaults to "public"
+ *   }
  * );
  *
  * // NOTE: you need to call .setup() the first time you're using your checkpointer
@@ -59,19 +81,46 @@ const { Pool } = pg;
  * ```
  */
 export class PostgresSaver extends BaseCheckpointSaver {
-  private pool: pg.Pool;
+  private readonly pool: pg.Pool;
+
+  private readonly options: PostgresSaverOptions;
+
+  private readonly SQL_STATEMENTS: SQL_STATEMENTS;
 
   protected isSetup: boolean;
 
-  constructor(pool: pg.Pool, serde?: SerializerProtocol) {
+  constructor(
+    pool: pg.Pool,
+    serde?: SerializerProtocol,
+    options?: Partial<PostgresSaverOptions>
+  ) {
     super(serde);
     this.pool = pool;
     this.isSetup = false;
+    this.options = _ensureCompleteOptions(options);
+    this.SQL_STATEMENTS = getSQLStatements(this.options.schema);
   }
 
-  static fromConnString(connString: string): PostgresSaver {
+  /**
+   * Creates a new instance of PostgresSaver from a connection string.
+   *
+   * @param {string} connString - The connection string to connect to the Postgres database.
+   * @param {PostgresSaverOptions} [options] - Optional configuration object.
+   * @returns {PostgresSaver} A new instance of PostgresSaver.
+   *
+   * @example
+   * const connString = "postgresql://user:password@localhost:5432/db";
+   * const checkpointer = PostgresSaver.fromConnString(connString, {
+   *  schema: "custom_schema" // defaults to "public"
+   * });
+   * await checkpointer.setup();
+   */
+  static fromConnString(
+    connString: string,
+    options?: Partial<PostgresSaverOptions>
+  ): PostgresSaver {
     const pool = new Pool({ connectionString: connString });
-    return new PostgresSaver(pool);
+    return new PostgresSaver(pool, undefined, options);
   }
 
   /**
@@ -83,22 +132,27 @@ export class PostgresSaver extends BaseCheckpointSaver {
    */
   async setup(): Promise<void> {
     const client = await this.pool.connect();
+    const SCHEMA_TABLES = getTablesWithSchema(this.options.schema);
     try {
+      await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.options.schema}`);
       let version = -1;
+      const MIGRATIONS = getMigrations(this.options.schema);
+
       try {
         const result = await client.query(
-          "SELECT v FROM checkpoint_migrations ORDER BY v DESC LIMIT 1"
+          `SELECT v FROM ${SCHEMA_TABLES.checkpoint_migrations} ORDER BY v DESC LIMIT 1`
         );
         if (result.rows.length > 0) {
           version = result.rows[0].v;
         }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Assume table doesn't exist if there's an error
         if (
-          error?.message.includes(
-            'relation "checkpoint_migrations" does not exist'
-          )
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          typeof error.code === "string" &&
+          error.code === "42P01" // Postgres error code for undefined_table
         ) {
           version = -1;
         } else {
@@ -109,7 +163,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
       for (let v = version + 1; v < MIGRATIONS.length; v += 1) {
         await client.query(MIGRATIONS[v]);
         await client.query(
-          "INSERT INTO checkpoint_migrations (v) VALUES ($1)",
+          `INSERT INTO ${SCHEMA_TABLES.checkpoint_migrations} (v) VALUES ($1)`,
           [v]
         );
       }
@@ -120,16 +174,10 @@ export class PostgresSaver extends BaseCheckpointSaver {
 
   protected async _loadCheckpoint(
     checkpoint: Omit<Checkpoint, "pending_sends" | "channel_values">,
-    channelValues: [Uint8Array, Uint8Array, Uint8Array][],
-    pendingSends: [Uint8Array, Uint8Array][]
+    channelValues: [Uint8Array, Uint8Array, Uint8Array][]
   ): Promise<Checkpoint> {
     return {
       ...checkpoint,
-      pending_sends: await Promise.all(
-        (pendingSends || []).map(([c, b]) =>
-          this.serde.loadsTyped(c.toString(), b)
-        )
-      ),
       channel_values: await this._loadBlobs(channelValues),
     };
   }
@@ -140,19 +188,20 @@ export class PostgresSaver extends BaseCheckpointSaver {
     if (!blobValues || blobValues.length === 0) {
       return {};
     }
+    const textDecoder = new TextDecoder();
     const entries = await Promise.all(
       blobValues
-        .filter(([, t]) => new TextDecoder().decode(t) !== "empty")
+        .filter(([, t]) => textDecoder.decode(t) !== "empty")
         .map(async ([k, t, v]) => [
-          new TextDecoder().decode(k),
-          await this.serde.loadsTyped(new TextDecoder().decode(t), v),
+          textDecoder.decode(k),
+          await this.serde.loadsTyped(textDecoder.decode(t), v),
         ])
     );
     return Object.fromEntries(entries);
   }
 
   protected async _loadMetadata(metadata: Record<string, unknown>) {
-    const [type, dumpedValue] = this.serde.dumpsTyped(metadata);
+    const [type, dumpedValue] = await this.serde.dumpsTyped(metadata);
     return this.serde.loadsTyped(type, dumpedValue);
   }
 
@@ -171,76 +220,81 @@ export class PostgresSaver extends BaseCheckpointSaver {
       : [];
   }
 
-  protected _dumpBlobs(
+  protected async _dumpBlobs(
     threadId: string,
     checkpointNs: string,
     values: Record<string, unknown>,
     versions: ChannelVersions
-  ): [string, string, string, string, string, Uint8Array | undefined][] {
+  ): Promise<
+    [string, string, string, string, string, Uint8Array | undefined][]
+  > {
     if (Object.keys(versions).length === 0) {
       return [];
     }
 
-    return Object.entries(versions).map(([k, ver]) => {
-      const [type, value] =
-        k in values ? this.serde.dumpsTyped(values[k]) : ["empty", null];
-      return [
-        threadId,
-        checkpointNs,
-        k,
-        ver.toString(),
-        type,
-        value ? new Uint8Array(value) : undefined,
-      ];
-    });
+    return Promise.all(
+      Object.entries(versions).map(async ([k, ver]) => {
+        const [type, value] =
+          k in values
+            ? await this.serde.dumpsTyped(values[k])
+            : ["empty", null];
+        return [
+          threadId,
+          checkpointNs,
+          k,
+          ver.toString(),
+          type,
+          value ? new Uint8Array(value) : undefined,
+        ];
+      })
+    );
   }
 
   protected _dumpCheckpoint(checkpoint: Checkpoint) {
-    const serialized: Record<string, unknown> = {
-      ...checkpoint,
-      pending_sends: [],
-    };
-    if ("channel_values" in serialized) {
-      delete serialized.channel_values;
-    }
+    const serialized: Record<string, unknown> = { ...checkpoint };
+    if ("channel_values" in serialized) delete serialized.channel_values;
     return serialized;
   }
 
-  protected _dumpMetadata(metadata: CheckpointMetadata) {
-    const [, serializedMetadata] = this.serde.dumpsTyped(metadata);
+  protected async _dumpMetadata(metadata: CheckpointMetadata) {
+    const [, serializedMetadata] = await this.serde.dumpsTyped(metadata);
     // We need to remove null characters before writing
     return JSON.parse(
       new TextDecoder().decode(serializedMetadata).replace(/\0/g, "")
     );
   }
 
-  protected _dumpWrites(
+  protected async _dumpWrites(
     threadId: string,
     checkpointNs: string,
     checkpointId: string,
     taskId: string,
     writes: [string, unknown][]
-  ): [string, string, string, string, number, string, string, Uint8Array][] {
-    return writes.map(([channel, value], idx) => {
-      const [type, serializedValue] = this.serde.dumpsTyped(value);
-      return [
-        threadId,
-        checkpointNs,
-        checkpointId,
-        taskId,
-        WRITES_IDX_MAP[channel] !== undefined ? WRITES_IDX_MAP[channel] : idx,
-        channel,
-        type,
-        new Uint8Array(serializedValue),
-      ];
-    });
+  ): Promise<
+    [string, string, string, string, number, string, string, Uint8Array][]
+  > {
+    return Promise.all(
+      writes.map(async ([channel, value], idx) => {
+        const [type, serializedValue] = await this.serde.dumpsTyped(value);
+        return [
+          threadId,
+          checkpointNs,
+          checkpointId,
+          taskId,
+          WRITES_IDX_MAP[channel] ?? idx,
+          channel,
+          type,
+          new Uint8Array(serializedValue),
+        ];
+      })
+    );
   }
 
   /**
-   * Return WHERE clause predicates for alist() given config, filter, cursor.
+   * Return WHERE clause predicates for a given list() config, filter, cursor.
    *
    * This method returns a tuple of a string and a tuple of values. The string
-   * is the parametered WHERE clause predicate (including the WHERE keyword):
+   * is the parameterized WHERE clause predicate (including the WHERE keyword):
    * "WHERE column1 = $1 AND column2 IS $2". The list of values contains the
    * values for each of the corresponding parameters.
    */
@@ -310,26 +364,42 @@ export class PostgresSaver extends BaseCheckpointSaver {
     let args: unknown[];
     let where: string;
     if (checkpoint_id) {
-      where = `WHERE thread_id = $1 AND checkpoint_ns = $2 AND checkpoint_id = $3`;
+      where =
+        "WHERE thread_id = $1 AND checkpoint_ns = $2 AND checkpoint_id = $3";
       args = [thread_id, checkpoint_ns, checkpoint_id];
     } else {
-      where = `WHERE thread_id = $1 AND checkpoint_ns = $2 ORDER BY checkpoint_id DESC LIMIT 1`;
+      where =
+        "WHERE thread_id = $1 AND checkpoint_ns = $2 ORDER BY checkpoint_id DESC LIMIT 1";
       args = [thread_id, checkpoint_ns];
     }
 
-    const result = await this.pool.query(SELECT_SQL + where, args);
+    const result = await this.pool.query<SQL_TYPES["SELECT_SQL"]>(
+      this.SQL_STATEMENTS.SELECT_SQL + where,
+      args
+    );
 
     const [row] = result.rows;
+    if (row === undefined) return undefined;
 
-    if (row === undefined) {
-      return undefined;
+    if (row.checkpoint.v < 4 && row.parent_checkpoint_id != null) {
+      const sendsResult = await this.pool.query<
+        SQL_TYPES["SELECT_PENDING_SENDS_SQL"]
+      >(this.SQL_STATEMENTS.SELECT_PENDING_SENDS_SQL, [
+        thread_id,
+        [row.parent_checkpoint_id],
+      ]);
+
+      const [sendsRow] = sendsResult.rows;
+      if (sendsRow != null) {
+        await this._migratePendingSends(sendsRow.pending_sends, row);
+      }
     }
 
     const checkpoint = await this._loadCheckpoint(
       row.checkpoint,
-      row.channel_values,
-      row.pending_sends
+      row.channel_values
     );
+
     const finalConfig = {
       configurable: {
         thread_id,
@@ -370,13 +440,42 @@ export class PostgresSaver extends BaseCheckpointSaver {
   ): AsyncGenerator<CheckpointTuple> {
     const { filter, before, limit } = options ?? {};
     const [where, args] = this._searchWhere(config, filter, before);
-    let query = `${SELECT_SQL}${where} ORDER BY checkpoint_id DESC`;
+    let query = `${this.SQL_STATEMENTS.SELECT_SQL}${where} ORDER BY checkpoint_id DESC`;
     if (limit !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      query += ` LIMIT ${parseInt(limit as any, 10)}`; // sanitize via parseInt, as limit could be an externally provided value
+      query += ` LIMIT ${Number.parseInt(limit.toString(), 10)}`; // sanitize via parseInt, as limit could be an externally provided value
     }
 
-    const result = await this.pool.query(query, args);
+    const result = await this.pool.query<SQL_TYPES["SELECT_SQL"]>(query, args);
+    const toMigrate = result.rows.filter(
+      (row) => row.checkpoint.v < 4 && row.parent_checkpoint_id != null
+    );
+
+    if (toMigrate.length > 0) {
+      const sendsResult = await this.pool.query<
+        SQL_TYPES["SELECT_PENDING_SENDS_SQL"]
+      >(this.SQL_STATEMENTS.SELECT_PENDING_SENDS_SQL, [
+        toMigrate[0].thread_id,
+        toMigrate.map((row) => row.parent_checkpoint_id),
+      ]);
+
+      const parentMap = toMigrate.reduce<
+        Record<string, SQL_TYPES["SELECT_SQL"][]>
+      >((acc, row) => {
+        if (!row.parent_checkpoint_id) return acc;
+
+        acc[row.parent_checkpoint_id] ??= [];
+        acc[row.parent_checkpoint_id].push(row);
+        return acc;
+      }, {});
+
+      // add to values
+      for (const sendsRow of sendsResult.rows) {
+        for (const row of parentMap[sendsRow.checkpoint_id]) {
+          await this._migratePendingSends(sendsRow.pending_sends, row);
+        }
+      }
+    }
+
     for (const value of result.rows) {
       yield {
         config: {
@@ -388,8 +487,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
         },
         checkpoint: await this._loadCheckpoint(
           value.checkpoint,
-          value.channel_values,
-          value.pending_sends
+          value.channel_values
         ),
         metadata: await this._loadMetadata(value.metadata),
         parentConfig: value.parent_checkpoint_id
@@ -404,6 +502,41 @@ export class PostgresSaver extends BaseCheckpointSaver {
         pendingWrites: await this._loadWrites(value.pending_writes),
       };
     }
+  }
+
+  async _migratePendingSends(
+    pendingSends: [Uint8Array, Uint8Array][],
+    mutableRow: {
+      channel_values: [Uint8Array, Uint8Array, Uint8Array][];
+      checkpoint: Omit<Checkpoint, "pending_sends" | "channel_values">;
+    }
+  ) {
+    const textEncoder = new TextEncoder();
+    const textDecoder = new TextDecoder();
+    const row = mutableRow;
+
+    const [enc, blob] = await this.serde.dumpsTyped(
+      await Promise.all(
+        pendingSends.map(([enc, blob]) =>
+          this.serde.loadsTyped(textDecoder.decode(enc), blob)
+        )
+      )
+    );
+
+    row.channel_values ??= [];
+    row.channel_values.push([
+      textEncoder.encode(TASKS),
+      textEncoder.encode(enc),
+      blob,
+    ]);
+
+    // add to versions
+    row.checkpoint.channel_versions[TASKS] =
+      Object.keys(mutableRow.checkpoint.channel_versions).length > 0
+        ? maxChannelVersion(
+            ...Object.values(mutableRow.checkpoint.channel_versions)
+          )
+        : this.getNextVersion(undefined);
   }
 
   /**
@@ -442,22 +575,25 @@ export class PostgresSaver extends BaseCheckpointSaver {
     const serializedCheckpoint = this._dumpCheckpoint(checkpoint);
     try {
       await client.query("BEGIN");
-      const serializedBlobs = this._dumpBlobs(
+      const serializedBlobs = await this._dumpBlobs(
         thread_id,
         checkpoint_ns,
         checkpoint.channel_values,
         newVersions
       );
       for (const serializedBlob of serializedBlobs) {
-        await client.query(UPSERT_CHECKPOINT_BLOBS_SQL, serializedBlob);
+        await client.query(
+          this.SQL_STATEMENTS.UPSERT_CHECKPOINT_BLOBS_SQL,
+          serializedBlob
+        );
       }
-      await client.query(UPSERT_CHECKPOINTS_SQL, [
+      await client.query(this.SQL_STATEMENTS.UPSERT_CHECKPOINTS_SQL, [
         thread_id,
         checkpoint_ns,
         checkpoint.id,
         checkpoint_id,
         serializedCheckpoint,
-        this._dumpMetadata(metadata),
+        await this._dumpMetadata(metadata),
       ]);
       await client.query("COMMIT");
     } catch (e) {
@@ -483,10 +619,10 @@ export class PostgresSaver extends BaseCheckpointSaver {
     taskId: string
   ): Promise<void> {
     const query = writes.every((w) => w[0] in WRITES_IDX_MAP)
-      ? UPSERT_CHECKPOINT_WRITES_SQL
-      : INSERT_CHECKPOINT_WRITES_SQL;
+      ? this.SQL_STATEMENTS.UPSERT_CHECKPOINT_WRITES_SQL
+      : this.SQL_STATEMENTS.INSERT_CHECKPOINT_WRITES_SQL;
 
-    const dumpedWrites = this._dumpWrites(
+    const dumpedWrites = await this._dumpWrites(
       config.configurable?.thread_id,
       config.configurable?.checkpoint_ns,
       config.configurable?.checkpoint_id,
@@ -510,5 +646,27 @@ export class PostgresSaver extends BaseCheckpointSaver {
 
   async end() {
     return this.pool.end();
+  }
+
+  async deleteThread(threadId: string): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(this.SQL_STATEMENTS.DELETE_CHECKPOINT_BLOBS_SQL, [
+        threadId,
+      ]);
+      await client.query(this.SQL_STATEMENTS.DELETE_CHECKPOINTS_SQL, [
+        threadId,
+      ]);
+      await client.query(this.SQL_STATEMENTS.DELETE_CHECKPOINT_WRITES_SQL, [
+        threadId,
+      ]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }

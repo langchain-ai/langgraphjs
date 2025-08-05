@@ -1,0 +1,44 @@
+{
+  "name": "@langchain/langgraph-ui",
+  "version": "0.0.56",
+  "type": "module",
+  "engines": {
+    "node": "^18.19.0 || >=20.16.0"
+  },
+  "license": "MIT",
+  "main": "./dist/index.mjs",
+  "bin": {
+    "langgraphjs-ui": "./dist/cli.mjs"
+  },
+  "files": [
+    "dist/"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:langchain-ai/langgraphjs-api.git"
+  },
+  "scripts": {
+    "clean": "rm -rf dist/ .turbo/",
+    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-ui",
+    "build:internal": "yarn clean && node scripts/build.mjs",
+    "prepack": "yarn run build",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@commander-js/extra-typings": "^13.0.0",
+    "commander": "^13.0.0",
+    "esbuild": "^0.25.0",
+    "esbuild-plugin-tailwindcss": "^2.0.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^18.15.11",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "prettier": "^2.8.3",
+    "typescript": "^4.9.5 || ^5.4.5",
+    "vitest": "^3.1.2"
+  }
+}

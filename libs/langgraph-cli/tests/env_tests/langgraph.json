@@ -1,0 +1,9 @@
+{
+  "python_version": "3.12",
+  "dockerfile_lines": ["ARG meow"],
+  "dependencies": ["langchain_openai", "."],
+  "graphs": {
+    "agent": "./agent.py:graph"
+  },
+  "env": ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TAVILY_API_KEY"]
+}

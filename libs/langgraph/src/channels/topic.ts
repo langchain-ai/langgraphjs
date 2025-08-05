@@ -1,10 +1,6 @@
 import { EmptyChannelError } from "../errors.js";
 import { BaseChannel } from "./base.js";
 
-function arraysEqual<T>(a: T[], b: T[]): boolean {
-  return a.length === b.length && a.every((val, index) => val === b[index]);
-}
-
 /**
  * @internal
  */
@@ -38,7 +34,7 @@ export class Topic<Value> extends BaseChannel<
       unique: this.unique,
       accumulate: this.accumulate,
     });
-    if (checkpoint) {
+    if (typeof checkpoint !== "undefined") {
       empty.seen = new Set(checkpoint[0]);
       // eslint-disable-next-line prefer-destructuring
       empty.values = checkpoint[1];
@@ -47,8 +43,9 @@ export class Topic<Value> extends BaseChannel<
   }
 
   public update(values: Array<Value | Value[]>): boolean {
-    const current = [...this.values];
+    let updated = false;
     if (!this.accumulate) {
+      updated = this.values.length > 0;
       this.values = [];
     }
     const flatValues = values.flat() as Value[];
@@ -56,15 +53,17 @@ export class Topic<Value> extends BaseChannel<
       if (this.unique) {
         for (const value of flatValues) {
           if (!this.seen.has(value)) {
+            updated = true;
             this.seen.add(value);
             this.values.push(value);
           }
         }
       } else {
+        updated = true;
         this.values.push(...flatValues);
       }
     }
-    return !arraysEqual(this.values, current);
+    return updated;
   }
 
   public get(): Array<Value> {
@@ -76,5 +75,9 @@ export class Topic<Value> extends BaseChannel<
 
   public checkpoint(): [Value[], Value[]] {
     return [[...this.seen], this.values];
+  }
+
+  isAvailable(): boolean {
+    return this.values.length !== 0;
   }
 }

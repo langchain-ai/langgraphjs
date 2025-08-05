@@ -75,6 +75,7 @@ export const testTypeFilters = [
   "list",
   "put",
   "putWrites",
+  "deleteThread",
 ] as const;
 
 export type TestTypeFilter = (typeof testTypeFilters)[number];

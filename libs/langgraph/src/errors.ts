@@ -1,7 +1,14 @@
-import { Interrupt } from "./constants.js";
+import { Command, Interrupt } from "./constants.js";
 
+// When editing, make sure to update the index found here:
+// https://langchain-ai.github.io/langgraphjs/troubleshooting/errors/
 export type BaseLangGraphErrorFields = {
-  lc_error_code?: string;
+  lc_error_code?:
+    | "GRAPH_RECURSION_LIMIT"
+    | "INVALID_CONCURRENT_GRAPH_UPDATE"
+    | "INVALID_GRAPH_NODE_RETURN_VALUE"
+    | "MULTIPLE_SUBGRAPHS"
+    | "UNREACHABLE_NODE";
 };
 
 // TODO: Merge with base LangChain error class when we drop support for core@0.2.0
@@ -11,10 +18,16 @@ export class BaseLangGraphError extends Error {
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
     let finalMessage = message ?? "";
     if (fields?.lc_error_code) {
-      finalMessage = `${finalMessage}\n\nTroubleshooting URL: https://js.langchain.com/docs/troubleshooting/errors/${fields.lc_error_code}/\n`;
+      finalMessage = `${finalMessage}\n\nTroubleshooting URL: https://langchain-ai.github.io/langgraphjs/troubleshooting/errors/${fields.lc_error_code}/\n`;
     }
     super(finalMessage);
     this.lc_error_code = fields?.lc_error_code;
+  }
+}
+
+export class GraphBubbleUp extends BaseLangGraphError {
+  get is_bubble_up() {
+    return true;
   }
 }
 
@@ -40,7 +53,7 @@ export class GraphValueError extends BaseLangGraphError {
   }
 }
 
-export class GraphInterrupt extends BaseLangGraphError {
+export class GraphInterrupt extends GraphBubbleUp {
   interrupts: Interrupt[];
 
   constructor(interrupts?: Interrupt[], fields?: BaseLangGraphErrorFields) {
@@ -56,16 +69,9 @@ export class GraphInterrupt extends BaseLangGraphError {
 
 /** Raised by a node to interrupt execution. */
 export class NodeInterrupt extends GraphInterrupt {
-  constructor(message: string, fields?: BaseLangGraphErrorFields) {
-    super(
-      [
-        {
-          value: message,
-          when: "during",
-        },
-      ],
-      fields
-    );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(message: any, fields?: BaseLangGraphErrorFields) {
+    super([{ value: message }], fields);
     this.name = "NodeInterrupt";
   }
 
@@ -74,15 +80,38 @@ export class NodeInterrupt extends GraphInterrupt {
   }
 }
 
-export function isGraphInterrupt(
-  e?: GraphInterrupt | Error
-): e is GraphInterrupt {
+export class ParentCommand extends GraphBubbleUp {
+  command: Command;
+
+  constructor(command: Command) {
+    super();
+    this.name = "ParentCommand";
+    this.command = command;
+  }
+
+  static get unminifiable_name() {
+    return "ParentCommand";
+  }
+}
+
+export function isParentCommand(e?: unknown): e is ParentCommand {
+  return (
+    e !== undefined &&
+    (e as ParentCommand).name === ParentCommand.unminifiable_name
+  );
+}
+
+export function isGraphBubbleUp(e?: unknown): e is GraphBubbleUp {
+  return e !== undefined && (e as GraphBubbleUp).is_bubble_up === true;
+}
+
+export function isGraphInterrupt(e?: unknown): e is GraphInterrupt {
   return (
     e !== undefined &&
     [
       GraphInterrupt.unminifiable_name,
       NodeInterrupt.unminifiable_name,
-    ].includes(e.name)
+    ].includes((e as Error).name)
   );
 }
 
@@ -119,6 +148,9 @@ export class InvalidUpdateError extends BaseLangGraphError {
   }
 }
 
+/**
+ * @deprecated This exception type is no longer thrown.
+ */
 export class MultipleSubgraphsError extends BaseLangGraphError {
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
     super(message, fields);
@@ -127,6 +159,17 @@ export class MultipleSubgraphsError extends BaseLangGraphError {
 
   static get unminifiable_name() {
     return "MultipleSubgraphError";
+  }
+}
+
+export class UnreachableNodeError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
+    this.name = "UnreachableNodeError";
+  }
+
+  static get unminifiable_name() {
+    return "UnreachableNodeError";
   }
 }
 

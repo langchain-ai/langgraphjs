@@ -1,7 +1,6 @@
 ---
 hide_comments: true
-hide:
-  - navigation
+title: LangGraph
 ---
 
 {!README.md!}

@@ -25,7 +25,6 @@ import {
   BaseChannel,
   GraphInterrupt,
   LangGraphRunnableConfig,
-  ManagedValueSpec,
   RemoteException,
 } from "../web.js";
 import { StrRecord } from "./algo.js";
@@ -42,13 +41,11 @@ import {
   CHECKPOINT_NAMESPACE_SEPARATOR,
   CONFIG_KEY_STREAM,
   INTERRUPT,
+  isCommand,
 } from "../constants.js";
 
 export type RemoteGraphParams = Omit<
-  PregelParams<
-    StrRecord<string, PregelNode>,
-    StrRecord<string, BaseChannel | ManagedValueSpec>
-  >,
+  PregelParams<StrRecord<string, PregelNode>, StrRecord<string, BaseChannel>>,
   "channels" | "nodes" | "inputChannels" | "outputChannels"
 > & {
   graphId: string;
@@ -104,16 +101,12 @@ const getStreamModes = (
     (typeof streamMode === "string" ||
       (Array.isArray(streamMode) && streamMode.length > 0))
   ) {
-    if (typeof streamMode === "string") {
-      updatedStreamModes.push(streamMode);
-    } else {
-      reqSingle = false;
-      updatedStreamModes.push(...streamMode);
-    }
+    reqSingle = typeof streamMode === "string";
+    const mapped = Array.isArray(streamMode) ? streamMode : [streamMode];
+    updatedStreamModes.push(...mapped);
   } else {
     updatedStreamModes.push(defaultStreamMode);
   }
-  // TODO: Map messages to messages-tuple
   if (updatedStreamModes.includes("updates")) {
     reqUpdates = true;
   } else {
@@ -165,19 +158,16 @@ const getStreamModes = (
  */
 export class RemoteGraph<
     Nn extends StrRecord<string, PregelNode> = StrRecord<string, PregelNode>,
-    Cc extends StrRecord<string, BaseChannel | ManagedValueSpec> = StrRecord<
-      string,
-      BaseChannel | ManagedValueSpec
-    >,
+    Cc extends StrRecord<string, BaseChannel> = StrRecord<string, BaseChannel>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ConfigurableFieldType extends Record<string, any> = StrRecord<string, any>
+    ContextType extends Record<string, any> = StrRecord<string, any>
   >
   extends Runnable<
     PregelInputType,
     PregelOutputType,
-    PregelOptions<Nn, Cc, ConfigurableFieldType>
+    PregelOptions<Nn, Cc, ContextType>
   >
-  implements PregelInterface<Nn, Cc, ConfigurableFieldType>
+  implements PregelInterface<Nn, Cc, ContextType>
 {
   static lc_name() {
     return "RemoteGraph";
@@ -229,24 +219,25 @@ export class RemoteGraph<
       "checkpoint_ns",
     ]);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sanitizeObj = (obj: any): any => {
-      // Remove non-JSON serializable fields from the given object
-      if (obj && typeof obj === "object") {
-        if (Array.isArray(obj)) {
-          return obj.map((v) => sanitizeObj(v));
-        } else {
-          return Object.fromEntries(
-            Object.entries(obj).map(([k, v]) => [k, sanitizeObj(v)])
-          );
-        }
-      }
-
+    const sanitizeObj = <T>(obj: T): T => {
       try {
+        // This will only throw if we're trying to serialize a circular reference
+        // or trying to serialize a BigInt...
         JSON.stringify(obj);
         return obj;
       } catch {
-        return null;
+        const seen = new WeakSet();
+        return JSON.parse(
+          JSON.stringify(obj, (_, value) => {
+            if (typeof value === "object" && value != null) {
+              if (seen.has(value)) return "[Circular]";
+              seen.add(value);
+            }
+
+            if (typeof value === "bigint") return value.toString();
+            return value;
+          })
+        );
       }
     };
 
@@ -265,6 +256,7 @@ export class RemoteGraph<
       tags: sanitizedConfig.tags ?? [],
       metadata: sanitizedConfig.metadata ?? {},
       configurable: newConfigurable,
+      recursion_limit: sanitizedConfig.recursionLimit,
     };
   }
 
@@ -306,7 +298,11 @@ export class RemoteGraph<
         id: task.id,
         name: task.name,
         error: task.error ? { message: task.error } : undefined,
-        interrupts: task.interrupts,
+        // TODO: remove in LangGraph.js 0.4
+        interrupts: task.interrupts.map(({ id, ...rest }) => ({
+          interrupt_id: id,
+          ...rest,
+        })),
         // eslint-disable-next-line no-nested-ternary
         state: task.state
           ? this._createStateSnapshot(task.state)
@@ -349,7 +345,7 @@ export class RemoteGraph<
 
   override async invoke(
     input: PregelInputType,
-    options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
+    options?: Partial<PregelOptions<Nn, Cc, ContextType>>
   ): Promise<PregelOutputType> {
     let lastValue;
     const stream = await this.stream(input, {
@@ -364,14 +360,14 @@ export class RemoteGraph<
 
   override streamEvents(
     input: PregelInputType,
-    options: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>> & {
+    options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
       version: "v1" | "v2";
     }
   ): IterableReadableStream<StreamEvent>;
 
   override streamEvents(
     input: PregelInputType,
-    options: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>> & {
+    options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
       version: "v1" | "v2";
       encoding: never;
     }
@@ -379,7 +375,7 @@ export class RemoteGraph<
 
   override streamEvents(
     _input: PregelInputType,
-    _options: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>> & {
+    _options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
       version: "v1" | "v2";
       encoding?: never;
     }
@@ -389,7 +385,7 @@ export class RemoteGraph<
 
   override async *_streamIterator(
     input: PregelInputType,
-    options?: Partial<PregelOptions<Nn, Cc, ConfigurableFieldType>>
+    options?: Partial<PregelOptions<Nn, Cc, ContextType>>
   ): AsyncGenerator<PregelOutputType> {
     const mergedConfig = mergeConfigs(this.config, options);
     const sanitizedConfig = this._sanitizeConfig(mergedConfig);
@@ -399,8 +395,8 @@ export class RemoteGraph<
     const streamSubgraphs =
       options?.subgraphs ?? streamProtocolInstance !== undefined;
 
-    const interruptBefore = this.interruptBefore ?? options?.interruptBefore;
-    const interruptAfter = this.interruptAfter ?? options?.interruptAfter;
+    const interruptBefore = options?.interruptBefore ?? this.interruptBefore;
+    const interruptAfter = options?.interruptAfter ?? this.interruptAfter;
 
     const { updatedStreamModes, reqSingle, reqUpdates } = getStreamModes(
       options?.streamMode
@@ -411,19 +407,34 @@ export class RemoteGraph<
         ...updatedStreamModes,
         ...(streamProtocolInstance?.modes ?? new Set()),
       ]),
-    ];
+    ].map((mode) => {
+      if (mode === "messages") return "messages-tuple";
+      return mode;
+    });
+
+    let command;
+    let serializedInput;
+    if (isCommand(input)) {
+      // TODO: Remove cast when SDK type fix gets merged
+      command = input.toJSON() as Record<string, unknown>;
+      serializedInput = undefined;
+    } else {
+      serializedInput = _serializeInputs(input);
+    }
 
     for await (const chunk of this.client.runs.stream(
       sanitizedConfig.configurable.thread_id as string,
       this.graphId,
       {
-        input: _serializeInputs(input),
+        command,
+        input: serializedInput,
         config: sanitizedConfig,
         streamMode: extendedStreamModes,
         interruptBefore: interruptBefore as string[],
         interruptAfter: interruptAfter as string[],
         streamSubgraphs,
         ifNotExists: "create",
+        signal: mergedConfig.signal,
       }
     )) {
       let mode;
@@ -586,9 +597,7 @@ export class RemoteGraph<
   }
 
   /** @deprecated Use getSubgraphsAsync instead. The async method will become the default in the next minor release. */
-  getSubgraphs(): Generator<
-    [string, PregelInterface<Nn, Cc, ConfigurableFieldType>]
-  > {
+  getSubgraphs(): Generator<[string, PregelInterface<Nn, Cc, ContextType>]> {
     throw new Error(
       `The synchronous "getSubgraphs" method is not supported for this graph. Call "getSubgraphsAsync" instead.`
     );
@@ -597,7 +606,7 @@ export class RemoteGraph<
   async *getSubgraphsAsync(
     namespace?: string,
     recurse = false
-  ): AsyncGenerator<[string, PregelInterface<Nn, Cc, ConfigurableFieldType>]> {
+  ): AsyncGenerator<[string, PregelInterface<Nn, Cc, ContextType>]> {
     const subgraphs = await this.client.assistants.getSubgraphs(this.graphId, {
       namespace,
       recurse,

@@ -9,8 +9,8 @@ There are several different modes you can specify when calling these methods (e.
 
 - [`"values"`](/langgraphjs/how-tos/stream-values): This streams the full value of the state after each step of the graph.
 - [`"updates"`](/langgraphjs/how-tos/stream-updates): This streams the updates to the state after each step of the graph. If multiple updates are made in the same step (e.g. multiple nodes are run) then those updates are streamed separately.
-- [`"custom"`](/langgraphjs/how-tos/streaming-content.ipynb): This streams custom data from inside your graph nodes.
-- [`"messages"`](/langgraphjs/how-tos/streaming-tokens.ipynb): This streams LLM tokens and metadata for the graph node where LLM is invoked.
+- [`"custom"`](/langgraphjs/how-tos/streaming-content): This streams custom data from inside your graph nodes.
+- [`"messages"`](/langgraphjs/how-tos/streaming-tokens): This streams LLM tokens and metadata for the graph node where LLM is invoked.
 - `"debug"`: This streams as much information as possible throughout the execution of the graph.
 
 The below visualization shows the difference between the `values` and `updates` modes:
@@ -58,7 +58,10 @@ const app = workflow.compile();
 
 const inputs = [{ role: "user", content: "hi!" }];
 
-for await (const event of app.streamEvents({ messages: inputs })) {
+for await (const event of app.streamEvents(
+  { messages: inputs },
+  { version: "v2" }
+)) {
   const kind = event.event;
   console.log(`${kind}: ${event.name}`);
 }

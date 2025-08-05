@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { jest } from "@jest/globals";
+import { describe, test, expect, vi } from "vitest";
 import { Client } from "@langchain/langgraph-sdk";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { RemoteGraph } from "../pregel/remote.js";
 import { gatherIterator } from "../utils.js";
-import { INTERRUPT } from "../constants.js";
+import { Command, INTERRUPT, Send } from "../constants.js";
 import { GraphInterrupt } from "../errors.js";
 
 describe("RemoteGraph", () => {
@@ -38,7 +39,7 @@ describe("RemoteGraph", () => {
 
   test("getGraph", async () => {
     const client = new Client({});
-    jest.spyOn((client as any).assistants, "getGraph").mockResolvedValue({
+    vi.spyOn((client as any).assistants, "getGraph").mockResolvedValue({
       nodes: [
         { id: "__start__", type: "schema", data: "__start__" },
         { id: "__end__", type: "schema", data: "__end__" },
@@ -92,7 +93,7 @@ describe("RemoteGraph", () => {
 
   test("getSubgraphs", async () => {
     const client = new Client({});
-    jest.spyOn((client as any).assistants, "getSubgraphs").mockResolvedValue({
+    vi.spyOn((client as any).assistants, "getSubgraphs").mockResolvedValue({
       namespace_1: {
         graph_id: "test_graph_id_2",
         input_schema: {},
@@ -130,7 +131,7 @@ describe("RemoteGraph", () => {
 
   test("getState", async () => {
     const client = new Client({});
-    jest.spyOn((client as any).threads, "getState").mockResolvedValue({
+    vi.spyOn((client as any).threads, "getState").mockResolvedValue({
       values: { messages: [{ type: "human", content: "hello" }] },
       next: undefined,
       checkpoint: {
@@ -174,7 +175,7 @@ describe("RemoteGraph", () => {
 
   test("getStateHistory", async () => {
     const client = new Client({});
-    jest.spyOn((client as any).threads, "getHistory").mockResolvedValue([
+    vi.spyOn((client as any).threads, "getHistory").mockResolvedValue([
       {
         values: { messages: [{ type: "human", content: "hello" }] },
         next: undefined,
@@ -222,7 +223,7 @@ describe("RemoteGraph", () => {
 
   test("updateState", async () => {
     const client = new Client({});
-    jest.spyOn((client as any).threads, "updateState").mockResolvedValue({
+    vi.spyOn((client as any).threads, "updateState").mockResolvedValue({
       checkpoint: {
         thread_id: "thread_1",
         checkpoint_ns: "ns",
@@ -252,9 +253,8 @@ describe("RemoteGraph", () => {
 
   test("stream", async () => {
     const client = new Client({});
-    jest
-      .spyOn((client as any).runs, "stream")
-      .mockImplementation(async function* () {
+    vi.spyOn((client as any).runs, "stream").mockImplementation(
+      async function* () {
         const chunks = [
           { event: "values", data: { chunk: "data1" } },
           { event: "values", data: { chunk: "data2" } },
@@ -265,7 +265,8 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      });
+      }
+    );
 
     const remotePregel = new RemoteGraph({
       client,
@@ -295,9 +296,8 @@ describe("RemoteGraph", () => {
       { chunk: "data3" },
     ]);
 
-    jest
-      .spyOn((client as any).runs, "stream")
-      .mockImplementation(async function* () {
+    vi.spyOn((client as any).runs, "stream").mockImplementation(
+      async function* () {
         const chunks = [
           { event: "updates", data: { chunk: "data3" } },
           { event: "updates", data: { chunk: "data4" } },
@@ -306,7 +306,8 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      });
+      }
+    );
 
     // default stream_mode is updates
     error = undefined;
@@ -389,9 +390,8 @@ describe("RemoteGraph", () => {
       [[], { chunk: "data4" }],
     ]);
 
-    jest
-      .spyOn((client as any).runs, "stream")
-      .mockImplementation(async function* () {
+    vi.spyOn((client as any).runs, "stream").mockImplementation(
+      async function* () {
         const chunks = [
           { event: "updates|my|subgraph", data: { chunk: "data3" } },
           { event: "updates|hello|subgraph", data: { chunk: "data4" } },
@@ -400,7 +400,8 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      });
+      }
+    );
 
     // subgraphs + list modes
     parts = [];
@@ -446,9 +447,8 @@ describe("RemoteGraph", () => {
 
   test("invoke", async () => {
     const client = new Client({});
-    jest
-      .spyOn((client as any).runs, "stream")
-      .mockImplementation(async function* () {
+    vi.spyOn((client as any).runs, "stream").mockImplementation(
+      async function* () {
         const chunks = [
           { event: "values", data: { chunk: "data1" } },
           { event: "values", data: { chunk: "data2" } },
@@ -460,7 +460,8 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      });
+      }
+    );
 
     const remotePregel = new RemoteGraph({
       client,
@@ -473,5 +474,167 @@ describe("RemoteGraph", () => {
       config
     );
     expect(result).toEqual({ messages: [{ type: "human", content: "world" }] });
+  });
+
+  test("invoke with a Command serializes properly", async () => {
+    const client = new Client({});
+    let streamArgs;
+    vi.spyOn((client as any).runs, "stream").mockImplementation(
+      async function* (...args) {
+        streamArgs = args;
+        const chunks = [
+          { event: "values", data: { chunk: "data1" } },
+          { event: "values", data: { chunk: "data2" } },
+          {
+            event: "values",
+            data: { messages: [{ type: "human", content: "world" }] },
+          },
+        ];
+        for (const chunk of chunks) {
+          yield chunk;
+        }
+      }
+    );
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    const config = { configurable: { thread_id: "thread_1" } };
+    const result = await remotePregel.invoke(
+      new Command({
+        goto: ["one", new Send("foo", { baz: "qux" })],
+        resume: "bar",
+        update: { foo: "bar" },
+      }),
+      config
+    );
+    expect(result).toEqual({ messages: [{ type: "human", content: "world" }] });
+    expect(streamArgs).toEqual([
+      "thread_1",
+      "test_graph_id",
+      {
+        command: {
+          lg_name: "Command",
+          update: { foo: "bar" },
+          resume: "bar",
+          goto: ["one", { lg_name: "Send", node: "foo", args: { baz: "qux" } }],
+        },
+        input: undefined,
+        config: expect.anything(),
+        streamMode: ["values", "updates"],
+        interruptBefore: undefined,
+        interruptAfter: undefined,
+        streamSubgraphs: false,
+        signal: undefined,
+        ifNotExists: "create",
+      },
+    ]);
+  });
+
+  test("invoke propagates recursionLimit and other config keys to API", async () => {
+    const client = new Client({});
+    let streamArgs: unknown[] | undefined;
+    vi.spyOn(client.runs, "stream").mockImplementation(async function* (
+      ...args
+    ) {
+      streamArgs = args;
+      yield {
+        event: "values",
+        data: { messages: [{ type: "human", content: "world" }] },
+      };
+    });
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "thread_1",
+        custom_key: "custom_value",
+      },
+      recursionLimit: 10,
+      tags: ["test", "invoke"],
+      metadata: { source: "test", version: "1.0" },
+      signal: new AbortController().signal,
+    };
+
+    await remotePregel.invoke({}, config);
+
+    expect(streamArgs).toEqual([
+      "thread_1",
+      "test_graph_id",
+      expect.objectContaining({
+        signal: config.signal,
+        config: expect.objectContaining({
+          configurable: config.configurable,
+          recursion_limit: config.recursionLimit,
+          tags: config.tags,
+        }),
+      }),
+    ]);
+  });
+
+  test("handle circular references", async () => {
+    const client = new Client({});
+    const streamSpy = vi
+      .spyOn((client as any).runs, "stream")
+      .mockImplementation(async function* () {
+        yield {
+          event: "values",
+          data: { messages: [{ type: "human", content: "world" }] },
+        };
+      });
+
+    const remotePregel = new RemoteGraph({ client, graphId: "test_graph_id" });
+
+    const config: any = {
+      configurable: { thread_id: "thread_1", bigint: 123n },
+      metadata: { source: "test" },
+      tags: [],
+    };
+    config.configurable.circular = config;
+    config.metadata.circular = config;
+    config.tags.push(config);
+
+    const result = await remotePregel.invoke({}, config);
+    expect(result).toEqual({ messages: [{ type: "human", content: "world" }] });
+
+    expect(streamSpy).toHaveBeenCalledWith(
+      "thread_1",
+      "test_graph_id",
+      expect.objectContaining({
+        config: expect.objectContaining({
+          configurable: {
+            circular: "[Circular]",
+            bigint: "123",
+            thread_id: "thread_1",
+          },
+          metadata: {
+            source: "test",
+            circular: "[Circular]",
+            thread_id: "thread_1",
+          },
+          tags: [
+            {
+              configurable: {
+                circular: "[Circular]",
+                bigint: "123",
+                thread_id: "thread_1",
+              },
+              metadata: {
+                source: "test",
+                circular: "[Circular]",
+                thread_id: "thread_1",
+              },
+              tags: ["[Circular]"],
+            },
+          ],
+        }),
+      })
+    );
   });
 });

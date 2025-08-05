@@ -78,7 +78,7 @@ Full example: `yarn release @langchain/langgraph --bump-deps --tag beta`.
 This project uses the following tools, which are worth getting familiar
 with if you plan to contribute:
 
-- **[yarn](https://yarnpkg.com/) (v3.4.1)** - dependency management
+- **[yarn](https://yarnpkg.com/) (v4.9.1)** - dependency management
 - **[eslint](https://eslint.org/)** - enforcing standard lint rules
 - **[prettier](https://prettier.io/)** - enforcing standard code formatting
 - **[jest](https://jestjs.io/)** - testing code
@@ -177,13 +177,13 @@ This is useful for developing individual features.
 If you add support for a new external API, please add a new integration test.
 Integration tests should be called `*.int.test.ts`.
 
-Note that most integration tests require credentials or other setup. You will likely need to set up a `langgraph/.env` file
-like the example [here](https://github.com/langchain-ai/langgraphjs/blob/main/langgraph/.env.example).
+Note that most integration tests require credentials or other setup. You will likely need to set up a `libs/langgraph/.env` file
+like the example [here](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph/.env.example).
 
 We generally recommend only running integration tests with `yarn test:single`, but if you want to run all integration tests, run:
 
 ```bash
-yarn test:integration
+yarn test:int
 ```
 
 ### Building
@@ -257,7 +257,7 @@ Some key concepts:
 - Each node writes to (one or more) channels. This defines where the final value after a node is executed is stored, because nodes don't store their own value.
 - More on channels below.
 
-To form an intuition around Pregel graphs, lets look at the example tests.
+To form an intuition around Pregel graphs, let's look at the example tests.
 
 In the example below, the pregel graph is defined to start at `inputChannelName` and end at `outputChannelName`. The graph has a single node called `nodeOne` that transforms the input value by adding one to it. When the graph is invoked with an input value of `2`:
 
@@ -288,7 +288,7 @@ In the example below, the graph has one node. The `checkpointer` parameter in Pr
 Invocation 1:
 
 1. When the graph is invoked with `2`, `input` channels value becomes `2`
-2. Node `one` runs because it is subscribed to `input`. The node tranforms `2` to `2` by running `inputPlusTotal`.
+2. Node `one` runs because it is subscribed to `input`. The node transforms `2` to `2` by running `inputPlusTotal`.
 3. The value of channels `output` and `total` get set to `2` because node `one` writes to both channels
 4. Because `memory` is passed into the graph, `total` at thread_id of `1` is saved as a value of `2`
 5. The graph ends with `output`'s value which is `2`
@@ -352,17 +352,17 @@ it("should handle checkpoints correctly", async () => {
 });
 ```
 
-Those are some of the fundamentals of how a Pregel graph works. To get a deeper understanding of how Pregel works, you can check out it's expected behavior in `pregel.test.ts`.
+Those are some of the fundamentals of how a Pregel graph works. To get a deeper understanding of how Pregel works, you can check out its expected behavior in `pregel.test.ts`.
 
 #### Channels
 
 Some concepts about channels:
 
 1. Channels are the way nodes communicate with one another in Pregel. If it were not for channels, nodes would have no way of storing values or denoting dependencies on other nodes.
-2. At it's core, every channel does a couple things:
+2. At its core, every channel does a couple things:
 
 - It stores a current value.
-- It implements a way to `update` it's current value based on the expected parameter for the update function.
+- It implements a way to `update` its current value based on the expected parameter for the update function.
 - It implements a way to `checkpoint` or "snapshot" the current state of the channel. This enables persistence across a graph.
 - It implements a way to `empty` or "restore" a channel from a checkpoint/snapshot. This enables us to create a new channel from a checkpoint variable stored in a database.
 

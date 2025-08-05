@@ -1,4 +1,8 @@
 *.ipynb
 # But don't ignore .ipynb files in the troubleshooting/errors directory
 !docs/troubleshooting/errors/*.ipynb
+!plugins/typedoc/google_analytics/*.js
 site/
+docs/cloud/
+stats.yml
+docs/prebuilt.md

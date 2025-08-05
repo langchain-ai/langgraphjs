@@ -5,10 +5,11 @@ import {
   isBaseMessage,
 } from "@langchain/core/messages";
 import { RunnableConfig, RunnableToolLike } from "@langchain/core/runnables";
-import { StructuredToolInterface } from "@langchain/core/tools";
+import { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
 import { RunnableCallable } from "../utils.js";
-import { END } from "../graph/graph.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
+import { isGraphInterrupt } from "../errors.js";
+import { END, isCommand, Command, _isSend, Send } from "../constants.js";
 
 export type ToolNodeOptions = {
   name?: string;
@@ -135,14 +136,14 @@ export type ToolNodeOptions = {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ToolNode<T = any> extends RunnableCallable<T, T> {
-  tools: (StructuredToolInterface | RunnableToolLike)[];
+  tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
 
   handleToolErrors = true;
 
   trace = false;
 
   constructor(
-    tools: (StructuredToolInterface | RunnableToolLike)[],
+    tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[],
     options?: ToolNodeOptions
   ) {
     const { name, tags, handleToolErrors } = options ?? {};
@@ -172,7 +173,10 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
             { ...call, type: "tool_call" },
             config
           );
-          if (isBaseMessage(output) && output._getType() === "tool") {
+          if (
+            (isBaseMessage(output) && output._getType() === "tool") ||
+            isCommand(output)
+          ) {
             return output;
           } else {
             return new ToolMessage({
@@ -187,6 +191,12 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
           if (!this.handleToolErrors) {
             throw e;
           }
+          if (isGraphInterrupt(e)) {
+            // `NodeInterrupt` errors are a breakpoint to bring a human into the loop.
+            // As such, they are not recoverable by the agent and shouldn't be fed
+            // back. Instead, re-throw these errors even when `handleToolErrors = true`.
+            throw e;
+          }
           return new ToolMessage({
             content: `Error: ${e.message}\n Please fix your mistakes.`,
             name: call.name,
@@ -196,7 +206,49 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
       }) ?? []
     );
 
-    return (Array.isArray(input) ? outputs : { messages: outputs }) as T;
+    // Preserve existing behavior for non-command tool outputs for backwards compatibility
+    if (!outputs.some(isCommand)) {
+      return (Array.isArray(input) ? outputs : { messages: outputs }) as T;
+    }
+
+    // Handle mixed Command and non-Command outputs
+    const combinedOutputs: (
+      | { messages: BaseMessage[] }
+      | BaseMessage[]
+      | Command
+    )[] = [];
+    let parentCommand: Command | null = null;
+
+    for (const output of outputs) {
+      if (isCommand(output)) {
+        if (
+          output.graph === Command.PARENT &&
+          Array.isArray(output.goto) &&
+          output.goto.every((send) => _isSend(send))
+        ) {
+          if (parentCommand) {
+            (parentCommand.goto as Send[]).push(...(output.goto as Send[]));
+          } else {
+            parentCommand = new Command({
+              graph: Command.PARENT,
+              goto: output.goto,
+            });
+          }
+        } else {
+          combinedOutputs.push(output);
+        }
+      } else {
+        combinedOutputs.push(
+          Array.isArray(input) ? [output] : { messages: [output] }
+        );
+      }
+    }
+
+    if (parentCommand) {
+      combinedOutputs.push(parentCommand);
+    }
+
+    return combinedOutputs as T;
   }
 }
 
@@ -208,6 +260,7 @@ export function toolsCondition(
     : state.messages[state.messages.length - 1];
 
   if (
+    message !== undefined &&
     "tool_calls" in message &&
     ((message as AIMessage).tool_calls?.length ?? 0) > 0
   ) {

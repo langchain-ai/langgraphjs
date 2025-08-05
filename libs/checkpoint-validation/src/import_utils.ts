@@ -3,7 +3,7 @@ import {
   resolve as pathResolve,
   dirname,
 } from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 
 export function findPackageRoot(path: string): string {
@@ -47,28 +47,4 @@ export function resolveImportPath(path: string) {
 
   const localRequire = createRequire(pathResolve(packageRoot, "package.json"));
   return localRequire.resolve(path);
-}
-
-export function isESM(path: string) {
-  if (path.endsWith(".mjs") || path.endsWith(".mts")) {
-    return true;
-  }
-
-  if (path.endsWith(".cjs") || path.endsWith(".cts")) {
-    return false;
-  }
-
-  const packageJsonPath = pathResolve(findPackageRoot(path), "package.json");
-  const packageConfig = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
-
-  return packageConfig.type === "module";
-}
-
-export async function dynamicImport(modulePath: string) {
-  if (isESM(modulePath)) {
-    return import(modulePath);
-  }
-
-  const localRequire = createRequire(pathResolve(modulePath, "package.json"));
-  return localRequire(modulePath);
 }

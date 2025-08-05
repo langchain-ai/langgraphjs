@@ -19,7 +19,10 @@ const readConfig = {
   }
 };
 
-const checkpointer = PostgresSaver.fromConnString("postgresql://...");
+// you can optionally pass a configuration object as the second parameter
+const checkpointer = PostgresSaver.fromConnString("postgresql://...", {
+  schema: "schema_name" // defaults to "public"
+});
 
 // You must call .setup() the first time you use the checkpointer:
 await checkpointer.setup();
@@ -35,7 +38,7 @@ const checkpoint = {
   channel_versions: {
     __start__: 2,
     my_key: 3,
-    start:node: 3,
+    "start:node": 3,
     node: 3
   },
   versions_seen: {
@@ -44,7 +47,7 @@ const checkpoint = {
       __start__: 1
     },
     node: {
-      start:node: 2
+      "start:node": 2
     }
   },
   pending_sends: [],

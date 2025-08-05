@@ -1,0 +1,103 @@
+{
+  "name": "@langchain/langgraph-api",
+  "version": "0.0.56",
+  "type": "module",
+  "engines": {
+    "node": "^18.19.0 || >=20.16.0"
+  },
+  "license": "MIT",
+  "main": "./dist/cli/spawn.mjs",
+  "files": [
+    "dist/"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/cli/spawn.d.mts",
+      "default": "./dist/cli/spawn.mjs"
+    },
+    "./auth": {
+      "types": "./dist/auth/index.d.mts",
+      "default": "./dist/auth/index.mjs"
+    },
+    "./semver": {
+      "types": "./dist/semver/index.d.mts",
+      "default": "./dist/semver/index.mjs"
+    },
+    "./schema": {
+      "types": "./dist/graph/parser/index.d.mts",
+      "default": "./dist/graph/parser/index.mjs"
+    },
+    "./experimental/embed": {
+      "types": "./dist/experimental/embed.d.mts",
+      "default": "./dist/experimental/embed.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:langchain-ai/langgraphjs-api.git"
+  },
+  "scripts": {
+    "clean": "rm -rf dist/ .turbo/ ./tests/graphs/.langgraph_api/",
+    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-api",
+    "build:internal": "yarn clean && node scripts/build.mjs",
+    "dev": "tsx ./tests/utils.server.mts --dev",
+    "prepack": "yarn run build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@babel/code-frame": "^7.26.2",
+    "@hono/node-server": "^1.12.0",
+    "@hono/zod-validator": "^0.2.2",
+    "@langchain/langgraph-ui": "workspace:*",
+    "@types/json-schema": "^7.0.15",
+    "@typescript/vfs": "^1.6.0",
+    "dedent": "^1.5.3",
+    "dotenv": "^16.4.7",
+    "exit-hook": "^4.0.0",
+    "hono": "^4.5.4",
+    "langsmith": "^0.3.33",
+    "open": "^10.1.0",
+    "semver": "^7.7.1",
+    "stacktrace-parser": "^0.1.10",
+    "superjson": "^2.2.2",
+    "tsx": "^4.19.3",
+    "uuid": "^10.0.0",
+    "winston": "^3.17.0",
+    "winston-console-format": "^1.0.8",
+    "zod": "^3.23.8"
+  },
+  "peerDependencies": {
+    "@langchain/core": "^0.3.59",
+    "@langchain/langgraph": "^0.2.57 || ^0.3.0 || ^0.4.0",
+    "@langchain/langgraph-checkpoint": "~0.0.16 || ^0.1.0",
+    "@langchain/langgraph-sdk": "~0.0.70 || ^0.1.0",
+    "typescript": "^5.5.4"
+  },
+  "peerDependenciesMeta": {
+    "@langchain/langgraph-sdk": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@langchain/core": "^0.3.59",
+    "@langchain/langgraph": "workspace:*",
+    "@langchain/langgraph-checkpoint": "workspace:*",
+    "@langchain/langgraph-sdk": "workspace:*",
+    "@types/babel__code-frame": "^7.0.6",
+    "@types/node": "^18.15.11",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@types/semver": "^7.7.0",
+    "@types/uuid": "^10.0.0",
+    "jose": "^6.0.10",
+    "postgres": "^3.4.5",
+    "prettier": "^2.8.3",
+    "typescript": "^4.9.5 || ^5.4.5",
+    "vitest": "^3.1.2",
+    "wait-port": "^1.1.0"
+  }
+}

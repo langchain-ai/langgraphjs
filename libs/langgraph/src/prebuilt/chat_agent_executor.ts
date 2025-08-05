@@ -13,7 +13,7 @@ import {
   StateGraph,
   StateGraphArgs,
 } from "../graph/state.js";
-import { END, START } from "../graph/index.js";
+import { END, START } from "../constants.js";
 
 /** @deprecated Use {@link createReactAgent} instead with tool calling. */
 export type FunctionCallingExecutorState = { messages: Array<BaseMessage> };

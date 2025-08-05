@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 
+{% block analytics %}
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-MVSV6HPQ');</script>
+<!-- End Google Tag Manager -->
+{% endblock %}
+
+
 {% block extrahead %}
   <style>
     @import url("https://fonts.googleapis.com/css2?family=Public+Sans&display=swap");
@@ -32,17 +43,6 @@
 
     .md-typeset a {
       color: #1E88E5;
-    }
-
-    .md-sidebar {
-      display: none;
-    }
-
-    /* Show sidebar on mobile */
-    @media screen and (max-width: 1220px) {
-      .md-sidebar--primary {
-        display: block;
-      }
     }
 
     .md-typeset a:hover {
@@ -164,6 +164,40 @@
     .jupyter-wrapper .jp-Notebook .jp-Cell .jp-OutputPrompt {
       display: none !important;
     }
+
+    /* control the navbar depth */
+    [data-md-level="2"] .md-nav {
+      display: none;
+    }
+
+    /* disable the collapse/expand icon in the navar */
+    .md-nav__icon {
+      display: none;
+    }
+
+    .md-banner {
+      background-color: #CFC9FA;
+      color: #000000;
+    }
+
+    .md-banner a {
+      color: #000000;
+      text-decoration: underline;
+    }
+    
+    .md-banner a:hover {
+      color: #000000;
+    }
+
+    /* Dark mode banner links */
+    [data-md-color-scheme="slate"] .md-banner a {
+      color: #000000;
+    }
+
+    [data-md-color-scheme="slate"] .md-banner a:hover {
+      color: #000000;
+    }
+
   </style>
 {% endblock %}
 
@@ -189,4 +223,8 @@
   {% else %}
     <title>{{ config.site_name }}</title>
   {% endif %}
+{% endblock %}
+
+{% block announce %}
+<strong>Our <a href="https://academy.langchain.com/courses/ambient-agents/?utm_medium=internal&utm_source=docs&utm_campaign=q2-2025_ambient-agents_co" target="_blank">Building Ambient Agents with LangGraph</a> course is now available on LangChain Academy!</strong>
 {% endblock %}

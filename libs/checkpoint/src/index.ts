@@ -5,3 +5,4 @@ export * from "./types.js";
 export * from "./serde/base.js";
 export * from "./serde/types.js";
 export * from "./store/index.js";
+export * from "./cache/index.js";

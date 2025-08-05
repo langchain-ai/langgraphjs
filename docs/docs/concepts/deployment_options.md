@@ -53,7 +53,7 @@ You’ll build a Docker image using the [LangGraph CLI](./langgraph_cli.md), whi
 For more information, please see:
 
 * [Self-Hosted conceptual guide](./self_hosted.md)
-* [Self-Hosted Deployment how-to guide](https://langchain-ai.github.io/langgraph/how-tos/deploy-self-hosted/)
+* [Self-Hosted Deployment how-to guide](https://langchain-ai.github.io/langgraphjs/how-tos/deploy-self-hosted/)
 
 ## Cloud SaaS
 
@@ -70,7 +70,7 @@ This deployment option provides an integration with GitHub, allowing you to depl
 For more information, please see:
 
 * [Cloud SaaS Conceptual Guide](./langgraph_cloud.md)
-* [How to deploy to Cloud SaaS](https://langchain-ai.github.io/langgraph/cloud/deployment/cloud.md)
+* [How to deploy to Cloud SaaS](/langgraphjs/cloud/deployment/cloud.md)
 
 ## Bring Your Own Cloud
 

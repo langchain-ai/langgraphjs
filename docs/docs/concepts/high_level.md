@@ -6,7 +6,7 @@ However, we often want LLM systems that can pick their own control flow! This is
 
 - Using an LLM to route between two potential paths
 - Using an LLM to decide which of many tools to call
-- Using an LLM to decide whether the generated answer is sufficient or more work is need
+- Using an LLM to decide whether the generated answer is sufficient or more work is needed
 
 There are many different types of [agent architectures](https://blog.langchain.dev/what-is-a-cognitive-architecture/) to consider, which given an LLM varying levels of control. On one extreme, a router allows an LLM to select a single step from a specified set of options and, on the other extreme, a fully autonomous long-running agent may have complete freedom to select any sequence of steps that it wants for a given problem. 
 
@@ -15,13 +15,13 @@ There are many different types of [agent architectures](https://blog.langchain.d
 Several concepts are utilized in many agent architectures:
 
 - [Tool calling](agentic_concepts.md#tool-calling): this is often how LLMs make decisions
-- Action taking: often times, the LLMs' outputs are used as the input to an action
+- Action taking: oftentimes, the LLMs' outputs are used as the input to an action
 - [Memory](agentic_concepts.md#memory): reliable systems need to have knowledge of things that occurred
 - [Planning](agentic_concepts.md#planning): planning steps (either explicit or implicit) are useful for ensuring that the LLM, when making decisions, makes them in the highest fidelity way.
 
 ## Challenges
 
-In practice, there is often a trade-off between control and reliability. As we give LLMs more control, the application often become less reliable. This can be due to factors such as LLM non-determinism and / or errors in selecting tools (or steps) that the agent uses (takes).
+In practice, there is often a trade-off between control and reliability. As we give LLMs more control, the application often becomes less reliable. This can be due to factors such as LLM non-determinism and / or errors in selecting tools (or steps) that the agent uses (takes).
 
 ![Agent Challenge](img/challenge.png)
 

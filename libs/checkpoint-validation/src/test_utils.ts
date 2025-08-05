@@ -3,7 +3,6 @@ import {
   ChannelVersions,
   CheckpointPendingWrite,
   PendingWrite,
-  SendProtocol,
   TASKS,
   uuid6,
   type CheckpointTuple,
@@ -19,7 +18,7 @@ export type WhySkipped = string;
  *
  * @param checkpointerName - The name of the current module being tested (as passed via the `name` argument in the top-level suite entrypoint).
  * @param skippedCheckpointers - A list of modules for which the test should be skipped.
- * @returns A function that can be used in place of the Jest @see it function and conditionally skips the test for the provided module.
+ * @returns A function that can be used in place of the Vitest @see it function and conditionally skips the test for the provided module.
  */
 export function it_skipForSomeModules(
   checkpointerName: string,
@@ -28,11 +27,8 @@ export function it_skipForSomeModules(
   const skipReason = skippedCheckpointers[checkpointerName];
 
   if (skipReason) {
-    const skip = (
-      name: string,
-      test: jest.ProvidesCallback | undefined,
-      timeout?: number
-    ) => {
+    const skip = (...args: Parameters<typeof it.skip>) => {
+      const [name, test, timeout] = args;
       it.skip(`[because ${skipReason}] ${name}`, test, timeout);
     };
     skip.prototype = it.skip.prototype;
@@ -42,28 +38,6 @@ export function it_skipForSomeModules(
   return it;
 }
 
-export function it_skipIfNot(
-  checkpointerName: string,
-  ...checkpointers: CheckpointerName[]
-): typeof it | typeof it.skip {
-  if (!checkpointers.includes(checkpointerName)) {
-    const skip = (
-      name: string,
-      test: jest.ProvidesCallback | undefined,
-      timeout?: number
-    ) => {
-      it.skip(
-        `[only passes for "${checkpointers.join('", "')}"] ${name}`,
-        test,
-        timeout
-      );
-    };
-    skip.prototype = it.skip.prototype;
-    return skip as typeof it.skip;
-  }
-
-  return it;
-}
 export interface InitialCheckpointTupleConfig {
   thread_id: string;
   checkpoint_id: string;
@@ -96,24 +70,20 @@ export function initialCheckpointTuple({
   return {
     config,
     checkpoint: {
-      v: 1,
+      v: 4,
       ts: new Date().toISOString(),
       id: checkpoint_id,
       channel_values,
       channel_versions,
       versions_seen: {
         // this is meant to be opaque to checkpointers, so we just stuff dummy data in here to make sure it's stored and retrieved
-        "": {
-          someChannel: 1,
-        },
+        "": { someChannel: 1 },
       },
-      pending_sends: [],
     },
 
     metadata: {
       source: "input",
       step: -1,
-      writes: null,
       parents: {},
     },
   };
@@ -147,12 +117,6 @@ export function parentAndChildCheckpointTuplesWithWrites({
 
   const parentChannelVersions = Object.fromEntries(
     Object.keys(initialChannelValues).map((key) => [key, 1])
-  );
-
-  const pending_sends = writesToParent.flatMap(({ writes }) =>
-    writes
-      .filter(([channel]) => channel === TASKS)
-      .map(([_, value]) => value as SendProtocol)
   );
 
   const parentPendingWrites = writesToParent.flatMap(({ taskId, writes }) =>
@@ -201,7 +165,7 @@ export function parentAndChildCheckpointTuplesWithWrites({
   return {
     parent: {
       checkpoint: {
-        v: 1,
+        v: 4,
         ts: new Date().toISOString(),
         id: parentCheckpointId,
         channel_values: initialChannelValues,
@@ -212,12 +176,10 @@ export function parentAndChildCheckpointTuplesWithWrites({
             someChannel: 1,
           },
         },
-        pending_sends: [],
       },
       metadata: {
         source: "input",
         step: -1,
-        writes: null,
         parents: {},
       },
       config: {
@@ -232,7 +194,7 @@ export function parentAndChildCheckpointTuplesWithWrites({
     },
     child: {
       checkpoint: {
-        v: 2,
+        v: 4,
         ts: new Date().toISOString(),
         id: childCheckpointId,
         channel_values: childChannelValues,
@@ -243,14 +205,11 @@ export function parentAndChildCheckpointTuplesWithWrites({
             someChannel: 1,
           },
         },
-        pending_sends,
+        // pending_sends,
       },
       metadata: {
         source: "loop",
         step: 0,
-        writes: {
-          someNode: parentPendingWrites,
-        },
         parents: {
           [checkpoint_ns]: parentCheckpointId,
         },

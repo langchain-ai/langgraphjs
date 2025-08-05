@@ -1,0 +1,7 @@
+{
+  "node_version": "20",
+  "dockerfile_lines": [],
+  "dependencies": ["."],
+  "graphs": { "agent": "./route.ts:agent" },
+  "env": ".env"
+}

@@ -205,10 +205,10 @@ trimMessages(messages, {
 
 Long-term memory in LangGraph allows systems to retain information across different conversations or sessions. Unlike short-term memory, which is thread-scoped, long-term memory is saved within custom "namespaces."
 
-LangGraph stores long-term memories as JSON documents in a [store](persistence.md#memory-store) ([reference doc](https://langchain-ai.github.io/langgraphjs/reference/classes/checkpoint.BaseStore.html)). Each memory is organized under a custom `namespace` (similar to a folder) and a distinct `key` (like a filename). Namespaces often include user or org IDs or other labels that makes it easier to organize information. This structure enables hierarchical organization of memories. Cross-namespace searching is then supported through content filters. See the example below for an example.
+LangGraph stores long-term memories as JSON documents in a [store](persistence.md#memory-store) ([reference doc](https://langchain-ai.github.io/langgraphjs/reference/classes/checkpoint.BaseStore.html)). Each memory is organized under a custom `namespace` (similar to a folder) and a distinct `key` (like a filename). Namespaces often include user or org IDs or other labels that make it easier to organize information. This structure enables hierarchical organization of memories. Cross-namespace searching is then supported through content filters. See the example below for an example.
 
 ```typescript
-import { InMemoryStore } from "@langchain/langgraph/store";
+import { InMemoryStore } from "@langchain/langgraph";
 
 // InMemoryStore saves data to an in-memory dictionary. Use a DB-backed store in production use.
 const store = new InMemoryStore();

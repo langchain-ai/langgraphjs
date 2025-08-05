@@ -10,7 +10,8 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
 
   guard: boolean;
 
-  value?: Value;
+  // value is an array so we don't misinterpret an update to undefined as no write
+  value: [Value] | [] = [];
 
   constructor(guard: boolean = true) {
     super();
@@ -19,17 +20,17 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
 
   fromCheckpoint(checkpoint?: Value) {
     const empty = new EphemeralValue<Value>(this.guard);
-    if (checkpoint) {
-      empty.value = checkpoint;
+    if (typeof checkpoint !== "undefined") {
+      empty.value = [checkpoint];
     }
     return empty as this;
   }
 
   update(values: Value[]): boolean {
     if (values.length === 0) {
-      const updated = this.value !== undefined;
+      const updated = this.value.length > 0;
       // If there are no updates for this specific channel at the end of the step, wipe it.
-      this.value = undefined;
+      this.value = [];
       return updated;
     }
     if (values.length !== 1 && this.guard) {
@@ -39,21 +40,25 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
     }
 
     // eslint-disable-next-line prefer-destructuring
-    this.value = values[values.length - 1];
+    this.value = [values[values.length - 1]];
     return true;
   }
 
   get(): Value {
-    if (this.value === undefined) {
+    if (this.value.length === 0) {
       throw new EmptyChannelError();
     }
-    return this.value;
+    return this.value[0];
   }
 
   checkpoint(): Value {
-    if (this.value === undefined) {
+    if (this.value.length === 0) {
       throw new EmptyChannelError();
     }
-    return this.value;
+    return this.value[0];
+  }
+
+  isAvailable(): boolean {
+    return this.value.length !== 0;
   }
 }

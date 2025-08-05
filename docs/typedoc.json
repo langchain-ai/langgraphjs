@@ -1,5 +1,9 @@
 {
-	"navigationLinks": {
-		"Back to documentation": "/langgraphjs/"
-	},
+  "navigationLinks": {
+    "Back to documentation": "/langgraphjs/"
+  },
+  "excludeInternal": true,
+  "excludePrivate": true,
+  "plugin": ["./plugins/typedoc/google_analytics/index.js"],
+  "gtmId": "G-WR87FQLG9F"
 }

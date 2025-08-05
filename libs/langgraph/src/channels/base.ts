@@ -70,11 +70,41 @@ export abstract class BaseChannel<
 
   /**
    * Mark the current value of the channel as consumed. By default, no-op.
-   * This is called by Pregel before the start of the next step, for all
-   * channels that triggered a node. If the channel was updated, return true.
+   * A channel can use this method to modify its state, preventing the value
+   * from being consumed again.
+   *
+   * Returns True if the channel was updated, False otherwise.
    */
   consume(): boolean {
     return false;
+  }
+
+  /**
+   * Notify the channel that the Pregel run is finishing. By default, no-op.
+   * A channel can use this method to modify its state, preventing finish.
+   *
+   * Returns True if the channel was updated, False otherwise.
+   */
+  finish(): boolean {
+    return false;
+  }
+
+  /**
+   * Return True if the channel is available (not empty), False otherwise.
+   * Subclasses should override this method to provide a more efficient
+   * implementation than calling get() and catching EmptyChannelError.
+   */
+  isAvailable(): boolean {
+    try {
+      this.get();
+      return true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      if (error.name === EmptyChannelError.unminifiable_name) {
+        return false;
+      }
+      throw error;
+    }
   }
 }
 
@@ -99,7 +129,8 @@ export function emptyChannels<Cc extends Record<string, BaseChannel>>(
 export function createCheckpoint<ValueType>(
   checkpoint: ReadonlyCheckpoint,
   channels: Record<string, BaseChannel<ValueType>> | undefined,
-  step: number
+  step: number,
+  options?: { id?: string }
 ): Checkpoint {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let values: Record<string, any>;
@@ -121,12 +152,11 @@ export function createCheckpoint<ValueType>(
     }
   }
   return {
-    v: 1,
-    id: uuid6(step),
+    v: 4,
+    id: options?.id ?? uuid6(step),
     ts: new Date().toISOString(),
     channel_values: values,
     channel_versions: { ...checkpoint.channel_versions },
     versions_seen: deepCopy(checkpoint.versions_seen),
-    pending_sends: checkpoint.pending_sends ?? [],
   };
 }

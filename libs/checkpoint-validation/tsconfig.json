@@ -5,9 +5,9 @@
     "rootDir": "./src",
     "target": "ES2021",
     "lib": ["ES2021", "ES2022.Object", "DOM"],
-    "types": ["node", "jest"],
+    "types": ["node"],
     "module": "ES2022",
-    "moduleResolution": "NodeNext",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "declaration": true,
     "noImplicitReturns": true,
@@ -17,7 +17,8 @@
     "useDefineForClassFields": true,
     "strictPropertyInitialization": false,
     "allowJs": true,
-    "strict": true
+    "strict": true,
+    "sourceMap": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "docs"]

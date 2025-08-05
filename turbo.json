@@ -23,16 +23,16 @@
     },
     "test": {
       "cache": false,
-      "dependsOn": ["^build", "build"]
+      "dependsOn": ["^build:internal", "build:internal"]
     },
     "test:single": {
-      "dependsOn": ["^build", "build"]
+      "dependsOn": ["^build:internal", "build:internal"]
     },
     "test:int": {
-      "dependsOn": ["^build", "build"]
+      "dependsOn": ["^build:internal", "build:internal"]
     },
     "test:integration": {
-      "dependsOn": ["^build", "build", "test:int"]
+      "dependsOn": ["^build:internal", "build:internal", "test:int"]
     },
     "clean": {
       "dependsOn": ["^clean"]

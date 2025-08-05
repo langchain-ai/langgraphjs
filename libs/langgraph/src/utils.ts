@@ -66,10 +66,10 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
 
   async invoke(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    input: any,
+    input: I,
     options?: Partial<RunnableConfig> | undefined
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): Promise<any> {
+  ): Promise<O> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let returnValue: any;
     const config = ensureLangGraphConfig(options);
@@ -103,10 +103,12 @@ export function prefixGenerator<T, Prefix extends string>(
   generator: Generator<T>,
   prefix: Prefix
 ): Generator<[Prefix, T]>;
+
 export function prefixGenerator<T>(
   generator: Generator<T>,
   prefix?: undefined
 ): Generator<T>;
+
 export function prefixGenerator<
   T,
   Prefix extends string | undefined = undefined
@@ -176,4 +178,24 @@ export function patchConfigurable(
       },
     };
   }
+}
+
+export function isAsyncGeneratorFunction(
+  val: unknown
+): val is AsyncGeneratorFunction {
+  return (
+    val != null &&
+    typeof val === "function" &&
+    // eslint-disable-next-line no-instanceof/no-instanceof
+    val instanceof Object.getPrototypeOf(async function* () {}).constructor
+  );
+}
+
+export function isGeneratorFunction(val: unknown): val is GeneratorFunction {
+  return (
+    val != null &&
+    typeof val === "function" &&
+    // eslint-disable-next-line no-instanceof/no-instanceof
+    val instanceof Object.getPrototypeOf(function* () {}).constructor
+  );
 }

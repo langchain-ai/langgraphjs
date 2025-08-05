@@ -1,12 +1,13 @@
 export {
-  END,
   Graph,
   type StateGraphArgs,
-  START,
   StateGraph,
   CompiledStateGraph,
   MessageGraph,
+  typedNode,
   messagesStateReducer,
+  messagesStateReducer as addMessages,
+  REMOVE_ALL_MESSAGES,
   type Messages,
   Annotation,
   type StateType,
@@ -16,7 +17,18 @@ export {
   type SingleReducer,
   type CompiledGraph,
 } from "./graph/index.js";
-export type { StateSnapshot } from "./pregel/types.js";
+export type {
+  StateSnapshot,
+  StreamMode,
+  StreamOutputMap,
+  PregelParams,
+  PregelOptions,
+  SingleChannelSubscriptionOptions,
+  MultipleChannelSubscriptionOptions,
+  GetStateOptions,
+} from "./pregel/types.js";
+export type { PregelNode } from "./pregel/read.js";
+export type { Pregel } from "./pregel/index.js";
 export * from "./errors.js";
 export {
   BaseChannel,
@@ -29,10 +41,20 @@ export {
   type NamedBarrierValue,
   type Topic,
 } from "./channels/index.js";
-export { type AnnotationRoot as _INTERNAL_ANNOTATION_ROOT } from "./graph/index.js";
+export type { EphemeralValue } from "./channels/ephemeral_value.js";
+export { type AnnotationRoot } from "./graph/index.js";
 export { type RetryPolicy } from "./pregel/utils/index.js";
-export { Send } from "./constants.js";
-
+export {
+  Send,
+  Command,
+  type CommandParams,
+  isCommand,
+  START,
+  END,
+  INTERRUPT,
+  isInterrupted,
+  type Interrupt,
+} from "./constants.js";
 export {
   MemorySaver,
   type Checkpoint,
@@ -55,7 +77,20 @@ export {
   type MatchCondition,
   type ListNamespacesOperation,
 } from "@langchain/langgraph-checkpoint";
-export * from "./managed/index.js";
 
-export { MessagesAnnotation } from "./graph/messages_annotation.js";
-export { type LangGraphRunnableConfig } from "./pregel/runnable_types.js";
+export {
+  entrypoint,
+  type EntrypointOptions,
+  task,
+  type TaskOptions,
+} from "./func/index.js";
+
+export {
+  MessagesAnnotation,
+  MessagesZodState,
+  MessagesZodMeta,
+} from "./graph/messages_annotation.js";
+export {
+  type LangGraphRunnableConfig,
+  type Runtime,
+} from "./pregel/runnable_types.js";

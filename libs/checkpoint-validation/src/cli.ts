@@ -1,40 +1,73 @@
-import { dirname, resolve as pathResolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { runCLI } from "@jest/core";
-import type { Config } from "@jest/types";
+import * as url from "node:url";
+import * as path from "node:path";
+import { startVitest } from "vitest/node";
+import yargs from "yargs";
+import {
+  isTestTypeFilter,
+  isTestTypeFilterArray,
+  TestTypeFilter,
+  testTypeFilters,
+} from "./types.js";
+import { resolveImportPath } from "./import_utils.js";
 
-import { validateArgs } from "./parse_args.js";
-
-const rootDir = pathResolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "dist"
-);
-const config: Config.Argv = {
-  _: [pathResolve(rootDir, "runner.js")],
-  $0: "",
-  preset: "ts-jest/presets/default-esm",
-  rootDir,
-  testEnvironment: "node",
-  testMatch: ["<rootDir>/runner.js"],
-  transform: JSON.stringify({
-    "^.+\\.[jt]sx?$": "@swc/jest",
-  }),
-  moduleNameMapper: JSON.stringify({
-    "^(\\.{1,2}/.*)\\.[jt]sx?$": "$1",
-  }),
-
-  // jest ignores test files in node_modules by default. We want to run a test file that ships with this package, so
-  // we disable that behavior here.
-  testPathIgnorePatterns: [],
-  haste: JSON.stringify({
-    retainAllFiles: true,
-  }),
-};
+const builder = yargs()
+  .command("* <initializer-import-path> [filters..]", "Validate a checkpointer")
+  .positional("initializerImportPath", {
+    type: "string",
+    describe:
+      "The import path of the CheckpointSaverTestInitializer for the checkpointer (passed to 'import()'). " +
+      "Must be the default export.",
+    demandOption: true,
+  })
+  .positional("filters", {
+    array: true,
+    choices: testTypeFilters,
+    default: [] as TestTypeFilter[],
+    describe: `Only run the specified suites. Valid values are ${testTypeFilters.join(
+      ", "
+    )}`,
+    demandOption: false,
+  })
+  .help()
+  .alias("h", "help")
+  .wrap(yargs().terminalWidth())
+  .strict();
 
 export async function main() {
-  // check for argument errors before running Jest
-  await validateArgs(process.argv.slice(2));
+  const parsed = await builder.parse(process.argv.slice(2));
 
-  await runCLI(config, [rootDir]);
+  try {
+    resolveImportPath(parsed.initializerImportPath);
+  } catch (e) {
+    console.error(
+      `Failed to resolve import path '${parsed.initializerImportPath}': ${e}`
+    );
+    process.exit(1);
+  }
+
+  if (!isTestTypeFilterArray(parsed.filters)) {
+    console.error(
+      `Invalid filters: '${(parsed.filters as TestTypeFilter[])
+        .filter((f) => !isTestTypeFilter(f))
+        .join("', '")}'. Expected only values from '${testTypeFilters.join(
+        "', '"
+      )}'`
+    );
+    process.exit(1);
+  }
+
+  const rootDir = path.resolve(
+    path.dirname(url.fileURLToPath(import.meta.url)),
+    "..",
+    "dist"
+  );
+  const runner = path.resolve(rootDir, "runner.ts");
+
+  await startVitest("test", [runner], {
+    globals: true,
+    include: [runner],
+    exclude: [],
+    provide: { LANGGRAPH_ARGS: parsed },
+    dir: rootDir,
+  });
 }

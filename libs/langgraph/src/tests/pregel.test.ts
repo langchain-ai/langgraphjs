@@ -4,15 +4,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable import/no-extraneous-dependencies */
 /* eslint-disable prefer-template */
+/* eslint-disable no-param-reassign */
 import {
   it,
   expect,
-  jest,
+  vi,
   describe,
+  beforeAll,
   beforeEach,
   test,
   afterAll,
-} from "@jest/globals";
+} from "vitest";
 import {
   RunnableConfig,
   RunnableLambda,
@@ -22,7 +24,8 @@ import { AgentAction, AgentFinish } from "@langchain/core/agents";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { FakeStreamingLLM } from "@langchain/core/utils/testing";
 import { tool, Tool } from "@langchain/core/tools";
-import { z } from "zod";
+import { z as z3 } from "zod/v3";
+import { z as z4 } from "zod/v4";
 import {
   AIMessage,
   BaseMessage,
@@ -38,12 +41,14 @@ import {
   Checkpoint,
   CheckpointMetadata,
   CheckpointTuple,
+  InMemoryCache,
   InMemoryStore,
   PendingWrite,
+  SendProtocol,
   uuid5,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
-import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
+
 import {
   _AnyIdAIMessage,
   _AnyIdAIMessageChunk,
@@ -54,17 +59,16 @@ import {
   FakeChatModel,
   FakeTracer,
   MemorySaverAssertImmutable,
+  SlowInMemoryCache,
 } from "./utils.js";
 import { gatherIterator } from "../utils.js";
 import { LastValue } from "../channels/last_value.js";
+import { EphemeralValue } from "../channels/ephemeral_value.js";
 import {
   Annotation,
-  END,
   Graph,
-  START,
   StateGraph,
   StateGraphArgs,
-  StateType,
 } from "../graph/index.js";
 import { Topic } from "../channels/topic.js";
 import { PregelNode } from "../pregel/read.js";
@@ -85,14 +89,34 @@ import { StateSnapshot } from "../pregel/types.js";
 import {
   GraphRecursionError,
   InvalidUpdateError,
-  MultipleSubgraphsError,
   NodeInterrupt,
 } from "../errors.js";
-import { ERROR, INTERRUPT, PULL, PUSH, Send } from "../constants.js";
-import { ManagedValueMapping } from "../managed/base.js";
-import { SharedValue } from "../managed/shared_value.js";
+import {
+  isCommand,
+  Command,
+  END,
+  INTERRUPT,
+  PULL,
+  PUSH,
+  Send,
+  START,
+  TAG_NOSTREAM,
+  isInterrupted,
+  TASKS,
+} from "../constants.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { interrupt } from "../interrupt.js";
+import {
+  getConfigTypeSchema,
+  getInputTypeSchema,
+  getOutputTypeSchema,
+  getStateTypeSchema,
+  getUpdateTypeSchema,
+} from "../graph/zod/schema.js";
+import "../graph/zod/plugin.js";
+import { withLangGraph } from "../graph/zod/meta.js";
 
 expect.extend({
   toHaveKeyStartingWith(received: object, prefix: string) {
@@ -120,7 +144,44 @@ export function runPregelTests(
     afterAll(teardown);
   }
 
+  beforeAll(() => {
+    // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
+    initializeAsyncLocalStorageSingleton();
+  });
+
   describe("Channel", () => {
+    it("obtain correct channel values from checkpointer", async () => {
+      const checkpointer = await createCheckpointer();
+      const chain = Channel.subscribeTo("input").pipe(
+        Channel.writeTo(["output"])
+      );
+      const app = new Pregel({
+        nodes: { one: chain },
+        channels: {
+          ephemeral: new EphemeralValue(),
+          input: new LastValue<number>(),
+          output: new LastValue<number>(),
+        },
+        inputChannels: ["input", "ephemeral"],
+        outputChannels: "output",
+        checkpointer,
+      });
+
+      const input = { input: 1, ephemeral: "meow" };
+      const config = { configurable: { thread_id: "1" } };
+      await app.invoke(input, config);
+      const state = await app.getState(config);
+
+      expect(state.values.output).toBe(1);
+
+      const checkpoint = await checkpointer.get(config);
+      expect(checkpoint?.channel_values).toEqual({
+        input: 1,
+        output: 1,
+        [TASKS]: [[], []],
+      });
+    });
+
     describe("writeTo", () => {
       it("should return a ChannelWrite instance with the expected writes", () => {
         // call method / assertions
@@ -369,10 +430,10 @@ export function runPregelTests(
         // call method / assertions
         expect(pregel1.streamChannelsList).toEqual(["output"]);
         expect(pregel2.streamChannelsList).toEqual(["input", "output"]);
-        expect(pregel3.streamChannelsList).toEqual(["input", "output"]);
+        expect(pregel3.streamChannelsList).toEqual(["input", "output", TASKS]);
         expect(pregel1.streamChannelsAsIs).toEqual("output");
         expect(pregel2.streamChannelsAsIs).toEqual(["input", "output"]);
-        expect(pregel3.streamChannelsAsIs).toEqual(["input", "output"]);
+        expect(pregel3.streamChannelsAsIs).toEqual(["input", "output", TASKS]);
       });
     });
 
@@ -427,13 +488,15 @@ export function runPregelTests(
           false, // debug
           ["values"], // stream mode
           "outputKey", // input keys
-          ["inputKey", "outputKey", "channel3"], // output keys,
+          ["inputKey", "outputKey", "channel3", TASKS], // output keys,
           {},
           ["one"], // interrupt before
           ["one"], // interrupt after
           checkpointer,
           undefined,
           true,
+          undefined,
+          "async",
         ];
 
         const expectedDefaults2 = [
@@ -447,10 +510,56 @@ export function runPregelTests(
           checkpointer,
           undefined,
           true,
+          undefined,
+          "async",
         ];
 
         expect(pregel._defaults(config1)).toEqual(expectedDefaults1);
         expect(pregel._defaults(config2)).toEqual(expectedDefaults2);
+      });
+    });
+
+    describe("stream", () => {
+      describe("streamMode: updates", () => {
+        it("should return multiple update entries when a task has multiple writes to the same channel", async () => {
+          const StateAnnotation = Annotation.Root({
+            val: Annotation<string>({
+              reducer: (current, added) => `${current ?? ""}${added}`,
+              default: () => "",
+            }),
+          });
+
+          const nodeA = (_state: typeof StateAnnotation.State) => [
+            new Command({
+              update: { val: "a1" },
+            }),
+            new Command({
+              update: { val: "a2" },
+            }),
+          ];
+
+          const nodeB = (_state: typeof StateAnnotation.State) => ({
+            val: "b",
+          });
+
+          const graph = new StateGraph(StateAnnotation)
+            .addNode("nodeA", nodeA)
+            .addNode("nodeB", nodeB)
+            .addEdge(START, "nodeA")
+            .addEdge("nodeA", "nodeB")
+            .compile();
+
+          expect(await graph.invoke({ val: "" })).toEqual({ val: "a1a2b" });
+
+          const updates = await gatherIterator(
+            graph.stream({ val: "" }, { streamMode: "updates" })
+          );
+
+          expect(updates).toEqual([
+            { nodeA: [{ val: "a1" }, { val: "a2" }] },
+            { nodeB: { val: "b" } },
+          ]);
+        });
       });
     });
   });
@@ -473,7 +582,6 @@ export function runPregelTests(
             channel1: 1,
           },
         },
-        pending_sends: [],
       };
 
       const interruptNodes = ["node1"];
@@ -489,6 +597,7 @@ export function runPregelTests(
             triggers: [],
             config: undefined,
             id: uuid5(JSON.stringify(["", {}]), checkpoint.id),
+            writers: [],
           },
         ])
       ).toBe(true);
@@ -507,7 +616,6 @@ export function runPregelTests(
           channel1: 2, // current channel version is greater than last version seen
         },
         versions_seen: {},
-        pending_sends: [],
       };
 
       const interruptNodes = ["node1"];
@@ -523,6 +631,7 @@ export function runPregelTests(
             triggers: [],
             config: undefined,
             id: uuid5(JSON.stringify(["", {}]), checkpoint.id),
+            writers: [],
           },
         ])
       ).toBe(true);
@@ -545,7 +654,6 @@ export function runPregelTests(
             channel1: 2,
           },
         },
-        pending_sends: [],
       };
 
       const interruptNodes = ["node1"];
@@ -561,6 +669,7 @@ export function runPregelTests(
             triggers: [],
             config: undefined,
             id: uuid5(JSON.stringify(["", {}]), checkpoint.id),
+            writers: [],
           },
         ])
       ).toBe(false);
@@ -583,7 +692,6 @@ export function runPregelTests(
             channel1: 1,
           },
         },
-        pending_sends: [],
       };
 
       const interruptNodes = ["node1"];
@@ -599,6 +707,7 @@ export function runPregelTests(
             triggers: [],
             config: undefined,
             id: uuid5(JSON.stringify(["", {}]), checkpoint.id),
+            writers: [],
           },
         ])
       ).toBe(false);
@@ -615,7 +724,6 @@ export function runPregelTests(
         channel_values: {},
         channel_versions: {},
         versions_seen: {},
-        pending_sends: [],
       };
 
       const channel1 = new LastValue<number>();
@@ -627,7 +735,6 @@ export function runPregelTests(
         channel1,
         channel2,
       };
-      const managed = new ManagedValueMapping();
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const writes: Array<[string, any]> = [];
@@ -635,10 +742,8 @@ export function runPregelTests(
       // call method / assertions
       expect(
         _localRead(
-          0,
           checkpoint,
           channels,
-          managed,
           { name: "test", writes, triggers: [] },
           "channel1",
           false
@@ -646,10 +751,8 @@ export function runPregelTests(
       ).toBe(1);
       expect(
         _localRead(
-          0,
           checkpoint,
           channels,
-          managed,
           { name: "test", writes, triggers: [] },
           ["channel1", "channel2"],
           false
@@ -666,7 +769,6 @@ export function runPregelTests(
         channel_values: {},
         channel_versions: {},
         versions_seen: {},
-        pending_sends: [],
       };
 
       const channel1 = new LastValue<number>();
@@ -684,15 +786,12 @@ export function runPregelTests(
         ["channel1", 100],
         ["channel2", 200],
       ];
-      const managed = new ManagedValueMapping();
 
       // call method / assertions
       expect(
         _localRead(
-          0,
           checkpoint,
           channels,
-          managed,
           { name: "test", writes, triggers: [] },
           "channel1",
           true
@@ -700,10 +799,8 @@ export function runPregelTests(
       ).toBe(100);
       expect(
         _localRead(
-          0,
           checkpoint,
           channels,
-          managed,
           { name: "test", writes, triggers: [] },
           ["channel1", "channel2"],
           true
@@ -731,7 +828,6 @@ export function runPregelTests(
             channel1: 1,
           },
         },
-        pending_sends: [],
       };
 
       const lastValueChannel1 = new LastValue<string>();
@@ -757,7 +853,8 @@ export function runPregelTests(
         checkpoint,
         channels,
         [{ name: "foo", writes: pendingWrites, triggers: [] }],
-        increment
+        increment,
+        undefined
       ); // contains side effects
 
       expect(channels.channel1.get()).toBe("channel1valueUpdated!");
@@ -782,7 +879,6 @@ export function runPregelTests(
             channel1: 1,
           },
         },
-        pending_sends: [],
       };
 
       const lastValueChannel1 = new LastValue<string>();
@@ -800,9 +896,13 @@ export function runPregelTests(
 
       // call method / assertions
       expect(() => {
-        _applyWrites(checkpoint, channels, [
-          { name: "foo", writes: pendingWrites, triggers: [] },
-        ]); // contains side effects
+        _applyWrites(
+          checkpoint,
+          channels,
+          [{ name: "foo", writes: pendingWrites, triggers: [] }],
+          undefined,
+          undefined
+        ); // contains side effects
       }).toThrow(InvalidUpdateError);
     });
   });
@@ -830,7 +930,6 @@ export function runPregelTests(
             channel2: 5,
           },
         },
-        pending_sends: [],
       };
 
       const processes: Record<string, PregelNode> = {
@@ -854,15 +953,14 @@ export function runPregelTests(
         channel1,
         channel2,
       };
-      const managed = new ManagedValueMapping();
 
       // call method / assertions
       const taskDescriptions = Object.values(
         _prepareNextTasks(
           checkpoint,
+          [],
           processes,
           channels,
-          managed,
           { configurable: { thread_id: "foo" } },
           false,
           { step: -1 }
@@ -891,6 +989,12 @@ export function runPregelTests(
     });
 
     it("should return an object containing PregelExecutableTasks", () => {
+      const pendingSends = [
+        { node: "node1", args: { test: true } },
+        // Will not appear because node3 has no writers
+        { node: "node3", args: { test3: "value3" } },
+      ];
+
       const checkpoint: Checkpoint = {
         v: 1,
         id: uuid6(-1),
@@ -898,6 +1002,7 @@ export function runPregelTests(
         channel_values: {
           channel1: 1,
           channel2: 2,
+          [TASKS]: [[], pendingSends],
         },
         channel_versions: {
           channel1: 2,
@@ -905,32 +1010,16 @@ export function runPregelTests(
           channel3: 4,
           channel4: 4,
           channel6: 4,
+          [TASKS]: 5,
         },
         versions_seen: {
-          node1: {
-            channel1: 1,
-          },
-          node2: {
-            channel2: 5,
-          },
-          node3: {
-            channel3: 4,
-          },
-          node4: {
-            channel4: 3,
-          },
-          node6: {
-            channel6: 3,
-          },
+          node1: { channel1: 1 },
+          node2: { channel2: 5 },
+          node3: { channel3: 4 },
+          node4: { channel4: 3 },
+          node6: { channel6: 3 },
         },
-        pending_sends: [
-          {
-            node: "node1",
-            args: { test: true },
-          },
-          // Will not appear because node3 has no writers
-          { node: "node3", args: { test3: "value3" } },
-        ],
+        // pending_sends: pendingSends,
       };
 
       const processes: Record<string, PregelNode> = {
@@ -964,15 +1053,23 @@ export function runPregelTests(
 
       const channel1 = new LastValue<number>();
       channel1.update([1]);
+
       const channel2 = new LastValue<number>();
       channel2.update([2]);
+
       const channel3 = new LastValue<number>();
       channel3.update([3]);
+
       const channel4 = new LastValue<number>();
       channel4.update([4]);
+
       const channel5 = new LastValue<number>();
+
       const channel6 = new LastValue<number>();
       channel6.update([6]);
+
+      const channelTask = new Topic<SendProtocol>({ accumulate: false });
+      channelTask.update(pendingSends);
 
       const channels = {
         channel1,
@@ -981,16 +1078,16 @@ export function runPregelTests(
         channel4,
         channel5,
         channel6,
+        [TASKS]: channelTask,
       };
-      const managed = new ManagedValueMapping();
 
       // call method / assertions
       const tasks = Object.values(
         _prepareNextTasks(
           checkpoint,
+          [],
           processes,
           channels,
-          managed,
           { configurable: { thread_id: "foo" } },
           true,
           { step: -1 }
@@ -1027,6 +1124,7 @@ export function runPregelTests(
         },
         id: expect.any(String),
         path: [PUSH, 0],
+        writers: expect.any(Array),
       });
       expect(task2).toEqual({
         name: "node1",
@@ -1048,6 +1146,7 @@ export function runPregelTests(
         },
         id: expect.any(String),
         path: [PULL, "node1"],
+        writers: expect.any(Array),
       });
       expect(task3).toEqual({
         name: "node2",
@@ -1069,6 +1168,7 @@ export function runPregelTests(
         },
         id: expect.any(String),
         path: [PULL, "node2"],
+        writers: expect.any(Array),
       });
 
       // Should not update versions seen, that occurs when applying writes
@@ -1079,15 +1179,13 @@ export function runPregelTests(
   });
 
   it("can invoke pregel with a single process", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
 
     const app = new Pregel({
-      nodes: {
-        one: chain,
-      },
+      nodes: { one: chain },
       channels: {
         input: new LastValue<number>(),
         output: new LastValue<number>(),
@@ -1106,7 +1204,7 @@ export function runPregelTests(
   });
 
   it("can invoke graph with a single process", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const graph = new Graph()
       .addNode("add_one", addOne)
@@ -1118,7 +1216,7 @@ export function runPregelTests(
   });
 
   it("should process input and produce output with implicit channels", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
@@ -1140,7 +1238,7 @@ export function runPregelTests(
   });
 
   it("should process input and write kwargs correctly", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(
@@ -1185,7 +1283,7 @@ export function runPregelTests(
   );
 
   it("should invoke single process in out objects", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
@@ -1206,7 +1304,7 @@ export function runPregelTests(
   });
 
   it("should process input and output as objects", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const chain = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
@@ -1224,7 +1322,7 @@ export function runPregelTests(
     expect(await app.invoke({ input: 2 })).toEqual({ output: 3 });
   });
   it("should invoke two processes and get correct output", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -1265,7 +1363,7 @@ export function runPregelTests(
   });
 
   it("should process two processes with object input and output", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["inbox"]));
@@ -1386,7 +1484,7 @@ export function runPregelTests(
   });
 
   it("should process batch with two processes and delays", async () => {
-    const addOneWithDelay = jest.fn(
+    const addOneWithDelay = vi.fn(
       (inp: number): Promise<number> =>
         new Promise((resolve) => {
           setTimeout(() => resolve(inp + 1), inp * 100);
@@ -1424,7 +1522,7 @@ export function runPregelTests(
   });
 
   it("should process batch with two processes and delays with graph", async () => {
-    const addOneWithDelay = jest.fn(
+    const addOneWithDelay = vi.fn(
       (inp: number): Promise<number> =>
         new Promise((resolve) => {
           setTimeout(() => resolve(inp + 1), inp * 100);
@@ -1444,7 +1542,7 @@ export function runPregelTests(
 
   it("should invoke two processes with input/output and interrupt", async () => {
     const checkpointer = await createCheckpointer();
-    const addOne = jest.fn((x: number) => {
+    const addOne = vi.fn((x: number) => {
       return x + 1;
     });
     const one = Channel.subscribeTo("input")
@@ -1471,7 +1569,7 @@ export function runPregelTests(
     const thread2 = { configurable: { thread_id: "2" } };
 
     // start execution, stop at inbox
-    expect(await app.invoke(2, thread1)).toBeUndefined();
+    expect(await app.invoke(2, thread1)).toEqual({ __interrupt__: [] });
 
     // inbox == 3
     let checkpoint = await checkpointer.get(thread1);
@@ -1481,7 +1579,7 @@ export function runPregelTests(
     expect(await app.invoke(null, thread1)).toBe(4);
 
     // start execution again, stop at inbox
-    expect(await app.invoke(20, thread1)).toBeUndefined();
+    expect(await app.invoke(20, thread1)).toEqual({ __interrupt__: [] });
 
     // inbox == 21
     checkpoint = await checkpointer.get(thread1);
@@ -1489,11 +1587,11 @@ export function runPregelTests(
     expect(checkpoint?.channel_values.inbox).toBe(21);
 
     // send a new value in, interrupting the previous execution
-    expect(await app.invoke(3, thread1)).toBeUndefined();
+    expect(await app.invoke(3, thread1)).toEqual({ __interrupt__: [] });
     expect(await app.invoke(null, thread1)).toBe(5);
 
     // start execution again, stopping at inbox
-    expect(await app.invoke(20, thread2)).toBeUndefined();
+    expect(await app.invoke(20, thread2)).toEqual({ __interrupt__: [] });
 
     // inbox == 21
     let snapshot = await app.getState(thread2);
@@ -1525,8 +1623,8 @@ export function runPregelTests(
         metadata: {
           source: "loop",
           step: 6,
-          writes: { two: 5 },
           parents: {},
+          thread_id: "1",
         },
         createdAt: expect.any(String),
         parentConfig: history[1].config,
@@ -1539,6 +1637,7 @@ export function runPregelTests(
             name: "two",
             interrupts: [],
             path: [PULL, "two"],
+            result: { output: 5 },
           },
         ],
         next: ["two"],
@@ -1549,7 +1648,12 @@ export function runPregelTests(
             checkpoint_id: expect.any(String),
           },
         },
-        metadata: { source: "loop", step: 5, writes: {}, parents: {} },
+        metadata: {
+          source: "loop",
+          step: 5,
+          parents: {},
+          thread_id: "1",
+        },
         createdAt: expect.any(String),
         parentConfig: history[2].config,
       }),
@@ -1561,6 +1665,7 @@ export function runPregelTests(
             name: "one",
             interrupts: [],
             path: [PULL, "one"],
+            result: { inbox: 4 },
           },
         ],
         next: ["one"],
@@ -1574,8 +1679,8 @@ export function runPregelTests(
         metadata: {
           source: "input",
           step: 4,
-          writes: { input: 3 },
           parents: {},
+          thread_id: "1",
         },
         createdAt: expect.any(String),
         parentConfig: history[3].config,
@@ -1598,7 +1703,12 @@ export function runPregelTests(
             checkpoint_id: expect.any(String),
           },
         },
-        metadata: { source: "loop", step: 3, writes: {}, parents: {} },
+        metadata: {
+          source: "loop",
+          step: 3,
+          parents: {},
+          thread_id: "1",
+        },
         createdAt: expect.any(String),
         parentConfig: history[4].config,
       }),
@@ -1610,6 +1720,7 @@ export function runPregelTests(
             name: "one",
             interrupts: [],
             path: [PULL, "one"],
+            result: { inbox: 21 },
           },
         ],
         next: ["one"],
@@ -1623,8 +1734,8 @@ export function runPregelTests(
         metadata: {
           source: "input",
           step: 2,
-          writes: { input: 20 },
           parents: {},
+          thread_id: "1",
         },
         createdAt: expect.any(String),
         parentConfig: history[5].config,
@@ -1643,8 +1754,8 @@ export function runPregelTests(
         metadata: {
           source: "loop",
           step: 1,
-          writes: { two: 4 },
           parents: {},
+          thread_id: "1",
         },
         createdAt: expect.any(String),
         parentConfig: history[6].config,
@@ -1657,6 +1768,7 @@ export function runPregelTests(
             name: "two",
             interrupts: [],
             path: [PULL, "two"],
+            result: { output: 4 },
           },
         ],
         next: ["two"],
@@ -1667,7 +1779,12 @@ export function runPregelTests(
             checkpoint_id: expect.any(String),
           },
         },
-        metadata: { source: "loop", step: 0, writes: {}, parents: {} },
+        metadata: {
+          source: "loop",
+          step: 0,
+          parents: {},
+          thread_id: "1",
+        },
         createdAt: expect.any(String),
         parentConfig: history[7].config,
       }),
@@ -1679,6 +1796,7 @@ export function runPregelTests(
             name: "one",
             interrupts: [],
             path: [PULL, "one"],
+            result: { inbox: 3 },
           },
         ],
         next: ["one"],
@@ -1692,11 +1810,10 @@ export function runPregelTests(
         metadata: {
           source: "input",
           step: -1,
-          writes: { input: 2 },
           parents: {},
+          thread_id: "1",
         },
         createdAt: expect.any(String),
-        parentConfig: undefined,
       }),
     ]);
 
@@ -1715,12 +1832,12 @@ export function runPregelTests(
       await gatherIterator(
         app.stream(null, { ...history[2].config, streamMode: "updates" })
       )
-    ).toEqual([{ one: { inbox: 4 } }]);
+    ).toEqual([{ one: { inbox: 4 } }, { [INTERRUPT]: [] }]);
   });
 
   it("should batch many processes with input and output", async () => {
     const testSize = 100;
-    const addOne = jest.fn((x: number) => x + 1);
+    const addOne = vi.fn((x: number) => x + 1);
 
     const channels: Record<string, LastValue<number>> = {
       input: new LastValue<number>(),
@@ -1764,7 +1881,7 @@ export function runPregelTests(
   });
 
   it("should raise InvalidUpdateError when the same LastValue channel is updated twice in one iteration", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -1787,7 +1904,7 @@ export function runPregelTests(
   });
 
   it("should fail to process two processes in an invalid way", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -1811,7 +1928,7 @@ export function runPregelTests(
   });
 
   it("should process two inputs to two outputs validly", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -1835,136 +1952,13 @@ export function runPregelTests(
     expect(await app.invoke(2)).toEqual([3, 3]);
   });
 
-  it("pending writes resume", async () => {
-    const checkpointer = await createCheckpointer();
-    const StateAnnotation = Annotation.Root({
-      value: Annotation<number>({ reducer: (a, b) => a + b }),
-    });
-    class AwhileMaker extends RunnableLambda<any, any> {
-      calls: number = 0;
-
-      sleep: number;
-
-      rtn: Record<string, unknown> | Error;
-
-      constructor(sleep: number, rtn: Record<string, unknown> | Error) {
-        super({
-          func: async () => {
-            this.calls += 1;
-            await new Promise((resolve) => setTimeout(resolve, this.sleep));
-            if (this.rtn instanceof Error) {
-              throw this.rtn;
-            }
-            return this.rtn;
-          },
-        });
-        this.sleep = sleep;
-        this.rtn = rtn;
-      }
-
-      reset() {
-        this.calls = 0;
-      }
-    }
-
-    const one = new AwhileMaker(0.2, { value: 2 });
-    const two = new AwhileMaker(0.6, new Error("I'm not good"));
-    const builder = new StateGraph(StateAnnotation)
-      .addNode("one", one)
-      .addNode("two", two)
-      .addEdge("__start__", "one")
-      .addEdge("__start__", "two")
-      .addEdge("one", "__end__")
-      // TODO: Add retry policy
-      .addEdge("two", "__end__");
-    const graph = builder.compile({ checkpointer });
-    const thread1 = { configurable: { thread_id: "1" } };
-    await expect(graph.invoke({ value: 1 }, thread1)).rejects.toThrow(
-      "I'm not good"
-    );
-    expect(one.calls).toEqual(1);
-    expect(two.calls).toEqual(1);
-
-    const state = await graph.getState(thread1);
-    expect(state).toBeDefined();
-    expect(state.values).toEqual({ value: 1 });
-    expect(state.next).toEqual(["one", "two"]);
-    expect(state.tasks).toEqual([
-      {
-        id: expect.any(String),
-        name: "one",
-        interrupts: [],
-        path: [PULL, "one"],
-      },
-      {
-        id: expect.any(String),
-        name: "two",
-        error: expect.objectContaining({
-          message: "I'm not good",
-        }),
-        path: [PULL, "two"],
-        interrupts: [],
-      },
-    ]);
-    expect(state.metadata).toEqual({
-      source: "loop",
-      step: 0,
-      writes: null,
-      parents: {},
-    });
-
-    // should contain pending write of "one" and should contain error from "two"
-    const checkpoint = await checkpointer.getTuple(thread1);
-    expect(checkpoint).toBeDefined();
-    const expectedWrites = [
-      [expect.any(String), "one", "one"],
-      [expect.any(String), "value", 2],
-      [
-        expect.any(String),
-        ERROR,
-        expect.objectContaining({
-          message: "I'm not good",
-        }),
-      ],
-    ];
-    expect(checkpoint?.pendingWrites).toEqual(
-      expect.arrayContaining(expectedWrites)
-    );
-
-    // both non-error pending writes come from same task
-    const nonErrorWrites = checkpoint!.pendingWrites!.filter(
-      (w) => w[1] !== ERROR
-    );
-    expect(nonErrorWrites[0][0]).toEqual(nonErrorWrites[1][0]);
-    const errorWrites = checkpoint!.pendingWrites!.filter(
-      (w) => w[1] === ERROR
-    );
-    expect(errorWrites[0][0]).not.toEqual(nonErrorWrites[0][0]);
-
-    // resume execution
-    await expect(graph.invoke(null, thread1)).rejects.toThrow("I'm not good");
-    // node "one" succeeded previously, so shouldn't be called again
-    expect(one.calls).toEqual(1);
-    // node "two" should have been called once again
-    expect(two.calls).toEqual(2);
-
-    // confirm no new checkpoints saved
-    const state2 = await graph.getState(thread1);
-    expect(state2.metadata).toEqual(state.metadata);
-
-    // resume execution, without exception
-    two.rtn = { value: 3 };
-    // both the pending write and the new write were applied, 1 + 2 + 3 = 6
-    expect(await graph.invoke(null, thread1)).toEqual({ value: 6 });
-  });
-
   it("should allow a conditional edge after a send", async () => {
-    const State = {
+    const State = Annotation.Root({
       items: Annotation<string[]>({
         reducer: (a, b) => a.concat(b),
       }),
-    };
-    const sendForFun = (state: StateType<typeof State>) => {
+    });
+    const sendForFun = (state: typeof State.State) => {
       return [new Send("2", state), new Send("2", state)];
     };
     const routeToThree = () => "3";
@@ -1981,9 +1975,184 @@ export function runPregelTests(
     expect(res).toEqual({ items: ["0", "1", "2", "2", "3"] });
   });
 
+  it("should support a simple edgeless graph", async () => {
+    const StateAnnotation = Annotation.Root({
+      foo: Annotation<string>,
+    });
+
+    const nodeA = async (state: typeof StateAnnotation.State) => {
+      const goto = state.foo === "foo" ? "nodeB" : "nodeC";
+      return new Command({
+        update: {
+          foo: "a",
+        },
+        goto,
+      });
+    };
+
+    const nodeB = async (state: typeof StateAnnotation.State) => {
+      return {
+        foo: state.foo + "|b",
+      };
+    };
+
+    const nodeC = async (state: typeof StateAnnotation.State) => {
+      return {
+        foo: state.foo + "|c",
+      };
+    };
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("nodeA", nodeA, {
+        ends: ["nodeB", "nodeC"],
+      })
+      .addNode("nodeB", nodeB)
+      .addNode("nodeC", nodeC)
+      .addEdge("__start__", "nodeA")
+      .compile();
+
+    const drawableGraph = await graph.getGraphAsync();
+    const mermaid = drawableGraph.drawMermaid();
+    // console.log(mermaid);
+    expect(mermaid).toEqual(`%%{init: {'flowchart': {'curve': 'linear'}}}%%
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	nodeA(nodeA)
+	nodeB(nodeB)
+	nodeC(nodeC)
+	__start__ --> nodeA;
+	nodeA -.-> nodeB;
+	nodeA -.-> nodeC;
+	classDef default fill:#f2f0ff,line-height:1.2;
+	classDef first fill-opacity:0;
+	classDef last fill:#bfb6fc;
+`);
+    expect(await graph.invoke({ foo: "foo" })).toEqual({ foo: "a|b" });
+    expect(await graph.invoke({ foo: "" })).toEqual({ foo: "a|c" });
+  });
+
+  it("should support a simple edgeless graph", async () => {
+    const StateAnnotation = Annotation.Root({
+      foo: Annotation<string>,
+      bar: Annotation<string>,
+    });
+
+    const nodeA = async (state: typeof StateAnnotation.State) => {
+      const goto = state.foo === "foo" ? "nodeB" : "nodeC";
+      return [
+        new Command({
+          update: {
+            foo: "a",
+          },
+          goto,
+        }),
+      ];
+    };
+
+    const nodeB = async (state: typeof StateAnnotation.State) => {
+      return [
+        {
+          foo: state.foo + "|b",
+        },
+        new Command({
+          update: {
+            bar: "test",
+          },
+        }),
+      ];
+    };
+
+    const nodeC = async (state: typeof StateAnnotation.State) => {
+      return {
+        foo: state.foo + "|c",
+      };
+    };
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("nodeA", nodeA, {
+        ends: ["nodeB", "nodeC"],
+      })
+      .addNode("nodeB", nodeB)
+      .addNode("nodeC", nodeC)
+      .addEdge("__start__", "nodeA")
+      .compile();
+
+    expect(await graph.invoke({ foo: "foo" })).toEqual({
+      foo: "a|b",
+      bar: "test",
+    });
+    expect(await graph.invoke({ foo: "" })).toEqual({ foo: "a|c" });
+  });
+
+  it("should handle send sequences correctly", async () => {
+    const StateAnnotation = Annotation.Root({
+      items: Annotation<any[]>({
+        reducer: (a, b) => a.concat(b),
+      }),
+    });
+
+    const getNode = (
+      name: string
+    ): ((
+      state: typeof StateAnnotation.State
+    ) => Promise<typeof StateAnnotation.State>) => {
+      return async (state: typeof StateAnnotation.State) => {
+        const update = Array.isArray(state.items)
+          ? { items: [name] }
+          : { items: [`${name}|${JSON.stringify(state)}`] };
+
+        if (isCommand(state)) {
+          state.update = update;
+          return state;
+        } else {
+          return update;
+        }
+      };
+    };
+
+    const sendForFun = () => {
+      return [
+        new Send("2", new Command({ goto: new Send("2", 3) })),
+        new Send("2", new Command({ goto: new Send("2", 4) })),
+        "3.1",
+      ];
+    };
+
+    const routeToThree = () => "3";
+
+    const builder = new StateGraph(StateAnnotation)
+      .addNode("1", getNode("1"))
+      .addNode("2", getNode("2"))
+      .addNode("3", getNode("3"))
+      .addNode("3.1", getNode("3.1"))
+      .addEdge(START, "1")
+      .addConditionalEdges("1", sendForFun)
+      .addConditionalEdges("2", routeToThree);
+
+    const graph = builder.compile();
+
+    const result = await graph.invoke({
+      items: ["0"],
+    });
+
+    expect(result).toEqual({
+      items: [
+        "0",
+        "1",
+        "3.1",
+        `2|${JSON.stringify(new Command({ goto: new Send("2", 3) }))}`,
+        `2|${JSON.stringify(new Command({ goto: new Send("2", 4) }))}`,
+        "3",
+        "2|3",
+        "2|4",
+        "3",
+      ],
+    });
+  });
+
   it("should handle checkpoints correctly", async () => {
-    const inputPlusTotal = jest.fn(
-      (x: { total: number; input: number }): number => x.total + x.input
+    const inputPlusTotal = vi.fn(
+      (x: { total: number; input: number }): number => (x.total ?? 0) + x.input
     );
     const raiseIfAbove10 = (input: number): number => {
       if (input > 10) {
@@ -2050,8 +2219,8 @@ export function runPregelTests(
   });
 
   it("should process two inputs joined into one topic and produce two outputs", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
-    const add10Each = jest.fn((x: number[]): number[] =>
+    const addOne = vi.fn((x: number): number => x + 1);
+    const add10Each = vi.fn((x: number[]): number[] =>
       x.map((y) => y + 10).sort()
     );
 
@@ -2099,8 +2268,8 @@ export function runPregelTests(
   });
 
   it("should invoke join then call other app", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
-    const add10Each = jest.fn((x: number[]): number[] => x.map((y) => y + 10));
+    const addOne = vi.fn((x: number): number => x + 1);
+    const add10Each = vi.fn((x: number[]): number[] => x.map((y) => y + 10));
 
     const innerApp = new Pregel({
       nodes: {
@@ -2160,7 +2329,7 @@ export function runPregelTests(
   });
 
   it("should handle two processes with one input and two outputs", async () => {
-    const addOne = jest.fn((x: number) => x + 1);
+    const addOne = vi.fn((x: number) => x + 1);
 
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
@@ -2197,7 +2366,7 @@ export function runPregelTests(
   });
 
   it("should finish executing without output", async () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
     const one = Channel.subscribeTo("input")
       .pipe(addOne)
       .pipe(Channel.writeTo(["between"]));
@@ -2220,7 +2389,7 @@ export function runPregelTests(
   });
 
   it("should throw an error when no input channel is provided", () => {
-    const addOne = jest.fn((x: number): number => x + 1);
+    const addOne = vi.fn((x: number): number => x + 1);
 
     const one = Channel.subscribeTo("between")
       .pipe(addOne)
@@ -2244,9 +2413,9 @@ export function runPregelTests(
 
       description = "A simple API that returns the input string.";
 
-      schema = z
+      schema = z3
         .object({
-          input: z.string().optional(),
+          input: z3.string().optional(),
         })
         .transform((data) => data.input);
 
@@ -2504,7 +2673,7 @@ export function runPregelTests(
 
       // call method / assertions
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const neverCalled = jest.fn((_: any) => {
+      const neverCalled = vi.fn((_: any) => {
         throw new Error("This should never be called");
       });
 
@@ -2563,7 +2732,7 @@ export function runPregelTests(
 
       // call method / assertions
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const neverCalled = jest.fn((_: any) => {
+      const neverCalled = vi.fn((_: any) => {
         throw new Error("This should never be called");
       });
 
@@ -2627,7 +2796,7 @@ export function runPregelTests(
     });
 
     it("In one fan out state graph waiting edge", async () => {
-      const sortedAdd = jest.fn((x: string[], y: string[]): string[] =>
+      const sortedAdd = vi.fn((x: string[], y: string[]): string[] =>
         [...x, ...y].sort()
       );
 
@@ -2685,6 +2854,369 @@ export function runPregelTests(
       });
     });
 
+    it.each([
+      [true], // waiting edge: true
+      [false], // waiting edge: false
+    ])(
+      "in_one_fan_out_state_graph_defer_node (waiting edge: %s)",
+      async (waitingEdge) => {
+        const sortedAdd = vi.fn((x: string[], y: string[]): string[] =>
+          [...x, ...y].sort()
+        );
+
+        const StateAnnotation = Annotation.Root({
+          query: Annotation<string>,
+          answer: Annotation<string>,
+          docs: Annotation<string[]>({ reducer: sortedAdd }),
+        });
+
+        const builder = new StateGraph(StateAnnotation)
+          .addNode("rewrite_query", (state) => ({
+            query: `query: ${state.query}`,
+          }))
+          .addNode("analyzer_one", (state) => ({
+            query: `analyzed: ${state.query}`,
+          }))
+          .addNode("retriever_one", () => ({ docs: ["doc1", "doc2"] }))
+          .addNode("retriever_two", async () => {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            return { docs: ["doc3", "doc4"] };
+          })
+          .addNode("qa", (state) => ({ answer: state.docs?.join(",") }), {
+            defer: true,
+          })
+          .addEdge(START, "rewrite_query")
+          .addEdge("rewrite_query", "retriever_one")
+          .addEdge("retriever_one", "analyzer_one")
+          .addEdge("rewrite_query", "retriever_two");
+
+        if (waitingEdge) {
+          builder.addEdge(["retriever_one", "retriever_two"], "qa");
+        } else {
+          builder.addEdge("retriever_one", "qa").addEdge("retriever_two", "qa");
+        }
+        builder.addEdge("qa", END);
+
+        const app = builder.compile();
+        expect(await app.invoke({ query: "what is weather in sf" })).toEqual({
+          query: "analyzed: query: what is weather in sf",
+          docs: ["doc1", "doc2", "doc3", "doc4"],
+          answer: "doc1,doc2,doc3,doc4",
+        });
+
+        expect(
+          await gatherIterator(app.stream({ query: "what is weather in sf" }))
+        ).toEqual([
+          { rewrite_query: { query: "query: what is weather in sf" } },
+          { retriever_one: { docs: ["doc1", "doc2"] } },
+          { retriever_two: { docs: ["doc3", "doc4"] } },
+          {
+            analyzer_one: { query: "analyzed: query: what is weather in sf" },
+          },
+          { qa: { answer: "doc1,doc2,doc3,doc4" } },
+        ]);
+
+        expect(
+          await gatherIterator(
+            app.stream(
+              { query: "what is weather in sf" },
+              { streamMode: "debug" }
+            )
+          )
+        ).toMatchObject([
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 1,
+            payload: {
+              id: expect.any(String),
+              name: "rewrite_query",
+              input: { query: "what is weather in sf" },
+              triggers: ["branch:to:rewrite_query"],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 1,
+            payload: {
+              id: expect.any(String),
+              name: "rewrite_query",
+              result: [["query", "query: what is weather in sf"]],
+              interrupts: [],
+            },
+          },
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 2,
+            payload: {
+              id: expect.any(String),
+              name: "retriever_one",
+              input: { query: "query: what is weather in sf" },
+              triggers: ["branch:to:retriever_one"],
+            },
+          },
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 2,
+            payload: {
+              id: expect.any(String),
+              name: "retriever_two",
+              input: { query: "query: what is weather in sf" },
+              triggers: ["branch:to:retriever_two"],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 2,
+            payload: {
+              id: expect.any(String),
+              name: "retriever_one",
+              result: [["docs", ["doc1", "doc2"]]],
+              interrupts: [],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 2,
+            payload: {
+              id: expect.any(String),
+              name: "retriever_two",
+              result: [["docs", ["doc3", "doc4"]]],
+              interrupts: [],
+            },
+          },
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 3,
+            payload: {
+              id: expect.any(String),
+              name: "analyzer_one",
+              input: {
+                query: "query: what is weather in sf",
+                docs: ["doc1", "doc2", "doc3", "doc4"],
+              },
+              triggers: ["branch:to:analyzer_one"],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 3,
+            payload: {
+              id: expect.any(String),
+              name: "analyzer_one",
+              result: [["query", "analyzed: query: what is weather in sf"]],
+              interrupts: [],
+            },
+          },
+          {
+            type: "task",
+            timestamp: expect.any(String),
+            step: 4,
+            payload: {
+              id: expect.any(String),
+              name: "qa",
+              input: {
+                query: "analyzed: query: what is weather in sf",
+                docs: ["doc1", "doc2", "doc3", "doc4"],
+              },
+              triggers: waitingEdge
+                ? ["join:retriever_one+retriever_two:qa"]
+                : ["branch:to:qa"],
+            },
+          },
+          {
+            type: "task_result",
+            timestamp: expect.any(String),
+            step: 4,
+            payload: {
+              id: expect.any(String),
+              name: "qa",
+              result: [["answer", "doc1,doc2,doc3,doc4"]],
+              interrupts: [],
+            },
+          },
+        ]);
+
+        const checkpointer = new MemorySaverAssertImmutable();
+        const config = { configurable: { thread_id: "2" } };
+        const appWithInterrupt = builder.compile({
+          interruptBefore: ["qa"],
+          checkpointer,
+        });
+
+        expect(
+          await gatherIterator(
+            appWithInterrupt.stream({ query: "what is weather in sf" }, config)
+          )
+        ).toEqual([
+          { rewrite_query: { query: "query: what is weather in sf" } },
+          { retriever_one: { docs: ["doc1", "doc2"] } },
+          { retriever_two: { docs: ["doc3", "doc4"] } },
+          { analyzer_one: { query: "analyzed: query: what is weather in sf" } },
+          { __interrupt__: [] },
+        ]);
+
+        await appWithInterrupt.updateState(config, { docs: ["doc5"] });
+
+        expect(await appWithInterrupt.getState(config)).toMatchObject({
+          values: {
+            query: "analyzed: query: what is weather in sf",
+            docs: ["doc1", "doc2", "doc3", "doc4", "doc5"],
+          },
+          next: ["qa"],
+          config: { configurable: { thread_id: "2" } },
+          createdAt: expect.any(String),
+          metadata: {
+            source: "update",
+            step: 4,
+            thread_id: "2",
+          },
+        });
+      }
+    );
+
+    it.each([
+      [{ cachePolicy: true, slowCache: false }],
+      [{ cachePolicy: true, slowCache: true }],
+      [{ cachePolicy: false, slowCache: false }],
+    ])(
+      "in one fan out state graph waiting edge multiple (%s)",
+      async ({ cachePolicy, slowCache }) => {
+        const sortedAdd = vi.fn((x: string[], y: string[]): string[] =>
+          [...x, ...y].sort()
+        );
+
+        const cache = slowCache ? new SlowInMemoryCache() : new InMemoryCache();
+        const State = Annotation.Root({
+          query: Annotation<string>,
+          answer: Annotation<string>,
+          docs: Annotation<string[]>({ reducer: sortedAdd }),
+        });
+
+        let rewriteQueryCount = 0;
+        const graph = new StateGraph(State)
+          .addNode(
+            "rewrite_query",
+            (state) => {
+              rewriteQueryCount += 1;
+              return { query: `query: ${state.query}` };
+            },
+            { cachePolicy }
+          )
+          .addNode("analyzer_one", (state) => ({
+            query: `analyzed: ${state.query}`,
+          }))
+          .addNode("retriever_one", () => ({ docs: ["doc1", "doc2"] }))
+          .addNode("retriever_two", async () => {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            return { docs: ["doc3", "doc4"] };
+          })
+          .addNode("qa", (state) => ({ answer: state.docs.join(",") }))
+          .addNode("decider", () => ({}))
+
+          .addEdge(START, "rewrite_query")
+          .addEdge("rewrite_query", "analyzer_one")
+          .addEdge("analyzer_one", "retriever_one")
+          .addEdge("rewrite_query", "retriever_two")
+          .addEdge(["retriever_one", "retriever_two"], "decider")
+
+          .addConditionalEdges(
+            "decider",
+            (state) => {
+              if (state.query.split("analyzed").length - 1 > 1) return "qa";
+              return "rewrite_query";
+            },
+            ["qa", "rewrite_query"]
+          )
+          .compile({ cache });
+
+        expect(await graph.invoke({ query: "what is weather in sf" })).toEqual({
+          query: "analyzed: query: analyzed: query: what is weather in sf",
+          answer: "doc1,doc1,doc2,doc2,doc3,doc3,doc4,doc4",
+          docs: [
+            "doc1",
+            "doc1",
+            "doc2",
+            "doc2",
+            "doc3",
+            "doc3",
+            "doc4",
+            "doc4",
+          ],
+        });
+
+        expect(
+          await gatherIterator(graph.stream({ query: "what is weather in sf" }))
+        ).toEqual([
+          cachePolicy
+            ? {
+                rewrite_query: { query: "query: what is weather in sf" },
+                __metadata__: { cached: true },
+              }
+            : { rewrite_query: { query: "query: what is weather in sf" } },
+          {
+            analyzer_one: { query: "analyzed: query: what is weather in sf" },
+          },
+          { retriever_two: { docs: ["doc3", "doc4"] } },
+          { retriever_one: { docs: ["doc1", "doc2"] } },
+          { decider: {} },
+          cachePolicy
+            ? {
+                rewrite_query: {
+                  query: "query: analyzed: query: what is weather in sf",
+                },
+                __metadata__: { cached: true },
+              }
+            : {
+                rewrite_query: {
+                  query: "query: analyzed: query: what is weather in sf",
+                },
+              },
+          {
+            analyzer_one: {
+              query: "analyzed: query: analyzed: query: what is weather in sf",
+            },
+          },
+          { retriever_two: { docs: ["doc3", "doc4"] } },
+          { retriever_one: { docs: ["doc1", "doc2"] } },
+          { decider: {} },
+          { qa: { answer: "doc1,doc1,doc2,doc2,doc3,doc3,doc4,doc4" } },
+        ]);
+
+        expect(rewriteQueryCount).toBe(cachePolicy ? 2 : 4);
+
+        if (cachePolicy) {
+          await graph.clearCache();
+
+          expect(
+            await graph.invoke({ query: "what is weather in sf" })
+          ).toEqual({
+            query: "analyzed: query: analyzed: query: what is weather in sf",
+            answer: "doc1,doc1,doc2,doc2,doc3,doc3,doc4,doc4",
+            docs: [
+              "doc1",
+              "doc1",
+              "doc2",
+              "doc2",
+              "doc3",
+              "doc3",
+              "doc4",
+              "doc4",
+            ],
+          });
+
+          expect(rewriteQueryCount).toBe(4);
+        }
+      }
+    );
+
     it("should handle dynamic interrupt", async () => {
       const checkpointer = await createCheckpointer();
 
@@ -2699,32 +3231,35 @@ export function runPregelTests(
         s: typeof StateAnnotation.State
       ): Partial<typeof StateAnnotation.State> => {
         toolTwoNodeCount += 1;
-        if (s.market === "DE") {
-          throw new NodeInterrupt("Just because...");
-        }
-        return { my_key: " all good" };
+        const answer: string =
+          s.market === "DE" ? interrupt("Just because...") : " all good";
+        return { my_key: answer };
       };
 
       const toolTwoGraph = new StateGraph(StateAnnotation)
-        .addNode("tool_two", toolTwoNode, { retryPolicy: {} })
+        .addNode("tool_two", toolTwoNode, {
+          retryPolicy: { logWarning: false },
+        })
         .addEdge(START, "tool_two");
+
       let toolTwo = toolTwoGraph.compile();
 
       const tracer = new FakeTracer();
-      const result = await toolTwo.invoke(
-        { my_key: "value", market: "DE" },
-        { callbacks: [tracer] }
-      );
-      expect(result).toEqual({
-        my_key: "value",
-        market: "DE",
-      });
+
+      await expect(
+        toolTwo.invoke(
+          { my_key: "value", market: "DE" },
+          { callbacks: [tracer] }
+        )
+      ).rejects.toThrow("No checkpointer set");
+
       expect(toolTwoNodeCount).toBe(1); // interrupts aren't retried
       expect(tracer.runs.length).toBe(1);
+
       const run = tracer.runs[0];
       expect(run.end_time).toBeDefined();
-      expect(run.error).toBeUndefined();
-      expect(run.outputs).toEqual({ market: "DE", my_key: "value" });
+      expect(run.error).toEqual(expect.stringMatching(/No checkpointer set/));
+      expect(run.outputs).toBeUndefined();
 
       expect(await toolTwo.invoke({ my_key: "value", market: "US" })).toEqual({
         my_key: "value all good",
@@ -2738,35 +3273,40 @@ export function runPregelTests(
         toolTwo.invoke({ my_key: "value", market: "DE" })
       ).rejects.toThrow(/thread_id/);
 
-      const thread1 = { configurable: { thread_id: "1" } };
+      const thread2 = { configurable: { thread_id: "2" } };
+
       // stop when about to enter node
       expect(
-        await toolTwo.invoke({ my_key: "value ⛰️", market: "DE" }, thread1)
+        await toolTwo.invoke({ my_key: "value ⛰️", market: "DE" }, thread2)
       ).toEqual({
         my_key: "value ⛰️",
         market: "DE",
+        __interrupt__: [
+          {
+            id: expect.any(String),
+            value: "Just because...",
+          },
+        ],
       });
 
       const toolTwoCheckpointer = toolTwo.checkpointer as BaseCheckpointSaver;
       const checkpoints = await gatherIterator(
-        toolTwoCheckpointer.list(thread1)
+        toolTwoCheckpointer.list(thread2)
       );
       expect(checkpoints.map((c) => c.metadata)).toEqual([
         {
           source: "loop",
           step: 0,
-          writes: null,
           parents: {},
         },
         {
           source: "input",
           step: -1,
-          writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
           parents: {},
         },
       ]);
 
-      const state = await toolTwo.getState(thread1);
+      const state = await toolTwo.getState(thread2);
       expect(state).toEqual({
         values: { my_key: "value ⛰️", market: "DE" },
         next: ["tool_two"],
@@ -2777,18 +3317,296 @@ export function runPregelTests(
             path: [PULL, "tool_two"],
             interrupts: [
               {
+                id: expect.any(String),
                 value: "Just because...",
-                when: "during",
               },
             ],
           },
         ],
-        config: (await toolTwoCheckpointer.getTuple(thread1))!.config,
-        createdAt: (await toolTwoCheckpointer.getTuple(thread1))!.checkpoint.ts,
-        metadata: { source: "loop", step: 0, writes: null, parents: {} },
+        config: (await toolTwoCheckpointer.getTuple(thread2))!.config,
+        createdAt: (await toolTwoCheckpointer.getTuple(thread2))!.checkpoint.ts,
+        metadata: {
+          source: "loop",
+          step: 0,
+          parents: {},
+          thread_id: "2",
+        },
         parentConfig: (
-          await gatherIterator(toolTwoCheckpointer.list(thread1, { limit: 2 }))
+          await gatherIterator(toolTwoCheckpointer.list(thread2, { limit: 2 }))
         ).slice(-1)[0].config,
+      });
+
+      // resume execution
+      expect(
+        await gatherIterator(
+          toolTwo.stream(new Command({ resume: " this is great" }), thread2)
+        )
+      ).toEqual([
+        {
+          tool_two: { my_key: " this is great" },
+        },
+      ]);
+
+      // flow: interrupt -> clear tasks
+      const thread1 = { configurable: { thread_id: "1" } };
+
+      // stop when about to enter node
+      expect(
+        await toolTwo.invoke(
+          { my_key: "value ⛰️", market: "DE" },
+          { ...thread1, durability: "exit" }
+        )
+      ).toEqual({
+        my_key: "value ⛰️",
+        market: "DE",
+        __interrupt__: [
+          {
+            id: expect.any(String),
+            value: "Just because...",
+          },
+        ],
+      });
+
+      expect(
+        (await gatherIterator(toolTwoCheckpointer.list(thread1))).map(
+          (c) => c.metadata
+        )
+      ).toEqual([
+        {
+          source: "loop",
+          step: 0,
+          parents: {},
+        },
+      ]);
+
+      expect(await toolTwo.getState(thread1)).toEqual({
+        values: { my_key: "value ⛰️", market: "DE" },
+        next: ["tool_two"],
+        tasks: [
+          {
+            id: expect.any(String),
+            interrupts: [
+              {
+                id: expect.any(String),
+                value: "Just because...",
+              },
+            ],
+            name: "tool_two",
+            path: [PULL, "tool_two"],
+            result: undefined,
+          },
+        ],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
+        metadata: {
+          source: "loop",
+          step: 0,
+          parents: {},
+          thread_id: "1",
+        },
+        parentConfig: undefined,
+      });
+
+      // clear the interrupt and next tasks
+      await toolTwo.updateState(thread1, null, END);
+
+      // interrupt and next tasks are cleared
+      expect(await toolTwo.getState(thread1)).toEqual({
+        values: { my_key: "value ⛰️", market: "DE" },
+        next: [],
+        tasks: [],
+        config: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
+        metadata: {
+          source: "update",
+          step: 1,
+          parents: {},
+          thread_id: "1",
+        },
+        parentConfig: {
+          configurable: {
+            thread_id: "1",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      });
+    });
+
+    it("should handle partial pending checkpoint", async () => {
+      const checkpointer = await createCheckpointer();
+
+      let toolTwoNodeCount = 0;
+
+      const toolTwoGraph = new StateGraph(
+        Annotation.Root({
+          my_key: Annotation<string>({ reducer: (a, b) => a + b }),
+          market: Annotation<string>,
+        })
+      )
+        .addNode({
+          tool_one: () => ({ my_key: " one" }),
+          tool_two: ({ market }) => {
+            toolTwoNodeCount += 1;
+
+            if (market === "DE") {
+              return { my_key: interrupt("Just because...") };
+            }
+
+            return { my_key: " all good" };
+          },
+        })
+        .addConditionalEdges(
+          START,
+          (state) => ["tool_two", new Send("tool_one", state)],
+          ["tool_one", "tool_two"]
+        );
+
+      let toolTwo = toolTwoGraph.compile();
+
+      const tracer = new FakeTracer();
+      await expect(
+        toolTwo.invoke(
+          { my_key: "value", market: "DE" },
+          { callbacks: [tracer] }
+        )
+      ).rejects.toThrow(/No checkpointer set/);
+
+      expect(toolTwoNodeCount).toBe(1); // interrupts aren't retried
+      expect(tracer.runs.length).toBe(2);
+
+      const run = tracer.runs.at(-1);
+      expect(run?.end_time).toBeDefined();
+      expect(run?.error).toEqual(expect.stringMatching(/No checkpointer set/));
+
+      expect(await toolTwo.invoke({ my_key: "value", market: "US" })).toEqual({
+        my_key: "value all good one",
+        market: "US",
+      });
+
+      toolTwo = toolTwoGraph.compile({ checkpointer });
+
+      // missing thread_id
+      await expect(
+        toolTwo.invoke({ my_key: "value", market: "DE" })
+      ).rejects.toThrow(/thread_id/);
+
+      const thread2 = { configurable: { thread_id: "2" } };
+
+      // stop when about to enter node
+      expect(
+        await toolTwo.invoke({ my_key: "value ⛰️", market: "DE" }, thread2)
+      ).toEqual({
+        my_key: "value ⛰️ one",
+        market: "DE",
+        __interrupt__: [
+          {
+            id: expect.any(String),
+            value: "Just because...",
+          },
+        ],
+      });
+
+      const toolTwoCheckpointer = toolTwo.checkpointer as BaseCheckpointSaver;
+      const checkpoints = await gatherIterator(
+        toolTwoCheckpointer.list(thread2)
+      );
+
+      expect(checkpoints.map((c) => c.metadata)).toEqual([
+        {
+          source: "loop",
+          step: 0,
+          parents: {},
+        },
+        {
+          source: "input",
+          step: -1,
+          parents: {},
+        },
+      ]);
+
+      expect(await toolTwo.getState(thread2)).toEqual({
+        values: { my_key: "value ⛰️ one", market: "DE" },
+        next: ["tool_two"],
+        tasks: [
+          {
+            id: expect.any(String),
+            name: "tool_one",
+            path: ["__pregel_push", 0],
+            interrupts: [],
+            result: { my_key: " one" },
+          },
+          {
+            id: expect.any(String),
+            name: "tool_two",
+            path: [PULL, "tool_two"],
+            interrupts: [
+              {
+                id: expect.any(String),
+                value: "Just because...",
+              },
+            ],
+          },
+        ],
+
+        config: {
+          configurable: {
+            thread_id: "2",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
+        metadata: {
+          source: "loop",
+          step: 0,
+          thread_id: "2",
+          parents: {},
+        },
+        parentConfig: {
+          configurable: {
+            thread_id: "2",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+      });
+
+      // clear the interrupt and next tasks
+      await toolTwo.updateState(thread2, null, END);
+
+      // interrupt and unresolved tasks are cleared, finished tasks are kept
+      expect(await toolTwo.getState(thread2)).toEqual({
+        values: { my_key: "value ⛰️ one", market: "DE" },
+        next: [],
+        tasks: [],
+        config: {
+          configurable: {
+            thread_id: "2",
+            checkpoint_ns: "",
+            checkpoint_id: expect.any(String),
+          },
+        },
+        createdAt: expect.any(String),
+        metadata: {
+          source: "update",
+          step: 1,
+          parents: {},
+          thread_id: "2",
+        },
+        parentConfig: expect.any(Object),
       });
     });
 
@@ -2828,7 +3646,8 @@ export function runPregelTests(
 
       // Return state at interrupt time
       expect(await graph.invoke({ hello: "world" }, thread)).toEqual({
-        hello: "world",
+        hello: "again",
+        __interrupt__: [{ value: "I am bad" }],
       });
 
       expect(awhileReturns).toBe(1);
@@ -2836,7 +3655,8 @@ export function runPregelTests(
 
       // Invoking a graph with no more tasks should return the final value
       expect(await graph.invoke(null, thread)).toEqual({
-        hello: "world",
+        hello: "again",
+        __interrupt__: [{ value: "I am bad" }],
       });
 
       expect(awhileReturns).toBe(1);
@@ -2853,7 +3673,7 @@ export function runPregelTests(
     it("Should log a warning if a NodeInterrupt is thrown in a conditional edge", async () => {
       // Mock console.warn
       const originalWarn = console.warn;
-      console.warn = jest.fn();
+      console.warn = vi.fn();
 
       const GraphAnnotation = Annotation.Root({
         count: Annotation<number>({ reducer: (a, b) => a + b }),
@@ -2924,24 +3744,63 @@ export function runPregelTests(
       });
     });
 
+    it("Supports automatic streaming with streamMode messages", async () => {
+      const llm = new FakeChatModel({
+        responses: [
+          new AIMessage({
+            id: "ai1",
+            content: "foobar",
+          }),
+        ],
+      });
+
+      const StateAnnotation = Annotation.Root({
+        question: Annotation<string>,
+        answer: Annotation<string>,
+      });
+
+      const generate = async (state: typeof StateAnnotation.State) => {
+        const response = await llm.invoke(state.question);
+        return { answer: response.content as string };
+      };
+
+      // Compile application and test
+      const graph = new StateGraph(StateAnnotation)
+        .addNode("generate", generate)
+        .addNode(
+          "nostream_generate",
+          RunnableLambda.from(generate).withConfig({
+            tags: [TAG_NOSTREAM],
+          })
+        )
+        .addEdge("__start__", "generate")
+        .addEdge("generate", "nostream_generate")
+        .compile();
+
+      const inputs = { question: "How are you?" };
+
+      const stream = await graph.stream(inputs, { streamMode: "messages" });
+
+      const aiMessageChunks = [];
+      for await (const [message] of stream) {
+        aiMessageChunks.push(message);
+      }
+      expect(aiMessageChunks.length).toBeGreaterThan(1);
+      expect(aiMessageChunks.map((chunk) => chunk.content).join("")).toEqual(
+        "foobar"
+      );
+    });
+
     it("State graph packets", async () => {
       const AgentState = Annotation.Root({
-        messages: Annotation({
-          reducer: messagesStateReducer,
-        }),
+        messages: Annotation({ reducer: messagesStateReducer }),
       });
-      const searchApi = tool(
-        async ({ query }) => {
-          return `result for ${query}`;
-        },
-        {
-          name: "search_api",
-          schema: z.object({
-            query: z.string(),
-          }),
-          description: "Searches the API for the query",
-        }
-      );
+
+      const searchApi = tool(({ query }) => `result for ${query}`, {
+        name: "search_api",
+        schema: z3.object({ query: z3.string() }),
+        description: "Searches the API for the query",
+      });
 
       const toolsByName = { [searchApi.name]: searchApi };
       const model = new FakeChatModel({
@@ -2984,9 +3843,7 @@ export function runPregelTests(
       });
 
       const agent = async (state: typeof AgentState.State) => {
-        return {
-          messages: await model.invoke(state.messages),
-        };
+        return { messages: await model.invoke(state.messages) };
       };
 
       const shouldContinue = async (state: typeof AgentState.State) => {
@@ -2995,18 +3852,17 @@ export function runPregelTests(
         const toolCalls = (
           state.messages[state.messages.length - 1] as AIMessage
         ).tool_calls;
+
         if (toolCalls?.length) {
-          return toolCalls.map((toolCall) => {
-            return new Send("tools", toolCall);
-          });
-        } else {
-          return "__end__";
+          return toolCalls.map((toolCall) => new Send("tools", toolCall));
         }
+
+        return "__end__";
       };
 
       const toolsNode = async (toolCall: ToolCall) => {
         await new Promise((resolve) =>
-          setTimeout(resolve, toolCall.args.idx * 100)
+          setTimeout(resolve, (toolCall.args.idx ?? 0 + 1) * 100)
         );
         const toolMessage = await toolsByName[toolCall.name].invoke(toolCall);
         return {
@@ -3026,10 +3882,12 @@ export function runPregelTests(
         .addEdge("__start__", "agent")
         .addConditionalEdges("agent", shouldContinue)
         .addEdge("tools", "agent");
+
       const inputMessage = new HumanMessage({
         id: "foo",
         content: "what is weather in sf",
       });
+
       const expectedOutputMessages = [
         inputMessage,
         new AIMessage({
@@ -3085,55 +3943,43 @@ export function runPregelTests(
           content: "answer",
         }),
       ];
-      const res = await builder.compile().invoke({
-        messages: [inputMessage],
-      });
-      expect(res).toEqual({
-        messages: expectedOutputMessages,
-      });
+
+      const res = await builder.compile().invoke({ messages: [inputMessage] });
+      expect(res).toEqual({ messages: expectedOutputMessages });
 
       const stream = await builder.compile().stream({
         messages: [inputMessage],
       });
       let chunks = await gatherIterator(stream);
+
       const nodeOrder = ["agent", "tools", "agent", "tools", "tools", "agent"];
       expect(nodeOrder.length).toEqual(chunks.length);
       expect(chunks).toEqual(
         // The input message is not streamed back
-        expectedOutputMessages.slice(1).map((message, i) => {
-          return {
-            [nodeOrder[i]]: { messages: message },
-          };
-        })
+        expectedOutputMessages.slice(1).map((message, i) => ({
+          [nodeOrder[i]]: { messages: message },
+        }))
       );
 
       const appWithInterrupt = builder.compile({
         checkpointer: await createCheckpointer(),
         interruptAfter: ["agent"],
       });
+
       const config = { configurable: { thread_id: "1" } };
       chunks = await gatherIterator(
-        appWithInterrupt.stream(
-          {
-            messages: [inputMessage],
-          },
-          config
-        )
+        appWithInterrupt.stream({ messages: [inputMessage] }, config)
       );
       expect(chunks).toEqual([
-        {
-          agent: {
-            messages: expectedOutputMessages[1],
-          },
-        },
+        { agent: { messages: expectedOutputMessages[1] } },
+        { [INTERRUPT]: [] },
       ]);
       const appWithInterruptState = await appWithInterrupt.getState(config);
       const appWithInterruptCheckpointer =
         appWithInterrupt.checkpointer as BaseCheckpointSaver;
+
       expect(appWithInterruptState).toEqual({
-        values: {
-          messages: expectedOutputMessages.slice(0, 2),
-        },
+        values: { messages: expectedOutputMessages.slice(0, 2) },
         tasks: [
           {
             id: expect.any(String),
@@ -3146,12 +3992,8 @@ export function runPregelTests(
         metadata: {
           source: "loop",
           step: 1,
-          writes: {
-            agent: {
-              messages: expectedOutputMessages[1],
-            },
-          },
           parents: {},
+          thread_id: "1",
         },
         config: (await appWithInterruptCheckpointer.getTuple(config))?.config,
         createdAt: (await appWithInterruptCheckpointer.getTuple(config))
@@ -3202,25 +4044,9 @@ export function runPregelTests(
         ],
         metadata: {
           parents: {},
+          thread_id: "1",
           source: "update",
           step: 2,
-          writes: {
-            agent: {
-              messages: new AIMessage({
-                id: "ai1",
-                content: "",
-                tool_calls: [
-                  {
-                    id: "tool_call123",
-                    name: "search_api",
-                    args: { query: "a different query" },
-                    type: "tool_call",
-                  },
-                ],
-              }),
-              something_extra: "hi there",
-            },
-          },
         },
         config: (await appWithInterruptCheckpointer.getTuple(config))?.config,
         createdAt: (await appWithInterruptCheckpointer.getTuple(config))
@@ -3249,6 +4075,7 @@ export function runPregelTests(
             messages: expectedOutputMessages[3],
           },
         },
+        { [INTERRUPT]: [] },
       ]);
 
       expect(await appWithInterrupt.getState(config)).toEqual({
@@ -3293,13 +4120,9 @@ export function runPregelTests(
         ],
         metadata: {
           parents: {},
+          thread_id: "1",
           source: "loop",
           step: 4,
-          writes: {
-            agent: {
-              messages: expectedOutputMessages[3],
-            },
-          },
         },
         createdAt: (await appWithInterruptCheckpointer.getTuple(config))
           ?.checkpoint.ts,
@@ -3354,15 +4177,7 @@ export function runPregelTests(
           source: "update",
           step: 5,
           parents: {},
-          writes: {
-            agent: {
-              messages: new AIMessage({
-                content: "answer",
-                id: "ai2",
-              }),
-              something_extra: "hi there",
-            },
-          },
+          thread_id: "1",
         },
         createdAt: (await appWithInterruptCheckpointer.getTuple(config))
           ?.checkpoint.ts,
@@ -3466,6 +4281,7 @@ export function runPregelTests(
 
       const OutputAnnotation = Annotation.Root({
         messages: Annotation<string[]>,
+        extraOutput: Annotation<string>,
       });
 
       const nodeA = (state: { hello: string; messages: string[] }) => {
@@ -3513,13 +4329,18 @@ export function runPregelTests(
         .addEdge("b", "c")
         .compile();
 
-      expect(
-        await graph.invoke({
-          hello: "there",
-          bye: "world",
-          messages: ["hello"],
-        })
-      ).toEqual({
+      const res = await graph.invoke({
+        hello: "there",
+        bye: "world",
+        messages: ["hello"],
+        // @ts-expect-error Output schema properties should not be part of input types
+        extraOutput: "bar",
+      });
+
+      // State graph should respect output typing
+      void res.extraOutput;
+
+      expect(res).toEqual({
         messages: ["hello"],
       });
 
@@ -3540,6 +4361,7 @@ export function runPregelTests(
           hello: "there",
           bye: "world",
           messages: ["hello"],
+          // @ts-expect-error This should emit a TS error
           now: 345, // ignored because not in input schema
         })
       ).toEqual({
@@ -3552,10 +4374,71 @@ export function runPregelTests(
             hello: "there",
             bye: "world",
             messages: ["hello"],
+            // @ts-expect-error This should emit a TS error
             now: 345, // ignored because not in input schema
           })
         )
-      ).toEqual([{}, { b: { hello: "again" } }, {}]);
+      ).toEqual([{ a: {} }, { b: { hello: "again" } }, { c: {} }]);
+
+      const res2 = await graph.invoke({
+        hello: "there",
+        bye: "world",
+        messages: ["hello"],
+        // @ts-expect-error Output schema properties should not be part of input types
+        extraOutput: "bar",
+      });
+
+      // State graph should respect output typing
+      void res2.extraOutput;
+      // @ts-expect-error Output type should not have a field not in the output schema, even if in other state
+      void res2.hello;
+      // @ts-expect-error Output type should not have a field not in the output schema, even if in other state
+      void res2.random;
+
+      expect(res2).toEqual({
+        messages: ["hello"],
+      });
+
+      const InputStateAnnotation = Annotation.Root({
+        specialInputField: Annotation<string>,
+      });
+
+      const graphWithAllSchemas = new StateGraph({
+        input: InputStateAnnotation,
+        output: OutputAnnotation,
+        stateSchema: StateAnnotation,
+      })
+        .addNode("preA", async () => {
+          return {
+            bye: "world",
+            hello: "there",
+            messages: ["hello"],
+          };
+        })
+        .addNode("a", nodeA)
+        .addNode("b", nodeB)
+        .addNode("c", nodeC)
+        .addEdge(START, "preA")
+        .addEdge("preA", "a")
+        .addEdge("a", "b")
+        .addEdge("b", "c")
+        .compile();
+
+      const res3 = await graphWithAllSchemas.invoke({
+        // @ts-expect-error Input type should not contain fields outside input schema, even if in other states
+        hello: "there",
+        specialInputField: "foo",
+      });
+      expect(res3).toEqual({
+        messages: ["hello"],
+      });
+
+      // Extra output fields should be respected
+      void res3.extraOutput;
+      // @ts-expect-error Output type should not have a field not in the output schema, even if in other state
+      void res3.hello;
+      // @ts-expect-error Output type should not have a field not in the output schema, even if in other state
+      void res3.random;
     });
 
     it("should use a retry policy", async () => {
@@ -3590,13 +4473,13 @@ export function runPregelTests(
       };
 
       const add = ({ input, total }: typeof GraphAnnotation.State) => ({
-        total: input + total,
+        total: input + (total ?? 0),
       });
 
       const app = new StateGraph(GraphAnnotation)
         .addNode("add", add)
         .addNode("check", raiseIfAbove10, {
-          retryPolicy: {},
+          retryPolicy: { logWarning: false },
         })
         .addEdge("__start__", "add")
         .addEdge("add", "check")
@@ -3709,15 +4592,8 @@ export function runPregelTests(
       const config: RunnableConfig = {
         configurable: { thread_id: "102" },
       };
-      const res = await app.invoke(
-        {
-          messages: ["initial input"],
-        },
-        config
-      );
-      expect(res).toEqual({
-        reducerField: "should not be wiped",
-      });
+      const res = await app.invoke({}, config);
+      expect(res).toEqual({ reducerField: "should not be wiped" });
       const history = await gatherIterator(app.getStateHistory(config));
       expect(history).toEqual([
         {
@@ -3727,13 +4603,8 @@ export function runPregelTests(
           next: [],
           tasks: [],
           metadata: {
+            thread_id: "102",
             source: "loop",
-            writes: {
-              wipeFields: {
-                test: undefined,
-                reducerField: undefined,
-              },
-            },
             step: 2,
             parents: {},
           },
@@ -3765,16 +4636,15 @@ export function runPregelTests(
               name: "wipeFields",
               path: [PULL, "wipeFields"],
               interrupts: [],
+              result: {
+                reducerField: undefined,
+                test: undefined,
+              },
             },
           ],
           metadata: {
+            thread_id: "102",
             source: "loop",
-            writes: {
-              updateTest: {
-                test: "test",
-                reducerField: "should not be wiped",
-              },
-            },
             step: 1,
             parents: {},
           },
@@ -3795,9 +4665,7 @@ export function runPregelTests(
           },
         },
         {
-          values: {
-            reducerField: "",
-          },
+          values: { reducerField: "" },
           next: ["updateTest"],
           tasks: [
             {
@@ -3805,11 +4673,15 @@ export function runPregelTests(
               name: "updateTest",
               path: [PULL, "updateTest"],
               interrupts: [],
+              result: {
+                reducerField: "should not be wiped",
+                test: "test",
+              },
             },
           ],
           metadata: {
+            thread_id: "102",
             source: "loop",
-            writes: null,
             step: 0,
             parents: {},
           },
@@ -3830,9 +4702,7 @@ export function runPregelTests(
           },
         },
         {
-          values: {
-            reducerField: "",
-          },
+          values: { reducerField: "" },
           next: ["__start__"],
           tasks: [
             {
@@ -3843,12 +4713,8 @@ export function runPregelTests(
             },
           ],
           metadata: {
+            thread_id: "102",
             source: "input",
-            writes: {
-              __start__: {
-                messages: ["initial input"],
-              },
-            },
             step: -1,
             parents: {},
           },
@@ -3860,7 +4726,6 @@ export function runPregelTests(
             },
           },
           createdAt: expect.any(String),
-          parentConfig: undefined,
         },
       ]);
     });
@@ -4092,9 +4957,9 @@ export function runPregelTests(
 
       description = "A simple API that returns the input string.";
 
-      schema = z
+      schema = z3
         .object({
-          input: z.string().optional(),
+          input: z3.string().optional(),
         })
         .transform((data) => data.input);
 
@@ -4235,6 +5100,7 @@ export function runPregelTests(
       });
 
       const result = await app.invoke(
+        // @ts-expect-error Will be deprecated
         new HumanMessage("what is the weather in sf?")
       );
 
@@ -4382,9 +5248,10 @@ export function runPregelTests(
         ]),
       });
 
-      const stream = await app.stream([
-        new HumanMessage("what is the weather in sf?"),
-      ]);
+      const stream = await app.stream(
+        // @ts-expect-error Will be deprecated
+        [new HumanMessage("what is the weather in sf?")]
+      );
       const streamItems = await gatherIterator(stream);
 
       const lastItem = streamItems[streamItems.length - 1];
@@ -4426,7 +5293,7 @@ export function runPregelTests(
       market: "US",
     });
 
-    const checkpointer = SqliteSaver.fromConnString(":memory:");
+    const checkpointer = await createCheckpointer();
     graph = builder.compile({ checkpointer });
 
     const config = { configurable: { thread_id: "10" } };
@@ -4454,12 +5321,10 @@ export function runPregelTests(
               checkpoint_id: expect.any(String),
             },
           },
-          parentConfig: undefined,
           values: {},
           metadata: {
             source: "input",
             step: -1,
-            writes: { __start__: { my_key: "value", market: "DE" } },
             parents: {},
           },
           next: ["__start__"],
@@ -4469,7 +5334,6 @@ export function runPregelTests(
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
-              state: undefined,
             },
           ],
         },
@@ -4506,7 +5370,6 @@ export function runPregelTests(
           metadata: {
             source: "loop",
             step: 0,
-            writes: null,
             parents: {},
           },
           next: ["prepare"],
@@ -4516,7 +5379,6 @@ export function runPregelTests(
               name: "prepare",
               path: [PULL, "prepare"],
               interrupts: [],
-              state: undefined,
             },
           ],
         },
@@ -4529,7 +5391,7 @@ export function runPregelTests(
           id: anyStringSame("task1"),
           name: "prepare",
           input: { my_key: "value", market: "DE" },
-          triggers: ["__start__:prepare"],
+          triggers: ["branch:to:prepare"],
           interrupts: [],
         },
       },
@@ -4576,7 +5438,6 @@ export function runPregelTests(
           metadata: {
             source: "loop",
             step: 1,
-            writes: { prepare: { my_key: " prepared" } },
             parents: {},
           },
           next: ["tool_two_slow"],
@@ -4586,7 +5447,6 @@ export function runPregelTests(
               name: "tool_two_slow",
               path: [PULL, "tool_two_slow"],
               interrupts: [],
-              state: undefined,
             },
           ],
         },
@@ -4599,7 +5459,7 @@ export function runPregelTests(
           id: anyStringSame("task2"),
           name: "tool_two_slow",
           input: { my_key: "value prepared", market: "DE" },
-          triggers: ["branch:prepare:condition:tool_two_slow"],
+          triggers: ["branch:to:tool_two_slow"],
           interrupts: [],
         },
       },
@@ -4646,7 +5506,6 @@ export function runPregelTests(
           metadata: {
             source: "loop",
             step: 2,
-            writes: { tool_two_slow: { my_key: " slow" } },
             parents: {},
           },
           next: ["finish"],
@@ -4656,7 +5515,6 @@ export function runPregelTests(
               name: "finish",
               path: [PULL, "finish"],
               interrupts: [],
-              state: undefined,
             },
           ],
         },
@@ -4669,7 +5527,7 @@ export function runPregelTests(
           id: anyStringSame("task3"),
           name: "finish",
           input: { my_key: "value prepared slow", market: "DE" },
-          triggers: ["tool_two_slow"],
+          triggers: ["branch:to:finish"],
           interrupts: [],
         },
       },
@@ -4716,7 +5574,6 @@ export function runPregelTests(
           metadata: {
             source: "loop",
             step: 3,
-            writes: { finish: { my_key: " finished" } },
             parents: {},
           },
           next: [],
@@ -4780,7 +5637,7 @@ export function runPregelTests(
     });
 
     const toolTwoWithCheckpointer = toolTwoBuilder.compile({
-      checkpointer: SqliteSaver.fromConnString(":memory:"),
+      checkpointer: await createCheckpointer(),
       interruptBefore: ["tool_two_fast", "tool_two_slow"],
     });
 
@@ -4803,7 +5660,8 @@ export function runPregelTests(
         { my_key: "value ⛰️", market: "DE" },
         thread1
       )
-    ).toEqual({ my_key: "value ⛰️", market: "DE" });
+    ).toEqual({ my_key: "value ⛰️", market: "DE", __interrupt__: [] });
+
     const toolTwoCheckpointer =
       toolTwoWithCheckpointer.checkpointer as BaseCheckpointSaver;
     expect(
@@ -4814,13 +5672,11 @@ export function runPregelTests(
       {
         source: "loop",
         step: 0,
-        writes: null,
         parents: {},
       },
       {
         source: "input",
         step: -1,
-        writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
         parents: {},
       },
     ]);
@@ -4837,7 +5693,12 @@ export function runPregelTests(
       ],
       config: (await toolTwoCheckpointer.getTuple(thread1))!.config,
       createdAt: (await toolTwoCheckpointer.getTuple(thread1))!.checkpoint.ts,
-      metadata: { source: "loop", step: 0, writes: null, parents: {} },
+      metadata: {
+        source: "loop",
+        step: 0,
+        parents: {},
+        thread_id: "1",
+      },
       parentConfig: (
         await last(toolTwoCheckpointer.list(thread1, { limit: 2 }))
       ).config,
@@ -4856,8 +5717,8 @@ export function runPregelTests(
       metadata: {
         source: "loop",
         step: 1,
-        writes: { tool_two_slow: { my_key: " slow" } },
         parents: {},
+        thread_id: "1",
       },
       parentConfig: (
         await last(toolTwoCheckpointer.list(thread1, { limit: 2 }))
@@ -4873,6 +5734,7 @@ export function runPregelTests(
     ).toEqual({
       my_key: "value",
       market: "US",
+      __interrupt__: [],
     });
     expect(await toolTwoWithCheckpointer.getState(thread2)).toEqual({
       values: { my_key: "value", market: "US" },
@@ -4887,7 +5749,12 @@ export function runPregelTests(
       ],
       config: (await toolTwoCheckpointer.getTuple(thread2))!.config,
       createdAt: (await toolTwoCheckpointer.getTuple(thread2))!.checkpoint.ts,
-      metadata: { source: "loop", step: 0, writes: null, parents: {} },
+      metadata: {
+        source: "loop",
+        step: 0,
+        parents: {},
+        thread_id: "2",
+      },
       parentConfig: (
         await last(toolTwoCheckpointer.list(thread2, { limit: 2 }))
       ).config,
@@ -4906,7 +5773,7 @@ export function runPregelTests(
       metadata: {
         source: "loop",
         step: 1,
-        writes: { tool_two_fast: { my_key: " fast" } },
+        thread_id: "2",
         parents: {},
       },
       parentConfig: (
@@ -4923,6 +5790,7 @@ export function runPregelTests(
     ).toEqual({
       my_key: "value",
       market: "US",
+      __interrupt__: [],
     });
     expect(await toolTwoWithCheckpointer.getState(thread3)).toEqual({
       values: { my_key: "value", market: "US" },
@@ -4937,7 +5805,12 @@ export function runPregelTests(
       ],
       config: (await toolTwoCheckpointer.getTuple(thread3))!.config,
       createdAt: (await toolTwoCheckpointer.getTuple(thread3))!.checkpoint.ts,
-      metadata: { source: "loop", step: 0, writes: null, parents: {} },
+      metadata: {
+        source: "loop",
+        step: 0,
+        parents: {},
+        thread_id: "3",
+      },
       parentConfig: (
         await last(toolTwoCheckpointer.list(thread3, { limit: 2 }))
       ).config,
@@ -4960,8 +5833,8 @@ export function runPregelTests(
       metadata: {
         source: "update",
         step: 1,
-        writes: { [START]: { my_key: "key" } },
         parents: {},
+        thread_id: "3",
       },
       parentConfig: (
         await last(toolTwoCheckpointer.list(thread3, { limit: 2 }))
@@ -4981,8 +5854,8 @@ export function runPregelTests(
       metadata: {
         source: "loop",
         step: 2,
-        writes: { tool_two_fast: { my_key: " fast" } },
         parents: {},
+        thread_id: "3",
       },
       parentConfig: (
         await last(toolTwoCheckpointer.list(thread3, { limit: 2 }))
@@ -5102,56 +5975,24 @@ export function runPregelTests(
     let checkpointer: BaseCheckpointSaver<number>;
 
     const GraphAnnotation = Annotation.Root({
-      my_key: Annotation<string>({
-        reducer: (a: string, b: string) => a + b,
-      }),
+      my_key: Annotation<string>({ reducer: (a: string, b: string) => a + b }),
       market: Annotation<string>(),
-      shared: SharedValue.on("assistant_id"),
     });
 
     beforeEach(async () => {
       checkpointer = await createCheckpointer();
     });
 
-    const assertSharedValue = (
-      data: typeof GraphAnnotation.State,
-      config: RunnableConfig
-    ): Partial<typeof GraphAnnotation.State> => {
-      expect(data).toHaveProperty("shared");
-      const threadId = config.configurable?.thread_id;
-      if (threadId) {
-        if (threadId === "1") {
-          expect(data.shared).toEqual({});
-          return { shared: { "1": { hello: "world" } } };
-        } else if (threadId === "2") {
-          expect(data.shared).toEqual({ "1": { hello: "world" } });
-        } else if (threadId === "3") {
-          // Should not contain a value because the "assistant_id" is different
-          expect(data.shared).toEqual({});
-        }
-      }
-      return {};
+    const toolTwoSlow = (): Partial<typeof GraphAnnotation.State> => {
+      return { my_key: " slow" };
     };
 
-    const toolTwoSlow = (
-      data: typeof GraphAnnotation.State,
-      config: any
-    ): Partial<typeof GraphAnnotation.State> => {
-      return { my_key: " slow", ...assertSharedValue(data, config) };
-    };
-
-    const toolTwoFast = (
-      data: typeof GraphAnnotation.State,
-      config: any
-    ): Partial<typeof GraphAnnotation.State> => {
-      return { my_key: " fast", ...assertSharedValue(data, config) };
+    const toolTwoFast = (): Partial<typeof GraphAnnotation.State> => {
+      return { my_key: " fast" };
     };
 
     it("should handle start branch then end", async () => {
-      const toolTwoGraph = new StateGraph(GraphAnnotation);
-      const debug = false;
-
-      toolTwoGraph
+      const toolTwoGraph = new StateGraph(GraphAnnotation)
         .addNode("tool_two_slow", toolTwoSlow)
         .addNode("tool_two_fast", toolTwoFast)
         .addConditionalEdges(START, (s) =>
@@ -5160,6 +6001,7 @@ export function runPregelTests(
         .addEdge("tool_two_slow", END)
         .addEdge("tool_two_fast", END);
 
+      const debug = false;
       let toolTwo = toolTwoGraph.compile();
 
       expect(
@@ -5177,29 +6019,9 @@ export function runPregelTests(
       });
 
       toolTwo = toolTwoGraph.compile({
-        checkpointer,
-        interruptBefore: ["tool_two_fast", "tool_two_slow"] as any[],
-      });
-
-      // Will throw an error if a checkpointer is passed but `configurable` isn't.
-      await expect(
-        toolTwo.invoke({ my_key: "value", market: "DE" })
-      ).rejects.toThrow(/thread_id/);
-
-      toolTwo = toolTwoGraph.compile({
-        store: new InMemoryStore(),
-        interruptBefore: ["tool_two_fast", "tool_two_slow"] as any[],
-      });
-
-      // Will throw an error if a store is passed but `configurable` isn't.
-      await expect(
-        toolTwo.invoke({ my_key: "value", market: "DE" })
-      ).rejects.toThrow(/assistant_id/);
-
-      toolTwo = toolTwoGraph.compile({
         store: new InMemoryStore(),
         checkpointer,
-        interruptBefore: ["tool_two_fast", "tool_two_slow"] as any[],
+        interruptBefore: ["tool_two_fast", "tool_two_slow"],
       });
 
       const thread1 = {
@@ -5212,10 +6034,11 @@ export function runPregelTests(
       ).toEqual({
         my_key: "value ⛰️",
         market: "DE",
+        __interrupt__: [],
       });
 
       const checkpoints = [];
-      if (toolTwo.checkpointer) {
+      if (typeof toolTwo.checkpointer !== "boolean" && toolTwo.checkpointer) {
         for await (const checkpoint of toolTwo.checkpointer.list(thread1)) {
           checkpoints.push(checkpoint);
         }
@@ -5225,13 +6048,11 @@ export function runPregelTests(
         {
           source: "loop",
           step: 0,
-          writes: null,
           parents: {},
         },
         {
           source: "input",
           step: -1,
-          writes: { __start__: { my_key: "value ⛰️", market: "DE" } },
           parents: {},
         },
       ]);
@@ -5240,7 +6061,7 @@ export function runPregelTests(
         values: { my_key: "value ⛰️", market: "DE" },
         tasks: [{ name: "tool_two_slow" }],
         next: ["tool_two_slow"],
-        metadata: { source: "loop", step: 0, writes: null },
+        metadata: { source: "loop", step: 0 },
       });
 
       expect(await toolTwo.invoke(null, thread1)).toEqual({
@@ -5258,11 +6079,6 @@ export function runPregelTests(
         metadata: {
           source: "loop",
           step: 1,
-          writes: {
-            tool_two_slow: {
-              my_key: " slow",
-            },
-          },
           parents: {},
         },
       });
@@ -5282,6 +6098,7 @@ export function runPregelTests(
       ).toEqual({
         my_key: "value",
         market: "US",
+        __interrupt__: [],
       });
 
       expect(await toolTwo.getState(thread2)).toMatchObject({
@@ -5291,7 +6108,7 @@ export function runPregelTests(
         },
         tasks: [{ name: "tool_two_fast" }],
         next: ["tool_two_fast"],
-        metadata: { source: "loop", step: 0, writes: null, parents: {} },
+        metadata: { source: "loop", step: 0, parents: {} },
       });
 
       expect(await toolTwo.invoke(null, thread2)).toEqual({
@@ -5309,7 +6126,6 @@ export function runPregelTests(
         metadata: {
           source: "loop",
           step: 1,
-          writes: { tool_two_fast: { my_key: " fast" } },
           parents: {},
         },
       });
@@ -5320,13 +6136,14 @@ export function runPregelTests(
       ).toEqual({
         my_key: "value",
         market: "US",
+        __interrupt__: [],
       });
 
       expect(await toolTwo.getState(thread3)).toMatchObject({
         values: { my_key: "value", market: "US" },
         tasks: [{ name: "tool_two_fast" }],
         next: ["tool_two_fast"],
-        metadata: { source: "loop", step: 0, writes: null, parents: {} },
+        metadata: { source: "loop", step: 0, parents: {} },
       });
 
       await toolTwo.updateState(thread3, { my_key: "key" });
@@ -5338,7 +6155,6 @@ export function runPregelTests(
         metadata: {
           source: "update",
           step: 1,
-          writes: { [START]: { my_key: "key" } },
           parents: {},
         },
       });
@@ -5355,7 +6171,6 @@ export function runPregelTests(
         metadata: {
           source: "loop",
           step: 2,
-          writes: { tool_two_fast: { my_key: " fast" } },
           parents: {},
         },
       });
@@ -5375,492 +6190,7 @@ export function runPregelTests(
       checkpointer = await createCheckpointer();
     });
 
-    const AgentAnnotation = Annotation.Root({
-      ...MessagesAnnotation.spec,
-      sharedStateKey: SharedValue.on("assistant_id"),
-    });
-
-    it("should be passed through state but not stored in checkpointer", async () => {
-      const nodeOne = async (
-        data: typeof AgentAnnotation.State,
-        config?: RunnableConfig
-      ): Promise<Partial<typeof AgentAnnotation.State>> => {
-        if (!config) {
-          throw new Error("config is undefined");
-        }
-        expect(config.configurable?.thread_id).toEqual(threadId);
-
-        expect(data.sharedStateKey).toEqual({});
-
-        return {
-          sharedStateKey: {
-            sharedStateValue: {
-              value: "shared",
-            },
-          },
-          messages: [new AIMessage("hello")],
-        };
-      };
-
-      const nodeTwo = async (
-        data: typeof AgentAnnotation.State,
-        config?: RunnableConfig
-      ): Promise<Partial<typeof AgentAnnotation.State>> => {
-        if (!config) {
-          throw new Error("config is undefined");
-        }
-
-        expect(data.sharedStateKey).toEqual({
-          sharedStateValue: {
-            value: "shared",
-          },
-        });
-
-        const storeData: Map<
-          string,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          Map<string, Record<string, any>>
-          // @ts-expect-error protected property, API not yet built for accessing values.
-        > = store.data;
-        expect(storeData.size).toEqual(1);
-
-        // Namespace is scoped:<shared value on key><state key><shared value on value>
-        const namespace = "scoped:assistant_id:sharedStateKey:a";
-        const scopedData = storeData.get(namespace);
-        expect(scopedData).toBeDefined();
-        expect(scopedData?.size).toEqual(1);
-        const sharedValue = scopedData?.get("sharedStateValue");
-
-        expect(sharedValue?.value).toEqual({
-          value: "shared",
-        });
-
-        return {
-          sharedStateKey: {
-            sharedStateValue: {
-              value: "updated",
-            },
-          },
-        };
-      };
-
-      const nodeThree = async (
-        data: typeof AgentAnnotation.State,
-        config?: RunnableConfig
-      ): Promise<Partial<typeof AgentAnnotation.State>> => {
-        if (!config) {
-          throw new Error("config is undefined");
-        }
-
-        expect(data.sharedStateKey).toEqual({
-          sharedStateValue: {
-            value: "updated",
-          },
-        });
-
-        // Return entire state so the result of `.invoke` can be verified.
-        return data;
-      };
-
-      const workflow = new StateGraph(AgentAnnotation)
-        .addNode("nodeOne", nodeOne)
-        .addNode("nodeTwo", nodeTwo)
-        .addNode("nodeThree", nodeThree)
-        .addEdge(START, "nodeOne")
-        .addEdge("nodeOne", "nodeTwo")
-        .addEdge("nodeTwo", "nodeThree")
-        .addEdge("nodeThree", END);
-
-      const app = workflow.compile({
-        store,
-        checkpointer,
-        interruptBefore: ["nodeTwo", "nodeThree"],
-      });
-
-      const config = {
-        configurable: { thread_id: threadId, assistant_id: "a" },
-      };
-
-      // Invoke the first time to cause `nodeOne` to be executed.
-      await app.invoke(
-        {
-          messages: [
-            new HumanMessage({
-              content: "what is weather in sf",
-            }),
-          ],
-        },
-        config
-      );
-
-      // Get state and verify shared value is not present
-      const currentState1 = await app.getState(config);
-      expect(currentState1.next).toEqual(["nodeTwo"]);
-      expect(currentState1.values).toHaveProperty("messages");
-      expect(currentState1.values).not.toHaveProperty("sharedStateKey");
-
-      // Invoke a second time to cause `nodeTwo` to be executed.
-      await app.invoke(null, config);
-
-      const currentState2 = await app.getState(config);
-      expect(currentState2.next).toEqual(["nodeThree"]);
-      expect(currentState2.values).toHaveProperty("messages");
-      expect(currentState2.values).not.toHaveProperty("sharedStateKey");
-
-      // Invoke the final time to cause `nodeThree` to be executed.
-      const result = await app.invoke(null, config);
-
-      const currentState3 = await app.getState(config);
-      expect(currentState3.next).toEqual([]);
-      expect(currentState3.values).toHaveProperty("messages");
-      expect(currentState3.values).not.toHaveProperty("sharedStateKey");
-
-      expect(result).not.toHaveProperty("sharedStateKey");
-      expect(Object.keys(result)).toEqual(["messages"]);
-    });
-
-    it("can not access shared values from other 'on' keys", async () => {
-      const nodeOne = async (
-        data: typeof AgentAnnotation.State,
-        config?: RunnableConfig
-      ): Promise<Partial<typeof AgentAnnotation.State>> => {
-        if (!config) {
-          throw new Error("config is undefined");
-        }
-        expect(config.configurable?.thread_id).toBe(threadId);
-        expect(config.configurable?.assistant_id).toBe("a");
-
-        expect(data.sharedStateKey).toEqual({});
-
-        return {
-          sharedStateKey: {
-            valueForA: {
-              value: "assistant_id a",
-            },
-          },
-        };
-      };
-
-      const nodeTwo = async (
-        data: typeof AgentAnnotation.State,
-        config?: RunnableConfig
-      ): Promise<Partial<typeof AgentAnnotation.State>> => {
-        if (!config) {
-          throw new Error("config is undefined");
-        }
-        expect(config.configurable?.thread_id).toBe(threadId);
-        expect(config.configurable?.assistant_id).toBe("b");
-
-        expect(data.sharedStateKey).toEqual({});
-
-        return {
-          sharedStateKey: {
-            valueForB: {
-              value: "assistant_id b",
-            },
-          },
-        };
-      };
-
-      const nodeThree = async (
-        data: typeof AgentAnnotation.State,
-        config?: RunnableConfig
-      ): Promise<Partial<typeof AgentAnnotation.State>> => {
-        if (!config) {
-          throw new Error("config is undefined");
-        }
-
-        expect(config.configurable?.thread_id).toBe(threadId);
-        expect(config.configurable?.assistant_id).toBe("a");
-
-        expect(data.sharedStateKey).toEqual({
-          valueForA: {
-            value: "assistant_id a",
-          },
-        });
-
-        return {};
-      };
-
-      const nodeFour = async (
-        data: typeof AgentAnnotation.State,
-        config?: RunnableConfig
-      ): Promise<Partial<typeof AgentAnnotation.State>> => {
-        if (!config) {
-          throw new Error("config is undefined");
-        }
-
-        expect(config.configurable?.thread_id).toBe(threadId);
-        expect(config.configurable?.assistant_id).toBe("b");
-
-        expect(data.sharedStateKey).toEqual({
-          valueForB: {
-            value: "assistant_id b",
-          },
-        });
-
-        return {};
-      };
-
-      const workflow = new StateGraph(AgentAnnotation)
-        .addNode("nodeOne", nodeOne)
-        .addNode("nodeTwo", nodeTwo)
-        .addNode("nodeThree", nodeThree)
-        .addNode("nodeFour", nodeFour)
-        .addEdge(START, "nodeOne")
-        .addEdge("nodeOne", "nodeTwo")
-        .addEdge("nodeTwo", "nodeThree")
-        .addEdge("nodeThree", "nodeFour")
-        .addEdge("nodeFour", END);
-
-      const app = workflow.compile({
-        store,
-        checkpointer,
-        interruptBefore: ["nodeTwo", "nodeThree", "nodeFour"],
-      });
-
-      const input = {
-        messages: [
-          new HumanMessage({
-            content: "what is weather in sf",
-            id: "1",
-          }),
-        ],
-      };
-
-      // Invoke once, passing in config with `assistant_id` set to `a`.
-      // This will cause the shared value to be set in the state.
-      // After we'll update the config to have `assistant_id` set to `b`,
-      // and verify that the shared value set under `assistant_id` `a` is not accessible.
-      // Finally, we'll repeat for `b` after switching back to `a`.
-      const config1 = {
-        configurable: { thread_id: threadId, assistant_id: "a" },
-      };
-      await app.invoke(input, config1);
-
-      const currentState1 = await app.getState(config1);
-      expect(currentState1.next).toEqual(["nodeTwo"]);
-      expect(currentState1.values).toEqual(input);
-
-      // Will resume the graph, execute `nodeTwo` then interrupt again.
-      const config2 = {
-        configurable: { thread_id: threadId, assistant_id: "b" },
-      };
-      await app.invoke(null, config2);
-
-      const currentState2 = await app.getState(config2);
-      expect(currentState2.next).toEqual(["nodeThree"]);
-      expect(currentState1.values).toEqual(input);
-
-      // Will resume the graph, execute `nodeThree` then finish.
-      const config3 = {
-        configurable: { thread_id: threadId, assistant_id: "a" },
-      };
-      await app.invoke(null, config3);
-
-      const currentState3 = await app.getState(config3);
-      expect(currentState3.next).toEqual(["nodeFour"]);
-      expect(currentState1.values).toEqual(input);
-
-      // Finally, resume the graph with `assistant_id` set to `b`, and verify that the shared value is accessible.
-      const config4 = {
-        configurable: { thread_id: threadId, assistant_id: "b" },
-      };
-      await app.invoke(null, config4);
-    });
-
-    it("can get state when state has shared values", async () => {
-      const nodeOne = (_: typeof AgentAnnotation.State) => {
-        return {
-          messages: [
-            {
-              role: "assistant",
-              content: "no-op",
-            },
-          ],
-          sharedStateKey: {
-            data: {
-              value: "shared",
-            },
-          },
-        };
-      };
-
-      const nodeTwo = (_: typeof AgentAnnotation.State) => {
-        // no-op
-        return {};
-      };
-
-      const workflow = new StateGraph(AgentAnnotation)
-        .addNode("nodeOne", nodeOne)
-        .addNode("nodeTwo", nodeTwo)
-        .addEdge(START, "nodeOne")
-        .addEdge("nodeOne", "nodeTwo")
-        .addEdge("nodeTwo", END);
-
-      const app = workflow.compile({
-        store,
-        checkpointer,
-        interruptBefore: ["nodeTwo"],
-      });
-
-      const config: Record<string, Record<string, unknown>> = {
-        configurable: { thread_id: threadId, assistant_id: "a" },
-      };
-
-      // Execute the graph. This will run `nodeOne` which sets the shared value,
-      // then is interrupted before executing `nodeTwo`.
-      await app.invoke(
-        {
-          messages: [
-            {
-              role: "user",
-              content: "no-op",
-            },
-          ],
-        },
-        config
-      );
-
-      // Remove the "assistant_id" from the config and attempt to fetch the state.
-      // Since a `noop` managed value class is used when getting state, it should work
-      // even though the shared value key is not present.
-      if (config.configurable.assistant_id) {
-        delete config.configurable.assistant_id;
-      }
-      // Expect it does not throw an error complaining that the `assistant_id` key
-      // is not found in the config.
-      expect(await app.getState(config)).toBeTruthy();
-
-      // Re-running without re-setting the `assistant_id` key in the config should throw an error.
-      await expect(app.invoke(null, config)).rejects.toThrow(/assistant_id/);
-
-      // Re-set the `assistant_id` key in the config and attempt to fetch the state.
-      config.configurable.assistant_id = "a";
-      await app.invoke(null, config);
-    });
-
-    it("can update state without shared state key in config", async () => {
-      // Define nodeOne that sets sharedStateKey and adds a message
-      const nodeOne = async (
-        data: typeof AgentAnnotation.State,
-        config?: RunnableConfig
-      ): Promise<Partial<typeof AgentAnnotation.State>> => {
-        if (!config) {
-          throw new Error("config is undefined");
-        }
-        expect(config.configurable?.thread_id).toEqual(threadId);
-
-        expect(data.sharedStateKey).toEqual({});
-
-        return {
-          sharedStateKey: {
-            data: {
-              value: "shared",
-            },
-          },
-          messages: [new AIMessage("initial message")],
-        };
-      };
-
-      // Define nodeTwo that updates sharedStateKey
-      const nodeTwo = async (
-        data: typeof AgentAnnotation.State,
-        config?: RunnableConfig
-      ): Promise<Partial<typeof AgentAnnotation.State>> => {
-        if (!config) {
-          throw new Error("config is undefined");
-        }
-
-        expect(data.sharedStateKey).toEqual({
-          data: {
-            value: "shared",
-          },
-        });
-
-        return {
-          sharedStateKey: {
-            data: {
-              value: "updated shared",
-            },
-          },
-          messages: [new AIMessage("updated message")],
-        };
-      };
-
-      // Create the workflow
-      const workflow = new StateGraph(AgentAnnotation)
-        .addNode("nodeOne", nodeOne)
-        .addNode("nodeTwo", nodeTwo)
-        .addEdge(START, "nodeOne")
-        .addEdge("nodeOne", "nodeTwo")
-        .addEdge("nodeTwo", END);
-
-      // Compile the workflow with store and checkpointer
-      const app = workflow.compile({
-        store,
-        checkpointer,
-        interruptBefore: ["nodeTwo"],
-      });
-
-      // Initial configuration with sharedStateKey
-      const config: Record<string, Record<string, unknown>> = {
-        configurable: { thread_id: threadId, assistant_id: "a" },
-      };
-
-      // Execute nodeOne to set sharedStateKey and add initial message
-      await app.invoke(
-        {
-          messages: [
-            {
-              role: "user",
-              content: "start",
-            },
-          ],
-        },
-        config
-      );
-
-      // Verify initial state after nodeOne
-      let currentState = await app.getState(config);
-      expect(currentState.next).toEqual(["nodeTwo"]);
-      expect(currentState.values).toHaveProperty("messages");
-      expect(currentState.values).not.toHaveProperty("sharedStateKey");
-
-      // Remove 'assistant_id' from config.configurable
-      delete config.configurable.assistant_id;
-
-      // Prepare updated values to be applied
-      const updatedValues = {
-        messages: [
-          {
-            role: "assistant",
-            content: "intermediate message",
-          },
-        ],
-      };
-
-      // Update the state without sharedStateKey in config
-      await app.updateState(config, updatedValues);
-
-      // Verify that sharedStateKey has not been altered
-      currentState = await app.getState(config);
-      expect(currentState.next).toEqual(["nodeTwo"]);
-      expect(currentState.values).toHaveProperty("messages");
-
-      // Attempt to invoke nodeTwo without 'assistant_id', expecting an error
-      await expect(app.invoke(null, config)).rejects.toThrow(/assistant_id/);
-
-      // Re-add 'assistant_id' to config.configurable
-      config.configurable.assistant_id = "a";
-
-      // Successfully invoke nodeTwo after restoring 'assistant_id'
-      await app.invoke(null, config);
-
-      // Final state after invoking nodeTwo and nodeThree
-      currentState = await app.getState(config);
-      expect(currentState.next).toEqual([]);
-    });
+    const AgentAnnotation = Annotation.Root(MessagesAnnotation.spec);
 
     it("Can access the store inside nodes", async () => {
       const nodeOne = async (
@@ -5871,30 +6201,16 @@ export function runPregelTests(
         expect(config.store).toBeInstanceOf(BaseStore);
       };
 
-      const workflow = new StateGraph(MessagesAnnotation)
+      const app = new StateGraph(MessagesAnnotation)
         .addNode("nodeOne", nodeOne)
         .addEdge(START, "nodeOne")
-        .addEdge("nodeOne", END);
-
-      const app = workflow.compile({
-        store,
-        checkpointer,
-      });
-
-      const config = {
-        configurable: { thread_id: threadId, assistant_id: "a" },
-      };
+        .addEdge("nodeOne", END)
+        .compile({ store, checkpointer });
 
       // Invoke the first time to cause `nodeOne` to be executed.
       await app.invoke(
-        {
-          messages: [
-            new HumanMessage({
-              content: "what is weather in sf",
-            }),
-          ],
-        },
-        config
+        { messages: [new HumanMessage({ content: "what is weather in sf" })] },
+        { configurable: { thread_id: threadId, assistant_id: "a" } }
       );
     });
 
@@ -5906,7 +6222,7 @@ export function runPregelTests(
         const { store } = config;
         expect(store).toBeDefined();
         if (!store) {
-          throw new Error("No store foubd");
+          throw new Error("No store found");
         }
 
         expect(config.configurable?.assistant_id).toEqual("a");
@@ -5926,7 +6242,7 @@ export function runPregelTests(
         const { store } = config;
         expect(store).toBeDefined();
         if (!store) {
-          throw new Error("No store foubd");
+          throw new Error("No store found");
         }
 
         expect(config.configurable?.assistant_id).toEqual("a");
@@ -5975,7 +6291,11 @@ export function runPregelTests(
     });
   });
 
-  describe("Subgraphs", () => {
+  describe.each([
+    [{ durability: "async" as const }], // emit all checkpoint events
+    [{ durability: "sync" as const }], // emit all checkpoint events, save after every tick
+    [{ durability: "exit" as const }], // only emit single checkpoint per run
+  ])("Subgraphs %s", ({ durability }) => {
     test.each([
       [
         "nested graph interrupts parallel",
@@ -6065,13 +6385,13 @@ export function runPregelTests(
       ],
     ])("%s", async (_name, graph) => {
       const checkpointer = await createCheckpointer();
-
       const app = graph.compile({ checkpointer });
 
       // test invoke w/ nested interrupt
-      const config1 = { configurable: { thread_id: "1" } };
+      const config1 = { configurable: { thread_id: "1" }, durability };
       expect(await app.invoke({ myKey: "" }, config1)).toEqual({
-        myKey: "",
+        myKey: " and parallel",
+        __interrupt__: [],
       });
 
       expect(await app.invoke(null, config1)).toEqual({
@@ -6080,9 +6400,9 @@ export function runPregelTests(
 
       // below combo of assertions is asserting two things
       // - outer_1 finishes before inner interrupts (because we see its output in stream, which only happens after node finishes)
-      // - the writes of outer are persisted in 1st call and used in 2nd call, ie outer isn't called again (because we dont see outer_1 output again in 2nd stream)
+      // - the writes of outer are persisted in 1st call and used in 2nd call, ie outer isn't called again (because we don't see outer_1 output again in 2nd stream)
       // test stream updates w/ nested interrupt
-      const config2 = { configurable: { thread_id: "2" } };
+      const config2 = { configurable: { thread_id: "2" }, durability };
 
       expect(
         await gatherIterator(
@@ -6095,6 +6415,7 @@ export function runPregelTests(
           [expect.stringContaining("inner:")],
           { inner1: { myKey: "got here", myOtherKey: "" } },
         ],
+        [[], { __interrupt__: [] }],
       ]);
       expect(await gatherIterator(app.stream(null, config2))).toEqual([
         {
@@ -6109,10 +6430,15 @@ export function runPregelTests(
       const config3 = {
         configurable: { thread_id: "3" },
         streamMode: "values" as const,
+        durability,
       };
       expect(
         await gatherIterator(await app.stream({ myKey: "" }, config3))
-      ).toEqual([{ myKey: "" }]);
+      ).toEqual([
+        { myKey: "" },
+        { myKey: " and parallel" },
+        { __interrupt__: [] },
+      ]);
       expect(await gatherIterator(await app.stream(null, config3))).toEqual([
         { myKey: "" },
         { myKey: "got here and there and parallel" },
@@ -6127,13 +6453,16 @@ export function runPregelTests(
       const config4 = {
         configurable: { thread_id: "4" },
         streamMode: "values" as const,
+        durability,
       };
       expect(
         await gatherIterator(appBefore.stream({ myKey: "" }, config4))
-      ).toEqual([{ myKey: "" }]);
+      ).toEqual([{ myKey: "" }, { __interrupt__: [] }]);
       // while we're waiting for the node w/ interrupt inside to finish
       expect(await gatherIterator(appBefore.stream(null, config4))).toEqual([
         { myKey: "" },
+        { myKey: " and parallel" },
+        { __interrupt__: [] },
       ]);
       expect(await gatherIterator(appBefore.stream(null, config4))).toEqual([
         { myKey: "" },
@@ -6149,13 +6478,19 @@ export function runPregelTests(
       const config5 = {
         configurable: { thread_id: "5" },
         streamMode: "values" as const,
+        durability,
       };
       expect(
         await gatherIterator(appAfter.stream({ myKey: "" }, config5))
-      ).toEqual([{ myKey: "" }]);
+      ).toEqual([
+        { myKey: "" },
+        { myKey: " and parallel" },
+        { __interrupt__: [] },
+      ]);
       expect(await gatherIterator(appAfter.stream(null, config5))).toEqual([
         { myKey: "" },
         { myKey: "got here and there and parallel" },
+        { __interrupt__: [] },
       ]);
       expect(await gatherIterator(appAfter.stream(null, config5))).toEqual([
         { myKey: "got here and there and parallel" },
@@ -6185,6 +6520,7 @@ export function runPregelTests(
           myKey: state.myKey + " here",
         };
       };
+
       const grandchild2 = async (
         state: typeof GrandchildStateAnnotation.State
       ) => {
@@ -6209,9 +6545,11 @@ export function runPregelTests(
       const parent1 = (state: typeof StateAnnotation.State) => {
         return { myKey: "hi " + state.myKey };
       };
+
       const parent2 = (state: typeof StateAnnotation.State) => {
         return { myKey: state.myKey + " and back again" };
       };
+
       const graph = new StateGraph(StateAnnotation)
         .addNode("parent1", parent1)
         .addNode("child", child.compile())
@@ -6223,19 +6561,20 @@ export function runPregelTests(
       const app = graph.compile({ checkpointer });
 
       // test invoke w/ nested interrupt
-      const config = { configurable: { thread_id: "1" } };
+      const config = { configurable: { thread_id: "1" }, durability };
       expect(await app.invoke({ myKey: "my value" }, config)).toEqual({
         myKey: "hi my value",
+        __interrupt__: [],
       });
       expect(await app.invoke(null, config)).toEqual({
         myKey: "hi my value here and there and back again",
       });
 
       // test stream updates w/ nested interrupt
-      const config2 = { configurable: { thread_id: "2" } };
+      const config2 = { configurable: { thread_id: "2" }, durability };
       expect(
         await gatherIterator(app.stream({ myKey: "my value" }, config2))
-      ).toEqual([{ parent1: { myKey: "hi my value" } }]);
+      ).toEqual([{ parent1: { myKey: "hi my value" } }, { [INTERRUPT]: [] }]);
       expect(await gatherIterator(app.stream(null, config2))).toEqual([
         { child: { myKey: "hi my value here and there" } },
         { parent2: { myKey: "hi my value here and there and back again" } },
@@ -6245,10 +6584,16 @@ export function runPregelTests(
       const config3 = {
         configurable: { thread_id: "3" },
         streamMode: "values" as const,
+        durability,
       };
       expect(
         await gatherIterator(app.stream({ myKey: "my value" }, config3))
-      ).toEqual([{ myKey: "my value" }, { myKey: "hi my value" }]);
+      ).toEqual([
+        { myKey: "my value" },
+        { myKey: "hi my value" },
+        { __interrupt__: [] },
+      ]);
+
       expect(await gatherIterator(app.stream(null, config3))).toEqual([
         { myKey: "hi my value" },
         { myKey: "hi my value here and there" },
@@ -6258,55 +6603,44 @@ export function runPregelTests(
 
     it("nested graph state", async () => {
       const checkpointer = await createCheckpointer();
-
-      const InnerStateAnnotation = Annotation.Root({
-        myKey: Annotation<string>,
-        myOtherKey: Annotation<string>,
-      });
-      const inner1 = async (state: typeof InnerStateAnnotation.State) => {
-        return {
-          myKey: state.myKey + " here",
-          myOtherKey: state.myKey,
-        };
-      };
-      const inner2 = async (state: typeof InnerStateAnnotation.State) => {
-        return {
-          myKey: state.myKey + " and there",
-          myOtherKey: state.myKey,
-        };
-      };
-      const inner = new StateGraph(InnerStateAnnotation)
-        .addNode("inner1", inner1)
-        .addNode("inner2", inner2)
+      const inner = new StateGraph(
+        Annotation.Root({
+          myKey: Annotation<string>,
+          myOtherKey: Annotation<string>,
+        })
+      )
+        .addNode({
+          inner1: (state) => ({
+            myKey: state.myKey + " here",
+            myOtherKey: state.myKey,
+          }),
+          inner2: (state) => ({
+            myKey: state.myKey + " and there",
+            myOtherKey: state.myKey,
+          }),
+        })
         .addEdge("__start__", "inner1")
         .addEdge("inner1", "inner2");
 
-      const StateAnnotation = Annotation.Root({
-        myKey: Annotation<string>,
-        otherParentKey: Annotation<string>,
-      });
-      const outer1 = async (state: typeof StateAnnotation.State) => {
-        return { myKey: "hi " + state.myKey };
-      };
-      const outer2 = async (state: typeof StateAnnotation.State) => {
-        return { myKey: state.myKey + " and back again" };
-      };
-      const graph = new StateGraph(StateAnnotation)
-        .addNode("outer1", outer1)
-        .addNode("inner", inner.compile({ interruptBefore: ["inner2"] }))
-        .addNode("outer2", outer2)
+      const app = new StateGraph(
+        Annotation.Root({
+          myKey: Annotation<string>,
+          otherParentKey: Annotation<string>,
+        })
+      )
+        .addNode({
+          outer1: (state) => ({ myKey: "hi " + state.myKey }),
+          outer2: (state) => ({ myKey: state.myKey + " and back again" }),
+          inner: inner.compile({ interruptBefore: ["inner2"] }),
+        })
         .addEdge("__start__", "outer1")
         .addEdge("outer1", "inner")
-        .addEdge("inner", "outer2");
+        .addEdge("inner", "outer2")
+        .compile({ checkpointer });
 
-      const app = graph.compile({ checkpointer });
-      const config = { configurable: { thread_id: "1" } };
-      await app.invoke(
-        {
-          myKey: "my value",
-        },
-        config
-      );
+      const config = { configurable: { thread_id: "1" }, durability };
+      await app.invoke({ myKey: "my value" }, config);
+
       // test state w/ nested subgraph state (right after interrupt)
       // first getState without subgraph state
       expect(await app.getState(config)).toEqual({
@@ -6336,18 +6670,22 @@ export function runPregelTests(
         metadata: {
           parents: {},
           source: "loop",
-          writes: { outer1: { myKey: "hi my value" } },
           step: 1,
+          thread_id: "1",
         },
         createdAt: expect.any(String),
-        parentConfig: {
-          configurable: {
-            thread_id: "1",
-            checkpoint_ns: "",
-            checkpoint_id: expect.any(String),
-          },
-        },
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: "",
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
       });
+
       // now, getState with subgraphs state
       expect(await app.getState(config, { subgraphs: true })).toEqual({
         values: { myKey: "hi my value" },
@@ -6382,26 +6720,24 @@ export function runPregelTests(
                 },
               },
               metadata: {
+                thread_id: "1",
                 parents: {
                   "": expect.any(String),
                 },
                 source: "loop",
-                writes: {
-                  inner1: {
-                    myKey: "hi my value here",
-                    myOtherKey: "hi my value",
-                  },
-                },
                 step: 1,
               },
               createdAt: expect.any(String),
-              parentConfig: {
-                configurable: {
-                  thread_id: "1",
-                  checkpoint_ns: expect.stringMatching(/^inner:/),
-                  checkpoint_id: expect.any(String),
-                },
-              },
+              parentConfig:
+                durability !== "exit"
+                  ? {
+                      configurable: {
+                        thread_id: "1",
+                        checkpoint_ns: expect.stringMatching(/^inner:/),
+                        checkpoint_id: expect.any(String),
+                      },
+                    }
+                  : undefined,
             },
           },
         ],
@@ -6414,233 +6750,254 @@ export function runPregelTests(
           },
         },
         metadata: {
+          thread_id: "1",
           parents: {},
           source: "loop",
-          writes: { outer1: { myKey: "hi my value" } },
           step: 1,
         },
         createdAt: expect.any(String),
-        parentConfig: {
-          configurable: {
-            thread_id: "1",
-            checkpoint_ns: "",
-            checkpoint_id: expect.any(String),
-          },
-        },
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: "",
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
       });
 
       // getStateHistory returns outer graph checkpoints
       const history = await gatherIterator(app.getStateHistory(config));
-      expect(history).toEqual([
-        {
-          values: { myKey: "hi my value" },
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "inner",
-              path: [PULL, "inner"],
-              interrupts: [],
-              state: {
-                configurable: expect.objectContaining({
-                  thread_id: "1",
-                }),
+      expect(history).toEqual(
+        [
+          {
+            values: { myKey: "hi my value" },
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "inner",
+                path: [PULL, "inner"],
+                interrupts: [],
+                state: {
+                  configurable: expect.objectContaining({
+                    thread_id: "1",
+                  }),
+                },
+              },
+            ],
+            next: ["inner"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
               },
             },
-          ],
-          next: ["inner"],
-          config: {
-            configurable: {
+            metadata: {
               thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
+              parents: {},
+              source: "loop",
+              step: 1,
             },
+            createdAt: expect.any(String),
+            parentConfig:
+              durability !== "exit"
+                ? {
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: "",
+                      checkpoint_id: expect.any(String),
+                    },
+                  }
+                : undefined,
           },
-          metadata: {
-            parents: {},
-            source: "loop",
-            writes: {
-              outer1: { myKey: "hi my value" },
+
+          durability !== "exit" && {
+            values: { myKey: "my value" },
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "outer1",
+                interrupts: [],
+                path: [PULL, "outer1"],
+                result: { myKey: "hi my value" },
+              },
+            ],
+            next: ["outer1"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
             },
-            step: 1,
-          },
-          createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
+            metadata: {
+              parents: {},
+              source: "loop",
+              step: 0,
               thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
             },
           },
-        },
-        {
-          values: { myKey: "my value" },
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "outer1",
-              interrupts: [],
-              path: [PULL, "outer1"],
+
+          durability !== "exit" && {
+            values: {},
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "__start__",
+                interrupts: [],
+                path: [PULL, "__start__"],
+                result: { myKey: "my value" },
+              },
+            ],
+            next: ["__start__"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
             },
-          ],
-          next: ["outer1"],
-          config: {
-            configurable: {
+            metadata: {
               thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
+              parents: {},
+              source: "input",
+              step: -1,
             },
+            createdAt: expect.any(String),
           },
-          metadata: { parents: {}, source: "loop", step: 0, writes: null },
-          createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
-            },
-          },
-        },
-        {
-          values: {},
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "__start__",
-              interrupts: [],
-              path: [PULL, "__start__"],
-            },
-          ],
-          next: ["__start__"],
-          config: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
-            },
-          },
-          metadata: {
-            parents: {},
-            source: "input",
-            writes: { __start__: { myKey: "my value" } },
-            step: -1,
-          },
-          createdAt: expect.any(String),
-        },
-      ]);
+        ].filter(Boolean)
+      );
+
       // get_state_history for a subgraph returns its checkpoints
       const childHistory = await gatherIterator(
         app.getStateHistory(history[0].tasks[0].state as RunnableConfig)
       );
-      expect(childHistory).toEqual([
-        {
-          values: { myKey: "hi my value here", myOtherKey: "hi my value" },
-          next: ["inner2"],
-          config: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: expect.stringMatching(/^inner:/),
-              checkpoint_id: expect.any(String),
-              checkpoint_map: expect.objectContaining({
-                "": expect.any(String),
-              }),
-            },
-          },
-          metadata: {
-            source: "loop",
-            writes: {
-              inner1: {
-                myKey: "hi my value here",
-                myOtherKey: "hi my value",
+      expect(childHistory).toEqual(
+        [
+          {
+            values: { myKey: "hi my value here", myOtherKey: "hi my value" },
+            next: ["inner2"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringMatching(/^inner:/),
+                checkpoint_id: expect.any(String),
+                checkpoint_map: expect.objectContaining({
+                  "": expect.any(String),
+                }),
               },
             },
-            step: 1,
-            parents: { "": expect.any(String) },
-          },
-          createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
+            metadata: {
               thread_id: "1",
-              checkpoint_ns: expect.stringMatching(/^inner:/),
-              checkpoint_id: expect.any(String),
+              source: "loop",
+              step: 1,
+              parents: { "": expect.any(String) },
             },
+            createdAt: expect.any(String),
+            parentConfig:
+              durability !== "exit"
+                ? {
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: expect.stringMatching(/^inner:/),
+                      checkpoint_id: expect.any(String),
+                    },
+                  }
+                : undefined,
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "inner2",
+                path: [PULL, "inner2"],
+                interrupts: [],
+              },
+            ],
           },
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "inner2",
-              path: [PULL, "inner2"],
-              interrupts: [],
+
+          durability !== "exit" && {
+            values: { myKey: "hi my value" },
+            next: ["inner1"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringMatching(/^inner:/),
+                checkpoint_id: expect.any(String),
+                checkpoint_map: expect.objectContaining({
+                  "": expect.any(String),
+                }),
+              },
             },
-          ],
-        },
-        {
-          values: { myKey: "hi my value" },
-          next: ["inner1"],
-          config: {
-            configurable: {
+            metadata: {
               thread_id: "1",
-              checkpoint_ns: expect.stringMatching(/^inner:/),
-              checkpoint_id: expect.any(String),
-              checkpoint_map: expect.objectContaining({
-                "": expect.any(String),
-              }),
+              source: "loop",
+              step: 0,
+              parents: { "": expect.any(String) },
             },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringMatching(/^inner:/),
+                checkpoint_id: expect.any(String),
+              },
+            },
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "inner1",
+                path: [PULL, "inner1"],
+                interrupts: [],
+                result: {
+                  myKey: "hi my value here",
+                  myOtherKey: "hi my value",
+                },
+              },
+            ],
           },
-          metadata: {
-            source: "loop",
-            writes: null,
-            step: 0,
-            parents: { "": expect.any(String) },
-          },
-          createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
+
+          durability !== "exit" && {
+            values: {},
+            next: ["__start__"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringMatching(/^inner:/),
+                checkpoint_id: expect.any(String),
+                checkpoint_map: expect.objectContaining({
+                  "": expect.any(String),
+                }),
+              },
+            },
+            metadata: {
               thread_id: "1",
-              checkpoint_ns: expect.stringMatching(/^inner:/),
-              checkpoint_id: expect.any(String),
+              source: "input",
+              step: -1,
+              parents: { "": expect.any(String) },
             },
+            createdAt: expect.any(String),
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "__start__",
+                path: [PULL, "__start__"],
+                interrupts: [],
+                result: { myKey: "hi my value" },
+              },
+            ],
           },
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "inner1",
-              path: [PULL, "inner1"],
-              interrupts: [],
-            },
-          ],
-        },
-        {
-          values: {},
-          next: ["__start__"],
-          config: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: expect.stringMatching(/^inner:/),
-              checkpoint_id: expect.any(String),
-              checkpoint_map: expect.objectContaining({
-                "": expect.any(String),
-              }),
-            },
-          },
-          metadata: {
-            source: "input",
-            writes: {
-              __start__: { myKey: "hi my value", otherParentKey: null },
-            },
-            step: -1,
-            parents: { "": expect.any(String) },
-          },
-          createdAt: expect.any(String),
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "__start__",
-              path: [PULL, "__start__"],
-              interrupts: [],
-            },
-          ],
-        },
-      ]);
+        ].filter(Boolean)
+      );
 
       // resume
       await app.invoke(null, config);
@@ -6656,11 +7013,9 @@ export function runPregelTests(
           },
         },
         metadata: {
+          thread_id: "1",
           parents: {},
           source: "loop",
-          writes: {
-            outer2: { myKey: "hi my value here and there and back again" },
-          },
           step: 3,
         },
         createdAt: expect.any(String),
@@ -6688,11 +7043,9 @@ export function runPregelTests(
             },
           },
           metadata: {
+            thread_id: "1",
             parents: {},
             source: "loop",
-            writes: {
-              outer2: { myKey: "hi my value here and there and back again" },
-            },
             step: 3,
           },
           createdAt: expect.any(String),
@@ -6704,7 +7057,7 @@ export function runPregelTests(
             },
           },
         },
-        {
+        durability !== "exit" && {
           values: { myKey: "hi my value here and there" },
           tasks: [
             {
@@ -6712,6 +7065,7 @@ export function runPregelTests(
               name: "outer2",
               path: [PULL, "outer2"],
               interrupts: [],
+              result: { myKey: "hi my value here and there and back again" },
             },
           ],
           next: ["outer2"],
@@ -6723,9 +7077,9 @@ export function runPregelTests(
             },
           },
           metadata: {
+            thread_id: "1",
             parents: {},
             source: "loop",
-            writes: { inner: { myKey: "hi my value here and there" } },
             step: 2,
           },
           createdAt: expect.any(String),
@@ -6751,6 +7105,10 @@ export function runPregelTests(
                   checkpoint_ns: expect.any(String),
                 },
               },
+              result:
+                durability !== "exit"
+                  ? { myKey: "hi my value here and there" }
+                  : undefined,
             },
           ],
           next: ["inner"],
@@ -6762,21 +7120,24 @@ export function runPregelTests(
             },
           },
           metadata: {
+            thread_id: "1",
             parents: {},
             source: "loop",
-            writes: { outer1: { myKey: "hi my value" } },
             step: 1,
           },
           createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
-            },
-          },
+          parentConfig:
+            durability !== "exit"
+              ? {
+                  configurable: {
+                    thread_id: "1",
+                    checkpoint_ns: "",
+                    checkpoint_id: expect.any(String),
+                  },
+                }
+              : undefined,
         },
-        {
+        durability !== "exit" && {
           values: { myKey: "my value" },
           tasks: [
             {
@@ -6784,6 +7145,7 @@ export function runPregelTests(
               name: "outer1",
               path: [PULL, "outer1"],
               interrupts: [],
+              result: { myKey: "hi my value" },
             },
           ],
           next: ["outer1"],
@@ -6794,7 +7156,12 @@ export function runPregelTests(
               checkpoint_id: expect.any(String),
             },
           },
-          metadata: { parents: {}, source: "loop", writes: null, step: 0 },
+          metadata: {
+            parents: {},
+            source: "loop",
+            step: 0,
+            thread_id: "1",
+          },
           createdAt: expect.any(String),
           parentConfig: {
             configurable: {
@@ -6804,7 +7171,7 @@ export function runPregelTests(
             },
           },
         },
-        {
+        durability !== "exit" && {
           values: {},
           tasks: [
             {
@@ -6812,6 +7179,7 @@ export function runPregelTests(
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              result: { myKey: "my value" },
             },
           ],
           next: ["__start__"],
@@ -6823,14 +7191,15 @@ export function runPregelTests(
             },
           },
           metadata: {
+            thread_id: "1",
             parents: {},
             source: "input",
-            writes: { __start__: { myKey: "my value" } },
             step: -1,
           },
           createdAt: expect.any(String),
         },
-      ];
+      ].filter(Boolean);
+
       expect(actualHistory).toEqual(expectedHistory);
       for (let i = 0; i < actualHistory.length; i += 1) {
         // test looking up parent state by checkpoint ID
@@ -6845,8 +7214,8 @@ export function runPregelTests(
     it("invoke join then call other pregel", async () => {
       const checkpointer = await createCheckpointer();
 
-      const addOne = jest.fn((x: number) => x + 1);
-      const add10Each = jest.fn((x: number[]) => x.map((y) => y + 10));
+      const addOne = vi.fn((x: number) => x + 1);
+      const add10Each = vi.fn((x: number[]) => x.map((y) => y + 10));
 
       const innerApp = new Pregel({
         nodes: {
@@ -6905,15 +7274,21 @@ export function runPregelTests(
       // Add checkpointer
       app.checkpointer = checkpointer;
       // Subgraph is called twice in the same node, through .map(), so raises
-      await expect(
-        app.invoke([2, 3], { configurable: { thread_id: "1" } })
-      ).rejects.toThrow(MultipleSubgraphsError);
+      expect(
+        await app.invoke([2, 3], {
+          configurable: { thread_id: "1" },
+          durability,
+        })
+      ).toBe(27);
 
       // Set inner graph checkpointer to not checkpoint
       innerApp.checkpointer = false;
       // Subgraph still called twice, but checkpointing for inner graph is disabled
       expect(
-        await app.invoke([2, 3], { configurable: { thread_id: "1" } })
+        await app.invoke([2, 3], {
+          configurable: { thread_id: "1" },
+          durability,
+        })
       ).toBe(27);
     });
 
@@ -6977,7 +7352,7 @@ export function runPregelTests(
       const app = graph.compile({ checkpointer });
 
       // test invoke w/ nested interrupt
-      const config = { configurable: { thread_id: "1" } };
+      const config = { configurable: { thread_id: "1" }, durability };
       expect(
         await gatherIterator(
           app.stream({ myKey: "my value" }, { ...config, subgraphs: true })
@@ -6988,6 +7363,7 @@ export function runPregelTests(
           [expect.stringMatching(/^child:/), expect.stringMatching(/^child1:/)],
           { grandchild1: { myKey: "hi my value here" } },
         ],
+        [[], { [INTERRUPT]: [] }],
       ]);
 
       // get state without subgraphs
@@ -7019,17 +7395,20 @@ export function runPregelTests(
         metadata: {
           parents: {},
           source: "loop",
-          writes: { parent1: { myKey: "hi my value" } },
           step: 1,
+          thread_id: "1",
         },
         createdAt: expect.any(String),
-        parentConfig: {
-          configurable: {
-            thread_id: "1",
-            checkpoint_ns: "",
-            checkpoint_id: expect.any(String),
-          },
-        },
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: "",
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
       });
       const childState = await app.getState(
         outerState.tasks[0].state as RunnableConfig
@@ -7071,22 +7450,26 @@ export function runPregelTests(
           },
         },
         metadata: {
+          thread_id: "1",
           parents: expect.objectContaining({
             "": expect.any(String),
           }),
           source: "loop",
-          writes: { grandchild1: { myKey: "hi my value here" } },
           step: 1,
         },
         createdAt: expect.any(String),
-        parentConfig: {
-          configurable: {
-            thread_id: "1",
-            checkpoint_ns: expect.any(String),
-            checkpoint_id: expect.any(String),
-          },
-        },
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: expect.any(String),
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
       });
+
       // get state with subgraphs
       expect(await app.getState(config, { subgraphs: true })).toEqual({
         values: { myKey: "hi my value" },
@@ -7130,19 +7513,20 @@ export function runPregelTests(
                         "": expect.any(String),
                       }),
                       source: "loop",
-                      writes: {
-                        grandchild1: { myKey: "hi my value here" },
-                      },
                       step: 1,
+                      thread_id: "1",
                     },
                     createdAt: expect.any(String),
-                    parentConfig: {
-                      configurable: {
-                        thread_id: "1",
-                        checkpoint_ns: expect.any(String),
-                        checkpoint_id: expect.any(String),
-                      },
-                    },
+                    parentConfig:
+                      durability !== "exit"
+                        ? {
+                            configurable: {
+                              thread_id: "1",
+                              checkpoint_ns: expect.any(String),
+                              checkpoint_id: expect.any(String),
+                            },
+                          }
+                        : undefined,
                   },
                 },
               ],
@@ -7158,19 +7542,22 @@ export function runPregelTests(
                 },
               },
               metadata: {
+                thread_id: "1",
                 parents: { "": expect.any(String) },
                 source: "loop",
-                writes: null,
                 step: 0,
               },
               createdAt: expect.any(String),
-              parentConfig: {
-                configurable: {
-                  thread_id: "1",
-                  checkpoint_ns: expect.stringMatching(/^child:/),
-                  checkpoint_id: expect.any(String),
-                },
-              },
+              parentConfig:
+                durability !== "exit"
+                  ? {
+                      configurable: {
+                        thread_id: "1",
+                        checkpoint_ns: expect.stringMatching(/^child:/),
+                        checkpoint_id: expect.any(String),
+                      },
+                    }
+                  : undefined,
             },
           },
         ],
@@ -7183,19 +7570,22 @@ export function runPregelTests(
           },
         },
         metadata: {
+          thread_id: "1",
           parents: {},
           source: "loop",
-          writes: { parent1: { myKey: "hi my value" } },
           step: 1,
         },
         createdAt: expect.any(String),
-        parentConfig: {
-          configurable: {
-            thread_id: "1",
-            checkpoint_ns: "",
-            checkpoint_id: expect.any(String),
-          },
-        },
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: "",
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
       });
 
       // resume
@@ -7216,10 +7606,12 @@ export function runPregelTests(
           { parent2: { myKey: "hi my value here and there and back again" } },
         ],
       ]);
+
       // get state with and without subgraphs
       expect(await app.getState(config)).toEqual(
         await app.getState(config, { subgraphs: true })
       );
+
       expect(await app.getState(config)).toEqual({
         values: { myKey: "hi my value here and there and back again" },
         tasks: [],
@@ -7232,11 +7624,9 @@ export function runPregelTests(
           },
         },
         metadata: {
+          thread_id: "1",
           parents: {},
           source: "loop",
-          writes: {
-            parent2: { myKey: "hi my value here and there and back again" },
-          },
           step: 3,
         },
         createdAt: expect.any(String),
@@ -7248,425 +7638,490 @@ export function runPregelTests(
           },
         },
       });
+
       // get outer graph history
       const outerHistory = await gatherIterator(app.getStateHistory(config));
-      expect(outerHistory).toEqual([
-        {
-          values: { myKey: "hi my value here and there and back again" },
-          tasks: [],
-          next: [],
-          config: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
-            },
-          },
-          metadata: {
-            parents: {},
-            source: "loop",
-            writes: {
-              parent2: { myKey: "hi my value here and there and back again" },
-            },
-            step: 3,
-          },
-          createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
-            },
-          },
-        },
-        {
-          values: { myKey: "hi my value here and there" },
-          next: ["parent2"],
-          config: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
-            },
-          },
-          metadata: {
-            source: "loop",
-            writes: { child: { myKey: "hi my value here and there" } },
-            step: 2,
-            parents: {},
-          },
-          createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
-            },
-          },
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "parent2",
-              path: [PULL, "parent2"],
-              interrupts: [],
-            },
-          ],
-        },
-        {
-          values: { myKey: "hi my value" },
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "child",
-              path: [PULL, "child"],
-              interrupts: [],
-              state: {
-                configurable: {
-                  thread_id: "1",
-                  checkpoint_ns: expect.stringContaining("child"),
-                },
+      expect(outerHistory).toEqual(
+        [
+          {
+            values: { myKey: "hi my value here and there and back again" },
+            tasks: [],
+            next: [],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
               },
             },
-          ],
-          next: ["child"],
-          config: {
-            configurable: {
+            metadata: {
               thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
+              parents: {},
+              source: "loop",
+              step: 3,
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
             },
           },
-          metadata: {
-            parents: {},
-            source: "loop",
-            writes: { parent1: { myKey: "hi my value" } },
-            step: 1,
-          },
-          createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
+          durability !== "exit" && {
+            values: { myKey: "hi my value here and there" },
+            next: ["parent2"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
+            },
+            metadata: {
               thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
+              source: "loop",
+              step: 2,
+              parents: {},
             },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
+            },
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "parent2",
+                path: [PULL, "parent2"],
+                interrupts: [],
+                result: { myKey: "hi my value here and there and back again" },
+              },
+            ],
           },
-        },
-        {
-          values: { myKey: "my value" },
-          next: ["parent1"],
-          config: {
-            configurable: {
+
+          {
+            values: { myKey: "hi my value" },
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "child",
+                path: [PULL, "child"],
+                interrupts: [],
+                state: {
+                  configurable: {
+                    thread_id: "1",
+                    checkpoint_ns: expect.stringContaining("child"),
+                  },
+                },
+                result:
+                  durability !== "exit"
+                    ? { myKey: "hi my value here and there" }
+                    : undefined,
+              },
+            ],
+            next: ["child"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
+            },
+            metadata: {
               thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
+              parents: {},
+              source: "loop",
+              step: 1,
             },
+            createdAt: expect.any(String),
+            parentConfig:
+              durability !== "exit"
+                ? {
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: "",
+                      checkpoint_id: expect.any(String),
+                    },
+                  }
+                : undefined,
           },
-          metadata: { source: "loop", writes: null, step: 0, parents: {} },
-          createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
+
+          durability !== "exit" && {
+            values: { myKey: "my value" },
+            next: ["parent1"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
+            },
+            metadata: {
+              source: "loop",
+              step: 0,
+              parents: {},
               thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
             },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
+            },
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "parent1",
+                path: [PULL, "parent1"],
+                interrupts: [],
+                result: { myKey: "hi my value" },
+              },
+            ],
           },
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "parent1",
-              path: [PULL, "parent1"],
-              interrupts: [],
+
+          durability !== "exit" && {
+            values: {},
+            next: ["__start__"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
             },
-          ],
-        },
-        {
-          values: {},
-          next: ["__start__"],
-          config: {
-            configurable: {
+            metadata: {
               thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
+              source: "input",
+              step: -1,
+              parents: {},
             },
+            createdAt: expect.any(String),
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "__start__",
+                path: [PULL, "__start__"],
+                interrupts: [],
+                result: { myKey: "my value" },
+              },
+            ],
           },
-          metadata: {
-            source: "input",
-            writes: { __start__: { myKey: "my value" } },
-            step: -1,
-            parents: {},
-          },
-          createdAt: expect.any(String),
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "__start__",
-              path: [PULL, "__start__"],
-              interrupts: [],
-            },
-          ],
-        },
-      ]);
+        ].filter(Boolean)
+      );
+
       // get child graph history
       const childHistory = await gatherIterator(
-        app.getStateHistory(outerHistory[2].tasks[0].state as RunnableConfig)
+        app.getStateHistory(
+          outerHistory[durability !== "exit" ? 2 : 1].tasks[0]
+            .state as RunnableConfig
+        )
       );
-      expect(childHistory).toEqual([
-        {
-          values: { myKey: "hi my value here and there" },
-          next: [],
-          config: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: expect.stringContaining("child:"),
-              checkpoint_id: expect.any(String),
-              checkpoint_map: expect.objectContaining({
-                "": expect.any(String),
-              }),
-            },
-          },
-          metadata: {
-            source: "loop",
-            writes: { child1: { myKey: "hi my value here and there" } },
-            step: 1,
-            parents: { "": expect.any(String) },
-          },
-          createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: expect.stringContaining("child:"),
-              checkpoint_id: expect.any(String),
-            },
-          },
-          tasks: [],
-        },
 
-        {
-          values: { myKey: "hi my value" },
-          next: ["child1"],
-          config: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: expect.stringContaining("child:"),
-              checkpoint_id: expect.any(String),
-              checkpoint_map: expect.objectContaining({
-                "": expect.any(String),
-              }),
-            },
-          },
-          metadata: {
-            source: "loop",
-            writes: null,
-            step: 0,
-            parents: { "": expect.any(String) },
-          },
-          createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: expect.stringContaining("child:"),
-              checkpoint_id: expect.any(String),
-            },
-          },
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "child1",
-              path: [PULL, "child1"],
-              interrupts: [],
-              state: {
-                configurable: {
-                  thread_id: "1",
-                  checkpoint_ns: expect.stringContaining("child:"),
-                },
+      expect(childHistory).toEqual(
+        [
+          durability !== "exit" && {
+            values: { myKey: "hi my value here and there" },
+            next: [],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringContaining("child:"),
+                checkpoint_id: expect.any(String),
+                checkpoint_map: expect.objectContaining({
+                  "": expect.any(String),
+                }),
               },
             },
-          ],
-        },
-        {
-          values: {},
-          next: ["__start__"],
-          config: {
-            configurable: {
+            metadata: {
               thread_id: "1",
-              checkpoint_ns: expect.stringContaining("child:"),
-              checkpoint_id: expect.any(String),
-              checkpoint_map: expect.objectContaining({
-                "": expect.any(String),
-              }),
+              source: "loop",
+              step: 1,
+              parents: { "": expect.any(String) },
             },
-          },
-          metadata: {
-            source: "input",
-            writes: { __start__: { myKey: "hi my value" } },
-            step: -1,
-            parents: { "": expect.any(String) },
-          },
-          createdAt: expect.any(String),
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "__start__",
-              path: [PULL, "__start__"],
-              interrupts: [],
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringContaining("child:"),
+                checkpoint_id: expect.any(String),
+              },
             },
-          ],
-        },
-      ]);
+            tasks: [],
+          },
+
+          {
+            values: { myKey: "hi my value" },
+            next: ["child1"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringContaining("child:"),
+                checkpoint_id: expect.any(String),
+                checkpoint_map: expect.objectContaining({
+                  "": expect.any(String),
+                }),
+              },
+            },
+            metadata: {
+              thread_id: "1",
+              source: "loop",
+              step: 0,
+              parents: { "": expect.any(String) },
+            },
+            createdAt: expect.any(String),
+            parentConfig:
+              durability !== "exit"
+                ? {
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: expect.stringContaining("child:"),
+                      checkpoint_id: expect.any(String),
+                    },
+                  }
+                : undefined,
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "child1",
+                path: [PULL, "child1"],
+                interrupts: [],
+                state: {
+                  configurable: {
+                    thread_id: "1",
+                    checkpoint_ns: expect.stringContaining("child:"),
+                  },
+                },
+                result:
+                  durability !== "exit"
+                    ? { myKey: "hi my value here and there" }
+                    : undefined,
+              },
+            ],
+          },
+          durability !== "exit" && {
+            values: {},
+            next: ["__start__"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringContaining("child:"),
+                checkpoint_id: expect.any(String),
+                checkpoint_map: expect.objectContaining({
+                  "": expect.any(String),
+                }),
+              },
+            },
+            metadata: {
+              thread_id: "1",
+              source: "input",
+              step: -1,
+              parents: { "": expect.any(String) },
+            },
+            createdAt: expect.any(String),
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "__start__",
+                path: [PULL, "__start__"],
+                interrupts: [],
+                result: { myKey: "hi my value" },
+              },
+            ],
+          },
+        ].filter(Boolean)
+      );
+
       // get grandchild graph history
       const grandchildHistory = await gatherIterator(
-        app.getStateHistory(childHistory[1].tasks[0].state as RunnableConfig)
+        app.getStateHistory(
+          childHistory[durability !== "exit" ? 1 : 0].tasks[0]
+            .state as RunnableConfig
+        )
       );
-      expect(grandchildHistory).toEqual([
-        {
-          values: { myKey: "hi my value here and there" },
-          next: [],
-          config: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: expect.any(String),
-              checkpoint_id: expect.any(String),
-              checkpoint_map: expect.objectContaining({
-                "": expect.any(String),
-              }),
-            },
-          },
-          metadata: {
-            source: "loop",
-            writes: { grandchild2: { myKey: "hi my value here and there" } },
-            step: 2,
-            parents: expect.objectContaining({
-              "": expect.any(String),
-            }),
-          },
-          createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: expect.any(String),
-              checkpoint_id: expect.any(String),
-            },
-          },
-          tasks: [],
-        },
-        {
-          values: { myKey: "hi my value here" },
-          next: ["grandchild2"],
-          config: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: expect.any(String),
-              checkpoint_id: expect.any(String),
-              checkpoint_map: expect.objectContaining({
-                "": expect.any(String),
-              }),
-            },
-          },
-          metadata: {
-            source: "loop",
-            writes: { grandchild1: { myKey: "hi my value here" } },
-            step: 1,
-            parents: expect.objectContaining({
-              "": expect.any(String),
-            }),
-          },
-          createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: expect.any(String),
-              checkpoint_id: expect.any(String),
-            },
-          },
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "grandchild2",
-              path: [PULL, "grandchild2"],
-              interrupts: [],
-            },
-          ],
-        },
-        {
-          values: { myKey: "hi my value" },
-          next: ["grandchild1"],
-          config: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: expect.any(String),
-              checkpoint_id: expect.any(String),
-              checkpoint_map: expect.objectContaining({
-                "": expect.any(String),
-              }),
-            },
-          },
-          metadata: {
-            source: "loop",
-            writes: null,
-            step: 0,
-            parents: expect.objectContaining({
-              "": expect.any(String),
-            }),
-          },
-          createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: expect.any(String),
-              checkpoint_id: expect.any(String),
-            },
-          },
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "grandchild1",
-              path: [PULL, "grandchild1"],
-              interrupts: [],
-            },
-          ],
-        },
-        {
-          values: {},
-          next: ["__start__"],
-          config: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: expect.any(String),
-              checkpoint_id: expect.any(String),
-              checkpoint_map: expect.objectContaining({
-                "": expect.any(String),
-              }),
-            },
-          },
-          metadata: {
-            source: "input",
-            writes: { __start__: { myKey: "hi my value" } },
-            step: -1,
-            parents: expect.objectContaining({
-              "": expect.any(String),
-            }),
-          },
-          createdAt: expect.any(String),
-          tasks: [
-            {
-              id: expect.any(String),
-              name: "__start__",
-              path: [PULL, "__start__"],
-              interrupts: [],
-            },
-          ],
-        },
-      ]);
-      // replay grandchild checkpoint
-      const events = await gatherIterator(
-        app.stream(null, { ...grandchildHistory[2].config, subgraphs: true })
-      );
-      expect(events).toEqual([
+      expect(grandchildHistory).toEqual(
         [
-          [expect.stringMatching(/^child:/), expect.stringMatching(/^child1:/)],
-          { grandchild1: { myKey: "hi my value here" } },
-        ],
-      ]);
+          durability !== "exit" && {
+            values: { myKey: "hi my value here and there" },
+            next: [],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.any(String),
+                checkpoint_id: expect.any(String),
+                checkpoint_map: expect.objectContaining({
+                  "": expect.any(String),
+                }),
+              },
+            },
+            metadata: {
+              thread_id: "1",
+              source: "loop",
+              step: 2,
+              parents: expect.objectContaining({
+                "": expect.any(String),
+              }),
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.any(String),
+                checkpoint_id: expect.any(String),
+              },
+            },
+            tasks: [],
+          },
+
+          {
+            values: { myKey: "hi my value here" },
+            next: ["grandchild2"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.any(String),
+                checkpoint_id: expect.any(String),
+                checkpoint_map: expect.objectContaining({
+                  "": expect.any(String),
+                }),
+              },
+            },
+            metadata: {
+              thread_id: "1",
+              source: "loop",
+              step: 1,
+              parents: expect.objectContaining({
+                "": expect.any(String),
+              }),
+            },
+            createdAt: expect.any(String),
+            parentConfig:
+              durability !== "exit"
+                ? {
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: expect.any(String),
+                      checkpoint_id: expect.any(String),
+                    },
+                  }
+                : undefined,
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "grandchild2",
+                path: [PULL, "grandchild2"],
+                interrupts: [],
+                result:
+                  durability !== "exit"
+                    ? { myKey: "hi my value here and there" }
+                    : undefined,
+              },
+            ],
+          },
+
+          durability !== "exit" && {
+            values: { myKey: "hi my value" },
+            next: ["grandchild1"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.any(String),
+                checkpoint_id: expect.any(String),
+                checkpoint_map: expect.objectContaining({
+                  "": expect.any(String),
+                }),
+              },
+            },
+            metadata: {
+              thread_id: "1",
+              source: "loop",
+              step: 0,
+              parents: expect.objectContaining({
+                "": expect.any(String),
+              }),
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.any(String),
+                checkpoint_id: expect.any(String),
+              },
+            },
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "grandchild1",
+                path: [PULL, "grandchild1"],
+                interrupts: [],
+                result: { myKey: "hi my value here" },
+              },
+            ],
+          },
+
+          durability !== "exit" && {
+            values: {},
+            next: ["__start__"],
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.any(String),
+                checkpoint_id: expect.any(String),
+                checkpoint_map: expect.objectContaining({
+                  "": expect.any(String),
+                }),
+              },
+            },
+            metadata: {
+              thread_id: "1",
+              source: "input",
+              step: -1,
+              parents: expect.objectContaining({
+                "": expect.any(String),
+              }),
+            },
+            createdAt: expect.any(String),
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "__start__",
+                path: [PULL, "__start__"],
+                interrupts: [],
+                result: { myKey: "hi my value" },
+              },
+            ],
+          },
+        ].filter(Boolean)
+      );
+
+      // replay grandchild checkpoint
+      // only applicable if `durability` is `async` or `sync`
+      if (durability !== "exit") {
+        const events = await gatherIterator(
+          app.stream(null, {
+            ...grandchildHistory[2].config,
+            durability,
+            subgraphs: true,
+          })
+        );
+
+        expect(events).toEqual([
+          [
+            [
+              expect.stringMatching(/^child:/),
+              expect.stringMatching(/^child1:/),
+            ],
+            { grandchild1: { myKey: "hi my value here" } },
+          ],
+          [[""], { [INTERRUPT]: [] }],
+        ]);
+      }
     });
 
     it("send to nested graphs", async () => {
@@ -7679,31 +8134,19 @@ export function runPregelTests(
           default: () => [],
         }),
       });
-      const continueToJokes = async (
-        state: typeof OverallStateAnnotation.State
-      ) => {
-        return state.subjects.map(
-          (s) => new Send("generateJoke", { subject: s })
-        );
-      };
 
       const JokeStateAnnotation = Annotation.Root({
         subject: Annotation<string>,
       });
-
-      const edit = async (state: typeof JokeStateAnnotation.State) => {
-        const { subject } = state;
-        return { subject: `${subject} - hohoho` };
-      };
 
       // subgraph
       const subgraph = new StateGraph({
         input: JokeStateAnnotation,
         output: OverallStateAnnotation,
       })
-        .addNode("edit", edit)
-        .addNode("generate", async (state) => {
-          return { jokes: [`Joke about ${state.subject}`] };
+        .addNode({
+          edit: ({ subject }) => ({ subject: `${subject} - hohoho` }),
+          generate: (state) => ({ jokes: [`Joke about ${state.subject}`] }),
         })
         .addEdge("__start__", "edit")
         .addEdge("edit", "generate");
@@ -7714,24 +8157,26 @@ export function runPregelTests(
           "generateJoke",
           subgraph.compile({ interruptBefore: ["generate"] })
         )
-        .addConditionalEdges("__start__", continueToJokes);
+        .addConditionalEdges("__start__", (state) =>
+          state.subjects.map((s) => new Send("generateJoke", { subject: s }))
+        );
 
       const graph = builder.compile({ checkpointer });
-      const config = { configurable: { thread_id: "1" } };
+      const config = { configurable: { thread_id: "1" }, durability };
       const tracer = new FakeTracer();
 
       // invoke and pause at nested interrupt
       expect(
         await graph.invoke(
-          {
-            subjects: ["cats", "dogs"],
-          },
+          { subjects: ["cats", "dogs"] },
           { ...config, callbacks: [tracer] }
         )
       ).toEqual({
         subjects: ["cats", "dogs"],
         jokes: [],
+        __interrupt__: [],
       });
+
       await awaitAllCallbacks();
       expect(tracer.runs.length).toEqual(1);
 
@@ -7773,16 +8218,25 @@ export function runPregelTests(
             checkpoint_id: expect.any(String),
           },
         },
-        metadata: { parents: {}, source: "loop", writes: null, step: 0 },
-        createdAt: expect.any(String),
-        parentConfig: {
-          configurable: {
-            thread_id: "1",
-            checkpoint_ns: "",
-            checkpoint_id: expect.any(String),
-          },
+        metadata: {
+          parents: {},
+          source: "loop",
+          step: 0,
+          thread_id: "1",
         },
+        createdAt: expect.any(String),
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: "",
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
       });
+
       // check state of each of the inner tasks
       expect(
         await graph.getState(outerState.tasks[0].state as RunnableConfig)
@@ -7802,17 +8256,20 @@ export function runPregelTests(
         metadata: {
           step: 1,
           source: "loop",
-          writes: {},
           parents: { "": expect.any(String) },
+          thread_id: "1",
         },
         createdAt: expect.any(String),
-        parentConfig: {
-          configurable: {
-            thread_id: "1",
-            checkpoint_ns: expect.stringContaining("generateJoke:"),
-            checkpoint_id: expect.any(String),
-          },
-        },
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: expect.stringContaining("generateJoke:"),
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
         tasks: [
           {
             id: expect.any(String),
@@ -7822,6 +8279,7 @@ export function runPregelTests(
           },
         ],
       });
+
       expect(
         await graph.getState(outerState.tasks[1].state as RunnableConfig)
       ).toEqual({
@@ -7838,19 +8296,22 @@ export function runPregelTests(
           },
         },
         metadata: {
+          thread_id: "1",
           step: 1,
           source: "loop",
-          writes: {},
           parents: { "": expect.any(String) },
         },
         createdAt: expect.any(String),
-        parentConfig: {
-          configurable: {
-            thread_id: "1",
-            checkpoint_ns: expect.stringContaining("generateJoke:"),
-            checkpoint_id: expect.any(String),
-          },
-        },
+        parentConfig:
+          durability !== "exit"
+            ? {
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: expect.stringContaining("generateJoke:"),
+                  checkpoint_id: expect.any(String),
+                },
+              }
+            : undefined,
         tasks: [
           {
             id: expect.any(String),
@@ -7871,12 +8332,8 @@ export function runPregelTests(
       expect(results).toHaveLength(2);
       expect(results).toEqual(
         expect.arrayContaining([
-          {
-            generateJoke: { jokes: ["Joke about cats - hohoho"] },
-          },
-          {
-            generateJoke: { jokes: ["Joke about turtles - hohoho"] },
-          },
+          { generateJoke: { jokes: ["Joke about cats - hohoho"] } },
+          { generateJoke: { jokes: ["Joke about turtles - hohoho"] } },
         ])
       );
 
@@ -7897,13 +8354,8 @@ export function runPregelTests(
         },
         metadata: {
           parents: {},
+          thread_id: "1",
           source: "loop",
-          writes: {
-            generateJoke: [
-              { jokes: ["Joke about cats - hohoho"] },
-              { jokes: ["Joke about turtles - hohoho"] },
-            ],
-          },
           step: 1,
         },
         createdAt: expect.any(String),
@@ -7939,13 +8391,8 @@ export function runPregelTests(
           metadata: {
             parents: {},
             source: "loop",
-            writes: {
-              generateJoke: [
-                { jokes: ["Joke about cats - hohoho"] },
-                { jokes: ["Joke about turtles - hohoho"] },
-              ],
-            },
             step: 1,
+            thread_id: "1",
           },
           createdAt: expect.any(String),
           parentConfig: {
@@ -7970,6 +8417,10 @@ export function runPregelTests(
                   checkpoint_ns: expect.stringContaining("generateJoke:"),
                 },
               },
+              result:
+                durability !== "exit"
+                  ? { jokes: ["Joke about cats - hohoho"] }
+                  : undefined,
             },
             {
               id: expect.any(String),
@@ -7982,6 +8433,10 @@ export function runPregelTests(
                   checkpoint_ns: expect.stringContaining("generateJoke:"),
                 },
               },
+              result:
+                durability !== "exit"
+                  ? { jokes: ["Joke about turtles - hohoho"] }
+                  : undefined,
             },
           ],
           next: ["generateJoke", "generateJoke"],
@@ -7992,17 +8447,25 @@ export function runPregelTests(
               checkpoint_id: expect.any(String),
             },
           },
-          metadata: { parents: {}, source: "loop", writes: null, step: 0 },
-          createdAt: expect.any(String),
-          parentConfig: {
-            configurable: {
-              thread_id: "1",
-              checkpoint_ns: "",
-              checkpoint_id: expect.any(String),
-            },
+          metadata: {
+            parents: {},
+            source: "loop",
+            step: 0,
+            thread_id: "1",
           },
+          createdAt: expect.any(String),
+          parentConfig:
+            durability !== "exit"
+              ? {
+                  configurable: {
+                    thread_id: "1",
+                    checkpoint_ns: "",
+                    checkpoint_id: expect.any(String),
+                  },
+                }
+              : undefined,
         },
-        {
+        durability !== "exit" && {
           values: { jokes: [] },
           tasks: [
             {
@@ -8010,6 +8473,7 @@ export function runPregelTests(
               name: "__start__",
               path: [PULL, "__start__"],
               interrupts: [],
+              result: { subjects: ["cats", "dogs"] },
             },
           ],
           next: ["__start__"],
@@ -8023,12 +8487,12 @@ export function runPregelTests(
           metadata: {
             parents: {},
             source: "input",
-            writes: { __start__: { subjects: ["cats", "dogs"] } },
             step: -1,
+            thread_id: "1",
           },
           createdAt: expect.any(String),
         },
-      ];
+      ].filter(Boolean);
       expect(actualHistory).toEqual(expectedHistory);
     });
 
@@ -8063,7 +8527,7 @@ export function runPregelTests(
 
       // First chunk from subgraph (buffered on initial await) should be streamed immediately
       const stream = await Promise.race([
-        graph.stream({}, { subgraphs: true }),
+        graph.stream({}, { subgraphs: true, durability }),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("Timed out.")), 100)
         ),
@@ -8074,27 +8538,558 @@ export function runPregelTests(
       }
       expect(chunks.length).toEqual(4);
     });
+
+    it("should handle non-overlapping parent command updates", async () => {
+      const StateAnnotation = Annotation.Root({
+        uniqueStrings: Annotation<string[]>({
+          reducer: (a, b) => Array.from(new Set([...a, ...b])),
+        }),
+      });
+
+      // Define subgraph
+      const subgraph = new StateGraph(StateAnnotation)
+        .addNode(
+          "subgraph_node_1",
+          () =>
+            new Command({
+              goto: "subgraph_node_2",
+              update: {
+                uniqueStrings: ["bar"],
+                visitedNodes: ["subgraph_node_1"],
+              },
+            }),
+          { ends: ["subgraph_node_2"] }
+        )
+        .addNode(
+          "subgraph_node_2",
+          () =>
+            new Command({
+              goto: "node_3",
+              update: { visitedNodes: ["subgraph_node_2"] },
+              graph: "PARENT",
+            })
+        )
+        .addEdge(START, "subgraph_node_1")
+        .compile();
+
+      // Define main graph
+      const mainGraph = new StateGraph(StateAnnotation)
+        .addNode(
+          "node_1",
+          () =>
+            new Command({
+              goto: "node_2",
+              update: { uniqueStrings: ["foo"] },
+            }),
+          { ends: ["node_2"] }
+        )
+        .addNode("node_2", subgraph)
+        .addNode(
+          "node_3",
+          () =>
+            new Command({
+              update: { uniqueStrings: ["baz"] },
+            })
+        )
+        .addEdge(START, "node_1")
+        .addEdge("node_2", "node_3")
+        .compile();
+
+      const result = await mainGraph.invoke(
+        { uniqueStrings: [] },
+        { durability }
+      );
+      expect(result).toEqual({
+        uniqueStrings: ["foo", "bar", "baz"],
+      });
+    });
+
+    it("checkpointer: true", async () => {
+      const checkpointer = await createCheckpointer();
+      const StateAnnotation = Annotation.Root({ myKey: Annotation<string>() });
+
+      const innerCounter = ({ myKey }: typeof StateAnnotation.State) => {
+        const thereCount = myKey.split("there").length - 1;
+        if (thereCount < 2) return "inner";
+        return END;
+      };
+
+      const inner = new StateGraph(
+        Annotation.Root({
+          myKey: Annotation<string>({ reducer: (a, b) => a + b }),
+          myOtherKey: Annotation<string>(),
+        })
+      )
+        .addSequence({
+          inner_1: (state) => ({
+            myKey: " got here",
+            myOtherKey: state.myKey,
+          }),
+          inner_2: () => ({ myKey: " and there" }),
+        })
+        .addEdge(START, "inner_1");
+
+      const graph = new StateGraph(StateAnnotation)
+        .addNode("inner", inner.compile({ checkpointer: true }))
+        .addEdge(START, "inner")
+        .addConditionalEdges("inner", innerCounter)
+        .compile({ checkpointer });
+
+      expect(
+        await gatherIterator(
+          graph.stream(
+            { myKey: "" },
+            {
+              configurable: { thread_id: "1" },
+              durability,
+              subgraphs: true,
+            }
+          )
+        )
+      ).toEqual([
+        [["inner"], { inner_1: { myKey: " got here", myOtherKey: "" } }],
+        [["inner"], { inner_2: { myKey: " and there" } }],
+        [[], { inner: { myKey: " got here and there" } }],
+        [
+          ["inner"],
+          {
+            inner_1: {
+              myKey: " got here",
+              myOtherKey: " got here and there got here and there",
+            },
+          },
+        ],
+        [["inner"], { inner_2: { myKey: " and there" } }],
+        [
+          [],
+          {
+            inner: {
+              myKey:
+                " got here and there got here and there got here and there",
+            },
+          },
+        ],
+      ]);
+
+      const innerHistory = await gatherIterator(
+        graph.getStateHistory({
+          configurable: { thread_id: "1", checkpoint_ns: "inner" },
+        })
+      );
+
+      expect(innerHistory).toEqual(
+        [
+          {
+            values: {
+              myKey:
+                " got here and there got here and there got here and there",
+              myOtherKey: " got here and there got here and there",
+            },
+            next: [],
+            tasks: [],
+            metadata: {
+              source: "loop",
+              step: 6,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+              },
+            },
+          },
+          durability !== "exit" && {
+            values: {
+              myKey: " got here and there got here and there got here",
+              myOtherKey: " got here and there got here and there",
+            },
+            next: ["inner_2"],
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "inner_2",
+                path: ["__pregel_pull", "inner_2"],
+                interrupts: [],
+                result: { myKey: " and there" },
+              },
+            ],
+            metadata: {
+              source: "loop",
+              step: 5,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+              },
+            },
+          },
+          durability !== "exit" && {
+            values: {
+              myKey: " got here and there got here and there",
+              myOtherKey: "",
+            },
+            next: ["inner_1"],
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "inner_1",
+                path: ["__pregel_pull", "inner_1"],
+                interrupts: [],
+                result: {
+                  myKey: " got here",
+                  myOtherKey: " got here and there got here and there",
+                },
+              },
+            ],
+            metadata: {
+              source: "loop",
+              step: 4,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+              },
+            },
+          },
+          durability !== "exit" && {
+            values: { myKey: " got here and there", myOtherKey: "" },
+            next: ["__start__"],
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "__start__",
+                path: ["__pregel_pull", "__start__"],
+                interrupts: [],
+                result: { myKey: " got here and there" },
+              },
+            ],
+            metadata: {
+              source: "input",
+              step: 3,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+              },
+            },
+          },
+          {
+            values: { myKey: " got here and there", myOtherKey: "" },
+            next: [],
+            tasks: [],
+            metadata: {
+              source: "loop",
+              step: 2,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig:
+              durability !== "exit"
+                ? {
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: "inner",
+                      checkpoint_id: expect.any(String),
+                    },
+                  }
+                : undefined,
+          },
+          durability !== "exit" && {
+            values: { myKey: " got here", myOtherKey: "" },
+            next: ["inner_2"],
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "inner_2",
+                path: ["__pregel_pull", "inner_2"],
+                interrupts: [],
+                result: { myKey: " and there" },
+              },
+            ],
+            metadata: {
+              source: "loop",
+              step: 1,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+              },
+            },
+          },
+          durability !== "exit" && {
+            values: { myKey: "" },
+            next: ["inner_1"],
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "inner_1",
+                path: ["__pregel_pull", "inner_1"],
+                interrupts: [],
+                result: { myKey: " got here", myOtherKey: "" },
+              },
+            ],
+            metadata: {
+              source: "loop",
+              step: 0,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+              },
+            },
+          },
+          durability !== "exit" && {
+            values: {},
+            next: ["__start__"],
+            tasks: [
+              {
+                id: expect.any(String),
+                name: "__start__",
+                path: ["__pregel_pull", "__start__"],
+                interrupts: [],
+                result: { myKey: "" },
+              },
+            ],
+            metadata: {
+              source: "input",
+              step: -1,
+              parents: { "": expect.any(String) },
+              thread_id: "1",
+            },
+            config: {
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "inner",
+                checkpoint_id: expect.any(String),
+                checkpoint_map: {
+                  "": expect.any(String),
+                  inner: expect.any(String),
+                },
+              },
+            },
+            createdAt: expect.any(String),
+            parentConfig: undefined,
+          },
+        ].filter(Boolean)
+      );
+    });
+
+    it("should not throw when you try to access config.store inside a subgraph", async () => {
+      const MinimalAnnotatedState = Annotation.Root({
+        query: Annotation<string>(),
+      });
+      type MinimalState = typeof MinimalAnnotatedState.State;
+      type MinimalUpdate = typeof MinimalAnnotatedState.Update;
+
+      async function nodeCallingBuildContext(
+        state: MinimalState,
+        config?: LangGraphRunnableConfig
+      ): Promise<MinimalUpdate> {
+        if (!config?.store) {
+          throw new Error("Store is required.");
+        }
+
+        await config.store.search(["namespace"], {
+          query: state.query,
+        });
+        return {};
+      }
+
+      const checkpointer = await createCheckpointer();
+      const store = new InMemoryStore();
+
+      const reasoningWorkflow = new StateGraph(MinimalAnnotatedState)
+        .addNode("initial_reasoning_minimal", nodeCallingBuildContext)
+        .addEdge(START, "initial_reasoning_minimal")
+        .addEdge("initial_reasoning_minimal", END);
+
+      const minimalReasoningGraph = reasoningWorkflow.compile({
+        store,
+        checkpointer,
+      });
+
+      const mainWorkflow = new StateGraph(MinimalAnnotatedState)
+        .addNode("reasoning_subgraph", minimalReasoningGraph)
+        .addEdge(START, "reasoning_subgraph")
+        .addEdge("reasoning_subgraph", END);
+
+      const minimalMainGraph = mainWorkflow.compile({ store, checkpointer });
+      const config = { configurable: { thread_id: "1" }, durability };
+
+      // Expect the invocation to pass
+      const result = await minimalMainGraph.invoke({ query: "test" }, config);
+      expect(result).toBeDefined();
+    });
+
+    it("streamMode should be respected", async () => {
+      const checkpointer = await createCheckpointer();
+      const subgraph = new StateGraph(MessagesAnnotation)
+        .addNode("c_one", () => ({ messages: ["c_one"] }))
+        .addEdge(START, "c_one")
+        .compile({ checkpointer });
+
+      const graph = new StateGraph(
+        Annotation.Root({
+          ...MessagesAnnotation.spec,
+          updates: Annotation<unknown[]>,
+        })
+      )
+        .addNode(
+          "p_one",
+          async (state) => ({
+            updates: await gatherIterator(
+              subgraph.stream(
+                { messages: state.messages },
+                { streamMode: "updates" }
+              )
+            ),
+          }),
+          { subgraphs: [subgraph] }
+        )
+        .addEdge(START, "p_one")
+        .compile({ checkpointer });
+
+      expect(
+        await graph.invoke(
+          { messages: ["input"] },
+          { configurable: { thread_id: "1" }, durability }
+        )
+      ).toEqual({
+        messages: [new _AnyIdHumanMessage("input")],
+        updates: await gatherIterator(
+          subgraph.stream(
+            { messages: ["input"] },
+            { streamMode: "updates", configurable: { thread_id: "random" } }
+          )
+        ),
+      });
+    });
   });
 
   it("should work with streamMode messages and custom from within a subgraph", async () => {
     const child = new StateGraph(MessagesAnnotation)
       .addNode("c_one", () => ({
-        messages: [new HumanMessage("foo"), new AIMessage("bar")],
+        messages: [new HumanMessage("f"), new AIMessage("b")],
       }))
       .addNode("c_two", async (_, config) => {
         const model = new FakeChatModel({
-          responses: [new AIMessage("123"), new AIMessage("baz")],
+          responses: [new AIMessage("1"), new AIMessage("2")],
         }).withConfig({ tags: ["c_two_chat_model"] });
+
         const stream = await model.stream("yo", {
           ...config,
           runName: "c_two_chat_model_stream",
         });
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
         for await (const chunk of stream) {
-          config.writer?.({
-            content: chunk.content,
-            from: "subgraph",
-          });
+          config.writer?.({ content: chunk.content, from: "subgraph" });
         }
         return { messages: [await model.invoke("hey", config)] };
       })
@@ -8105,20 +9100,14 @@ export function runPregelTests(
     const parent = new StateGraph(MessagesAnnotation)
       .addNode("p_one", async (_, config) => {
         const toolExecutor = RunnableLambda.from(async () => {
-          return [new ToolMessage({ content: "qux", tool_call_id: "test" })];
+          return [new ToolMessage({ content: "q", tool_call_id: "test" })];
         });
-        config.writer?.({
-          from: "parent",
-        });
-        return {
-          messages: await toolExecutor.invoke({}, config),
-        };
+        config.writer?.({ from: "parent" });
+        return { messages: await toolExecutor.invoke({}, config) };
       })
       .addNode("p_two", child.compile())
       .addNode("p_three", async (_, config) => {
-        const model = new FakeChatModel({
-          responses: [new AIMessage("parent")],
-        });
+        const model = new FakeChatModel({ responses: [new AIMessage("x")] });
         await model.invoke("hey", config);
         return { messages: [] };
       })
@@ -8130,7 +9119,7 @@ export function runPregelTests(
     const graph = parent.compile({});
     const config = {};
 
-    const streamedEvents: StateSnapshot[] = await gatherIterator(
+    const streamedEvents = await gatherIterator(
       graph.stream({ messages: [] }, { ...config, streamMode: "messages" })
     );
 
@@ -8138,15 +9127,14 @@ export function runPregelTests(
       [
         new _AnyIdToolMessage({
           tool_call_id: "test",
-          content: "qux",
+          content: "q",
         }),
         {
           langgraph_step: 1,
           langgraph_node: "p_one",
-          langgraph_triggers: ["__start__:p_one"],
+          langgraph_triggers: ["branch:to:p_one"],
           langgraph_path: [PULL, "p_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
-          __pregel_resuming: false,
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_one:/),
           name: "p_one",
@@ -8155,15 +9143,14 @@ export function runPregelTests(
       ],
       [
         new _AnyIdHumanMessage({
-          content: "foo",
+          content: "f",
         }),
         {
           langgraph_step: 1,
           langgraph_node: "c_one",
-          langgraph_triggers: ["__start__:c_one"],
+          langgraph_triggers: ["branch:to:c_one"],
           langgraph_path: [PULL, "c_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
-          __pregel_resuming: false,
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
           name: "c_one",
@@ -8172,15 +9159,14 @@ export function runPregelTests(
       ],
       [
         new _AnyIdAIMessage({
-          content: "bar",
+          content: "b",
         }),
         {
           langgraph_step: 1,
           langgraph_node: "c_one",
-          langgraph_triggers: ["__start__:c_one"],
+          langgraph_triggers: ["branch:to:c_one"],
           langgraph_path: [PULL, "c_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
-          __pregel_resuming: false,
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
           name: "c_one",
@@ -8194,10 +9180,9 @@ export function runPregelTests(
         {
           langgraph_step: 2,
           langgraph_node: "c_two",
-          langgraph_triggers: ["c_one"],
+          langgraph_triggers: ["branch:to:c_two"],
           langgraph_path: [PULL, "c_two"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
-          __pregel_resuming: false,
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
           ls_model_type: "chat",
@@ -8214,69 +9199,27 @@ export function runPregelTests(
         {
           langgraph_step: 2,
           langgraph_node: "c_two",
-          langgraph_triggers: ["c_one"],
+          langgraph_triggers: ["branch:to:c_two"],
           langgraph_path: [PULL, "c_two"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
-          __pregel_resuming: false,
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
           tags: ["c_two_chat_model"],
-          name: "c_two_chat_model_stream",
         },
       ],
       [
         new _AnyIdAIMessageChunk({
-          content: "3",
-        }),
-        {
-          langgraph_step: 2,
-          langgraph_node: "c_two",
-          langgraph_triggers: ["c_one"],
-          langgraph_path: [PULL, "c_two"],
-          langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
-          __pregel_resuming: false,
-          __pregel_task_id: expect.any(String),
-          checkpoint_ns: expect.stringMatching(/^p_two:/),
-          ls_model_type: "chat",
-          ls_provider: "FakeChatModel",
-          ls_stop: undefined,
-          tags: ["c_two_chat_model"],
-          name: "c_two_chat_model_stream",
-        },
-      ],
-      [
-        new _AnyIdAIMessage({
-          content: "baz",
-        }),
-        {
-          langgraph_step: 2,
-          langgraph_node: "c_two",
-          langgraph_triggers: ["c_one"],
-          langgraph_path: [PULL, "c_two"],
-          langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
-          __pregel_resuming: false,
-          __pregel_task_id: expect.any(String),
-          checkpoint_ns: expect.stringMatching(/^p_two:/),
-          ls_model_type: "chat",
-          ls_provider: "FakeChatModel",
-          ls_stop: undefined,
-          tags: ["c_two_chat_model"],
-        },
-      ],
-      [
-        new _AnyIdAIMessage({
-          content: "parent",
+          content: "x",
         }),
         {
           langgraph_step: 3,
           langgraph_node: "p_three",
-          langgraph_triggers: ["p_two"],
+          langgraph_triggers: ["branch:to:p_three"],
           langgraph_path: [PULL, "p_three"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
-          __pregel_resuming: false,
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_three/),
           ls_model_type: "chat",
@@ -8292,46 +9235,29 @@ export function runPregelTests(
     );
 
     expect(streamedCustomEvents).toEqual([
-      {
-        from: "parent",
-      },
-      {
-        content: "1",
-        from: "subgraph",
-      },
-      {
-        content: "2",
-        from: "subgraph",
-      },
-      {
-        content: "3",
-        from: "subgraph",
-      },
+      { from: "parent" },
+      { content: "1", from: "subgraph" },
     ]);
 
-    const streamedCombinedEvents: StateSnapshot[] = await gatherIterator(
+    const streamedCombinedEvents = await gatherIterator(
       graph.stream(
         { messages: [] },
         { ...config, streamMode: ["custom", "messages"] }
       )
     );
 
-    expect(streamedCombinedEvents).toEqual([
+    expect(streamedCombinedEvents).toMatchObject([
       ["custom", { from: "parent" }],
       [
         "messages",
         [
-          new _AnyIdToolMessage({
-            tool_call_id: "test",
-            content: "qux",
-          }),
+          new _AnyIdToolMessage({ tool_call_id: "test", content: "q" }),
           {
             langgraph_step: 1,
             langgraph_node: "p_one",
-            langgraph_triggers: ["__start__:p_one"],
+            langgraph_triggers: ["branch:to:p_one"],
             langgraph_path: [PULL, "p_one"],
             langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
-            __pregel_resuming: false,
             __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_one:/),
             name: "p_one",
@@ -8342,17 +9268,14 @@ export function runPregelTests(
       [
         "messages",
         [
-          new _AnyIdHumanMessage({
-            content: "foo",
-          }),
+          new _AnyIdHumanMessage({ content: "f" }),
           {
             langgraph_step: 1,
             langgraph_node: "c_one",
-            langgraph_triggers: ["__start__:c_one"],
+            langgraph_triggers: ["branch:to:c_one"],
             langgraph_path: [PULL, "c_one"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_one:.*/),
-            __pregel_resuming: false,
             __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
             name: "c_one",
@@ -8363,17 +9286,14 @@ export function runPregelTests(
       [
         "messages",
         [
-          new _AnyIdAIMessage({
-            content: "bar",
-          }),
+          new _AnyIdAIMessage({ content: "b" }),
           {
             langgraph_step: 1,
             langgraph_node: "c_one",
-            langgraph_triggers: ["__start__:c_one"],
+            langgraph_triggers: ["branch:to:c_one"],
             langgraph_path: [PULL, "c_one"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_one:.*/),
-            __pregel_resuming: false,
             __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
             name: "c_one",
@@ -8384,17 +9304,14 @@ export function runPregelTests(
       [
         "messages",
         [
-          new _AnyIdAIMessageChunk({
-            content: "1",
-          }),
+          new _AnyIdAIMessageChunk({ content: "1" }),
           {
             langgraph_step: 2,
             langgraph_node: "c_two",
-            langgraph_triggers: ["c_one"],
+            langgraph_triggers: ["branch:to:c_two"],
             langgraph_path: [PULL, "c_two"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_two:.*/),
-            __pregel_resuming: false,
             __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
             ls_model_type: "chat",
@@ -8409,67 +9326,14 @@ export function runPregelTests(
       [
         "messages",
         [
-          new _AnyIdAIMessageChunk({
-            content: "2",
-          }),
+          new _AnyIdAIMessageChunk({ content: "2" }),
           {
             langgraph_step: 2,
             langgraph_node: "c_two",
-            langgraph_triggers: ["c_one"],
+            langgraph_triggers: ["branch:to:c_two"],
             langgraph_path: [PULL, "c_two"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_two:.*/),
-            __pregel_resuming: false,
-            __pregel_task_id: expect.any(String),
-            checkpoint_ns: expect.stringMatching(/^p_two:/),
-            ls_model_type: "chat",
-            ls_provider: "FakeChatModel",
-            ls_stop: undefined,
-            tags: ["c_two_chat_model"],
-            name: "c_two_chat_model_stream",
-          },
-        ],
-      ],
-      ["custom", { from: "subgraph", content: "2" }],
-      [
-        "messages",
-        [
-          new _AnyIdAIMessageChunk({
-            content: "3",
-          }),
-          {
-            langgraph_step: 2,
-            langgraph_node: "c_two",
-            langgraph_triggers: ["c_one"],
-            langgraph_path: [PULL, "c_two"],
-            langgraph_checkpoint_ns:
-              expect.stringMatching(/^p_two:.*\|c_two:.*/),
-            __pregel_resuming: false,
-            __pregel_task_id: expect.any(String),
-            checkpoint_ns: expect.stringMatching(/^p_two:/),
-            ls_model_type: "chat",
-            ls_provider: "FakeChatModel",
-            ls_stop: undefined,
-            tags: ["c_two_chat_model"],
-            name: "c_two_chat_model_stream",
-          },
-        ],
-      ],
-      ["custom", { from: "subgraph", content: "3" }],
-      [
-        "messages",
-        [
-          new _AnyIdAIMessage({
-            content: "baz",
-          }),
-          {
-            langgraph_step: 2,
-            langgraph_node: "c_two",
-            langgraph_triggers: ["c_one"],
-            langgraph_path: [PULL, "c_two"],
-            langgraph_checkpoint_ns:
-              expect.stringMatching(/^p_two:.*\|c_two:.*/),
-            __pregel_resuming: false,
             __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
             ls_model_type: "chat",
@@ -8482,16 +9346,13 @@ export function runPregelTests(
       [
         "messages",
         [
-          new _AnyIdAIMessage({
-            content: "parent",
-          }),
+          new _AnyIdAIMessageChunk({ content: "x" }),
           {
             langgraph_step: 3,
             langgraph_node: "p_three",
-            langgraph_triggers: ["p_two"],
+            langgraph_triggers: ["branch:to:p_three"],
             langgraph_path: [PULL, "p_three"],
             langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
-            __pregel_resuming: false,
             __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_three/),
             ls_model_type: "chat",
@@ -8603,6 +9464,17 @@ export function runPregelTests(
       return checkpoints.map((checkpoint) => {
         const clone = { ...checkpoint };
         delete clone.createdAt;
+
+        if (clone.metadata) {
+          clone.metadata = { ...clone.metadata, ...{ thread_id: "1" } };
+        }
+
+        // debug stream events will not have result
+        clone.tasks = clone.tasks.map((task) => ({
+          ...task,
+          result: undefined,
+        }));
+
         return clone;
       });
     }
@@ -8614,7 +9486,7 @@ export function runPregelTests(
 
   test.each([
     [
-      "debug nested subgraph: default graph",
+      "default graph",
       (() => {
         const state = Annotation.Root({
           messages: Annotation<string[]>({
@@ -8648,7 +9520,7 @@ export function runPregelTests(
       })(),
     ],
     [
-      "debug nested subgraph: subgraph as third argument",
+      "subgraph as third argument",
       (() => {
         const state = Annotation.Root({
           messages: Annotation<string[]>({
@@ -8687,7 +9559,7 @@ export function runPregelTests(
         return grandParent;
       })(),
     ],
-  ])("%s", async (_title, grandParent) => {
+  ])("debug nested subgraph: %s", async (_title, grandParent) => {
     const checkpointer = await createCheckpointer();
     const graph = grandParent.compile({ checkpointer });
 
@@ -8747,16 +9619,418 @@ export function runPregelTests(
           delete clone.parentConfig.configurable.checkpoint_map;
         }
 
+        if (clone.metadata) {
+          // state snapshots are augmented with thread_id, so we add it to the cloned checkpoint so we don't get an assertion failure
+          clone.metadata = {
+            ...clone.metadata,
+            ...{ thread_id: "1" },
+          };
+        }
+
+        // debug stream events will not have result of tasks
+        clone.tasks = clone.tasks.map((task) => ({
+          ...task,
+          result: undefined,
+        }));
+
         return clone;
       });
     }
 
     expect(
       Object.values(streamCheckpointMap).map(sanitizeCheckpoints)
-    ).toMatchObject(
-      // @ts-expect-error Not sure why toMatchObject does not accept historyNs
-      historyNs.map(sanitizeCheckpoints)
+    ).toMatchObject(historyNs.map(sanitizeCheckpoints));
+  });
+
+  it("test_parent_command", async () => {
+    const getUserName = tool(
+      async () => {
+        return new Command({
+          update: { user_name: "Meow" },
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "get_user_name",
+        schema: z3.object({}),
+      }
     );
+    const subgraph = new StateGraph(MessagesAnnotation)
+      .addNode("tool", getUserName)
+      .addEdge("__start__", "tool")
+      .compile();
+
+    const CustomParentStateAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      user_name: Annotation<string>,
+    });
+
+    const checkpointer = await createCheckpointer();
+
+    const graph = new StateGraph(CustomParentStateAnnotation)
+      .addNode("alice", subgraph)
+      .addEdge("__start__", "alice")
+      .compile({ checkpointer });
+
+    const config = {
+      configurable: {
+        thread_id: "1",
+      },
+    };
+
+    const res = await graph.invoke(
+      {
+        messages: [{ role: "user", content: "get user name" }],
+      },
+      config
+    );
+
+    expect(res).toEqual({
+      messages: [
+        new _AnyIdHumanMessage({
+          content: "get user name",
+        }),
+      ],
+      user_name: "Meow",
+    });
+
+    const state = await graph.getState(config);
+    expect(state).toEqual({
+      values: {
+        messages: [
+          new _AnyIdHumanMessage({
+            content: "get user name",
+          }),
+        ],
+        user_name: "Meow",
+      },
+      next: [],
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+      metadata: {
+        source: "loop",
+        step: 1,
+        parents: {},
+        thread_id: "1",
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+      tasks: [],
+    });
+  });
+
+  it("test_parent_command with goto with double updates", async () => {
+    const CustomStateAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      user_name: Annotation<string>({
+        // Reducer is necessary because using Command.PARENT causes two updates
+        reducer: (_, b) => b,
+      }),
+    });
+
+    const getUserName = tool(
+      async () => {
+        return [
+          new Command({
+            update: { user_name: "Meow" },
+            goto: "bob",
+            graph: Command.PARENT,
+          }),
+        ];
+      },
+      {
+        name: "get_user_name",
+        schema: z3.object({}),
+      }
+    );
+    const subgraph = new StateGraph(CustomStateAnnotation)
+      .addNode("init", async () => {
+        return { user_name: "Woof" };
+      })
+      .addNode("tool", getUserName, { ends: ["__end__"] })
+      .addEdge("__start__", "init")
+      .addEdge("init", "tool")
+      .compile();
+
+    const checkpointer = await createCheckpointer();
+
+    const graph = new StateGraph(CustomStateAnnotation)
+      .addNode("init", async () => {
+        return {};
+      })
+      .addNode("alice", subgraph)
+      .addNode("bob", async (state) => {
+        if (state.user_name !== "Meow") {
+          throw new Error("failed to update state from child");
+        }
+        return { messages: [{ role: "assistant", content: "bob" }] };
+      })
+      .addEdge("__start__", "init")
+      .addConditionalEdges("init", async () => "alice")
+      .addEdge("alice", "bob")
+      .compile({ checkpointer });
+
+    const config = {
+      configurable: {
+        thread_id: "1",
+      },
+    };
+
+    const res = await graph.invoke(
+      { messages: [{ role: "user", content: "get user name" }] },
+      config
+    );
+
+    expect(res).toEqual({
+      messages: [
+        new _AnyIdHumanMessage({
+          content: "get user name",
+        }),
+        new _AnyIdAIMessage({
+          content: "bob",
+        }),
+      ],
+      user_name: "Meow",
+    });
+
+    const state = await graph.getState(config);
+
+    expect(state).toEqual({
+      values: {
+        messages: [
+          new _AnyIdHumanMessage({
+            content: "get user name",
+          }),
+          new _AnyIdAIMessage({
+            content: "bob",
+          }),
+        ],
+        user_name: "Meow",
+      },
+      next: [],
+      tasks: [],
+      metadata: {
+        source: "loop",
+        thread_id: "1",
+        step: 3,
+        parents: {},
+      },
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_id: expect.any(String),
+          checkpoint_ns: "",
+        },
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+    });
+  });
+
+  it("test_parent_command from grandchild graph", async () => {
+    const CustomStateAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      user_name: Annotation<string>,
+    });
+
+    const getUserName = tool(
+      async () => {
+        return new Command({
+          update: {
+            messages: [{ role: "assistant", content: "grandkid" }],
+            user_name: "jeffrey",
+          },
+          goto: "robert",
+          graph: Command.PARENT,
+        });
+      },
+      {
+        name: "get_user_name",
+        schema: z3.object({}),
+      }
+    );
+
+    const grandchildGraph = new StateGraph(CustomStateAnnotation)
+      .addNode("tool", getUserName)
+      .addEdge("__start__", "tool")
+      .compile();
+
+    const childGraph = new StateGraph(CustomStateAnnotation)
+      .addNode("bob", grandchildGraph)
+      .addNode("robert", async (state) => {
+        if (state.user_name !== "jeffrey") {
+          throw new Error("failed to update state from grandchild");
+        }
+        return { messages: [{ role: "assistant", content: "robert" }] };
+      })
+      .addEdge("__start__", "bob")
+      .addEdge("bob", "robert")
+      .compile();
+
+    const checkpointer = await createCheckpointer();
+
+    const graph = new StateGraph(CustomStateAnnotation)
+      .addNode("alice", childGraph)
+      .addEdge("__start__", "alice")
+      .compile({ checkpointer });
+
+    const config = {
+      configurable: {
+        thread_id: "1",
+      },
+    };
+
+    const res = await graph.invoke(
+      {
+        messages: [{ role: "user", content: "get user name" }],
+      },
+      config
+    );
+
+    expect(res).toEqual({
+      messages: [
+        new _AnyIdHumanMessage({
+          content: "get user name",
+        }),
+        new _AnyIdAIMessage({
+          content: "grandkid",
+        }),
+        new _AnyIdAIMessage({
+          content: "robert",
+        }),
+      ],
+      user_name: "jeffrey",
+    });
+
+    const state = await graph.getState(config);
+
+    expect(state).toEqual({
+      values: {
+        messages: [
+          new _AnyIdHumanMessage({
+            content: "get user name",
+          }),
+          new _AnyIdAIMessage({
+            content: "grandkid",
+          }),
+          new _AnyIdAIMessage({
+            content: "robert",
+          }),
+        ],
+        user_name: "jeffrey",
+      },
+      next: [],
+      tasks: [],
+      metadata: {
+        source: "loop",
+        step: 1,
+        parents: {},
+        thread_id: "1",
+      },
+      config: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_id: expect.any(String),
+          checkpoint_ns: "",
+        },
+      },
+      createdAt: expect.any(String),
+      parentConfig: {
+        configurable: {
+          thread_id: "1",
+          checkpoint_ns: "",
+          checkpoint_id: expect.any(String),
+        },
+      },
+    });
+  });
+
+  it("should handle Command.PARENT as described in the docs", async () => {
+    // See https://langchain-ai.github.io/langgraphjs/how-tos/command/#navigating-to-a-node-in-a-parent-graph
+    // Note that the example in the docs isn't deterministic, so this example is modified slightly
+    // to allow us to decide which way the graph branches explicitly from outside of the graph
+
+    // Define graph state
+    const StateAnnotation = Annotation.Root({
+      foo: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+    });
+
+    const callLog: string[] = [];
+    let goto = ""; // will init before execution
+
+    // Define the nodes
+    const nodeASubgraph = async (_state: typeof StateAnnotation.State) => {
+      callLog.push("Called A");
+      return new Command({
+        update: {
+          foo: "a",
+        },
+        goto,
+        graph: Command.PARENT,
+      });
+    };
+
+    // Nodes B and C are unchanged
+    const nodeB = async (state: typeof StateAnnotation.State) => {
+      callLog.push("Called B");
+      return {
+        foo: state.foo + "|b",
+      };
+    };
+
+    const nodeC = async (state: typeof StateAnnotation.State) => {
+      callLog.push("Called C");
+      return {
+        foo: state.foo + "|c",
+      };
+    };
+
+    const subgraph = new StateGraph(StateAnnotation)
+      .addNode("nodeA", nodeASubgraph)
+      .addEdge("__start__", "nodeA")
+      .compile();
+
+    const parentGraph = new StateGraph(StateAnnotation)
+      .addNode("subgraph", subgraph, {
+        ends: ["nodeB", "nodeC"],
+      })
+      .addNode("nodeB", nodeB)
+      .addNode("nodeC", nodeC)
+      .addEdge("__start__", "subgraph")
+      .compile();
+
+    goto = "nodeB";
+    let result = await parentGraph.invoke({});
+    expect(callLog).toEqual(["Called A", "Called B"]);
+    expect(result).toEqual({ foo: "a|b" });
+
+    // clear callLog
+    callLog.splice(0, callLog.length);
+
+    goto = "nodeC";
+    result = await parentGraph.invoke({});
+    expect(callLog).toEqual(["Called A", "Called C"]);
+    expect(result).toEqual({ foo: "a|c" });
   });
 
   it("should pass recursion limit set via .withConfig", async () => {
@@ -8784,6 +10058,2266 @@ export function runPregelTests(
     await expect(graphWithConfig.invoke({})).rejects.toThrow(
       GraphRecursionError
     );
+  });
+
+  it("should pass custom callbacks set via .withConfig", async () => {
+    const StateAnnotation = Annotation.Root({ prop: Annotation<string> });
+
+    const seen = new Set<string>();
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("one", () => ({ prop: "foo" }))
+      .addEdge(START, "one")
+      .compile()
+      .withConfig({
+        callbacks: [
+          {
+            handleChainStart: () => seen.add("handleChainStart"),
+            handleChainEnd: () => seen.add("handleChainEnd"),
+          },
+        ],
+      });
+
+    await gatherIterator(
+      graph.streamEvents({ prop: "bar" }, { version: "v2" })
+    );
+    expect(seen).toEqual(new Set(["handleChainStart", "handleChainEnd"]));
+  });
+
+  it("should interrupt and resume with Command inside a subgraph", async () => {
+    const subgraph = new StateGraph(MessagesAnnotation)
+      .addNode("one", (_) => {
+        const interruptValue = interrupt("<INTERRUPTED>");
+        if (interruptValue !== "<RESUMED>") {
+          throw new Error("Expected interrupt to return <RESUMED>");
+        }
+        return {
+          messages: [
+            {
+              role: "user",
+              content: "success",
+            },
+          ],
+        };
+      })
+      .addEdge(START, "one")
+      .compile();
+
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", () => {
+        // No-op
+        return {};
+      })
+      .addNode("subgraph", subgraph)
+      .addNode("two", (state) => {
+        if (state.messages.length !== 1) {
+          throw new Error(`Expected 1 message, got ${state.messages.length}`);
+        }
+        return {};
+      })
+      .addEdge(START, "one")
+      .addEdge("one", "subgraph")
+      .addEdge("subgraph", "two")
+      .addEdge("two", END)
+      .compile({ checkpointer: await createCheckpointer() });
+
+    const config = {
+      configurable: { thread_id: "test_subgraph_interrupt_resume" },
+    };
+
+    await graph.invoke(
+      {
+        messages: [],
+      },
+      config
+    );
+
+    const currTasks = (await graph.getState(config)).tasks;
+    expect(currTasks[0].interrupts).toHaveLength(1);
+
+    // Resume with `Command`
+    const result = await graph.invoke(
+      new Command({
+        resume: "<RESUMED>",
+      }),
+      config
+    );
+
+    const currTasksAfterCmd = (await graph.getState(config)).tasks;
+    expect(currTasksAfterCmd).toHaveLength(0);
+
+    expect(result.messages).toBeDefined();
+    expect(result.messages).toHaveLength(1);
+  });
+
+  it("should fail fast when interrupt is called without a checkpointer", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", () => {
+        interrupt("<INTERRUPTED>");
+        return {};
+      })
+      .addEdge(START, "one")
+      .compile();
+
+    const config = { configurable: { thread_id: "1" } };
+    const input = { messages: [{ type: "human" as const, content: "test" }] };
+
+    await expect(graph.invoke(input, config)).rejects.toThrow(
+      "No checkpointer set"
+    );
+
+    await expect(graph.getState(config)).rejects.toThrow("No checkpointer set");
+  });
+
+  describe("should interrupt and resume with Command inside a subgraph and usable zod schema", async () => {
+    it("with zod v3 schemas", async () => {
+      const schema = z3.object({
+        foo: z3.string(),
+        items: z3
+          .array(z3.string())
+          .default(() => [])
+          .langgraph.reducer(
+            // eslint-disable-next-line no-nested-ternary
+            (a, b) => a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+            z3.union([z3.string(), z3.array(z3.string())])
+          ),
+      });
+
+      const subgraph = new StateGraph(schema)
+        .addNode("subnode", (_) => {
+          const interruptValue = interrupt("<INTERRUPTED>");
+          if (interruptValue !== "<RESUMED>") {
+            throw new Error("Expected interrupt to return <RESUMED>");
+          }
+          return {
+            foo: "subgraph",
+            items: ["sub"],
+          };
+        })
+        .addEdge(START, "subnode")
+        .compile();
+      let enterred = 0;
+      const graph = new StateGraph(schema)
+        .addNode("one", () => {
+          enterred += 1;
+          return { foo: "start", items: ["one"] };
+        })
+        .addNode("subgraph", subgraph)
+        .addNode("two", (state) => {
+          if (state.items.length < 2) {
+            throw new Error(
+              `Expected at least 2 items, got ${state.items.length}`
+            );
+          }
+          return { foo: "done", items: ["two"] };
+        })
+        .addEdge(START, "one")
+        .addEdge("one", "subgraph")
+        .addEdge("subgraph", "two")
+        .addEdge("two", END)
+        .compile({ checkpointer: await createCheckpointer() });
+
+      const config = {
+        configurable: { thread_id: "test_subgraph_interrupt_resume_zod" },
+      };
+
+      await graph.invoke({ foo: "input", items: ["zero"] }, config);
+
+      const currTasks = (await graph.getState(config)).tasks;
+      expect(currTasks[0].interrupts).toHaveLength(1);
+
+      // Resume with `Command`
+      const result = await graph.invoke(
+        new Command({ resume: "<RESUMED>" }),
+        config
+      );
+
+      expect(enterred).toBe(1);
+      const currTasksAfterCmd = (await graph.getState(config)).tasks;
+      expect(currTasksAfterCmd).toHaveLength(0);
+
+      expect(result.foo).toBe("done");
+      // Since we return the full ["zero", "one", "sub"], it gets
+      // appended to the existing ["zero", "one"], causing the expected "duplication"
+      expect(result.items).toEqual([
+        "zero",
+        "one",
+        "zero",
+        "one",
+        "sub",
+        "two",
+      ]);
+    });
+    it("with zod v4 schemas", async () => {
+      const schema = z4.object({
+        foo: z4.string(),
+        items: withLangGraph(z4.array(z4.string()), {
+          reducer: {
+            schema: z4.union([z4.string(), z4.array(z4.string())]),
+            fn: (a, b) =>
+              // eslint-disable-next-line no-nested-ternary
+              a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+          },
+          default: (): string[] => [],
+        }),
+      });
+
+      const subgraph = new StateGraph(schema)
+        .addNode("subnode", (_) => {
+          const interruptValue = interrupt("<INTERRUPTED>");
+          if (interruptValue !== "<RESUMED>") {
+            throw new Error("Expected interrupt to return <RESUMED>");
+          }
+          return {
+            foo: "subgraph",
+            items: ["sub"],
+          };
+        })
+        .addEdge(START, "subnode")
+        .compile();
+      let enterred = 0;
+      const graph = new StateGraph(schema)
+        .addNode("one", () => {
+          enterred += 1;
+          return { foo: "start", items: ["one"] };
+        })
+        .addNode("subgraph", subgraph)
+        .addNode("two", (state) => {
+          if (state.items.length < 2) {
+            throw new Error(
+              `Expected at least 2 items, got ${state.items.length}`
+            );
+          }
+          return { foo: "done", items: ["two"] };
+        })
+        .addEdge(START, "one")
+        .addEdge("one", "subgraph")
+        .addEdge("subgraph", "two")
+        .addEdge("two", END)
+        .compile({ checkpointer: await createCheckpointer() });
+
+      const config = {
+        configurable: { thread_id: "test_subgraph_interrupt_resume_zod" },
+      };
+
+      await graph.invoke({ foo: "input", items: ["zero"] }, config);
+
+      const currTasks = (await graph.getState(config)).tasks;
+      expect(currTasks[0].interrupts).toHaveLength(1);
+
+      // Resume with `Command`
+      const result = await graph.invoke(
+        new Command({ resume: "<RESUMED>" }),
+        config
+      );
+
+      expect(enterred).toBe(1);
+      const currTasksAfterCmd = (await graph.getState(config)).tasks;
+      expect(currTasksAfterCmd).toHaveLength(0);
+
+      expect(result.foo).toBe("done");
+      // Since we return the full ["zero", "one", "sub"], it gets
+      // appended to the existing ["zero", "one"], causing the expected "duplication"
+      expect(result.items).toEqual([
+        "zero",
+        "one",
+        "zero",
+        "one",
+        "sub",
+        "two",
+      ]);
+    });
+  });
+
+  it("should be able to invoke a single node on a graph", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", (state) => {
+        if (!state.messages.length) {
+          throw new Error("State not found");
+        }
+        return {
+          messages: [
+            ...state.messages,
+            {
+              role: "user",
+              content: "success",
+            },
+          ],
+        };
+      })
+      .addNode("two", () => {
+        throw new Error("Should not be called");
+      })
+      .addEdge(START, "one")
+      .addEdge("one", "two")
+      .addEdge("two", END)
+      .compile();
+    const result = await graph.nodes.one.invoke({
+      messages: [new HumanMessage("start")],
+    });
+    expect(result.messages).toBeDefined();
+    expect(result.messages).toHaveLength(2);
+  });
+
+  it("Can have three graphs with different keys", async () => {
+    const annotationOne = Annotation.Root({
+      inputOne: Annotation<string>,
+    });
+    const annotationTwo = Annotation.Root({
+      inputOne: Annotation<string>,
+      inputTwo: Annotation<string>,
+    });
+    const annotationThree = Annotation.Root({
+      inputTwo: Annotation<string>,
+      inputThree: Annotation<string>,
+    });
+
+    const graphThree = new StateGraph(annotationThree)
+      .addNode("returns", () => ({ inputThree: "one" }))
+      .addEdge(START, "returns")
+      .compile();
+
+    const graphTwo = new StateGraph(annotationTwo)
+      .addNode("one", () => ({ inputTwo: "one" }))
+      .addNode("callGraphThree", graphThree, { input: annotationThree })
+      .addEdge(START, "one")
+      .addEdge("one", "callGraphThree")
+      .addEdge("callGraphThree", END)
+      .compile();
+
+    const graphOne = new StateGraph(annotationOne)
+      .addNode("one", () => ({ inputOne: "one" }))
+      .addNode("callGraphTwo", graphTwo, { input: annotationTwo })
+      .addEdge(START, "one")
+      .addEdge("one", "callGraphTwo")
+      .addEdge("callGraphTwo", END)
+      .compile();
+
+    await expect(graphOne.invoke({ inputOne: "one" })).resolves.toBeDefined();
+  });
+
+  it("Can access store inside a node", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", async (_, configTop) => {
+        expect(configTop.store).toBeDefined();
+        return {};
+      })
+      .addEdge(START, "one")
+      .compile({ store: new InMemoryStore() });
+
+    await graph.invoke({ messages: [] });
+  });
+
+  it("can interrupt then update state with asNode of __end__", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", () => {
+        throw new NodeInterrupt("<INTERRUPTED>");
+      })
+      .addEdge(START, "one")
+      .compile({ checkpointer: await createCheckpointer() });
+
+    const config = {
+      configurable: { thread_id: "test_update_state_as_node_end" },
+    };
+    await expect(graph.invoke({ messages: [] }, config)).resolves.toBeDefined();
+
+    const stateAfterInterrupt = await graph.getState(config);
+    expect(stateAfterInterrupt.next).toEqual(["one"]);
+
+    const updateStateResult = await graph.updateState(config, null, END);
+    expect(updateStateResult).toBeDefined();
+    const stateAfterUpdate = await graph.getState(config);
+    expect(stateAfterUpdate.next).toEqual([]);
+  });
+
+  it("test_command_with_static_breakpoints", async () => {
+    const StateAnnotation = Annotation.Root({
+      foo: Annotation<string>,
+    });
+    const checkpointer = await createCheckpointer();
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("node1", async (state: typeof StateAnnotation.State) => {
+        return {
+          foo: state.foo + "|node-1",
+        };
+      })
+      .addNode("node2", async (state: typeof StateAnnotation.State) => {
+        return {
+          foo: state.foo + "|node-2",
+        };
+      })
+      .addEdge("__start__", "node1")
+      .addEdge("node1", "node2")
+      .compile({ checkpointer, interruptBefore: ["node1"] });
+
+    const config = {
+      configurable: {
+        thread_id: "1",
+      },
+    };
+
+    expect(await graph.invoke({ foo: "abc" }, config)).toEqual({
+      foo: "abc",
+      __interrupt__: [],
+    });
+
+    const result = await graph.invoke(
+      new Command({ update: { foo: "def" } }),
+      config
+    );
+    expect(result).toEqual({
+      foo: "def|node-1|node-2",
+    });
+  });
+
+  it("can throw a node interrupt multiple times in a single node", async () => {
+    const GraphAnnotation = Annotation.Root({
+      myKey: Annotation<string>({
+        reducer: (a, b) => a + b,
+      }),
+    });
+
+    const nodeOne = (_: typeof GraphAnnotation.State) => {
+      const answer = interrupt({ value: 1 });
+      const answer2 = interrupt({ value: 2 });
+      return { myKey: answer + " " + answer2 };
+    };
+
+    const graph = new StateGraph(GraphAnnotation)
+      .addNode("one", nodeOne)
+      .addEdge(START, "one")
+      .compile({ checkpointer: await createCheckpointer() });
+
+    const config = {
+      configurable: { thread_id: "test_multi_interrupt" },
+      streamMode: "values" as const,
+    };
+    const firstResult = await gatherIterator(
+      graph.stream(
+        {
+          myKey: "DE",
+        },
+        config
+      )
+    );
+    expect(firstResult).toBeDefined();
+    const firstState = await graph.getState(config);
+    expect(firstState.tasks).toHaveLength(1);
+    expect(firstState.tasks[0].interrupts).toHaveLength(1);
+    expect(firstState.tasks[0].interrupts[0].value).toEqual({
+      value: 1,
+    });
+
+    const secondResult = await gatherIterator(
+      graph.stream(
+        new Command({
+          resume: "answer 1",
+        }),
+        config
+      )
+    );
+    expect(secondResult).toBeDefined();
+
+    const secondState = await graph.getState(config);
+    expect(secondState.tasks).toHaveLength(1);
+    expect(secondState.tasks[0].interrupts).toHaveLength(1);
+    expect(secondState.tasks[0].interrupts[0].value).toEqual({
+      value: 2,
+    });
+
+    const thirdResult = await gatherIterator(
+      graph.stream(
+        new Command({
+          resume: "answer 2",
+        }),
+        config
+      )
+    );
+    expect(thirdResult[thirdResult.length - 1].myKey).toEqual(
+      "DEanswer 1 answer 2"
+    );
+    const thirdState = await graph.getState(config);
+    expect(thirdState.tasks).toHaveLength(0);
+  });
+
+  it("should throw when resuming without a checkpointer", async () => {
+    const chain = Channel.subscribeTo("input").pipe(
+      Channel.writeTo(["output"])
+    );
+
+    const channels = {
+      input: new LastValue(),
+      output: new LastValue(),
+    };
+
+    // create Pregel class
+    const graph = new Pregel({
+      nodes: { chain },
+      debug: false,
+      inputChannels: "input",
+      outputChannels: "output",
+      interruptBefore: ["chain"],
+      streamMode: "values",
+      channels,
+    });
+
+    // TODO: should ideally throw here when no checkpointer is provided
+    expect(await graph.invoke("a")).toEqual({ __interrupt__: [] });
+
+    await expect(() =>
+      graph.invoke(new Command({ resume: "hello" }))
+    ).rejects.toThrow("Cannot use Command(resume=...) without checkpointer");
+  });
+
+  it.each(["omit", "first-only", "always"] as const)(
+    "`messages` inherits message ID - %p",
+    async (streamMessageId) => {
+      const checkpointer = await createCheckpointer();
+
+      const graph = new StateGraph(MessagesAnnotation)
+        .addNode("one", async () => {
+          const model = new FakeChatModel({
+            responses: [new AIMessage({ id: "123", content: "Output" })],
+            streamMessageId,
+          });
+
+          const invoke = await model.invoke([new HumanMessage("Input")]);
+          return { messages: invoke };
+        })
+        .addEdge(START, "one")
+        .compile({ checkpointer });
+
+      const messages = await gatherIterator(
+        graph.stream(
+          { messages: [] },
+          { configurable: { thread_id: "1" }, streamMode: "messages" }
+        )
+      );
+
+      const messageIds = [...new Set(messages.map(([m]) => m.id))];
+      expect(messageIds).toHaveLength(1);
+      if (streamMessageId !== "omit") expect(messageIds[0]).toBe("123");
+    }
+  );
+
+  it("should not assign message ID for tool messages", async () => {
+    const checkpointer = await createCheckpointer();
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("one", async () => {
+        return {
+          messages: [
+            new ToolMessage({ content: "Tool 1", tool_call_id: "1" }),
+            new ToolMessage({ content: "Tool 2", tool_call_id: "2" }),
+          ],
+        };
+      })
+      .addEdge(START, "one")
+      .compile({ checkpointer });
+
+    const messages = await gatherIterator(
+      graph.stream(
+        { messages: [] },
+        { configurable: { thread_id: "1" }, streamMode: "messages" }
+      )
+    );
+
+    expect(messages.length).toBe(2);
+    expect(
+      (await graph.getState({ configurable: { thread_id: "1" } })).values
+        .messages
+    ).toMatchObject([
+      expect.objectContaining({ content: "Tool 1", tool_call_id: "1" }),
+      expect.objectContaining({ content: "Tool 2", tool_call_id: "2" }),
+    ]);
+  });
+
+  it("should not stream input messages in streamMode: messages", async () => {
+    const subgraph = new StateGraph(MessagesAnnotation)
+      .addNode("callModel", async () => {
+        return {
+          messages: new AIMessage({
+            content: "Hi",
+            id: "123",
+          }),
+        };
+      })
+      .addNode("route", async () => {
+        return new Command({
+          goto: "node2",
+          graph: Command.PARENT,
+        });
+      })
+      .addEdge(START, "callModel")
+      .addEdge("callModel", "route")
+      .compile();
+
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("node1", subgraph, { ends: ["node2"] })
+      .addNode("node2", async (state: typeof MessagesAnnotation.State) => state)
+      .addEdge(START, "node1")
+      .compile();
+
+    const chunks = await gatherIterator(
+      graph.stream(
+        { messages: "hi" },
+        { streamMode: "messages", subgraphs: true }
+      )
+    );
+
+    expect(chunks.length).toBe(1);
+    expect(chunks[0][0]).toEqual([
+      expect.stringMatching(/^node1:.*$/),
+      expect.stringMatching(/^callModel:.*$/),
+    ]);
+    expect(chunks[0][1][0]).toEqual(
+      new AIMessage({ content: "Hi", id: "123" })
+    );
+    expect(chunks[0][1][1].langgraph_node).toEqual("callModel");
+  });
+
+  it("should not stream input messages in streamMode: messages when continuing checkpointed thread", async () => {
+    const toEmit = [
+      new AIMessage({
+        content: "bye",
+        id: "1",
+      }),
+      new AIMessage({
+        content: "bye again",
+        id: "2",
+      }),
+    ];
+    const subgraph = new StateGraph(MessagesAnnotation)
+      .addNode("callModel", async () => {
+        return {
+          messages: toEmit.shift(),
+        };
+      })
+      .addNode("route", async () => {
+        return new Command({
+          goto: "node2",
+          graph: Command.PARENT,
+        });
+      })
+      .addEdge(START, "callModel")
+      .addEdge("callModel", "route")
+      .compile();
+
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("node1", subgraph, { ends: ["node2"] })
+      .addNode("node2", async (state: typeof MessagesAnnotation.State) => state)
+      .addEdge(START, "node1")
+      .compile({
+        checkpointer: await createCheckpointer(),
+      });
+
+    const chunks = await gatherIterator(
+      graph.stream(
+        { messages: "hi" },
+        {
+          streamMode: "messages",
+          subgraphs: true,
+          configurable: { thread_id: "1" },
+        }
+      )
+    );
+
+    expect(chunks.length).toBe(1);
+    expect(chunks[0][0]).toEqual([
+      expect.stringMatching(/^node1:.*$/),
+      expect.stringMatching(/^callModel:.*$/),
+    ]);
+    expect(chunks[0][1][0]).toEqual(new AIMessage({ content: "bye", id: "1" }));
+    expect(chunks[0][1][1].langgraph_node).toEqual("callModel");
+
+    const chunks2 = await gatherIterator(
+      graph.stream(
+        { messages: "bye" },
+        {
+          streamMode: "messages",
+          subgraphs: true,
+          configurable: { thread_id: "1" },
+        }
+      )
+    );
+
+    expect(chunks2.length).toBe(1);
+    expect(chunks2[0][0]).toEqual([
+      expect.stringMatching(/^node1:.*$/),
+      expect.stringMatching(/^callModel:.*$/),
+    ]);
+    expect(chunks2[0][1][0]).toEqual(
+      new AIMessage({ content: "bye again", id: "2" })
+    );
+    expect(chunks2[0][1][1].langgraph_node).toEqual("callModel");
+  });
+
+  it("should handle bulk state updates", async () => {
+    const State = Annotation.Root({
+      foo: Annotation<string>,
+      baz: Annotation<string>,
+    });
+
+    const checkpointer = new MemorySaverAssertImmutable();
+
+    const nodeA = (_state: typeof State.State) => ({ foo: "bar" });
+    const nodeB = (_state: typeof State.State) => ({ baz: "qux" });
+
+    const graph = new StateGraph(State)
+      .addNode("nodeA", nodeA)
+      .addNode("nodeB", nodeB)
+      .addEdge(START, "nodeA")
+      .addEdge("nodeA", "nodeB")
+      .compile({ checkpointer });
+
+    let config = { configurable: { thread_id: "1" } };
+
+    // First update with nodeA
+    await graph.bulkUpdateState(config, [
+      { updates: [{ values: { foo: "bar" }, asNode: "nodeA" }] },
+    ]);
+
+    // Then bulk update with both nodes
+    await graph.bulkUpdateState(config, [
+      {
+        updates: [
+          { values: { foo: "updated" }, asNode: "nodeA" },
+          { values: { baz: "new" }, asNode: "nodeB" },
+        ],
+      },
+    ]);
+
+    let state = await graph.getState(config);
+    expect(state.values).toEqual({ foo: "updated", baz: "new" });
+
+    // check if there are only two checkpoints
+    let checkpoints = await gatherIterator(
+      checkpointer.list({ configurable: { thread_id: "1" } })
+    );
+
+    expect(checkpoints.length).toBe(2);
+    expect(checkpoints).toMatchObject([
+      {
+        checkpoint: {
+          channel_values: { foo: "updated", baz: "new" },
+          versions_seen: { nodeA: {}, nodeB: {} },
+        },
+      },
+      {
+        checkpoint: {
+          channel_values: { foo: "bar" },
+          versions_seen: { nodeA: {} },
+        },
+      },
+    ]);
+
+    // perform multiple steps at the same time
+    config = { configurable: { thread_id: "2" } };
+
+    await graph.bulkUpdateState(config, [
+      {
+        updates: [{ values: { foo: "bar" }, asNode: "nodeA" }],
+      },
+      {
+        updates: [
+          { values: { foo: "updated" }, asNode: "nodeA" },
+          { values: { baz: "new" }, asNode: "nodeB" },
+        ],
+      },
+    ]);
+
+    state = await graph.getState(config);
+    expect(state.values).toEqual({ foo: "updated", baz: "new" });
+
+    checkpoints = await gatherIterator(
+      checkpointer.list({ configurable: { thread_id: "1" } })
+    );
+
+    expect(checkpoints.length).toBe(2);
+    expect(checkpoints).toMatchObject([
+      {
+        checkpoint: {
+          channel_values: { foo: "updated", baz: "new" },
+          versions_seen: { nodeA: {}, nodeB: {} },
+        },
+      },
+      {
+        checkpoint: {
+          channel_values: { foo: "bar" },
+          versions_seen: { nodeA: {} },
+        },
+      },
+    ]);
+
+    // throw error if updating without `asNode`
+    await expect(
+      graph.bulkUpdateState(config, [
+        {
+          updates: [{ values: { foo: "error" } }, { values: { bar: "error" } }],
+        },
+      ])
+    ).rejects.toThrow();
+
+    // throw if no updates are provided
+    await expect(graph.bulkUpdateState(config, [])).rejects.toThrow(
+      "No supersteps provided"
+    );
+
+    await expect(
+      graph.bulkUpdateState(config, [{ updates: [] }])
+    ).rejects.toThrow("No updates provided");
+
+    // throw if __end__ or __copy__ update is applied in bulk
+    await expect(
+      graph.bulkUpdateState(config, [
+        {
+          updates: [
+            { values: null, asNode: "__end__" },
+            { values: null, asNode: "__copy__" },
+          ],
+        },
+      ])
+    ).rejects.toThrow();
+  });
+
+  it.each([
+    [{ durability: "async" as const }], // emit all checkpoints
+    [{ durability: "sync" as const }], // emit all checkpoints, save after every tick
+    [{ durability: "exit" as const }], // emit only on finish
+  ])("update as input %s", async ({ durability }) => {
+    const checkpointer = await createCheckpointer();
+    const graph = new StateGraph(Annotation.Root({ foo: Annotation<string> }))
+      .addNode("agent", () => ({ foo: "agent" }))
+      .addNode("tool", () => ({ foo: "tool" }))
+      .addEdge(START, "agent")
+      .addEdge("agent", "tool")
+      .compile({ checkpointer });
+
+    expect(
+      await graph.invoke(
+        { foo: "input" },
+        { configurable: { thread_id: "1" }, durability }
+      )
+    ).toEqual({ foo: "tool" });
+
+    expect(
+      await graph.invoke(
+        { foo: "input" },
+        { configurable: { thread_id: "1" }, durability }
+      )
+    ).toEqual({ foo: "tool" });
+
+    const history = await gatherIterator(
+      graph.getStateHistory({ configurable: { thread_id: "1" } })
+    );
+
+    // now clone the thread
+    await graph.bulkUpdateState({ configurable: { thread_id: "2" } }, [
+      // first turn
+      { updates: [{ values: { foo: "input" }, asNode: "__input__" }] },
+      { updates: [{ values: { foo: "input" }, asNode: "__start__" }] },
+      { updates: [{ values: { foo: "agent" }, asNode: "agent" }] },
+      { updates: [{ values: { foo: "tool" }, asNode: "tool" }] },
+
+      // second turn
+      { updates: [{ values: { foo: "input" }, asNode: "__input__" }] },
+      { updates: [{ values: { foo: "input" }, asNode: "__start__" }] },
+      { updates: [{ values: { foo: "agent" }, asNode: "agent" }] },
+      { updates: [{ values: { foo: "tool" }, asNode: "tool" }] },
+    ]);
+
+    const state = await graph.getState({ configurable: { thread_id: "2" } });
+    expect(state.values).toEqual({ foo: "tool" });
+
+    const newHistory = await gatherIterator(
+      graph.getStateHistory({ configurable: { thread_id: "2" } })
+    );
+
+    const mapSnapshot = (i: StateSnapshot) => ({
+      values: i.values,
+      next: i.next,
+      step: i.metadata?.step,
+    });
+
+    const actual = newHistory.map(mapSnapshot);
+    if (durability !== "exit") {
+      expect(actual).toMatchObject(history.map(mapSnapshot));
+    } else {
+      expect([actual[0], actual[4]]).toMatchObject(history.map(mapSnapshot));
+    }
+  });
+
+  it("batch update as input (map-reduce)", async () => {
+    const checkpointer = await createCheckpointer();
+    const graph = new StateGraph(
+      Annotation.Root({
+        foo: Annotation<string>,
+        tasks: Annotation<number[]>({
+          default: () => [],
+          reducer: (acc, task: number | number[]) => [
+            ...acc,
+            ...(Array.isArray(task) ? task : [task]),
+          ],
+        }),
+      })
+    )
+      .addNode("agent", () => ({ foo: "agent" }))
+      .addNode(
+        "map",
+        () => {
+          return new Command({
+            goto: [
+              new Send("task", { index: 0 }),
+              new Send("task", { index: 1 }),
+              new Send("task", { index: 2 }),
+            ],
+            update: { foo: "map" },
+          });
+        },
+        { ends: ["task"] }
+      )
+      .addNode("task", (task: { index: number }) => ({
+        tasks: [task.index],
+      }))
+      .addEdge(START, "agent")
+      .addEdge("agent", "map")
+      .compile({ checkpointer });
+
+    expect(
+      await graph.invoke({ foo: "input" }, { configurable: { thread_id: "1" } })
+    ).toEqual({ foo: "map", tasks: [0, 1, 2] });
+
+    const mapSnapshot = (i: StateSnapshot) => ({
+      values: i.values,
+      next: i.next,
+      step: i.metadata?.step,
+      tasks: i.tasks.map((t) => t.name),
+    });
+
+    const history = await gatherIterator(
+      graph.getStateHistory({ configurable: { thread_id: "1" } })
+    );
+
+    // now clone the thread
+    await graph.bulkUpdateState({ configurable: { thread_id: "2" } }, [
+      // first turn
+      { updates: [{ values: { foo: "input" }, asNode: "__input__" }] },
+      { updates: [{ values: { foo: "input" }, asNode: "__start__" }] },
+      { updates: [{ values: { foo: "agent", tasks: [] }, asNode: "agent" }] },
+      {
+        updates: [
+          {
+            values: new Command({
+              goto: [
+                new Send("task", { index: 0 }),
+                new Send("task", { index: 1 }),
+                new Send("task", { index: 2 }),
+              ],
+              update: { foo: "map" },
+            }),
+            asNode: "map",
+          },
+        ],
+      },
+      {
+        updates: [
+          { values: { tasks: [0] }, asNode: "task" },
+          { values: { tasks: [1] }, asNode: "task" },
+          { values: { tasks: [2] }, asNode: "task" },
+        ],
+      },
+    ]);
+
+    const state = await graph.getState({ configurable: { thread_id: "2" } });
+    expect(state.values).toEqual({ foo: "map", tasks: [0, 1, 2] });
+
+    const newHistory = await gatherIterator(
+      graph.getStateHistory({ configurable: { thread_id: "2" } })
+    );
+
+    expect(newHistory.map(mapSnapshot)).toMatchObject(history.map(mapSnapshot));
+  });
+
+  describe("with zod schemas", () => {
+    describe("basic usage", () => {
+      const expectedStateSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          foo: { type: "string" },
+          items: {
+            type: "array",
+            items: { type: "string" },
+            default: ["default"],
+          },
+        },
+        required: ["foo"],
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+      const expectedUpdateSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          foo: { type: "string" },
+          items: {
+            anyOf: [
+              { type: "string" },
+              { type: "array", items: { type: "string" } },
+            ],
+          },
+        },
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+
+      it("with zod v3", async () => {
+        const schema = z3.object({
+          foo: z3.string(),
+          items: z3
+            .array(z3.string())
+            .default(() => ["default"])
+            .langgraph.reducer(
+              // eslint-disable-next-line no-nested-ternary
+              (a, b) => a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+              z3.union([z3.string(), z3.array(z3.string())])
+            ),
+        });
+
+        const graph = new StateGraph(schema)
+          .addNode("agent", () => ({ foo: "agent", items: ["a", "b"] }))
+          .addNode("tool", () => ({ foo: "tool", items: ["c", "d"] }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        const state = await graph.invoke(
+          { foo: "input" },
+          { configurable: { thread_id: "1" } }
+        );
+
+        expect(graph.builder._schemaRuntimeDefinition).toBeDefined();
+        expect(state).toEqual({
+          foo: "tool",
+          items: ["default", "a", "b", "c", "d"],
+        });
+
+        expect(getStateTypeSchema(graph)).toStrictEqual(expectedStateSchema);
+        expect(getUpdateTypeSchema(graph)).toStrictEqual(expectedUpdateSchema);
+      });
+      it("with zod v4", async () => {
+        const schema = z4.object({
+          foo: z4.string(),
+          items: withLangGraph(z4.array(z4.string()), {
+            reducer: {
+              fn: (a, b) =>
+                // eslint-disable-next-line no-nested-ternary
+                a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+              schema: z4.union([z4.string(), z4.array(z4.string())]),
+            },
+            default: () => ["default"],
+          }),
+        });
+        const graph = new StateGraph(schema)
+          .addNode("agent", () => ({ foo: "agent", items: ["a", "b"] }))
+          .addNode("tool", () => ({ foo: "tool", items: ["c", "d"] }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        const state = await graph.invoke(
+          { foo: "input" },
+          { configurable: { thread_id: "1" } }
+        );
+
+        expect(graph.builder._schemaRuntimeDefinition).toBeDefined();
+        expect(state).toEqual({
+          foo: "tool",
+          items: ["default", "a", "b", "c", "d"],
+        });
+
+        // todo: investigate why zod tries to make items required (even though it has a default)
+        // expect(getStateTypeSchema(graph)).toStrictEqual(expectedStateSchema);
+        expect(getUpdateTypeSchema(graph)).toStrictEqual(expectedUpdateSchema);
+      });
+    });
+
+    describe("input / output", () => {
+      const expectedInputSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          counter: { type: "number", exclusiveMinimum: 0 },
+        },
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+      const expectedOutputSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          hey: { type: "string" },
+        },
+        required: ["hey"],
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+      const expectedStateSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          hey: { type: "string" },
+          counter: { type: "number", exclusiveMinimum: 0 },
+          messages: {
+            type: "array",
+            items: { type: "string" },
+          },
+        },
+        required: ["hey", "counter", "messages"],
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+      const expectedUpdateSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          hey: { type: "string" },
+          counter: { type: "number", exclusiveMinimum: 0 },
+          messages: {
+            anyOf: [
+              { type: "string" },
+              { type: "array", items: { type: "string" } },
+            ],
+          },
+        },
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+
+      it("with zod v3", async () => {
+        const state = z3.object({
+          hey: z3.string(),
+          counter: z3.number().gt(0),
+          messages: z3
+            .array(z3.string())
+            .langgraph.reducer(
+              (a, b) => (Array.isArray(b) ? [...a, ...b] : [...a, b]),
+              z3.union([z3.string(), z3.array(z3.string())])
+            ),
+        });
+
+        const input = state.pick({ counter: true });
+        const output = state.pick({ hey: true });
+
+        const graph = new StateGraph({ state, input, output })
+          .addNode("agent", () => ({ hey: "agent", counter: 1 }))
+          .addNode("tool", () => ({ hey: "tool", counter: 2 }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        const value = await graph.invoke(
+          { counter: 123 },
+          { configurable: { thread_id: "1" } }
+        );
+
+        expect(value).toEqual({ hey: "tool" });
+
+        await expect(
+          graph.invoke({ counter: -1 }, { configurable: { thread_id: "1" } })
+        ).rejects.toBeDefined();
+
+        expect(getInputTypeSchema(graph)).toStrictEqual(expectedInputSchema);
+        expect(getOutputTypeSchema(graph)).toStrictEqual(expectedOutputSchema);
+        expect(getStateTypeSchema(graph)).toStrictEqual(expectedStateSchema);
+        expect(getUpdateTypeSchema(graph)).toStrictEqual(expectedUpdateSchema);
+      });
+      it("with zod v4", async () => {
+        const state = z4.object({
+          hey: z4.string(),
+          counter: z4.number().gt(0),
+          messages: withLangGraph(z4.array(z4.string()), {
+            reducer: {
+              schema: z4.union([z4.string(), z4.array(z4.string())]),
+              fn: (a, b) =>
+                // eslint-disable-next-line no-nested-ternary
+                a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+            },
+            default: () => ["default"],
+          }),
+        });
+
+        const input = state.pick({ counter: true });
+        const output = state.pick({ hey: true });
+
+        const graph = new StateGraph({ state, input, output })
+          .addNode("agent", () => ({ hey: "agent", counter: 1 }))
+          .addNode("tool", () => ({ hey: "tool", counter: 2 }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        const value = await graph.invoke(
+          { counter: 123 },
+          { configurable: { thread_id: "1" } }
+        );
+
+        expect(value).toEqual({ hey: "tool" });
+
+        await expect(
+          graph.invoke({ counter: -1 }, { configurable: { thread_id: "1" } })
+        ).rejects.toBeDefined();
+
+        expect(getInputTypeSchema(graph)).toStrictEqual(expectedInputSchema);
+        expect(getOutputTypeSchema(graph)).toStrictEqual(expectedOutputSchema);
+        expect(getStateTypeSchema(graph)).toStrictEqual(expectedStateSchema);
+        expect(getUpdateTypeSchema(graph)).toStrictEqual(expectedUpdateSchema);
+      });
+    });
+
+    describe("config", () => {
+      const expectedConfigSchema = expect.objectContaining({
+        additionalProperties: false,
+        properties: {
+          prompt: {
+            type: "string",
+            langgraph_nodes: ["agent"],
+            langgraph_type: "prompt",
+            minLength: 1,
+          },
+        },
+        required: ["prompt"],
+        type: "object",
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+
+      it("with zod v3", async () => {
+        const schema = z3.object({
+          foo: z3.string(),
+        });
+
+        const config = z3.object({
+          prompt: z3
+            .string()
+            .min(1)
+            .langgraph.metadata({
+              langgraph_nodes: ["agent"],
+              langgraph_type: "prompt",
+            }),
+        });
+
+        const graph = new StateGraph(schema, config)
+          .addNode("agent", () => ({ foo: "agent" }))
+          .addNode("tool", () => ({ foo: "tool" }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        expect(
+          await graph.invoke(
+            { foo: "input" },
+            { configurable: { thread_id: "1", prompt: "user input" } }
+          )
+        ).toEqual({ foo: "tool" });
+
+        await expect(
+          graph.invoke(
+            { foo: "input" },
+            { configurable: { thread_id: "1", prompt: "" } }
+          )
+        ).rejects.toBeDefined();
+
+        expect(getConfigTypeSchema(graph)).toStrictEqual(expectedConfigSchema);
+      });
+      it("with zod v4", async () => {
+        const schema = z4.object({
+          foo: z4.string(),
+        });
+
+        const config = z4.object({
+          prompt: withLangGraph(z4.string().min(1), {
+            jsonSchemaExtra: {
+              langgraph_nodes: ["agent"],
+              langgraph_type: "prompt",
+            },
+          }),
+        });
+
+        const graph = new StateGraph(schema, config)
+          .addNode("agent", () => ({ foo: "agent" }))
+          .addNode("tool", () => ({ foo: "tool" }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        expect(
+          await graph.invoke(
+            { foo: "input" },
+            { configurable: { thread_id: "1", prompt: "user input" } }
+          )
+        ).toEqual({ foo: "tool" });
+
+        await expect(
+          graph.invoke(
+            { foo: "input" },
+            { configurable: { thread_id: "1", prompt: "" } }
+          )
+        ).rejects.toBeDefined();
+
+        expect(getConfigTypeSchema(graph)).toStrictEqual(expectedConfigSchema);
+      });
+    });
+
+    describe("overlap schema", () => {
+      const expectedInputSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          question: { type: "string" },
+        },
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+      const expectedOutputSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          answer: { type: "string" },
+        },
+        required: ["answer"],
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+      const expectedStateSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          question: { type: "string" },
+          answer: { type: "string" },
+          language: { type: "string" },
+        },
+        required: ["question", "answer", "language"],
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+      const expectedUpdateSchema = expect.objectContaining({
+        type: "object",
+        properties: {
+          question: { type: "string" },
+          answer: { type: "string" },
+          language: { type: "string" },
+        },
+        additionalProperties: false,
+        // $schema: "http://json-schema.org/draft-07/schema#",
+      });
+
+      it("with zod v3", async () => {
+        const state = z3.object({
+          question: z3.string(),
+          answer: z3.string(),
+          language: z3.string(),
+        });
+
+        const input = state.pick({ question: true });
+        const output = state.pick({ answer: true });
+
+        const graph = new StateGraph({ state, input, output })
+          .addNode("agent", (state) => {
+            return {
+              answer: "agent",
+              language: state.language,
+            };
+          })
+          .addNode("tool", () => ({ answer: "tool" }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        await graph.invoke(
+          { question: "hey" },
+          { configurable: { thread_id: "1" } }
+        );
+
+        expect(getInputTypeSchema(graph)).toStrictEqual(expectedInputSchema);
+        expect(getOutputTypeSchema(graph)).toStrictEqual(expectedOutputSchema);
+        expect(getStateTypeSchema(graph)).toStrictEqual(expectedStateSchema);
+        expect(getUpdateTypeSchema(graph)).toStrictEqual(expectedUpdateSchema);
+      });
+      it("with zod v4", async () => {
+        const state = z4.object({
+          question: z4.string(),
+          answer: z4.string(),
+          language: z4.string(),
+        });
+
+        const input = state.pick({ question: true });
+
+        const output = state.pick({ answer: true });
+
+        const graph = new StateGraph({ state, input, output })
+          .addNode("agent", (state) => {
+            return {
+              answer: "agent",
+              language: state.language,
+            };
+          })
+          .addNode("tool", () => ({ answer: "tool" }))
+          .addEdge("__start__", "agent")
+          .addEdge("agent", "tool")
+          .compile();
+
+        await graph.invoke(
+          { question: "hey" },
+          { configurable: { thread_id: "1" } }
+        );
+
+        expect(getInputTypeSchema(graph)).toStrictEqual(expectedInputSchema);
+        expect(getOutputTypeSchema(graph)).toStrictEqual(expectedOutputSchema);
+        expect(getStateTypeSchema(graph)).toStrictEqual(expectedStateSchema);
+        expect(getUpdateTypeSchema(graph)).toStrictEqual(expectedUpdateSchema);
+      });
+    });
+  });
+
+  it("Annotation overlap schema", async () => {
+    const stateSchema = Annotation.Root({
+      question: Annotation<string>,
+      answer: Annotation<string>,
+      language: Annotation<string>,
+    });
+
+    const input = Annotation.Root({
+      question: Annotation<string>,
+    });
+
+    const output = Annotation.Root({
+      answer: Annotation<string>,
+    });
+
+    // This should be a valid TypeScript code
+    const graph = new StateGraph({ stateSchema, input, output })
+      .addNode("agent", (state) => {
+        return {
+          answer: "agent",
+          language: state.language,
+        };
+      })
+      .addNode("tool", () => ({ answer: "tool" }))
+      .addEdge("__start__", "agent")
+      .addEdge("agent", "tool")
+      .compile();
+
+    const res = await graph.invoke(
+      { question: "hey" },
+      { configurable: { thread_id: "1" } }
+    );
+
+    expect(res).toEqual({ answer: "tool" });
+
+    // @ts-expect-error `question` is not in the output schema
+    void res.question;
+
+    // @ts-expect-error `language` is not in the output schema
+    void res.language;
+  });
+
+  it("can goto an interrupt", async () => {
+    const checkpointer = await createCheckpointer();
+    const configurable = { thread_id: "1" };
+
+    const graph = new StateGraph(
+      Annotation.Root({
+        messages: Annotation<string[], string | string[]>({
+          default: () => [],
+          reducer: (a, b) => [...a, ...(Array.isArray(b) ? b : [b])],
+        }),
+      })
+    )
+      .addNode("router", () => new Command({ goto: END }), {
+        ends: ["interrupt", END],
+      })
+      .addNode("interrupt", () => ({
+        messages: [`interrupt: ${interrupt("interrupt")}`],
+      }))
+      .addEdge(START, "router")
+      .compile({ checkpointer });
+
+    await graph.invoke({ messages: ["input"] }, { configurable });
+    let state = await graph.getState({ configurable });
+
+    expect(state.next).toEqual([]);
+    expect(state.values).toEqual({ messages: ["input"] });
+
+    await graph.invoke(
+      new Command({ goto: "interrupt", update: { messages: ["update"] } }),
+      { configurable }
+    );
+    state = await graph.getState({ configurable });
+
+    expect(state.next).toEqual(["interrupt"]);
+    expect(state.values).toEqual({ messages: ["input", "update"] });
+    expect(state.tasks).toMatchObject([
+      {
+        name: "interrupt",
+        interrupts: [{ value: "interrupt" }],
+      },
+    ]);
+
+    await graph.invoke(
+      new Command({
+        resume: "resume",
+        update: { messages: ["update: resume"] },
+      }),
+      { configurable }
+    );
+    state = await graph.getState({ configurable });
+
+    expect(state.next).toEqual([]);
+    expect(state.values).toEqual({
+      messages: ["input", "update", "update: resume", "interrupt: resume"],
+    });
+  });
+
+  it("persist a falsy value", async () => {
+    const checkpointer = await createCheckpointer();
+
+    const builder = new StateGraph(
+      Annotation.Root({
+        ...MessagesAnnotation.spec,
+        number: Annotation<number>,
+        boolean: Annotation<boolean>,
+        string: Annotation<string>,
+      })
+    )
+      .addNode("node", (state) => state)
+      .addEdge("__start__", "node");
+
+    const graph = builder.compile({ checkpointer });
+
+    const input = { number: 0, boolean: false, string: "" };
+    const config = { configurable: { thread_id: "thread_id" } };
+
+    await gatherIterator(graph.stream(input, config));
+
+    expect(await graph.getState(config)).toMatchObject({
+      values: { number: 0, boolean: false, string: "" },
+    });
+  });
+
+  describe("add sequence", () => {
+    const State = Annotation.Root({
+      foo: Annotation<string[]>({
+        default: () => [],
+        reducer: (a, b) => [...a, ...b],
+      }),
+      bar: Annotation<string>(),
+    });
+
+    const step1 = (): typeof State.Update => ({
+      foo: ["step1"],
+      bar: "baz",
+    });
+
+    const step2 = (): typeof State.Update => ({
+      foo: ["step2"],
+    });
+
+    it("should raise error if less than 1 step", () => {
+      expect(() => new StateGraph(State).addSequence([])).toThrow();
+    });
+
+    it("should raise error if duplicate step names", () => {
+      expect(() => {
+        new StateGraph(State).addSequence([
+          ["foo", step1],
+          ["foo", step1],
+        ]);
+      }).toThrow();
+    });
+
+    it("should work with dictionary", async () => {
+      const graph = new StateGraph(State)
+        .addSequence({ step1, step2 })
+        .addEdge("__start__", "step1")
+        .compile();
+
+      const result = await graph.invoke({ foo: [] });
+      expect(result).toEqual({ foo: ["step1", "step2"], bar: "baz" });
+
+      const streamChunks = await gatherIterator(graph.stream({ foo: [] }));
+      expect(streamChunks).toEqual([
+        { step1: { foo: ["step1"], bar: "baz" } },
+        { step2: { foo: ["step2"] } },
+      ]);
+    });
+
+    it("should work with list of tuples", async () => {
+      const graph = new StateGraph(State)
+        .addSequence([
+          ["meow1", step1],
+          ["meow2", step2],
+        ])
+        .addEdge("__start__", "meow1")
+        .compile();
+
+      const result = await graph.invoke({ foo: [] });
+      expect(result).toEqual({ foo: ["step1", "step2"], bar: "baz" });
+
+      const streamChunks = await gatherIterator(graph.stream({ foo: [] }));
+      expect(streamChunks).toEqual([
+        { meow1: { foo: ["step1"], bar: "baz" } },
+        { meow2: { foo: ["step2"] } },
+      ]);
+    });
+
+    it("should work with two sequences", async () => {
+      const a = () => ({ foo: ["a"] });
+      const b = () => ({ foo: ["b"] });
+
+      const graph = new StateGraph(State)
+        .addSequence({ a })
+        .addSequence({ b })
+        .addEdge("__start__", "a")
+        .addEdge("a", "b")
+        .compile();
+
+      const result = await graph.invoke({ foo: [] });
+      expect(result).toEqual({ foo: ["a", "b"] });
+
+      const streamChunks = await gatherIterator(graph.stream({ foo: [] }));
+      expect(streamChunks).toEqual([
+        { a: { foo: ["a"] } },
+        { b: { foo: ["b"] } },
+      ]);
+    });
+
+    it("should work with mixed nodes and sequences", async () => {
+      const a = () => ({ foo: ["a"] });
+      const b = () => ({ foo: ["b"] });
+      const c = () => ({ foo: ["c"] });
+      const d = () => ({ foo: ["d"] });
+      const e = () => ({ foo: ["e"] });
+
+      const foo = (state: typeof State.State) => {
+        if (state.foo[0] === "a") {
+          return "d";
+        }
+        return "c";
+      };
+
+      const graph = new StateGraph(State)
+        .addSequence({ a, b })
+        .addConditionalEdges("b", foo)
+        .addNode("c", c)
+        .addSequence([
+          ["d", d],
+          ["e", e],
+        ])
+        .addEdge("__start__", "a")
+        .compile();
+
+      const result1 = await graph.invoke({ foo: [] });
+      expect(result1).toEqual({ foo: ["a", "b", "d", "e"] });
+
+      const result2 = await graph.invoke({ foo: ["start"] });
+      expect(result2).toEqual({ foo: ["start", "a", "b", "c"] });
+
+      const streamChunks = await gatherIterator(graph.stream({ foo: [] }));
+      expect(streamChunks).toEqual([
+        { a: { foo: ["a"] } },
+        { b: { foo: ["b"] } },
+        { d: { foo: ["d"] } },
+        { e: { foo: ["e"] } },
+      ]);
+    });
+  });
+
+  it("test_concurrent_emit_sends", async () => {
+    const State = Annotation.Root({
+      foo: Annotation<string[]>({
+        default: () => [],
+        reducer: (a, b) => [...a, ...b],
+      }),
+    });
+
+    const node = <T extends string>(
+      name: T
+    ): [T, (state: typeof State.State | number) => typeof State.Update] => [
+      name,
+      (state) => {
+        if (typeof state === "number") return { foo: [`${name}|${state}`] };
+        return { foo: [name] };
+      },
+    ];
+
+    const graph = new StateGraph(State)
+      .addNode([node("1"), node("1.1"), node("2"), node("3"), node("3.1")])
+      .addEdge("__start__", "1")
+      .addEdge("__start__", "1.1")
+      .addConditionalEdges("1", () => [
+        new Send("2", 1),
+        new Send("2", 2),
+        "3.1",
+      ])
+      .addConditionalEdges("1.1", () => [new Send("2", 3), new Send("2", 4)])
+      .addConditionalEdges("2", () => "3")
+      .compile();
+
+    const result = await graph.invoke({ foo: ["0"] });
+    expect(result.foo).toEqual([
+      "0",
+      "1",
+      "1.1",
+      "3.1",
+      "2|1",
+      "2|2",
+      "2|3",
+      "2|4",
+      "3",
+    ]);
+  });
+
+  it.each([
+    [{ durability: "async" as const }], // emit all checkpoints
+    [{ durability: "sync" as const }], // emit all checkpoints, save after every tick
+    [{ durability: "exit" as const }], // emit only on finish
+  ])("checkpoint recovery async %s", async ({ durability }) => {
+    const checkpointer = await createCheckpointer();
+    const State = Annotation.Root({
+      steps: Annotation<string[]>({
+        default: () => [],
+        reducer: (a, b) => [...a, ...b],
+      }),
+      attempt: Annotation<number>,
+    });
+
+    const graph = new StateGraph(State)
+      .addSequence({
+        async node1(state) {
+          if (state.attempt === 1) throw new Error("Simulated failure");
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          return { steps: ["node1"] };
+        },
+
+        async node2() {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          return { steps: ["node2"] };
+        },
+      })
+      .addEdge("__start__", "node1")
+      .compile({ checkpointer });
+
+    const config = { configurable: { thread_id: "1" }, durability };
+
+    // first attempt should fail
+    await expect(
+      graph.invoke({ steps: ["start"], attempt: 1 }, config)
+    ).rejects.toThrow();
+
+    // verify checkpoint state
+    const state = await graph.getState(config);
+    expect(state.values).toEqual({ steps: ["start"], attempt: 1 });
+    expect(state.next).toEqual(["node1"]);
+
+    // retry with updated attempt count
+    const result = await graph.invoke({ steps: [], attempt: 2 }, config);
+    expect(result).toEqual({ steps: ["start", "node1", "node2"], attempt: 2 });
+
+    const mapSnapshot = (i: StateSnapshot) => {
+      const error = i.tasks.find((t) => t.error)?.error;
+      return {
+        values: i.values,
+        step: i.metadata?.step,
+        source: i.metadata?.source,
+        ...(error ? { error } : {}),
+      };
+    };
+
+    // verify checkpoint history shows both attempts
+    const history = await gatherIterator(graph.getStateHistory(config));
+
+    expect(history.map(mapSnapshot)).toEqual(
+      durability !== "exit"
+        ? [
+            {
+              source: "loop",
+              step: 4,
+              values: { steps: ["start", "node1", "node2"], attempt: 2 },
+            },
+            {
+              source: "loop",
+              step: 3,
+              values: { steps: ["start", "node1"], attempt: 2 },
+            },
+            {
+              source: "loop",
+              step: 2,
+              values: { steps: ["start"], attempt: 2 },
+            },
+            {
+              source: "input",
+              step: 1,
+              values: { steps: ["start"], attempt: 1 },
+            },
+            {
+              source: "loop",
+              values: { steps: ["start"], attempt: 1 },
+              error: { message: "Simulated failure", name: "Error" },
+              step: 0,
+            },
+            { source: "input", values: { steps: [] }, step: -1 },
+          ]
+        : [
+            {
+              source: "loop",
+              step: 4,
+              values: { steps: ["start", "node1", "node2"], attempt: 2 },
+            },
+            {
+              source: "loop",
+              values: { steps: ["start"], attempt: 1 },
+              error: { message: "Simulated failure", name: "Error" },
+              step: 0,
+            },
+          ]
+    );
+  });
+
+  it("fork and update task results", async () => {
+    const checkpointer = await createCheckpointer();
+    let twoCount = 0;
+
+    function checkpoint(
+      input: Partial<
+        Omit<StateSnapshot, "metadata"> & { metadata?: Record<string, unknown> }
+      >
+    ) {
+      const { values } = input;
+      return ["checkpoint", { values }] as ["checkpoint", unknown];
+    }
+
+    function task(value: Partial<StateSnapshot["tasks"][number]>) {
+      const { name, result } = value;
+      return ["task", { name, result }] as ["task", unknown];
+    }
+
+    type Value = ["checkpoint", unknown] | ["task", unknown];
+    type Tree = Value[] | [...Value[], Tree[]];
+
+    function getTree(history: StateSnapshot[]): Tree {
+      type ProcessNode = { item: StateSnapshot; children: ProcessNode[] };
+
+      if (history.length === 0) return [];
+
+      // Build a tree structure similar to renderForks
+      const nodeMap: Record<string, ProcessNode> = {};
+      const rootNodes: ProcessNode[] = [];
+
+      // Second pass: establish parent-child relationships
+      history
+        .slice()
+        .reverse()
+        .forEach((item) => {
+          const checkpointId = item.config.configurable!.checkpoint_id;
+          const parentCheckpointId =
+            item.parentConfig?.configurable?.checkpoint_id;
+          nodeMap[checkpointId] ??= { item, children: [] };
+
+          const parent = nodeMap[parentCheckpointId];
+          (parent?.children ?? rootNodes).push(nodeMap[checkpointId]);
+        });
+
+      // Convert nodes to Tree structure
+      function nodeToTree(node: ProcessNode): Tree {
+        const result: Value[] = [
+          checkpoint(node.item),
+          ...node.item.tasks.map(task),
+        ];
+
+        if (node.children.length > 1) {
+          const branches = node.children.map(nodeToTree);
+          return [...result, branches];
+        }
+
+        if (node.children.length === 1) {
+          return [...result, ...nodeToTree(node.children[0])];
+        }
+
+        return result;
+      }
+
+      // Process all root nodes
+      if (rootNodes.length === 1) return nodeToTree(rootNodes[0]);
+
+      // Multiple root nodes - treat as branches
+      if (rootNodes.length > 1) {
+        const branches = rootNodes.map((node) => nodeToTree(node));
+        return branches as Tree;
+      }
+
+      return [];
+    }
+
+    const graph = new StateGraph(
+      Annotation.Root({
+        name: Annotation<string>({
+          reducer: (a, b) => [a, b].join(" > "),
+        }),
+      })
+    )
+      .addSequence({
+        one: () =>
+          new Command({ goto: [new Send("two", {})], update: { name: "one" } }),
+        two: () => {
+          twoCount += 1;
+          return { name: `two ${twoCount}` };
+        },
+        three: () => ({ name: "three" }),
+      })
+      .addEdge(START, "one")
+      .compile({ checkpointer });
+
+    let config = { configurable: { thread_id: "1" } };
+    let history: StateSnapshot[] = [];
+
+    // Initial run
+    await graph.invoke({ name: "start" }, config);
+    history = await gatherIterator(graph.getStateHistory(config));
+
+    expect(getTree(history)).toMatchObject([
+      checkpoint({ values: {} }),
+      task({ name: "__start__", result: { name: "start" } }),
+      checkpoint({ values: { name: "start" } }),
+      task({ name: "one", result: { name: "one" } }),
+      checkpoint({ values: { name: "start > one" } }),
+      task({ name: "two", result: { name: "two 1" } }),
+      task({ name: "two", result: { name: "two 2" } }),
+      checkpoint({ values: { name: "start > one > two 2 > two 1" } }),
+      task({ name: "three", result: { name: "three" } }),
+      checkpoint({ values: { name: "start > one > two 2 > two 1 > three" } }),
+    ]);
+
+    // Update the start state
+    await graph.invoke(
+      null,
+      await graph.updateState(
+        history[4].config,
+        [[{ name: "start*" }, "__start__"]],
+        "__copy__"
+      )
+    );
+
+    history = await gatherIterator(graph.getStateHistory(config));
+    expect(getTree(history)).toMatchObject([
+      [
+        checkpoint({ values: {} }),
+        task({ name: "__start__", result: { name: "start" } }),
+        checkpoint({ values: { name: "start" } }),
+        task({ name: "one", result: { name: "one" } }),
+        checkpoint({ values: { name: "start > one" } }),
+        task({ name: "two", result: { name: "two 1" } }),
+        task({ name: "two", result: { name: "two 2" } }),
+        checkpoint({ values: { name: "start > one > two 2 > two 1" } }),
+        task({ name: "three", result: { name: "three" } }),
+        checkpoint({ values: { name: "start > one > two 2 > two 1 > three" } }),
+      ],
+      [
+        checkpoint({ values: {} }),
+        task({ name: "__start__", result: { name: "start*" } }),
+        checkpoint({ values: { name: "start*" } }),
+        task({ name: "one", result: { name: "one" } }),
+        checkpoint({ values: { name: "start* > one" } }),
+        task({ name: "two", result: { name: "two 3" } }),
+        task({ name: "two", result: { name: "two 4" } }),
+        checkpoint({ values: { name: "start* > one > two 4 > two 3" } }),
+        task({ name: "three", result: { name: "three" } }),
+        checkpoint({
+          values: { name: "start* > one > two 4 > two 3 > three" },
+        }),
+      ],
+    ]);
+
+    // Fork from task "one"
+    // Start from the checkpoint that has the task "one"
+    expect(history[3]).toMatchObject({
+      values: { name: "start*" },
+      tasks: [{ name: "one" }],
+    });
+    await graph.invoke(
+      null,
+      await graph.updateState(
+        history[3].config,
+        [[{ name: "one*" }, "one"]],
+        "__copy__"
+      )
+    );
+
+    history = await gatherIterator(graph.getStateHistory(config));
+    expect(getTree(history)).toMatchObject([
+      [
+        checkpoint({ values: {} }),
+        task({ name: "__start__", result: { name: "start" } }),
+        checkpoint({ values: { name: "start" } }),
+        task({ name: "one", result: { name: "one" } }),
+        checkpoint({ values: { name: "start > one" } }),
+        task({ name: "two", result: { name: "two 1" } }),
+        task({ name: "two", result: { name: "two 2" } }),
+        checkpoint({ values: { name: "start > one > two 2 > two 1" } }),
+        task({ name: "three", result: { name: "three" } }),
+        checkpoint({ values: { name: "start > one > two 2 > two 1 > three" } }),
+      ],
+      [
+        checkpoint({ values: {} }),
+        task({ name: "__start__", result: { name: "start*" } }),
+        [
+          [
+            checkpoint({ values: { name: "start*" } }),
+            task({ name: "one", result: { name: "one" } }),
+            checkpoint({ values: { name: "start* > one" } }),
+            task({ name: "two", result: { name: "two 3" } }),
+            task({ name: "two", result: { name: "two 4" } }),
+            checkpoint({ values: { name: "start* > one > two 4 > two 3" } }),
+            task({ name: "three", result: { name: "three" } }),
+            checkpoint({
+              values: { name: "start* > one > two 4 > two 3 > three" },
+            }),
+          ],
+          [
+            checkpoint({ values: { name: "start*" } }),
+            task({ name: "one", result: { name: "one*" } }),
+            checkpoint({ values: { name: "start* > one*" } }),
+            task({ name: "two", result: { name: "two 5" } }),
+            checkpoint({ values: { name: "start* > one* > two 5" } }),
+            task({ name: "three", result: { name: "three" } }),
+            checkpoint({
+              values: { name: "start* > one* > two 5 > three" },
+            }),
+          ],
+        ],
+      ],
+    ]);
+
+    twoCount = 0;
+    config = { configurable: { thread_id: "2" } };
+
+    // initialise the thread once again
+    await graph.invoke({ name: "start" }, config);
+    history = await gatherIterator(graph.getStateHistory(config));
+
+    // Fork from from task "two"
+    // Start from the checkpoint that has the task "two"
+    expect(history[2]).toMatchObject({ values: { name: "start > one" } });
+    await graph.invoke(
+      null,
+      await graph.updateState(
+        history[2].config,
+        [
+          [{ name: "two 3" }, "two"],
+          [{ name: "two 4" }, "two"],
+        ],
+        "__copy__"
+      )
+    );
+
+    history = await gatherIterator(graph.getStateHistory(config));
+    expect(getTree(history)).toMatchObject([
+      checkpoint({ values: {} }),
+      task({ name: "__start__", result: { name: "start" } }),
+      checkpoint({ values: { name: "start" } }),
+      task({ name: "one", result: { name: "one" } }),
+      [
+        [
+          checkpoint({ values: { name: "start > one" } }),
+          task({ name: "two", result: { name: "two 1" } }),
+          task({ name: "two", result: { name: "two 2" } }),
+          checkpoint({ values: { name: "start > one > two 2 > two 1" } }),
+          task({ name: "three", result: { name: "three" } }),
+          checkpoint({
+            values: { name: "start > one > two 2 > two 1 > three" },
+          }),
+        ],
+        [
+          checkpoint({ values: { name: "start > one" } }),
+          task({ name: "two", result: { name: "two 3" } }),
+          task({ name: "two", result: { name: "two 4" } }),
+          checkpoint({ values: { name: "start > one > two 3 > two 4" } }),
+          task({ name: "three", result: { name: "three" } }),
+          checkpoint({
+            values: { name: "start > one > two 3 > two 4 > three" },
+          }),
+        ],
+      ],
+    ]);
+
+    // Fork task three
+    expect(history[1]).toMatchObject({
+      values: { name: "start > one > two 3 > two 4" },
+      tasks: [{ name: "three" }],
+    });
+    await graph.invoke(
+      null,
+      await graph.updateState(
+        history[1].config,
+        [[{ name: "three*" }, "three"]],
+        "__copy__"
+      )
+    );
+
+    history = await gatherIterator(graph.getStateHistory(config));
+    expect(getTree(history)).toMatchObject([
+      checkpoint({ values: {} }),
+      task({ name: "__start__", result: { name: "start" } }),
+      checkpoint({ values: { name: "start" } }),
+      task({ name: "one", result: { name: "one" } }),
+      [
+        [
+          checkpoint({ values: { name: "start > one" } }),
+          task({ name: "two", result: { name: "two 1" } }),
+          task({ name: "two", result: { name: "two 2" } }),
+          checkpoint({ values: { name: "start > one > two 2 > two 1" } }),
+          task({ name: "three", result: { name: "three" } }),
+          checkpoint({
+            values: { name: "start > one > two 2 > two 1 > three" },
+          }),
+        ],
+        [
+          checkpoint({ values: { name: "start > one" } }),
+          task({ name: "two", result: { name: "two 3" } }),
+          task({ name: "two", result: { name: "two 4" } }),
+          [
+            [
+              checkpoint({ values: { name: "start > one > two 3 > two 4" } }),
+              task({ name: "three", result: { name: "three" } }),
+              checkpoint({
+                values: { name: "start > one > two 3 > two 4 > three" },
+              }),
+            ],
+            [
+              checkpoint({ values: { name: "start > one > two 3 > two 4" } }),
+              task({ name: "three", result: { name: "three*" } }),
+              checkpoint({
+                values: { name: "start > one > two 3 > two 4 > three*" },
+              }),
+            ],
+          ],
+        ],
+      ],
+    ]);
+
+    // Regenerate task three
+    expect(history[3]).toMatchObject({
+      values: { name: "start > one > two 3 > two 4" },
+      tasks: [{ name: "three" }],
+    });
+    await graph.invoke(
+      null,
+      await graph.updateState(history[3].config, null, "__copy__")
+    );
+
+    history = await gatherIterator(graph.getStateHistory(config));
+    expect(getTree(history)).toMatchObject([
+      checkpoint({ values: {} }),
+      task({ name: "__start__", result: { name: "start" } }),
+      checkpoint({ values: { name: "start" } }),
+      task({ name: "one", result: { name: "one" } }),
+      [
+        [
+          checkpoint({ values: { name: "start > one" } }),
+          task({ name: "two", result: { name: "two 1" } }),
+          task({ name: "two", result: { name: "two 2" } }),
+          checkpoint({ values: { name: "start > one > two 2 > two 1" } }),
+          task({ name: "three", result: { name: "three" } }),
+          checkpoint({
+            values: { name: "start > one > two 2 > two 1 > three" },
+          }),
+        ],
+        [
+          checkpoint({ values: { name: "start > one" } }),
+          task({ name: "two", result: { name: "two 3" } }),
+          task({ name: "two", result: { name: "two 4" } }),
+          [
+            [
+              checkpoint({ values: { name: "start > one > two 3 > two 4" } }),
+              task({ name: "three", result: { name: "three" } }),
+              checkpoint({
+                values: { name: "start > one > two 3 > two 4 > three" },
+              }),
+            ],
+            [
+              checkpoint({ values: { name: "start > one > two 3 > two 4" } }),
+              task({ name: "three", result: { name: "three*" } }),
+              checkpoint({
+                values: { name: "start > one > two 3 > two 4 > three*" },
+              }),
+            ],
+            [
+              checkpoint({ values: { name: "start > one > two 3 > two 4" } }),
+              task({ name: "three", result: { name: "three" } }),
+              checkpoint({
+                values: { name: "start > one > two 3 > two 4 > three" },
+              }),
+            ],
+          ],
+        ],
+      ],
+    ]);
+  });
+
+  it("resume multiple interrupts", async () => {
+    const checkpointer = await createCheckpointer();
+    const config = { configurable: { thread_id: "1" } };
+
+    const childGraph = new StateGraph(
+      Annotation.Root({
+        prompt: Annotation<string>,
+        humanInput: Annotation<string>,
+        humanInputs: Annotation<string[]>,
+      })
+    )
+      .addNode("getHumanInput", (state) => {
+        const humanInput = interrupt(state.prompt);
+        return { humanInput, humanInputs: [humanInput] };
+      })
+      .addEdge(START, "getHumanInput")
+      .compile();
+
+    const graph = new StateGraph(
+      Annotation.Root({
+        prompts: Annotation<string[]>,
+        humanInputs: Annotation<string[]>({
+          default: () => [],
+          reducer: (a, b) => [...a, ...b],
+        }),
+      })
+    )
+      .addNode("childGraph", childGraph)
+      .addNode("cleanup", (state) => {
+        expect(state.humanInputs).toHaveLength(state.prompts.length);
+        return {};
+      })
+      .addConditionalEdges(
+        START,
+        ({ prompts }) =>
+          prompts.map((prompt) => new Send("childGraph", { prompt })),
+        ["childGraph"]
+      )
+      .addEdge("childGraph", "cleanup")
+      .addEdge("cleanup", END)
+      .compile({ checkpointer });
+
+    const prompts = ["a", "b", "c", "d", "e"];
+
+    const values = await graph.invoke({ prompts }, config);
+    const state = await graph.getState(config);
+    const interrupts = state.tasks.flatMap((t) => t.interrupts);
+
+    if (!isInterrupted<string>(values))
+      throw new Error("Graph was not interrupted");
+    expect(values[INTERRUPT]).toEqual(interrupts);
+
+    const resume = Object.fromEntries(
+      values[INTERRUPT].map((i) => [i.id, `response: ${i.value}`])
+    );
+
+    expect(await graph.invoke(new Command({ resume }), config)).toEqual({
+      prompts: ["a", "b", "c", "d", "e"],
+      humanInputs: [
+        "response: a",
+        "response: b",
+        "response: c",
+        "response: d",
+        "response: e",
+      ],
+    });
   });
 }
 

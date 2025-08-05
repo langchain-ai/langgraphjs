@@ -1,13 +1,16 @@
 import {
-  CheckpointTuple,
-  PendingWrite,
-  uuid6,
+  type Checkpoint,
+  type CheckpointTuple,
   type BaseCheckpointSaver,
+  type PendingWrite,
+  uuid6,
+  TASKS,
 } from "@langchain/langgraph-checkpoint";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { CheckpointerTestInitializer } from "../types.js";
 import {
   generateTuplePairs,
+  it_skipForSomeModules,
   putTuples,
   toArray,
   toMap,
@@ -76,7 +79,7 @@ export function listTests<T extends BaseCheckpointSaver>(
     // can't reference argumentCombinations directly here because it isn't built at the time this is evaluated.
     // We do know how many entries there will be though, so we just pass the index for each entry, instead.
     it.each(argumentCombinations)(
-      "%s",
+      "$description",
       async ({
         thread_id,
         checkpoint_ns,
@@ -132,6 +135,80 @@ export function listTests<T extends BaseCheckpointSaver>(
         }
       }
     );
+
+    it_skipForSomeModules(initializer.checkpointerName, {
+      "@langchain/langgraph-checkpoint-mongodb":
+        "MongoDBSaver never stored pending sends",
+    })("should migrate pending sends", async () => {
+      let config: RunnableConfig = {
+        configurable: { thread_id: "thread-1", checkpoint_ns: "" },
+      };
+
+      const checkpoint0: Checkpoint = {
+        v: 1,
+        id: uuid6(0),
+        ts: "2024-04-19T17:19:07.952Z",
+        channel_values: {},
+        channel_versions: {},
+        versions_seen: {},
+      };
+
+      config = await checkpointer.put(
+        config,
+        checkpoint0,
+        { source: "loop", parents: {}, step: 0 },
+        {}
+      );
+
+      await checkpointer.putWrites(
+        config,
+        [
+          [TASKS, "send-1"],
+          [TASKS, "send-2"],
+        ],
+        "task-1"
+      );
+      await checkpointer.putWrites(config, [[TASKS, "send-3"]], "task-2");
+
+      // check that fetching checkpount 0 doesn't attach pending sends
+      // (they should be attached to the next checkpoint)
+      const tuple0 = await checkpointer.getTuple(config);
+      expect(tuple0?.checkpoint.channel_values).toEqual({});
+      expect(tuple0?.checkpoint.channel_versions).toEqual({});
+
+      // create second checkpoint
+      const checkpoint1: Checkpoint = {
+        v: 1,
+        id: uuid6(1),
+        ts: "2024-04-20T17:19:07.952Z",
+        channel_values: {},
+        channel_versions: checkpoint0.channel_versions,
+        versions_seen: checkpoint0.versions_seen,
+      };
+      config = await checkpointer.put(
+        config,
+        checkpoint1,
+        { source: "loop", parents: {}, step: 1 },
+        {}
+      );
+
+      // check that #list properly migrates old version of checkpoints (v < 4)
+      const checkpointTupleGenerator = checkpointer.list({
+        configurable: { thread_id: "thread-1" },
+      });
+      const checkpointTuples: CheckpointTuple[] = [];
+      for await (const checkpoint of checkpointTupleGenerator) {
+        checkpointTuples.push(checkpoint);
+      }
+
+      expect.soft(checkpointTuples.length).toBe(2);
+      expect.soft(checkpointTuples[0].checkpoint.channel_values).toEqual({
+        [TASKS]: ["send-1", "send-2", "send-3"],
+      });
+      expect
+        .soft(checkpointTuples[0].checkpoint.channel_versions[TASKS])
+        .toBeDefined();
+    });
   });
 
   function setupArgumentRanges(

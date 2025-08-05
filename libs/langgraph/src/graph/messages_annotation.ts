@@ -1,8 +1,10 @@
 /* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
 
 import { BaseMessage } from "@langchain/core/messages";
+import { z } from "zod/v3";
 import { Annotation } from "./annotation.js";
 import { Messages, messagesStateReducer } from "./message.js";
+import { SchemaMeta, withLangGraph } from "./zod/meta.js";
 
 /**
  * Prebuilt state annotation that combines returned messages.
@@ -44,4 +46,66 @@ export const MessagesAnnotation = Annotation.Root({
     reducer: messagesStateReducer,
     default: () => [],
   }),
+});
+
+/**
+ * Prebuilt schema meta for Zod state definition.
+ *
+ * @example
+ * ```ts
+ * import { z } from "zod/v4-mini";
+ * import { MessagesZodState, StateGraph } from "@langchain/langgraph";
+ *
+ * const AgentState = z.object({
+ *   messages: z.custom<BaseMessage[]>().register(registry, MessagesZodMeta),
+ * });
+ * ```
+ */
+export const MessagesZodMeta: SchemaMeta<BaseMessage[], Messages> = {
+  reducer: { fn: messagesStateReducer },
+  jsonSchemaExtra: { langgraph_type: "messages" },
+  default: () => [],
+};
+
+/**
+ * Prebuilt state object that uses Zod to combine returned messages.
+ * This utility is synonymous with the `MessagesAnnotation` annotation,
+ * but uses Zod as the way to express messages state.
+ *
+ * You can use import and use this prebuilt schema like this:
+ *
+ * @example
+ * ```ts
+ * import { MessagesZodState, StateGraph } from "@langchain/langgraph";
+ *
+ * const graph = new StateGraph(MessagesZodState)
+ *   .addNode(...)
+ *   ...
+ * ```
+ *
+ * Which is equivalent to initializing the schema object manually like this:
+ *
+ * @example
+ * ```ts
+ * import { z } from "zod";
+ * import type { BaseMessage, BaseMessageLike } from "@langchain/core/messages";
+ * import { StateGraph, messagesStateReducer } from "@langchain/langgraph";
+ * import "@langchain/langgraph/zod";
+ *
+ * const AgentState = z.object({
+ *   messages: z
+ *     .custom<BaseMessage[]>()
+ *     .default(() => [])
+ *     .langgraph.reducer(
+ *        messagesStateReducer,
+ *        z.custom<BaseMessageLike | BaseMessageLike[]>()
+ *     ),
+ * });
+ * const graph = new StateGraph(AgentState)
+ *   .addNode(...)
+ *   ...
+ * ```
+ */
+export const MessagesZodState = z.object({
+  messages: withLangGraph(z.custom<BaseMessage[]>(), MessagesZodMeta),
 });

@@ -65,7 +65,7 @@ Read the [application structure](./application_structure.md) guide to learn how 
 
 The LangGraph Server API allows you to create and manage [assistants](assistants.md), [threads](#threads), [runs](#runs), [cron jobs](#cron-jobs), and more.
 
-The [LangGraph Cloud API Reference](https://langchain-ai.github.io/langgraph/cloud/reference/api/api_ref.html) provides detailed information on the API endpoints and data models.
+The [LangGraph Cloud API Reference](/langgraphjs/cloud/reference/api/api_ref.html) provides detailed information on the API endpoints and data models.
 
 ### Assistants
 
@@ -85,13 +85,13 @@ The state of a thread at a particular point in time is called a [checkpoint](per
 
 For more on threads and checkpoints, see this section of the [LangGraph conceptual guide](low_level.md#persistence).
 
-The LangGraph Cloud API provides several endpoints for creating and managing threads and thread state. See the [API reference](https://langchain-ai.github.io/langgraph/cloud/reference/api/api_ref.html#tag/threadscreate) for more details.
+The LangGraph Cloud API provides several endpoints for creating and managing threads and thread state. See the [API reference](/langgraphjs/cloud/reference/api/api_ref.html#tag/threadscreate) for more details.
 
 ### Runs
 
 A run is an invocation of an [assistant](#assistants). Each run may have its own input, configuration, and metadata, which may affect execution and output of the underlying graph. A run can optionally be executed on a [thread](#threads).
 
-The LangGraph Cloud API provides several endpoints for creating and managing runs. See the [API reference](https://langchain-ai.github.io/langgraph/cloud/reference/api/api_ref.html#tag/runsmanage) for more details.
+The LangGraph Cloud API provides several endpoints for creating and managing runs. See the [API reference](/langgraphjs/cloud/reference/api/api_ref.html#tag/runsmanage) for more details.
 
 ### Store
 
@@ -111,20 +111,20 @@ LangGraph Cloud supports cron jobs, which run on a user-defined schedule. The us
 - Create a new thread with the specified assistant
 - Send the specified input to that thread
 
-Note that this sends the same input to the thread every time. See the [how-to guide](https://langchain-ai.github.io/langgraph/cloud/how-tos/cron_jobs.md) for creating cron jobs.
+Note that this sends the same input to the thread every time. See the [how-to guide](/langgraphjs/cloud/how-tos/cron_jobs.md) for creating cron jobs.
 
-The LangGraph Cloud API provides several endpoints for creating and managing cron jobs. See the [API reference](https://langchain-ai.github.io/langgraph/cloud/reference/api/api_ref.html#tag/crons-enterprise-only) for more details.
+The LangGraph Cloud API provides several endpoints for creating and managing cron jobs. See the [API reference](/langgraphjs/cloud/reference/api/api_ref.html#tag/crons-enterprise-only) for more details.
 
 ### Webhooks
 
 Webhooks enable event-driven communication from your LangGraph Cloud application to external services. For example, you may want to issue an update to a separate service once an API call to LangGraph Cloud has finished running.
 
-Many LangGraph Cloud endpoints accept a `webhook` parameter. If this parameter is specified by a an endpoint that can accept POST requests, LangGraph Cloud will send a request at the completion of a run.
+Many LangGraph Cloud endpoints accept a `webhook` parameter. If this parameter is specified by an endpoint that can accept POST requests, LangGraph Cloud will send a request at the completion of a run.
 
-See the corresponding [how-to guide](https://langchain-ai.github.io/langgraph/cloud/how-tos/webhooks.md) for more detail.
+See the corresponding [how-to guide](/langgraphjs/cloud/how-tos/webhooks.md) for more details.
 
 ## Related
 
 * LangGraph [Application Structure](./application_structure.md) guide explains how to structure your LangGraph application for deployment.
 * [How-to guides for the LangGraph Platform](../how-tos/index.md).
-* The [LangGraph Cloud API Reference](https://langchain-ai.github.io/langgraph/cloud/reference/api/api_ref.html) provides detailed information on the API endpoints and data models.
+* The [LangGraph Cloud API Reference](/langgraphjs/cloud/reference/api/api_ref.html) provides detailed information on the API endpoints and data models.

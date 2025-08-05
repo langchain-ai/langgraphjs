@@ -29,7 +29,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: 3.12
 
@@ -38,10 +38,14 @@ jobs:
           pip install uv
           uv venv
           uv pip install -r docs/docs-requirements.txt
-          uv pip install "git+https://${GITHUB_TOKEN}@github.com/langchain-ai/mkdocs-material-insiders.git"
+          # we run this installation only for internal PRs
+          # as GITHUB_TOKEN is not available for PRs from outside contributors
+          if [ -n "${GITHUB_TOKEN}" ]; then
+            uv pip install "git+https://${GITHUB_TOKEN}@github.com/langchain-ai/mkdocs-material-insiders.git"
+          fi
 
       - name: Use Node.js 18.x
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 18.x
           cache: "yarn"
@@ -49,6 +53,12 @@ jobs:
       - name: Install dependencies
         run: |
           yarn install --immutable --mode=skip-build
+
+      - name: Build llms-text
+        run: |
+          source .venv/bin/activate
+          cd docs
+          make llms-text
 
       - name: Build site
         run: |
@@ -59,7 +69,7 @@ jobs:
 
       - name: Configure GitHub Pages
         if: github.ref == 'refs/heads/main'
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v5
 
       - name: Upload Pages Artifact
         if: github.ref == 'refs/heads/main'
@@ -74,7 +84,7 @@ jobs:
 
       - name: Deploy Pull Request Preview
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: pr-preview-${{ github.event.number }}
           path: ./docs/site/

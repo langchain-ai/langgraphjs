@@ -1,0 +1,22 @@
+{
+  "node_version": "20",
+  "graphs": {
+    "agent": "./agent.mts:graph",
+    "nested": "./nested.mts:graph",
+    "weather": "./weather.mts:graph",
+    "error": "./error.mts:graph",
+    "delay": "./delay.mts:graph",
+    "dynamic": "./dynamic.mts:graph",
+    "agent_simple": "./agent_simple.mts:graph",
+    "simple_runtime": "./simple_runtime.mts:graph"
+  },
+  "ui": {
+    "agent-alias": "./agent/ui.tsx"
+  },
+  "http": {
+    "app": "./http.mts:app"
+  },
+  "env": {
+    "LANGGRAPH_CONFIG": "{\"agent\": {\"configurable\": {\"model_name\": \"openai\"}}, \"simple_runtime\": {\"context\": {\"model\": \"unknown\"}}}"
+  }
+}

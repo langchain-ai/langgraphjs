@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "module": "NodeNext",
+    "allowJs": true,
+    "verbatimModuleSyntax": true,
+    "noUnusedLocals": true,
+    "outDir": "dist"
+  },
+  "exclude": ["scripts/*", "dist/*"]
+}

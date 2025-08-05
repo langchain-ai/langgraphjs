@@ -37,7 +37,7 @@ export class BinaryOperatorAggregate<
       this.operator,
       this.initialValueFactory
     );
-    if (checkpoint) {
+    if (typeof checkpoint !== "undefined") {
       empty.value = checkpoint;
     }
     return empty as this;
@@ -72,5 +72,9 @@ export class BinaryOperatorAggregate<
       throw new EmptyChannelError();
     }
     return this.value;
+  }
+
+  isAvailable(): boolean {
+    return this.value !== undefined;
   }
 }

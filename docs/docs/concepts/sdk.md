@@ -25,8 +25,8 @@ You can install the packages using the appropriate package manager for your lang
 
 You can find the API reference for the SDKs here:
 
-- [Python SDK Reference](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/python_sdk_ref/)
-- [JS/TS SDK Reference](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/)
+- [Python SDK Reference](/langgraphjs/cloud/reference/sdk/python_sdk_ref/)
+- [JS/TS SDK Reference](/langgraphjs/cloud/reference/sdk/js_ts_sdk_ref/)
 
 ## Python Sync vs. Async
 
@@ -51,6 +51,6 @@ The Python SDK provides both synchronous (`get_sync_client`) and asynchronous (`
 
 ## Related
 
-- [LangGraph CLI API Reference](https://langchain-ai.github.io/langgraph/cloud/reference/cli/)
-- [Python SDK Reference](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/python_sdk_ref/)
-- [JS/TS SDK Reference](https://langchain-ai.github.io/langgraph/cloud/reference/sdk/js_ts_sdk_ref/)
+- [LangGraph CLI API Reference](/langgraphjs/cloud/reference/cli/)
+- [Python SDK Reference](/langgraphjs/cloud/reference/sdk/python_sdk_ref/)
+- [JS/TS SDK Reference](/langgraphjs/cloud/reference/sdk/js_ts_sdk_ref/)

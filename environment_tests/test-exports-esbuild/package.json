@@ -24,7 +24,7 @@
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
-    "esbuild": "^0.17.18",
+    "esbuild": "^0.25.0",
     "typescript": "^5.0.0"
   }
 }

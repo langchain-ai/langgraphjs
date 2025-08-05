@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-process-env */
 
-import { test } from "@jest/globals";
+import { test } from "vitest";
 import { pull } from "langchain/hub";
 import { ChatOpenAI } from "@langchain/openai";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
@@ -250,7 +250,7 @@ test.skip("Can nest an agent executor", async () => {
   );
 
   for await (const output of await streamResults) {
-    if (!output?.__end__) {
+    if (!("__end__" in output)) {
       console.log(output);
       console.log("----");
     }
@@ -368,7 +368,7 @@ test.skip("Can nest a graph within a graph", async () => {
   );
 
   for await (const output of await streamResults) {
-    if (!output?.__end__) {
+    if (!("__end__" in output)) {
       console.log(output);
       console.log("----");
     }
@@ -470,10 +470,16 @@ Only add steps to the plan that still NEED to be done. Do not return previously 
     state: PlanExecuteState
   ): Promise<Partial<PlanExecuteState>> {
     const task = state.input;
-    const agentResponse = await agentExecutor.invoke({ input: task });
-    return {
-      pastSteps: [task, agentResponse.agentOutcome.returnValues.output],
-    };
+    const agentResponse = await agentExecutor.invoke({
+      input: task ?? undefined,
+    });
+
+    const outcome = agentResponse.agentOutcome;
+    if (!outcome || !("returnValues" in outcome)) {
+      throw new Error("Agent did not return a valid outcome.");
+    }
+
+    return { pastSteps: [task, outcome.returnValues.output] };
   }
 
   async function planStep(

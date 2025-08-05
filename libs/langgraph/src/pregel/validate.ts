@@ -2,7 +2,6 @@ import { All } from "@langchain/langgraph-checkpoint";
 import { BaseChannel } from "../channels/index.js";
 import { INTERRUPT } from "../constants.js";
 import { PregelNode } from "./read.js";
-import { type ManagedValueSpec } from "../managed/base.js";
 
 export class GraphValidationError extends Error {
   constructor(message?: string) {
@@ -13,7 +12,7 @@ export class GraphValidationError extends Error {
 
 export function validateGraph<
   Nn extends Record<string, PregelNode>,
-  Cc extends Record<string, BaseChannel | ManagedValueSpec>
+  Cc extends Record<string, BaseChannel>
 >({
   nodes,
   channels,
@@ -55,7 +54,7 @@ export function validateGraph<
   for (const chan of subscribedChannels) {
     if (!(chan in channels)) {
       throw new GraphValidationError(
-        `Subcribed channel '${String(chan)}' not in channels`
+        `Subscribed channel '${String(chan)}' not in channels`
       );
     }
   }
@@ -114,9 +113,10 @@ export function validateGraph<
   }
 }
 
-export function validateKeys<
-  Cc extends Record<string, BaseChannel | ManagedValueSpec>
->(keys: keyof Cc | Array<keyof Cc>, channels: Cc): void {
+export function validateKeys<Cc extends Record<string, BaseChannel>>(
+  keys: keyof Cc | Array<keyof Cc>,
+  channels: Cc
+): void {
   if (Array.isArray(keys)) {
     for (const key of keys) {
       if (!(key in channels)) {

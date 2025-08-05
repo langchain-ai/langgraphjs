@@ -12,44 +12,48 @@ import { BaseChannel } from "./base.js";
 export class AnyValue<Value> extends BaseChannel<Value, Value, Value> {
   lc_graph_name = "AnyValue";
 
-  value: Value | undefined;
+  // value is an array so we don't misinterpret an update to undefined as no write
+  value: [Value] | [] = [];
 
   constructor() {
     super();
-    this.value = undefined;
   }
 
   fromCheckpoint(checkpoint?: Value) {
     const empty = new AnyValue<Value>();
-    if (checkpoint) {
-      empty.value = checkpoint;
+    if (typeof checkpoint !== "undefined") {
+      empty.value = [checkpoint];
     }
     return empty as this;
   }
 
   update(values: Value[]): boolean {
     if (values.length === 0) {
-      const updated = this.value !== undefined;
-      this.value = undefined;
+      const updated = this.value.length > 0;
+      this.value = [];
       return updated;
     }
 
     // eslint-disable-next-line prefer-destructuring
-    this.value = values[values.length - 1];
+    this.value = [values[values.length - 1]];
     return false;
   }
 
   get(): Value {
-    if (this.value === undefined) {
+    if (this.value.length === 0) {
       throw new EmptyChannelError();
     }
-    return this.value;
+    return this.value[0];
   }
 
   checkpoint(): Value {
-    if (this.value === undefined) {
+    if (this.value.length === 0) {
       throw new EmptyChannelError();
     }
-    return this.value;
+    return this.value[0];
+  }
+
+  isAvailable(): boolean {
+    return this.value.length !== 0;
   }
 }

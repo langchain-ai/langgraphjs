@@ -17,12 +17,12 @@ If you do not want to use LangGraph Platform, we describe the options we have im
 ## Reject
 
 This is the simplest option, this just rejects any follow up runs and does not allow double texting.
-See the [how-to guide](https://langchain-ai.github.io/langgraph/cloud/how-tos/reject_concurrent) for configuring the reject double text option.
+See the [how-to guide](/langgraphjs/cloud/how-tos/reject_concurrent) for configuring the reject double text option.
 
 ## Enqueue
 
 This is a relatively simple option which continues the first run until it completes the whole run, then sends the new input as a separate run.
-See the [how-to guide](https://langchain-ai.github.io/langgraph/cloud/how-tos/enqueue_concurrent) for configuring the enqueue double text option.
+See the [how-to guide](/langgraphjs/cloud/how-tos/enqueue_concurrent) for configuring the enqueue double text option.
 
 ## Interrupt
 
@@ -33,15 +33,15 @@ If you enable this option, your graph should be able to handle weird edge cases 
 For example, you could have called a tool but not yet gotten back a result from running that tool.
 You may need to remove that tool call in order to not have a dangling tool call.
 
-See the [how-to guide](https://langchain-ai.github.io/langgraph/cloud/how-tos/interrupt_concurrent) for configuring the interrupt double text option.
+See the [how-to guide](/langgraphjs/cloud/how-tos/interrupt_concurrent) for configuring the interrupt double text option.
 
 ## Rollback
 
 This option rolls back all work done up until that point.
 It then sends the user input in, basically as if it just followed the original run input.
 
-This may create some weird states - for example, you may have two `User` messages in a row, with no `Asssitant` message in between them.
+This may create some weird states - for example, you may have two `User` messages in a row, with no `Assistant` message in between them.
 
 You will need to make sure the LLM you are calling can handle that, or combine those into a single `User` message.
 
-See the [how-to guide](https://langchain-ai.github.io/langgraph/cloud/how-tos/rollback_concurrent) for configuring the rollback double text option.
+See the [how-to guide](/langgraphjs/cloud/how-tos/rollback_concurrent) for configuring the rollback double text option.

@@ -60,7 +60,13 @@ It is also possible to define explicit input and output schemas for a graph. In 
 Let's look at an example:
 
 ```ts
-import { Annotation, StateGraph } from "@langchain/langgraph";
+import {
+  Annotation,
+  START,
+  StateGraph,
+  StateType,
+  UpdateType,
+} from "@langchain/langgraph";
 
 const InputStateAnnotation = Annotation.Root({
   user_input: Annotation<string>,
@@ -92,7 +98,17 @@ const node3 = async (state: typeof OverallStateAnnotation.State) => {
   return { graph_output: state.bar + " Lance" };
 };
 
-const graph = new StateGraph({
+// Most of the time the StateGraph type parameters are inferred by TypeScript,
+// but this is a special case where they must be specified explicitly in order
+// to avoid a type error.
+const graph = new StateGraph<
+  (typeof OverallStateAnnotation)["spec"],
+  StateType<(typeof OverallStateAnnotation)["spec"]>,
+  UpdateType<(typeof OutputStateAnnotation)["spec"]>,
+  typeof START,
+  (typeof InputStateAnnotation)["spec"],
+  (typeof OutputStateAnnotation)["spec"]
+>({
   input: InputStateAnnotation,
   output: OutputStateAnnotation,
   stateSchema: OverallStateAnnotation,
@@ -179,7 +195,7 @@ In addition to keeping track of message IDs, the `messagesStateReducer` function
 }
 ```
 
-Below is an example of a graph state annotation that uses `messagesStateReducer` as it's reducer function.
+Below is an example of a graph state annotation that uses `messagesStateReducer` as its reducer function.
 
 ```ts
 import type { BaseMessage } from "@langchain/core/messages";
@@ -235,6 +251,22 @@ const StateWithDocuments = Annotation.Root({
 });
 ```
 
+#### MessagesZodState
+
+Just like `MessagesAnnotation`, there is a prebuilt Zod schema called `MessagesZodState` that provides the same functionality, but uses Zod for defining the state instead of the `Annotation` API.
+
+```typescript
+import { MessagesZodState, StateGraph } from "@langchain/langgraph";
+
+import { z } from "zod";
+
+const graph = new StateGraph(MessagesZodState)
+  .addNode(...)
+  ...
+```
+
+For more on defining graph state using Zod, see the [defining graph state how-to](/langgraphjs/how-tos/define-state/#using-zod).
+
 ## Nodes
 
 In LangGraph, nodes are typically JavaScript/TypeScript functions (sync or `async`) where the **first** positional argument is the [state](#state), and (optionally), the **second** positional argument is a "config", containing optional [configurable parameters](#configuration) (such as a `thread_id`).
@@ -248,20 +280,20 @@ import { StateGraph, Annotation } from "@langchain/langgraph";
 const GraphAnnotation = Annotation.Root({
   input: Annotation<string>,
   results: Annotation<string>,
-})
+});
 
 // The state type can be extracted using `typeof <annotation variable name>.State`
 const myNode = (state: typeof GraphAnnotation.State, config?: RunnableConfig) => {
   console.log("In node: ", config.configurable?.user_id);
   return {
     results: `Hello, ${state.input}!`
-  }
-}
+  };
+};
 
 // The second argument is optional
 const myOtherNode = (state: typeof GraphAnnotation.State) => {
-  return state
-}
+  return state;
+};
 
 const builder = new StateGraph(GraphAnnotation)
   .addNode("myNode", myNode)
@@ -318,7 +350,7 @@ If you want to **optionally** route to 1 or more edges (or optionally terminate)
 graph.addConditionalEdges("nodeA", routingFunction);
 ```
 
-Similar to nodes, the `routingFunction` accept the current `state` of the graph and return a value.
+Similar to nodes, the `routingFunction` accepts the current `state` of the graph and return a value.
 
 By default, the return value `routingFunction` is used as the name of the node (or an array of nodes) to send the state to next. All those nodes will be run in parallel as a part of the next superstep.
 
@@ -331,50 +363,172 @@ graph.addConditionalEdges("nodeA", routingFunction, {
 });
 ```
 
+!!! tip
+Use [`Command`](#command) instead of conditional edges if you want to combine state updates and routing in a single function.
+
 ### Entry Point
 
 The entry point is the first node(s) that are run when the graph starts. You can use the [`addEdge`](/langgraphjs/reference/classes/langgraph.StateGraph.html#addEdge) method from the virtual [`START`](/langgraphjs/reference/variables/langgraph.START.html) node to the first node to execute to specify where to enter the graph.
 
-```typescript
+```typescript hl_lines="4"
 import { START } from "@langchain/langgraph";
 
-graph.addEdge(START, "nodeA");
+const graph = new StateGraph(...)
+  .addEdge(START, "nodeA")
+  .compile();
 ```
 
 ### Conditional Entry Point
 
 A conditional entry point lets you start at different nodes depending on custom logic. You can use [`addConditionalEdges`](/langgraphjs/reference/classes/langgraph.StateGraph.html#addConditionalEdges) from the virtual [`START`](/langgraphjs/reference/variables/langgraph.START.html) node to accomplish this.
 
-```typescript
+```typescript hl_lines="4"
 import { START } from "@langchain/langgraph";
 
-graph.addConditionalEdges(START, routingFunction);
+const graph = new StateGraph(...)
+  .addConditionalEdges(START, routingFunction)
+  .compile();
 ```
 
 You can optionally provide an object that maps the `routingFunction`'s output to the name of the next node.
 
-```typescript
-graph.addConditionalEdges(START, routingFunction, {
-  true: "nodeB",
-  false: "nodeC",
-});
+```typescript hl_lines="2-5"
+const graph = new StateGraph(...)
+  .addConditionalEdges(START, routingFunction, {
+    true: "nodeB",
+    false: "nodeC",
+  })
+  .compile();
 ```
 
 ## `Send`
 
-By default, `Nodes` and `Edges` are defined ahead of time and operate on the same shared state. However, there can be cases where the exact edges are not known ahead of time and/or you may want different versions of `State` to exist at the same time. A common of example of this is with `map-reduce` design patterns. In this design pattern, a first node may generate an array of objects, and you may want to apply some other node to all those objects. The number of objects may be unknown ahead of time (meaning the number of edges may not be known) and the input `State` to the downstream `Node` should be different (one for each generated object).
+By default, `Nodes` and `Edges` are defined ahead of time and operate on the same shared state. However, there can be cases where the exact edges are not known ahead of time and/or you may want different versions of `State` to exist at the same time. A common example of this is with `map-reduce` design patterns. In this design pattern, a first node may generate an array of objects, and you may want to apply some other node to all those objects. The number of objects may be unknown ahead of time (meaning the number of edges may not be known) and the input `State` to the downstream `Node` should be different (one for each generated object).
 
 To support this design pattern, LangGraph supports returning [`Send`](/langgraphjs/reference/classes/langgraph.Send.html) objects from conditional edges. `Send` takes two arguments: first is the name of the node, and second is the state to pass to that node.
 
-```typescript
+```typescript hl_lines="8"
 const continueToJokes = (state: { subjects: string[] }) => {
   return state.subjects.map(
     (subject) => new Send("generate_joke", { subject })
   );
 };
 
-graph.addConditionalEdges("nodeA", continueToJokes);
+const graph = new StateGraph(...)
+  .addConditionalEdges("nodeA", continueToJokes)
+  .compile();
 ```
+
+## `Command`
+
+!!! tip Compatibility
+This functionality requires `@langchain/langgraph>=0.2.31`.
+
+It can be convenient to combine control flow (edges) and state updates (nodes). For example, you might want to BOTH perform state updates AND decide which node to go to next in the SAME node rather than use a conditional edge. LangGraph provides a way to do so by returning a [`Command`](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.Command.html) object from node functions:
+
+```ts
+import { StateGraph, Annotation, Command } from "@langchain/langgraph";
+
+const StateAnnotation = Annotation.Root({
+  foo: Annotation<string>,
+});
+
+const myNode = (state: typeof StateAnnotation.State) => {
+  return new Command({
+    // state update
+    update: {
+      foo: "bar",
+    },
+    // control flow
+    goto: "myOtherNode",
+  });
+};
+```
+
+With `Command` you can also achieve dynamic control flow behavior (identical to [conditional edges](#conditional-edges)):
+
+```ts
+const myNode = async (state: typeof StateAnnotation.State) => {
+  if (state.foo === "bar") {
+    return new Command({
+      update: {
+        foo: "baz",
+      },
+      goto: "myOtherNode",
+    });
+  }
+  // ...
+};
+```
+
+!!! important
+
+    When returning `Command` in your node functions, you must also add an `ends` parameter with the list of node names the node is routing to, e.g. `.addNode("myNode", myNode, { ends: ["myOtherNode"] })`. This is necessary for graph compilation and validation, and indicates that `myNode` can navigate to `myOtherNode`.
+
+Check out this [how-to guide](../how-tos/command.ipynb) for an end-to-end example of how to use `Command`.
+
+### When should I use Command instead of conditional edges?
+
+Use `Command` when you need to **both** update the graph state **and** route to a different node. For example, when implementing [multi-agent handoffs](./multi_agent.md#handoffs) where it's important to route to a different agent and pass some information to that agent.
+
+Use [conditional edges](#conditional-edges) to route between nodes conditionally without updating the state.
+
+### Navigating to a node in a parent graph
+
+If you are using [subgraphs](#subgraphs), you might want to navigate from a node a subgraph to a different subgraph (i.e. a different node in the parent graph). To do so, you can specify `graph: Command.PARENT` in `Command`:
+
+```ts
+const myNode = (state: typeof StateAnnotation.State) => {
+  return new Command({
+    update: { foo: "bar" },
+    goto: "other_subgraph", // where `other_subgraph` is a node in the parent graph
+    graph: Command.PARENT,
+  });
+};
+```
+
+!!! note
+
+    Setting `graph` to `Command.PARENT` will navigate to the closest parent graph.
+
+This is particularly useful when implementing [multi-agent handoffs](./multi_agent.md#handoffs).
+
+### Using inside tools
+
+A common use case is updating graph state from inside a tool. For example, in a customer support application you might want to look up customer information based on their account number or ID in the beginning of the conversation. To update the graph state from the tool, you can return `Command({ update: { my_custom_key: "foo", messages: [...] } })` from the tool:
+
+```ts
+import { tool } from "@langchain/core/tools";
+
+const lookupUserInfo = tool(async (input, config) => {
+  const userInfo = getUserInfo(config);
+  return new Command({
+    // update state keys
+    update: {
+      user_info: userInfo,
+      messages: [
+        new ToolMessage({
+          content: "Successfully looked up user information",
+          tool_call_id: config.toolCall.id,
+        }),
+      ],
+    },
+  });
+}, {
+  name: "lookup_user_info",
+  description: "Use this to look up user information to better assist them with their questions.",
+  schema: z.object(...)
+});
+```
+
+!!! important
+You MUST include `messages` (or any state key used for the message history) in `Command.update` when returning `Command` from a tool and the list of messages in `messages` MUST contain a `ToolMessage`. This is necessary for the resulting message history to be valid (LLM providers require AI messages with tool calls to be followed by the tool result messages).
+
+If you are using tools that update state via `Command`, we recommend using prebuilt [`ToolNode`](/langgraphjs/reference/classes/langgraph_prebuilt.ToolNode.html) which automatically handles tools returning `Command` objects and propagates them to the graph state. If you're writing a custom node that calls tools, you would need to manually propagate `Command` objects returned by the tools as the update from node.
+
+### Human-in-the-loop
+
+`Command` is an important part of human-in-the-loop workflows: when using `interrupt()` to collect user input, `Command` is then used to supply the input and resume execution via `new Command({ resume: "User input" })`. Check out [this conceptual guide](/langgraphjs/concepts/human_in_the_loop) for more information.
 
 ## Persistence
 
@@ -400,7 +554,7 @@ LangGraph can easily handle migrations of graph definitions (nodes, edges, and s
 
 ## Configuration
 
-When creating a graph, you can also mark that certain parts of the graph are configurable. This is commonly done to enable easily switching between models or system prompts. This allows you to create a single "cognitive architecture" (the graph) but have multiple different instance of it.
+When creating a graph, you can also mark that certain parts of the graph are configurable. This is commonly done to enable easy switching between models or system prompts. This allows you to create a single "cognitive architecture" (the graph) but have multiple different instances of it.
 
 You can then pass this configuration into the graph using the `configurable` config field.
 
@@ -426,43 +580,44 @@ const nodeA = (state, config) => {
 
 See [this guide](../how-tos/configuration.ipynb) for a full breakdown on configuration
 
+### Recursion Limit
+
+The recursion limit sets the maximum number of [super-steps](#graphs) the graph can execute during a single execution. Once the limit is reached, LangGraph will raise `GraphRecursionError`. By default this value is set to 25 steps. The recursion limit can be set on any graph at runtime, and is passed to `.invoke`/`.stream` via the config dictionary. Importantly, `recursionLimit` is a standalone `config` key and should not be passed inside the `configurable` key as all other user-defined configuration. See the example below:
+
+```ts
+await graph.invoke(inputs, { recursionLimit: 50 });
+```
+
+Read [this how-to](/langgraphjs/how-tos/recursion-limit/) to learn more about how the recursion limit works.
+
+## `interrupt`
+
+Use the [interrupt](/langgraphjs/reference/functions/langgraph.interrupt-1.html) function to **pause** the graph at specific points to collect user input. The `interrupt` function surfaces interrupt information to the client, allowing the developer to collect user input, validate the graph state, or make decisions before resuming execution.
+
+```ts
+import { interrupt } from "@langchain/langgraph";
+
+const humanApprovalNode = (state: typeof StateAnnotation.State) => {
+  ...
+  const answer = interrupt(
+      // This value will be sent to the client.
+      // It can be any JSON serializable value.
+      { question: "is it ok to continue?"},
+  );
+  ...
+```
+
+Resuming the graph is done by passing a [`Command`](#command) object to the graph with the `resume` key set to the value returned by the `interrupt` function.
+
+Read more about how the `interrupt` is used for **human-in-the-loop** workflows in the [Human-in-the-loop conceptual guide](./human_in_the_loop.md).
+
+**Note:** The `interrupt` function is not currently available in [web environments](/langgraphjs/how-tos/use-in-web-environments/).
+
 ## Breakpoints
 
-It can often be useful to set breakpoints before or after certain nodes execute. This can be used to wait for human approval before continuing. These can be set when you ["compile" a graph](#compiling-your-graph), or thrown dynamically using a special error called a [`NodeInterrupt`](../how-tos/dynamic_breakpoints.ipynb). You can set breakpoints either _before_ a node executes (using `interruptBefore`) or after a node executes (using `interruptAfter`).
+Breakpoints pause graph execution at specific points and enable stepping through execution step by step. Breakpoints are powered by LangGraph's [**persistence layer**](./persistence.md), which saves the state after each graph step. Breakpoints can also be used to enable [**human-in-the-loop**](./human_in_the_loop.md) workflows, though we recommend using the [`interrupt` function](#interrupt) for this purpose.
 
-You **MUST** use a checkpointer when using breakpoints. This is because your graph needs to be able to resume execution after interrupting.
-
-In order to resume execution, you can just invoke your graph with `null` as the input and the same `thread_id`.
-
-```typescript
-const config = { configurable: { thread_id: "foo" } };
-
-// Initial run of graph
-await graph.invoke(inputs, config);
-
-// Let's assume it hit a breakpoint somewhere, you can then resume by passing in None
-await graph.invoke(null, config);
-```
-
-See [this guide](../how-tos/breakpoints.ipynb) for a full walkthrough of how to add breakpoints.
-
-### Dynamic Breakpoints
-
-It may be helpful to **dynamically** interrupt the graph from inside a given node based on some condition. In `LangGraph` you can do so by using `NodeInterrupt` -- a special error that can be raised from inside a node.
-
-```typescript
-function myNode(
-  state: typeof GraphAnnotation.State
-): typeof GraphAnnotation.State {
-  if (state.input.length > 5) {
-    throw new NodeInterrupt(
-      `Received input that is longer than 5 characters: ${state.input}`
-    );
-  }
-
-  return state;
-}
-```
+Read more about breakpoints in the [Breakpoints conceptual guide](./breakpoints.md).
 
 ## Subgraphs
 
@@ -482,14 +637,16 @@ There are two ways to add subgraphs to a parent graph:
 
 - add a node with a function that invokes the subgraph: this is useful when the parent graph and the subgraph have different state schemas and you need to transform state before or after calling the subgraph
 
-```ts
+```ts hl_lines="8"
 const subgraph = subgraphBuilder.compile();
 
 const callSubgraph = async (state: typeof StateAnnotation.State) => {
   return subgraph.invoke({ subgraph_key: state.parent_key });
 };
 
-builder.addNode("subgraph", callSubgraph);
+const builder = new StateGraph(...)
+  .addNode("subgraph", callSubgraph)
+  .compile();
 ```
 
 Let's take a look at examples for each.

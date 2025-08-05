@@ -1,4 +1,4 @@
-import { it, expect } from "@jest/globals";
+import { it, expect } from "vitest";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { uuid6 } from "../../id.js";
 import { JsonPlusSerializer } from "../jsonplus.js";
@@ -90,7 +90,7 @@ it.each(VALUES)(
   "should serialize and deserialize %s",
   async (_description, value) => {
     const serde = new JsonPlusSerializer();
-    const [type, serialized] = serde.dumpsTyped(value);
+    const [type, serialized] = await serde.dumpsTyped(value);
     const deserialized = await serde.loadsTyped(type, serialized);
     expect(deserialized).toEqual(value);
   }
@@ -108,7 +108,7 @@ it("Should replace circular JSON inputs", async () => {
   };
   const serde = new JsonPlusSerializer();
   const decoder = new TextDecoder();
-  const [type, serialized] = serde.dumpsTyped(circular);
+  const [type, serialized] = await serde.dumpsTyped(circular);
   expect(type).toEqual("json");
   expect(decoder.decode(serialized)).toEqual(
     `{"a":{"b":{"a":"[Circular]"}},"b":{"a":"[Circular]"}}`

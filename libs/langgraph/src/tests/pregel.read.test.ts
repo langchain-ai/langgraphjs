@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it } from "vitest";
 import {
   RunnablePassthrough,
   RunnableSequence,
@@ -34,7 +34,7 @@ describe("PregelNode", () => {
   });
 
   describe("getNode", () => {
-    it("should return undefined if bound is default andthere are no writers", () => {
+    it("should return undefined if bound is default and there are no writers", () => {
       // set up test
       const pregelNode = new PregelNode({
         channels: ["foo"],

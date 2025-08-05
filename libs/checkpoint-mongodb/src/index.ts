@@ -87,7 +87,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     };
     const checkpoint = (await this.serde.loadsTyped(
       doc.type,
-      doc.checkpoint.value()
+      doc.checkpoint.value("utf8")
     )) as Checkpoint;
     const serializedWrites = await this.db
       .collection(this.checkpointWritesCollectionName)
@@ -100,7 +100,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
           serializedWrite.channel,
           await this.serde.loadsTyped(
             serializedWrite.type,
-            serializedWrite.value.value()
+            serializedWrite.value.value("utf8")
           ),
         ] as CheckpointPendingWrite;
       })
@@ -111,7 +111,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       pendingWrites,
       metadata: (await this.serde.loadsTyped(
         doc.type,
-        doc.metadata.value()
+        doc.metadata.value("utf8")
       )) as CheckpointMetadata,
       parentConfig:
         doc.parent_checkpoint_id != null
@@ -171,11 +171,11 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     for await (const doc of result) {
       const checkpoint = (await this.serde.loadsTyped(
         doc.type,
-        doc.checkpoint.value()
+        doc.checkpoint.value("utf8")
       )) as Checkpoint;
       const metadata = (await this.serde.loadsTyped(
         doc.type,
-        doc.metadata.value()
+        doc.metadata.value("utf8")
       )) as CheckpointMetadata;
 
       yield {
@@ -218,9 +218,14 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         `The provided config must contain a configurable field with a "thread_id" field.`
       );
     }
-    const [checkpointType, serializedCheckpoint] =
-      this.serde.dumpsTyped(checkpoint);
-    const [metadataType, serializedMetadata] = this.serde.dumpsTyped(metadata);
+    const [
+      [checkpointType, serializedCheckpoint],
+      [metadataType, serializedMetadata],
+    ] = await Promise.all([
+      this.serde.dumpsTyped(checkpoint),
+      this.serde.dumpsTyped(metadata),
+    ]);
+
     if (checkpointType !== metadataType) {
       throw new Error("Mismatched checkpoint and metadata types.");
     }
@@ -235,13 +240,10 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpoint_ns,
       checkpoint_id,
     };
-    await this.db.collection(this.checkpointCollectionName).updateOne(
-      upsertQuery,
-      {
-        $set: doc,
-      },
-      { upsert: true }
-    );
+    await this.db
+      .collection(this.checkpointCollectionName)
+      .updateOne(upsertQuery, { $set: doc }, { upsert: true });
+
     return {
       configurable: {
         thread_id,
@@ -272,34 +274,40 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       );
     }
 
-    const operations = writes.map(([channel, value], idx) => {
-      const upsertQuery = {
-        thread_id,
-        checkpoint_ns,
-        checkpoint_id,
-        task_id: taskId,
-        idx,
-      };
+    const operations = await Promise.all(
+      writes.map(async ([channel, value], idx) => {
+        const upsertQuery = {
+          thread_id,
+          checkpoint_ns,
+          checkpoint_id,
+          task_id: taskId,
+          idx,
+        };
 
-      const [type, serializedValue] = this.serde.dumpsTyped(value);
+        const [type, serializedValue] = await this.serde.dumpsTyped(value);
 
-      return {
-        updateOne: {
-          filter: upsertQuery,
-          update: {
-            $set: {
-              channel,
-              type,
-              value: serializedValue,
-            },
+        return {
+          updateOne: {
+            filter: upsertQuery,
+            update: { $set: { channel, type, value: serializedValue } },
+            upsert: true,
           },
-          upsert: true,
-        },
-      };
-    });
+        };
+      })
+    );
 
     await this.db
       .collection(this.checkpointWritesCollectionName)
       .bulkWrite(operations);
+  }
+
+  async deleteThread(threadId: string) {
+    await this.db
+      .collection(this.checkpointCollectionName)
+      .deleteMany({ thread_id: threadId });
+
+    await this.db
+      .collection(this.checkpointWritesCollectionName)
+      .deleteMany({ thread_id: threadId });
   }
 }

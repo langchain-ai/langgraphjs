@@ -1,13 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import {
-  describe,
-  it,
-  expect,
-  jest,
-  beforeEach,
-  afterEach,
-} from "@jest/globals";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   BaseStore,
   Operation,
@@ -20,7 +13,7 @@ import { InMemoryStore } from "../store/memory.js";
 
 describe("AsyncBatchedStore", () => {
   let store: AsyncBatchedStore;
-  const batchMock = jest.fn();
+  const batchMock = vi.fn();
 
   class MockStore extends BaseStore {
     async batch<Op extends Operation[]>(
@@ -61,10 +54,10 @@ describe("AsyncBatchedStore", () => {
     }
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
     store = new AsyncBatchedStore(new MockStore());
     // Start the store
-    store.start();
+    await store.start();
   });
 
   afterEach(async () => {
@@ -206,7 +199,7 @@ describe("BaseStore", () => {
   });
 
   it("should pass correct options to search method", async () => {
-    const batchSpy = jest.spyOn(store, "batch");
+    const batchSpy = vi.spyOn(store, "batch");
     await store.search(["test"], {
       limit: 20,
       offset: 5,
@@ -223,7 +216,7 @@ describe("BaseStore", () => {
   });
 
   it("should use default options in search method", async () => {
-    const batchSpy = jest.spyOn(store, "batch");
+    const batchSpy = vi.spyOn(store, "batch");
     await store.search(["test"]);
     expect(batchSpy).toHaveBeenCalledWith([
       { namespacePrefix: ["test"], limit: 10, offset: 0 },
@@ -366,7 +359,7 @@ describe("BaseStore", () => {
     });
 
     it("should pass correct options to batch method", async () => {
-      const batchSpy = jest.spyOn(store, "batch");
+      const batchSpy = vi.spyOn(store, "batch");
       await store.listNamespaces({
         prefix: ["a"],
         suffix: ["c"],

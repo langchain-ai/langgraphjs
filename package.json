@@ -3,7 +3,7 @@
   "private": true,
   "description": "LangGraph",
   "type": "module",
-  "packageManager": "yarn@3.5.1",
+  "packageManager": "yarn@4.9.2",
   "engines": {
     "node": ">=18"
   },
@@ -18,7 +18,8 @@
     "examples"
   ],
   "scripts": {
-    "build": "turbo run build",
+    "build": "turbo run build:internal",
+    "changeset": "npx @changesets/cli@^2.29.5",
     "turbo:command": "turbo",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
@@ -30,7 +31,7 @@
     "test:exports:docker": "docker compose -f environment_tests/docker-compose.yml up --force-recreate",
     "format": "turbo run format",
     "format:check": "turbo run format:check",
-    "release": "node scripts/release_workspace.cjs --workspace"
+    "release": "yarn workspaces foreach --all --no-private --topological --verbose npm publish --tolerate-republish"
   },
   "author": "LangChain",
   "license": "MIT",
@@ -42,19 +43,17 @@
     "cheerio": "^1.0.0-rc.12",
     "cheminfo-types": "^1.4.0",
     "d3": "^7.9.0",
-    "esm-hook": "^0.1.4",
     "readline": "^1.3.0",
-    "release-it": "^17.6.0",
+    "release-it": "^19.0.2",
     "semver": "^7.6.3",
     "tslab": "^1.0.21",
-    "tsx": "^4.7.0",
-    "turbo": "canary",
+    "tsx": "^4.19.3",
+    "turbo": "^2.5.4",
     "typedoc": "^0.25.13",
     "typescript": "^4.9.5 || ^5.4.5"
   },
   "resolutions": {
     "cheerio": "^1.0.0-rc.12",
-    "typescript": "4.9.5",
     "semver": "^7.0.0"
   },
   "publishConfig": {

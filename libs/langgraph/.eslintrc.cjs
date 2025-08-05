@@ -11,7 +11,7 @@ module.exports = {
     project: "./tsconfig.json",
     sourceType: "module",
   },
-  plugins: ["@typescript-eslint", "no-instanceof", "eslint-plugin-jest"],
+  plugins: ["@typescript-eslint", "no-instanceof"],
   ignorePatterns: [
     ".eslintrc.cjs",
     "scripts",
@@ -39,11 +39,10 @@ module.exports = {
     "import/extensions": [2, "ignorePackages"],
     "import/no-extraneous-dependencies": [
       "error",
-      { devDependencies: ["**/*.test.ts"] },
+      { devDependencies: ["**/*.test.ts", "**/*.test-d.ts"] },
     ],
     "import/no-unresolved": 0,
     "import/prefer-default-export": 0,
-    'jest/no-focused-tests': 'error',
     "keyword-spacing": "error",
     "max-classes-per-file": 0,
     "max-len": 0,
@@ -66,4 +65,10 @@ module.exports = {
     "prefer-rest-params": 0,
     "new-cap": ["error", { properties: false, capIsNew: false }],
   },
+  overrides: [
+    {
+      files: ["src/tests/**/*.ts"],
+      rules: { "no-instanceof/no-instanceof": 0 },
+    },
+  ],
 };
