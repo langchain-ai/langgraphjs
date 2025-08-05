@@ -1,13 +1,21 @@
 import { z } from "zod";
 import { extname } from "node:path";
 
+const GraphPathSchema = z.string().refine((i) => i.includes(":"), {
+  message: "Import string must be in format '<file>:<export>'",
+});
+
 const BaseConfigSchema = z.object({
   docker_compose_file: z.string().optional(),
   dockerfile_lines: z.array(z.string()).default([]),
   graphs: z.record(
-    z.string().refine((i) => i.includes(":"), {
-      message: "Import string must be in format '<file>:<export>'",
-    })
+    z.union([
+      GraphPathSchema,
+      z.object({
+        path: GraphPathSchema,
+        description: z.string().optional(),
+      }),
+    ])
   ),
   ui: z.record(z.string()).optional(),
   ui_config: z.object({ shared: z.array(z.string()).optional() }).optional(),
@@ -39,6 +47,7 @@ const BaseConfigSchema = z.object({
       disable_threads: z.boolean().default(false),
       disable_runs: z.boolean().default(false),
       disable_store: z.boolean().default(false),
+      disable_mcp: z.boolean().default(false),
       disable_meta: z.boolean().default(false),
       cors: z
         .object({
@@ -88,9 +97,10 @@ export const getConfig = (config: z.input<typeof ConfigSchema> | string) => {
   let input = typeof config === "string" ? JSON.parse(config) : config;
   const { graphs } = BaseConfigSchema.parse(input);
 
-  const isPython = Object.values(graphs).map((i) =>
-    PYTHON_EXTENSIONS.includes(extname(i.split(":")[0]))
-  );
+  const isPython = Object.values(graphs).map((graphDef) => {
+    const importStr = typeof graphDef === "string" ? graphDef : graphDef.path;
+    return PYTHON_EXTENSIONS.includes(extname(importStr.split(":")[0]));
+  });
   const somePython = isPython.some((i) => i);
   const someNode = !isPython.every((i) => i);
 
