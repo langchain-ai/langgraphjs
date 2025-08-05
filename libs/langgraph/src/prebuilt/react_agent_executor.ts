@@ -601,7 +601,7 @@ export type CreateReactAgentParams<
    * - `"v2"`: The tool node processes a single tool call. Tool calls are distributed across
    *           multiple instances of the tool node using the Send API.
    *
-   * @default `"v2"`
+   * @default `"v1"`
    */
   version?: "v1" | "v2";
 };
@@ -683,7 +683,7 @@ export function createReactAgent<
     preModelHook,
     postModelHook,
     name,
-    version = "v2",
+    version = "v1",
     includeAgentName,
   } = params;
 
