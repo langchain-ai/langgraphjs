@@ -29,13 +29,8 @@ const isMessagesState = (
   "messages" in input &&
   Array.isArray(input.messages);
 
-const isSendInput = (
-  input: unknown
-): input is { ["~type"]: "toolCall"; toolCall: ToolCall; state: unknown } =>
-  typeof input === "object" &&
-  input != null &&
-  "~type" in input &&
-  input["~type"] === "toolCall";
+const isSendInput = (input: unknown): input is { lg_tool_call: ToolCall } =>
+  typeof input === "object" && input != null && "lg_tool_call" in input;
 
 /**
  * A node that runs the tools requested in the last AIMessage. It can be used
@@ -219,7 +214,7 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
     let outputs: (ToolMessage | Command)[];
 
     if (isSendInput(input)) {
-      outputs = [await this.runTool(input.toolCall, config)];
+      outputs = [await this.runTool(input.lg_tool_call, config)];
     } else {
       let message: AIMessage | undefined;
       if (isBaseMessageArray(input)) {

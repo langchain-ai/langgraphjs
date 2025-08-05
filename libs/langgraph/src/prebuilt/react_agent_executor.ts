@@ -878,7 +878,7 @@ export function createReactAgent<
             if (version === "v2") {
               return lastMessage.tool_calls.map(
                 (toolCall) =>
-                  new Send("tools", { "~type": "toolCall", toolCall, state })
+                  new Send("tools", { ...state, lg_tool_call: toolCall })
               );
             }
             return "tools";
@@ -921,7 +921,7 @@ export function createReactAgent<
         if (version === "v2") {
           return lastMessage.tool_calls.map(
             (toolCall) =>
-              new Send("tools", { "~type": "toolCall", toolCall, state })
+              new Send("tools", { ...state, "~lg-toolCall": toolCall })
           );
         }
 

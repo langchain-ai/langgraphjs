@@ -40,6 +40,7 @@ import {
 import {
   Annotation,
   Command,
+  getCurrentTaskInput,
   GraphInterrupt,
   interrupt,
   MemorySaver,
@@ -2361,6 +2362,53 @@ describe.each([["v1" as const], ["v2" as const]])(
           inputState,
           expect.any(Object)
         );
+      });
+    });
+
+    it("inherit task context", async () => {
+      const parrot = tool(
+        async (args) => {
+          const { messages } = getCurrentTaskInput() as {
+            messages: BaseMessage[];
+          };
+
+          return `[tool] ${args.prefix}: ${messages
+            .map((i) => i.text)
+            .join(", ")}`;
+        },
+        {
+          name: "test_tool",
+          description: "Test tool",
+          schema: z.object({ prefix: z.string() }),
+        }
+      );
+
+      const agent = createReactAgent({
+        llm: new FakeToolCallingChatModel({
+          responses: [
+            new AIMessage({
+              content: "ai",
+              tool_calls: [
+                { name: "test_tool", args: { prefix: "parrot" }, id: "testid" },
+              ],
+            }),
+          ],
+        }),
+        tools: [parrot],
+        version,
+      });
+
+      expect(await agent.invoke({ messages: "input" })).toMatchObject({
+        messages: [
+          { text: "input" },
+          {
+            text: "ai",
+            tool_calls: [
+              { name: "test_tool", args: { prefix: "parrot" }, id: "testid" },
+            ],
+          },
+          { text: "[tool] parrot: input, ai" },
+        ],
       });
     });
   }
