@@ -35,9 +35,7 @@ export interface LangGraphRunnableConfig<
   writer?: (chunk: unknown) => void;
 }
 
-export interface Runtime<
-  ContextType extends Record<string, unknown> = Record<string, unknown>
-> {
+export interface Runtime<ContextType = Record<string, unknown>> {
   context?: ContextType;
 
   store?: BaseStore;

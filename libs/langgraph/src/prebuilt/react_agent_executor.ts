@@ -14,7 +14,6 @@ import {
 import {
   Runnable,
   RunnableConfig,
-  RunnableInterface,
   RunnableLambda,
   RunnableToolLike,
   RunnableSequence,
@@ -39,7 +38,7 @@ import {
 } from "../graph/index.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { ToolNode } from "./tool_node.js";
-import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import { LangGraphRunnableConfig, Runtime } from "../pregel/runnable_types.js";
 import { Annotation } from "../graph/annotation.js";
 import { Messages, messagesStateReducer } from "../graph/message.js";
 import { END, START } from "../constants.js";
@@ -101,8 +100,8 @@ function _convertMessageModifierToPrompt(
 
 const PROMPT_RUNNABLE_NAME = "prompt";
 
-function _getPromptRunnable(prompt?: Prompt): RunnableInterface {
-  let promptRunnable: RunnableInterface;
+function _getPromptRunnable(prompt?: Prompt): Runnable {
+  let promptRunnable: Runnable;
 
   if (prompt == null) {
     promptRunnable = RunnableLambda.from(
@@ -143,7 +142,7 @@ function _getPrompt(
   prompt?: Prompt,
   stateModifier?: CreateReactAgentParams["stateModifier"],
   messageModifier?: CreateReactAgentParams["messageModifier"]
-) {
+): Runnable {
   // Check if multiple modifiers exist
   const definedCount = [prompt, stateModifier, messageModifier].filter(
     (x) => x != null
@@ -376,7 +375,7 @@ export async function _bindTools(
 
 export async function _getModel(
   llm: LanguageModelLike | ConfigurableModelInterface
-): Promise<BaseChatModel> {
+): Promise<LanguageModelLike> {
   // If model is a RunnableSequence, find a RunnableBinding or BaseChatModel in its steps
   let model = llm;
   if (RunnableSequence.isRunnableSequence(model)) {
@@ -395,7 +394,7 @@ export async function _getModel(
 
   // Get the underlying model from a RunnableBinding
   if (RunnableBinding.isRunnableBinding(model)) {
-    model = model.bound as BaseChatModel;
+    model = model.bound;
   }
 
   if (!_isBaseChatModel(model)) {
@@ -404,7 +403,7 @@ export async function _getModel(
     );
   }
 
-  return model as BaseChatModel;
+  return model;
 }
 
 export type Prompt =
@@ -477,10 +476,16 @@ type ToAnnotationRoot<A extends AnyAnnotationRoot | InteropZodObject> =
 export type CreateReactAgentParams<
   A extends AnyAnnotationRoot | InteropZodObject = AnyAnnotationRoot,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  StructuredResponseType = Record<string, any>
+  StructuredResponseType extends Record<string, any> = Record<string, any>,
+  C extends AnyAnnotationRoot | InteropZodObject = AnyAnnotationRoot
 > = {
   /** The chat model that can utilize OpenAI-style tool calling. */
-  llm: LanguageModelLike;
+  llm:
+    | LanguageModelLike
+    | ((
+        state: ToAnnotationRoot<A>["State"] & PreHookAnnotation["State"],
+        runtime: Runtime<ToAnnotationRoot<C>["State"]>
+      ) => Promise<LanguageModelLike> | LanguageModelLike);
 
   /** A list of tools or a ToolNode. */
   tools: ToolNode | (ServerTool | ClientTool)[];
@@ -510,7 +515,16 @@ export type CreateReactAgentParams<
    * This is now deprecated and will be removed in a future release.
    */
   prompt?: Prompt;
+
+  /**
+   * Additional state schema for the agent.
+   */
   stateSchema?: A;
+
+  /**
+   * An optional schema for the context.
+   */
+  contextSchema?: C;
   /** An optional checkpoint saver to persist the agent's state. */
   checkpointSaver?: BaseCheckpointSaver | boolean;
   /** An optional checkpoint saver to persist the agent's state. Alias of "checkpointSaver". */
@@ -624,9 +638,10 @@ export type CreateReactAgentParams<
 export function createReactAgent<
   A extends AnyAnnotationRoot | InteropZodObject = typeof MessagesAnnotation,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  StructuredResponseFormat extends Record<string, any> = Record<string, any>
+  StructuredResponseFormat extends Record<string, any> = Record<string, any>,
+  C extends AnyAnnotationRoot | InteropZodObject = AnyAnnotationRoot
 >(
-  params: CreateReactAgentParams<A, StructuredResponseFormat>
+  params: CreateReactAgentParams<A, StructuredResponseFormat, C>
 ): CompiledStateGraph<
   ToAnnotationRoot<A>["State"],
   ToAnnotationRoot<A>["Update"],
@@ -645,6 +660,7 @@ export function createReactAgent<
     stateModifier,
     prompt,
     stateSchema,
+    contextSchema,
     checkpointSaver,
     checkpointer,
     interruptBefore,
@@ -668,12 +684,10 @@ export function createReactAgent<
     toolNode = new ToolNode(toolClasses.filter(isClientTool));
   }
 
-  let cachedModelRunnable: Runnable | null = null;
+  let cachedStaticModel: Runnable | null = null;
 
-  const getModelRunnable = async (llm: LanguageModelLike) => {
-    if (cachedModelRunnable) {
-      return cachedModelRunnable;
-    }
+  const _getStaticModel = async (llm: LanguageModelLike): Promise<Runnable> => {
+    if (cachedStaticModel) return cachedStaticModel;
 
     let modelWithTools: LanguageModelLike;
     if (await _shouldBindTools(llm, toolClasses)) {
@@ -682,19 +696,31 @@ export function createReactAgent<
       modelWithTools = llm;
     }
 
-    const promptRunnable = _getPrompt(
-      prompt,
-      stateModifier,
-      messageModifier
-    ) as Runnable;
-
+    const promptRunnable = _getPrompt(prompt, stateModifier, messageModifier);
     const modelRunnable =
       includeAgentName === "inline"
-        ? promptRunnable.pipe(withAgentName(modelWithTools, includeAgentName))
-        : promptRunnable.pipe(modelWithTools);
+        ? withAgentName(modelWithTools, includeAgentName)
+        : modelWithTools;
 
-    cachedModelRunnable = modelRunnable;
-    return modelRunnable;
+    cachedStaticModel = promptRunnable.pipe(modelRunnable);
+    return cachedStaticModel;
+  };
+
+  const _getDynamicModel = async (
+    llm: (
+      state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"],
+      runtime: LangGraphRunnableConfig
+    ) => Promise<LanguageModelLike> | LanguageModelLike,
+    state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"],
+    config: LangGraphRunnableConfig
+  ) => {
+    const model = await llm(state, config);
+
+    return _getPrompt(prompt, stateModifier, messageModifier).pipe(
+      includeAgentName === "inline"
+        ? withAgentName(model, includeAgentName)
+        : model
+    );
   };
 
   // If any of the tools are configured to return_directly after running,
@@ -717,8 +743,8 @@ export function createReactAgent<
   }
 
   const generateStructuredResponse = async (
-    state: AgentState<StructuredResponseFormat>,
-    config?: RunnableConfig
+    state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"],
+    config: RunnableConfig
   ) => {
     if (responseFormat == null) {
       throw new Error(
@@ -728,7 +754,16 @@ export function createReactAgent<
     const messages = [...state.messages];
     let modelWithStructuredOutput;
 
-    const model = await _getModel(llm);
+    const model: LanguageModelLike =
+      typeof llm === "function"
+        ? await llm(state, config)
+        : await _getModel(llm);
+
+    if (!_isBaseChatModel(model)) {
+      throw new Error(
+        `Expected \`llm\` to be a ChatModel with .withStructuredOutput() method, got ${model.constructor.name}`
+      );
+    }
 
     if (typeof responseFormat === "object" && "schema" in responseFormat) {
       const { prompt, schema, ...options } =
@@ -748,11 +783,15 @@ export function createReactAgent<
 
   const callModel = async (
     state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"],
-    config?: RunnableConfig
+    config: RunnableConfig
   ) => {
     // NOTE: we're dynamically creating the model runnable here
     // to ensure that we can validate ConfigurableModel properly
-    const modelRunnable = await getModelRunnable(llm);
+    const modelRunnable: Runnable =
+      typeof llm === "function"
+        ? await _getDynamicModel(llm, state, config)
+        : await _getStaticModel(llm);
+
     // TODO: Auto-promote streaming.
     const response = (await modelRunnable.invoke(
       getModelInputState(state),
@@ -768,10 +807,10 @@ export function createReactAgent<
   const schema =
     stateSchema ?? createReactAgentAnnotation<StructuredResponseFormat>();
 
-  const workflow = new StateGraph(schema as AnyAnnotationRoot).addNode(
-    "tools",
-    toolNode
-  );
+  const workflow = new StateGraph(
+    schema as AnyAnnotationRoot,
+    contextSchema
+  ).addNode("tools", toolNode);
 
   if (!("messages" in workflow._schemaDefinition)) {
     throw new Error("Missing required `messages` key in state schema.");
