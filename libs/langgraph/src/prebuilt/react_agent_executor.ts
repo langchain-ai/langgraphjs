@@ -11,7 +11,6 @@ import {
   isToolMessage,
   SystemMessage,
   type AIMessage,
-  type ToolMessage,
 } from "@langchain/core/messages";
 import {
   Runnable,
@@ -875,8 +874,8 @@ export function createReactAgent<
         (state: AgentState<StructuredResponseFormat>) => {
           const { messages } = state;
 
-          const toolMessages: Record<string, ToolMessage> = Object.fromEntries(
-            messages.filter(isToolMessage).map((msg) => [msg.tool_call_id, msg])
+          const toolMessageIds: Set<string> = new Set(
+            messages.filter(isToolMessage).map((msg) => msg.tool_call_id)
           );
 
           let lastAiMessage: AIMessage | undefined;
@@ -890,7 +889,7 @@ export function createReactAgent<
 
           const pendingToolCalls =
             lastAiMessage?.tool_calls?.filter(
-              (i) => i.id == null || !(i.id in toolMessages)
+              (i) => i.id == null || !toolMessageIds.has(i.id)
             ) ?? [];
 
           const lastMessage = messages.at(-1);
