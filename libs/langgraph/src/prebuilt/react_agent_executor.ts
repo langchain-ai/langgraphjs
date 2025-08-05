@@ -921,7 +921,7 @@ export function createReactAgent<
         if (version === "v2") {
           return lastMessage.tool_calls.map(
             (toolCall) =>
-              new Send("tools", { ...state, "~lg-toolCall": toolCall })
+              new Send("tools", { ...state, lg_tool_call: toolCall })
           );
         }
 
