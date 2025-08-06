@@ -2365,6 +2365,121 @@ describe.each([["v1" as const], ["v2" as const]])(
       });
     });
 
+    it.skipIf(version === "v1")("parallel tool calls", async () => {
+      const humanAssistance = tool(
+        async (args) => {
+          const human = interrupt({ query: args.query }) as { data: string };
+          return human.data;
+        },
+        {
+          name: "human_assistance",
+          description: "Human assistance",
+          schema: z.object({ query: z.string() }),
+        }
+      );
+
+      const weather = tool((args) => `It's sunny in ${args.location}`, {
+        name: "weather",
+        description: "Weather tool",
+        schema: z.object({ location: z.string() }),
+      });
+
+      const checkpointer = new MemorySaverAssertImmutable();
+
+      const toolCalls = [
+        {
+          args: { location: "sf" },
+          name: "weather",
+          id: "get_weather",
+        },
+        {
+          args: { query: "help me" },
+          name: "human_assistance",
+          id: "get_help",
+        },
+      ];
+
+      const agent = createReactAgent({
+        llm: new FakeToolCallingChatModel({
+          responses: [
+            new AIMessage({ content: "ai response", tool_calls: toolCalls }),
+            new AIMessage({ content: "final response" }),
+          ],
+        }),
+        tools: [humanAssistance, weather],
+        version,
+        checkpointer,
+      });
+
+      const config = { configurable: { thread_id: "1" } };
+      const stream = await gatherIterator(
+        agent.stream(
+          { messages: "Get user assistance and also check the weather" },
+          { ...config, streamMode: "values" }
+        )
+      );
+
+      expect(stream).toMatchObject([
+        {
+          messages: [
+            { text: "Get user assistance and also check the weather" },
+          ],
+        },
+        {
+          messages: [
+            { text: "Get user assistance and also check the weather" },
+            { text: "ai response", tool_calls: toolCalls },
+          ],
+        },
+        {
+          __interrupt__: [
+            { id: expect.any(String), value: { query: "help me" } },
+          ],
+        },
+        {
+          messages: [
+            { text: "Get user assistance and also check the weather" },
+            { text: "ai response", tool_calls: toolCalls },
+            { text: "It's sunny in sf" },
+          ],
+        },
+      ]);
+
+      // resume
+      const resume = await gatherIterator(
+        agent.stream(new Command({ resume: { data: "Resumed!" } }), {
+          ...config,
+          streamMode: "values",
+        })
+      );
+
+      expect(resume).toMatchObject([
+        {
+          messages: [
+            { text: "Get user assistance and also check the weather" },
+            { text: "ai response", tool_calls: toolCalls },
+          ],
+        },
+        {
+          messages: [
+            { text: "Get user assistance and also check the weather" },
+            { text: "ai response", tool_calls: toolCalls },
+            { text: "It's sunny in sf" },
+            { text: "Resumed!" },
+          ],
+        },
+        {
+          messages: [
+            { text: "Get user assistance and also check the weather" },
+            { text: "ai response", tool_calls: toolCalls },
+            { text: "It's sunny in sf" },
+            { text: "Resumed!" },
+            { text: "final response" },
+          ],
+        },
+      ]);
+    });
+
     it("inherit task context", async () => {
       const parrot = tool(
         async (args) => {
