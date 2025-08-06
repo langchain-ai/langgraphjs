@@ -327,6 +327,33 @@ describe("config to docker", () => {
       RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts
     `);
   });
+
+  it("description", async () => {
+    const graphs = {
+      agent: { path: "./graphs/agent.js:graph", description: "My agent" },
+    };
+    const config = getConfig({
+      ...DEFAULT_CONFIG,
+      env: {},
+      node_version: "20" as const,
+      graphs,
+    });
+
+    const actual = await configToDocker(
+      PATH_TO_CONFIG,
+      config,
+      await assembleLocalDeps(PATH_TO_CONFIG, config)
+    );
+
+    expect(actual).toEqual(dedenter`
+      FROM langchain/langgraphjs-api:20
+      ADD . /deps/unit_tests
+      ENV LANGSERVE_GRAPHS='{"agent":{"path":"./graphs/agent.js:graph","description":"My agent"}}'
+      WORKDIR /deps/unit_tests
+      RUN npm i
+      RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts
+    `);
+  });
 });
 
 describe("config to compose", () => {

@@ -34,7 +34,12 @@ export const StartServerSchema = z.object({
   nWorkers: z.number(),
   host: z.string(),
   cwd: z.string(),
-  graphs: z.record(z.string()),
+  graphs: z.record(
+    z.union([
+      z.string(),
+      z.object({ path: z.string(), description: z.string().optional() }),
+    ])
+  ),
   auth: z
     .object({
       path: z.string().optional(),
@@ -98,7 +103,24 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
   registerSdkLogger();
 
   logger.info(`Registering graphs from ${options.cwd}`);
-  await registerFromEnv(options.graphs, { cwd: options.cwd });
+  let hasGraphDescriptions = false;
+  const graphPaths = Object.fromEntries(
+    Object.entries(options.graphs).map(([graphId, rawSpec]) => {
+      if (typeof rawSpec === "string") {
+        return [graphId, rawSpec];
+      }
+      if (rawSpec.description) {
+        hasGraphDescriptions = true;
+      }
+      return [graphId, rawSpec.path];
+    })
+  );
+  if (hasGraphDescriptions) {
+    logger.warn(
+      "A graph definition in `langgraph.json` has a `description` property. Local MCP features are not yet supported with the JS CLI and will be ignored."
+    );
+  }
+  await registerFromEnv(graphPaths, { cwd: options.cwd });
 
   registerRuntimeLogFormatter((info) => {
     const config = getConfig();

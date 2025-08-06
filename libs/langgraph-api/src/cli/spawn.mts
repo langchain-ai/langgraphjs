@@ -9,7 +9,7 @@ export async function spawnServer(
   },
   context: {
     config: {
-      graphs: Record<string, string>;
+      graphs: Record<string, string | { path: string; description?: string }>;
       ui?: Record<string, string>;
       ui_config?: { shared?: string[] };
       auth?: { path?: string; disable_studio_auth?: boolean };

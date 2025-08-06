@@ -10,10 +10,17 @@ const options = JSON.parse(lastArg || "{}");
 // find the first file, as `parentURL` needs to be a valid file URL
 // if no graph found, just assume a dummy default file, which should
 // be working fine as well.
-const firstGraphFile =
-  Object.values(options.graphs)
-    .flatMap((i) => i.split(":").at(0))
-    .at(0) || "index.mts";
+const graphFiles = Object.values(options.graphs)
+  .map((i) => {
+    if (typeof i === "string") {
+      return i.split(":").at(0);
+    } else if (i && typeof i === "object" && i.path) {
+      return i.path.split(":").at(0);
+    }
+    return null;
+  })
+  .filter(Boolean);
+const firstGraphFile = graphFiles.at(0) || "index.mts";
 
 // enforce API @langchain/langgraph resolution
 register("./graph/load.hooks.mjs", import.meta.url, {
