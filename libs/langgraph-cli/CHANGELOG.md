@@ -1,5 +1,15 @@
 # @langchain/langgraph-cli
 
+## 0.0.57
+
+### Patch Changes
+
+- 31cc9f7: support description property for `langgraph.json`
+- 679a1be: Fix sysinfo command for PNPM
+- 2f179e5: feat(cli): accept BROWSER=none to prevent spawning a browser
+- Updated dependencies [31cc9f7]
+  - @langchain/langgraph-api@0.0.57
+
 ## 0.0.56
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 0.4.3
+
+### Patch Changes
+
+- f69bf6d: feat(langgraph): createReactAgent v2: use Send for each of the tool calls
+- 9940200: feat(langgraph): Allow partially applying tool calls via postModelHook
+- e8c61bb: feat(langgraph): add dynamic model choice to createReactAgent
+
 ## 0.4.2
 
 ### Patch Changes
