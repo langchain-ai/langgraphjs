@@ -222,35 +222,35 @@ export class Graph<
     return this.edges;
   }
 
-  addNode<K extends string>(
+  addNode<K extends string, NodeInput = RunInput, NodeOutput = RunOutput>(
     nodes:
-      | Record<K, NodeAction<RunInput, RunOutput, C>>
+      | Record<K, NodeAction<NodeInput, NodeOutput, C>>
       | [
           key: K,
-          action: NodeAction<RunInput, RunOutput, C>,
+          action: NodeAction<NodeInput, NodeOutput, C>,
           options?: AddNodeOptions
         ][]
   ): Graph<N | K, RunInput, RunOutput>;
 
-  addNode<K extends string, NodeInput = RunInput>(
+  addNode<K extends string, NodeInput = RunInput, NodeOutput = RunOutput>(
     key: K,
-    action: NodeAction<NodeInput, RunOutput, C>,
+    action: NodeAction<NodeInput, NodeOutput, C>,
     options?: AddNodeOptions
   ): Graph<N | K, RunInput, RunOutput>;
 
-  addNode<K extends string, NodeInput = RunInput>(
+  addNode<K extends string, NodeInput = RunInput, NodeOutput = RunOutput>(
     ...args:
       | [
           key: K,
-          action: NodeAction<NodeInput, RunOutput, C>,
+          action: NodeAction<NodeInput, NodeOutput, C>,
           options?: AddNodeOptions
         ]
       | [
           nodes:
-            | Record<K, NodeAction<NodeInput, RunOutput, C>>
+            | Record<K, NodeAction<NodeInput, NodeOutput, C>>
             | [
                 key: K,
-                action: NodeAction<NodeInput, RunOutput, C>,
+                action: NodeAction<NodeInput, NodeOutput, C>,
                 options?: AddNodeOptions
               ][]
         ]
@@ -580,14 +580,18 @@ export class CompiledGraph<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   InputType = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  OutputType = any
+  OutputType = any,
+  NodeReturnType = unknown
 > extends Pregel<
   Record<N | typeof START, PregelNode<State, Update>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ContextType & Record<string, any>,
   InputType,
-  OutputType
+  OutputType,
+  InputType,
+  OutputType,
+  NodeReturnType
 > {
   declare NodeType: N;
 

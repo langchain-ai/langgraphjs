@@ -140,6 +140,15 @@ type NodeAction<S, U, C extends SDZod> = RunnableLike<
 const PartialStateSchema = Symbol.for("langgraph.state.partial");
 type PartialStateSchema = typeof PartialStateSchema;
 
+type MergeReturnType<Prev, Curr> = Prev & Curr extends infer T
+  ? { [K in keyof T]: T[K] } & unknown
+  : never;
+
+type Prettify<T> = {
+  [K in keyof T]: T[K];
+  // eslint-disable-next-line @typescript-eslint/ban-types
+} & {};
+
 /**
  * A graph whose nodes communicate by reading and writing to a shared state.
  * Each node takes a defined `State` as input and returns a `Partial<State>`.
@@ -209,7 +218,8 @@ export class StateGraph<
   N extends string = typeof START,
   I extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
   O extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
-  C extends SDZod = StateDefinition
+  C extends SDZod = StateDefinition,
+  NodeReturnType = unknown
 > extends Graph<N, S, U, StateGraphNodeSpec<S, U>, ToStateDefinition<C>> {
   channels: Record<string, BaseChannel> = {};
 
@@ -248,6 +258,9 @@ export class StateGraph<
 
   /** @internal */
   _configRuntimeSchema: InteropZodObject | undefined;
+
+  /** @internal Used only for typing. */
+  _nodeReturnType: NodeReturnType;
 
   constructor(
     fields: SD extends StateDefinition
@@ -408,27 +421,73 @@ export class StateGraph<
     }
   }
 
-  override addNode<K extends string>(
+  override addNode<
+    K extends string,
+    NodeMap extends Record<K, NodeAction<S, U, C>>
+  >(
+    nodes: NodeMap
+  ): StateGraph<
+    SD,
+    S,
+    U,
+    N | K,
+    I,
+    O,
+    C,
+    MergeReturnType<
+      NodeReturnType,
+      {
+        [key in keyof NodeMap]: NodeMap[key] extends NodeAction<S, infer U, C>
+          ? U
+          : never;
+      }
+    >
+  >;
+
+  override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
     nodes:
-      | Record<K, NodeAction<S, U, C>>
       | [
           key: K,
-          action: NodeAction<S, U, C>,
+          action: NodeAction<NodeInput, NodeOutput, C>,
           options?: StateGraphAddNodeOptions
         ][]
-  ): StateGraph<SD, S, U, N | K, I, O, C>;
+  ): StateGraph<
+    SD,
+    S,
+    U,
+    N | K,
+    I,
+    O,
+    C,
+    MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
+  >;
+
+  override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
+    key: K,
+    action: NodeAction<NodeInput, NodeOutput, C>,
+    options?: StateGraphAddNodeOptions
+  ): StateGraph<
+    SD,
+    S,
+    U,
+    N | K,
+    I,
+    O,
+    C,
+    MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
+  >;
 
   override addNode<K extends string, NodeInput = S>(
     key: K,
     action: NodeAction<NodeInput, U, C>,
     options?: StateGraphAddNodeOptions
-  ): StateGraph<SD, S, U, N | K, I, O, C>;
+  ): StateGraph<SD, S, U, N | K, I, O, C, NodeReturnType>;
 
-  override addNode<K extends string, NodeInput = S>(
+  override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
     ...args:
       | [
           key: K,
-          action: NodeAction<NodeInput, U, C>,
+          action: NodeAction<NodeInput, NodeOutput, C>,
           options?: StateGraphAddNodeOptions
         ]
       | [
@@ -589,27 +648,61 @@ export class StateGraph<
     return this;
   }
 
-  addSequence<K extends string>(
+  addSequence<K extends string, NodeInput = S, NodeOutput extends U = U>(
     nodes: [
       key: K,
-      action: NodeAction<S, U, C>,
+      action: NodeAction<NodeInput, NodeOutput, C>,
       options?: StateGraphAddNodeOptions
     ][]
-  ): StateGraph<SD, S, U, N | K, I, O, C>;
+  ): StateGraph<
+    SD,
+    S,
+    U,
+    N | K,
+    I,
+    O,
+    C,
+    MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
+  >;
 
-  addSequence<K extends string>(
-    nodes: Record<K, NodeAction<S, U, C>>
-  ): StateGraph<SD, S, U, N | K, I, O, C>;
+  addSequence<K extends string, NodeMap extends Record<K, NodeAction<S, U, C>>>(
+    nodes: NodeMap
+  ): StateGraph<
+    SD,
+    S,
+    U,
+    N | K,
+    I,
+    O,
+    C,
+    MergeReturnType<
+      NodeReturnType,
+      {
+        [key in keyof NodeMap]: NodeMap[key] extends NodeAction<S, infer U, C>
+          ? U
+          : never;
+      }
+    >
+  >;
 
-  addSequence<K extends string>(
+  addSequence<K extends string, NodeInput = S, NodeOutput extends U = U>(
     nodes:
       | [
           key: K,
-          action: NodeAction<S, U, C>,
+          action: NodeAction<NodeInput, NodeOutput, C>,
           options?: StateGraphAddNodeOptions
         ][]
-      | Record<K, NodeAction<S, U, C>>
-  ): StateGraph<SD, S, U, N | K, I, O, C> {
+      | Record<K, NodeAction<NodeInput, NodeOutput, C>>
+  ): StateGraph<
+    SD,
+    S,
+    U,
+    N | K,
+    I,
+    O,
+    C,
+    MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
+  > {
     const parsedNodes = Array.isArray(nodes)
       ? nodes
       : (Object.entries(nodes).map(([key, action]) => [
@@ -632,7 +725,7 @@ export class StateGraph<
       }
 
       const validKey = key as unknown as N;
-      this.addNode(validKey, action, options);
+      this.addNode(validKey, action as NodeAction<S, U, C>, options);
       if (previousNode != null) {
         this.addEdge(previousNode, validKey);
       }
@@ -640,7 +733,16 @@ export class StateGraph<
       previousNode = validKey;
     }
 
-    return this as StateGraph<SD, S, U, N | K, I, O, C>;
+    return this as StateGraph<
+      SD,
+      S,
+      U,
+      N | K,
+      I,
+      O,
+      C,
+      MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
+    >;
   }
 
   override compile({
@@ -657,7 +759,15 @@ export class StateGraph<
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
     name?: string;
-  } = {}): CompiledStateGraph<S, U, N, I, O, C> {
+  } = {}): CompiledStateGraph<
+    Prettify<S>,
+    Prettify<U>,
+    N,
+    I,
+    O,
+    C,
+    NodeReturnType
+  > {
     // validate the graph
     this.validate([
       ...(Array.isArray(interruptBefore) ? interruptBefore : []),
@@ -676,7 +786,7 @@ export class StateGraph<
       streamKeys.length === 1 && streamKeys[0] === ROOT ? ROOT : streamKeys;
 
     // create empty compiled graph
-    const compiled = new CompiledStateGraph<S, U, N, I, O, C>({
+    const compiled = new CompiledStateGraph<S, U, N, I, O, C, NodeReturnType>({
       builder: this,
       checkpointer,
       interruptAfter,
@@ -760,16 +870,18 @@ export class CompiledStateGraph<
   N extends string = typeof START,
   I extends SDZod = StateDefinition,
   O extends SDZod = StateDefinition,
-  C extends SDZod = StateDefinition
+  C extends SDZod = StateDefinition,
+  NodeReturnType = unknown
 > extends CompiledGraph<
   N,
   S,
   U,
   StateType<ToStateDefinition<C>>,
   UpdateType<ToStateDefinition<I>>,
-  StateType<ToStateDefinition<O>>
+  StateType<ToStateDefinition<O>>,
+  NodeReturnType
 > {
-  declare builder: StateGraph<unknown, S, U, N, I, O, C>;
+  declare builder: StateGraph<unknown, S, U, N, I, O, C, NodeReturnType>;
 
   /** @internal */
   _metaRegistry: SchemaMetaRegistry = schemaMetaRegistry;

@@ -385,7 +385,8 @@ export class Pregel<
     InputType = PregelInputType,
     OutputType = PregelOutputType,
     StreamUpdatesType = InputType,
-    StreamValuesType = OutputType
+    StreamValuesType = OutputType,
+    NodeReturnType = unknown
   >
   extends PartialRunnable<
     InputType | CommandInstance | null,
@@ -1824,7 +1825,8 @@ export class Pregel<
         TSubgraphs,
         StreamUpdatesType,
         StreamValuesType,
-        keyof Nodes
+        keyof Nodes,
+        NodeReturnType
       >
     >
   > {
@@ -1849,7 +1851,8 @@ export class Pregel<
           TSubgraphs,
           StreamUpdatesType,
           StreamValuesType,
-          keyof Nodes
+          keyof Nodes,
+          NodeReturnType
         >
       >,
       abortController

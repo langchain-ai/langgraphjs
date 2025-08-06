@@ -12279,7 +12279,7 @@ graph TD;
         }),
       })
     )
-      .addNode("childGraph", childGraph)
+      .addNode("childGraph", (state) => childGraph.invoke(state))
       .addNode("cleanup", (state) => {
         expect(state.humanInputs).toHaveLength(state.prompts.length);
         return {};
