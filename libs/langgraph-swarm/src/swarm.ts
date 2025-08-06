@@ -99,7 +99,14 @@ const createSwarm = <
   agents,
   defaultActiveAgent,
   stateSchema,
-}: CreateSwarmParams<AnnotationRootT>) => {
+}: CreateSwarmParams<AnnotationRootT>): StateGraph<
+  AnnotationRootT["spec"],
+  AnnotationRootT["State"],
+  AnnotationRootT["Update"],
+  string,
+  AnnotationRootT["spec"],
+  AnnotationRootT["spec"]
+> => {
   if (stateSchema && !("activeAgent" in stateSchema.spec)) {
     throw new Error("Missing required key 'activeAgent' in stateSchema");
   }
