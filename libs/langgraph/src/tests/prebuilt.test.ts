@@ -8,6 +8,7 @@ import {
   AIMessage,
   BaseMessage,
   HumanMessage,
+  isAIMessage,
   RemoveMessage,
   SystemMessage,
   ToolMessage,
@@ -1540,6 +1541,68 @@ describe.each([["v1" as const], ["v2" as const]])(
             },
           },
         ]);
+      });
+
+      it("postModelHook + partial tool call application", async () => {
+        const llm = new FakeToolCallingChatModel({
+          responses: [
+            new AIMessage({
+              content: "result1",
+              tool_calls: [
+                { name: "search_api", id: "tool_a", args: { query: "foo" } },
+                { name: "search_api", id: "tool_b", args: { query: "bar" } },
+              ],
+            }),
+            new AIMessage("done"),
+          ],
+        });
+
+        const agent = createReactAgent({
+          llm,
+          tools: [new SearchAPI()],
+          version,
+          postModelHook: (state) => {
+            const lastMessage = state.messages.at(-1);
+            if (
+              lastMessage != null &&
+              isAIMessage(lastMessage) &&
+              lastMessage.tool_calls?.length
+            ) {
+              // apply only the first tool call
+              const firstToolCall = lastMessage.tool_calls[0]!;
+
+              return {
+                messages: [
+                  new ToolMessage({
+                    content: "post-model-hook",
+                    tool_call_id: firstToolCall.id!,
+                  }),
+                ],
+              };
+            }
+
+            return {};
+          },
+        });
+
+        const result = await agent.invoke({
+          messages: [new HumanMessage("What's the weather?")],
+        });
+
+        expect(result).toMatchObject({
+          messages: [
+            { text: "What's the weather?" },
+            {
+              tool_calls: [
+                { name: "search_api", id: "tool_a", args: { query: "foo" } },
+                { name: "search_api", id: "tool_b", args: { query: "bar" } },
+              ],
+            },
+            { text: "post-model-hook" },
+            { text: "result for bar" },
+            { text: "done" },
+          ],
+        });
       });
 
       it.each([

@@ -10,6 +10,7 @@ import {
   isBaseMessage,
   isToolMessage,
   SystemMessage,
+  type AIMessage,
 } from "@langchain/core/messages";
 import {
   Runnable,
@@ -872,11 +873,29 @@ export function createReactAgent<
         "post_model_hook",
         (state: AgentState<StructuredResponseFormat>) => {
           const { messages } = state;
-          const lastMessage = messages[messages.length - 1];
 
-          if (isAIMessage(lastMessage) && lastMessage.tool_calls?.length) {
+          const toolMessageIds: Set<string> = new Set(
+            messages.filter(isToolMessage).map((msg) => msg.tool_call_id)
+          );
+
+          let lastAiMessage: AIMessage | undefined;
+          for (let i = messages.length - 1; i >= 0; i -= 1) {
+            const message = messages[i];
+            if (isAIMessage(message)) {
+              lastAiMessage = message;
+              break;
+            }
+          }
+
+          const pendingToolCalls =
+            lastAiMessage?.tool_calls?.filter(
+              (i) => i.id == null || !toolMessageIds.has(i.id)
+            ) ?? [];
+
+          const lastMessage = messages.at(-1);
+          if (pendingToolCalls.length > 0) {
             if (version === "v2") {
-              return lastMessage.tool_calls.map(
+              return pendingToolCalls.map(
                 (toolCall) =>
                   new Send("tools", { ...state, lg_tool_call: toolCall })
               );
@@ -884,7 +903,7 @@ export function createReactAgent<
             return "tools";
           }
 
-          if (isToolMessage(lastMessage)) return entrypoint;
+          if (lastMessage && isToolMessage(lastMessage)) return entrypoint;
           if (responseFormat != null) return "generate_structured_response";
           return END;
         },
