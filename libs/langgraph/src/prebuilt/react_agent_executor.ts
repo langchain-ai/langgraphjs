@@ -41,7 +41,7 @@ import { ToolNode } from "./tool_node.js";
 import { LangGraphRunnableConfig, Runtime } from "../pregel/runnable_types.js";
 import { Annotation } from "../graph/annotation.js";
 import { Messages, messagesStateReducer } from "../graph/message.js";
-import { END, START } from "../constants.js";
+import { END, Send, START } from "../constants.js";
 import { withAgentName } from "./agentName.js";
 import type { InteropZodToStateDefinition } from "../graph/zod/meta.js";
 
@@ -591,6 +591,19 @@ export type CreateReactAgentParams<
     ToAnnotationRoot<A>["Update"],
     LangGraphRunnableConfig
   >;
+
+  /**
+   * Determines the version of the graph to create.
+   *
+   * Can be one of
+   * - `"v1"`: The tool node processes a single message. All tool calls in the message are
+   *           executed in parallel within the tool node.
+   * - `"v2"`: The tool node processes a single tool call. Tool calls are distributed across
+   *           multiple instances of the tool node using the Send API.
+   *
+   * @default `"v1"`
+   */
+  version?: "v1" | "v2";
 };
 
 /**
@@ -670,6 +683,7 @@ export function createReactAgent<
     preModelHook,
     postModelHook,
     name,
+    version = "v1",
     includeAgentName,
   } = params;
 
@@ -861,6 +875,12 @@ export function createReactAgent<
           const lastMessage = messages[messages.length - 1];
 
           if (isAIMessage(lastMessage) && lastMessage.tool_calls?.length) {
+            if (version === "v2") {
+              return lastMessage.tool_calls.map(
+                (toolCall) =>
+                  new Send("tools", { ...state, lg_tool_call: toolCall })
+              );
+            }
             return "tools";
           }
 
@@ -898,6 +918,13 @@ export function createReactAgent<
         }
 
         // there are function calls, we continue
+        if (version === "v2") {
+          return lastMessage.tool_calls.map(
+            (toolCall) =>
+              new Send("tools", { ...state, lg_tool_call: toolCall })
+          );
+        }
+
         return "tools";
       },
       conditionalMap({
