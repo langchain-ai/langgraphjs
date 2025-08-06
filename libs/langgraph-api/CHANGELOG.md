@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 0.0.57
+
+### Patch Changes
+
+- 31cc9f7: support description property for `langgraph.json`
+  - @langchain/langgraph-ui@0.0.57
+
 ## 0.0.56
 
 ### Patch Changes
