@@ -47,7 +47,6 @@ const BaseConfigSchema = z.object({
       disable_threads: z.boolean().default(false),
       disable_runs: z.boolean().default(false),
       disable_store: z.boolean().default(false),
-      disable_mcp: z.boolean().default(false),
       disable_meta: z.boolean().default(false),
       cors: z
         .object({
