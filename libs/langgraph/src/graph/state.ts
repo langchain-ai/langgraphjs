@@ -259,9 +259,6 @@ export class StateGraph<
   /** @internal */
   _configRuntimeSchema: InteropZodObject | undefined;
 
-  /** @internal Used only for typing. */
-  _nodeReturnType: NodeReturnType;
-
   constructor(
     fields: SD extends StateDefinition
       ? StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
