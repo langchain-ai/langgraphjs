@@ -1,12 +1,12 @@
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
 import { UbuntuInstance, BrowserInstance, WindowsInstance } from "scrapybara";
-import { CUAState, CUAUpdate, getConfigurationWithDefaults } from "../types.js";
+import { CUAState, getConfigurationWithDefaults } from "../types.js";
 import { getScrapybaraClient } from "../utils.js";
 
 export async function createVMInstance(
   state: CUAState,
   config: LangGraphRunnableConfig
-): Promise<CUAUpdate> {
+) {
   const { instanceId } = state;
   if (instanceId) {
     // Instance already exists, no need to initialize
@@ -46,13 +46,8 @@ export async function createVMInstance(
     // If the streamUrl is not yet defined in state, fetch it, then write to the custom stream
     // so that it's made accessible to the client (or whatever is reading the stream) before any actions are taken.
     const { streamUrl } = await instance.getStreamUrl();
-    return {
-      instanceId: instance.id,
-      streamUrl,
-    };
+    return { instanceId: instance.id, streamUrl };
   }
 
-  return {
-    instanceId: instance.id,
-  };
+  return { instanceId: instance.id };
 }

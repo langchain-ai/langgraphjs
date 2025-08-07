@@ -5,9 +5,9 @@ import {
   Scrapybara,
 } from "scrapybara";
 import { LangGraphRunnableConfig } from "@langchain/langgraph";
-import { BaseMessageLike } from "@langchain/core/messages";
+import { ToolMessage } from "@langchain/core/messages";
 import { RunnableLambda } from "@langchain/core/runnables";
-import { CUAState, CUAUpdate, getConfigurationWithDefaults } from "../types.js";
+import { CUAState, getConfigurationWithDefaults } from "../types.js";
 import { getInstance, getToolOutputs } from "../utils.js";
 
 async function sleep(ms: number): Promise<void> {
@@ -52,7 +52,7 @@ export async function takeComputerAction(
   {
     uploadScreenshot,
   }: { uploadScreenshot?: (screenshot: string) => Promise<string> }
-): Promise<CUAUpdate> {
+) {
   if (!state.instanceId) {
     throw new Error("Can not take computer action without an instance ID.");
   }
@@ -93,7 +93,7 @@ export async function takeComputerAction(
 
   const output = toolOutputs[toolOutputs.length - 1];
   const { action } = output;
-  let computerCallToolMsg: BaseMessageLike | undefined;
+  let computerCallToolMsg: ToolMessage | undefined;
 
   try {
     let computerResponse: Scrapybara.ComputerResponse;
@@ -180,18 +180,14 @@ export async function takeComputerAction(
       );
     }
 
-    computerCallToolMsg = {
-      type: "tool",
+    computerCallToolMsg = new ToolMessage({
+      content: screenshotContent,
       tool_call_id: output.call_id,
       additional_kwargs: { type: "computer_call_output" },
-      content: screenshotContent,
-    };
+    });
   } catch (e) {
     console.error(
-      {
-        error: e,
-        computerCall: output,
-      },
+      { error: e, computerCall: output },
       "Failed to execute computer call."
     );
   }

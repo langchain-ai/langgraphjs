@@ -10,7 +10,6 @@ import { ChatOpenAI } from "@langchain/openai";
 import {
   CUAEnvironment,
   CUAState,
-  CUAUpdate,
   getConfigurationWithDefaults,
 } from "../types.js";
 import { isComputerCallToolMessage } from "../utils.js";
@@ -102,7 +101,7 @@ const _promptToSysMessage = (prompt: string | SystemMessage | undefined) => {
 export async function callModel(
   state: CUAState,
   config: LangGraphRunnableConfig
-): Promise<CUAUpdate> {
+) {
   const configuration = getConfigurationWithDefaults(config);
 
   const lastMessage = state.messages[state.messages.length - 1];
@@ -132,20 +131,29 @@ export async function callModel(
       previous_response_id: previousResponseId,
     });
 
-  let response: AIMessageChunk;
+  type AIMessageChunkOpenAI = AIMessageChunk & {
+    additional_kwargs: {
+      tool_outputs?: {
+        call_id: string;
+        action: { type: string; display_width: number; display_height: number };
+      }[];
+    };
+  };
+
+  let response: AIMessageChunkOpenAI;
   if (isLastMessageComputerCallOutput && !configuration.zdrEnabled) {
     const formattedMessage =
       await conditionallyUpdateToolMessageContentRunnable.invoke(lastMessage);
-    response = await model.invoke([formattedMessage]);
+    response = (await model.invoke([formattedMessage])) as AIMessageChunkOpenAI;
   } else {
     const formattedMessagesPromise = state.messages.map((m) =>
       conditionallyUpdateToolMessageContentRunnable.invoke(m)
     );
     const prompt = _promptToSysMessage(configuration.prompt);
-    response = await model.invoke([
+    response = (await model.invoke([
       ...(prompt ? [prompt] : []),
       ...(await Promise.all(formattedMessagesPromise)),
-    ]);
+    ])) as AIMessageChunkOpenAI;
   }
 
   return {
