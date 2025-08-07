@@ -4,19 +4,25 @@ import type {
   ChannelVersions,
   CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
-import { CONFIG_KEY_CHECKPOINT_MAP } from "../../constants.js";
+import { CONFIG_KEY_CHECKPOINT_MAP, START } from "../../constants.js";
 
 export function getNullChannelVersion(currentVersions: ChannelVersions) {
-  const versionValues = Object.values(currentVersions);
-  const versionType =
-    versionValues.length > 0 ? typeof versionValues[0] : undefined;
-  let nullVersion: number | string | undefined;
-  if (versionType === "number") {
-    nullVersion = 0;
-  } else if (versionType === "string") {
-    nullVersion = "";
+  // Short circuit for commonly used channels such as __start__
+  // (used by StateGraph)
+  const startVersion = typeof currentVersions[START];
+  if (startVersion === "number") return 0;
+  if (startVersion === "string") return "";
+
+  // Defer back to obtaining a first key from channel versions
+  for (const key in currentVersions) {
+    if (!Object.prototype.hasOwnProperty.call(currentVersions, key)) continue;
+    const versionType = typeof currentVersions[key];
+    if (versionType === "number") return 0;
+    if (versionType === "string") return "";
+    break;
   }
-  return nullVersion;
+
+  return undefined;
 }
 
 export function getNewChannelVersions(
