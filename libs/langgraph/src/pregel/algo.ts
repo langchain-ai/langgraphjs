@@ -840,11 +840,8 @@ export function _prepareSingleTask<
     const seen = checkpoint.versions_seen[name] ?? {};
     const triggers = proc.triggers
       .filter((chan) => {
-        const result = readChannel(channels, chan, false, true);
-        const isEmptyChannelError =
-          // eslint-disable-next-line no-instanceof/no-instanceof
-          result instanceof Error &&
-          result.name === EmptyChannelError.unminifiable_name;
+        // here we're only checking if the channel is not empty
+        const isEmptyChannelError = !channels[chan].isAvailable();
         return (
           !isEmptyChannelError &&
           (checkpoint.channel_versions[chan] ?? nullVersion) >
