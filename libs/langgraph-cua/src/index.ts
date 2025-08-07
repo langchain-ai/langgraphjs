@@ -169,8 +169,12 @@ export function createCua<
     throw new Error("timeoutHours must be between 0.01 and 24");
   }
 
-  const nodeBefore = nodeBeforeAction ?? (async () => {});
-  const nodeAfter = nodeAfterAction ?? (async () => {});
+  const nodeBefore =
+    nodeBeforeAction ??
+    ((async () => ({})) as (state: CUAState) => Promise<CUAUpdate>);
+  const nodeAfter =
+    nodeAfterAction ??
+    ((async () => ({})) as (state: CUAState) => Promise<CUAUpdate>);
 
   const StateAnnotation = Annotation.Root({
     ...CUAAnnotation.spec,

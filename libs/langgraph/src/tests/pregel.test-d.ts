@@ -33,9 +33,9 @@ it("state graph annotation", async () => {
 
   const graph = new StateGraph(state)
     .addSequence({
-      one: () => ({ foo: "one" }),
-      two: () => ({ foo: "two" }),
-      three: () => ({ foo: "three" }),
+      one: () => ({ foo: "one" as const }),
+      two: () => ({ foo: "two" as const }),
+      three: () => ({ foo: "three" as const }),
     })
     .addEdge("__start__", "one")
     .compile();
@@ -50,7 +50,7 @@ it("state graph annotation", async () => {
   }
 
   expectTypeOf(await gatherIterator(graph.stream(input))).toExtend<
-    Record<"one" | "two" | "three", { foo?: string[] | string }>[]
+    { one?: { foo: "one" }; two?: { foo: "two" }; three?: { foo: "three" } }[]
   >();
 
   expectTypeOf(
@@ -78,12 +78,25 @@ it("state graph annotation", async () => {
 
   expectTypeOf(
     await gatherIterator(graph.stream(input, { streamMode: "updates" }))
-  ).toExtend<Record<"one" | "two" | "three", { foo?: string[] | string }>[]>();
+  ).toExtend<
+    {
+      one?: { foo: "one" };
+      two?: { foo: "two" };
+      three?: { foo: "three" };
+    }[]
+  >();
 
   expectTypeOf(
     await gatherIterator(graph.stream(input, { streamMode: ["updates"] }))
   ).toExtend<
-    ["updates", Record<"one" | "two" | "three", { foo?: string[] | string }>][]
+    [
+      "updates",
+      {
+        one?: { foo: "one" };
+        two?: { foo: "two" };
+        three?: { foo: "three" };
+      }
+    ][]
   >();
 
   expectTypeOf(
@@ -97,7 +110,11 @@ it("state graph annotation", async () => {
     [
       string[],
       "updates",
-      Record<"one" | "two" | "three", { foo?: string[] | string }>
+      {
+        one?: { foo: "one" };
+        two?: { foo: "two" };
+        three?: { foo: "three" };
+      }
     ][]
   >();
 
@@ -109,7 +126,11 @@ it("state graph annotation", async () => {
     (
       | [
           "updates",
-          Record<"one" | "two" | "three", { foo?: string[] | string }>
+          {
+            one?: { foo: "one" };
+            two?: { foo: "two" };
+            three?: { foo: "three" };
+          }
         ]
       | ["values", { foo: string[] }]
     )[]
@@ -127,7 +148,11 @@ it("state graph annotation", async () => {
       | [
           string[],
           "updates",
-          Record<"one" | "two" | "three", { foo?: string[] | string }>
+          {
+            one?: { foo: "one" };
+            two?: { foo: "two" };
+            three?: { foo: "three" };
+          }
         ]
       | [string[], "values", { foo: string[] }]
     )[]
@@ -147,7 +172,11 @@ it("state graph annotation", async () => {
     (
       | [
           "updates",
-          Record<"one" | "two" | "three", { foo?: string[] | string }>
+          {
+            one?: { foo: "one" };
+            two?: { foo: "two" };
+            three?: { foo: "three" };
+          }
         ]
       | ["values", { foo: string[] }]
       | ["debug", Record<string, any>]
@@ -308,9 +337,9 @@ it("state graph zod", async () => {
 
   const graph = new StateGraph(state)
     .addSequence({
-      one: () => ({ foo: "one" }),
-      two: () => ({ foo: "two" }),
-      three: () => ({ foo: "three" }),
+      one: () => ({ foo: "one" as const }),
+      two: () => ({ foo: "two" as const }),
+      three: () => ({ foo: "three" as const }),
     })
     .addEdge("__start__", "one")
     .compile();
@@ -325,7 +354,7 @@ it("state graph zod", async () => {
   }
 
   expectTypeOf(await gatherIterator(graph.stream(input))).toExtend<
-    Record<"one" | "two" | "three", { foo?: string[] | string }>[]
+    { one?: { foo: "one" }; two?: { foo: "two" }; three?: { foo: "three" } }[]
   >();
 
   expectTypeOf(
@@ -350,12 +379,17 @@ it("state graph zod", async () => {
 
   expectTypeOf(
     await gatherIterator(graph.stream(input, { streamMode: "updates" }))
-  ).toExtend<Record<"one" | "two" | "three", { foo?: string[] | string }>[]>();
+  ).toExtend<
+    { one?: { foo: "one" }; two?: { foo: "two" }; three?: { foo: "three" } }[]
+  >();
 
   expectTypeOf(
     await gatherIterator(graph.stream(input, { streamMode: ["updates"] }))
   ).toExtend<
-    ["updates", Record<"one" | "two" | "three", { foo?: string[] | string }>][]
+    [
+      "updates",
+      { one?: { foo: "one" }; two?: { foo: "two" }; three?: { foo: "three" } }
+    ][]
   >();
 
   expectTypeOf(
@@ -366,7 +400,7 @@ it("state graph zod", async () => {
     [
       string[],
       "updates",
-      Record<"one" | "two" | "three", { foo?: string[] | string }>
+      { one?: { foo: "one" }; two?: { foo: "two" }; three?: { foo: "three" } }
     ][]
   >();
 
@@ -378,7 +412,11 @@ it("state graph zod", async () => {
     (
       | [
           "updates",
-          Record<"one" | "two" | "three", { foo?: string[] | string }>
+          {
+            one?: { foo: "one" };
+            two?: { foo: "two" };
+            three?: { foo: "three" };
+          }
         ]
       | ["values", { foo: string[] }]
     )[]
@@ -396,7 +434,11 @@ it("state graph zod", async () => {
       | [
           string[],
           "updates",
-          Record<"one" | "two" | "three", { foo?: string[] | string }>
+          {
+            one?: { foo: "one" };
+            two?: { foo: "two" };
+            three?: { foo: "three" };
+          }
         ]
       | [string[], "values", { foo: string[] }]
     )[]
@@ -416,7 +458,11 @@ it("state graph zod", async () => {
     (
       | [
           "updates",
-          Record<"one" | "two" | "three", { foo?: string[] | string }>
+          {
+            one?: { foo: "one" };
+            two?: { foo: "two" };
+            three?: { foo: "three" };
+          }
         ]
       | ["values", { foo: string[] }]
       | ["debug", Record<string, any>]
@@ -448,7 +494,11 @@ it("state graph zod", async () => {
       | [
           string[],
           "updates",
-          Record<"one" | "two" | "three", { foo?: string[] | string }>
+          {
+            one?: { foo: "one" };
+            two?: { foo: "two" };
+            three?: { foo: "three" };
+          }
         ]
       | [string[], "values", { foo: string[] }]
       | [string[], "debug", Record<string, any>]

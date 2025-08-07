@@ -82,7 +82,8 @@ export type StreamOutputMap<
   TStreamSubgraphs extends boolean,
   StreamUpdates,
   StreamValues,
-  Nodes
+  Nodes,
+  NodeReturnType
 > = (
   undefined extends TStreamMode
     ? []
@@ -100,7 +101,9 @@ export type StreamOutputMap<
         updates: [
           string[],
           "updates",
-          Record<Nodes extends string ? Nodes : string, StreamUpdates>
+          NodeReturnType extends Record<string, unknown>
+            ? { [K in keyof NodeReturnType]?: NodeReturnType[K] }
+            : Record<Nodes extends string ? Nodes : string, StreamUpdates>
         ];
         messages: [string[], "messages", StreamMessageOutput];
         custom: [string[], "custom", StreamCustomOutput];
@@ -120,7 +123,9 @@ export type StreamOutputMap<
         values: ["values", StreamValues];
         updates: [
           "updates",
-          Record<Nodes extends string ? Nodes : string, StreamUpdates>
+          NodeReturnType extends Record<string, unknown>
+            ? { [K in keyof NodeReturnType]?: NodeReturnType[K] }
+            : Record<Nodes extends string ? Nodes : string, StreamUpdates>
         ];
         messages: ["messages", StreamMessageOutput];
         custom: ["custom", StreamCustomOutput];
@@ -136,7 +141,9 @@ export type StreamOutputMap<
         values: [string[], StreamValues];
         updates: [
           string[],
-          Record<Nodes extends string ? Nodes : string, StreamUpdates>
+          NodeReturnType extends Record<string, unknown>
+            ? { [K in keyof NodeReturnType]?: NodeReturnType[K] }
+            : Record<Nodes extends string ? Nodes : string, StreamUpdates>
         ];
         messages: [string[], StreamMessageOutput];
         custom: [string[], StreamCustomOutput];
@@ -149,7 +156,9 @@ export type StreamOutputMap<
       }[Single]
     : {
         values: StreamValues;
-        updates: Record<Nodes extends string ? Nodes : string, StreamUpdates>;
+        updates: NodeReturnType extends Record<string, unknown>
+          ? { [K in keyof NodeReturnType]?: NodeReturnType[K] }
+          : Record<Nodes extends string ? Nodes : string, StreamUpdates>;
         messages: StreamMessageOutput;
         custom: StreamCustomOutput;
         checkpoints: StreamCheckpointsOutput<StreamValues>;
