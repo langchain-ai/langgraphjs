@@ -16,6 +16,8 @@ export default defineConfig((env) => {
     return {
       test: {
         globals: true,
+        fileParallelism: false,
+        maxConcurrency: 1,
         include: ["**/*.bench.test.ts"],
         testTimeout: 300_000, // 5 minutes for benchmarks
         benchmark: {
