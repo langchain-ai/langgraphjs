@@ -43,7 +43,7 @@ it("StateGraph bad return type", async () => {
 
   const graph = new StateGraph(StateAnnotation)
     // @ts-expect-error Test invalid return value
-    .addNode("foo", () => ({ my_key: true }))
+    .addNode("foo", () => 123)
     .addEdge("__start__", "foo");
 
   const app = graph.compile({ checkpointer: new MemorySaverAssertImmutable() });
