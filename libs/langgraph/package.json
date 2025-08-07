@@ -25,6 +25,7 @@
     "test:browser": "vitest run --mode browser",
     "test:watch": "vitest watch",
     "test:int": "vitest run --mode int",
+    "bench": "vitest bench --mode bench",
     "format": "prettier --config .prettierrc --write \"src\"",
     "format:check": "prettier --config .prettierrc --check \"src\""
   },
