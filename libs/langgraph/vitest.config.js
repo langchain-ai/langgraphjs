@@ -8,9 +8,24 @@ export default defineConfig((env) => {
       hideSkippedTests: true,
       globals: true,
       testTimeout: 30_000,
-      exclude: ["**/*.int.test.ts", ...configDefaults.exclude],
+      exclude: ["**/*.int.test.ts", "**/*.bench.test.ts", ...configDefaults.exclude],
     },
   };
+
+  if (env.mode === "bench") {
+    return {
+      test: {
+        globals: true,
+        fileParallelism: false,
+        maxConcurrency: 1,
+        include: ["**/*.bench.test.ts"],
+        testTimeout: 300_000, // 5 minutes for benchmarks
+        benchmark: {
+          include: ["**/*.bench.test.ts"],
+        },
+      },
+    }
+  }
 
   if (env.mode === "int") {
     return {
