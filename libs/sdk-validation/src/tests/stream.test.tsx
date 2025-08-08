@@ -846,7 +846,7 @@ describe("useStream", () => {
 
                   {metadata?.streamMetadata && (
                     <div data-testid="stream-metadata">
-                      {JSON.stringify(metadata.streamMetadata, null, 2)}
+                      {metadata.streamMetadata?.langgraph_node as string}
                     </div>
                   )}
                 </div>
@@ -871,9 +871,7 @@ describe("useStream", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
-      expect(screen.getByTestId("stream-metadata")).toHaveTextContent(
-        `"langgraph_node": "agent"`
-      );
+      expect(screen.getByTestId("stream-metadata")).toHaveTextContent("agent");
     });
   });
 });
