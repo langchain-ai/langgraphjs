@@ -2342,6 +2342,7 @@ __metadata:
     "@langchain/langgraph-sdk": "workspace:*"
     "@langchain/openai": "npm:^0.4.0"
     "@langchain/scripts": "npm:>=0.1.3 <0.2.0"
+    "@standard-schema/spec": "npm:^1.0.0"
     "@swc/core": "npm:^1.3.90"
     "@testing-library/dom": "npm:^10.4.0"
     "@tsconfig/recommended": "npm:^1.0.3"
@@ -3539,6 +3540,13 @@ __metadata:
   version: 4.0.0
   resolution: "@sindresorhus/merge-streams@npm:4.0.0"
   checksum: 10/16551c787f5328c8ef05fd9831ade64369ccc992df78deb635ec6c44af217d2f1b43f8728c348cdc4e00585ff2fad6e00d8155199cbf6b154acc45fe65cbf0aa
+  languageName: node
+  linkType: hard
+
+"@standard-schema/spec@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "@standard-schema/spec@npm:1.0.0"
+  checksum: 10/aee780cc1431888ca4b9aba9b24ffc8f3073fc083acc105e3951481478a2f4dc957796931b2da9e2d8329584cf211e4542275f188296c1cdff3ed44fd93a8bc8
   languageName: node
   linkType: hard
 

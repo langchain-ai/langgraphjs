@@ -279,18 +279,18 @@ export class StateGraph<
     contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
+  constructor(
+    fields: SD extends InteropZodObject
+      ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
+      : never,
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+  );
+
   /** @deprecated Use `Annotation.Root` or `zod` for state definition instead. */
   constructor(
     fields: SD extends StateDefinition
       ? SD | StateGraphArgs<S>
       : StateGraphArgs<S>,
-    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
-  );
-
-  constructor(
-    fields: SD extends InteropZodObject
-      ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
-      : never,
     contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 

@@ -1,3 +1,4 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { RunnableLike } from "../pregel/runnable_types.js";
 import { BaseChannel } from "../channels/base.js";
 import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
@@ -5,6 +6,15 @@ import { LastValue } from "../channels/last_value.js";
 
 export type SingleReducer<ValueType, UpdateType = ValueType> =
   | {
+      state?: StandardSchemaV1<ValueType>;
+      update?: StandardSchemaV1<UpdateType>;
+
+      jsonSchemaExtra?: {
+        langgraph_nodes?: string[];
+        langgraph_type?: "prompt" | "messages";
+        [key: string]: unknown;
+      };
+
       reducer: BinaryOperator<ValueType, UpdateType>;
       default?: () => ValueType;
     }
@@ -18,19 +28,23 @@ export type SingleReducer<ValueType, UpdateType = ValueType> =
   | null;
 
 export interface StateDefinition {
-  [key: string]: BaseChannel | (() => BaseChannel);
+  [key: string]: BaseChannel | (() => BaseChannel) | StandardSchemaV1;
 }
 
 type ExtractValueType<C> = C extends BaseChannel
   ? C["ValueType"]
   : C extends () => BaseChannel
   ? ReturnType<C>["ValueType"]
+  : C extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<C>
   : never;
 
 type ExtractUpdateType<C> = C extends BaseChannel
   ? C["UpdateType"]
   : C extends () => BaseChannel
   ? ReturnType<C>["UpdateType"]
+  : C extends StandardSchemaV1
+  ? StandardSchemaV1.InferInput<C>
   : never;
 
 export type StateType<SD extends StateDefinition> = {

@@ -34,6 +34,7 @@
   "dependencies": {
     "@langchain/langgraph-checkpoint": "^0.1.1",
     "@langchain/langgraph-sdk": "~0.1.0",
+    "@standard-schema/spec": "^1.0.0",
     "uuid": "^10.0.0"
   },
   "peerDependencies": {
