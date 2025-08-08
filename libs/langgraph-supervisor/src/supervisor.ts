@@ -208,7 +208,10 @@ const createSupervisor = <
   }
 
   const handoffTools = agents.map((agent) =>
-    createHandoffTool({ agentName: agent.name! })
+    createHandoffTool({
+      agentName: agent.name!,
+      agentDescription: (agent as { description?: string }).description,
+    })
   );
   const allTools = [...(tools ?? []), ...handoffTools];
 
@@ -271,9 +274,7 @@ const createSupervisor = <
     builder = builder.addNode(
       agent.name!,
       makeCallAgent(agent, outputMode, addHandoffBackMessages, supervisorName),
-      {
-        subgraphs: [agent],
-      }
+      { subgraphs: [agent] }
     );
     builder = builder.addEdge(agent.name!, supervisorAgent.name!);
   }
