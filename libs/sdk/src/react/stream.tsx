@@ -1250,8 +1250,14 @@ export function useStream<
         ...callbackStreamMode,
       ]);
 
-      const checkpoint =
+      let checkpoint =
         submitOptions?.checkpoint ?? threadHead?.checkpoint ?? undefined;
+
+      // Avoid specifying a checkpoint if user explicitly set it to null
+      if (submitOptions?.checkpoint === null) {
+        checkpoint = undefined;
+      }
+
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-expect-error
       if (checkpoint != null) delete checkpoint.thread_id;
