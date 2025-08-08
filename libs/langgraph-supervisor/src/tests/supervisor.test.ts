@@ -4,7 +4,7 @@ import { LanguageModelLike } from "@langchain/core/language_models/base";
 import { tool } from "@langchain/core/tools";
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { MessagesAnnotation } from "@langchain/langgraph";
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { createReactAgent, ToolNode } from "@langchain/langgraph/prebuilt";
 import { createSupervisor } from "../supervisor.js";
 import { FakeToolCallingChatModel } from "./utils.js";
 import { withAgentName, AgentNameMode } from "../index.js";
@@ -198,6 +198,7 @@ describe("Test supervisor basic workflow", () => {
         llm: mathLLM,
         tools: [add],
         name: "math_expert",
+        description: "Math expert.",
         prompt: "You are a math expert. Always use one tool at a time.",
       });
 
@@ -205,6 +206,7 @@ describe("Test supervisor basic workflow", () => {
         llm: researchLLM,
         tools: [webSearch],
         name: "research_expert",
+        description: "World class researcher with access to web search.",
         prompt:
           "You are a world class researcher with access to web search. Do not do any math.",
       });
@@ -217,6 +219,20 @@ describe("Test supervisor basic workflow", () => {
           "You are a team supervisor managing a research expert and a math expert.",
         includeAgentName,
       });
+
+      const toolNode = (
+        workflow.nodes.supervisor.runnable as ReturnType<
+          typeof createReactAgent
+        >
+      ).nodes.tools.bound as ToolNode;
+
+      expect(toolNode.tools).toMatchObject([
+        { name: "transfer_to_math_expert", description: "Math expert." },
+        {
+          name: "transfer_to_research_expert",
+          description: "World class researcher with access to web search.",
+        },
+      ]);
 
       const app = workflow.compile();
       expect(app).toBeDefined();

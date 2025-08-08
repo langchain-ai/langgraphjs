@@ -749,6 +749,7 @@ export class StateGraph<
     interruptBefore,
     interruptAfter,
     name,
+    description,
   }: {
     checkpointer?: BaseCheckpointSaver | boolean;
     store?: BaseStore;
@@ -756,6 +757,7 @@ export class StateGraph<
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
     name?: string;
+    description?: string;
   } = {}): CompiledStateGraph<
     Prettify<S>,
     Prettify<U>,
@@ -801,6 +803,7 @@ export class StateGraph<
       store,
       cache,
       name,
+      description,
     });
 
     // attach nodes, edges and branches
@@ -880,8 +883,32 @@ export class CompiledStateGraph<
 > {
   declare builder: StateGraph<unknown, S, U, N, I, O, C, NodeReturnType>;
 
+  /**
+   * The description of the compiled graph.
+   * This is used by the supervisor agent to describe the handoff to the agent.
+   */
+  description?: string;
+
   /** @internal */
   _metaRegistry: SchemaMetaRegistry = schemaMetaRegistry;
+
+  constructor({
+    description,
+    ...rest
+  }: { description?: string } & ConstructorParameters<
+    typeof CompiledGraph<
+      N,
+      S,
+      U,
+      StateType<ToStateDefinition<C>>,
+      UpdateType<ToStateDefinition<I>>,
+      StateType<ToStateDefinition<O>>,
+      NodeReturnType
+    >
+  >[0]) {
+    super(rest);
+    this.description = description;
+  }
 
   attachNode(key: typeof START, node?: never): void;
 
