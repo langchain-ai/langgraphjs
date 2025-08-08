@@ -207,11 +207,8 @@ const createSupervisor = <
     agentNames.add(agent.name);
   }
 
-  const handoffTools = agents.map((agent) =>
-    createHandoffTool({
-      agentName: agent.name!,
-      agentDescription: (agent as { description?: string }).description,
-    })
+  const handoffTools = agents.map(({ name, description }) =>
+    createHandoffTool({ agentName: name!, agentDescription: description })
   );
   const allTools = [...(tools ?? []), ...handoffTools];
 

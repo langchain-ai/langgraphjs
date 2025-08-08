@@ -988,14 +988,12 @@ export function createReactAgent<
     allNodeWorkflows.addEdge("tools", entrypoint);
   }
 
-  const compiled = allNodeWorkflows.compile({
+  return allNodeWorkflows.compile({
     checkpointer: checkpointer ?? checkpointSaver,
     interruptBefore,
     interruptAfter,
     store,
     name,
+    description,
   });
-
-  if (description != null) Object.assign(compiled, { description });
-  return compiled;
 }
