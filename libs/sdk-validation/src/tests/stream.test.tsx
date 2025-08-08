@@ -823,4 +823,55 @@ describe("useStream", () => {
       expect(screen.getByTestId("message-1").textContent).toBe("Hey");
     });
   });
+
+  it("streamMetadata", async () => {
+    const user = userEvent.setup();
+
+    function TestComponent() {
+      const { submit, messages, getMessagesMetadata } = useStream({
+        assistantId: "agent",
+        apiKey: "test-api-key",
+      });
+
+      return (
+        <div>
+          <div data-testid="messages">
+            {messages.map((msg, i) => {
+              const metadata = getMessagesMetadata(msg, i);
+              return (
+                <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                  {typeof msg.content === "string"
+                    ? msg.content
+                    : JSON.stringify(msg.content)}
+
+                  {metadata?.streamMetadata && (
+                    <div data-testid="stream-metadata">
+                      {metadata.streamMetadata?.langgraph_node as string}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              submit({ messages: [{ content: "Hello", type: "human" }] })
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    }
+
+    render(<TestComponent />);
+
+    await user.click(screen.getByTestId("submit"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+      expect(screen.getByTestId("stream-metadata")).toHaveTextContent("agent");
+    });
+  });
 });
