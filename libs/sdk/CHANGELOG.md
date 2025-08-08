@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 0.0.106
+
+### Patch Changes
+
+- feat(sdk): allow setting `checkpoint: null` when submitting a run via useStream
+
 ## 0.0.105
 
 ### Patch Changes
