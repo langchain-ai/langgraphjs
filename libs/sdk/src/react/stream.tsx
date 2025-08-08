@@ -74,14 +74,21 @@ function tryConvertToChunk(message: BaseMessage): BaseMessageChunk | null {
 class MessageTupleManager {
   chunks: Record<
     string,
-    { chunk?: BaseMessageChunk | BaseMessage; index?: number }
+    {
+      chunk?: BaseMessageChunk | BaseMessage;
+      metadata?: Record<string, unknown>;
+      index?: number;
+    }
   > = {};
 
   constructor() {
     this.chunks = {};
   }
 
-  add(serialized: Message): string | null {
+  add(
+    serialized: Message,
+    metadata: Record<string, unknown> | undefined
+  ): string | null {
     // TODO: this is sometimes sent from the API
     // figure out how to prevent this or move this to LC.js
     if (serialized.type.endsWith("MessageChunk")) {
@@ -104,6 +111,7 @@ class MessageTupleManager {
     }
 
     this.chunks[id] ??= {};
+    this.chunks[id].metadata = metadata ?? this.chunks[id].metadata;
     if (chunk) {
       const prev = this.chunks[id].chunk;
       this.chunks[id].chunk =
@@ -119,10 +127,9 @@ class MessageTupleManager {
     this.chunks = {};
   }
 
-  get(id: string, defaultIndex: number) {
+  get(id: string, defaultIndex?: number) {
     if (this.chunks[id] == null) return null;
-    this.chunks[id].index ??= defaultIndex;
-
+    if (defaultIndex != null) this.chunks[id].index ??= defaultIndex;
     return this.chunks[id];
   }
 }
@@ -195,6 +202,12 @@ export type MessageMetadata<StateType extends Record<string, unknown>> = {
    * This is useful for displaying branching controls.
    */
   branchOptions: string[] | undefined;
+
+  /**
+   * Metadata sent alongside the message during run streaming.
+   * @remarks This metadata only exists temporarily in browser memory during streaming and is not persisted after completion.
+   */
+  streamMetadata: Record<string, unknown> | undefined;
 };
 
 function getBranchSequence<StateType extends Record<string, unknown>>(
@@ -1022,6 +1035,11 @@ export function useStream<
     return getMessages(historyValues).map(
       (message, idx): MessageMetadata<StateType> => {
         const messageId = message.id ?? idx;
+        const streamMetadata =
+          message.id != null
+            ? messageManagerRef.current.get(message.id)?.metadata ?? undefined
+            : undefined;
+
         const firstSeenIdx = findLastIndex(history.data ?? [], (state) =>
           getMessages(state.values)
             .map((m, idx) => m.id ?? idx)
@@ -1053,6 +1071,8 @@ export function useStream<
 
           branch: branch?.branch,
           branchOptions: branch?.branchOptions,
+
+          streamMetadata,
         };
       }
     );
@@ -1127,9 +1147,10 @@ export function useStream<
           // to also receive messages from subgraphs
           event.startsWith("messages|")
         ) {
-          const [serialized] = data as MessagesTupleStreamEvent["data"];
+          const [serialized, metadata] =
+            data as MessagesTupleStreamEvent["data"];
 
-          const messageId = messageManagerRef.current.add(serialized);
+          const messageId = messageManagerRef.current.add(serialized, metadata);
           if (!messageId) {
             console.warn(
               "Failed to add message to manager, no message ID found"
