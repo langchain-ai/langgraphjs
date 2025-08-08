@@ -9,7 +9,15 @@ import {
 } from "@langchain/langgraph-sdk";
 import { RemoteGraph } from "@langchain/langgraph/remote";
 import postgres from "postgres";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { findLast, gatherIterator, truncate } from "./utils.mjs";
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -2812,12 +2820,17 @@ describe("runtime API", () => {
     });
     const thread = await client.threads.create();
 
+    const onRunCreated = vi.fn();
+
     expect(
       await client.runs.wait(thread.thread_id, assistant.assistant_id, {
         input: { messages: [{ role: "human", content: "input" }] },
         context: { model: "openai" },
+        onRunCreated,
       })
     ).toEqual({ model: "openai" });
+
+    expect(onRunCreated).toHaveBeenCalledTimes(1);
   });
 
   it("schema", async () => {
@@ -2851,11 +2864,14 @@ describe("runtime API", () => {
       context: { model: "anthropic" },
     });
 
+    const onRunCreated = vi.fn();
     expect(
       await client.runs.wait(null, assistant.assistant_id, {
         input: { messages: [{ role: "human", content: "input" }] },
+        onRunCreated,
       })
     ).toEqual({ model: "anthropic" });
+    expect(onRunCreated).toHaveBeenCalledTimes(1);
 
     // patch to say openai
     await client.assistants.update(assistant.assistant_id, {
@@ -2865,15 +2881,20 @@ describe("runtime API", () => {
     expect(
       await client.runs.wait(null, assistant.assistant_id, {
         input: { messages: [{ role: "human", content: "input" }] },
+        onRunCreated,
       })
     ).toEqual({ model: "openai" });
+    expect(onRunCreated).toHaveBeenCalledTimes(2);
   });
 
   it("default from env", async () => {
+    const onRunCreated = vi.fn();
     expect(
       await client.runs.wait(null, "simple_runtime", {
         input: { messages: [{ role: "human", content: "input" }] },
+        onRunCreated,
       })
     ).toEqual({ model: "unknown" });
+    expect(onRunCreated).toHaveBeenCalledTimes(1);
   });
 });

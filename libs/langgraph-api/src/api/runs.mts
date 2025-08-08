@@ -205,6 +205,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
     headers: c.req.raw.headers,
   });
 
+  c.header("Content-Location", `/runs/${run.run_id}`);
   return streamSSE(c, async (stream) => {
     const cancelOnDisconnect =
       payload.on_disconnect === "cancel"
@@ -243,7 +244,7 @@ api.get(
     const query = c.req.valid("query");
 
     const lastEventId = c.req.header("Last-Event-ID") || undefined;
-
+    c.header("Content-Location", `/runs/${run_id}`);
     return streamSSE(c, async (stream) => {
       const cancelOnDisconnect = query.cancel_on_disconnect
         ? getDisconnectAbortSignal(c, stream)
@@ -272,6 +273,7 @@ api.post("/runs/wait", zValidator("json", schemas.RunCreate), async (c) => {
     auth: c.var.auth,
     headers: c.req.raw.headers,
   });
+  c.header("Content-Location", `/runs/${run.run_id}`);
   return waitKeepAlive(c, Runs.wait(run.run_id, undefined, c.var.auth));
 });
 
@@ -282,6 +284,7 @@ api.post("/runs", zValidator("json", schemas.RunCreate), async (c) => {
     auth: c.var.auth,
     headers: c.req.raw.headers,
   });
+  c.header("Content-Location", `/runs/${run.run_id}`);
   return jsonExtra(c, run);
 });
 
