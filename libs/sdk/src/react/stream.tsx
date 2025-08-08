@@ -1401,7 +1401,7 @@ export function useStream<
       message: Message,
       index?: number
     ): MessageMetadata<StateType> | undefined {
-      trackStreamMode("messages-tuple", "values");
+      trackStreamMode("values");
       return messageMetadata?.find(
         (m) => m.messageId === (message.id ?? index)
       );
