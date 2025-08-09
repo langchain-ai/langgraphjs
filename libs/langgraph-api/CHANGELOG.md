@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 0.0.58
+
+### Patch Changes
+
+- f65f619: fix(api): send Content-Location header for stateless runs
+  - @langchain/langgraph-ui@0.0.58
+
 ## 0.0.57
 
 ### Patch Changes

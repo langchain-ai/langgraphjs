@@ -1,5 +1,11 @@
 # @langchain/langgraph-supervisor
 
+## 0.0.18
+
+### Patch Changes
+
+- cb4b17a: feat(langgraph): use createReactAgent description for supervisor agent handoffs
+
 ## 0.0.17
 
 ### Patch Changes

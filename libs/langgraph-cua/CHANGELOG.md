@@ -1,5 +1,11 @@
 # @langchain/langgraph-cua
 
+## 0.1.0
+
+### Minor Changes
+
+- 8152a15: feat(cua): Improve update types
+
 ## 0.0.7
 
 ### Patch Changes
