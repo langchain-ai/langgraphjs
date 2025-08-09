@@ -1,5 +1,12 @@
 # @langchain/langgraph-sdk
 
+## 0.0.107
+
+### Patch Changes
+
+- 72386a4: feat(sdk): expose stream metadata from messages via `getMessagesMetadata`
+- 3ee5c20: fix(sdk): avoid setting `messages-tuple` if only `getMessagesMetadata` is requested.
+
 ## 0.0.106
 
 ### Patch Changes
