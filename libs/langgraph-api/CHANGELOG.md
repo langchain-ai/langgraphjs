@@ -1,5 +1,13 @@
 # @langchain/langgraph-api
 
+## 0.0.58
+
+### Patch Changes
+
+- f65f619: fix(api): send Content-Location header for stateless runs
+- c857357: feat(api): harden embed server, implement missing endpoints needed for interrupts
+  - @langchain/langgraph-ui@0.0.58
+
 ## 0.0.57
 
 ### Patch Changes

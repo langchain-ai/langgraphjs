@@ -1,5 +1,11 @@
 # @langchain/langgraph-swarm
 
+## 0.0.6
+
+### Patch Changes
+
+- 8152a15: chore: enforce return types for swarm
+
 ## 0.0.5
 
 ### Patch Changes
