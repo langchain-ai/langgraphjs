@@ -14,7 +14,7 @@ import * as schemas from "../schemas.mjs";
 
 import { z } from "zod";
 import { streamState } from "../stream.mjs";
-import { serialiseAsDict } from "../utils/serde.mjs";
+import { serialiseAsDict, serializeError } from "../utils/serde.mjs";
 import { getDisconnectAbortSignal, jsonExtra } from "../utils/hono.mjs";
 import { stateSnapshotToThreadState } from "../state.mjs";
 import { ensureContentType } from "../http/middleware.mjs";
@@ -28,8 +28,20 @@ interface Thread {
 
 interface ThreadSaver {
   get: (id: string) => Promise<Thread>;
-  put: (id: string, options: { metadata?: Metadata }) => Promise<void>;
+
+  set: (
+    id: string,
+    options: { kind: "put" | "patch"; metadata?: Metadata }
+  ) => Promise<Thread>;
   delete: (id: string) => Promise<void>;
+
+  search?: (options: {
+    metadata?: Metadata;
+    limit: number;
+    offset: number;
+    sortBy: "created_at" | "updated_at";
+    sortOrder: "asc" | "desc";
+  }) => AsyncGenerator<{ thread: Thread; total: number }>;
 }
 
 function createStubRun(
@@ -39,12 +51,13 @@ function createStubRun(
   const now = new Date();
   const runId = uuidv4();
 
-  const streamMode = Array.isArray(payload.stream_mode)
+  let streamMode = Array.isArray(payload.stream_mode)
     ? payload.stream_mode
     : payload.stream_mode
     ? [payload.stream_mode]
     : undefined;
 
+  if (streamMode == null || streamMode.length === 0) streamMode = ["values"];
   const config = Object.assign(
     {},
     payload.config ?? {},
@@ -78,6 +91,7 @@ function createStubRun(
       input: payload.input,
       command: payload.command,
       config,
+      context: payload.context,
       stream_mode: streamMode,
       interrupt_before: payload.interrupt_before,
       interrupt_after: payload.interrupt_after,
@@ -113,12 +127,16 @@ export function createEmbedServer(options: {
   api.use(ensureContentType());
 
   api.post("/threads", zValidator("json", schemas.ThreadCreate), async (c) => {
-    // create a new threaad
+    // create a new thread
     const payload = c.req.valid("json");
     const threadId = payload.thread_id || uuidv4();
-
-    await options.threads.put(threadId, payload);
-    return jsonExtra(c, { thread_id: threadId });
+    return jsonExtra(
+      c,
+      await options.threads.set(threadId, {
+        kind: "put",
+        metadata: payload.metadata,
+      })
+    );
   });
 
   api.get(
@@ -127,8 +145,25 @@ export function createEmbedServer(options: {
     async (c) => {
       // Get Thread
       const { thread_id } = c.req.valid("param");
-      const thread = await options.threads.get(thread_id);
-      return jsonExtra(c, thread);
+      return jsonExtra(c, await options.threads.get(thread_id));
+    }
+  );
+
+  api.patch(
+    "/threads/:thread_id",
+    zValidator("param", z.object({ thread_id: z.string().uuid() })),
+    zValidator("json", schemas.ThreadCreate),
+    async (c) => {
+      // Update Thread
+      const { thread_id } = c.req.valid("param");
+      const payload = c.req.valid("json");
+      return jsonExtra(
+        c,
+        await options.threads.set(thread_id, {
+          kind: "patch",
+          metadata: payload.metadata,
+        })
+      );
     }
   );
 
@@ -136,9 +171,42 @@ export function createEmbedServer(options: {
     "/threads/:thread_id",
     zValidator("param", z.object({ thread_id: z.string().uuid() })),
     async (c) => {
+      // Delete Thread
       const { thread_id } = c.req.valid("param");
       await options.threads.delete(thread_id);
       return new Response(null, { status: 204 });
+    }
+  );
+
+  api.post(
+    "/threads/search",
+    zValidator("json", schemas.ThreadSearchRequest),
+    async (c) => {
+      const payload = c.req.valid("json");
+      const result: unknown[] = [];
+
+      if (!options.threads.search)
+        return c.json({ error: "Threads search not implemented" }, 422);
+
+      const sortBy =
+        payload.sort_by === "created_at" || payload.sort_by === "updated_at"
+          ? payload.sort_by
+          : "created_at";
+
+      let total = 0;
+      for await (const item of options.threads.search({
+        metadata: payload.metadata,
+        limit: payload.limit ?? 10,
+        offset: payload.offset ?? 0,
+        sortBy,
+        sortOrder: payload.sort_order ?? "desc",
+      })) {
+        result.push(item.thread);
+        // Only set total if it's the first item
+        if (total === 0) total = item.total;
+      }
+      c.res.headers.set("X-Pagination-Total", total.toString());
+      return jsonExtra(c, result);
     }
   );
 
@@ -175,6 +243,99 @@ export function createEmbedServer(options: {
 
       const config = { configurable: { thread_id } };
       const result = await graph.getState(config, { subgraphs });
+      return jsonExtra(c, stateSnapshotToThreadState(result));
+    }
+  );
+
+  api.post(
+    "/threads/:thread_id/state",
+    zValidator("param", z.object({ thread_id: z.string().uuid() })),
+    zValidator("json", schemas.ThreadStateUpdate),
+    async (c) => {
+      // Update Thread State
+      const { thread_id } = c.req.valid("param");
+      const payload = c.req.valid("json");
+      const config: RunnableConfig = { configurable: { thread_id } };
+      config.configurable ??= {};
+
+      if (payload.checkpoint_id) {
+        config.configurable.checkpoint_id = payload.checkpoint_id;
+      }
+
+      if (payload.checkpoint) {
+        Object.assign(config.configurable, payload.checkpoint);
+      }
+
+      const thread = await options.threads.get(thread_id);
+      const graphId = thread.metadata?.graph_id as string | undefined | null;
+      const graph = graphId ? await getGraph(graphId) : undefined;
+      if (graph == null) return c.json({ error: "Graph not found" }, 404);
+
+      const result = await graph.updateState(
+        config,
+        payload.values,
+        payload.as_node
+      );
+      return jsonExtra(c, { checkpoint: result.configurable });
+    }
+  );
+
+  // get thread state at checkpoint
+  api.get(
+    "/threads/:thread_id/state/:checkpoint_id",
+    zValidator(
+      "param",
+      z.object({
+        thread_id: z.string().uuid(),
+        checkpoint_id: z.string().uuid(),
+      })
+    ),
+    zValidator(
+      "query",
+      z.object({ subgraphs: schemas.coercedBoolean.optional() })
+    ),
+    async (c) => {
+      // Get Thread State At Checkpoint
+      const { thread_id, checkpoint_id } = c.req.valid("param");
+      const { subgraphs } = c.req.valid("query");
+
+      const thread = await options.threads.get(thread_id);
+      const graphId = thread.metadata?.graph_id as string | undefined | null;
+      const graph = graphId ? await getGraph(graphId) : undefined;
+      if (graph == null) return c.json({ error: "Graph not found" }, 404);
+
+      const result = await graph.getState(
+        { configurable: { thread_id, checkpoint_id } },
+        { subgraphs }
+      );
+      return jsonExtra(c, stateSnapshotToThreadState(result));
+    }
+  );
+
+  api.post(
+    "/threads/:thread_id/state/checkpoint",
+    zValidator("param", z.object({ thread_id: z.string().uuid() })),
+    zValidator(
+      "json",
+      z.object({
+        subgraphs: schemas.coercedBoolean.optional(),
+        checkpoint: schemas.CheckpointSchema.nullish(),
+      })
+    ),
+    async (c) => {
+      // Get Thread State At Checkpoint post
+      const { thread_id } = c.req.valid("param");
+      const { checkpoint, subgraphs } = c.req.valid("json");
+
+      const thread = await options.threads.get(thread_id);
+      const graphId = thread.metadata?.graph_id as string | undefined | null;
+      const graph = graphId ? await getGraph(graphId) : undefined;
+      if (graph == null) return c.json({ error: "Graph not found" }, 404);
+
+      const result = await graph.getState(
+        { configurable: { thread_id, ...checkpoint } },
+        { subgraphs }
+      );
       return jsonExtra(c, stateSnapshotToThreadState(result));
     }
   );
@@ -218,29 +379,37 @@ export function createEmbedServer(options: {
     zValidator("json", schemas.RunCreate),
     async (c) => {
       // Stream Run
-      return streamSSE(c, async (stream) => {
-        const { thread_id } = c.req.valid("param");
-        const payload = c.req.valid("json");
+      const { thread_id } = c.req.valid("param");
+      const payload = c.req.valid("json");
 
+      const thread = await options.threads.get(thread_id);
+      if (thread == null) return c.json({ error: "Thread not found" }, 404);
+
+      return streamSSE(c, async (stream) => {
         const signal = getDisconnectAbortSignal(c, stream);
         const run = createStubRun(thread_id, payload);
 
-        // update thread with new graph_id
-        const thread = await options.threads.get(thread_id);
-        await options.threads.put(thread_id, {
+        await options.threads.set(thread_id, {
+          kind: "patch",
           metadata: {
-            ...thread.metadata,
             graph_id: payload.assistant_id,
             assistant_id: payload.assistant_id,
           },
         });
 
-        for await (const { event, data } of streamState(run, {
-          attempt: 1,
-          getGraph,
-          signal,
-        })) {
-          await stream.writeSSE({ data: serialiseAsDict(data), event });
+        try {
+          for await (const { event, data } of streamState(run, {
+            attempt: 1,
+            getGraph,
+            signal,
+          })) {
+            await stream.writeSSE({ data: serialiseAsDict(data), event });
+          }
+        } catch (error) {
+          await stream.writeSSE({
+            data: serialiseAsDict(serializeError(error)),
+            event: "error",
+          });
         }
       });
     }
@@ -253,7 +422,8 @@ export function createEmbedServer(options: {
       const signal = getDisconnectAbortSignal(c, stream);
       const threadId = uuidv4();
 
-      await options.threads.put(threadId, {
+      await options.threads.set(threadId, {
+        kind: "put",
         metadata: {
           graph_id: payload.assistant_id,
           assistant_id: payload.assistant_id,
@@ -262,17 +432,31 @@ export function createEmbedServer(options: {
 
       try {
         const run = createStubRun(threadId, payload);
-        for await (const { event, data } of streamState(run, {
-          attempt: 1,
-          getGraph,
-          signal,
-        })) {
-          await stream.writeSSE({ data: serialiseAsDict(data), event });
+        try {
+          for await (const { event, data } of streamState(run, {
+            attempt: 1,
+            getGraph,
+            signal,
+          })) {
+            await stream.writeSSE({ data: serialiseAsDict(data), event });
+          }
+        } catch (error) {
+          await stream.writeSSE({
+            data: serialiseAsDict(serializeError(error)),
+            event: "error",
+          });
         }
       } finally {
         await options.threads.delete(threadId);
       }
     });
+  });
+
+  api.notFound((c) => {
+    return c.json(
+      { error: `${c.req.method} ${c.req.path} not implemented` },
+      404
+    );
   });
 
   return api;

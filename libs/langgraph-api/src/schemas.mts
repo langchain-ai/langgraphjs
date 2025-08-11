@@ -421,13 +421,13 @@ export const ThreadStateUpdate = z
   .object({
     values: z
       .union([
-        z.array(z.object({}).catchall(z.any())),
-        z.object({}).catchall(z.any()),
-        z.null(),
+        z.record(z.string(), z.unknown()),
+        z.array(z.record(z.string(), z.unknown())),
       ])
-      .optional(),
-    checkpoint_id: z.string().optional(),
+      .nullish(),
     as_node: z.string().optional(),
+    checkpoint_id: z.string().optional(),
+    checkpoint: CheckpointSchema.nullish(),
   })
   .describe("Payload for adding state to a thread.");
 
