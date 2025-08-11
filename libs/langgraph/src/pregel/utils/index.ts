@@ -162,7 +162,8 @@ export function combineAbortSignals(...x: (AbortSignal | undefined)[]): {
 
   const combinedController = new AbortController();
   const listener = () => {
-    combinedController.abort();
+    const reason = signals.find((s) => s.aborted)?.reason;
+    combinedController.abort(reason);
     signals.forEach((s) => s.removeEventListener("abort", listener));
   };
 
