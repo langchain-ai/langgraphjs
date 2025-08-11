@@ -26,7 +26,11 @@ interface Thread {
   metadata: Metadata;
 }
 
-interface ThreadSaver {
+/**
+ * Interface for storing and retrieving threads used by `createEmbedServer`.
+ * @experimental Does not follow semver.
+ */
+export interface ThreadSaver {
   get: (id: string) => Promise<Thread>;
 
   set: (
@@ -106,7 +110,8 @@ function createStubRun(
 }
 
 /**
- * Attach LangGraph Platform-esque routes to a given Hono instance.
+ * Create a Hono server with a subset of LangGraph Platform routes.
+ *
  * @experimental Does not follow semver.
  */
 export function createEmbedServer(options: {

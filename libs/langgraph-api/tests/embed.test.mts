@@ -9,7 +9,10 @@ import {
 } from "@langchain/langgraph-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 import { findLast, gatherIterator } from "./utils.mjs";
-import { createEmbedServer } from "../src/experimental/embed.mjs";
+import {
+  createEmbedServer,
+  type ThreadSaver,
+} from "../src/experimental/embed.mjs";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 
 const threads = (() => {
@@ -27,14 +30,8 @@ const threads = (() => {
   > = {};
 
   return {
-    get: async (id: string) => THREADS[id],
-    set: async (
-      threadId: string,
-      {
-        kind,
-        metadata,
-      }: { kind: "put" | "patch"; metadata?: Record<string, unknown> }
-    ) => {
+    get: async (id) => THREADS[id],
+    set: async (threadId, { kind, metadata }) => {
       const now = new Date();
 
       THREADS[threadId] ??= {
@@ -53,9 +50,7 @@ const threads = (() => {
 
       return THREADS[threadId];
     },
-    async delete(threadId: string) {
-      delete THREADS[threadId];
-    },
+    delete: async (threadId) => void delete THREADS[threadId],
     async *search(options: {
       metadata?: Record<string, unknown>;
       limit: number;
@@ -94,7 +89,7 @@ const threads = (() => {
       THREADS = {};
     },
   };
-})();
+})() satisfies ThreadSaver;
 
 const server = createEmbedServer({
   graph: {

@@ -12,27 +12,28 @@ import { StateGraph, MessagesAnnotation, START } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { FakeStreamingChatModel } from "@langchain/core/utils/testing";
 import { AIMessage } from "@langchain/core/messages";
-import { createEmbedServer } from "@langchain/langgraph-api/experimental/embed";
+import {
+  createEmbedServer,
+  type ThreadSaver,
+} from "@langchain/langgraph-api/experimental/embed";
 import { randomUUID } from "node:crypto";
 import { useState } from "react";
 
-const threads = (() => {
+const threads: ThreadSaver = (() => {
   const THREADS: Record<
     string,
     { thread_id: string; metadata: Record<string, unknown> }
   > = {};
 
   return {
-    get: async (id: string) => THREADS[id],
-    put: async (
-      threadId: string,
-      { metadata }: { metadata?: Record<string, unknown> }
-    ) => {
-      THREADS[threadId] = { thread_id: threadId, metadata: metadata ?? {} };
+    get: async (id) => THREADS[id],
+    set: async (threadId, { metadata }) => {
+      return (THREADS[threadId] = {
+        thread_id: threadId,
+        metadata: { ...(THREADS[threadId]?.metadata ?? {}), ...metadata },
+      });
     },
-    delete: async (threadId: string) => {
-      delete THREADS[threadId];
-    },
+    delete: async (threadId) => void delete THREADS[threadId],
   };
 })();
 
