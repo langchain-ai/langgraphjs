@@ -186,6 +186,7 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
       }
 
       return new ToolMessage({
+        status: "success",
         name: tool.name,
         content: typeof output === "string" ? output : JSON.stringify(output),
         tool_call_id: call.id!,
@@ -202,6 +203,7 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
       }
 
       return new ToolMessage({
+        status: "error",
         content: `Error: ${e.message}\n Please fix your mistakes.`,
         name: call.name,
         tool_call_id: call.id ?? "",

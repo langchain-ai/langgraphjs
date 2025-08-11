@@ -525,6 +525,7 @@ describe.each([["v1" as const], ["v2" as const]])(
           }),
           new _AnyIdToolMessage({
             name: "search_api",
+            status: "success",
             content: "result for foo",
             tool_call_id: "tool_abcd123",
           }),
@@ -1040,6 +1041,7 @@ describe.each([["v1" as const], ["v2" as const]])(
             ],
           }),
           new _AnyIdToolMessage({
+            status: "success",
             name: "search_api",
             content: "result for foo",
             tool_call_id: "tool_abcd123",
@@ -2588,6 +2590,24 @@ describe.each([["v1" as const], ["v2" as const]])(
           { text: "[tool] parrot: input, ai" },
         ],
       });
+    });
+
+    it("should handle tool errors", async () => {
+      const toolNode = new ToolNode([new SearchAPI()]);
+      const res = await toolNode.invoke([
+        new AIMessage({
+          content: "",
+          tool_calls: [{ name: "badtool", args: {}, id: "testid" }],
+        }),
+      ]);
+
+      expect(res).toMatchObject([
+        {
+          status: "error",
+          content:
+            'Error: Tool "badtool" not found.\n Please fix your mistakes.',
+        },
+      ]);
     });
   }
 );
