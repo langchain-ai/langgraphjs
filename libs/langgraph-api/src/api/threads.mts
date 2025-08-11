@@ -95,20 +95,7 @@ api.get(
 api.post(
   "/threads/:thread_id/state",
   zValidator("param", z.object({ thread_id: z.string().uuid() })),
-  zValidator(
-    "json",
-    z.object({
-      values: z
-        .union([
-          z.record(z.string(), z.unknown()),
-          z.array(z.record(z.string(), z.unknown())),
-        ])
-        .nullish(),
-      as_node: z.string().optional(),
-      checkpoint_id: z.string().optional(),
-      checkpoint: schemas.CheckpointSchema.nullish(),
-    })
-  ),
+  zValidator("json", schemas.ThreadStateUpdate),
   async (c) => {
     // Update Thread State
     const { thread_id } = c.req.valid("param");
