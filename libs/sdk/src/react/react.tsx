@@ -41,7 +41,7 @@ import type {
   ValuesStreamEvent,
 } from "../types.stream.js";
 import { MessageTupleManager, toMessageDict } from "./messages.js";
-import { findLastIndex, unique } from "./stream.utils.js";
+import { findLastIndex, unique } from "./utils.js";
 import { StreamError } from "./errors.js";
 import {
   type Sequence,

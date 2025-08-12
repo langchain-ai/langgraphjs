@@ -5,7 +5,7 @@ import * as ReactDOM from "react-dom";
 import * as JsxRuntime from "react/jsx-runtime";
 import type { UIMessage } from "./types.js";
 import { useStream } from "../react/index.js";
-import type { UseStream } from "../react/stream.js";
+import type { UseStream } from "../react/react.js";
 
 const UseStreamContext = React.createContext<{
   stream: ReturnType<typeof useStream>;
