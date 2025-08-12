@@ -12319,6 +12319,42 @@ graph TD;
       ],
     });
   });
+
+  it("node recursion limit", async () => {
+    const graph = new StateGraph(
+      Annotation.Root({
+        ...MessagesAnnotation.spec,
+        counter: Annotation<number>({
+          default: () => 0,
+          reducer: (a, b) => a + b,
+        }),
+      })
+    )
+      .addNode(
+        "node",
+        () => ({
+          messages: { type: "ai", content: "Hello" },
+          counter: 1,
+        }),
+        { recursionLimit: 3 }
+      )
+      .addEdge(START, "node")
+      .addConditionalEdges(
+        "node",
+        (state) => {
+          if (state.counter > 10) {
+            throw new Error("Recursion limit failed to kick in");
+          }
+          return "node";
+        },
+        ["node", END]
+      )
+      .compile();
+
+    await expect(graph.invoke({ messages: "Input" })).rejects.toThrow(
+      GraphRecursionError
+    );
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());

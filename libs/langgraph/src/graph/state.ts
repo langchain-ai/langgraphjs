@@ -49,7 +49,11 @@ import {
   START,
   TAG_HIDDEN,
 } from "../constants.js";
-import { InvalidUpdateError, ParentCommand } from "../errors.js";
+import {
+  GraphRecursionError,
+  InvalidUpdateError,
+  ParentCommand,
+} from "../errors.js";
 import {
   AnnotationRoot,
   getChannel,
@@ -61,6 +65,7 @@ import {
 import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 import { LastValueAfterFinish } from "../channels/last_value.js";
+import { BinaryOperatorAggregate } from "../channels/binop.js";
 import {
   type SchemaMetaRegistry,
   InteropZodToStateDefinition,
@@ -89,11 +94,13 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
   input?: StateDefinition;
   retryPolicy?: RetryPolicy;
   cachePolicy?: CachePolicy;
+  recursionLimit?: number;
 };
 
 export type StateGraphAddNodeOptions<Nodes extends string = string> = {
   retryPolicy?: RetryPolicy;
   cachePolicy?: CachePolicy | boolean;
+  recursionLimit?: number;
   // TODO: Fix generic typing for annotations
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   input?: AnnotationRoot<any> | InteropZodObject;
@@ -602,6 +609,7 @@ export class StateGraph<
           : options?.subgraphs,
         ends: options?.ends,
         defer: options?.defer,
+        recursionLimit: options?.recursionLimit,
       };
 
       this.nodes[key as unknown as N] = nodeSpec;
@@ -1033,16 +1041,35 @@ export class CompiledStateGraph<
       );
       const isSingleInput =
         Object.keys(inputValues).length === 1 && ROOT in inputValues;
+
       const branchChannel = `branch:to:${key}` as string | N;
+      const stepChannel = `step:${key}` as string | N;
+
       this.channels[branchChannel] = node?.defer
         ? new LastValueAfterFinish()
         : new EphemeralValue(false);
+      this.channels[stepChannel] = new BinaryOperatorAggregate<number, number>(
+        (a, b) => a + b,
+        () => 0
+      );
+
       this.nodes[key] = new PregelNode<S, U>({
         triggers: [branchChannel],
         // read state keys
         channels: isSingleInput ? Object.keys(inputValues) : inputValues,
         // publish to state keys
-        writers: [new ChannelWrite(stateWriteEntries, [TAG_HIDDEN])],
+        writers: [
+          new ChannelWrite(stateWriteEntries, [TAG_HIDDEN]),
+          ChannelWrite.registerWriter(
+            new RunnableCallable({
+              func: () =>
+                new ChannelWrite(
+                  [{ channel: stepChannel, value: 1 }],
+                  [TAG_HIDDEN]
+                ),
+            })
+          ),
+        ],
         mapper: isSingleInput
           ? undefined
           : // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1051,7 +1078,23 @@ export class CompiledStateGraph<
                 Object.entries(input).filter(([k]) => k in inputValues)
               );
             },
-        bound: node?.runnable,
+        bound: node?.runnable
+          ? new RunnableCallable({
+              func: (_, config) => {
+                const stepCount = ChannelRead.doRead<{
+                  [stepChannel]: number;
+                }>(config, [stepChannel], true)[stepChannel];
+
+                if (stepCount > (node?.recursionLimit ?? 0)) {
+                  throw new GraphRecursionError(
+                    `Recursion limit exceeded for node "${key}"`
+                  );
+                }
+
+                return node.runnable;
+              },
+            })
+          : undefined,
         metadata: node?.metadata,
         retryPolicy: node?.retryPolicy,
         cachePolicy: node?.cachePolicy,
