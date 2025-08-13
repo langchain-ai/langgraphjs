@@ -12,7 +12,7 @@ builder
     console.log("Node version:", process.version);
     console.log("Operating system:", process.platform, process.arch);
     console.log("Package manager:", manager.name);
-    console.log("Package manager version:", manager.version);
+    console.log("Package manager version:", manager.version ?? "N/A");
 
     console.log("-".repeat(20));
 
@@ -39,7 +39,7 @@ builder
       }
     })();
     const gatherMatch = (str: string, regex: RegExp) => {
-      return [...new Set(str.matchAll(regex).map((match) => match[0]))];
+      return [...new Set([...str.matchAll(regex)].map((match) => match[0]))];
     };
 
     const packages = gatherMatch(
