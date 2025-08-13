@@ -12,6 +12,15 @@ describe("combineAbortSignals", () => {
     controller1.abort("abort signal 1");
     controller2.abort("abort signal 2");
     expect(signal?.aborted).toBe(true);
-    expect(signal?.reason).toBe("abort signal 2");
+    expect(signal?.reason).toBe('abort signal 1');
+  });
+
+  it("aborts immediately if one signal is already aborted", () => {
+    const controller1 = new AbortController();
+    const controller2 = new AbortController();
+    controller2.abort('abort signal 2');
+    const { signal } = combineAbortSignals(controller1.signal, controller2.signal);
+    expect(signal?.aborted).toBe(true);
+    expect(signal?.reason).toBe('abort signal 2');
   });
 });
