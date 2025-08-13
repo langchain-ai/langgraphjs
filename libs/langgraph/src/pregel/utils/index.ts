@@ -150,7 +150,7 @@ export function combineAbortSignals(...x: (AbortSignal | undefined)[]): {
   signal: AbortSignal | undefined;
   dispose?: () => void;
 } {
-  const signals = [...new Set(x.filter((s) => s !== undefined))];
+  const signals = [...new Set(x.filter(Boolean))] as AbortSignal[];
 
   if (signals.length === 0) {
     return { signal: undefined, dispose: undefined };
@@ -162,14 +162,16 @@ export function combineAbortSignals(...x: (AbortSignal | undefined)[]): {
 
   const combinedController = new AbortController();
   const listener = () => {
-    combinedController.abort();
+    const reason = signals.find((s) => s.aborted)?.reason;
+    combinedController.abort(reason);
     signals.forEach((s) => s.removeEventListener("abort", listener));
   };
 
   signals.forEach((s) => s.addEventListener("abort", listener, { once: true }));
 
-  if (signals.some((s) => s.aborted)) {
-    combinedController.abort();
+  const hasAlreadyAbortedSignal = signals.find((s) => s.aborted);
+  if (hasAlreadyAbortedSignal) {
+    combinedController.abort(hasAlreadyAbortedSignal.reason);
   }
 
   return {
