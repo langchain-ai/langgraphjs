@@ -18,10 +18,15 @@ type AnyGraph = {
   compile: (...args: any[]) => any;
 };
 
-type Wrap<T> = (a: T) => void;
+export type Equals<X, Y> = (<T>() => T extends X ? 1 : 2) extends <
+  T
+>() => T extends Y ? 1 : 2
+  ? true
+  : false;
+
 type MatchBaseMessage<T> = T extends BaseMessage ? BaseMessage : never;
 type MatchBaseMessageArray<T> = T extends Array<infer C>
-  ? Wrap<MatchBaseMessage<C>> extends Wrap<BaseMessage>
+  ? Equals<MatchBaseMessage<C>, BaseMessage> extends true
     ? BaseMessage[]
     : never
   : never;
@@ -37,9 +42,9 @@ type Inspect<T, TDepth extends Array<0> = []> = TDepth extends [0, 0, 0]
   ? {
       [K in keyof T]: 0 extends 1 & T[K]
         ? T[K]
-        : Wrap<MatchBaseMessageArray<T[K]>> extends Wrap<BaseMessage[]>
+        : Equals<MatchBaseMessageArray<T[K]>, BaseMessage[]> extends true
         ? BaseMessage[]
-        : Wrap<MatchBaseMessage<T[K]>> extends Wrap<BaseMessage>
+        : Equals<MatchBaseMessage<T[K]>, BaseMessage> extends true
         ? BaseMessage
         : Inspect<T[K], [0, ...TDepth]>;
     }
