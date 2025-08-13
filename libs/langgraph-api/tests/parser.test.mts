@@ -995,3 +995,46 @@ test.concurrent(
     ]);
   }
 );
+
+test.concurrent("`strictFunctionTypes: false`", { timeout: 30_000 }, () => {
+  const schemas = SubgraphExtractor.extractSchemas(
+    [
+      {
+        sourceFile: [
+          {
+            path: "graph.mts",
+            main: true,
+            contents: dedent`
+              import { StateGraph, MessagesAnnotation, Annotation, START, END } from "@langchain/langgraph";
+
+              export const graph = new StateGraph(Annotation.Root({
+                messages: MessagesAnnotation.spec.messages,
+                state: Annotation<string>,
+              }))
+                .addNode("node", () => ({}))
+                .addEdge(START, "node")
+                .addEdge("node", END)
+                .compile();
+            `,
+          },
+        ],
+        exportSymbol: "graph",
+      },
+    ],
+    { tsConfigOptions: { strictFunctionTypes: false } }
+  );
+
+  const schema = schemas[0];
+  expect(schema.graph).toMatchObject({
+    state: {
+      type: "object",
+      properties: {
+        messages: {
+          type: "array",
+          items: { $ref: "#/definitions/BaseMessage" },
+        },
+        state: { type: "string" },
+      },
+    },
+  });
+});
