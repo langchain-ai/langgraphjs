@@ -390,7 +390,7 @@ export class SubgraphExtractor {
           }[];
       exportSymbol: string;
     }[],
-    options?: { strict?: boolean }
+    options?: { strict?: boolean; tsConfigOptions?: Record<string, unknown> }
   ): Record<string, GraphSchema>[] {
     if (!target.length) throw new Error("No graphs found");
 
@@ -456,7 +456,11 @@ export class SubgraphExtractor {
         path.dirname(tsconfigPath)
       );
 
-      compilerOptions = { ...parsedTsconfig.options, ...compilerOptions };
+      compilerOptions = {
+        ...parsedTsconfig.options,
+        ...compilerOptions,
+        ...((options?.tsConfigOptions ?? {}) as ts.CompilerOptions),
+      };
     }
 
     const vfsHost = vfs.createVirtualCompilerHost(system, compilerOptions, ts);
