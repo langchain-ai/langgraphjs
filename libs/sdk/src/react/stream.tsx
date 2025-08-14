@@ -355,7 +355,7 @@ function fetchHistory<StateType extends Record<string, unknown>>(
     });
   }
 
-  const limit = typeof options?.limit === "number" ? options.limit : 1000;
+  const limit = typeof options?.limit === "number" ? options.limit : 10;
   return client.threads.getHistory<StateType>(threadId, { limit });
 }
 
@@ -646,7 +646,7 @@ export interface UseStreamOptions<
 
   /**
    * Whether to fetch the history of the thread.
-   * If true, the history will be fetched from the server. Defaults to 1000 entries.
+   * If true, the history will be fetched from the server. Defaults to 10 entries.
    * If false, only the last state will be fetched from the server.
    * @default true
    */
@@ -984,8 +984,8 @@ export function useStream<
 
   const historyLimit =
     typeof fetchStateHistory === "object" && fetchStateHistory != null
-      ? fetchStateHistory.limit ?? true
-      : fetchStateHistory ?? true;
+      ? fetchStateHistory.limit ?? false
+      : fetchStateHistory ?? false;
 
   const history = useThreadHistory<StateType>(
     threadId,
