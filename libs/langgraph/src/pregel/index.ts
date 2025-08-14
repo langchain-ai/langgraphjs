@@ -104,6 +104,7 @@ import type {
 } from "./types.js";
 import {
   ensureLangGraphConfig,
+  getConfig,
   recastCheckpointNamespace,
 } from "./utils/config.js";
 import {
@@ -2017,7 +2018,17 @@ export class Pregel<
 
     // setup custom stream mode
     if (streamMode.includes("custom")) {
-      config.writer = (chunk: unknown) => stream.push([[], "custom", chunk]);
+      config.writer = (chunk: unknown) => {
+        const ns = (
+          getConfig()?.configurable?.[CONFIG_KEY_CHECKPOINT_NS] as
+            | string
+            | undefined
+        )
+          ?.split(CHECKPOINT_NAMESPACE_SEPARATOR)
+          .slice(0, -1);
+
+        stream.push([ns ?? [], "custom", chunk]);
+      };
     }
 
     const callbackManager = await getCallbackManagerForConfig(config);
