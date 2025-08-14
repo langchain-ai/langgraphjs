@@ -8,7 +8,12 @@ import { http } from "msw";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import { Client, type Message } from "@langchain/langgraph-sdk";
 
-import { StateGraph, MessagesAnnotation, START } from "@langchain/langgraph";
+import {
+  StateGraph,
+  MessagesAnnotation,
+  START,
+  Runtime,
+} from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { FakeStreamingChatModel } from "@langchain/core/utils/testing";
 import { AIMessage } from "@langchain/core/messages";
@@ -41,16 +46,21 @@ const checkpointer = new MemorySaver();
 
 const model = new FakeStreamingChatModel({ responses: [new AIMessage("Hey")] });
 const agent = new StateGraph(MessagesAnnotation)
-  .addNode("agent", async (state: { messages: Message[] }) => {
-    const response = await model.invoke(state.messages);
-    return { messages: [response] };
-  })
+  .addNode(
+    "agent",
+    async (state: { messages: Message[] }, runtime: Runtime) => {
+      runtime.writer?.("Custom events");
+
+      const response = await model.invoke(state.messages);
+      return { messages: [response] };
+    }
+  )
   .addEdge(START, "agent")
   .compile();
 
 const parentAgent = new StateGraph(MessagesAnnotation)
-  .addNode("agent", agent, { subgraphs: [agent] })
-  .addEdge(START, "agent")
+  .addNode("child", agent, { subgraphs: [agent] })
+  .addEdge(START, "child")
   .compile();
 
 const app = createEmbedServer({
@@ -764,13 +774,23 @@ describe("useStream", () => {
     });
   });
 
-  it("streamSubgraphs: true and messages-tuple", async () => {
+  it("streamSubgraphs: true", async () => {
     const user = userEvent.setup();
+
+    const onCheckpointEvent = vi.fn();
+    const onTaskEvent = vi.fn();
+    const onUpdateEvent = vi.fn();
+    const onCustomEvent = vi.fn();
 
     function TestComponent() {
       const { submit, messages } = useStream({
         assistantId: "parentAgent",
         apiKey: "test-api-key",
+
+        onCheckpointEvent,
+        onTaskEvent,
+        onUpdateEvent,
+        onCustomEvent,
       });
 
       return (
@@ -823,6 +843,49 @@ describe("useStream", () => {
       expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
       expect(screen.getByTestId("message-1").textContent).toBe("Hey");
     });
+
+    expect(onCheckpointEvent.mock.calls).toMatchObject([
+      [{ metadata: { source: "input", step: -1 } }, { namespace: undefined }],
+      [{ metadata: { source: "loop", step: 0 } }, { namespace: undefined }],
+      [
+        { metadata: { source: "input", step: -1 } },
+        { namespace: [expect.any(String)] },
+      ],
+      [
+        { metadata: { source: "loop", step: 0 } },
+        { namespace: [expect.any(String)] },
+      ],
+      [
+        { metadata: { source: "loop", step: 1 } },
+        { namespace: [expect.any(String)] },
+      ],
+      [{ metadata: { source: "loop", step: 1 } }, { namespace: undefined }],
+    ]);
+
+    expect(onTaskEvent.mock.calls).toMatchObject([
+      [{ name: "child", input: expect.anything() }, { namespace: undefined }],
+      [
+        { name: "agent", input: expect.anything() },
+        { namespace: [expect.any(String)] },
+      ],
+      [
+        { name: "agent", result: expect.anything() },
+        { namespace: [expect.any(String)] },
+      ],
+      [{ name: "child", result: expect.anything() }, { namespace: undefined }],
+    ]);
+
+    expect(onUpdateEvent.mock.calls).toMatchObject([
+      [
+        { agent: { messages: expect.anything() } },
+        { namespace: [expect.any(String)] },
+      ],
+      [{ child: { messages: expect.anything() } }, { namespace: undefined }],
+    ]);
+
+    expect(onCustomEvent.mock.calls).toMatchObject([
+      ["Custom events", { namespace: [expect.any(String)] }],
+    ]);
   });
 
   it("streamMetadata", async () => {

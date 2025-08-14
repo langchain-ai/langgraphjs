@@ -9230,13 +9230,13 @@ graph TD;
       ],
     ]);
 
-    const streamedCustomEvents: StateSnapshot[] = await gatherIterator(
-      graph.stream({ messages: [] }, { ...config, streamMode: "custom" })
+    const streamedCustomEvents: [string[], StateSnapshot][] = await gatherIterator(
+      graph.stream({ messages: [] }, { ...config, subgraphs: true, streamMode: "custom" })
     );
 
     expect(streamedCustomEvents).toEqual([
-      { from: "parent" },
-      { content: "1", from: "subgraph" },
+      [[], { from: "parent" }],
+      [[expect.stringMatching(/^p_two:/)], { content: "1", from: "subgraph" }],
     ]);
 
     const streamedCombinedEvents = await gatherIterator(

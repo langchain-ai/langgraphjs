@@ -39,7 +39,6 @@ import type {
   ErrorStreamEvent,
   EventsStreamEvent,
   FeedbackStreamEvent,
-  MessagesStreamEvent,
   MessagesTupleStreamEvent,
   MetadataStreamEvent,
   StreamMode,
@@ -551,7 +550,13 @@ export interface UseStreamOptions<
    * Callback that is called when an update event is received.
    */
   onUpdateEvent?: (
-    data: UpdatesStreamEvent<GetUpdateType<Bag, StateType>>["data"]
+    data: UpdatesStreamEvent<GetUpdateType<Bag, StateType>>["data"],
+    options: {
+      namespace: string[] | undefined;
+      mutate: (
+        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
+      ) => void;
+    }
   ) => void;
 
   /**
@@ -560,6 +565,7 @@ export interface UseStreamOptions<
   onCustomEvent?: (
     data: CustomStreamEvent<GetCustomEventType<Bag>>["data"],
     options: {
+      namespace: string[] | undefined;
       mutate: (
         update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
       ) => void;
@@ -581,18 +587,25 @@ export interface UseStreamOptions<
    * Callback that is called when a debug event is received.
    * @internal This API is experimental and subject to change.
    */
-  onDebugEvent?: (data: DebugStreamEvent["data"]) => void;
+  onDebugEvent?: (
+    data: DebugStreamEvent["data"],
+    options: { namespace: string[] | undefined }
+  ) => void;
 
   /**
    * Callback that is called when a checkpoints event is received.
    */
-  onCheckpointEvent?: (data: CheckpointsStreamEvent<StateType>["data"]) => void;
+  onCheckpointEvent?: (
+    data: CheckpointsStreamEvent<StateType>["data"],
+    options: { namespace: string[] | undefined }
+  ) => void;
 
   /**
    * Callback that is called when a tasks event is received.
    */
   onTaskEvent?: (
-    data: TasksStreamEvent<StateType, GetUpdateType<Bag, StateType>>["data"]
+    data: TasksStreamEvent<StateType, GetUpdateType<Bag, StateType>>["data"],
+    options: { namespace: string[] | undefined }
   ) => void;
 
   /**
@@ -861,19 +874,29 @@ export function useStream<
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
 
-  type EventStreamEvent =
-    | ValuesStreamEvent<StateType>
-    | UpdatesStreamEvent<UpdateType>
-    | CustomStreamEvent<CustomType>
-    | DebugStreamEvent
-    | MessagesStreamEvent
-    | MessagesTupleStreamEvent
-    | EventsStreamEvent
-    | MetadataStreamEvent
-    | CheckpointsStreamEvent<StateType>
-    | TasksStreamEvent<StateType, UpdateType>
-    | ErrorStreamEvent
-    | FeedbackStreamEvent;
+  type EventStreamMap = {
+    values: ValuesStreamEvent<StateType>;
+    updates: UpdatesStreamEvent<UpdateType>;
+    custom: CustomStreamEvent<CustomType>;
+    debug: DebugStreamEvent;
+    messages: MessagesTupleStreamEvent;
+    events: EventsStreamEvent;
+    metadata: MetadataStreamEvent;
+    checkpoints: CheckpointsStreamEvent<StateType>;
+    tasks: TasksStreamEvent<StateType, UpdateType>;
+    error: ErrorStreamEvent;
+    feedback: FeedbackStreamEvent;
+  };
+
+  type EventStreamEvent = EventStreamMap[keyof EventStreamMap];
+
+  const matchEventType = <T extends keyof EventStreamMap>(
+    expected: T,
+    actual: EventStreamEvent["event"],
+    _data: EventStreamEvent["data"]
+  ): _data is EventStreamMap[T]["data"] => {
+    return expected === actual || actual.startsWith(`${expected}|`);
+  };
 
   let { messagesKey } = options;
   const { assistantId, fetchStateHistory } = options;
@@ -1118,37 +1141,44 @@ export function useStream<
           break;
         }
 
-        if (event === "updates") options.onUpdateEvent?.(data);
-        if (
-          event === "custom" ||
-          // if `streamSubgraphs: true`, then we also want
-          // to also receive custom events from subgraphs
-          event.startsWith("custom|")
-        )
-          options.onCustomEvent?.(data as CustomType, {
-            mutate: getMutateFn("stream", historyValues),
-          });
+        const namespace = event.includes("|")
+          ? event.split("|").slice(1)
+          : undefined;
+
+        const mutate = getMutateFn("stream", historyValues);
+
         if (event === "metadata") options.onMetadataEvent?.(data);
         if (event === "events") options.onLangChainEvent?.(data);
-        if (event === "debug") options.onDebugEvent?.(data);
-        if (event === "checkpoints") options.onCheckpointEvent?.(data);
-        if (event === "tasks") options.onTaskEvent?.(data);
+
+        if (matchEventType("updates", event, data)) {
+          options.onUpdateEvent?.(data, { namespace, mutate });
+        }
+
+        if (matchEventType("custom", event, data)) {
+          options.onCustomEvent?.(data, { namespace, mutate });
+        }
+
+        if (matchEventType("checkpoints", event, data)) {
+          options.onCheckpointEvent?.(data, { namespace });
+        }
+
+        if (matchEventType("tasks", event, data)) {
+          options.onTaskEvent?.(data, { namespace });
+        }
+
+        if (matchEventType("debug", event, data)) {
+          options.onDebugEvent?.(data, { namespace });
+        }
 
         if (event === "values") {
-          if ("__interrupt__" in data) {
-            // don't update values on interrupt values event
-            continue;
-          }
+          // don't update values on interrupt values event
+          if ("__interrupt__" in data) continue;
           setStreamValues(data);
         }
-        if (
-          event === "messages" ||
-          // if `streamSubgraphs: true`, then we also want
-          // to also receive messages from subgraphs
-          event.startsWith("messages|")
-        ) {
-          const [serialized, metadata] =
-            data as MessagesTupleStreamEvent["data"];
+
+        // Consume subgraph messages as well
+        if (matchEventType("messages", event, data)) {
+          const [serialized, metadata] = data;
 
           const messageId = messageManagerRef.current.add(serialized, metadata);
           if (!messageId) {
