@@ -82,6 +82,7 @@ export function interrupt<I = unknown, R = any>(value: I): R {
 
   // Find previous resume values
   if (scratchpad.resume.length > 0 && idx < scratchpad.resume.length) {
+    conf[CONFIG_KEY_SEND]?.([[RESUME, scratchpad.resume] as PendingWrite]);
     return scratchpad.resume[idx] as R;
   }
 
@@ -94,10 +95,7 @@ export function interrupt<I = unknown, R = any>(value: I): R {
     }
     const v = scratchpad.consumeNullResume();
     scratchpad.resume.push(v);
-    const send = conf[CONFIG_KEY_SEND];
-    if (send) {
-      send([[RESUME, scratchpad.resume] as PendingWrite]);
-    }
+    conf[CONFIG_KEY_SEND]?.([[RESUME, scratchpad.resume] as PendingWrite]);
     return v as R;
   }
 
