@@ -2,4 +2,4 @@
 "@langchain/langgraph": patch
 ---
 
-ix(langgraph): persist resume map values
+fix(langgraph): persist resume map values
