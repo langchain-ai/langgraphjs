@@ -36,7 +36,7 @@ REDIRECT_MAP = {
     # assistant redirects
     "cloud/how-tos/assistant_versioning.md": "cloud/how-tos/configuration_cloud.md",
     
-    # exclude-search redirects to docs.langchain.com/oss or docs.langchain.com/langgraph-platform
+    # migration to docs.langchain.com/oss or docs.langchain.com/langgraph-platform
     "tutorials/quickstart.ipynb": "https://docs.langchain.com/oss/javascript/quickstart",
     "tutorials/deployment.md": "https://docs.langchain.com/langgraph-platform/deployment-options",
     "tutorials/langgraph-platform/local-server.md": "https://docs.langchain.com/langgraph-platform/local-server",
