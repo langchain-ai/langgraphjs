@@ -3,4 +3,4 @@ export {
   type MessageMetadata,
   type UseStream,
   type UseStreamOptions,
-} from "./react.js";
+} from "./stream.js";
