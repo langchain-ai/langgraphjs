@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 0.0.59
+
+### Patch Changes
+
+- 3412f9f: fix(api): unintended schema inference to BaseMessage[] for all state keys when `strictFunctionTypes: true`
+  - @langchain/langgraph-ui@0.0.59
+
 ## 0.0.58
 
 ### Patch Changes
