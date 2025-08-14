@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 0.4.5
+
+### Patch Changes
+
+- d22113a: fix(pregel/utils): propagate abort reason in combineAbortSignals
+- 2284045: fix(langgraph): send checkpoint namespace when yielding custom events in subgraphs
+- 4774013: fix(langgraph): persist resume map values
+
 ## 0.4.4
 
 ### Patch Changes
