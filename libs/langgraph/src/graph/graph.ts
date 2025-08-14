@@ -692,12 +692,7 @@ export class CompiledGraph<
     const xray = config?.xray;
     const graph = new DrawableGraph();
     const startNodes: Record<string, DrawableGraphNode> = {
-      [START]: graph.addNode(
-        {
-          schema: z.any(),
-        },
-        START
-      ),
+      [START]: graph.addNode({ schema: z.any() }, START),
     };
     const endNodes: Record<string, DrawableGraphNode> = {};
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
