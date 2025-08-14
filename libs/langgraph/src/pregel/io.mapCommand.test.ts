@@ -89,12 +89,11 @@ describe("mapCommand", () => {
     ]);
   });
 
-  it("should handle Command with resume (object of task IDs)", () => {
-    // Using a valid UUID-like structure
+  it("should handle Command with resume (object of interrupt IDs)", () => {
     const cmd = new Command({
       resume: {
-        "123e4567-e89b-12d3-a456-426614174000": "resumeValue1",
-        "123e4567-e89b-12d3-a456-426614174001": "resumeValue2",
+        "123e4567e89b12d3a456426614174000": "resumeValue1",
+        "123e4567e89b12d3a456426614174001": "resumeValue2",
       },
     });
 
@@ -103,8 +102,8 @@ describe("mapCommand", () => {
     const result = Array.from(mapCommand(cmd, pendingWrites));
 
     expect(result).toEqual([
-      ["123e4567-e89b-12d3-a456-426614174000", "__resume__", ["resumeValue1"]],
-      ["123e4567-e89b-12d3-a456-426614174001", "__resume__", ["resumeValue2"]],
+      ["123e4567e89b12d3a456426614174000", "__resume__", ["resumeValue1"]],
+      ["123e4567e89b12d3a456426614174001", "__resume__", ["resumeValue2"]],
     ]);
   });
 

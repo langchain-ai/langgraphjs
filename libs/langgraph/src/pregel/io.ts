@@ -2,7 +2,6 @@ import type {
   CheckpointPendingWrite,
   PendingWrite,
 } from "@langchain/langgraph-checkpoint";
-import { validate } from "uuid";
 
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelExecutableTask } from "./types.js";
@@ -18,6 +17,7 @@ import {
   TASKS,
 } from "../constants.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
+import { isXXH3 } from "../hash.js";
 
 export function readChannel<C extends PropertyKey>(
   channels: Record<C, BaseChannel>,
@@ -98,7 +98,7 @@ export function* mapCommand(
     if (
       typeof cmd.resume === "object" &&
       Object.keys(cmd.resume).length &&
-      Object.keys(cmd.resume).every(validate)
+      Object.keys(cmd.resume).every(isXXH3)
     ) {
       for (const [tid, resume] of Object.entries(cmd.resume)) {
         const existing =

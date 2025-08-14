@@ -10469,75 +10469,88 @@ graph TD;
     });
   });
 
-  it("can throw a node interrupt multiple times in a single node", async () => {
-    const GraphAnnotation = Annotation.Root({
-      myKey: Annotation<string>({
-        reducer: (a, b) => a + b,
-      }),
-    });
-
-    const nodeOne = (_: typeof GraphAnnotation.State) => {
-      const answer = interrupt({ value: 1 });
-      const answer2 = interrupt({ value: 2 });
-      return { myKey: answer + " " + answer2 };
-    };
-
-    const graph = new StateGraph(GraphAnnotation)
-      .addNode("one", nodeOne)
-      .addEdge(START, "one")
-      .compile({ checkpointer: await createCheckpointer() });
-
-    const config = {
-      configurable: { thread_id: "test_multi_interrupt" },
-      streamMode: "values" as const,
-    };
-    const firstResult = await gatherIterator(
-      graph.stream(
-        {
-          myKey: "DE",
-        },
-        config
-      )
-    );
-    expect(firstResult).toBeDefined();
-    const firstState = await graph.getState(config);
-    expect(firstState.tasks).toHaveLength(1);
-    expect(firstState.tasks[0].interrupts).toHaveLength(1);
-    expect(firstState.tasks[0].interrupts[0].value).toEqual({
-      value: 1,
-    });
-
-    const secondResult = await gatherIterator(
-      graph.stream(
-        new Command({
-          resume: "answer 1",
+  it.each([
+    [{ resumeStyle: "null" }], // plain values
+    [{ resumeStyle: "map" }], // [interruptId]: value
+  ])(
+    "can throw a node interrupt multiple times in a single node (%s)",
+    async ({ resumeStyle }) => {
+      const GraphAnnotation = Annotation.Root({
+        myKey: Annotation<string>({
+          reducer: (a, b) => a + b,
         }),
-        config
-      )
-    );
-    expect(secondResult).toBeDefined();
+      });
 
-    const secondState = await graph.getState(config);
-    expect(secondState.tasks).toHaveLength(1);
-    expect(secondState.tasks[0].interrupts).toHaveLength(1);
-    expect(secondState.tasks[0].interrupts[0].value).toEqual({
-      value: 2,
-    });
+      const nodeOne = (_: typeof GraphAnnotation.State) => {
+        const answer = interrupt({ value: 1 });
+        const answer2 = interrupt({ value: 2 });
+        return { myKey: answer + " " + answer2 };
+      };
 
-    const thirdResult = await gatherIterator(
-      graph.stream(
-        new Command({
-          resume: "answer 2",
-        }),
-        config
-      )
-    );
-    expect(thirdResult[thirdResult.length - 1].myKey).toEqual(
-      "DEanswer 1 answer 2"
-    );
-    const thirdState = await graph.getState(config);
-    expect(thirdState.tasks).toHaveLength(0);
-  });
+      const graph = new StateGraph(GraphAnnotation)
+        .addNode("one", nodeOne)
+        .addEdge(START, "one")
+        .compile({ checkpointer: await createCheckpointer() });
+
+      const config = {
+        configurable: { thread_id: "test_multi_interrupt" },
+        streamMode: "values" as const,
+      };
+      const firstResult = await gatherIterator(
+        graph.stream({ myKey: "DE" }, config)
+      );
+
+      expect(firstResult).toBeDefined();
+      expect(firstResult.at(-1)).toMatchObject({
+        __interrupt__: [{ id: expect.any(String), value: { value: 1 } }],
+      });
+      const firstState = await graph.getState(config);
+      expect.soft(firstState.tasks).toHaveLength(1);
+      expect.soft(firstState.tasks[0].interrupts).toHaveLength(1);
+      expect.soft(firstState.tasks[0].interrupts[0].value).toEqual({
+        value: 1,
+      });
+      let interruptId = firstState.tasks[0].interrupts[0].id!;
+
+      const secondResult = await gatherIterator(
+        graph.stream(
+          new Command({
+            resume:
+              resumeStyle === "null"
+                ? "answer 1"
+                : { [interruptId]: "answer 1" },
+          }),
+          config
+        )
+      );
+      expect(secondResult).toBeDefined();
+
+      const secondState = await graph.getState(config);
+      expect.soft(secondState.tasks).toHaveLength(1);
+      expect.soft(secondState.tasks[0].interrupts).toHaveLength(1);
+      expect.soft(secondState.tasks[0].interrupts[0].value).toEqual({
+        value: 2,
+      });
+      interruptId = secondState.tasks[0].interrupts[0].id!;
+
+      const thirdResult = await gatherIterator(
+        graph.stream(
+          new Command({
+            resume:
+              resumeStyle === "null"
+                ? "answer 2"
+                : { [interruptId]: "answer 2" },
+          }),
+          config
+        )
+      );
+      expect(thirdResult[thirdResult.length - 1].myKey).toEqual(
+        "DEanswer 1 answer 2"
+      );
+      const thirdState = await graph.getState(config);
+      expect(thirdState.tasks).toHaveLength(0);
+    }
+  );
 
   it("should throw when resuming without a checkpointer", async () => {
     const chain = Channel.subscribeTo("input").pipe(
