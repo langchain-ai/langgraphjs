@@ -269,15 +269,12 @@ export function useStream<
     options.initialValues ??
     ({} as StateType);
 
-  const historyValueError = (() => {
+  const historyError = (() => {
     const error = branchContext.threadHead?.tasks?.at(-1)?.error;
     if (error == null) return undefined;
     try {
       const parsed = JSON.parse(error) as unknown;
-      if (StreamError.isStructuredError(parsed)) {
-        return new StreamError(parsed);
-      }
-
+      if (StreamError.isStructuredError(parsed)) return new StreamError(parsed);
       return parsed;
     } catch {
       // do nothing
@@ -531,7 +528,7 @@ export function useStream<
   }, [reconnectKey]);
   // --- END TRANSPORT ---
 
-  const error = streamManager.error ?? historyValueError ?? history.error;
+  const error = streamManager.error ?? historyError ?? history.error;
   const values = streamManager.values ?? historyValues;
 
   return {
