@@ -143,7 +143,7 @@ class TimeoutError extends Error {}
 class AbortError extends Error {}
 
 interface Message {
-  topic: `run:${string}:stream:${string}`;
+  topic: `run:${string}:stream:${string}` | `thread:${string}:stream:${string}`;
   data: unknown;
 }
 
@@ -1688,7 +1688,7 @@ export class Runs {
     options: {
       limit?: number | null;
       offset?: number | null;
-      status?: string | null;
+      status?: RunStatus | RunStatus[] | null;
       metadata?: Metadata | null;
     },
     auth: AuthContext | undefined
@@ -1696,14 +1696,20 @@ export class Runs {
     const [filters] = await handleAuthEvent(auth, "threads:search", {
       thread_id: threadId,
       metadata: options.metadata,
+      // @ts-expect-error TODO: Status can be an array now
       status: options.status,
     });
 
     return conn.with(async (STORE) => {
       const runs = Object.values(STORE.runs).filter((run) => {
         if (run.thread_id !== threadId) return false;
-        if (options?.status != null && run.status !== options.status)
-          return false;
+        if (options?.status != null) {
+          if (Array.isArray(options.status)) {
+            if (!options.status.includes(run.status)) return false;
+          } else {
+            if (run.status !== options.status) return false;
+          }
+        }
         if (
           options?.metadata != null &&
           !isJsonbContained(run.metadata, options.metadata)
@@ -1805,8 +1811,74 @@ export class Runs {
       });
     }
 
+    static async *joinThread(
+      threadId: string,
+      options: {
+        lastEventId: string | undefined;
+      },
+      auth: AuthContext | undefined
+    ): AsyncGenerator<{ id?: string; event: string; data: unknown }> {
+      yield* conn.withGenerator(async function* (STORE) {
+        // TODO: what if we're joining an already completed run? Should we check before?
+        const queue = StreamManager.getQueue(`thread:${threadId}`, {
+          ifNotFound: "create",
+          resumable: options.lastEventId != null,
+        });
+
+        const [filters] = await handleAuthEvent(auth, "threads:read", {
+          thread_id: threadId,
+        });
+
+        // TODO: consolidate into a single function
+        if (filters != null && threadId != null) {
+          const thread = STORE.threads[threadId];
+          if (!isAuthMatching(thread["metadata"], filters)) {
+            yield {
+              event: "error",
+              data: { error: "Error", message: "404: Thread not found" },
+            };
+            return;
+          }
+        }
+
+        let lastEventId = options?.lastEventId;
+        while (true) {
+          try {
+            const [id, message] = await queue.get({
+              timeout: 500,
+              lastEventId,
+            });
+
+            lastEventId = id;
+
+            const streamTopic = message.topic.substring(
+              `thread:${threadId}:stream:`.length
+            );
+
+            yield { id, event: streamTopic, data: message.data };
+          } catch (error) {
+            if (error instanceof AbortError) break;
+
+            // check if there are any runs that are pending or running
+            if (
+              !(
+                await Runs.search(
+                  threadId,
+                  { status: ["pending", "running"] },
+                  auth
+                )
+              ).length
+            ) {
+              break;
+            }
+          }
+        }
+      });
+    }
+
     static async publish(payload: {
       runId: string;
+      threadId: string;
       event: string;
       data: unknown;
       resumable: boolean;
@@ -1815,8 +1887,19 @@ export class Runs {
         ifNotFound: "create",
         resumable: payload.resumable,
       });
+
       queue.push({
         topic: `run:${payload.runId}:stream:${payload.event}`,
+        data: payload.data,
+      });
+
+      const threadQueue = StreamManager.getQueue(`thread:${payload.threadId}`, {
+        ifNotFound: "create",
+        resumable: payload.resumable,
+      });
+
+      threadQueue.push({
+        topic: `thread:${payload.threadId}:stream:${payload.event}`,
         data: payload.data,
       });
     }

@@ -433,7 +433,7 @@ export const ThreadStateUpdate = z
 
 export const ThreadHistoryRequest = z.object({
   limit: z.number().optional().default(10),
-  before: z.string().optional(),
+  before: z.union([z.string(), Config]).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   checkpoint: z
     .object({

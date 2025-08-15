@@ -2813,6 +2813,100 @@ it("tasks / checkpoints stream mode", async () => {
   ]);
 });
 
+it("polling thread stream", async () => {
+  const thread = await client.threads.create();
+
+  await client.runs.create(thread.thread_id, "delay", {
+    input: { messages: ["Run 1"], delay: 100 },
+    multitaskStrategy: "enqueue",
+    streamMode: ["values"],
+  });
+
+  await client.runs.create(thread.thread_id, "delay", {
+    input: { messages: ["Run 2"], delay: 100 },
+    multitaskStrategy: "enqueue",
+    streamMode: ["values"],
+  });
+
+  await client.runs.create(thread.thread_id, "delay", {
+    input: { messages: ["Run 3"], delay: 100 },
+    multitaskStrategy: "enqueue",
+    streamMode: ["values"],
+  });
+
+  const stream = await gatherIterator(
+    client.threads.joinStream(thread.thread_id)
+  );
+
+  expect(stream).toMatchObject([
+    { id: "0", event: "metadata", data: { run_id: expect.any(String) } },
+    {
+      id: "1",
+      event: "values",
+      data: { messages: [{ content: "Run 1" }] },
+    },
+    {
+      id: "2",
+      event: "values",
+      data: {
+        messages: [{ content: "Run 1" }, { content: "finished after 100ms" }],
+      },
+    },
+    { id: "3", event: "metadata", data: { run_id: expect.any(String) } },
+    {
+      id: "4",
+      event: "values",
+      data: {
+        messages: [
+          { content: "Run 1" },
+          { content: "finished after 100ms" },
+          { content: "Run 2" },
+        ],
+      },
+    },
+    {
+      id: "5",
+      event: "values",
+      data: {
+        messages: [
+          { content: "Run 1" },
+          { content: "finished after 100ms" },
+          { content: "Run 2" },
+          { content: "finished after 100ms" },
+        ],
+      },
+    },
+    { id: "6", event: "metadata", data: { run_id: expect.any(String) } },
+    {
+      id: "7",
+      event: "values",
+      data: {
+        messages: [
+          { content: "Run 1" },
+          { content: "finished after 100ms" },
+          { content: "Run 2" },
+          { content: "finished after 100ms" },
+          { content: "Run 3" },
+        ],
+      },
+    },
+    {
+      id: "8",
+      event: "values",
+      data: {
+        messages: [
+          { content: "Run 1" },
+          { content: "finished after 100ms" },
+          { content: "Run 2" },
+          { content: "finished after 100ms" },
+          { content: "Run 3" },
+          { content: "finished after 100ms" },
+        ],
+      },
+    },
+  ]);
+});
+
 describe("runtime API", () => {
   it("simple", async () => {
     const assistant = await client.assistants.create({

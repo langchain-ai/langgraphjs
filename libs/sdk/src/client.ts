@@ -707,6 +707,43 @@ export class ThreadsClient<
     });
   }
 
+  async *joinStream(
+    threadId: string,
+    options?: {
+      signal?: AbortSignal;
+      lastEventId?: string;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
+    const opts =
+      typeof options === "object" &&
+      options != null &&
+      // eslint-disable-next-line no-instanceof/no-instanceof
+      options instanceof AbortSignal
+        ? { signal: options }
+        : options;
+
+    const response = await this.asyncCaller.fetch(
+      ...this.prepareFetchOptions(`/threads/${threadId}/stream`, {
+        method: "GET",
+        timeoutMs: null,
+        signal: opts?.signal,
+        headers: opts?.lastEventId
+          ? { "Last-Event-ID": opts.lastEventId }
+          : undefined,
+      })
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stream: ReadableStream<{ event: string; data: any }> = (
+      response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
+    )
+      .pipeThrough(BytesLineDecoder())
+      .pipeThrough(SSEDecoder());
+
+    yield* IterableReadableStream.fromReadableStream(stream);
+  }
+
   /**
    * Copy an existing thread
    * @param threadId ID of the thread to be copied

@@ -71,11 +71,18 @@ const worker = async (run: Run, attempt: number, signal: AbortSignal) => {
       });
 
       for await (const { event, data } of stream) {
-        await Runs.Stream.publish({ runId, resumable, event, data });
+        await Runs.Stream.publish({
+          runId,
+          threadId: run.thread_id,
+          resumable,
+          event,
+          data,
+        });
       }
     } catch (error) {
       await Runs.Stream.publish({
         runId,
+        threadId: run.thread_id,
         resumable,
         event: "error",
         data: serializeError(error),

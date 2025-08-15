@@ -455,6 +455,25 @@ api.get(
 );
 
 api.get(
+  "/threads/:thread_id/stream",
+  zValidator("param", z.object({ thread_id: z.string().uuid() })),
+  async (c) => {
+    const { thread_id } = c.req.valid("param");
+    const lastEventId = c.req.header("Last-Event-ID") || undefined;
+
+    return streamSSE(c, async (stream) => {
+      for await (const { id, event, data } of Runs.Stream.joinThread(
+        thread_id,
+        { lastEventId },
+        c.var.auth
+      )) {
+        await stream.writeSSE({ id, data: serialiseAsDict(data), event });
+      }
+    });
+  }
+);
+
+api.get(
   "/threads/:thread_id/runs/:run_id/stream",
   zValidator(
     "param",
