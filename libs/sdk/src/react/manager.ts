@@ -100,7 +100,7 @@ export class StreamManager<
 > {
   private abortRef = new AbortController();
 
-  private messageManager = new MessageTupleManager();
+  private messages: MessageTupleManager;
 
   private listeners = new Set<() => void>();
 
@@ -110,7 +110,8 @@ export class StreamManager<
     error: unknown;
   };
 
-  constructor() {
+  constructor(messages: MessageTupleManager) {
+    this.messages = messages;
     this.state = { isLoading: false, values: null, error: undefined };
   }
 
@@ -141,12 +142,6 @@ export class StreamManager<
   get error() {
     return this.state.error;
   }
-
-  getMessageMetadata = (messageId: string | null | undefined) => {
-    return messageId != null
-      ? this.messageManager.get(messageId)?.metadata
-      : undefined;
-  };
 
   setStreamValues = (
     values:
@@ -230,7 +225,7 @@ export class StreamManager<
 
       onError: (error: unknown) => void | Promise<void>;
     }
-  ) => {
+  ): Promise<void> => {
     if (this.state.isLoading) return;
 
     try {
@@ -284,7 +279,7 @@ export class StreamManager<
         if (this.matchEventType("messages", event, data)) {
           const [serialized, metadata] = data;
 
-          const messageId = this.messageManager.add(serialized, metadata);
+          const messageId = this.messages.add(serialized, metadata);
           if (!messageId) {
             console.warn(
               "Failed to add message to manager, no message ID found"
@@ -298,7 +293,7 @@ export class StreamManager<
             // Assumption: we're concatenating the message
             const messages = options.getMessages(values).slice();
             const { chunk, index } =
-              this.messageManager.get(messageId, messages.length) ?? {};
+              this.messages.get(messageId, messages.length) ?? {};
 
             if (!chunk || index == null) return values;
             messages[index] = toMessageDict(chunk);
@@ -338,7 +333,7 @@ export class StreamManager<
         ) => void;
       }) => void;
     }
-  ) => {
+  ): Promise<void> => {
     if (this.abortRef) {
       this.abortRef.abort();
       this.abortRef = new AbortController();
@@ -349,6 +344,6 @@ export class StreamManager<
 
   clear = () => {
     this.setState({ error: undefined, values: null });
-    this.messageManager.clear();
+    this.messages.clear();
   };
 }

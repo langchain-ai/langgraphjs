@@ -31,6 +31,7 @@ import { Client, getClientConfigHash } from "../client.js";
 import type { Message } from "../types.messages.js";
 import type { Interrupt, ThreadState } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
+import { MessageTupleManager } from "./messages.js";
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
@@ -183,11 +184,15 @@ export function useStream<
     ]
   );
 
-  const [streamManager] = useState(() => new StreamManager<StateType, Bag>());
+  const [messageManager] = useState(() => new MessageTupleManager());
+  const [stream] = useState(
+    () => new StreamManager<StateType, Bag>(messageManager)
+  );
+
   useSyncExternalStore(
-    streamManager.subscribe,
-    streamManager.getSnapshot,
-    streamManager.getSnapshot
+    stream.subscribe,
+    stream.getSnapshot,
+    stream.getSnapshot
   );
 
   const [threadId, onThreadId] = useControllableThreadId(options);
@@ -229,10 +234,10 @@ export function useStream<
   ]);
 
   const clearCallbackRef = useRef<() => void>(null!);
-  clearCallbackRef.current = streamManager.clear;
+  clearCallbackRef.current = stream.clear;
 
   const submittingRef = useRef(false);
-  submittingRef.current = streamManager.isLoading;
+  submittingRef.current = stream.isLoading;
 
   const onErrorRef = useRef<
     ((error: unknown, run?: RunCallbackMeta) => void) | undefined
@@ -316,14 +321,13 @@ export function useStream<
           branch: branch?.branch,
           branchOptions: branch?.branchOptions,
 
-          streamMetadata: streamManager.getMessageMetadata(message.id),
+          streamMetadata: messageManager.get(message.id)?.metadata,
         };
       }
     );
   })();
 
-  const stop = () =>
-    streamManager.stop(historyValues, { onStop: options.onStop });
+  const stop = () => stream.stop(historyValues, { onStop: options.onStop });
 
   // --- TRANSPORT ---
   const submit = async (
@@ -338,7 +342,7 @@ export function useStream<
         : ""
     );
 
-    streamManager.setStreamValues(() => {
+    stream.setStreamValues(() => {
       if (submitOptions?.optimisticValues != null) {
         return {
           ...historyValues,
@@ -355,7 +359,7 @@ export function useStream<
     let rejoinKey: `lg:stream:${string}` | undefined;
     let usableThreadId = threadId;
 
-    await streamManager.start(
+    await stream.start(
       async (signal: AbortSignal) => {
         if (!usableThreadId) {
           const thread = await client.threads.create({
@@ -435,6 +439,7 @@ export function useStream<
 
         initialValues: historyValues,
         callbacks: options,
+
         async onSuccess() {
           if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
           const newHistory = await history.mutate(usableThreadId!);
@@ -442,7 +447,7 @@ export function useStream<
           const lastHead = newHistory.at(0);
           if (lastHead) {
             // We now have the latest update from /history
-            // Thus we can clear the local state
+            // Thus we can clear the local stream state
             options.onFinish?.(lastHead, callbackMeta);
             return null;
           }
@@ -470,7 +475,7 @@ export function useStream<
       run_id: runId,
     };
 
-    await streamManager.start(
+    await stream.start(
       async (signal: AbortSignal) => {
         return client.runs.joinStream(threadId, runId, {
           signal,
@@ -500,12 +505,12 @@ export function useStream<
   };
 
   const reconnectKey = useMemo(() => {
-    if (!runMetadataStorage || streamManager.isLoading) return undefined;
+    if (!runMetadataStorage || stream.isLoading) return undefined;
     if (typeof window === "undefined") return undefined;
     const runId = runMetadataStorage?.getItem(`lg:stream:${threadId}`);
     if (!runId) return undefined;
     return { runId, threadId };
-  }, [runMetadataStorage, streamManager.isLoading, threadId]);
+  }, [runMetadataStorage, stream.isLoading, threadId]);
 
   const shouldReconnect = !!runMetadataStorage;
   const reconnectRef = useRef({ threadId, shouldReconnect });
@@ -528,8 +533,8 @@ export function useStream<
   }, [reconnectKey]);
   // --- END TRANSPORT ---
 
-  const error = streamManager.error ?? historyError ?? history.error;
-  const values = streamManager.values ?? historyValues;
+  const error = stream.error ?? historyError ?? history.error;
+  const values = stream.values ?? historyValues;
 
   return {
     get values() {
@@ -541,7 +546,7 @@ export function useStream<
     assistantId: options.assistantId,
 
     error,
-    isLoading: streamManager.isLoading,
+    isLoading: stream.isLoading,
 
     stop,
     submit,
@@ -566,7 +571,7 @@ export function useStream<
 
     get interrupt() {
       // Don't show the interrupt if the stream is loading
-      if (streamManager.isLoading) return undefined;
+      if (stream.isLoading) return undefined;
 
       const interrupts = branchContext.threadHead?.tasks?.at(-1)?.interrupts;
       if (interrupts == null || interrupts.length === 0) {

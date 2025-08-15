@@ -71,7 +71,8 @@ export class MessageTupleManager {
     this.chunks = {};
   }
 
-  get(id: string, defaultIndex?: number) {
+  get(id: string | null | undefined, defaultIndex?: number) {
+    if (id == null) return null;
     if (this.chunks[id] == null) return null;
     if (defaultIndex != null) this.chunks[id].index ??= defaultIndex;
     return this.chunks[id];
