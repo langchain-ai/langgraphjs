@@ -1,4 +1,3 @@
-import type { ThreadState } from "../schema.js";
 import type {
   CheckpointsStreamEvent,
   CustomStreamEvent,
@@ -50,17 +49,17 @@ type EventStreamMap<StateType, UpdateType, CustomType> = {
   feedback: FeedbackStreamEvent;
 };
 
-export type EventStreamEvent<StateType, UpdateType, CustomType> = EventStreamMap<
-  StateType,
-  UpdateType,
-  CustomType
->[keyof EventStreamMap<StateType, UpdateType, CustomType>];
+export type EventStreamEvent<StateType, UpdateType, CustomType> =
+  EventStreamMap<StateType, UpdateType, CustomType>[keyof EventStreamMap<
+    StateType,
+    UpdateType,
+    CustomType
+  >];
 
-export interface StreamManagerContext<
+interface StreamManagerEventCallbacks<
   StateType extends Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
 > {
-  messagesKey: string;
   onUpdateEvent?: (
     data: UpdatesStreamEvent<GetUpdateType<Bag, StateType>>["data"],
     options: {
@@ -93,19 +92,6 @@ export interface StreamManagerContext<
     data: TasksStreamEvent<StateType, GetUpdateType<Bag, StateType>>["data"],
     options: { namespace: string[] | undefined }
   ) => void;
-  onFinish?: (
-    state: ThreadState<StateType>,
-    callbackMeta: { thread_id: string; run_id: string } | undefined
-  ) => void;
-  onError?: (
-    error: unknown,
-    callbackMeta: { thread_id: string; run_id: string } | undefined
-  ) => void;
-  onStop?: (options: {
-    mutate: (
-      update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
-    ) => void;
-  }) => void;
 }
 
 export class StreamManager<
@@ -188,16 +174,6 @@ export class StreamManager<
     };
   };
 
-  private getMessages = (
-    values: StateType,
-    options: StreamManagerContext<StateType, Bag>
-  ): Message[] => {
-    const messagesKey = options.messagesKey ?? "messages";
-    return Array.isArray(values[messagesKey])
-      ? (values[messagesKey] as Message[])
-      : [];
-  };
-
   private matchEventType = <
     T extends keyof EventStreamMap<
       StateType,
@@ -225,35 +201,46 @@ export class StreamManager<
   };
 
   start = async (
-    action: (signal: AbortSignal) => Promise<{
-      stream: AsyncGenerator<
+    action: (
+      signal: AbortSignal
+    ) => Promise<
+      AsyncGenerator<
         EventStreamEvent<
           StateType,
           GetUpdateType<Bag, StateType>,
           GetCustomEventType<Bag>
         >
-      >;
-      onSuccess: () => Promise<ThreadState<StateType>[]>;
-      getCallbackMeta: () => { thread_id: string; run_id: string } | undefined;
-    }>,
-    historyValues: StateType,
-    options: StreamManagerContext<StateType, Bag>
+      >
+    >,
+    options: {
+      getMessages: (values: StateType) => Message[];
+
+      setMessages: (current: StateType, messages: Message[]) => StateType;
+
+      initialValues: StateType;
+
+      callbacks: StreamManagerEventCallbacks<StateType, Bag>;
+
+      onSuccess: () =>
+        | StateType
+        | null
+        | undefined
+        | void
+        | Promise<StateType | null | undefined | void>;
+
+      onError: (error: unknown) => void | Promise<void>;
+    }
   ) => {
     if (this.state.isLoading) return;
-
-    let getCallbackMeta:
-      | (() => { thread_id: string; run_id: string } | undefined)
-      | undefined;
 
     try {
       this.setState({ isLoading: true, error: undefined });
       this.abortRef = new AbortController();
 
       const run = await action(this.abortRef.signal);
-      getCallbackMeta = run.getCallbackMeta;
 
       let streamError: StreamError | undefined;
-      for await (const { event, data } of run.stream) {
+      for await (const { event, data } of run) {
         if (event === "error") {
           streamError = new StreamError(data);
           break;
@@ -263,29 +250,29 @@ export class StreamManager<
           ? event.split("|").slice(1)
           : undefined;
 
-        const mutate = this.getMutateFn("stream", historyValues);
+        const mutate = this.getMutateFn("stream", options.initialValues);
 
-        if (event === "metadata") options.onMetadataEvent?.(data);
-        if (event === "events") options.onLangChainEvent?.(data);
+        if (event === "metadata") options.callbacks.onMetadataEvent?.(data);
+        if (event === "events") options.callbacks.onLangChainEvent?.(data);
 
         if (this.matchEventType("updates", event, data)) {
-          options.onUpdateEvent?.(data, { namespace, mutate });
+          options.callbacks.onUpdateEvent?.(data, { namespace, mutate });
         }
 
         if (this.matchEventType("custom", event, data)) {
-          options.onCustomEvent?.(data, { namespace, mutate });
+          options.callbacks.onCustomEvent?.(data, { namespace, mutate });
         }
 
         if (this.matchEventType("checkpoints", event, data)) {
-          options.onCheckpointEvent?.(data, { namespace });
+          options.callbacks.onCheckpointEvent?.(data, { namespace });
         }
 
         if (this.matchEventType("tasks", event, data)) {
-          options.onTaskEvent?.(data, { namespace });
+          options.callbacks.onTaskEvent?.(data, { namespace });
         }
 
         if (this.matchEventType("debug", event, data)) {
-          options.onDebugEvent?.(data, { namespace });
+          options.callbacks.onDebugEvent?.(data, { namespace });
         }
 
         if (event === "values") {
@@ -306,34 +293,25 @@ export class StreamManager<
           }
 
           this.setStreamValues((streamValues) => {
-            const values = { ...historyValues, ...streamValues };
+            const values = { ...options.initialValues, ...streamValues };
 
             // Assumption: we're concatenating the message
-            const messages = this.getMessages(values, options).slice();
+            const messages = options.getMessages(values).slice();
             const { chunk, index } =
               this.messageManager.get(messageId, messages.length) ?? {};
 
             if (!chunk || index == null) return values;
             messages[index] = toMessageDict(chunk);
 
-            const messagesKey = options.messagesKey ?? "messages";
-            return { ...values, [messagesKey]: messages };
+            return options.setMessages(values, messages);
           });
         }
       }
 
-      // TODO: stream created checkpoints to avoid an unnecessary network request
-      const result = await run.onSuccess();
-      this.setStreamValues((values, kind) => {
-        // Do not clear out the user values set on `stop`.
-        if (kind === "stop") return values;
-        return null;
-      });
-
       if (streamError != null) throw streamError;
 
-      const lastHead = result.at(0);
-      if (lastHead) options.onFinish?.(lastHead, getCallbackMeta?.());
+      const values = await options.onSuccess?.();
+      if (typeof values !== "undefined") this.setStreamValues(values);
     } catch (error) {
       if (
         !(
@@ -343,7 +321,7 @@ export class StreamManager<
       ) {
         console.error(error);
         this.setState({ error });
-        options.onError?.(error, getCallbackMeta?.());
+        await options.onError?.(error);
       }
     } finally {
       this.setState({ isLoading: false });
@@ -353,7 +331,13 @@ export class StreamManager<
 
   stop = async (
     historyValues: StateType,
-    options: StreamManagerContext<StateType, Bag>
+    options: {
+      onStop?: (options: {
+        mutate: (
+          update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
+        ) => void;
+      }) => void;
+    }
   ) => {
     if (this.abortRef) {
       this.abortRef.abort();
