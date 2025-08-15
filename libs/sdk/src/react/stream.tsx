@@ -9,6 +9,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { Client, getClientConfigHash, type ClientConfig } from "../client.js";
 import type {
@@ -30,24 +31,16 @@ import type {
   CheckpointsStreamEvent,
   CustomStreamEvent,
   DebugStreamEvent,
-  ErrorStreamEvent,
   EventsStreamEvent,
-  FeedbackStreamEvent,
-  MessagesTupleStreamEvent,
   MetadataStreamEvent,
   StreamMode,
   TasksStreamEvent,
   UpdatesStreamEvent,
-  ValuesStreamEvent,
 } from "../types.stream.js";
-import { MessageTupleManager, toMessageDict } from "./messages.js";
-import { findLastIndex, unique } from "./utils.js";
+import { findLast, unique } from "./utils.js";
 import { StreamError } from "./errors.js";
-import {
-  type Sequence,
-  getBranchSequence,
-  getBranchView,
-} from "./branching.js";
+import { type Sequence, getBranchContext } from "./branching.js";
+import { type EventStreamEvent, StreamManager } from "./manager.js";
 
 export type MessageMetadata<StateType extends Record<string, unknown>> = {
   /**
@@ -438,7 +431,7 @@ export interface UseStream<
   /**
    * Stops the stream.
    */
-  stop: () => void;
+  stop: () => Promise<void>;
 
   /**
    * Create and stream a run to the thread.
@@ -446,7 +439,7 @@ export interface UseStream<
   submit: (
     values: GetUpdateType<Bag, StateType> | null | undefined,
     options?: SubmitOptions<StateType, GetConfigurableType<Bag>>
-  ) => void;
+  ) => Promise<void>;
 
   /**
    * The current branch of the thread.
@@ -535,13 +528,21 @@ interface SubmitOptions<
   optimisticValues?:
     | Partial<StateType>
     | ((prev: StateType) => Partial<StateType>);
+
   /**
    * Whether or not to stream the nodes of any subgraphs called
    * by the assistant.
    * @default false
    */
   streamSubgraphs?: boolean;
+
+  /**
+   * Mark the stream as resumable. All events emitted during the run will be temporarily persisted
+   * in order to be re-emitted if the stream is re-joined.
+   * @default false
+   */
   streamResumable?: boolean;
+
   /**
    * Whether to checkpoint during the run (or only at the end/interruption).
    * - `"async"`: Save checkpoint asynchronously while the next step executes (default).
@@ -559,54 +560,6 @@ interface SubmitOptions<
   threadId?: string;
 }
 
-function useStreamValuesState<StateType extends Record<string, unknown>>() {
-  type Kind = "stream" | "stop";
-  type Values = StateType | null;
-  type Update = Values | ((prev: Values, kind?: Kind) => Values);
-  type Mutate = Partial<StateType> | ((prev: StateType) => Partial<StateType>);
-
-  const [values, setValues] = useState<[values: StateType, kind: Kind] | null>(
-    null
-  );
-
-  const setStreamValues = useCallback(
-    (values: Update, kind: Kind = "stream") => {
-      if (typeof values === "function") {
-        setValues((prevTuple) => {
-          const [prevValues, prevKind] = prevTuple ?? [null, "stream"];
-          const next = values(prevValues, prevKind);
-
-          if (next == null) return null;
-          return [next, kind] as [StateType, Kind];
-        });
-
-        return;
-      }
-
-      if (values == null) setValues(null);
-      setValues([values, kind] as [StateType, Kind]);
-    },
-    []
-  );
-
-  const mutate = useCallback(
-    (kind: Kind, serverValues: StateType) => (update: Mutate) => {
-      setStreamValues((clientValues) => {
-        const prev = { ...serverValues, ...clientValues };
-        const next = typeof update === "function" ? update(prev) : update;
-        return { ...prev, ...next };
-      }, kind);
-    },
-    [setStreamValues]
-  );
-
-  return [values?.[0] ?? null, setStreamValues, mutate] as [
-    Values,
-    (update: Update, kind?: Kind) => void,
-    (kind: Kind, serverValues: StateType) => (update: Mutate) => void
-  ];
-}
-
 export function useStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends {
@@ -621,33 +574,12 @@ export function useStream<
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
 
-  type EventStreamMap = {
-    values: ValuesStreamEvent<StateType>;
-    updates: UpdatesStreamEvent<UpdateType>;
-    custom: CustomStreamEvent<CustomType>;
-    debug: DebugStreamEvent;
-    messages: MessagesTupleStreamEvent;
-    events: EventsStreamEvent;
-    metadata: MetadataStreamEvent;
-    checkpoints: CheckpointsStreamEvent<StateType>;
-    tasks: TasksStreamEvent<StateType, UpdateType>;
-    error: ErrorStreamEvent;
-    feedback: FeedbackStreamEvent;
-  };
-
-  type EventStreamEvent = EventStreamMap[keyof EventStreamMap];
-
-  const matchEventType = <T extends keyof EventStreamMap>(
-    expected: T,
-    actual: EventStreamEvent["event"],
-    _data: EventStreamEvent["data"]
-  ): _data is EventStreamMap[T]["data"] => {
-    return expected === actual || actual.startsWith(`${expected}|`);
-  };
-
-  let { messagesKey } = options;
-  const { assistantId, fetchStateHistory } = options;
-  const { onCreated, onError, onFinish } = options;
+  const {
+    messagesKey = "messages",
+    assistantId,
+    fetchStateHistory,
+    onCreated,
+  } = options;
 
   const reconnectOnMountRef = useRef(options.reconnectOnMount);
   const runMetadataStorage = useMemo(() => {
@@ -657,8 +589,6 @@ export function useStream<
     if (typeof storage === "function") return storage();
     return null;
   }, []);
-
-  messagesKey ??= "messages";
 
   const client = useMemo(
     () =>
@@ -678,18 +608,14 @@ export function useStream<
     ]
   );
 
+  const [streamManager] = useState(() => new StreamManager<StateType, Bag>());
+  useSyncExternalStore(
+    streamManager.subscribe,
+    streamManager.getSnapshot,
+    streamManager.getSnapshot
+  );
+
   const [threadId, onThreadId] = useControllableThreadId(options);
-
-  const [branch, setBranch] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(false);
-
-  const [streamError, setStreamError] = useState<unknown>(undefined);
-  const [streamValues, setStreamValues, getMutateFn] =
-    useStreamValuesState<StateType>();
-
-  const messageManagerRef = useRef(new MessageTupleManager());
-  const submittingRef = useRef(false);
-  const abortRef = useRef<AbortController | null>(null);
 
   const trackStreamModeRef = useRef<
     Array<
@@ -741,51 +667,40 @@ export function useStream<
   ]);
 
   const clearCallbackRef = useRef<() => void>(null!);
-  clearCallbackRef.current = () => {
-    setStreamError(undefined);
-    setStreamValues(null);
-    messageManagerRef.current.clear();
-  };
+  clearCallbackRef.current = streamManager.clear;
+
+  const submittingRef = useRef(false);
+  submittingRef.current = streamManager.isLoading;
 
   const onErrorRef = useRef<
     ((error: unknown, run?: RunCallbackMeta) => void) | undefined
   >(undefined);
   onErrorRef.current = options.onError;
 
-  const historyLimit =
-    typeof fetchStateHistory === "object" && fetchStateHistory != null
-      ? fetchStateHistory.limit ?? true
-      : fetchStateHistory ?? true;
-
   const history = useThreadHistory<StateType>(
     threadId,
     client,
-    historyLimit,
+    typeof fetchStateHistory === "object" && fetchStateHistory != null
+      ? fetchStateHistory.limit ?? true
+      : fetchStateHistory ?? true,
     clearCallbackRef,
     submittingRef,
     onErrorRef
   );
 
-  const getMessages = useMemo(() => {
-    return (value: StateType) =>
-      Array.isArray(value[messagesKey])
-        ? (value[messagesKey] as Message[])
-        : [];
-  }, [messagesKey]);
+  const getMessages = (value: StateType): Message[] =>
+    Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
 
-  const { rootSequence, paths } = getBranchSequence(history.data ?? []);
-  const { history: flatHistory, branchByCheckpoint } = getBranchView(
-    rootSequence,
-    paths,
-    branch
-  );
+  const [branch, setBranch] = useState<string>("");
+  const branchContext = getBranchContext(branch, history.data);
 
-  const threadHead: ThreadState<StateType> | undefined = flatHistory.at(-1);
   const historyValues =
-    threadHead?.values ?? options.initialValues ?? ({} as StateType);
+    branchContext.threadHead?.values ??
+    options.initialValues ??
+    ({} as StateType);
 
   const historyValueError = (() => {
-    const error = threadHead?.tasks?.at(-1)?.error;
+    const error = branchContext.threadHead?.tasks?.at(-1)?.error;
     if (error == null) return undefined;
     try {
       const parsed = JSON.parse(error) as unknown;
@@ -805,27 +720,19 @@ export function useStream<
     return getMessages(historyValues).map(
       (message, idx): MessageMetadata<StateType> => {
         const messageId = message.id ?? idx;
-        const streamMetadata =
-          message.id != null
-            ? messageManagerRef.current.get(message.id)?.metadata ?? undefined
-            : undefined;
 
-        const firstSeenIdx = findLastIndex(history.data ?? [], (state) =>
+        // Find the first checkpoint where the message was seen
+        const firstSeenState = findLast(history.data ?? [], (state) =>
           getMessages(state.values)
             .map((m, idx) => m.id ?? idx)
             .includes(messageId)
         );
 
-        const firstSeen = history.data?.[firstSeenIdx] as
-          | ThreadState<StateType>
-          | undefined;
-
-        const checkpointId = firstSeen?.checkpoint?.checkpoint_id;
+        const checkpointId = firstSeenState?.checkpoint?.checkpoint_id;
         let branch =
-          firstSeen && checkpointId != null
-            ? branchByCheckpoint[checkpointId]
+          checkpointId != null
+            ? branchContext.branchByCheckpoint[checkpointId]
             : undefined;
-
         if (!branch?.branch?.length) branch = undefined;
 
         // serialize branches
@@ -837,287 +744,176 @@ export function useStream<
 
         return {
           messageId: messageId.toString(),
-          firstSeenState: firstSeen,
+          firstSeenState,
 
           branch: branch?.branch,
           branchOptions: branch?.branchOptions,
 
-          streamMetadata,
+          streamMetadata: streamManager.getMessageMetadata(message.id),
         };
       }
     );
   })();
 
-  const stop = () => {
-    if (abortRef.current != null) abortRef.current.abort();
-    abortRef.current = null;
+  const stop = () =>
+    streamManager.stop(historyValues, { ...options, messagesKey });
 
-    if (runMetadataStorage && threadId) {
-      const runId = runMetadataStorage.getItem(`lg:stream:${threadId}`);
-      if (runId) void client.runs.cancel(threadId, runId);
-      runMetadataStorage.removeItem(`lg:stream:${threadId}`);
-    }
-
-    options?.onStop?.({ mutate: getMutateFn("stop", historyValues) });
-  };
-
-  async function consumeStream(
-    action: (signal: AbortSignal) => Promise<{
-      onSuccess: () => Promise<ThreadState<StateType>[]>;
-      stream: AsyncGenerator<EventStreamEvent>;
-      getCallbackMeta: () => { thread_id: string; run_id: string } | undefined;
-    }>
-  ) {
-    let getCallbackMeta:
-      | (() => { thread_id: string; run_id: string } | undefined)
-      | undefined;
-    try {
-      setIsLoading(true);
-      setStreamError(undefined);
-
-      submittingRef.current = true;
-      abortRef.current = new AbortController();
-
-      const run = await action(abortRef.current.signal);
-      getCallbackMeta = run.getCallbackMeta;
-
-      let streamError: StreamError | undefined;
-      for await (const { event, data } of run.stream) {
-        if (event === "error") {
-          streamError = new StreamError(data);
-          break;
-        }
-
-        const namespace = event.includes("|")
-          ? event.split("|").slice(1)
-          : undefined;
-
-        const mutate = getMutateFn("stream", historyValues);
-
-        if (event === "metadata") options.onMetadataEvent?.(data);
-        if (event === "events") options.onLangChainEvent?.(data);
-
-        if (matchEventType("updates", event, data)) {
-          options.onUpdateEvent?.(data, { namespace, mutate });
-        }
-
-        if (matchEventType("custom", event, data)) {
-          options.onCustomEvent?.(data, { namespace, mutate });
-        }
-
-        if (matchEventType("checkpoints", event, data)) {
-          options.onCheckpointEvent?.(data, { namespace });
-        }
-
-        if (matchEventType("tasks", event, data)) {
-          options.onTaskEvent?.(data, { namespace });
-        }
-
-        if (matchEventType("debug", event, data)) {
-          options.onDebugEvent?.(data, { namespace });
-        }
-
-        if (event === "values") {
-          // don't update values on interrupt values event
-          if ("__interrupt__" in data) continue;
-          setStreamValues(data);
-        }
-
-        // Consume subgraph messages as well
-        if (matchEventType("messages", event, data)) {
-          const [serialized, metadata] = data;
-
-          const messageId = messageManagerRef.current.add(serialized, metadata);
-          if (!messageId) {
-            console.warn(
-              "Failed to add message to manager, no message ID found"
-            );
-            continue;
-          }
-
-          setStreamValues((streamValues) => {
-            const values = { ...historyValues, ...streamValues };
-
-            // Assumption: we're concatenating the message
-            const messages = getMessages(values).slice();
-            const { chunk, index } =
-              messageManagerRef.current.get(messageId, messages.length) ?? {};
-
-            if (!chunk || index == null) return values;
-            messages[index] = toMessageDict(chunk);
-
-            return { ...values, [messagesKey!]: messages };
-          });
-        }
-      }
-
-      // TODO: stream created checkpoints to avoid an unnecessary network request
-      const result = await run.onSuccess();
-      setStreamValues((values, kind) => {
-        // Do not clear out the user values set on `stop`.
-        if (kind === "stop") return values;
-        return null;
-      });
-      if (streamError != null) throw streamError;
-
-      const lastHead = result.at(0);
-      if (lastHead) onFinish?.(lastHead, getCallbackMeta?.());
-    } catch (error) {
-      if (
-        !(
-          error instanceof Error && // eslint-disable-line no-instanceof/no-instanceof
-          (error.name === "AbortError" || error.name === "TimeoutError")
-        )
-      ) {
-        console.error(error);
-        setStreamError(error);
-        onError?.(error, getCallbackMeta?.());
-      }
-    } finally {
-      setIsLoading(false);
-      submittingRef.current = false;
-      abortRef.current = null;
-    }
-  }
-
-  const joinStream = async (
-    runId: string,
-    lastEventId?: string,
-    options?: { streamMode?: StreamMode | StreamMode[] }
-  ) => {
-    // eslint-disable-next-line no-param-reassign
-    lastEventId ??= "-1";
-    if (!threadId) return;
-    await consumeStream(async (signal: AbortSignal) => {
-      const stream = client.runs.joinStream(threadId, runId, {
-        signal,
-        lastEventId,
-        streamMode: options?.streamMode,
-      }) as AsyncGenerator<EventStreamEvent>;
-
-      return {
-        onSuccess: () => {
-          runMetadataStorage?.removeItem(`lg:stream:${threadId}`);
-          return history.mutate(threadId);
-        },
-        stream,
-        getCallbackMeta: () => ({ thread_id: threadId, run_id: runId }),
-      };
-    });
-  };
-
+  // --- TRANSPORT ---
   const submit = async (
     values: UpdateType | null | undefined,
     submitOptions?: SubmitOptions<StateType, ConfigurableType>
   ) => {
-    await consumeStream(async (signal: AbortSignal) => {
-      // Unbranch things
-      const newPath = submitOptions?.checkpoint?.checkpoint_id
-        ? branchByCheckpoint[submitOptions?.checkpoint?.checkpoint_id]?.branch
-        : undefined;
+    // Unbranch things
+    const checkpointId = submitOptions?.checkpoint?.checkpoint_id;
+    setBranch(
+      checkpointId != null
+        ? branchContext.branchByCheckpoint[checkpointId]?.branch ?? ""
+        : ""
+    );
 
-      if (newPath != null) setBranch(newPath ?? "");
+    streamManager.setStreamValues(() => {
+      if (submitOptions?.optimisticValues != null) {
+        return {
+          ...historyValues,
+          ...(typeof submitOptions.optimisticValues === "function"
+            ? submitOptions.optimisticValues(historyValues)
+            : submitOptions.optimisticValues),
+        };
+      }
 
-      setStreamValues(() => {
-        if (submitOptions?.optimisticValues != null) {
-          return {
-            ...historyValues,
-            ...(typeof submitOptions.optimisticValues === "function"
-              ? submitOptions.optimisticValues(historyValues)
-              : submitOptions.optimisticValues),
-          };
+      return { ...historyValues };
+    });
+
+    await streamManager.start(
+      async (signal: AbortSignal) => {
+        let usableThreadId = threadId;
+        if (!usableThreadId) {
+          const thread = await client.threads.create({
+            threadId: submitOptions?.threadId,
+            metadata: submitOptions?.metadata,
+          });
+          onThreadId(thread.thread_id);
+          usableThreadId = thread.thread_id;
         }
 
-        return { ...historyValues };
-      });
+        if (!usableThreadId) {
+          throw new Error("Failed to obtain valid thread ID.");
+        }
 
-      let usableThreadId = threadId;
-      if (!usableThreadId) {
-        const thread = await client.threads.create({
-          threadId: submitOptions?.threadId,
+        const streamMode = unique([
+          ...(submitOptions?.streamMode ?? []),
+          ...trackStreamModeRef.current,
+          ...callbackStreamMode,
+        ]);
+
+        let checkpoint =
+          submitOptions?.checkpoint ??
+          branchContext.threadHead?.checkpoint ??
+          undefined;
+
+        // Avoid specifying a checkpoint if user explicitly set it to null
+        if (submitOptions?.checkpoint === null) checkpoint = undefined;
+
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-expect-error
+        if (checkpoint != null) delete checkpoint.thread_id;
+        let rejoinKey: `lg:stream:${string}` | undefined;
+        let callbackMeta: RunCallbackMeta | undefined;
+        const streamResumable =
+          submitOptions?.streamResumable ?? !!runMetadataStorage;
+
+        const stream = client.runs.stream(usableThreadId, assistantId, {
+          input: values as Record<string, unknown>,
+          config: submitOptions?.config,
+          context: submitOptions?.context,
+          command: submitOptions?.command,
+
+          interruptBefore: submitOptions?.interruptBefore,
+          interruptAfter: submitOptions?.interruptAfter,
           metadata: submitOptions?.metadata,
-        });
-        onThreadId(thread.thread_id);
-        usableThreadId = thread.thread_id;
-      }
-      if (!usableThreadId) throw new Error("Failed to obtain valid thread ID.");
+          multitaskStrategy: submitOptions?.multitaskStrategy,
+          onCompletion: submitOptions?.onCompletion,
+          onDisconnect:
+            submitOptions?.onDisconnect ??
+            (streamResumable ? "continue" : "cancel"),
 
-      const streamMode = unique([
-        ...(submitOptions?.streamMode ?? []),
-        ...trackStreamModeRef.current,
-        ...callbackStreamMode,
-      ]);
+          signal,
 
-      let checkpoint =
-        submitOptions?.checkpoint ?? threadHead?.checkpoint ?? undefined;
+          checkpoint,
+          streamMode,
+          streamSubgraphs: submitOptions?.streamSubgraphs,
+          streamResumable,
+          durability: submitOptions?.durability,
+          onRunCreated(params) {
+            callbackMeta = {
+              run_id: params.run_id,
+              thread_id: params.thread_id ?? usableThreadId,
+            };
 
-      // Avoid specifying a checkpoint if user explicitly set it to null
-      if (submitOptions?.checkpoint === null) {
-        checkpoint = undefined;
-      }
+            if (runMetadataStorage) {
+              rejoinKey = `lg:stream:${callbackMeta.thread_id}`;
+              runMetadataStorage.setItem(rejoinKey, callbackMeta.run_id);
+            }
+            onCreated?.(callbackMeta);
+          },
+        }) as AsyncGenerator<
+          EventStreamEvent<StateType, UpdateType, CustomType>
+        >;
 
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-expect-error
-      if (checkpoint != null) delete checkpoint.thread_id;
-      let rejoinKey: `lg:stream:${string}` | undefined;
-      let callbackMeta: RunCallbackMeta | undefined;
-      const streamResumable =
-        submitOptions?.streamResumable ?? !!runMetadataStorage;
+        return {
+          stream,
+          getCallbackMeta: () => callbackMeta,
+          onSuccess: () => {
+            if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
+            return history.mutate(usableThreadId);
+          },
+        };
+      },
+      historyValues,
+      { ...options, messagesKey }
+    );
+  };
 
-      const stream = client.runs.stream(usableThreadId, assistantId, {
-        input: values as Record<string, unknown>,
-        config: submitOptions?.config,
-        context: submitOptions?.context,
-        command: submitOptions?.command,
+  const joinStream = async (
+    runId: string,
+    lastEventId?: string,
+    joinOptions?: { streamMode?: StreamMode | StreamMode[] }
+  ) => {
+    // eslint-disable-next-line no-param-reassign
+    lastEventId ??= "-1";
+    if (!threadId) return;
 
-        interruptBefore: submitOptions?.interruptBefore,
-        interruptAfter: submitOptions?.interruptAfter,
-        metadata: submitOptions?.metadata,
-        multitaskStrategy: submitOptions?.multitaskStrategy,
-        onCompletion: submitOptions?.onCompletion,
-        onDisconnect:
-          submitOptions?.onDisconnect ??
-          (streamResumable ? "continue" : "cancel"),
+    await streamManager.start(
+      async (signal: AbortSignal) => {
+        const stream = client.runs.joinStream(threadId, runId, {
+          signal,
+          lastEventId,
+          streamMode: joinOptions?.streamMode,
+        }) as AsyncGenerator<
+          EventStreamEvent<StateType, UpdateType, CustomType>
+        >;
 
-        signal,
-
-        checkpoint,
-        streamMode,
-        streamSubgraphs: submitOptions?.streamSubgraphs,
-        streamResumable,
-        durability: submitOptions?.durability,
-        onRunCreated(params) {
-          callbackMeta = {
-            run_id: params.run_id,
-            thread_id: params.thread_id ?? usableThreadId,
-          };
-
-          if (runMetadataStorage) {
-            rejoinKey = `lg:stream:${callbackMeta.thread_id}`;
-            runMetadataStorage.setItem(rejoinKey, callbackMeta.run_id);
-          }
-          onCreated?.(callbackMeta);
-        },
-      }) as AsyncGenerator<EventStreamEvent>;
-
-      return {
-        stream,
-        getCallbackMeta: () => callbackMeta,
-        onSuccess: () => {
-          if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
-          return history.mutate(usableThreadId);
-        },
-      };
-    });
+        return {
+          onSuccess: () => {
+            runMetadataStorage?.removeItem(`lg:stream:${threadId}`);
+            return history.mutate(threadId);
+          },
+          stream,
+          getCallbackMeta: () => ({ thread_id: threadId, run_id: runId }),
+        };
+      },
+      historyValues,
+      { ...options, messagesKey }
+    );
   };
 
   const reconnectKey = useMemo(() => {
-    if (!runMetadataStorage || isLoading) return undefined;
+    if (!runMetadataStorage || streamManager.isLoading) return undefined;
     if (typeof window === "undefined") return undefined;
     const runId = runMetadataStorage?.getItem(`lg:stream:${threadId}`);
     if (!runId) return undefined;
     return { runId, threadId };
-  }, [runMetadataStorage, isLoading, threadId]);
+  }, [runMetadataStorage, streamManager.isLoading, threadId]);
 
   const shouldReconnect = !!runMetadataStorage;
   const reconnectRef = useRef({ threadId, shouldReconnect });
@@ -1138,9 +934,10 @@ export function useStream<
       void joinStreamRef.current?.(reconnectKey.runId);
     }
   }, [reconnectKey]);
+  // --- END TRANSPORT ---
 
-  const error = streamError ?? historyValueError ?? history.error;
-  const values = streamValues ?? historyValues;
+  const error = streamManager.error ?? historyValueError ?? history.error;
+  const values = streamManager.values ?? historyValues;
 
   return {
     get values() {
@@ -1152,37 +949,37 @@ export function useStream<
     assistantId,
 
     error,
-    isLoading,
+    isLoading: streamManager.isLoading,
 
     stop,
-    submit, // eslint-disable-line @typescript-eslint/no-misused-promises
+    submit,
 
     joinStream,
 
     branch,
     setBranch,
 
-    history: flatHistory,
+    history: branchContext.flatHistory,
     isThreadLoading: history.isLoading && history.data == null,
 
     get experimental_branchTree() {
-      if (historyLimit === false) {
+      if (fetchStateHistory === false) {
         throw new Error(
           "`experimental_branchTree` is not available when `fetchStateHistory` is set to `false`"
         );
       }
 
-      return rootSequence;
+      return branchContext.branchTree;
     },
 
     get interrupt() {
       // Don't show the interrupt if the stream is loading
-      if (isLoading) return undefined;
+      if (streamManager.isLoading) return undefined;
 
-      const interrupts = threadHead?.tasks?.at(-1)?.interrupts;
+      const interrupts = branchContext.threadHead?.tasks?.at(-1)?.interrupts;
       if (interrupts == null || interrupts.length === 0) {
         // check if there's a next task present
-        const next = threadHead?.next ?? [];
+        const next = branchContext.threadHead?.next ?? [];
         if (!next.length || error != null) return undefined;
         return { when: "breakpoint" };
       }

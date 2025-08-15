@@ -1,7 +1,3 @@
-/* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
-
-"use client";
-
 export class StreamError extends Error {
   constructor(data: { error?: string; name?: string; message: string }) {
     super(data.message);

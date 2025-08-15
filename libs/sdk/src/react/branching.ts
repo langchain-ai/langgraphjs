@@ -1,7 +1,3 @@
-/* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
-
-"use client";
-
 import type { ThreadState } from "../schema.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,8 +101,10 @@ export function getBranchSequence<StateType extends Record<string, unknown>>(
 
   return { rootSequence, paths };
 }
+
 const PATH_SEP = ">";
 const ROOT_ID = "$";
+
 // Get flat view
 export function getBranchView<StateType extends Record<string, unknown>>(
   sequence: Sequence<StateType>,
@@ -164,4 +162,23 @@ export function getBranchView<StateType extends Record<string, unknown>>(
   }
 
   return { history, branchByCheckpoint };
+}
+
+export function getBranchContext<StateType extends Record<string, unknown>>(
+  branch: string,
+  history: ThreadState<StateType>[] | undefined
+) {
+  const { rootSequence: branchTree, paths } = getBranchSequence(history ?? []);
+  const { history: flatHistory, branchByCheckpoint } = getBranchView(
+    branchTree,
+    paths,
+    branch
+  );
+
+  return {
+    branchTree,
+    flatHistory,
+    branchByCheckpoint,
+    threadHead: flatHistory.at(-1),
+  };
 }

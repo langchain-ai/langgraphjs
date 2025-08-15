@@ -1,7 +1,3 @@
-/* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
-
-"use client";
-
 import {
   type BaseMessage,
   type BaseMessageChunk,
@@ -81,6 +77,7 @@ export class MessageTupleManager {
     return this.chunks[id];
   }
 }
+
 export const toMessageDict = (chunk: BaseMessage): Message => {
   const { type, data } = chunk.toDict();
   return { ...data, type } as Message;
