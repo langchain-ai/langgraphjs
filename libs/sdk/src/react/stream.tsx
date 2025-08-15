@@ -156,13 +156,6 @@ export function useStream<
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
 
-  const {
-    messagesKey = "messages",
-    assistantId,
-    fetchStateHistory,
-    onCreated,
-  } = options;
-
   const reconnectOnMountRef = useRef(options.reconnectOnMount);
   const runMetadataStorage = useMemo(() => {
     if (typeof window === "undefined") return null;
@@ -249,18 +242,22 @@ export function useStream<
   const history = useThreadHistory<StateType>(
     threadId,
     client,
-    typeof fetchStateHistory === "object" && fetchStateHistory != null
-      ? fetchStateHistory.limit ?? true
-      : fetchStateHistory ?? true,
+    typeof options.fetchStateHistory === "object" &&
+      options.fetchStateHistory != null
+      ? options.fetchStateHistory.limit ?? true
+      : options.fetchStateHistory ?? true,
     clearCallbackRef,
     submittingRef,
     onErrorRef
   );
 
-  const getMessages = (value: StateType): Message[] =>
-    Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
+  const getMessages = (value: StateType): Message[] => {
+    const messagesKey = options.messagesKey ?? "messages";
+    return Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
+  };
 
   const setMessages = (current: StateType, messages: Message[]): StateType => {
+    const messagesKey = options.messagesKey ?? "messages";
     return { ...current, [messagesKey]: messages };
   };
 
@@ -396,7 +393,7 @@ export function useStream<
         const streamResumable =
           submitOptions?.streamResumable ?? !!runMetadataStorage;
 
-        return client.runs.stream(usableThreadId, assistantId, {
+        return client.runs.stream(usableThreadId, options.assistantId, {
           input: values as Record<string, unknown>,
           config: submitOptions?.config,
           context: submitOptions?.context,
@@ -429,7 +426,7 @@ export function useStream<
               runMetadataStorage.setItem(rejoinKey, callbackMeta.run_id);
             }
 
-            onCreated?.(callbackMeta);
+            options.onCreated?.(callbackMeta);
           },
         }) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
@@ -499,7 +496,7 @@ export function useStream<
           if (lastHead) options.onFinish?.(lastHead, callbackMeta);
         },
         onError(error) {
-          onErrorRef.current?.(error);
+          options.onError?.(error, callbackMeta);
         },
       }
     );
@@ -544,7 +541,7 @@ export function useStream<
     },
 
     client,
-    assistantId,
+    assistantId: options.assistantId,
 
     error,
     isLoading: streamManager.isLoading,
@@ -561,7 +558,7 @@ export function useStream<
     isThreadLoading: history.isLoading && history.data == null,
 
     get experimental_branchTree() {
-      if (fetchStateHistory === false) {
+      if (options.fetchStateHistory === false) {
         throw new Error(
           "`experimental_branchTree` is not available when `fetchStateHistory` is set to `false`"
         );
