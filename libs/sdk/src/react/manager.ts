@@ -182,12 +182,12 @@ export class StreamManager<
       GetUpdateType<Bag, StateType>,
       GetCustomEventType<Bag>
     >["event"],
-    data: EventStreamEvent<
+    _data: EventStreamEvent<
       StateType,
       GetUpdateType<Bag, StateType>,
       GetCustomEventType<Bag>
     >["data"]
-  ): data is EventStreamMap<
+  ): _data is EventStreamMap<
     StateType,
     GetUpdateType<Bag, StateType>,
     GetCustomEventType<Bag>
