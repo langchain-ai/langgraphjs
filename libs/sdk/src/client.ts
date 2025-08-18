@@ -2,11 +2,13 @@ import {
   Assistant,
   AssistantGraph,
   AssistantSortBy,
+  AssistantSelectField,
   AssistantVersion,
   CancelAction,
   Checkpoint,
   Config,
   Cron,
+  CronSelectField,
   CronCreateForThreadResponse,
   CronCreateResponse,
   CronSortBy,
@@ -16,11 +18,13 @@ import {
   ListNamespaceResponse,
   Metadata,
   Run,
+  RunSelectField,
   RunStatus,
   SearchItemsResponse,
   SortOrder,
   Subgraphs,
   Thread,
+  ThreadSelectField,
   ThreadSortBy,
   ThreadState,
   ThreadStatus,
@@ -421,6 +425,7 @@ export class CronsClient extends BaseClient {
     offset?: number;
     sortBy?: CronSortBy;
     sortOrder?: SortOrder;
+    select?: CronSelectField[];
   }): Promise<Cron[]> {
     return this.fetch<Cron[]>("/runs/crons/search", {
       method: "POST",
@@ -431,6 +436,7 @@ export class CronsClient extends BaseClient {
         offset: query?.offset ?? 0,
         sort_by: query?.sortBy ?? undefined,
         sort_order: query?.sortOrder ?? undefined,
+        select: query?.select ?? undefined,
       },
     });
   }
@@ -579,6 +585,7 @@ export class AssistantsClient extends BaseClient {
     offset?: number;
     sortBy?: AssistantSortBy;
     sortOrder?: SortOrder;
+    select?: AssistantSelectField[];
   }): Promise<Assistant[]> {
     return this.fetch<Assistant[]>("/assistants/search", {
       method: "POST",
@@ -589,6 +596,7 @@ export class AssistantsClient extends BaseClient {
         offset: query?.offset ?? 0,
         sort_by: query?.sortBy ?? undefined,
         sort_order: query?.sortOrder ?? undefined,
+        select: query?.select ?? undefined,
       },
     });
   }
@@ -784,6 +792,7 @@ export class ThreadsClient<
      * Must be one of 'asc' or 'desc'.
      */
     sortOrder?: SortOrder;
+    select?: ThreadSelectField[];
   }): Promise<Thread<ValuesType>[]> {
     return this.fetch<Thread<ValuesType>[]>("/threads/search", {
       method: "POST",
@@ -794,6 +803,7 @@ export class ThreadsClient<
         status: query?.status,
         sort_by: query?.sortBy,
         sort_order: query?.sortOrder,
+        select: query?.select ?? undefined,
       },
     });
   }
@@ -1209,6 +1219,7 @@ export class RunsClient<
        * Status of the run to filter by.
        */
       status?: RunStatus;
+      select?: RunSelectField[];
     }
   ): Promise<Run[]> {
     return this.fetch<Run[]>(`/threads/${threadId}/runs`, {
@@ -1216,6 +1227,7 @@ export class RunsClient<
         limit: options?.limit ?? 10,
         offset: options?.offset ?? 0,
         status: options?.status ?? undefined,
+        select: options?.select ?? undefined,
       },
     });
   }
