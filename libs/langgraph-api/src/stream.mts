@@ -268,6 +268,18 @@ export async function* streamState(
           options?.onTaskResult?.(debugResult);
           data = { ...debugChunk, payload: debugResult };
         }
+      } else if (mode === "checkpoints") {
+        const debugCheckpoint = preprocessDebugCheckpoint(
+          chunk as DebugCheckpoint
+        );
+        options?.onCheckpoint?.(debugCheckpoint);
+        data = debugCheckpoint;
+      } else if (mode === "tasks") {
+        const debugTask = preprocessDebugCheckpointTask(chunk as DebugTask);
+        if ("result" in debugTask || "error" in debugTask) {
+          options?.onTaskResult?.(debugTask);
+        }
+        data = debugTask;
       }
 
       if (mode === "messages") {
