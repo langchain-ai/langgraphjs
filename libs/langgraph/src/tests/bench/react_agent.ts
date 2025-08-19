@@ -1,10 +1,10 @@
 import { v4 as uuid } from "uuid";
-import { AIMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod/v3";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { createReactAgent } from "../../prebuilt/index.js";
-import { FakeToolCallingChatModel } from "../utils.js";
+import { FakeToolCallingChatModel } from "../utils.models.js";
 
 /**
  * Creates a React agent with specified number of tools for benchmarking.
@@ -52,4 +52,39 @@ export function reactAgent(nTools: number, checkpointer?: MemorySaver) {
     tools: [testTool],
     checkpointSaver: checkpointer,
   });
+}
+
+import { fileURLToPath } from "node:url";
+async function main() {
+  const checkpointer = new MemorySaver();
+  const graph = reactAgent(100, checkpointer);
+
+  const input = { messages: [new HumanMessage("hi?")] };
+  const config = {
+    recursionLimit: 20000000000,
+    configurable: { thread_id: "1" },
+  };
+
+  const result = [];
+  console.time("stream");
+  for await (const chunk of await graph.stream(input, config)) {
+    result.push(chunk);
+  }
+  console.timeEnd("stream");
+
+  if (
+    process.argv.includes("--inspect") ||
+    process.argv.includes("--inspect-brk")
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 360_000));
+  }
+
+  return result.length;
+}
+
+if (import.meta.url.startsWith("file:")) {
+  const modulePath = fileURLToPath(import.meta.url);
+  if (process.argv[1] === modulePath) {
+    main();
+  }
 }

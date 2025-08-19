@@ -1,6 +1,7 @@
 import { test, expect } from "vitest";
 import { createReactAgent } from "../prebuilt/index.js";
-import { FakeSearchTool, FakeToolCallingChatModel } from "./utils.js";
+import { FakeSearchTool } from "./utils.js";
+import { FakeToolCallingChatModel } from "./utils.models.js";
 import { Annotation, StateGraph } from "../web.js";
 
 test("prebuilt agent", async () => {

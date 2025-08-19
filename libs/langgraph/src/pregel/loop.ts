@@ -1010,7 +1010,9 @@ export class PregelLoop {
     const isCommandUpdateOrGoto =
       isCommand(this.input) && nullWrites.length > 0;
     if (this.isResuming || isCommandUpdateOrGoto) {
-      for (const channelName of Object.keys(this.channels)) {
+      for (const channelName in this.channels) {
+        if (!Object.prototype.hasOwnProperty.call(this.channels, channelName))
+          continue;
         if (this.checkpoint.channel_versions[channelName] !== undefined) {
           const version = this.checkpoint.channel_versions[channelName];
           this.checkpoint.versions_seen[INTERRUPT] = {

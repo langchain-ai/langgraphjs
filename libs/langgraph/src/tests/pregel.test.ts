@@ -56,11 +56,11 @@ import {
   _AnyIdHumanMessage,
   _AnyIdToolMessage,
   createAnyStringSame,
-  FakeChatModel,
   FakeTracer,
   MemorySaverAssertImmutable,
   SlowInMemoryCache,
 } from "./utils.js";
+import { FakeChatModel } from "./utils.models.js";
 import { gatherIterator } from "../utils.js";
 import { LastValue } from "../channels/last_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";

@@ -23,7 +23,7 @@ import {
   BaseChannel,
   createCheckpoint,
   emptyChannels,
-  isBaseChannel,
+  getOnlyChannels,
 } from "../channels/base.js";
 import { PregelNode } from "./read.js";
 import { readChannel, readChannels } from "./io.js";
@@ -91,20 +91,28 @@ export const increment = (current?: number) => {
   return current !== undefined ? current + 1 : 1;
 };
 
+// Avoids unnecessary double iteration
+function maxChannelMapVersion(
+  channelVersions: Record<string, number | string>
+): number | string | undefined {
+  let maxVersion: number | string | undefined;
+  for (const chan in channelVersions) {
+    if (!Object.prototype.hasOwnProperty.call(channelVersions, chan)) continue;
+    if (maxVersion == null) {
+      maxVersion = channelVersions[chan];
+    } else {
+      maxVersion = maxChannelVersion(maxVersion, channelVersions[chan]);
+    }
+  }
+  return maxVersion;
+}
+
 export function shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
   checkpoint: Checkpoint,
   interruptNodes: All | N[],
   tasks: PregelExecutableTask<N, C>[]
 ): boolean {
-  const versionValues = Object.values(checkpoint.channel_versions);
-  const versionType =
-    versionValues.length > 0 ? typeof versionValues[0] : undefined;
-  let nullVersion: number | string;
-  if (versionType === "number") {
-    nullVersion = 0;
-  } else if (versionType === "string") {
-    nullVersion = "";
-  }
+  const nullVersion = getNullChannelVersion(checkpoint.channel_versions);
   const seen = checkpoint.versions_seen[INTERRUPT] ?? {};
 
   const anyChannelUpdated = Object.entries(checkpoint.channel_versions).some(
@@ -234,9 +242,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   const bumpStep = tasks.some((task) => task.triggers.length > 0);
 
   // Filter out non instances of BaseChannel
-  const onlyChannels = Object.fromEntries(
-    Object.entries(channels).filter(([_, value]) => isBaseChannel(value))
-  ) as Cc;
+  const onlyChannels = getOnlyChannels(channels);
 
   // Update seen versions
   for (const task of tasks) {
@@ -250,12 +256,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // Find the highest version of all channels
-  let maxVersion: string | number | undefined;
-  if (Object.keys(checkpoint.channel_versions).length > 0) {
-    maxVersion = maxChannelVersion(
-      ...Object.values(checkpoint.channel_versions)
-    );
-  }
+  let maxVersion = maxChannelMapVersion(checkpoint.channel_versions);
 
   // Consume all channels that were read
   const channelsToConsume = new Set(
@@ -286,21 +287,16 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // Find the highest version of all channels
-  // TODO: figure out why we need to do this twice (Python only does this once)
-  maxVersion = undefined;
-  if (Object.keys(checkpoint.channel_versions).length > 0) {
-    maxVersion = maxChannelVersion(
-      ...Object.values(checkpoint.channel_versions)
-    );
-  }
+  maxVersion = maxChannelMapVersion(checkpoint.channel_versions);
 
   const updatedChannels: Set<string> = new Set();
   // Apply writes to channels
   for (const [chan, vals] of Object.entries(pendingWritesByChannel)) {
     if (chan in onlyChannels) {
+      const channel = onlyChannels[chan];
       let updated;
       try {
-        updated = onlyChannels[chan].update(vals);
+        updated = channel.update(vals);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (e: any) {
         if (e.name === InvalidUpdateError.unminifiable_name) {
@@ -319,25 +315,22 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
         checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
 
         // unavailable channels can't trigger tasks, so don't add them
-        if (onlyChannels[chan].isAvailable()) {
-          updatedChannels.add(chan);
-        }
+        if (channel.isAvailable()) updatedChannels.add(chan);
       }
     }
   }
 
   // Channels that weren't updated in this step are notified of a new step
   if (bumpStep) {
-    for (const chan of Object.keys(onlyChannels)) {
-      if (onlyChannels[chan].isAvailable() && !updatedChannels.has(chan)) {
-        const updated = onlyChannels[chan].update([]);
+    for (const chan in onlyChannels) {
+      const channel = onlyChannels[chan];
+      if (channel.isAvailable() && !updatedChannels.has(chan)) {
+        const updated = channel.update([]);
         if (updated && getNextVersion !== undefined) {
           checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
 
           // unavailable channels can't trigger tasks, so don't add them
-          if (onlyChannels[chan].isAvailable()) {
-            updatedChannels.add(chan);
-          }
+          if (channel.isAvailable()) updatedChannels.add(chan);
         }
       }
     }
@@ -350,14 +343,13 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       updatedChannels.has(channel)
     )
   ) {
-    for (const chan of Object.keys(onlyChannels)) {
-      if (onlyChannels[chan].finish() && getNextVersion !== undefined) {
+    for (const chan in onlyChannels) {
+      const channel = onlyChannels[chan];
+      if (channel.finish() && getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
 
         // unavailable channels can't trigger tasks, so don't add them
-        if (onlyChannels[chan].isAvailable()) {
-          updatedChannels.add(chan);
-        }
+        if (channel.isAvailable()) updatedChannels.add(chan);
       }
     }
   }
@@ -453,7 +445,7 @@ export function _prepareNextTasks<
 
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
-  for (const name of Object.keys(processes)) {
+  for (const name in processes) {
     const task = _prepareSingleTask(
       [PULL, name],
       checkpoint,
