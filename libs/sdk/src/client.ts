@@ -359,6 +359,7 @@ export class CronsClient extends BaseClient {
       multitask_strategy: payload?.multitaskStrategy,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
     };
     return this.fetch<CronCreateForThreadResponse>(
       `/threads/${threadId}/runs/crons`,
@@ -392,6 +393,7 @@ export class CronsClient extends BaseClient {
       multitask_strategy: payload?.multitaskStrategy,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
     };
     return this.fetch<CronCreateResponse>(`/runs/crons`, {
       method: "POST",
@@ -1002,6 +1004,7 @@ export class RunsClient<
       after_seconds: payload?.afterSeconds,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
     };
 
     const endpoint =
@@ -1061,6 +1064,7 @@ export class RunsClient<
       after_seconds: payload?.afterSeconds,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
       langsmith_tracer: payload?._langsmithTracer
         ? {
             project_name: payload?._langsmithTracer?.projectName,
@@ -1148,6 +1152,7 @@ export class RunsClient<
       after_seconds: payload?.afterSeconds,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
       langsmith_tracer: payload?._langsmithTracer
         ? {
             project_name: payload?._langsmithTracer?.projectName,
