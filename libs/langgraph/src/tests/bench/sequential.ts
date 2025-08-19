@@ -1,3 +1,6 @@
+/* eslint-disable no-promise-executor-return */
+/* eslint-disable import/order */
+/* eslint-disable import/first */
 import {
   MessagesAnnotation,
   StateGraph,
@@ -32,4 +35,33 @@ export function createSequential(numberNodes: number) {
 
   builder.addEdge(prevNode, "__end__");
   return builder;
+}
+
+import { fileURLToPath } from "node:url";
+import * as inspector from "node:inspector";
+
+async function main() {
+  const graph = createSequential(3000).compile();
+  const input = { messages: [] }; // Empty list of messages
+  const config = { recursionLimit: 20000000000 };
+
+  const result = [];
+  console.time("stream");
+  for await (const chunk of await graph.stream(input, config)) {
+    result.push(chunk);
+  }
+  console.timeEnd("stream");
+
+  if (inspector.url()) {
+    await new Promise((resolve) => setTimeout(resolve, 360_000));
+  }
+
+  return result.length;
+}
+
+if (import.meta.url.startsWith("file:")) {
+  const modulePath = fileURLToPath(import.meta.url);
+  if (process.argv[1] === modulePath) {
+    void main();
+  }
 }

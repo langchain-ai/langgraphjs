@@ -1,6 +1,5 @@
 import {
   ReadonlyCheckpoint,
-  deepCopy,
   uuid6,
   Checkpoint,
 } from "@langchain/langgraph-checkpoint";
@@ -108,21 +107,37 @@ export abstract class BaseChannel<
   }
 }
 
+const IS_ONLY_BASE_CHANNEL = Symbol.for("LG_IS_ONLY_BASE_CHANNEL");
+export function getOnlyChannels(
+  channels: Record<string, BaseChannel>
+): Record<string, BaseChannel> {
+  // @ts-expect-error - we know it's a record of base channels
+  if (channels[IS_ONLY_BASE_CHANNEL] === true) return channels;
+
+  const newChannels = {} as Record<string, BaseChannel>;
+  for (const k in channels) {
+    if (!Object.prototype.hasOwnProperty.call(channels, k)) continue;
+    const value = channels[k];
+    if (isBaseChannel(value)) newChannels[k] = value;
+  }
+
+  Object.assign(newChannels, { [IS_ONLY_BASE_CHANNEL]: true });
+  return newChannels;
+}
+
 export function emptyChannels<Cc extends Record<string, BaseChannel>>(
   channels: Cc,
   checkpoint: ReadonlyCheckpoint
 ): Cc {
-  const filteredChannels = Object.fromEntries(
-    Object.entries(channels).filter(([, value]) => isBaseChannel(value))
-  ) as Cc;
+  const filteredChannels = getOnlyChannels(channels) as Cc;
 
   const newChannels = {} as Cc;
   for (const k in filteredChannels) {
-    if (Object.prototype.hasOwnProperty.call(filteredChannels, k)) {
-      const channelValue = checkpoint.channel_values[k];
-      newChannels[k] = filteredChannels[k].fromCheckpoint(channelValue);
-    }
+    if (!Object.prototype.hasOwnProperty.call(filteredChannels, k)) continue;
+    const channelValue = checkpoint.channel_values[k];
+    newChannels[k] = filteredChannels[k].fromCheckpoint(channelValue);
   }
+  Object.assign(newChannels, { [IS_ONLY_BASE_CHANNEL]: true });
   return newChannels;
 }
 
@@ -138,7 +153,8 @@ export function createCheckpoint<ValueType>(
     values = checkpoint.channel_values;
   } else {
     values = {};
-    for (const k of Object.keys(channels)) {
+    for (const k in channels) {
+      if (!Object.prototype.hasOwnProperty.call(channels, k)) continue;
       try {
         values[k] = channels[k].checkpoint();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -151,12 +167,20 @@ export function createCheckpoint<ValueType>(
       }
     }
   }
+
+  const newVersionsSeen = {} as Record<string, Record<string, number | string>>;
+  for (const k in checkpoint.versions_seen) {
+    if (!Object.prototype.hasOwnProperty.call(checkpoint.versions_seen, k))
+      continue;
+    newVersionsSeen[k] = { ...checkpoint.versions_seen[k] };
+  }
+
   return {
     v: 4,
     id: options?.id ?? uuid6(step),
     ts: new Date().toISOString(),
     channel_values: values,
     channel_versions: { ...checkpoint.channel_versions },
-    versions_seen: deepCopy(checkpoint.versions_seen),
+    versions_seen: newVersionsSeen,
   };
 }
