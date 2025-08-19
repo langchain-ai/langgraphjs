@@ -55,6 +55,8 @@ export function reactAgent(nTools: number, checkpointer?: MemorySaver) {
 }
 
 import { fileURLToPath } from "node:url";
+import * as inspector from "node:inspector";
+
 async function main() {
   const checkpointer = new MemorySaver();
   const graph = reactAgent(100, checkpointer);
@@ -72,10 +74,7 @@ async function main() {
   }
   console.timeEnd("stream");
 
-  if (
-    process.argv.includes("--inspect") ||
-    process.argv.includes("--inspect-brk")
-  ) {
+  if (inspector.url()) {
     await new Promise((resolve) => setTimeout(resolve, 360_000));
   }
 

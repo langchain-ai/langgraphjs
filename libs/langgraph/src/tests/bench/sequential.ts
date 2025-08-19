@@ -35,6 +35,7 @@ export function createSequential(numberNodes: number) {
 }
 
 import { fileURLToPath } from "node:url";
+import * as inspector from "node:inspector";
 async function main() {
   const graph = createSequential(3000).compile();
   const input = { messages: [] }; // Empty list of messages
@@ -47,10 +48,7 @@ async function main() {
   }
   console.timeEnd("stream");
 
-  if (
-    process.argv.includes("--inspect") ||
-    process.argv.includes("--inspect-brk")
-  ) {
+  if (inspector.url()) {
     await new Promise((resolve) => setTimeout(resolve, 360_000));
   }
 
