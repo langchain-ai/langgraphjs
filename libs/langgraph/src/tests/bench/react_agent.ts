@@ -1,3 +1,6 @@
+/* eslint-disable no-promise-executor-return */
+/* eslint-disable import/order */
+/* eslint-disable import/first */
 import { v4 as uuid } from "uuid";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
@@ -84,6 +87,6 @@ async function main() {
 if (import.meta.url.startsWith("file:")) {
   const modulePath = fileURLToPath(import.meta.url);
   if (process.argv[1] === modulePath) {
-    main();
+    void main();
   }
 }

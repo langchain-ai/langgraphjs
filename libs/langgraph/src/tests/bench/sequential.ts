@@ -1,3 +1,6 @@
+/* eslint-disable no-promise-executor-return */
+/* eslint-disable import/order */
+/* eslint-disable import/first */
 import {
   MessagesAnnotation,
   StateGraph,
@@ -36,6 +39,7 @@ export function createSequential(numberNodes: number) {
 
 import { fileURLToPath } from "node:url";
 import * as inspector from "node:inspector";
+
 async function main() {
   const graph = createSequential(3000).compile();
   const input = { messages: [] }; // Empty list of messages
@@ -58,6 +62,6 @@ async function main() {
 if (import.meta.url.startsWith("file:")) {
   const modulePath = fileURLToPath(import.meta.url);
   if (process.argv[1] === modulePath) {
-    main();
+    void main();
   }
 }

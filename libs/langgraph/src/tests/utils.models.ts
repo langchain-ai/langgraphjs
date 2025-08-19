@@ -1,3 +1,5 @@
+/* eslint-disable no-promise-executor-return */
+/* eslint-disable import/no-extraneous-dependencies */
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import {
   BaseLanguageModelInput,

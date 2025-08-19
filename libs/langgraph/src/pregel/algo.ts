@@ -115,11 +115,18 @@ export function shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
   const nullVersion = getNullChannelVersion(checkpoint.channel_versions);
   const seen = checkpoint.versions_seen[INTERRUPT] ?? {};
 
-  const anyChannelUpdated = Object.entries(checkpoint.channel_versions).some(
-    ([chan, version]) => {
-      return version > (seen[chan] ?? nullVersion);
+  let anyChannelUpdated = false;
+  for (const chan in checkpoint.channel_versions) {
+    if (
+      !Object.prototype.hasOwnProperty.call(checkpoint.channel_versions, chan)
+    )
+      continue;
+
+    if (checkpoint.channel_versions[chan] > (seen[chan] ?? nullVersion)) {
+      anyChannelUpdated = true;
+      break;
     }
-  );
+  }
 
   const anyTriggeredNodeInInterruptNodes = tasks.some((task) =>
     interruptNodes === "*"
@@ -323,6 +330,8 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // Channels that weren't updated in this step are notified of a new step
   if (bumpStep) {
     for (const chan in onlyChannels) {
+      if (!Object.prototype.hasOwnProperty.call(onlyChannels, chan)) continue;
+
       const channel = onlyChannels[chan];
       if (channel.isAvailable() && !updatedChannels.has(chan)) {
         const updated = channel.update([]);
@@ -344,6 +353,8 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
     )
   ) {
     for (const chan in onlyChannels) {
+      if (!Object.prototype.hasOwnProperty.call(onlyChannels, chan)) continue;
+
       const channel = onlyChannels[chan];
       if (channel.finish() && getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
@@ -446,6 +457,7 @@ export function _prepareNextTasks<
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
   for (const name in processes) {
+    if (!Object.prototype.hasOwnProperty.call(processes, name)) continue;
     const task = _prepareSingleTask(
       [PULL, name],
       checkpoint,

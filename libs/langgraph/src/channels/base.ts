@@ -155,6 +155,7 @@ export function createCheckpoint<ValueType>(
   } else {
     values = {};
     for (const k in channels) {
+      if (!Object.prototype.hasOwnProperty.call(channels, k)) continue;
       try {
         values[k] = channels[k].checkpoint();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
