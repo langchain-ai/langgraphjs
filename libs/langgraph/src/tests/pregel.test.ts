@@ -12336,6 +12336,52 @@ graph TD;
       ],
     });
   });
+
+  it("dynamic runtime object", async () => {
+    class RunScopedStore {
+      private data: string[] = [];
+
+      push(value: string) {
+        this.data.push(value);
+      }
+
+      get() {
+        return this.data;
+      }
+    }
+
+    const graph = new StateGraph(
+      Annotation.Root({
+        visits: Annotation<string>({
+          default: () => "",
+          reducer: (a, b) => [a, b].join(", "),
+        }),
+        collect: Annotation<string[]>,
+      }),
+      Annotation.Root({
+        myStore: Annotation<RunScopedStore>,
+      })
+    )
+      .addSequence({
+        one: (_, runtime) => {
+          runtime.context?.myStore.push("one");
+          return { visits: "one" };
+        },
+        two: (_, runtime) => {
+          runtime.context?.myStore.push("two");
+          return { visits: "two" };
+        },
+        check: (_, runtime) => {
+          return { collect: runtime.context?.myStore.get() };
+        },
+      })
+      .addEdge(START, "one")
+      .compile()
+      .withConfig({ context: { myStore: new RunScopedStore() } });
+
+    const result = await graph.invoke({ visits: "one" });
+    expect(result.collect).toEqual(["one", "two"]);
+  });
 }
 
 runPregelTests(() => new MemorySaverAssertImmutable());
