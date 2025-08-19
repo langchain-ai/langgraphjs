@@ -842,19 +842,19 @@ export function _prepareSingleTask<
       return undefined;
     }
     const seen = checkpoint.versions_seen[name] ?? {};
-    const triggers = proc.triggers
-      .filter((chan) => {
-        // here we're only checking if the channel is not empty
-        const isEmptyChannelError = !channels[chan].isAvailable();
-        return (
-          !isEmptyChannelError &&
-          (checkpoint.channel_versions[chan] ?? nullVersion) >
-            (seen[chan] ?? nullVersion)
-        );
-      })
-      .sort();
+
+    // Find the first trigger that is available and has a new version
+    const trigger = proc.triggers.find((chan) => {
+      if (!channels[chan].isAvailable()) return false;
+
+      return (
+        (checkpoint.channel_versions[chan] ?? nullVersion) >
+        (seen[chan] ?? nullVersion)
+      );
+    });
+
     // If any of the channels read by this process were updated
-    if (triggers.length > 0) {
+    if (trigger !== undefined) {
       const val = _procInput(proc, channels, forExecution);
       if (val === undefined) {
         return undefined;
@@ -869,7 +869,7 @@ export function _prepareSingleTask<
           step.toString(),
           name,
           PULL,
-          triggers,
+          [trigger],
         ]),
         checkpoint.id
       );
@@ -877,7 +877,7 @@ export function _prepareSingleTask<
       let metadata = {
         langgraph_step: step,
         langgraph_node: name,
-        langgraph_triggers: triggers,
+        langgraph_triggers: [trigger],
         langgraph_path: taskPath,
         langgraph_checkpoint_ns: taskCheckpointNamespace,
       };
@@ -924,7 +924,7 @@ export function _prepareSingleTask<
                       {
                         name,
                         writes: writes as PendingWrite[],
-                        triggers,
+                        triggers: [trigger],
                         path: taskPath,
                       },
                       select_,
@@ -950,7 +950,7 @@ export function _prepareSingleTask<
                 },
               }
             ),
-            triggers,
+            triggers: [trigger],
             retry_policy: proc.retryPolicy,
             cache_key: proc.cachePolicy
               ? {
