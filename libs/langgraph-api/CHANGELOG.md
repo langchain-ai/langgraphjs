@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 0.0.60
+
+### Patch Changes
+
+- 9c57526: fix(api): serialization of "checkpoints" and "tasks" stream modes
+  - @langchain/langgraph-ui@0.0.60
+
 ## 0.0.59
 
 ### Patch Changes
