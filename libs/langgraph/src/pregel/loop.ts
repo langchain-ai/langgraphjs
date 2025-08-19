@@ -51,6 +51,7 @@ import {
   CHECKPOINT_NAMESPACE_END,
   CONFIG_KEY_CHECKPOINT_ID,
   CONFIG_KEY_RESUME_MAP,
+  START,
 } from "../constants.js";
 import {
   _applyWrites,
@@ -290,8 +291,23 @@ export class PregelLoop {
   triggerToNodes: Record<string, string[]>;
 
   get isResuming() {
-    const hasChannelVersions =
-      Object.keys(this.checkpoint.channel_versions).length !== 0;
+    let hasChannelVersions = false;
+    if (START in this.checkpoint.channel_versions) {
+      // For common channels, we can short-circuit the check
+      hasChannelVersions = true;
+    } else {
+      for (const chan in this.checkpoint.channel_versions) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            this.checkpoint.channel_versions,
+            chan
+          )
+        ) {
+          hasChannelVersions = true;
+          break;
+        }
+      }
+    }
 
     const configHasResumingFlag =
       this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined;
