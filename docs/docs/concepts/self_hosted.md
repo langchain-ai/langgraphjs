@@ -19,7 +19,7 @@ When using the Self-Hosted Lite version, you authenticate with a [LangSmith](htt
 
 The Self-Hosted Enterprise version is the full version of LangGraph Platform.
 
-To use the Self-Hosted Enterprise version, you must acquire a license key that you will need to pass in when running the Docker image. To acquire a license key, please email sales@langchain.dev.
+To use the Self-Hosted Enterprise version, you must acquire a license key that you will need to pass in when running the Docker image. To acquire a license key, [contact our sales team](https://www.langchain.com/contact-sales).
 
 ## Requirements
 
