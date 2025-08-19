@@ -3229,7 +3229,7 @@ graph TD;
 
       const toolTwoNode = (
         s: typeof StateAnnotation.State
-      ): Partial<typeof StateAnnotation.State> => {
+      ): typeof StateAnnotation.Update => {
         toolTwoNodeCount += 1;
         const answer: string =
           s.market === "DE" ? interrupt("Just because...") : " all good";
@@ -3341,11 +3341,7 @@ graph TD;
         await gatherIterator(
           toolTwo.stream(new Command({ resume: " this is great" }), thread2)
         )
-      ).toEqual([
-        {
-          tool_two: { my_key: " this is great" },
-        },
-      ]);
+      ).toEqual([{ tool_two: { my_key: " this is great" } }]);
 
       // flow: interrupt -> clear tasks
       const thread1 = { configurable: { thread_id: "1" } };
@@ -3441,6 +3437,38 @@ graph TD;
             checkpoint_ns: "",
             checkpoint_id: expect.any(String),
           },
+        },
+      });
+
+      // interrupt, resume and update state afterwards
+      const thread3 = { configurable: { thread_id: "3" } };
+
+      expect(
+        await toolTwo.invoke({ my_key: "value ⛰️", market: "DE" }, thread3)
+      ).toEqual({
+        my_key: "value ⛰️",
+        market: "DE",
+        __interrupt__: [
+          {
+            id: expect.any(String),
+            value: "Just because...",
+          },
+        ],
+      });
+
+      expect(
+        await toolTwo.invoke(new Command({ resume: " resumed" }), thread3)
+      ).toEqual({
+        my_key: "value ⛰️ resumed",
+        market: "DE",
+      });
+
+      await toolTwo.updateState(thread3, { my_key: " updated" });
+
+      expect(await toolTwo.getState(thread3)).toMatchObject({
+        values: {
+          my_key: "value ⛰️ resumed updated",
+          market: "DE",
         },
       });
     });
