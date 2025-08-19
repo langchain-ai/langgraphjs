@@ -1479,6 +1479,7 @@ export class Pregel<
               });
             })
             .flat()
+            .filter(([_, v]) => v !== INTERRUPT)
             .sort(([aNumber], [bNumber]) =>
               compareChannelVersions(aNumber, bNumber)
             );
