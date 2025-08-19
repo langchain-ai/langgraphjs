@@ -568,7 +568,9 @@ export class Pregel<
    * @param config - The configuration to merge with the current configuration
    * @returns A new Pregel instance with the merged configuration
    */
-  override withConfig(config: RunnableConfig): typeof this {
+  override withConfig(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer">
+  ): typeof this {
     const mergedConfig = mergeConfigs(this.config, config);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return new (this.constructor as any)({ ...this, config: mergedConfig });
