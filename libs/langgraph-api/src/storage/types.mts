@@ -312,8 +312,7 @@ export interface ThreadsStateRepo {
       | undefined,
     asNode: string | undefined,
     auth: AuthContext | undefined
-  ): Promise<{ checkpoint: Record<string, unknown> }>;
-
+  ): Promise<{ checkpoint: Record<string, unknown> | undefined }>;
   bulk(
     config: RunnableConfig,
     supersteps: Array<{
@@ -329,7 +328,7 @@ export interface ThreadsStateRepo {
       }>;
     }>,
     auth: AuthContext | undefined
-  ): Promise<{ checkpoint: Record<string, unknown> }>;
+  ): Promise<{ checkpoint: Record<string, unknown> | undefined } | unknown[]>;
 
   list(
     config: RunnableConfig,

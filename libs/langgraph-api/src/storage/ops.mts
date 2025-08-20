@@ -1,9 +1,4 @@
-import type {
-  CheckpointMetadata as LangGraphCheckpointMetadata,
-  LangGraphRunnableConfig,
-  StateSnapshot as LangGraphStateSnapshot,
-} from "@langchain/langgraph";
-
+import type { StateSnapshot as LangGraphStateSnapshot } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
 import { v4 as uuid4, v5 as uuid5 } from "uuid";
 import { handleAuthEvent, isAuthMatching } from "../auth/custom.mjs";
@@ -39,7 +34,7 @@ import type {
 } from "./types.mjs";
 
 export class FileSystemOps implements Ops {
-  private conn: FileSystemPersistence<Store>;
+  private readonly conn: FileSystemPersistence<Store>;
 
   readonly assistants: FileSystemAssistants;
   readonly runs: FileSystemRuns;
@@ -238,7 +233,7 @@ const isJsonbContained = (
 };
 
 export class FileSystemAssistants implements AssistantsRepo {
-  private conn: FileSystemPersistence<Store>;
+  private readonly conn: FileSystemPersistence<Store>;
 
   constructor(conn: FileSystemPersistence<Store>) {
     this.conn = conn;
@@ -603,8 +598,8 @@ export class FileSystemAssistants implements AssistantsRepo {
 }
 
 export class FileSystemThreads implements ThreadsRepo {
-  private conn: FileSystemPersistence<Store>;
-  public readonly state: ThreadsRepo["state"];
+  private readonly conn: FileSystemPersistence<Store>;
+  public readonly state: ThreadsStateRepo;
 
   constructor(conn: FileSystemPersistence<Store>) {
     this.conn = conn;
@@ -907,7 +902,7 @@ export class FileSystemThreads implements ThreadsRepo {
   }
 
   private static State = class implements ThreadsStateRepo {
-    private conn: FileSystemPersistence<Store>;
+    private readonly conn: FileSystemPersistence<Store>;
     private threads: FileSystemThreads;
 
     constructor(
@@ -969,7 +964,7 @@ export class FileSystemThreads implements ThreadsRepo {
         | undefined,
       asNode: string | undefined,
       auth: AuthContext | undefined
-    ) {
+    ): Promise<{ checkpoint: Record<string, unknown> | undefined }> {
       const threadId = config.configurable?.thread_id;
       const [filters] = await handleAuthEvent(auth, "threads:update", {
         thread_id: threadId,
@@ -1051,7 +1046,9 @@ export class FileSystemThreads implements ThreadsRepo {
         }>;
       }>,
       auth: AuthContext | undefined
-    ) {
+    ): Promise<
+      { checkpoint: Record<string, unknown> | undefined } | unknown[]
+    > {
       const threadId = config.configurable?.thread_id;
       if (!threadId) return [];
 
@@ -1155,11 +1152,14 @@ export class FileSystemThreads implements ThreadsRepo {
 }
 
 export class FileSystemRuns implements RunsRepo {
-  private conn: FileSystemPersistence<Store>;
+  private readonly conn: FileSystemPersistence<Store>;
+  private readonly threads: FileSystemThreads;
+
   public readonly stream: RunsStreamRepo;
 
   constructor(conn: FileSystemPersistence<Store>) {
     this.conn = conn;
+    this.threads = new FileSystemThreads(conn);
     this.stream = new FileSystemRuns.Stream(conn, this);
   }
 
@@ -1489,12 +1489,12 @@ export class FileSystemRuns implements RunsRepo {
 
   async join(runId: string, threadId: string, auth: AuthContext | undefined) {
     // check if thread exists
-    await Threads.get(threadId, auth);
+    await this.threads.get(threadId, auth);
 
     const lastChunk = await this.wait(runId, threadId, auth);
     if (lastChunk != null) return lastChunk;
 
-    const thread = await Threads.get(threadId, auth);
+    const thread = await this.threads.get(threadId, auth);
     return thread.values ?? null;
   }
 
@@ -1624,7 +1624,7 @@ export class FileSystemRuns implements RunsRepo {
   }
 
   private static Stream = class implements RunsStreamRepo {
-    private conn: FileSystemPersistence<Store>;
+    private readonly conn: FileSystemPersistence<Store>;
     private runs: FileSystemRuns;
 
     constructor(conn: FileSystemPersistence<Store>, runs: FileSystemRuns) {
