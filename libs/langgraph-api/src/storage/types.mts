@@ -6,13 +6,12 @@ import type {
 import type { RunCommand } from "../command.mjs";
 import type { AuthContext } from "../auth/index.mjs";
 
-/*
+// Hono context object
 export type StorageEnv = {
   Variables: {
-
+    ops: Ops;
   };
 };
-*/
 
 export type Metadata = Record<string, unknown>;
 
@@ -233,6 +232,7 @@ export interface RunsRepo {
     threadId: string,
     auth: AuthContext | undefined
   ): Promise<unknown>;
+  setStatus(runId: string, status: RunStatus): Promise<unknown>;
 
   readonly stream: RunsStreamRepo;
 }
@@ -248,6 +248,13 @@ export interface RunsStreamRepo {
     },
     auth: AuthContext | undefined
   ): AsyncGenerator<{ id?: string; event: string; data: unknown }>;
+
+  publish(payload: {
+    runId: string;
+    resumable: boolean;
+    event: string;
+    data: unknown | Error;
+  }): Promise<void>;
 }
 
 export interface ThreadsRepo {

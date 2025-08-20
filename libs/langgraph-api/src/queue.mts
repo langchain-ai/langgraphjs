@@ -1,4 +1,4 @@
-import { Runs, Threads } from "./storage/ops.mjs";
+import { runs, threads } from "./storage/context.mjs";
 import type { Run, RunStatus } from "./storage/types.mjs";
 import {
   type StreamCheckpoint,
@@ -15,7 +15,7 @@ const MAX_RETRY_ATTEMPTS = 3;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export const queue = async () => {
   while (true) {
-    for await (const { run, attempt, signal } of Runs.next()) {
+    for await (const { run, attempt, signal } of runs().next()) {
       await worker(run, attempt, signal);
     }
 
@@ -72,10 +72,10 @@ const worker = async (run: Run, attempt: number, signal: AbortSignal) => {
       });
 
       for await (const { event, data } of stream) {
-        await Runs.Stream.publish({ runId, resumable, event, data });
+        await runs().stream.publish({ runId, resumable, event, data });
       }
     } catch (error) {
-      await Runs.Stream.publish({
+      await runs().stream.publish({
         runId,
         resumable,
         event: "error",
@@ -95,7 +95,7 @@ const worker = async (run: Run, attempt: number, signal: AbortSignal) => {
     });
 
     status = "success";
-    await Runs.setStatus(run.run_id, status);
+    await runs().setStatus(run.run_id, status);
   } catch (error) {
     endedAt = new Date();
     if (error instanceof Error) exception = error;
@@ -113,12 +113,12 @@ const worker = async (run: Run, attempt: number, signal: AbortSignal) => {
     });
 
     status = "error";
-    await Runs.setStatus(run.run_id, "error");
+    await runs().setStatus(run.run_id, "error");
   } finally {
     if (temporary) {
-      await Threads.delete(run.thread_id, undefined);
+      await threads().delete(run.thread_id, undefined);
     } else {
-      await Threads.setStatus(run.thread_id, { checkpoint, exception });
+      await threads().setStatus(run.thread_id, { checkpoint, exception });
     }
 
     if (webhook) {

@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { contextStorage } from "hono/context-storage";
 
 import { registerFromEnv } from "./graph/load.mjs";
 
@@ -9,7 +10,7 @@ import assistants from "./api/assistants.mjs";
 import store from "./api/store.mjs";
 import meta from "./api/meta.mjs";
 
-import { truncate, conn as opsConn } from "./storage/ops.mjs";
+import { StorageEnv } from "./storage/types.mjs";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { queue } from "./queue.mjs";
@@ -20,6 +21,7 @@ import {
   registerSdkLogger,
 } from "./logging.mjs";
 import { checkpointer } from "./storage/checkpoint.mjs";
+import { FileSystemOps } from "./storage/ops.mjs";
 import { store as graphStore } from "./storage/store.mjs";
 import { auth } from "./auth/custom.mjs";
 import { registerAuth } from "./auth/index.mjs";
@@ -88,7 +90,7 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
 
   logger.info(`Initializing storage...`);
   const callbacks = await Promise.all([
-    opsConn.initialize(options.cwd),
+    // TODO: restore cleanup for ops connection
     checkpointer.initialize(options.cwd),
     graphStore.initialize(options.cwd),
   ]);
@@ -132,7 +134,13 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
     return info;
   });
 
-  const app = new Hono();
+  const app = new Hono<StorageEnv>();
+
+  app.use(contextStorage());
+  app.use(async (c, next) => {
+    c.set("ops", new FileSystemOps());
+    await next();
+  });
 
   // Loopback fetch used by webhooks and custom routes
   bindLoopbackFetch(app);
